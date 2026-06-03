@@ -20,11 +20,18 @@ jobs:
           node-version: '20'
 
       # --- Fast seeds (market-critical, high-frequency data) ---
-      - name: Seed earthquakes
-        run: node scripts/seed-earthquakes.mjs
-        env:
-          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
-          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+      # DISABLED 2026-06-03 — earthquake seeding migrated to a Vercel cron.
+      #   endpoint: GET /api/seismology/v1/refresh (api/seismology/v1/refresh.ts)
+      #   schedule: vercel.json crons → "9,39 * * * *"
+      # The GitHub runs were failing, leaving the map's earthquake layer empty.
+      # The Vercel cron calls fetchFreshEarthquakes() (now the USGS 2.5_month
+      # feed, ~1.8k quakes) and writes seismology:earthquakes:v1 + seed-meta.
+      # Re-enable by uncommenting if the Vercel cron is ever retired.
+      # - name: Seed earthquakes
+      #   run: node scripts/seed-earthquakes.mjs
+      #   env:
+      #     UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+      #     UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
 
       - name: Seed market quotes
         run: node scripts/seed-market-quotes.mjs

@@ -84,13 +84,19 @@ jobs:
           UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
           ICAO_API_KEY: ${{ secrets.ICAO_API_KEY }}
 
-      - name: Seed fire detections
-        continue-on-error: true
-        run: node scripts/seed-fire-detections.mjs
-        env:
-          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
-          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
-          NASA_FIRMS_API_KEY: ${{ secrets.NASA_FIRMS_API_KEY }}
+      # DISABLED 2026-06-03 — fire-detection seeding migrated to a Vercel cron.
+      #   endpoint: GET /api/wildfire/v1/refresh (api/wildfire/v1/refresh.ts)
+      #   schedule: vercel.json crons → "21 * * * *"
+      # The Vercel cron calls fetchFreshFireDetections() (NASA FIRMS, 16 regions,
+      # FRP-capped) and writes wildfire:fires:v1 + seed-meta directly. Needs
+      # NASA_FIRMS_API_KEY in the Vercel env. Re-enable by uncommenting if retired.
+      # - name: Seed fire detections
+      #   continue-on-error: true
+      #   run: node scripts/seed-fire-detections.mjs
+      #   env:
+      #     UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+      #     UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+      #     NASA_FIRMS_API_KEY: ${{ secrets.NASA_FIRMS_API_KEY }}
 
       # --- Predictions & insights ---
       - name: Seed prediction markets

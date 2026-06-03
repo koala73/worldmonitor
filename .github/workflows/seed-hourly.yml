@@ -1,8 +1,26 @@
 name: Seed Hourly Data (Every hour)
 
+# ──────────────────────────────────────────────────────────────────────────
+# DISABLED 2026-06-03 — natural-events seeding migrated to a Vercel cron.
+#
+# This workflow's only job was `seed-natural-events.mjs` (EONET + GDACS + NHC →
+# Redis `natural:events:v1`). The scheduled GitHub runs were failing, which left
+# the map's natural-events layers (severe storms / floods / volcanoes / etc.)
+# stale and sparse. That seeding now runs on Vercel:
+#   • endpoint: GET /api/natural/v1/refresh  (api/natural/v1/refresh.ts)
+#   • schedule: vercel.json crons → "7,37 * * * *"
+#   • it calls the same fetchFreshNaturalEvents() and writes
+#     `natural:events:v1` + `seed-meta:natural:events` directly.
+#
+# The `schedule:` trigger below is commented out so this no longer auto-runs
+# (no more failing hourly runs). The job is left intact and `workflow_dispatch`
+# kept so it can still be triggered manually as a break-glass fallback.
+# Safe to delete this whole file once the Vercel cron is proven in production.
+# ──────────────────────────────────────────────────────────────────────────
+
 on:
-  schedule:
-    - cron: '0 * * * *'
+  # schedule:
+  #   - cron: '0 * * * *'   # migrated to Vercel cron — see note above
   workflow_dispatch: {}
 
 concurrency:

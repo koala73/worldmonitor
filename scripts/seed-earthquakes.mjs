@@ -4,7 +4,7 @@ import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
-const USGS_FEED_URL = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_month.geojson';
+const USGS_FEED_URL = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_month.geojson';
 const CANONICAL_KEY = 'seismology:earthquakes:v1';
 const CACHE_TTL = 3600; // 1 hour
 
@@ -43,7 +43,7 @@ function validate(data) {
 runSeed('seismology', 'earthquakes', CANONICAL_KEY, fetchEarthquakes, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
-  sourceVersion: 'usgs-4.5-month',
+  sourceVersion: 'usgs-2.5-month',
 }).catch((err) => {
   console.error('FATAL:', err.message || err);
   process.exit(1);

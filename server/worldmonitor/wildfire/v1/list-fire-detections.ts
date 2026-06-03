@@ -113,6 +113,68 @@ function parseDetectedAt(acqDate: string, acqTime: string): number {
   return new Date(`${acqDate}T${hours}:${minutes}:00Z`).getTime();
 }
 
+/**
+ * Fetch + parse NASA FIRMS active-fire detections across all monitored regions
+ * (FRP-capped). Shared by the live handler (on Redis cache miss) and the Vercel
+ * refresh cron (api/wildfire/v1/refresh.ts), which writes the result to Redis
+ * directly so bootstrap stays fresh without the GitHub Actions seed job.
+ * Returns empty when NASA_FIRMS_API_KEY is not configured.
+ */
+export async function fetchFreshFireDetections(): Promise<{ fireDetections: ListFireDetectionsResponse['fireDetections'] }> {
+  const apiKey = process.env.NASA_FIRMS_API_KEY || process.env.FIRMS_API_KEY || '';
+  if (!apiKey) return { fireDetections: [] };
+
+  const entries = Object.entries(MONITORED_REGIONS);
+  const results = await Promise.allSettled(
+    entries.map(async ([regionName, bbox]) => {
+      const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${apiKey}/${FIRMS_SOURCE}/${bbox}/${dayRangeFor(regionName)}`;
+      const res = await fetch(url, {
+        headers: { Accept: 'text/csv', 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) {
+        throw new Error(`FIRMS ${res.status} for ${regionName}`);
+      }
+      const csv = await res.text();
+      const rows = parseCSV(csv);
+      return { regionName, rows };
+    }),
+  );
+
+  const fireDetections: ListFireDetectionsResponse['fireDetections'] = [];
+  for (const r of results) {
+    if (r.status === 'fulfilled') {
+      const { regionName, rows } = r.value;
+      for (const row of rows) {
+        const detectedAt = parseDetectedAt(row.acq_date || '', row.acq_time || '');
+        fireDetections.push({
+          id: `${row.latitude ?? ''}-${row.longitude ?? ''}-${row.acq_date ?? ''}-${row.acq_time ?? ''}`,
+          location: {
+            latitude: parseFloat(row.latitude ?? '0') || 0,
+            longitude: parseFloat(row.longitude ?? '0') || 0,
+          },
+          brightness: parseFloat(row.bright_ti4 ?? '0') || 0,
+          frp: parseFloat(row.frp ?? '0') || 0,
+          confidence: mapConfidence(row.confidence || ''),
+          satellite: row.satellite || '',
+          detectedAt,
+          region: regionName,
+          dayNight: row.daynight || '',
+        });
+      }
+    } else {
+      console.error('[FIRMS]', r.reason?.message);
+    }
+  }
+
+  // Keep the most significant fires (highest FRP) to bound the payload.
+  if (fireDetections.length > MAX_DETECTIONS) {
+    fireDetections.sort((a, b) => (b.frp || 0) - (a.frp || 0));
+    fireDetections.length = MAX_DETECTIONS;
+  }
+  return { fireDetections };
+}
+
 export const listFireDetections: WildfireServiceHandler['listFireDetections'] = async (
   _ctx: ServerContext,
   _req: ListFireDetectionsRequest,
@@ -143,57 +205,8 @@ export const listFireDetections: WildfireServiceHandler['listFireDetections'] = 
       REDIS_CACHE_KEY,
       REDIS_CACHE_TTL,
       async () => {
-        const entries = Object.entries(MONITORED_REGIONS);
-        const results = await Promise.allSettled(
-          entries.map(async ([regionName, bbox]) => {
-            const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${apiKey}/${FIRMS_SOURCE}/${bbox}/${dayRangeFor(regionName)}`;
-            const res = await fetch(url, {
-              headers: { Accept: 'text/csv', 'User-Agent': CHROME_UA },
-              signal: AbortSignal.timeout(15_000),
-            });
-            if (!res.ok) {
-              throw new Error(`FIRMS ${res.status} for ${regionName}`);
-            }
-            const csv = await res.text();
-            const rows = parseCSV(csv);
-            return { regionName, rows };
-          }),
-        );
-
-        const fireDetections: ListFireDetectionsResponse['fireDetections'] = [];
-
-        for (const r of results) {
-          if (r.status === 'fulfilled') {
-            const { regionName, rows } = r.value;
-            for (const row of rows) {
-              const detectedAt = parseDetectedAt(row.acq_date || '', row.acq_time || '');
-              fireDetections.push({
-                id: `${row.latitude ?? ''}-${row.longitude ?? ''}-${row.acq_date ?? ''}-${row.acq_time ?? ''}`,
-                location: {
-                  latitude: parseFloat(row.latitude ?? '0') || 0,
-                  longitude: parseFloat(row.longitude ?? '0') || 0,
-                },
-                brightness: parseFloat(row.bright_ti4 ?? '0') || 0,
-                frp: parseFloat(row.frp ?? '0') || 0,
-                confidence: mapConfidence(row.confidence || ''),
-                satellite: row.satellite || '',
-                detectedAt,
-                region: regionName,
-                dayNight: row.daynight || '',
-              });
-            }
-          } else {
-            console.error('[FIRMS]', r.reason?.message);
-          }
-        }
-
-        if (fireDetections.length === 0) return null;
-        // Keep the most significant fires (highest FRP) to bound the payload.
-        if (fireDetections.length > MAX_DETECTIONS) {
-          fireDetections.sort((a, b) => (b.frp || 0) - (a.frp || 0));
-          fireDetections.length = MAX_DETECTIONS;
-        }
-        return { fireDetections, pagination: undefined };
+        const { fireDetections } = await fetchFreshFireDetections();
+        return fireDetections.length > 0 ? { fireDetections, pagination: undefined } : null;
       },
     );
   } catch {
