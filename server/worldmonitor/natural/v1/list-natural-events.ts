@@ -133,11 +133,18 @@ async function fetchEonet(days: number): Promise<NaturalEvent[]> {
   // events within the last `days` window are still surfaced — most severe
   // events close within days, and open-only dropped almost all of them.
   const url = `${EONET_API_URL}?status=all&days=${days}`;
-  const res = await fetch(url, {
-    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!res.ok) throw new Error(`EONET ${res.status}`);
+  // EONET (NASA) 503s intermittently — retry a few times before giving up so a
+  // transient blip doesn't collapse the whole natural-events pull.
+  let res: Response | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 1500));
+    res = await fetch(url, {
+      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (res.ok) break;
+  }
+  if (!res || !res.ok) throw new Error(`EONET ${res?.status ?? 'no-response'}`);
 
   const data: any = await res.json();
   const events: NaturalEvent[] = [];
@@ -397,27 +404,31 @@ async function fetchNhc(): Promise<NaturalEvent[]> {
 
 type NaturalEventsCache = { events: ListNaturalEventsResponse['events'] };
 
+export type NaturalEventSource = 'eonet' | 'gdacs' | 'nhc';
+
 /**
- * Fetch + merge the full natural-events feed from EONET (NASA) + GDACS + NHC.
- * Shared by the live handler (on Redis cache miss) and the Vercel refresh cron
- * (api/natural/v1/refresh.ts), which writes the merged result to Redis directly
- * so bootstrap stays fresh without relying on the GitHub Actions seed job.
+ * Classify a (cached or freshly-merged) event back to its originating source,
+ * by id prefix: NHC ids start `nhc-`, GDACS ids `gdacs-`, everything else is
+ * EONET. Lets the refresh cron preserve one source's cached slice when only
+ * that source's upstream is failing.
  */
-export async function fetchFreshNaturalEvents(): Promise<{ events: NaturalEvent[] }> {
-  const [eonetResult, gdacsResult, nhcResult] = await Promise.allSettled([
-    fetchEonet(DAYS),
-    fetchGdacs(),
-    fetchNhc(),
-  ]);
+export function naturalEventSource(e: { id?: string }): NaturalEventSource {
+  const id = e.id || '';
+  if (id.startsWith('nhc-')) return 'nhc';
+  if (id.startsWith('gdacs-')) return 'gdacs';
+  return 'eonet';
+}
 
-  const eonetEvents = eonetResult.status === 'fulfilled' ? eonetResult.value : [];
-  const gdacsEvents = gdacsResult.status === 'fulfilled' ? gdacsResult.value : [];
-  const nhcEvents = nhcResult.status === 'fulfilled' ? nhcResult.value : [];
-
-  if (eonetResult.status === 'rejected') console.error('[EONET]', eonetResult.reason?.message);
-  if (gdacsResult.status === 'rejected') console.error('[GDACS]', gdacsResult.reason?.message);
-  if (nhcResult.status === 'rejected') console.error('[NHC]', nhcResult.reason?.message);
-
+/**
+ * Merge per-source event lists with cross-source dedup. NHC storms win over
+ * GDACS storms (richer track/cone data); remaining events dedup by rounded
+ * location + category. Pure — same inputs always give the same output.
+ */
+export function mergeNaturalEvents(
+  nhcEvents: NaturalEvent[],
+  gdacsEvents: NaturalEvent[],
+  eonetEvents: NaturalEvent[],
+): NaturalEvent[] {
   const nhcStorms = nhcEvents
     .filter(e => e.stormName)
     .map(e => ({ name: (e.stormName || '').toLowerCase(), lat: e.lat, lon: e.lon }));
@@ -451,7 +462,44 @@ export async function fetchFreshNaturalEvents(): Promise<{ events: NaturalEvent[
     }
   }
 
-  return { events: merged };
+  return merged;
+}
+
+/**
+ * Fetch each source INDEPENDENTLY. A source that fails (threw / non-ok / timeout)
+ * maps to `null` so callers can preserve that source's previous cached slice
+ * instead of dropping it. An empty array means the source responded with nothing.
+ */
+export async function fetchNaturalEventsBySource(): Promise<{
+  eonet: NaturalEvent[] | null;
+  gdacs: NaturalEvent[] | null;
+  nhc: NaturalEvent[] | null;
+}> {
+  const [eonetResult, gdacsResult, nhcResult] = await Promise.allSettled([
+    fetchEonet(DAYS),
+    fetchGdacs(),
+    fetchNhc(),
+  ]);
+
+  if (eonetResult.status === 'rejected') console.error('[EONET]', eonetResult.reason?.message);
+  if (gdacsResult.status === 'rejected') console.error('[GDACS]', gdacsResult.reason?.message);
+  if (nhcResult.status === 'rejected') console.error('[NHC]', nhcResult.reason?.message);
+
+  return {
+    eonet: eonetResult.status === 'fulfilled' ? eonetResult.value : null,
+    gdacs: gdacsResult.status === 'fulfilled' ? gdacsResult.value : null,
+    nhc: nhcResult.status === 'fulfilled' ? nhcResult.value : null,
+  };
+}
+
+/**
+ * Fetch + merge the full natural-events feed (all sources, no per-source
+ * preservation). Used by the live handler on Redis cache miss. The refresh cron
+ * uses `fetchNaturalEventsBySource()` directly so it can preserve slices.
+ */
+export async function fetchFreshNaturalEvents(): Promise<{ events: NaturalEvent[] }> {
+  const { eonet, gdacs, nhc } = await fetchNaturalEventsBySource();
+  return { events: mergeNaturalEvents(nhc ?? [], gdacs ?? [], eonet ?? []) };
 }
 
 async function trySeededData(): Promise<NaturalEventsCache | null> {

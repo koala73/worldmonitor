@@ -13,8 +13,12 @@
  * run past the Edge initial-response cap). The work is idempotent.
  */
 
-import { fetchFreshNaturalEvents } from '../../../server/worldmonitor/natural/v1/list-natural-events';
-import { setCachedJson } from '../../../server/_shared/redis';
+import {
+  fetchNaturalEventsBySource,
+  mergeNaturalEvents,
+  naturalEventSource,
+} from '../../../server/worldmonitor/natural/v1/list-natural-events';
+import { setCachedJson, getCachedJson } from '../../../server/_shared/redis';
 import { keepAlive } from '../../../server/_shared/keep-alive';
 
 export const config = { runtime: 'edge', maxDuration: 300 };
@@ -35,20 +39,45 @@ function isAuthorizedCron(req: Request): boolean {
   return false;
 }
 
-async function refreshNaturalEvents(): Promise<{ count: number }> {
-  const { events } = await fetchFreshNaturalEvents();
-  if (!events.length) {
-    // Don't overwrite a good cache with an empty pull (upstream hiccup).
-    console.warn('[natural:refresh] 0 events fetched — preserving existing cache');
-    return { count: 0 };
+async function refreshNaturalEvents(): Promise<{ count: number; preserved: string[] }> {
+  // Read the current cache and split it back into per-source slices.
+  const existing = (await getCachedJson(CANONICAL_KEY)) as { events?: any[] } | null;
+  const existingEvents = Array.isArray(existing?.events) ? existing!.events! : [];
+  const existingBySource = {
+    eonet: existingEvents.filter((e) => naturalEventSource(e) === 'eonet'),
+    gdacs: existingEvents.filter((e) => naturalEventSource(e) === 'gdacs'),
+    nhc: existingEvents.filter((e) => naturalEventSource(e) === 'nhc'),
+  };
+
+  // Fetch every source independently. For each source, use the FRESH slice if it
+  // came back OK; if that source's upstream failed (e.g. EONET 503), KEEP its
+  // previous cached slice. So one source's outage only freezes its own part —
+  // the rest still update, and nothing is ever dropped to a handful of events.
+  const fresh = await fetchNaturalEventsBySource();
+  const preserved: string[] = [];
+  const pick = (src: 'eonet' | 'gdacs' | 'nhc') => {
+    if (fresh[src] !== null) return fresh[src] as any[];
+    preserved.push(src);
+    return existingBySource[src];
+  };
+
+  const merged = mergeNaturalEvents(pick('nhc'), pick('gdacs'), pick('eonet'));
+
+  if (!merged.length) {
+    // All sources failed AND no prior cache — leave whatever's there untouched.
+    console.warn('[natural:refresh] empty merge with no cache — leaving existing data');
+    return { count: existingEvents.length, preserved };
   }
-  await setCachedJson(CANONICAL_KEY, { events }, DATA_TTL);
+
+  await setCachedJson(CANONICAL_KEY, { events: merged }, DATA_TTL);
   await setCachedJson(SEED_META_KEY, {
     fetchedAt: Date.now(),
-    recordCount: events.length,
-    sourceVersion: 'vercel-cron:eonet+gdacs+nhc',
+    recordCount: merged.length,
+    sourceVersion: preserved.length
+      ? `vercel-cron:partial(preserved=${preserved.join('+')})`
+      : 'vercel-cron:eonet+gdacs+nhc',
   }, META_TTL);
-  return { count: events.length };
+  return { count: merged.length, preserved };
 }
 
 export default async function handler(req: Request): Promise<Response> {
