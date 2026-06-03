@@ -34,6 +34,7 @@ const { normalizeResendSender } = require('./lib/resend-from.cjs');
 import { readRawJsonFromUpstash, redisPipeline } from '../api/_upstash-json.js';
 import { classifyOpinion } from '../server/_shared/opinion-classifier.js';
 import { classifyFeelGood } from '../server/_shared/feelgood-classifier.js';
+import { classifyEphemeralLiveCoverage } from '../shared/ephemeral-live-classifier.js';
 import {
   composeBriefFromDigestStories,
   compareRules,
@@ -559,6 +560,7 @@ async function buildDigest(rule, windowStartMs) {
   let droppedStaleAtRead = 0;
   let droppedOpinion = 0;
   let droppedFeelGood = 0;
+  let droppedEphemeralLive = 0;
   for (let i = 0; i < hashes.length; i++) {
     const raw = trackResults[i]?.result;
     if (!Array.isArray(raw) || raw.length === 0) continue;
@@ -621,6 +623,27 @@ async function buildDigest(rule, windowStartMs) {
       continue;
     }
 
+    // Ephemeral live-programming exclusion. This is intentionally a digest/
+    // brief read-path filter, not a global news-feed drop: live video teasers
+    // can be acceptable inside a live news surface, but a delayed daily brief
+    // should not tell readers hours later to "WATCH LIVE" a briefing that may
+    // address something.
+    const stampedEphemeralLive = track.isEphemeralLiveCoverage === '1';
+    const ephemeralLiveStampMissing =
+      typeof track.isEphemeralLiveCoverage !== 'string' ||
+      track.isEphemeralLiveCoverage.length === 0;
+    if (
+      stampedEphemeralLive ||
+      (ephemeralLiveStampMissing && classifyEphemeralLiveCoverage({
+        title: track.title,
+        link: track.link ?? '',
+        description: typeof track.description === 'string' ? track.description : '',
+      }))
+    ) {
+      droppedEphemeralLive++;
+      continue;
+    }
+
     const phase = derivePhase(track);
     if (phase === 'fading') continue;
     if (!matchesSensitivity(rule.sensitivity ?? 'high', track.severity)) continue;
@@ -675,6 +698,14 @@ async function buildDigest(rule, windowStartMs) {
     console.log(
       `[digest] buildDigest feel-good filter dropped ${droppedFeelGood} ` +
         `feel-good/lifestyle item(s) from the pool (variant=${rule.variant ?? 'full'} ` +
+        `lang=${rule.lang ?? 'en'} sensitivity=${rule.sensitivity ?? 'high'})`,
+    );
+  }
+
+  if (droppedEphemeralLive > 0) {
+    console.log(
+      `[digest] buildDigest ephemeral-live filter dropped ${droppedEphemeralLive} ` +
+        `live-programming teaser(s) from the pool (variant=${rule.variant ?? 'full'} ` +
         `lang=${rule.lang ?? 'en'} sensitivity=${rule.sensitivity ?? 'high'})`,
     );
   }
@@ -1805,6 +1836,7 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
     cap: 0,
     source_topic_cap: 0,
     institutional_static_page: 0,
+    ephemeral_live: 0,
     in: winnerStories.length,
   };
   const orderStats = {
@@ -1863,6 +1895,7 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
       `dropped_cap=${dropStats.cap} ` +
       `dropped_source_topic_cap=${dropStats.source_topic_cap} ` +
       `dropped_institutional_static_page=${dropStats.institutional_static_page} ` +
+      `dropped_ephemeral_live=${dropStats.ephemeral_live} ` +
       `out=${out}`,
   );
 

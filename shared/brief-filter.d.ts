@@ -43,6 +43,11 @@ export type AlertSensitivity = 'all' | 'high' | 'critical';
  * matches the static-institutional-page denylist (e.g.
  * `defense.gov/About/Section-508/`). Both `severity` and `sourceUrl`
  * are populated.
+ *
+ * `ephemeral_live` fires when a story is a live-programming teaser
+ * ("WATCH LIVE:", live briefing/hearing preview, etc.) rather than a
+ * durable event story suitable for a delayed daily brief. Both
+ * `severity` and `sourceUrl` are populated.
  */
 export type DropMetricsFn = (event: {
   reason:
@@ -52,7 +57,8 @@ export type DropMetricsFn = (event: {
     | 'shape'
     | 'cap'
     | 'source_topic_cap'
-    | 'institutional_static_page';
+    | 'institutional_static_page'
+    | 'ephemeral_live';
   severity?: string;
   sourceUrl?: string;
 }) => void;
@@ -149,6 +155,12 @@ export interface UpstreamTopStory {
    * surfaced story to have a working source link).
    */
   primaryLink?: unknown;
+  /**
+   * Transient raw-title classifier verdict from digestStoryToUpstreamTopStory.
+   * Lets filterTopStories drop "Watch: ... live" rows even after display
+   * cleanup has stripped the "Watch:" prefix from primaryTitle.
+   */
+  isEphemeralLiveCoverage?: unknown;
   description?: unknown;
   threatLevel?: unknown;
   category?: unknown;
