@@ -1,15 +1,18 @@
 # Dependency audit follow-up - 2026-06-02
 
-Scope: Country Resilience Index round-4 P3-2 dependency hygiene follow-up. This note records package-audit reachability only; no resilience scorer/runtime code was changed.
+Scope: Country Resilience Index round-4 P3-2 dependency hygiene follow-up, with round-5 R5-3 stale-count correction. This note records package-audit reachability only; no resilience scorer/runtime code was changed.
 
 ## Commands
 
 - Baseline before lockfile refresh:
   - `npm audit --omit=dev --json`: 0 critical, 0 high, 36 moderate.
   - `npm audit --json`: 0 critical, 9 high, 44 moderate.
-- After lockfile refresh:
-  - `npm audit --omit=dev --json`: 0 critical, 0 high, 18 moderate.
-  - `npm audit --json`: 0 critical, 0 high, 20 moderate.
+- After lockfile refresh, rerun on 2026-06-02 with `node v26.0.0` and `npm 11.12.1` in this worktree:
+  - Root `npm audit --omit=dev --json`: 0 critical, 0 high, 36 moderate.
+  - Root `npm audit --json`: 0 critical, 0 high, 43 moderate.
+  - `blog-site/` `npm audit --omit=dev --json`: 0 vulnerabilities.
+
+Counting caveat: npm audit totals are metadata counts for vulnerable package nodes in the resolved dependency graph, not unique CVE/GHSA advisory counts. npm 11's current graph counting reports 36 production moderate nodes and 43 all-dependency moderate nodes here; earlier 18/20 post-refresh totals in this note were stale.
 
 ## Updated dev/build chain
 
@@ -32,17 +35,19 @@ Production audit remains high/critical clean. Remaining production advisories ar
 
 - `@anthropic-ai/sdk`: direct dependency; npm reports no compatible fix available.
 - Clerk wallet stack: `@clerk/clerk-js` through Solana wallet adapters, `@solana/web3.js`, `viem`, `ws`, `jayson`, and `uuid`.
-- Mapping/vector schema parser: `protocol-buffers-schema`.
-- Convex stack: `convex` and `ws`.
-- Proxy/address parser: `ip-address`.
+- Mapping/vector stack: `deck.gl`, `@deck.gl/geo-layers`, `maplibre-gl`, `pbf`, `resolve-protobuf-schema`, and `protocol-buffers-schema`.
+- Convex stack: `@dodopayments/convex`, `convex`, and `ws`.
+- Telegram proxy/address parser stack: `telegram`, `socks`, and `ip-address`.
+- Shared websocket/identifier transitives: `ws`, `uuid`, `isows`, and `isomorphic-ws`.
 
 These were not force-upgraded because npm does not offer high/critical production fixes in the current compatible graph, and forcing broad wallet/map/runtime upgrades would be outside this P3 dependency-hygiene scope.
 
 ## Remaining dev/build-only advisories
 
-The all-dependency audit now has only moderate dev/build advisories:
+The all-dependency audit now has only moderate dev/build advisories on top of the production-runtime moderate set:
 
 - `vite`, `vite-plugin-pwa`, `vitest`, and `@vitest/mocker` through `postcss <8.5.10`. The root `vite@6.4.2` range currently resolves `postcss@8.5.8`; npm reports no compatible fix without broader Vite/PostCSS movement.
+- `convex-test` through the same Convex/ws chain reported in production.
 - `exceljs -> uuid@8.3.2`. `exceljs@4.4.0` depends on `uuid@^8.3.0`; no newer ExcelJS release is available, and replacing the spreadsheet library is outside this narrow follow-up.
 
 No force upgrade was applied because the remaining issues are moderate and would require broader package replacement or runtime/toolchain changes.
