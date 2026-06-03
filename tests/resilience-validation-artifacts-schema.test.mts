@@ -10,6 +10,7 @@ import {
   methodologyFormulaForCacheFormula,
 } from '../scripts/lib/resilience-formula.mjs';
 import {
+  REQUIRED_GATE_IDS,
   buildAcceptanceArtifact,
   buildGateResults,
 } from '../scripts/capture-resilience-energy-v2-acceptance.mjs';
@@ -48,13 +49,7 @@ const EXPECTED_BACKTEST_DATA_SOURCES = new Map<string, string>([
 ]);
 const POST_FLIP_RANKING_RE = /^resilience-ranking-live-post-pr1-(\d{4}-\d{2}-\d{2})\.json$/;
 const ENERGY_V2_ACCEPTANCE_RE = /^resilience-energy-v2-acceptance-(\d{4}-\d{2}-\d{2})\.json$/;
-const REQUIRED_ENERGY_V2_ACCEPTANCE_GATES = [
-  'gate-1-spearman',
-  'gate-2-country-drift',
-  'gate-6-cohort-median',
-  'gate-7-matched-pair',
-  'gate-9-effective-influence-baseline',
-];
+const REQUIRED_ENERGY_V2_ACCEPTANCE_GATES = REQUIRED_GATE_IDS;
 
 function readJson(path: string): unknown {
   assert.ok(existsSync(path), `${path} must exist`);

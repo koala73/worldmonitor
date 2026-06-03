@@ -111,8 +111,10 @@ async function fetchJson(url, headers = baseHeaders()) {
 }
 
 async function fetchRuntimeEvidence(baseUrl = API_BASE) {
-  const manifest = await fetchJson(`${baseUrl}/api/resilience/v1/get-runtime-manifest`);
-  const health = await fetchJson(`${baseUrl}/api/health`);
+  const [manifest, health] = await Promise.all([
+    fetchJson(`${baseUrl}/api/resilience/v1/get-runtime-manifest`),
+    fetchJson(`${baseUrl}/api/health`),
+  ]);
   return { manifest, health };
 }
 
@@ -267,10 +269,10 @@ function buildGateResults({ baselineScores, postFlipScores, extractionCoverage }
   const postFlipOverlapScores = Object.fromEntries(
     overlapping.map((entry) => [entry.countryCode, entry.postFlipOverallScore]),
   );
-  const spearman = round2(spearmanCorrelation(
+  const spearman = Math.round(spearmanCorrelation(
     rankCountries(baselineOverlapScores),
     rankCountries(postFlipOverlapScores),
-  ) * 100) / 100;
+  ) * 10_000) / 10_000;
   const biggestDrifts = [...overlapping]
     .sort((a, b) => b.scoreAbsDelta - a.scoreAbsDelta || a.countryCode.localeCompare(b.countryCode))
     .slice(0, 10);
