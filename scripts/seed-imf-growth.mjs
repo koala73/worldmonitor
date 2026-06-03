@@ -166,7 +166,9 @@ if (process.argv[1]?.endsWith('seed-imf-growth.mjs')) {
     declareRecords,
     // schemaVersion bumped 1→2 in Codex PR #3604 review fix: see
     // seed-imf-external.mjs for the rationale (new `latestYear` field).
-    schemaVersion: 2,
+    // Bump 2→3 because this seeder renames the stored real-GDP field from
+    // ambiguous `realGdp` to `realGdpLcuB`, forcing cache republish on rollout.
+    schemaVersion: 3,
     maxStaleMin: 100800,
 
     // ── Content-age contract (Sprint 4 IMF/WEO cohort) ──
