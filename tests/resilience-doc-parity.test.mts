@@ -53,6 +53,9 @@ import {
 import {
   MACRO_FISCAL_INDICATOR_WEIGHTS,
 } from '../server/worldmonitor/resilience/v1/_macro-fiscal-weights.ts';
+import {
+  RANKABLE_UNIVERSE_SIZE,
+} from '../server/worldmonitor/resilience/v1/_rankable-universe.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DOC_PATH = resolve(here, '../docs/methodology/country-resilience-index.mdx');
@@ -245,6 +248,34 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
           `contradict the live count: ${stale.join(', ')}. Current active count is ${activeCount} ` +
           `(or total ${totalCount} if explicitly including retired dimensions).`,
       );
+    }
+  });
+
+  it('current public CRI surfaces distinguish the rankable universe from stale broad country-count copy', () => {
+    const expectedUniverseRe = new RegExp(
+      `${RANKABLE_UNIVERSE_SIZE}(?:-country public rankable universe|\\s+countries?\\s+in\\s+the\\s+public\\s+rankable\\s+universe)`,
+      'i',
+    );
+    const stalePublicCountryCountPatterns = [
+      /~\s*220[-\s]countries?/i,
+      /scores\s+every\s+country\s+in\s+the\s+world/i,
+      /\b\d+\s+countries?\s+with\s+\d+\s+in\s+`?greyedOut\[\]`?/i,
+      /\b\d+\s+countries?\s+are\s+currently\s+in\s+`?greyedOut\[\]`?/i,
+    ];
+
+    for (const surface of CURRENT_DIMENSION_COUNT_SURFACES) {
+      assert.ok(
+        expectedUniverseRe.test(surface.text),
+        `${surface.label} (${surface.path}) must mention the current ${RANKABLE_UNIVERSE_SIZE}-country public rankable universe.`,
+      );
+
+      for (const pattern of stalePublicCountryCountPatterns) {
+        assert.equal(
+          pattern.test(surface.text),
+          false,
+          `${surface.label} (${surface.path}) contains stale public CRI country-count copy matching ${pattern}.`,
+        );
+      }
     }
   });
 
