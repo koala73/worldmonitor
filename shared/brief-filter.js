@@ -453,13 +453,15 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12, maxPer
       continue;
     }
 
+    const stampedEphemeralLive = raw.isEphemeralLiveCoverage === true;
+    const ephemeralLiveStampMissing = typeof raw.isEphemeralLiveCoverage !== 'boolean';
     if (
-      raw.isEphemeralLiveCoverage === true ||
-      classifyEphemeralLiveCoverage({
+      stampedEphemeralLive ||
+      (ephemeralLiveStampMissing && classifyEphemeralLiveCoverage({
         title: raw.primaryTitle,
         link: sourceUrl,
         description: raw.description,
-      })
+      }))
     ) {
       if (emit) emit({ reason: 'ephemeral_live', severity: threatLevel, sourceUrl });
       continue;

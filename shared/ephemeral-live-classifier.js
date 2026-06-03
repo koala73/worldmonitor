@@ -2,7 +2,7 @@
 //
 // The daily digest/brief is delivered after a delay and often read hours
 // later. "Watch live" programming invites and live event previews are not
-// durable intelligence items: once the stream/briefing/hearing has passed, the
+// durable intelligence items: once the livestream/briefing/hearing has passed, the
 // headline is stale even if it contains conflict terms that score as HIGH.
 //
 // Keep this deliberately narrower than stripHeadlinePrefix("Watch:"/"Live:").
@@ -15,9 +15,9 @@ const WATCH_PREFIX_WITH_LIVE_RE = /^\s*watch\s*:\s*.*\blive\b/i;
 
 const LIVE_PREFIX_RE = /^\s*live\s*:\s*/i;
 const LIVE_EVENT_NOUN_RE =
-  /\b(?:briefing|press\s+briefing|press\s+conference|conference|hearing|testimony|remarks|speech|address|town\s+hall|livestream|live\s+stream|stream)\b/i;
+  /\b(?:briefing|press\s+briefing|press\s+conference|conference|hearing|testimony|remarks|speech|address|town\s+hall|livestream|live\s+stream)\b/i;
 const LIVE_PROGRAMMING_VERB_RE =
-  /\b(?:watch|stream|broadcast|airs?|airing|listen|tune\s+in|follow\s+live)\b/i;
+  /\b(?:watch|broadcast|airs?|airing|listen|tune\s+in|follow\s+live)\b/i;
 
 /**
  * Classify whether a story is an expiring live-programming teaser rather than

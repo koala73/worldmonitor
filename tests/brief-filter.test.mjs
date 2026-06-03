@@ -517,6 +517,24 @@ describe('filterTopStories — onDrop metrics', () => {
     assert.equal(calls[0].sourceUrl, 'https://example.com/watch-live-white-house-briefing');
   });
 
+  it('trusts explicit false isEphemeralLiveCoverage stamps before fallback classification', () => {
+    const calls = [];
+    const out = filterTopStories({
+      stories: [
+        upstreamStory({
+          primaryTitle: "WATCH LIVE: White House briefing with Dr. Oz may address Pulte's new role, Iran war",
+          primaryLink: 'https://example.com/explicit-durable-watch-live',
+          isEphemeralLiveCoverage: false,
+        }),
+      ],
+      sensitivity,
+      onDrop: (ev) => calls.push(ev),
+    });
+    assert.equal(out.length, 1);
+    assert.equal(out[0].sourceUrl, 'https://example.com/explicit-durable-watch-live');
+    assert.equal(calls.length, 0);
+  });
+
   it('fires onDrop with reason=shape for non-object input', () => {
     const calls = [];
     filterTopStories({

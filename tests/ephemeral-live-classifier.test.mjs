@@ -33,11 +33,27 @@ describe('classifyEphemeralLiveCoverage', () => {
       true,
     );
     assert.equal(
+      classifyEphemeralLiveCoverage({ title: 'LIVE: live stream of Senate hearing' }),
+      true,
+    );
+    assert.equal(
+      classifyEphemeralLiveCoverage({ title: 'LIVE: livestream of Senate hearing' }),
+      true,
+    );
+    assert.equal(
       classifyEphemeralLiveCoverage({ title: 'Live updates: Iran launches new missile barrage' }),
       false,
     );
     assert.equal(
       classifyEphemeralLiveCoverage({ title: 'Live broadcasts paused during emergency' }),
+      false,
+    );
+    assert.equal(
+      classifyEphemeralLiveCoverage({ title: 'Live: stream of refugees crosses border' }),
+      false,
+    );
+    assert.equal(
+      classifyEphemeralLiveCoverage({ title: 'Live: data stream shows outage expanding' }),
       false,
     );
   });
