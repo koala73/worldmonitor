@@ -86,7 +86,7 @@ Recommended tracking action: keep R6-3 open as upstream dependency debt and rete
 
 Scope: Country Resilience audit round-7 R7-2 moderate advisory debt in the broader repo dependency envelope. This pass stayed limited to root dependency audit evidence and did not change frontend import or bundle architecture.
 
-Current audit results in the `origin/main` worktree at `14fd4a5f6`:
+Current audit results in the `origin/main` worktree at `14fd4a5f6d26b36c5ac8289af5073c092d5a2b4d`:
 
 - `npm audit --omit=dev --json`: 0 critical, 0 high, 12 moderate.
 - `npm audit --json`: 0 critical, 0 high, 13 moderate.
