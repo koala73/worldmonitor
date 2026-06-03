@@ -13,7 +13,7 @@ import { cachedFetchJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 
 const REDIS_CACHE_KEY = 'military:flights:v1';
-const REDIS_CACHE_TTL = 600; // 10 min — bound RapidAPI quota burn under load
+const REDIS_CACHE_TTL = 1200; // 20 min — bound RapidAPI quota burn (37 hub calls/cycle)
 
 /** Snap a coordinate to a grid step so nearby bbox values share cache entries. */
 const quantize = (v: number, step: number) => Math.round(v / step) * step;
@@ -80,20 +80,56 @@ const adsbxRadiusUrl = (lat: number, lon: number, distNm: number) =>
 // (e.g. Central Europe — the busiest on Earth) can't crowd out every other
 // region once the client applies its own pin cap. One RapidAPI call per region
 // per cache miss, shared across all clients via the REDIS_CACHE_TTL window.
+// ADSBExchange caps the radius at 250 nm, so wide-coverage = many circles over
+// major aviation hubs (empty interiors have little ADS-B receiver coverage
+// anyway). Heavy emphasis on Asia / Africa / Canada / South America, which a
+// few large circles previously left almost empty. Each entry = 1 RapidAPI call
+// per cache miss, shared across all clients via REDIS_CACHE_TTL.
 const CIVILIAN_REGIONS: Array<{ lat: number; lon: number; dist: number }> = [
-  { lat: 39, lon: -98, dist: 250 },   // US Central
-  { lat: 34, lon: -118, dist: 250 },  // US West
-  { lat: 39, lon: -77, dist: 250 },   // US East
-  { lat: -15, lon: -55, dist: 250 },  // South America (Brazil)
-  { lat: 51, lon: 0, dist: 250 },     // Western Europe (London/Paris)
-  { lat: 48, lon: 30, dist: 250 },    // Eastern Europe / Black Sea
-  { lat: 28, lon: 45, dist: 250 },    // Gulf / CENTCOM
-  { lat: 20, lon: 78, dist: 250 },    // South Asia (India)
-  { lat: 31, lon: 116, dist: 250 },   // East Asia (China)
-  { lat: 35, lon: 138, dist: 250 },   // Japan / Korea
-  { lat: 1, lon: 104, dist: 250 },    // SE Asia (Singapore)
-  { lat: -33, lon: 151, dist: 250 },  // Australia (Sydney)
-  { lat: 9, lon: 8, dist: 250 },      // West Africa (Nigeria)
+  // — North America —
+  { lat: 40.7, lon: -74.0, dist: 250 },   // US East (New York)
+  { lat: 39.0, lon: -98.0, dist: 250 },   // US Central
+  { lat: 34.0, lon: -118.2, dist: 250 },  // US West (Los Angeles)
+  { lat: 26.0, lon: -80.2, dist: 250 },   // US Southeast (Miami)
+  { lat: 43.7, lon: -79.4, dist: 250 },   // Canada East (Toronto)
+  { lat: 49.2, lon: -123.1, dist: 250 },  // Canada West (Vancouver)
+  { lat: 51.0, lon: -114.1, dist: 250 },  // Canada Central (Calgary)
+  { lat: 19.4, lon: -99.1, dist: 250 },   // Mexico City
+  // — South America —
+  { lat: -23.5, lon: -46.6, dist: 250 },  // São Paulo
+  { lat: -34.6, lon: -58.4, dist: 250 },  // Buenos Aires
+  { lat: 4.7, lon: -74.1, dist: 250 },    // Bogotá
+  { lat: -12.0, lon: -77.0, dist: 250 },  // Lima
+  { lat: -33.4, lon: -70.7, dist: 250 },  // Santiago
+  // — Europe —
+  { lat: 51.5, lon: -0.1, dist: 250 },    // Western Europe (London)
+  { lat: 50.1, lon: 8.7, dist: 250 },     // Central Europe (Frankfurt)
+  { lat: 48.0, lon: 30.0, dist: 250 },    // Eastern Europe / Black Sea
+  // — Africa —
+  { lat: 30.0, lon: 31.2, dist: 250 },    // Cairo
+  { lat: 6.5, lon: 3.3, dist: 250 },      // Lagos
+  { lat: 33.6, lon: -7.6, dist: 250 },    // Casablanca
+  { lat: -1.3, lon: 36.8, dist: 250 },    // Nairobi
+  { lat: -26.1, lon: 28.0, dist: 250 },   // Johannesburg
+  { lat: 9.0, lon: 38.7, dist: 250 },     // Addis Ababa
+  // — Middle East —
+  { lat: 25.2, lon: 55.3, dist: 250 },    // Dubai
+  { lat: 41.0, lon: 29.0, dist: 250 },    // Istanbul
+  // — Asia —
+  { lat: 28.6, lon: 77.2, dist: 250 },    // Delhi
+  { lat: 19.1, lon: 72.9, dist: 250 },    // Mumbai
+  { lat: 13.0, lon: 80.2, dist: 250 },    // Chennai (South India)
+  { lat: 24.9, lon: 67.1, dist: 250 },    // Karachi
+  { lat: 40.0, lon: 116.4, dist: 250 },   // Beijing
+  { lat: 31.2, lon: 121.5, dist: 250 },   // Shanghai
+  { lat: 22.8, lon: 113.5, dist: 250 },   // Hong Kong / Guangzhou
+  { lat: 37.5, lon: 127.0, dist: 250 },   // Seoul
+  { lat: 35.7, lon: 139.7, dist: 250 },   // Tokyo
+  { lat: 13.7, lon: 100.5, dist: 250 },   // Bangkok
+  // — SE Asia / Oceania —
+  { lat: 1.5, lon: 103.8, dist: 250 },    // Singapore / Kuala Lumpur
+  { lat: -6.2, lon: 106.8, dist: 250 },   // Jakarta
+  { lat: -33.9, lon: 151.2, dist: 250 },  // Sydney
 ];
 
 // Max civilian aircraft taken from any single region. Keeps the global picture
