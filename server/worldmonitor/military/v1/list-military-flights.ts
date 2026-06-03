@@ -98,7 +98,7 @@ const CIVILIAN_REGIONS: Array<{ lat: number; lon: number; dist: number }> = [
 
 // Max civilian aircraft taken from any single region. Keeps the global picture
 // balanced rather than dominated by whichever airspace happens to be busiest.
-const CIVILIAN_MAX_PER_REGION = 60;
+const CIVILIAN_MAX_PER_REGION = 120;
 
 /** ICAO type code → high-level category enum string (subset of common military types). */
 const ICAO_TYPE_TO_ENUM: Record<string, MilitaryAircraftType> = {
