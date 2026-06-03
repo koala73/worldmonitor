@@ -38,11 +38,17 @@ const emptySignals = {
   gpsJammingHexes: 0,
 };
 
+async function flushLazyWidget() {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 test('country deep-dive panel mounts the resilience widget beside the score card', async () => {
   const harness = await createCountryDeepDivePanelHarness();
   try {
     const panel = harness.createPanel();
     panel.show('Norway', 'NO', sampleScore, emptySignals);
+    await flushLazyWidget();
 
     const root = harness.getPanelRoot();
     const summaryGrid = root?.querySelector('.cdp-summary-grid');
@@ -65,6 +71,7 @@ test('country deep-dive panel destroys each resilience widget exactly once acros
     const panel = harness.createPanel();
 
     panel.show('Norway', 'NO', sampleScore, emptySignals);
+    await flushLazyWidget();
     const firstWidget = harness.getWidgets().at(-1);
     panel.showLoading();
 
@@ -73,6 +80,7 @@ test('country deep-dive panel destroys each resilience widget exactly once acros
     assert.equal(harness.document.querySelectorAll('.resilience-widget-stub').length, 0);
 
     panel.show('Yemen', 'YE', sampleScore, emptySignals);
+    await flushLazyWidget();
     const secondWidget = harness.getWidgets().at(-1);
     panel.showGeoError(() => {});
 
@@ -81,6 +89,7 @@ test('country deep-dive panel destroys each resilience widget exactly once acros
     assert.equal(harness.document.querySelectorAll('.resilience-widget-stub').length, 0);
 
     panel.show('United States', 'US', sampleScore, emptySignals);
+    await flushLazyWidget();
     const thirdWidget = harness.getWidgets().at(-1);
     panel.hide();
 

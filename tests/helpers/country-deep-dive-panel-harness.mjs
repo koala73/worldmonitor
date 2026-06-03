@@ -161,6 +161,7 @@ async function loadCountryDeepDivePanel() {
     ['@/utils/supplier-route-risk', 'supplier-route-risk-stub'],
     ['@/services/supply-chain', 'supply-chain-stub'],
     ['./ResilienceWidget', 'resilience-widget-stub'],
+    ['@/components/ResilienceWidget', 'resilience-widget-stub'],
     ['@/services/runtime', 'runtime-stub'],
     ['@/generated/client/worldmonitor/intelligence/v1/service_client', 'intelligence-client-stub'],
     ['@/services/panel-gating', 'panel-gating-stub'],

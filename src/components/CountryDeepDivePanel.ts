@@ -41,7 +41,6 @@ import type {
 } from '@/services/supply-chain';
 import { fetchMultiSectorCostShock, HS2_SHORT_LABELS } from '@/services/supply-chain';
 import type { MapContainer } from './MapContainer';
-import { ResilienceWidget } from './ResilienceWidget';
 import { dedupeHeadlines } from './CountryDeepDivePanel-news-utils';
 import { renderFollowButton } from '@/utils/follow-button';
 import { renderNotifyCountryLink } from '@/utils/notify-country-link';
@@ -122,7 +121,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private timelineBody: HTMLElement | null = null;
   private scoreCard: HTMLElement | null = null;
   private factsBody: HTMLElement | null = null;
-  private resilienceWidget: ResilienceWidget | null = null;
+  private resilienceWidget: import('@/components/ResilienceWidget').ResilienceWidget | null = null;
+  private pendingResilienceEnergyMix: CountryEnergyProfileData | null = null;
+  private resilienceWidgetRequestId = 0;
   private energyBody: HTMLElement | null = null;
   private maritimeBody: HTMLElement | null = null;
   private tradeExposureBody: HTMLElement | null = null;
@@ -893,6 +894,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   public updateEnergyProfile(data: CountryEnergyProfileData): void {
     if (!this.energyBody) return;
     this.renderEnergyProfile(data);
+    this.pendingResilienceEnergyMix = data;
     this.resilienceWidget?.setEnergyMix(data);
   }
 
@@ -2445,9 +2447,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       scoreCard.append(this.makeEmpty(t('countryBrief.ciiUnavailable')));
     }
 
-    this.resilienceWidget = new ResilienceWidget(code);
     const summaryGrid = this.el('div', 'cdp-summary-grid');
-    summaryGrid.append(scoreCard, this.resilienceWidget.getElement());
+    summaryGrid.append(scoreCard, this.renderResilienceWidgetSlot(code));
 
     const bodyGrid = this.el('div', 'cdp-grid');
     const [signalsCard, signalBody] = this.sectionCard(t('countryBrief.activeSignals'));
@@ -2539,8 +2540,46 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   private destroyResilienceWidget(): void {
+    this.resilienceWidgetRequestId += 1;
     this.resilienceWidget?.destroy();
     this.resilienceWidget = null;
+    this.pendingResilienceEnergyMix = null;
+  }
+
+  private renderResilienceWidgetSlot(code: string): HTMLElement {
+    const slot = this.el('div', 'cdp-card resilience-widget');
+    slot.append(this.makeLoading('Loading resilience score...'));
+    const requestId = ++this.resilienceWidgetRequestId;
+
+    import('@/components/ResilienceWidget')
+      .then(({ ResilienceWidget }) => {
+        if (requestId !== this.resilienceWidgetRequestId) return;
+        if (typeof ResilienceWidget !== 'function') return;
+        const widget = new ResilienceWidget(code);
+        this.resilienceWidget = widget;
+        if (this.pendingResilienceEnergyMix) {
+          widget.setEnergyMix(this.pendingResilienceEnergyMix);
+        }
+        this.replaceResilienceSlot(slot, widget.getElement());
+      }, (error) => {
+        if (requestId !== this.resilienceWidgetRequestId) return;
+        console.warn('[CountryDeepDivePanel] Failed to load resilience widget', error);
+        slot.replaceChildren(this.makeEmpty('Resilience score unavailable.'));
+      });
+
+    return slot;
+  }
+
+  private replaceResilienceSlot(slot: HTMLElement, next: HTMLElement): void {
+    if (typeof slot.replaceWith === 'function') {
+      slot.replaceWith(next);
+      return;
+    }
+    if (typeof slot.parentNode?.replaceChild === 'function') {
+      slot.parentNode.replaceChild(next, slot);
+      return;
+    }
+    slot.replaceChildren(next);
   }
 
   private tearDownFollowButton(): void {

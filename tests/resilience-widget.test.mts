@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import {
@@ -42,6 +43,17 @@ const baseResponse: ResilienceScoreResponse = {
   imputationShare: 0,
   dataVersion: '2026-04-03',
 };
+
+test('ResilienceWidget stays out of the components barrel and loads through CountryDeepDivePanel dynamically', async () => {
+  const [barrelSource, deepDiveSource] = await Promise.all([
+    readFile(new URL('../src/components/index.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../src/components/CountryDeepDivePanel.ts', import.meta.url), 'utf8'),
+  ]);
+
+  assert.doesNotMatch(barrelSource, /export\s+\*\s+from\s+['"]\.\/ResilienceWidget['"]/);
+  assert.doesNotMatch(deepDiveSource, /import\s+\{\s*ResilienceWidget\s*\}\s+from\s+['"]\.\/ResilienceWidget['"]/);
+  assert.match(deepDiveSource, /import\(['"]@\/components\/ResilienceWidget['"]\)/);
+});
 
 test('getResilienceVisualLevel maps the score thresholds from the widget spec', () => {
   assert.equal(getResilienceVisualLevel(80), 'very_high');
