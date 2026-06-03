@@ -13,6 +13,7 @@ import {
   REQUIRED_GATE_IDS,
   buildAcceptanceArtifact,
   buildGateResults,
+  buildSampledCountryEvidenceEntry,
 } from '../scripts/capture-resilience-energy-v2-acceptance.mjs';
 import { RESILIENCE_COHORTS } from './helpers/resilience-cohorts.mts';
 import { MATCHED_PAIRS } from './helpers/resilience-matched-pairs.mts';
@@ -167,6 +168,39 @@ function assertEnergyV2AcceptanceArtifact(artifact: Record<string, unknown>, fil
     const gate = resultById.get(gateId);
     assert.ok(gate, `${filename} must include ${gateId}`);
     assert.equal(gate.status, 'pass', `${filename} ${gateId} must pass for a committed post-flip acceptance artifact`);
+  }
+
+  assertSampledCountryEvidence(artifact.sampledCountryEvidence, filename);
+}
+
+function assertSampledCountryEvidence(value: unknown, label: string): void {
+  const sampledCountryEvidence = asRecord(value, `${label}.sampledCountryEvidence`);
+  const status = assertString(sampledCountryEvidence.status, `${label}.sampledCountryEvidence.status`);
+  assert.ok(['captured', 'skipped'].includes(status), `${label}.sampledCountryEvidence.status must be captured or skipped`);
+  const countries = sampledCountryEvidence.countries;
+  assert.ok(Array.isArray(countries), `${label}.sampledCountryEvidence.countries must be an array`);
+
+  if (status === 'captured') {
+    assert.ok(countries.length > 0, `${label}.sampledCountryEvidence.countries must include sampled countries`);
+    for (const [index, rawCountry] of countries.entries()) {
+      const country = asRecord(rawCountry, `${label}.sampledCountryEvidence.countries.${index}`);
+      assert.match(
+        assertString(country.countryCode, `${label}.sampledCountryEvidence.countries.${index}.countryCode`),
+        /^[A-Z]{2}$/,
+      );
+      assertFiniteNumber(country.scoreEndpointOverallScore, `${label}.sampledCountryEvidence.countries.${index}.scoreEndpointOverallScore`);
+      const energyDimension = asRecord(country.energyDimension, `${label}.sampledCountryEvidence.countries.${index}.energyDimension`);
+      assertFiniteNumber(energyDimension.score, `${label}.sampledCountryEvidence.countries.${index}.energyDimension.score`);
+      assertFiniteNumber(energyDimension.coverage, `${label}.sampledCountryEvidence.countries.${index}.energyDimension.coverage`);
+      assert.ok(
+        energyDimension.coverage >= 0 && energyDimension.coverage <= 1,
+        `${label}.sampledCountryEvidence.countries.${index}.energyDimension.coverage must be in [0, 1]`,
+      );
+      assert.ok(
+        energyDimension.imputationClass === null || typeof energyDimension.imputationClass === 'string',
+        `${label}.sampledCountryEvidence.countries.${index}.energyDimension.imputationClass must be string or null`,
+      );
+    }
   }
 }
 
@@ -422,6 +456,69 @@ describe('resilience validation artifacts', () => {
     assert.equal(artifact.capturedAt, '2026-06-03');
     assert.equal(artifact.postFlip.rankingTotals.scored, items.length);
     assertEnergyV2AcceptanceArtifact(asRecord(artifact, 'fixture acceptance artifact'), 'resilience-energy-v2-acceptance-2026-06-03.json');
+  });
+
+  it('captures sampled energy evidence from realistic score response domains', () => {
+    const sampledCountry = buildSampledCountryEvidenceEntry({
+      countryCode: 'FR',
+      postFlipScores: { FR: 82.237 },
+      score: {
+        countryCode: 'FR',
+        overallScore: 82.234,
+        domains: [
+          {
+            id: 'economic',
+            score: 78.1,
+            weight: 0.2,
+            dimensions: [
+              { id: 'macroFiscal', score: 76.3, coverage: 0.91, imputationClass: '' },
+            ],
+          },
+          {
+            id: 'energy',
+            score: 86.4,
+            weight: 0.11,
+            dimensions: [
+              {
+                id: 'energy',
+                score: 86.456,
+                coverage: 0.876,
+                observedWeight: 1,
+                imputedWeight: 0,
+                imputationClass: '',
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    assert.deepEqual(sampledCountry, {
+      countryCode: 'FR',
+      scoreEndpointOverallScore: 82.23,
+      rankingSnapshotOverallScore: 82.24,
+      energyDimension: {
+        score: 86.46,
+        coverage: 0.88,
+        imputationClass: '',
+      },
+    });
+    assertSampledCountryEvidence(
+      { status: 'captured', countries: [sampledCountry] },
+      'fixture sampled country evidence',
+    );
+    assert.throws(
+      () => buildSampledCountryEvidenceEntry({
+        countryCode: 'DE',
+        postFlipScores: { DE: 80 },
+        score: {
+          countryCode: 'DE',
+          overallScore: 80,
+          domains: [{ id: 'energy', score: 70, weight: 0.11, dimensions: [] }],
+        },
+      }),
+      /did not include energy dimension under domains\[\]\.dimensions/,
+    );
   });
 
   it('validates any committed post-flip PR1 ranking artifacts', () => {

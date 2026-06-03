@@ -110,6 +110,31 @@ async function fetchJson(url, headers = baseHeaders()) {
   return response.json();
 }
 
+function findScoreDimension(score, dimensionId) {
+  return (Array.isArray(score?.domains) ? score.domains : [])
+    .flatMap((domain) => (Array.isArray(domain?.dimensions) ? domain.dimensions : []))
+    .find((dimension) => dimension?.id === dimensionId) ?? null;
+}
+
+function buildSampledCountryEvidenceEntry({ countryCode, score, postFlipScores }) {
+  const energyDimension = findScoreDimension(score, 'energy');
+  if (!energyDimension) {
+    throw new Error(`Score endpoint response for ${countryCode} did not include energy dimension under domains[].dimensions`);
+  }
+  return {
+    countryCode,
+    scoreEndpointOverallScore: typeof score?.overallScore === 'number' ? round2(score.overallScore) : null,
+    rankingSnapshotOverallScore: typeof postFlipScores?.[countryCode] === 'number'
+      ? round2(postFlipScores[countryCode])
+      : null,
+    energyDimension: {
+      score: typeof energyDimension.score === 'number' ? round2(energyDimension.score) : null,
+      coverage: typeof energyDimension.coverage === 'number' ? round2(energyDimension.coverage) : null,
+      imputationClass: energyDimension.imputationClass ?? null,
+    },
+  };
+}
+
 async function fetchRuntimeEvidence(baseUrl = API_BASE) {
   const [manifest, health] = await Promise.all([
     fetchJson(`${baseUrl}/api/resilience/v1/get-runtime-manifest`),
@@ -136,23 +161,11 @@ async function fetchSampledCountryEvidence(baseUrl, postFlipScores) {
     const url = new URL(`${baseUrl}/api/resilience/v1/get-resilience-score`);
     url.searchParams.set('countryCode', countryCode);
     const score = await fetchJson(url.toString(), headers);
-    const energyDimension = Array.isArray(score.dimensions)
-      ? score.dimensions.find((dimension) => dimension?.id === 'energy')
-      : null;
-    countries.push({
+    countries.push(buildSampledCountryEvidenceEntry({
       countryCode,
-      scoreEndpointOverallScore: typeof score.overallScore === 'number' ? round2(score.overallScore) : null,
-      rankingSnapshotOverallScore: typeof postFlipScores[countryCode] === 'number'
-        ? round2(postFlipScores[countryCode])
-        : null,
-      energyDimension: energyDimension
-        ? {
-          score: typeof energyDimension.score === 'number' ? round2(energyDimension.score) : null,
-          coverage: typeof energyDimension.coverage === 'number' ? round2(energyDimension.coverage) : null,
-          imputationClass: energyDimension.imputationClass ?? null,
-        }
-        : null,
-    });
+      score,
+      postFlipScores,
+    }));
   }
   return { status: 'captured', countries };
 }
@@ -531,6 +544,7 @@ export {
   buildAcceptanceArtifact,
   buildExtractionCoverage,
   buildGateResults,
+  buildSampledCountryEvidenceEntry,
   snapshotScores,
   snapshotTotals,
 };
