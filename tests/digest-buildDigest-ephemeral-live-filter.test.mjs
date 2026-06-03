@@ -36,8 +36,11 @@ describe('buildDigest ephemeral-live filter wiring', () => {
 
   it('declares and logs the droppedEphemeralLive counter', () => {
     assert.ok(buildDigestBody.includes('let droppedEphemeralLive = 0;'));
+    assert.ok(buildDigestBody.includes('const droppedEphemeralLiveTitleSamples = [];'));
+    assert.ok(buildDigestBody.includes('compactDroppedEphemeralLiveTitle(track.title)'));
     assert.ok(seedSrc.includes('[digest] buildDigest ephemeral-live filter dropped '));
     assert.ok(seedSrc.includes('live-programming teaser(s) from the pool'));
+    assert.ok(seedSrc.includes('sample_titles=${JSON.stringify(droppedEphemeralLiveTitleSamples)}'));
   });
 
   it('trusts the ingest stamp and re-classifies stamp-missing residue rows', () => {

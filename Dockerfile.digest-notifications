@@ -73,7 +73,7 @@ COPY shared/brief-filter.js shared/brief-filter.d.ts ./shared/
 COPY shared/url-classifier.js ./shared/
 # brief-filter.js and digest compose paths import ephemeral-live-classifier.js
 # to drop expiring WATCH LIVE / live-event programming from delayed briefs.
-COPY shared/ephemeral-live-classifier.js ./shared/
+COPY shared/ephemeral-live-classifier.js shared/ephemeral-live-classifier.d.ts ./shared/
 # brief-filter.js imports diplomacy-keywords.json (canonical lead-coherence
 # keyword set). seed-digest-notifications.mjs ALSO imports it directly.
 # Without this COPY, the cron crashes at startup with ERR_MODULE_NOT_FOUND

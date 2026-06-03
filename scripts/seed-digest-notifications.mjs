@@ -82,6 +82,17 @@ import { readCooldownConfig } from './lib/digest-cooldown-config.mjs';
 import { evaluateCooldown } from './lib/digest-cooldown-decision.mjs';
 import { emitCooldownShadowLog } from './lib/digest-cooldown-shadow-log.mjs';
 
+const EPHEMERAL_LIVE_LOG_TITLE_SAMPLE_LIMIT = 5;
+const EPHEMERAL_LIVE_LOG_TITLE_MAX_CHARS = 160;
+
+function compactDroppedEphemeralLiveTitle(title) {
+  const compact = String(title ?? '').replace(/\s+/g, ' ').trim();
+  if (!compact) return '<missing title>';
+  return compact.length > EPHEMERAL_LIVE_LOG_TITLE_MAX_CHARS
+    ? `${compact.slice(0, EPHEMERAL_LIVE_LOG_TITLE_MAX_CHARS - 3)}...`
+    : compact;
+}
+
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL ?? '';
@@ -561,6 +572,7 @@ async function buildDigest(rule, windowStartMs) {
   let droppedOpinion = 0;
   let droppedFeelGood = 0;
   let droppedEphemeralLive = 0;
+  const droppedEphemeralLiveTitleSamples = [];
   for (let i = 0; i < hashes.length; i++) {
     const raw = trackResults[i]?.result;
     if (!Array.isArray(raw) || raw.length === 0) continue;
@@ -641,6 +653,9 @@ async function buildDigest(rule, windowStartMs) {
       }))
     ) {
       droppedEphemeralLive++;
+      if (droppedEphemeralLiveTitleSamples.length < EPHEMERAL_LIVE_LOG_TITLE_SAMPLE_LIMIT) {
+        droppedEphemeralLiveTitleSamples.push(compactDroppedEphemeralLiveTitle(track.title));
+      }
       continue;
     }
 
@@ -703,10 +718,14 @@ async function buildDigest(rule, windowStartMs) {
   }
 
   if (droppedEphemeralLive > 0) {
+    const titleSampleSuffix = droppedEphemeralLiveTitleSamples.length > 0
+      ? ` sample_titles=${JSON.stringify(droppedEphemeralLiveTitleSamples)}`
+      : '';
     console.log(
       `[digest] buildDigest ephemeral-live filter dropped ${droppedEphemeralLive} ` +
         `live-programming teaser(s) from the pool (variant=${rule.variant ?? 'full'} ` +
-        `lang=${rule.lang ?? 'en'} sensitivity=${rule.sensitivity ?? 'high'})`,
+        `lang=${rule.lang ?? 'en'} sensitivity=${rule.sensitivity ?? 'high'})` +
+        titleSampleSuffix,
     );
   }
 
