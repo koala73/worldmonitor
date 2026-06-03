@@ -128,11 +128,15 @@ async function loadCountryDeepDivePanel() {
         constructor(code) {
           this.code = code;
           this.destroyCount = 0;
+          this.energyMixData = null;
           this.element = document.createElement('section');
           this.element.className = 'resilience-widget-stub';
           this.element.setAttribute('data-country-code', code);
           this.element.textContent = 'Resilience ' + code;
           state.widgets.push(this);
+        }
+        setEnergyMix(data) {
+          this.energyMixData = data;
         }
         getElement() {
           return this.element;

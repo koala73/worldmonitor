@@ -38,9 +38,75 @@ const emptySignals = {
   gpsJammingHexes: 0,
 };
 
-async function flushLazyWidget() {
-  await Promise.resolve();
-  await Promise.resolve();
+const sampleEnergyProfile = {
+  mixAvailable: false,
+  mixYear: 2025,
+  coalShare: 0,
+  gasShare: 35,
+  oilShare: 5,
+  nuclearShare: 0,
+  renewShare: 60,
+  windShare: 20,
+  solarShare: 10,
+  hydroShare: 30,
+  importShare: 15,
+  gasStorageAvailable: false,
+  gasStorageFillPct: 0,
+  gasStorageChange1d: 0,
+  gasStorageTrend: '',
+  gasStorageDate: '',
+  electricityAvailable: false,
+  electricityPriceMwh: 0,
+  electricitySource: '',
+  electricityDate: '',
+  jodiOilAvailable: false,
+  jodiOilDataMonth: '',
+  gasolineDemandKbd: 0,
+  gasolineImportsKbd: 0,
+  dieselDemandKbd: 0,
+  dieselImportsKbd: 0,
+  jetDemandKbd: 0,
+  jetImportsKbd: 0,
+  lpgDemandKbd: 0,
+  lpgImportsKbd: 0,
+  crudeImportsKbd: 0,
+  jodiGasAvailable: false,
+  jodiGasDataMonth: '',
+  gasTotalDemandTj: 0,
+  gasLngImportsTj: 0,
+  gasPipeImportsTj: 0,
+  gasLngShare: 0,
+  ieaStocksAvailable: false,
+  ieaStocksDataMonth: '',
+  ieaDaysOfCover: 0,
+  ieaNetExporter: false,
+  ieaBelowObligation: false,
+  emberFossilShare: 40,
+  emberRenewShare: 60,
+  emberNuclearShare: 0,
+  emberCoalShare: 0,
+  emberGasShare: 35,
+  emberDemandTwh: 120,
+  emberDataMonth: '2026-04',
+  emberAvailable: false,
+  sprRegime: '',
+  sprCapacityMb: 0,
+  sprOperator: '',
+  sprIeaMember: false,
+  sprStockholdingModel: '',
+  sprNote: '',
+  sprSource: '',
+  sprAsOf: '',
+  sprAvailable: false,
+};
+
+async function waitForLazyWidget(harness) {
+  for (let attempt = 0; attempt < 25; attempt += 1) {
+    const widget = harness.getPanelRoot()?.querySelector('.resilience-widget-stub');
+    if (widget) return widget;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  assert.fail('expected lazy resilience widget to render');
 }
 
 test('country deep-dive panel mounts the resilience widget beside the score card', async () => {
@@ -48,11 +114,10 @@ test('country deep-dive panel mounts the resilience widget beside the score card
   try {
     const panel = harness.createPanel();
     panel.show('Norway', 'NO', sampleScore, emptySignals);
-    await flushLazyWidget();
+    const widget = await waitForLazyWidget(harness);
 
     const root = harness.getPanelRoot();
     const summaryGrid = root?.querySelector('.cdp-summary-grid');
-    const widget = summaryGrid?.querySelector('.resilience-widget-stub');
 
     assert.ok(root, 'expected panel root to be created');
     assert.ok(summaryGrid, 'expected summary grid to render');
@@ -71,7 +136,7 @@ test('country deep-dive panel destroys each resilience widget exactly once acros
     const panel = harness.createPanel();
 
     panel.show('Norway', 'NO', sampleScore, emptySignals);
-    await flushLazyWidget();
+    await waitForLazyWidget(harness);
     const firstWidget = harness.getWidgets().at(-1);
     panel.showLoading();
 
@@ -80,7 +145,7 @@ test('country deep-dive panel destroys each resilience widget exactly once acros
     assert.equal(harness.document.querySelectorAll('.resilience-widget-stub').length, 0);
 
     panel.show('Yemen', 'YE', sampleScore, emptySignals);
-    await flushLazyWidget();
+    await waitForLazyWidget(harness);
     const secondWidget = harness.getWidgets().at(-1);
     panel.showGeoError(() => {});
 
@@ -89,7 +154,7 @@ test('country deep-dive panel destroys each resilience widget exactly once acros
     assert.equal(harness.document.querySelectorAll('.resilience-widget-stub').length, 0);
 
     panel.show('United States', 'US', sampleScore, emptySignals);
-    await flushLazyWidget();
+    await waitForLazyWidget(harness);
     const thirdWidget = harness.getWidgets().at(-1);
     panel.hide();
 
@@ -97,6 +162,23 @@ test('country deep-dive panel destroys each resilience widget exactly once acros
     assert.equal(thirdWidget.destroyCount, 1, 'hide() must destroy widget subscriptions');
     // hide() keeps DOM intact (panel is visually hidden); DOM is cleared on next show()
     assert.equal(harness.document.querySelectorAll('.resilience-widget-stub').length, 1, 'hide() does not clear DOM');
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test('country deep-dive panel forwards pending energy mix to the lazy resilience widget', async () => {
+  const harness = await createCountryDeepDivePanelHarness();
+  try {
+    const panel = harness.createPanel();
+
+    panel.show('Norway', 'NO', sampleScore, emptySignals);
+    panel.updateEnergyProfile(sampleEnergyProfile);
+    await waitForLazyWidget(harness);
+
+    const widget = harness.getWidgets().at(-1);
+    assert.ok(widget, 'expected lazy widget instance');
+    assert.equal(widget.energyMixData, sampleEnergyProfile);
   } finally {
     harness.cleanup();
   }

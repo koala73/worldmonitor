@@ -206,7 +206,7 @@ export class ResilienceWidget {
         if (gateReason === PanelGateReason.ANONYMOUS) {
           void import('@/services/clerk')
             .then((module) => module.openSignIn())
-            .catch(() => undefined);
+            .catch(() => this.showAuthUnavailable());
           return;
         }
         void this.openUpgradeFlow().catch(() => {
@@ -222,6 +222,17 @@ export class ResilienceWidget {
       h('div', { className: 'panel-locked-desc resilience-widget__gate-desc' }, description),
       button,
     );
+  }
+
+  private async showAuthUnavailable(): Promise<void> {
+    const message = 'Sign-in is temporarily unavailable. Please try again.';
+    try {
+      const { showCheckoutErrorToast } = await import('@/services/checkout-error-toast');
+      showCheckoutErrorToast(message);
+      return;
+    } catch {
+      window.alert(message);
+    }
   }
 
   private renderError(message: string): HTMLElement {

@@ -2579,7 +2579,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       slot.parentNode.replaceChild(next, slot);
       return;
     }
-    slot.replaceChildren(next);
+    if (typeof slot.parentNode?.insertBefore === 'function' && typeof slot.parentNode?.removeChild === 'function') {
+      slot.parentNode.insertBefore(next, slot);
+      slot.parentNode.removeChild(slot);
+    }
   }
 
   private tearDownFollowButton(): void {
