@@ -127,3 +127,34 @@ describe('RSS allowlist mirrors include the native My AI Feed hosts', () => {
     }
   }
 });
+
+const commandsSrc = readFileSync(resolve(ROOT, 'src/config/commands.ts'), 'utf-8');
+
+describe('my-ai-feed is discoverable (CMD+K + browse category)', () => {
+  it('has a panel:my-ai-feed command with >=3 keywords', () => {
+    const m = commandsSrc.match(/id:\s*'panel:my-ai-feed'[^\n]*?keywords:\s*\[([^\]]*)\]/);
+    assert.ok(m, 'commands.ts must define a panel:my-ai-feed command');
+    const kw = m[1].split(',').filter((s) => s.trim().length > 0);
+    assert.ok(kw.length >= 3, `panel:my-ai-feed needs >=3 keywords, found ${kw.length}`);
+  });
+
+  it('is listed in PANEL_CATEGORY_MAP so it is browsable', () => {
+    const decl = panelsSrc.indexOf('PANEL_CATEGORY_MAP');
+    const open = panelsSrc.indexOf('{', panelsSrc.indexOf('= {', decl));
+    let depth = 0, end = open;
+    for (let i = open; i < panelsSrc.length; i++) {
+      const c = panelsSrc[i];
+      if (c === '{') depth++;
+      else if (c === '}') { depth--; if (depth === 0) { end = i; break; } }
+    }
+    const body = panelsSrc.slice(open + 1, end);
+    const mapped = new Set();
+    for (const block of body.matchAll(/panelKeys\s*:\s*\[([^\]]*)\]/g)) {
+      for (const tok of block[1].split(',')) {
+        const t = tok.trim().replace(/['"]/g, '');
+        if (t) mapped.add(t);
+      }
+    }
+    assert.ok(mapped.has('my-ai-feed'), 'my-ai-feed must appear in a PANEL_CATEGORY_MAP category');
+  });
+});
