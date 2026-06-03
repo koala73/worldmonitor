@@ -108,3 +108,22 @@ describe('panels.ts — my-ai-feed present in every variant', () => {
     });
   }
 });
+
+describe('RSS allowlist mirrors include the native My AI Feed hosts', () => {
+  const mirrors = [
+    'shared/rss-allowed-domains.json',
+    'scripts/shared/rss-allowed-domains.json',
+    'api/_rss-allowed-domains.js',
+    'vite.config.ts',
+  ];
+  const required = ['deepmind.google', 'www.youtube.com', 'youtube.com'];
+
+  for (const mirror of mirrors) {
+    const text = readFileSync(resolve(ROOT, mirror), 'utf-8');
+    for (const host of required) {
+      it(`${mirror} allows ${host}`, () => {
+        assert.ok(text.includes(`"${host}"`) || text.includes(`'${host}'`), `${mirror} must list ${host}`);
+      });
+    }
+  }
+});
