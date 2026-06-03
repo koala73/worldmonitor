@@ -686,7 +686,9 @@ describe('seed-bundle-resilience section interval keeps refresh alive', () => {
     assert.match(section, /seedMetaKey:\s*'resilience:scores'/);
     assert.doesNotMatch(section, /seedMetaKey:\s*'resilience:intervals'/);
   });
+});
 
+describe('resilience operator docs', () => {
   it('operator force-refresh docs include the required seed refresh key', async () => {
     const { readFileSync } = await import('node:fs');
     const { fileURLToPath } = await import('node:url');
