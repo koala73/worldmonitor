@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +14,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const validationDir = resolve(here, '../docs/methodology/country-resilience-index/validation');
 const benchmarkPath = resolve(validationDir, 'benchmark-results.json');
 const backtestPath = resolve(validationDir, 'backtest-results.json');
+const snapshotDir = resolve(here, '../docs/snapshots');
+const runbookPath = resolve(here, '../docs/methodology/energy-v2-flag-flip-runbook.md');
+const methodologyPath = resolve(here, '../docs/methodology/country-resilience-index.mdx');
+const freezeScriptPath = resolve(here, '../scripts/freeze-resilience-ranking.mjs');
+const compareScriptPath = resolve(here, '../scripts/compare-resilience-current-vs-proposed.mjs');
 
 const EXPECTED_BENCHMARK_INDICES = ['HDI', 'INFORM', 'WorldRiskIndex'];
 const EXPECTED_BACKTEST_FAMILIES = [
@@ -34,9 +39,26 @@ const EXPECTED_BACKTEST_DATA_SOURCES = new Map<string, string>([
   ['sanctions-shocks', 'hardcoded'],
   ['sovereign-stress', 'hardcoded'],
 ]);
+const POST_FLIP_RANKING_RE = /^resilience-ranking-live-post-pr1-(\d{4}-\d{2}-\d{2})\.json$/;
+const ENERGY_V2_ACCEPTANCE_RE = /^resilience-energy-v2-acceptance-(\d{4}-\d{2}-\d{2})\.json$/;
+const REQUIRED_ENERGY_V2_ACCEPTANCE_GATES = [
+  'gate-1-spearman',
+  'gate-2-country-drift',
+  'gate-6-cohort-median',
+  'gate-7-matched-pair',
+  'gate-9-effective-influence-baseline',
+];
+
 function readJson(path: string): unknown {
   assert.ok(existsSync(path), `${path} must exist`);
   return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+function listSnapshotFiles(re: RegExp): string[] {
+  if (!existsSync(snapshotDir)) return [];
+  return readdirSync(snapshotDir)
+    .filter((filename) => re.test(filename))
+    .sort();
 }
 
 function asRecord(value: unknown, label: string): Record<string, unknown> {
@@ -179,5 +201,165 @@ describe('resilience validation artifacts', () => {
     assert.equal(summary.failed, 0);
     assertFiniteNumber(summary.totalCountries, 'backtest.summary.totalCountries');
     assert.ok(summary.totalCountries > 0, 'backtest.summary.totalCountries must be positive');
+  });
+
+  it('keeps missing post-flip energy-v2 artifact capture explicit and actionable', () => {
+    const postFlipRankingFiles = listSnapshotFiles(POST_FLIP_RANKING_RE);
+    const energyV2AcceptanceFiles = listSnapshotFiles(ENERGY_V2_ACCEPTANCE_RE);
+    const runbook = readFileSync(runbookPath, 'utf8');
+    const methodology = readFileSync(methodologyPath, 'utf8');
+    const freezeScript = readFileSync(freezeScriptPath, 'utf8');
+    const compareScript = readFileSync(compareScriptPath, 'utf8');
+
+    assert.match(
+      runbook,
+      /formulaTag == "pc"[\s\S]*constructVersions\.energy == "v2"[\s\S]*rankingCache\.count == rankingCache\.scored == rankingCache\.total == 196/,
+      'runbook must preserve the public post-flip manifest evidence needed for closeout triage.',
+    );
+    assert.match(
+      runbook,
+      /lowCarbonGeneration[\s\S]*fossilElectricityShare[\s\S]*powerLosses[\s\S]*OK/,
+      'runbook must name the three energy-v2 health checks and their expected OK status.',
+    );
+    if (postFlipRankingFiles.length === 0 || energyV2AcceptanceFiles.length === 0) {
+      assert.match(
+        methodology,
+        /post-flip ranking and acceptance artifacts still need a credentialed operator capture/,
+        'methodology doc must not imply the post-flip closeout artifacts are already committed while either required artifact is absent.',
+      );
+    }
+    assert.match(
+      freezeScript,
+      /post-flip ranking snapshots must verify score anchors through get-resilience-score/,
+      'freeze script must explain why unauthenticated post-flip snapshot capture is insufficient.',
+    );
+    assert.match(
+      compareScript,
+      /currentDomainAggregate_vs_proposedPillarCombined/,
+      'compare script must remain identifiable as the pillar-combine harness, not the energy-v2 post-flip acceptance artifact.',
+    );
+
+    if (postFlipRankingFiles.length === 0) {
+      assert.match(
+        runbook,
+        /WORLDMONITOR_API_KEY[\s\S]*get-resilience-score[\s\S]*Pro authentication required/,
+        'runbook must explain that the post-flip ranking artifact requires a Pro/API key for score-anchor verification.',
+      );
+      assert.ok(
+        runbook.includes('resilience-ranking-live-post-pr1-*.json') ||
+          runbook.includes('resilience-ranking-live-post-pr1-{date}.json'),
+        'runbook must name the required post-flip ranking artifact pattern.',
+      );
+    }
+
+    if (energyV2AcceptanceFiles.length === 0) {
+      assert.match(
+        runbook,
+        /dedicated energy-v2 acceptance harness[\s\S]*do not commit (?:a )?synthetic acceptance JSON/i,
+        'runbook must block synthetic energy-v2 acceptance artifacts while the dedicated harness is absent.',
+      );
+      assert.match(
+        runbook,
+        /resilience-energy-v2-acceptance-\{date\}\.json/,
+        'runbook must name the required energy-v2 acceptance artifact pattern.',
+      );
+    }
+  });
+
+  it('validates any committed post-flip PR1 ranking artifacts', () => {
+    for (const filename of listSnapshotFiles(POST_FLIP_RANKING_RE)) {
+      const [, fileDate] = POST_FLIP_RANKING_RE.exec(filename)!;
+      const snapshot = asRecord(readJson(resolve(snapshotDir, filename)), filename);
+
+      assert.equal(snapshot.capturedAt, fileDate, `${filename}.capturedAt must match the date in the filename`);
+      assert.equal(snapshot.schemaVersion, '2.0', `${filename}.schemaVersion must match the live score shape`);
+      assert.equal(snapshot.methodologyFormula, 'pillar-combined-penalized-v1');
+      assert.ok(!('_note' in snapshot), `${filename} must not be a placeholder`);
+
+      const formulaVerification = asRecord(snapshot.formulaVerification, `${filename}.formulaVerification`);
+      assert.equal(formulaVerification.declaredFormula, 'pillar-combined-penalized-v1');
+      assert.match(assertString(formulaVerification.scoreEndpoint, `${filename}.formulaVerification.scoreEndpoint`), /\/api\/resilience\/v1\/get-resilience-score$/);
+      assert.match(assertString(formulaVerification.rankingEndpoint, `${filename}.formulaVerification.rankingEndpoint`), /\/api\/resilience\/v1\/get-resilience-ranking\?refresh=1$/);
+      const checks = formulaVerification.checks;
+      assert.ok(Array.isArray(checks) && checks.length >= 2, `${filename} must verify at least two score anchors`);
+      for (const rawCheck of checks) {
+        const check = asRecord(rawCheck, `${filename}.formulaVerification.check`);
+        assert.match(assertString(check.countryCode, `${filename}.formulaVerification.check.countryCode`), /^[A-Z]{2}$/);
+        assertFiniteNumber(check.absoluteError, `${filename}.formulaVerification.${check.countryCode}.absoluteError`);
+        assertFiniteNumber(check.rankingAbsoluteError, `${filename}.formulaVerification.${check.countryCode}.rankingAbsoluteError`);
+        assert.ok(
+          check.absoluteError <= Number(formulaVerification.tolerance),
+          `${filename} ${check.countryCode} must match the declared formula within tolerance`,
+        );
+        assert.ok(
+          check.rankingAbsoluteError <= Number(formulaVerification.tolerance),
+          `${filename} ${check.countryCode} ranking score must match the score endpoint within tolerance`,
+        );
+      }
+
+      const totals = asRecord(snapshot.totals, `${filename}.totals`);
+      assertFiniteNumber(totals.rankedCountries, `${filename}.totals.rankedCountries`);
+      assertFiniteNumber(totals.greyedOutCount, `${filename}.totals.greyedOutCount`);
+      assert.ok(
+        totals.rankedCountries + totals.greyedOutCount >= 190,
+        `${filename} must represent the full country universe, got ranked=${totals.rankedCountries} greyedOut=${totals.greyedOutCount}`,
+      );
+      assert.ok(Array.isArray(snapshot.items), `${filename}.items must be an array`);
+      assert.ok(Array.isArray(snapshot.greyedOut), `${filename}.greyedOut must be an array`);
+      assert.equal((snapshot.items as unknown[]).length, totals.rankedCountries);
+      assert.equal((snapshot.greyedOut as unknown[]).length, totals.greyedOutCount);
+    }
+  });
+
+  it('validates any committed energy-v2 post-flip acceptance artifacts', () => {
+    for (const filename of listSnapshotFiles(ENERGY_V2_ACCEPTANCE_RE)) {
+      const [, fileDate] = ENERGY_V2_ACCEPTANCE_RE.exec(filename)!;
+      const artifact = asRecord(readJson(resolve(snapshotDir, filename)), filename);
+
+      assert.equal(artifact.artifactType, 'resilience-energy-v2-post-flip-acceptance');
+      assert.equal(artifact.capturedAt, fileDate, `${filename}.capturedAt must match the filename date`);
+      assert.ok(!('_note' in artifact), `${filename} must not be a placeholder`);
+      assert.notEqual(
+        artifact.comparison,
+        'currentDomainAggregate_vs_proposedPillarCombined',
+        `${filename} must not be the pillar-combine comparison harness output.`,
+      );
+      const generatedAt = assertString(artifact.generatedAt, `${filename}.generatedAt`);
+      assert.ok(!Number.isNaN(Date.parse(generatedAt)), `${filename}.generatedAt must be an ISO timestamp`);
+
+      const runtime = asRecord(artifact.runtime, `${filename}.runtime`);
+      const manifest = asRecord(runtime.manifest, `${filename}.runtime.manifest`);
+      assert.equal(manifest.formulaTag, 'pc');
+      assert.equal(asRecord(manifest.constructVersions, `${filename}.runtime.manifest.constructVersions`).energy, 'v2');
+      const rankingCache = asRecord(manifest.rankingCache, `${filename}.runtime.manifest.rankingCache`);
+      assert.equal(rankingCache.count, 196);
+      assert.equal(rankingCache.scored, 196);
+      assert.equal(rankingCache.total, 196);
+
+      const health = asRecord(runtime.health, `${filename}.runtime.health`);
+      const checks = asRecord(health.energyV2SeedChecks, `${filename}.runtime.health.energyV2SeedChecks`);
+      for (const checkName of ['lowCarbonGeneration', 'fossilElectricityShare', 'powerLosses']) {
+        assert.equal(checks[checkName], 'OK', `${filename} health check ${checkName} must be OK`);
+      }
+
+      const baseline = asRecord(artifact.baseline, `${filename}.baseline`);
+      assert.match(assertString(baseline.rankingSnapshot, `${filename}.baseline.rankingSnapshot`), /docs\/snapshots\/resilience-ranking-live-(?:pre-pr1-flip|pre-repair)-\d{4}-\d{2}-\d{2}\.json$/);
+      const postFlip = asRecord(artifact.postFlip, `${filename}.postFlip`);
+      assert.match(assertString(postFlip.rankingSnapshot, `${filename}.postFlip.rankingSnapshot`), /docs\/snapshots\/resilience-ranking-live-post-pr1-\d{4}-\d{2}-\d{2}\.json$/);
+
+      const acceptanceGates = asRecord(artifact.acceptanceGates, `${filename}.acceptanceGates`);
+      assert.equal(acceptanceGates.verdict, 'PASS');
+      const results = acceptanceGates.results;
+      assert.ok(Array.isArray(results), `${filename}.acceptanceGates.results must be an array`);
+      const resultById = new Map(results.map((rawResult) => {
+        const result = asRecord(rawResult, `${filename}.acceptanceGates.result`);
+        return [assertString(result.id, `${filename}.acceptanceGates.result.id`), result];
+      }));
+      for (const gateId of REQUIRED_ENERGY_V2_ACCEPTANCE_GATES) {
+        const gate = resultById.get(gateId);
+        assert.ok(gate, `${filename} must include ${gateId}`);
+        assert.equal(gate.status, 'pass', `${filename} ${gateId} must pass for a committed post-flip acceptance artifact`);
+      }
+    }
   });
 });

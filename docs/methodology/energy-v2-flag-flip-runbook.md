@@ -29,6 +29,35 @@ checked-in energy-v2-specific acceptance generator today. Do not use
 legacy six-domain aggregate against the pillar-combined formula and is not
 an energy-v2 post-flip acceptance harness.
 
+### What can be verified without secrets
+
+The public runtime state can be rechecked without credentials, but that is not
+enough to create either acceptance artifact:
+
+```bash
+node --input-type=module -e 'const ua="Mozilla/5.0"; const base="https://www.worldmonitor.app"; const read=async (p)=>(await fetch(base+p,{headers:{"user-agent":ua,accept:"application/json"}})).json(); const [manifest,health]=await Promise.all([read("/api/resilience/v1/get-runtime-manifest"),read("/api/health")]); console.log(JSON.stringify({formulaTag:manifest.formulaTag,constructEnergy:manifest.constructVersions?.energy,rankingCache:manifest.rankingCache,energyV2SeedChecks:{lowCarbonGeneration:health.checks?.lowCarbonGeneration?.status,fossilElectricityShare:health.checks?.fossilElectricityShare?.status,powerLosses:health.checks?.powerLosses?.status}},null,2));'
+```
+
+Expected public evidence after the flip:
+
+- manifest: `formulaTag == "pc"`, `constructVersions.energy == "v2"`,
+  and `rankingCache.count == rankingCache.scored == rankingCache.total == 196`
+- health: `lowCarbonGeneration`, `fossilElectricityShare`, and `powerLosses`
+  are `OK`
+
+The ranking and formula-anchor endpoints still require Pro/API auth:
+
+```bash
+API_BASE=https://www.worldmonitor.app \
+  RESILIENCE_RANKING_REFRESH=false \
+  node scripts/freeze-resilience-ranking.mjs
+# Expected without WORLDMONITOR_API_KEY:
+# HTTP 401 from /api/resilience/v1/get-resilience-score?... Pro authentication required
+```
+
+Treat the public manifest/health check as audit context only. Do not rename it
+into a ranking snapshot and do not use it as acceptance evidence.
+
 ### Required operator artifact capture
 
 Run from the repo root with production credentials:
@@ -64,6 +93,67 @@ environment names for the shared Upstash client are
 `REDIS_OP_TIMEOUT_MS=10000`, and `REDIS_PIPELINE_TIMEOUT_MS=30000`; the active
 post-flip runtime state still needs to be verified through the public manifest,
 not inferred from a local `RESILIENCE_ENERGY_V2_ENABLED` value.
+
+### Energy-v2 acceptance artifact contract
+
+Once the dedicated harness exists, the committed JSON must be named
+`docs/snapshots/resilience-energy-v2-acceptance-{date}.json` and must not be
+the output of `scripts/compare-resilience-current-vs-proposed.mjs`. The minimum
+machine-checkable shape is:
+
+```json
+{
+  "artifactType": "resilience-energy-v2-post-flip-acceptance",
+  "generatedAt": "2026-06-02T00:00:00.000Z",
+  "capturedAt": "2026-06-02",
+  "runtime": {
+    "manifest": {
+      "formulaTag": "pc",
+      "constructVersions": { "energy": "v2" },
+      "rankingCache": { "count": 196, "scored": 196, "total": 196 }
+    },
+    "health": {
+      "energyV2SeedChecks": {
+        "lowCarbonGeneration": "OK",
+        "fossilElectricityShare": "OK",
+        "powerLosses": "OK"
+      }
+    }
+  },
+  "baseline": {
+    "rankingSnapshot": "docs/snapshots/resilience-ranking-live-pre-pr1-flip-YYYY-MM-DD.json"
+  },
+  "postFlip": {
+    "rankingSnapshot": "docs/snapshots/resilience-ranking-live-post-pr1-YYYY-MM-DD.json"
+  },
+  "acceptanceGates": {
+    "verdict": "PASS",
+    "results": [
+      { "id": "gate-1-spearman", "status": "pass" },
+      { "id": "gate-2-country-drift", "status": "pass" },
+      { "id": "gate-6-cohort-median", "status": "pass" },
+      { "id": "gate-7-matched-pair", "status": "pass" },
+      { "id": "gate-9-effective-influence-baseline", "status": "pass" }
+    ]
+  }
+}
+```
+
+If the credentialed ranking snapshot or the dedicated acceptance harness is
+still unavailable, attach this exact closeout status to the resilience issue
+instead of committing placeholder JSON:
+
+```text
+Energy v2 is live: manifest formulaTag=pc, constructVersions.energy=v2,
+rankingCache=196/196, and health is OK for lowCarbonGeneration,
+fossilElectricityShare, and powerLosses.
+
+Artifact status: BLOCKED. docs/snapshots/resilience-ranking-live-post-pr1-*.json
+requires WORLDMONITOR_API_KEY because freeze-resilience-ranking verifies score
+anchors through get-resilience-score. docs/snapshots/resilience-energy-v2-acceptance-*.json
+is also blocked until the dedicated energy-v2 acceptance
+harness exists. No synthetic snapshots committed.
+```
 
 Follow the original gated procedure below for future rollback/replay drills.
 
