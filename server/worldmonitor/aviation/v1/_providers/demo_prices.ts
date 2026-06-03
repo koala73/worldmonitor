@@ -18,6 +18,8 @@ const AIRPORT_COORDS: Record<string, [number, number]> = {
     VIE: [48.110, 16.570], FCO: [41.800, 12.239], ZRH: [47.464, 8.549],
 };
 
+
+
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
     const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
