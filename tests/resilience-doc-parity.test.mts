@@ -634,9 +634,16 @@ function extractIndicatorRowForSection(
     .filter(Boolean);
   assert.equal(cells.length, 7, `Indicator row "${indicatorId}" should have seven cells.`);
   return {
-    direction: cells[2],
-    goalposts: cells[3],
+    direction: decodeMarkdownEntityText(cells[2]),
+    goalposts: decodeMarkdownEntityText(cells[3]),
   };
+}
+
+function decodeMarkdownEntityText(text: string): string {
+  return text
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
 }
 
 function extractDomainRowDimensionLabels(text: string, domainId: ResilienceDomainId): string[] {
