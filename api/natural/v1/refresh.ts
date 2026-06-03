@@ -8,9 +8,11 @@
  * `trySeededData()` treats this write as fresh, so the map/feed stay current
  * without the GitHub seed cron.
  *
- * Schedule in vercel.json: hourly. Returns 202 immediately and finishes in the
- * background via `keepAlive` (EONET's 365-day pull + NHC's ArcGIS queries can
- * run past the Edge initial-response cap). The work is idempotent.
+ * Runs on the NODE runtime (not Edge): GDACS (and occasionally EONET) fetches
+ * fail silently on the Edge runtime — droughts/storms sourced from GDACS were
+ * coming back empty there. Node matches the old GitHub seeder where GDACS works.
+ * Completes synchronously within maxDuration (EONET + GDACS + NHC finish in well
+ * under it); no background/keepAlive needed. Idempotent.
  */
 
 import {
@@ -19,9 +21,8 @@ import {
   naturalEventSource,
 } from '../../../server/worldmonitor/natural/v1/list-natural-events';
 import { setCachedJson, getCachedJson } from '../../../server/_shared/redis';
-import { keepAlive } from '../../../server/_shared/keep-alive';
 
-export const config = { runtime: 'edge', maxDuration: 300 };
+export const config = { runtime: 'nodejs', maxDuration: 300 };
 
 const CANONICAL_KEY = 'natural:events:v1';
 const SEED_META_KEY = 'seed-meta:natural:events';
@@ -89,21 +90,15 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(JSON.stringify({ error: 'Forbidden — cron-only endpoint' }), { status: 403, headers });
   }
 
-  keepAlive(
-    refreshNaturalEvents().then(
-      (result) => {
-        console.log('[natural:refresh] completed:', JSON.stringify(result));
-        return result;
-      },
-      (err) => {
-        console.error('[natural:refresh] background failed:', err instanceof Error ? err.message : err);
-      },
-    ),
-    'natural-refresh',
-  );
-
-  return new Response(
-    JSON.stringify({ status: 'queued', startedAt: new Date().toISOString() }),
-    { status: 202, headers },
-  );
+  try {
+    const result = await refreshNaturalEvents();
+    console.log('[natural:refresh] completed:', JSON.stringify(result));
+    return new Response(JSON.stringify({ status: 'ok', ...result }), { status: 200, headers });
+  } catch (err) {
+    console.error('[natural:refresh] failed:', err instanceof Error ? err.message : err);
+    return new Response(
+      JSON.stringify({ status: 'error', message: err instanceof Error ? err.message : String(err) }),
+      { status: 500, headers },
+    );
+  }
 }
