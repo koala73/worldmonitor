@@ -87,3 +87,24 @@ describe('feeds.ts registration', () => {
     assert.doesNotMatch(feedsSrc, /DEFAULT_ENABLED_SOURCES[\s\S]*'my-ai-feed':/);
   });
 });
+
+const panelsSrc = readFileSync(resolve(ROOT, 'src/config/panels.ts'), 'utf-8');
+
+describe('panels.ts — my-ai-feed present in every variant', () => {
+  const blocks = ['FULL_PANELS', 'TECH_PANELS', 'FINANCE_PANELS', 'HAPPY_PANELS', 'COMMODITY_PANELS', 'ENERGY_PANELS'];
+
+  for (const block of blocks) {
+    it(`declares my-ai-feed inside ${block}`, () => {
+      const start = panelsSrc.indexOf(`const ${block}`);
+      assert.ok(start >= 0, `${block} should exist`);
+      const rest = panelsSrc.slice(start + block.length);
+      const nextIdx = rest.search(/const \w+_PANELS|export const ALL_PANELS/);
+      const blockText = nextIdx >= 0 ? rest.slice(0, nextIdx) : rest;
+      assert.match(
+        blockText,
+        /'my-ai-feed':\s*\{ name: 'My AI Feed', enabled: true, priority: 2 \}/,
+        `${block} should contain an enabled my-ai-feed PanelConfig`,
+      );
+    });
+  }
+});
