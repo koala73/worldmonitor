@@ -123,7 +123,7 @@
     "vitest": "^4.1.0"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.82.0",
+    "@anthropic-ai/sdk": "^0.91.1",
     "@aws-sdk/client-s3": "^3.1009.0",
     "@clerk/clerk-js": "^6.13.0",
     "@deck.gl/aggregation-layers": "^9.2.11",
