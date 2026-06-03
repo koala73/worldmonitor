@@ -23,8 +23,30 @@ const SEED_FRESHNESS_MS = 90 * 60 * 1000; // 90 minutes
 
 const FIRMS_SOURCE = 'VIIRS_SNPP_NRT';
 
-/** Bounding boxes as west,south,east,north */
+// FIRMS area API day range (1–10, max). Small focused boxes use the full
+// window; large continental boxes use a shorter window so a single 10-day
+// continental CSV can't blow the request timeout / memory. Kept in sync with
+// the seeder (scripts/seed-fire-detections.mjs).
+const FOCUSED_DAY_RANGE = 10;
+const BROAD_DAY_RANGE = 3;
+const BROAD_REGIONS = new Set<string>([
+  'Russia', 'North America', 'South America', 'Africa',
+  'Europe', 'South Asia', 'Southeast Asia', 'Australia',
+]);
+const dayRangeFor = (regionName: string): number =>
+  BROAD_REGIONS.has(regionName) ? BROAD_DAY_RANGE : FOCUSED_DAY_RANGE;
+
+// Cap on total detections kept, sorted by FRP, to bound the response payload.
+const MAX_DETECTIONS = 6000;
+
+/**
+ * Bounding boxes as west,south,east,north. First block: focused OSINT/war
+ * regions (kept for their specific region labels). Second block: large
+ * continental boxes for global coverage. Kept in sync with the seeder
+ * (scripts/seed-fire-detections.mjs), which is the primary data path.
+ */
 const MONITORED_REGIONS: Record<string, string> = {
+  // — Focused OSINT regions —
   'Ukraine': '22,44,40,53',
   'Russia': '20,50,180,82',
   'Iran': '44,25,63,40',
@@ -34,6 +56,14 @@ const MONITORED_REGIONS: Record<string, string> = {
   'North Korea': '124,37,131,43',
   'Saudi Arabia': '34,16,56,32',
   'Turkey': '26,36,45,42',
+  // — Global coverage (continental boxes) —
+  'North America': '-168,14,-52,72',
+  'South America': '-82,-56,-34,13',
+  'Africa': '-18,-35,52,38',
+  'Europe': '-11,36,31,60',
+  'South Asia': '60,5,90,35',
+  'Southeast Asia': '95,-11,141,21',
+  'Australia': '112,-44,154,-10',
 };
 
 /** Map VIIRS confidence letters to proto enum values. */
@@ -116,7 +146,7 @@ export const listFireDetections: WildfireServiceHandler['listFireDetections'] = 
         const entries = Object.entries(MONITORED_REGIONS);
         const results = await Promise.allSettled(
           entries.map(async ([regionName, bbox]) => {
-            const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${apiKey}/${FIRMS_SOURCE}/${bbox}/1`;
+            const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${apiKey}/${FIRMS_SOURCE}/${bbox}/${dayRangeFor(regionName)}`;
             const res = await fetch(url, {
               headers: { Accept: 'text/csv', 'User-Agent': CHROME_UA },
               signal: AbortSignal.timeout(15_000),
@@ -157,7 +187,13 @@ export const listFireDetections: WildfireServiceHandler['listFireDetections'] = 
           }
         }
 
-        return fireDetections.length > 0 ? { fireDetections, pagination: undefined } : null;
+        if (fireDetections.length === 0) return null;
+        // Keep the most significant fires (highest FRP) to bound the payload.
+        if (fireDetections.length > MAX_DETECTIONS) {
+          fireDetections.sort((a, b) => (b.frp || 0) - (a.frp || 0));
+          fireDetections.length = MAX_DETECTIONS;
+        }
+        return { fireDetections, pagination: undefined };
       },
     );
   } catch {

@@ -7,7 +7,30 @@ loadEnvFile(import.meta.url);
 const CANONICAL_KEY = 'wildfire:fires:v1';
 const FIRMS_SOURCES = ['VIIRS_SNPP_NRT', 'VIIRS_NOAA20_NRT', 'VIIRS_NOAA21_NRT'];
 
+// FIRMS area API day range (1–10, max). Small focused boxes use the full
+// window; large continental boxes use a shorter window so a single 10-day
+// continental CSV (hundreds of MB in peak fire season) can't blow the request
+// timeout / runner memory before the FRP cap applies.
+const FOCUSED_DAY_RANGE = 10;
+const BROAD_DAY_RANGE = 3;
+const BROAD_REGIONS = new Set([
+  'Russia', 'North America', 'South America', 'Africa',
+  'Europe', 'South Asia', 'Southeast Asia', 'Australia',
+]);
+const dayRangeFor = (regionName) =>
+  BROAD_REGIONS.has(regionName) ? BROAD_DAY_RANGE : FOCUSED_DAY_RANGE;
+
+// Cap on total detections kept, sorted by fire radiative power (FRP) so the
+// most significant fires survive. Bounds the Redis payload well under the 5 MB
+// limit even when continental boxes return tens of thousands of rows.
+const MAX_DETECTIONS = 6000;
+
+// bbox = west,south,east,north
+// First block: focused OSINT/war regions (kept for their specific region labels
+// in the Events feed / Overview). Second block: large continental boxes for
+// global coverage so fires show worldwide, not just in conflict zones.
 const MONITORED_REGIONS = {
+  // — Focused OSINT regions —
   'Ukraine': '22,44,40,53',
   'Russia': '20,50,180,82',
   'Iran': '44,25,63,40',
@@ -17,6 +40,14 @@ const MONITORED_REGIONS = {
   'North Korea': '124,37,131,43',
   'Saudi Arabia': '34,16,56,32',
   'Turkey': '26,36,45,42',
+  // — Global coverage (continental boxes) —
+  'North America': '-168,14,-52,72',
+  'South America': '-82,-56,-34,13',
+  'Africa': '-18,-35,52,38',
+  'Europe': '-11,36,31,60',
+  'South Asia': '60,5,90,35',
+  'Southeast Asia': '95,-11,141,21',
+  'Australia': '112,-44,154,-10',
 };
 
 function mapConfidence(c) {
@@ -51,7 +82,7 @@ function parseDetectedAt(acqDate, acqTime) {
 }
 
 async function fetchRegionSource(apiKey, regionName, bbox, source) {
-  const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${apiKey}/${source}/${bbox}/1`;
+  const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${apiKey}/${source}/${bbox}/${dayRangeFor(regionName)}`;
   const res = await fetch(url, {
     headers: { Accept: 'text/csv', 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(30_000),
@@ -102,6 +133,13 @@ async function fetchAllRegions(apiKey) {
     console.log(`  ${source}: ${fireDetections.length} total (${fulfilled} ok, ${failed} failed)`);
   }
 
+  // Keep the most significant fires (highest FRP) so the payload stays bounded.
+  if (fireDetections.length > MAX_DETECTIONS) {
+    fireDetections.sort((a, b) => (b.frp || 0) - (a.frp || 0));
+    fireDetections.length = MAX_DETECTIONS;
+    console.log(`  Capped to top ${MAX_DETECTIONS} by FRP`);
+  }
+
   return { fireDetections, pagination: undefined };
 }
 
@@ -117,7 +155,7 @@ async function main() {
   await runSeed('wildfire', 'fires', CANONICAL_KEY, () => fetchAllRegions(apiKey), {
     validateFn: (data) => Array.isArray(data?.fireDetections) && data.fireDetections.length > 0,
     ttlSeconds: 7200,
-    lockTtlMs: 600_000, // 10 min — 27 calls × (6s pace + up to 30s timeout) can exceed 5 min under partial slowness
+    lockTtlMs: 1_200_000, // 20 min — 48 calls (16 regions × 3 sources) × (6s pace + up to 30s timeout)
     sourceVersion: FIRMS_SOURCES.join('+'),
   });
 }

@@ -17,7 +17,7 @@ const EONET_API_URL = 'https://eonet.gsfc.nasa.gov/api/v3/events';
 const GDACS_API = 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/MAP';
 const NHC_BASE = 'https://mapservices.weather.noaa.gov/tropical/rest/services/tropical/NHC_tropical_weather/MapServer';
 
-const DAYS = 90;
+const DAYS = 365;
 const WILDFIRE_MIN_ACRES = 1_000;
 
 const GDACS_TO_CATEGORY: Record<string, string> = {
@@ -235,7 +235,7 @@ async function fetchGdacs(): Promise<NaturalEvent[]> {
     });
   }
 
-  return events.slice(0, 400);
+  return events.slice(0, 1000);
 }
 
 // NHC ArcGIS storm slot layer IDs
@@ -332,8 +332,8 @@ async function fetchNhc(): Promise<NaturalEvent[]> {
       for (const f of cone.features) {
         const rings: number[][][] =
           f.geometry?.type === 'Polygon' ? f.geometry.coordinates || [] :
-          f.geometry?.type === 'MultiPolygon' ? (f.geometry.coordinates || []).flat() :
-          [];
+            f.geometry?.type === 'MultiPolygon' ? (f.geometry.coordinates || []).flat() :
+              [];
         for (const ring of rings) {
           conePolygon.push({ points: ring.map((coord: number[]) => ({ lon: coord[0] ?? 0, lat: coord[1] ?? 0 })) });
         }

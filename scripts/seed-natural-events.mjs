@@ -10,7 +10,7 @@ const NHC_BASE = 'https://mapservices.weather.noaa.gov/tropical/rest/services/tr
 const CANONICAL_KEY = 'natural:events:v1';
 const CACHE_TTL = 21600; // 6h — comfortably longer than the hourly seed cron so a late run can't empty the feed
 
-const DAYS = 90;
+const DAYS = 365;
 const WILDFIRE_MIN_ACRES = 1_000;
 
 const GDACS_TO_CATEGORY = {
@@ -203,7 +203,7 @@ async function fetchGdacs() {
     });
   }
 
-  return events.slice(0, 400);
+  return events.slice(0, 1000);
 }
 
 // NHC ArcGIS layer IDs per storm slot (5 slots per basin)
@@ -307,8 +307,8 @@ async function fetchNhc() {
       for (const f of cone.features) {
         const rings =
           f.geometry?.type === 'Polygon' ? f.geometry.coordinates || [] :
-          f.geometry?.type === 'MultiPolygon' ? (f.geometry.coordinates || []).flat() :
-          [];
+            f.geometry?.type === 'MultiPolygon' ? (f.geometry.coordinates || []).flat() :
+              [];
         for (const ring of rings) {
           conePolygon.push({ points: ring.map(([lon, lat]) => ({ lon, lat })) });
         }
