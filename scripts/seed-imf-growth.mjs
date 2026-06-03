@@ -6,7 +6,7 @@
 // Indicators:
 //   NGDP_RPCH   — Real GDP growth, % change
 //   NGDPDPC     — Nominal GDP per capita, USD
-//   NGDP_R      — Real GDP, national currency (constant prices)
+//   NGDP_R      — Real GDP, national currency (constant prices), billions
 //   PPPPC       — GDP per capita, PPP USD
 //   PPPGDP      — GDP, PPP USD
 //   NID_NGDP    — Total investment % GDP
@@ -94,7 +94,7 @@ export function buildGrowthCountries(perIndicator) {
     countries[iso2] = {
       realGdpGrowthPct:   growth?.value ?? null,
       gdpPerCapitaUsd:    gdpPc?.value ?? null,
-      realGdp:            realGdpV?.value ?? null,
+      realGdpLcuB:        realGdpV?.value ?? null,
       gdpPerCapitaPpp:    pppPc?.value ?? null,
       gdpPpp:             pppGdpV?.value ?? null,
       investmentPct:      inv?.value ?? null,

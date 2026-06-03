@@ -24,7 +24,7 @@ export interface ImfMacroEntry {
 export interface ImfGrowthEntry {
   realGdpGrowthPct: number | null;
   gdpPerCapitaUsd: number | null;
-  realGdp: number | null;
+  realGdpLcuB: number | null;
   gdpPerCapitaPpp: number | null;
   gdpPpp: number | null;
   investmentPct: number | null;

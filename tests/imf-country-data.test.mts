@@ -32,7 +32,7 @@ describe('buildImfEconomicIndicators (panel rendering)', () => {
         year: 2025,
       },
       growth: {
-        realGdpGrowthPct: 2.7, gdpPerCapitaUsd: 78500, realGdp: null,
+        realGdpGrowthPct: 2.7, gdpPerCapitaUsd: 78500, realGdpLcuB: null,
         gdpPerCapitaPpp: null, gdpPpp: null, investmentPct: null, savingsPct: null,
         savingsInvestmentGap: null, year: 2025,
       },
@@ -61,7 +61,7 @@ describe('buildImfEconomicIndicators (panel rendering)', () => {
         year: 2025,
       },
       growth: {
-        realGdpGrowthPct: -1.4, gdpPerCapitaUsd: null, realGdp: null,
+        realGdpGrowthPct: -1.4, gdpPerCapitaUsd: null, realGdpLcuB: null,
         gdpPerCapitaPpp: null, gdpPpp: null, investmentPct: null, savingsPct: null,
         savingsInvestmentGap: null, year: 2025,
       },
@@ -86,7 +86,7 @@ describe('buildImfEconomicIndicators (panel rendering)', () => {
   it('formats sub-$1k GDP/capita with the dollar prefix', () => {
     const rows = buildImfEconomicIndicators(bundle({
       growth: {
-        realGdpGrowthPct: null, gdpPerCapitaUsd: 850, realGdp: null,
+        realGdpGrowthPct: null, gdpPerCapitaUsd: 850, realGdpLcuB: null,
         gdpPerCapitaPpp: null, gdpPpp: null, investmentPct: null, savingsPct: null,
         savingsInvestmentGap: null, year: 2025,
       },
@@ -178,7 +178,7 @@ describe('buildImfEconomicIndicators (panel rendering)', () => {
         year: 2024,
       },
       growth: {
-        realGdpGrowthPct: 0.7, gdpPerCapitaUsd: 47800, realGdp: null,
+        realGdpGrowthPct: 0.7, gdpPerCapitaUsd: 47800, realGdpLcuB: null,
         gdpPerCapitaPpp: null, gdpPpp: null, investmentPct: null, savingsPct: null,
         savingsInvestmentGap: null, year: 2024,
       },
@@ -258,7 +258,7 @@ describe('buildImfEconomicIndicators (panel rendering)', () => {
       growth: {
         realGdpGrowthPct: NaN,
         gdpPerCapitaUsd: Infinity,
-        realGdp: null,
+        realGdpLcuB: null,
         gdpPerCapitaPpp: null,
         gdpPpp: null,
         investmentPct: null,
