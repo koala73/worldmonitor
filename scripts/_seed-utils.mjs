@@ -89,6 +89,19 @@ async function redisGet(url, token, key) {
   return data.result ? JSON.parse(data.result) : null;
 }
 
+/** Read + JSON-parse a cached key (returns null on miss/error). Used by seeders
+ *  that need the previous snapshot to preserve slices when a source fails. */
+export async function readCachedJson(key) {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  try {
+    return await redisGet(url, token, key);
+  } catch {
+    return null;
+  }
+}
+
 async function redisSet(url, token, key, value, ttlSeconds) {
   const payload = JSON.stringify(value);
   const cmd = ttlSeconds

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, readCachedJson } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -54,11 +54,18 @@ async function fetchEonet(days) {
   // events within the last `days` window are still surfaced — most severe
   // events close within days, and open-only dropped almost all of them.
   const url = `${EONET_API_URL}?status=all&days=${days}`;
-  const res = await fetch(url, {
-    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!res.ok) throw new Error(`EONET ${res.status}`);
+  // EONET (NASA) 503s intermittently — retry a few times so a transient blip
+  // doesn't drop the whole EONET slice for the hour.
+  let res = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 2000));
+    res = await fetch(url, {
+      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (res.ok) break;
+  }
+  if (!res || !res.ok) throw new Error(`EONET ${res?.status ?? 'no-response'}`);
 
   const data = await res.json();
   const events = [];
@@ -371,6 +378,14 @@ async function fetchNhc() {
   return events;
 }
 
+// Classify a cached event back to its source, by id prefix.
+function eventSource(e) {
+  const id = (e && e.id) || '';
+  if (id.startsWith('nhc-')) return 'nhc';
+  if (id.startsWith('gdacs-')) return 'gdacs';
+  return 'eonet';
+}
+
 async function fetchNaturalEvents() {
   const [eonetResult, gdacsResult, nhcResult] = await Promise.allSettled([
     fetchEonet(DAYS),
@@ -378,13 +393,30 @@ async function fetchNaturalEvents() {
     fetchNhc(),
   ]);
 
-  const eonetEvents = eonetResult.status === 'fulfilled' ? eonetResult.value : [];
-  const gdacsEvents = gdacsResult.status === 'fulfilled' ? gdacsResult.value : [];
-  const nhcEvents = nhcResult.status === 'fulfilled' ? nhcResult.value : [];
+  // null = that source's upstream failed this run → preserve its previous
+  // cached slice instead of dropping it. EONET 503s and GDACS occasionally
+  // hiccups; without this, one dead source full-replaces the whole feed with
+  // the survivors (e.g. EONET down → all wildfires vanish).
+  let eonetEvents = eonetResult.status === 'fulfilled' ? eonetResult.value : null;
+  let gdacsEvents = gdacsResult.status === 'fulfilled' ? gdacsResult.value : null;
+  let nhcEvents   = nhcResult.status === 'fulfilled' ? nhcResult.value : null;
 
   if (eonetResult.status === 'rejected') console.log('[EONET]', eonetResult.reason?.message);
   if (gdacsResult.status === 'rejected') console.log('[GDACS]', gdacsResult.reason?.message);
   if (nhcResult.status === 'rejected') console.log('[NHC]', nhcResult.reason?.message);
+
+  if (eonetEvents === null || gdacsEvents === null || nhcEvents === null) {
+    const existing = await readCachedJson(CANONICAL_KEY);
+    const prev = Array.isArray(existing?.events) ? existing.events : [];
+    const preserved = [];
+    if (eonetEvents === null) { eonetEvents = prev.filter(e => eventSource(e) === 'eonet'); preserved.push(`eonet(${eonetEvents.length})`); }
+    if (gdacsEvents === null) { gdacsEvents = prev.filter(e => eventSource(e) === 'gdacs'); preserved.push(`gdacs(${gdacsEvents.length})`); }
+    if (nhcEvents === null)   { nhcEvents   = prev.filter(e => eventSource(e) === 'nhc');   preserved.push(`nhc(${nhcEvents.length})`); }
+    console.log('[natural] preserved cached slices for failed sources:', preserved.join(', '));
+  }
+  eonetEvents = eonetEvents || [];
+  gdacsEvents = gdacsEvents || [];
+  nhcEvents = nhcEvents || [];
 
   // NHC events take priority for storms (have forecast tracks/cones)
   // Dedup GDACS TC events against NHC by storm name proximity
