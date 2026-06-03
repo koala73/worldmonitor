@@ -461,8 +461,40 @@ IMPORT_HHI_VERBOSE=1 FORCE_RESEED=true node scripts/seed-recovery-import-hhi.mjs
 Then warm live scores so `importConcentration` reads the refreshed canonical key:
 
 ```bash
-WORLDMONITOR_API_KEY=<key> node scripts/seed-resilience-scores.mjs
+API_BASE_URL=https://api.worldmonitor.app \
+WORLDMONITOR_SEED_REFRESH_KEY=<seed-refresh-key> \
+WORLDMONITOR_API_KEY=<read-key> \
+node scripts/seed-resilience-scores.mjs
 ```
+
+`WORLDMONITOR_SEED_REFRESH_KEY` is required: the resilience score seeder uses it
+for the seed-only `get-resilience-ranking?refresh=1` recompute path. Keep
+`WORLDMONITOR_API_KEY` or `WORLDMONITOR_VALID_KEYS` available too so laggard
+per-country score warms can fall back to the normal premium read endpoint. In
+Railway, the service environment should already provide the Upstash Redis
+credentials; for a local force-run, export `UPSTASH_REDIS_REST_URL` and
+`UPSTASH_REDIS_REST_TOKEN` as well.
+
+If the run is fixing missing interval data, the success signal is the
+`seed_complete` log for `domain="resilience:scores"` with
+`intervalsWritten > 0` and no `status="ERROR"`. A failed interval recovery
+sets `status="ERROR"` plus `intervalFailureReason` and includes the diagnostic
+counts `intervalMissingScorePayloadCount`, `intervalStaleScorePayloadCount`,
+`intervalInvalidScorePayloadCount`, `intervalMalformedScorePayloadCount`,
+`intervalFormulaSkipCount`, and `intervalPayloadSkipCount`.
+
+Verify the public audit surfaces after the run:
+
+```bash
+curl -fsS https://api.worldmonitor.app/api/resilience/v1/get-runtime-manifest \
+  | jq '{formulaTag, rankingCache, constructVersions, intervals}'
+curl -fsS https://api.worldmonitor.app/api/health \
+  | jq '.checks.resilienceIntervals'
+```
+
+Pass condition for interval recovery: runtime manifest reports
+`intervals.available=true`, and `/api/health` reports
+`resilienceIntervals.status="OK"` with `records > 0`.
 
 ### Verification
 

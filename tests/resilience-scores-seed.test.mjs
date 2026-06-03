@@ -686,6 +686,37 @@ describe('seed-bundle-resilience section interval keeps refresh alive', () => {
     assert.match(section, /seedMetaKey:\s*'resilience:scores'/);
     assert.doesNotMatch(section, /seedMetaKey:\s*'resilience:intervals'/);
   });
+
+  it('operator force-refresh docs include the required seed refresh key', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, join } = await import('node:path');
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const files = [
+      join(dir, '..', 'docs', 'railway-seed-consolidation-runbook.md'),
+      join(dir, '..', 'scripts', 'post-pr3427-force-refresh.mjs'),
+      join(dir, '..', 'scripts', 'post-pr3487-force-refresh.mjs'),
+    ];
+
+    for (const file of files) {
+      const src = readFileSync(file, 'utf8');
+      const scoreWarmCommands = [...src.matchAll(/node scripts\/seed-resilience-scores\.mjs/g)];
+      assert.ok(scoreWarmCommands.length > 0, `${file} must document the score warm command`);
+      for (const match of scoreWarmCommands) {
+        const commandContext = src.slice(Math.max(0, match.index - 240), match.index + match[0].length);
+        assert.match(
+          commandContext,
+          /WORLDMONITOR_SEED_REFRESH_KEY=<seed-refresh-key>/,
+          `${file} must include WORLDMONITOR_SEED_REFRESH_KEY for seed-resilience-scores`,
+        );
+      }
+      assert.doesNotMatch(
+        src,
+        /WORLDMONITOR_API_KEY=<key> node scripts\/seed-resilience-scores\.mjs/,
+        `${file} must not document the pre-refresh-key score warm command`,
+      );
+    }
+  });
 });
 
 describe('handler warm pipeline is chunked', () => {
