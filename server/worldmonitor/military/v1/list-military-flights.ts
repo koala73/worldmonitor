@@ -75,17 +75,30 @@ const ADSBX_MIL_URL = `https://${ADSBX_HOST}/v2/mil/`;
 const adsbxRadiusUrl = (lat: number, lon: number, distNm: number) =>
   `https://${ADSBX_HOST}/v2/lat/${lat}/lon/${lon}/dist/${distNm}/`;
 
-// ~6 high-traffic regions sampled for civilian aircraft. Kept intentionally
-// small ("light") to bound RapidAPI quota: one military call + these per cache
-// miss, shared across all clients via the REDIS_CACHE_TTL window.
+// Globally-spread regions sampled for civilian aircraft. Each region's
+// contribution is capped (CIVILIAN_MAX_PER_REGION) so a single dense airspace
+// (e.g. Central Europe — the busiest on Earth) can't crowd out every other
+// region once the client applies its own pin cap. One RapidAPI call per region
+// per cache miss, shared across all clients via the REDIS_CACHE_TTL window.
 const CIVILIAN_REGIONS: Array<{ lat: number; lon: number; dist: number }> = [
-  { lat: 28, lon: 45, dist: 250 },    // Gulf / CENTCOM
-  { lat: 50, lon: 10, dist: 250 },    // Central Europe
-  { lat: 25, lon: 121, dist: 250 },   // Taiwan strait / East Asia
+  { lat: 39, lon: -98, dist: 250 },   // US Central
   { lat: 34, lon: -118, dist: 250 },  // US West
   { lat: 39, lon: -77, dist: 250 },   // US East
-  { lat: 1, lon: 104, dist: 250 },    // Singapore / SE Asia
+  { lat: -15, lon: -55, dist: 250 },  // South America (Brazil)
+  { lat: 51, lon: 0, dist: 250 },     // Western Europe (London/Paris)
+  { lat: 48, lon: 30, dist: 250 },    // Eastern Europe / Black Sea
+  { lat: 28, lon: 45, dist: 250 },    // Gulf / CENTCOM
+  { lat: 20, lon: 78, dist: 250 },    // South Asia (India)
+  { lat: 31, lon: 116, dist: 250 },   // East Asia (China)
+  { lat: 35, lon: 138, dist: 250 },   // Japan / Korea
+  { lat: 1, lon: 104, dist: 250 },    // SE Asia (Singapore)
+  { lat: -33, lon: 151, dist: 250 },  // Australia (Sydney)
+  { lat: 9, lon: 8, dist: 250 },      // West Africa (Nigeria)
 ];
+
+// Max civilian aircraft taken from any single region. Keeps the global picture
+// balanced rather than dominated by whichever airspace happens to be busiest.
+const CIVILIAN_MAX_PER_REGION = 60;
 
 /** ICAO type code → high-level category enum string (subset of common military types). */
 const ICAO_TYPE_TO_ENUM: Record<string, MilitaryAircraftType> = {
@@ -333,7 +346,9 @@ async function fetchADSBExchangeCivilianFlights(): Promise<ListMilitaryFlightsRe
   if (!key) return [];
 
   const now = Date.now();
-  const byHex = new Map<string, ListMilitaryFlightsResponse['flights'][number]>();
+  // Track hexes seen across all regions so the same aircraft (e.g. near a
+  // region boundary) isn't double-counted, and so military hexes are skipped.
+  const seen = new Set<string>();
 
   const results = await Promise.allSettled(
     CIVILIAN_REGIONS.map(async (region) => {
@@ -351,15 +366,21 @@ async function fetchADSBExchangeCivilianFlights(): Promise<ListMilitaryFlightsRe
     }),
   );
 
+  // One bucket per region, each capped at CIVILIAN_MAX_PER_REGION.
+  const regionBuckets: ListMilitaryFlightsResponse['flights'][] = [];
+
   for (const r of results) {
+    const bucket: ListMilitaryFlightsResponse['flights'] = [];
+    regionBuckets.push(bucket);
     if (r.status !== 'fulfilled') {
       console.warn('[military-flights] civilian region failed:', (r.reason as Error)?.message);
       continue;
     }
     const acs = Array.isArray(r.value?.ac) ? r.value.ac : [];
     for (const ac of acs) {
+      if (bucket.length >= CIVILIAN_MAX_PER_REGION) break;
       const hex = String(ac.hex || '').toLowerCase();
-      if (!hex || byHex.has(hex)) continue;
+      if (!hex || seen.has(hex)) continue;
 
       // Leave ADSBX-flagged military aircraft to the authoritative /v2/mil/ feed.
       if (typeof ac.dbFlags === 'number' && (ac.dbFlags & 1) === 1) continue;
@@ -386,7 +407,8 @@ async function fetchADSBExchangeCivilianFlights(): Promise<ListMilitaryFlightsRe
 
       const { operator, country } = lookupHexOperator(hex);
 
-      byHex.set(hex, {
+      seen.add(hex);
+      bucket.push({
         id: `adsbx-${hex}`,
         callsign: callsign || `CIV-${hex.substring(0, 4).toUpperCase()}`,
         hexCode: hex.toUpperCase(),
@@ -414,7 +436,17 @@ async function fetchADSBExchangeCivilianFlights(): Promise<ListMilitaryFlightsRe
     }
   }
 
-  const flights = Array.from(byHex.values());
+  // Round-robin interleave across regions so that when a client applies its own
+  // pin cap, the truncation thins every region evenly instead of dropping whole
+  // trailing regions — keeps the global picture balanced.
+  const flights: ListMilitaryFlightsResponse['flights'] = [];
+  const maxLen = regionBuckets.reduce((m, b) => Math.max(m, b.length), 0);
+  for (let i = 0; i < maxLen; i++) {
+    for (const bucket of regionBuckets) {
+      if (i < bucket.length) flights.push(bucket[i]!);
+    }
+  }
+
   console.log(`[military-flights] civilian layer: ${flights.length} aircraft from ${CIVILIAN_REGIONS.length} regions`);
   return flights;
 }
