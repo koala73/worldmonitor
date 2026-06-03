@@ -4,7 +4,8 @@
     { "path": "/api/intel-news/v1/refresh", "schedule": "*/15 * * * *" },
     { "path": "/api/live-news/v6/refresh-rss-embed",    "schedule": "3-59/15 * * * *" },
     { "path": "/api/intel-news/v1/enrich",  "schedule": "9-59/15 * * * *" },
-    { "path": "/api/world-brief/v1/refresh", "schedule": "12 * * * *" }
+    { "path": "/api/world-brief/v1/refresh", "schedule": "12 * * * *" },
+    { "path": "/api/natural/v1/refresh",     "schedule": "7,37 * * * *" }
   ],
   "rewrites": [
     { "source": "/pro", "destination": "/pro/index.html" },

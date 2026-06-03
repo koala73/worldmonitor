@@ -397,6 +397,63 @@ async function fetchNhc(): Promise<NaturalEvent[]> {
 
 type NaturalEventsCache = { events: ListNaturalEventsResponse['events'] };
 
+/**
+ * Fetch + merge the full natural-events feed from EONET (NASA) + GDACS + NHC.
+ * Shared by the live handler (on Redis cache miss) and the Vercel refresh cron
+ * (api/natural/v1/refresh.ts), which writes the merged result to Redis directly
+ * so bootstrap stays fresh without relying on the GitHub Actions seed job.
+ */
+export async function fetchFreshNaturalEvents(): Promise<{ events: NaturalEvent[] }> {
+  const [eonetResult, gdacsResult, nhcResult] = await Promise.allSettled([
+    fetchEonet(DAYS),
+    fetchGdacs(),
+    fetchNhc(),
+  ]);
+
+  const eonetEvents = eonetResult.status === 'fulfilled' ? eonetResult.value : [];
+  const gdacsEvents = gdacsResult.status === 'fulfilled' ? gdacsResult.value : [];
+  const nhcEvents = nhcResult.status === 'fulfilled' ? nhcResult.value : [];
+
+  if (eonetResult.status === 'rejected') console.error('[EONET]', eonetResult.reason?.message);
+  if (gdacsResult.status === 'rejected') console.error('[GDACS]', gdacsResult.reason?.message);
+  if (nhcResult.status === 'rejected') console.error('[NHC]', nhcResult.reason?.message);
+
+  const nhcStorms = nhcEvents
+    .filter(e => e.stormName)
+    .map(e => ({ name: (e.stormName || '').toLowerCase(), lat: e.lat, lon: e.lon }));
+  const seenLocations = new Set<string>();
+  const merged: NaturalEvent[] = [];
+
+  for (const event of nhcEvents) {
+    const k = `${event.lat.toFixed(1)}-${event.lon.toFixed(1)}-${event.category}`;
+    seenLocations.add(k);
+    merged.push(event);
+  }
+  for (const event of gdacsEvents) {
+    if (event.category === 'severeStorms' && event.stormName) {
+      const gName = event.stormName.toLowerCase();
+      const isDupe = nhcStorms.some(n =>
+        n.name === gName && Math.abs(n.lat - event.lat) < 10 && Math.abs(n.lon - event.lon) < 30
+      );
+      if (isDupe) continue;
+    }
+    const k = `${event.lat.toFixed(1)}-${event.lon.toFixed(1)}-${event.category}`;
+    if (!seenLocations.has(k)) {
+      seenLocations.add(k);
+      merged.push(event);
+    }
+  }
+  for (const event of eonetEvents) {
+    const k = `${event.lat.toFixed(1)}-${event.lon.toFixed(1)}-${event.category}`;
+    if (!seenLocations.has(k)) {
+      seenLocations.add(k);
+      merged.push(event);
+    }
+  }
+
+  return { events: merged };
+}
+
 async function trySeededData(): Promise<NaturalEventsCache | null> {
   try {
     const [seedData, seedMeta] = await Promise.all([
@@ -434,54 +491,8 @@ export const listNaturalEvents: NaturalServiceHandler['listNaturalEvents'] = asy
       REDIS_CACHE_KEY,
       REDIS_CACHE_TTL,
       async () => {
-        const [eonetResult, gdacsResult, nhcResult] = await Promise.allSettled([
-          fetchEonet(DAYS),
-          fetchGdacs(),
-          fetchNhc(),
-        ]);
-
-        const eonetEvents = eonetResult.status === 'fulfilled' ? eonetResult.value : [];
-        const gdacsEvents = gdacsResult.status === 'fulfilled' ? gdacsResult.value : [];
-        const nhcEvents = nhcResult.status === 'fulfilled' ? nhcResult.value : [];
-
-        if (eonetResult.status === 'rejected') console.error('[EONET]', eonetResult.reason?.message);
-        if (gdacsResult.status === 'rejected') console.error('[GDACS]', gdacsResult.reason?.message);
-        if (nhcResult.status === 'rejected') console.error('[NHC]', nhcResult.reason?.message);
-
-        const nhcStorms = nhcEvents
-          .filter(e => e.stormName)
-          .map(e => ({ name: (e.stormName || '').toLowerCase(), lat: e.lat, lon: e.lon }));
-        const seenLocations = new Set<string>();
-        const merged: NaturalEvent[] = [];
-
-        for (const event of nhcEvents) {
-          const k = `${event.lat.toFixed(1)}-${event.lon.toFixed(1)}-${event.category}`;
-          seenLocations.add(k);
-          merged.push(event);
-        }
-        for (const event of gdacsEvents) {
-          if (event.category === 'severeStorms' && event.stormName) {
-            const gName = event.stormName.toLowerCase();
-            const isDupe = nhcStorms.some(n =>
-              n.name === gName && Math.abs(n.lat - event.lat) < 10 && Math.abs(n.lon - event.lon) < 30
-            );
-            if (isDupe) continue;
-          }
-          const k = `${event.lat.toFixed(1)}-${event.lon.toFixed(1)}-${event.category}`;
-          if (!seenLocations.has(k)) {
-            seenLocations.add(k);
-            merged.push(event);
-          }
-        }
-        for (const event of eonetEvents) {
-          const k = `${event.lat.toFixed(1)}-${event.lon.toFixed(1)}-${event.category}`;
-          if (!seenLocations.has(k)) {
-            seenLocations.add(k);
-            merged.push(event);
-          }
-        }
-
-        return merged.length > 0 ? { events: merged } : null;
+        const { events } = await fetchFreshNaturalEvents();
+        return events.length > 0 ? { events } : null;
       },
     );
     return result || { events: [] };
