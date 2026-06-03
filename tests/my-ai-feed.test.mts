@@ -51,3 +51,39 @@ describe('buildMyAiFeeds — RSSHub sources (env set)', () => {
     assert.equal(feeds.length, 8);
   });
 });
+
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT = resolve(__dirname, '..');
+const feedsSrc = readFileSync(resolve(ROOT, 'src/config/feeds.ts'), 'utf-8');
+
+describe('feeds.ts registration', () => {
+  it('imports the My AI Feed builder', () => {
+    assert.match(feedsSrc, /import \{ buildMyAiFeeds \} from '\.\/my-ai-feed';/);
+  });
+
+  it('registers my-ai-feed as a CANONICAL-only category with rss-wrapped urls', () => {
+    assert.match(
+      feedsSrc,
+      /'my-ai-feed':\s*buildMyAiFeeds\(\)\.map\(\(f\) => \(\{ \.\.\.f, url: rss\(f\.url as string\) \}\)\)/,
+    );
+  });
+
+  it('does NOT add my-ai-feed to any variant FEEDS preset', () => {
+    const occurrences = feedsSrc.match(/'my-ai-feed':/g) ?? [];
+    assert.equal(occurrences.length, 1, 'my-ai-feed should appear exactly once (CANONICAL map only)');
+  });
+
+  it('tags the static My AI Feed sources in SOURCE_TYPES', () => {
+    for (const name of ['OpenAI News', 'Google DeepMind', 'AI Engineer', 'Anthropic Engineering', 'OpenAI Research']) {
+      assert.match(feedsSrc, new RegExp(`'${name}':\\s*'tech'`), `${name} should be a tech SOURCE_TYPE`);
+    }
+  });
+
+  it('does NOT add my-ai-feed to DEFAULT_ENABLED_SOURCES (CANONICAL sources are enabled by default)', () => {
+    assert.doesNotMatch(feedsSrc, /DEFAULT_ENABLED_SOURCES[\s\S]*'my-ai-feed':/);
+  });
+});

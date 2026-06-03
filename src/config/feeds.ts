@@ -2,6 +2,7 @@ import type { Feed } from '@/types';
 import { SITE_VARIANT } from './variant';
 import { rssProxyUrl } from '@/utils';
 import { mergeCanonicalFeeds } from './feed-resolution';
+import { buildMyAiFeeds } from './my-ai-feed';
 
 const rss = rssProxyUrl;
 const railwayRss = rssProxyUrl;
@@ -14,6 +15,10 @@ export { SOURCE_TIERS, getSourceTier } from '../../server/_shared/source-tiers';
 export type SourceType = 'wire' | 'gov' | 'intel' | 'mainstream' | 'market' | 'tech' | 'other';
 
 export const SOURCE_TYPES: Record<string, SourceType> = {
+  // My AI Feed (curated AI sources) — kept in sync with src/config/my-ai-feed.ts
+  'OpenAI News': 'tech', 'Google DeepMind': 'tech', 'AI Engineer': 'tech',
+  'Anthropic Engineering': 'tech', 'OpenAI Research': 'tech',
+
   // Wire services - fastest, most authoritative
   'Reuters': 'wire', 'Reuters World': 'wire', 'Reuters Business': 'wire',
   'AP News': 'wire', 'AFP': 'wire', 'Bloomberg': 'wire',
@@ -1012,6 +1017,12 @@ export const CANONICAL_FEEDS: Record<string, Feed[]> = mergeCanonicalFeeds([
   COMMODITY_FEEDS,
   ENERGY_FEEDS,
   HAPPY_FEEDS,
+  // "My AI Feed" — CANONICAL-only category (intentionally absent from every
+  // variant's FEEDS preset). resolveNewsCategories() marks it isCustom in all
+  // variants, so the client fetches its full set directly and the per-variant
+  // server digest never needs to carry it. URLs are wrapped with rss() here so
+  // the builder in my-ai-feed.ts stays proxy-free and unit-testable.
+  { 'my-ai-feed': buildMyAiFeeds().map((f) => ({ ...f, url: rss(f.url as string) })) },
 ]);
 
 export const SOURCE_REGION_MAP: Record<string, { labelKey: string; feedKeys: string[] }> = {
