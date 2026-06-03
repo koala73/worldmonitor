@@ -61,10 +61,12 @@ Current audit results in the `origin/main` worktree at `e1739afc4758e664d13aae54
 - `npm audit --omit=dev --json`: 0 critical, 0 high, 12 moderate.
 - `npm audit --json`: 0 critical, 0 high, 13 moderate.
 
+These counts are lower than the earlier round-4 refresh because this section is a fresh point-in-time audit of the current `origin/main` tree, not a reduction produced by this R6-3 pass. npm's current report no longer includes the earlier Anthropic SDK, mapping/vector, Convex, Telegram, or shared websocket advisory families in this lockfile; the remaining production findings are the Clerk wallet chain.
+
 The production findings are the Clerk wallet chain:
 
 - `@clerk/clerk-js@6.13.0` directly pins `@solana/wallet-adapter-base@0.9.27`, `@solana/wallet-adapter-react@0.15.39`, and `@solana/wallet-standard@1.1.4`.
-- The Solana wallet packages peer on `@solana/web3.js@^1.98.x`; the resolved and latest stable release is `@solana/web3.js@1.98.4`.
+- The Solana wallet packages peer on `@solana/web3.js@^1.98.0`; the resolved and latest stable release is `@solana/web3.js@1.98.4`.
 - `@solana/web3.js@1.98.4` depends on `jayson@^4.1.1`; the resolved and latest release is `jayson@4.3.0`.
 - `jayson@4.3.0` depends on `uuid@^8.3.2`, which remains inside the `uuid <11.1.1` advisory range.
 
