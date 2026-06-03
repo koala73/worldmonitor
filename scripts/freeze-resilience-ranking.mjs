@@ -225,7 +225,7 @@ async function fetchJson(url, headers) {
   const response = await fetch(url, { headers });
   if (!response.ok) {
     const body = await response.text().catch(() => '');
-    const credentialHint = response.status === 401 && url.startsWith(SCORE_URL) && !process.env.WORLDMONITOR_API_KEY
+    const credentialHint = response.status === 401 && SCORE_URL && url.startsWith(SCORE_URL) && !process.env.WORLDMONITOR_API_KEY
       ? ' Set WORLDMONITOR_API_KEY to a Pro/API key; post-flip ranking snapshots must verify score anchors through get-resilience-score and cannot be captured from an unauthenticated shell.'
       : '';
     throw new Error(`HTTP ${response.status} from ${url}: ${body}${credentialHint}`);

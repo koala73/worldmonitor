@@ -54,6 +54,11 @@ function readJson(path: string): unknown {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 
+function readTextFile(path: string): string {
+  assert.ok(existsSync(path), `${path} must exist`);
+  return readFileSync(path, 'utf8');
+}
+
 function listSnapshotFiles(re: RegExp): string[] {
   if (!existsSync(snapshotDir)) return [];
   return readdirSync(snapshotDir)
@@ -100,6 +105,66 @@ function assertFormulaMetadata(artifact: Record<string, unknown>, label: string)
       artifact.generatedAt >= PC_VALIDATION_ARTIFACT_MIN_GENERATED_AT,
       `${label} pc artifact generatedAt ${new Date(artifact.generatedAt).toISOString()} must be at or after ${new Date(PC_VALIDATION_ARTIFACT_MIN_GENERATED_AT).toISOString()}`,
     );
+  }
+}
+
+function assertEnergyV2AcceptanceArtifact(artifact: Record<string, unknown>, filename: string): void {
+  const [, fileDate] = ENERGY_V2_ACCEPTANCE_RE.exec(filename)!;
+
+  assert.equal(artifact.artifactType, 'resilience-energy-v2-post-flip-acceptance');
+  assert.equal(artifact.capturedAt, fileDate, `${filename}.capturedAt must match the filename date`);
+  assert.ok(!('_note' in artifact), `${filename} must not be a placeholder`);
+  assert.notEqual(
+    artifact.comparison,
+    'currentDomainAggregate_vs_proposedPillarCombined',
+    `${filename} must not be the pillar-combine comparison harness output.`,
+  );
+  const generatedAt = assertString(artifact.generatedAt, `${filename}.generatedAt`);
+  const generatedAtMs = Date.parse(generatedAt);
+  assert.ok(!Number.isNaN(generatedAtMs), `${filename}.generatedAt must be an ISO timestamp`);
+  assert.ok(
+    generatedAtMs >= PC_VALIDATION_ARTIFACT_MIN_GENERATED_AT,
+    `${filename}.generatedAt ${new Date(generatedAtMs).toISOString()} must be at or after ${new Date(PC_VALIDATION_ARTIFACT_MIN_GENERATED_AT).toISOString()}`,
+  );
+
+  const runtime = asRecord(artifact.runtime, `${filename}.runtime`);
+  const manifest = asRecord(runtime.manifest, `${filename}.runtime.manifest`);
+  assert.equal(manifest.formulaTag, 'pc');
+  assert.equal(asRecord(manifest.constructVersions, `${filename}.runtime.manifest.constructVersions`).energy, 'v2');
+  const rankingCache = asRecord(manifest.rankingCache, `${filename}.runtime.manifest.rankingCache`);
+  assert.equal(rankingCache.count, 196);
+  assert.equal(rankingCache.scored, 196);
+  assert.equal(rankingCache.total, 196);
+
+  const health = asRecord(runtime.health, `${filename}.runtime.health`);
+  const checks = asRecord(health.energyV2SeedChecks, `${filename}.runtime.health.energyV2SeedChecks`);
+  for (const checkName of ['lowCarbonGeneration', 'fossilElectricityShare', 'powerLosses']) {
+    assert.equal(checks[checkName], 'OK', `${filename} health check ${checkName} must be OK`);
+  }
+
+  const baseline = asRecord(artifact.baseline, `${filename}.baseline`);
+  assert.match(
+    assertString(baseline.rankingSnapshot, `${filename}.baseline.rankingSnapshot`),
+    /docs\/snapshots\/resilience-ranking-live-(?:pre-pr1-flip|pre-repair)-\d{4}-\d{2}-\d{2}\.json$/,
+  );
+  const postFlip = asRecord(artifact.postFlip, `${filename}.postFlip`);
+  assert.match(
+    assertString(postFlip.rankingSnapshot, `${filename}.postFlip.rankingSnapshot`),
+    /docs\/snapshots\/resilience-ranking-live-post-pr1-\d{4}-\d{2}-\d{2}\.json$/,
+  );
+
+  const acceptanceGates = asRecord(artifact.acceptanceGates, `${filename}.acceptanceGates`);
+  assert.equal(acceptanceGates.verdict, 'PASS');
+  const results = acceptanceGates.results;
+  assert.ok(Array.isArray(results), `${filename}.acceptanceGates.results must be an array`);
+  const resultById = new Map(results.map((rawResult) => {
+    const result = asRecord(rawResult, `${filename}.acceptanceGates.result`);
+    return [assertString(result.id, `${filename}.acceptanceGates.result.id`), result];
+  }));
+  for (const gateId of REQUIRED_ENERGY_V2_ACCEPTANCE_GATES) {
+    const gate = resultById.get(gateId);
+    assert.ok(gate, `${filename} must include ${gateId}`);
+    assert.equal(gate.status, 'pass', `${filename} ${gateId} must pass for a committed post-flip acceptance artifact`);
   }
 }
 
@@ -206,10 +271,10 @@ describe('resilience validation artifacts', () => {
   it('keeps missing post-flip energy-v2 artifact capture explicit and actionable', () => {
     const postFlipRankingFiles = listSnapshotFiles(POST_FLIP_RANKING_RE);
     const energyV2AcceptanceFiles = listSnapshotFiles(ENERGY_V2_ACCEPTANCE_RE);
-    const runbook = readFileSync(runbookPath, 'utf8');
-    const methodology = readFileSync(methodologyPath, 'utf8');
-    const freezeScript = readFileSync(freezeScriptPath, 'utf8');
-    const compareScript = readFileSync(compareScriptPath, 'utf8');
+    const runbook = readTextFile(runbookPath);
+    const methodology = readTextFile(methodologyPath);
+    const freezeScript = readTextFile(freezeScriptPath);
+    const compareScript = readTextFile(compareScriptPath);
 
     assert.match(
       runbook,
@@ -311,55 +376,49 @@ describe('resilience validation artifacts', () => {
     }
   });
 
+  it('rejects backdated energy-v2 post-flip acceptance artifact timestamps', () => {
+    const filename = 'resilience-energy-v2-acceptance-2026-06-03.json';
+    const backdatedArtifact = {
+      artifactType: 'resilience-energy-v2-post-flip-acceptance',
+      capturedAt: '2026-06-03',
+      comparison: 'energyV2PostFlipAcceptance',
+      generatedAt: '2026-05-27T00:00:00.000Z',
+      runtime: {
+        manifest: {
+          formulaTag: 'pc',
+          constructVersions: { energy: 'v2' },
+          rankingCache: { count: 196, scored: 196, total: 196 },
+        },
+        health: {
+          energyV2SeedChecks: {
+            lowCarbonGeneration: 'OK',
+            fossilElectricityShare: 'OK',
+            powerLosses: 'OK',
+          },
+        },
+      },
+      baseline: {
+        rankingSnapshot: 'docs/snapshots/resilience-ranking-live-pre-pr1-flip-2026-05-27.json',
+      },
+      postFlip: {
+        rankingSnapshot: 'docs/snapshots/resilience-ranking-live-post-pr1-2026-06-03.json',
+      },
+      acceptanceGates: {
+        verdict: 'PASS',
+        results: REQUIRED_ENERGY_V2_ACCEPTANCE_GATES.map((id) => ({ id, status: 'pass' })),
+      },
+    };
+
+    assert.throws(
+      () => assertEnergyV2AcceptanceArtifact(backdatedArtifact, filename),
+      /must be at or after/,
+    );
+  });
+
   it('validates any committed energy-v2 post-flip acceptance artifacts', () => {
     for (const filename of listSnapshotFiles(ENERGY_V2_ACCEPTANCE_RE)) {
-      const [, fileDate] = ENERGY_V2_ACCEPTANCE_RE.exec(filename)!;
       const artifact = asRecord(readJson(resolve(snapshotDir, filename)), filename);
-
-      assert.equal(artifact.artifactType, 'resilience-energy-v2-post-flip-acceptance');
-      assert.equal(artifact.capturedAt, fileDate, `${filename}.capturedAt must match the filename date`);
-      assert.ok(!('_note' in artifact), `${filename} must not be a placeholder`);
-      assert.notEqual(
-        artifact.comparison,
-        'currentDomainAggregate_vs_proposedPillarCombined',
-        `${filename} must not be the pillar-combine comparison harness output.`,
-      );
-      const generatedAt = assertString(artifact.generatedAt, `${filename}.generatedAt`);
-      assert.ok(!Number.isNaN(Date.parse(generatedAt)), `${filename}.generatedAt must be an ISO timestamp`);
-
-      const runtime = asRecord(artifact.runtime, `${filename}.runtime`);
-      const manifest = asRecord(runtime.manifest, `${filename}.runtime.manifest`);
-      assert.equal(manifest.formulaTag, 'pc');
-      assert.equal(asRecord(manifest.constructVersions, `${filename}.runtime.manifest.constructVersions`).energy, 'v2');
-      const rankingCache = asRecord(manifest.rankingCache, `${filename}.runtime.manifest.rankingCache`);
-      assert.equal(rankingCache.count, 196);
-      assert.equal(rankingCache.scored, 196);
-      assert.equal(rankingCache.total, 196);
-
-      const health = asRecord(runtime.health, `${filename}.runtime.health`);
-      const checks = asRecord(health.energyV2SeedChecks, `${filename}.runtime.health.energyV2SeedChecks`);
-      for (const checkName of ['lowCarbonGeneration', 'fossilElectricityShare', 'powerLosses']) {
-        assert.equal(checks[checkName], 'OK', `${filename} health check ${checkName} must be OK`);
-      }
-
-      const baseline = asRecord(artifact.baseline, `${filename}.baseline`);
-      assert.match(assertString(baseline.rankingSnapshot, `${filename}.baseline.rankingSnapshot`), /docs\/snapshots\/resilience-ranking-live-(?:pre-pr1-flip|pre-repair)-\d{4}-\d{2}-\d{2}\.json$/);
-      const postFlip = asRecord(artifact.postFlip, `${filename}.postFlip`);
-      assert.match(assertString(postFlip.rankingSnapshot, `${filename}.postFlip.rankingSnapshot`), /docs\/snapshots\/resilience-ranking-live-post-pr1-\d{4}-\d{2}-\d{2}\.json$/);
-
-      const acceptanceGates = asRecord(artifact.acceptanceGates, `${filename}.acceptanceGates`);
-      assert.equal(acceptanceGates.verdict, 'PASS');
-      const results = acceptanceGates.results;
-      assert.ok(Array.isArray(results), `${filename}.acceptanceGates.results must be an array`);
-      const resultById = new Map(results.map((rawResult) => {
-        const result = asRecord(rawResult, `${filename}.acceptanceGates.result`);
-        return [assertString(result.id, `${filename}.acceptanceGates.result.id`), result];
-      }));
-      for (const gateId of REQUIRED_ENERGY_V2_ACCEPTANCE_GATES) {
-        const gate = resultById.get(gateId);
-        assert.ok(gate, `${filename} must include ${gateId}`);
-        assert.equal(gate.status, 'pass', `${filename} ${gateId} must pass for a committed post-flip acceptance artifact`);
-      }
+      assertEnergyV2AcceptanceArtifact(artifact, filename);
     }
   });
 });
