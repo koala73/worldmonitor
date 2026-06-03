@@ -9,6 +9,12 @@ import {
   PC_VALIDATION_ARTIFACT_MIN_GENERATED_AT,
   methodologyFormulaForCacheFormula,
 } from '../scripts/lib/resilience-formula.mjs';
+import {
+  buildAcceptanceArtifact,
+  buildGateResults,
+} from '../scripts/capture-resilience-energy-v2-acceptance.mjs';
+import { RESILIENCE_COHORTS } from './helpers/resilience-cohorts.mts';
+import { MATCHED_PAIRS } from './helpers/resilience-matched-pairs.mts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const validationDir = resolve(here, '../docs/methodology/country-resilience-index/validation');
@@ -19,6 +25,7 @@ const runbookPath = resolve(here, '../docs/methodology/energy-v2-flag-flip-runbo
 const methodologyPath = resolve(here, '../docs/methodology/country-resilience-index.mdx');
 const freezeScriptPath = resolve(here, '../scripts/freeze-resilience-ranking.mjs');
 const compareScriptPath = resolve(here, '../scripts/compare-resilience-current-vs-proposed.mjs');
+const energyV2CaptureScriptPath = resolve(here, '../scripts/capture-resilience-energy-v2-acceptance.mjs');
 
 const EXPECTED_BENCHMARK_INDICES = ['HDI', 'INFORM', 'WorldRiskIndex'];
 const EXPECTED_BACKTEST_FAMILIES = [
@@ -275,6 +282,7 @@ describe('resilience validation artifacts', () => {
     const methodology = readTextFile(methodologyPath);
     const freezeScript = readTextFile(freezeScriptPath);
     const compareScript = readTextFile(compareScriptPath);
+    const energyV2CaptureScript = readTextFile(energyV2CaptureScriptPath);
 
     assert.match(
       runbook,
@@ -303,6 +311,16 @@ describe('resilience validation artifacts', () => {
       /currentDomainAggregate_vs_proposedPillarCombined/,
       'compare script must remain identifiable as the pillar-combine harness, not the energy-v2 post-flip acceptance artifact.',
     );
+    assert.match(
+      energyV2CaptureScript,
+      /requires a committed post-flip PR1 ranking artifact/i,
+      'energy-v2 acceptance harness must require real post-flip ranking evidence before writing an artifact.',
+    );
+    assert.match(
+      runbook,
+      /capture-resilience-energy-v2-acceptance\.mjs/,
+      'runbook must point operators at the dedicated energy-v2 acceptance harness.',
+    );
 
     if (postFlipRankingFiles.length === 0) {
       assert.match(
@@ -320,8 +338,8 @@ describe('resilience validation artifacts', () => {
     if (energyV2AcceptanceFiles.length === 0) {
       assert.match(
         runbook,
-        /dedicated energy-v2 acceptance harness[\s\S]*do not commit (?:a )?synthetic acceptance JSON/i,
-        'runbook must block synthetic energy-v2 acceptance artifacts while the dedicated harness is absent.',
+        /capture-resilience-energy-v2-acceptance\.mjs[\s\S]*do\s+not commit (?:a )?synthetic acceptance JSON/i,
+        'runbook must block synthetic energy-v2 acceptance artifacts until the dedicated harness returns PASS.',
       );
       assert.match(
         runbook,
@@ -329,6 +347,86 @@ describe('resilience validation artifacts', () => {
         'runbook must name the required energy-v2 acceptance artifact pattern.',
       );
     }
+  });
+
+  it('builds a passing energy-v2 acceptance artifact only from ranking snapshot inputs', () => {
+    const countryCodes = new Set<string>();
+    for (const cohort of RESILIENCE_COHORTS) {
+      for (const countryCode of cohort.countryCodes) countryCodes.add(countryCode);
+    }
+    for (const pair of MATCHED_PAIRS) {
+      countryCodes.add(pair.higherExpected);
+      countryCodes.add(pair.lowerExpected);
+    }
+
+    const scores: Record<string, number> = Object.fromEntries([...countryCodes].map((countryCode) => [countryCode, 50]));
+    for (const pair of MATCHED_PAIRS) {
+      scores[pair.higherExpected] = Math.max(scores[pair.higherExpected] ?? 0, 70);
+      scores[pair.lowerExpected] = Math.min(scores[pair.lowerExpected] ?? 50, 60);
+    }
+    const items = Object.entries(scores).map(([countryCode, overallScore], index) => ({
+      rank: index + 1,
+      countryCode,
+      overallScore,
+    }));
+    const baselineSnapshot = { capturedAt: '2026-04-22', commitSha: 'baseline', items, greyedOut: [] };
+    const postFlipSnapshot = {
+      capturedAt: '2026-06-03',
+      commitSha: 'post-flip',
+      source: 'Live capture via tests',
+      methodologyFormula: 'pillar-combined-penalized-v1',
+      formulaVerification: { declaredFormula: 'pillar-combined-penalized-v1' },
+      items,
+      greyedOut: [],
+    };
+    const extractionCoverage = {
+      totalIndicators: 50,
+      implemented: 45,
+      notImplemented: 5,
+      unregisteredInHarness: 0,
+      coreImplemented: 40,
+      coreTotal: 45,
+      extractionRuleCount: 50,
+    };
+
+    const gates = buildGateResults({
+      baselineScores: scores,
+      postFlipScores: scores,
+      extractionCoverage,
+    });
+    for (const gateId of REQUIRED_ENERGY_V2_ACCEPTANCE_GATES) {
+      assert.equal(gates.find((gate) => gate.id === gateId)?.status, 'pass', `${gateId} should pass on stable fixture rankings`);
+    }
+
+    const artifact = buildAcceptanceArtifact({
+      generatedAt: '2026-06-03T12:00:00.000Z',
+      baseUrl: 'https://www.worldmonitor.app',
+      baselineSnapshotPath: resolve(snapshotDir, 'resilience-ranking-live-pre-repair-2026-04-22.json'),
+      baselineSnapshot,
+      postFlipSnapshotPath: resolve(snapshotDir, 'resilience-ranking-live-post-pr1-2026-06-03.json'),
+      postFlipSnapshot,
+      runtimeEvidence: {
+        manifest: {
+          formulaTag: 'pc',
+          constructVersions: { energy: 'v2' },
+          rankingCache: { count: 196, scored: 196, total: 196 },
+        },
+        health: {
+          checks: {
+            lowCarbonGeneration: { status: 'OK' },
+            fossilElectricityShare: { status: 'OK' },
+            powerLosses: { status: 'OK' },
+          },
+        },
+      },
+      sampledCountryEvidence: { status: 'skipped', countries: [] },
+      extractionCoverage,
+    });
+
+    assert.equal(artifact.acceptanceGates.verdict, 'PASS');
+    assert.equal(artifact.capturedAt, '2026-06-03');
+    assert.equal(artifact.postFlip.rankingTotals.scored, items.length);
+    assertEnergyV2AcceptanceArtifact(asRecord(artifact, 'fixture acceptance artifact'), 'resilience-energy-v2-acceptance-2026-06-03.json');
   });
 
   it('validates any committed post-flip PR1 ranking artifacts', () => {
