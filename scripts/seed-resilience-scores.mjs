@@ -60,8 +60,12 @@ function requireSeedRefreshKey() {
 // v21 → v22 for country-resilience audit round 2 P2-N2/P2-N3: currencyExternal
 // inflation stability and NaN-safe blend math change published score values, so
 // seeder-written scores and rankings must share the server reader namespace.
-// v22 → v23 for country-resilience audit P3-8: observed zero-outage feeds now
-// score as observed-quiet in infrastructure, matching cyberDigital.
+// v22 → v23 batches three same-tag `pc` scorer changes: import-HHI stale /
+// missing source years now derate certainty coverage (#4088), observed
+// zero-outage feeds score as observed-quiet in infrastructure (P3-8), and WTO
+// tradePolicy restriction/barrier rows score one-row-per-reporter severity
+// instead of stale count anchors (P2-1). Seeder-written scores and rankings must
+// share the server reader namespace for the full batch.
 // v23 → v24 for country-resilience audit round 5 R5-2 / PR #4101: governance
 // WGI indicator slot semantics changed under the same `pc` formula tag, so the
 // seeder-written score/ranking namespace must match the server reader bump.
