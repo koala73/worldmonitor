@@ -20,6 +20,10 @@ carrying those findings forward as open work.
 These findings are closed in the current repo state and should not be listed as
 open audit work.
 
+Label crosswalk: `DA-*` covers the methodology/data-audit P-number findings,
+`PT-*` covers the parity-test P-number findings, `FE-*` covers the
+frontend/widget P-number findings, and `R7-ACCEPT` keeps the runbook label.
+
 ### DA-1 through DA-5
 
 The methodology tables now match the active scorer and registry expectations:
