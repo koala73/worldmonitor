@@ -161,6 +161,34 @@ describe('resilience runtime manifest', () => {
     });
   });
 
+  it('reports interval metadata unavailable when the sample methodology is stale', async () => {
+    const modules = await loadRuntimeManifestModules();
+    process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'true';
+    installRedis({
+      [modules.RESILIENCE_INTERVALS_META_KEY]: {
+        fetchedAt: Date.parse('2026-05-30T10:00:00.000Z'),
+      },
+      'resilience:intervals:v8:US': {
+        p05: 65.2,
+        p95: 72.8,
+        _formula: 'pc',
+        computedAt: '2026-05-30T11:00:00.000Z',
+        methodology: 'legacy-weight-perturbation-v2',
+      },
+    }, { keepVercelEnv: true });
+
+    const response = await modules.getResilienceRuntimeManifest({
+      request: new Request('https://worldmonitor.app/api/resilience/v1/get-runtime-manifest'),
+    } as never);
+
+    assert.deepEqual(response.intervals, {
+      available: false,
+      methodology: 'weight-perturbation-sensitivity-v3',
+      sampleCountry: 'US',
+      lastObservedAt: '2026-05-30T11:00:00.000Z',
+    });
+  });
+
   it('exposes derived construct state without raw env names, cache keys, or secrets', async () => {
     const modules = await loadRuntimeManifestModules();
     process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'true';

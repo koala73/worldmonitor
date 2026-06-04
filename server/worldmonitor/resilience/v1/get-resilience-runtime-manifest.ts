@@ -14,7 +14,9 @@ import {
   RESILIENCE_INTERVAL_METHODOLOGY,
   RESILIENCE_INTERVALS_META_KEY,
   getCurrentCacheFormula,
+  isCurrentResilienceIntervalPayload,
   isEnergyV2Enabled,
+  type ResilienceIntervalPayload,
 } from './_shared';
 
 const MANIFEST_VERSION = 4;
@@ -45,14 +47,6 @@ interface RankingMeta {
   total?: unknown;
 }
 
-interface IntervalPayload {
-  p05?: unknown;
-  p95?: unknown;
-  _formula?: unknown;
-  methodology?: unknown;
-  computedAt?: unknown;
-}
-
 function toIsoDate(value: unknown): string {
   const iso = toIsoTimestamp(value);
   return iso ? iso.slice(0, 10) : '';
@@ -81,27 +75,14 @@ function latestIsoTimestamp(values: unknown[]): string {
   return new Date(Math.max(...timestamps)).toISOString();
 }
 
-function isCurrentIntervalPayload(value: unknown): value is IntervalPayload {
-  if (!value || typeof value !== 'object') return false;
-  const payload = value as IntervalPayload;
-  return (
-    typeof payload.p05 === 'number' &&
-    Number.isFinite(payload.p05) &&
-    typeof payload.p95 === 'number' &&
-    Number.isFinite(payload.p95) &&
-    payload._formula === getCurrentCacheFormula() &&
-    payload.methodology === RESILIENCE_INTERVAL_METHODOLOGY
-  );
-}
-
 async function getIntervalState(): Promise<ResilienceRuntimeIntervalState> {
   const [intervalMeta, sampleInterval] = await Promise.all([
     getCachedJson(RESILIENCE_INTERVALS_META_KEY, true) as Promise<SeedMeta | null>,
-    getCachedJson(`${RESILIENCE_INTERVAL_KEY_PREFIX}${INTERVAL_SAMPLE_COUNTRY}`, true) as Promise<IntervalPayload | null>,
+    getCachedJson(`${RESILIENCE_INTERVAL_KEY_PREFIX}${INTERVAL_SAMPLE_COUNTRY}`, true) as Promise<ResilienceIntervalPayload | null>,
   ]);
 
   return {
-    available: isCurrentIntervalPayload(sampleInterval),
+    available: isCurrentResilienceIntervalPayload(sampleInterval),
     methodology: RESILIENCE_INTERVAL_METHODOLOGY,
     sampleCountry: INTERVAL_SAMPLE_COUNTRY,
     lastObservedAt: latestIsoTimestamp([

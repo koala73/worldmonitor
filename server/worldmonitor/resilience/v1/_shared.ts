@@ -383,11 +383,13 @@ interface ResilienceHistoryPoint {
   formula: CacheFormulaTag;
 }
 
-interface CachedScoreIntervalPayload extends ScoreInterval {
-  _formula?: CacheFormulaTag;
-  draws?: number;
-  computedAt?: string;
-  methodology?: string;
+export interface ResilienceIntervalPayload {
+  p05?: unknown;
+  p95?: unknown;
+  _formula?: unknown;
+  draws?: unknown;
+  computedAt?: unknown;
+  methodology?: unknown;
 }
 
 interface ResilienceStaticIndex {
@@ -413,10 +415,8 @@ function intervalCacheKey(countryCode: string): string {
 }
 
 async function readScoreInterval(countryCode: string): Promise<ScoreInterval | undefined> {
-  const raw = await getCachedJson(intervalCacheKey(countryCode), true) as CachedScoreIntervalPayload | null;
-  if (!raw || typeof raw.p05 !== 'number' || typeof raw.p95 !== 'number') return undefined;
-  if (raw._formula !== currentCacheFormula()) return undefined;
-  return { p05: raw.p05, p95: raw.p95 };
+  const raw = await getCachedJson(intervalCacheKey(countryCode), true) as ResilienceIntervalPayload | null;
+  return toCurrentScoreInterval(raw);
 }
 
 function historyKey(countryCode: string): string {
@@ -898,6 +898,31 @@ export function rankingCacheTagMatches(payload: unknown): boolean {
   const tag = (payload as { _formula?: unknown })._formula;
   const intervalMethodology = (payload as { _intervalMethodology?: unknown })._intervalMethodology;
   return tag === currentCacheFormula() && intervalMethodology === RESILIENCE_INTERVAL_METHODOLOGY;
+}
+
+export function isCurrentResilienceIntervalPayload(
+  value: unknown,
+): value is ResilienceIntervalPayload & {
+  p05: number;
+  p95: number;
+  _formula: string;
+  methodology: typeof RESILIENCE_INTERVAL_METHODOLOGY;
+} {
+  if (!value || typeof value !== 'object') return false;
+  const payload = value as ResilienceIntervalPayload;
+  return (
+    typeof payload.p05 === 'number' &&
+    Number.isFinite(payload.p05) &&
+    typeof payload.p95 === 'number' &&
+    Number.isFinite(payload.p95) &&
+    payload._formula === currentCacheFormula() &&
+    payload.methodology === RESILIENCE_INTERVAL_METHODOLOGY
+  );
+}
+
+export function toCurrentScoreInterval(value: unknown): ScoreInterval | undefined {
+  if (!isCurrentResilienceIntervalPayload(value)) return undefined;
+  return { p05: value.p05, p95: value.p95 };
 }
 
 export async function ensureResilienceScoreCached(countryCode: string, reader?: ResilienceSeedReader): Promise<GetResilienceScoreResponse> {

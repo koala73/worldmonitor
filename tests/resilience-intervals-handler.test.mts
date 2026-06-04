@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import { getResilienceScore } from '../server/worldmonitor/resilience/v1/get-resilience-score.ts';
+import { RESILIENCE_INTERVAL_METHODOLOGY } from '../server/worldmonitor/resilience/v1/_shared.ts';
 import { createRedisFetch } from './helpers/fake-upstash-redis.mts';
 import { RESILIENCE_FIXTURES } from './helpers/resilience-fixtures.mts';
 
@@ -38,7 +39,7 @@ describe('resilience score interval integration', () => {
         _formula: 'd6',
         draws: 100,
         computedAt: '2026-04-06T00:00:00.000Z',
-        methodology: 'weight-perturbation-sensitivity-v3',
+        methodology: RESILIENCE_INTERVAL_METHODOLOGY,
       },
     };
 
@@ -69,7 +70,7 @@ describe('resilience score interval integration', () => {
         _formula: 'pc',
         draws: 100,
         computedAt: '2026-04-06T00:00:00.000Z',
-        methodology: 'weight-perturbation-sensitivity-v3',
+        methodology: RESILIENCE_INTERVAL_METHODOLOGY,
       },
     };
 
@@ -82,6 +83,35 @@ describe('resilience score interval integration', () => {
     );
 
     assert.equal(response.scoreInterval, undefined, 'stale-formula scoreInterval should be ignored');
+  });
+
+  it('omits wrong-methodology interval data', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'false';
+    delete process.env.VERCEL_ENV;
+
+    const fixtures = {
+      ...RESILIENCE_FIXTURES,
+      'resilience:intervals:v8:US': {
+        p05: 65.2,
+        p95: 72.8,
+        _formula: 'd6',
+        draws: 100,
+        computedAt: '2026-04-06T00:00:00.000Z',
+        methodology: 'legacy-weight-perturbation-v2',
+      },
+    };
+
+    const { fetchImpl } = createRedisFetch(fixtures);
+    globalThis.fetch = fetchImpl;
+
+    const response = await getResilienceScore(
+      { request: new Request('https://example.com') } as never,
+      { countryCode: 'US' },
+    );
+
+    assert.equal(response.scoreInterval, undefined, 'wrong-methodology scoreInterval should be ignored');
   });
 
   it('omits untagged interval data', async () => {
