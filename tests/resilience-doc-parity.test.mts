@@ -108,6 +108,30 @@ const ACTIVE_ENERGY_V2_INDICATOR_WEIGHTS = new Map([
   ['euGasStorageStress', 0.10],
   ['energyPriceStress', 0.15],
 ]);
+const SCORER_TABLE_PARITY_SPECS = new Map<string, readonly MethodologyIndicatorSpec[]>([
+  ['Infrastructure', [
+    { id: 'electricityAccess', direction: 'Higher is better', goalposts: '40 - 100', weight: 0.30 },
+    { id: 'roadsPavedInfra', direction: 'Higher is better', goalposts: '0 - 100', weight: 0.30 },
+    { id: 'infraOutages', direction: 'Lower is better', goalposts: '20 - 0', weight: 0.25 },
+    { id: 'broadband', direction: 'Higher is better', goalposts: '0 - 40', weight: 0.15 },
+  ]],
+  ['Social Cohesion', [
+    { id: 'gpiScore', direction: 'Lower is better', goalposts: '3.6 - 1.0', weight: 0.55 },
+    { id: 'displacementTotal', direction: 'Lower is better', goalposts: '7 - 0', weight: 0.25 },
+    { id: 'unrestEvents', direction: 'Lower is better', goalposts: '10 - 0', weight: 0.20 },
+  ]],
+  ['Conflict & Displacement', [
+    { id: 'ucdpConflict', direction: 'Lower is better', goalposts: '15 - 0', weight: 0.65 },
+    { id: 'displacementHosted', direction: 'Lower is better', goalposts: '7 - 0', weight: 0.35 },
+  ]],
+  ['Health & Public Service', [
+    { id: 'uhcIndex', direction: 'Higher is better', goalposts: '40 - 90', weight: 0.35 },
+    { id: 'measlesCoverage', direction: 'Higher is better', goalposts: '50 - 99', weight: 0.25 },
+    { id: 'hospitalBeds', direction: 'Higher is better', goalposts: '0 - 8', weight: 0.10 },
+    { id: 'physiciansPer1k', direction: 'Higher is better', goalposts: '0 - 5', weight: 0.15 },
+    { id: 'healthExpPerCapitaUsd', direction: 'Higher is better', goalposts: '20 - 3000', weight: 0.15 },
+  ]],
+]);
 const LEGACY_ONLY_ENERGY_INDICATORS = new Set([
   'energyImportDependency',
   'gasShare',
@@ -139,6 +163,19 @@ const DIMENSION_LABELS: Readonly<Record<ResilienceDimensionId, string>> = {
   liquidReserveAdequacy: 'Liquid Reserve Adequacy',
   sovereignFiscalBuffer: 'Sovereign Fiscal Buffer',
 };
+
+interface MethodologyIndicatorSpec {
+  id: string;
+  direction: string;
+  goalposts: string;
+  weight: number;
+}
+
+interface MethodologyIndicatorRow extends MethodologyIndicatorSpec {
+  description: string;
+  source: string;
+  cadence: string;
+}
 
 describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
   it('cache prefixes named in the changelog match the live constants', () => {
@@ -456,6 +493,66 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
     }
   });
 
+  it('affected methodology indicator tables match live scorer specs', () => {
+    for (const [section, expectedRows] of SCORER_TABLE_PARITY_SPECS) {
+      const actualRows = extractIndicatorRowsForSection(docText, section);
+      const expectedIds = expectedRows.map((row) => row.id);
+      const actualIds = actualRows.map((row) => row.id);
+      assert.deepEqual(
+        actualIds,
+        expectedIds,
+        `${section} methodology table must list exactly the indicators used by the current scorer, in scorer order.`,
+      );
+
+      for (const expected of expectedRows) {
+        const actual = actualRows.find((row) => row.id === expected.id);
+        assert.ok(actual, `${section} methodology table row for ${expected.id} not found.`);
+        assert.equal(
+          actual.direction,
+          expected.direction,
+          `${section}.${expected.id} direction must match scorer semantics.`,
+        );
+        assert.equal(
+          actual.goalposts,
+          expected.goalposts,
+          `${section}.${expected.id} goalposts must match scorer normalizeHigherBetter/normalizeLowerBetter anchors.`,
+        );
+        assert.equal(
+          actual.weight,
+          expected.weight,
+          `${section}.${expected.id} weight must match the current weightedBlend input.`,
+        );
+      }
+    }
+  });
+
+  it('trend enum prose matches the response enum', () => {
+    assert.match(
+      docText,
+      /Direction of score movement over the last 30 days \(`rising`, `stable`, or `falling`\)/,
+      'Methodology trend prose must document the live rising/stable/falling enum.',
+    );
+    assert.doesNotMatch(
+      docText,
+      /`improving`, `stable`, or `declining`/,
+      'Methodology trend prose must not preserve the stale improving/stable/declining enum.',
+    );
+  });
+
+  it('Social Cohesion GPI-only unrest prose documents the non-comprehensive source fallback', () => {
+    const sectionText = extractSectionText(docText, 'Social Cohesion');
+    assert.match(
+      sectionText,
+      /zero unrest events\s+fall back to `curated_list_absent` at 50\/coverage 0\.3 \(`unmonitored`\)/,
+      'Social Cohesion prose must document the live curated_list_absent fallback for GPI-only zero-unrest rows.',
+    );
+    assert.doesNotMatch(
+      sectionText,
+      /zero unrest events\s+(?:are\s+)?imputed at 70\/coverage 0\.5/,
+      'Social Cohesion prose must not preserve the stale stable-absence 70/0.5 unrest fallback.',
+    );
+  });
+
   it('indicator source catalog labels energy-v2 rows as active and legacy-only rows as replaced', () => {
     for (const id of ACTIVE_ENERGY_V2_INDICATOR_WEIGHTS.keys()) {
       const block = extractIndicatorSourceBlock(indicatorSourceCatalogText, id);
@@ -552,14 +649,7 @@ function escapeRegex(s: string): string {
 }
 
 function extractIndicatorWeightsForSection(text: string, sectionHeading: string): Map<string, number> {
-  const headingRe = new RegExp(`^#### ${escapeRegex(sectionHeading)}\\s*$`, 'm');
-  const headingMatch = headingRe.exec(text);
-  assert.ok(headingMatch, `Methodology section "${sectionHeading}" not found.`);
-
-  const sectionStart = headingMatch.index + headingMatch[0].length;
-  const rest = text.slice(sectionStart);
-  const nextHeadingMatch = /^#{3,4}\s.+$/m.exec(rest);
-  const sectionText = nextHeadingMatch == null ? rest : rest.slice(0, nextHeadingMatch.index);
+  const sectionText = extractSectionText(text, sectionHeading);
 
   const rows = [...sectionText.matchAll(/^\|\s*([^|\s][^|]*?)\s*\|(?:[^|]*\|){3}\s*([0-9.]+)\s*\|/gm)];
   const weights = new Map<string, number>();
@@ -569,6 +659,44 @@ function extractIndicatorWeightsForSection(text: string, sectionHeading: string)
     weights.set(indicatorId, Number(row[2]));
   }
   return weights;
+}
+
+function extractIndicatorRowsForSection(text: string, sectionHeading: string): MethodologyIndicatorRow[] {
+  const sectionText = extractSectionText(text, sectionHeading);
+  const rows: MethodologyIndicatorRow[] = [];
+
+  for (const row of sectionText.split('\n')) {
+    if (!row.startsWith('|')) continue;
+    const cells = row
+      .split('|')
+      .map((cell) => decodeMarkdownEntityText(cell.trim()))
+      .filter(Boolean);
+    if (cells.length !== 7 || cells[0] === 'Indicator' || cells[0].startsWith('---')) continue;
+    const weight = Number(cells[4]);
+    assert.ok(Number.isFinite(weight), `Indicator row "${cells[0]}" in "${sectionHeading}" must have a numeric weight.`);
+    rows.push({
+      id: cells[0],
+      description: cells[1],
+      direction: cells[2],
+      goalposts: cells[3],
+      weight,
+      source: cells[5],
+      cadence: cells[6],
+    });
+  }
+
+  return rows;
+}
+
+function extractSectionText(text: string, sectionHeading: string): string {
+  const headingRe = new RegExp(`^#### ${escapeRegex(sectionHeading)}\\s*$`, 'm');
+  const headingMatch = headingRe.exec(text);
+  assert.ok(headingMatch, `Methodology section "${sectionHeading}" not found.`);
+
+  const sectionStart = headingMatch.index + headingMatch[0].length;
+  const rest = text.slice(sectionStart);
+  const nextHeadingMatch = /^#{3,4}\s.+$/m.exec(rest);
+  return nextHeadingMatch == null ? rest : rest.slice(0, nextHeadingMatch.index);
 }
 
 function extractIndicatorWeightsForMarkedTable(

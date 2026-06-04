@@ -22,7 +22,7 @@ The scorer will treat development as relevant only where it creates a direct and
 
 Every indicator in the scorer is evaluated against a single **mechanism test**: *what direct shock channel does this measure?* An indicator whose only answer is "this country is rich" is excluded from the core score regardless of its historical correlation with resilience outcomes. An indicator whose answer is "capacity X absorbs shock Y" can enter but must use a threshold or saturating transform so it rewards the mechanism rather than the level of resource that drives it.
 
-Current production already reflects the recovery-domain, currency/external, and energy construct repairs described below: `reserveAdequacy` and `fuelStockDays` are structurally retired, `liquidReserveAdequacy` and `sovereignFiscalBuffer` are active, `currencyExternal` scores from IMF inflation plus World Bank reserves, `energy` uses the v2 power-system-security construct, and the coverage/influence cap is enforced in tests. The legacy energy scorer remains in code only as the emergency rollback path for `RESILIENCE_ENERGY_V2_ENABLED=false`. `WHO per-capita health spend` remains tagged for follow-up in `docs/methodology/indicator-sources.yaml`.
+Current production already reflects the recovery-domain, currency/external, and energy construct repairs described below: `reserveAdequacy` and `fuelStockDays` are structurally retired, `liquidReserveAdequacy` and `sovereignFiscalBuffer` are active, `currencyExternal` scores from IMF inflation plus World Bank reserves, `energy` uses the v2 power-system-security construct, and the coverage/influence cap is enforced in tests. The legacy energy scorer remains in code only as the emergency rollback path for `RESILIENCE_ENERGY_V2_ENABLED=false`.
 
 ## Construct repair status
 
@@ -175,11 +175,12 @@ landlocked LICs continue to score correctly).
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
-| electricityAccess | Access to electricity, % of population (World Bank EG.ELC.ACCS.ZS) | Higher is better | 40 - 100 | 0.40 | World Bank | Annual |
-| roadsPavedInfra | Paved roads as % of total road network (World Bank IS.ROD.PAVE.ZS) | Higher is better | 0 - 100 | 0.35 | World Bank | Annual |
+| electricityAccess | Access to electricity, % of population (World Bank EG.ELC.ACCS.ZS) | Higher is better | 40 - 100 | 0.30 | World Bank | Annual |
+| roadsPavedInfra | Paved roads as % of total road network (World Bank IS.ROD.PAVE.ZS) | Higher is better | 0 - 100 | 0.30 | World Bank | Annual |
 | infraOutages | Internet outage penalty (shared source with Cyber & Digital) | Lower is better | 20 - 0 | 0.25 | Outage monitoring | Realtime |
+| broadband | Fixed broadband subscriptions per 100 people (World Bank IT.NET.BBND.P2) | Higher is better | 0 - 40 | 0.15 | World Bank | Annual |
 
-**Note on the paved-roads indicator.** The same World Bank series (`IS.ROD.PAVE.ZS`) feeds two dimensions inside the Infrastructure domain: `roadsPavedLogistics` under Logistics & Supply (weight 0.50 within the dimension) and `roadsPavedInfra` here under Infrastructure (weight 0.35 within the dimension). This is deliberate source reuse, not accidental double counting: Logistics & Supply uses paved-road coverage as a proxy for transit viability, while Infrastructure uses it as a proxy for baseline public capital stock. The two dimensions legitimately care about the same signal for different reasons, and each dimension's contribution to the domain is further mediated by the dimension weight in `coverage-weighted mean` aggregation (see the Scoring Formula section). The v2.0 reference-grade upgrade plan is expected to consolidate shared upstream signals into a single indicator registry so this kind of reuse is documented at the source level rather than per-dimension; for v1.0 the two separate metric rows are preserved for backward compatibility.
+**Note on the paved-roads indicator.** The same World Bank series (`IS.ROD.PAVE.ZS`) feeds two dimensions inside the Infrastructure domain: `roadsPavedLogistics` under Logistics & Supply (weight 0.50 within the dimension) and `roadsPavedInfra` here under Infrastructure (weight 0.30 within the dimension). This is deliberate source reuse, not accidental double counting: Logistics & Supply uses paved-road coverage as a proxy for transit viability, while Infrastructure uses it as a proxy for baseline public capital stock. The two dimensions legitimately care about the same signal for different reasons, and each dimension's contribution to the domain is further mediated by the dimension weight in `coverage-weighted mean` aggregation (see the Scoring Formula section). The v2.0 reference-grade upgrade plan is expected to consolidate shared upstream signals into a single indicator registry so this kind of reuse is documented at the source level rather than per-dimension; for v1.0 the two separate metric rows are preserved for backward compatibility.
 
 ### Energy Domain (weight 0.11)
 
@@ -236,7 +237,7 @@ All six WGI indicators are equally weighted.
 |---|---|---|---|---|---|---|
 | gpiScore | Global Peace Index score | Lower is better | 3.6 - 1.0 | 0.55 | IEP | Annual |
 | displacementTotal | UNHCR total displaced persons (log10 scale) | Lower is better | 7 - 0 | 0.25 | UNHCR | Annual |
-| unrestEvents | Severity-weighted unrest events + sqrt(fatalities) | Lower is better | 20 - 0 | 0.20 | Unrest monitoring | Realtime |
+| unrestEvents | Severity-weighted unrest events + sqrt(fatalities), population-normalized per million with a 0.5M floor | Lower is better | 10 - 0 | 0.20 | Unrest monitoring | Realtime |
 
 **v15 (2026-04-26) — gated GPI-only impute for sparse-data tiny
 states.** When both displacement and unrest data were absent for a
@@ -245,16 +246,17 @@ displacement registry), the dimension previously collapsed to GPI
 alone. Tiny peaceful states (TV, PW, NR with GPI ~1.3) rode this to a
 near-perfect ~93 dim score. v15 introduces a gated impute: when the
 country is absent from the displacement registry, displacement is
-imputed at 70/coverage 0.6 (`stable-absence`), and zero unrest events
-are imputed at 70/coverage 0.5 — pulling the blend down to ~80.
-Critically, the unrest impute is gated to GPI-only mode: countries
-WITH observed displacement and zero unrest events keep the historical
-"stable-absence ≈ 85" anchor (matching `IMPUTE.unhcrDisplacement`),
-preserving Iceland/Norway scoring. Per-row imputation flags do not
-bubble up: dim-level `imputationClass` remains null because GPI is
-still observed. Seed-outage paths (raw payload absent) continue to
-drop the weight rather than imputing — the outage-vs-absence
-distinction is preserved.
+imputed at 70/coverage 0.6 (`stable-absence`), while zero unrest events
+fall back to `curated_list_absent` at 50/coverage 0.3 (`unmonitored`)
+because the unrest feed is non-comprehensive. This pulls the blend down
+for tiny peaceful states without treating English-biased source absence
+as a strong stable-absence signal. Countries WITH observed displacement
+and zero unrest events keep the historical "stable-absence ≈ 85" anchor
+(matching `IMPUTE.unhcrDisplacement`), preserving Iceland/Norway scoring.
+Per-row imputation flags do not bubble up: dim-level `imputationClass`
+remains null because GPI is still observed. Seed-outage paths (raw payload
+absent) continue to drop the weight rather than imputing — the
+outage-vs-absence distinction is preserved.
 
 #### Conflict & Displacement
 
@@ -266,7 +268,7 @@ relabeling is tracked in #3737.
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
-| ucdpConflict | UCDP armed conflict: eventCount*2 + typeWeight + sqrt(deaths) | Lower is better | 30 - 0 | 0.65 | UCDP | Realtime |
+| ucdpConflict | UCDP armed conflict: eventCount*2 + typeWeight + sqrt(deaths), population-normalized per million with a 0.5M floor | Lower is better | 15 - 0 | 0.65 | UCDP | Realtime |
 | displacementHosted | UNHCR hosted displaced persons (log10 scale) | Lower is better | 7 - 0 | 0.35 | UNHCR | Annual |
 
 #### Information & Cognitive
@@ -283,9 +285,11 @@ relabeling is tracked in #3737.
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
-| uhcIndex | WHO Universal Health Coverage service coverage index | Higher is better | 40 - 90 | 0.45 | WHO | Annual |
-| measlesCoverage | Measles immunization coverage among 1-year-olds (%) | Higher is better | 50 - 99 | 0.35 | WHO | Annual |
-| hospitalBeds | Hospital beds per 1,000 people | Higher is better | 0 - 8 | 0.20 | WHO | Annual |
+| uhcIndex | WHO Universal Health Coverage service coverage index | Higher is better | 40 - 90 | 0.35 | WHO | Annual |
+| measlesCoverage | Measles immunization coverage among 1-year-olds (%) | Higher is better | 50 - 99 | 0.25 | WHO | Annual |
+| hospitalBeds | Hospital beds per 1,000 people | Higher is better | 0 - 8 | 0.10 | WHO | Annual |
+| physiciansPer1k | Physicians per 1,000 people | Higher is better | 0 - 5 | 0.15 | WHO | Annual |
+| healthExpPerCapitaUsd | Current health expenditure per capita, USD | Higher is better | 20 - 3000 | 0.15 | WHO | Annual |
 
 #### Food & Water
 
@@ -591,7 +595,7 @@ The API response includes additional context fields that are informational and n
 
 - **baselineScore**: Coverage-weighted mean of baseline and mixed dimensions. Reflects structural capacity (governance, health, infrastructure, fiscal strength). Informational only, not used in `overallScore`.
 - **stressScore**: Coverage-weighted mean of stress and mixed dimensions. Reflects current threat environment (cyber, conflict, sanctions, supply disruption). Informational only, not used in `overallScore`.
-- **trend**: Direction of score movement over the last 30 days (`improving`, `stable`, or `declining`), based on daily score history.
+- **trend**: Direction of score movement over the last 30 days (`rising`, `stable`, or `falling`), based on daily score history.
 - **change30d**: Numeric score change over 30 days.
 - **imputationShare**: Fraction of indicator weight from imputed (synthetic) data.
 - **lowConfidence**: Boolean flag when data coverage or imputation thresholds are breached.
