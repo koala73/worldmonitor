@@ -1,10 +1,16 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { jsonResponse } from './_json-response.js';
+import { unwrapEnvelope } from './_seed-envelope.js';
 // @ts-expect-error — JS module, no declaration file
 import { redisPipeline } from './_upstash-json.js';
 
 export const config = { runtime: 'edge' };
+
+const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v8:';
+const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
+const RESILIENCE_INTERVAL_SOURCE_VERSION = `resilience-intervals:${RESILIENCE_INTERVAL_KEY_PREFIX}${RESILIENCE_INTERVAL_METHODOLOGY}`;
+const RESILIENCE_INTERVAL_PROBE_KEY = `${RESILIENCE_INTERVAL_KEY_PREFIX}US`;
 
 const SEED_DOMAINS = {
   // Phase 1 — Snapshot endpoints
@@ -77,7 +83,15 @@ const SEED_DOMAINS = {
   'economic:grocery-basket':  { key: 'seed-meta:economic:grocery-basket',  intervalMin: 5040 }, // weekly seed; intervalMin = maxStaleMin / 2
   'economic:bigmac':          { key: 'seed-meta:economic:bigmac',          intervalMin: 5040 }, // weekly seed; intervalMin = maxStaleMin / 2
   'resilience:static':        { key: 'seed-meta:resilience:static',        intervalMin: 288000 }, // annual October snapshot; intervalMin = health.js maxStaleMin / 2 (400d alert threshold)
-  'resilience:intervals':     { key: 'seed-meta:resilience:intervals',     intervalMin: 10080 }, // weekly cron; intervalMin = health.js maxStaleMin / 2 (20160 / 2)
+  'resilience:intervals':     {
+    key: 'seed-meta:resilience:intervals',
+    intervalMin: 420, // Same 840min freshness budget as api/health.js, expressed as intervalMin * 2.
+    dataProbe: {
+      key: RESILIENCE_INTERVAL_PROBE_KEY,
+      methodology: RESILIENCE_INTERVAL_METHODOLOGY,
+      sourceVersion: RESILIENCE_INTERVAL_SOURCE_VERSION,
+    },
+  },
   'regulatory:actions':       { key: 'seed-meta:regulatory:actions',       intervalMin: 120 }, // 2h cron; intervalMin = maxStaleMin / 3
   'economic:owid-energy-mix': { key: 'seed-meta:economic:owid-energy-mix', intervalMin: 25200 }, // monthly cron on 1st; intervalMin = health.js maxStaleMin / 2 (50400 / 2)
   'economic:fao-ffpi':        { key: 'seed-meta:economic:fao-ffpi',        intervalMin: 43200 }, // monthly seed; intervalMin = health.js maxStaleMin / 2 (86400 / 2)
@@ -111,19 +125,91 @@ const SEED_DOMAINS = {
   'resilience:recovery:sovereign-wealth': { key: 'seed-meta:resilience:recovery:sovereign-wealth', intervalMin: 43200 }, // monthly bundle cron (30d); intervalMin*2 = 60d matches health.js maxStaleMin
 };
 
-async function getMetaBatch(keys) {
-  const pipeline = keys.map((k) => ['GET', k]);
-  const data = await redisPipeline(pipeline, 3000);
-  if (!data) throw new Error('Redis not configured');
+function parseJsonValue(raw) {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
 
-  const result = new Map();
-  for (let i = 0; i < keys.length; i++) {
-    const raw = data[i]?.result;
-    if (raw) {
-      try { result.set(keys[i], JSON.parse(raw)); } catch { /* skip */ }
+function evaluateDataProbe(cfg, raw) {
+  if (!cfg) return null;
+  if (!raw) {
+    return {
+      ok: false,
+      status: 'data_missing',
+      key: cfg.key,
+      requiredMethodology: cfg.methodology ?? null,
+      requiredSourceVersion: cfg.sourceVersion ?? null,
+    };
+  }
+
+  const parsed = unwrapEnvelope(parseJsonValue(raw)).data;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return {
+      ok: false,
+      status: 'data_invalid',
+      key: cfg.key,
+      requiredMethodology: cfg.methodology ?? null,
+      requiredSourceVersion: cfg.sourceVersion ?? null,
+    };
+  }
+
+  const methodology = typeof parsed.methodology === 'string' ? parsed.methodology : null;
+  if (cfg.methodology && methodology !== cfg.methodology) {
+    return {
+      ok: false,
+      status: 'methodology_mismatch',
+      key: cfg.key,
+      methodology,
+      requiredMethodology: cfg.methodology,
+      requiredSourceVersion: cfg.sourceVersion ?? null,
+    };
+  }
+
+  return {
+    ok: true,
+    status: 'ok',
+    key: cfg.key,
+    methodology,
+    requiredMethodology: cfg.methodology ?? null,
+    requiredSourceVersion: cfg.sourceVersion ?? null,
+    formula: typeof parsed._formula === 'string' ? parsed._formula : null,
+    computedAt: typeof parsed.computedAt === 'string' ? parsed.computedAt : null,
+  };
+}
+
+async function getSeedBatch(entries) {
+  const commands = [];
+  const metaSlots = [];
+  const probeSlots = [];
+  for (const [domain, cfg] of entries) {
+    metaSlots.push({ domain, key: cfg.key, index: commands.length });
+    commands.push(['GET', cfg.key]);
+    if (cfg.dataProbe?.key) {
+      probeSlots.push({ domain, index: commands.length });
+      commands.push(['GET', cfg.dataProbe.key]);
     }
   }
-  return result;
+
+  const data = await redisPipeline(commands, 3000);
+  if (!data) throw new Error('Redis not configured');
+
+  const metaMap = new Map();
+  const probeMap = new Map();
+  for (const slot of metaSlots) {
+    const raw = data[slot.index]?.result;
+    if (raw) {
+      const parsed = parseJsonValue(raw);
+      if (parsed) metaMap.set(slot.key, parsed);
+    }
+  }
+  for (const slot of probeSlots) {
+    probeMap.set(slot.domain, data[slot.index]?.result ?? null);
+  }
+  return { metaMap, probeMap };
 }
 
 export default async function handler(req) {
@@ -140,11 +226,11 @@ export default async function handler(req) {
 
   const now = Date.now();
   const entries = Object.entries(SEED_DOMAINS);
-  const metaKeys = entries.map(([, v]) => v.key);
 
   let metaMap;
+  let probeMap;
   try {
-    metaMap = await getMetaBatch(metaKeys);
+    ({ metaMap, probeMap } = await getSeedBatch(entries));
   } catch {
     return jsonResponse({ error: 'Redis unavailable' }, 503, cors);
   }
@@ -165,17 +251,33 @@ export default async function handler(req) {
 
     const ageMs = now - (meta.fetchedAt || 0);
     const isError = meta.status === 'error';
-    const stale = ageMs > maxStalenessMs || isError;
+    const probe = evaluateDataProbe(cfg.dataProbe, probeMap.get(domain));
+    const sourceMismatch = Boolean(
+      cfg.dataProbe?.sourceVersion &&
+      typeof meta.sourceVersion === 'string' &&
+      meta.sourceVersion !== '' &&
+      meta.sourceVersion !== cfg.dataProbe.sourceVersion
+    );
+    const stale = ageMs > maxStalenessMs || isError || sourceMismatch || probe?.ok === false;
     if (stale) staleCount++;
 
     seeds[domain] = {
-      status: stale ? (isError ? 'error' : 'stale') : 'ok',
+      status: isError
+        ? 'error'
+        : sourceMismatch
+          ? 'source_version_mismatch'
+          : probe?.ok === false
+            ? probe.status
+            : stale
+              ? 'stale'
+              : 'ok',
       fetchedAt: meta.fetchedAt,
       recordCount: meta.recordCount ?? null,
       sourceVersion: meta.sourceVersion || null,
       ageMinutes: Math.round(ageMs / 60000),
       stale,
     };
+    if (probe) seeds[domain].dataProbe = probe;
   }
 
   const overall = missingCount > 0 ? 'degraded' : staleCount > 0 ? 'warning' : 'healthy';

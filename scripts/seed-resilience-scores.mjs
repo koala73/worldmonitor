@@ -10,6 +10,7 @@ import { isInRankableUniverse } from './shared/rankable-universe.mjs';
 import {
   DRAWS,
   RESILIENCE_INTERVAL_KEY_PREFIX as INTERVAL_KEY_PREFIX,
+  RESILIENCE_INTERVAL_METHODOLOGY as INTERVAL_METHODOLOGY,
   buildScoreIntervalPayload,
   computeIntervals,
   createIntervalDiagnostics,
@@ -81,6 +82,7 @@ export const RESILIENCE_SCORE_SECTION_META_TTL_SECONDS = 12 * 60 * 60;
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 
 const INTERVAL_TTL_SECONDS = 7 * 24 * 60 * 60;
+const INTERVAL_SOURCE_VERSION = `resilience-intervals:${INTERVAL_KEY_PREFIX}${INTERVAL_METHODOLOGY}`;
 export { computeIntervals };
 
 function isKnownScoreFormulaTag(value) {
@@ -276,7 +278,7 @@ async function computeAndWriteIntervals(url, token, countryCodes, pipelineResult
     );
   }
 
-  await writeFreshnessMetadata('resilience', 'intervals', commands.length, '', INTERVAL_TTL_SECONDS);
+  await writeFreshnessMetadata('resilience', 'intervals', commands.length, INTERVAL_SOURCE_VERSION, INTERVAL_TTL_SECONDS);
   return { recordCount: commands.length, diagnostics };
 }
 
