@@ -32,6 +32,7 @@ const SNAPSHOT_DIR = path.join(REPO_ROOT, 'docs', 'snapshots');
 
 const POST_FLIP_RANKING_RE = /^resilience-ranking-live-post-pr1-(\d{4}-\d{2}-\d{2})\.json$/;
 const BASELINE_RANKING_RE = /^resilience-ranking-live-(?:pre-pr1-flip|pre-repair)-(\d{4}-\d{2}-\d{2})\.json$/;
+const POST_FLIP_RANKING_SNAPSHOT_LABEL = 'post-flip PR1 resilience ranking snapshot';
 const REQUIRED_HEALTH_CHECKS = ['lowCarbonGeneration', 'fossilElectricityShare', 'powerLosses'];
 const REQUIRED_GATE_IDS = [
   'gate-1-spearman',
@@ -56,6 +57,14 @@ const SAMPLE_COUNTRIES = (process.env.RESILIENCE_ENERGY_V2_SAMPLE_COUNTRIES || D
   .split(',')
   .map((countryCode) => countryCode.trim().toUpperCase())
   .filter((countryCode) => /^[A-Z]{2}$/.test(countryCode));
+
+class SnapshotNotFoundError extends Error {
+  constructor(label) {
+    super(`No ${label} found in docs/snapshots/.`);
+    this.name = 'SnapshotNotFoundError';
+    this.label = label;
+  }
+}
 
 function commitSha() {
   try {
@@ -204,15 +213,15 @@ function resolveSnapshotPath(value, label) {
   return resolved;
 }
 
-async function latestSnapshotPath(re, label) {
-  const entries = await fs.readdir(SNAPSHOT_DIR).catch(() => []);
+async function latestSnapshotPath(re, label, snapshotDir = SNAPSHOT_DIR) {
+  const entries = await fs.readdir(snapshotDir).catch(() => []);
   const matches = entries
     .filter((filename) => re.test(filename))
     .sort();
   if (matches.length === 0) {
-    throw new Error(`No ${label} found in docs/snapshots/.`);
+    throw new SnapshotNotFoundError(label);
   }
-  return path.join(SNAPSHOT_DIR, matches.at(-1));
+  return path.join(snapshotDir, matches.at(-1));
 }
 
 function formatMissingPostFlipRankingSnapshotMessage() {
@@ -247,13 +256,13 @@ async function resolveBaselineSnapshotPath() {
   return latestSnapshotPath(BASELINE_RANKING_RE, 'pre-flip/pre-repair resilience ranking snapshot');
 }
 
-async function resolvePostFlipSnapshotPath() {
+async function resolvePostFlipSnapshotPath({ snapshotDir = SNAPSHOT_DIR } = {}) {
   const explicit = resolveSnapshotPath(process.env.POST_FLIP_RANKING_SNAPSHOT, 'POST_FLIP_RANKING_SNAPSHOT');
   if (explicit) return explicit;
   try {
-    return await latestSnapshotPath(POST_FLIP_RANKING_RE, 'post-flip PR1 resilience ranking snapshot');
+    return await latestSnapshotPath(POST_FLIP_RANKING_RE, POST_FLIP_RANKING_SNAPSHOT_LABEL, snapshotDir);
   } catch (err) {
-    if (err instanceof Error && err.message.includes('No post-flip PR1 resilience ranking snapshot found')) {
+    if (err instanceof SnapshotNotFoundError && err.label === POST_FLIP_RANKING_SNAPSHOT_LABEL) {
       throw new Error(formatMissingPostFlipRankingSnapshotMessage());
     }
     throw err;
@@ -581,6 +590,7 @@ export {
   buildGateResults,
   buildSampledCountryEvidenceEntry,
   formatMissingPostFlipRankingSnapshotMessage,
+  resolvePostFlipSnapshotPath,
   snapshotScores,
   snapshotTotals,
 };

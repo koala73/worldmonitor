@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
@@ -16,6 +17,7 @@ import {
   buildGateResults,
   buildSampledCountryEvidenceEntry,
   formatMissingPostFlipRankingSnapshotMessage,
+  resolvePostFlipSnapshotPath,
 } from '../scripts/capture-resilience-energy-v2-acceptance.mjs';
 import { RESILIENCE_COHORTS } from './helpers/resilience-cohorts.mts';
 import { MATCHED_PAIRS } from './helpers/resilience-matched-pairs.mts';
@@ -542,6 +544,33 @@ describe('resilience validation artifacts', () => {
     assert.match(message, /node --import tsx\/esm scripts\/capture-resilience-energy-v2-acceptance\.mjs/);
     assert.match(message, /HTTP 401[\s\S]*get-resilience-score[\s\S]*Pro authentication required/);
     assert.match(message, /gate-7-matched-pair[\s\S]*do not commit a synthetic artifact/);
+  });
+
+  it('routes missing post-flip snapshot resolution through the operator-actionable error', async () => {
+    const emptySnapshotDir = mkdtempSync(join(tmpdir(), 'resilience-post-flip-empty-'));
+    const previousPostFlipRankingSnapshot = process.env.POST_FLIP_RANKING_SNAPSHOT;
+    delete process.env.POST_FLIP_RANKING_SNAPSHOT;
+
+    try {
+      await assert.rejects(
+        () => resolvePostFlipSnapshotPath({ snapshotDir: emptySnapshotDir }),
+        (err: unknown) => {
+          assert.ok(err instanceof Error);
+          assert.match(err.message, /resilience-ranking-live-post-pr1-YYYY-MM-DD\.json/);
+          assert.match(err.message, /WORLDMONITOR_API_KEY=<pro-api-key>/);
+          assert.match(err.message, /HTTP 401[\s\S]*get-resilience-score[\s\S]*Pro authentication required/);
+          assert.match(err.message, /gate-7-matched-pair[\s\S]*do not commit a synthetic artifact/);
+          return true;
+        },
+      );
+    } finally {
+      if (previousPostFlipRankingSnapshot === undefined) {
+        delete process.env.POST_FLIP_RANKING_SNAPSHOT;
+      } else {
+        process.env.POST_FLIP_RANKING_SNAPSHOT = previousPostFlipRankingSnapshot;
+      }
+      rmSync(emptySnapshotDir, { recursive: true, force: true });
+    }
   });
 
   it('validates any committed post-flip PR1 ranking artifacts', () => {
