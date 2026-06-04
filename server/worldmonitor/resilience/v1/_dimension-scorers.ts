@@ -1,5 +1,6 @@
 import countryNames from '../../../../shared/country-names.json';
 import iso2ToIso3Json from '../../../../shared/iso2-to-iso3.json';
+import wgiIndicatorKeys from '../../../../shared/wgi-indicator-keys.json';
 import { normalizeCountryToken } from '../../../_shared/country-token';
 import { getCachedJson } from '../../../_shared/redis';
 import { classifyDimensionFreshness, readFreshnessMap, resolveSeedMetaKey } from './_dimension-freshness';
@@ -691,9 +692,7 @@ const IMPUTATION_CLASS_TIE_BREAK: readonly ImputationClass[] = [
 ];
 
 const MINUTE_MS = 60 * 1000;
-// Keep in sync with scripts/compare-resilience-current-vs-proposed.mjs. The
-// methodology documents exactly these six equal-weight WGI indicator slots.
-const WGI_INDICATOR_KEYS = ['VA.EST', 'PV.EST', 'GE.EST', 'RQ.EST', 'RL.EST', 'CC.EST'] as const;
+const WGI_INDICATOR_KEYS: readonly string[] = wgiIndicatorKeys;
 
 function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
   const totalWeight = metrics.reduce((sum, metric) => sum + metric.weight, 0);
