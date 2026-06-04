@@ -464,6 +464,20 @@ function findMatchingDelimiter(source: string, openIndex: number, open: string, 
       quote = ch;
       continue;
     }
+    // Skip comments so parens/braces in prose (e.g. "(no explicit weight transfer)")
+    // do not desync the delimiter depth counter.
+    if (ch === '/' && source[i + 1] === '/') {
+      const newline = source.indexOf('\n', i + 2);
+      if (newline === -1) break;
+      i = newline;
+      continue;
+    }
+    if (ch === '/' && source[i + 1] === '*') {
+      const end = source.indexOf('*/', i + 2);
+      if (end === -1) break;
+      i = end + 1;
+      continue;
+    }
     if (ch === open) depth += 1;
     if (ch === close) {
       depth -= 1;
