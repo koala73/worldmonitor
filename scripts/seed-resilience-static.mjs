@@ -62,6 +62,8 @@ const WHO_INDICATORS = {
 const WORLD_BANK_BASE = 'https://api.worldbank.org/v2';
 const WHO_BASE = 'https://ghoapi.azureedge.net/api';
 const RSF_RANKING_URL = 'https://rsf.org/en/ranking';
+const RSF_TOP_RANK_DIRECTION_GUARD_MAX_RANK = 10;
+const RSF_TOP_RANK_ABUSE_INDEX_MAX_SCORE = 30;
 const EUROSTAT_ENERGY_URL = 'https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/nrg_ind_id?freq=A';
 const WB_ENERGY_IMPORT_INDICATOR = 'EG.IMP.CONS.ZS';
 const COUNTRY_RESOLVERS = createCountryResolvers();
@@ -382,6 +384,24 @@ function parseDecimal(value) {
   return safeNum(String(value || '').replace(',', '.'));
 }
 
+function validateRsfFeedDirection(byCountry) {
+  const topRanked = [...byCountry.values()]
+    .filter((row) => row.rank <= RSF_TOP_RANK_DIRECTION_GUARD_MAX_RANK);
+
+  if (byCountry.size >= 100 && topRanked.length === 0) {
+    throw new Error('RSF ranking feed direction guard found no top-ranked countries');
+  }
+
+  const highScoreTopRanked = topRanked.filter((row) => row.score > RSF_TOP_RANK_ABUSE_INDEX_MAX_SCORE);
+  if (highScoreTopRanked.length === 0) return;
+
+  const examples = highScoreTopRanked
+    .slice(0, 3)
+    .map((row) => `rank ${row.rank} score ${row.score}`)
+    .join(', ');
+  throw new Error(`RSF ranking feed direction guard failed: top-ranked countries must have low lower-is-better abuse-index scores (${examples})`);
+}
+
 export function parseRsfRanking(html) {
   const byCountry = new Map();
   const rowRegex = /^\s*\|(\d+)\|([^|]+)\|([0-9]+(?:[.,][0-9]+)?)\|([^|]+)\|\s*(?:<[^>]+>)?\s*$/gm;
@@ -400,6 +420,7 @@ export function parseRsfRanking(html) {
       year: null,
     });
   }
+  validateRsfFeedDirection(byCountry);
   return byCountry;
 }
 

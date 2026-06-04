@@ -394,7 +394,7 @@ describe('resilience static seed CSV parsers', () => {
 });
 
 describe('resilience static seed parsers', () => {
-  it('parses RSF ranking rows and skips aggregate entries', () => {
+  it('parses lower-is-better RSF abuse-index rows and skips aggregate entries', () => {
     const html = `
       <div class="field__item">|Rank|Country|Note|Differential|
       |3|Norway|6,52|-2 (1)|
@@ -418,6 +418,35 @@ describe('resilience static seed parsers', () => {
       rows.get('NO').score < rows.get('YE').score,
       'RSF parser must preserve feed direction: top-ranked country has lower raw RSF score than low-ranked country',
     );
+  });
+
+  it('rejects inverted high-score top-ranked RSF feeds', () => {
+    const html = `
+      <div class="field__item">|Rank|Country|Note|Differential|
+      |1|Finland|93,62|+1 (2)|
+      |3|Norway|93,48|-2 (1)|
+      |169|Yemen|30,78|+2 (171)|</div>
+    `;
+
+    assert.throws(
+      () => parseRsfRanking(html),
+      /RSF ranking feed direction guard failed: top-ranked countries must have low lower-is-better abuse-index scores/,
+    );
+  });
+
+  it('accepts current known RSF fixture shape with low top-ranked scores', () => {
+    const html = `
+      <div class="field__item">|Rank|Country|Note|Differential|
+      |1|Finland|6,38|+1 (2)|
+      |3|Norway|6,52|-2 (1)|
+      |32|United States|18,22|+15 (47)|</div>
+    `;
+
+    const rows = parseRsfRanking(html);
+    assert.equal(rows.get('FI')?.rank, 1);
+    assert.equal(rows.get('FI')?.score, 6.38);
+    assert.equal(rows.get('NO')?.rank, 3);
+    assert.equal(rows.get('NO')?.score, 6.52);
   });
 
   it('parses Eurostat energy dependency and keeps the latest TOTAL series value', () => {
