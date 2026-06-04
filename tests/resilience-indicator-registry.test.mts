@@ -8,6 +8,7 @@ import {
 } from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
 import type { IndicatorSpec } from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
 import {
+  SCORER_DOC_PARITY_NON_LINEAR_IDS,
   SCORER_DOC_PARITY_SPECS,
 } from './helpers/resilience-scorer-doc-parity-specs.mts';
 
@@ -173,15 +174,43 @@ describe('indicator registry', () => {
       const expectedIds = SCORER_REGISTRY_PARITY_SPECS
         .filter((spec) => spec.dimension === dimension)
         .map((spec) => spec.id);
+      const expectedIdSet = new Set(expectedIds);
       const actualIds = INDICATOR_REGISTRY
-        .filter((spec) => spec.dimension === dimension && spec.tier !== 'experimental')
+        .filter((spec) => spec.dimension === dimension && (spec.tier !== 'experimental' || expectedIdSet.has(spec.id)))
         .map((spec) => spec.id);
       assert.deepEqual(
         actualIds,
         expectedIds,
-        `${dimension} registry rows must list exactly the scorer-used non-experimental blended inputs`,
+        `${dimension} registry rows must list exactly the scorer-used blended inputs, excluding unrelated experimental rollback rows`,
       );
     }
+  });
+
+  it('non-linear scorer indicators carry explicit registry normalization metadata', () => {
+    const byId = new Map(INDICATOR_REGISTRY.map((spec) => [spec.id, spec]));
+    for (const id of SCORER_DOC_PARITY_NON_LINEAR_IDS) {
+      const spec = byId.get(id);
+      assert.ok(spec, `${id} must exist in INDICATOR_REGISTRY`);
+      assert.ok(spec.normalization, `${id} must declare non-linear normalization metadata`);
+      assert.notEqual(spec.normalization.kind, 'linear', `${id} must not be treated as a generic linear goalpost metric`);
+      assert.ok(
+        'disclaimer' in spec.normalization && spec.normalization.disclaimer.length > 20,
+        `${id} non-linear normalization must explain how tooling should interpret goalposts`,
+      );
+    }
+
+    const inflation = byId.get('inflationStability');
+    assert.equal(inflation?.normalization?.kind, 'targetBand');
+    assert.deepEqual(
+      inflation?.normalization.kind === 'targetBand' ? inflation.normalization.targetBand : null,
+      { min: 1, max: 3 },
+      'inflationStability must document the 1-3% target band used by scoreInflationStability',
+    );
+    assert.deepEqual(
+      inflation?.normalization.kind === 'targetBand' ? inflation.normalization.zeroScoreAt : null,
+      { min: -5, max: 50 },
+      'inflationStability must document both deflation and high-inflation zero-score anchors',
+    );
   });
 
   it('legacy-only energy indicators stay experimental rollback surfaces under active v2', () => {

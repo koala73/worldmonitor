@@ -463,7 +463,7 @@ score = clamp((worst - value) / (worst - best) * 100, 0, 100)
 
 Goalposts are hand-picked based on empirical data ranges (not percentile-derived). A score of 100 means the country meets or exceeds the "best" goalpost; 0 means it meets or exceeds the "worst" goalpost.
 
-**Exception:** Sanctions use piecewise normalization to capture the non-linear impact of sanctions counts (the first few sanctions matter more than additional ones in already-sanctioned countries).
+**Exceptions:** A few live indicators are explicitly non-linear and are tagged as such in the indicator registry: `inflationStability` uses a 1-3% target band with deflation and high-inflation zero-score anchors, `bisLbsXborderPctGdp` uses a U-shaped band, `fatfListingStatus` is categorical, and `recoverySovereignWealthEffectiveMonths` uses a saturating transform. Their goalposts are documentation anchors, not generic linear normalizer inputs.
 
 ## Scoring Formula
 

@@ -18,12 +18,27 @@ export type IndicatorLicense =
   | 'proprietary' // Bloomberg, S&P Global Platts (not used in Core)
   | 'unknown'; // placeholder for any indicator still awaiting license audit
 
+export type IndicatorNormalization =
+  | { kind: 'linear' }
+  | {
+      kind: 'targetBand';
+      targetBand: { min: number; max: number };
+      zeroScoreAt: { min: number; max: number };
+      disclaimer: string;
+    }
+  | { kind: 'uShape'; disclaimer: string }
+  | { kind: 'discrete'; disclaimer: string }
+  | { kind: 'saturating'; disclaimer: string };
+
 export type IndicatorSpec = {
   id: string;
   dimension: ResilienceDimensionId;
   description: string;
   direction: 'higherBetter' | 'lowerBetter';
   goalposts: { worst: number; best: number };
+  // Defaults to { kind: 'linear' }. Non-linear indicators keep goalposts as
+  // documentation anchors only and must describe the real scorer shape here.
+  normalization?: IndicatorNormalization;
   weight: number;
   // Primary source key for legacy callers and simple one-source indicators.
   sourceKey: string;
@@ -152,9 +167,15 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'inflationStability',
     dimension: 'currencyExternal',
-    description: 'IMF CPI inflation (lower is better). Global-coverage primary signal for currency stability. Core input to scoreCurrencyExternal under PR 3 §3.5. A future PR may upgrade this to a 5-year inflation-volatility computation once the seeder tracks the series; headline inflation is a reasonable first-cut for stability ranking.',
+    description: 'IMF CPI inflation target-band score. 1-3% YoY scores best; deflation at <=-5% and high inflation at >=50% score 0. Global-coverage primary signal for currency stability. Core input to scoreCurrencyExternal under PR 3 §3.5.',
     direction: 'lowerBetter',
-    goalposts: { worst: 50, best: 0 },
+    goalposts: { worst: 50, best: 3 },
+    normalization: {
+      kind: 'targetBand',
+      targetBand: { min: 1, max: 3 },
+      zeroScoreAt: { min: -5, max: 50 },
+      disclaimer: 'scoreInflationStability is non-linear: 1-3% maps to 100, <=-5% and >=50% map to 0. goalposts are documentation anchors, not generic lowerBetter inputs.',
+    },
     weight: 0.6,
     sourceKey: 'economic:imf:macro:v2',
     scope: 'global',
@@ -322,6 +343,10 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     // scores must consult `normalizeBandLowerBetter` directly, not assume
     // these are the inputs to a generic linear normalizer.
     goalposts: { worst: 60, best: 25 },
+    normalization: {
+      kind: 'uShape',
+      disclaimer: 'normalizeBandLowerBetter peaks around diversified middle exposure and penalizes both isolation and over-exposure. goalposts summarize the over-exposed documentation branch only.',
+    },
     weight: 0.30,
     sourceKey: 'economic:bis-lbs:v1',
     scope: 'global',
@@ -337,6 +362,10 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     description: 'FATF AML/CFT listing status — black list (call for action) → 0, gray list (increased monitoring) → 30, compliant → 100',
     direction: 'higherBetter',
     goalposts: { worst: 0, best: 100 },
+    normalization: {
+      kind: 'discrete',
+      disclaimer: 'fatfStatusToScore maps black=0, gray=30, compliant=100; goalposts are categorical documentation anchors.',
+    },
     weight: 0.20,
     sourceKey: 'economic:fatf-listing:v1',
     scope: 'global',
@@ -1213,6 +1242,10 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     description: 'Sovereign-wealth fiscal-buffer signal per plan §3.4. Seeded from Wikipedia SWF list + per-fund article infoboxes (CC-BY-SA), haircut by the classification manifest (scripts/shared/swf-classification-manifest.yaml): effectiveMonths = rawSwfMonths × access × liquidity × transparency, summed across a country\'s manifest funds. Scorer applies a saturating transform score = 100 × (1 − exp(−effectiveMonths / 12)).',
     direction: 'higherBetter',
     goalposts: { worst: 0, best: 60 },
+    normalization: {
+      kind: 'saturating',
+      disclaimer: 'scoreSovereignFiscalBuffer uses 100 * (1 - exp(-effectiveMonths / 12)); goalposts document the display range, not a linear scorer anchor.',
+    },
     weight: 1.0,
     sourceKey: 'resilience:recovery:sovereign-wealth:v1',
     scope: 'global',

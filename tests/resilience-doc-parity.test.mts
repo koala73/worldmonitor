@@ -57,6 +57,9 @@ import {
   RANKABLE_UNIVERSE_SIZE,
 } from '../server/worldmonitor/resilience/v1/_rankable-universe.ts';
 import {
+  SCORER_DOC_PARITY_NON_LINEAR_IDS,
+  SCORER_DOC_PARITY_SPECS,
+  SCORER_DOC_PARITY_UNSUPPORTED_DIMENSIONS,
   STATIC_SCORER_CATALOG_PARITY_IDS,
   scorerDocParitySpecsBySection,
 } from './helpers/resilience-scorer-doc-parity-specs.mts';
@@ -505,6 +508,76 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
         );
       }
     }
+  });
+
+  it('scorer doc parity coverage is source-derived or explicitly allowlisted', () => {
+    const coveredDimensions = [...new Set(SCORER_DOC_PARITY_SPECS.map((spec) => spec.dimension))].sort();
+    assert.deepEqual(
+      coveredDimensions,
+      [
+        'borderSecurity',
+        'currencyExternal',
+        'cyberDigital',
+        'externalDebtCoverage',
+        'financialSystemExposure',
+        'fiscalSpace',
+        'healthPublicService',
+        'importConcentration',
+        'informationCognitive',
+        'infrastructure',
+        'liquidReserveAdequacy',
+        'macroFiscal',
+        'sovereignFiscalBuffer',
+        'stateContinuity',
+        'tradePolicy',
+      ].sort(),
+      'Parity coverage changed. Add source extraction for new dimensions where practical, or update the unsupported allowlist with a rationale.',
+    );
+    assert.deepEqual(
+      [...SCORER_DOC_PARITY_UNSUPPORTED_DIMENSIONS].sort(),
+      [
+        'energy',
+        'foodWater',
+        'fuelStockDays',
+        'governanceInstitutional',
+        'logisticsSupply',
+        'reserveAdequacy',
+        'socialCohesion',
+      ].sort(),
+      'Unsupported scorer dimensions must be explicit so skipped parity coverage cannot drift silently.',
+    );
+    assert.equal(
+      SCORER_DOC_PARITY_SPECS.filter((spec) => spec.extraction === 'scorer-source' || spec.extraction === 'custom-source').length,
+      39,
+      'Expected 39 scorer/doc parity rows to derive weights from scorer source or a custom scorer-source extractor.',
+    );
+    assert.deepEqual(
+      SCORER_DOC_PARITY_SPECS
+        .filter((spec) => spec.extraction === 'non-linear-allowlist')
+        .map((spec) => spec.id),
+      [...SCORER_DOC_PARITY_NON_LINEAR_IDS].filter((id) => id !== 'inflationStability'),
+      'Non-linear scorer rows in weightedBlend tables must be explicitly allowlisted.',
+    );
+  });
+
+  it('source-derived scorer specs pin representative anchor and weight drift', () => {
+    const broadband = SCORER_DOC_PARITY_SPECS.find((spec) => spec.id === 'broadband');
+    assert.ok(broadband, 'broadband must be covered by scorer/doc parity specs.');
+    assert.equal(
+      broadband.extraction,
+      'scorer-source',
+      'broadband parity must be extracted from scoreInfrastructure, not copied into helper constants.',
+    );
+    assert.equal(
+      broadband.weight,
+      0.15,
+      'Changing scoreInfrastructure broadband weight now changes the generated spec and breaks doc/registry parity unless those surfaces move too.',
+    );
+    assert.deepEqual(
+      broadband.registryGoalposts,
+      { worst: 0, best: 40 },
+      'Changing scoreInfrastructure broadband anchors now changes the generated spec and breaks doc/registry parity unless those surfaces move too.',
+    );
   });
 
   it('trend enum prose matches the response enum', () => {
