@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import wgiIndicatorKeys from '../shared/wgi-indicator-keys.json' with { type: 'json' };
 
 import {
   RESILIENCE_STATIC_INDEX_KEY,
   RESILIENCE_STATIC_META_KEY,
   RESILIENCE_STATIC_SOURCE_VERSION,
+  WGI_INDICATORS,
   buildFailureRefreshKeys,
   buildFaoAggregate,
   buildFaoAggregateForPublish,
@@ -78,6 +80,12 @@ describe('resilience static seed country normalization', () => {
     assert.equal(resolveIso2({ iso3: 'YEM' }, resolvers), 'YE');
     assert.equal(resolveIso2({ name: 'Cape Verde' }, resolvers), 'CV');
     assert.equal(resolveIso2({ name: 'OECS' }, resolvers), null);
+  });
+});
+
+describe('resilience static seed WGI indicator contract', () => {
+  it('fetchWgiDataset uses the canonical shared WGI key list', () => {
+    assert.deepEqual(WGI_INDICATORS, wgiIndicatorKeys);
   });
 });
 

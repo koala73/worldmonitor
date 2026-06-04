@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import wgiIndicatorKeys from '../shared/wgi-indicator-keys.json' with { type: 'json' };
 
 import {
   IMPUTATION,
@@ -79,6 +80,11 @@ function staticRecordReader(staticRecord: unknown): ResilienceSeedReader {
   };
 }
 
+function wgiIndicatorsFromValues(values: readonly number[]): Record<string, { value: number; year: number }> {
+  assert.equal(values.length, wgiIndicatorKeys.length, 'test fixture must provide one value per canonical WGI indicator');
+  return Object.fromEntries(wgiIndicatorKeys.map((key, i) => [key, { value: values[i]!, year: 2025 }]));
+}
+
 describe('resilience dimension scorers', () => {
   it('produce plausible country ordering for the economic dimensions', async () => {
     const macro = await scoreTriple(scoreMacroFiscal);
@@ -122,14 +128,7 @@ describe('resilience dimension scorers', () => {
     const values = [-1.5, -0.9, 0.2, 0.6, 1.1, 1.8] as const;
     const staticRecord = {
       wgi: {
-        indicators: {
-          'VA.EST': { value: values[0], year: 2025 },
-          'PV.EST': { value: values[1], year: 2025 },
-          'GE.EST': { value: values[2], year: 2025 },
-          'RQ.EST': { value: values[3], year: 2025 },
-          'RL.EST': { value: values[4], year: 2025 },
-          'CC.EST': { value: values[5], year: 2025 },
-        },
+        indicators: wgiIndicatorsFromValues(values),
       },
     };
     const expectedSlotScores = values.map((value) => roundScore(((value + 2.5) / 5) * 100));
@@ -139,7 +138,7 @@ describe('resilience dimension scorers', () => {
 
     assert.equal(result.score, expectedScore);
     assert.equal(result.coverage, 1);
-    assert.equal(result.observedWeight, 6);
+    assert.equal(result.observedWeight, wgiIndicatorKeys.length);
     assert.equal(result.imputedWeight, 0);
   });
 
