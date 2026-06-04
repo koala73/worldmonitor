@@ -781,6 +781,56 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
     );
   });
 
+  it('indicator source catalog mirrors scorer-derived metadata for round5 repaired rows', () => {
+    const repairedIds = ['tradeRestrictions', 'rsfPressFreedom'] as const;
+
+    for (const id of repairedIds) {
+      const block = extractIndicatorSourceBlock(indicatorSourceCatalogText, id);
+      const scorerSpec = SCORER_DOC_PARITY_SPECS.find((spec) => spec.id === id);
+      const registrySpec = INDICATOR_REGISTRY.find((indicator) => indicator.id === id);
+      assert.ok(scorerSpec, `${id} must be covered by scorer doc parity specs.`);
+      assert.ok(registrySpec, `${id} must exist in INDICATOR_REGISTRY.`);
+
+      assert.equal(
+        extractIndicatorSourceScalar(block, 'dimension'),
+        scorerSpec.dimension,
+        `${id} source-catalog dimension must mirror the scorer-derived dimension.`,
+      );
+      assert.equal(
+        Number(extractIndicatorSourceScalar(block, 'weight')),
+        scorerSpec.weight,
+        `${id} source-catalog weight must mirror the scorer-derived weightedBlend row.`,
+      );
+      assert.equal(
+        extractIndicatorSourceScalar(block, 'direction'),
+        indicatorSourceDirection(scorerSpec.registryDirection),
+        `${id} source-catalog direction must mirror scorer normalization.`,
+      );
+      assert.equal(
+        registrySpec.direction,
+        scorerSpec.registryDirection,
+        `${id} registry direction must mirror scorer normalization.`,
+      );
+      assert.deepEqual(
+        registrySpec.goalposts,
+        scorerSpec.registryGoalposts,
+        `${id} registry goalposts must mirror scorer normalization anchors.`,
+      );
+    }
+
+    const tradeRestrictionsBlock = extractIndicatorSourceBlock(indicatorSourceCatalogText, 'tradeRestrictions');
+    assert.doesNotMatch(
+      tradeRestrictionsBlock,
+      /weighted\s*3[×x]|in-force,\s*weighted/i,
+      'tradeRestrictions catalog rationale must not describe the retired active-restriction 3x count model.',
+    );
+    assert.match(
+      extractIndicatorSourceScalar(tradeRestrictionsBlock, 'mechanismTestRationale'),
+      /severity[\s\S]*low=0[\s\S]*moderate=1[\s\S]*high=2/i,
+      'tradeRestrictions catalog rationale must document the current WTO severity scoring model.',
+    );
+  });
+
   it('generated OpenAPI pillar weight prose matches PILLAR_WEIGHTS and formula semantics', () => {
     const expectedWeightList = PILLAR_ORDER
       .map((id) => PILLAR_WEIGHTS[id].toFixed(2))
@@ -955,6 +1005,12 @@ function extractIndicatorSourceScalar(block: string, field: string): string {
   const match = new RegExp(`^\\s*${escapeRegex(field)}:\\s*(.+)$`, 'm').exec(block);
   assert.ok(match, `indicator-sources.yaml field "${field}" not found in block:\n${block}`);
   return match[1].trim();
+}
+
+function indicatorSourceDirection(direction: 'higherBetter' | 'lowerBetter' | 'indicatorSemantics'): string {
+  if (direction === 'higherBetter') return 'higher-better';
+  if (direction === 'lowerBetter') return 'lower-better';
+  return 'composite';
 }
 
 function extractIndicatorRowForSection(

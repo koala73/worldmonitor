@@ -140,7 +140,7 @@
   coveragePct: 0.75
   lastObservedYear: 2025
   license: Open
-  mechanismTestRationale: Active trade restrictions (in-force, weighted 3×) directly measure market-access loss.
+  mechanismTestRationale: WTO restriction severity directly measures market-access friction (low=0, moderate=1, high=2; lower is better).
   constructStatus: observed-mechanism
 
 - indicator: tradeBarriers
@@ -506,15 +506,15 @@
 - indicator: rsfPressFreedom
   dimension: informationCognitive
   domain: social-governance
-  weight: TBD
-  direction: higher-better
+  weight: 0.55
+  direction: lower-better
   source: Reporters Sans Frontieres
   seriesId: Press Freedom Index
   seriesUrl: https://rsf.org/en/index
   coveragePct: 0.85
   lastObservedYear: 2024
-  license: Proprietary-with-fair-use
-  mechanismTestRationale: Press freedom proxies quality of information-shock response and independent verification capacity.
+  license: open-attribution
+  mechanismTestRationale: RSF press-freedom risk directly measures information-environment fragility and independent-verification constraints; lower RSF score is better.
   constructStatus: observed-mechanism
 
 - indicator: languageNormalizedSocialVelocity
