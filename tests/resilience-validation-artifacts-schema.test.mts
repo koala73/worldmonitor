@@ -11,6 +11,9 @@ import {
   methodologyFormulaForCacheFormula,
 } from '../scripts/lib/resilience-formula.mjs';
 import {
+  resolveRankingSnapshotOutputPath,
+} from '../scripts/freeze-resilience-ranking.mjs';
+import {
   DEFAULT_SAMPLE_COUNTRIES,
   REQUIRED_GATE_IDS,
   buildAcceptanceArtifact,
@@ -340,6 +343,11 @@ describe('resilience validation artifacts', () => {
       'freeze script must explain why unauthenticated post-flip snapshot capture is insufficient.',
     );
     assert.match(
+      freezeScript,
+      /RESILIENCE_RANKING_OUTPUT_BASENAME/,
+      'freeze script must let operators write the required post-flip artifact filename directly.',
+    );
+    assert.match(
       compareScript,
       /currentDomainAggregate_vs_proposedPillarCombined/,
       'compare script must remain identifiable as the pillar-combine harness, not the energy-v2 post-flip acceptance artifact.',
@@ -365,6 +373,11 @@ describe('resilience validation artifacts', () => {
         runbook.includes('resilience-ranking-live-post-pr1-*.json') ||
           runbook.includes('resilience-ranking-live-post-pr1-{date}.json'),
         'runbook must name the required post-flip ranking artifact pattern.',
+      );
+      assert.match(
+        runbook,
+        /RESILIENCE_RANKING_OUTPUT_BASENAME=resilience-ranking-live-post-pr1-\$\{CAPTURE_DATE\}\.json/,
+        'runbook must direct freeze-resilience-ranking to write the post-flip ranking artifact directly.',
       );
     }
 
@@ -605,11 +618,38 @@ describe('resilience validation artifacts', () => {
     assert.match(message, /resilience-ranking-live-post-pr1-YYYY-MM-DD\.json/);
     assert.match(message, /WORLDMONITOR_API_KEY=<pro-api-key>/);
     assert.match(message, /node scripts\/freeze-resilience-ranking\.mjs/);
-    assert.match(message, /exact docs\/snapshots\/resilience-ranking-YYYY-MM-DD\.json path printed by freeze-resilience-ranking\.mjs/);
+    assert.match(message, /RESILIENCE_RANKING_OUTPUT_BASENAME=resilience-ranking-live-post-pr1-YYYY-MM-DD\.json/);
+    assert.match(message, /\[freeze-resilience-ranking\] wrote .*resilience-ranking-live-post-pr1-YYYY-MM-DD\.json/);
     assert.doesNotMatch(message, /\$\(date /);
     assert.match(message, /node --import tsx\/esm scripts\/capture-resilience-energy-v2-acceptance\.mjs/);
     assert.match(message, /HTTP 401[\s\S]*get-resilience-score[\s\S]*Pro authentication required/);
     assert.match(message, /gate-7-matched-pair[\s\S]*do not commit a synthetic artifact/);
+  });
+
+  it('validates direct post-flip ranking snapshot output filenames', () => {
+    assert.equal(
+      resolveRankingSnapshotOutputPath(
+        '2026-06-04',
+        'resilience-ranking-live-post-pr1-2026-06-04.json',
+      ),
+      resolve(snapshotDir, 'resilience-ranking-live-post-pr1-2026-06-04.json'),
+    );
+    assert.equal(
+      resolveRankingSnapshotOutputPath('2026-06-04', ''),
+      resolve(snapshotDir, 'resilience-ranking-2026-06-04.json'),
+    );
+    assert.throws(
+      () => resolveRankingSnapshotOutputPath('2026-06-04', '../resilience-ranking-live-post-pr1-2026-06-04.json'),
+      /filename only/,
+    );
+    assert.throws(
+      () => resolveRankingSnapshotOutputPath('2026-06-04', 'resilience-energy-v2-acceptance-2026-06-04.json'),
+      /must match resilience-ranking/,
+    );
+    assert.throws(
+      () => resolveRankingSnapshotOutputPath('2026-06-04', 'resilience-ranking-live-post-pr1-2026-06-03.json'),
+      /must match capturedAt 2026-06-04/,
+    );
   });
 
   it('routes missing post-flip snapshot resolution through the operator-actionable error', async () => {

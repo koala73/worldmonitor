@@ -88,15 +88,15 @@ Run from the repo root with production credentials:
 ```bash
 export API_BASE=https://www.worldmonitor.app
 export WORLDMONITOR_API_KEY=<pro-api-key>
+export CAPTURE_DATE=$(date -u +%Y-%m-%d)
+export RESILIENCE_RANKING_OUTPUT_BASENAME=resilience-ranking-live-post-pr1-${CAPTURE_DATE}.json
 # Defaults to FR,DE,SG,CH,NO,CA,AE,BH; set explicitly only to override.
 export RESILIENCE_ENERGY_V2_SAMPLE_COUNTRIES=FR,DE,SG,CH,NO,CA,AE,BH
 
 node scripts/freeze-resilience-ranking.mjs
-mv "docs/snapshots/resilience-ranking-$(date +%Y-%m-%d).json" \
-  "docs/snapshots/resilience-ranking-live-post-pr1-$(date +%Y-%m-%d).json"
 
 jq '.formulaVerification.declaredFormula' \
-  "docs/snapshots/resilience-ranking-live-post-pr1-$(date +%Y-%m-%d).json"
+  "docs/snapshots/resilience-ranking-live-post-pr1-${CAPTURE_DATE}.json"
 
 node --import tsx/esm scripts/capture-resilience-energy-v2-acceptance.mjs
 
@@ -259,11 +259,13 @@ All must be green before flipping `RESILIENCE_ENERGY_V2_ENABLED=true`:
    post-deploy ranking refresh completes (check via
    `GET resilience:ranking:v11` in Redis):
    ```bash
+   CAPTURE_DATE=$(date -u +%Y-%m-%d)
    API_BASE=https://www.worldmonitor.app \
      WORLDMONITOR_API_KEY=<pro-api-key> \
+     RESILIENCE_RANKING_OUTPUT_BASENAME=resilience-ranking-live-post-pr1-${CAPTURE_DATE}.json \
      node scripts/freeze-resilience-ranking.mjs
-   mv "docs/snapshots/resilience-ranking-$(date +%Y-%m-%d).json" \
-     "docs/snapshots/resilience-ranking-live-post-pr1-$(date +%Y-%m-%d).json"
+   jq '.formulaVerification.declaredFormula' \
+     "docs/snapshots/resilience-ranking-live-post-pr1-${CAPTURE_DATE}.json"
    git add docs/snapshots/resilience-ranking-live-post-pr1-*.json
    git commit -m "chore(resilience): post-PR-1 snapshot"
    ```
