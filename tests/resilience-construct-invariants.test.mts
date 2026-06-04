@@ -69,7 +69,8 @@ describe('construct invariants — importConcentration', () => {
 
   it('normal 4-year Comtrade source years stay full coverage', async () => {
     assert.equal(computeImportHhiCertaintyCoverage(2022, 2026), 1);
-    const r = await scoreWith(0.2, 2022);
+    const freshSourceYear = new Date().getFullYear() - 3;
+    const r = await scoreWith(0.2, freshSourceYear);
     assert.equal(r.coverage, 1);
     assert.equal(r.observedWeight, 1);
     assert.equal(r.imputationClass, null);
@@ -77,7 +78,8 @@ describe('construct invariants — importConcentration', () => {
 
   it('stale import-HHI fallback source years derate coverage without changing the HHI score', async () => {
     assert.equal(computeImportHhiCertaintyCoverage(2018, 2026), 0.3);
-    const fresh = await scoreWith(0.2, 2022);
+    const freshSourceYear = new Date().getFullYear() - 3;
+    const fresh = await scoreWith(0.2, freshSourceYear);
     const stale = await scoreWith(0.2, 2018);
     assert.equal(stale.score, fresh.score);
     assert.equal(stale.coverage, 0.3);
