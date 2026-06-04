@@ -2563,11 +2563,16 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         if (requestId !== this.resilienceWidgetRequestId) return;
         if (typeof ResilienceWidget !== 'function') throw new Error('ResilienceWidget export is unavailable.');
         const widget = new ResilienceWidget(code);
-        this.resilienceWidget = widget;
-        if (this.pendingResilienceEnergyMix) {
-          widget.setEnergyMix(this.pendingResilienceEnergyMix);
+        try {
+          if (this.pendingResilienceEnergyMix) {
+            widget.setEnergyMix(this.pendingResilienceEnergyMix);
+          }
+          this.replaceResilienceSlot(slot, widget.getElement());
+          this.resilienceWidget = widget;
+        } catch (error) {
+          widget.destroy();
+          throw error;
         }
-        this.replaceResilienceSlot(slot, widget.getElement());
       })
       .catch(renderFallback);
 

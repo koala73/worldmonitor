@@ -184,6 +184,26 @@ test('country deep-dive panel renders fallback when the resilience widget succes
   }
 });
 
+test('country deep-dive panel destroys a constructed resilience widget when setup throws', async () => {
+  const harness = await createCountryDeepDivePanelHarness({ resilienceWidgetMode: 'get-element-throw' });
+  try {
+    const panel = harness.createPanel();
+    panel.show('Norway', 'NO', sampleScore, emptySignals);
+    const { slot, fallback } = await waitForResilienceFallback(harness);
+    const widget = harness.getWidgets().at(-1);
+
+    assert.equal(fallback.textContent, 'countryBrief.resilienceScoreUnavailable');
+    assert.equal(slot.querySelector('.cdp-loading-inline'), null, 'fallback must replace loading state');
+    assert.ok(widget, 'post-construction failure should create a widget before setup throws');
+    assert.equal(widget.destroyCount, 1, 'failed setup must not leave widget subscriptions live');
+    await waitForSentryFailure(harness);
+    assert.equal(harness.getSentryBreadcrumbs().length, 1);
+    assert.equal(harness.getSentryExceptions().length, 1);
+  } finally {
+    harness.cleanup();
+  }
+});
+
 test('country deep-dive panel destroys each resilience widget exactly once across state transitions', async () => {
   const harness = await createCountryDeepDivePanelHarness();
   try {

@@ -53,6 +53,27 @@ async function loadCountryDeepDivePanel(options = {}) {
           }
         }
       `
+      : resilienceWidgetMode === 'get-element-throw'
+        ? `
+          const state = globalThis.__wmCountryDeepDiveTestState;
+          export class ResilienceWidget {
+            constructor(code) {
+              this.code = code;
+              this.destroyCount = 0;
+              this.energyMixData = null;
+              state.widgets.push(this);
+            }
+            setEnergyMix(data) {
+              this.energyMixData = data;
+            }
+            getElement() {
+              throw new Error('synthetic resilience widget getElement failure');
+            }
+            destroy() {
+              this.destroyCount += 1;
+            }
+          }
+        `
       : `
         const state = globalThis.__wmCountryDeepDiveTestState;
         export class ResilienceWidget {
