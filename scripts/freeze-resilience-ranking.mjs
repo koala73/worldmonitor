@@ -393,10 +393,12 @@ function resolveRankingSnapshotOutputPath(capturedAt, outputBasename = OUTPUT_BA
   if (/[\\/]/.test(basename)) {
     throw new Error(`RESILIENCE_RANKING_OUTPUT_BASENAME must be a filename only, got ${basename}`);
   }
-  const match = /^resilience-ranking-(?:[a-z][a-z0-9-]*-)?(\d{4}-\d{2}-\d{2})\.json$/.exec(basename);
+  const match =
+    /^resilience-ranking-(\d{4}-\d{2}-\d{2})\.json$/.exec(basename) ||
+    /^resilience-ranking-live-post-pr1-(\d{4}-\d{2}-\d{2})\.json$/.exec(basename);
   if (!match) {
     throw new Error(
-      `RESILIENCE_RANKING_OUTPUT_BASENAME must match resilience-ranking[-slug]-YYYY-MM-DD.json, got ${basename}`,
+      `RESILIENCE_RANKING_OUTPUT_BASENAME must match resilience-ranking-YYYY-MM-DD.json or resilience-ranking-live-post-pr1-YYYY-MM-DD.json, got ${basename}`,
     );
   }
   if (match[1] !== capturedAt) {

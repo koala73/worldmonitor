@@ -644,7 +644,11 @@ describe('resilience validation artifacts', () => {
     );
     assert.throws(
       () => resolveRankingSnapshotOutputPath('2026-06-04', 'resilience-energy-v2-acceptance-2026-06-04.json'),
-      /must match resilience-ranking/,
+      /resilience-ranking-YYYY-MM-DD\.json or resilience-ranking-live-post-pr1-YYYY-MM-DD\.json/,
+    );
+    assert.throws(
+      () => resolveRankingSnapshotOutputPath('2026-06-04', 'resilience-ranking-live-pr1-2026-06-04.json'),
+      /resilience-ranking-YYYY-MM-DD\.json or resilience-ranking-live-post-pr1-YYYY-MM-DD\.json/,
     );
     assert.throws(
       () => resolveRankingSnapshotOutputPath('2026-06-04', 'resilience-ranking-live-post-pr1-2026-06-03.json'),
