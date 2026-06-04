@@ -12,6 +12,14 @@ const socialVelocityRegion = relaySource.slice(
   relaySource.indexOf('// WSB Ticker Scanner'),
 );
 
+function sourceBetween(start, end) {
+  const startIndex = socialVelocityRegion.indexOf(start);
+  const endIndex = socialVelocityRegion.indexOf(end, startIndex);
+  assert.notEqual(startIndex, -1, `missing source marker: ${start}`);
+  assert.notEqual(endIndex, -1, `missing source marker: ${end}`);
+  return socialVelocityRegion.slice(startIndex, endIndex);
+}
+
 test('social velocity writes explicit error seed-meta on Reddit fetch failures', () => {
   assert.match(socialVelocityRegion, /const SOCIAL_VELOCITY_SEED_META_KEY = 'seed-meta:intelligence:social-reddit'/);
   assert.match(socialVelocityRegion, /async function writeSocialVelocityFailureMeta\(reason\)/);
@@ -22,9 +30,25 @@ test('social velocity writes explicit error seed-meta on Reddit fetch failures',
 });
 
 test('social velocity only advances healthy seed-meta after canonical write succeeds', () => {
-  assert.match(
-    socialVelocityRegion,
-    /if \(ok\) \{\s+await upstashSet\(SOCIAL_VELOCITY_SEED_META_KEY, \{ fetchedAt: Date\.now\(\), recordCount: top\.length, sourceVersion: 'social-reddit', status: 'ok' \}, 604800\);\s+\} else \{/,
+  const seedSocialVelocityRegion = sourceBetween(
+    'async function seedSocialVelocity()',
+    'async function startSocialVelocitySeedLoop()',
   );
-  assert.match(socialVelocityRegion, /writeSocialVelocityFailureMeta\('canonical_write_failed'\)/);
+  const healthyMetaRegion = sourceBetween(
+    'async function writeSocialVelocityHealthyMeta(recordCount)',
+    'async function fetchRedditHot',
+  );
+
+  assert.match(
+    seedSocialVelocityRegion,
+    /if \(ok\) \{\s+await writeSocialVelocityHealthyMeta\(top\.length\);\s+\} else \{/,
+  );
+  assert.doesNotMatch(seedSocialVelocityRegion, /if \(ok\) \{\s+await upstashSet\(SOCIAL_VELOCITY_SEED_META_KEY,/);
+  assert.match(seedSocialVelocityRegion, /writeSocialVelocityFailureMeta\('canonical_write_failed'\)/);
+  assert.match(healthyMetaRegion, /try \{/);
+  assert.match(healthyMetaRegion, /await upstashSet\(SOCIAL_VELOCITY_SEED_META_KEY,/);
+  assert.match(healthyMetaRegion, /recordCount,/);
+  assert.match(healthyMetaRegion, /status: 'ok'/);
+  assert.match(healthyMetaRegion, /catch \(e\) \{/);
+  assert.match(healthyMetaRegion, /return false/);
 });

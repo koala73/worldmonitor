@@ -5755,6 +5755,24 @@ async function writeSocialVelocityFailureMeta(reason) {
   }, 604800);
 }
 
+async function writeSocialVelocityHealthyMeta(recordCount) {
+  try {
+    const ok = await upstashSet(SOCIAL_VELOCITY_SEED_META_KEY, {
+      fetchedAt: Date.now(),
+      recordCount,
+      sourceVersion: 'social-reddit',
+      status: 'ok',
+    }, 604800);
+    if (!ok) {
+      console.warn('[SocialVelocity] Healthy seed-meta write failed; preserving canonical payload state');
+    }
+    return ok;
+  } catch (e) {
+    console.warn('[SocialVelocity] Healthy seed-meta write threw:', e?.message || e);
+    return false;
+  }
+}
+
 async function fetchRedditHot(subreddit, failures = []) {
   const url = `https://www.reddit.com/r/${subreddit}/hot.json?limit=25&raw_json=1`;
   const resp = await fetch(url, {
@@ -5824,7 +5842,7 @@ async function seedSocialVelocity() {
     const payload = { posts: top, fetchedAt: Date.now() };
     const ok = await envelopeWrite(SOCIAL_VELOCITY_REDIS_KEY, payload, SOCIAL_VELOCITY_TTL, { recordCount: top.length, sourceVersion: 'social-reddit' });
     if (ok) {
-      await upstashSet(SOCIAL_VELOCITY_SEED_META_KEY, { fetchedAt: Date.now(), recordCount: top.length, sourceVersion: 'social-reddit', status: 'ok' }, 604800);
+      await writeSocialVelocityHealthyMeta(top.length);
     } else {
       console.error('[SocialVelocity] Canonical write failed. Marking seed-meta error.');
       try { await writeSocialVelocityFailureMeta('canonical_write_failed'); } catch {}
