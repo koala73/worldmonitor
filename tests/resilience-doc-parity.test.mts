@@ -620,7 +620,7 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
   });
 
   it('methodology changelog does not claim UNHCR displacement is population-normalized', () => {
-    const changelogText = extractHeadingText(docText, 'v17 (April 2026) — universe + coverage rebuild (plan 2026-04-26-002)');
+    const changelogText = extractSectionText(docText, 'v17 (April 2026) — universe + coverage rebuild (plan 2026-04-26-002)');
     assert.match(
       changelogText,
       /`unrestEvents` and `ucdpConflict` divide by `max\(populationMillions, 0\.5\)`/,
@@ -813,17 +813,6 @@ function extractIndicatorRowsForSection(text: string, sectionHeading: string): M
 }
 
 function extractSectionText(text: string, sectionHeading: string): string {
-  const headingRe = new RegExp(`^#### ${escapeRegex(sectionHeading)}\\s*$`, 'm');
-  const headingMatch = headingRe.exec(text);
-  assert.ok(headingMatch, `Methodology section "${sectionHeading}" not found.`);
-
-  const sectionStart = headingMatch.index + headingMatch[0].length;
-  const rest = text.slice(sectionStart);
-  const nextHeadingMatch = /^#{3,4}\s.+$/m.exec(rest);
-  return nextHeadingMatch == null ? rest : rest.slice(0, nextHeadingMatch.index);
-}
-
-function extractHeadingText(text: string, sectionHeading: string): string {
   const headingRe = new RegExp(`^#{3,4} ${escapeRegex(sectionHeading)}\\s*$`, 'm');
   const headingMatch = headingRe.exec(text);
   assert.ok(headingMatch, `Methodology section "${sectionHeading}" not found.`);

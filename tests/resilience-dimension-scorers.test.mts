@@ -1056,11 +1056,11 @@ describe('resilience dimension scorers', () => {
       // Outage path: gpiRow (0.55, observed) + displacementRow (DROPPED) + unrestRow (0.20, imputed AT 85).
       //   availableWeight = 0.75; score = (80.8*0.55 + 85*0.20)/0.75 ≈ 81.9 → 82
       // GPI-only path: gpiRow (0.55, observed) + displacementRow (0.25, imputed AT 70) + unrestRow (0.20, curated-list absent AT 50).
-      //   availableWeight = 1.0; score = 80.8*0.55 + 70*0.25 + 50*0.20 ≈ 72.9 → 73
-      // Outage MUST score HIGHER than GPI-only (85-anchor pulls less down than 70-anchor).
-      // If the bug is present, outage would also use 70 → outage.score ≈ gpiOnly.score (modulo displacement).
+      //   availableWeight = 1.0; score = 80.8*0.55 + 70*0.25 + 50*0.20 ≈ 71.9 → 72
+      // Outage MUST score HIGHER than GPI-only (85-anchor pulls less down than 50-anchor).
+      // If the bug is present, outage would also use the GPI-only path → outage.score ≈ gpiOnly.score (modulo displacement).
       assert.ok(outage.score > gpiOnly.score + 3,
-        `outage (${outage.score}) must score meaningfully higher than GPI-only (${gpiOnly.score}); outage uses 85-anchor, GPI-only uses 70-anchor. If they're close, the GPI-only impute is wrongly firing on outage path (Plan 2026-04-26-001 §U2 review fixup).`);
+        `outage (${outage.score}) must score meaningfully higher than GPI-only (${gpiOnly.score}); outage uses 85-anchor, GPI-only uses curated-list absent 50-anchor. If they're close, the GPI-only impute is wrongly firing on outage path (Plan 2026-04-26-001 §U2 review fixup).`);
       // Outage's observedWeight must be GPI-only (0.55); GPI-only mode has imputed displacement+unrest so observedWeight is also 0.55.
       // The discriminator is availableWeight (which manifests in different blended scores).
       assert.ok(Math.abs(outage.observedWeight - 0.55) < 0.01,
