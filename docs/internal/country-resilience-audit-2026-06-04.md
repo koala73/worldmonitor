@@ -26,7 +26,8 @@ frontend/widget P-number findings, and `R7-ACCEPT` keeps the runbook label.
 
 ### DA-1 through DA-5
 
-The methodology tables now match the active scorer and registry expectations:
+The DA rows reviewed in this pass now match the active scorer and registry
+expectations for the listed items:
 
 - Health & Public Service lists five active indicators:
   `uhcIndex`, `measlesCoverage`, `hospitalBeds`, `physiciansPer1k`, and
@@ -35,6 +36,10 @@ The methodology tables now match the active scorer and registry expectations:
 - `unrestEvents` is documented with `10 - 0` goalposts.
 - `ucdpConflict` is documented with `15 - 0` goalposts.
 - `trend` is documented as `rising`, `stable`, or `falling`.
+
+This does not assert full methodology parity across all audit P-numbers;
+inflation-band P3-2 and AQUASTAT P3-5 remain outside this note until their
+dedicated fixes land.
 
 Evidence files:
 
