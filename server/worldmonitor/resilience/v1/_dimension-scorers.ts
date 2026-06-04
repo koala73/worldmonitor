@@ -2198,6 +2198,23 @@ interface RecoveryImportHhiCountry {
   year?: number | null;
 }
 
+const IMPORT_HHI_FULL_CONFIDENCE_MAX_SOURCE_AGE_YEARS = 4;
+const IMPORT_HHI_MIN_STALE_CERTAINTY_COVERAGE = 0.3;
+
+export function computeImportHhiCertaintyCoverage(
+  sourceYear: number | null | undefined,
+  nowYear = new Date().getFullYear(),
+): number {
+  if (!Number.isFinite(sourceYear) || !Number.isFinite(nowYear)) return 1;
+  const ageYears = Math.trunc(nowYear) - Math.trunc(sourceYear as number);
+  if (ageYears <= IMPORT_HHI_FULL_CONFIDENCE_MAX_SOURCE_AGE_YEARS) return 1;
+  const staleYears = ageYears - IMPORT_HHI_FULL_CONFIDENCE_MAX_SOURCE_AGE_YEARS;
+  return Math.max(
+    IMPORT_HHI_MIN_STALE_CERTAINTY_COVERAGE,
+    Number((1 - staleYears * 0.2).toFixed(2)),
+  );
+}
+
 // RecoveryFuelStocksCountry interface removed in PR 3 — scoreFuelStockDays
 // no longer reads any payload. Do NOT re-add the type as a reservation;
 // the tsc noUnusedLocals rule rejects unused locals. When a new
@@ -2473,7 +2490,16 @@ export async function scoreImportConcentration(
     // HHI is on a 0..1 scale (0 = perfectly diversified, 1 = single partner).
     // Multiply by 10000 to convert to the traditional 0..10000 HHI scale,
     // then normalize against the 0..5000 goalpost range (where 5000+ = max concentration).
-    { score: normalizeLowerBetter(entry.hhi * 10000, 0, 5000), weight: 1.0 },
+    //
+    // The seeder's normal 4-year Comtrade window remains full-confidence:
+    // many late reporters publish 1-3 years behind. Older fallback vintages
+    // still carry a real HHI signal, but coverage is derated so stale source
+    // years reduce certainty instead of looking equivalent to current data.
+    {
+      score: normalizeLowerBetter(entry.hhi * 10000, 0, 5000),
+      weight: 1.0,
+      certaintyCoverage: computeImportHhiCertaintyCoverage(entry.year),
+    },
   ]);
 }
 

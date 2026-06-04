@@ -26,6 +26,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  computeImportHhiCertaintyCoverage,
   scoreImportConcentration,
   scoreExternalDebtCoverage,
   scoreSovereignFiscalBuffer,
@@ -40,9 +41,9 @@ function makeReader(keyValueMap: Record<string, unknown>): ResilienceSeedReader 
 }
 
 describe('construct invariants — importConcentration', () => {
-  async function scoreWith(hhi: number) {
+  async function scoreWith(hhi: number, year?: number) {
     return scoreImportConcentration(TEST_ISO2, makeReader({
-      'resilience:recovery:import-hhi:v1': { countries: { [TEST_ISO2]: { hhi } } },
+      'resilience:recovery:import-hhi:v1': { countries: { [TEST_ISO2]: { hhi, year } } },
     }));
   }
 
@@ -64,6 +65,24 @@ describe('construct invariants — importConcentration', () => {
     // Current scorer: hhi×10000 normalised against (0, 5000). 0.5×10000 = 5000 → 0.
     const r = await scoreWith(0.5);
     assert.ok(Math.abs(r.score - 0) < 1, `expected ~0 at HHI=0.5 under current goalpost, got ${r.score}`);
+  });
+
+  it('normal 4-year Comtrade source years stay full coverage', async () => {
+    assert.equal(computeImportHhiCertaintyCoverage(2022, 2026), 1);
+    const r = await scoreWith(0.2, 2022);
+    assert.equal(r.coverage, 1);
+    assert.equal(r.observedWeight, 1);
+    assert.equal(r.imputationClass, null);
+  });
+
+  it('stale import-HHI fallback source years derate coverage without changing the HHI score', async () => {
+    assert.equal(computeImportHhiCertaintyCoverage(2018, 2026), 0.3);
+    const fresh = await scoreWith(0.2, 2022);
+    const stale = await scoreWith(0.2, 2018);
+    assert.equal(stale.score, fresh.score);
+    assert.equal(stale.coverage, 0.3);
+    assert.equal(stale.observedWeight, 1);
+    assert.equal(stale.imputationClass, null);
   });
 });
 
