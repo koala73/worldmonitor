@@ -19,14 +19,17 @@
 // the power-system security intent.
 //
 // All three series are annual; WDI reports latest observed year per
-// country. We fetch up to 5 most-recent years (mrv=5) and pick the
-// latest non-null per country, then sum by ISO2. The mrv=5 + null-skip
-// recipe is documented in skill `wb-bulk-mrv1-null-coverage-trap`;
-// applied to this file in PR #3432 (review fixup).
-// Missing any of the three (e.g. a country with no nuclear filing)
-// is treated as 0 for that slice — the scorer's 0..80 saturating
-// goalpost tolerates partial coverage without dropping the indicator
-// to null.
+// country. We fetch up to 5 most-recent years (mrv=5), keep the per-year
+// history for each country, and sum only the latest COMMON source year
+// across the component series available for that country. That prevents a
+// 2024 hydro filing from being added to a 2021 renewables-ex-hydro filing
+// and then labelled as 2024. The mrv=5 + null-skip recipe is documented in
+// skill `wb-bulk-mrv1-null-coverage-trap`; applied to this file in PR #3432
+// (review fixup).
+// Missing an entire component series for a country is treated as 0 for that
+// slice, but if a component series exists for the country it must have data
+// in the selected common year. The scorer's 0..80 saturating goalpost
+// tolerates partial coverage without dropping the indicator to null.
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
@@ -34,15 +37,13 @@ import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 // Per-seeder budget lives below — same shape, different publication lags.
 import { wbCountryDictContentMeta } from './_wb-country-dict-content-age-helpers.mjs';
 
-// 36mo budget — verified against live WB API on 2026-05-05: max year across
-// the three constituent indicators (NUCL/RNEW/HYRO) is 2024 (driven by
-// nuclear and hydro; renewables lags to 2021 but is masked by MAX-of-3 in
-// the seeder's countries[iso2].year). End-of-2024 = ~17mo before NOW, so
-// fresh-arrival lag is comfortably inside 36mo. Steady-state ceiling for
-// annual WB indicators = max_publication_lag (~18mo) + cycle_length (12mo)
-// = 30mo. 36mo = 30mo ceiling + 6mo slack. Same math as power-reliability
-// (#3602 review); see `_power-reliability-helpers.mjs` JSDoc for full
-// derivation.
+// 36mo budget — verified against live WB API on 2026-05-05. This seeder now
+// publishes the latest common component year per country, not the max of
+// independently latest component years, so content-age is conservative for
+// the actual composite being scored. Steady-state ceiling for annual WB
+// indicators = max_publication_lag (~18mo) + cycle_length (12mo) = 30mo.
+// 36mo = 30mo ceiling + 6mo slack. Same math as power-reliability (#3602
+// review); see `_power-reliability-helpers.mjs` JSDoc for full derivation.
 const MAX_CONTENT_AGE_MIN = 36 * 30 * 24 * 60;
 
 loadEnvFile(import.meta.url);
@@ -75,7 +76,7 @@ async function fetchIndicator(indicatorId) {
   return pages;
 }
 
-function collectByIso2(records) {
+export function collectByIsoYear(records) {
   const out = new Map();
   for (const record of records) {
     const rawCode = record?.countryiso3code ?? record?.country?.id ?? '';
@@ -93,36 +94,65 @@ function collectByIso2(records) {
     if (!Number.isFinite(value)) continue;
     const year = Number(record?.date);
     if (!Number.isFinite(year)) continue;
-    // Per-country latest-non-null (mrv=5 returns up to 5 records per country).
-    const existing = out.get(iso2);
-    if (!existing || year > existing.year) {
-      out.set(iso2, { value, year });
+    let byYear = out.get(iso2);
+    if (!byYear) {
+      byYear = new Map();
+      out.set(iso2, byYear);
     }
+    byYear.set(year, value);
   }
   return out;
 }
 
-async function fetchLowCarbonGeneration() {
-  const [nuclearRecords, renewRecords, hydroRecords] = await Promise.all(INDICATORS.map(fetchIndicator));
-  const nuclearByIso = collectByIso2(nuclearRecords);
-  const renewByIso = collectByIso2(renewRecords);
-  const hydroByIso = collectByIso2(hydroRecords);
+function latestCommonYear(componentMaps) {
+  const populated = componentMaps.filter((m) => m instanceof Map && m.size > 0);
+  if (populated.length === 0) return null;
 
+  const [first, ...rest] = populated;
+  const commonYears = [...first.keys()].filter((year) => rest.every((m) => m.has(year)));
+  if (commonYears.length === 0) return null;
+  return Math.max(...commonYears);
+}
+
+export function buildLowCarbonCountries({ nuclearByIso, renewByIso, hydroByIso }) {
   const allIso = new Set([...nuclearByIso.keys(), ...renewByIso.keys(), ...hydroByIso.keys()]);
   const countries = {};
+
   for (const iso2 of allIso) {
-    const nuc = nuclearByIso.get(iso2);
-    const ren = renewByIso.get(iso2);
-    const hyd = hydroByIso.get(iso2);
-    const sum = (nuc?.value ?? 0) + (ren?.value ?? 0) + (hyd?.value ?? 0);
-    // Year: most-recent of the three (they can diverge by a year or two
-    // between filings). Use the MAX so freshness reflects newest input.
-    const years = [nuc?.year, ren?.year, hyd?.year].filter((y) => y != null);
+    const nuc = nuclearByIso.get(iso2) ?? new Map();
+    const ren = renewByIso.get(iso2) ?? new Map();
+    const hyd = hydroByIso.get(iso2) ?? new Map();
+    const year = latestCommonYear([nuc, ren, hyd]);
+    if (year == null) continue;
+
+    const nuclearShare = nuc.get(year) ?? 0;
+    const renewablesExHydroShare = ren.get(year) ?? 0;
+    const hydroShare = hyd.get(year) ?? 0;
+    const sum = nuclearShare + renewablesExHydroShare + hydroShare;
+
     countries[iso2] = {
       value: Math.min(sum, 100), // guard against impossible sums from revised filings
-      year: years.length > 0 ? Math.max(...years) : null,
+      year,
+      nuclearShare,
+      renewablesExHydroShare,
+      hydroShare,
+      sourceYears: {
+        nuclear: nuc.has(year) ? year : null,
+        renewablesExHydro: ren.has(year) ? year : null,
+        hydro: hyd.has(year) ? year : null,
+      },
     };
   }
+
+  return countries;
+}
+
+async function fetchLowCarbonGeneration() {
+  const [nuclearRecords, renewRecords, hydroRecords] = await Promise.all(INDICATORS.map(fetchIndicator));
+  const nuclearByIso = collectByIsoYear(nuclearRecords);
+  const renewByIso = collectByIsoYear(renewRecords);
+  const hydroByIso = collectByIsoYear(hydroRecords);
+  const countries = buildLowCarbonCountries({ nuclearByIso, renewByIso, hydroByIso });
   return { countries, seededAt: new Date().toISOString() };
 }
 
@@ -148,9 +178,9 @@ if (process.argv[1]?.endsWith('seed-low-carbon-generation.mjs')) {
     maxStaleMin: 8 * 24 * 60, // weekly cadence + 1 day slack
 
     // ── Content-age contract (Sprint 4 cohort follow-up) ──
-    // Seeder takes MAX year across NUCL/RNEW/HYRO per country (line ~109);
-    // contentMeta then takes MAX year across countries. Budget rationale
-    // documented at the MAX_CONTENT_AGE_MIN constant above.
+    // Seeder publishes the latest COMMON component year across NUCL/RNEW/HYRO
+    // per country; contentMeta then takes MAX year across countries. Budget
+    // rationale documented at the MAX_CONTENT_AGE_MIN constant above.
     contentMeta: wbCountryDictContentMeta,
     maxContentAgeMin: MAX_CONTENT_AGE_MIN,
   }).catch((err) => {

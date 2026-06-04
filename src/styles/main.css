@@ -22442,6 +22442,53 @@ body.map-width-resizing {
   padding: 8px 0 4px;
 }
 
+/* World tab — all-countries IMF inflation table */
+.cp-world-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+}
+.cp-world-filter {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 5px 8px;
+  font-size: 0.76rem;
+  color: var(--text-primary, #e0e0e0);
+  background: var(--overlay-subtle, rgba(255,255,255,0.04));
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.cp-world-filter:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.cp-world-count {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.cp-world-table td { vertical-align: middle; }
+.cp-infl-yoy {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.cp-infl-eop {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.cp-infl-year { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.cp-infl--high { color: var(--negative, #ff5252); }
+.cp-infl--warn { color: var(--warning, #ffb300); }
+.cp-infl--ok { color: var(--text-primary, #e0e0e0); }
+.cp-infl--deflation { color: var(--info, #42a5f5); }
+.cp-infl--unknown { color: var(--text-dim); }
+
 .cp-range-bar {
   display: flex;
   gap: 4px;

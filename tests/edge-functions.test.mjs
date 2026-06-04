@@ -58,8 +58,13 @@ describe('scripts/shared/ stays in sync with shared/', () => {
     // by the audit script under scripts/. Must stay byte-identical.
     'url-classifier.js',
   ]);
+  const rootSharedOnlyFiles = new Set([
+    // Resilience .mjs scripts import this directly from ../shared/. Keeping a
+    // scripts/shared copy would reintroduce the WGI scorer/seeder drift risk.
+    'wgi-indicator-keys.json',
+  ]);
   const sharedFiles = readdirSync(sharedDir).filter(
-    (f) => f.endsWith('.json') || f.endsWith('.cjs') || explicitMirroredFiles.has(f),
+    (f) => !rootSharedOnlyFiles.has(f) && (f.endsWith('.json') || f.endsWith('.cjs') || explicitMirroredFiles.has(f)),
   );
   for (const file of sharedFiles) {
     it(`scripts/shared/${file} matches shared/${file}`, () => {

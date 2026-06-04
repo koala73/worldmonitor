@@ -112,9 +112,21 @@ export async function refreshDataFreshnessFromHealth(options: RefreshHealthFresh
     headers: { Accept: 'application/json' },
     signal: options.signal,
   });
-  if (!resp.ok) throw new Error(`health freshness fetch failed: ${resp.status}`);
 
-  const payload = await resp.json() as HealthResponse;
+  // REDIS_DOWN now returns HTTP 503 with a JSON body {status:'REDIS_DOWN', ...}
+  // and no `checks` (see api/health.js). Parse the body first and only treat a
+  // non-2xx as a hard fetch failure when it ISN'T a recognized Redis-outage
+  // payload — otherwise the outage branch below never runs and mapped sources
+  // keep stale freshness state during an outage instead of being flagged.
+  let payload: HealthResponse | null = null;
+  try {
+    payload = await resp.json() as HealthResponse;
+  } catch {
+    payload = null;
+  }
+  if (!payload || (!resp.ok && !isRedisOutageStatus(payload.status))) {
+    throw new Error(`health freshness fetch failed: ${resp.status}`);
+  }
   const checkedAtMs = payload.checkedAt ? Date.parse(payload.checkedAt) : Date.now();
   const checkedAt = Number.isFinite(checkedAtMs) ? checkedAtMs : Date.now();
   const updatesBySource = new Map<DataSourceId, SeedHealthUpdate>();

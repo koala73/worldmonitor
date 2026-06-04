@@ -299,6 +299,39 @@ All new services share these settings:
 
 ---
 
+## Registry-covered live resilience services
+
+These live Country Resilience services are not slot-saving consolidation
+migrations and should not be counted in the 35-slot savings plan above. They
+are listed here so their Railway start commands are first-class registry-covered
+entries.
+
+### seed-bundle-resilience-recovery
+
+| Setting | Value |
+|---|---|
+| **Service name** | `seed-bundle-resilience-recovery` |
+| **Start command** | `node scripts/seed-bundle-resilience-recovery.mjs` |
+| **Cron schedule** | Monthly recovery cadence; use the active Railway schedule for the existing service |
+| **Watch paths** | `scripts/**`, `shared/**` |
+| **Purpose** | Dedicated Country Resilience recovery inputs bundle |
+| **Members** | Fiscal Space, Reserve Adequacy, External Debt, Import HHI, Fuel Stocks, Re-export Share, Sovereign Wealth |
+| **Note** | This is the service referenced by the Import-HHI controls below. It is registry-covered so nixpacks packaging and start-command drift are tested. |
+
+### seed-bundle-resilience-energy-v2
+
+| Setting | Value |
+|---|---|
+| **Service name** | `seed-bundle-resilience-energy-v2` |
+| **Start command** | `node scripts/seed-bundle-resilience-energy-v2.mjs` |
+| **Cron schedule** | `0 6 * * *` (daily 06:00 UTC; per-slot interval gates real seeds to 7 days) |
+| **Watch paths** | `scripts/**`, `shared/**` |
+| **Purpose** | Dedicated Country Resilience energy-v2 input bundle |
+| **Members** | Low Carbon Generation, Fossil Electricity Share, Power Losses |
+| **Note** | Daily cron avoids the weekly dead window described in `scripts/seed-bundle-resilience-energy-v2.mjs`; the bundle's 7-day section intervals prevent unnecessary World Bank polling. |
+
+---
+
 ## Services that STAY unchanged (54 total)
 
 ### Infrastructure (4)
@@ -461,8 +494,40 @@ IMPORT_HHI_VERBOSE=1 FORCE_RESEED=true node scripts/seed-recovery-import-hhi.mjs
 Then warm live scores so `importConcentration` reads the refreshed canonical key:
 
 ```bash
-WORLDMONITOR_API_KEY=<key> node scripts/seed-resilience-scores.mjs
+API_BASE_URL=https://api.worldmonitor.app \
+WORLDMONITOR_SEED_REFRESH_KEY=<seed-refresh-key> \
+WORLDMONITOR_API_KEY=<read-key> \
+node scripts/seed-resilience-scores.mjs
 ```
+
+`WORLDMONITOR_SEED_REFRESH_KEY` is required: the resilience score seeder uses it
+for the seed-only `get-resilience-ranking?refresh=1` recompute path. Keep
+`WORLDMONITOR_API_KEY` or `WORLDMONITOR_VALID_KEYS` available too so laggard
+per-country score warms can fall back to the normal premium read endpoint. In
+Railway, the service environment should already provide the Upstash Redis
+credentials; for a local force-run, export `UPSTASH_REDIS_REST_URL` and
+`UPSTASH_REDIS_REST_TOKEN` as well.
+
+If the run is fixing missing interval data, the success signal is the
+`seed_complete` log for `domain="resilience:scores"` with
+`intervalsWritten > 0` and no `status="ERROR"`. A failed interval recovery
+sets `status="ERROR"` plus `intervalFailureReason` and includes the diagnostic
+counts `intervalMissingScorePayloadCount`, `intervalStaleScorePayloadCount`,
+`intervalInvalidScorePayloadCount`, `intervalMalformedScorePayloadCount`,
+`intervalFormulaSkipCount`, and `intervalPayloadSkipCount`.
+
+Verify the public audit surfaces after the run:
+
+```bash
+curl -fsS https://api.worldmonitor.app/api/resilience/v1/get-runtime-manifest \
+  | jq '{formulaTag, rankingCache, constructVersions, intervals}'
+curl -fsS https://api.worldmonitor.app/api/health \
+  | jq '.checks.resilienceIntervals'
+```
+
+Pass condition for interval recovery: runtime manifest reports
+`intervals.available=true`, and `/api/health` reports
+`resilienceIntervals.status="OK"` with `records > 0`.
 
 ### Verification
 

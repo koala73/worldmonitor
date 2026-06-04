@@ -25,6 +25,11 @@ function kebabToCamel(s: string): string {
   return s.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
 }
 
+function panelCommandTargetId(commandId: string): string | null {
+  if (!commandId.startsWith('panel:')) return null;
+  return commandId.slice(6).split('@')[0] || null;
+}
+
 function resolveCommandLabel(cmd: Command): string {
   const colonIdx = cmd.id.indexOf(':');
   if (colonIdx === -1) return cmd.label;
@@ -38,7 +43,10 @@ function resolveCommandLabel(cmd: Command): string {
       return `${t('commands.prefixes.map')}: ${cmd.label}`;
     case 'panel': {
       const fallback = cmd.label.startsWith('Panel: ') ? cmd.label.slice(7) : cmd.label;
-      const panelName = t('panels.' + kebabToCamel(action), { defaultValue: fallback });
+      const panelId = panelCommandTargetId(cmd.id) ?? action;
+      const panelName = action.includes('@')
+        ? fallback
+        : t('panels.' + kebabToCamel(panelId), { defaultValue: fallback });
       return `${t('commands.prefixes.panel')}: ${panelName}`;
     }
     case 'country':
@@ -173,9 +181,8 @@ export class SearchModal {
 
   /** True when a panel command would add a currently-disabled panel (drives the "Add" affordance). */
   private isAddablePanel(cmd: Command): boolean {
-    if (!cmd.id.startsWith('panel:')) return false;
-    const id = cmd.id.slice(6);
-    return !this.activePanelIds.has(id) && this.availablePanelIds.has(id);
+    const id = panelCommandTargetId(cmd.id);
+    return !!id && !this.activePanelIds.has(id) && this.availablePanelIds.has(id);
   }
 
   public setLayerExecutableFn(fn: (layerKey: string) => boolean): void {
@@ -313,8 +320,8 @@ export class SearchModal {
     if (query.length < 2) return [];
     const matched: CommandResult[] = [];
     for (const cmd of getAllCommands()) {
-      if (cmd.id.startsWith('panel:')) {
-        const panelId = cmd.id.slice(6);
+      const panelId = panelCommandTargetId(cmd.id);
+      if (panelId) {
         if (!this.isPanelCommandVisible(panelId)) continue;
       }
       // Hide layer commands whose layer can't render under the current

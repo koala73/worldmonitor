@@ -40,6 +40,16 @@ const RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE_IDS: ReadonlySet<string> = ne
   'sovereignFiscalBuffer',
 ]);
 
+// Mirrors server/worldmonitor/resilience/v1/_shared.ts. Keep this table
+// in sync so the widget Coverage % matches API overallCoverage semantics;
+// tests/resilience-staleness-factor-parity.test.mts guards drift.
+const STALENESS_CONFIDENCE_COVERAGE_FACTOR: Readonly<Record<string, number>> = {
+  '': 1.0,
+  fresh: 1.0,
+  aging: 0.7,
+  stale: 0.4,
+};
+
 // Gated locked-preview fixture rendered when the resilience widget is
 // visible to non-entitled users. The preview is blurred and
 // non-interactive via the .resilience-widget__preview CSS class, so
@@ -165,6 +175,12 @@ export const RESILIENCE_VISUAL_LEVEL_COLORS: Record<ResilienceVisualLevel, strin
   unknown: 'var(--text-faint)',
 };
 
+export const RESILIENCE_PILLAR_IDS = [
+  'structural-readiness',
+  'live-shock-exposure',
+  'recovery-capacity',
+] as const;
+
 const DOMAIN_LABELS: Record<string, string> = {
   economic: 'Economic',
   infrastructure: 'Infra & Supply',
@@ -175,12 +191,83 @@ const DOMAIN_LABELS: Record<string, string> = {
 };
 
 export function getResilienceVisualLevel(score: number): ResilienceVisualLevel {
-  if (!Number.isFinite(score)) return 'unknown';
+  if (!Number.isFinite(score) || score < 0) return 'unknown';
   if (score >= 80) return 'very_high';
   if (score >= 60) return 'high';
   if (score >= 40) return 'moderate';
   if (score >= 20) return 'low';
   return 'very_low';
+}
+
+export function formatResilienceVisualLevel(level: ResilienceVisualLevel): string {
+  if (level === 'unknown') return 'Insufficient data';
+  return level.replace(/_/g, ' ');
+}
+
+export function formatResilienceServerLevel(level: string | null | undefined): string {
+  const normalized = String(level || '').trim().toLowerCase();
+  return normalized.length > 0 ? normalized.replace(/_/g, ' ') : 'unknown';
+}
+
+function isUnknownResilienceServerLevel(level: string | null | undefined): boolean {
+  return String(level || '').trim().toLowerCase() === 'unknown';
+}
+
+export interface ResilienceOverallDisplay {
+  hasScore: boolean;
+  scoreForBar: number;
+  scoreLabel: string;
+  visualLevel: ResilienceVisualLevel;
+  visualLevelLabel: string;
+  serverLevelLabel: string;
+}
+
+export function getResilienceOverallDisplay(data: Pick<ResilienceScoreResponse, 'overallScore' | 'level'>): ResilienceOverallDisplay {
+  const rawScore = Number(data.overallScore);
+  const visualLevel = getResilienceVisualLevel(rawScore);
+  if (visualLevel === 'unknown' || (rawScore === 0 && isUnknownResilienceServerLevel(data.level))) {
+    return {
+      hasScore: false,
+      scoreForBar: 0,
+      scoreLabel: 'n/a',
+      visualLevel: 'unknown',
+      visualLevelLabel: 'Insufficient data',
+      serverLevelLabel: `API level: ${formatResilienceServerLevel(data.level)}`,
+    };
+  }
+
+  const clampedScore = Math.min(100, Math.max(0, rawScore));
+  return {
+    hasScore: true,
+    scoreForBar: clampedScore,
+    scoreLabel: String(Math.round(clampedScore)),
+    visualLevel,
+    visualLevelLabel: `Visual band: ${formatResilienceVisualLevel(visualLevel).toUpperCase()}`,
+    serverLevelLabel: `API level: ${formatResilienceServerLevel(data.level)}`,
+  };
+}
+
+export interface ResilienceMethodologySummary {
+  activeDimensionCount: number;
+  // Kept for server/fixture parity tests; tooltip copy intentionally shows active dimensions only.
+  serializedDimensionCount: number;
+  domainCount: number;
+  pillarCount: number;
+}
+
+export function getResilienceMethodologySummary(data: ResilienceScoreResponse = LOCKED_PREVIEW): ResilienceMethodologySummary {
+  const dimensions = data.domains.flatMap((domain) => domain.dimensions);
+  return {
+    activeDimensionCount: dimensions.filter((dimension) => !RESILIENCE_RETIRED_DIMENSION_IDS.has(dimension.id)).length,
+    serializedDimensionCount: dimensions.length,
+    domainCount: data.domains.length,
+    pillarCount: data.pillars.length > 0 ? data.pillars.length : RESILIENCE_PILLAR_IDS.length,
+  };
+}
+
+export function formatResilienceMethodologyHelpTitle(summary = getResilienceMethodologySummary()): string {
+  // Keep the human-readable domain/pillar labels in sync if the methodology count parity tests change.
+  return `Composite resilience score from ${summary.activeDimensionCount} active dimensions across ${summary.domainCount} domains (economic, infrastructure, energy, social & governance, health & food, recovery). The current methodology groups scores into ${summary.pillarCount} pillars (structural readiness, live shock exposure, recovery capacity); pillar detail appears when the API response includes it. Weights sum to 1.00; recovery carries the largest single-domain weight (0.25).`;
 }
 
 export function getResilienceTrendArrow(trend: string): string {
@@ -213,10 +300,12 @@ export function formatResilienceConfidence(data: ResilienceScoreResponse): strin
   // coverage percentage. The same filter pair is applied server-side
   // by `_shared.ts:computeOverallCoverage` — keeping them in lockstep
   // ensures the widget Coverage % matches the server's
-  // `overallCoverage` field. Genuine data sparsity (non-retired,
-  // non-NA coverage=0) stays in the average because it reflects a
-  // real confidence signal; the server already sets `lowConfidence`
-  // when the overall picture is too sparse, which short-circuits above.
+  // `overallCoverage` field. Stale observed data uses the same
+  // derated confidence coverage as the server. Genuine data sparsity
+  // (non-retired, non-NA coverage=0) stays in the average because it
+  // reflects a real confidence signal; the server already sets
+  // `lowConfidence` when the overall picture is too sparse, which
+  // short-circuits above.
   const coverages = data.domains.flatMap((d) =>
     d.dimensions
       .filter((dim) => {
@@ -235,12 +324,21 @@ export function formatResilienceConfidence(data: ResilienceScoreResponse): strin
         ) return false;
         return true;
       })
-      .map((dim) => dim.coverage),
+      .map((dim) => confidenceCoverage(dim)),
   );
   const avgCoverage = coverages.length > 0
     ? Math.round((coverages.reduce((s, c) => s + c, 0) / coverages.length) * 100)
     : 0;
   return `Coverage ${avgCoverage}% ✓`;
+}
+
+function confidenceCoverage(dimension: ResilienceScoreResponse['domains'][number]['dimensions'][number]): number {
+  const lastObservedAtMs = Number(dimension.freshness?.lastObservedAtMs ?? 0);
+  if (!Number.isFinite(lastObservedAtMs) || lastObservedAtMs <= 0) {
+    return dimension.coverage;
+  }
+  const staleness = dimension.freshness?.staleness ?? '';
+  return dimension.coverage * (STALENESS_CONFIDENCE_COVERAGE_FACTOR[staleness] ?? 1.0);
 }
 
 export function formatResilienceChange30d(change30d: number): string {
@@ -266,6 +364,7 @@ function normalizeScoreInterval(interval: ScoreIntervalDisplayInput): { p05: num
   const p05 = Number(interval.p05);
   const p95 = Number(interval.p95);
   if (!Number.isFinite(p05) || !Number.isFinite(p95)) return null;
+  if (p05 < 0 || p05 > 100 || p95 < 0 || p95 > 100 || p05 > p95) return null;
   return { p05, p95 };
 }
 
@@ -451,6 +550,12 @@ const STALENESS_LABELS: Record<Exclude<DimensionStaleness, null>, string> = {
   stale: 'Stale (beyond 3x cadence)',
 };
 
+const STALENESS_ICONS: Record<Exclude<DimensionStaleness, null>, string> = {
+  fresh: '\u25CF',
+  aging: '\u25D0',
+  stale: '\u25CB',
+};
+
 export function getImputationClassLabel(c: DimensionImputationClass): string {
   if (!c) return 'Unknown imputation class';
   return IMPUTATION_CLASS_LABELS[c];
@@ -464,6 +569,11 @@ export function getImputationClassIcon(c: DimensionImputationClass): string {
 export function getStalenessLabel(s: DimensionStaleness): string {
   if (!s) return 'Unknown freshness';
   return STALENESS_LABELS[s];
+}
+
+export function getStalenessIcon(s: DimensionStaleness): string {
+  if (!s) return '';
+  return STALENESS_ICONS[s];
 }
 
 /**

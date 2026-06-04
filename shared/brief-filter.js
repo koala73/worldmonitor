@@ -8,6 +8,7 @@
 import { BRIEF_ENVELOPE_VERSION } from './brief-envelope.js';
 import { assertBriefEnvelope } from '../server/_shared/brief-render.js';
 import { isInstitutionalStaticPage } from './url-classifier.js';
+import { classifyEphemeralLiveCoverage } from './ephemeral-live-classifier.js';
 import diplomacyKeywordsData from './diplomacy-keywords.json' with { type: 'json' };
 
 /**
@@ -202,7 +203,7 @@ function titleCase(v) {
 }
 
 /**
- * @typedef {(event: { reason: 'severity'|'headline'|'url'|'shape'|'cap'|'source_topic_cap'|'institutional_static_page', severity?: string, sourceUrl?: string }) => void} DropMetricsFn
+ * @typedef {(event: { reason: 'severity'|'headline'|'url'|'shape'|'cap'|'source_topic_cap'|'institutional_static_page'|'ephemeral_live', severity?: string, sourceUrl?: string }) => void} DropMetricsFn
  */
 
 /**
@@ -449,6 +450,20 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12, maxPer
     const sourceUrl = normaliseSourceUrl(raw.primaryLink);
     if (!sourceUrl) {
       if (emit) emit({ reason: 'url', severity: threatLevel, sourceUrl: typeof raw.primaryLink === 'string' ? raw.primaryLink : undefined });
+      continue;
+    }
+
+    const stampedEphemeralLive = raw.isEphemeralLiveCoverage === true;
+    const ephemeralLiveStampMissing = typeof raw.isEphemeralLiveCoverage !== 'boolean';
+    if (
+      stampedEphemeralLive ||
+      (ephemeralLiveStampMissing && classifyEphemeralLiveCoverage({
+        title: raw.primaryTitle,
+        link: sourceUrl,
+        description: raw.description,
+      }))
+    ) {
+      if (emit) emit({ reason: 'ephemeral_live', severity: threatLevel, sourceUrl });
       continue;
     }
 

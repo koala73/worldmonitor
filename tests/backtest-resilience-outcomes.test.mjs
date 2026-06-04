@@ -23,6 +23,9 @@ import {
   SANCTIONS_SHOCK_COUNTRIES_2024_2025,
   AUC_THRESHOLD,
   GATE_WIDTH,
+  buildBacktestOutput,
+  currentCacheFormulaLocal,
+  currentMethodologyFormulaLocal,
 } from '../scripts/backtest-resilience-outcomes.mjs';
 
 describe('computeAuc', () => {
@@ -440,6 +443,21 @@ describe('output shape', () => {
     assert.ok(ids.has('refugee-surges'));
     assert.ok(ids.has('sanctions-shocks'));
     assert.ok(ids.has('conflict-spillover'));
+  });
+
+  it('stamps formula metadata on generated backtest artifacts', () => {
+    const output = buildBacktestOutput([
+      {
+        id: 'fx-stress',
+        label: 'FX Stress',
+        pass: true,
+        threshold: AUC_THRESHOLD,
+        gateWidth: GATE_WIDTH,
+      },
+    ], 1);
+
+    assert.equal(output._formula, currentCacheFormulaLocal());
+    assert.equal(output.methodologyFormula, currentMethodologyFormulaLocal());
   });
 });
 

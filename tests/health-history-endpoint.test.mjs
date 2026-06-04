@@ -52,7 +52,11 @@ describe('api/health ?history=1', () => {
     const req = new Request('https://api.worldmonitor.app/api/health?compact=1');
     const res = await handler(req);
 
-    assert.equal(res.status, 200);
+    // With Upstash unconfigured the non-history path short-circuits to
+    // REDIS_DOWN, which returns 503 (the one hard-down state that surfaces a
+    // non-200 HTTP code — see api/health.js REDIS_DOWN handler). The point of
+    // this test is the shape (no history-specific keys), not the status code.
+    assert.equal(res.status, 503);
     const body = await res.json();
     assert.ok(
       !Object.hasOwn(body, 'lastFailure'),

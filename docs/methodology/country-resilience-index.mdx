@@ -1,18 +1,18 @@
 ---
 title: "Country Resilience Index"
-description: "Real-time resilience scoring for ~220 countries across 6 domains and 20 active dimensions, combining structural baseline indicators with live stress signals into a 0-100 resilience score updated every 6 hours. Published at OECD/JRC methodological parity with transparent goalposts, coverage tracking, and a formal four-class imputation taxonomy."
+description: "Real-time resilience scoring for the 196-country public rankable universe across 6 domains and 20 active dimensions, combining structural baseline indicators with live stress signals into a 0-100 resilience score updated every 6 hours. Published at OECD/JRC methodological parity with transparent goalposts, coverage tracking, and a formal four-class imputation taxonomy."
 ---
 
-The WorldMonitor Country Resilience Index (CRI) scores every country in the world on a 0-100 scale, combining long-run structural capacity with current operational stress to produce an actionable resilience metric. Rather than relying on static country risk ratings, the CRI updates every 6 hours from official and authoritative sources and exposes full provenance, coverage, and imputation context so analysts can see exactly *why* a score moved and how much of it is real data versus imputed.
+The WorldMonitor Country Resilience Index (CRI) scores the 196-country public rankable universe on a 0-100 scale, combining long-run structural capacity with current operational stress to produce an actionable resilience metric. Upstream static/source feeds can include a broader set of territories, but the public CRI ranking is filtered to the rankable universe before score publication. Rather than relying on static country risk ratings, the CRI updates every 6 hours from official and authoritative sources and exposes full provenance, coverage, and imputation context so analysts can see exactly *why* a score moved and how much of it is real data versus imputed.
 
 This document describes the **currently shipping** behavior of the index. The versioning has two independent axes:
 
-- **Response shape**: `schemaVersion: "2.0"` is the current default. Every response carries a real coverage-weighted `pillars[]` array regrouping the six domains into structural readiness / live shock exposure / recovery capacity. The legacy `schemaVersion: "1.0"` shape (pillars empty) remains available via the `RESILIENCE_SCHEMA_V2_ENABLED=false` env flag for one release cycle.
+- **Response shape**: `schemaVersion: "2.0"` is the current default. Every response carries a real `pillars[]` array regrouping the six domains into structural readiness / live shock exposure / recovery capacity. Pillar scores use each member domain's published design weight scaled by that domain's average dimension coverage. The legacy `schemaVersion: "1.0"` shape (pillars empty) remains available via the `RESILIENCE_SCHEMA_V2_ENABLED=false` env flag for one release cycle.
 - **Scoring formula**: the top-level `overall_score` is the v2 non-compensatory pillar-combined formula with a min-pillar penalty. The legacy six-domain weighted aggregate remains in code as the rollback path when `RESILIENCE_PILLAR_COMBINE_ENABLED=false`, but production and validation cron are activated on the pillar-combined formula. The annual Reference Edition is a frozen, citation-quality artifact; it is intentionally separate from the live deployment manifest.
 
-For the live deployment state, use the [runtime manifest](/api/resilience/v1/get-runtime-manifest). It reports the deployed SHA, active formula tag, `RESILIENCE_*` flag states, cache identifiers, static `dataVersion`, and ranking-cache metadata. The Reference Edition remains a frozen shipped bundle; it should not be treated as proof of the flags or cache keys currently active in production.
+For the live deployment state, use the [runtime manifest](/api/resilience/v1/get-runtime-manifest). It reports the active formula tag, static `dataVersion`, ranking-cache metadata, safe derived construct versions such as `constructVersions.energy` (`legacy` or `v2`), and `intervals` availability metadata for the public `scoreInterval`/`rankStable` support path without exposing deploy identifiers, raw `RESILIENCE_*` flag states, or internal cache keys. The Reference Edition remains a frozen shipped bundle; it should not be treated as proof of the runtime state currently active in production.
 
-Everything documented below describes the **currently shipping** state: schemaVersion `"2.0"` shape, 6 domains × 20 active dimensions × 3 pillars (plus 2 structurally-retired dimensions kept in the registry for schema continuity at `coverage=0`), and the pillar-combined penalized `overall_score`. The subsection on [Pillar-combined score activation](#pillar-combined-score-activation-active) records the activation evidence and rollback mechanics.
+Everything documented below describes the **currently shipping** state: schemaVersion `"2.0"` shape, 6 domains × 20 active dimensions × 3 pillars (plus 2 structurally-retired dimensions kept in the registry for schema continuity at `coverage=0`), the pillar-combined penalized `overall_score`, and the energy v2 construct. The subsection on [Pillar-combined score activation](#pillar-combined-score-activation-active) records the activation evidence and rollback mechanics. The live runtime manifest reported `formulaTag="pc"` and `constructVersions.energy="v2"` on 2026-06-02, with `/api/health` reporting `OK` for the three required energy v2 seed checks (`lowCarbonGeneration`, `fossilElectricityShare`, and `powerLosses`).
 
 ## Construct contract
 
@@ -20,22 +20,22 @@ Country Resilience measures **absolute national shock-absorption and recovery ca
 
 The scorer will treat development as relevant only where it creates a direct and measurable shock-absorption mechanism. Pure level-of-affluence proxies are excluded. Development-relative overperformance will be reported separately and will not alter the ordinal country ranking.
 
-Every indicator in the scorer is being evaluated against a single **mechanism test**: *what direct shock channel does this measure?* An indicator whose only answer is "this country is rich" is excluded from the core score regardless of its historical correlation with resilience outcomes. An indicator whose answer is "capacity X absorbs shock Y" can enter but must use a threshold or saturating transform so it rewards the mechanism rather than the level of resource that drives it.
+Every indicator in the scorer is evaluated against a single **mechanism test**: *what direct shock channel does this measure?* An indicator whose only answer is "this country is rich" is excluded from the core score regardless of its historical correlation with resilience outcomes. An indicator whose answer is "capacity X absorbs shock Y" can enter but must use a threshold or saturating transform so it rewards the mechanism rather than the level of resource that drives it.
 
-This PR (the diagnostic freeze) does not change any scoring behaviour. It ships the mechanism-test framework and the apparatus to measure compliance; it does not claim compliance. Several indicators in the current scorer fail the test (notably `electricityConsumption`, `gasShare` / `coalShare` as flat domestic-fossil penalties, and `WHO per-capita health spend`). They are tagged `wealth-proxy` or equivalent in `docs/methodology/indicator-sources.yaml` and scheduled for replacement in PR 1 / PR 4 of the repair plan. Published rankings today reflect the pre-repair scorer; the mechanism-test contract applies fully only after PR 4.
+Current production already reflects the recovery-domain, currency/external, and energy construct repairs described below: `reserveAdequacy` and `fuelStockDays` are structurally retired, `liquidReserveAdequacy` and `sovereignFiscalBuffer` are active, `currencyExternal` scores from IMF inflation plus World Bank reserves, `energy` uses the v2 power-system-security construct, and the coverage/influence cap is enforced in tests. The legacy energy scorer remains in code only as the emergency rollback path for `RESILIENCE_ENERGY_V2_ENABLED=false`.
 
-## Known construct limitations (in repair)
+## Construct repair status
 
-The first-publication repair is sequenced as PR 0 → PR 1 → PR 3 → PR 2 → PR 4 under the plan above. At the time of writing (PR 0 shipping), the following six construct errors are known and scheduled:
+The first-publication repair plan started with a diagnostic freeze, then sequenced energy repair, dead-signal cleanup, reserve/SWF split, and remaining health-domain follow-up. The current state is:
 
-1. **`electricityConsumption` is a wealth proxy, not a resilience signal.** Weight 0.30 on the `energy` dimension; rewards per-capita load rather than grid-integrity capacity. Replaced in PR 1 by `powerLossesPct` (absorbing the full 0.20 grid-integrity share temporarily) plus the indirect effect via `accessToElectricityPct` (moved to the `infrastructure` domain). A second grid-integrity signal `reserveMarginPct` is deferred per plan §3.1 open-question (IEA electricity-balance coverage too sparse); when its seeder ships, 0.10 splits back out of `powerLossesPct`. **Status:** PR 1 lands the v2 construct behind the `RESILIENCE_ENERGY_V2_ENABLED` flag (default off); the indicator set is documented under the Energy Domain section below.
-2. **Gas and coal penalized as vulnerability even when domestic.** Current `gasShare` / `coalShare` penalties conflate fossil-dominance with fossil-import-dependence. Replaced in PR 1 with a single `importedFossilDependence` composite using World Bank `EG.IMP.CONS.ZS` × `EG.ELC.FOSL.ZS` under the **Option B (power-system framing)** decision documented in the Energy Domain section.
-3. **No nuclear credit in `scoreEnergy`.** Nuclear-heavy generation scores no points despite firm low-carbon characteristics. Fixed in PR 1 by collapsing `renewShare` + new nuclear share + hydroelectric into a single `lowCarbonGenerationShare` indicator sourced from World Bank `EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS + EG.ELC.HYRO.ZS`. Hydro is summed explicitly because WB RNEW excludes hydroelectric; without HYRO, hydro-heavy countries (Norway ~95%, Paraguay ~99%, Brazil ~65%, Canada ~60%) would score near zero on this 0.20-weight signal despite having near-100% low-carbon grids.
-4. **Sovereign-wealth buffers invisible to `reserveAdequacy`.** Current dimension only sees central-bank reserves; SWF assets are not counted. Fixed in PR 2 by splitting the dimension into `liquidReserveAdequacy` + `sovereignFiscalBuffer` with a three-component haircut (access × liquidity × transparency) and a saturating transform.
+1. **`electricityConsumption` was a wealth proxy, not a resilience signal.** Landed in PR 1 and activated in production by the 2026-06-02 post-flip audit: the v2 construct replaces it with `powerLossesPct` (absorbing the full 0.20 grid-integrity share temporarily) plus the indirect effect via `accessToElectricityPct` (moved to the `infrastructure` domain). A second grid-integrity signal `reserveMarginPct` is deferred per plan §3.1 open-question (IEA electricity-balance coverage too sparse); when its seeder ships, 0.10 splits back out of `powerLossesPct`.
+2. **Gas and coal penalized as vulnerability even when domestic.** The legacy `gasShare` / `coalShare` penalties conflate fossil-dominance with fossil-import-dependence. The v2 energy construct replaces them with a single `importedFossilDependence` composite using World Bank `EG.IMP.CONS.ZS` × `EG.ELC.FOSL.ZS` under the **Option B (power-system framing)** decision documented in the Energy Domain section.
+3. **No nuclear credit in the legacy `scoreEnergy` path.** The v2 construct credits firm low-carbon generation by collapsing `renewShare` + new nuclear share + hydroelectric into a single `lowCarbonGenerationShare` indicator sourced from World Bank `EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS + EG.ELC.HYRO.ZS`. Hydro is summed explicitly because WB RNEW excludes hydroelectric; without HYRO, hydro-heavy countries (Norway ~95%, Paraguay ~99%, Brazil ~65%, Canada ~60%) would score near zero on this 0.20-weight signal despite having near-100% low-carbon grids.
+4. **Sovereign-wealth buffers invisible to `reserveAdequacy`.** Fixed in PR 2 by retiring `reserveAdequacy` from the active score and splitting the construct into `liquidReserveAdequacy` + `sovereignFiscalBuffer` with a three-component haircut (access × liquidity × transparency) and a saturating transform.
 5. **Dead and regional-only signals in the global core score.** ~~`fuelStockDays` (100% imputed globally), `euGasStorageStress` (EU-only), and `currencyExternal` (BIS 64-economy coverage) currently carry material weight despite insufficient coverage for a world ranking.~~ **Landed in PR 3 §3.5**: `fuelStockDays` permanently retired (coverage=0, imputationClass=null for every country — the scorer tags `null` rather than `source-failure` so the widget does not render a false "Source down" label, and the dimension is excluded from confidence/coverage averages via the `RESILIENCE_RETIRED_DIMENSIONS` registry); `currencyExternal` rebuilt on IMF inflation + WB reserves (no BIS); BIS `fxVolatility` + `fxDeviation` demoted to experimental tier; `externalDebtCoverage` re-goalposted from (0..5) to (0..2) per Greenspan-Guidotti to stop saturating at 100.
-6. **No coverage-based weight cap.** ~~A dimension at 30% observed coverage carries the same weight as one at 95%.~~ **Landed in PR 3 §3.6**: CI-enforced gate (`tests/resilience-coverage-influence-gate.test.mts`) fails the build if any core indicator with coverage under 137 countries (70% of the ~195 universe) carries more than 5% nominal weight in the overall score. The effective-influence half runs via `scripts/validate-resilience-sensitivity.mjs` as a committed artifact.
+6. **No coverage-based weight cap.** ~~A dimension at 30% observed coverage carries the same weight as one at 95%.~~ **Landed in PR 3 §3.6**: CI-enforced gate (`tests/resilience-coverage-influence-gate.test.mts`) fails the build if any core indicator below the committed 70% coverage floor for the rankable universe carries more than 5% nominal weight in the overall score. The effective-influence half runs via `scripts/validate-resilience-sensitivity.mjs` as a committed artifact.
 
-Each item maps to an acceptance gate and a spec in the repair plan. Until PR 1–PR 3 land, published rankings reflect the current construct and should be read in that context.
+Items 1-3 are the now-active energy v2 repair; items 4-6 are landed repairs preserved here as the historical record for why the active registry has 20 scored dimensions plus 2 retired dimensions kept for schema continuity.
 
 ## In the dashboard
 
@@ -49,13 +49,13 @@ All three dashboard surfaces are free to view. Direct score and ranking API call
 
 ## Overview
 
-The WorldMonitor Country Resilience Index scores ~220 countries on a 0-100 scale across 6 domains and 20 active dimensions (plus 2 structurally-retired dimensions kept in the registry at `coverage=0` for schema continuity; the public ranking after the v17 universe rebuild publishes 171 countries with 25 in `greyedOut[]` for failing the headline-eligible gate). It combines structural baseline indicators (governance quality, health infrastructure, fiscal capacity) with real-time stress signals (cyber threats, conflict events, shipping disruption) and recovery-capacity indicators (fiscal space, reserves, import concentration) to produce a single resilience score updated every 6 hours.
+The WorldMonitor Country Resilience Index scores the 196-country public rankable universe on a 0-100 scale across 6 domains and 20 active dimensions (plus 2 structurally-retired dimensions kept in the registry at `coverage=0` for schema continuity). The ranking handler can still route low-confidence or headline-ineligible countries to `greyedOut[]`, but the rankable universe itself is fixed by the committed UN-member + SAR whitelist. It combines structural baseline indicators (governance quality, health infrastructure, fiscal capacity) with real-time stress signals (cyber threats, conflict events, shipping disruption) and recovery-capacity indicators (fiscal space, reserves, import concentration) to produce a single resilience score updated every 6 hours.
 
 Data is sourced from official and authoritative providers: World Bank, IMF, WHO, WTO, OFAC, UNHCR, UCDP, BIS, IEA, FAO, Reporters Sans Frontieres, and the Institute for Economics and Peace, among others.
 
 ## Domains and Weights
 
-The index is organized into 6 domains. Each domain weight reflects its relative contribution to overall national resilience. Recovery carries the largest single-domain weight (0.25) because the ability to absorb and recover from a shock is the single best structural predictor of post-shock outcomes; this is why fiscally strong smaller states cluster at the top of the ranking and fragile states separate cleanly at the bottom.
+The index is organized into 6 domains. Each domain weight reflects its design contribution to national resilience. Under the active pillar-combined formula, the weight sets that domain's relative influence inside its pillar, scaled by the domain's average dimension coverage. Under the legacy six-domain rollback formula, the same weights are used directly in the flat domain aggregate. Recovery carries the largest single-domain weight (0.25) because the ability to absorb and recover from a shock is the single best structural predictor of post-shock outcomes; this is why fiscally strong smaller states cluster at the top of the ranking and fragile states separate cleanly at the bottom.
 
 | Domain | ID | Weight | Dimensions |
 |---|---|---|---|
@@ -64,11 +64,11 @@ The index is organized into 6 domains. Each domain weight reflects its relative 
 | Energy | `energy` | 0.11 | Energy |
 | Social & Governance | `social-governance` | 0.19 | Governance, Social Cohesion, Conflict & Displacement, Information |
 | Health & Food | `health-food` | 0.13 | Health & Public Service, Food & Water |
-| Recovery | `recovery` | 0.25 | Fiscal Space, Reserve Adequacy, External Debt Coverage, Import Concentration, State Continuity, Fuel Stock Days |
+| Recovery | `recovery` | 0.25 | Fiscal Space, External Debt Coverage, Import Concentration, State Continuity, Liquid Reserve Adequacy, Sovereign Fiscal Buffer |
 
-Weights sum to 1.00. The authoritative values live in `RESILIENCE_DOMAIN_WEIGHTS` in `server/worldmonitor/resilience/v1/_dimension-scorers.ts`; if this table and the code disagree, the code wins.
+Weights sum to 1.00. The authoritative values live in `RESILIENCE_DOMAIN_WEIGHTS` in `server/worldmonitor/resilience/v1/_dimension-scorers.ts`; if this table and the code disagree, the code wins. In the active `pc` formula, absolute top-level influence also depends on the outer pillar weights.
 
-The 6 domains are regrouped into 3 pillars (structural-readiness, live-shock-exposure, recovery-capacity) with weights 0.40 / 0.35 / 0.25 for the Phase 2 pillar-combined score. The pillar shape is emitted today on every response (`schemaVersion="2.0"`, `pillars[]` populated with real coverage-weighted scores). The top-level `overallScore` is computed by `_shared.ts#penalizedPillarScore`: the weighted pillar mean multiplied by the min-pillar penalty factor `(1 - 0.5 * (1 - min_pillar / 100))`.
+The 6 domains are regrouped into 3 pillars (structural-readiness, live-shock-exposure, recovery-capacity) with weights 0.40 / 0.35 / 0.25 for the Phase 2 pillar-combined score. The pillar shape is emitted today on every response (`schemaVersion="2.0"`, `pillars[]` populated with real domain-weighted, coverage-scaled scores). The top-level `overallScore` is computed by `_shared.ts#penalizedPillarScore`: the weighted pillar mean multiplied by the min-pillar penalty factor `(1 - 0.5 * (1 - min_pillar / 100))`.
 
 ## Dimensions and Indicators
 
@@ -80,17 +80,19 @@ Each dimension is scored from 0-100 using a weighted blend of its sub-metrics. B
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
-| govRevenuePct | Government revenue as % of GDP (IMF GGR_G01_GDP_PT) | Higher is better | 5 - 45 | 0.50 | IMF | Annual |
+| govRevenuePct | Government revenue as % of GDP (IMF GGR_G01_GDP_PT) | Higher is better | 5 - 45 | 0.40 | IMF | Annual |
 | debtGrowthRate | Annual debt growth rate | Lower is better | 20 - 0 | 0.20 | National debt data | Annual |
-| currentAccountPct | Current account balance as % of GDP (IMF) | Higher is better | -20 - 20 | 0.30 | IMF | Annual |
+| currentAccountPct | Current account balance as % of GDP (IMF) | Higher is better | -20 - 20 | 0.20 | IMF | Annual |
+| unemploymentPct | Unemployment rate (IMF WEO LUR) | Lower is better | 25 - 3 | 0.15 | IMF | Annual |
+| householdDebtService | BIS household debt service ratio (% income) | Lower is better | 20 - 0 | 0.05 | BIS | Quarterly |
 
 #### Currency & External
 
-PR 3 §3.5 point 2 retired the BIS-backed core construct. BIS REER and DSR cover only the 64 BIS-reporting economies, so the old composite fell through to curated_list_absent (coverage 0.3) or a thin IMF proxy (coverage 0.45) for ~130 of 195 countries. The rebuilt dimension uses two globally-covered World Bank / IMF series.
+PR 3 §3.5 point 2 retired the BIS-backed core construct. BIS REER and DSR cover only the 64 BIS-reporting economies, so the old composite fell through to curated_list_absent (coverage 0.3) or a thin IMF proxy (coverage 0.45) for roughly two-thirds of the 196-country public rankable universe. The rebuilt dimension uses two globally-covered World Bank / IMF series.
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
-| inflationStability | Headline consumer inflation, % YoY (IMF WEO); primary signal for currency stability globally | Lower is better | 50 - 0 | 0.60 | IMF | Annual |
+| inflationStability | Headline consumer inflation, % YoY (IMF WEO); primary signal for currency stability globally | 1-3% target band is best | &lt;= -5 or >= 50 -> 0; 1-3 -> 100 | 0.60 | IMF | Annual |
 | fxReservesAdequacy | Total reserves in months of imports (World Bank FI.RES.TOTL.MO) | Higher is better | 1 - 12 | 0.40 | World Bank | Annual |
 
 Coverage ladder (post-PR-3): both present → 0.85; inflation only → 0.55; reserves only → 0.40; neither → 0.30 (curated_list_absent imputation, subject to source-failure re-tagging on adapter outage).
@@ -115,9 +117,11 @@ weight categorization, transit-hub exclusion lists), see
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
-| tradeRestrictions | WTO trade restrictions count (IN_FORCE weighted 3x) | Lower is better | 30 - 0 | 0.30 | WTO | Weekly |
-| tradeBarriers | WTO trade barrier notifications count | Lower is better | 40 - 0 | 0.30 | WTO | Weekly |
+| tradeRestrictions | WTO trade restriction severity from the current one-row-per-reporter seed (`low=0`, `moderate=1`, `high=2`; legacy no-status rows count as moderate) | Lower is better | 2 - 0 | 0.30 | WTO | Weekly |
+| tradeBarriers | WTO tariff-gap barrier severity from the current one-row-per-reporter seed (`low=0`, `moderate=1`, `high=2`; legacy no-status rows count as moderate) | Lower is better | 2 - 0 | 0.30 | WTO | Weekly |
 | appliedTariffRate | Applied tariff rate, weighted mean, all products (World Bank TM.TAX.MRCH.WM.AR.ZS) | Lower is better | 20 - 0 | 0.40 | World Bank | Annual |
+
+**Tariff-overlap disclosure.** `tradePolicy` is deliberately tariff-heavy after the WTO severity repair: `tradeRestrictions` now uses WTO MFN applied-tariff severity at weight 0.30, `appliedTariffRate` uses the World Bank weighted-mean applied tariff at weight 0.40, and `tradeBarriers` uses WTO tariff-gap severity at weight 0.30. The overlap is intentional because the dimension measures policy friction after the OFAC-domicile component was removed; future tariff-source changes should preserve this disclosure or split the construct explicitly.
 
 #### Financial System Exposure
 
@@ -128,7 +132,7 @@ The dimension uses a **fail-closed preflight** pattern (mirrors `scoreEnergy` v2
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
 | shortTermExternalDebtPctGni | Short-term external debt as % of GNI (WB IDS DT.DOD.DSTC.IR.ZS × DT.DOD.DECT.GN.ZS); IMF Article IV vulnerability threshold is 15% GNI | Lower is better | 15 - 0 | 0.35 | World Bank IDS | Annual |
-| bisLbsXborderPctGdp | BIS LBS sum of by-parent cross-border claims (US/UK/major-EU/CH/JP/CA/AU/SG) as % of GDP; U-shape band — both isolation (under 5%) and over-exposure (above 60%) score low | Lower is better (U-shape) | 60 - 15 | 0.30 | BIS LBS | Quarterly |
+| bisLbsXborderPctGdp | BIS LBS sum of by-parent cross-border claims (US/UK/major-EU/CH/JP/CA/AU/SG) as % of GDP; U-shape band — both isolation (under 5%) and over-exposure (above 60%) score low | Lower is better (U-shape) | 60 - 25 | 0.30 | BIS LBS | Quarterly |
 | fatfListingStatus | FATF AML/CFT listing status — black list (call for action) → 0, gray list (increased monitoring) → 30, compliant → 100 | Higher is better | 0 - 100 | 0.20 | FATF | Monthly |
 | financialCenterRedundancy | Count of distinct BIS LBS by-parent reporters with non-trivial (>1% GDP) cross-border claims; rewards multi-counterparty financial centers, balances Component 2 over-exposure penalty | Higher is better | 1 - 10 | 0.15 | BIS LBS | Quarterly |
 
@@ -159,7 +163,8 @@ For the full construct rationale, alternatives considered (program-weight catego
 **v15 (2026-04-26) — small-state bias fix.** The exposure-weighting
 formula `shippingScore × tradeExposure + 100 × (1 − tradeExposure)`
 intentionally suppresses global-stress penalties for closed economies
-(low trade-to-GDP), but the prior `tradeExposure = 0.5` default for
+(low trade-to-GDP), where `tradeExposure = min(tradeToGdp / 50, 1.0)`;
+but the prior `tradeExposure = 0.5` default for
 countries with NO observed trade-to-GDP extended that suppression to
 tiny states with no trade-to-GDP data at all (TV, PW, NR), inflating
 their shipping/transit components to ~75 in v14. v15 removes the 0.5
@@ -173,19 +178,20 @@ landlocked LICs continue to score correctly).
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
-| electricityAccess | Access to electricity, % of population (World Bank EG.ELC.ACCS.ZS) | Higher is better | 40 - 100 | 0.40 | World Bank | Annual |
-| roadsPavedInfra | Paved roads as % of total road network (World Bank IS.ROD.PAVE.ZS) | Higher is better | 0 - 100 | 0.35 | World Bank | Annual |
+| electricityAccess | Access to electricity, % of population (World Bank EG.ELC.ACCS.ZS) | Higher is better | 40 - 100 | 0.30 | World Bank | Annual |
+| roadsPavedInfra | Paved roads as % of total road network (World Bank IS.ROD.PAVE.ZS) | Higher is better | 0 - 100 | 0.30 | World Bank | Annual |
 | infraOutages | Internet outage penalty (shared source with Cyber & Digital) | Lower is better | 20 - 0 | 0.25 | Outage monitoring | Realtime |
+| broadband | Fixed broadband subscriptions per 100 people (World Bank IT.NET.BBND.P2) | Higher is better | 0 - 40 | 0.15 | World Bank | Annual |
 
-**Note on the paved-roads indicator.** The same World Bank series (`IS.ROD.PAVE.ZS`) feeds two dimensions inside the Infrastructure domain: `roadsPavedLogistics` under Logistics & Supply (weight 0.50 within the dimension) and `roadsPavedInfra` here under Infrastructure (weight 0.35 within the dimension). This is deliberate source reuse, not accidental double counting: Logistics & Supply uses paved-road coverage as a proxy for transit viability, while Infrastructure uses it as a proxy for baseline public capital stock. The two dimensions legitimately care about the same signal for different reasons, and each dimension's contribution to the domain is further mediated by the dimension weight in `coverage-weighted mean` aggregation (see the Scoring Formula section). The v2.0 reference-grade upgrade plan is expected to consolidate shared upstream signals into a single indicator registry so this kind of reuse is documented at the source level rather than per-dimension; for v1.0 the two separate metric rows are preserved for backward compatibility.
+**Note on the paved-roads indicator.** The same World Bank series (`IS.ROD.PAVE.ZS`) feeds two dimensions inside the Infrastructure domain: `roadsPavedLogistics` under Logistics & Supply (weight 0.50 within the dimension) and `roadsPavedInfra` here under Infrastructure (weight 0.30 within the dimension). This is deliberate source reuse, not accidental double counting: Logistics & Supply uses paved-road coverage as a proxy for transit viability, while Infrastructure uses it as a proxy for baseline public capital stock. The two dimensions legitimately care about the same signal for different reasons, and each dimension's contribution to the domain is further mediated by the dimension weight in `coverage-weighted mean` aggregation (see the Scoring Formula section). The v2.0 reference-grade upgrade plan is expected to consolidate shared upstream signals into a single indicator registry so this kind of reuse is documented at the source level rather than per-dimension; for v1.0 the two separate metric rows are preserved for backward compatibility.
 
 ### Energy Domain (weight 0.11)
 
 #### Energy
 
-The `energy` dimension is in the middle of the PR 1 construct repair (plan §3.1–§3.3). Two indicator sets coexist for one release cycle: the **legacy construct** is currently live, and the **v2 construct** ships behind the `RESILIENCE_ENERGY_V2_ENABLED` flag (default off). Active set is determined by the flag at score time; mirrors how `schemaVersion: "2.0"` was staged.
+The `energy` dimension now uses the PR 1 v2 construct repair (plan §3.1-§3.3) in production. The **v2 construct** is the active runtime path when `RESILIENCE_ENERGY_V2_ENABLED=true`; the **legacy construct** remains available only as the emergency rollback path if that flag is set back to `false`. Active runtime state is reported as `constructVersions.energy` in `/api/resilience/v1/get-runtime-manifest` so production can be audited without exposing the raw env flag. The 2026-06-02 post-flip audit observed `constructVersions.energy="v2"` and `/api/health` green for all three v2 seed-meta entries. The indicator registry's flat `tier` field follows this active production construct: v2 global inputs are Core, EU gas storage remains Enrichment because coverage is regional, and legacy-only standalone inputs are Experimental rollback surfaces.
 
-**Legacy construct (current default).** Carries three known `wealth-proxy` / denominator-mismatch flaws tracked in `docs/methodology/indicator-sources.yaml` and in "Known construct limitations" at the top of this page.
+**Legacy construct (rollback only).** Carries three known `wealth-proxy` / denominator-mismatch flaws tracked in `docs/methodology/indicator-sources.yaml` and in "Known construct limitations" at the top of this page. It is retained to make rollback a flag change, not because it is the current methodology.
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
@@ -193,15 +199,15 @@ The `energy` dimension is in the middle of the PR 1 construct repair (plan §3.1
 | gasShare | Natural gas share of energy mix | Lower is better | 100 - 0 | 0.12 | Energy mix data | Annual |
 | coalShare | Coal share of energy mix | Lower is better | 100 - 0 | 0.08 | Energy mix data | Annual |
 | renewShare | Renewable energy share of energy mix | Higher is better | 0 - 100 | 0.05 | Energy mix data | Annual |
-| gasStorageStress | Gas storage fill stress: (80 - fillPct) / 80, clamped [0,1] | Lower is better | 100 - 0 | 0.10 | GIE AGSI+ | Daily |
+| euGasStorageStress (legacy name: `gasStorageStress`) | Gas storage fill stress: (80 - fillPct) / 80, clamped [0,1] | Lower is better | 100 - 0 | 0.10 | GIE AGSI+ | Daily |
 | energyPriceStress | Mean absolute energy price change across commodities | Lower is better | 25 - 0 | 0.10 | Energy prices | Daily |
 | electricityConsumption | Per-capita electricity consumption (kWh/year, World Bank EG.USE.ELEC.KH.PC) | Higher is better | 200 - 8000 | 0.30 | World Bank | Annual |
 
-**v2 construct (framing decision: Option B, power-system security).** Under v2 the dimension measures **power-system security**, not total-energy security. Electricity grids are the dominant short-horizon shock-transmission channel; transport-fuel security enters via `fuelStockDays`-successor work, and industrial energy security enters via transition-risk indicators on the `economic` domain. The framing choice is what lets the v2 indicator set share one denominator: percent of electricity generation, not percent of primary energy supply. Any future reversal to Option A (primary-energy framing) would require rebuilding `lowCarbonGenerationShare` and `euGasStorageStress` on IEA/BP primary-energy data — out of scope for PR 1.
+**v2 construct (active; framing decision: Option B, power-system security).** Under v2 the dimension measures **power-system security**, not total-energy security. Electricity grids are the dominant short-horizon shock-transmission channel; transport-fuel security enters via `fuelStockDays`-successor work, and industrial energy security enters via transition-risk indicators on the `economic` domain. The framing choice is what lets the v2 indicator set share one denominator: percent of electricity generation, not percent of primary energy supply. Any future reversal to Option A (primary-energy framing) would require rebuilding `lowCarbonGenerationShare` and `euGasStorageStress` on IEA/BP primary-energy data — out of scope for PR 1.
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
-| importedFossilDependence | `EG.ELC.FOSL.ZS × max(EG.IMP.CONS.ZS, 0) / 100`: fossil share of electricity × net-energy-import share, net exporters collapsed to 0 | Lower is better | 100 - 0 | 0.35 | World Bank | Annual |
+| importedFossilDependence | `EG.ELC.FOSL.ZS × max(EG.IMP.CONS.ZS, 0) / 100`: fossil share of electricity × net-energy-import share, net exporters collapsed to 0; values above 100 clamp at the worst anchor | Lower is better | 100 - 0 | 0.35 | World Bank | Annual |
 | lowCarbonGenerationShare | Nuclear + renewables-ex-hydro + hydroelectric share of electricity (`EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS + EG.ELC.HYRO.ZS`). Hydro summed separately because WB RNEW excludes it. | Higher is better | 0 - 80 | 0.20 | World Bank | Annual |
 | powerLossesPct | Electric power transmission + distribution losses (`EG.ELC.LOSS.ZS`). Direct grid-integrity measure. Weight temporarily absorbs `reserveMarginPct`'s 0.10 until the latter's IEA seeder lands. | Lower is better | 25 - 3 | 0.20 | World Bank | Annual |
 | euGasStorageStress | Same transform as `gasStorageStress`, scoped to EU-only (weight 0 for non-EU) | Lower is better | 100 - 0 | 0.10 | GIE AGSI+ | Daily |
@@ -211,7 +217,7 @@ Retired under v2: `electricityConsumption` (wealth proxy, §3.1 of repair plan),
 
 **Deferred under v2 (plan §3.1 open-question):** `reserveMarginPct` does not ship in PR 1. IEA electricity-balance coverage is sparse outside OECD+G20; the indicator will likely ship at `tier='unmonitored'` with weight 0.05 if it lands at all. Its Redis key is reserved in `_dimension-scorers.ts`; when a seeder lands, split 0.10 out of `powerLossesPct` and add `reserveMarginPct` at 0.10 in the scorer blend.
 
-**Fail-closed semantics (plan `2026-04-24-001`).** When `RESILIENCE_ENERGY_V2_ENABLED=true` but any of the three required seeds (`resilience:fossil-electricity-share:v1`, `resilience:low-carbon-generation:v1`, `resilience:power-losses:v1`) is absent from Redis, the scorer throws `ResilienceConfigurationError` at dispatch rather than silently falling back to IMPUTE. The error is caught per-dimension in `scoreAllDimensions` and surfaces as `imputationClass='source-failure'` with `coverage=0`, visible in the widget and the API response. `/api/health` also reports CRIT on the three `seed-meta:resilience:\{low-carbon-generation,fossil-electricity-share,power-losses\}` entries when they are absent or stale. The flag is only safe to flip AFTER `seed-bundle-resilience-energy-v2` is provisioned on Railway and health reports green on all three.
+**Fail-closed semantics (plan `2026-04-24-001`).** When `RESILIENCE_ENERGY_V2_ENABLED=true` but any of the three required seeds (`resilience:fossil-electricity-share:v1`, `resilience:low-carbon-generation:v1`, `resilience:power-losses:v1`) is absent from Redis, the scorer throws `ResilienceConfigurationError` at dispatch rather than silently falling back to IMPUTE. The error is caught per-dimension in `scoreAllDimensions` and surfaces as `imputationClass='source-failure'` with `coverage=0`, visible in the widget and the API response. `/api/health` also reports CRIT on the three `seed-meta:resilience:\{low-carbon-generation,fossil-electricity-share,power-losses\}` entries when they are absent or stale. The flag is safe to keep on only while `seed-bundle-resilience-energy-v2` remains provisioned on Railway and health stays green on all three. Rollback remains a single env-var change to `RESILIENCE_ENERGY_V2_ENABLED=false`; reactivation requires all three seed-meta entries to be green and a score-cache prefix bump if cached legacy scores may exist.
 
 ### Social & Governance Domain (weight 0.19)
 
@@ -234,7 +240,7 @@ All six WGI indicators are equally weighted.
 |---|---|---|---|---|---|---|
 | gpiScore | Global Peace Index score | Lower is better | 3.6 - 1.0 | 0.55 | IEP | Annual |
 | displacementTotal | UNHCR total displaced persons (log10 scale) | Lower is better | 7 - 0 | 0.25 | UNHCR | Annual |
-| unrestEvents | Severity-weighted unrest events + sqrt(fatalities) | Lower is better | 20 - 0 | 0.20 | Unrest monitoring | Realtime |
+| unrestEvents | Severity-weighted unrest events + sqrt(fatalities), population-normalized per million with a 0.5M floor | Lower is better | 10 - 0 | 0.20 | Unrest monitoring | Realtime |
 
 **v15 (2026-04-26) — gated GPI-only impute for sparse-data tiny
 states.** When both displacement and unrest data were absent for a
@@ -243,16 +249,17 @@ displacement registry), the dimension previously collapsed to GPI
 alone. Tiny peaceful states (TV, PW, NR with GPI ~1.3) rode this to a
 near-perfect ~93 dim score. v15 introduces a gated impute: when the
 country is absent from the displacement registry, displacement is
-imputed at 70/coverage 0.6 (`stable-absence`), and zero unrest events
-are imputed at 70/coverage 0.5 — pulling the blend down to ~80.
-Critically, the unrest impute is gated to GPI-only mode: countries
-WITH observed displacement and zero unrest events keep the historical
-"stable-absence ≈ 85" anchor (matching `IMPUTE.unhcrDisplacement`),
-preserving Iceland/Norway scoring. Per-row imputation flags do not
-bubble up: dim-level `imputationClass` remains null because GPI is
-still observed. Seed-outage paths (raw payload absent) continue to
-drop the weight rather than imputing — the outage-vs-absence
-distinction is preserved.
+imputed at 70/coverage 0.6 (`stable-absence`), while zero unrest events
+fall back to `curated_list_absent` at 50/coverage 0.3 (`unmonitored`)
+because the unrest feed is non-comprehensive. This pulls the blend down
+for tiny peaceful states without treating English-biased source absence
+as a strong stable-absence signal. Countries WITH observed displacement
+and zero unrest events keep the historical "stable-absence ≈ 85" anchor
+(matching `IMPUTE.unhcrDisplacement`), preserving Iceland/Norway scoring.
+Per-row imputation flags do not bubble up: dim-level `imputationClass`
+remains null because GPI is still observed. Seed-outage paths (raw payload
+absent) continue to drop the weight rather than imputing — the
+outage-vs-absence distinction is preserved.
 
 #### Conflict & Displacement
 
@@ -264,15 +271,15 @@ relabeling is tracked in #3737.
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
-| ucdpConflict | UCDP armed conflict: eventCount*2 + typeWeight + sqrt(deaths) | Lower is better | 30 - 0 | 0.65 | UCDP | Realtime |
+| ucdpConflict | UCDP armed conflict: eventCount*2 + typeWeight + sqrt(deaths), population-normalized per million with a 0.5M floor | Lower is better | 15 - 0 | 0.65 | UCDP | Realtime |
 | displacementHosted | UNHCR hosted displaced persons (log10 scale) | Lower is better | 7 - 0 | 0.35 | UNHCR | Annual |
 
 #### Information & Cognitive
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
-| rsfPressFreedom | RSF press freedom score | Higher is better | 0 - 100 | 0.55 | RSF | Annual |
-| socialVelocity | Reddit social velocity (log10(velocity+1)) | Lower is better | 3 - 0 | 0.15 | Reddit intelligence | Realtime |
+| rsfPressFreedom | RSF press freedom score | Lower is better | 100 - 0 | 0.55 | RSF | Annual |
+| socialVelocity | Reddit social velocity (log10(velocity+1)) | Lower is better | 3 - 0 | 0.15 | Reddit intelligence | Hourly relay (freshness budget: 180 min) |
 | newsThreatScore | AI news threat severity (critical 4x, high 2x, medium 1x, low 0.5x) | Lower is better | 20 - 0 | 0.30 | News threat analysis | Daily |
 
 ### Health & Food Domain (weight 0.13)
@@ -281,9 +288,11 @@ relabeling is tracked in #3737.
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
-| uhcIndex | WHO Universal Health Coverage service coverage index | Higher is better | 40 - 90 | 0.45 | WHO | Annual |
-| measlesCoverage | Measles immunization coverage among 1-year-olds (%) | Higher is better | 50 - 99 | 0.35 | WHO | Annual |
-| hospitalBeds | Hospital beds per 1,000 people | Higher is better | 0 - 8 | 0.20 | WHO | Annual |
+| uhcIndex | WHO Universal Health Coverage service coverage index | Higher is better | 40 - 90 | 0.35 | WHO | Annual |
+| measlesCoverage | Measles immunization coverage among 1-year-olds (%) | Higher is better | 50 - 99 | 0.25 | WHO | Annual |
+| hospitalBeds | Hospital beds per 1,000 people | Higher is better | 0 - 8 | 0.10 | WHO | Annual |
+| physiciansPer1k | Physicians per 1,000 people | Higher is better | 0 - 5 | 0.15 | WHO | Annual |
+| healthExpPerCapitaUsd | Current health expenditure per capita, USD | Higher is better | 20 - 3000 | 0.15 | WHO | Annual |
 
 #### Food & Water
 
@@ -291,8 +300,7 @@ relabeling is tracked in #3737.
 |---|---|---|---|---|---|---|
 | ipcPeopleInCrisis | IPC/FAO people in food crisis (log10 scale) | Lower is better | 7 - 0 | 0.45 | FAO/IPC | Annual |
 | ipcPhase | IPC food crisis phase (1-5) | Lower is better | 5 - 1 | 0.15 | FAO/IPC | Annual |
-| aquastatWaterStress | FAO AQUASTAT water stress/withdrawal/dependency (%) | Lower is better | 100 - 0 | 0.25 | FAO AQUASTAT | Annual |
-| aquastatWaterAvailability | FAO AQUASTAT water availability (m3/capita) | Higher is better | 0 - 5000 | 0.15 | FAO AQUASTAT | Annual |
+| aquastatScore | FAO AQUASTAT value scored from its indicator tag: stress/withdrawal/dependency readings are lower-better; availability/renewable/access readings are higher-better | Indicator semantics | Indicator-dependent | 0.40 | FAO AQUASTAT | Annual |
 
 ### Recovery Domain (weight 0.25)
 
@@ -457,7 +465,7 @@ score = clamp((worst - value) / (worst - best) * 100, 0, 100)
 
 Goalposts are hand-picked based on empirical data ranges (not percentile-derived). A score of 100 means the country meets or exceeds the "best" goalpost; 0 means it meets or exceeds the "worst" goalpost.
 
-**Exception:** Sanctions use piecewise normalization to capture the non-linear impact of sanctions counts (the first few sanctions matter more than additional ones in already-sanctioned countries).
+**Exceptions:** A few live indicators are explicitly non-linear and are tagged as such in the indicator registry: `inflationStability` uses a 1-3% target band with deflation and high-inflation zero-score anchors, `bisLbsXborderPctGdp` uses a U-shaped band, `fatfListingStatus` is categorical, and `recoverySovereignWealthEffectiveMonths` uses a saturating transform. Their goalposts are documentation anchors, not generic linear normalizer inputs.
 
 ## Scoring Formula
 
@@ -491,7 +499,7 @@ penalty = 1 - 0.5 * (1 - minPillarScore / 100)
 overallScore = weightedPillarMean * penalty
 ```
 
-Domain scores are first regrouped into the three pillars (`structural-readiness`, `live-shock-exposure`, and `recovery-capacity`) with weights 0.40 / 0.35 / 0.25. The penalty term is anchored to the weakest pillar, so an otherwise strong country cannot fully compensate for a severe weakness in one pillar. The legacy six-domain weighted aggregate remains the rollback formula when `RESILIENCE_PILLAR_COMBINE_ENABLED=false`; an earlier multiplicative form (`baseline * (1 - stressFactor)`) over-penalized every country and was reverted. See the [Changelog](#changelog) for the full version history.
+Domain scores are first regrouped into the three pillars (`structural-readiness`, `live-shock-exposure`, and `recovery-capacity`). Inside each pillar, member domains are averaged by `domainWeight_i * averageDimensionCoverage_i`, preserving the coverage signal while honoring the published domain design weights. The three pillar scores are then combined with pillar weights 0.40 / 0.35 / 0.25. The penalty term is anchored to the weakest pillar, so an otherwise strong country cannot fully compensate for a severe weakness in one pillar. The legacy six-domain weighted aggregate remains the rollback formula when `RESILIENCE_PILLAR_COMBINE_ENABLED=false`; an earlier multiplicative form (`baseline * (1 - stressFactor)`) over-penalized every country and was reverted. See the [Changelog](#changelog) for the full version history.
 
 ### Resilience Level Classification
 
@@ -576,7 +584,7 @@ The API response includes `imputationShare` (0.0-1.0), representing the fraction
 | GPSJam | GPS jamming incidents | Daily | Global |
 | Supply-chain monitor | Shipping stress, transit disruption | Daily | Global |
 | Unrest monitoring | Severity-weighted civil unrest events | Realtime | Global |
-| Reddit intelligence | Social velocity scores | Realtime | Global |
+| Reddit intelligence | Social velocity scores | Hourly relay (freshness budget: 180 min) | Global |
 | News threat analysis | AI-scored news threat severity | Daily | Global |
 | Energy mix data | Gas, coal, renewable shares | Annual | Global |
 | GIE AGSI+ | Gas storage fill levels | Daily | European countries |
@@ -589,7 +597,7 @@ The API response includes additional context fields that are informational and n
 
 - **baselineScore**: Coverage-weighted mean of baseline and mixed dimensions. Reflects structural capacity (governance, health, infrastructure, fiscal strength). Informational only, not used in `overallScore`.
 - **stressScore**: Coverage-weighted mean of stress and mixed dimensions. Reflects current threat environment (cyber, conflict, sanctions, supply disruption). Informational only, not used in `overallScore`.
-- **trend**: Direction of score movement over the last 30 days (`improving`, `stable`, or `declining`), based on daily score history.
+- **trend**: Direction of score movement over the last 30 days (`rising`, `stable`, or `falling`), based on daily score history.
 - **change30d**: Numeric score change over 30 days.
 - **imputationShare**: Fraction of indicator weight from imputed (synthetic) data.
 - **lowConfidence**: Boolean flag when data coverage or imputation thresholds are breached.
@@ -606,13 +614,15 @@ The CRI is designed to be auditable end-to-end: given the Redis snapshot at any 
 
 | Key | Type | TTL | Written by | Read by |
 |---|---|---|---|---|
-| `resilience:score:v18:{countryCode}` | JSON | 6 hours | `buildResilienceScore` in `server/worldmonitor/resilience/v1/_shared.ts` | `getResilienceScore` handler |
-| `resilience:ranking:v18` | JSON | 12 hours | `getResilienceRanking` warm path, only when at least 75% of countries are scored (`RANKING_CACHE_MIN_COVERAGE = 0.75`) | `getResilienceRanking` handler |
-| `resilience:history:v13:{countryCode}` | sorted set | indefinite, trimmed to 30 days | `appendHistory` during scoring | trend and `change30d` computation |
-| `resilience:intervals:v3:{countryCode}` | JSON | 7 days; freshness monitored via `seed-meta`/health cadence | `scripts/seed-resilience-scores.mjs` and `scripts/seed-resilience-intervals.mjs` | `getResilienceScore` (optional `scoreInterval` field) and `getResilienceRanking` (`rankStable`) |
-| `seed-meta:resilience:static` | JSON | 2 hours | `scripts/seed-resilience-static.mjs` at the end of each successful seed run | scorer for `dataVersion` population, health checks |
+| `resilience:score:v24:{countryCode}` | JSON | 6 hours | `buildResilienceScore` in `server/worldmonitor/resilience/v1/_shared.ts` | `getResilienceScore` handler |
+| `resilience:ranking:v24` | JSON | 12 hours | `getResilienceRanking` warm path, only when at least 90% of countries are scored (`RANKING_CACHE_MIN_COVERAGE = 0.90`) | `getResilienceRanking` handler |
+| `resilience:history:v19:{countryCode}` | sorted set | indefinite, trimmed to 30 days | `appendHistory` during scoring | trend and `change30d` computation |
+| `resilience:intervals:v8:{countryCode}` | JSON | 7 days; freshness monitored via `seed-meta`/health cadence | `scripts/seed-resilience-scores.mjs` | `getResilienceScore` (optional `scoreInterval` field) and `getResilienceRanking` (`rankStable`) |
+| `seed-meta:resilience:static` | JSON | 400 days | `scripts/seed-resilience-static.mjs` at the end of each successful seed run | scorer for `dataVersion` population, health checks |
 | `resilience:static:{countryCode}` | JSON | 400 days | `scripts/seed-resilience-static.mjs` | scorer for all baseline signals (WGI, WHO, FAO, GPI, RSF, and so on) |
 | `resilience:static:index:v1` | JSON | 400 days | `scripts/seed-resilience-static.mjs` | warmup path to enumerate countries |
+
+The public runtime manifest intentionally does not echo these Redis key names. Its `intervals` object reports a derived availability check using a fixed public sample country, the current interval methodology tag, and the latest safe observed timestamp from interval freshness metadata or the sample interval payload. If interval data is missing, stale for the active formula, or produced by a different methodology, `intervals.available` is `false` instead of throwing; this is the public audit signal that user-facing `scoreInterval` and `rankStable` support is not currently backed by readable interval data.
 
 ### dataVersion semantics
 
@@ -627,7 +637,7 @@ Given a Redis snapshot at time T:
 3. Read the live-signal keys (UCDP, UNHCR, OFAC, outages, cyber threats, prices, shipping stress, and so on) for the country's slice.
 4. For each of the 20 active dimensions, apply the formulas in the Scoring Formula section with the goalposts from the Dimensions and Indicators tables. For missing signals, consult the Imputation Taxonomy table in this document.
 5. Aggregate dimension scores into domain scores via coverage-weighted mean.
-6. Aggregate domain scores into the three pillar scores, then compute the overall score with the pillar-combined penalized formula used by the production `pc` cache tag.
+6. Aggregate domain scores into the three pillar scores using `domainWeight * averageDimensionCoverage` as each member domain's pillar-score influence, then compute the overall score with the pillar-combined penalized formula used by the production `pc` cache tag.
 
 The reference-edition bundle under `docs/methodology/country-resilience-index/reference-edition/2026/` includes a frozen country-sliced Redis input manifest, the production score-cache values used as the published baseline, and a deterministic recompute script for the sampled published score run. The manifest records which large global feeds were pruned to the sampled countries so the artifact remains auditable without committing full live-event dumps.
 
@@ -641,11 +651,11 @@ The reference-edition bundle under `docs/methodology/country-resilience-index/re
 
 1. **Source-comprehensiveness flag (PR #3452, §U5).** 19 indicators are tagged `comprehensive: false` because their absence does not imply "nothing is happening" — event-only feeds (UCDP, IPC, OFAC, GPS jamming, internet outages), curated lists with partial coverage (BIS-64, WTO top-50, FATF), and bilateral-only series. For these, `IMPUTE` swaps from the optimistic `stable-absence` (85, certainty 0.6) to the conservative `unmonitored` (50, certainty 0.3). Microstates that previously rode an "absence is good news" assumption no longer get the free lift.
 2. **Coverage penalty multiplier (PR #3452, §U4).** Imputed indicators carry a 0.5× weight in the dimension blend. The dimension still scores, the imputed value still influences the result, but it does so at half-strength. Combined with the comprehensiveness flag this means a country whose dimension is entirely curated-list-absent contributes weight 0.15 (0.3 × 0.5) instead of weight 1.0 — the dim is functionally informational, not load-bearing.
-3. **Per-capita normalization with 0.5M tiny-state floor (PR #3452, §U6).** `unrestEvents`, `ucdpConflict`, `displacementTotal`, and `displacementHosted` divide by `max(populationMillions, 0.5)`. Tiny states with absolute counts of zero used to score the same as large states with zero events; now the per-capita rate is what enters normalization, and the floor caps the divisor so a country at 0.05M doesn't get a 200× artificial boost. The IMF labor seeder writes population to the static record (PR #3452 review-round-1 fix corrected a 1e6× units bug — the field is `populationMillions` but the upstream IMF `LP` series is in raw persons; fixed in commit 724dd4e95).
-4. **Headline-eligible gate (PR #3469, §U7).** A country is `headlineEligible: true` only if `overallCoverage >= 0.65 AND (populationMillions >= 0.2 OR overallCoverage >= 0.85) AND !lowConfidence`. Ineligible countries surface in `greyedOut[]` (still served via the raw API for analysts who want them) but are excluded from the public ranking. This is the single change that solved the inflation defect end-to-end: 25 countries are currently in `greyedOut[]` for failing one of these conditions, including the previously-inflated PW, NR, AD, FM, KI, GD, GQ, ER cohort.
+3. **Per-capita normalization with 0.5M tiny-state floor (PR #3452, §U6).** `unrestEvents` and `ucdpConflict` divide by `max(populationMillions, 0.5)`. Tiny states with absolute event counts of zero used to score the same as large states with zero events; now the per-capita event rate is what enters normalization, and the floor caps the divisor so a country at 0.05M doesn't get a 200× artificial boost. UNHCR `displacementTotal` and `displacementHosted` are still scored on log10 absolute displaced-person counts, not population-normalized rates. The IMF labor seeder writes population to the static record (PR #3452 review-round-1 fix corrected a 1e6× units bug — the field is `populationMillions` but the upstream IMF `LP` series is in raw persons; fixed in commit 724dd4e95).
+4. **Headline-eligible gate (PR #3469, §U7).** A country is `headlineEligible: true` only if `overallCoverage >= 0.65 AND (populationMillions >= 0.2 OR overallCoverage >= 0.85) AND !lowConfidence`. Ineligible countries surface in `greyedOut[]` (still served via the raw API for analysts who want them) but are excluded from the public ranking. This is the single change that solved the inflation defect end-to-end: the previously-inflated PW, NR, AD, FM, KI, GD, GQ, ER cohort is now routed by the headline-eligible gate instead of being described as part of the headline ranking.
 5. **Symmetric gate filtering at the cache-hit path (PRs #3472, #3477, §U7 follow-up).** The gate had to be the single source of truth on every code path that returns a ranking, including the read-time path that hits cache. PR #3472 wired the gate into the cache-hit branch (the recompute path already filtered correctly); PR #3477 made it bidirectional (cached `greyedOut[]` entries with `headlineEligible: true` get promoted to `items[]` on read) and re-sorted post-promotion so a high-score promoted item lands at its correct rank, not appended at the end.
 
-**Cache prefix bumps.** `resilience:score:v15:` → `:v16:` → `:v17:` → `:v18:`; `resilience:ranking:v15` → `v16` → `v17` → `v18`; `resilience:history:v10:` → `:v11:` → `:v12:` → `:v13:`. The v17 bump shipped with the headline-eligible gate (PR #3469) because `headlineEligible` became a required field; cached v16 entries omitted it, and the conservative defensive default at v17 is `headlineEligible: false` (anomalous-missing → demoted) to match v17's "every legitimate writer stamps the field" contract. The v18 bump shipped with §U8.1 (net-imports denominator extended to `liquidReserveAdequacy`) — see the U8.1 sub-section below for the rationale.
+**Cache prefix bumps.** `resilience:score:v15:` → `:v16:` → `:v17:` → `:v18:` → `:v19:` → `:v20:` → `:v21:` → `:v22:` → `:v23:` → `:v24:`; `resilience:ranking:v15` → `v16` → `v17` → `v18` → `v19` → `v20` → `v21` → `v22` → `v23` → `v24`; `resilience:history:v10:` → `:v11:` → `:v12:` → `:v13:` → `:v14:` → `:v15:` → `:v16:` → `:v17:` → `:v18:` → `:v19:`. The v17 bump shipped with the headline-eligible gate (PR #3469) because `headlineEligible` became a required field; cached v16 entries omitted it, and the conservative defensive default at v17 is `headlineEligible: false` (anomalous-missing → demoted) to match v17's "every legitimate writer stamps the field" contract. The v18 bump shipped with §U8.1 (net-imports denominator extended to `liquidReserveAdequacy`), v19 with the cyberDigital per-snapshot cap, v20 is reserved for the staleness-derate rollout, v21 ships the P1-1 pillar aggregation fix that applies domain design weights inside the active `pc` formula, v22 ships the round-2 inflation-stability and NaN-safe blend fixes, v23 ships the import-HHI stale/missing source-year certainty derate, the P3-8 outage-feed observed-quiet semantics, and the WTO trade-policy severity scorer fix (all batched into the same generation), and v24 ships the round-5 R5-2 / PR #4101 governance WGI indicator-slot semantics fix. The interval cache is also rotated to `resilience:intervals:v8:` so old sensitivity bands are not served alongside v24 scores.
 
 **Empirical anchor (live `resilience:ranking:v17` captured 2026-04-28, post-#3477 merge):**
 
@@ -668,18 +678,30 @@ The fix ships with a cache-prefix bump (`v17` → `v18` for both `resilience:sco
 
 Expected impact at next ranking refresh (within the 6h cache TTL after deploy): AE `liquidReserveAdequacy` ≈ 38 → ≈ 64 (a +26-point dim swing); PA similar magnitude. Trend metric will show a one-time step at deploy time for these two countries; this is the corrected baseline going forward.
 
-**Open construct gaps (documented honestly, not silently deferred):**
+**v17.2 — `cyberDigital` per-snapshot burst cap (#3971).** The scorer caps each country's total severity-weighted cyber-threat count at 8 per snapshot before applying the existing `normalizeLowerBetter(weightedCount, 0, 25)` transform, so a same-day spike in `cyber:threats:v2` can no longer saturate the cyber sub-component to 0 and swing a country 5+ rank positions. This is deliberately a **per-snapshot** cap, **not** multi-day smoothing: the live feed stamps `lastSeenAt` at ~fetch time and never populates `firstSeenAt` (verified live, 2026-06-01: 0/958 records carry a non-zero `firstSeenAt`, and every country's `lastSeenAt` resolves to a single day), so the feed exposes no cross-day spread for the scorer to average over. Distinguishing a transient burst from sustained multi-day pressure would require cross-snapshot state (see the `cyberDigital` caveat below) and is not claimed here. The fix ships with a cache-prefix bump (`v18` → `v19` for both `resilience:score:` and `resilience:ranking:`, plus `v13` → `v14` for `resilience:history:`) so cached uncapped scores and 30-day trend points do not mix with capped scores.
+
+**v17.3 — stale observed data derates confidence coverage (P1-3).** Freshness is no longer observability-only for confidence semantics: observed dimensions marked `aging` or `stale` reduce confidence coverage for `lowConfidence`, `overallCoverage`, and headline eligibility, while the score aggregation weights remain unchanged. Expected impact at the next ranking refresh is limited to confidence badges and headline eligibility during source-specific seeder outages; steady-state annual or slow-cadence sources remain `fresh` when their seeders are running on schedule. The fix ships with a score/ranking cache-prefix bump (`v19` → `v20`) so cached `overallCoverage` and `headlineEligible` values cannot mix pre-fix full-confidence stale observations with post-fix derated confidence coverage.
+
+**v17.4 — inflation-stability and NaN-safe blending (round 2 P2-N2/P2-N3).** `currencyExternal` now scores inflation stability around a 1-3% low-positive target band. Deflation below 0% and zero inflation no longer score as perfect; inflation above the band is penalized toward a 50% cap. The generic weighted blend helper now admits only finite numeric scores, so `NaN` cannot consume a metric's full weight and then collapse to zero. The fix ships with score/ranking cache-prefix bumps (`v21` → `v22`), history (`v16` → `v17`), and interval (`v5` → `v6`) so published scores, ranking aggregates, 30-day trends, and sensitivity bands all recompute from the same scorer math.
+
+**v17.5 — import-HHI source-year certainty derating (#4088).** `importConcentration` keeps the Comtrade HHI score magnitude unchanged, but source years older than the normal four-year window, missing years, and malformed years now derate certainty coverage to the stale floor. Because coverage participates in the coverage-weighted recovery-domain aggregate, the fix ships with score/ranking cache-prefix bumps (`v22` → `v23`), history (`v17` → `v18`), and interval (`v6` → `v7`) so published scores, ranking aggregates, 30-day trends, and sensitivity bands do not mix pre-derate and post-derate values.
+
+**v17.6 — outage-feed observed-quiet semantics (audit P3-8).** `infrastructure` now treats a loaded outage feed with an empty `outages[]` array as observed quiet (score 100), matching `cyberDigital`'s no-event semantics for the same upstream feed. The previous infrastructure scorer dropped the outage component when the penalty was zero, so countries with no current outage events lost the 0.25 component instead of receiving credit for observed absence. This ships in the same `v23` score / `v23` ranking / `v18` history / `v7` interval cache generation as the import-HHI derate above — both are coverage- and score-affecting freshness fixes batched into v23, so published scores, ranking aggregates, 30-day trends, and sensitivity bands recompute from the same scorer math.
+
+**v17.7 — WTO trade-policy severity scoring (audit P2-1).** `tradePolicy` now scores WTO restriction and barrier feeds as the current one-row-per-reporter severity payload written by `scripts/seed-supply-chain-trade.mjs`: `low=0`, `moderate=1`, `high=2`, with legacy missing-status rows treated as moderate. The old count-based scorer normalized row counts against 30/40 anchors even though the seed emits at most one current row per reporter/country; that made ordinary WTO rows near-inert and never exercised the historical `IN_FORCE` multiplier. This ships in the same `v23` score / `v23` ranking / `v18` history / `v7` interval generation as the import-HHI derate and outage semantics above, so published scores, ranking aggregates, 30-day trends, and sensitivity bands recompute from the same severity-based trade-policy baseline.
+
+**Open construct gaps and operational caveats (documented honestly, not silently deferred):**
 
 - **Economic-complexity / industrial-base indicator.** The index measures shock-absorption mechanisms (the construct test at the top of this document); it does not measure structural diversification. A country with monoculture exports + a strong central-government balance sheet can outscore a more diversified peer with weaker fiscal headroom. Adding an Atlas-of-Economic-Complexity (Hidalgo–Hausmann ECI) or manufacturing-value-added share would be a deliberate construct *expansion*, not a *correction* — flagged as a candidate for the v18 plan.
 - **`importConcentration` seeder coverage gaps.** UN Comtrade HS2 bilateral can fall through to the `curated_list_absent` impute (50 / 0.3 / unmonitored) for countries whose data is available but not landing in the import-HHI cache. Known reporter-code drift is handled in the shared Comtrade reporter override map, and Russia uses a seed-only stale-period fallback because the standard four-year window currently returns no annual import rows. If valid-code reporters such as AE/RU/NO/CH remain absent after a force-refresh, treat HTTP 429s and quota-exhausted HTTP 403s as an operational Comtrade key-budget problem first: widen `IMPORT_HHI_PER_KEY_DELAY_MS`, add `COMTRADE_API_KEYS`, or lower `IMPORT_HHI_MAX_CONCURRENCY` per `docs/railway-seed-consolidation-runbook.md`. This is a seeder coverage and freshness issue, not a scoring construct issue.
-- **`cyberDigital` transient zeros.** Live cyber-threat-feed events can drive a country to score 0 on `cyberDigital` for a 24-72h window before the smoothing window catches up. Not a construct gap per se, but the dimension's volatility is high enough that a single bad day can move a country 5+ rank positions. The widget's freshness badge surfaces this; a smoothing refinement is plan-deferred.
+- **`cyberDigital` has no cross-day smoothing.** Same-snapshot burst volatility is bounded by the per-snapshot severity-weight cap above, and seeder TTL / last-good behavior protect against empty or failed fetches — but neither is multi-day smoothing. Because `cyber:threats:v2` stamps `lastSeenAt` at ~fetch time and leaves `firstSeenAt` unpopulated, the scorer cannot tell a one-day spike from sustained multi-day pressure: both present as a single capped snapshot. Genuine burst-vs-sustained discrimination needs either (a) the cyber seeder fixed to populate a true discovery timestamp (`firstSeenAt`) so the scorer can group by discovery day, or (b) a cross-snapshot rolling/EWMA state maintained by the resilience seeder. Both are tracked as follow-ups; until then the dimension is a bounded point-in-time signal, not a smoothed one.
 
 ### v1.0 (April 2026)
 
 **Baseline.** Scored on domain-weighted average of 5 domains and 13 dimensions (pre-Recovery domain).
 
 - PR #2821: added the baseline-vs-stress engine and the `dataVersion` field on the response.
-- PR #2847: reverted the overall-score formula from `baseline * (1 - stressFactor)` (which over-penalized every country) to a domain-weighted sum; fixed the RSF press-freedom direction (0 means free, scored higher is better).
+- PR #2847: reverted the overall-score formula from `baseline * (1 - stressFactor)` (which over-penalized every country) to a domain-weighted sum; fixed the RSF press-freedom direction so a low RSF abuse-index value maps to higher resilience.
 - PR #2858: seed script now computes missing country scores directly via the scorer import path instead of relying on a separate ranking writer.
 
 ### v1.1 (April 2026) — Phase 1 reference-grade upgrade
@@ -706,21 +728,21 @@ Self-assessed against the standard composite-indicator review axes on a 0-10 sca
 |---|---|---|
 | **Methodology** | 7.5 | Every dimension has a named source, direction, goalpost range, weight, cadence, and imputation class. Missing-data rules are explicit and tagged with a 4-class taxonomy. The aggregation formula is a simple domain-weighted average, auditable from first principles. Gap: the overall-score formula is still single-axis compensatory (a strong institutional score can wash out a weak exposure score), which Phase 2 replaces with a partly non-compensatory three-pillar form. |
 | **Explainability** | 7.5 | Per-dimension confidence grid in the widget shows coverage %, imputation class, and freshness for every dimension on every country. Tooltip text is generated from the taxonomy so analysts can click through to the meaning without reading this document. Gap: no waterfall chart of individual signal contributions yet, that lands in Phase 3 T3.3. |
-| **Reproducibility** | 8.0 | Every dimension's sourceKey, cadence, and goalpost lives in `_indicator-registry.ts` and is linted against this doc. Cache keys are versioned (`resilience:score:v7`, `ranking:v8`, `history:v4`). `dataVersion` is written by the seed and plumbed to the widget footer. Gap: the benchmark and backtest scripts do not yet run on a CI cron; those land in Phase 2 T2.7. |
+| **Reproducibility** | 8.0 | Every dimension's sourceKey, cadence, and goalpost lives in `_indicator-registry.ts` and is linted against this doc. Cache keys were already versioned in the v1.1 implementation; see the Redis keys table above for the current score, ranking, history, and interval prefixes. `dataVersion` is written by the seed and plumbed to the widget footer. Gap: the benchmark and backtest scripts do not yet run on a CI cron; those land in Phase 2 T2.7. |
 | **Source quality** | 7.0 | World Bank, IMF, WHO, IEA, UNHCR, UCDP, IPC, BIS, FAO, RSF, GPI: all authoritative. Gap: curated-list sources (BIS ~40 economies, WTO) do not cover the full WorldMonitor country set, which is why the `unmonitored` imputation class exists. Phase 2 T2.9 adds language-normalized information signal to reduce English-press bias. |
-| **Timeliness** | 6.5 | Structural sources are annual (WGI, GPI, RSF, WHO, IMF macro) and dominate the total weight of the index. BIS EER is monthly. The Freshness classifier (T1.5) surfaces this at the dimension level so users can see which parts of a country score are 12 months old. Thirteen stress-side indicators already run at realtime or daily cadence via the cross-source stack (`ucdpConflict`, `internetOutages`, `infraOutages`, `unrestEvents`, `socialVelocity` at realtime; `sanctionCount`, `cyberThreats`, `gpsJamming`, `shippingStress`, `transitDisruption`, `gasStorageStress`, `energyPriceStress`, `newsThreatScore` at daily). Gap: the live-shock pillar relies on those signals but the structural pillar is still capped by annual sources; Phase 2 T2.2 adds FX volatility at daily cadence to narrow the cadence gap on the currency-external dimension and the Phase 3 reference-edition split will formalize annual vs rolling cadences per pillar. |
+| **Timeliness** | 6.5 | Structural sources are annual (WGI, GPI, RSF, WHO, IMF macro) and dominate the total weight of the index. BIS EER is monthly. The Freshness classifier (T1.5) surfaces this at the dimension level so users can see which parts of a country score are 12 months old. Thirteen stress-side indicators already run at realtime/hourly or daily cadence via the cross-source stack (`ucdpConflict`, `internetOutages`, `infraOutages`, `unrestEvents` at realtime; `socialVelocity` via the hourly Reddit relay with a 180-minute health budget; `sanctionCount`, `cyberThreats`, `gpsJamming`, `shippingStress`, `transitDisruption`, `euGasStorageStress`, `energyPriceStress`, `newsThreatScore` at daily). Gap: the live-shock pillar relies on those signals but the structural pillar is still capped by annual sources; Phase 2 T2.2 adds FX volatility at daily cadence to narrow the cadence gap on the currency-external dimension and the Phase 3 reference-edition split will formalize annual vs rolling cadences per pillar. |
 | **Sensitivity** | 7.0 | Weight-perturbation Monte Carlo sensitivity (#2823) exists in the backtesting layer. Phase 1 did not add new sensitivity work. Overall p5/p95 score sensitivity bands are computed under the active score formula and exposed (#2877, #2885, #3967), and the widget renders the overall `[p05–p95]` range next to the score. The band is a formula-aware weight-perturbation sensitivity range, not an input-data uncertainty interval. Gap: no waterfall chart of individual signal contributions yet; that lands in Phase 3 T3.3. |
 
 **Phase 1 acceptance gate status: met.** Both required thresholds (Methodology ≥7.5, Explainability ≥7.5) are satisfied with honest rationales. The two gaps flagged in each axis are tracked against Phase 2 and Phase 3 tasks in the upgrade plan.
 
 ### v2.0 (April 2026) — Phase 2 structural rebuild
 
-**Current published version**. Phase 2 of the reference-grade upgrade plan (`docs/internal/country-resilience-upgrade-plan.md`). The response-shape rebuild is live: every response now carries a real coverage-weighted `pillars[]` array regrouping the six domains into structural readiness, live shock exposure, and recovery capacity. The recovery domain adds six new dimensions, and the validation suite (cross-index benchmark, outcome backtest, sensitivity analysis) gates the activated pillar-combined formula. The top-level `overall_score` is now the partly non-compensatory pillar-combined score (see [Pillar-combined score activation](#pillar-combined-score-activation-active)); the six-domain weighted aggregate remains available only as the rollback path when `RESILIENCE_PILLAR_COMBINE_ENABLED=false`.
+**Current published version**. Phase 2 of the reference-grade upgrade plan (`docs/internal/country-resilience-upgrade-plan.md`). The response-shape rebuild is live: every response now carries a real domain-weighted, coverage-scaled `pillars[]` array regrouping the six domains into structural readiness, live shock exposure, and recovery capacity. The recovery domain adds six new dimensions, and the validation suite (cross-index benchmark, outcome backtest, sensitivity analysis) gates the activated pillar-combined formula. The top-level `overall_score` is now the partly non-compensatory pillar-combined score (see [Pillar-combined score activation](#pillar-combined-score-activation-active)); the six-domain weighted aggregate remains available only as the rollback path when `RESILIENCE_PILLAR_COMBINE_ENABLED=false`.
 
 - **T2.1** (#2977): Three-pillar schema added to proto and OpenAPI. `schemaVersion: "2.0"` feature flag introduced with backward-compatible `"1.0"` fallback path for one release cycle. Response now carries a `pillars` array alongside existing `domains`.
 - **T2.2a** (#2979): Signal tiering registry committed. Every indicator tagged Core, Enrichment, or Experimental with per-signal coverage percentage and license audit status. Registry enforced by CI linter.
 - **T2.2b** (#2987): Recovery capacity pillar with 6 new dimensions across a new `recovery` domain: fiscal space (debt service ratio), reserve adequacy (months of imports), short-term external debt coverage, import concentration (HHI), hospital surge capacity, and state continuity composite (WGI subset). Five new seeders following Railway gold-standard pattern (3 real data sources, 2 stubs pending source configuration). Cache key bumped to the current version.
-- **T2.3** (#2990/#3954): Three-pillar aggregation shape shipped and activated. Every response now carries real coverage-weighted pillar scores and pillar coverage at `pillars[]`. Pillar weights: structural readiness 0.40, live shock exposure 0.35, recovery capacity 0.25. A penalty factor `(1 − α × (1 − min_pillar / 100))` with α = 0.5 is implemented as `penalizedPillarScore` in `server/worldmonitor/resilience/v1/_shared.ts` and is exercised by the sensitivity suite. The **top-level `overall_score` is the penalized pillar-combined form** in production; the six-domain weighted aggregate is retained as the flag-off rollback path.
+- **T2.3** (#2990/#3954): Three-pillar aggregation shape shipped and activated. Every response now carries real domain-weighted, coverage-scaled pillar scores and pillar coverage at `pillars[]`. Pillar weights: structural readiness 0.40, live shock exposure 0.35, recovery capacity 0.25. A penalty factor `(1 − α × (1 − min_pillar / 100))` with α = 0.5 is implemented as `penalizedPillarScore` in `server/worldmonitor/resilience/v1/_shared.ts` and is exercised by the sensitivity suite. The **top-level `overall_score` is the penalized pillar-combined form** in production; the six-domain weighted aggregate is retained as the flag-off rollback path.
 - **T2.4** (#2985): Cross-index benchmark script validates the overall resilience score against three current public comparators: INFORM Risk Index, UNDP HDI, and the WorldRiskIndex vulnerability component. ND-GAIN is deferred until the validation image can unzip the 2026 archive, and Fragile States Index is retired from public artifacts because fresh bulk data is no longer available. Results are stored in `resilience:benchmark:external:v1` and committed as validation artifacts.
 - **T2.5** (#2986): Outcome backtest framework covering 7 event families (FX stress, sovereign stress, power outages, food-crisis escalation, refugee surges, sanctions shocks, conflict spillover). Each family has a binary event definition, a 2024-2025 hold-out window, an AUC target of 0.75, and a 0.03 gate width for release decisions. Four families currently use frozen independently sourced 2024-2025 reference sets (FX stress, sovereign stress, power outages, sanctions shocks); three read live Redis seed outputs (food-crisis escalation, refugee surges, conflict spillover). The committed artifact exposes `dataSource` and `labelSources` per family so this split is auditable.
 - **T2.6/T2.8** (#2991): Sensitivity suite v2 with 4-pass perturbation (weight, goalpost, imputation, alpha), alpha-curve analysis, and ceiling-effect detection. Release gate: no single-axis perturbation moves a top-50 country by more than 5 rank positions; overall dimension failure rate must be 20% or lower.
@@ -760,10 +782,10 @@ The plan's non-compensatory pillar combine is the methodologically stronger form
 1. **Feature flag**: `RESILIENCE_PILLAR_COMBINE_ENABLED`, read dynamically from `process.env` per call. Production Vercel and Railway validation environments set this to `true`; unset/`false` remains the local default and rollback path.
 2. **Cache invalidation**: per-country score cache bumped from `resilience:score:v9:` to `resilience:score:v10:`, ranking cache bumped from `resilience:ranking:v9` to `resilience:ranking:v10`, and score-history bumped from `resilience:history:v4:` to `resilience:history:v5:` (subsequently bumped to `resilience:score:v11:`, `resilience:ranking:v11`, and `resilience:history:v6:` in the recovery-domain weight rebalance — see the Redis keys table above for current values). The version bumps are a clean-slate guard; the actual cross-formula isolation is the `_formula` tag written into every cached score / ranking payload and the `:d6` / `:pc` suffix on every history sorted-set member, checked at read time so a flag flip forces a rebuild without waiting for TTLs.
 3. **Methodology-aware level thresholds**: `classifyResilienceLevel` reads `isPillarCombineEnabled()` and switches the high/medium cutoffs from 70/40 (6-domain) to 60/30 (pillar-combined). Without this, scale compression alone would demote FI (75.64 → 68.60) and NZ (76.26 → 67.93) from "high" to "medium" purely because the formula changed, not because anything about the country changed. The re-anchored cutoffs preserve the qualitative label for every country whose old label was correct.
-4. **Re-anchored release-gate bands**: `tests/resilience-pillar-combine-activation.test.mts` pins high-band anchors (NO, CH, DK) at ≥ 55 (vs the 6-domain formula's ≥ 70 floor) and low-band anchors (YE, SO) at ≤ 40 (vs ≤ 45). The snapshot test reads `methodologyFormula` from each snapshot and applies the matching bands. The live full-universe capture confirms the bands hold with margin: NO = 75.40 (≥ 55 by 20.4 points), YE = 29.51 (≤ 40 by 10.49 points).
-5. **Projected and authoritative snapshots**: `docs/snapshots/resilience-ranking-pillar-combined-projected-2026-04-21.json` carries the 52-country preview tables used before activation. `docs/snapshots/resilience-ranking-2026-05-28.json` carries the authoritative full-universe live capture after the flag was activated.
+4. **Re-anchored release-gate bands**: `tests/resilience-pillar-combine-activation.test.mts` pins high-band anchors (NO, CH, DK) at ≥ 55 (vs the 6-domain formula's ≥ 70 floor) and low-band anchors (YE, SO) at ≤ 40 (vs ≤ 45). The snapshot test reads `methodologyFormula` from each snapshot and applies the matching bands. The reference-edition recompute confirms the bands hold with margin after domain-weighted pillar aggregation: NO = 74.85 (≥ 55 by 19.85 points), YE = 29.20 (≤ 40 by 10.80 points).
+5. **Projected and authoritative snapshots**: `docs/snapshots/resilience-ranking-pillar-combined-projected-2026-04-21.json` carries the 52-country preview tables used before activation. `docs/snapshots/resilience-ranking-2026-05-28.json` carries the authoritative full-universe live capture after the flag was activated; it predates the P1-1 domain-weighted pillar aggregation fix and is retained as a pre-P1-1 historical capture until the next live full-universe capture is generated.
 
-Rollback: set `RESILIENCE_PILLAR_COMBINE_ENABLED=false`, flush the current `resilience:score:v18:*`, `resilience:ranking:v18`, and `resilience:history:v13:*` keys (or wait for TTLs to expire). The 6-domain formula lives alongside the pillar combine in `_shared.ts` and needs no code change to come back.
+Rollback: set `RESILIENCE_PILLAR_COMBINE_ENABLED=false`, flush the current `resilience:score:v24:*`, `resilience:ranking:v24`, and `resilience:history:v19:*` keys (or wait for TTLs to expire). The 6-domain formula lives alongside the pillar combine in `_shared.ts` and needs no code change to come back.
 
 ### Scorecard (v2.0 self-assessment)
 
@@ -772,7 +794,7 @@ Self-assessed against the standard composite-indicator review axes on a 0-10 sca
 | Axis | Score | Rationale |
 |---|---|---|
 | **Validation** | 8.0 | Cross-index benchmark against INFORM, UNDP HDI, and the WorldRiskIndex vulnerability component with explicit directional hypotheses. Outcome backtest across 7 event families with AUC release gates. Sensitivity suite with 4-pass perturbation and ceiling detection. Gap: external expert review (Phase 3 T3.8b) not yet complete. |
-| **Data** | 9.0 | 20 active dimensions across 6 domains (plus 2 structurally-retired dimensions kept in the registry), 47+ indicators. Recovery capacity pillar adds 6 dimensions with global Core-tier coverage (3 real seeders, 2 stubs pending source configuration). Signal tiering registry tags every indicator Core/Enrichment/Experimental with coverage + license audit. Gap: 2 stub seeders (import HHI, fuel stocks) need real data source integration. |
+| **Data** | 9.0 | 20 active dimensions across 6 domains (plus 2 structurally-retired dimensions kept in the registry), 47+ indicators. Recovery capacity uses real import-HHI data where Comtrade quota/backfill limits permit; `fuelStockDays` is retired from the core score and retained only as an experimental registry surface. Signal tiering registry tags every indicator Core/Enrichment/Experimental with coverage + license audit. Gap: reserve-margin integration, external expert review, formal refresh SLAs, and attribution/explanation surfaces. |
 | **Architecture** | 9.0 | Three-pillar schema with schemaVersion feature flag for backward compat. Penalized weighted mean aggregation with documented alpha. Domain-weighted pillar scores. Cache-key versioning (bumped per schema change). Language normalization corrects English-press bias. Gap: alpha tuning is initial (0.5), needs backtest-driven refinement after live data accumulates. |
 | **Methodology** | 8.5 | Every dimension has a named source, direction, goalpost, weight, cadence, imputation class, AND tier. Four-class imputation taxonomy live end-to-end. Freshness classifier surfaces staleness at the dimension level. Methodology doc linter enforces parity. Gap: three-pillar weight rationale is defensible but not yet empirically optimized. |
 | **Explainability** | 8.0 | Per-dimension confidence grid with imputation icon + freshness badge. Pillar structure makes the index decomposable (structural vs live-shock vs recovery). Gap: no waterfall chart yet (Phase 3 T3.3), no change attribution (Phase 3 T3.5). |
@@ -780,25 +802,25 @@ Self-assessed against the standard composite-indicator review axes on a 0-10 sca
 
 **Phase 2 acceptance gate status: met.** All three required thresholds (Validation >= 8.0, Data >= 9.0, Architecture >= 9.0) are satisfied. The gaps flagged in each axis are tracked against Phase 3 tasks in the upgrade plan.
 
-### v2.1 (April 2026) — PR 1 energy construct repair (flag-gated)
+### v2.1 (April 2026) — PR 1 energy construct repair (active)
 
-**Status: landing.** PR 1 in the resilience repair plan (`docs/plans/2026-04-22-001-fix-resilience-scorer-structural-bias-plan.md`). Addresses construct errors §3.1, §3.2, §3.3 in one coherent PR. Lands behind `RESILIENCE_ENERGY_V2_ENABLED` (default off) so published rankings remain on the pre-repair construct until the flag flips.
+**Status: active in production.** PR 1 in the resilience repair plan (`docs/plans/2026-04-22-001-fix-resilience-scorer-structural-bias-plan.md`). Addresses construct errors §3.1, §3.2, §3.3 in one coherent PR. It originally landed behind `RESILIENCE_ENERGY_V2_ENABLED`; production now runs with the flag on, the runtime manifest reports `constructVersions.energy="v2"`, and the legacy scorer is retained as the flag-off rollback path.
 
 - **Framing decision: Option B (power-system security).** The `energy` dimension under v2 measures power-system security, not total-energy security. See Energy Domain section above for rationale and future-reversal cost.
 - **Indicators retired:** `electricityConsumption` (wealth proxy), `gasShare` / `coalShare` / `dependency` (replaced by `importedFossilDependence`), `renewShare` (absorbed into `lowCarbonGenerationShare`).
 - **Indicators added (live in PR 1):** `importedFossilDependence` (composite: `EG.ELC.FOSL.ZS × max(EG.IMP.CONS.ZS, 0) / 100`, reusing the existing `resilience:static.iea.energyImportDependency.value` for net-imports), `lowCarbonGenerationShare` (`EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS + EG.ELC.HYRO.ZS` — hydro summed explicitly because WB RNEW excludes hydroelectric), `powerLossesPct` (`EG.ELC.LOSS.ZS`, weight absorbs the deferred `reserveMarginPct`'s 0.10 share). `accessToElectricityPct` moves to the `infrastructure` domain where it acts as a grid-collapse threshold.
 - **Indicator deferred in PR 1:** `reserveMarginPct` — IEA electricity-balance seeder is out of scope per plan §3.1 open-question. Redis key name + scorer-plumbing slot reserved for the commit that ships the seeder.
-- **New seeders (weekly):** `seed-low-carbon-generation.mjs` (EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS + EG.ELC.HYRO.ZS), `seed-fossil-electricity-share.mjs` (EG.ELC.FOSL.ZS), `seed-power-reliability.mjs` (EG.ELC.LOSS.ZS). Bundled by `seed-bundle-resilience-energy-v2.mjs` for a single Railway cron service. Net-energy-imports (`EG.IMP.CONS.ZS`) is NOT a new seeder — it reuses the existing `seed-resilience-static.mjs` path. All three seed-meta keys are registered as STRICT `SEED_META` entries in `api/health.js` (NOT `ON_DEMAND_KEYS`) per plan `2026-04-24-001`: `/api/health` reports CRIT on absence/staleness so the Railway-bundle-not-provisioned state is visible before a future flag flip, and the scorer fails closed (`ResilienceConfigurationError` → source-failure) if the flag flips before seeds populate.
-- **Acceptance gates (plan §6):** Spearman vs baseline >= 0.85; no country moves >15 points; matched-pair gap signs verified; cohort median shifts capped at 10 points; per-indicator effective influence measured via the PR 0 apparatus. Results committed as `docs/snapshots/resilience-ranking-live-post-pr1-{date}.json` and `docs/snapshots/resilience-energy-v2-acceptance-{date}.json` at flag-flip time.
+- **New seeders (weekly):** `seed-low-carbon-generation.mjs` (EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS + EG.ELC.HYRO.ZS), `seed-fossil-electricity-share.mjs` (EG.ELC.FOSL.ZS), `seed-power-reliability.mjs` (EG.ELC.LOSS.ZS). Bundled by `seed-bundle-resilience-energy-v2.mjs` for a single Railway cron service. Net-energy-imports (`EG.IMP.CONS.ZS`) is NOT a new seeder — it reuses the existing `seed-resilience-static.mjs` path. All three seed-meta keys are registered as STRICT `SEED_META` entries in `api/health.js` (NOT `ON_DEMAND_KEYS`) per plan `2026-04-24-001`: `/api/health` reports CRIT on absence/staleness and the scorer fails closed (`ResilienceConfigurationError` → source-failure) if v2 is active before seeds populate. The 2026-06-02 live audit reported `OK` for `lowCarbonGeneration`, `fossilElectricityShare`, and `powerLosses`.
+- **Acceptance gates (plan §6):** Spearman vs baseline >= 0.85; no country moves >15 points; matched-pair gap signs verified; cohort median shifts capped at 10 points; per-indicator effective influence measured via the PR 0 apparatus. The post-flip ranking and acceptance artifacts still need a credentialed operator capture as `docs/snapshots/resilience-ranking-live-post-pr1-{date}.json` and `docs/snapshots/resilience-energy-v2-acceptance-{date}.json`; see `docs/methodology/energy-v2-flag-flip-runbook.md` for the exact commands and required credentials.
 
 ### v2.2 (April 2026) — PR 3 dead-signal cleanup
 
 **Status: landing.** PR 3 in the resilience repair plan (`docs/plans/2026-04-22-001-fix-resilience-scorer-structural-bias-plan.md`). Addresses plan §3.5 (dead signals and regional-only signals in the core score) and §3.6 (coverage-based nominal-weight cap). Unlike PR 1, no flag — changes apply immediately because the retired constructs were never producing global signal.
 
 - **§3.5 point 1 — `fuelStockDays` permanently retired from the core score.** IEA/EIA fuel-stock disclosure covers ~45 OECD-member countries; every other country was imputed `unmonitored`. `scoreFuelStockDays` now pins at `score=50, coverage=0, imputationClass=null` for every country. Coverage-weighted domain aggregation excludes it (coverage=0 contributes zero weight), and user-facing confidence / coverage averages exclude it via the `RESILIENCE_RETIRED_DIMENSIONS` registry filter (distinct from non-retired runtime coverage=0 entries, which must keep dragging confidence down — that is the sparse-data signal). `imputationClass=null` (not `source-failure`) because retirement is structural, not a runtime outage; `source-failure` would render a false "Source down" label in the widget on every country. The `recoveryFuelStockDays` registry entry remains (tier=`experimental`) so the data surfaces on IEA-member drill-downs. Re-retention requires a globally-comparable strategic-reserve disclosure concept (>180 countries) to emerge.
-- **§3.5 point 2 — `currencyExternal` rebuilt on IMF inflation + WB reserves.** BIS REER / DSR covered only the 64 BIS-reporting economies; the old composite fell through to curated_list_absent (coverage 0.3) or a thin IMF proxy (coverage 0.45) for ~130 of 195 countries. New dimension: `inflationStability` (IMF WEO headline inflation, weight 0.60) + `fxReservesAdequacy` (WB reserves in months, weight 0.40). Coverage ladder: both=0.85, inflation-only=0.55, reserves-only=0.40, neither=0.30. Legacy `fxVolatility` + `fxDeviation` kept as `tier='experimental'` on country drill-downs for the 64 BIS economies.
+- **§3.5 point 2 — `currencyExternal` rebuilt on IMF inflation + WB reserves.** BIS REER / DSR covered only the 64 BIS-reporting economies; the old composite fell through to curated_list_absent (coverage 0.3) or a thin IMF proxy (coverage 0.45) for roughly two-thirds of the 196-country public rankable universe. New dimension: `inflationStability` (IMF WEO headline inflation, weight 0.60) + `fxReservesAdequacy` (WB reserves in months, weight 0.40). Coverage ladder: both=0.85, inflation-only=0.55, reserves-only=0.40, neither=0.30. Legacy `fxVolatility` + `fxDeviation` kept as `tier='experimental'` on country drill-downs for the 64 BIS economies.
 - **§3.5 point 3 — `externalDebtCoverage` re-goalposted from (0..5) to (0..2).** The old goalpost made ratios under 0.5 all score above 90, saturating at 100 across the full 9-country probe (including stressed states). New goalpost is anchored on Greenspan-Guidotti: ratio=1.0 (short-term debt matches reserves = reserve inadequacy threshold) → score 50; ratio=2.0 (double the threshold = acute rollover-shock exposure) → score 0. Ratios above 2.0 clamp to 0.
-- **§3.6 — Coverage-and-influence gate on indicator weight.** `tests/resilience-coverage-influence-gate.test.mts` fails the build if any core indicator with observed coverage below 70% of the ~195-country universe (fewer than 137 countries) carries more than 5% nominal weight in the overall score. The effective-influence half (variance-explained, Pearson-derivative) runs through `scripts/validate-resilience-sensitivity.mjs` and is committed as an artifact per plan §5 acceptance-criterion 9.
+- **§3.6 — Coverage-and-influence gate on indicator weight.** `tests/resilience-coverage-influence-gate.test.mts` fails the build if any core indicator below the committed 70% coverage floor for the rankable universe carries more than 5% nominal weight in the overall score. The effective-influence half (variance-explained, Pearson-derivative) runs through `scripts/validate-resilience-sensitivity.mjs` and is committed as an artifact per plan §5 acceptance-criterion 9.
 - **Acceptance gates (plan §6):** Spearman vs prior-state >= 0.85, no country swings >5 points from PR 1 state (plan §3.5 deliverable row 4), all release-gate anchors hold, matched-pair directions verified. Sensitivity rerun and post-PR-3 snapshot committed as `docs/snapshots/resilience-ranking-live-post-pr3-{date}.json` at flag-flip/ranking-refresh time.
 - **Construct-audit updates:** `docs/methodology/indicator-sources.yaml` updates `recoveryDebtToReserves.constructStatus` from `dead-signal` to `observed-mechanism` citing the Greenspan-Guidotti anchor.
 

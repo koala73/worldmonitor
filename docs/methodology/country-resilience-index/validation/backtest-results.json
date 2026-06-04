@@ -1,5 +1,7 @@
 {
   "generatedAt": 1779975092521,
+  "_formula": "pc",
+  "methodologyFormula": "pillar-combined-penalized-v1",
   "holdoutPeriod": "2024-2025",
   "aucThreshold": 0.75,
   "gateWidth": 0.03,

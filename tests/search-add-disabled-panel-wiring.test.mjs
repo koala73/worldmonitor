@@ -48,8 +48,9 @@ describe('CMD+K add-disabled-panel discoverability wiring', () => {
   it('SearchManager feeds the available set and enables-then-scrolls on select', () => {
     assert.match(searchManagerSrc, /setAvailablePanels\(/, 'SearchManager must publish the available-panels superset');
     // The panel command handler must enable a disabled panel before scrolling.
-    assert.match(searchManagerSrc, /enablePanel\(action\)/, 'panel command handler must enable a disabled panel');
-    assert.match(searchManagerSrc, /scrollToPanel\(action\)/, 'panel command handler must still scroll to the panel');
+    // (`action` is parsed into `panelId` + optional `@tab` deep-link suffix.)
+    assert.match(searchManagerSrc, /enablePanel\(panelId\)/, 'panel command handler must enable a disabled panel');
+    assert.match(searchManagerSrc, /scrollToPanel\(panelId\)/, 'panel command handler must still scroll to the panel');
   });
 
   it('App wires the enablePanel callback into SearchManager', () => {

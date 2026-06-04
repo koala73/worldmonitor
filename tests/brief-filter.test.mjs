@@ -499,6 +499,42 @@ describe('filterTopStories — onDrop metrics', () => {
     assert.equal(calls[0].sourceUrl, 'ftp://bad');
   });
 
+  it('fires onDrop with reason=ephemeral_live for expiring live-programming teasers', () => {
+    const calls = [];
+    filterTopStories({
+      stories: [
+        upstreamStory({
+          primaryTitle: "WATCH LIVE: White House briefing with Dr. Oz may address Pulte's new role, Iran war",
+          primaryLink: 'https://example.com/watch-live-white-house-briefing',
+        }),
+      ],
+      sensitivity,
+      onDrop: (ev) => calls.push(ev),
+    });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].reason, 'ephemeral_live');
+    assert.equal(calls[0].severity, 'high');
+    assert.equal(calls[0].sourceUrl, 'https://example.com/watch-live-white-house-briefing');
+  });
+
+  it('trusts explicit false isEphemeralLiveCoverage stamps before fallback classification', () => {
+    const calls = [];
+    const out = filterTopStories({
+      stories: [
+        upstreamStory({
+          primaryTitle: "WATCH LIVE: White House briefing with Dr. Oz may address Pulte's new role, Iran war",
+          primaryLink: 'https://example.com/explicit-durable-watch-live',
+          isEphemeralLiveCoverage: false,
+        }),
+      ],
+      sensitivity,
+      onDrop: (ev) => calls.push(ev),
+    });
+    assert.equal(out.length, 1);
+    assert.equal(out[0].sourceUrl, 'https://example.com/explicit-durable-watch-live');
+    assert.equal(calls.length, 0);
+  });
+
   it('fires onDrop with reason=shape for non-object input', () => {
     const calls = [];
     filterTopStories({
@@ -591,7 +627,7 @@ describe('filterTopStories — onDrop metrics', () => {
 
   it('reconciliation invariant: in === out + sum(dropped_*) across all reasons', () => {
     // Locks in the operator-facing invariant that motivated adding `cap`.
-    const tally = { severity: 0, headline: 0, url: 0, shape: 0, cap: 0, source_topic_cap: 0, institutional_static_page: 0 };
+    const tally = { severity: 0, headline: 0, url: 0, shape: 0, cap: 0, source_topic_cap: 0, institutional_static_page: 0, ephemeral_live: 0 };
     const stories = [
       upstreamStory({ primaryTitle: 'A' }),
       upstreamStory({ primaryTitle: 'B' }),
@@ -614,7 +650,7 @@ describe('filterTopStories — onDrop metrics', () => {
       maxPerSourceTopic: Infinity,
       onDrop: (ev) => { tally[ev.reason]++; },
     });
-    const totalDrops = tally.severity + tally.headline + tally.url + tally.shape + tally.cap + tally.source_topic_cap + tally.institutional_static_page;
+    const totalDrops = tally.severity + tally.headline + tally.url + tally.shape + tally.cap + tally.source_topic_cap + tally.institutional_static_page + tally.ephemeral_live;
     assert.equal(stories.length, out.length + totalDrops);
   });
 });

@@ -25,6 +25,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RESILIENCE_COHORTS } from '../tests/helpers/resilience-cohorts.mts';
 import { MATCHED_PAIRS } from '../tests/helpers/resilience-matched-pairs.mts';
+import wgiIndicatorKeys from '../shared/wgi-indicator-keys.json' with { type: 'json' };
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), '..');
@@ -294,20 +295,18 @@ const EXTRACTION_RULES = {
   electricityAccess: { type: 'static-wb-infrastructure', code: 'EG.ELC.ACCS.ZS' },
   roadsPavedInfra: { type: 'static-wb-infrastructure', code: 'IS.ROD.PAVE.ZS' },
   infraOutages: { type: 'summarize-outages-penalty' },
+  broadband: { type: 'static-wb-infrastructure', code: 'IT.NET.BBND.P2' },
 
   // ── energy ──────────────────────────────────────────────────────────
   energyImportDependency: { type: 'static-path', path: ['iea', 'energyImportDependency', 'value'] },
   gasShare: { type: 'energy-mix-field', field: 'gasShare' },
   coalShare: { type: 'energy-mix-field', field: 'coalShare' },
   renewShare: { type: 'energy-mix-field', field: 'renewShare' },
-  gasStorageStress: { type: 'gas-storage-field', field: 'fillPct' },
+  euGasStorageStress: { type: 'gas-storage-field', field: 'fillPct' },
   energyPriceStress: { type: 'not-implemented', reason: 'Scorer input is a global mean across commodity price changes; no per-country variance' },
   electricityConsumption: { type: 'static-wb-infrastructure', code: 'EG.USE.ELEC.KH.PC' },
-  // PR 1 v2 energy indicators — `tier: 'experimental'` until seeders
-  // land. The extractor reads the same bulk-payload shape the scorer
-  // reads: { countries: { [ISO2]: { value, year } } }. When seed is
-  // absent the pairedSampleSize drops to 0 and Pearson returns 0,
-  // surfacing the "no influence yet" state in the harness output.
+  // PR 1 v2 energy indicators. The extractor reads the same bulk-payload
+  // shape the scorer reads: { countries: { [ISO2]: { value, year } } }.
   // importedFossilDependence is a SCORER-LEVEL COMPOSITE, not a direct
   // seed-key read: scoreEnergyV2 computes
   //   fossilElectricityShare × max(netImports, 0) / 100
@@ -349,18 +348,17 @@ const EXTRACTION_RULES = {
   hospitalBeds: { type: 'static-who', code: 'hospitalBeds' },
   uhcIndex: { type: 'static-who', code: 'uhcIndex' },
   measlesCoverage: { type: 'static-who', code: 'measlesCoverage' },
+  physiciansPer1k: { type: 'static-who', code: 'physiciansPer1k' },
+  healthExpPerCapitaUsd: { type: 'static-who', code: 'healthExpPerCapitaUsd' },
 
   // ── foodWater ───────────────────────────────────────────────────────
   ipcPeopleInCrisis: { type: 'static-path', path: ['fao', 'peopleInCrisis'] },
   ipcPhase: { type: 'static-path', path: ['fao', 'phase'] },
-  // AQUASTAT: both indicators share `.aquastat.value` but the scorer
-  // splits them by the `.aquastat.indicator` tag keyword. The harness
-  // matches the same branching so each row correlates only against
-  // countries whose AQUASTAT entry is in the matching family —
-  // otherwise availability-country readings would corrupt the stress
-  // Pearson (and vice versa).
-  aquastatWaterStress: { type: 'static-aquastat-stress' },
-  aquastatWaterAvailability: { type: 'static-aquastat-availability' },
+  // AQUASTAT: the scorer has one 0.40 slot. `.aquastat.value` carries
+  // different semantics depending on `.aquastat.indicator`, so the
+  // extractor returns the normalized scorer contribution rather than
+  // treating stress and availability as separate registry rows.
+  aquastatScore: { type: 'static-aquastat-score' },
 
   // ── recovery* (seeded bulk keys, deterministic per-country fields) ──
   recoveryGovRevenue: { type: 'recovery-country-field', key: 'resilience:recovery:fiscal-space:v1', field: 'govRevenuePct' },
@@ -377,8 +375,8 @@ const EXTRACTION_RULES = {
   recoveryFuelStockDays: { type: 'recovery-country-field', key: 'resilience:recovery:fuel-stocks:v1', field: 'stockDays' },
   // PR 2 §3.4: SWF seed. Field is totalEffectiveMonths (pre-haircut sum
   // across a country's manifest funds). Countries without a manifest
-  // entry score 0 via the substantive-no-SWF branch in the scorer;
-  // the harness treats "absent from payload" as 0 for correlation math.
+  // entry are structurally not-applicable in the scorer; the harness
+  // treats "absent from payload" as 0 for correlation math.
   recoverySovereignWealthEffectiveMonths: { type: 'recovery-country-field', key: 'resilience:recovery:sovereign-wealth:v1', field: 'totalEffectiveMonths' },
 
   // ── stateContinuity derived signals ─────────────────────────────────
@@ -402,6 +400,15 @@ const EXTRACTION_RULES = {
 // before the includes() calls at L770-776).
 const AQUASTAT_STRESS_KEYWORDS = ['stress', 'withdrawal', 'dependency'];
 const AQUASTAT_AVAILABILITY_KEYWORDS = ['availability', 'renewable', 'access'];
+const WGI_INDICATOR_KEYS = wgiIndicatorKeys;
+
+function normalizeLowerBetter(value, best, worst) {
+  return Math.max(0, Math.min(100, 100 * (1 - (value - best) / (worst - best))));
+}
+
+function normalizeHigherBetter(value, worst, best) {
+  return Math.max(0, Math.min(100, 100 * ((value - worst) / (best - worst))));
+}
 
 // Classify the AQUASTAT entry by the scorer's EXACT priority order:
 // stress-family first, then availability-family, then 'unknown'. This
@@ -428,14 +435,20 @@ const STATIC_EXTRACTORS = {
   'static-wgi': (rule, { staticRecord }) =>
     staticRecord?.wgi?.indicators?.[rule.code]?.value ?? null,
   'static-wgi-mean': (_rule, { staticRecord }) => {
-    const entries = Object.values(staticRecord?.wgi?.indicators ?? {})
-      .map((e) => (typeof e?.value === 'number' ? e.value : null))
+    const indicators = staticRecord?.wgi?.indicators ?? {};
+    const entries = WGI_INDICATOR_KEYS
+      .map((key) => {
+        const value = indicators[key]?.value;
+        return typeof value === 'number' ? value : null;
+      })
       .filter((v) => v != null);
     if (entries.length === 0) return null;
     return entries.reduce((s, v) => s + v, 0) / entries.length;
   },
   'static-who': (rule, { staticRecord }) =>
     staticRecord?.who?.indicators?.[rule.code]?.value ?? null,
+  // Retained as direct classifier fixtures. The live registry now maps
+  // AQUASTAT through the single semantic static-aquastat-score row below.
   'static-aquastat-stress': (_rule, { staticRecord }) => {
     const value = staticRecord?.aquastat?.value;
     if (typeof value !== 'number') return null;
@@ -445,6 +458,20 @@ const STATIC_EXTRACTORS = {
     const value = staticRecord?.aquastat?.value;
     if (typeof value !== 'number') return null;
     return classifyAquastatFamily(staticRecord) === 'availability' ? value : null;
+  },
+  'static-aquastat-score': (_rule, { staticRecord }) => {
+    const value = staticRecord?.aquastat?.value;
+    if (typeof value !== 'number') return null;
+    const family = classifyAquastatFamily(staticRecord);
+    if (family === 'stress') return normalizeLowerBetter(value, 0, 100);
+    if (family === 'availability') {
+      return value <= 100
+        ? normalizeHigherBetter(value, 0, 100)
+        : normalizeHigherBetter(value, 0, 5000);
+    }
+    return value <= 100
+      ? normalizeHigherBetter(value, 0, 100)
+      : normalizeLowerBetter(value, 0, 5000);
   },
 };
 

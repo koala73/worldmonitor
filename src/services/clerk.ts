@@ -94,6 +94,14 @@ function getAppearance() {
       };
 }
 
+function getAfterSignOutUrl(): string {
+  // Pin the after-sign-out destination to the origin root rather than
+  // `window.location.href`. The current page URL may carry stale checkout
+  // params or transient session fragments that should not persist into a
+  // signed-out state. Origin-root is also unambiguous in Tauri WKWebView.
+  return new URL('/', window.location.origin).toString();
+}
+
 /**
  * Force Clerk to load now. Call when the SDK is required synchronously
  * (mcp-grant page bootstrap, getClerkToken on first authenticated request).
@@ -110,7 +118,10 @@ export async function initClerk(): Promise<void> {
     try {
       const { Clerk } = await import('@clerk/clerk-js');
       const clerk = new Clerk(PUBLISHABLE_KEY);
-      await clerk.load({ appearance: getAppearance() });
+      await clerk.load({
+        appearance: getAppearance(),
+        afterSignOutUrl: getAfterSignOutUrl(),
+      });
       clerkInstance = clerk;
       attachPendingSubscribers();
     } catch (e) {
@@ -182,16 +193,90 @@ export function getClerk(): ClerkInstance | null {
   return clerkInstance;
 }
 
-/** Open the Clerk sign-in modal. */
-export function openSignIn(): void {
+// Report a Clerk UI-open failure as a single handled Sentry event. Lazy
+// import keeps @sentry/browser off this module's static graph (clerk.ts is
+// imported by Node test files where the browser SDK is unwanted) and makes
+// telemetry strictly best-effort — it must never throw into a click handler.
+function captureClerkSurfaceFailure(action: string, err: unknown, reason: string): void {
+  void import('@sentry/browser')
+    .then((Sentry) => {
+      Sentry.captureException(err instanceof Error ? err : new Error(String(err)), {
+        tags: { surface: 'clerk', action, reason },
+      });
+    })
+    .catch(() => {});
+}
+
+function scheduleNextFrame(cb: () => void): void {
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => cb());
+  else setTimeout(cb, 50);
+}
+
+/**
+ * Open a Clerk UI surface (sign-in / sign-up modal) with one retry.
+ *
+ * Clerk's `openSignIn` / `openSignUp` call an internal
+ * `assertComponentsReady` that throws SYNCHRONOUSLY ("Clerk was not loaded
+ * with Ui components") when the session layer loaded but the UI component
+ * controller never attached — a `load()`-resolved-before-components-mounted
+ * race, or the component bundle being blocked by an ad-blocker / CSP. Left
+ * unguarded that throw escaped as an uncaught error on every Sign In /
+ * Create Account click (WORLDMONITOR-SC / -SD: ~2.3k events / ~1k users).
+ *
+ * Retry once on the next frame to absorb the mount race; if it still fails,
+ * report a single handled event so a genuine regression still alarms without
+ * flooding Sentry. Deliberately does NOT reset `clerkInstance` — that would
+ * orphan the active auth-state listeners (`attachPendingSubscribers` drains
+ * its queue, so a fresh load can't re-attach them).
+ *
+ * Exported for testing — the retry/capture state machine, decoupled from
+ * Clerk and the frame scheduler.
+ */
+export function runClerkSurfaceOpen(
+  open: () => void,
+  onPersistentFailure: (err: unknown) => void,
+  scheduleRetry: (cb: () => void) => void = scheduleNextFrame,
+): void {
+  try {
+    open();
+  } catch {
+    scheduleRetry(() => {
+      try {
+        open();
+      } catch (err) {
+        onPersistentFailure(err);
+      }
+    });
+  }
+}
+
+function openClerkSurface(action: 'open-sign-in' | 'open-sign-up'): void {
+  const open = action === 'open-sign-in'
+    ? () => clerkInstance?.openSignIn({ appearance: getAppearance() })
+    : () => clerkInstance?.openSignUp({ appearance: getAppearance() });
+  // Distinct reasons so Sentry can tell the "components not attached" race
+  // (the surface open threw) apart from a "Clerk bundle never loaded" failure
+  // (initClerk rejected: dynamic-import 4xx/5xx, transient network) — querying
+  // by `reason` must not mix the two or it dilutes the race alert signal.
+  const onFail = (reason: string) => (err: unknown): void => {
+    console.error(`[clerk] ${action} failed (${reason}):`, err);
+    captureClerkSurfaceFailure(action, err, reason);
+  };
   if (clerkInstance) {
-    clerkInstance.openSignIn({ appearance: getAppearance() });
+    runClerkSurfaceOpen(open, onFail('ui-components-not-ready'));
     return;
   }
-  // Deferred-load fast path: user clicked Sign In before the idle
-  // callback fired. Trigger immediate load and open the modal once the
-  // SDK is live so the click never silently no-ops.
-  void initClerk().then(() => clerkInstance?.openSignIn({ appearance: getAppearance() }));
+  // Deferred-load fast path: user clicked before the idle callback fired.
+  // Force the load, then open once the SDK is live so the click never
+  // silently no-ops.
+  void initClerk()
+    .then(() => runClerkSurfaceOpen(open, onFail('ui-components-not-ready')))
+    .catch(onFail('clerk-load-failed'));
+}
+
+/** Open the Clerk sign-in modal. */
+export function openSignIn(): void {
+  openClerkSurface('open-sign-in');
 }
 
 /**
@@ -204,14 +289,7 @@ export function openSignIn(): void {
  * footer link.
  */
 export function openSignUp(): void {
-  if (clerkInstance) {
-    clerkInstance.openSignUp({ appearance: getAppearance() });
-    return;
-  }
-  // Same deferred-load fast path as openSignIn — Create Account clicks
-  // during the load window kick off the import and open the modal once
-  // the SDK is live.
-  void initClerk().then(() => clerkInstance?.openSignUp({ appearance: getAppearance() }));
+  openClerkSurface('open-sign-up');
 }
 
 /**
@@ -375,7 +453,6 @@ export function mountUserButton(el: HTMLDivElement): () => void {
     void initClerk().then(() => {
       if (cancelled || !clerkInstance) return;
       clerkInstance.mountUserButton(el, {
-        afterSignOutUrl: new URL('/', window.location.origin).toString(),
         appearance: getAppearance(),
       });
       realUnmount = () => clerkInstance?.unmountUserButton(el);
@@ -385,15 +462,7 @@ export function mountUserButton(el: HTMLDivElement): () => void {
       realUnmount?.();
     };
   }
-  // Pin the after-sign-out destination to the origin root rather than
-  // `window.location.href`. The current page URL may carry stale
-  // checkout params (e.g., a subscription_id/status query that
-  // handleCheckoutReturn hasn't cleaned yet at sign-out time) or
-  // transient session fragments that shouldn't persist into a
-  // signed-out state. Origin-root is unambiguous and identical on
-  // Tauri desktop (same absolute URL resolves correctly in WKWebView).
   clerkInstance.mountUserButton(el, {
-    afterSignOutUrl: new URL('/', window.location.origin).toString(),
     appearance: getAppearance(),
   });
   return () => clerkInstance?.unmountUserButton(el);

@@ -237,6 +237,14 @@
 .re-leftrail__label { color: var(--text-dim, #8b949e); }
 .re-leftrail__value { font-weight: 500; }
 
+.re-leftrail__resilience-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--text-dim, #8b949e);
+}
+
 .re-leftrail__placeholder,
 .re-leftrail__empty,
 .re-leftrail__placeholder-text {
@@ -543,9 +551,22 @@
 .re-impact__flag--diversifiable { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
 
 .re-impact__resilience {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
   font-size: 14px;
   margin-bottom: 16px;
   color: var(--text-dim, #8b949e);
+}
+
+.re-resilience-confidence,
+.re-resilience-interval {
+  font-size: 11px;
+  color: var(--text-dim, #8b949e);
+}
+
+.re-resilience-confidence--low {
+  color: var(--semantic-elevated, #f59e0b);
 }
 
 .re-impact__products-title {

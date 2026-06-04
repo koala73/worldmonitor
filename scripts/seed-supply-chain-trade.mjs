@@ -72,6 +72,10 @@ function getReporterIso2() {
   return ALL_REPORTERS.map(c => WTO_CODE_TO_ISO2[c]).filter(Boolean);
 }
 
+export function deriveWtoSeverityStatus(value) {
+  return value > 10 ? 'high' : value > 5 ? 'moderate' : 'low';
+}
+
 // ─── Shipping Rates (FRED) ───
 
 const SHIPPING_SERIES = [
@@ -501,7 +505,7 @@ async function fetchTradeBarriers() {
       measureType: gap > 10 ? 'High agricultural protection' : gap > 5 ? 'Moderate agricultural protection' : 'Low tariff gap',
       productDescription: 'Agricultural vs Non-agricultural products',
       objective: gap > 0 ? 'Agricultural sector protection' : 'Uniform tariff structure',
-      status: gap > 10 ? 'high' : gap > 5 ? 'moderate' : 'low',
+      status: deriveWtoSeverityStatus(gap),
       dateDistributed: year, sourceUrl: 'https://stats.wto.org',
     });
   }
@@ -550,7 +554,7 @@ async function fetchTradeRestrictions() {
       reportingCountry: String(row.ReportingEconomy ?? cc),
       affectedCountry: 'All trading partners', productSector: 'All products',
       measureType: 'WTO MFN Baseline', description: `WTO MFN baseline: ${value.toFixed(1)}%`,
-      status: value > 10 ? 'high' : value > 5 ? 'moderate' : 'low',
+      status: deriveWtoSeverityStatus(value),
       notifiedAt: year, sourceUrl: 'https://stats.wto.org',
     };
   }).filter(Boolean).sort((a, b) => {

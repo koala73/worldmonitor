@@ -21,6 +21,14 @@ const THIRD_PARTY_FETCH_HOST_ALLOWLIST = new Set([
   'basemaps.cartocdn.com',
   'tiles.openfreemap.org',
   'protomaps.github.io',
+  // Clerk Frontend API (CNAME → Clerk's auth infra). The bundled Clerk SDK
+  // fetches it for session/token refresh and retries transient failures
+  // itself (`retryImmediately`); a `Failed to fetch (clerk.worldmonitor.app)`
+  // that leaks to onunhandledrejection is a Clerk-SDK-internal network blip,
+  // not our code — same disposition as the existing `/ClerkJS: Network error/`
+  // ignoreError. NOT our `api.worldmonitor.app`, which stays off the list so
+  // genuine API regressions still surface (WORLDMONITOR-SA/SB).
+  'clerk.worldmonitor.app',
 ]);
 
 // Initialize Sentry error tracking (early as possible)
@@ -297,6 +305,7 @@ Sentry.init({
     /Octal literals are not allowed in strict mode/, // Runtime SyntaxError from injected extension script; our TS bundle never emits octal literals and doesn't eval (WORLDMONITOR-NV)
     /Unexpected identifier 'm'/, // Foreign script injection on Opera; pre-compiled bundle can't parse-fail at runtime (WORLDMONITOR-NT)
     /PlayerControlsInterface\.\w+ is not a function/, // Android Chrome WebView native bridge injection (Bilibili/UC/QQ-style host) — never emitted by our code (WORLDMONITOR-P2)
+    /github\.com\/styled-components\/styled-components\/blob/, // styled-components runtime error (errors.md#N URL); we don't depend on styled-components, so it can only be a browser extension (Grammarly et al.) injecting its own bundle — WORLDMONITOR-SE
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';

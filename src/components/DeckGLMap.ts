@@ -141,8 +141,10 @@ import type { ResilienceRankingItem } from '@/services/resilience';
 import {
   RESILIENCE_CHOROPLETH_COLORS,
   buildResilienceChoroplethMap,
+  formatResilienceChoroplethLevel,
   normalizeExclusiveChoropleths,
 } from './resilience-choropleth-utils';
+import { formatResilienceServerLevel } from './resilience-widget-utils';
 
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
 import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
@@ -4539,8 +4541,10 @@ export class DeckGLMap {
         }
         const [red, green, blue] = RESILIENCE_CHOROPLETH_COLORS[resilienceEntry.level];
         const levelColor = `rgb(${red}, ${green}, ${blue})`;
+        const visualBand = formatResilienceChoroplethLevel(resilienceEntry.level);
+        const serverLevel = formatResilienceServerLevel(resilienceEntry.serverLevel);
         return {
-          html: `<div class="deckgl-tooltip"><strong>${text(resilienceName)}</strong><br/>Resilience: <span style="color:${levelColor};font-weight:600">${resilienceEntry.overallScore.toFixed(1)}/100</span><br/><span style="text-transform:capitalize;opacity:.7">${text(resilienceEntry.serverLevel)}</span>${resilienceEntry.lowConfidence ? '<br/><span style="opacity:.7">Low confidence</span>' : ''}</div>`,
+          html: `<div class="deckgl-tooltip"><strong>${text(resilienceName)}</strong><br/>Resilience: <span style="color:${levelColor};font-weight:600">${resilienceEntry.overallScore.toFixed(1)}/100</span><br/><span style="text-transform:capitalize;opacity:.7">Visual band: ${text(visualBand)}</span><br/><span style="text-transform:capitalize;opacity:.7">API level: ${text(serverLevel)}</span>${resilienceEntry.lowConfidence ? '<br/><span style="opacity:.7">Low confidence</span>' : ''}</div>`,
         };
       }
       case 'species-recovery-layer': {

@@ -69,4 +69,4 @@ console.log('  redis-cli GET resilience:recovery:import-hhi:v1 | jq .countries.A
 console.log('');
 console.log('[post-pr3487] Then trigger a fresh ranking warmup so AE\'s importConcentration dim');
 console.log('[post-pr3487] re-scores against the new HHI value (or wait ~6h for the next cron tick):');
-console.log('  WORLDMONITOR_API_KEY=<key> node scripts/seed-resilience-scores.mjs');
+console.log('  API_BASE_URL=https://api.worldmonitor.app WORLDMONITOR_SEED_REFRESH_KEY=<seed-refresh-key> WORLDMONITOR_API_KEY=<read-key> node scripts/seed-resilience-scores.mjs');

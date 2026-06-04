@@ -14,6 +14,11 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadEnvFile, getRedisCredentials, CHROME_UA } from './_seed-utils.mjs';
+import {
+  currentCacheFormulaLocal,
+  currentMethodologyFormulaLocal,
+  validationFormulaMetadata,
+} from './lib/resilience-formula.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -365,18 +370,9 @@ function median(arr) {
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
 
-// Mirror of _shared.ts#currentCacheFormula. Must stay in lockstep; a
-// mixed-formula benchmark would produce a meaningless Spearman / Pearson
-// against INFORM / HDI / WRI reference indices.
-function currentCacheFormulaLocal() {
-  const combine = (process.env.RESILIENCE_PILLAR_COMBINE_ENABLED ?? 'false').toLowerCase() === 'true';
-  const v2 = (process.env.RESILIENCE_SCHEMA_V2_ENABLED ?? 'true').toLowerCase() === 'true';
-  return combine && v2 ? 'pc' : 'd6';
-}
-
 async function readWmScoresFromRedis() {
   const { url, token } = getRedisCredentials();
-  const rankingResp = await fetch(`${url}/get/${encodeURIComponent('resilience:ranking:v18')}`, {
+  const rankingResp = await fetch(`${url}/get/${encodeURIComponent('resilience:ranking:v24')}`, {
     headers: { Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(10_000),
   });
@@ -439,7 +435,7 @@ export async function runBenchmark(opts = {}) {
 
   if (wmScores.size === 0) {
     console.warn('[benchmark] No WM resilience scores available — skipping benchmark run (cold start after cache key bump)');
-    return { skipped: true, reason: 'no-wm-scores', generatedAt: Date.now() };
+    return { skipped: true, reason: 'no-wm-scores', generatedAt: Date.now(), ...validationFormulaMetadata() };
   }
 
   const fetchers = [
@@ -499,6 +495,7 @@ export async function runBenchmark(opts = {}) {
 
   const result = {
     generatedAt: Date.now(),
+    ...validationFormulaMetadata(),
     license: 'INFORM Risk (JRC) CC-BY 4.0, UNDP HDI public, WorldRiskIndex vulnerability component (HDX) CC-BY 4.0. Internal validation only.',
     hypotheses: hypothesisResults,
     correlations,
@@ -586,4 +583,6 @@ if (isMain) {
 export {
   benchmarkCliExitCode,
   isStrictValidationCli,
+  currentCacheFormulaLocal,
+  currentMethodologyFormulaLocal,
 };

@@ -9,7 +9,10 @@ import {
   readFreshnessMap,
   resolveSeedMetaKey,
 } from '../server/worldmonitor/resilience/v1/_dimension-freshness.ts';
-import { INDICATOR_REGISTRY } from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
+import {
+  INDICATOR_REGISTRY,
+  getIndicatorSourceKeys,
+} from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
 import {
   AGING_MULTIPLIER,
   FRESH_MULTIPLIER,
@@ -44,7 +47,9 @@ function buildAllFreshMap(dimensionId: ResilienceDimensionId): Map<string, numbe
   const map = new Map<string, number>();
   for (const indicator of INDICATOR_REGISTRY) {
     if (indicator.dimension !== dimensionId) continue;
-    map.set(indicator.sourceKey, freshAt(indicator.cadence));
+    for (const sourceKey of getIndicatorSourceKeys(indicator)) {
+      map.set(sourceKey, freshAt(indicator.cadence));
+    }
   }
   return map;
 }
@@ -114,7 +119,7 @@ describe('classifyDimensionFreshness (T1.5 propagation pass)', () => {
     const dimensionId: ResilienceDimensionId = 'energy';
     const map = new Map<string, number>();
     const indicators = INDICATOR_REGISTRY.filter((i) => i.dimension === dimensionId);
-    const uniqueKeys = [...new Set(indicators.map((i) => i.sourceKey))];
+    const uniqueKeys = [...new Set(indicators.flatMap((i) => [...getIndicatorSourceKeys(i)]))];
     assert.ok(uniqueKeys.length >= 3, 'energy should have at least 3 unique source keys');
     // Give each unique source key a distinct fetchedAt, all within the
     // fresh band so staleness stays fresh and we can isolate the MIN
@@ -236,9 +241,9 @@ describe('readFreshnessMap (T1.5 propagation pass)', () => {
     };
     const map = await readFreshnessMap(reader);
 
-    const staticSourceKeys = INDICATOR_REGISTRY.filter((i) =>
-      /^resilience:static(:\{|:\*|$)/.test(i.sourceKey),
-    ).map((i) => i.sourceKey);
+    const staticSourceKeys = INDICATOR_REGISTRY.flatMap((i) =>
+      getIndicatorSourceKeys(i).filter((sourceKey) => /^resilience:static(:\{|:\*|$)/.test(sourceKey)),
+    );
     assert.ok(staticSourceKeys.length >= 10, 'registry should have many resilience:static:* entries');
     for (const sourceKey of staticSourceKeys) {
       assert.equal(
@@ -290,6 +295,42 @@ describe('readFreshnessMap (T1.5 propagation pass)', () => {
       NOW,
       'seed-meta without a status field must be included (backward compat)',
     );
+  });
+
+  it('skips bare zero-record seed-meta unless the producer explicitly marks the zero as healthy', async () => {
+    const sourceKey = 'intelligence:social:reddit:v1';
+    const metaKey = resolveSeedMetaKey(sourceKey);
+
+    const bareZeroReader = async (key: string): Promise<unknown | null> => {
+      if (key === metaKey) return { fetchedAt: NOW, recordCount: 0 };
+      return null;
+    };
+    const bareZeroMap = await readFreshnessMap(bareZeroReader);
+    assert.ok(
+      !bareZeroMap.has(sourceKey),
+      'fresh fetchedAt + recordCount:0 without status/state must not mark the source fresh',
+    );
+
+    const okZeroReader = async (key: string): Promise<unknown | null> => {
+      if (key === metaKey) return { fetchedAt: NOW, recordCount: 0, status: 'ok' };
+      return null;
+    };
+    const okZeroMap = await readFreshnessMap(okZeroReader);
+    assert.equal(okZeroMap.get(sourceKey), NOW, 'status:ok explicitly allows zero-record freshness');
+
+    const stateZeroReader = async (key: string): Promise<unknown | null> => {
+      if (key === metaKey) return { fetchedAt: NOW, recordCount: 0, state: 'OK_ZERO' };
+      return null;
+    };
+    const stateZeroMap = await readFreshnessMap(stateZeroReader);
+    assert.equal(stateZeroMap.get(sourceKey), NOW, 'state:OK_ZERO explicitly allows zero-record freshness');
+
+    const stateOkZeroReader = async (key: string): Promise<unknown | null> => {
+      if (key === metaKey) return { fetchedAt: NOW, recordCount: 0, state: 'OK' };
+      return null;
+    };
+    const stateOkZeroMap = await readFreshnessMap(stateOkZeroReader);
+    assert.equal(stateOkZeroMap.get(sourceKey), NOW, 'state:OK explicitly allows zero-record freshness');
   });
 
   it('healthPublicService classifies fresh when seed-meta:resilience:static is recent', async () => {
@@ -460,7 +501,7 @@ describe('INDICATOR_REGISTRY seed-meta coverage (T1.5 P1 regression lock)', () =
     }
 
     const unknownResolutions: { sourceKey: string; metaKey: string }[] = [];
-    const uniqueSourceKeys = [...new Set(INDICATOR_REGISTRY.map((i) => i.sourceKey))];
+    const uniqueSourceKeys = [...new Set(INDICATOR_REGISTRY.flatMap((i) => [...getIndicatorSourceKeys(i)]))];
     for (const sourceKey of uniqueSourceKeys) {
       const metaKey = resolveSeedMetaKey(sourceKey);
       if (!known.has(metaKey)) {

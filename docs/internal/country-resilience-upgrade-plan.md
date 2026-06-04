@@ -245,7 +245,7 @@ intervals, change attribution, external expert review).
   AppliedTariffRate) with 400-day TTL, version `resilience-static-v7`, lock
   domain `resilience:static`.
 - **Backtest + validation scripts already exist:**
-  `scripts/seed-resilience-intervals.mjs`,
+  `scripts/_resilience-intervals.mjs`,
   `scripts/validate-resilience-backtest.mjs`,
   `scripts/validate-resilience-correlation.mjs`,
   `scripts/validate-resilience-sensitivity.mjs`. Phase 2's benchmark suite
@@ -450,8 +450,8 @@ All interval and rank-stability computation lives in scheduled batch jobs,
 per-request bootstrap/Monte Carlo work. (Review gap: *"do not keep lazy
 interval computation anywhere near the read path"*.)
 
-- **Batch job** (`scripts/seed-resilience-intervals.mjs`, Railway cron every
-  6 hours):
+- **Batch job** (`scripts/seed-resilience-scores.mjs`, Resilience-Scores
+  Railway cron every 6 hours):
   - Bootstrap: N=500 resamples of non-missing signals per country, recompute
     per-pillar and overall scores.
   - Monte Carlo: perturb domain weights (±20% Dirichlet) and α in
@@ -739,7 +739,7 @@ tools.
 
 - **T3.1** Bootstrap + MC intervals implemented **fully offline** per
   *Technical Approach → Decomposed uncertainty*. Extend
-  `scripts/seed-resilience-intervals.mjs` to write pillar-level intervals,
+  `scripts/seed-resilience-scores.mjs` and shared interval helpers to write pillar-level intervals,
   joint overall intervals, and rank bands to `resilience:intervals:v3:<cc>`
   every 6 hours. **Zero lazy computation on the read path**, missing key
   means intervals are omitted from the response; the read path never blocks
@@ -1165,7 +1165,7 @@ are complete.
 - `server/_shared/resilience-stats.ts`, statistical utilities (Cronbach,
   CUSUM, forecast).
 - `scripts/seed-resilience-static.mjs`, 11 slots, ~920 lines.
-- `scripts/seed-resilience-intervals.mjs`, backtest intervals.
+- `scripts/_resilience-intervals.mjs`, shared interval helpers.
 - `scripts/validate-resilience-backtest.mjs`,
   `scripts/validate-resilience-correlation.mjs`,
   `scripts/validate-resilience-sensitivity.mjs`, existing validation.

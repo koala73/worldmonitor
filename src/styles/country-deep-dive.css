@@ -1060,12 +1060,12 @@
 .resilience-widget__dimension-imputation--source-failure { color: #ef4444; }
 .resilience-widget__dimension-imputation--not-applicable { color: var(--text-faint); }
 
-/* T1.5 propagation: freshness dot at the far right. Colors mirror the
-   fresh/aging/stale staleness levels from the classifier. Empty span
-   when freshness is unknown so the grid column reserves its 10px slot
-   and rows stay aligned. */
+/* T1.5 propagation: freshness glyph at the far right. Shape and color
+   both mirror the fresh/aging/stale staleness levels from the
+   classifier. Empty span when freshness is unknown so the grid column
+   reserves its 10px slot and rows stay aligned. */
 .resilience-widget__dimension-freshness {
-  font-size: 8px;
+  font-size: 9px;
   line-height: 1;
   text-align: center;
   cursor: help;

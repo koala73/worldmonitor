@@ -23,7 +23,7 @@ import {
   type StalenessLevel,
 } from '../../../_shared/resilience-freshness';
 import type { ResilienceDimensionId } from './_dimension-scorers';
-import { INDICATOR_REGISTRY } from './_indicator-registry';
+import { INDICATOR_REGISTRY, getIndicatorSourceKeys } from './_indicator-registry';
 
 export interface DimensionFreshnessResult {
   /** Oldest (min) `fetchedAt` across the dimension's indicators. 0 when nothing ever observed. */
@@ -122,6 +122,22 @@ export function resolveSeedMetaKey(sourceKey: string): string {
   return `seed-meta:${override ?? stripped}`;
 }
 
+function seedMetaIsFreshnessEligible(meta: Record<string, unknown>): boolean {
+  const status = meta.status;
+  if (status && status !== 'ok') return false;
+
+  const state = meta.state;
+  if (state && state !== 'OK' && state !== 'OK_ZERO') return false;
+
+  if ('recordCount' in meta) {
+    const recordCount = Number(meta.recordCount);
+    if (!Number.isFinite(recordCount) || recordCount < 0) return false;
+    if (recordCount === 0 && status !== 'ok' && state !== 'OK' && state !== 'OK_ZERO') return false;
+  }
+
+  return true;
+}
+
 // Stale dominates aging dominates fresh. A single stale signal forces
 // the whole dimension to stale, since the badge must represent the
 // freshness floor of the dimension, not the ceiling.
@@ -161,17 +177,19 @@ export function classifyDimensionFreshness(
   let worstStaleness: StalenessLevel = 'fresh';
 
   for (const indicator of indicators) {
-    const lastObservedAtMs = freshnessMap.get(indicator.sourceKey) ?? null;
-    const result = classifyStaleness({
-      lastObservedAtMs,
-      cadence: indicator.cadence,
-      nowMs,
-    });
-    if (STALENESS_ORDER[result.staleness] > STALENESS_ORDER[worstStaleness]) {
-      worstStaleness = result.staleness;
-    }
-    if (lastObservedAtMs != null && Number.isFinite(lastObservedAtMs) && lastObservedAtMs < oldestMs) {
-      oldestMs = lastObservedAtMs;
+    for (const sourceKey of getIndicatorSourceKeys(indicator)) {
+      const lastObservedAtMs = freshnessMap.get(sourceKey) ?? null;
+      const result = classifyStaleness({
+        lastObservedAtMs,
+        cadence: indicator.cadence,
+        nowMs,
+      });
+      if (STALENESS_ORDER[result.staleness] > STALENESS_ORDER[worstStaleness]) {
+        worstStaleness = result.staleness;
+      }
+      if (lastObservedAtMs != null && Number.isFinite(lastObservedAtMs) && lastObservedAtMs < oldestMs) {
+        oldestMs = lastObservedAtMs;
+      }
     }
   }
 
@@ -204,11 +222,13 @@ export async function readFreshnessMap(
   const map = new Map<string, number>();
 
   // sourceKey -> resolved seed-meta key. Preserves every registry
-  // sourceKey (including templated ones) so we can project back.
+  // sourceKey (including composite and templated ones) so we can project back.
   const sourceKeyToMetaKey = new Map<string, string>();
   for (const indicator of INDICATOR_REGISTRY) {
-    if (!sourceKeyToMetaKey.has(indicator.sourceKey)) {
-      sourceKeyToMetaKey.set(indicator.sourceKey, resolveSeedMetaKey(indicator.sourceKey));
+    for (const sourceKey of getIndicatorSourceKeys(indicator)) {
+      if (!sourceKeyToMetaKey.has(sourceKey)) {
+        sourceKeyToMetaKey.set(sourceKey, resolveSeedMetaKey(sourceKey));
+      }
     }
   }
 
@@ -226,8 +246,12 @@ export async function readFreshnessMap(
           // status: 'error' while preserving the prior snapshot via
           // extendExistingTtl. Treat non-ok meta as missing so the
           // dimension classifies as stale, matching api/health.js behavior.
-          const status = (meta as { status?: string }).status;
-          if (status && status !== 'ok') return;
+          //
+          // P3 follow-up: legacy quiet-period writes can still refresh
+          // bare seed-meta with recordCount:0 and no status. Treat that as
+          // missing unless the producer explicitly marks the zero as healthy
+          // via status:'ok' or state:'OK_ZERO'.
+          if (!seedMetaIsFreshnessEligible(meta as Record<string, unknown>)) return;
           const fetchedAt = Number((meta as { fetchedAt: unknown }).fetchedAt);
           if (Number.isFinite(fetchedAt) && fetchedAt > 0) {
             metaKeyFetchedAt.set(metaKey, fetchedAt);

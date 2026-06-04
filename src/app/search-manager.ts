@@ -5,7 +5,7 @@ import type { MapView } from '@/components';
 import type { Command } from '@/config/commands';
 import { SearchModal } from '@/components';
 import { CIIPanel } from '@/components';
-import { SITE_VARIANT, STORAGE_KEYS, ALL_PANELS, isPanelEntitled } from '@/config';
+import { SITE_VARIANT, STORAGE_KEYS, ALL_PANELS, getEffectivePanelConfig, isPanelEntitled } from '@/config';
 import { getAllowedLayerKeys, isLayerExecutable } from '@/config/map-layer-definitions';
 import type { MapRenderer } from '@/config/map-layer-definitions';
 import type { MapVariant } from '@/config/map-layer-definitions';
@@ -539,14 +539,20 @@ export class SearchManager implements AppModule {
       case 'panel': {
         // CMD+K can now surface disabled-but-available panels (Add affordance).
         // Enable first so the element exists, then scroll once it renders.
-        const cfg = this.ctx.panelSettings[action];
+        // An optional `@<tab>` suffix deep-links to a specific tab within the
+        // panel (e.g. `consumer-prices@world` → global inflation view).
+        const [panelId, subTab] = action.split('@');
+        if (!panelId) break;
+        const cfg = this.ctx.panelSettings[panelId];
         if (cfg && !cfg.enabled) {
-          if (this.callbacks.enablePanel(action)) {
-            this.scrollToPanelWhenReady(action);
+          if (this.callbacks.enablePanel(panelId)) {
+            this.scrollToPanelWhenReady(panelId);
+            if (subTab) this.dispatchPanelTab(panelId, subTab);
             break;
           }
         }
-        this.scrollToPanel(action);
+        this.scrollToPanel(panelId);
+        if (subTab) this.dispatchPanelTab(panelId, subTab);
         break;
       }
 
@@ -633,6 +639,23 @@ export class SearchManager implements AppModule {
     }
     if (attemptsLeft <= 0) return;
     setTimeout(() => this.scrollToPanelWhenReady(panelId, attemptsLeft - 1), 80);
+  }
+
+  /**
+   * Deep-links to a tab inside a panel by dispatching the panel's open-tab
+   * event once it's mounted. The element existing in the DOM implies the
+   * panel's constructor (and its event listener) has run, so we retry until
+   * then — mirrors scrollToPanelWhenReady for async-mounted panels.
+   */
+  private dispatchPanelTab(panelId: string, tab: string, attemptsLeft = 12): void {
+    // Currently only Consumer Prices exposes a tab deep-link contract.
+    if (panelId !== 'consumer-prices') return;
+    if (document.querySelector(`[data-panel="${panelId}"]`)) {
+      window.dispatchEvent(new CustomEvent('wm-consumer-prices-open-tab', { detail: { tab } }));
+      return;
+    }
+    if (attemptsLeft <= 0) return;
+    setTimeout(() => this.dispatchPanelTab(panelId, tab, attemptsLeft - 1), 80);
   }
 
   private scrollToPanel(panelId: string): void {
@@ -742,7 +765,9 @@ export class SearchManager implements AppModule {
     );
     this.ctx.searchModal.setAvailablePanels(
       Object.keys(this.ctx.panelSettings).filter((k) => {
-        const cfg = ALL_PANELS[k];
+        // Keep unregistered/dynamic keys out of search; the resolver would
+        // otherwise return a disabled synthetic fallback for unknown keys.
+        const cfg = ALL_PANELS[k] ? getEffectivePanelConfig(k, SITE_VARIANT) : undefined;
         return cfg ? isPanelEntitled(k, cfg, isPro) : false;
       })
     );

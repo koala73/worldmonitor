@@ -422,6 +422,22 @@ describe('existing beforeSend filters', () => {
     assert.equal(beforeSend(event), null, 'Allowlisted AJAX host should be suppressed regardless of stack shape');
   });
 
+  it('suppresses Clerk SDK "Failed to fetch (clerk.worldmonitor.app)" even with a clerk first-party frame', () => {
+    // WORLDMONITOR-SA/SB: the bundled Clerk SDK fetches its Frontend API
+    // (clerk.worldmonitor.app, a CNAME to Clerk's auth infra) for token
+    // refresh and retries transient failures itself. A leaked
+    // `Failed to fetch (clerk.worldmonitor.app)` is a Clerk-SDK-internal
+    // network blip, not our code — same disposition as `/ClerkJS: Network
+    // error/`. The clerk-*.js chunk reads as first-party (not in the vendor
+    // list), so the host allowlist — not hasFirstParty — must decide.
+    const event = makeEvent('Failed to fetch (clerk.worldmonitor.app)', 'TypeError', [
+      { filename: '/assets/clerk-DC7Q2aDh.js', lineno: 848, function: 'i' },
+      { filename: 'chrome-extension://ebeglcfoffnnadgncmppkkohfcigngkj/js/injected/hook.js', lineno: 1, function: 'Object.apply' },
+      { filename: '/assets/panels-CYSIkWVK.js', lineno: 45, function: 'window.fetch' },
+    ]);
+    assert.equal(beforeSend(event), null, 'Clerk Frontend API fetch failure should be suppressed');
+  });
+
   it('does NOT suppress plain "Failed to fetch" from first-party code without maplibre frames', () => {
     const event = makeEvent('Failed to fetch', 'TypeError', [
       { filename: '/assets/panels-wF5GXf0N.js', lineno: 100, function: 'MyApiCall' },

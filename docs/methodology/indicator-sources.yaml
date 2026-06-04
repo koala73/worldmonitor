@@ -140,7 +140,7 @@
   coveragePct: 0.75
   lastObservedYear: 2025
   license: Open
-  mechanismTestRationale: Active trade restrictions (in-force, weighted 3×) directly measure market-access loss.
+  mechanismTestRationale: WTO restriction severity directly measures market-access friction (low=0, moderate=1, high=2; lower is better).
   constructStatus: observed-mechanism
 
 - indicator: tradeBarriers
@@ -245,6 +245,21 @@
   mechanismTestRationale: Physical infrastructure quality is the baseline capacity for delivering services during normal and crisis periods.
   constructStatus: observed-mechanism
 
+- indicator: broadband
+  dimension: infrastructure
+  domain: infrastructure
+  weight: 0.15
+  direction: higher-better
+  source: World Bank Open Data
+  seriesId: IT.NET.BBND.P2
+  seriesUrl: https://data.worldbank.org/indicator/IT.NET.BBND.P2
+  coveragePct: 0.96
+  lastObservedYear: 2024
+  license: open-data
+  mechanismTestRationale: Fixed broadband subscriptions per 100 people measure baseline digital infrastructure reach for resilient public and commercial service delivery.
+  constructStatus: observed-mechanism
+  reviewNotes: Active infrastructure Core scorer input. Coverage is above the 70% coverage-influence floor and the Core tier floor.
+
 # ENERGY DOMAIN (weight 0.11) --------------------------------------------
 
 - indicator: dependency
@@ -322,20 +337,20 @@
   constructStatus: regional-only
   reviewNotes: PR 1 §3.5 renames to euGasStorageStress and scopes to EU-only (weight 0 for non-EU).
 
-- indicator: exposedEnergyStress
+- indicator: energyPriceStress
   dimension: energy
   domain: energy
-  weight: 0.10
+  weight: 0.15
   direction: composite
-  source: Internal composite (energy-price-stress × import-exposure)
+  source: Energy prices + fossil-electricity exposure composite
   seriesId: Derived
-  seriesUrl: Internal seed
-  coveragePct: 0.70
+  seriesUrl: economic:energy:v1:all
+  coveragePct: 1.00
   lastObservedYear: 2026
-  license: Internal
+  license: Public-domain
   mechanismTestRationale: Combines energy-price shocks with import-exposure to measure price-shock transmission.
   constructStatus: observed-mechanism
-  reviewNotes: PR 1 may simplify given importedFossilDependence covers import-exposure directly.
+  reviewNotes: Active energy-v2 Core scorer input. Weight increased from legacy 0.10 to 0.15; exposure is derived from fossil share of electricity generation under the power-system framing.
 
 - indicator: electricityConsumption
   dimension: energy
@@ -351,6 +366,66 @@
   mechanismTestRationale: FAILS the mechanism test. Per-capita electricity consumption tracks GDP per capita; it is a level-of-load measure not a resilience mechanism. IEA energy-security framing treats EFFICIENCY (lower load for same output) as resilience, which this indicator inversely rewards.
   constructStatus: wealth-proxy
   reviewNotes: PR 1 §3.1 removes. Replaced with powerLossesPct (EG.ELC.LOSS.ZS), reserveMarginPct (IEA), and accessToElectricityPct (EG.ELC.ACCS.ZS) moved to infrastructure domain.
+
+- indicator: importedFossilDependence
+  dimension: energy
+  domain: energy
+  weight: 0.35
+  direction: lower-better
+  source: World Bank + static net-import dependency seed
+  seriesId: EG.ELC.FOSL.ZS × max(EG.IMP.CONS.ZS, 0) / 100
+  seriesUrl: https://data.worldbank.org/indicator/EG.ELC.FOSL.ZS
+  coveragePct: 0.97
+  lastObservedYear: 2024
+  license: CC-BY-4.0
+  mechanismTestRationale: Measures imported fossil exposure in the power system while not penalizing domestic fossil producers as import-dependent.
+  constructStatus: observed-mechanism
+  reviewNotes: Active energy-v2 Core scorer input. Replaces standalone energyImportDependency + gasShare + coalShare under the Option B power-system framing.
+
+- indicator: lowCarbonGenerationShare
+  dimension: energy
+  domain: energy
+  weight: 0.20
+  direction: higher-better
+  source: World Bank
+  seriesId: EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS + EG.ELC.HYRO.ZS
+  seriesUrl: https://data.worldbank.org/indicator/EG.ELC.NUCL.ZS
+  coveragePct: 0.97
+  lastObservedYear: 2024
+  license: CC-BY-4.0
+  mechanismTestRationale: Credits firm and low-carbon electricity generation across nuclear, renewables excluding hydro, and hydroelectric output.
+  constructStatus: observed-mechanism
+  reviewNotes: Active energy-v2 Core scorer input. Absorbs legacy renewShare and adds nuclear + hydro credit.
+
+- indicator: powerLossesPct
+  dimension: energy
+  domain: energy
+  weight: 0.20
+  direction: lower-better
+  source: World Bank
+  seriesId: EG.ELC.LOSS.ZS
+  seriesUrl: https://data.worldbank.org/indicator/EG.ELC.LOSS.ZS
+  coveragePct: 0.96
+  lastObservedYear: 2024
+  license: CC-BY-4.0
+  mechanismTestRationale: Transmission and distribution losses directly measure grid integrity.
+  constructStatus: observed-mechanism
+  reviewNotes: Active energy-v2 Core scorer input. Temporarily absorbs reserveMarginPct's deferred 0.10 share until an IEA reserve-margin seeder lands.
+
+- indicator: euGasStorageStress
+  dimension: energy
+  domain: energy
+  weight: 0.10
+  direction: lower-better
+  source: GIE AGSI+
+  seriesId: EU gas storage fill % (per country)
+  seriesUrl: https://agsi.gie.eu/
+  coveragePct: 0.15
+  lastObservedYear: 2026
+  license: Open
+  mechanismTestRationale: EU gas storage fill directly measures winter-heating-shock buffer for countries where the regional source applies.
+  constructStatus: regional-only
+  reviewNotes: Active energy-v2 Enrichment scorer input. Scored only for EU gas-storage countries; non-EU countries contribute null, not 0.
 
 # SOCIAL-GOVERNANCE DOMAIN (weight 0.19) ---------------------------------
 
@@ -431,15 +506,15 @@
 - indicator: rsfPressFreedom
   dimension: informationCognitive
   domain: social-governance
-  weight: TBD
-  direction: higher-better
+  weight: 0.55
+  direction: lower-better
   source: Reporters Sans Frontieres
   seriesId: Press Freedom Index
   seriesUrl: https://rsf.org/en/index
   coveragePct: 0.85
   lastObservedYear: 2024
-  license: Proprietary-with-fair-use
-  mechanismTestRationale: Press freedom proxies quality of information-shock response and independent verification capacity.
+  license: open-attribution
+  mechanismTestRationale: RSF press-freedom risk directly measures information-environment fragility and independent-verification constraints; lower RSF score is better.
   constructStatus: observed-mechanism
 
 - indicator: languageNormalizedSocialVelocity
@@ -458,20 +533,35 @@
 
 # HEALTH-FOOD DOMAIN (weight 0.13) ---------------------------------------
 
-- indicator: whoHealthExpenditure
+- indicator: physiciansPer1k
   dimension: healthPublicService
   domain: health-food
-  weight: TBD
+  weight: 0.15
   direction: higher-better
   source: WHO Global Health Observatory
-  seriesId: Current health expenditure per capita, PPP
+  seriesId: HWF_0001
   seriesUrl: https://www.who.int/data/gho
-  coveragePct: 0.95
+  coveragePct: 0.99
   lastObservedYear: 2022
-  license: CC-BY-4.0
+  license: WHO public-domain/open-data
+  mechanismTestRationale: Physician density measures clinical workforce capacity available for routine service delivery and surge response.
+  constructStatus: observed-mechanism
+  reviewNotes: Active healthPublicService Core scorer input. Static seed converts WHO's per-10,000 value to physicians per 1,000 before scoring.
+
+- indicator: healthExpPerCapitaUsd
+  dimension: healthPublicService
+  domain: health-food
+  weight: 0.15
+  direction: higher-better
+  source: WHO Global Health Observatory
+  seriesId: GHED_CHE_pc_US_SHA2011
+  seriesUrl: https://www.who.int/data/gho
+  coveragePct: 0.99
+  lastObservedYear: 2022
+  license: WHO public-domain/open-data
   mechanismTestRationale: Health expenditure per capita proxies health-system capacity. FAILS the strict mechanism test — it measures SPEND, not CAPACITY. Should be replaced with surge-capacity / bed-density / ICU-density threshold signal.
   constructStatus: wealth-proxy
-  reviewNotes: PR 4 §4.9 replacement.
+  reviewNotes: Active healthPublicService Core scorer input. PR 4 §4.9 tracks replacement with a direct surge-capacity signal; kept Core here because it is already in the public scorer and clears coverage-influence tiering.
 
 - indicator: ipcPhase
   dimension: foodWater
@@ -488,32 +578,18 @@
   constructStatus: observed-mechanism
   reviewNotes: Coverage is inherently partial — IPC only tracks countries with current/imminent food crises. Imputed to a resilient-default for non-tracked countries.
 
-- indicator: aquastatWaterStress
+- indicator: aquastatScore
   dimension: foodWater
   domain: health-food
-  weight: 0.25
-  direction: lower-better
+  weight: 0.40
+  direction: indicator-semantics
   source: FAO AQUASTAT
-  seriesId: Water stress (withdrawal / renewable resources)
+  seriesId: Indicator-tagged water stress / withdrawal / dependency / availability / renewable / access reading
   seriesUrl: https://www.fao.org/aquastat/
   coveragePct: 0.85
   lastObservedYear: 2020
   license: Open
-  mechanismTestRationale: Water stress directly measures water-supply-shock exposure.
-  constructStatus: observed-mechanism
-
-- indicator: aquastatWaterAvailability
-  dimension: foodWater
-  domain: health-food
-  weight: 0.15
-  direction: higher-better
-  source: FAO AQUASTAT
-  seriesId: Water availability (m³/capita)
-  seriesUrl: https://www.fao.org/aquastat/
-  coveragePct: 0.85
-  lastObservedYear: 2020
-  license: Open
-  mechanismTestRationale: Water availability per capita proxies baseline water-security-shock buffer.
+  mechanismTestRationale: The scorer uses one AQUASTAT slot. `scoreAquastatValue()` routes stress/withdrawal/dependency tags through lower-better 0-100 anchors and availability/renewable/access tags through higher-better 0-100 or 0-5000 anchors.
   constructStatus: observed-mechanism
 
 # RECOVERY DOMAIN (weight 0.25) ------------------------------------------
@@ -696,14 +772,10 @@
   constructStatus: imputed-floor
   reviewNotes: PR 3 §3.5 retires from core score (permanent). Enrichment-only if IEA/EIA connector ever wires.
 
-# PENDING ADDITIONS FOR PR 1+ --------------------------------------------
+# DEFERRED ADDITIONS FOR PR 1+ --------------------------------------------
 
-# PR 1 additions (not yet in the scorer):
-# - powerLossesPct       → EG.ELC.LOSS.ZS (transmission+distribution losses, lower-better)
-# - reserveMarginPct     → IEA electricity balance (generation reserve margin, higher-better)
-# - accessToElectricityPct → EG.ELC.ACCS.ZS (threshold/saturating, moved to infrastructure domain)
-# - importedFossilDependence → EG.IMP.CONS.ZS × fossil-generation-share (Option B power-system framing)
-# - lowCarbonGenerationShare → EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS (higher-better)
+# PR 1 deferred addition:
+# - reserveMarginPct → IEA electricity balance (generation reserve margin, higher-better)
 
 # PR 2 additions (not yet in the scorer):
 # - liquidReserveAdequacy  → FI.RES.TOTL.MO (rename of current reserveMonths)

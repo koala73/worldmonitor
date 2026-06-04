@@ -96,6 +96,79 @@ async function fetchBundle(): Promise<ImfBootstrapPayload['data']> {
 }
 
 /**
+ * One per-country inflation reading for the all-countries "World" view.
+ * `inflationPct` is IMF WEO period-average CPI inflation (PCPIPCH);
+ * `cpiEopPct` is the end-of-period reading (PCPIEPCH).
+ */
+export interface CountryInflationRow {
+  iso2: string;
+  name: string;
+  inflationPct: number | null;
+  cpiEopPct: number | null;
+  year: number | null;
+}
+
+function numOrNull(v: unknown): number | null {
+  if (v == null || v === '') return null; // Number(null) === 0 — guard it
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+let countryNameFmt: Intl.DisplayNames | null = null;
+function resolveCountryName(iso2: string): string {
+  try {
+    if (!countryNameFmt) countryNameFmt = new Intl.DisplayNames(['en'], { type: 'region' });
+    return countryNameFmt.of(iso2) ?? iso2;
+  } catch {
+    return iso2;
+  }
+}
+
+/**
+ * Pure transform — turns the IMF macro `countries` map into a sorted list of
+ * inflation rows, dropping countries with no inflation reading at all. Sorted
+ * by year-over-year inflation descending (highest first); rows with a null YoY
+ * reading sort last, name-ascending as a stable tiebreak. Exported so unit
+ * tests don't need to mock the network (mirrors buildImfEconomicIndicators).
+ */
+export function buildCountryInflationRows(
+  countries: Record<string, Partial<ImfMacroEntry>> | undefined,
+): CountryInflationRow[] {
+  const rows: CountryInflationRow[] = [];
+  for (const [code, entry] of Object.entries(countries ?? {})) {
+    const inflationPct = numOrNull(entry?.inflationPct);
+    const cpiEopPct = numOrNull(entry?.cpiEopPct);
+    if (inflationPct == null && cpiEopPct == null) continue;
+    const iso2 = code.toUpperCase();
+    rows.push({
+      iso2,
+      name: resolveCountryName(iso2),
+      inflationPct,
+      cpiEopPct,
+      year: numOrNull(entry?.year),
+    });
+  }
+  rows.sort((a, b) => {
+    if (a.inflationPct == null && b.inflationPct == null) return a.name.localeCompare(b.name);
+    if (a.inflationPct == null) return 1;
+    if (b.inflationPct == null) return -1;
+    if (b.inflationPct !== a.inflationPct) return b.inflationPct - a.inflationPct;
+    return a.name.localeCompare(b.name);
+  });
+  return rows;
+}
+
+/**
+ * All-countries inflation snapshot from the IMF WEO macro bundle. Reuses the
+ * same memoised bootstrap fetch as getImfCountryBundle (no extra network) and
+ * never throws — returns an empty list when the seeder is offline.
+ */
+export async function getAllCountriesInflation(): Promise<CountryInflationRow[]> {
+  const data = await fetchBundle();
+  return buildCountryInflationRows(data?.imfMacro?.countries);
+}
+
+/**
  * Look up a country's IMF data across all four themed seeders.
  * Returns null entries for any theme that has no data for this country
  * (or whose seeder is offline). Never throws.

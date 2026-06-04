@@ -9,10 +9,7 @@ import {
   recomputeReferenceManifest,
   type ResilienceReferenceManifest,
 } from '../scripts/resilience-reference-recompute.mts';
-import {
-  RESILIENCE_RANKING_CACHE_KEY,
-  RESILIENCE_SCORE_CACHE_PREFIX,
-} from '../server/worldmonitor/resilience/v1/_shared.ts';
+import { RESILIENCE_SCORE_CACHE_PREFIX } from '../server/worldmonitor/resilience/v1/_shared.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), '..');
@@ -35,32 +32,56 @@ const EXPECTED_DIMENSIONS = [
   'externalDebtCoverage',
   'sovereignFiscalBuffer',
 ];
+const CAPTURED_SCORE_CACHE_PREFIX = 'resilience:score:v18:';
+const CAPTURED_RANKING_CACHE_KEY = 'resilience:ranking:v18';
+const CAPTURED_HISTORY_KEY_PREFIX = 'resilience:history:v13:';
+const CAPTURED_SCORE_CACHE_SOURCE = `${CAPTURED_SCORE_CACHE_PREFIX}{countryCode}`;
+const CAPTURED_RECOMPUTE_SOURCE = 'country-sliced Redis input snapshot recompute';
+// v24 includes the v23 score-affecting batch (import-HHI certainty derate #4088,
+// outage observed-quiet semantics #4094/P3-8, WTO trade-policy severity #4092/P2-1)
+// plus the PR #4101 governance WGI slot-semantics cleanup. The historical-
+// manifest drift guard allows the union of fields already proven to drift from
+// the frozen v18 reference capture.
+const CURRENT_COMBINED_SCORER_CACHE_PREFIX = 'resilience:score:v24:';
+const EXPECTED_CURRENT_SCORER_DRIFT_COUNTRIES = new Set(EXPECTED_COUNTRIES);
+const EXPECTED_CURRENT_SCORER_DRIFT_FIELDS = new Set([
+  'overallScore',
+  'domains.infrastructure.score',
+  'pillars.live-shock-exposure.score',
+  'domains.economic.score',
+  'pillars.structural-readiness.score',
+]);
 
 function loadManifest(): ResilienceReferenceManifest & {
-  scorer?: { scoreCachePrefix?: string; rankingCacheKey?: string };
+  scorer?: { scoreCachePrefix?: string; rankingCacheKey?: string; historyKeyPrefix?: string };
   redis?: ResilienceReferenceManifest['redis'] & { keyCount?: number };
   productionScoreCacheAtCapture?: {
     source?: string;
     countries?: Record<string, { overallScore?: unknown; formula?: unknown }>;
+  };
+  recomputeAtCapture?: {
+    source?: string;
   };
 } {
   return JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
 }
 
 describe('country resilience reference-edition recompute artifact', () => {
-  it('commits a non-placeholder pc manifest with current cache-key metadata', () => {
+  it('commits a non-placeholder pc manifest with captured cache-key provenance metadata', () => {
     const manifest = loadManifest();
 
     assert.equal(manifest.schemaVersion, 1);
     assert.equal(manifest.referenceEdition, '2026');
     assert.match(manifest.capturedAt, /^\d{4}-\d{2}-\d{2}T/);
     assert.equal(manifest.formula, 'pc');
-    assert.equal(manifest.scorer?.scoreCachePrefix, RESILIENCE_SCORE_CACHE_PREFIX);
-    assert.equal(manifest.scorer?.rankingCacheKey, RESILIENCE_RANKING_CACHE_KEY);
-    assert.equal(manifest.productionScoreCacheAtCapture?.source, `${RESILIENCE_SCORE_CACHE_PREFIX}{countryCode}`);
+    assert.equal(manifest.scorer?.scoreCachePrefix, CAPTURED_SCORE_CACHE_PREFIX);
+    assert.equal(manifest.scorer?.rankingCacheKey, CAPTURED_RANKING_CACHE_KEY);
+    assert.equal(manifest.scorer?.historyKeyPrefix, CAPTURED_HISTORY_KEY_PREFIX);
+    assert.equal(manifest.productionScoreCacheAtCapture?.source, CAPTURED_SCORE_CACHE_SOURCE);
+    assert.equal(manifest.recomputeAtCapture?.source, CAPTURED_RECOMPUTE_SOURCE);
     assert.deepEqual(manifest.sample.countries, EXPECTED_COUNTRIES);
     assert.deepEqual(manifest.sample.dimensions, EXPECTED_DIMENSIONS);
-    assert.equal(manifest.published.source, `${RESILIENCE_SCORE_CACHE_PREFIX}{countryCode}`);
+    assert.equal(manifest.published.source, CAPTURED_SCORE_CACHE_SOURCE);
     assert.equal(manifest.redis?.slice?.mode, 'sample-country-slice');
     assert.deepEqual(manifest.redis?.slice?.countryCodes, EXPECTED_COUNTRIES);
     assert.ok((manifest.redis?.slice?.prunedKeys ?? 0) > 0, 'manifest must record pruned source keys');
@@ -92,12 +113,34 @@ describe('country resilience reference-edition recompute artifact', () => {
     }
   });
 
-  it('recomputes the sampled scores from the frozen Redis manifest within tolerance', async () => {
+  it('recomputes the sampled scores from the frozen Redis manifest within tolerance for the captured scorer version', async () => {
     const manifest = loadManifest();
     const computed = await recomputeReferenceManifest(manifest);
     const mismatches = compareReferenceResults(manifest, computed);
 
-    assert.deepEqual(mismatches, []);
+    if (manifest.scorer?.scoreCachePrefix === RESILIENCE_SCORE_CACHE_PREFIX) {
+      assert.deepEqual(mismatches, []);
+      return;
+    }
+
+    assert.equal(manifest.scorer?.scoreCachePrefix, CAPTURED_SCORE_CACHE_PREFIX);
+    assert.equal(
+      RESILIENCE_SCORE_CACHE_PREFIX,
+      CURRENT_COMBINED_SCORER_CACHE_PREFIX,
+      'historical reference-edition drift guard must be revisited on the next score-cache bump',
+    );
+    assert.ok(
+      mismatches.length > 0,
+      'current scorer must no longer silently match the historical v18 capture after the import-HHI derate, outage-feed semantics, and WTO severity methodology changes',
+    );
+    assert.ok(
+      mismatches.every((mismatch) => EXPECTED_CURRENT_SCORER_DRIFT_COUNTRIES.has(mismatch.countryCode)),
+      `unexpected countries drifted from the historical reference manifest: ${JSON.stringify(mismatches)}`,
+    );
+    assert.ok(
+      mismatches.every((mismatch) => EXPECTED_CURRENT_SCORER_DRIFT_FIELDS.has(mismatch.field)),
+      `unexpected fields drifted from the historical reference manifest: ${JSON.stringify(mismatches)}`,
+    );
   });
 
   it('stores country-sliced source feeds instead of full global feeds', () => {

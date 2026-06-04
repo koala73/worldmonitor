@@ -106,8 +106,9 @@ const LOW_CARBON_BUDGET = 36 * 30 * 24 * 60;     // see seed-low-carbon-generati
 const FOSSIL_BUDGET = 48 * 30 * 24 * 60;          // see seed-fossil-electricity-share.mjs
 
 test('low-carbon: fresh-arrival regression guard — max year 2024 (~17mo) within 36mo budget', () => {
-  // NUCL/HYRO max = 2024 verified live 2026-05-05; RNEW lags but is masked
-  // by MAX-of-3 in the seeder's countries[iso2].year computation.
+  // Payload year is the seeder's aligned per-country composite year. When
+  // a country has common NUCL/RNEW/HYRO year 2024, that should remain within
+  // the low-carbon content-age budget.
   const data = { countries: { US: { value: 60.5, year: 2024 } } };
   const cm = wbCountryDictContentMeta(data, FIXED_NOW);
   const ageMin = (FIXED_NOW - cm.newestItemAt) / 60000;

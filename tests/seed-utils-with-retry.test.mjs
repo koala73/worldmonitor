@@ -103,19 +103,28 @@ describe('withRetry', () => {
     // exponential backoff would have been ~1ms, we MUST sleep ≥200ms so the
     // upstream rate-limit hint is respected.
     let attempts = 0;
-    const t0 = Date.now();
-    await assert.rejects(
-      withRetry(async () => {
-        attempts++;
-        const err = new Error('rate limited');
-        if (attempts === 1) err.retryAfterMs = 200;  // hint only on first failure
-        throw err;
-      }, 1, 1),  // baseWait would otherwise be 1ms
-      /rate limited/,
-    );
-    const elapsed = Date.now() - t0;
-    assert.ok(elapsed >= 200, `expected ≥200ms (Retry-After hint), got ${elapsed}ms`);
-    assert.ok(elapsed < 1000, `expected <1000ms (cap respected), got ${elapsed}ms`);
+    const sleeps = [];
+    const originalSetTimeout = globalThis.setTimeout;
+    globalThis.setTimeout = (callback, ms, ...args) => {
+      sleeps.push(ms);
+      queueMicrotask(() => callback(...args));
+      return 0;
+    };
+    try {
+      await assert.rejects(
+        withRetry(async () => {
+          attempts++;
+          const err = new Error('rate limited');
+          if (attempts === 1) err.retryAfterMs = 200;  // hint only on first failure
+          throw err;
+        }, 1, 1),  // baseWait would otherwise be 1ms
+        /rate limited/,
+      );
+    } finally {
+      globalThis.setTimeout = originalSetTimeout;
+    }
+    assert.equal(attempts, 2, 'initial attempt + one retry');
+    assert.deepEqual(sleeps, [200], 'Retry-After hint must drive the backoff delay');
   });
 });
 

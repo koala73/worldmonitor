@@ -1,5 +1,6 @@
 import type {
   GetResilienceRuntimeManifestResponse,
+  ResilienceRuntimeIntervalState,
   ResilienceServiceHandler,
   ServerContext,
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
@@ -7,21 +8,31 @@ import type {
 import { getCachedJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import {
-  RESILIENCE_HISTORY_KEY_PREFIX,
+  RESILIENCE_RANKING_META_KEY,
+  RESILIENCE_STATIC_META_KEY,
   RESILIENCE_INTERVAL_KEY_PREFIX,
   RESILIENCE_INTERVAL_METHODOLOGY,
-  RESILIENCE_RANKING_CACHE_KEY,
-  RESILIENCE_RANKING_META_KEY,
-  RESILIENCE_SCHEMA_V2_ENABLED,
-  RESILIENCE_SCORE_CACHE_PREFIX,
-  RESILIENCE_STATIC_META_KEY,
+  RESILIENCE_INTERVALS_META_KEY,
   getCurrentCacheFormula,
   isEnergyV2Enabled,
-  isFinancialSystemExposureEnabled,
-  isPillarCombineEnabled,
 } from './_shared';
 
-const MANIFEST_VERSION = 1;
+const MANIFEST_VERSION = 4;
+const INTERVAL_SAMPLE_COUNTRY = 'US';
+
+const PUBLIC_CACHE_STATE = {
+  scorePrefix: '',
+  rankingKey: '',
+  historyPrefix: '',
+  intervalPrefix: '',
+  intervalMethodology: '',
+};
+
+function getConstructVersions(): { energy: 'legacy' | 'v2' } {
+  return {
+    energy: isEnergyV2Enabled() ? 'v2' : 'legacy',
+  };
+}
 
 interface SeedMeta {
   fetchedAt?: unknown;
@@ -32,6 +43,14 @@ interface RankingMeta {
   count?: unknown;
   scored?: unknown;
   total?: unknown;
+}
+
+interface IntervalPayload {
+  p05?: unknown;
+  p95?: unknown;
+  _formula?: unknown;
+  methodology?: unknown;
+  computedAt?: unknown;
 }
 
 function toIsoDate(value: unknown): string {
@@ -53,41 +72,72 @@ function safeNonNegativeInteger(value: unknown): number {
   return Math.trunc(num);
 }
 
+function latestIsoTimestamp(values: unknown[]): string {
+  const timestamps = values
+    .map(toIsoTimestamp)
+    .filter((value): value is string => value.length > 0)
+    .map((value) => Date.parse(value));
+  if (timestamps.length === 0) return '';
+  return new Date(Math.max(...timestamps)).toISOString();
+}
+
+function isCurrentIntervalPayload(value: unknown): value is IntervalPayload {
+  if (!value || typeof value !== 'object') return false;
+  const payload = value as IntervalPayload;
+  return (
+    typeof payload.p05 === 'number' &&
+    Number.isFinite(payload.p05) &&
+    typeof payload.p95 === 'number' &&
+    Number.isFinite(payload.p95) &&
+    payload._formula === getCurrentCacheFormula() &&
+    payload.methodology === RESILIENCE_INTERVAL_METHODOLOGY
+  );
+}
+
+async function getIntervalState(): Promise<ResilienceRuntimeIntervalState> {
+  const [intervalMeta, sampleInterval] = await Promise.all([
+    getCachedJson(RESILIENCE_INTERVALS_META_KEY, true) as Promise<SeedMeta | null>,
+    getCachedJson(`${RESILIENCE_INTERVAL_KEY_PREFIX}${INTERVAL_SAMPLE_COUNTRY}`, true) as Promise<IntervalPayload | null>,
+  ]);
+
+  return {
+    available: isCurrentIntervalPayload(sampleInterval),
+    methodology: RESILIENCE_INTERVAL_METHODOLOGY,
+    sampleCountry: INTERVAL_SAMPLE_COUNTRY,
+    lastObservedAt: latestIsoTimestamp([
+      intervalMeta?.fetchedAt,
+      sampleInterval?.computedAt,
+    ]),
+  };
+}
+
 export const getResilienceRuntimeManifest: ResilienceServiceHandler['getResilienceRuntimeManifest'] = async (
   ctx: ServerContext,
 ): Promise<GetResilienceRuntimeManifestResponse> => {
   markNoCacheResponse(ctx.request);
 
-  const [staticMeta, rankingMeta] = await Promise.all([
+  const [staticMeta, rankingMeta, intervals] = await Promise.all([
     getCachedJson(RESILIENCE_STATIC_META_KEY, true) as Promise<SeedMeta | null>,
     getCachedJson(RESILIENCE_RANKING_META_KEY, true) as Promise<RankingMeta | null>,
+    getIntervalState(),
   ]);
 
   return {
     manifestVersion: MANIFEST_VERSION,
     generatedAt: new Date().toISOString(),
-    deployedCommitSha: process.env.VERCEL_GIT_COMMIT_SHA || 'unknown',
-    vercelEnv: process.env.VERCEL_ENV ?? '',
+    deployedCommitSha: '',
+    vercelEnv: '',
     formulaTag: getCurrentCacheFormula(),
     dataVersion: toIsoDate(staticMeta?.fetchedAt),
-    flags: [
-      { name: 'RESILIENCE_SCHEMA_V2_ENABLED', enabled: RESILIENCE_SCHEMA_V2_ENABLED },
-      { name: 'RESILIENCE_PILLAR_COMBINE_ENABLED', enabled: isPillarCombineEnabled() },
-      { name: 'RESILIENCE_ENERGY_V2_ENABLED', enabled: isEnergyV2Enabled() },
-      { name: 'RESILIENCE_FIN_SYS_EXPOSURE_ENABLED', enabled: isFinancialSystemExposureEnabled() },
-    ],
-    cache: {
-      scorePrefix: RESILIENCE_SCORE_CACHE_PREFIX,
-      rankingKey: RESILIENCE_RANKING_CACHE_KEY,
-      historyPrefix: RESILIENCE_HISTORY_KEY_PREFIX,
-      intervalPrefix: RESILIENCE_INTERVAL_KEY_PREFIX,
-      intervalMethodology: RESILIENCE_INTERVAL_METHODOLOGY,
-    },
+    flags: [],
+    cache: PUBLIC_CACHE_STATE,
     rankingCache: {
       fetchedAt: toIsoTimestamp(rankingMeta?.fetchedAt),
       count: safeNonNegativeInteger(rankingMeta?.count),
       scored: safeNonNegativeInteger(rankingMeta?.scored),
       total: safeNonNegativeInteger(rankingMeta?.total),
     },
+    constructVersions: getConstructVersions(),
+    intervals,
   };
 };

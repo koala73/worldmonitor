@@ -23,6 +23,7 @@ const LANG_TO_TILE_FIELD: Record<string, string> = {
   ro: 'name:ro',
   tr: 'name:tr',
   th: 'name:th',
+  hi: 'name:hi',
   // vi — not available in Protomaps/OSM tiles
 };
 

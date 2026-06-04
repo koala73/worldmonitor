@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import {
@@ -6,16 +7,20 @@ import {
   collectDimensionConfidences,
   formatBaselineStress,
   formatDimensionConfidence,
+  formatResilienceMethodologyHelpTitle,
   formatResilienceChange30d,
   formatResilienceConfidence,
   formatResilienceDataVersion,
   formatResilienceScoreInterval,
   getImputationClassIcon,
   getImputationClassLabel,
+  getResilienceMethodologySummary,
+  getResilienceOverallDisplay,
   getResilienceDimensionLabel,
   getResilienceDomainLabel,
   getResilienceTrendArrow,
   getResilienceVisualLevel,
+  getStalenessIcon,
   getStalenessLabel,
 } from '../src/components/resilience-widget-utils';
 import type { ResilienceScoreResponse } from '../src/services/resilience';
@@ -39,6 +44,33 @@ const baseResponse: ResilienceScoreResponse = {
   dataVersion: '2026-04-03',
 };
 
+test('ResilienceWidget stays out of the components barrel and loads through CountryDeepDivePanel dynamically', async () => {
+  const [barrelSource, deepDiveSource] = await Promise.all([
+    readFile(new URL('../src/components/index.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../src/components/CountryDeepDivePanel.ts', import.meta.url), 'utf8'),
+  ]);
+
+  assert.doesNotMatch(barrelSource, /export\s+\*\s+from\s+['"]\.\/ResilienceWidget['"]/);
+  assert.doesNotMatch(deepDiveSource, /import\s+\{\s*ResilienceWidget\s*\}\s+from\s+['"]\.\/ResilienceWidget['"]/);
+  assert.match(deepDiveSource, /import\(['"]@\/components\/ResilienceWidget['"]\)/);
+  assert.match(deepDiveSource, /import\(['"]@\/components\/ResilienceWidget['"]\)[\s\S]*?\.then\(\(\{\s*ResilienceWidget\s*\}\)\s*=>[\s\S]*?\)\s*\.catch\(renderFallback\)/);
+});
+
+test('ResilienceWidget auth refresh guard tolerates malformed server countryCode values', async () => {
+  const source = await readFile(new URL('../src/components/ResilienceWidget.ts', import.meta.url), 'utf8');
+
+  assert.match(
+    source,
+    /const loadedCountryCode = normalizeCountryCode\(this\.currentData\?\.countryCode\);/,
+    'auth refresh guard must validate the server countryCode before comparing it',
+  );
+  assert.match(
+    source,
+    /const needsRefresh = !this\.currentData \|\| \(loadedCountryCode !== null && loadedCountryCode !== this\.currentCountryCode\);/,
+    'malformed legacy countryCode values must not cause repeated auth-state refreshes',
+  );
+});
+
 test('getResilienceVisualLevel maps the score thresholds from the widget spec', () => {
   assert.equal(getResilienceVisualLevel(80), 'very_high');
   assert.equal(getResilienceVisualLevel(79), 'high');
@@ -47,6 +79,78 @@ test('getResilienceVisualLevel maps the score thresholds from the widget spec', 
   assert.equal(getResilienceVisualLevel(20), 'low');
   assert.equal(getResilienceVisualLevel(19), 'very_low');
   assert.equal(getResilienceVisualLevel(Number.NaN), 'unknown');
+  assert.equal(getResilienceVisualLevel(-1), 'unknown');
+});
+
+test('getResilienceOverallDisplay treats negative and non-finite scores as insufficient data', () => {
+  assert.deepEqual(getResilienceOverallDisplay({ overallScore: -1, level: 'unknown' }), {
+    hasScore: false,
+    scoreForBar: 0,
+    scoreLabel: 'n/a',
+    visualLevel: 'unknown',
+    visualLevelLabel: 'Insufficient data',
+    serverLevelLabel: 'API level: unknown',
+  });
+  assert.deepEqual(getResilienceOverallDisplay({ overallScore: Number.NaN, level: 'low' }), {
+    hasScore: false,
+    scoreForBar: 0,
+    scoreLabel: 'n/a',
+    visualLevel: 'unknown',
+    visualLevelLabel: 'Insufficient data',
+    serverLevelLabel: 'API level: low',
+  });
+});
+
+test('getResilienceOverallDisplay preserves API unknown zero as no score', () => {
+  assert.equal(getResilienceVisualLevel(0), 'very_low');
+  assert.deepEqual(getResilienceOverallDisplay({ overallScore: 0, level: 'unknown' }), {
+    hasScore: false,
+    scoreForBar: 0,
+    scoreLabel: 'n/a',
+    visualLevel: 'unknown',
+    visualLevelLabel: 'Insufficient data',
+    serverLevelLabel: 'API level: unknown',
+  });
+});
+
+test('getResilienceOverallDisplay keeps explicit zero scores when API level is real', () => {
+  assert.deepEqual(getResilienceOverallDisplay({ overallScore: 0, level: 'low' }), {
+    hasScore: true,
+    scoreForBar: 0,
+    scoreLabel: '0',
+    visualLevel: 'very_low',
+    visualLevelLabel: 'Visual band: VERY LOW',
+    serverLevelLabel: 'API level: low',
+  });
+});
+
+test('getResilienceOverallDisplay separates visual band from API level', () => {
+  assert.deepEqual(getResilienceOverallDisplay({ overallScore: 61.2, level: 'medium' }), {
+    hasScore: true,
+    scoreForBar: 61.2,
+    scoreLabel: '61',
+    visualLevel: 'high',
+    visualLevelLabel: 'Visual band: HIGH',
+    serverLevelLabel: 'API level: medium',
+  });
+});
+
+test('resilience methodology help copy derives current counts from the preview fixture', async () => {
+  const { RESILIENCE_DIMENSION_ORDER, RESILIENCE_RETIRED_DIMENSIONS, RESILIENCE_DOMAIN_ORDER } = await import('../server/worldmonitor/resilience/v1/_dimension-scorers.ts');
+  const { PILLAR_ORDER } = await import('../server/worldmonitor/resilience/v1/_pillar-membership.ts');
+  const summary = getResilienceMethodologySummary();
+  assert.deepEqual(summary, {
+    activeDimensionCount: RESILIENCE_DIMENSION_ORDER.length - RESILIENCE_RETIRED_DIMENSIONS.size,
+    serializedDimensionCount: RESILIENCE_DIMENSION_ORDER.length,
+    domainCount: RESILIENCE_DOMAIN_ORDER.length,
+    pillarCount: PILLAR_ORDER.length,
+  });
+
+  const title = formatResilienceMethodologyHelpTitle(summary);
+  assert.match(title, new RegExp(`${summary.activeDimensionCount} active dimensions`));
+  assert.match(title, new RegExp(`${summary.domainCount} domains`));
+  assert.match(title, new RegExp(`${summary.pillarCount} pillars`));
+  assert.match(title, /pillar detail appears when the API response includes it/i);
 });
 
 test('getResilienceTrendArrow renders the expected glyphs', () => {
@@ -108,6 +212,64 @@ test('formatResilienceConfidence: headlineEligible=true is the silent normal cas
     formatResilienceConfidence({ ...baseResponse, headlineEligible: true }),
     'Coverage 90% ✓',
   );
+});
+
+test('formatResilienceConfidence derates stale observed coverage like the server', () => {
+  const staleObserved: ResilienceScoreResponse = {
+    ...baseResponse,
+    domains: [
+      { id: 'economic', score: 80, weight: 0.22, dimensions: [
+        {
+          id: 'macroFiscal',
+          score: 80,
+          coverage: 1,
+          observedWeight: 1,
+          imputedWeight: 0,
+          freshness: { lastObservedAtMs: '1717200000000', staleness: 'stale' },
+        },
+        {
+          id: 'currencyExternal',
+          score: 80,
+          coverage: 1,
+          observedWeight: 1,
+          imputedWeight: 0,
+          freshness: { lastObservedAtMs: '1717200000000', staleness: 'fresh' },
+        },
+      ] },
+    ],
+  };
+
+  // Server mirror: (stale 1.0 * 0.4 + fresh 1.0) / 2 = 0.7.
+  assert.equal(formatResilienceConfidence(staleObserved), 'Coverage 70% ✓');
+});
+
+test('formatResilienceConfidence derates aging observed coverage like the server', () => {
+  const agingObserved: ResilienceScoreResponse = {
+    ...baseResponse,
+    domains: [
+      { id: 'economic', score: 80, weight: 0.22, dimensions: [
+        {
+          id: 'macroFiscal',
+          score: 80,
+          coverage: 1,
+          observedWeight: 1,
+          imputedWeight: 0,
+          freshness: { lastObservedAtMs: '1717200000000', staleness: 'aging' },
+        },
+        {
+          id: 'currencyExternal',
+          score: 80,
+          coverage: 1,
+          observedWeight: 1,
+          imputedWeight: 0,
+          freshness: { lastObservedAtMs: '1717200000000', staleness: 'aging' },
+        },
+      ] },
+    ],
+  };
+
+  // Server mirror: aging 1.0 * 0.7 = 0.7.
+  assert.equal(formatResilienceConfidence(agingObserved), 'Coverage 70% ✓');
 });
 
 // PR 3 §3.5 follow-up: retired dimensions (fuelStockDays, post-PR-3)
@@ -174,6 +336,9 @@ test('formatResilienceScoreInterval omits malformed intervals', () => {
   assert.equal(formatResilienceScoreInterval(undefined), null);
   assert.equal(formatResilienceScoreInterval({ p05: Number.NaN, p95: 72.8 }), null);
   assert.equal(formatResilienceScoreInterval({ p05: 65.2, p95: Number.POSITIVE_INFINITY }), null);
+  assert.equal(formatResilienceScoreInterval({ p05: 80, p95: 70 }), null);
+  assert.equal(formatResilienceScoreInterval({ p05: -1, p95: 70 }), null);
+  assert.equal(formatResilienceScoreInterval({ p05: 65.2, p95: 101 }), null);
 });
 
 // T1.4 Phase 1 of the country-resilience reference-grade upgrade plan.
@@ -561,6 +726,13 @@ test('getStalenessLabel returns a non-empty string for each level', () => {
     assert.ok(label.length > 0, `${s} should have a tooltip label`);
   }
   assert.ok(getStalenessLabel(null).length > 0);
+});
+
+test('getStalenessIcon gives each visible freshness level a distinct non-color cue', () => {
+  const icons = (['fresh', 'aging', 'stale'] as const).map((s) => getStalenessIcon(s));
+  assert.deepEqual(icons, ['\u25CF', '\u25D0', '\u25CB']);
+  assert.equal(new Set(icons).size, icons.length);
+  assert.equal(getStalenessIcon(null), '');
 });
 
 test('LOCKED_PREVIEW smoke: at least one dimension has imputationClass and one has staleness set (PR 3 / T1.6)', () => {

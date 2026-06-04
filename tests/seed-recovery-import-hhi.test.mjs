@@ -429,6 +429,31 @@ describe('seed-recovery-import-hhi — period window + pick-latest', () => {
       assert.deepEqual(parseRecords(null), { rows: [], year: null });
     });
 
+    it('omits responses at the requested maxRecords cap instead of parsing truncated HHI input', () => {
+      const capped = parseRecords({
+        data: [
+          { period: 2024, partnerCode: '156', primaryValue: 100 },
+          { period: 2024, partnerCode: '842', primaryValue: 100 },
+        ],
+      }, { maxRecords: 2 });
+      assert.deepEqual(capped, {
+        rows: [],
+        year: null,
+        truncated: true,
+        rawCount: 2,
+      });
+
+      const belowCap = parseRecords({
+        data: [
+          { period: 2024, partnerCode: '156', primaryValue: 100 },
+          { period: 2024, partnerCode: '842', primaryValue: 100 },
+        ],
+      }, { maxRecords: 3 });
+      assert.equal(belowCap.truncated, undefined);
+      assert.equal(belowCap.rows.length, 2);
+      assert.equal(belowCap.year, 2024);
+    });
+
     it('ignores rows with primaryValue <= 0', () => {
       const data = { data: [
         { period: 2024, partnerCode: '156', primaryValue: 0 },
@@ -597,6 +622,26 @@ describe('seed-recovery-import-hhi — fetch retry hardening (U1, plan v19)', ()
         'motCode must be 0 so HHI fetches stay at total-transport-mode granularity');
       assert.equal(url.searchParams.get('maxRecords'), '250000',
         'maxRecords must be 250000 (mirrors seed-recovery-reexport-share PR #3385)');
+    } finally {
+      restoreAll(mod);
+    }
+  });
+
+  it('omits exact-cap Comtrade responses rather than computing HHI from possibly truncated rows', async () => {
+    const mod = await loadFixture();
+    const cappedRows = Array.from({ length: 250_000 }, (_, i) => ({
+      period: 2024,
+      partnerCode: String(100 + (i % 200)),
+      primaryValue: 100 + i,
+    }));
+    installFetchSequence([makeJsonResponse(200, { data: cappedRows })]);
+    try {
+      const result = await mod.fetchImportsForReporter('784', 'k');
+      assert.equal(result.status, 200);
+      assert.equal(result.truncated, true);
+      assert.equal(result.records.length, 0);
+      assert.equal(result.year, null);
+      assert.match(result.errorMessage, /maxRecords=250000/);
     } finally {
       restoreAll(mod);
     }
