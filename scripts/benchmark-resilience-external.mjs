@@ -372,7 +372,7 @@ function median(arr) {
 
 async function readWmScoresFromRedis() {
   const { url, token } = getRedisCredentials();
-  const rankingResp = await fetch(`${url}/get/${encodeURIComponent('resilience:ranking:v22')}`, {
+  const rankingResp = await fetch(`${url}/get/${encodeURIComponent('resilience:ranking:v23')}`, {
     headers: { Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(10_000),
   });
