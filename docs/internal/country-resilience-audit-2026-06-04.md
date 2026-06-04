@@ -133,6 +133,15 @@ Observed result:
 - `lowCarbonGeneration`, `fossilElectricityShare`, `powerLosses`, and
   `resilienceIntervals` were all `OK`.
 
+Addendum, later 2026-06-04 runtime check: the interval-specific bullets above
+are historical point-in-time evidence, not current truth. The later parent
+audit observed `intervals.available: false` in
+`/api/resilience/v1/get-runtime-manifest` and `/api/health`
+`resilienceIntervals` as `EMPTY`. Keep using `formulaTag`, `constructVersions`,
+and energy-v2 seed checks as public runtime context, but do not cite the earlier
+`intervals.available: true` / `resilienceIntervals OK` observation as the live
+interval state without rerunning the command.
+
 ## Remaining Validated Open Work
 
 ### R7-ACCEPT: Real Post-Flip Acceptance Artifacts Missing

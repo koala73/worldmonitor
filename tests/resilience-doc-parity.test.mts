@@ -71,13 +71,16 @@ const DOC_PATH = resolve(here, '../docs/methodology/country-resilience-index.mdx
 const INDICATOR_SOURCE_CATALOG_PATH = resolve(here, '../docs/methodology/indicator-sources.yaml');
 const DOCUMENTATION_PATH = resolve(here, '../docs/documentation.mdx');
 const FEATURES_PATH = resolve(here, '../docs/features.mdx');
+const SEED_SCORE_SCRIPT_PATH = resolve(here, '../scripts/seed-resilience-scores.mjs');
 const STATIC_SEED_SCRIPT_PATH = resolve(here, '../scripts/seed-resilience-static.mjs');
 const HEALTH_API_PATH = resolve(here, '../api/health.js');
 const RESILIENCE_OPENAPI_YAML_PATH = resolve(here, '../docs/api/ResilienceService.openapi.yaml');
 const RESILIENCE_OPENAPI_JSON_PATH = resolve(here, '../docs/api/ResilienceService.openapi.json');
 const BUNDLED_OPENAPI_YAML_PATH = resolve(here, '../docs/api/worldmonitor.openapi.yaml');
 const docText = readFileSync(DOC_PATH, 'utf8');
+const sharedText = readFileSync(resolve(here, '../server/worldmonitor/resilience/v1/_shared.ts'), 'utf8');
 const indicatorSourceCatalogText = readFileSync(INDICATOR_SOURCE_CATALOG_PATH, 'utf8');
+const seedScoreScriptText = readFileSync(SEED_SCORE_SCRIPT_PATH, 'utf8');
 const staticSeedScriptText = readFileSync(STATIC_SEED_SCRIPT_PATH, 'utf8');
 const healthApiText = readFileSync(HEALTH_API_PATH, 'utf8');
 const CURRENT_DIMENSION_COUNT_SURFACES = [
@@ -221,6 +224,31 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
       'The historical v1.1 Reproducibility row must not repeat concrete cache-key examples. ' +
       'Even fully-qualified stale examples read like current public-state docs and drift silently.',
     );
+  });
+
+  it('keeps the v23 score-generation changelog batch aligned across docs and seed comments', () => {
+    const surfaces = [
+      { label: 'methodology doc', text: docText },
+      { label: 'server score cache comment', text: sharedText },
+      { label: 'seed score cache comment', text: seedScoreScriptText },
+    ];
+    const requiredClaims = [
+      { label: 'import-HHI source-year certainty derate', re: /import-HHI[\s\S]{0,180}(?:source years|certainty|coverage)/i },
+      { label: 'outage observed-quiet semantics', re: /(?:observed-quiet|zero outages|zero-outage)/i },
+      { label: 'WTO trade-policy severity scorer', re: /WTO[\s\S]{0,180}(?:severity|one-row-per-reporter)/i },
+    ];
+
+    for (const surface of surfaces) {
+      const v23Block = surface.text.match(/v22[\s`:'-]*(?:→|->|&rarr;)[\s`:'-]*v23[\s\S]{0,1600}/i)?.[0] ?? '';
+      assert.ok(v23Block, `${surface.label} must document the v22→v23 cache-generation bump.`);
+      for (const claim of requiredClaims) {
+        assert.match(
+          v23Block,
+          claim.re,
+          `${surface.label} v22→v23 block must mention the ${claim.label}.`,
+        );
+      }
+    }
   });
 
   it('domain count claimed in prose matches RESILIENCE_DOMAIN_ORDER', () => {
