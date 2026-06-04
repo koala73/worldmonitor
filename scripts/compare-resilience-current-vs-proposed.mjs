@@ -294,6 +294,7 @@ const EXTRACTION_RULES = {
   electricityAccess: { type: 'static-wb-infrastructure', code: 'EG.ELC.ACCS.ZS' },
   roadsPavedInfra: { type: 'static-wb-infrastructure', code: 'IS.ROD.PAVE.ZS' },
   infraOutages: { type: 'summarize-outages-penalty' },
+  broadband: { type: 'static-wb-infrastructure', code: 'IT.NET.BBND.P2' },
 
   // ── energy ──────────────────────────────────────────────────────────
   energyImportDependency: { type: 'static-path', path: ['iea', 'energyImportDependency', 'value'] },
@@ -346,6 +347,8 @@ const EXTRACTION_RULES = {
   hospitalBeds: { type: 'static-who', code: 'hospitalBeds' },
   uhcIndex: { type: 'static-who', code: 'uhcIndex' },
   measlesCoverage: { type: 'static-who', code: 'measlesCoverage' },
+  physiciansPer1k: { type: 'static-who', code: 'physiciansPer1k' },
+  healthExpPerCapitaUsd: { type: 'static-who', code: 'healthExpPerCapitaUsd' },
 
   // ── foodWater ───────────────────────────────────────────────────────
   ipcPeopleInCrisis: { type: 'static-path', path: ['fao', 'peopleInCrisis'] },

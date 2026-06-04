@@ -24,6 +24,90 @@ const LEGACY_ONLY_ENERGY_INDICATORS = [
   'electricityConsumption',
 ] as const;
 
+const SCORER_REGISTRY_PARITY_SPECS = [
+  {
+    id: 'electricityAccess',
+    dimension: 'infrastructure',
+    direction: 'higherBetter',
+    goalposts: { worst: 40, best: 100 },
+    weight: 0.3,
+    sourceKey: 'resilience:static:{ISO2}',
+    tier: 'core',
+  },
+  {
+    id: 'roadsPavedInfra',
+    dimension: 'infrastructure',
+    direction: 'higherBetter',
+    goalposts: { worst: 0, best: 100 },
+    weight: 0.3,
+    sourceKey: 'resilience:static:{ISO2}',
+    tier: 'core',
+  },
+  {
+    id: 'infraOutages',
+    dimension: 'infrastructure',
+    direction: 'lowerBetter',
+    goalposts: { worst: 20, best: 0 },
+    weight: 0.25,
+    sourceKey: 'infra:outages:v1',
+    tier: 'core',
+  },
+  {
+    id: 'broadband',
+    dimension: 'infrastructure',
+    direction: 'higherBetter',
+    goalposts: { worst: 0, best: 40 },
+    weight: 0.15,
+    sourceKey: 'resilience:static:{ISO2}',
+    tier: 'core',
+  },
+  {
+    id: 'uhcIndex',
+    dimension: 'healthPublicService',
+    direction: 'higherBetter',
+    goalposts: { worst: 40, best: 90 },
+    weight: 0.35,
+    sourceKey: 'resilience:static:{ISO2}',
+    tier: 'core',
+  },
+  {
+    id: 'measlesCoverage',
+    dimension: 'healthPublicService',
+    direction: 'higherBetter',
+    goalposts: { worst: 50, best: 99 },
+    weight: 0.25,
+    sourceKey: 'resilience:static:{ISO2}',
+    tier: 'core',
+  },
+  {
+    id: 'hospitalBeds',
+    dimension: 'healthPublicService',
+    direction: 'higherBetter',
+    goalposts: { worst: 0, best: 8 },
+    weight: 0.1,
+    sourceKey: 'resilience:static:{ISO2}',
+    tier: 'core',
+  },
+  {
+    id: 'physiciansPer1k',
+    dimension: 'healthPublicService',
+    direction: 'higherBetter',
+    goalposts: { worst: 0, best: 5 },
+    weight: 0.15,
+    sourceKey: 'resilience:static:{ISO2}',
+    tier: 'core',
+  },
+  {
+    id: 'healthExpPerCapitaUsd',
+    dimension: 'healthPublicService',
+    direction: 'higherBetter',
+    goalposts: { worst: 20, best: 3000 },
+    weight: 0.15,
+    sourceKey: 'resilience:static:{ISO2}',
+    tier: 'core',
+  },
+] as const;
+
 describe('indicator registry', () => {
   it('covers all 22 dimensions (20 active + 2 retired)', () => {
     const coveredDimensions = new Set(INDICATOR_REGISTRY.map((i) => i.dimension));
@@ -147,6 +231,35 @@ describe('indicator registry', () => {
       Math.abs(activeWeight - 1) < 0.001,
       `active energy-v2 registry weights sum to ${activeWeight.toFixed(4)}, expected 1.0`,
     );
+  });
+
+  it('mirrors scorer-used infrastructure and healthPublicService blended inputs', () => {
+    const byId = new Map(INDICATOR_REGISTRY.map((spec) => [spec.id, spec]));
+
+    for (const expected of SCORER_REGISTRY_PARITY_SPECS) {
+      const spec = byId.get(expected.id);
+      assert.ok(spec, `scorer-used indicator ${expected.id} missing from INDICATOR_REGISTRY`);
+      assert.equal(spec.dimension, expected.dimension, `${expected.id} dimension must mirror the scorer dimension`);
+      assert.equal(spec.direction, expected.direction, `${expected.id} direction must mirror scorer normalization`);
+      assert.deepEqual(spec.goalposts, expected.goalposts, `${expected.id} goalposts must mirror scorer normalization anchors`);
+      assert.equal(spec.weight, expected.weight, `${expected.id} weight must mirror weightedBlend input`);
+      assert.equal(spec.sourceKey, expected.sourceKey, `${expected.id} sourceKey must mirror scorer seed source`);
+      assert.equal(spec.tier, expected.tier, `${expected.id} tier must preserve public-score registry parity`);
+    }
+
+    for (const dimension of ['infrastructure', 'healthPublicService'] as const) {
+      const expectedIds = SCORER_REGISTRY_PARITY_SPECS
+        .filter((spec) => spec.dimension === dimension)
+        .map((spec) => spec.id);
+      const actualIds = INDICATOR_REGISTRY
+        .filter((spec) => spec.dimension === dimension && spec.tier !== 'experimental')
+        .map((spec) => spec.id);
+      assert.deepEqual(
+        actualIds,
+        expectedIds,
+        `${dimension} registry rows must list exactly the scorer-used non-experimental blended inputs`,
+      );
+    }
   });
 
   it('legacy-only energy indicators stay experimental rollback surfaces under active v2', () => {
