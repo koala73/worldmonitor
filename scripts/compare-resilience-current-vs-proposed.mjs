@@ -441,6 +441,8 @@ const STATIC_EXTRACTORS = {
   },
   'static-who': (rule, { staticRecord }) =>
     staticRecord?.who?.indicators?.[rule.code]?.value ?? null,
+  // Retained as direct classifier fixtures. The live registry now maps
+  // AQUASTAT through the single semantic static-aquastat-score row below.
   'static-aquastat-stress': (_rule, { staticRecord }) => {
     const value = staticRecord?.aquastat?.value;
     if (typeof value !== 'number') return null;
