@@ -255,7 +255,7 @@
   seriesUrl: https://data.worldbank.org/indicator/IT.NET.BBND.P2
   coveragePct: 0.96
   lastObservedYear: 2024
-  license: CC-BY-4.0
+  license: open-data
   mechanismTestRationale: Fixed broadband subscriptions per 100 people measure baseline digital infrastructure reach for resilient public and commercial service delivery.
   constructStatus: observed-mechanism
   reviewNotes: Active infrastructure Core scorer input. Coverage is above the 70% coverage-influence floor and the Core tier floor.

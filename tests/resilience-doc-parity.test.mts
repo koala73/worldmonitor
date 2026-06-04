@@ -619,6 +619,11 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
         Number(extractIndicatorSourceScalar(block, 'coveragePct')) >= 0.90,
         `${id} is active Core in the registry, so indicator-sources.yaml coveragePct must be >= 0.90.`,
       );
+      assert.notEqual(
+        extractIndicatorSourceScalar(block, 'license'),
+        'internal',
+        `${id} is active Core in the registry, so indicator-sources.yaml license must not be internal.`,
+      );
       assert.match(
         block,
         /reviewNotes: Active (?:infrastructure|healthPublicService) Core scorer input\./,
