@@ -230,7 +230,7 @@ export function getResilienceOverallDisplay(data: Pick<ResilienceScoreResponse, 
       hasScore: false,
       scoreForBar: 0,
       scoreLabel: 'n/a',
-      visualLevel,
+      visualLevel: 'unknown',
       visualLevelLabel: 'Insufficient data',
       serverLevelLabel: `API level: ${formatResilienceServerLevel(data.level)}`,
     };

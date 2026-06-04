@@ -107,7 +107,7 @@ test('getResilienceOverallDisplay preserves API unknown zero as no score', () =>
     hasScore: false,
     scoreForBar: 0,
     scoreLabel: 'n/a',
-    visualLevel: 'very_low',
+    visualLevel: 'unknown',
     visualLevelLabel: 'Insufficient data',
     serverLevelLabel: 'API level: unknown',
   });
