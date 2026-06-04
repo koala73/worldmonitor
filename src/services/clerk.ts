@@ -197,11 +197,11 @@ export function getClerk(): ClerkInstance | null {
 // import keeps @sentry/browser off this module's static graph (clerk.ts is
 // imported by Node test files where the browser SDK is unwanted) and makes
 // telemetry strictly best-effort — it must never throw into a click handler.
-function captureClerkSurfaceFailure(action: string, err: unknown): void {
+function captureClerkSurfaceFailure(action: string, err: unknown, reason: string): void {
   void import('@sentry/browser')
     .then((Sentry) => {
       Sentry.captureException(err instanceof Error ? err : new Error(String(err)), {
-        tags: { surface: 'clerk', action, reason: 'ui-components-not-ready' },
+        tags: { surface: 'clerk', action, reason },
       });
     })
     .catch(() => {});
@@ -254,21 +254,24 @@ function openClerkSurface(action: 'open-sign-in' | 'open-sign-up'): void {
   const open = action === 'open-sign-in'
     ? () => clerkInstance?.openSignIn({ appearance: getAppearance() })
     : () => clerkInstance?.openSignUp({ appearance: getAppearance() });
-  const onFail = (err: unknown): void => {
-    console.error(`[clerk] ${action} failed:`, err);
-    captureClerkSurfaceFailure(action, err);
+  // Distinct reasons so Sentry can tell the "components not attached" race
+  // (the surface open threw) apart from a "Clerk bundle never loaded" failure
+  // (initClerk rejected: dynamic-import 4xx/5xx, transient network) — querying
+  // by `reason` must not mix the two or it dilutes the race alert signal.
+  const onFail = (reason: string) => (err: unknown): void => {
+    console.error(`[clerk] ${action} failed (${reason}):`, err);
+    captureClerkSurfaceFailure(action, err, reason);
   };
   if (clerkInstance) {
-    runClerkSurfaceOpen(open, onFail);
+    runClerkSurfaceOpen(open, onFail('ui-components-not-ready'));
     return;
   }
   // Deferred-load fast path: user clicked before the idle callback fired.
   // Force the load, then open once the SDK is live so the click never
-  // silently no-ops. A `load()` rejection (dynamic-import 4xx/5xx, transient
-  // network) is now reported instead of escaping as an uncaught rejection.
+  // silently no-ops.
   void initClerk()
-    .then(() => runClerkSurfaceOpen(open, onFail))
-    .catch(onFail);
+    .then(() => runClerkSurfaceOpen(open, onFail('ui-components-not-ready')))
+    .catch(onFail('clerk-load-failed'));
 }
 
 /** Open the Clerk sign-in modal. */
