@@ -600,8 +600,8 @@ function safeNum(value: unknown): number | null {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
-function sqrtCount(value: number): number {
-  return Math.sqrt(Math.max(0, value));
+export function sqrtCount(value: number): number {
+  return Math.sqrt(Math.max(0, Number.isFinite(value) ? value : 0));
 }
 
 function normalizeLowerBetter(value: number, best: number, worst: number): number {

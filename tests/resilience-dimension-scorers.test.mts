@@ -32,6 +32,7 @@ import {
   scoreInflationStability,
   scoreTradePolicy,
   roundScore,
+  sqrtCount,
   summarizeCyber,
   CYBER_SNAPSHOT_WEIGHT_CAP,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
@@ -143,6 +144,14 @@ describe('resilience dimension scorers', () => {
     assert.equal(roundScore(Number.NaN), 0, 'NaN must not leak through as a score');
     assert.equal(roundScore(Number.POSITIVE_INFINITY), 0, '+Infinity must not leak through as a score');
     assert.equal(roundScore(Number.NEGATIVE_INFINITY), 0, '-Infinity must not leak through as a score');
+  });
+
+  it('sqrtCount floors negative and non-finite counts before square root', () => {
+    assert.equal(sqrtCount(9), 3, 'positive counts still use sqrt scaling');
+    assert.equal(sqrtCount(-4), 0, 'negative counts floor to zero');
+    assert.equal(sqrtCount(Number.NaN), 0, 'NaN counts must not propagate');
+    assert.equal(sqrtCount(Number.POSITIVE_INFINITY), 0, '+Infinity counts must not propagate');
+    assert.equal(sqrtCount(Number.NEGATIVE_INFINITY), 0, '-Infinity counts must not propagate');
   });
 
   it('negative unrest fatalities stay bounded and keep socialCohesion unrest observed', async () => {
