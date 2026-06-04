@@ -1908,7 +1908,8 @@ export async function scoreSocialCohesion(
   //   elif country not in displacement registry:   // GPI-only mode
   //     impute displacement at 70/0.6
   //     if unrestRaw present and zero unrest:
-  //       impute unrest at 70/0.5  (gated to GPI-only mode)
+  //       impute unrest at curated_list_absent (50/0.3) because the
+  //       unrest feed is non-comprehensive
   //   elif displacement metric exists:             // happy path
   //     score directly
   //     if unrest count == 0:
@@ -1954,8 +1955,8 @@ export async function scoreSocialCohesion(
     //       This mirrors the principle in scoreBorderSecurity: outage drops weight
     //       on the affected metric ONLY, not on sibling metrics.
     //   (b) GPI-only mode (displacementRaw present but country absent from
-    //       registry) → impute at 70 (`socialCohesionGpiOnlyUnrest.score`) to
-    //       pull the blend down for tiny peaceful states (TV/PW/NR).
+    //       registry) → impute at curated_list_absent (50/0.3) to pull
+    //       the blend down for tiny peaceful states (TV/PW/NR/MC).
     //   (c) Happy path (displacement observed) → impute at 85
     //       (`unhcrDisplacement.score`) so peaceful + fully-monitored
     //       countries (Iceland, Norway) don't regress.
