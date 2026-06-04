@@ -10,6 +10,7 @@ const originalLlmModel = process.env.LLM_MODEL;
 const originalTenant = process.env.AZURE_OPENAI_TENANT_ID;
 const originalClientId = process.env.AZURE_OPENAI_CLIENT_ID;
 const originalClientSecret = process.env.AZURE_OPENAI_CLIENT_SECRET;
+const originalMaxTokensParam = process.env.LLM_MAX_TOKENS_PARAM;
 const originalFetch = globalThis.fetch;
 
 function restoreEnv(key: string, value: string | undefined): void {
@@ -24,6 +25,7 @@ afterEach(() => {
   restoreEnv('AZURE_OPENAI_TENANT_ID', originalTenant);
   restoreEnv('AZURE_OPENAI_CLIENT_ID', originalClientId);
   restoreEnv('AZURE_OPENAI_CLIENT_SECRET', originalClientSecret);
+  restoreEnv('LLM_MAX_TOKENS_PARAM', originalMaxTokensParam);
   globalThis.fetch = originalFetch;
   __resetAzureTokenCacheForTests();
 });
@@ -113,5 +115,43 @@ describe('getProviderCredentials (generic / Azure OpenAI Entra ID)', () => {
     assert.ok(creds);
     assert.equal(creds.authHeaderProvider, undefined);
     assert.equal(creds.headers.Authorization, 'Bearer generic-secret-key');
+  });
+});
+
+describe('getProviderCredentials (max-tokens param selection)', () => {
+  it('uses max_completion_tokens for an Azure OpenAI endpoint', () => {
+    process.env.LLM_API_URL = 'https://aoai-x.openai.azure.com/openai/v1/chat/completions';
+    delete process.env.LLM_API_KEY;
+    process.env.LLM_MODEL = 'gpt-5.4';
+    process.env.AZURE_OPENAI_TENANT_ID = 'tenant-123';
+    process.env.AZURE_OPENAI_CLIENT_ID = 'client-abc';
+    process.env.AZURE_OPENAI_CLIENT_SECRET = 'super-secret';
+
+    const creds = getProviderCredentials('generic');
+    assert.ok(creds);
+    assert.equal(creds.maxTokensParam, 'max_completion_tokens');
+  });
+
+  it('keeps max_tokens for a non-Azure OpenAI-compatible endpoint', () => {
+    process.env.LLM_API_URL = 'https://llm.example.com/v1/chat/completions';
+    process.env.LLM_API_KEY = 'generic-secret-key';
+    delete process.env.LLM_MAX_TOKENS_PARAM;
+
+    const creds = getProviderCredentials('generic');
+    assert.ok(creds);
+    assert.equal(creds.maxTokensParam, 'max_tokens');
+  });
+
+  it('honours the LLM_MAX_TOKENS_PARAM override on an Azure endpoint', () => {
+    process.env.LLM_API_URL = 'https://aoai-x.openai.azure.com/openai/v1/chat/completions';
+    process.env.LLM_API_KEY = 'azure-secret-key';
+    delete process.env.AZURE_OPENAI_TENANT_ID;
+    delete process.env.AZURE_OPENAI_CLIENT_ID;
+    delete process.env.AZURE_OPENAI_CLIENT_SECRET;
+    process.env.LLM_MAX_TOKENS_PARAM = 'max_tokens';
+
+    const creds = getProviderCredentials('generic');
+    assert.ok(creds);
+    assert.equal(creds.maxTokensParam, 'max_tokens');
   });
 });

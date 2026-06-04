@@ -35,6 +35,12 @@ param azureOpenAiClientId string = ''
 @description('Azure OpenAI Entra ID (service principal) client secret.')
 param azureOpenAiClientSecret string = ''
 
+// Signing secret for anonymous browser session tokens (/api/wm-session). The
+// frontend mints an HMAC-signed session token to call tier-gated RPCs (e.g.
+// news analysis). Without this the session endpoint fails closed with 503.
+@secure()
+param wmSessionSecret string = newGuid()
+
 // Placeholder image allows provisioning before the app image exists in ACR.
 // azd deploy configures the registry/identity link and pushes the real image.
 param containerImageName string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
@@ -47,6 +53,10 @@ var baseSecrets = [
   {
     name: 'redis-rest-token'
     value: redisRestToken
+  }
+  {
+    name: 'wm-session-secret'
+    value: wmSessionSecret
   }
 ]
 var llmSecrets = hasLlmKey ? [
@@ -78,6 +88,10 @@ var baseEnv = [
   {
     name: 'UPSTASH_REDIS_REST_TOKEN'
     secretRef: 'redis-rest-token'
+  }
+  {
+    name: 'WM_SESSION_SECRET'
+    secretRef: 'wm-session-secret'
   }
   {
     name: 'LLM_API_URL'

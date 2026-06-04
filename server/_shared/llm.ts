@@ -14,6 +14,12 @@ export interface ProviderCredentials {
    * sites await it and merge the result over `headers` immediately before fetch.
    */
   authHeaderProvider?: () => Promise<Record<string, string>>;
+  /**
+   * Body param name for the max output-token cap. Newer OpenAI / Azure OpenAI
+   * models (gpt-5.x, o-series) reject the legacy `max_tokens` and require
+   * `max_completion_tokens`. Defaults to `max_tokens` for back-compat.
+   */
+  maxTokensParam?: 'max_tokens' | 'max_completion_tokens';
 }
 
 export type LlmProviderName = 'ollama' | 'groq' | 'openrouter' | 'generic';
@@ -112,6 +118,16 @@ export function getProviderCredentials(
 
     const entraCreds = isAzureOpenAi ? getAzureEntraCredentials() : null;
 
+    // Newer OpenAI / Azure OpenAI models (gpt-5.x, o-series) reject `max_tokens`
+    // and require `max_completion_tokens`. Default Azure OpenAI to the new param;
+    // allow an explicit override via LLM_MAX_TOKENS_PARAM for older deployments
+    // or non-Azure OpenAI-compatible servers.
+    const maxTokensOverride = process.env.LLM_MAX_TOKENS_PARAM;
+    const maxTokensParam: 'max_tokens' | 'max_completion_tokens' =
+      maxTokensOverride === 'max_tokens' || maxTokensOverride === 'max_completion_tokens'
+        ? maxTokensOverride
+        : (isAzureOpenAi ? 'max_completion_tokens' : 'max_tokens');
+
     // Entra ID auth takes precedence on Azure OpenAI: it's the mode used when
     // key-based auth is disabled on the resource.
     if (entraCreds) {
@@ -119,6 +135,7 @@ export function getProviderCredentials(
         apiUrl,
         model: overrides.model || process.env.LLM_MODEL || 'gpt-3.5-turbo',
         headers: { 'Content-Type': 'application/json' },
+        maxTokensParam,
         authHeaderProvider: async () => ({
           Authorization: `Bearer ${await getAzureEntraToken(entraCreds)}`,
         }),
@@ -138,6 +155,7 @@ export function getProviderCredentials(
       apiUrl,
       model: overrides.model || process.env.LLM_MODEL || 'gpt-3.5-turbo',
       headers,
+      maxTokensParam,
     };
   }
 
@@ -327,7 +345,7 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
               model: creds.model,
               messages,
               temperature,
-              max_tokens: maxTokens,
+              [creds.maxTokensParam ?? 'max_tokens']: maxTokens,
               stream: true,
             }),
             signal: activeController.signal,
@@ -454,7 +472,7 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
           model: creds.model,
           messages,
           temperature,
-          max_tokens: maxTokens,
+          [creds.maxTokensParam ?? 'max_tokens']: maxTokens,
         }),
         signal: AbortSignal.timeout(timeoutMs),
       });

@@ -94,7 +94,7 @@ export async function summarizeArticle(
     };
   }
 
-  const { apiUrl, model, headers: providerHeaders, extraBody, authHeaderProvider } = credentials;
+  const { apiUrl, model, headers: providerHeaders, extraBody, authHeaderProvider, maxTokensParam } = credentials;
 
   // Request validation
   if (!headlines || !Array.isArray(headlines) || headlines.length === 0) {
@@ -174,7 +174,7 @@ export async function summarizeArticle(
               { role: 'user', content: userPrompt },
             ],
             temperature: 0.3,
-            max_tokens: 100,
+            [maxTokensParam ?? 'max_tokens']: 100,
             top_p: 0.9,
             ...extraBody,
           }),
