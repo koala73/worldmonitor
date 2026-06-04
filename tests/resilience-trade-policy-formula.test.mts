@@ -246,7 +246,7 @@ describe('scoreTradePolicy — 3-component weighted-blend formula (Ship 1 contra
       };
       const result = await scoreTradePolicy(TEST_ISO2, reader);
       assert.equal(result.score, 50, `unknown statuses must keep moderate fallback scoring, got ${result.score}`);
-      assert.equal(warnings.length, 2, `expected one warning per unknown WTO status, got ${warnings.length}`);
+      assert.equal(warnings.length, 2, `expected 2 warnings, one per unknown WTO status, got ${warnings.length}`);
       assert.ok(
         warnings.every((warning) => warning.includes('unrecognized status') && warning.includes('defaulting to moderate')),
         `unexpected warning text: ${JSON.stringify(warnings)}`,
