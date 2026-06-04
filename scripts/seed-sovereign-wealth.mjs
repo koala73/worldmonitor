@@ -1085,9 +1085,10 @@ if (process.argv[1]?.endsWith('seed-sovereign-wealth.mjs')) {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 86400,
-    // Empty payload is still acceptable while tiers 1/2 are stubbed
-    // and any transient Wikipedia outage occurs; downstream IMPUTE
-    // path handles it.
+    // Empty payload is publishable so seed-meta record_count=0 can
+    // surface total SWF coverage loss operationally. A present
+    // `{countries:{}}` payload is not IMPUTE downstream: scorer Path 3
+    // treats each country as structurally not-applicable.
     emptyDataIsFailure: false,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
