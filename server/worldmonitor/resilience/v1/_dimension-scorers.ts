@@ -691,6 +691,7 @@ const IMPUTATION_CLASS_TIE_BREAK: readonly ImputationClass[] = [
 ];
 
 const MINUTE_MS = 60 * 1000;
+const WGI_INDICATOR_KEYS = ['VA.EST', 'PV.EST', 'GE.EST', 'RQ.EST', 'RL.EST', 'CC.EST'] as const;
 
 function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
   const totalWeight = metrics.reduce((sum, metric) => sum + metric.weight, 0);
@@ -909,9 +910,20 @@ function getStaticIndicatorValue(
 
 function getStaticWgiValues(record: ResilienceStaticCountryRecord | null): number[] {
   const indicators = record?.wgi?.indicators ?? {};
-  return Object.values(indicators)
-    .map((entry) => safeNum(entry?.value))
+  return WGI_INDICATOR_KEYS
+    .map((key) => safeNum(indicators[key]?.value))
     .filter((value): value is number => value != null);
+}
+
+function getStaticWgiRows(record: ResilienceStaticCountryRecord | null): WeightedMetric[] {
+  const indicators = record?.wgi?.indicators ?? {};
+  return WGI_INDICATOR_KEYS.map((key) => {
+    const value = safeNum(indicators[key]?.value);
+    return {
+      score: value == null ? null : normalizeHigherBetter(value, -2.5, 2.5),
+      weight: 1,
+    };
+  });
 }
 
 function getImfMacroEntry(raw: unknown, countryCode: string): ImfMacroEntry | null {
@@ -1886,8 +1898,7 @@ export async function scoreGovernanceInstitutional(
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<ResilienceDimensionScore> {
   const staticRecord = await readStaticCountry(countryCode, reader);
-  const wgiScores = getStaticWgiValues(staticRecord).map((value) => normalizeHigherBetter(value, -2.5, 2.5));
-  return weightedBlend(wgiScores.map((score) => ({ score, weight: 1 })));
+  return weightedBlend(getStaticWgiRows(staticRecord));
 }
 
 export async function scoreSocialCohesion(

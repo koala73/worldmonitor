@@ -127,16 +127,16 @@ describe('resilience dimension monotonicity — scoreImportConcentration', () =>
 
 describe('resilience dimension monotonicity — scoreGovernanceInstitutional', () => {
   async function scoreWith(wgiMeanValue: number) {
-    // Static-record shape per `getStaticWgiValues`: `wgi.indicators.<name>.value`.
+    // Static-record shape per `getStaticWgiValues`: `wgi.indicators.<WGI code>.value`.
     const staticRecord = {
       wgi: {
         indicators: {
-          voiceAccountability:    { value: wgiMeanValue },
-          politicalStability:     { value: wgiMeanValue },
-          governmentEffectiveness:{ value: wgiMeanValue },
-          regulatoryQuality:      { value: wgiMeanValue },
-          ruleOfLaw:              { value: wgiMeanValue },
-          controlOfCorruption:    { value: wgiMeanValue },
+          'VA.EST': { value: wgiMeanValue },
+          'PV.EST': { value: wgiMeanValue },
+          'GE.EST': { value: wgiMeanValue },
+          'RQ.EST': { value: wgiMeanValue },
+          'RL.EST': { value: wgiMeanValue },
+          'CC.EST': { value: wgiMeanValue },
         },
       },
     };

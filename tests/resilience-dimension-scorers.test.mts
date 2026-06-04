@@ -72,6 +72,13 @@ function assertResilientAboveImputed(label: string, no: number, us: number, ye: 
   assert.ok(us > ye, `${label}: expected US (${us}) > YE (${ye})`);
 }
 
+function staticRecordReader(staticRecord: unknown): ResilienceSeedReader {
+  return async (key: string): Promise<unknown | null> => {
+    if (key === 'resilience:static:XX') return staticRecord;
+    return null;
+  };
+}
+
 describe('resilience dimension scorers', () => {
   it('produce plausible country ordering for the economic dimensions', async () => {
     const macro = await scoreTriple(scoreMacroFiscal);
@@ -109,6 +116,79 @@ describe('resilience dimension scorers', () => {
     assertOrdered('informationCognitive', information.no.score, information.us.score, information.ye.score);
     assertOrdered('healthPublicService', health.no.score, health.us.score, health.ye.score);
     assertOrdered('foodWater', foodWater.no.score, foodWater.us.score, foodWater.ye.score);
+  });
+
+  it('scoreGovernanceInstitutional: all six documented WGI indicators keep the exact equal-weight formula', async () => {
+    const values = [-1.5, -0.9, 0.2, 0.6, 1.1, 1.8] as const;
+    const staticRecord = {
+      wgi: {
+        indicators: {
+          'VA.EST': { value: values[0], year: 2025 },
+          'PV.EST': { value: values[1], year: 2025 },
+          'GE.EST': { value: values[2], year: 2025 },
+          'RQ.EST': { value: values[3], year: 2025 },
+          'RL.EST': { value: values[4], year: 2025 },
+          'CC.EST': { value: values[5], year: 2025 },
+        },
+      },
+    };
+    const expectedScore = roundScore(values.reduce((sum, value) => sum + ((value + 2.5) / 5) * 100, 0) / values.length);
+
+    const result = await scoreGovernanceInstitutional('XX', staticRecordReader(staticRecord));
+
+    assert.equal(result.score, expectedScore);
+    assert.equal(result.coverage, 1);
+    assert.equal(result.observedWeight, 6);
+    assert.equal(result.imputedWeight, 0);
+  });
+
+  it('scoreGovernanceInstitutional: ignores rogue WGI indicators outside the documented six-code contract', async () => {
+    const staticRecord = {
+      wgi: {
+        indicators: {
+          'VA.EST': { value: -1.5, year: 2025 },
+          'PV.EST': { value: -0.9, year: 2025 },
+          'GE.EST': { value: 0.2, year: 2025 },
+          'RQ.EST': { value: 0.6, year: 2025 },
+          'RL.EST': { value: 1.1, year: 2025 },
+          'CC.EST': { value: 1.8, year: 2025 },
+        },
+      },
+    };
+    const withRogue = {
+      wgi: {
+        indicators: {
+          ...staticRecord.wgi.indicators,
+          'ROGUE.EST': { value: -2.5, year: 2025 },
+        },
+      },
+    };
+
+    const baseline = await scoreGovernanceInstitutional('XX', staticRecordReader(staticRecord));
+    const rogue = await scoreGovernanceInstitutional('XX', staticRecordReader(withRogue));
+
+    assert.deepEqual(rogue, baseline);
+  });
+
+  it('scoreGovernanceInstitutional: missing documented WGI keys lower coverage instead of reporting full coverage', async () => {
+    const staticRecord = {
+      wgi: {
+        indicators: {
+          'VA.EST': { value: -1.5, year: 2025 },
+          'PV.EST': { value: -0.9, year: 2025 },
+          'GE.EST': { value: 0.2, year: 2025 },
+          'RQ.EST': { value: 0.6, year: 2025 },
+          'RL.EST': { value: 1.1, year: 2025 },
+        },
+      },
+    };
+
+    const result = await scoreGovernanceInstitutional('XX', staticRecordReader(staticRecord));
+
+    assert.equal(result.coverage, 0.83);
+    assert.equal(result.observedWeight, 5);
+    assert.equal(result.imputedWeight, 0);
+    assert.equal(result.imputationClass, null);
   });
 
   it('returns all serialized dimensions with bounded scores and coverage', async () => {
