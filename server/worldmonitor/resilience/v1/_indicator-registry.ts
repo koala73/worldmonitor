@@ -34,7 +34,7 @@ export type IndicatorSpec = {
   id: string;
   dimension: ResilienceDimensionId;
   description: string;
-  direction: 'higherBetter' | 'lowerBetter';
+  direction: 'higherBetter' | 'lowerBetter' | 'indicatorSemantics';
   goalposts: { worst: number; best: number };
   // Defaults to { kind: 'linear' }. Non-linear indicators keep goalposts as
   // documentation anchors only and must describe the real scorer shape here.
@@ -1076,27 +1076,12 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     comprehensive: true,
   },
   {
-    id: 'aquastatWaterStress',
+    id: 'aquastatScore',
     dimension: 'foodWater',
-    description: 'FAO AQUASTAT stress/withdrawal/dependency indicators (% scale 0-100)',
-    direction: 'lowerBetter',
+    description: 'FAO AQUASTAT value scored by indicator semantics: stress/withdrawal/dependency readings are lower-better on 0-100; availability/renewable/access readings are higher-better on 0-100 or 0-5000 m3/capita.',
+    direction: 'indicatorSemantics',
     goalposts: { worst: 100, best: 0 },
-    weight: 0.25,
-    sourceKey: 'resilience:static:{ISO2}',
-    scope: 'global',
-    cadence: 'annual',
-    tier: 'core',
-    coverage: 188,
-    license: 'open-data',
-    comprehensive: true,
-  },
-  {
-    id: 'aquastatWaterAvailability',
-    dimension: 'foodWater',
-    description: 'FAO AQUASTAT availability/renewable/access indicators (0-100 % or 0-5000 m3/capita)',
-    direction: 'higherBetter',
-    goalposts: { worst: 0, best: 5000 },
-    weight: 0.15,
+    weight: 0.4,
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',

@@ -399,6 +399,10 @@ describe('resilience static seed parsers', () => {
     });
     assert.equal(rows.get('US').rank, 32);
     assert.equal(rows.get('YE').score, 69.22);
+    assert.ok(
+      rows.get('NO').score < rows.get('YE').score,
+      'RSF parser must preserve feed direction: top-ranked country has lower raw RSF score than low-ranked country',
+    );
   });
 
   it('parses Eurostat energy dependency and keeps the latest TOTAL series value', () => {

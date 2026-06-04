@@ -323,6 +323,7 @@ async function run() {
         let totalWeight = 0;
         let weightedScore = 0;
         for (const ind of indicators) {
+          if (ind.direction === 'indicatorSemantics') continue;
           const pg = perturbGoalposts(ind.goalposts, GOALPOST_PERTURBATION);
           const rawScore = normalizeToGoalposts(
             inverseNormalize(dim.score, ind.goalposts, ind.direction),
@@ -362,6 +363,7 @@ async function run() {
         let totalWeight = 0;
         let weightedScore = 0;
         for (const ind of dimIndicators) {
+          if (ind.direction === 'indicatorSemantics') continue;
           const pg = perturbGoalposts(ind.goalposts, GOALPOST_PERTURBATION);
           const rawScore = normalizeToGoalposts(
             inverseNormalize(dim.score, ind.goalposts, ind.direction),

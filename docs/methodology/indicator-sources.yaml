@@ -578,32 +578,18 @@
   constructStatus: observed-mechanism
   reviewNotes: Coverage is inherently partial — IPC only tracks countries with current/imminent food crises. Imputed to a resilient-default for non-tracked countries.
 
-- indicator: aquastatWaterStress
+- indicator: aquastatScore
   dimension: foodWater
   domain: health-food
-  weight: 0.25
-  direction: lower-better
+  weight: 0.40
+  direction: indicator-semantics
   source: FAO AQUASTAT
-  seriesId: Water stress (withdrawal / renewable resources)
+  seriesId: Indicator-tagged water stress / withdrawal / dependency / availability / renewable / access reading
   seriesUrl: https://www.fao.org/aquastat/
   coveragePct: 0.85
   lastObservedYear: 2020
   license: Open
-  mechanismTestRationale: Water stress directly measures water-supply-shock exposure.
-  constructStatus: observed-mechanism
-
-- indicator: aquastatWaterAvailability
-  dimension: foodWater
-  domain: health-food
-  weight: 0.15
-  direction: higher-better
-  source: FAO AQUASTAT
-  seriesId: Water availability (m³/capita)
-  seriesUrl: https://www.fao.org/aquastat/
-  coveragePct: 0.85
-  lastObservedYear: 2020
-  license: Open
-  mechanismTestRationale: Water availability per capita proxies baseline water-security-shock buffer.
+  mechanismTestRationale: The scorer uses one AQUASTAT slot. `scoreAquastatValue()` routes stress/withdrawal/dependency tags through lower-better 0-100 anchors and availability/renewable/access tags through higher-better 0-100 or 0-5000 anchors.
   constructStatus: observed-mechanism
 
 # RECOVERY DOMAIN (weight 0.25) ------------------------------------------

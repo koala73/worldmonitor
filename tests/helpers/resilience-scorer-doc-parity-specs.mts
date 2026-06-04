@@ -92,6 +92,12 @@ const SCORER_TABLE_BINDINGS = [
     ids: ['uhcIndex', 'measlesCoverage', 'hospitalBeds', 'physiciansPer1k', 'healthExpPerCapitaUsd'],
   },
   {
+    methodologySection: 'Food & Water',
+    dimension: 'foodWater',
+    scorerName: 'scoreFoodWater',
+    ids: ['ipcPeopleInCrisis', 'ipcPhase', 'aquastatScore'],
+  },
+  {
     methodologySection: 'Fiscal Space',
     dimension: 'fiscalSpace',
     scorerName: 'scoreFiscalSpace',
@@ -134,7 +140,6 @@ export const SCORER_DOC_PARITY_UNSUPPORTED_DIMENSIONS = [
   'energy',
   'governanceInstitutional',
   'socialCohesion',
-  'foodWater',
   'reserveAdequacy',
   'fuelStockDays',
 ] as const satisfies readonly ResilienceDimensionId[];
@@ -195,6 +200,10 @@ function buildScorerDocParitySpecs(): readonly ScorerDocParityIndicatorSpec[] {
       specs.push(...extractCurrencyExternalSpecs(binding));
       continue;
     }
+    if (binding.scorerName === 'scoreFoodWater') {
+      specs.push(...extractFoodWaterSpecs(binding));
+      continue;
+    }
 
     const entries = extractWeightedBlendEntries(binding.scorerName);
     assert.equal(
@@ -237,10 +246,28 @@ function extractCurrencyExternalSpecs(binding: ScorerTableBinding): readonly Sco
   ];
 }
 
+function extractFoodWaterSpecs(binding: ScorerTableBinding): readonly ScorerDocParityIndicatorSpec[] {
+  const entries = extractWeightedBlendEntries(binding.scorerName, 'last');
+  assert.equal(entries.length, binding.ids.length, 'scoreFoodWater final weightedBlend must expose IPC, phase, and AQUASTAT rows.');
+
+  return [
+    buildSpecFromEntry(binding, 'ipcPeopleInCrisis', entries[0]!, 'custom-source'),
+    buildSpecFromEntry(binding, 'ipcPhase', entries[1]!, 'custom-source'),
+    buildSpecFromRegistry(binding, 'aquastatScore', {
+      weight: extractWeight(entries[2]!, 'aquastatScore'),
+      extraction: 'custom-source',
+      methodologyDirection: 'Indicator semantics',
+      methodologyGoalposts: 'Indicator-dependent',
+      normalizationKind: 'discrete',
+    }),
+  ];
+}
+
 function buildSpecFromEntry(
   binding: ScorerTableBinding,
   id: string,
   entry: string,
+  extraction: ScorerParityExtraction = 'scorer-source',
 ): ScorerDocParityIndicatorSpec {
   const weight = extractWeight(entry, id);
   if (isNonLinearId(id)) {
@@ -250,7 +277,7 @@ function buildSpecFromEntry(
   const normalize = extractNormalizer(entry, id);
   return buildSpecFromRegistry(binding, id, {
     weight,
-    extraction: 'scorer-source',
+    extraction,
     registryDirection: normalize.direction,
     registryGoalposts: normalize.goalposts,
     methodologyDirection: normalize.direction === 'higherBetter' ? 'Higher is better' : 'Lower is better',
@@ -292,10 +319,16 @@ function buildSpecFromRegistry(
   };
 }
 
-function extractWeightedBlendEntries(scorerName: string): string[] {
+function extractWeightedBlendEntries(scorerName: string, occurrence: 'first' | 'last' = 'first'): string[] {
   const functionBody = extractFunctionBody(scorerName);
-  let callStart = functionBody.indexOf('return weightedBlend(');
-  if (callStart === -1) callStart = functionBody.indexOf('weightedBlend([');
+  let callStart = occurrence === 'first'
+    ? functionBody.indexOf('return weightedBlend(')
+    : functionBody.lastIndexOf('return weightedBlend(');
+  if (callStart === -1) {
+    callStart = occurrence === 'first'
+      ? functionBody.indexOf('weightedBlend([')
+      : functionBody.lastIndexOf('weightedBlend([');
+  }
   assert.notEqual(callStart, -1, `${scorerName} does not call weightedBlend in the extractable source shape.`);
   const openParen = functionBody.indexOf('(', callStart);
   const closeParen = findMatchingDelimiter(functionBody, openParen, '(', ')');

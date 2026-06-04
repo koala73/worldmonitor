@@ -49,7 +49,7 @@ describe('indicator registry', () => {
 
   it('every indicator has valid direction and positive weight', () => {
     for (const spec of INDICATOR_REGISTRY) {
-      assert.ok(['higherBetter', 'lowerBetter'].includes(spec.direction), `${spec.id} has invalid direction: ${spec.direction}`);
+      assert.ok(['higherBetter', 'lowerBetter', 'indicatorSemantics'].includes(spec.direction), `${spec.id} has invalid direction: ${spec.direction}`);
       assert.ok(spec.weight > 0, `${spec.id} has non-positive weight: ${spec.weight}`);
     }
   });
@@ -91,6 +91,22 @@ describe('indicator registry', () => {
       ],
       'importedFossilDependence must audit both fossil-electricity share and static net-import dependency inputs',
     );
+  });
+
+  it('foodWater documents one dynamic AQUASTAT scorer slot, not split phantom rows', () => {
+    const foodWaterIds = INDICATOR_REGISTRY
+      .filter((indicator) => indicator.dimension === 'foodWater' && indicator.tier !== 'experimental')
+      .map((indicator) => indicator.id);
+    assert.deepEqual(
+      foodWaterIds,
+      ['ipcPeopleInCrisis', 'ipcPhase', 'aquastatScore'],
+      'foodWater registry must mirror scoreFoodWater: IPC people, IPC phase, and one dynamic aquastatScore slot',
+    );
+
+    const aquastat = INDICATOR_REGISTRY.find((indicator) => indicator.id === 'aquastatScore');
+    assert.ok(aquastat, 'aquastatScore must exist in registry');
+    assert.equal(aquastat.weight, 0.4, 'aquastatScore weight must mirror scoreFoodWater');
+    assert.equal(aquastat.direction, 'indicatorSemantics', 'aquastatScore direction is routed by scoreAquastatValue indicator tags');
   });
 
   it('goalposts worst != best for every indicator', () => {

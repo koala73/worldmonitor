@@ -698,6 +698,24 @@ describe('resilience dimension scorers', () => {
     assert.ok(score.score === 20, `RSF only (no threat, no velocity), got ${score.score}`);
   });
 
+  it('scoreInformationCognitive: RSF raw score direction stays lower-better', async () => {
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:NO') return { rsf: { score: 6.52, rank: 3, year: 2025 } };
+      if (key === 'resilience:static:YE') return { rsf: { score: 69.22, rank: 169, year: 2025 } };
+      if (key === 'intelligence:social:reddit:v1') return { posts: [] };
+      if (key === 'news:threat:summary:v1') return { byCountry: {}, generatedAt: '2026-04-06T00:00:00.000Z' };
+      return null;
+    };
+    const [topRanked, lowRanked] = await Promise.all([
+      scoreInformationCognitive('NO', reader),
+      scoreInformationCognitive('YE', reader),
+    ]);
+    assert.ok(
+      topRanked.score > lowRanked.score,
+      `top-ranked low raw RSF score must produce higher resilience signal than low-ranked high raw RSF score; got ${topRanked.score} vs ${lowRanked.score}`,
+    );
+  });
+
   // Regression for #3736 / #3787 — the old implementation divided raw
   // velocity/threat by `langFactor`, amplifying signal for minimal-coverage
   // countries up to 5x. The fix attenuates the sub-indicator WEIGHTS by
@@ -1037,8 +1055,8 @@ describe('resilience dimension scorers', () => {
 
       // Outage path: gpiRow (0.55, observed) + displacementRow (DROPPED) + unrestRow (0.20, imputed AT 85).
       //   availableWeight = 0.75; score = (80.8*0.55 + 85*0.20)/0.75 ≈ 81.9 → 82
-      // GPI-only path: gpiRow (0.55, observed) + displacementRow (0.25, imputed AT 70) + unrestRow (0.20, imputed AT 70).
-      //   availableWeight = 1.0; score = 80.8*0.55 + 70*0.25 + 70*0.20 ≈ 76.9 → 77
+      // GPI-only path: gpiRow (0.55, observed) + displacementRow (0.25, imputed AT 70) + unrestRow (0.20, curated-list absent AT 50).
+      //   availableWeight = 1.0; score = 80.8*0.55 + 70*0.25 + 50*0.20 ≈ 72.9 → 73
       // Outage MUST score HIGHER than GPI-only (85-anchor pulls less down than 70-anchor).
       // If the bug is present, outage would also use 70 → outage.score ≈ gpiOnly.score (modulo displacement).
       assert.ok(outage.score > gpiOnly.score + 3,

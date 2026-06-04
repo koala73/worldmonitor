@@ -93,7 +93,7 @@ test('core-tier indicator coverage meets a minimum floor', () => {
   // are those whose scorer inputs are genuinely global scalars
   // (shippingStress, transitDisruption, energyPriceStress) or require
   // unexported time-series helpers (fxVolatility, fxDeviation,
-  // aquastatWaterAvailability, householdDebtService, etc.).
+  // aquastatScore, householdDebtService, etc.).
   const plan = buildIndicatorExtractionPlan(INDICATOR_REGISTRY);
   const coreTotal = plan.filter((p) => p.tier === 'core').length;
   const coreImplemented = plan.filter((p) => p.tier === 'core' && p.extractionStatus === 'implemented').length;
@@ -267,4 +267,15 @@ test('applyExtractionRule — aquastat stress vs availability gated by indicator
 
   // Missing value: null regardless of tag.
   assert.equal(applyExtractionRule(stressRule, missingCountry, 'XX'), null);
+});
+
+test('applyExtractionRule — aquastatScore returns scorer-normalized semantic score', () => {
+  const rule = { type: 'static-aquastat-score' };
+  const stressCountry = { staticRecord: { aquastat: { value: 42, indicator: 'Water stress (withdrawal/availability)' } } };
+  const availabilityCountry = { staticRecord: { aquastat: { value: 1500, indicator: 'Renewable water availability per capita' } } };
+  const unknownPercentCountry = { staticRecord: { aquastat: { value: 75, indicator: 'Some unrecognised tag' } } };
+
+  assert.ok(Math.abs(applyExtractionRule(rule, stressCountry, 'AE') - 58) < 1e-9);
+  assert.equal(applyExtractionRule(rule, availabilityCountry, 'DE'), 30);
+  assert.equal(applyExtractionRule(rule, unknownPercentCountry, 'XX'), 75);
 });

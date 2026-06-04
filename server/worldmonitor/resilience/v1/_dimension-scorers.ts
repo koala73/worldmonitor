@@ -182,16 +182,14 @@ export const IMPUTE = {
   // reserves through Treasury / central-bank channels).
   recoverySovereignFiscalBuffer: { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
   // Plan 2026-04-26-001 §U2 — gated GPI-only impute for socialCohesion.
-  // These two entries fire ONLY when the dim is operating in degraded
+  // This entry fires ONLY when the dimension is operating in degraded
   // GPI-only mode (i.e. country is absent from the displacement registry).
-  // Both score lower than the GPI-norm output for low-violence countries,
-  // pulling the blend down so tiny peaceful states (TV, PW, NR, MC) don't
-  // ride GPI-only to a near-perfect dim score. For countries WITH observed
-  // displacement and zero unrest events, unrest is imputed at
-  // `unhcrDisplacement.score` (85) instead — preserving Iceland/Norway
-  // scoring (peaceful + fully-monitored should NOT regress).
+  // It pulls tiny peaceful states (TV, PW, NR, MC) down from a near-perfect
+  // GPI-only score. Zero-unrest rows in that same GPI-only mode now use
+  // curated_list_absent (50/0.3) because unrest:events:v1 is not
+  // comprehensive; countries WITH observed displacement and zero unrest
+  // events still use `unhcrDisplacement.score` (85).
   socialCohesionGpiOnlyDisplacement: { score: 70, certaintyCoverage: 0.6, imputationClass: 'stable-absence' },
-  socialCohesionGpiOnlyUnrest:       { score: 70, certaintyCoverage: 0.5, imputationClass: 'stable-absence' },
 } as const satisfies Record<string, ImputationEntry>;
 
 interface StaticIndicatorValue {
@@ -1787,8 +1785,9 @@ async function scoreEnergyV2(
 
   // importedFossilDependence composite. `max(netImports, 0)` collapses
   // net-exporter cases (negative EG.IMP.CONS.ZS) to zero per plan §3.2.
-  // Division by 100 keeps the product in the [0, 100] range expected
-  // by normalizeLowerBetter.
+  // Net-import shares can exceed 100, so the product can also exceed
+  // 100; normalizeLowerBetter(importedFossilDependence, 0, 100) clamps
+  // those extreme importer cases at the worst anchor.
   const importedFossilDependence = fossilElectricityShare != null && netImports != null
     ? fossilElectricityShare * Math.max(netImports, 0) / 100
     : null;

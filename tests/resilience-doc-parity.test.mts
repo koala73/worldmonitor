@@ -521,6 +521,7 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
         'cyberDigital',
         'externalDebtCoverage',
         'financialSystemExposure',
+        'foodWater',
         'fiscalSpace',
         'healthPublicService',
         'importConcentration',
@@ -538,7 +539,6 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
       [...SCORER_DOC_PARITY_UNSUPPORTED_DIMENSIONS].sort(),
       [
         'energy',
-        'foodWater',
         'fuelStockDays',
         'governanceInstitutional',
         'logisticsSupply',
@@ -549,8 +549,8 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
     );
     assert.equal(
       SCORER_DOC_PARITY_SPECS.filter((spec) => spec.extraction === 'scorer-source' || spec.extraction === 'custom-source').length,
-      39,
-      'Expected 39 scorer/doc parity rows to derive weights from scorer source or a custom scorer-source extractor.',
+      42,
+      'Expected 42 scorer/doc parity rows to derive weights from scorer source or a custom scorer-source extractor.',
     );
     assert.deepEqual(
       SCORER_DOC_PARITY_SPECS
@@ -616,6 +616,25 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
       sectionText,
       /zero unrest events\s+(?:are\s+)?imputed at 70\/coverage 0\.5/,
       'Social Cohesion prose must not preserve the stale stable-absence 70/0.5 unrest fallback.',
+    );
+  });
+
+  it('methodology changelog does not claim UNHCR displacement is population-normalized', () => {
+    const changelogText = extractHeadingText(docText, 'v17 (April 2026) — universe + coverage rebuild (plan 2026-04-26-002)');
+    assert.match(
+      changelogText,
+      /`unrestEvents` and `ucdpConflict` divide by `max\(populationMillions, 0\.5\)`/,
+      'v17 changelog must limit per-capita normalization to the live event metrics.',
+    );
+    assert.match(
+      changelogText,
+      /UNHCR `displacementTotal` and `displacementHosted` are still scored on log10 absolute displaced-person counts/,
+      'v17 changelog must state that displacement rows remain log10 absolute counts.',
+    );
+    assert.doesNotMatch(
+      changelogText,
+      /`unrestEvents`, `ucdpConflict`, `displacementTotal`, and `displacementHosted` divide by `max\(populationMillions, 0\.5\)`/,
+      'v17 changelog must not preserve the stale displacement population-normalization claim.',
     );
   });
 
@@ -801,6 +820,18 @@ function extractSectionText(text: string, sectionHeading: string): string {
   const sectionStart = headingMatch.index + headingMatch[0].length;
   const rest = text.slice(sectionStart);
   const nextHeadingMatch = /^#{3,4}\s.+$/m.exec(rest);
+  return nextHeadingMatch == null ? rest : rest.slice(0, nextHeadingMatch.index);
+}
+
+function extractHeadingText(text: string, sectionHeading: string): string {
+  const headingRe = new RegExp(`^#{3,4} ${escapeRegex(sectionHeading)}\\s*$`, 'm');
+  const headingMatch = headingRe.exec(text);
+  assert.ok(headingMatch, `Methodology section "${sectionHeading}" not found.`);
+
+  const headingLevel = headingMatch[0].match(/^#+/)?.[0].length ?? 3;
+  const sectionStart = headingMatch.index + headingMatch[0].length;
+  const rest = text.slice(sectionStart);
+  const nextHeadingMatch = new RegExp(`^#{1,${headingLevel}}\\s.+$`, 'm').exec(rest);
   return nextHeadingMatch == null ? rest : rest.slice(0, nextHeadingMatch.index);
 }
 
