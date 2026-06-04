@@ -120,7 +120,7 @@ Owner/date: dependency hygiene owner, 2026-06-03. Close R7-2 when one of these l
 
 Scope: Country Resilience P3/dependency follow-up against current `origin/main`. This pass checked whether the remaining production `uuid <11.1.1` advisory has a minimal safe remediation relevant to CRI frontend/auth surfaces. No package or runtime code was changed.
 
-Current audit results in the `origin/main` worktree at `863906dbc6ad360fc6f0338dc8e5cd01fb2c81272`:
+Current audit results in the `origin/main` worktree at `863906dbc77850ad6d45f9c119ce92ad238d9921`:
 
 - `npm audit --omit=dev --json`: 0 critical, 0 high, 12 moderate.
 - `npm audit --json`: 0 critical, 0 high, 13 moderate.
