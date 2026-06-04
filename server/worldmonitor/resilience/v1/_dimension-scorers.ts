@@ -586,7 +586,8 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function roundScore(value: number): number {
+export function roundScore(value: number): number {
+  if (!Number.isFinite(value)) return 0;
   return Math.round(clamp(value, 0, 100));
 }
 
@@ -599,13 +600,19 @@ function safeNum(value: unknown): number | null {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function sqrtCount(value: number): number {
+  return Math.sqrt(Math.max(0, value));
+}
+
 function normalizeLowerBetter(value: number, best: number, worst: number): number {
+  if (!Number.isFinite(value)) return Number.NaN;
   if (worst <= best) return 50;
   const ratio = (worst - value) / (worst - best);
   return roundScore(ratio * 100);
 }
 
 function normalizeHigherBetter(value: number, worst: number, best: number): number {
+  if (!Number.isFinite(value)) return Number.NaN;
   if (best <= worst) return 50;
   const ratio = (value - worst) / (best - worst);
   return roundScore(ratio * 100);
@@ -1891,7 +1898,7 @@ export async function scoreSocialCohesion(
   // outliers ≈ 10 events/M (calibrated empirically against the live
   // unrest:events:v1 distribution).
   const popDenominator = readPopulationMillions(imfLaborRaw, countryCode);
-  const unrestMetric = (unrest.unrestCount + Math.sqrt(unrest.fatalities)) / popDenominator;
+  const unrestMetric = (unrest.unrestCount + sqrtCount(unrest.fatalities)) / popDenominator;
 
   // GPI empirical range: 1.1 (Iceland) – 3.4 (Yemen 2024). Anchor worst=3.6 (slightly
   // above observed max) so the worst-peace countries score near 0, not 20.
@@ -2050,7 +2057,7 @@ export async function scoreBorderSecurity(
   // must scale per-capita too. Pre-fix the unnormalized typeWeight could
   // dominate the per-capita metric for high-event countries (US/IN type
   // peaceful but high-volume), defeating §U6's intended scaling.
-  const conflictMetric = (ucdp.eventCount * 2 + ucdp.typeWeight + Math.sqrt(ucdp.deaths)) / popDenominator;
+  const conflictMetric = (ucdp.eventCount * 2 + ucdp.typeWeight + sqrtCount(ucdp.deaths)) / popDenominator;
   const displacementMetric = safeNum(displacement?.hostTotal) ?? safeNum(displacement?.totalDisplaced);
 
   return weightedBlend([
@@ -2491,7 +2498,7 @@ export async function scoreStateContinuity(
   const wgiMean = mean(wgiValues);
 
   const ucdpSummary = summarizeUcdp(ucdpRaw, countryCode);
-  const ucdpRawScore = ucdpSummary.eventCount * 2 + ucdpSummary.typeWeight + Math.sqrt(ucdpSummary.deaths);
+  const ucdpRawScore = ucdpSummary.eventCount * 2 + ucdpSummary.typeWeight + sqrtCount(ucdpSummary.deaths);
 
   const displacement = getCountryDisplacement(displacementRaw, countryCode);
   const totalDisplaced = safeNum(displacement?.totalDisplaced);

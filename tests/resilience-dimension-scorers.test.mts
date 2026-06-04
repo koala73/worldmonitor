@@ -31,6 +31,7 @@ import {
   scoreStateContinuity,
   scoreInflationStability,
   scoreTradePolicy,
+  roundScore,
   summarizeCyber,
   CYBER_SNAPSHOT_WEIGHT_CAP,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
@@ -133,6 +134,46 @@ describe('resilience dimension scorers', () => {
     assert.equal(score.coverage, 0.20, 'coverage must count only the finite observed metric');
     assert.equal(score.observedWeight, 0.2, 'observedWeight must exclude NaN metrics');
     assert.equal(score.imputedWeight, 0, 'NaN metrics must not be counted as imputed either');
+  });
+
+  it('roundScore clamps finite scores and maps non-finite values to a safe numeric floor', () => {
+    assert.equal(roundScore(12.6), 13, 'finite values still round normally');
+    assert.equal(roundScore(-1), 0, 'finite low values clamp to 0');
+    assert.equal(roundScore(101), 100, 'finite high values clamp to 100');
+    assert.equal(roundScore(Number.NaN), 0, 'NaN must not leak through as a score');
+    assert.equal(roundScore(Number.POSITIVE_INFINITY), 0, '+Infinity must not leak through as a score');
+    assert.equal(roundScore(Number.NEGATIVE_INFINITY), 0, '-Infinity must not leak through as a score');
+  });
+
+  it('negative unrest fatalities stay bounded and keep socialCohesion unrest observed', async () => {
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'unrest:events:v1') return { events: [{ country: 'ZZ', severity: 'HIGH', fatalities: -4 }] };
+      return null;
+    };
+    const score = await scoreSocialCohesion('ZZ', reader);
+
+    assert.equal(score.score, 60, 'negative fatalities are floored before sqrt instead of making the unrest metric NaN');
+    assert.equal(score.coverage, 0.2, 'the unrest metric must remain observed');
+    assert.equal(score.observedWeight, 0.2, 'negative fatalities must not drop observed unrest weight');
+    assert.equal(score.imputedWeight, 0, 'negative fatalities are not an imputation path');
+  });
+
+  it('negative UCDP deaths stay bounded and keep conflict-backed dimensions observed', async () => {
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'conflict:ucdp-events:v1') {
+        return { events: [{ country: 'ZZ', deathsBest: -9, violenceType: 'UCDP_VIOLENCE_TYPE_STATE_BASED' }] };
+      }
+      return null;
+    };
+    const border = await scoreBorderSecurity('ZZ', reader);
+    const continuity = await scoreStateContinuity('ZZ', reader);
+
+    assert.equal(border.score, 47, 'borderSecurity floors negative deaths before sqrt');
+    assert.equal(border.coverage, 0.65, 'borderSecurity must keep the UCDP row observed');
+    assert.equal(border.observedWeight, 0.65, 'borderSecurity must not drop UCDP weight for negative deaths');
+    assert.equal(continuity.score, 87, 'stateContinuity floors negative deaths before sqrt');
+    assert.equal(continuity.coverage, 0.3, 'stateContinuity must keep the UCDP row observed');
+    assert.equal(continuity.observedWeight, 0.3, 'stateContinuity must not drop UCDP weight for negative deaths');
   });
 
   it('scoreEnergy with full data uses 7-metric blend and high coverage', async () => {
