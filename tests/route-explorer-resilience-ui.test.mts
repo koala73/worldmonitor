@@ -51,6 +51,8 @@ const originalGlobals = {
 
 const browserEnvironment = createBrowserEnvironment();
 const MiniNode = Object.getPrototypeOf(browserEnvironment.HTMLElement.prototype).constructor;
+const STABLE_FIXTURE_DATE = '2024-01-15';
+const STABLE_FIXTURE_FETCHED_AT = `${STABLE_FIXTURE_DATE}T00:00:00.000Z`;
 
 defineGlobal('document', browserEnvironment.document);
 defineGlobal('window', browserEnvironment.window);
@@ -88,7 +90,7 @@ function laneFixture(overrides: Partial<GetRouteExplorerLaneResponse> = {}): Get
     estTransitDaysRange: { min: 14, max: 18 },
     estFreightUsdPerTeuRange: { min: 1800, max: 2400 },
     noModeledLane: false,
-    fetchedAt: '2026-06-04T00:00:00.000Z',
+    fetchedAt: STABLE_FIXTURE_FETCHED_AT,
     ...overrides,
   };
 }
@@ -108,11 +110,11 @@ function impactFixture(overrides: Partial<GetRouteImpactResponse> = {}): GetRout
         primaryChokepointId: 'north-sea',
       },
     ],
-    resilienceScore: 0,
+    resilienceScore: 57,
     dependencyFlags: [],
     hs2InSeededUniverse: true,
     comtradeSource: 'live',
-    fetchedAt: '2026-06-04T00:00:00.000Z',
+    fetchedAt: STABLE_FIXTURE_FETCHED_AT,
     ...overrides,
   };
 }
@@ -139,12 +141,16 @@ function resilienceFixture(overrides: Partial<ResilienceScoreResponse> = {}): Re
     change30d: 0,
     lowConfidence: false,
     imputationShare: 0,
-    dataVersion: '2026-06-04',
+    dataVersion: STABLE_FIXTURE_DATE,
     ...overrides,
   };
 }
 
-function seedLeftRailResilienceNodes(rail: LeftRail) {
+function seedLeftRailResilienceNodes(rail: LeftRail, sourceHtml?: string) {
+  if (sourceHtml !== undefined) {
+    assert.match(sourceHtml, /re-leftrail__resilience-value/);
+    assert.match(sourceHtml, /re-leftrail__resilience-meta/);
+  }
   const value = document.createElement('span');
   value.className = 're-leftrail__resilience-value';
   const meta = document.createElement('div');
@@ -153,7 +159,10 @@ function seedLeftRailResilienceNodes(rail: LeftRail) {
   return { value, meta };
 }
 
-function seedImpactResilienceSlot(tab: CountryImpactTab) {
+function seedImpactResilienceSlot(tab: CountryImpactTab, sourceHtml?: string) {
+  if (sourceHtml !== undefined) {
+    assert.match(sourceHtml, /re-impact__resilience-slot/);
+  }
   const slot = document.createElement('div');
   slot.className = 're-impact__resilience-slot';
   tab.element.replaceChildren(slot);
@@ -188,6 +197,23 @@ describe('RouteExplorer resilience UI surfaces', () => {
       assert.match(meta.innerHTML, /\[65\u201373\]/);
       assert.match(meta.innerHTML, /95% score sensitivity band: 65\.2 - 72\.8/);
       assert.doesNotMatch(meta.innerHTML, /re-resilience-confidence--low/);
+    });
+
+    it('keeps updateLane resilience markup compatible with updateResilience selectors', () => {
+      const rail = new LeftRail();
+
+      rail.updateLane(laneFixture());
+      const renderedLaneHtml = rail.element.innerHTML;
+      const { value, meta } = seedLeftRailResilienceNodes(rail, renderedLaneHtml);
+      rail.updateResilience(resilienceFixture({
+        overallScore: 64.4,
+        lowConfidence: true,
+        scoreInterval: { p05: 60.2, p95: 68.9 },
+      }));
+
+      assert.equal(value.textContent, '64/100');
+      assert.match(meta.innerHTML, /Low confidence \u2014 sparse data/);
+      assert.match(meta.innerHTML, /\[60\u201369\]/);
     });
 
     it('surfaces low-confidence endpoint scores instead of treating them as normal cached data', () => {
@@ -276,6 +302,25 @@ describe('RouteExplorer resilience UI surfaces', () => {
       assert.match(slot.innerHTML, /95% score sensitivity band: 66\.4 - 74\.6/);
       assert.match(slot.innerHTML, /Coverage 90%/);
       assert.doesNotMatch(slot.innerHTML, /Confidence unavailable/);
+    });
+
+    it('keeps update-rendered resilience slot compatible with endpoint updates', () => {
+      const tab = new CountryImpactTab();
+
+      tab.update(impactFixture());
+      const renderedImpactHtml = tab.element.innerHTML;
+      const slot = seedImpactResilienceSlot(tab, renderedImpactHtml);
+      tab.updateResilience(resilienceFixture({
+        overallScore: 81.1,
+        lowConfidence: true,
+        scoreInterval: { p05: 77.2, p95: 84.8 },
+      }));
+
+      assert.match(renderedImpactHtml, /Resilience: <strong>57\/100<\/strong>/);
+      assert.match(renderedImpactHtml, /Confidence unavailable/);
+      assert.match(slot.innerHTML, /Resilience: <strong>81\/100<\/strong>/);
+      assert.match(slot.innerHTML, /Low confidence \u2014 sparse data/);
+      assert.match(slot.innerHTML, /\[77\u201385\]/);
     });
 
     it('preserves low-confidence endpoint text and omits malformed endpoint intervals', () => {
