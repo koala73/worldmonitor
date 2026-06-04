@@ -124,6 +124,16 @@ function hasEnvelopeShape(parsed: unknown): boolean {
   return !!seed && typeof seed === 'object' && typeof (seed as { fetchedAt?: unknown }).fetchedAt === 'number';
 }
 
+/**
+ * Serialise a thrown value for an operator-facing reason string. Strict-mode
+ * `catch` binds `err` as `unknown`, so a non-Error throw (`throw "str"`, a
+ * rejected plain object) would make `(err as Error).message` resolve to
+ * `undefined` at runtime — `String(err)` keeps the message useful.
+ */
+function errMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 export async function checkProbe(spec: ProbeSpec): Promise<ProbeResult> {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -136,7 +146,7 @@ export async function checkProbe(spec: ProbeSpec): Promise<ProbeResult> {
       signal: AbortSignal.timeout(3_000),
     });
   } catch (err) {
-    return { key: spec.key, shape: spec.shape, pass: false, reason: `fetch:${(err as Error).message}` };
+    return { key: spec.key, shape: spec.shape, pass: false, reason: `fetch:${errMessage(err)}` };
   }
   if (!resp.ok) return { key: spec.key, shape: spec.shape, pass: false, reason: `redis:${resp.status}` };
 
@@ -266,7 +276,7 @@ async function probeBoundaryOnce(
     }
     return { endpoint, pass: true, status: r.status };
   } catch (err) {
-    return { endpoint, pass: false, reason: `fetch:${(err as Error).message}` };
+    return { endpoint, pass: false, reason: `fetch:${errMessage(err)}` };
   }
 }
 
@@ -317,6 +327,6 @@ export default async function handler(req: Request): Promise<Response> {
     // than letting the edge function crash into an opaque Vercel platform 503 —
     // which would read identically to a real seed-contract failure in the
     // uptime monitor and send operators chasing the wrong thing.
-    return jsonResponse({ ok: false, error: `probe-exception:${(err as Error).message}` }, 503, cors);
+    return jsonResponse({ ok: false, error: `probe-exception:${errMessage(err)}` }, 503, cors);
   }
 }

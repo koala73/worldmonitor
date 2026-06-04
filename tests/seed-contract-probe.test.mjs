@@ -235,6 +235,16 @@ test('withRetry: a persistent failure fails both attempts without recovered', as
   assert.equal(r.recovered, undefined);
 });
 
+test('checkProbe: a non-Error fetch rejection is serialised via String(), not undefined', async () => {
+  // Strict-mode catch binds the thrown value as `unknown`; a library that
+  // `throw`s a bare string/object would make `(err as Error).message` resolve
+  // to `undefined`. errMessage() must keep the reason useful.
+  globalThis.fetch = async () => { throw 'kaboom'; };
+  const r = await checkProbe({ key: 'economic:fsi-eu:v1', shape: 'envelope' });
+  assert.equal(r.pass, false);
+  assert.equal(r.reason, 'fetch:kaboom');
+});
+
 test('checkProbe: non-JSON Redis body returns reason=redis-bad-json-body (no throw → no platform 503)', async () => {
   globalThis.fetch = async () => ({
     ok: true,
