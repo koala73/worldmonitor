@@ -103,3 +103,4 @@ export * from './DiseaseOutbreaksPanel';
 export * from './SocialVelocityPanel';
 export * from './WsbTickerScannerPanel';
 export * from './EnergyCrisisPanel';
+export * from './CoherenceDashboardPanel';

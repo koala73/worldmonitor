@@ -31,6 +31,7 @@ Drop-summary log goes to stderr; canonical JSON goes to stdout.
 import json
 import os
 import sys
+
 import pycountry
 
 GAS_PATH = os.environ.get("GEM_GAS_GEOJSON")
