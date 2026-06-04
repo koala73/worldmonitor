@@ -101,6 +101,29 @@ test('getResilienceOverallDisplay treats negative and non-finite scores as insuf
   });
 });
 
+test('getResilienceOverallDisplay preserves API unknown zero as no score', () => {
+  assert.equal(getResilienceVisualLevel(0), 'very_low');
+  assert.deepEqual(getResilienceOverallDisplay({ overallScore: 0, level: 'unknown' }), {
+    hasScore: false,
+    scoreForBar: 0,
+    scoreLabel: 'n/a',
+    visualLevel: 'very_low',
+    visualLevelLabel: 'Insufficient data',
+    serverLevelLabel: 'API level: unknown',
+  });
+});
+
+test('getResilienceOverallDisplay keeps explicit zero scores when API level is real', () => {
+  assert.deepEqual(getResilienceOverallDisplay({ overallScore: 0, level: 'low' }), {
+    hasScore: true,
+    scoreForBar: 0,
+    scoreLabel: '0',
+    visualLevel: 'very_low',
+    visualLevelLabel: 'Visual band: VERY LOW',
+    serverLevelLabel: 'API level: low',
+  });
+});
+
 test('getResilienceOverallDisplay separates visual band from API level', () => {
   assert.deepEqual(getResilienceOverallDisplay({ overallScore: 61.2, level: 'medium' }), {
     hasScore: true,
