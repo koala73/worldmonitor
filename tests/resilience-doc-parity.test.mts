@@ -202,6 +202,27 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
     );
   });
 
+  it('keeps the v1.1 Reproducibility scorecard row free of concrete cache-key examples', () => {
+    const reproducibilityRow = docText.match(/^\| \*\*Reproducibility\*\* \| \d+(?:\.\d+)? \| (?<rationale>.+) \|$/m);
+    assert.ok(
+      reproducibilityRow?.groups?.rationale,
+      'Methodology doc must keep a v1.1 Reproducibility scorecard row that this cache-key guard can inspect.',
+    );
+    const rationale = reproducibilityRow.groups.rationale;
+
+    assert.match(
+      rationale,
+      /see the Redis keys table/i,
+      'The v1.1 Reproducibility row should point readers to the current Redis keys table instead of repeating cache-key examples.',
+    );
+    assert.doesNotMatch(
+      rationale,
+      /`(?:resilience:)?(?:score|ranking|history|intervals):v\d+(?::[^`]*)?`/,
+      'The historical v1.1 Reproducibility row must not repeat concrete cache-key examples. ' +
+      'Even fully-qualified stale examples read like current public-state docs and drift silently.',
+    );
+  });
+
   it('domain count claimed in prose matches RESILIENCE_DOMAIN_ORDER', () => {
     const expectedCount = RESILIENCE_DOMAIN_ORDER.length;
     // The doc says "6 domains" in multiple places. We require at least
