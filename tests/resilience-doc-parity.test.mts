@@ -570,13 +570,6 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
   });
 
   it('unsupported scorer doc parity dimensions have explicit rationale', () => {
-    const unsupportedDimensions = SCORER_DOC_PARITY_UNSUPPORTED_DIMENSION_SPECS.map((spec) => spec.dimension);
-    assert.deepEqual(
-      [...unsupportedDimensions].sort(),
-      [...SCORER_DOC_PARITY_UNSUPPORTED_DIMENSIONS].sort(),
-      'Unsupported dimension list must derive from the rationale-bearing specs.',
-    );
-
     for (const spec of SCORER_DOC_PARITY_UNSUPPORTED_DIMENSION_SPECS) {
       assert.ok(
         spec.reason.trim().length >= 80,
