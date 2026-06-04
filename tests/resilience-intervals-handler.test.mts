@@ -32,7 +32,7 @@ describe('resilience score interval integration', () => {
 
     const fixtures = {
       ...RESILIENCE_FIXTURES,
-      'resilience:intervals:v7:US': {
+      'resilience:intervals:v8:US': {
         p05: 65.2,
         p95: 72.8,
         _formula: 'd6',
@@ -63,7 +63,7 @@ describe('resilience score interval integration', () => {
 
     const fixtures = {
       ...RESILIENCE_FIXTURES,
-      'resilience:intervals:v7:US': {
+      'resilience:intervals:v8:US': {
         p05: 65.2,
         p95: 72.8,
         _formula: 'pc',
@@ -92,7 +92,7 @@ describe('resilience score interval integration', () => {
 
     const fixtures = {
       ...RESILIENCE_FIXTURES,
-      'resilience:intervals:v7:US': {
+      'resilience:intervals:v8:US': {
         p05: 65.2,
         p95: 72.8,
         draws: 100,

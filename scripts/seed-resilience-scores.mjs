@@ -62,8 +62,11 @@ function requireSeedRefreshKey() {
 // seeder-written scores and rankings must share the server reader namespace.
 // v22 → v23 for country-resilience audit P3-8: observed zero-outage feeds now
 // score as observed-quiet in infrastructure, matching cyberDigital.
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v23:';
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v23';
+// v23 → v24 for country-resilience audit round 5 R5-2 / PR #4101: governance
+// WGI indicator slot semantics changed under the same `pc` formula tag, so the
+// seeder-written score/ranking namespace must match the server reader bump.
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v24:';
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v24';
 // Must match the server-side RESILIENCE_RANKING_CACHE_TTL_SECONDS. Extended
 // to 12h (2x the cron interval) so a missed/slow cron can't create an
 // EMPTY_ON_DEMAND gap before the next successful rebuild.

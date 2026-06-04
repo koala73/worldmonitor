@@ -19,6 +19,12 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
 
+function cacheVersion(label: string, value: string, pattern: RegExp): number {
+  const match = pattern.exec(value);
+  assert.ok(match?.[1], `${label} must include a numeric cache version, got ${value}`);
+  return Number(match[1]);
+}
+
 // Phase 1 T1.9 cache-key / health-registry sync guard.
 //
 // If a future PR bumps any of the resilience cache key constants in
@@ -75,6 +81,57 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
     assert.ok(
       healthText.includes(`'${probeKey}'`) || healthText.includes(`"${probeKey}"`),
       `api/health.js must reference ${probeKey} for the resilienceIntervals probe. Did you bump the interval key without updating health?`,
+    );
+  });
+
+  it('score and ranking cache namespaces share the same methodology generation', () => {
+    const scoreVersion = cacheVersion(
+      'RESILIENCE_SCORE_CACHE_PREFIX',
+      RESILIENCE_SCORE_CACHE_PREFIX,
+      /^resilience:score:v(\d+):$/,
+    );
+    const rankingVersion = cacheVersion(
+      'RESILIENCE_RANKING_CACHE_KEY',
+      RESILIENCE_RANKING_CACHE_KEY,
+      /^resilience:ranking:v(\d+)$/,
+    );
+
+    assert.equal(
+      rankingVersion,
+      scoreVersion,
+      `ranking cache version v${rankingVersion} must match score cache version v${scoreVersion}; ` +
+      'methodology-affecting score changes require ranking aggregates to recompute in the same namespace generation.',
+    );
+  });
+
+  it('history and interval namespaces advance with the current score generation', () => {
+    const scoreVersion = cacheVersion(
+      'RESILIENCE_SCORE_CACHE_PREFIX',
+      RESILIENCE_SCORE_CACHE_PREFIX,
+      /^resilience:score:v(\d+):$/,
+    );
+    const historyVersion = cacheVersion(
+      'RESILIENCE_HISTORY_KEY_PREFIX',
+      RESILIENCE_HISTORY_KEY_PREFIX,
+      /^resilience:history:v(\d+):$/,
+    );
+    const intervalVersion = cacheVersion(
+      'RESILIENCE_INTERVAL_KEY_PREFIX',
+      RESILIENCE_INTERVAL_KEY_PREFIX,
+      /^resilience:intervals:v(\d+):$/,
+    );
+
+    assert.equal(
+      scoreVersion - historyVersion,
+      5,
+      `history cache version v${historyVersion} is not on the current score generation v${scoreVersion}; ` +
+      'methodology-affecting score changes must rotate rolling trend history so old score baselines do not mix with new ones.',
+    );
+    assert.equal(
+      scoreVersion - intervalVersion,
+      16,
+      `interval cache version v${intervalVersion} is not on the current score generation v${scoreVersion}; ` +
+      'methodology-affecting score changes must rotate sensitivity intervals so rank-stability bands are regenerated.',
     );
   });
 

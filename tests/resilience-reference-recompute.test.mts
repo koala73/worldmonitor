@@ -37,10 +37,12 @@ const CAPTURED_RANKING_CACHE_KEY = 'resilience:ranking:v18';
 const CAPTURED_HISTORY_KEY_PREFIX = 'resilience:history:v13:';
 const CAPTURED_SCORE_CACHE_SOURCE = `${CAPTURED_SCORE_CACHE_PREFIX}{countryCode}`;
 const CAPTURED_RECOMPUTE_SOURCE = 'country-sliced Redis input snapshot recompute';
-// v23 batches three score-affecting changes (import-HHI certainty derate #4088,
-// outage observed-quiet semantics #4094/P3-8, WTO trade-policy severity #4092/P2-1),
-// so the historical-manifest drift guard allows the union of their drift fields.
-const CURRENT_COMBINED_SCORER_CACHE_PREFIX = 'resilience:score:v23:';
+// v24 includes the v23 score-affecting batch (import-HHI certainty derate #4088,
+// outage observed-quiet semantics #4094/P3-8, WTO trade-policy severity #4092/P2-1)
+// plus the PR #4101 governance WGI slot-semantics cleanup. The historical-
+// manifest drift guard allows the union of fields already proven to drift from
+// the frozen v18 reference capture.
+const CURRENT_COMBINED_SCORER_CACHE_PREFIX = 'resilience:score:v24:';
 const EXPECTED_CURRENT_SCORER_DRIFT_COUNTRIES = new Set(EXPECTED_COUNTRIES);
 const EXPECTED_CURRENT_SCORER_DRIFT_FIELDS = new Set([
   'overallScore',
