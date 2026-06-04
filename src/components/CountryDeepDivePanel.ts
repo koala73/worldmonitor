@@ -2553,6 +2553,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     const renderFallback = (error: unknown) => {
       if (requestId !== this.resilienceWidgetRequestId) return;
+      this.resilienceWidget?.destroy();
+      this.resilienceWidget = null;
       console.warn('[CountryDeepDivePanel] Failed to load resilience widget', error);
       this.captureResilienceWidgetLoadFailure(error, code);
       slot.replaceChildren(this.makeEmpty(t('countryBrief.resilienceScoreUnavailable')));
@@ -2588,7 +2590,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
           message: 'Resilience widget lazy load failed',
           data: { countryCode },
         });
-        Sentry.captureException(error instanceof Error ? error : new Error(String(error)), {
+        Sentry.captureException?.(error instanceof Error ? error : new Error(String(error)), {
           tags: { surface: 'country-deep-dive', widget: 'resilience' },
           extra: { countryCode },
         });
