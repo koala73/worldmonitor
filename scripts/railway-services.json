@@ -76,6 +76,18 @@
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-resilience"
   },
   {
+    "entry": "scripts/seed-bundle-resilience-recovery.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-bundle-resilience-recovery",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-resilience-recovery"
+  },
+  {
+    "entry": "scripts/seed-bundle-resilience-energy-v2.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-bundle-resilience-energy-v2",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-resilience-energy-v2"
+  },
+  {
     "entry": "scripts/seed-bundle-derived-signals.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-derived-signals",
