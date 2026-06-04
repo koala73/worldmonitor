@@ -63,6 +63,8 @@ const WORLD_BANK_BASE = 'https://api.worldbank.org/v2';
 const WHO_BASE = 'https://ghoapi.azureedge.net/api';
 const RSF_RANKING_URL = 'https://rsf.org/en/ranking';
 const RSF_TOP_RANK_DIRECTION_GUARD_MAX_RANK = 10;
+// Top-10 RSF countries currently score in the 5-20 range; 30 is a conservative
+// upper bound before treating the feed as direction-inverted.
 const RSF_TOP_RANK_ABUSE_INDEX_MAX_SCORE = 30;
 const EUROSTAT_ENERGY_URL = 'https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/nrg_ind_id?freq=A';
 const WB_ENERGY_IMPORT_INDICATOR = 'EG.IMP.CONS.ZS';

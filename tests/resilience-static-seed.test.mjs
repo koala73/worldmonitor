@@ -434,6 +434,28 @@ describe('resilience static seed parsers', () => {
     );
   });
 
+  it('rejects full RSF feeds when no top-ranked countries resolve', () => {
+    const countryNames = JSON.parse(readFileSync(resolve('shared/country-names.json'), 'utf8'));
+    const rows = [];
+    const seenIso2 = new Set();
+
+    for (const countryName of Object.keys(countryNames)) {
+      const iso2 = resolveIso2({ name: countryName });
+      if (!iso2 || seenIso2.has(iso2)) continue;
+      seenIso2.add(iso2);
+      rows.push(`|${rows.length + 11}|${countryName}|42,00|0 (${rows.length + 11})|`);
+      if (rows.length >= 100) break;
+    }
+
+    assert.equal(rows.length, 100, 'fixture must exercise the full-feed guard path');
+    const html = `<div class="field__item">|Rank|Country|Note|Differential|\n${rows.join('\n')}</div>`;
+
+    assert.throws(
+      () => parseRsfRanking(html),
+      /RSF ranking feed direction guard found no top-ranked countries/,
+    );
+  });
+
   it('accepts current known RSF fixture shape with low top-ranked scores', () => {
     const html = `
       <div class="field__item">|Rank|Country|Note|Differential|
