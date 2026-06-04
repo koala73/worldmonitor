@@ -947,15 +947,20 @@ async function readJsonKey(key) {
  *   { countries: { [iso2]: { ipcPhase, phase, peopleInCrisis, year, source } },
  *     fetchedAt, source, count, seedYear }
  */
-export function buildFaoAggregate(faoMap, seedYear, seededAt) {
+export function buildFaoAggregate(faoMap, seedYear, seededAt, eligibleCountryCodes = null) {
+  const eligible = eligibleCountryCodes
+    ? new Set([...eligibleCountryCodes].map((code) => String(code).toUpperCase()))
+    : null;
   const countries = {};
   let count = 0;
   for (const [iso2, entry] of faoMap.entries()) {
+    const countryCode = String(iso2).toUpperCase();
+    if (eligible ? !eligible.has(countryCode) : !isInRankableUniverse(countryCode)) continue;
     if (!entry || typeof entry !== 'object') continue;
     const phaseMatch = typeof entry.phase === 'string' ? entry.phase.match(/\d+/) : null;
     const ipcPhase = phaseMatch ? Number(phaseMatch[0]) : null;
     if (ipcPhase == null || ipcPhase < 3) continue;
-    countries[iso2] = {
+    countries[countryCode] = {
       ipcPhase,
       phase: entry.phase,
       peopleInCrisis: entry.peopleInCrisis ?? null,
@@ -970,7 +975,26 @@ export function buildFaoAggregate(faoMap, seedYear, seededAt) {
     fetchedAt: seededAt,
     seedYear,
     source: 'hdx-ipc',
+    status: 'ok',
   };
+}
+
+export function buildFaoAggregateForPublish(datasetMaps, failedDatasets, recovery, seedYear, seededAt, eligibleCountryCodes) {
+  const faoFailed = failedDatasets.includes('fao');
+  const recoveredFaoCount = safeNum(recovery?.recoveredDatasets?.fao?.recordCount) ?? 0;
+  if (faoFailed && recoveredFaoCount <= 0) {
+    return {
+      countries: {},
+      count: 0,
+      fetchedAt: seededAt,
+      seedYear,
+      source: 'hdx-ipc',
+      status: 'error',
+      failed: true,
+      failedDatasets: ['fao'],
+    };
+  }
+  return buildFaoAggregate(datasetMaps.fao ?? new Map(), seedYear, seededAt, eligibleCountryCodes);
 }
 
 async function publishSuccess(countryPayloads, manifest, meta, { faoAggregate } = {}) {
@@ -1144,13 +1168,20 @@ export async function seedResilienceStatic() {
     failedDatasets,
   });
 
-  // Piggyback on the same fetch: the FAO dataset map is already in memory,
-  // just reshape and publish as an aggregate readable by the weekly
-  // validation cron's Outcome-Backtest (resilience:static:fao). Skip when
-  // the FAO fetch itself failed — the rest of the snapshot is still valid.
-  const faoAggregate = failedDatasets.includes('fao')
-    ? null
-    : buildFaoAggregate(datasetMaps.fao ?? new Map(), seedYear, seededAt);
+  // Piggyback on the same fetch/recovery path: the FAO dataset map is
+  // already in memory, just reshape and publish as an aggregate readable by
+  // the weekly validation cron's Outcome-Backtest (resilience:static:fao).
+  // If FAO failed and recovery found no prior FAO rows, publish an explicit
+  // failed/empty aggregate so a prior long-lived FAO key cannot remain fresh
+  // under the shared seed-meta:resilience:static heartbeat.
+  const faoAggregate = buildFaoAggregateForPublish(
+    datasetMaps,
+    failedDatasets,
+    recovery,
+    seedYear,
+    seededAt,
+    countryPayloads.keys(),
+  );
 
   await publishSuccess(countryPayloads, manifest, meta, { faoAggregate });
 

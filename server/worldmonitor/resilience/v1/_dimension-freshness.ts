@@ -122,6 +122,22 @@ export function resolveSeedMetaKey(sourceKey: string): string {
   return `seed-meta:${override ?? stripped}`;
 }
 
+function seedMetaIsFreshnessEligible(meta: Record<string, unknown>): boolean {
+  const status = meta.status;
+  if (status && status !== 'ok') return false;
+
+  const state = meta.state;
+  if (state && state !== 'OK' && state !== 'OK_ZERO') return false;
+
+  if ('recordCount' in meta) {
+    const recordCount = Number(meta.recordCount);
+    if (!Number.isFinite(recordCount) || recordCount < 0) return false;
+    if (recordCount === 0 && status !== 'ok' && state !== 'OK' && state !== 'OK_ZERO') return false;
+  }
+
+  return true;
+}
+
 // Stale dominates aging dominates fresh. A single stale signal forces
 // the whole dimension to stale, since the badge must represent the
 // freshness floor of the dimension, not the ceiling.
@@ -230,8 +246,12 @@ export async function readFreshnessMap(
           // status: 'error' while preserving the prior snapshot via
           // extendExistingTtl. Treat non-ok meta as missing so the
           // dimension classifies as stale, matching api/health.js behavior.
-          const status = (meta as { status?: string }).status;
-          if (status && status !== 'ok') return;
+          //
+          // P3 follow-up: legacy quiet-period writes can still refresh
+          // bare seed-meta with recordCount:0 and no status. Treat that as
+          // missing unless the producer explicitly marks the zero as healthy
+          // via status:'ok' or state:'OK_ZERO'.
+          if (!seedMetaIsFreshnessEligible(meta as Record<string, unknown>)) return;
           const fetchedAt = Number((meta as { fetchedAt: unknown }).fetchedAt);
           if (Number.isFinite(fetchedAt) && fetchedAt > 0) {
             metaKeyFetchedAt.set(metaKey, fetchedAt);

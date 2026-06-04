@@ -578,6 +578,29 @@ describe('resilience dimension scorers', () => {
     assert.equal(score.observedWeight, 0, 'globally empty feeds must remain no-data');
   });
 
+  it('scoreInfrastructure: country with zero outages in a loaded outage feed scores as observed quiet', async () => {
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:FI') {
+        return {
+          infrastructure: {
+            indicators: {
+              'EG.ELC.ACCS.ZS': { value: 100 },
+              'IS.ROD.PAVE.ZS': { value: 100 },
+              'IT.NET.BBND.P2': { value: 40 },
+            },
+          },
+        };
+      }
+      if (key === 'infra:outages:v1') return { outages: [{ countryCode: 'US', severity: 'OUTAGE_SEVERITY_PARTIAL' }] };
+      return null;
+    };
+
+    const score = await scoreInfrastructure('FI', reader);
+    assert.equal(score.score, 100, 'zero outages in a loaded feed must be a high-score observed absence');
+    assert.equal(score.coverage, 1, 'loaded zero-outage observation must contribute the outage weight');
+    assert.equal(score.observedWeight, 1, 'loaded zero-outage observation must be observed, not imputed');
+  });
+
   it('scoreCyberDigital: country with real threats scores normally', async () => {
     const reader = async (key: string): Promise<unknown | null> => {
       if (key === 'cyber:threats:v2') return { threats: [

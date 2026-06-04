@@ -313,6 +313,9 @@ test('formatResilienceScoreInterval omits malformed intervals', () => {
   assert.equal(formatResilienceScoreInterval(undefined), null);
   assert.equal(formatResilienceScoreInterval({ p05: Number.NaN, p95: 72.8 }), null);
   assert.equal(formatResilienceScoreInterval({ p05: 65.2, p95: Number.POSITIVE_INFINITY }), null);
+  assert.equal(formatResilienceScoreInterval({ p05: 80, p95: 70 }), null);
+  assert.equal(formatResilienceScoreInterval({ p05: -1, p95: 70 }), null);
+  assert.equal(formatResilienceScoreInterval({ p05: 65.2, p95: 101 }), null);
 });
 
 // T1.4 Phase 1 of the country-resilience reference-grade upgrade plan.

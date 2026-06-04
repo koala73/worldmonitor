@@ -9,6 +9,7 @@ import {
   recomputeReferenceManifest,
   type ResilienceReferenceManifest,
 } from '../scripts/resilience-reference-recompute.mts';
+import { RESILIENCE_SCORE_CACHE_PREFIX } from '../server/worldmonitor/resilience/v1/_shared.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), '..');
@@ -36,6 +37,13 @@ const CAPTURED_RANKING_CACHE_KEY = 'resilience:ranking:v18';
 const CAPTURED_HISTORY_KEY_PREFIX = 'resilience:history:v13:';
 const CAPTURED_SCORE_CACHE_SOURCE = `${CAPTURED_SCORE_CACHE_PREFIX}{countryCode}`;
 const CAPTURED_RECOMPUTE_SOURCE = 'country-sliced Redis input snapshot recompute';
+const CURRENT_OUTAGE_SEMANTICS_CACHE_PREFIX = 'resilience:score:v23:';
+const EXPECTED_CURRENT_SCORER_DRIFT_COUNTRIES = new Set(EXPECTED_COUNTRIES);
+const EXPECTED_CURRENT_SCORER_DRIFT_FIELDS = new Set([
+  'overallScore',
+  'domains.infrastructure.score',
+  'pillars.live-shock-exposure.score',
+]);
 
 function loadManifest(): ResilienceReferenceManifest & {
   scorer?: { scoreCachePrefix?: string; rankingCacheKey?: string; historyKeyPrefix?: string };
@@ -98,12 +106,35 @@ describe('country resilience reference-edition recompute artifact', () => {
     }
   });
 
-  it('recomputes the sampled scores from the frozen Redis manifest within tolerance', async () => {
+  it('recomputes the sampled scores from the frozen Redis manifest within tolerance for the captured scorer version', async () => {
     const manifest = loadManifest();
     const computed = await recomputeReferenceManifest(manifest);
     const mismatches = compareReferenceResults(manifest, computed);
 
-    assert.deepEqual(mismatches, []);
+    if (manifest.scorer?.scoreCachePrefix === RESILIENCE_SCORE_CACHE_PREFIX) {
+      assert.deepEqual(mismatches, []);
+      return;
+    }
+
+    assert.equal(manifest.scorer?.scoreCachePrefix, CAPTURED_SCORE_CACHE_PREFIX);
+    assert.equal(
+      RESILIENCE_SCORE_CACHE_PREFIX,
+      CURRENT_OUTAGE_SEMANTICS_CACHE_PREFIX,
+      'historical reference-edition drift guard must be revisited on the next score-cache bump',
+    );
+    assert.equal(
+      mismatches.length,
+      EXPECTED_COUNTRIES.length * EXPECTED_CURRENT_SCORER_DRIFT_FIELDS.size,
+      `current scorer drift should be limited to outage-semantics fields: ${JSON.stringify(mismatches)}`,
+    );
+    assert.ok(
+      mismatches.every((mismatch) => EXPECTED_CURRENT_SCORER_DRIFT_COUNTRIES.has(mismatch.countryCode)),
+      `unexpected countries drifted from the historical reference manifest: ${JSON.stringify(mismatches)}`,
+    );
+    assert.ok(
+      mismatches.every((mismatch) => EXPECTED_CURRENT_SCORER_DRIFT_FIELDS.has(mismatch.field)),
+      `unexpected fields drifted from the historical reference manifest: ${JSON.stringify(mismatches)}`,
+    );
   });
 
   it('stores country-sliced source feeds instead of full global feeds', () => {

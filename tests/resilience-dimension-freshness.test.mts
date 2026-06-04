@@ -297,6 +297,42 @@ describe('readFreshnessMap (T1.5 propagation pass)', () => {
     );
   });
 
+  it('skips bare zero-record seed-meta unless the producer explicitly marks the zero as healthy', async () => {
+    const sourceKey = 'intelligence:social:reddit:v1';
+    const metaKey = resolveSeedMetaKey(sourceKey);
+
+    const bareZeroReader = async (key: string): Promise<unknown | null> => {
+      if (key === metaKey) return { fetchedAt: NOW, recordCount: 0 };
+      return null;
+    };
+    const bareZeroMap = await readFreshnessMap(bareZeroReader);
+    assert.ok(
+      !bareZeroMap.has(sourceKey),
+      'fresh fetchedAt + recordCount:0 without status/state must not mark the source fresh',
+    );
+
+    const okZeroReader = async (key: string): Promise<unknown | null> => {
+      if (key === metaKey) return { fetchedAt: NOW, recordCount: 0, status: 'ok' };
+      return null;
+    };
+    const okZeroMap = await readFreshnessMap(okZeroReader);
+    assert.equal(okZeroMap.get(sourceKey), NOW, 'status:ok explicitly allows zero-record freshness');
+
+    const stateZeroReader = async (key: string): Promise<unknown | null> => {
+      if (key === metaKey) return { fetchedAt: NOW, recordCount: 0, state: 'OK_ZERO' };
+      return null;
+    };
+    const stateZeroMap = await readFreshnessMap(stateZeroReader);
+    assert.equal(stateZeroMap.get(sourceKey), NOW, 'state:OK_ZERO explicitly allows zero-record freshness');
+
+    const stateOkZeroReader = async (key: string): Promise<unknown | null> => {
+      if (key === metaKey) return { fetchedAt: NOW, recordCount: 0, state: 'OK' };
+      return null;
+    };
+    const stateOkZeroMap = await readFreshnessMap(stateOkZeroReader);
+    assert.equal(stateOkZeroMap.get(sourceKey), NOW, 'state:OK explicitly allows zero-record freshness');
+  });
+
   it('healthPublicService classifies fresh when seed-meta:resilience:static is recent', async () => {
     // End-to-end integration for the P1 fix. healthPublicService has
     // three indicators, all sharing resilience:static:{ISO2} as their

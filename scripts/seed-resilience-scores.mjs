@@ -60,8 +60,8 @@ function requireSeedRefreshKey() {
 // v21 → v22 for country-resilience audit round 2 P2-N2/P2-N3: currencyExternal
 // inflation stability and NaN-safe blend math change published score values, so
 // seeder-written scores and rankings must share the server reader namespace.
-// v22 → v23 for PR #4088: import-HHI stale/missing source years now derate
-// certainty coverage, which participates in aggregate score weighting.
+// v22 → v23 for country-resilience audit P3-8: observed zero-outage feeds now
+// score as observed-quiet in infrastructure, matching cyberDigital.
 export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v23:';
 export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v23';
 // Must match the server-side RESILIENCE_RANKING_CACHE_TTL_SECONDS. Extended

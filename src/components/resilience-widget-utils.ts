@@ -360,6 +360,7 @@ function normalizeScoreInterval(interval: ScoreIntervalDisplayInput): { p05: num
   const p05 = Number(interval.p05);
   const p95 = Number(interval.p95);
   if (!Number.isFinite(p05) || !Number.isFinite(p95)) return null;
+  if (p05 < 0 || p05 > 100 || p95 < 0 || p95 > 100 || p05 > p95) return null;
   return { p05, p95 };
 }
 

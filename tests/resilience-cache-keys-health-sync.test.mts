@@ -11,7 +11,10 @@ import {
   RESILIENCE_INTERVAL_KEY_PREFIX,
   RESILIENCE_INTERVAL_METHODOLOGY,
 } from '../server/worldmonitor/resilience/v1/_shared.ts';
-import { RESILIENCE_INTERVAL_METHODOLOGY as SCRIPT_INTERVAL_METHODOLOGY } from '../scripts/_resilience-intervals.mjs';
+import {
+  RESILIENCE_INTERVAL_KEY_PREFIX as SCRIPT_INTERVAL_KEY_PREFIX,
+  RESILIENCE_INTERVAL_METHODOLOGY as SCRIPT_INTERVAL_METHODOLOGY,
+} from '../scripts/_resilience-intervals.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -356,6 +359,14 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
 // script copy, so a one-sided bump diverges silently: bumping only the script
 // constant would NOT invalidate ranking caches as an engineer might expect.
 describe('resilience interval methodology constant parity (#3972)', () => {
+  it('server _shared.ts and scripts/_resilience-intervals.mjs use the same interval prefix', () => {
+    assert.equal(
+      SCRIPT_INTERVAL_KEY_PREFIX,
+      RESILIENCE_INTERVAL_KEY_PREFIX,
+      'interval prefix must be bumped in both the server readers and the seed writer helper',
+    );
+  });
+
   it('server _shared.ts and scripts/_resilience-intervals.mjs agree', () => {
     assert.equal(
       SCRIPT_INTERVAL_METHODOLOGY,

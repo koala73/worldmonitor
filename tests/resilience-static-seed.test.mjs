@@ -10,6 +10,7 @@ import {
   RESILIENCE_STATIC_SOURCE_VERSION,
   buildFailureRefreshKeys,
   buildFaoAggregate,
+  buildFaoAggregateForPublish,
   buildManifest,
   buildTradeToGdpMap,
   countryRedisKey,
@@ -236,6 +237,20 @@ describe('resilience static seed CSV parsers', () => {
       assert.equal(aggregate.count, 1);
       assert.ok('SS' in aggregate.countries);
       assert.ok(!('KE' in aggregate.countries), 'Phase 2 country must be excluded');
+    });
+
+    it('excludes FAO entries outside the rankable/finalized country universe', () => {
+      const faoMap = new Map([
+        ['SS', { source: 'hdx-ipc', peopleInCrisis: 7700000, phase: 'IPC Phase 4' }],
+        ['PR', { source: 'hdx-ipc', peopleInCrisis: 500000, phase: 'IPC Phase 3' }],
+      ]);
+
+      const rankableAggregate = buildFaoAggregate(faoMap, seedYear, seededAt);
+      assert.deepEqual(Object.keys(rankableAggregate.countries), ['SS']);
+
+      const finalizedAggregate = buildFaoAggregate(faoMap, seedYear, seededAt, ['SS']);
+      assert.deepEqual(Object.keys(finalizedAggregate.countries), ['SS']);
+      assert.ok(!('PR' in finalizedAggregate.countries), 'aggregate must follow the finalized rankable country set');
     });
 
     it('skips entries with unparseable phase strings', () => {
@@ -814,6 +829,66 @@ describe('resilience static health registrations', () => {
       /resilienceStaticFao:\s*\{\s*key:\s*'seed-meta:resilience:static'/,
       'resilienceStaticFao must appear in SEED_META pointing at seed-meta:resilience:static',
     );
+  });
+
+  it('builds the FAO aggregate for publish when FAO succeeds, including valid empty-crisis years', () => {
+    const aggregate = buildFaoAggregateForPublish(
+      { fao: new Map() },
+      [],
+      { recoveredDatasets: {} },
+      2026,
+      '2026-01-01T00:00:00.000Z',
+      ['SS'],
+    );
+
+    assert.deepEqual(aggregate, {
+      countries: {},
+      count: 0,
+      fetchedAt: '2026-01-01T00:00:00.000Z',
+      seedYear: 2026,
+      source: 'hdx-ipc',
+      status: 'ok',
+    });
+  });
+
+  it('builds the post-recovery FAO aggregate instead of leaving a stale aggregate key untouched', () => {
+    const aggregate = buildFaoAggregateForPublish(
+      {
+        fao: new Map([
+          ['SS', { phase: 'IPC Phase 4', peopleInCrisis: 1_200_000, year: 2026, source: 'hdx-ipc' }],
+        ]),
+      },
+      ['fao'],
+      { recoveredDatasets: { fao: { recordCount: 1 } } },
+      2026,
+      '2026-01-01T00:00:00.000Z',
+      ['SS'],
+    );
+
+    assert.equal(aggregate.count, 1);
+    assert.equal(aggregate.countries.SS.ipcPhase, 4);
+  });
+
+  it('publishes an explicit failed/empty FAO aggregate when FAO failed and recovery found no prior rows', () => {
+    const aggregate = buildFaoAggregateForPublish(
+      { fao: new Map() },
+      ['fao'],
+      { recoveredDatasets: {} },
+      2026,
+      '2026-01-01T00:00:00.000Z',
+      ['SS'],
+    );
+
+    assert.deepEqual(aggregate, {
+      countries: {},
+      count: 0,
+      fetchedAt: '2026-01-01T00:00:00.000Z',
+      seedYear: 2026,
+      source: 'hdx-ipc',
+      status: 'error',
+      failed: true,
+      failedDatasets: ['fao'],
+    });
   });
 
   it('registers annual seed-health monitoring for resilience static', () => {
