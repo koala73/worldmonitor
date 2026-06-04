@@ -121,6 +121,8 @@ weight categorization, transit-hub exclusion lists), see
 | tradeBarriers | WTO tariff-gap barrier severity from the current one-row-per-reporter seed (`low=0`, `moderate=1`, `high=2`; legacy no-status rows count as moderate) | Lower is better | 2 - 0 | 0.30 | WTO | Weekly |
 | appliedTariffRate | Applied tariff rate, weighted mean, all products (World Bank TM.TAX.MRCH.WM.AR.ZS) | Lower is better | 20 - 0 | 0.40 | World Bank | Annual |
 
+**Tariff-overlap disclosure.** `tradePolicy` is deliberately tariff-heavy after the WTO severity repair: `tradeRestrictions` now uses WTO MFN applied-tariff severity at weight 0.30, `appliedTariffRate` uses the World Bank weighted-mean applied tariff at weight 0.40, and `tradeBarriers` uses WTO tariff-gap severity at weight 0.30. The overlap is intentional because the dimension measures policy friction after the OFAC-domicile component was removed; future tariff-source changes should preserve this disclosure or split the construct explicitly.
+
 #### Financial System Exposure
 
 Added in plan 2026-04-25-004 Phase 2 (Ship 2). Replaces the dropped OFAC-domicile signal (Phase 1) with a structural-exposure construct built from audited cross-border banking + AML/CFT data. Where the OFAC count conflated transit-hub corporate domicile with host-country risk (penalizing financial centers like UAE / Singapore / Hong Kong for shell-entity behavior), this dimension uses sources that measure actual sovereign vulnerability: short-term external debt overhang, concentrated cross-border banking exposure, and AML/CFT compliance status.
@@ -161,7 +163,8 @@ For the full construct rationale, alternatives considered (program-weight catego
 **v15 (2026-04-26) — small-state bias fix.** The exposure-weighting
 formula `shippingScore × tradeExposure + 100 × (1 − tradeExposure)`
 intentionally suppresses global-stress penalties for closed economies
-(low trade-to-GDP), but the prior `tradeExposure = 0.5` default for
+(low trade-to-GDP), where `tradeExposure = min(tradeToGdp / 50, 1.0)`;
+but the prior `tradeExposure = 0.5` default for
 countries with NO observed trade-to-GDP extended that suppression to
 tiny states with no trade-to-GDP data at all (TV, PW, NR), inflating
 their shipping/transit components to ~75 in v14. v15 removes the 0.5
@@ -685,7 +688,7 @@ Expected impact at next ranking refresh (within the 6h cache TTL after deploy): 
 
 **v17.6 — outage-feed observed-quiet semantics (audit P3-8).** `infrastructure` now treats a loaded outage feed with an empty `outages[]` array as observed quiet (score 100), matching `cyberDigital`'s no-event semantics for the same upstream feed. The previous infrastructure scorer dropped the outage component when the penalty was zero, so countries with no current outage events lost the 0.25 component instead of receiving credit for observed absence. This ships in the same `v23` score / `v23` ranking / `v18` history / `v7` interval cache generation as the import-HHI derate above — both are coverage- and score-affecting freshness fixes batched into v23, so published scores, ranking aggregates, 30-day trends, and sensitivity bands recompute from the same scorer math.
 
-**v17.7 — WTO trade-policy severity scoring (audit P2-1).** `tradePolicy` now scores WTO restriction and barrier feeds as the current one-row-per-reporter severity payload written by `scripts/seed-supply-chain-trade.mjs`: `low=0`, `moderate=1`, `high=2`, with legacy missing-status rows treated as moderate. The old count-based scorer normalized row counts against 30/40 anchors even though the seed emits at most one current row per reporter/country; that made ordinary WTO rows near-inert and never exercised the historical `IN_FORCE` multiplier. This ships in the same `v23` score / `v23` ranking / `v18` history generation as the import-HHI derate and outage semantics above, so published scores, ranking aggregates, and 30-day trends recompute from the same severity-based trade-policy baseline.
+**v17.7 — WTO trade-policy severity scoring (audit P2-1).** `tradePolicy` now scores WTO restriction and barrier feeds as the current one-row-per-reporter severity payload written by `scripts/seed-supply-chain-trade.mjs`: `low=0`, `moderate=1`, `high=2`, with legacy missing-status rows treated as moderate. The old count-based scorer normalized row counts against 30/40 anchors even though the seed emits at most one current row per reporter/country; that made ordinary WTO rows near-inert and never exercised the historical `IN_FORCE` multiplier. This ships in the same `v23` score / `v23` ranking / `v18` history / `v7` interval generation as the import-HHI derate and outage semantics above, so published scores, ranking aggregates, 30-day trends, and sensitivity bands recompute from the same severity-based trade-policy baseline.
 
 **Open construct gaps and operational caveats (documented honestly, not silently deferred):**
 
@@ -698,7 +701,7 @@ Expected impact at next ranking refresh (within the 6h cache TTL after deploy): 
 **Baseline.** Scored on domain-weighted average of 5 domains and 13 dimensions (pre-Recovery domain).
 
 - PR #2821: added the baseline-vs-stress engine and the `dataVersion` field on the response.
-- PR #2847: reverted the overall-score formula from `baseline * (1 - stressFactor)` (which over-penalized every country) to a domain-weighted sum; fixed the RSF press-freedom direction (0 means free, scored higher is better).
+- PR #2847: reverted the overall-score formula from `baseline * (1 - stressFactor)` (which over-penalized every country) to a domain-weighted sum; fixed the RSF press-freedom direction so a low RSF abuse-index value maps to higher resilience.
 - PR #2858: seed script now computes missing country scores directly via the scorer import path instead of relying on a separate ranking writer.
 
 ### v1.1 (April 2026) — Phase 1 reference-grade upgrade

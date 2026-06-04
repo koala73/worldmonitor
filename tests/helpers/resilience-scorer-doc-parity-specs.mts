@@ -25,6 +25,21 @@ export interface ScorerDocParityIndicatorSpec {
   extraction: ScorerParityExtraction;
 }
 
+export interface UnsupportedScorerDocParityIndicatorSpec {
+  id: string;
+  methodologySection: string;
+  methodologyDirection: string;
+  methodologyGoalposts: string;
+  methodologyWeight: string;
+}
+
+export interface UnsupportedScorerDocParityDimensionSpec {
+  dimension: ResilienceDimensionId;
+  reason: string;
+  indicators: readonly UnsupportedScorerDocParityIndicatorSpec[];
+  tableMarker?: string;
+}
+
 interface ScorerTableBinding {
   methodologySection: string;
   dimension: ResilienceDimensionId;
@@ -135,14 +150,67 @@ const SCORER_TABLE_BINDINGS = [
   },
 ] as const satisfies readonly ScorerTableBinding[];
 
-export const SCORER_DOC_PARITY_UNSUPPORTED_DIMENSIONS = [
-  'logisticsSupply',
-  'energy',
-  'governanceInstitutional',
-  'socialCohesion',
-  'reserveAdequacy',
-  'fuelStockDays',
-] as const satisfies readonly ResilienceDimensionId[];
+export const SCORER_DOC_PARITY_UNSUPPORTED_DIMENSION_SPECS = [
+  {
+    dimension: 'logisticsSupply',
+    reason: 'scoreLogisticsSupply applies tradeExposure attenuation to the shipping/transit rows, so simple weightedBlend extraction would miss the row-level non-linear neutralizer.',
+    indicators: [
+      { id: 'roadsPavedLogistics', methodologySection: 'Logistics & Supply', methodologyDirection: 'Higher is better', methodologyGoalposts: '0 - 100', methodologyWeight: '0.50' },
+      { id: 'shippingStress', methodologySection: 'Logistics & Supply', methodologyDirection: 'Lower is better', methodologyGoalposts: '100 - 0', methodologyWeight: '0.25' },
+      { id: 'transitDisruption', methodologySection: 'Logistics & Supply', methodologyDirection: 'Lower is better', methodologyGoalposts: '30 - 0', methodologyWeight: '0.25' },
+    ],
+  },
+  {
+    dimension: 'energy',
+    reason: 'scoreEnergy dispatches between legacy and v2 scorers behind RESILIENCE_ENERGY_V2_ENABLED; the methodology parity guard pins only the active v2 table.',
+    tableMarker: '**v2 construct (active; framing decision: Option B, power-system security).**',
+    indicators: [
+      { id: 'importedFossilDependence', methodologySection: 'Energy', methodologyDirection: 'Lower is better', methodologyGoalposts: '100 - 0', methodologyWeight: '0.35' },
+      { id: 'lowCarbonGenerationShare', methodologySection: 'Energy', methodologyDirection: 'Higher is better', methodologyGoalposts: '0 - 80', methodologyWeight: '0.20' },
+      { id: 'powerLossesPct', methodologySection: 'Energy', methodologyDirection: 'Lower is better', methodologyGoalposts: '25 - 3', methodologyWeight: '0.20' },
+      { id: 'euGasStorageStress', methodologySection: 'Energy', methodologyDirection: 'Lower is better', methodologyGoalposts: '100 - 0', methodologyWeight: '0.10' },
+      { id: 'energyPriceStress', methodologySection: 'Energy', methodologyDirection: 'Lower is better', methodologyGoalposts: '25 - 0', methodologyWeight: '0.15' },
+    ],
+  },
+  {
+    dimension: 'governanceInstitutional',
+    reason: 'scoreGovernanceInstitutional maps the six WGI values into equal-weight rows without an inline weightedBlend array literal; the doc table must pin the equal 1/6 weights.',
+    indicators: [
+      { id: 'wgiVoiceAccountability', methodologySection: 'Governance', methodologyDirection: 'Higher is better', methodologyGoalposts: '-2.5 - 2.5', methodologyWeight: '1/6' },
+      { id: 'wgiPoliticalStability', methodologySection: 'Governance', methodologyDirection: 'Higher is better', methodologyGoalposts: '-2.5 - 2.5', methodologyWeight: '1/6' },
+      { id: 'wgiGovernmentEffectiveness', methodologySection: 'Governance', methodologyDirection: 'Higher is better', methodologyGoalposts: '-2.5 - 2.5', methodologyWeight: '1/6' },
+      { id: 'wgiRegulatoryQuality', methodologySection: 'Governance', methodologyDirection: 'Higher is better', methodologyGoalposts: '-2.5 - 2.5', methodologyWeight: '1/6' },
+      { id: 'wgiRuleOfLaw', methodologySection: 'Governance', methodologyDirection: 'Higher is better', methodologyGoalposts: '-2.5 - 2.5', methodologyWeight: '1/6' },
+      { id: 'wgiControlOfCorruption', methodologySection: 'Governance', methodologyDirection: 'Higher is better', methodologyGoalposts: '-2.5 - 2.5', methodologyWeight: '1/6' },
+    ],
+  },
+  {
+    dimension: 'socialCohesion',
+    reason: 'scoreSocialCohesion has GPI-only displacement/unrest imputation branches around the weighted rows; hardcoded parity pins the published monotonicity and weights.',
+    indicators: [
+      { id: 'gpiScore', methodologySection: 'Social Cohesion', methodologyDirection: 'Lower is better', methodologyGoalposts: '3.6 - 1.0', methodologyWeight: '0.55' },
+      { id: 'displacementTotal', methodologySection: 'Social Cohesion', methodologyDirection: 'Lower is better', methodologyGoalposts: '7 - 0', methodologyWeight: '0.25' },
+      { id: 'unrestEvents', methodologySection: 'Social Cohesion', methodologyDirection: 'Lower is better', methodologyGoalposts: '10 - 0', methodologyWeight: '0.20' },
+    ],
+  },
+  {
+    dimension: 'reserveAdequacy',
+    reason: 'scoreReserveAdequacy is structurally retired and returns coverage=0; the row remains only as an experimental schema-continuity/documentation surface.',
+    indicators: [
+      { id: 'recoveryReserveMonths', methodologySection: 'Reserve Adequacy', methodologyDirection: 'Higher is better', methodologyGoalposts: '1 - 18', methodologyWeight: '1.00' },
+    ],
+  },
+  {
+    dimension: 'fuelStockDays',
+    reason: 'scoreFuelStockDays is structurally retired and returns coverage=0; the row remains only as an experimental IEA/OECD drill-down surface.',
+    indicators: [
+      { id: 'recoveryFuelStockDays', methodologySection: 'Fuel Stock Days', methodologyDirection: 'Higher is better', methodologyGoalposts: '0 - 120', methodologyWeight: '1.00' },
+    ],
+  },
+] as const satisfies readonly UnsupportedScorerDocParityDimensionSpec[];
+
+export const SCORER_DOC_PARITY_UNSUPPORTED_DIMENSIONS =
+  SCORER_DOC_PARITY_UNSUPPORTED_DIMENSION_SPECS.map((spec) => spec.dimension);
 
 export const SCORER_DOC_PARITY_NON_LINEAR_IDS = [
   'inflationStability',

@@ -59,6 +59,7 @@ import {
 import {
   SCORER_DOC_PARITY_NON_LINEAR_IDS,
   SCORER_DOC_PARITY_SPECS,
+  SCORER_DOC_PARITY_UNSUPPORTED_DIMENSION_SPECS,
   SCORER_DOC_PARITY_UNSUPPORTED_DIMENSIONS,
   STATIC_SCORER_CATALOG_PARITY_IDS,
   extractLinearNormalizerForTest,
@@ -160,6 +161,13 @@ interface MethodologyIndicatorRow extends MethodologyIndicatorSpec {
   description: string;
   source: string;
   cadence: string;
+}
+
+interface MethodologyIndicatorTextRow {
+  id: string;
+  direction: string;
+  goalposts: string;
+  weight: string;
 }
 
 describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
@@ -561,6 +569,68 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
     );
   });
 
+  it('unsupported scorer doc parity dimensions have explicit rationale', () => {
+    const unsupportedDimensions = SCORER_DOC_PARITY_UNSUPPORTED_DIMENSION_SPECS.map((spec) => spec.dimension);
+    assert.deepEqual(
+      [...unsupportedDimensions].sort(),
+      [...SCORER_DOC_PARITY_UNSUPPORTED_DIMENSIONS].sort(),
+      'Unsupported dimension list must derive from the rationale-bearing specs.',
+    );
+
+    for (const spec of SCORER_DOC_PARITY_UNSUPPORTED_DIMENSION_SPECS) {
+      assert.ok(
+        spec.reason.trim().length >= 80,
+        `${spec.dimension} unsupported parity entry must explain why automatic source extraction is not used.`,
+      );
+      assert.ok(
+        spec.indicators.length > 0,
+        `${spec.dimension} unsupported parity entry must pin at least one methodology row.`,
+      );
+      for (const indicator of spec.indicators) {
+        assert.equal(
+          indicator.methodologySection.length > 0,
+          true,
+          `${spec.dimension}.${indicator.id} must name the methodology section it guards.`,
+        );
+      }
+    }
+  });
+
+  it('unsupported scorer dimensions keep hardcoded methodology row parity', () => {
+    for (const spec of SCORER_DOC_PARITY_UNSUPPORTED_DIMENSION_SPECS) {
+      const section = spec.indicators[0]?.methodologySection;
+      assert.ok(section, `${spec.dimension} must declare at least one indicator section.`);
+      const actualRows = extractIndicatorTextRowsForSection(docText, section, spec.tableMarker);
+      const expectedIds = spec.indicators.map((row) => row.id);
+      const actualIds = actualRows.map((row) => row.id);
+      assert.deepEqual(
+        actualIds,
+        expectedIds,
+        `${section} methodology table must list exactly the hardcoded unsupported parity rows for ${spec.dimension}.`,
+      );
+
+      for (const expected of spec.indicators) {
+        const actual = actualRows.find((row) => row.id === expected.id);
+        assert.ok(actual, `${section} methodology table row for ${expected.id} not found.`);
+        assert.equal(
+          actual.direction,
+          expected.methodologyDirection,
+          `${section}.${expected.id} direction must stay pinned for unsupported scorer parity.`,
+        );
+        assert.equal(
+          actual.goalposts,
+          expected.methodologyGoalposts,
+          `${section}.${expected.id} goalposts must stay pinned for unsupported scorer parity.`,
+        );
+        assert.equal(
+          actual.weight,
+          expected.methodologyWeight,
+          `${section}.${expected.id} weight must stay pinned for unsupported scorer parity.`,
+        );
+      }
+    }
+  });
+
   it('source-derived scorer specs pin representative anchor and weight drift', () => {
     const broadband = SCORER_DOC_PARITY_SPECS.find((spec) => spec.id === 'broadband');
     assert.ok(broadband, 'broadband must be covered by scorer/doc parity specs.');
@@ -809,6 +879,36 @@ function extractIndicatorRowsForSection(text: string, sectionHeading: string): M
     });
   }
 
+  return rows;
+}
+
+function extractIndicatorTextRowsForSection(
+  text: string,
+  sectionHeading: string,
+  marker?: string,
+): MethodologyIndicatorTextRow[] {
+  let sectionText = extractSectionText(text, sectionHeading);
+  if (marker != null) {
+    const markerIndex = sectionText.indexOf(marker);
+    assert.notEqual(markerIndex, -1, `Marker "${marker}" not found in section "${sectionHeading}".`);
+    sectionText = sectionText.slice(markerIndex + marker.length);
+  }
+
+  const rows: MethodologyIndicatorTextRow[] = [];
+  for (const row of sectionText.split('\n')) {
+    if (!row.startsWith('|')) continue;
+    const cells = row
+      .split('|')
+      .map((cell) => decodeMarkdownEntityText(cell.trim()))
+      .filter(Boolean);
+    if (cells.length !== 7 || cells[0] === 'Indicator' || cells[0].startsWith('---')) continue;
+    rows.push({
+      id: cells[0],
+      direction: cells[2],
+      goalposts: cells[3],
+      weight: cells[4],
+    });
+  }
   return rows;
 }
 
