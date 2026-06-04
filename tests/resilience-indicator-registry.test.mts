@@ -27,9 +27,7 @@ const LEGACY_ONLY_ENERGY_INDICATORS = [
   'electricityConsumption',
 ] as const;
 
-const SCORER_REGISTRY_PARITY_SPECS = SCORER_DOC_PARITY_SPECS.filter(
-  (spec) => spec.dimension === 'infrastructure' || spec.dimension === 'healthPublicService',
-);
+const SCORER_REGISTRY_PARITY_SPECS = SCORER_DOC_PARITY_SPECS;
 
 describe('indicator registry', () => {
   it('covers all 22 dimensions (20 active + 2 retired)', () => {
@@ -156,7 +154,7 @@ describe('indicator registry', () => {
     );
   });
 
-  it('mirrors scorer-used infrastructure and healthPublicService blended inputs', () => {
+  it('mirrors scorer-used affected blended inputs', () => {
     const byId = new Map(INDICATOR_REGISTRY.map((spec) => [spec.id, spec]));
 
     for (const expected of SCORER_REGISTRY_PARITY_SPECS) {
@@ -170,7 +168,8 @@ describe('indicator registry', () => {
       assert.equal(spec.tier, expected.tier, `${expected.id} tier must preserve public-score registry parity`);
     }
 
-    for (const dimension of ['infrastructure', 'healthPublicService'] as const) {
+    const parityDimensions = [...new Set(SCORER_REGISTRY_PARITY_SPECS.map((spec) => spec.dimension))];
+    for (const dimension of parityDimensions) {
       const expectedIds = SCORER_REGISTRY_PARITY_SPECS
         .filter((spec) => spec.dimension === dimension)
         .map((spec) => spec.id);
