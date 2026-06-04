@@ -2512,20 +2512,35 @@ async function seedTokenPanels() {
     try { data = await fetchTokenPanelsCoinPaprika(allIds); } catch (e2) { console.warn(`[TokenPanels] CoinPaprika also failed: ${e2.message} — skipping`); return 0; }
   }
   const byId = new Map(data.map((c) => [c.id, c]));
-  const defi = { tokens: _mapTokens(_defiCfg.ids, _defiCfg.meta, byId) };
-  const ai = { tokens: _mapTokens(_aiCfg.ids, _aiCfg.meta, byId) };
-  const other = { tokens: _mapTokens(_otherCfg.ids, _otherCfg.meta, byId) };
-  if (defi.tokens.length === 0 && ai.tokens.length === 0 && other.tokens.length === 0) {
+  const panels = [
+    { key: 'market:defi-tokens:v1',  payload: { tokens: _mapTokens(_defiCfg.ids, _defiCfg.meta, byId) },  sourceVersion: 'market-defi-tokens',  label: 'DeFi' },
+    { key: 'market:ai-tokens:v1',    payload: { tokens: _mapTokens(_aiCfg.ids, _aiCfg.meta, byId) },      sourceVersion: 'market-ai-tokens',    label: 'AI' },
+    { key: 'market:other-tokens:v1', payload: { tokens: _mapTokens(_otherCfg.ids, _otherCfg.meta, byId) }, sourceVersion: 'market-other-tokens', label: 'Other' },
+  ];
+  const total = panels.reduce((n, p) => n + p.payload.tokens.length, 0);
+  if (total === 0) {
     console.warn('[TokenPanels] All panels empty after mapping — skipping Redis write to preserve cached data');
     return 0;
   }
-  const ok1 = await envelopeWrite('market:defi-tokens:v1', defi, TOKEN_PANELS_SEED_TTL, { recordCount: defi.tokens.length, sourceVersion: 'market-defi-tokens' });
-  const ok2 = await envelopeWrite('market:ai-tokens:v1', ai, TOKEN_PANELS_SEED_TTL, { recordCount: ai.tokens.length, sourceVersion: 'market-ai-tokens' });
-  const ok3 = await envelopeWrite('market:other-tokens:v1', other, TOKEN_PANELS_SEED_TTL, { recordCount: other.tokens.length, sourceVersion: 'market-other-tokens' });
-  await upstashSet('seed-meta:market:token-panels', { fetchedAt: Date.now(), recordCount: defi.tokens.length + ai.tokens.length + other.tokens.length }, 604800);
-  const total = defi.tokens.length + ai.tokens.length + other.tokens.length;
-  const allOk = ok1 && ok2 && ok3;
-  console.log(`[TokenPanels] Seeded ${defi.tokens.length} DeFi, ${ai.tokens.length} AI, ${other.tokens.length} Other (${total} total, redis: ${allOk ? 'OK' : 'PARTIAL'})`);
+  // Write each panel ONLY when it mapped >=1 token. CoinGecko's
+  // /coins/markets?ids= endpoint returns only the IDs it has data for, so a
+  // partial response (e.g. it drops the DeFi+AI IDs but keeps Other) maps an
+  // individual panel to 0 tokens. Writing that empty panel would clobber the
+  // good cached payload with recordCount=0 — blanking the UI panel AND tripping
+  // the seed-contract probe's minRecords:1 floor (false 503). Skip the write and
+  // extend the existing key's TTL so the last-good panel is preserved instead.
+  const results = [];
+  for (const p of panels) {
+    if (p.payload.tokens.length === 0) {
+      try { await upstashExpire(p.key, TOKEN_PANELS_SEED_TTL); } catch {}
+      results.push(`${p.label}:skip-empty`);
+      continue;
+    }
+    const ok = await envelopeWrite(p.key, p.payload, TOKEN_PANELS_SEED_TTL, { recordCount: p.payload.tokens.length, sourceVersion: p.sourceVersion });
+    results.push(`${p.label}:${p.payload.tokens.length}${ok ? '' : '(FAIL)'}`);
+  }
+  await upstashSet('seed-meta:market:token-panels', { fetchedAt: Date.now(), recordCount: total }, 604800);
+  console.log(`[TokenPanels] Seeded ${results.join(', ')} (${total} total)`);
   return total;
 }
 
