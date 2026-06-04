@@ -61,6 +61,7 @@ import {
   SCORER_DOC_PARITY_SPECS,
   SCORER_DOC_PARITY_UNSUPPORTED_DIMENSIONS,
   STATIC_SCORER_CATALOG_PARITY_IDS,
+  extractLinearNormalizerForTest,
   scorerDocParitySpecsBySection,
 } from './helpers/resilience-scorer-doc-parity-specs.mts';
 
@@ -577,6 +578,17 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
       broadband.registryGoalposts,
       { worst: 0, best: 40 },
       'Changing scoreInfrastructure broadband anchors now changes the generated spec and breaks doc/registry parity unless those surfaces move too.',
+    );
+  });
+
+  it('source extraction rejects mixed linear normalizers instead of guessing direction', () => {
+    assert.throws(
+      () => extractLinearNormalizerForTest(
+        'flag ? normalizeHigherBetter(value, 0, 100) : normalizeLowerBetter(value, 80, 20)',
+        'syntheticConditionalNormalizer',
+      ),
+      /mixes normalizeHigherBetter and normalizeLowerBetter/,
+      'A scorer entry with both linear normalizers must fail loudly so helper extraction cannot silently choose higher-better.',
     );
   });
 

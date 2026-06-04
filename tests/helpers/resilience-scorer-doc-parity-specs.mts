@@ -336,6 +336,10 @@ function extractNormalizer(
 ): { direction: IndicatorSpec['direction']; goalposts: IndicatorSpec['goalposts'] } {
   const higherCall = findCall(source, 'normalizeHigherBetter');
   const lowerCall = findCall(source, 'normalizeLowerBetter');
+  assert.ok(
+    !(higherCall && lowerCall),
+    `${indicatorId} mixes normalizeHigherBetter and normalizeLowerBetter in one scorer entry. Add an explicit extractor or non-linear allowlist entry instead of guessing direction.`,
+  );
   const call = higherCall ?? lowerCall;
   assert.ok(
     call,
@@ -353,6 +357,13 @@ function extractNormalizer(
     return { direction: 'higherBetter', goalposts: { worst: firstAnchor, best: secondAnchor } };
   }
   return { direction: 'lowerBetter', goalposts: { worst: secondAnchor, best: firstAnchor } };
+}
+
+export function extractLinearNormalizerForTest(
+  source: string,
+  indicatorId: string,
+): { direction: IndicatorSpec['direction']; goalposts: IndicatorSpec['goalposts'] } {
+  return extractNormalizer(source, indicatorId);
 }
 
 function findCall(source: string, name: 'normalizeHigherBetter' | 'normalizeLowerBetter'): { name: typeof name; args: string } | null {
@@ -438,7 +449,7 @@ function formatGoalposts(goalposts: IndicatorSpec['goalposts']): string {
 }
 
 function formatNumber(value: number): string {
-  return Number.isInteger(value) ? String(value) : String(value);
+  return String(value);
 }
 
 function isNonLinearId(id: string): id is (typeof SCORER_DOC_PARITY_NON_LINEAR_IDS)[number] {
