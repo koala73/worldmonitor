@@ -236,6 +236,7 @@ interface TradeRestriction {
 
 interface TradeBarrier {
   notifyingCountry?: string;
+  status?: string;
 }
 
 interface CyberThreat {
@@ -1011,11 +1012,14 @@ export function countTradeRestrictions(raw: unknown, countryCode: string): numbe
   const restrictions: TradeRestriction[] = Array.isArray((raw as { restrictions?: unknown[] } | null)?.restrictions)
     ? ((raw as { restrictions?: TradeRestriction[] }).restrictions ?? [])
     : [];
+  // Current WTO seeds emit at most one latest restriction row per reporter,
+  // but legacy affected-country rows may accumulate above the 0..2 goalpost;
+  // normalizeLowerBetter clamps that overflow to the worst score.
   return restrictions.reduce((count, item) => {
     const matches = matchesCountryIdentifier(item.reportingCountry, countryCode)
       || matchesCountryIdentifier(item.affectedCountry, countryCode);
     if (!matches) return count;
-    return count + (String(item.status || '').toUpperCase() === 'IN_FORCE' ? 3 : 1);
+    return count + tradePolicyStatusSeverity(item.status);
   }, 0);
 }
 
@@ -1023,7 +1027,21 @@ export function countTradeBarriers(raw: unknown, countryCode: string): number {
   const barriers: TradeBarrier[] = Array.isArray((raw as { barriers?: unknown[] } | null)?.barriers)
     ? ((raw as { barriers?: TradeBarrier[] }).barriers ?? [])
     : [];
-  return barriers.reduce((count, item) => count + (matchesCountryIdentifier(item.notifyingCountry, countryCode) ? 1 : 0), 0);
+  return barriers.reduce((count, item) => {
+    if (!matchesCountryIdentifier(item.notifyingCountry, countryCode)) return count;
+    return count + tradePolicyStatusSeverity(item.status);
+  }, 0);
+}
+
+function tradePolicyStatusSeverity(status: unknown): number {
+  const normalized = String(status ?? '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+  if (normalized === 'LOW') return 0;
+  if (normalized === 'MODERATE' || normalized === 'MEDIUM') return 1;
+  if (normalized === 'HIGH' || normalized === 'IN_FORCE') return 2;
+  if (normalized !== '') {
+    console.warn(`[Resilience] tradePolicyStatusSeverity: unrecognized status "${status}", defaulting to moderate`);
+  }
+  return 1;
 }
 
 function isInWtoReporterSet(raw: unknown, countryCode: string): boolean {
@@ -1356,8 +1374,8 @@ export async function scoreCurrencyExternal(
 // 0.45) was DROPPED — domicile-of-designated-entities is a corporate-finance
 // liability metric, not a country-resilience indicator. The remaining 3
 // trade-policy components are reweighted to total 1.0:
-//   WTO restrictions count → 0.30 (was 0.15)
-//   WTO barriers count     → 0.30 (was 0.15)
+//   WTO restriction severity → 0.30 (was 0.15)
+//   WTO barrier severity     → 0.30 (was 0.15)
 //   applied tariff rate    → 0.40 (was 0.25)
 // The `sanctions:country-counts:v1` seed key is no longer read by this
 // module; only `scripts/seed-sanctions-pressure.mjs` continues to WRITE it
@@ -1392,12 +1410,12 @@ export async function scoreTradePolicy(
       ? { score: null, weight: 0.30 }
       : !inRestrictionsReporterSet
         ? { score: IMPUTE.wtoData.score, weight: 0.30, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage, imputed: true, imputationClass: IMPUTE.wtoData.imputationClass }
-        : { score: normalizeLowerBetter(restrictionCount, 0, 30), weight: 0.30 },
+        : { score: normalizeLowerBetter(restrictionCount, 0, 2), weight: 0.30 },
     barriersRaw == null
       ? { score: null, weight: 0.30 }
       : !inBarriersReporterSet
         ? { score: IMPUTE.wtoData.score, weight: 0.30, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage, imputed: true, imputationClass: IMPUTE.wtoData.imputationClass }
-        : { score: normalizeLowerBetter(barrierCount, 0, 40), weight: 0.30 },
+        : { score: normalizeLowerBetter(barrierCount, 0, 2), weight: 0.30 },
     { score: tariffRate == null ? null : normalizeLowerBetter(tariffRate, 0, 20), weight: 0.40 },
   ]);
 }

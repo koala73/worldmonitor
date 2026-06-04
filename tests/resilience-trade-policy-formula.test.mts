@@ -4,8 +4,8 @@
 // `tradeSanctions` dim to `tradePolicy` and DROPPED the OFAC-domicile-
 // count component (was weight 0.45). The remaining 3 components were
 // reweighted to total 1.0:
-//   WTO restrictions count → 0.30 (was 0.15)
-//   WTO barriers count     → 0.30 (was 0.15)
+//   WTO restriction severity → 0.30 (was 0.15)
+//   WTO barrier severity     → 0.30 (was 0.15)
 //   applied tariff rate    → 0.40 (was 0.25)
 //
 // The earlier `tests/resilience-sanctions-field-mapping.test.mts`
@@ -123,39 +123,113 @@ describe('scoreTradePolicy — 3-component weighted-blend formula (Ship 1 contra
     assert.equal(result.coverage, 1.0, `full-data coverage must be exactly 1.0 (0.30+0.30+0.40), got ${result.coverage}`);
   });
 
-  it('full-data worst-case at every anchor scores 0 (formula sanity)', async () => {
-    // Restrictions = 30 (counted at IN_FORCE weight 3 each → 30 entries
-    //   would exceed the 30-best→0-worst goalpost; 10 IN_FORCE entries
-    //   suffice to hit 30 effective points).
-    // Barriers     = 40 plain notifications.
-    // Tariff       = 20 → 0 (lowerBetter, worst goalpost).
-    // Score = (0*0.30 + 0*0.30 + 0*0.40) / 1.0 = 0.
+  it('single high-severity WTO rows no longer score like near-clean count data', async () => {
+    // The supply-chain WTO seeder emits one latest row per reporter/country
+    // with status high/moderate/low. Under the old 30/40 count anchors this
+    // shape made a high restriction + high barrier score ~98 when tariff
+    // data was absent. The current scorer treats those rows as severity
+    // observations: high=2 at the 0..2 worst anchor.
+    // Tariff       = null (no static record) → contributes null score, drops weight from blend.
+    // Score = (0*0.30 + 0*0.30) / 0.60 = 0.
     const reader: ResilienceSeedReader = async (key) => {
       if (key === 'trade:restrictions:v1:tariff-overview:50') {
         return {
-          restrictions: Array.from({ length: 10 }, () => ({
+          restrictions: [{
             reportingCountry: TEST_ISO2,
-            status: 'IN_FORCE',
-          })),
+            status: 'high',
+          }],
           _reporterCountries: [TEST_ISO2],
         };
       }
       if (key === 'trade:barriers:v1:tariff-gap:50') {
         return {
-          barriers: Array.from({ length: 40 }, () => ({
+          barriers: [{
             notifyingCountry: TEST_ISO2,
-          })),
+            status: 'high',
+          }],
           _reporterCountries: [TEST_ISO2],
         };
-      }
-      if (key === `resilience:static:${TEST_ISO2}`) {
-        return { appliedTariffRate: { value: 20 } };
       }
       return null;
     };
     const result = await scoreTradePolicy(TEST_ISO2, reader);
-    assert.equal(result.score, 0, `full-data worst-case must yield 0, got ${result.score}`);
-    assert.equal(result.coverage, 1.0, `full-data coverage must be exactly 1.0, got ${result.coverage}`);
+    assert.equal(result.score, 0, `high-severity one-row WTO feed must yield 0 without tariff data, got ${result.score}`);
+    assert.equal(result.coverage, 0.60, `WTO-only coverage must remain 0.60, got ${result.coverage}`);
+  });
+
+  it('moderate one-row WTO feed discriminates instead of pinning near 100', async () => {
+    const reader: ResilienceSeedReader = async (key) => {
+      if (key === 'trade:restrictions:v1:tariff-overview:50') {
+        return {
+          restrictions: [{
+            reportingCountry: TEST_ISO2,
+            status: 'moderate',
+          }],
+          _reporterCountries: [TEST_ISO2],
+        };
+      }
+      if (key === 'trade:barriers:v1:tariff-gap:50') {
+        return {
+          barriers: [{
+            notifyingCountry: TEST_ISO2,
+            status: 'moderate',
+          }],
+          _reporterCountries: [TEST_ISO2],
+        };
+      }
+      return null;
+    };
+    const result = await scoreTradePolicy(TEST_ISO2, reader);
+    assert.equal(result.score, 50, `moderate one-row WTO feed must score at the midpoint, got ${result.score}`);
+    assert.equal(result.coverage, 0.60, `WTO-only coverage must remain 0.60, got ${result.coverage}`);
+  });
+
+  it('unrecognized WTO statuses warn and default to moderate', async () => {
+    const originalWarn = console.warn;
+    const warnings: string[] = [];
+    console.warn = (message?: unknown) => { warnings.push(String(message)); };
+    try {
+      const reader: ResilienceSeedReader = async (key) => {
+        if (key === 'trade:restrictions:v1:tariff-overview:50') {
+          return {
+            restrictions: [{
+              reportingCountry: TEST_ISO2,
+              status: 'modearte',
+            }],
+            _reporterCountries: [TEST_ISO2],
+          };
+        }
+        if (key === 'trade:barriers:v1:tariff-gap:50') {
+          return {
+            barriers: [{
+              notifyingCountry: TEST_ISO2,
+              status: 'critical',
+            }],
+            _reporterCountries: [TEST_ISO2],
+          };
+        }
+        return null;
+      };
+      const result = await scoreTradePolicy(TEST_ISO2, reader);
+      assert.equal(result.score, 50, `unknown statuses must keep moderate fallback scoring, got ${result.score}`);
+      assert.equal(warnings.length, 2, `expected one warning per unknown WTO status, got ${warnings.length}`);
+      assert.ok(
+        warnings.every((warning) => warning.includes('unrecognized status') && warning.includes('defaulting to moderate')),
+        `unexpected warning text: ${JSON.stringify(warnings)}`,
+      );
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  it('country outside the WTO reporter set keeps conservative no-data imputation', async () => {
+    const reader = emptyReporterReader(['US', 'CA']);
+    const result = await scoreTradePolicy(TEST_ISO2, reader);
+    assert.equal(result.score, 60, `non-reporter WTO countries must keep conservative imputed score 60, got ${result.score}`);
+    assert.equal(result.coverage, 0.24, `non-reporter WTO coverage must keep 0.30+0.30 at certainty 0.4, got ${result.coverage}`);
+    assert.equal(result.observedWeight, 0, `non-reporter WTO rows must not count as observed weight, got ${result.observedWeight}`);
+    assert.equal(result.imputedWeight, 0.60, `non-reporter WTO rows must keep both WTO component weights imputed, got ${result.imputedWeight}`);
+    assert.equal(result.imputationClass, 'unmonitored');
   });
 
   it('total seed outage (null reader) produces score=0, coverage=0 (no impute)', async () => {

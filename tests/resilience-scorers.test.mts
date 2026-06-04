@@ -159,12 +159,17 @@ describe('resilience scorer contracts', () => {
     // lower-is-better inflation clamp with explicit inflation-stability
     // scoring. The fixture's low-positive inflation now lands in the target
     // band instead of being scored as a distance from zero.
+    // Audit P2-1: economic 54.25 -> 56.50 after tradePolicy starts scoring
+    // the WTO one-row-per-reporter severity feed instead of row counts against
+    // 30/40 anchors. The fixture's US WTO rows are low severity, so the
+    // component now reflects a clean reporter payload rather than near-inert
+    // one-count data.
     // Issue #3971: infrastructure 79 -> 79.67 after capping the cyberDigital
     // per-snapshot cyber severity weight (fixture threats are undated, so the
     // whole snapshot is one capped bucket — same value pre/post the day-bucket
     // rework). This is a per-snapshot cap, not multi-day smoothing.
     assert.deepEqual(domainAverages, {
-      economic: 54.25,
+      economic: 56.5,
       infrastructure: 79.67,
       energy: 80,
       'social-governance': 66.25,
@@ -257,9 +262,10 @@ describe('resilience scorer contracts', () => {
     //   stress score 69.08 -> 69.63.
     // Issue #3971 cyberDigital burst cap: stress score 69.63 -> 69.91.
     // Round 2 P2-N2 inflation-stability scorer: stress score 69.91 -> 70.38.
-    //   1 - 70.38/100 = 0.2962, clamped to 0.5.
-    assert.equal(stressScore, 70.38);
-    assert.equal(stressFactor, 0.2962);
+    // Audit P2-1 tradePolicy severity scorer: stress score 70.38 -> 71.00.
+    //   1 - 71.00/100 = 0.2900, clamped to 0.5.
+    assert.equal(stressScore, 71);
+    assert.equal(stressFactor, 0.29);
 
     const overallScore = round(
       RESILIENCE_DOMAIN_ORDER.map((domainId) => {
@@ -319,9 +325,9 @@ describe('resilience scorer contracts', () => {
     // Plan 2026-05-12 debtSustainabilityGap addition: 65.64 → 66.02.
     // Issue #3971 cyberDigital burst cap: 66.02 -> 66.12.
     // Round 2 P2-N2 inflation-stability scorer: 66.12 -> 66.38.
-    // PR #4088 P2 follow-up: 66.38 -> 64.79 after missing import-HHI
-    // source years derate certainty coverage in the shared fixture.
-    assert.equal(overallScore, 64.79);
+    // PR #4088 import-HHI missing-year certainty derate: 66.38 -> 64.79.
+    // Audit P2-1 tradePolicy severity scorer (on top of the derate): 64.79 -> 65.12.
+    assert.equal(overallScore, 65.12);
   });
 
   it('baselineScore is computed from baseline + mixed dimensions only', async () => {
@@ -432,9 +438,9 @@ describe('resilience scorer contracts', () => {
     // overall +0.38 at the recovery domain weight.
     // Issue #3971 cyberDigital burst cap: 66.02 -> 66.12.
     // Round 2 P2-N2 inflation-stability scorer: 66.12 -> 66.38.
-    // PR #4088 P2 follow-up: 66.38 -> 64.79 after missing import-HHI
-    // source years derate certainty coverage in the shared fixture.
-    assert.equal(expected, 64.79, 'overallScore should match sum(domainScore * domainWeight); plan 002 §U4+§U6 64.78 -> 65.64 -> plan 2026-05-12 -> 66.02 -> issue #3971 -> 66.12 -> round2 P2-N2 -> 66.38 -> import-HHI missing-year derating -> 64.79');
+    // PR #4088 import-HHI missing-year certainty derate: 66.38 -> 64.79.
+    // Audit P2-1 tradePolicy severity scorer (on top of the derate): 64.79 -> 65.12.
+    assert.equal(expected, 65.12, 'overallScore should match sum(domainScore * domainWeight); plan 002 §U4+§U6 64.78 -> 65.64 -> plan 2026-05-12 -> 66.02 -> issue #3971 -> 66.12 -> round2 P2-N2 -> 66.38 -> import-HHI missing-year derating -> 64.79 -> audit P2-1 WTO severity -> 65.12');
   });
 
   it('stressFactor is still computed (informational) and clamped to [0, 0.5]', () => {

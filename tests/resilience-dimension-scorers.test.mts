@@ -61,13 +61,12 @@ function cyberOnlyReader(threats: unknown[]): ResilienceSeedReader {
   };
 }
 
-// Plan 2026-04-25-004 Phase 1 (Ship 1): tradePolicy formula now weights
-// applied tariff rate at 0.40. Norway's slightly higher applied tariff
-// (~5%) pulls its tradePolicy score below the US (~2.5%), while both
-// remain well above Yemen's (non-WTO-reporter, imputed). The strict
-// NO ≥ US assertion no longer holds for tradePolicy specifically; the
-// resilience contract for this dim is "developed-economy reporters
-// strictly above the imputation tier".
+// tradePolicy uses current WTO one-row-per-reporter severity rows plus the
+// applied tariff rate. Norway's high agricultural tariff-gap row pulls it
+// below the US low/low WTO shape, while both remain above Yemen's
+// non-WTO-reporter imputation tier. The strict NO >= US assertion does not
+// hold for tradePolicy specifically; the contract for this fixture is
+// "developed-economy reporters strictly above the imputation tier".
 function assertResilientAboveImputed(label: string, no: number, us: number, ye: number) {
   assert.ok(no > ye, `${label}: expected NO (${no}) > YE (${ye})`);
   assert.ok(us > ye, `${label}: expected US (${us}) > YE (${ye})`);

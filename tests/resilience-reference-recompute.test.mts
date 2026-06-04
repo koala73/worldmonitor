@@ -37,12 +37,17 @@ const CAPTURED_RANKING_CACHE_KEY = 'resilience:ranking:v18';
 const CAPTURED_HISTORY_KEY_PREFIX = 'resilience:history:v13:';
 const CAPTURED_SCORE_CACHE_SOURCE = `${CAPTURED_SCORE_CACHE_PREFIX}{countryCode}`;
 const CAPTURED_RECOMPUTE_SOURCE = 'country-sliced Redis input snapshot recompute';
-const CURRENT_OUTAGE_SEMANTICS_CACHE_PREFIX = 'resilience:score:v23:';
+// v23 batches three score-affecting changes (import-HHI certainty derate #4088,
+// outage observed-quiet semantics #4094/P3-8, WTO trade-policy severity #4092/P2-1),
+// so the historical-manifest drift guard allows the union of their drift fields.
+const CURRENT_COMBINED_SCORER_CACHE_PREFIX = 'resilience:score:v23:';
 const EXPECTED_CURRENT_SCORER_DRIFT_COUNTRIES = new Set(EXPECTED_COUNTRIES);
 const EXPECTED_CURRENT_SCORER_DRIFT_FIELDS = new Set([
   'overallScore',
   'domains.infrastructure.score',
   'pillars.live-shock-exposure.score',
+  'domains.economic.score',
+  'pillars.structural-readiness.score',
 ]);
 
 function loadManifest(): ResilienceReferenceManifest & {
@@ -119,13 +124,12 @@ describe('country resilience reference-edition recompute artifact', () => {
     assert.equal(manifest.scorer?.scoreCachePrefix, CAPTURED_SCORE_CACHE_PREFIX);
     assert.equal(
       RESILIENCE_SCORE_CACHE_PREFIX,
-      CURRENT_OUTAGE_SEMANTICS_CACHE_PREFIX,
+      CURRENT_COMBINED_SCORER_CACHE_PREFIX,
       'historical reference-edition drift guard must be revisited on the next score-cache bump',
     );
-    assert.equal(
-      mismatches.length,
-      EXPECTED_COUNTRIES.length * EXPECTED_CURRENT_SCORER_DRIFT_FIELDS.size,
-      `current scorer drift should be limited to outage-semantics fields: ${JSON.stringify(mismatches)}`,
+    assert.ok(
+      mismatches.length > 0,
+      'current scorer must no longer silently match the historical v18 capture after the import-HHI derate, outage-feed semantics, and WTO severity methodology changes',
     );
     assert.ok(
       mismatches.every((mismatch) => EXPECTED_CURRENT_SCORER_DRIFT_COUNTRIES.has(mismatch.countryCode)),

@@ -206,30 +206,17 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
   'sanctions:country-counts:v1': { NO: 2, US: 45, YE: 180, LB: 30 },
   'trade:restrictions:v1:tariff-overview:50': {
     restrictions: [
-      { reportingCountry: 'United States', status: 'IN_FORCE' },
-      { reportingCountry: 'United States', status: 'IN_FORCE' },
-      { affectedCountry: 'United States', status: 'PLANNED' },
-      { reportingCountry: 'Yemen', status: 'IN_FORCE' },
-      { reportingCountry: 'Yemen', status: 'IN_FORCE' },
-      { reportingCountry: 'Yemen', status: 'IN_FORCE' },
-      { affectedCountry: 'Yemen', status: 'PLANNED' },
-      { affectedCountry: 'Yemen', status: 'PLANNED' },
+      { reportingCountry: 'Norway', status: 'low' },
+      { reportingCountry: 'United States', status: 'low' },
     ],
-    _reporterCountries: ['US', 'CN', 'DE', 'JP', 'GB', 'IN', 'BR', 'RU', 'KR', 'AU', 'CA', 'MX', 'FR', 'IT', 'NL'],
+    _reporterCountries: ['NO', 'US', 'CN', 'DE', 'JP', 'GB', 'IN', 'BR', 'RU', 'KR', 'AU', 'CA', 'MX', 'FR', 'IT', 'NL'],
   },
   'trade:barriers:v1:tariff-gap:50': {
     barriers: [
-      { notifyingCountry: 'United States' },
-      { notifyingCountry: 'United States' },
-      { notifyingCountry: 'United States' },
-      { notifyingCountry: 'Yemen' },
-      { notifyingCountry: 'Yemen' },
-      { notifyingCountry: 'Yemen' },
-      { notifyingCountry: 'Yemen' },
-      { notifyingCountry: 'Yemen' },
-      { notifyingCountry: 'Yemen' },
+      { notifyingCountry: 'Norway', status: 'high' },
+      { notifyingCountry: 'United States', status: 'low' },
     ],
-    _reporterCountries: ['US', 'CN', 'DE', 'JP', 'GB', 'IN', 'BR', 'RU', 'KR', 'AU', 'CA', 'MX', 'FR', 'IT', 'NL'],
+    _reporterCountries: ['NO', 'US', 'CN', 'DE', 'JP', 'GB', 'IN', 'BR', 'RU', 'KR', 'AU', 'CA', 'MX', 'FR', 'IT', 'NL'],
   },
   'cyber:threats:v2': {
     threats: [
