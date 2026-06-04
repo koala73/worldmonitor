@@ -84,18 +84,33 @@ export function getProviderCredentials(
     };
   }
 
-  // Generic OpenAI-compatible endpoint via LLM_API_URL/LLM_API_KEY/LLM_MODEL
+  // Generic OpenAI-compatible endpoint via LLM_API_URL/LLM_API_KEY/LLM_MODEL.
+  // Azure OpenAI is OpenAI-compatible but authenticates API keys via the
+  // "api-key" header (Bearer is reserved for Entra/AAD tokens), so detect an
+  // Azure endpoint by host and switch the auth header accordingly.
   if (provider === 'generic') {
     const apiUrl = process.env.LLM_API_URL;
     const apiKey = process.env.LLM_API_KEY;
     if (!apiUrl || !apiKey) return null;
+
+    let isAzureOpenAi = false;
+    try {
+      isAzureOpenAi = new URL(apiUrl).hostname.toLowerCase().endsWith('.openai.azure.com');
+    } catch {
+      isAzureOpenAi = false;
+    }
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (isAzureOpenAi) {
+      headers['api-key'] = apiKey;
+    } else {
+      headers.Authorization = `Bearer ${apiKey}`;
+    }
+
     return {
       apiUrl,
       model: overrides.model || process.env.LLM_MODEL || 'gpt-3.5-turbo',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers,
     };
   }
 

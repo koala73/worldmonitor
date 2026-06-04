@@ -1,0 +1,5 @@
+# Shell scripts and container entrypoints must use LF line endings so their
+# shebang lines work when COPYed into Linux images. Windows checkouts with
+# autocrlf=true would otherwise rewrite these to CRLF and break execution.
+*.sh text eol=lf
+docker/entrypoint.sh text eol=lf

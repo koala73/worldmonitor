@@ -95,9 +95,10 @@ export async function redisPipeline(commands, timeoutMs = 5_000) {
       body: JSON.stringify(commands),
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) { console.error('[redisPipeline] non-ok HTTP', resp.status); return null; }
     return await resp.json();
-  } catch {
+  } catch (err) {
+    console.error('[redisPipeline] fetch failed:', err && err.message, err && err.cause && err.cause.message);
     return null;
   }
 }
