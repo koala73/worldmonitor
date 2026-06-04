@@ -108,6 +108,11 @@ const ACTIVE_ENERGY_V2_INDICATOR_WEIGHTS = new Map([
   ['euGasStorageStress', 0.10],
   ['energyPriceStress', 0.15],
 ]);
+const STATIC_SCORER_CATALOG_PARITY_IDS = [
+  'broadband',
+  'physiciansPer1k',
+  'healthExpPerCapitaUsd',
+] as const;
 const SCORER_TABLE_PARITY_SPECS = new Map<string, readonly MethodologyIndicatorSpec[]>([
   ['Infrastructure', [
     { id: 'electricityAccess', direction: 'Higher is better', goalposts: '40 - 100', weight: 0.30 },
@@ -591,6 +596,40 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
       indicatorSourceCatalogText,
       /PR 1 additions \(not yet in the scorer\)/,
       'indicator source catalog must not describe active energy-v2 inputs as pending/not yet in the scorer.',
+    );
+  });
+
+  it('indicator source catalog covers newly registered static scorer inputs', () => {
+    for (const id of STATIC_SCORER_CATALOG_PARITY_IDS) {
+      const block = extractIndicatorSourceBlock(indicatorSourceCatalogText, id);
+      const registrySpec = INDICATOR_REGISTRY.find((indicator) => indicator.id === id);
+      assert.ok(registrySpec, `${id} must exist in INDICATOR_REGISTRY.`);
+
+      assert.equal(
+        extractIndicatorSourceScalar(block, 'dimension'),
+        registrySpec.dimension,
+        `${id} source-catalog dimension must match INDICATOR_REGISTRY.`,
+      );
+      assert.equal(
+        Number(extractIndicatorSourceScalar(block, 'weight')),
+        registrySpec.weight,
+        `${id} source-catalog weight must match INDICATOR_REGISTRY.`,
+      );
+      assert.ok(
+        Number(extractIndicatorSourceScalar(block, 'coveragePct')) >= 0.90,
+        `${id} is active Core in the registry, so indicator-sources.yaml coveragePct must be >= 0.90.`,
+      );
+      assert.match(
+        block,
+        /reviewNotes: Active (?:infrastructure|healthPublicService) Core scorer input\./,
+        `${id} source-catalog row must identify it as an active Core scorer input.`,
+      );
+    }
+
+    assert.doesNotMatch(
+      indicatorSourceCatalogText,
+      /- indicator: whoHealthExpenditure\n/,
+      'stale whoHealthExpenditure catalog alias must not obscure the active healthExpPerCapitaUsd scorer id.',
     );
   });
 

@@ -245,6 +245,21 @@
   mechanismTestRationale: Physical infrastructure quality is the baseline capacity for delivering services during normal and crisis periods.
   constructStatus: observed-mechanism
 
+- indicator: broadband
+  dimension: infrastructure
+  domain: infrastructure
+  weight: 0.15
+  direction: higher-better
+  source: World Bank Open Data
+  seriesId: IT.NET.BBND.P2
+  seriesUrl: https://data.worldbank.org/indicator/IT.NET.BBND.P2
+  coveragePct: 0.96
+  lastObservedYear: 2024
+  license: CC-BY-4.0
+  mechanismTestRationale: Fixed broadband subscriptions per 100 people measure baseline digital infrastructure reach for resilient public and commercial service delivery.
+  constructStatus: observed-mechanism
+  reviewNotes: Active infrastructure Core scorer input. Coverage is above the 70% coverage-influence floor and the Core tier floor.
+
 # ENERGY DOMAIN (weight 0.11) --------------------------------------------
 
 - indicator: dependency
@@ -518,20 +533,35 @@
 
 # HEALTH-FOOD DOMAIN (weight 0.13) ---------------------------------------
 
-- indicator: whoHealthExpenditure
+- indicator: physiciansPer1k
   dimension: healthPublicService
   domain: health-food
-  weight: TBD
+  weight: 0.15
   direction: higher-better
   source: WHO Global Health Observatory
-  seriesId: Current health expenditure per capita, PPP
+  seriesId: HWF_0001
   seriesUrl: https://www.who.int/data/gho
-  coveragePct: 0.95
+  coveragePct: 0.99
   lastObservedYear: 2022
-  license: CC-BY-4.0
+  license: WHO public-domain/open-data
+  mechanismTestRationale: Physician density measures clinical workforce capacity available for routine service delivery and surge response.
+  constructStatus: observed-mechanism
+  reviewNotes: Active healthPublicService Core scorer input. Static seed converts WHO's per-10,000 value to physicians per 1,000 before scoring.
+
+- indicator: healthExpPerCapitaUsd
+  dimension: healthPublicService
+  domain: health-food
+  weight: 0.15
+  direction: higher-better
+  source: WHO Global Health Observatory
+  seriesId: GHED_CHE_pc_US_SHA2011
+  seriesUrl: https://www.who.int/data/gho
+  coveragePct: 0.99
+  lastObservedYear: 2022
+  license: WHO public-domain/open-data
   mechanismTestRationale: Health expenditure per capita proxies health-system capacity. FAILS the strict mechanism test — it measures SPEND, not CAPACITY. Should be replaced with surge-capacity / bed-density / ICU-density threshold signal.
   constructStatus: wealth-proxy
-  reviewNotes: PR 4 §4.9 replacement.
+  reviewNotes: Active healthPublicService Core scorer input. PR 4 §4.9 tracks replacement with a direct surge-capacity signal; kept Core here because it is already in the public scorer and clears coverage-influence tiering.
 
 - indicator: ipcPhase
   dimension: foodWater
