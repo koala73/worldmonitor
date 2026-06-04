@@ -77,6 +77,8 @@ describe('construct invariants — importConcentration', () => {
   });
 
   it('stale import-HHI fallback source years derate coverage without changing the HHI score', async () => {
+    assert.equal(computeImportHhiCertaintyCoverage(2021, 2026), 0.8);
+    assert.equal(computeImportHhiCertaintyCoverage(2020, 2026), 0.6);
     assert.equal(computeImportHhiCertaintyCoverage(2018, 2026), 0.3);
     const freshSourceYear = new Date().getFullYear() - 3;
     const fresh = await scoreWith(0.2, freshSourceYear);
