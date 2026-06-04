@@ -15,6 +15,7 @@ import {
   buildAcceptanceArtifact,
   buildGateResults,
   buildSampledCountryEvidenceEntry,
+  formatMissingPostFlipRankingSnapshotMessage,
 } from '../scripts/capture-resilience-energy-v2-acceptance.mjs';
 import { RESILIENCE_COHORTS } from './helpers/resilience-cohorts.mts';
 import { MATCHED_PAIRS } from './helpers/resilience-matched-pairs.mts';
@@ -530,6 +531,17 @@ describe('resilience validation artifacts', () => {
         `default energy-v2 acceptance samples must include ${countryCode}`,
       );
     }
+  });
+
+  it('keeps the missing post-flip ranking snapshot error operator-actionable', () => {
+    const message = formatMissingPostFlipRankingSnapshotMessage();
+
+    assert.match(message, /resilience-ranking-live-post-pr1-YYYY-MM-DD\.json/);
+    assert.match(message, /WORLDMONITOR_API_KEY=<pro-api-key>/);
+    assert.match(message, /node scripts\/freeze-resilience-ranking\.mjs/);
+    assert.match(message, /node --import tsx\/esm scripts\/capture-resilience-energy-v2-acceptance\.mjs/);
+    assert.match(message, /HTTP 401[\s\S]*get-resilience-score[\s\S]*Pro authentication required/);
+    assert.match(message, /gate-7-matched-pair[\s\S]*do not commit a synthetic artifact/);
   });
 
   it('validates any committed post-flip PR1 ranking artifacts', () => {

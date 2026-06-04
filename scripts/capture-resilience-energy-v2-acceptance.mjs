@@ -215,6 +215,32 @@ async function latestSnapshotPath(re, label) {
   return path.join(SNAPSHOT_DIR, matches.at(-1));
 }
 
+function formatMissingPostFlipRankingSnapshotMessage() {
+  return [
+    'No post-flip PR1 resilience ranking snapshot found in docs/snapshots/.',
+    '',
+    'Required prerequisite:',
+    '  docs/snapshots/resilience-ranking-live-post-pr1-YYYY-MM-DD.json',
+    '',
+    'Capture it with production credentials; the freeze script verifies score anchors through get-resilience-score:',
+    '  API_BASE=https://www.worldmonitor.app \\',
+    '    WORLDMONITOR_API_KEY=<pro-api-key> \\',
+    '    node scripts/freeze-resilience-ranking.mjs',
+    '  mv "docs/snapshots/resilience-ranking-$(date +%Y-%m-%d).json" \\',
+    '    "docs/snapshots/resilience-ranking-live-post-pr1-$(date +%Y-%m-%d).json"',
+    '',
+    'Then rerun this harness:',
+    '  API_BASE=https://www.worldmonitor.app \\',
+    '    WORLDMONITOR_API_KEY=<pro-api-key> \\',
+    '    node --import tsx/esm scripts/capture-resilience-energy-v2-acceptance.mjs',
+    '',
+    'Expected unauthenticated failure mode:',
+    '  HTTP 401 from /api/resilience/v1/get-resilience-score: Pro authentication required',
+    '',
+    'If the harness prints acceptanceGates with gate-7-matched-pair failures, do not commit a synthetic artifact; attach the gate JSON to the closeout issue and wait for the P1 matched-pair workstream.',
+  ].join('\n');
+}
+
 async function resolveBaselineSnapshotPath() {
   const explicit = resolveSnapshotPath(process.env.BASELINE_RANKING_SNAPSHOT, 'BASELINE_RANKING_SNAPSHOT');
   if (explicit) return explicit;
@@ -224,7 +250,14 @@ async function resolveBaselineSnapshotPath() {
 async function resolvePostFlipSnapshotPath() {
   const explicit = resolveSnapshotPath(process.env.POST_FLIP_RANKING_SNAPSHOT, 'POST_FLIP_RANKING_SNAPSHOT');
   if (explicit) return explicit;
-  return latestSnapshotPath(POST_FLIP_RANKING_RE, 'post-flip PR1 resilience ranking snapshot');
+  try {
+    return await latestSnapshotPath(POST_FLIP_RANKING_RE, 'post-flip PR1 resilience ranking snapshot');
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('No post-flip PR1 resilience ranking snapshot found')) {
+      throw new Error(formatMissingPostFlipRankingSnapshotMessage());
+    }
+    throw err;
+  }
 }
 
 function relativeRepoPath(filePath) {
@@ -547,6 +580,7 @@ export {
   buildExtractionCoverage,
   buildGateResults,
   buildSampledCountryEvidenceEntry,
+  formatMissingPostFlipRankingSnapshotMessage,
   snapshotScores,
   snapshotTotals,
 };
