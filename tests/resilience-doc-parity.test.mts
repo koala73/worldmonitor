@@ -56,6 +56,10 @@ import {
 import {
   RANKABLE_UNIVERSE_SIZE,
 } from '../server/worldmonitor/resilience/v1/_rankable-universe.ts';
+import {
+  STATIC_SCORER_CATALOG_PARITY_IDS,
+  scorerDocParitySpecsBySection,
+} from './helpers/resilience-scorer-doc-parity-specs.mts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DOC_PATH = resolve(here, '../docs/methodology/country-resilience-index.mdx');
@@ -108,35 +112,7 @@ const ACTIVE_ENERGY_V2_INDICATOR_WEIGHTS = new Map([
   ['euGasStorageStress', 0.10],
   ['energyPriceStress', 0.15],
 ]);
-const STATIC_SCORER_CATALOG_PARITY_IDS = [
-  'broadband',
-  'physiciansPer1k',
-  'healthExpPerCapitaUsd',
-] as const;
-const SCORER_TABLE_PARITY_SPECS = new Map<string, readonly MethodologyIndicatorSpec[]>([
-  ['Infrastructure', [
-    { id: 'electricityAccess', direction: 'Higher is better', goalposts: '40 - 100', weight: 0.30 },
-    { id: 'roadsPavedInfra', direction: 'Higher is better', goalposts: '0 - 100', weight: 0.30 },
-    { id: 'infraOutages', direction: 'Lower is better', goalposts: '20 - 0', weight: 0.25 },
-    { id: 'broadband', direction: 'Higher is better', goalposts: '0 - 40', weight: 0.15 },
-  ]],
-  ['Social Cohesion', [
-    { id: 'gpiScore', direction: 'Lower is better', goalposts: '3.6 - 1.0', weight: 0.55 },
-    { id: 'displacementTotal', direction: 'Lower is better', goalposts: '7 - 0', weight: 0.25 },
-    { id: 'unrestEvents', direction: 'Lower is better', goalposts: '10 - 0', weight: 0.20 },
-  ]],
-  ['Conflict & Displacement', [
-    { id: 'ucdpConflict', direction: 'Lower is better', goalposts: '15 - 0', weight: 0.65 },
-    { id: 'displacementHosted', direction: 'Lower is better', goalposts: '7 - 0', weight: 0.35 },
-  ]],
-  ['Health & Public Service', [
-    { id: 'uhcIndex', direction: 'Higher is better', goalposts: '40 - 90', weight: 0.35 },
-    { id: 'measlesCoverage', direction: 'Higher is better', goalposts: '50 - 99', weight: 0.25 },
-    { id: 'hospitalBeds', direction: 'Higher is better', goalposts: '0 - 8', weight: 0.10 },
-    { id: 'physiciansPer1k', direction: 'Higher is better', goalposts: '0 - 5', weight: 0.15 },
-    { id: 'healthExpPerCapitaUsd', direction: 'Higher is better', goalposts: '20 - 3000', weight: 0.15 },
-  ]],
-]);
+const SCORER_TABLE_PARITY_SPECS = scorerDocParitySpecsBySection();
 const LEGACY_ONLY_ENERGY_INDICATORS = new Set([
   'energyImportDependency',
   'gasShare',
@@ -514,12 +490,12 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
         assert.ok(actual, `${section} methodology table row for ${expected.id} not found.`);
         assert.equal(
           actual.direction,
-          expected.direction,
+          expected.methodologyDirection,
           `${section}.${expected.id} direction must match scorer semantics.`,
         );
         assert.equal(
           actual.goalposts,
-          expected.goalposts,
+          expected.methodologyGoalposts,
           `${section}.${expected.id} goalposts must match scorer normalizeHigherBetter/normalizeLowerBetter anchors.`,
         );
         assert.equal(
