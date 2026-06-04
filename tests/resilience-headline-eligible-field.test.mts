@@ -160,6 +160,16 @@ describe('headlineEligible field — Plan 2026-04-26-002 §U3 (PR 2)', () => {
       const nowMs = Date.now();
       const freshFixtures = {
         ...RESILIENCE_FIXTURES,
+        'resilience:recovery:import-hhi:v1': {
+          ...(RESILIENCE_FIXTURES['resilience:recovery:import-hhi:v1'] as Record<string, unknown>),
+          countries: {
+            ...((RESILIENCE_FIXTURES['resilience:recovery:import-hhi:v1'] as { countries: Record<string, unknown> }).countries),
+            US: {
+              ...((RESILIENCE_FIXTURES['resilience:recovery:import-hhi:v1'] as { countries: Record<string, Record<string, unknown>> }).countries.US),
+              year: new Date(nowMs).getUTCFullYear(),
+            },
+          },
+        },
         'seed-meta:resilience:static': {
           ...(RESILIENCE_FIXTURES['seed-meta:resilience:static'] as Record<string, unknown>),
           fetchedAt: nowMs,

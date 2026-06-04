@@ -86,6 +86,19 @@ describe('construct invariants — importConcentration', () => {
     assert.equal(stale.observedWeight, 1);
     assert.equal(stale.imputationClass, null);
   });
+
+  it('missing import-HHI source years derate coverage without changing the HHI score', async () => {
+    assert.equal(computeImportHhiCertaintyCoverage(undefined, 2026), 0.3);
+    assert.equal(computeImportHhiCertaintyCoverage(null, 2026), 0.3);
+    assert.equal(computeImportHhiCertaintyCoverage(Number.NaN, 2026), 0.3);
+    const freshSourceYear = new Date().getFullYear() - 3;
+    const fresh = await scoreWith(0.2, freshSourceYear);
+    const missingYear = await scoreWith(0.2);
+    assert.equal(missingYear.score, fresh.score);
+    assert.equal(missingYear.coverage, 0.3);
+    assert.equal(missingYear.observedWeight, 1);
+    assert.equal(missingYear.imputationClass, null);
+  });
 });
 
 describe('construct invariants — externalDebtCoverage (Greenspan-Guidotti anchor)', () => {

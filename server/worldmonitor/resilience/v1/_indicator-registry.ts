@@ -1260,7 +1260,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'recoveryImportHhi',
     dimension: 'importConcentration',
-    description: 'Herfindahl-Hirschman Index of import partner concentration (UN Comtrade HS2 bilateral); higher HHI = more dependent on fewer partners = slower recovery if a key partner is disrupted. Source years outside the normal 4-year Comtrade window derate certainty coverage.',
+    description: 'Herfindahl-Hirschman Index of import partner concentration (UN Comtrade HS2 bilateral); higher HHI = more dependent on fewer partners = slower recovery if a key partner is disrupted. Missing source years and years outside the normal 4-year Comtrade window derate certainty coverage.',
     direction: 'lowerBetter',
     goalposts: { worst: 5000, best: 0 },
     weight: 1.0,

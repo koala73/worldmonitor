@@ -229,7 +229,10 @@ describe('resilience scorer contracts', () => {
     // fiscalSpace re-weighting (0.4/0.3/0.3 → 0.25/0.20/0.20/0.35) +
     // new gap sub-score lifts US fiscalSpace, which is in the recovery
     // domain feeding the baseline aggregate.
-    assert.equal(baselineScore, 63.29);
+    // PR #4088 P2 follow-up: 63.29 -> 61.81. Shared fixtures intentionally
+    // omit import-HHI source years, so the scorer keeps the HHI score but
+    // derates certainty coverage to the stale/missing-year floor.
+    assert.equal(baselineScore, 61.81);
     // PR 3 §3.5: 65.84 → 67.85 (fuelStockDays retirement) → 67.21
     // (currencyExternal rebuilt on IMF inflation + WB reserves, coverage
     // shifts and US stress score moves).
@@ -316,7 +319,9 @@ describe('resilience scorer contracts', () => {
     // Plan 2026-05-12 debtSustainabilityGap addition: 65.64 → 66.02.
     // Issue #3971 cyberDigital burst cap: 66.02 -> 66.12.
     // Round 2 P2-N2 inflation-stability scorer: 66.12 -> 66.38.
-    assert.equal(overallScore, 66.38);
+    // PR #4088 P2 follow-up: 66.38 -> 64.79 after missing import-HHI
+    // source years derate certainty coverage in the shared fixture.
+    assert.equal(overallScore, 64.79);
   });
 
   it('baselineScore is computed from baseline + mixed dimensions only', async () => {
@@ -427,7 +432,9 @@ describe('resilience scorer contracts', () => {
     // overall +0.38 at the recovery domain weight.
     // Issue #3971 cyberDigital burst cap: 66.02 -> 66.12.
     // Round 2 P2-N2 inflation-stability scorer: 66.12 -> 66.38.
-    assert.equal(expected, 66.38, 'overallScore should match sum(domainScore * domainWeight); plan 002 §U4+§U6 64.78 -> 65.64 -> plan 2026-05-12 -> 66.02 -> issue #3971 -> 66.12 -> round2 P2-N2 -> 66.38');
+    // PR #4088 P2 follow-up: 66.38 -> 64.79 after missing import-HHI
+    // source years derate certainty coverage in the shared fixture.
+    assert.equal(expected, 64.79, 'overallScore should match sum(domainScore * domainWeight); plan 002 §U4+§U6 64.78 -> 65.64 -> plan 2026-05-12 -> 66.02 -> issue #3971 -> 66.12 -> round2 P2-N2 -> 66.38 -> import-HHI missing-year derating -> 64.79');
   });
 
   it('stressFactor is still computed (informational) and clamped to [0, 0.5]', () => {

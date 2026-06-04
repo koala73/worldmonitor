@@ -2205,7 +2205,9 @@ export function computeImportHhiCertaintyCoverage(
   sourceYear: number | null | undefined,
   nowYear = new Date().getFullYear(),
 ): number {
-  if (!Number.isFinite(sourceYear) || !Number.isFinite(nowYear)) return 1;
+  if (!Number.isFinite(sourceYear) || !Number.isFinite(nowYear)) {
+    return IMPORT_HHI_MIN_STALE_CERTAINTY_COVERAGE;
+  }
   const ageYears = Math.trunc(nowYear) - Math.trunc(sourceYear as number);
   if (ageYears <= IMPORT_HHI_FULL_CONFIDENCE_MAX_SOURCE_AGE_YEARS) return 1;
   const staleYears = ageYears - IMPORT_HHI_FULL_CONFIDENCE_MAX_SOURCE_AGE_YEARS;
