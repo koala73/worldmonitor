@@ -5728,6 +5728,7 @@ async function startShippingStressSeedLoop() {
 // ─────────────────────────────────────────────────────────────
 
 const SOCIAL_VELOCITY_REDIS_KEY = 'intelligence:social:reddit:v1';
+const SOCIAL_VELOCITY_SEED_META_KEY = 'seed-meta:intelligence:social-reddit';
 // Hourly cadence (bumped from 10min). Reddit rate-limits Railway datacenter IPs
 // after ~50min of 10-min polling (empirically observed 2026-04-16: both subs
 // returned HTTP 403 on every cycle after 16:26 UTC). Dropping the success-path
@@ -5740,13 +5741,32 @@ let socialVelocityInFlight = false;
 let socialVelocityRetryTimer = null;
 const SOCIAL_VELOCITY_RETRY_MS = 20 * 60 * 1000;
 
-async function fetchRedditHot(subreddit) {
+function socialVelocityMetaErrorReason(reason) {
+  return String(reason || 'unknown').replace(/\s+/g, ' ').slice(0, 240);
+}
+
+async function writeSocialVelocityFailureMeta(reason) {
+  return upstashSet(SOCIAL_VELOCITY_SEED_META_KEY, {
+    fetchedAt: Date.now(),
+    recordCount: 0,
+    sourceVersion: 'social-reddit',
+    status: 'error',
+    errorReason: socialVelocityMetaErrorReason(reason),
+  }, 604800);
+}
+
+async function fetchRedditHot(subreddit, failures = []) {
   const url = `https://www.reddit.com/r/${subreddit}/hot.json?limit=25&raw_json=1`;
   const resp = await fetch(url, {
     headers: { Accept: 'application/json', 'User-Agent': 'WorldMonitor/1.0 (contact: info@worldmonitor.app)' },
     signal: AbortSignal.timeout(10000),
   });
-  if (!resp.ok) { console.warn(`[SocialVelocity] Reddit r/${subreddit} HTTP ${resp.status}`); return []; }
+  if (!resp.ok) {
+    const failure = `r/${subreddit} HTTP ${resp.status}`;
+    failures.push(failure);
+    console.warn(`[SocialVelocity] Reddit ${failure}`);
+    return [];
+  }
   const data = await resp.json();
   return (data?.data?.children || []).map(c => c.data).filter(Boolean);
 }
@@ -5761,9 +5781,10 @@ async function seedSocialVelocity() {
     const nowSec = Date.now() / 1000;
     const allPosts = [];
     const seenUrls = new Set();
+    const fetchFailures = [];
     for (const sub of REDDIT_SUBREDDITS) {
       await new Promise(r => setTimeout(r, 500));
-      const posts = await fetchRedditHot(sub);
+      const posts = await fetchRedditHot(sub, fetchFailures);
       for (const p of posts) {
         // Deduplicate cross-subreddit reposts of the same article URL.
         const articleUrl = p.url || '';
@@ -5789,6 +5810,12 @@ async function seedSocialVelocity() {
     if (!allPosts.length) {
       console.warn('[SocialVelocity] No posts — extending TTL, retrying in 20min');
       try { await upstashExpire(SOCIAL_VELOCITY_REDIS_KEY, SOCIAL_VELOCITY_TTL); } catch {}
+      try {
+        const reason = fetchFailures.length
+          ? `empty_reddit_response: ${fetchFailures.join('; ')}`
+          : 'empty_reddit_response';
+        await writeSocialVelocityFailureMeta(reason);
+      } catch {}
       socialVelocityRetryTimer = setTimeout(() => { seedSocialVelocity().catch(() => {}); }, SOCIAL_VELOCITY_RETRY_MS);
       return;
     }
@@ -5796,11 +5823,17 @@ async function seedSocialVelocity() {
     const top = allPosts.slice(0, 30);
     const payload = { posts: top, fetchedAt: Date.now() };
     const ok = await envelopeWrite(SOCIAL_VELOCITY_REDIS_KEY, payload, SOCIAL_VELOCITY_TTL, { recordCount: top.length, sourceVersion: 'social-reddit' });
-    await upstashSet('seed-meta:intelligence:social-reddit', { fetchedAt: Date.now(), recordCount: top.length }, 604800);
+    if (ok) {
+      await upstashSet(SOCIAL_VELOCITY_SEED_META_KEY, { fetchedAt: Date.now(), recordCount: top.length, sourceVersion: 'social-reddit', status: 'ok' }, 604800);
+    } else {
+      console.error('[SocialVelocity] Canonical write failed. Marking seed-meta error.');
+      try { await writeSocialVelocityFailureMeta('canonical_write_failed'); } catch {}
+    }
     console.log(`[SocialVelocity] Seeded ${top.length} posts (redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   } catch (e) {
     console.warn('[SocialVelocity] Seed error:', e?.message || e, '— extending TTL, retrying in 20min');
     try { await upstashExpire(SOCIAL_VELOCITY_REDIS_KEY, SOCIAL_VELOCITY_TTL); } catch {}
+    try { await writeSocialVelocityFailureMeta(`seed_error: ${e?.message || e}`); } catch {}
     socialVelocityRetryTimer = setTimeout(() => { seedSocialVelocity().catch(() => {}); }, SOCIAL_VELOCITY_RETRY_MS);
   } finally {
     socialVelocityInFlight = false;

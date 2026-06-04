@@ -86,6 +86,22 @@ test('classifyKey: present-but-stale seed → STALE_SEED (warn), data still pres
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 
+test('classifyKey: socialVelocity error seed-meta → SEED_ERROR while data is preserved', () => {
+  const entry = classifyKey('socialVelocity', BOOTSTRAP_KEYS.socialVelocity, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.socialVelocity]: 1234 },
+      metaValues: {
+        'seed-meta:intelligence:social-reddit': seedMeta({
+          status: 'error',
+          errorReason: 'empty_reddit_response: r/worldnews HTTP 403; r/geopolitics HTTP 403',
+        }),
+      },
+    }));
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+  assert.equal(entry.records, 1);
+});
+
 test('classifyKey: empty bootstrap key (no cascade) → EMPTY (crit)', () => {
   const entry = classifyKey('earthquakes', BOOTSTRAP_KEYS.earthquakes, { allowOnDemand: false },
     makeCtx({ metaValues: { 'seed-meta:seismology:earthquakes': seedMeta() } }));
