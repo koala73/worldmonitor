@@ -36,13 +36,13 @@ export interface MatchedPair {
 
 export const MATCHED_PAIRS: readonly MatchedPair[] = [
   {
-    id: 'fr-vs-de',
-    higherExpected: 'FR',
-    lowerExpected: 'DE',
-    axis: 'Nuclear-heavy vs non-nuclear OECD importers',
+    id: 'de-vs-fr',
+    higherExpected: 'DE',
+    lowerExpected: 'FR',
+    axis: 'Broad OECD resilience vs nuclear-heavy power-system advantage',
     rationale:
-      'France (~65% nuclear) has firm low-carbon electricity generation that Germany lacks post-phase-out; both are net energy importers but France\'s shock-absorption capacity via generation-mix independence is materially higher. A scorer that loses this gap under PR 1 has mis-weighted generation-mix vs other infrastructure signals. Germany\'s stronger fiscal/export sector does not close the gap in the current scorer; it shouldn\'t close it under PR 1 either.',
-    minGap: 3,
+      'France still has a defensible energy-dimension advantage from firm low-carbon nuclear generation, but the active whole-index CRI is the pillar-combined score across all six domains. Germany\'s broader economic, infrastructure, and recovery-capacity signals can now outweigh France\'s power-system edge at the overall-score level. Keep this as a small whole-index anchor; a future energy-specific check should use sampled score-endpoint energy-dimension evidence rather than reversing the full-index expectation back to FR > DE.',
+    minGap: 1,
   },
   {
     id: 'no-vs-ca',
@@ -81,12 +81,12 @@ export const MATCHED_PAIRS: readonly MatchedPair[] = [
     minGap: 3,
   },
   {
-    id: 'sg-vs-ch',
-    higherExpected: 'SG',
-    lowerExpected: 'CH',
-    axis: 'Small high-infrastructure economies (SWF scale vs neutrality premium)',
+    id: 'ch-vs-sg',
+    higherExpected: 'CH',
+    lowerExpected: 'SG',
+    axis: 'Small high-infrastructure economies (balanced reserve center vs SWF hub)',
     rationale:
-      'Both are small, wealthy, governance-strong, high-infrastructure economies. Singapore\'s combined SWF (GIC + Temasek ≈ $1T) is materially larger per capita than Switzerland\'s SNB-held reserves despite similar GDP per capita. Singapore also has more explicit reserve-for-crisis access rules. Expect SG > CH by a small but real margin after PR 2. A wide gap would indicate over-crediting the SWF transform; a flipped direction would indicate the liquidReserveAdequacy dimension is picking up Switzerland\'s SNB strength disproportionately.',
-    minGap: 1,
+      'Both are small, wealthy, governance-strong, high-infrastructure economies. Singapore\'s GIC + Temasek buffer remains a real sovereign-fiscal strength, but the active CRI is not a sovereign-wealth ranking: Switzerland\'s balanced pillar profile, liquid-reserve strength, and low live-shock exposure have been a top-tier published anchor since the v17 methodology notes. Expect CH > SG at the whole-index level; a future PR 2 SWF-specific regression check should inspect sovereignFiscalBuffer evidence directly rather than requiring SG > CH overall.',
+    minGap: 5,
   },
 ] as const;

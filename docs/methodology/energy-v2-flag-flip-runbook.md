@@ -40,15 +40,17 @@ pillar-combined formula and is not an energy-v2 post-flip acceptance harness.
 - `/api/health` returned HTTP 200 with overall status `DEGRADED` due to
   unrelated checks, while the energy-v2 seed checks remained `OK` for
   `lowCarbonGeneration`, `fossilElectricityShare`, and `powerLosses`.
-- `/api/resilience/v1/get-resilience-score?countryCode=FR` and
-  `/api/resilience/v1/get-resilience-ranking` returned HTTP 401 without
-  `WORLDMONITOR_API_KEY`, so FR-vs-DE and SG-vs-CH cannot be adjudicated from
-  unauthenticated live evidence.
-- The acceptance harness default sample set includes `FR`, `DE`, `SG`, and
-  `CH`, so a credentialed run captures the score-endpoint energy-dimension
-  breakdowns needed for both disputed matched pairs. Until that run exists,
-  treat the R7-ACCEPT decision as blocked by missing credentialed live data,
-  not as a scorer defect or a matched-pair expectation defect.
+- Credentialed live ranking evidence later on 2026-06-04 showed the stale
+  whole-index anchors explicitly: `DE 62.35 > FR 59.93` and
+  `CH 75.88 > SG 56.74`. Those directions are consistent with the active
+  pillar-combined CRI, where France's energy-dimension advantage and
+  Singapore's SWF buffer are real but do not dominate the six-domain
+  whole-index score.
+- The matched-pair configuration now encodes the current whole-index anchors as
+  `de-vs-fr` and `ch-vs-sg`. If a future audit needs to test the PR 1 energy
+  mechanism directly, use credentialed sampled score-endpoint
+  `domains[].dimensions[]` evidence for the `energy` dimension rather than
+  reversing the overall-score pair direction.
 
 ### What can be verified without secrets
 

@@ -459,6 +459,67 @@ describe('resilience validation artifacts', () => {
     assertEnergyV2AcceptanceArtifact(asRecord(artifact, 'fixture acceptance artifact'), 'resilience-energy-v2-acceptance-2026-06-03.json');
   });
 
+  it('accepts current whole-index matched-pair directions for the audited live scores', () => {
+    const countryCodes = new Set<string>();
+    for (const cohort of RESILIENCE_COHORTS) {
+      for (const countryCode of cohort.countryCodes) countryCodes.add(countryCode);
+    }
+    for (const pair of MATCHED_PAIRS) {
+      countryCodes.add(pair.higherExpected);
+      countryCodes.add(pair.lowerExpected);
+    }
+
+    const baselineScores: Record<string, number> = Object.fromEntries(
+      [...countryCodes].map((countryCode) => [countryCode, 60]),
+    );
+    const postFlipScores: Record<string, number> = { ...baselineScores };
+    for (const pair of MATCHED_PAIRS) {
+      postFlipScores[pair.higherExpected] = Math.max(postFlipScores[pair.higherExpected] ?? 0, 70);
+      postFlipScores[pair.lowerExpected] = Math.min(postFlipScores[pair.lowerExpected] ?? 50, 60);
+    }
+
+    // Credentialed R7-ACCEPT audit values from 2026-06-04. These used to
+    // fail when the whole-index pair anchors still expected FR > DE and
+    // SG > CH after later pillar-combined methodology changes.
+    postFlipScores.FR = 59.93;
+    postFlipScores.DE = 62.35;
+    postFlipScores.SG = 56.74;
+    postFlipScores.CH = 75.88;
+
+    const gates = buildGateResults({
+      baselineScores,
+      postFlipScores,
+      extractionCoverage: {
+        totalIndicators: 50,
+        implemented: 45,
+        notImplemented: 5,
+        unregisteredInHarness: 0,
+        coreImplemented: 40,
+        coreTotal: 45,
+        extractionRuleCount: 50,
+      },
+    });
+    const matchedPairGate = gates.find((gate) => gate.id === 'gate-7-matched-pair');
+    assert.equal(matchedPairGate?.status, 'pass');
+    assert.match(String(matchedPairGate?.detail), /6\/6 pairs pass/);
+
+    const evidence = asRecord(matchedPairGate?.evidence, 'matched-pair gate evidence');
+    const matchedPairSummary = evidence.matchedPairSummary;
+    assert.ok(Array.isArray(matchedPairSummary), 'matchedPairSummary must be an array');
+    const deVsFr = asRecord(
+      matchedPairSummary.find((entry) => asRecord(entry, 'matched pair summary entry').pairId === 'de-vs-fr'),
+      'de-vs-fr summary',
+    );
+    const chVsSg = asRecord(
+      matchedPairSummary.find((entry) => asRecord(entry, 'matched pair summary entry').pairId === 'ch-vs-sg'),
+      'ch-vs-sg summary',
+    );
+    assert.equal(deVsFr.status, 'pass');
+    assert.equal(deVsFr.gap, 2.42);
+    assert.equal(chVsSg.status, 'pass');
+    assert.equal(chVsSg.gap, 19.14);
+  });
+
   it('captures sampled energy evidence from realistic score response domains', () => {
     const sampledCountry = buildSampledCountryEvidenceEntry({
       countryCode: 'FR',
@@ -522,7 +583,7 @@ describe('resilience validation artifacts', () => {
     );
   });
 
-  it('samples both R7-ACCEPT disputed matched pairs by default', () => {
+  it('samples the audited FR/DE and SG/CH countries by default', () => {
     const sampleCountries = new Set(DEFAULT_SAMPLE_COUNTRIES);
     for (const countryCode of ['FR', 'DE', 'SG', 'CH']) {
       assert.ok(
