@@ -399,6 +399,9 @@ const EXTRACTION_RULES = {
 // before the includes() calls at L770-776).
 const AQUASTAT_STRESS_KEYWORDS = ['stress', 'withdrawal', 'dependency'];
 const AQUASTAT_AVAILABILITY_KEYWORDS = ['availability', 'renewable', 'access'];
+// Keep in sync with server/worldmonitor/resilience/v1/_dimension-scorers.ts.
+// This plain .mjs comparison harness duplicates the documented six-slot WGI
+// contract instead of importing TypeScript scorer internals.
 const WGI_INDICATOR_KEYS = ['VA.EST', 'PV.EST', 'GE.EST', 'RQ.EST', 'RL.EST', 'CC.EST'];
 
 function normalizeLowerBetter(value, best, worst) {

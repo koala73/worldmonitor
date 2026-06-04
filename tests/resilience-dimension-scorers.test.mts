@@ -132,7 +132,8 @@ describe('resilience dimension scorers', () => {
         },
       },
     };
-    const expectedScore = roundScore(values.reduce((sum, value) => sum + ((value + 2.5) / 5) * 100, 0) / values.length);
+    const expectedSlotScores = values.map((value) => roundScore(((value + 2.5) / 5) * 100));
+    const expectedScore = roundScore(expectedSlotScores.reduce((sum, score) => sum + score, 0) / expectedSlotScores.length);
 
     const result = await scoreGovernanceInstitutional('XX', staticRecordReader(staticRecord));
 

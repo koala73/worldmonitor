@@ -691,6 +691,8 @@ const IMPUTATION_CLASS_TIE_BREAK: readonly ImputationClass[] = [
 ];
 
 const MINUTE_MS = 60 * 1000;
+// Keep in sync with scripts/compare-resilience-current-vs-proposed.mjs. The
+// methodology documents exactly these six equal-weight WGI indicator slots.
 const WGI_INDICATOR_KEYS = ['VA.EST', 'PV.EST', 'GE.EST', 'RQ.EST', 'RL.EST', 'CC.EST'] as const;
 
 function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
