@@ -9,8 +9,9 @@
 // score moves in the documented direction.
 //
 // Scope (minimum viable, expanded in PR 0.5 follow-ups):
-//   - scoreEnergy: dependency, gasShare, coalShare, renewShare, electricityConsumption
-//     (all five direction claims the current scorer makes — PR 1 overturns three of them)
+//   - scoreEnergy legacy rollback: dependency, gasShare, coalShare, renewShare,
+//     electricityConsumption. Active energy-v2 direction coverage lives in
+//     resilience-energy-v2.test.mts.
 //   - scoreReserveAdequacy: reserveMonths
 //   - scoreFiscalSpace: govRevenuePct, fiscalBalancePct, debtToGdpPct
 //   - scoreExternalDebtCoverage: debtToReservesRatio
@@ -23,7 +24,7 @@
 // test logic.
 
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { after, before, describe, it } from 'node:test';
 
 import {
   scoreEnergy,
@@ -170,14 +171,25 @@ describe('resilience dimension monotonicity — scoreFoodWater', () => {
   });
 });
 
-describe('resilience dimension monotonicity — scoreEnergy (current construct)', () => {
-  // NOTE: these tests pin the CURRENT scorer direction for each indicator.
-  // PR 1 §3.1-3.3 overturns three of them (electricityConsumption, gasShare,
-  // coalShare) — when PR 1 ships, those tests are REPLACED by tests for
-  // the new indicators (importedFossilDependence, lowCarbonGenerationShare).
-  // The failure of one of these tests in the meantime is a signal that a
-  // PR has accidentally altered the construct; PR 1 should update this
-  // file in the same commit that changes scoreEnergy.
+describe('resilience dimension monotonicity — scoreEnergy legacy rollback construct', () => {
+  // These assertions intentionally force the rollback path with
+  // RESILIENCE_ENERGY_V2_ENABLED=false. Production now reports
+  // constructVersions.energy=v2; this block only guards the revert path
+  // kept behind the flag, while active-v2 invariants are pinned in
+  // resilience-energy-v2.test.mts.
+  const originalEnergyV2Flag = process.env.RESILIENCE_ENERGY_V2_ENABLED;
+
+  before(() => {
+    process.env.RESILIENCE_ENERGY_V2_ENABLED = 'false';
+  });
+
+  after(() => {
+    if (originalEnergyV2Flag == null) {
+      delete process.env.RESILIENCE_ENERGY_V2_ENABLED;
+      return;
+    }
+    process.env.RESILIENCE_ENERGY_V2_ENABLED = originalEnergyV2Flag;
+  });
 
   function makeEnergyReader(overrides: {
     staticRecord?: unknown;
@@ -199,7 +211,7 @@ describe('resilience dimension monotonicity — scoreEnergy (current construct)'
     };
   }
 
-  it('higher import dependency → lower score', async () => {
+  it('legacy rollback: higher import dependency → lower score', async () => {
     const selfSufficient = await scoreEnergy(TEST_ISO2, makeEnergyReader({
       staticRecord: {
         iea: { energyImportDependency: { value: 10 } },
@@ -212,38 +224,32 @@ describe('resilience dimension monotonicity — scoreEnergy (current construct)'
         infrastructure: { indicators: { 'EG.USE.ELEC.KH.PC': { value: 3000 } } },
       },
     }));
-    assert.ok(selfSufficient.score > dependent.score, `import dep 10→90 should lower score; got ${selfSufficient.score} → ${dependent.score}`);
+    assert.ok(selfSufficient.score > dependent.score, `legacy import dep 10→90 should lower score; got ${selfSufficient.score} → ${dependent.score}`);
   });
 
-  it('higher renewShare → higher score', async () => {
+  it('legacy rollback: higher renewShare → higher score', async () => {
     const low = await scoreEnergy(TEST_ISO2, makeEnergyReader({ mix: { gasShare: 30, coalShare: 20, renewShare: 5 } }));
     const high = await scoreEnergy(TEST_ISO2, makeEnergyReader({ mix: { gasShare: 30, coalShare: 20, renewShare: 70 } }));
-    assert.ok(high.score > low.score, `renewShare 5→70 should raise score; got ${low.score} → ${high.score}`);
+    assert.ok(high.score > low.score, `legacy renewShare 5→70 should raise score; got ${low.score} → ${high.score}`);
   });
 
-  it('CURRENT: higher gasShare → lower score (THIS CHANGES IN PR 1 — see plan §3.2)', async () => {
-    // Pins the current (v3-plan-condemned) behavior so PR 1 knows what
-    // it is replacing. When PR 1 ships the new importedFossilDependence
-    // composite, this test is REPLACED, not deleted — the replacement
-    // pins the new construct's direction.
+  it('legacy rollback: higher gasShare → lower score', async () => {
+    // Legacy v1 penalises gas generation share directly. Active v2 no
+    // longer treats standalone gasShare as a production methodology input.
     const low = await scoreEnergy(TEST_ISO2, makeEnergyReader({ mix: { gasShare: 10, coalShare: 20, renewShare: 30 } }));
     const high = await scoreEnergy(TEST_ISO2, makeEnergyReader({ mix: { gasShare: 70, coalShare: 20, renewShare: 30 } }));
-    assert.ok(low.score > high.score, `gasShare 10→70 should lower score under current construct; got ${low.score} → ${high.score}`);
+    assert.ok(low.score > high.score, `legacy gasShare 10→70 should lower score; got ${low.score} → ${high.score}`);
   });
 
-  it('CURRENT: higher coalShare → lower score (THIS CHANGES IN PR 1 — see plan §3.2)', async () => {
+  it('legacy rollback: higher coalShare → lower score', async () => {
     const low = await scoreEnergy(TEST_ISO2, makeEnergyReader({ mix: { gasShare: 30, coalShare: 10, renewShare: 30 } }));
     const high = await scoreEnergy(TEST_ISO2, makeEnergyReader({ mix: { gasShare: 30, coalShare: 70, renewShare: 30 } }));
-    assert.ok(low.score > high.score, `coalShare 10→70 should lower score under current construct; got ${low.score} → ${high.score}`);
+    assert.ok(low.score > high.score, `legacy coalShare 10→70 should lower score; got ${low.score} → ${high.score}`);
   });
 
-  it('CURRENT: higher electricityConsumption → higher score (THIS FAILS THE MECHANISM TEST — see plan §3.1)', async () => {
-    // This test PASSES today because the current scorer rewards
-    // per-capita electricity consumption. The v3 plan classifies
-    // electricityConsumption as a wealth-proxy that fails the mechanism
-    // test; PR 1 removes it. When PR 1 ships, this test is DELETED (not
-    // replaced), because the indicator no longer exists. The delete is
-    // the signal that the wealth-proxy concern is resolved.
+  it('legacy rollback: higher electricityConsumption → higher score', async () => {
+    // Legacy v1 rewards per-capita electricity consumption as a crisis
+    // grid-health proxy. Active v2 removed this standalone indicator.
     const low = await scoreEnergy(TEST_ISO2, makeEnergyReader({
       staticRecord: {
         iea: { energyImportDependency: { value: 30 } },
@@ -256,6 +262,6 @@ describe('resilience dimension monotonicity — scoreEnergy (current construct)'
         infrastructure: { indicators: { 'EG.USE.ELEC.KH.PC': { value: 7500 } } },
       },
     }));
-    assert.ok(high.score > low.score, `electricityConsumption 500→7500 kWh/cap should raise score under current construct; got ${low.score} → ${high.score}`);
+    assert.ok(high.score > low.score, `legacy electricityConsumption 500→7500 kWh/cap should raise score; got ${low.score} → ${high.score}`);
   });
 });
