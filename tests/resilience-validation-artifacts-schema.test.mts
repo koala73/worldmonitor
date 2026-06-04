@@ -541,6 +541,8 @@ describe('resilience validation artifacts', () => {
     assert.match(message, /resilience-ranking-live-post-pr1-YYYY-MM-DD\.json/);
     assert.match(message, /WORLDMONITOR_API_KEY=<pro-api-key>/);
     assert.match(message, /node scripts\/freeze-resilience-ranking\.mjs/);
+    assert.match(message, /exact docs\/snapshots\/resilience-ranking-YYYY-MM-DD\.json path printed by freeze-resilience-ranking\.mjs/);
+    assert.doesNotMatch(message, /\$\(date /);
     assert.match(message, /node --import tsx\/esm scripts\/capture-resilience-energy-v2-acceptance\.mjs/);
     assert.match(message, /HTTP 401[\s\S]*get-resilience-score[\s\S]*Pro authentication required/);
     assert.match(message, /gate-7-matched-pair[\s\S]*do not commit a synthetic artifact/);
