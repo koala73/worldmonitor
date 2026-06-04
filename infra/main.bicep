@@ -19,6 +19,16 @@ param llmApiKey string = ''
 @description('Model / deployment name for the LLM endpoint. For Azure OpenAI use the deployment name.')
 param llmModel string = ''
 
+@description('Azure OpenAI Entra ID tenant id. Set this together with the client id/secret to use Entra ID (service principal) auth instead of an API key — required when key-based auth is disabled on the Azure OpenAI resource.')
+param azureOpenAiTenantId string = ''
+
+@description('Azure OpenAI Entra ID (service principal / app registration) client id.')
+param azureOpenAiClientId string = ''
+
+@secure()
+@description('Azure OpenAI Entra ID (service principal / app registration) client secret.')
+param azureOpenAiClientSecret string = ''
+
 var resourceSuffix = take(uniqueString(subscription().id, environmentName, location), 6)
 var tags = { 'azd-env-name': environmentName }
 
@@ -106,6 +116,9 @@ module webApp './modules/container-app-web.bicep' = {
     llmApiUrl: llmApiUrl
     llmApiKey: llmApiKey
     llmModel: llmModel
+    azureOpenAiTenantId: azureOpenAiTenantId
+    azureOpenAiClientId: azureOpenAiClientId
+    azureOpenAiClientSecret: azureOpenAiClientSecret
   }
 }
 

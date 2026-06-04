@@ -25,11 +25,23 @@ param llmApiKey string = ''
 @description('LLM model / Azure OpenAI deployment name.')
 param llmModel string = ''
 
+@description('Azure OpenAI Entra ID tenant id (blank uses key-based auth).')
+param azureOpenAiTenantId string = ''
+
+@description('Azure OpenAI Entra ID (service principal) client id.')
+param azureOpenAiClientId string = ''
+
+@secure()
+@description('Azure OpenAI Entra ID (service principal) client secret.')
+param azureOpenAiClientSecret string = ''
+
 // Placeholder image allows provisioning before the app image exists in ACR.
 // azd deploy configures the registry/identity link and pushes the real image.
 param containerImageName string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
 
 var hasLlmKey = !empty(llmApiKey)
+// Entra ID auth is enabled only when tenant, client id, AND secret are all set.
+var hasEntraAuth = !empty(azureOpenAiTenantId) && !empty(azureOpenAiClientId) && !empty(azureOpenAiClientSecret)
 
 var baseSecrets = [
   {
@@ -41,6 +53,12 @@ var llmSecrets = hasLlmKey ? [
   {
     name: 'llm-api-key'
     value: llmApiKey
+  }
+] : []
+var entraSecrets = hasEntraAuth ? [
+  {
+    name: 'azure-openai-client-secret'
+    value: azureOpenAiClientSecret
   }
 ] : []
 
@@ -76,6 +94,20 @@ var llmKeyEnv = hasLlmKey ? [
     secretRef: 'llm-api-key'
   }
 ] : []
+var entraEnv = hasEntraAuth ? [
+  {
+    name: 'AZURE_OPENAI_TENANT_ID'
+    value: azureOpenAiTenantId
+  }
+  {
+    name: 'AZURE_OPENAI_CLIENT_ID'
+    value: azureOpenAiClientId
+  }
+  {
+    name: 'AZURE_OPENAI_CLIENT_SECRET'
+    secretRef: 'azure-openai-client-secret'
+  }
+] : []
 
 resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: name
@@ -93,7 +125,7 @@ resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
         targetPort: 8080
         transport: 'auto'
       }
-      secrets: concat(baseSecrets, llmSecrets)
+      secrets: concat(baseSecrets, llmSecrets, entraSecrets)
     }
     template: {
       containers: [
@@ -104,7 +136,7 @@ resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
             cpu: json('1.0')
             memory: '2Gi'
           }
-          env: concat(baseEnv, llmKeyEnv)
+          env: concat(baseEnv, llmKeyEnv, entraEnv)
         }
       ]
       scale: {

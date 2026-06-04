@@ -16,6 +16,15 @@
     },
     "llmModel": {
       "value": "${LLM_MODEL}"
+    },
+    "azureOpenAiTenantId": {
+      "value": "${AZURE_OPENAI_TENANT_ID}"
+    },
+    "azureOpenAiClientId": {
+      "value": "${AZURE_OPENAI_CLIENT_ID}"
+    },
+    "azureOpenAiClientSecret": {
+      "value": "${AZURE_OPENAI_CLIENT_SECRET}"
     }
   }
 }

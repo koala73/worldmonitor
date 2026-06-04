@@ -1,12 +1,19 @@
 import { CHROME_UA } from './constants';
 import { isProviderAvailable } from './llm-health';
 import { sanitizeForPrompt } from './llm-sanitize.js';
+import { getAzureEntraCredentials, getAzureEntraToken } from './llm-azure-auth';
 
 export interface ProviderCredentials {
   apiUrl: string;
   model: string;
   headers: Record<string, string>;
   extraBody?: Record<string, unknown>;
+  /**
+   * Optional async resolver for auth headers that must be acquired at call
+   * time (e.g. an Entra ID bearer token for Azure OpenAI). When present, call
+   * sites await it and merge the result over `headers` immediately before fetch.
+   */
+  authHeaderProvider?: () => Promise<Record<string, string>>;
 }
 
 export type LlmProviderName = 'ollama' | 'groq' | 'openrouter' | 'generic';
@@ -85,13 +92,16 @@ export function getProviderCredentials(
   }
 
   // Generic OpenAI-compatible endpoint via LLM_API_URL/LLM_API_KEY/LLM_MODEL.
-  // Azure OpenAI is OpenAI-compatible but authenticates API keys via the
-  // "api-key" header (Bearer is reserved for Entra/AAD tokens), so detect an
-  // Azure endpoint by host and switch the auth header accordingly.
+  // Azure OpenAI is OpenAI-compatible but supports two auth modes:
+  //   1. API key via the "api-key" header (Bearer is reserved for Entra/AAD).
+  //   2. Entra ID (managed identity / service principal) via a Bearer token —
+  //      required when key-based auth is disabled on the resource. When Entra
+  //      service-principal env vars are configured we acquire a token at call
+  //      time (cached) and send it as Authorization: Bearer.
   if (provider === 'generic') {
     const apiUrl = process.env.LLM_API_URL;
     const apiKey = process.env.LLM_API_KEY;
-    if (!apiUrl || !apiKey) return null;
+    if (!apiUrl) return null;
 
     let isAzureOpenAi = false;
     try {
@@ -99,6 +109,23 @@ export function getProviderCredentials(
     } catch {
       isAzureOpenAi = false;
     }
+
+    const entraCreds = isAzureOpenAi ? getAzureEntraCredentials() : null;
+
+    // Entra ID auth takes precedence on Azure OpenAI: it's the mode used when
+    // key-based auth is disabled on the resource.
+    if (entraCreds) {
+      return {
+        apiUrl,
+        model: overrides.model || process.env.LLM_MODEL || 'gpt-3.5-turbo',
+        headers: { 'Content-Type': 'application/json' },
+        authHeaderProvider: async () => ({
+          Authorization: `Bearer ${await getAzureEntraToken(entraCreds)}`,
+        }),
+      };
+    }
+
+    if (!apiKey) return null;
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (isAzureOpenAi) {
@@ -291,9 +318,10 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
 
         let hasContent = false;
         try {
+          const dynamicAuth = creds.authHeaderProvider ? await creds.authHeaderProvider() : {};
           const resp = await fetch(creds.apiUrl, {
             method: 'POST',
-            headers: { ...creds.headers, 'User-Agent': CHROME_UA },
+            headers: { ...creds.headers, ...dynamicAuth, 'User-Agent': CHROME_UA },
             body: JSON.stringify({
               ...creds.extraBody,
               model: creds.model,
@@ -417,9 +445,10 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
     }
 
     try {
+      const dynamicAuth = creds.authHeaderProvider ? await creds.authHeaderProvider() : {};
       const resp = await fetch(creds.apiUrl, {
         method: 'POST',
-        headers: { ...creds.headers, 'User-Agent': CHROME_UA },
+        headers: { ...creds.headers, ...dynamicAuth, 'User-Agent': CHROME_UA },
         body: JSON.stringify({
           ...creds.extraBody,
           model: creds.model,
