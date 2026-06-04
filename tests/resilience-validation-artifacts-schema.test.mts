@@ -10,6 +10,7 @@ import {
   methodologyFormulaForCacheFormula,
 } from '../scripts/lib/resilience-formula.mjs';
 import {
+  DEFAULT_SAMPLE_COUNTRIES,
   REQUIRED_GATE_IDS,
   buildAcceptanceArtifact,
   buildGateResults,
@@ -519,6 +520,16 @@ describe('resilience validation artifacts', () => {
       }),
       /did not include energy dimension under domains\[\]\.dimensions/,
     );
+  });
+
+  it('samples both R7-ACCEPT disputed matched pairs by default', () => {
+    const sampleCountries = new Set(DEFAULT_SAMPLE_COUNTRIES);
+    for (const countryCode of ['FR', 'DE', 'SG', 'CH']) {
+      assert.ok(
+        sampleCountries.has(countryCode),
+        `default energy-v2 acceptance samples must include ${countryCode}`,
+      );
+    }
   });
 
   it('validates any committed post-flip PR1 ranking artifacts', () => {

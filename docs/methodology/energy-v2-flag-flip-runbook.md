@@ -31,6 +31,25 @@ post-flip PR1 ranking snapshot before it will write
 artifact: that script compares the legacy six-domain aggregate against the
 pillar-combined formula and is not an energy-v2 post-flip acceptance harness.
 
+2026-06-04 R7-ACCEPT adjudication update:
+
+- Public runtime evidence remains post-flip: `/api/resilience/v1/get-runtime-manifest`
+  returned HTTP 200 with `formulaTag: "pc"`, `constructVersions.energy: "v2"`,
+  `rankingCache.count == rankingCache.scored == rankingCache.total == 196`, and
+  `intervals.available: true`.
+- `/api/health` returned HTTP 200 with overall status `DEGRADED` due to
+  unrelated checks, while the energy-v2 seed checks remained `OK` for
+  `lowCarbonGeneration`, `fossilElectricityShare`, and `powerLosses`.
+- `/api/resilience/v1/get-resilience-score?countryCode=FR` and
+  `/api/resilience/v1/get-resilience-ranking` returned HTTP 401 without
+  `WORLDMONITOR_API_KEY`, so FR-vs-DE and SG-vs-CH cannot be adjudicated from
+  unauthenticated live evidence.
+- The acceptance harness default sample set includes `FR`, `DE`, `SG`, and
+  `CH`, so a credentialed run captures the score-endpoint energy-dimension
+  breakdowns needed for both disputed matched pairs. Until that run exists,
+  treat the R7-ACCEPT decision as blocked by missing credentialed live data,
+  not as a scorer defect or a matched-pair expectation defect.
+
 ### What can be verified without secrets
 
 The public runtime state can be rechecked without credentials, but that is not
@@ -67,6 +86,8 @@ Run from the repo root with production credentials:
 ```bash
 export API_BASE=https://www.worldmonitor.app
 export WORLDMONITOR_API_KEY=<pro-api-key>
+# Defaults to FR,DE,SG,CH,NO,CA,AE,BH; set explicitly only to override.
+export RESILIENCE_ENERGY_V2_SAMPLE_COUNTRIES=FR,DE,SG,CH,NO,CA,AE,BH
 
 node scripts/freeze-resilience-ranking.mjs
 mv "docs/snapshots/resilience-ranking-$(date +%Y-%m-%d).json" \

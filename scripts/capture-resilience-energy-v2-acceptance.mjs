@@ -51,7 +51,8 @@ const API_BASE = (process.env.API_BASE || 'https://www.worldmonitor.app').replac
 const API_ORIGIN = new URL(API_BASE).origin;
 const USER_AGENT = process.env.USER_AGENT
   || 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
-const SAMPLE_COUNTRIES = (process.env.RESILIENCE_ENERGY_V2_SAMPLE_COUNTRIES || 'FR,DE,NO,CA,AE,BH')
+const DEFAULT_SAMPLE_COUNTRIES = ['FR', 'DE', 'SG', 'CH', 'NO', 'CA', 'AE', 'BH'];
+const SAMPLE_COUNTRIES = (process.env.RESILIENCE_ENERGY_V2_SAMPLE_COUNTRIES || DEFAULT_SAMPLE_COUNTRIES.join(','))
   .split(',')
   .map((countryCode) => countryCode.trim().toUpperCase())
   .filter((countryCode) => /^[A-Z]{2}$/.test(countryCode));
@@ -539,6 +540,7 @@ async function main() {
 }
 
 export {
+  DEFAULT_SAMPLE_COUNTRIES,
   GATE_THRESHOLDS,
   REQUIRED_GATE_IDS,
   buildAcceptanceArtifact,
