@@ -109,6 +109,24 @@ async function waitForLazyWidget(harness) {
   assert.fail('expected lazy resilience widget to render');
 }
 
+async function waitForResilienceFallback(harness) {
+  for (let attempt = 0; attempt < 25; attempt += 1) {
+    const slot = harness.getPanelRoot()?.querySelector('.resilience-widget');
+    const fallback = slot?.querySelector('.cdp-empty');
+    if (fallback) return { slot, fallback };
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  assert.fail('expected lazy resilience widget fallback to render');
+}
+
+async function waitForSentryFailure(harness) {
+  for (let attempt = 0; attempt < 25; attempt += 1) {
+    if (harness.getSentryBreadcrumbs().length > 0 && harness.getSentryExceptions().length > 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  assert.fail('expected resilience widget lazy-load failure telemetry');
+}
+
 test('country deep-dive panel mounts the resilience widget beside the score card', async () => {
   const harness = await createCountryDeepDivePanelHarness();
   try {
@@ -125,6 +143,42 @@ test('country deep-dive panel mounts the resilience widget beside the score card
     assert.ok(widget, 'expected resilience widget to render');
     assert.equal(widget?.getAttribute('data-country-code'), 'NO');
     assert.equal(summaryGrid?.childElementCount, 2);
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test('country deep-dive panel renders fallback when the resilience widget chunk rejects', async () => {
+  const harness = await createCountryDeepDivePanelHarness({ resilienceWidgetMode: 'import-reject' });
+  try {
+    const panel = harness.createPanel();
+    panel.show('Norway', 'NO', sampleScore, emptySignals);
+    const { slot, fallback } = await waitForResilienceFallback(harness);
+
+    assert.equal(fallback.textContent, 'countryBrief.resilienceScoreUnavailable');
+    assert.equal(slot.querySelector('.cdp-loading-inline'), null, 'fallback must replace loading state');
+    assert.equal(harness.getWidgets().length, 0, 'chunk failure must not create a widget');
+    await waitForSentryFailure(harness);
+    assert.equal(harness.getSentryBreadcrumbs().length, 1);
+    assert.equal(harness.getSentryExceptions().length, 1);
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test('country deep-dive panel renders fallback when the resilience widget success handler throws', async () => {
+  const harness = await createCountryDeepDivePanelHarness({ resilienceWidgetMode: 'constructor-throw' });
+  try {
+    const panel = harness.createPanel();
+    panel.show('Norway', 'NO', sampleScore, emptySignals);
+    const { slot, fallback } = await waitForResilienceFallback(harness);
+
+    assert.equal(fallback.textContent, 'countryBrief.resilienceScoreUnavailable');
+    assert.equal(slot.querySelector('.cdp-loading-inline'), null, 'fallback must replace loading state');
+    assert.equal(harness.getWidgets().length, 0, 'constructor failure must not retain a widget');
+    await waitForSentryFailure(harness);
+    assert.equal(harness.getSentryBreadcrumbs().length, 1);
+    assert.equal(harness.getSentryExceptions().length, 1);
   } finally {
     harness.cleanup();
   }

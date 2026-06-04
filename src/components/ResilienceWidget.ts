@@ -58,7 +58,9 @@ export class ResilienceWidget {
     this.unsubscribeAuth = subscribeAuthState((state) => {
       this.authState = state;
       const gateReason = this.getGateReason();
-      if (gateReason === PanelGateReason.NONE && this.currentCountryCode && !this.loading && this.currentData?.countryCode !== this.currentCountryCode) {
+      const loadedCountryCode = normalizeCountryCode(this.currentData?.countryCode);
+      const needsRefresh = !this.currentData || (loadedCountryCode !== null && loadedCountryCode !== this.currentCountryCode);
+      if (gateReason === PanelGateReason.NONE && this.currentCountryCode && !this.loading && needsRefresh) {
         void this.refresh();
         return;
       }

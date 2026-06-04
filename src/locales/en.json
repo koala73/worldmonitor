@@ -75,6 +75,8 @@
     "closeBtn": "Close",
     "limitedCoverage": "Limited coverage",
     "instabilityIndex": "Instability Index",
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable.",
     "notTracked": "Not tracked — {{country}} is not in the CII tier-1 list",
     "intelBrief": "Intelligence Brief",
     "generatingBrief": "Generating intelligence brief...",

@@ -2548,26 +2548,47 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
   private renderResilienceWidgetSlot(code: string): HTMLElement {
     const slot = this.el('div', 'cdp-card resilience-widget');
-    slot.append(this.makeLoading('Loading resilience score...'));
+    slot.append(this.makeLoading(t('countryBrief.loadingResilienceScore')));
     const requestId = ++this.resilienceWidgetRequestId;
+
+    const renderFallback = (error: unknown) => {
+      if (requestId !== this.resilienceWidgetRequestId) return;
+      console.warn('[CountryDeepDivePanel] Failed to load resilience widget', error);
+      this.captureResilienceWidgetLoadFailure(error, code);
+      slot.replaceChildren(this.makeEmpty(t('countryBrief.resilienceScoreUnavailable')));
+    };
 
     import('@/components/ResilienceWidget')
       .then(({ ResilienceWidget }) => {
         if (requestId !== this.resilienceWidgetRequestId) return;
-        if (typeof ResilienceWidget !== 'function') return;
+        if (typeof ResilienceWidget !== 'function') throw new Error('ResilienceWidget export is unavailable.');
         const widget = new ResilienceWidget(code);
         this.resilienceWidget = widget;
         if (this.pendingResilienceEnergyMix) {
           widget.setEnergyMix(this.pendingResilienceEnergyMix);
         }
         this.replaceResilienceSlot(slot, widget.getElement());
-      }, (error) => {
-        if (requestId !== this.resilienceWidgetRequestId) return;
-        console.warn('[CountryDeepDivePanel] Failed to load resilience widget', error);
-        slot.replaceChildren(this.makeEmpty('Resilience score unavailable.'));
-      });
+      })
+      .catch(renderFallback);
 
     return slot;
+  }
+
+  private captureResilienceWidgetLoadFailure(error: unknown, countryCode: string): void {
+    void import('@sentry/browser')
+      .then((Sentry) => {
+        Sentry.addBreadcrumb?.({
+          category: 'country-deep-dive',
+          level: 'warning',
+          message: 'Resilience widget lazy load failed',
+          data: { countryCode },
+        });
+        Sentry.captureException(error instanceof Error ? error : new Error(String(error)), {
+          tags: { surface: 'country-deep-dive', widget: 'resilience' },
+          extra: { countryCode },
+        });
+      })
+      .catch(() => {});
   }
 
   private replaceResilienceSlot(slot: HTMLElement, next: HTMLElement): void {

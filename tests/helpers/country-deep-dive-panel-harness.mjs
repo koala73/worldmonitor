@@ -36,9 +36,47 @@ function defineGlobal(name, value) {
   });
 }
 
-async function loadCountryDeepDivePanel() {
+async function loadCountryDeepDivePanel(options = {}) {
+  const resilienceWidgetMode = options.resilienceWidgetMode ?? 'success';
   const tempDir = mkdtempSync(join(tmpdir(), 'wm-country-deep-dive-'));
   const outfile = join(tempDir, 'CountryDeepDivePanel.bundle.mjs');
+  const resilienceWidgetStub = resilienceWidgetMode === 'import-reject'
+    ? `
+      throw new Error('synthetic resilience widget chunk failure');
+      export class ResilienceWidget {}
+    `
+    : resilienceWidgetMode === 'constructor-throw'
+      ? `
+        export class ResilienceWidget {
+          constructor() {
+            throw new Error('synthetic resilience widget constructor failure');
+          }
+        }
+      `
+      : `
+        const state = globalThis.__wmCountryDeepDiveTestState;
+        export class ResilienceWidget {
+          constructor(code) {
+            this.code = code;
+            this.destroyCount = 0;
+            this.energyMixData = null;
+            this.element = document.createElement('section');
+            this.element.className = 'resilience-widget-stub';
+            this.element.setAttribute('data-country-code', code);
+            this.element.textContent = 'Resilience ' + code;
+            state.widgets.push(this);
+          }
+          setEnergyMix(data) {
+            this.energyMixData = data;
+          }
+          getElement() {
+            return this.element;
+          }
+          destroy() {
+            this.destroyCount += 1;
+          }
+        }
+      `;
 
   const stubModules = new Map([
     ['feeds-stub', `
@@ -122,28 +160,20 @@ async function loadCountryDeepDivePanel() {
     ['auth-state-stub', `
       export function getAuthState() { return { user: null }; }
     `],
-    ['resilience-widget-stub', `
+    ['resilience-widget-stub', resilienceWidgetStub],
+    ['sentry-browser-stub', `
       const state = globalThis.__wmCountryDeepDiveTestState;
-      export class ResilienceWidget {
-        constructor(code) {
-          this.code = code;
-          this.destroyCount = 0;
-          this.energyMixData = null;
-          this.element = document.createElement('section');
-          this.element.className = 'resilience-widget-stub';
-          this.element.setAttribute('data-country-code', code);
-          this.element.textContent = 'Resilience ' + code;
-          state.widgets.push(this);
-        }
-        setEnergyMix(data) {
-          this.energyMixData = data;
-        }
-        getElement() {
-          return this.element;
-        }
-        destroy() {
-          this.destroyCount += 1;
-        }
+      export function addBreadcrumb(breadcrumb) {
+        state.sentryBreadcrumbs.push(breadcrumb);
+      }
+      export function captureException(error, context) {
+        state.sentryExceptions.push({ error, context });
+      }
+      export function captureMessage(message, context) {
+        state.sentryMessages.push({ message, context });
+      }
+      export function setUser(user) {
+        state.sentryUser = user;
       }
     `],
   ]);
@@ -170,6 +200,7 @@ async function loadCountryDeepDivePanel() {
     ['@/generated/client/worldmonitor/intelligence/v1/service_client', 'intelligence-client-stub'],
     ['@/services/panel-gating', 'panel-gating-stub'],
     ['@/services/auth-state', 'auth-state-stub'],
+    ['@sentry/browser', 'sentry-browser-stub'],
   ]);
 
   const plugin = {
@@ -208,7 +239,7 @@ async function loadCountryDeepDivePanel() {
   };
 }
 
-export async function createCountryDeepDivePanelHarness() {
+export async function createCountryDeepDivePanelHarness(options = {}) {
   const originalGlobals = {
     document: snapshotGlobal('document'),
     window: snapshotGlobal('window'),
@@ -220,7 +251,7 @@ export async function createCountryDeepDivePanelHarness() {
     HTMLButtonElement: snapshotGlobal('HTMLButtonElement'),
   };
   const browserEnvironment = createBrowserEnvironment();
-  const state = { widgets: [] };
+  const state = { widgets: [], sentryBreadcrumbs: [], sentryExceptions: [], sentryMessages: [], sentryUser: undefined };
 
   defineGlobal('document', browserEnvironment.document);
   defineGlobal('window', browserEnvironment.window);
@@ -235,7 +266,7 @@ export async function createCountryDeepDivePanelHarness() {
   let CountryDeepDivePanel;
   let cleanupBundle;
   try {
-    ({ CountryDeepDivePanel, cleanupBundle } = await loadCountryDeepDivePanel());
+    ({ CountryDeepDivePanel, cleanupBundle } = await loadCountryDeepDivePanel(options));
   } catch (error) {
     delete globalThis.__wmCountryDeepDiveTestState;
     restoreGlobal('document', originalGlobals.document);
@@ -276,6 +307,12 @@ export async function createCountryDeepDivePanelHarness() {
     getPanelRoot,
     getWidgets() {
       return state.widgets;
+    },
+    getSentryBreadcrumbs() {
+      return state.sentryBreadcrumbs;
+    },
+    getSentryExceptions() {
+      return state.sentryExceptions;
     },
     cleanup,
   };
