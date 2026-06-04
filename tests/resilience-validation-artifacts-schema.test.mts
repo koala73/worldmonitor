@@ -501,7 +501,10 @@ describe('resilience validation artifacts', () => {
     });
     const matchedPairGate = gates.find((gate) => gate.id === 'gate-7-matched-pair');
     assert.equal(matchedPairGate?.status, 'pass');
-    assert.match(String(matchedPairGate?.detail), /6\/6 pairs pass/);
+    assert.match(
+      String(matchedPairGate?.detail),
+      new RegExp(`${MATCHED_PAIRS.length}/${MATCHED_PAIRS.length} pairs pass`),
+    );
 
     const evidence = asRecord(matchedPairGate?.evidence, 'matched-pair gate evidence');
     const matchedPairSummary = evidence.matchedPairSummary;

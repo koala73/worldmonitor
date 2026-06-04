@@ -41,7 +41,7 @@ export const MATCHED_PAIRS: readonly MatchedPair[] = [
     lowerExpected: 'FR',
     axis: 'Broad OECD resilience vs nuclear-heavy power-system advantage',
     rationale:
-      'France still has a defensible energy-dimension advantage from firm low-carbon nuclear generation, but the active whole-index CRI is the pillar-combined score across all six domains. Germany\'s broader economic, infrastructure, and recovery-capacity signals can now outweigh France\'s power-system edge at the overall-score level. Keep this as a small whole-index anchor; a future energy-specific check should use sampled score-endpoint energy-dimension evidence rather than reversing the full-index expectation back to FR > DE.',
+      'France still has a defensible energy-dimension advantage from firm low-carbon nuclear generation, but the active whole-index CRI is the pillar-combined score across all six domains. Germany\'s broader economic, infrastructure, and recovery-capacity signals can now outweigh France\'s power-system edge at the overall-score level. Keep this as a small whole-index anchor with a deliberately thin buffer: the 2026-06-04 credentialed audit gap was 2.42 points, so future scorer PRs touching Germany or France should re-check the live ordering before changing this threshold. A future energy-specific check should use sampled score-endpoint energy-dimension evidence rather than reversing the full-index expectation back to FR > DE.',
     minGap: 1,
   },
   {
