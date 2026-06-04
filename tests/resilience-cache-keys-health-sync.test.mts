@@ -18,6 +18,9 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
+const R5_2_MIN_SCORE_RANKING_VERSION = 24;
+const R5_2_MIN_HISTORY_VERSION = 19;
+const R5_2_MIN_INTERVAL_VERSION = 8;
 
 function cacheVersion(label: string, value: string, pattern: RegExp): number {
   const match = pattern.exec(value);
@@ -104,7 +107,7 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
     );
   });
 
-  it('history and interval namespaces advance with the current score generation', () => {
+  it('R5-2 namespace floor covers score/ranking plus derived history and interval caches', () => {
     const scoreVersion = cacheVersion(
       'RESILIENCE_SCORE_CACHE_PREFIX',
       RESILIENCE_SCORE_CACHE_PREFIX,
@@ -121,17 +124,20 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
       /^resilience:intervals:v(\d+):$/,
     );
 
-    assert.equal(
-      scoreVersion - historyVersion,
-      5,
-      `history cache version v${historyVersion} is not on the current score generation v${scoreVersion}; ` +
-      'methodology-affecting score changes must rotate rolling trend history so old score baselines do not mix with new ones.',
+    assert.ok(
+      scoreVersion >= R5_2_MIN_SCORE_RANKING_VERSION,
+      `score cache version v${scoreVersion} must be at least v${R5_2_MIN_SCORE_RANKING_VERSION} ` +
+      'for the R5-2 / PR #4101 governance WGI slot-semantics closure.',
     );
-    assert.equal(
-      scoreVersion - intervalVersion,
-      16,
-      `interval cache version v${intervalVersion} is not on the current score generation v${scoreVersion}; ` +
-      'methodology-affecting score changes must rotate sensitivity intervals so rank-stability bands are regenerated.',
+    assert.ok(
+      historyVersion >= R5_2_MIN_HISTORY_VERSION,
+      `history cache version v${historyVersion} must be at least v${R5_2_MIN_HISTORY_VERSION} ` +
+      'so pre-R5-2 governance/state-continuity scores do not mix into the 30-day trend window.',
+    );
+    assert.ok(
+      intervalVersion >= R5_2_MIN_INTERVAL_VERSION,
+      `interval cache version v${intervalVersion} must be at least v${R5_2_MIN_INTERVAL_VERSION} ` +
+      'so pre-R5-2 sensitivity bands are not served with post-R5-2 scores.',
     );
   });
 
