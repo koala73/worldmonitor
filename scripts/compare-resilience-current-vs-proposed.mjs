@@ -399,6 +399,7 @@ const EXTRACTION_RULES = {
 // before the includes() calls at L770-776).
 const AQUASTAT_STRESS_KEYWORDS = ['stress', 'withdrawal', 'dependency'];
 const AQUASTAT_AVAILABILITY_KEYWORDS = ['availability', 'renewable', 'access'];
+const WGI_INDICATOR_KEYS = ['VA.EST', 'PV.EST', 'GE.EST', 'RQ.EST', 'RL.EST', 'CC.EST'];
 
 function normalizeLowerBetter(value, best, worst) {
   return Math.max(0, Math.min(100, 100 * (1 - (value - best) / (worst - best))));
@@ -433,8 +434,12 @@ const STATIC_EXTRACTORS = {
   'static-wgi': (rule, { staticRecord }) =>
     staticRecord?.wgi?.indicators?.[rule.code]?.value ?? null,
   'static-wgi-mean': (_rule, { staticRecord }) => {
-    const entries = Object.values(staticRecord?.wgi?.indicators ?? {})
-      .map((e) => (typeof e?.value === 'number' ? e.value : null))
+    const indicators = staticRecord?.wgi?.indicators ?? {};
+    const entries = WGI_INDICATOR_KEYS
+      .map((key) => {
+        const value = indicators[key]?.value;
+        return typeof value === 'number' ? value : null;
+      })
       .filter((v) => v != null);
     if (entries.length === 0) return null;
     return entries.reduce((s, v) => s + v, 0) / entries.length;

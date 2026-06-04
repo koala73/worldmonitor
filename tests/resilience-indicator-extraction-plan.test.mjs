@@ -149,6 +149,20 @@ test('applyExtractionRule — static-wgi-mean averages all six WGI sub-pillars',
   assert.equal(applyExtractionRule(rule, sources, 'DE'), (1.0 + -1.0 + 0.5 + -0.5 + 2.0 + 0.0) / 6);
 });
 
+test('applyExtractionRule — static-wgi-mean ignores WGI keys outside the scorer contract', () => {
+  const rule = { type: 'static-wgi-mean' };
+  const sources = { staticRecord: { wgi: { indicators: {
+    'VA.EST': { value: 1.0 },
+    'PV.EST': { value: -1.0 },
+    'GE.EST': { value: 0.5 },
+    'RQ.EST': { value: -0.5 },
+    'RL.EST': { value: 2.0 },
+    'CC.EST': { value: 0.0 },
+    'ROGUE.EST': { value: -2.5 },
+  } } } };
+  assert.equal(applyExtractionRule(rule, sources, 'DE'), (1.0 + -1.0 + 0.5 + -0.5 + 2.0 + 0.0) / 6);
+});
+
 test('applyExtractionRule — missing values return null (pairwise-drop contract)', () => {
   const rule = { type: 'static-path', path: ['iea', 'energyImportDependency', 'value'] };
   assert.equal(applyExtractionRule(rule, {}, 'AE'), null);
