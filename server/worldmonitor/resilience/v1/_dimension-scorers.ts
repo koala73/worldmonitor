@@ -1036,7 +1036,7 @@ export function countTradeBarriers(raw: unknown, countryCode: string): number {
 function tradePolicyStatusSeverity(status: unknown): number {
   const normalized = String(status ?? '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_');
   if (normalized === 'LOW') return 0;
-  if (normalized === 'MODERATE' || normalized === 'MEDIUM') return 1;
+  if (normalized === 'MODERATE' || normalized === 'MEDIUM' || normalized === 'PLANNED') return 1;
   if (normalized === 'HIGH' || normalized === 'IN_FORCE') return 2;
   if (normalized !== '') {
     console.warn(`[Resilience] tradePolicyStatusSeverity: unrecognized status "${status}", defaulting to moderate`);

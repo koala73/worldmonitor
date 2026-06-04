@@ -184,7 +184,7 @@ describe('scoreTradePolicy — 3-component weighted-blend formula (Ship 1 contra
     assert.equal(result.coverage, 0.60, `WTO-only coverage must remain 0.60, got ${result.coverage}`);
   });
 
-  it('unrecognized WTO statuses warn and default to moderate', async () => {
+  it('planned WTO status is a recognized moderate-severity row and does not warn', async () => {
     const originalWarn = console.warn;
     const warnings: string[] = [];
     console.warn = (message?: unknown) => { warnings.push(String(message)); };
@@ -194,7 +194,41 @@ describe('scoreTradePolicy — 3-component weighted-blend formula (Ship 1 contra
           return {
             restrictions: [{
               reportingCountry: TEST_ISO2,
-              status: 'modearte',
+              status: 'PLANNED',
+            }],
+            _reporterCountries: [TEST_ISO2],
+          };
+        }
+        if (key === 'trade:barriers:v1:tariff-gap:50') {
+          return {
+            barriers: [{
+              notifyingCountry: TEST_ISO2,
+              status: 'planned',
+            }],
+            _reporterCountries: [TEST_ISO2],
+          };
+        }
+        return null;
+      };
+      const result = await scoreTradePolicy(TEST_ISO2, reader);
+      assert.equal(result.score, 50, `planned statuses must score at moderate severity, got ${result.score}`);
+      assert.deepEqual(warnings, [], `planned statuses must not warn, got ${JSON.stringify(warnings)}`);
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  it('UNKNOWN WTO statuses still warn and default to moderate', async () => {
+    const originalWarn = console.warn;
+    const warnings: string[] = [];
+    console.warn = (message?: unknown) => { warnings.push(String(message)); };
+    try {
+      const reader: ResilienceSeedReader = async (key) => {
+        if (key === 'trade:restrictions:v1:tariff-overview:50') {
+          return {
+            restrictions: [{
+              reportingCountry: TEST_ISO2,
+              status: 'UNKNOWN',
             }],
             _reporterCountries: [TEST_ISO2],
           };
