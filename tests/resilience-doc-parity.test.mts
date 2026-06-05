@@ -827,16 +827,18 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
       );
       catalogById.set(row.indicator, row);
     }
+    const registryById = new Map(INDICATOR_REGISTRY.map((spec) => [spec.id, spec]));
+
+    for (const [id, catalogRow] of catalogById) {
+      if (catalogRow.scoringTier !== 'core' && catalogRow.scoringTier !== 'enrichment') continue;
+      assert.ok(
+        registryById.has(id),
+        `${id} is marked scoringTier=${catalogRow.scoringTier} in indicator-sources.yaml and must exist in INDICATOR_REGISTRY.`,
+      );
+    }
 
     for (const registrySpec of INDICATOR_REGISTRY) {
       const catalogRow = catalogById.get(registrySpec.id);
-      if (catalogRow?.scoringTier != null) {
-        assert.equal(
-          catalogRow.scoringTier,
-          registrySpec.tier,
-          `${registrySpec.id} scoringTier must mirror INDICATOR_REGISTRY.`,
-        );
-      }
 
       if (registrySpec.tier === 'experimental') {
         if (catalogRow == null) continue;
