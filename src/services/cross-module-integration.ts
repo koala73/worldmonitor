@@ -94,7 +94,7 @@ export interface StrategicRiskOverview {
   topRisks: string[];
   topConvergenceZones: { cellId: string; lat: number; lon: number; score: number }[];
   unstableCountries: CountryScore[];
-  timestamp: Date;
+  timestamp: Date | null;
 }
 
 const alerts: UnifiedAlert[] = [];

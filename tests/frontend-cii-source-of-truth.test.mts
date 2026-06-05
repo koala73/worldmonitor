@@ -47,9 +47,16 @@ describe('frontend CII source of truth', () => {
 
   it('renders Strategic Risk from cached strategic risk/CII instead of only marking the badge cached', () => {
     const src = readSrc('src/components/StrategicRiskPanel.ts');
+    const overviewSrc = readSrc('src/services/cross-module-integration.ts');
     const refreshBody = extractMethod(src, 'public async refresh(): Promise<boolean>');
+    const cachedTimestampBody = extractMethod(src, 'private cachedTimestamp(cached: CachedRiskScores): Date | null');
 
+    assert.match(overviewSrc, /export interface StrategicRiskOverview[\s\S]*timestamp: Date \| null;/);
     assert.match(src, /private applyCachedRiskOverview\(cached: CachedRiskScores, localOverview: StrategicRiskOverview\): void/);
+    assert.match(cachedTimestampBody, /if \(!raw\) return null;/);
+    assert.match(cachedTimestampBody, /Number\.isNaN\(parsed\.getTime\(\)\) \? null : parsed/);
+    assert.doesNotMatch(cachedTimestampBody, /new Date\(\)/);
+    assert.match(src, /private formatOverviewTimestamp\(\): string \{[\s\S]*return this\.overview\?\.timestamp \? this\.overview\.timestamp\.toLocaleTimeString\(\) : '&mdash;';[\s\S]*\}/);
     assert.match(src, /compositeScore: Math\.max\(0, Math\.min\(100, Math\.round\(cached\.strategicRisk\.score\)\)\)/);
     assert.match(src, /unstableCountries: ciiScores\.filter\(s => s\.score >= 50\)\.slice\(0, 5\)/);
     assert.match(refreshBody, /this\.applyCachedRiskOverview\(cached, localOverview\);[\s\S]*this\.usedCachedScores = true;/);

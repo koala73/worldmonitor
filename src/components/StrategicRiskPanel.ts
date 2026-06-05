@@ -188,11 +188,11 @@ export class StrategicRiskPanel extends Panel {
     return 'stable';
   }
 
-  private cachedTimestamp(cached: CachedRiskScores): Date {
+  private cachedTimestamp(cached: CachedRiskScores): Date | null {
     const raw = cached.strategicRisk.lastUpdated ?? cached.computedAt;
-    if (!raw) return new Date();
+    if (!raw) return null;
     const parsed = new Date(raw);
-    return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 
   private cachedTopRisks(cached: CachedRiskScores, ciiScores: CountryScore[]): string[] {
@@ -382,7 +382,7 @@ export class StrategicRiskPanel extends Panel {
         ${this.renderRecentAlerts()}
 
         <div class="risk-footer">
-          <span class="risk-updated">${t('components.strategicRisk.updated', { time: this.overview.timestamp.toLocaleTimeString() })}</span>
+          <span class="risk-updated">${t('components.strategicRisk.updated', { time: this.formatOverviewTimestamp() })}</span>
           <button class="risk-refresh-btn">${t('components.strategicRisk.refresh')}</button>
         </div>
       </div>
@@ -543,6 +543,10 @@ export class StrategicRiskPanel extends Panel {
     if (minutes < 60) return t('components.strategicRisk.time.minutesAgo', { count: String(minutes) });
     if (hours < 24) return t('components.strategicRisk.time.hoursAgo', { count: String(hours) });
     return date.toLocaleDateString();
+  }
+
+  private formatOverviewTimestamp(): string {
+    return this.overview?.timestamp ? this.overview.timestamp.toLocaleTimeString() : '&mdash;';
   }
 
   private render(): void {
