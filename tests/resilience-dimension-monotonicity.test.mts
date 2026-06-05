@@ -19,9 +19,8 @@
 //   - scoreFoodWater: peopleInCrisis, phase
 //   - scoreGovernanceInstitutional: WGI mean
 //
-// 15 indicators × 1 direction check each = 15 assertions. The harness
-// is written as a table so PR 1 can add/remove rows without touching
-// test logic.
+// The harness keeps each direction check explicit so future scorer
+// changes update the documented expectation next to the assertion.
 
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
