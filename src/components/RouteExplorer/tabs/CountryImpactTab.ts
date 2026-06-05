@@ -12,6 +12,7 @@ import type {
   StrategicProduct,
 } from '@/generated/server/worldmonitor/supply_chain/v1/service_server';
 import {
+  formatScoredResilienceOverallLabel,
   formatResilienceConfidence,
   formatResilienceScoreInterval,
   hasScoredResilienceOverall,
@@ -131,14 +132,13 @@ export class CountryImpactTab {
 
   private renderResilience(data: GetRouteImpactResponse): string {
     const resilience = this.resilience;
-    const score = resilience?.overallScore;
-    const roundedScore = typeof score === 'number' && Number.isFinite(score) ? Math.round(score) : 0;
     if (resilience && hasScoredResilienceOverall(resilience)) {
+      const scoreLabel = formatScoredResilienceOverallLabel(resilience.overallScore);
       const confidence = formatResilienceConfidence(resilience);
       const interval = formatResilienceScoreInterval(resilience.scoreInterval);
       return [
         '<div class="re-impact__resilience">',
-        `  <span>Resilience: <strong>${roundedScore}/100</strong></span>`,
+        `  <span>Resilience: <strong>${escapeHtml(scoreLabel)}/100</strong></span>`,
         ...(interval
           ? [`  <span class="re-resilience-interval" title="${escapeHtml(interval.title)}">${escapeHtml(interval.label)}</span>`]
           : []),

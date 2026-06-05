@@ -15,6 +15,7 @@ import {
   getImputationClassIcon,
   getImputationClassLabel,
   getResilienceMethodologySummary,
+  formatScoredResilienceOverallLabel,
   getResilienceOverallDisplay,
   getResilienceDimensionLabel,
   getResilienceDomainLabel,
@@ -124,6 +125,20 @@ test('getResilienceOverallDisplay keeps explicit zero scores when API level is r
     hasScore: true,
     scoreForBar: 0,
     scoreLabel: '0',
+    visualLevel: 'very_low',
+    visualLevelLabel: 'Visual band: VERY LOW',
+    serverLevelLabel: 'API level: low',
+  });
+});
+
+test('getResilienceOverallDisplay distinguishes positive sub-1 scores from explicit zero', () => {
+  assert.equal(hasScoredResilienceOverall({ overallScore: 0.4, level: 'low' }), true);
+  assert.equal(formatScoredResilienceOverallLabel(0), '0');
+  assert.equal(formatScoredResilienceOverallLabel(0.4), '<1');
+  assert.deepEqual(getResilienceOverallDisplay({ overallScore: 0.4, level: 'low' }), {
+    hasScore: true,
+    scoreForBar: 0.4,
+    scoreLabel: '<1',
     visualLevel: 'very_low',
     visualLevelLabel: 'Visual band: VERY LOW',
     serverLevelLabel: 'API level: low',

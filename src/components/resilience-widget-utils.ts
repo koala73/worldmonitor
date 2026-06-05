@@ -224,6 +224,13 @@ export function hasScoredResilienceOverall(
   return data.overallScore !== 0 || hasAuthoritativeResilienceServerLevel(data.level);
 }
 
+export function formatScoredResilienceOverallLabel(score: number): string {
+  const clampedScore = Math.min(100, Math.max(0, score));
+  const roundedScore = Math.round(clampedScore);
+  if (clampedScore > 0 && roundedScore === 0) return '<1';
+  return String(roundedScore);
+}
+
 export interface ResilienceOverallDisplay {
   hasScore: boolean;
   scoreForBar: number;
@@ -251,7 +258,7 @@ export function getResilienceOverallDisplay(data: Pick<ResilienceScoreResponse, 
   return {
     hasScore: true,
     scoreForBar: clampedScore,
-    scoreLabel: String(Math.round(clampedScore)),
+    scoreLabel: formatScoredResilienceOverallLabel(clampedScore),
     visualLevel,
     visualLevelLabel: `Visual band: ${formatResilienceVisualLevel(visualLevel).toUpperCase()}`,
     serverLevelLabel: `API level: ${formatResilienceServerLevel(data.level)}`,

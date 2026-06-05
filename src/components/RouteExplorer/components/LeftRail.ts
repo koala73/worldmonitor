@@ -9,6 +9,7 @@
 
 import type { GetRouteExplorerLaneResponse, DependencyFlag } from '@/generated/server/worldmonitor/supply_chain/v1/service_server';
 import {
+  formatScoredResilienceOverallLabel,
   formatResilienceConfidence,
   formatResilienceScoreInterval,
   hasScoredResilienceOverall,
@@ -96,7 +97,7 @@ export class LeftRail {
 
   private static formatResilienceScore(resilience: ResilienceScoreResponse | null): string {
     if (!resilience || !hasScoredResilienceOverall(resilience)) return '\u2014';
-    return `${Math.round(resilience.overallScore)}/100`;
+    return `${formatScoredResilienceOverallLabel(resilience.overallScore)}/100`;
   }
 
   private static renderResilienceMeta(resilience: ResilienceScoreResponse | null): string {

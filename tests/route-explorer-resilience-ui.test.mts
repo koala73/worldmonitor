@@ -275,6 +275,17 @@ describe('RouteExplorer resilience UI surfaces', () => {
       assert.match(meta.innerHTML, /Coverage 90%/);
       assert.doesNotMatch(meta.innerHTML, /No scored resilience data/);
     });
+
+    it('renders positive sub-1 resilience scores distinctly from explicit zero', () => {
+      const rail = new LeftRail();
+      const { value, meta } = seedLeftRailResilienceNodes(rail);
+
+      rail.updateResilience(resilienceFixture({ overallScore: 0.4, level: 'low' }));
+
+      assert.equal(value.textContent, '<1/100');
+      assert.match(meta.innerHTML, /Coverage 90%/);
+      assert.doesNotMatch(meta.innerHTML, /No scored resilience data/);
+    });
   });
 
   describe('CountryImpactTab', () => {
@@ -382,6 +393,19 @@ describe('RouteExplorer resilience UI surfaces', () => {
       tab.updateResilience(resilienceFixture({ overallScore: 0, level: 'low' }));
 
       assert.match(slot.innerHTML, /Resilience: <strong>0\/100<\/strong>/);
+      assert.match(slot.innerHTML, /Coverage 90%/);
+      assert.doesNotMatch(slot.innerHTML, /No scored resilience data/);
+      assert.doesNotMatch(slot.innerHTML, /44\/100/);
+    });
+
+    it('renders endpoint positive sub-1 resilience scores distinctly from explicit zero', () => {
+      const tab = new CountryImpactTab();
+      tab.update(impactFixture({ resilienceScore: 44 }));
+      const slot = seedImpactResilienceSlot(tab);
+
+      tab.updateResilience(resilienceFixture({ overallScore: 0.4, level: 'low' }));
+
+      assert.match(slot.innerHTML, /Resilience: <strong>&lt;1\/100<\/strong>/);
       assert.match(slot.innerHTML, /Coverage 90%/);
       assert.doesNotMatch(slot.innerHTML, /No scored resilience data/);
       assert.doesNotMatch(slot.innerHTML, /44\/100/);
