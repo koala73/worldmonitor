@@ -194,19 +194,20 @@ function evaluateDataProbe(cfg, raw) {
   }
 
   const methodology = typeof parsed.methodology === 'string' ? parsed.methodology : null;
+  const formula = typeof parsed._formula === 'string' ? parsed._formula : null;
   if (cfg.methodology && methodology !== cfg.methodology) {
     return {
       ok: false,
       status: 'methodology_mismatch',
       key: cfg.key,
       methodology,
+      formula,
       requiredMethodology: cfg.methodology,
       requiredSourceVersion: cfg.sourceVersion ?? null,
       requiredFormula,
     };
   }
 
-  const formula = typeof parsed._formula === 'string' ? parsed._formula : null;
   if (requiredFormula && formula !== requiredFormula) {
     return {
       ok: false,

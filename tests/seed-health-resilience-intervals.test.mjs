@@ -47,8 +47,6 @@ before(() => {
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
   process.env.WORLDMONITOR_VALID_KEYS = 'test-key';
-  process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'true';
-  process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
 });
 
 after(() => {
@@ -132,7 +130,7 @@ test('seed-health keeps resilience intervals green when fresh meta matches the c
 test('seed-health flags resilience interval methodology mismatches', async () => {
   installPipelineMock(new Map([
     [META_KEY, intervalMeta()],
-    [PROBE_KEY, intervalPayload({ methodology: 'weight-perturbation-sensitivity-v2' })],
+    [PROBE_KEY, intervalPayload({ _formula: 'd6', methodology: 'weight-perturbation-sensitivity-v2' })],
   ]));
 
   const { res, body } = await readSeedHealth();
@@ -146,6 +144,7 @@ test('seed-health flags resilience interval methodology mismatches', async () =>
     status: 'methodology_mismatch',
     key: PROBE_KEY,
     methodology: 'weight-perturbation-sensitivity-v2',
+    formula: 'd6',
     requiredMethodology: METHODOLOGY,
     requiredSourceVersion: SOURCE_VERSION,
     requiredFormula: 'pc',
