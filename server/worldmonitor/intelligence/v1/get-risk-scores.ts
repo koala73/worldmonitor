@@ -856,6 +856,9 @@ export function filterRiskScoresResponse(
 // not the payload itself.
 const RISK_CACHE_KEY = 'risk:scores:sebuf:v3';
 const RISK_STALE_CACHE_KEY = 'risk:scores:sebuf:stale:v3';
+// `region` is deliberately excluded from the Redis key: this endpoint caches
+// the all-country payload once and applies any region filter as a read-only
+// projection at return time, so per-region requests cannot poison global cache.
 const RISK_CACHE_TTL = 600;
 const RISK_STALE_TTL = 3600;
 
