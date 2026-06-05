@@ -886,18 +886,32 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
     const activeDimensionIds = new Set(
       RESILIENCE_DIMENSION_ORDER.filter((id) => !RESILIENCE_RETIRED_DIMENSIONS.has(id)),
     );
-    const deferredScorerDimensionIds = [
-      ...indicatorSourceCatalogText.matchAll(/#[^\n]*not yet in the scorer[^\n]*(?:\n# -[^\n]*)*/gi),
-      ...indicatorSourceCatalogText.matchAll(/#[^\n]*\bdeferred\b[^\n]*(?:\n# -[^\n]*)*/gi),
-    ].flatMap((match) =>
-      [...match[0].matchAll(/^# -\s*([A-Za-z][A-Za-z0-9]*)\b/gm)].map((bulletMatch) => bulletMatch[1])
+    const extractFooterBulletIds = (patterns: RegExp[]) => patterns.flatMap((pattern) =>
+      [...indicatorSourceCatalogText.matchAll(pattern)].flatMap((match) =>
+        [...match[0].matchAll(/^# -\s*([A-Za-z][A-Za-z0-9]*)\b/gm)].map((bulletMatch) => bulletMatch[1])
+      )
     );
+    const deferredScorerDimensionIds = extractFooterBulletIds([
+      /#[^\n]*not yet in the scorer[^\n]*(?:\n# -[^\n]*)*/gi,
+      /#[^\n]*\bdeferred\b[^\n]*(?:\n# -[^\n]*)*/gi,
+    ]);
+    const landedActiveDimensionIds = extractFooterBulletIds([
+      /#[^\n]*landed active dimensions[^\n]*(?:\n# -[^\n]*)*/gi,
+    ]);
 
     for (const dimensionId of deferredScorerDimensionIds) {
       assert.equal(
         activeDimensionIds.has(dimensionId as ResilienceDimensionId),
         false,
         `indicator-sources.yaml must not describe active dimension "${dimensionId}" as not yet in the scorer.`,
+      );
+    }
+
+    for (const dimensionId of landedActiveDimensionIds) {
+      assert.equal(
+        activeDimensionIds.has(dimensionId as ResilienceDimensionId),
+        true,
+        `indicator-sources.yaml must not describe inactive dimension "${dimensionId}" as landed active.`,
       );
     }
   });
