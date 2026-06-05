@@ -11,6 +11,7 @@ import type { GetRouteExplorerLaneResponse, DependencyFlag } from '@/generated/s
 import {
   formatResilienceConfidence,
   formatResilienceScoreInterval,
+  hasScoredResilienceOverall,
 } from '@/components/resilience-widget-utils';
 import type { ResilienceScoreResponse } from '@/services/resilience';
 import {
@@ -94,18 +95,13 @@ export class LeftRail {
   }
 
   private static formatResilienceScore(resilience: ResilienceScoreResponse | null): string {
-    const score = resilience?.overallScore;
-    const rounded = typeof score === 'number' && Number.isFinite(score) ? Math.round(score) : 0;
-    return rounded > 0
-      ? `${rounded}/100`
-      : '\u2014';
+    if (!resilience || !hasScoredResilienceOverall(resilience)) return '\u2014';
+    return `${Math.round(resilience.overallScore)}/100`;
   }
 
   private static renderResilienceMeta(resilience: ResilienceScoreResponse | null): string {
     if (!resilience) return '';
-    const score = resilience.overallScore;
-    const rounded = typeof score === 'number' && Number.isFinite(score) ? Math.round(score) : 0;
-    if (rounded <= 0) {
+    if (!hasScoredResilienceOverall(resilience)) {
       return '<span class="re-resilience-confidence re-resilience-confidence--low">No scored resilience data</span>';
     }
     const confidence = formatResilienceConfidence(resilience);

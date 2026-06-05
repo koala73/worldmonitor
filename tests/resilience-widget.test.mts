@@ -20,6 +20,7 @@ import {
   getResilienceDomainLabel,
   getResilienceTrendArrow,
   getResilienceVisualLevel,
+  hasScoredResilienceOverall,
   getStalenessIcon,
   getStalenessLabel,
 } from '../src/components/resilience-widget-utils';
@@ -101,7 +102,11 @@ test('getResilienceOverallDisplay treats negative and non-finite scores as insuf
   });
 });
 
-test('getResilienceOverallDisplay preserves API unknown zero as no score', () => {
+test('getResilienceOverallDisplay treats null, undefined, and API unknown zero as no score', () => {
+  assert.equal(hasScoredResilienceOverall(null), false);
+  assert.equal(hasScoredResilienceOverall(undefined), false);
+  assert.equal(hasScoredResilienceOverall({ overallScore: null as unknown as number, level: 'low' }), false);
+  assert.equal(hasScoredResilienceOverall({ overallScore: undefined as unknown as number, level: 'low' }), false);
   assert.equal(getResilienceVisualLevel(0), 'very_low');
   assert.deepEqual(getResilienceOverallDisplay({ overallScore: 0, level: 'unknown' }), {
     hasScore: false,
@@ -114,6 +119,7 @@ test('getResilienceOverallDisplay preserves API unknown zero as no score', () =>
 });
 
 test('getResilienceOverallDisplay keeps explicit zero scores when API level is real', () => {
+  assert.equal(hasScoredResilienceOverall({ overallScore: 0, level: 'low' }), true);
   assert.deepEqual(getResilienceOverallDisplay({ overallScore: 0, level: 'low' }), {
     hasScore: true,
     scoreForBar: 0,

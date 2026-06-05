@@ -209,8 +209,19 @@ export function formatResilienceServerLevel(level: string | null | undefined): s
   return normalized.length > 0 ? normalized.replace(/_/g, ' ') : 'unknown';
 }
 
-function isUnknownResilienceServerLevel(level: string | null | undefined): boolean {
-  return String(level || '').trim().toLowerCase() === 'unknown';
+function hasAuthoritativeResilienceServerLevel(level: string | null | undefined): boolean {
+  const normalized = String(level || '').trim().toLowerCase();
+  return normalized.length > 0 && normalized !== 'unknown';
+}
+
+export function hasScoredResilienceOverall(
+  data: Pick<ResilienceScoreResponse, 'overallScore' | 'level'> | null | undefined,
+): boolean {
+  if (!data || typeof data.overallScore !== 'number' || !Number.isFinite(data.overallScore) || data.overallScore < 0) {
+    return false;
+  }
+  // Zero is a valid explicit score only when the API also supplies a real level.
+  return data.overallScore !== 0 || hasAuthoritativeResilienceServerLevel(data.level);
 }
 
 export interface ResilienceOverallDisplay {
@@ -225,7 +236,7 @@ export interface ResilienceOverallDisplay {
 export function getResilienceOverallDisplay(data: Pick<ResilienceScoreResponse, 'overallScore' | 'level'>): ResilienceOverallDisplay {
   const rawScore = Number(data.overallScore);
   const visualLevel = getResilienceVisualLevel(rawScore);
-  if (visualLevel === 'unknown' || (rawScore === 0 && isUnknownResilienceServerLevel(data.level))) {
+  if (!hasScoredResilienceOverall(data)) {
     return {
       hasScore: false,
       scoreForBar: 0,

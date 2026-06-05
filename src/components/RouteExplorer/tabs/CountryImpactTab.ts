@@ -14,6 +14,7 @@ import type {
 import {
   formatResilienceConfidence,
   formatResilienceScoreInterval,
+  hasScoredResilienceOverall,
 } from '@/components/resilience-widget-utils';
 import type { ResilienceScoreResponse } from '@/services/resilience';
 import { escapeHtml } from './route-utils';
@@ -132,7 +133,7 @@ export class CountryImpactTab {
     const resilience = this.resilience;
     const score = resilience?.overallScore;
     const roundedScore = typeof score === 'number' && Number.isFinite(score) ? Math.round(score) : 0;
-    if (resilience && roundedScore > 0) {
+    if (resilience && hasScoredResilienceOverall(resilience)) {
       const confidence = formatResilienceConfidence(resilience);
       const interval = formatResilienceScoreInterval(resilience.scoreInterval);
       return [

@@ -242,7 +242,8 @@ describe('RouteExplorer resilience UI surfaces', () => {
       const cases: Array<[string, ResilienceScoreResponse | null]> = [
         ['null response', null],
         ['null score', resilienceFixture({ overallScore: null as unknown as number })],
-        ['zero score', resilienceFixture({ overallScore: 0 })],
+        ['unknown-level zero score', resilienceFixture({ overallScore: 0, level: 'unknown' })],
+        ['missing-level zero score', resilienceFixture({ overallScore: 0, level: undefined as unknown as string })],
         ['negative score', resilienceFixture({ overallScore: -1 })],
         ['NaN score', resilienceFixture({ overallScore: Number.NaN })],
       ];
@@ -262,6 +263,17 @@ describe('RouteExplorer resilience UI surfaces', () => {
           assert.equal(meta.innerHTML, '', label);
         }
       }
+    });
+
+    it('renders explicit zero resilience scores when the API level is real', () => {
+      const rail = new LeftRail();
+      const { value, meta } = seedLeftRailResilienceNodes(rail);
+
+      rail.updateResilience(resilienceFixture({ overallScore: 0, level: 'low' }));
+
+      assert.equal(value.textContent, '0/100');
+      assert.match(meta.innerHTML, /Coverage 90%/);
+      assert.doesNotMatch(meta.innerHTML, /No scored resilience data/);
     });
   });
 
@@ -339,10 +351,11 @@ describe('RouteExplorer resilience UI surfaces', () => {
       assert.doesNotMatch(slot.innerHTML, /re-resilience-interval/);
     });
 
-    it('renders endpoint no-score state for null, zero, negative, and NaN sentinels', () => {
+    it('renders endpoint no-score state for null, unknown-level zero, negative, and NaN sentinels', () => {
       const cases: Array<[string, ResilienceScoreResponse]> = [
         ['null score', resilienceFixture({ overallScore: null as unknown as number })],
-        ['zero score', resilienceFixture({ overallScore: 0 })],
+        ['unknown-level zero score', resilienceFixture({ overallScore: 0, level: 'unknown' })],
+        ['missing-level zero score', resilienceFixture({ overallScore: 0, level: undefined as unknown as string })],
         ['negative score', resilienceFixture({ overallScore: -1 })],
         ['NaN score', resilienceFixture({ overallScore: Number.NaN })],
       ];
@@ -359,6 +372,19 @@ describe('RouteExplorer resilience UI surfaces', () => {
         assert.match(slot.innerHTML, /re-resilience-confidence--low/, label);
         assert.doesNotMatch(slot.innerHTML, /44\/100/, label);
       }
+    });
+
+    it('renders endpoint explicit zero resilience scores when the API level is real', () => {
+      const tab = new CountryImpactTab();
+      tab.update(impactFixture({ resilienceScore: 44 }));
+      const slot = seedImpactResilienceSlot(tab);
+
+      tab.updateResilience(resilienceFixture({ overallScore: 0, level: 'low' }));
+
+      assert.match(slot.innerHTML, /Resilience: <strong>0\/100<\/strong>/);
+      assert.match(slot.innerHTML, /Coverage 90%/);
+      assert.doesNotMatch(slot.innerHTML, /No scored resilience data/);
+      assert.doesNotMatch(slot.innerHTML, /44\/100/);
     });
   });
 });
