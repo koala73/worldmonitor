@@ -1265,14 +1265,14 @@
   constructStatus: imputed-floor
   reviewNotes: PR 3 §3.5 retires from core score (permanent). Enrichment-only if IEA/EIA connector ever wires.
 
-# DEFERRED ADDITIONS FOR PR 1+ --------------------------------------------
+# FOOTER STATUS NOTES ------------------------------------------------------
 
-# PR 1 deferred addition:
+# Deferred additions:
 # - reserveMarginPct → IEA electricity balance (generation reserve margin, higher-better)
 
-# PR 2 additions (not yet in the scorer):
-# - liquidReserveAdequacy  → FI.RES.TOTL.MO (rename of current reserveMonths)
+# Landed active dimensions:
+# - liquidReserveAdequacy  → FI.RES.TOTL.MO (active replacement for reserveAdequacy)
 # - sovereignFiscalBuffer  → IFSWF + official disclosures × access × liquidity × transparency
 
-# PR 3 replacements (not yet in the scorer):
+# Future replacement candidate (not yet in the scorer):
 # - realInterestRate       → FR.INR.RINR (replaces currencyExternal for non-BIS countries)

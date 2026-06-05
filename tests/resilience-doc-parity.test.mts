@@ -882,6 +882,26 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
     }
   });
 
+  it('indicator source catalog does not list active scorer dimensions as deferred', () => {
+    const activeDimensionIds = new Set(
+      RESILIENCE_DIMENSION_ORDER.filter((id) => !RESILIENCE_RETIRED_DIMENSIONS.has(id)),
+    );
+    const deferredScorerDimensionIds = [
+      ...indicatorSourceCatalogText.matchAll(/#[^\n]*not yet in the scorer[^\n]*(?:\n# -[^\n]*)*/gi),
+      ...indicatorSourceCatalogText.matchAll(/#[^\n]*\bdeferred\b[^\n]*(?:\n# -[^\n]*)*/gi),
+    ].flatMap((match) =>
+      [...match[0].matchAll(/^# -\s*([A-Za-z][A-Za-z0-9]*)\b/gm)].map((bulletMatch) => bulletMatch[1])
+    );
+
+    for (const dimensionId of deferredScorerDimensionIds) {
+      assert.equal(
+        activeDimensionIds.has(dimensionId as ResilienceDimensionId),
+        false,
+        `indicator-sources.yaml must not describe active dimension "${dimensionId}" as not yet in the scorer.`,
+      );
+    }
+  });
+
   it('indicator source catalog covers newly registered static scorer inputs', () => {
     for (const id of STATIC_SCORER_CATALOG_PARITY_IDS) {
       const block = extractIndicatorSourceBlock(indicatorSourceCatalogText, id);
