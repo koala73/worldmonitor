@@ -26,6 +26,8 @@ import type { ResilienceDimensionId } from '../server/worldmonitor/resilience/v1
 // wiring) can consume the aggregated freshness with confidence.
 
 const NOW = 1_700_000_000_000;
+const RECOVERY_RESERVE_ADEQUACY_KEY = 'resilience:recovery:reserve-adequacy:v1';
+const RECOVERY_REEXPORT_SHARE_KEY = 'resilience:recovery:reexport-share:v1';
 
 function freshAt(cadenceKey: Parameters<typeof cadenceUnitMs>[0], factor = 0.5): number {
   // factor < FRESH_MULTIPLIER keeps the age in the fresh band.
@@ -100,6 +102,51 @@ describe('classifyDimensionFreshness (T1.5 propagation pass)', () => {
     const result = classifyDimensionFreshness('macroFiscal', emptyMap, NOW);
     assert.equal(result.staleness, 'stale', 'no data = stale');
     assert.equal(result.lastObservedAtMs, 0, 'no data = lastObservedAtMs zero');
+  });
+
+  it('liquidReserveAdequacy is stale when the re-export-share modifier is missing', () => {
+    const map = new Map<string, number>([
+      [RECOVERY_RESERVE_ADEQUACY_KEY, freshAt('annual')],
+    ]);
+
+    const result = classifyDimensionFreshness('liquidReserveAdequacy', map, NOW);
+
+    assert.equal(
+      result.staleness,
+      'stale',
+      'fresh reserve-adequacy alone must not mask missing re-export-share modifier freshness',
+    );
+  });
+
+  it('liquidReserveAdequacy is stale when the re-export-share modifier is stale', () => {
+    const map = new Map<string, number>([
+      [RECOVERY_RESERVE_ADEQUACY_KEY, freshAt('annual')],
+      [RECOVERY_REEXPORT_SHARE_KEY, staleAt('annual')],
+    ]);
+
+    const result = classifyDimensionFreshness('liquidReserveAdequacy', map, NOW);
+
+    assert.equal(
+      result.staleness,
+      'stale',
+      'stale re-export-share modifier freshness must dominate fresh reserve-adequacy freshness',
+    );
+  });
+
+  it('liquidReserveAdequacy stays fresh when reserve adequacy and re-export-share are both fresh', () => {
+    const map = new Map<string, number>([
+      [RECOVERY_RESERVE_ADEQUACY_KEY, freshAt('annual', 0.25)],
+      [RECOVERY_REEXPORT_SHARE_KEY, freshAt('annual', 0.5)],
+    ]);
+
+    const result = classifyDimensionFreshness('liquidReserveAdequacy', map, NOW);
+
+    assert.equal(result.staleness, 'fresh');
+    assert.equal(
+      result.lastObservedAtMs,
+      map.get(RECOVERY_REEXPORT_SHARE_KEY),
+      'lastObservedAtMs should remain the oldest fresh liquid-reserve source',
+    );
   });
 
   it('dimension with no registry indicators returns empty payload (defensive)', () => {
@@ -377,6 +424,10 @@ describe('resolveSeedMetaKey (T1.5 propagation pass, P1 fix)', () => {
     assert.equal(resolveSeedMetaKey('infra:outages:v1'), 'seed-meta:infra:outages');
     assert.equal(resolveSeedMetaKey('unrest:events:v1'), 'seed-meta:unrest:events');
     assert.equal(resolveSeedMetaKey('intelligence:gpsjam:v2'), 'seed-meta:intelligence:gpsjam');
+    assert.equal(
+      resolveSeedMetaKey(RECOVERY_REEXPORT_SHARE_KEY),
+      'seed-meta:resilience:recovery:reexport-share',
+    );
     assert.equal(
       resolveSeedMetaKey('economic:national-debt:v1'),
       'seed-meta:economic:national-debt',

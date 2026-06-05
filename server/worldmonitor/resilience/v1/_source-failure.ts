@@ -142,6 +142,7 @@ export const STANDALONE_SOURCE_META_MAX_STALE_MIN: Readonly<Record<string, numbe
   'seed-meta:news:threat-summary': 60,
   'seed-meta:resilience:recovery:fiscal-space': 129600,
   'seed-meta:resilience:recovery:reserve-adequacy': 86400,
+  'seed-meta:resilience:recovery:reexport-share': 86400,
   'seed-meta:resilience:recovery:sovereign-wealth': 86400,
   'seed-meta:resilience:recovery:external-debt': 86400,
   'seed-meta:resilience:recovery:import-hhi': 50400,

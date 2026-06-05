@@ -1198,6 +1198,10 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     goalposts: { worst: 1, best: 12 },
     weight: 1.0,
     sourceKey: 'resilience:recovery:reserve-adequacy:v1',
+    sourceKeys: [
+      'resilience:recovery:reserve-adequacy:v1',
+      'resilience:recovery:reexport-share:v1',
+    ],
     scope: 'global',
     cadence: 'annual',
     tier: 'core',
