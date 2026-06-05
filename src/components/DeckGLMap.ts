@@ -4543,8 +4543,13 @@ export class DeckGLMap {
         const levelColor = `rgb(${red}, ${green}, ${blue})`;
         const visualBand = formatResilienceChoroplethLevel(resilienceEntry.level);
         const serverLevel = formatResilienceServerLevel(resilienceEntry.serverLevel);
+        const confidenceNote = resilienceEntry.lowConfidence
+          ? '<br/><span style="opacity:.7">Low confidence</span>'
+          : resilienceEntry.outsideHeadlineRanking
+            ? '<br/><span style="opacity:.7">Outside headline ranking</span>'
+            : '';
         return {
-          html: `<div class="deckgl-tooltip"><strong>${text(resilienceName)}</strong><br/>Resilience: <span style="color:${levelColor};font-weight:600">${resilienceEntry.overallScore.toFixed(1)}/100</span><br/><span style="text-transform:capitalize;opacity:.7">Visual band: ${text(visualBand)}</span><br/><span style="text-transform:capitalize;opacity:.7">API level: ${text(serverLevel)}</span>${resilienceEntry.lowConfidence ? '<br/><span style="opacity:.7">Low confidence</span>' : ''}</div>`,
+          html: `<div class="deckgl-tooltip"><strong>${text(resilienceName)}</strong><br/>Resilience: <span style="color:${levelColor};font-weight:600">${resilienceEntry.overallScore.toFixed(1)}/100</span><br/><span style="text-transform:capitalize;opacity:.7">Visual band: ${text(visualBand)}</span><br/><span style="text-transform:capitalize;opacity:.7">API level: ${text(serverLevel)}</span>${confidenceNote}</div>`,
         };
       }
       case 'species-recovery-layer': {

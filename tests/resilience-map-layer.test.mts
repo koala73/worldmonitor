@@ -49,7 +49,7 @@ describe('resilience choropleth thresholds', () => {
     const scores = buildResilienceChoroplethMap([
       { countryCode: 'NO', overallScore: 82, level: 'high', lowConfidence: false },
       { countryCode: 'US', overallScore: 61.234, level: 'medium', lowConfidence: true },
-      { countryCode: 'YE', overallScore: -1, level: 'unknown', lowConfidence: true },
+      { countryCode: 'YEM', overallScore: -1, level: 'unknown', lowConfidence: true },
     ]);
 
     assert.equal(scores.size, 2);
@@ -58,14 +58,98 @@ describe('resilience choropleth thresholds', () => {
       level: 'very_high',
       serverLevel: 'high',
       lowConfidence: false,
+      outsideHeadlineRanking: false,
     });
     assert.deepEqual(scores.get('US'), {
       overallScore: 61.2,
       level: 'high',
       serverLevel: 'medium',
       lowConfidence: true,
+      outsideHeadlineRanking: false,
     });
-    assert.equal(scores.has('YE'), false);
+    assert.equal(scores.has('YEM'), false);
+  });
+
+  it('preserves scored greyedOut countries that are outside the headline ranking', () => {
+    const scores = buildResilienceChoroplethMap([], [
+      {
+        countryCode: 'TV',
+        overallScore: 70,
+        level: 'medium',
+        lowConfidence: false,
+        overallCoverage: 0.7,
+        rankStable: false,
+        headlineEligible: false,
+      },
+    ]);
+
+    assert.deepEqual(scores.get('TV'), {
+      overallScore: 70,
+      level: 'high',
+      serverLevel: 'medium',
+      lowConfidence: false,
+      outsideHeadlineRanking: true,
+    });
+  });
+
+  it('renders true greyedOut no-score sentinels as insufficient data', () => {
+    const scores = buildResilienceChoroplethMap([], [
+      {
+        countryCode: 'AQ',
+        overallScore: 0,
+        level: 'insufficient',
+        lowConfidence: true,
+        overallCoverage: 0,
+        rankStable: false,
+        headlineEligible: false,
+      },
+    ]);
+
+    assert.deepEqual(scores.get('AQ'), {
+      overallScore: 0,
+      level: 'insufficient_data',
+      serverLevel: 'insufficient',
+      lowConfidence: true,
+      outsideHeadlineRanking: false,
+    });
+  });
+
+  it('renders true items no-score sentinels as insufficient data', () => {
+    const scores = buildResilienceChoroplethMap([
+      {
+        countryCode: 'ZZ',
+        overallScore: 0,
+        level: 'unknown',
+        lowConfidence: false,
+        overallCoverage: 0,
+        rankStable: false,
+        headlineEligible: true,
+      },
+      {
+        countryCode: 'YE',
+        overallScore: -1,
+        level: 'medium',
+        lowConfidence: true,
+        overallCoverage: 0.4,
+        rankStable: false,
+        headlineEligible: false,
+      },
+    ]);
+
+    assert.deepEqual(scores.get('ZZ'), {
+      overallScore: 0,
+      level: 'insufficient_data',
+      serverLevel: 'unknown',
+      lowConfidence: true,
+      outsideHeadlineRanking: false,
+    });
+    assert.deepEqual(scores.get('YE'), {
+      overallScore: 0,
+      level: 'insufficient_data',
+      serverLevel: 'medium',
+      lowConfidence: true,
+      outsideHeadlineRanking: false,
+    });
   });
 });
 
