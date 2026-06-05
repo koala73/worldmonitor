@@ -148,6 +148,10 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Aaj Tak', url: 'https://www.aajtak.in/rssfeeds/?id=home', lang: 'hi' },
       { name: 'NDTV India', url: 'https://feeds.feedburner.com/ndtvkhabar-latest', lang: 'hi' },
       { name: 'Amar Ujala', url: 'https://www.amarujala.com/rss/national.xml', lang: 'hi' },
+      // Indonesia
+      { name: 'Jakarta Post', url: 'https://www.thejakartapost.com/feed/' },
+      { name: 'Antara News', url: 'https://en.antaranews.com/rss/news.xml' },
+      { name: 'Indonesia News', url: gn('(Indonesia OR Jakarta OR Jokowi OR Prabowo OR ASEAN) when:2d') },
     ],
     energy: [
       { name: 'Oil & Gas', url: gn('(oil price OR OPEC OR "natural gas" OR pipeline OR LNG) when:2d') },

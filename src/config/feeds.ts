@@ -89,6 +89,10 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'Stimson Center': 'intel', 'CNAS': 'intel',
   // Nuclear & Arms Control
   'Arms Control Assn': 'intel', 'Bulletin of Atomic Scientists': 'intel',
+  // Indonesian Sources
+  'Jakarta Post': 'mainstream', 'Antara News': 'wire',
+  'Kompas': 'mainstream', 'CNBC Indonesia': 'market',
+  'Tempo': 'mainstream', 'Detik': 'mainstream',
   // Food Security & Regional
   'FAO GIEWS': 'gov', 'EU ISS': 'intel',
   // Investigative journalism & accountability
@@ -461,6 +465,12 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Guardian Australia', url: rss('https://www.theguardian.com/australia-news/rss') },
     // Pacific Islands
     { name: 'Island Times (Palau)', url: rss('https://islandtimes.org/feed/') },
+    // Indonesia
+    { name: 'Jakarta Post', url: rss('https://www.thejakartapost.com/feed/') },
+    { name: 'Antara News', url: rss('https://en.antaranews.com/rss/news.xml') },
+    { name: 'Kompas English', url: rss('https://news.google.com/rss/search?q=site:kompas.com+english+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Indonesia News', url: rss('https://news.google.com/rss/search?q=(Indonesia+OR+Jakarta+OR+Jokowi+OR+Prabowo+OR+ASEAN)+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'CNBC Indonesia', url: rss('https://www.cnbcindonesia.com/rss'), lang: 'id' },
   ],
   energy: [
     { name: 'Oil & Gas', url: rss('https://news.google.com/rss/search?q=(oil+price+OR+OPEC+OR+"natural+gas"+OR+pipeline+OR+LNG)+when:2d&hl=en-US&gl=US&ceid=US:en') },
@@ -548,6 +558,7 @@ const TECH_FEEDS: Record<string, Feed[]> = {
     { name: 'SEA Tech News', url: rss('https://news.google.com/rss/search?q=(Grab+OR+GoTo+OR+Sea+Limited+OR+Shopee+OR+Tokopedia)+when:7d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Vietnam Tech', url: rss('https://news.google.com/rss/search?q=Vietnam+startup+OR+Vietnam+tech+when:7d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Indonesia Tech', url: rss('https://news.google.com/rss/search?q=Indonesia+startup+OR+Indonesia+tech+when:7d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Indonesia Digital Economy', url: rss('https://news.google.com/rss/search?q=(GoTo+OR+Tokopedia+OR+Shopee+Indonesia+OR+Gojek+OR+Traveloka+OR+RuangGuru)+when:7d&hl=en-US&gl=US&ceid=US:en') },
     // Taiwan
     { name: 'Taiwan Tech', url: rss('https://news.google.com/rss/search?q=(Taiwan+startup+OR+TSMC+OR+MediaTek+OR+Foxconn)+when:7d&hl=en-US&gl=US&ceid=US:en') },
     // Latin America
