@@ -27,6 +27,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
+import { parse as parseYaml } from 'yaml';
 
 import {
   RESILIENCE_SCORE_CACHE_PREFIX,
@@ -171,6 +172,15 @@ interface MethodologyIndicatorTextRow {
   direction: string;
   goalposts: string;
   weight: string;
+}
+
+interface IndicatorSourceCatalogRow {
+  indicator: string;
+  dimension: string;
+  weight: number | string;
+  direction: string;
+  scoringTier?: string;
+  reviewNotes?: string;
 }
 
 describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
@@ -801,6 +811,73 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
       /PR 1 additions \(not yet in the scorer\)/,
       'indicator source catalog must not describe active energy-v2 inputs as pending/not yet in the scorer.',
     );
+  });
+
+  it('indicator source catalog mirrors every active registry-backed indicator row', () => {
+    const catalogRows = parseYaml(indicatorSourceCatalogText) as IndicatorSourceCatalogRow[];
+    assert.ok(Array.isArray(catalogRows), 'indicator-sources.yaml must parse to a YAML sequence.');
+
+    const catalogById = new Map<string, IndicatorSourceCatalogRow>();
+    for (const row of catalogRows) {
+      assert.ok(row.indicator, 'each indicator-sources.yaml row must declare indicator.');
+      assert.equal(
+        catalogById.has(row.indicator),
+        false,
+        `indicator-sources.yaml must not duplicate registry/catalog row "${row.indicator}".`,
+      );
+      catalogById.set(row.indicator, row);
+    }
+
+    for (const registrySpec of INDICATOR_REGISTRY) {
+      const catalogRow = catalogById.get(registrySpec.id);
+      if (catalogRow?.scoringTier != null) {
+        assert.equal(
+          catalogRow.scoringTier,
+          registrySpec.tier,
+          `${registrySpec.id} scoringTier must mirror INDICATOR_REGISTRY.`,
+        );
+      }
+
+      if (registrySpec.tier === 'experimental') {
+        if (catalogRow == null) continue;
+        assert.equal(
+          catalogRow.scoringTier,
+          'experimental',
+          `${registrySpec.id} experimental registry row must be excluded from active catalog parity.`,
+        );
+        assert.match(
+          catalogRow.reviewNotes ?? '',
+          /experimental|rollback|legacy|removes|replaces|replaced|retires|collapses|no longer reads/i,
+          `${registrySpec.id} experimental catalog row must explain why it is not an active scorer input.`,
+        );
+        continue;
+      }
+
+      assert.ok(
+        catalogRow,
+        `${registrySpec.id} is ${registrySpec.tier} in INDICATOR_REGISTRY and must have an active indicator-sources.yaml row.`,
+      );
+      assert.equal(
+        catalogRow.dimension,
+        registrySpec.dimension,
+        `${registrySpec.id} source-catalog dimension must mirror INDICATOR_REGISTRY.`,
+      );
+      assert.equal(
+        Number(catalogRow.weight),
+        registrySpec.weight,
+        `${registrySpec.id} source-catalog weight must mirror INDICATOR_REGISTRY.`,
+      );
+      assert.equal(
+        catalogRow.direction,
+        indicatorSourceDirection(registrySpec.direction),
+        `${registrySpec.id} source-catalog direction must mirror INDICATOR_REGISTRY.`,
+      );
+      assert.equal(
+        catalogRow.scoringTier,
+        registrySpec.tier,
+        `${registrySpec.id} active source-catalog row must declare the live registry scoringTier.`,
+      );
+    }
   });
 
   it('indicator source catalog covers newly registered static scorer inputs', () => {
