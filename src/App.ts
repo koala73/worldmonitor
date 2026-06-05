@@ -512,7 +512,7 @@ export class App {
     let panelSettings: Record<string, PanelConfig>;
 
     // Panels that must survive variant switches: desktop config, user-created widgets, MCP panels.
-    const isDynamicPanel = (k: string) => k === 'runtime-config' || k.startsWith('cw-') || k.startsWith('mcp-');
+    const isDynamicPanel = (k: string) => !ALL_PANELS[k] && (k === 'runtime-config' || k.startsWith('cw-') || k.startsWith('mcp-'));
 
     // Check if variant changed - reset all settings to variant defaults
     const storedVariant = localStorage.getItem('worldmonitor-variant');
