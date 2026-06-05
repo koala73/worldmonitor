@@ -22,6 +22,7 @@ import {
   getResilienceVisualLevel,
   getStalenessIcon,
   getStalenessLabel,
+  shouldRenderResilienceBaselineStress,
 } from '../src/components/resilience-widget-utils';
 import type { ResilienceScoreResponse } from '../src/services/resilience';
 
@@ -322,6 +323,34 @@ test('formatBaselineStress renders the expected breakdown string (no Impact)', (
   assert.equal(formatBaselineStress(80, 100), 'Baseline: 80 | Stress: 100');
   assert.equal(formatBaselineStress(50, 0), 'Baseline: 50 | Stress: 0');
   assert.equal(formatBaselineStress(NaN, 50), 'Baseline: 0 | Stress: 50');
+});
+
+test('shouldRenderResilienceBaselineStress hides the row when the overall score is unavailable', () => {
+  const noScoreResponse: ResilienceScoreResponse = {
+    ...baseResponse,
+    overallScore: 0,
+    baselineScore: 0,
+    stressScore: 0,
+    level: 'unknown',
+    lowConfidence: true,
+  };
+
+  assert.equal(getResilienceOverallDisplay(noScoreResponse).hasScore, false);
+  assert.equal(shouldRenderResilienceBaselineStress(noScoreResponse), false);
+  assert.equal(formatResilienceConfidence(noScoreResponse), 'Low confidence — sparse data');
+});
+
+test('shouldRenderResilienceBaselineStress keeps explicit zero scores when the API level is real', () => {
+  const zeroScoreResponse: ResilienceScoreResponse = {
+    ...baseResponse,
+    overallScore: 0,
+    baselineScore: 0,
+    stressScore: 0,
+    level: 'low',
+  };
+
+  assert.equal(getResilienceOverallDisplay(zeroScoreResponse).hasScore, true);
+  assert.equal(shouldRenderResilienceBaselineStress(zeroScoreResponse), true);
 });
 
 test('formatResilienceScoreInterval renders the overall score interval badge', () => {

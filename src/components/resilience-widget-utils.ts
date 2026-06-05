@@ -247,6 +247,13 @@ export function getResilienceOverallDisplay(data: Pick<ResilienceScoreResponse, 
   };
 }
 
+export function shouldRenderResilienceBaselineStress(
+  data: Pick<ResilienceScoreResponse, 'overallScore' | 'level' | 'baselineScore' | 'stressScore'>,
+  overallDisplay: Pick<ResilienceOverallDisplay, 'hasScore'> = getResilienceOverallDisplay(data),
+): boolean {
+  return overallDisplay.hasScore && data.baselineScore != null && data.stressScore != null;
+}
+
 export interface ResilienceMethodologySummary {
   activeDimensionCount: number;
   // Kept for server/fixture parity tests; tooltip copy intentionally shows active dimensions only.

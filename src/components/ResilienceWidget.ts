@@ -21,6 +21,7 @@ import {
   getResilienceVisualLevel,
   getStalenessIcon,
   getStalenessLabel,
+  shouldRenderResilienceBaselineStress,
 } from './resilience-widget-utils';
 import type { CountryEnergyProfileData } from './CountryBriefPanel';
 
@@ -293,7 +294,7 @@ export class ResilienceWidget {
           ),
         ),
       ),
-      ...(data.baselineScore != null && data.stressScore != null
+      ...(shouldRenderResilienceBaselineStress(data, overallDisplay)
         ? [h(
             'div',
             { className: 'resilience-widget__baseline-stress' },
