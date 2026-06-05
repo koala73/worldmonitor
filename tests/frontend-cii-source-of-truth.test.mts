@@ -34,11 +34,14 @@ describe('frontend CII source of truth', () => {
     assert.match(src, /private preferLocalCii = false;/);
     assert.match(src, /private getAuthoritativeCachedRiskScores\(forceLocal: boolean\): CachedRiskScores \| null/);
     assert.match(src, /if \(forceLocal\) \{[\s\S]*this\.preferLocalCii = true;[\s\S]*return null;[\s\S]*\}/);
-    assert.match(src, /const hasLocalCiiData = hasAnyIntelligenceData\(\);[\s\S]*if \(hasLocalCiiData\) \{[\s\S]*setIntelligenceSignalsLoaded\(\);[\s\S]*\}[\s\S]*this\.refreshCiiAndBrief\(hasLocalCiiData\);/);
+    assert.match(src, /const hasLocalCiiData = hasAnyIntelligenceData\(\);[\s\S]*if \(hasLocalCiiData\) \{[\s\S]*setIntelligenceSignalsLoaded\(\);[\s\S]*\}[\s\S]*this\.refreshCiiAndBrief\(\);/);
+    assert.doesNotMatch(src, /this\.refreshCiiAndBrief\(hasLocalCiiData\);/);
     assert.doesNotMatch(src, /this\.refreshCiiAndBrief\(true\);/);
 
     assert.match(refreshBody, /const cached = this\.getAuthoritativeCachedRiskScores\(forceLocal\);/);
     assert.match(refreshBody, /if \(cached\) \{[\s\S]*this\.renderCachedCiiScores\(cached\);[\s\S]*return;[\s\S]*\}/);
+    assert.match(refreshBody, /const shouldUseLocalFallback = forceLocal \|\| !this\.cachedRiskScores;/);
+    assert.match(refreshBody, /\(this\.ctx\.panels\['cii'\] as CIIPanel\)\?\.refresh\(shouldUseLocalFallback\);/);
     assert.match(refreshBody, /const scores = calculateCII\(\);[\s\S]*this\.applyCiiScoresToMap\(scores\);/);
   });
 

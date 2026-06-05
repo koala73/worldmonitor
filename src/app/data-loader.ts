@@ -375,7 +375,8 @@ export class DataLoaderManager implements AppModule {
       return;
     }
 
-    (this.ctx.panels['cii'] as CIIPanel)?.refresh(forceLocal);
+    const shouldUseLocalFallback = forceLocal || !this.cachedRiskScores;
+    (this.ctx.panels['cii'] as CIIPanel)?.refresh(shouldUseLocalFallback);
     this.callbacks.refreshOpenCountryBrief();
     const scores = calculateCII();
     this.applyCiiScoresToMap(scores);
@@ -2390,7 +2391,7 @@ export class DataLoaderManager implements AppModule {
     if (hasLocalCiiData) {
       setIntelligenceSignalsLoaded();
     }
-    this.refreshCiiAndBrief(hasLocalCiiData);
+    this.refreshCiiAndBrief();
     console.log('[Intelligence] All signals loaded for CII calculation');
   }
 
