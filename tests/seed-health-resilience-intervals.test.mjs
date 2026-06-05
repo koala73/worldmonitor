@@ -6,11 +6,15 @@ const originalEnv = {
   UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
   UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
   WORLDMONITOR_VALID_KEYS: process.env.WORLDMONITOR_VALID_KEYS,
+  RESILIENCE_PILLAR_COMBINE_ENABLED: process.env.RESILIENCE_PILLAR_COMBINE_ENABLED,
+  RESILIENCE_SCHEMA_V2_ENABLED: process.env.RESILIENCE_SCHEMA_V2_ENABLED,
 };
 
 process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
 process.env.WORLDMONITOR_VALID_KEYS = 'test-key';
+process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'true';
+process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
 
 const { default: handler } = await import('../api/seed-health.js');
 
@@ -43,6 +47,8 @@ before(() => {
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
   process.env.WORLDMONITOR_VALID_KEYS = 'test-key';
+  process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'true';
+  process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
 });
 
 after(() => {
@@ -100,6 +106,7 @@ test('seed-health flags fresh resilience interval meta when the current v8 data 
     key: PROBE_KEY,
     requiredMethodology: METHODOLOGY,
     requiredSourceVersion: SOURCE_VERSION,
+    requiredFormula: 'pc',
   });
 });
 
@@ -119,6 +126,7 @@ test('seed-health keeps resilience intervals green when fresh meta matches the c
   assert.equal(body.seeds['resilience:intervals'].dataProbe.key, PROBE_KEY);
   assert.equal(body.seeds['resilience:intervals'].dataProbe.methodology, METHODOLOGY);
   assert.equal(body.seeds['resilience:intervals'].dataProbe.formula, 'pc');
+  assert.equal(body.seeds['resilience:intervals'].dataProbe.requiredFormula, 'pc');
 });
 
 test('seed-health flags resilience interval methodology mismatches', async () => {
@@ -140,7 +148,68 @@ test('seed-health flags resilience interval methodology mismatches', async () =>
     methodology: 'weight-perturbation-sensitivity-v2',
     requiredMethodology: METHODOLOGY,
     requiredSourceVersion: SOURCE_VERSION,
+    requiredFormula: 'pc',
   });
+});
+
+test('seed-health flags resilience interval formula mismatches even when meta is fresh', async () => {
+  installPipelineMock(new Map([
+    [META_KEY, intervalMeta()],
+    [PROBE_KEY, intervalPayload({ _formula: 'd6' })],
+  ]));
+
+  const { res, body } = await readSeedHealth();
+
+  assert.equal(res.status, 200);
+  assert.equal(body.overall, 'warning');
+  assert.equal(body.seeds['resilience:intervals'].status, 'formula_mismatch');
+  assert.equal(body.seeds['resilience:intervals'].stale, true);
+  assert.deepEqual(body.seeds['resilience:intervals'].dataProbe, {
+    ok: false,
+    status: 'formula_mismatch',
+    key: PROBE_KEY,
+    formula: 'd6',
+    requiredFormula: 'pc',
+    methodology: METHODOLOGY,
+    requiredMethodology: METHODOLOGY,
+    requiredSourceVersion: SOURCE_VERSION,
+  });
+});
+
+test('seed-health flags malformed resilience interval payloads even when meta is fresh', async () => {
+  const cases = [
+    { name: 'missing p05', payload: intervalPayload({ p05: undefined }), p05: null, p95: 72.8 },
+    { name: 'non-finite p95', payload: intervalPayload({ p95: Number.POSITIVE_INFINITY }), p05: 65.2, p95: null },
+    { name: 'reversed bounds', payload: intervalPayload({ p05: 80, p95: 70 }), p05: 80, p95: 70 },
+    { name: 'p05 below range', payload: intervalPayload({ p05: -1, p95: 70 }), p05: -1, p95: 70 },
+    { name: 'p95 above range', payload: intervalPayload({ p05: 65, p95: 101 }), p05: 65, p95: 101 },
+  ];
+
+  for (const item of cases) {
+    installPipelineMock(new Map([
+      [META_KEY, intervalMeta()],
+      [PROBE_KEY, item.payload],
+    ]));
+
+    const { res, body } = await readSeedHealth();
+
+    assert.equal(res.status, 200, item.name);
+    assert.equal(body.overall, 'warning', item.name);
+    assert.equal(body.seeds['resilience:intervals'].status, 'data_invalid', item.name);
+    assert.equal(body.seeds['resilience:intervals'].stale, true, item.name);
+    assert.deepEqual(body.seeds['resilience:intervals'].dataProbe, {
+      ok: false,
+      status: 'data_invalid',
+      key: PROBE_KEY,
+      formula: 'pc',
+      requiredFormula: 'pc',
+      methodology: METHODOLOGY,
+      requiredMethodology: METHODOLOGY,
+      requiredSourceVersion: SOURCE_VERSION,
+      p05: item.p05,
+      p95: item.p95,
+    }, item.name);
+  }
 });
 
 test('seed-health flags resilience interval source-version mismatches', async () => {

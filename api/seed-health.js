@@ -13,6 +13,8 @@ const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v8:';
 const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
 const RESILIENCE_INTERVAL_SOURCE_VERSION = `resilience-intervals:${RESILIENCE_INTERVAL_KEY_PREFIX}${RESILIENCE_INTERVAL_METHODOLOGY}`;
 const RESILIENCE_INTERVAL_PROBE_KEY = `${RESILIENCE_INTERVAL_KEY_PREFIX}US`;
+const RESILIENCE_INTERVAL_SCORE_MIN = 0;
+const RESILIENCE_INTERVAL_SCORE_MAX = 100;
 
 const SEED_DOMAINS = {
   // Phase 1 — Snapshot endpoints
@@ -90,7 +92,9 @@ const SEED_DOMAINS = {
     intervalMin: 420, // Same 840min freshness budget as api/health.js, expressed as intervalMin * 2.
     dataProbe: {
       key: RESILIENCE_INTERVAL_PROBE_KEY,
+      kind: 'resilience_interval',
       methodology: RESILIENCE_INTERVAL_METHODOLOGY,
+      formula: currentResilienceCacheFormula(),
       sourceVersion: RESILIENCE_INTERVAL_SOURCE_VERSION,
     },
   },
@@ -136,8 +140,36 @@ function parseJsonValue(raw) {
   }
 }
 
+function isEnabledEnv(name, defaultValue) {
+  return String(process.env[name] ?? defaultValue).toLowerCase() === 'true';
+}
+
+function currentResilienceCacheFormula() {
+  // Mirrors server/worldmonitor/resilience/v1/_shared.ts currentCacheFormula().
+  // Edge functions cannot import the server module, so this is intentionally
+  // duplicated and guarded by tests.
+  return isEnabledEnv('RESILIENCE_PILLAR_COMBINE_ENABLED', 'false') &&
+    isEnabledEnv('RESILIENCE_SCHEMA_V2_ENABLED', 'true')
+    ? 'pc'
+    : 'd6';
+}
+
+function isValidResilienceIntervalPayload(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false;
+  if (typeof payload.p05 !== 'number' || !Number.isFinite(payload.p05)) return false;
+  if (typeof payload.p95 !== 'number' || !Number.isFinite(payload.p95)) return false;
+  return (
+    payload.p05 >= RESILIENCE_INTERVAL_SCORE_MIN &&
+    payload.p05 <= RESILIENCE_INTERVAL_SCORE_MAX &&
+    payload.p95 >= RESILIENCE_INTERVAL_SCORE_MIN &&
+    payload.p95 <= RESILIENCE_INTERVAL_SCORE_MAX &&
+    payload.p05 <= payload.p95
+  );
+}
+
 function evaluateDataProbe(cfg, raw) {
   if (!cfg) return null;
+  const requiredFormula = cfg.formula ?? null;
   if (!raw) {
     return {
       ok: false,
@@ -145,6 +177,7 @@ function evaluateDataProbe(cfg, raw) {
       key: cfg.key,
       requiredMethodology: cfg.methodology ?? null,
       requiredSourceVersion: cfg.sourceVersion ?? null,
+      requiredFormula,
     };
   }
 
@@ -156,6 +189,7 @@ function evaluateDataProbe(cfg, raw) {
       key: cfg.key,
       requiredMethodology: cfg.methodology ?? null,
       requiredSourceVersion: cfg.sourceVersion ?? null,
+      requiredFormula,
     };
   }
 
@@ -168,6 +202,36 @@ function evaluateDataProbe(cfg, raw) {
       methodology,
       requiredMethodology: cfg.methodology,
       requiredSourceVersion: cfg.sourceVersion ?? null,
+      requiredFormula,
+    };
+  }
+
+  const formula = typeof parsed._formula === 'string' ? parsed._formula : null;
+  if (requiredFormula && formula !== requiredFormula) {
+    return {
+      ok: false,
+      status: 'formula_mismatch',
+      key: cfg.key,
+      formula,
+      requiredFormula,
+      methodology,
+      requiredMethodology: cfg.methodology ?? null,
+      requiredSourceVersion: cfg.sourceVersion ?? null,
+    };
+  }
+
+  if (cfg.kind === 'resilience_interval' && !isValidResilienceIntervalPayload(parsed)) {
+    return {
+      ok: false,
+      status: 'data_invalid',
+      key: cfg.key,
+      formula,
+      requiredFormula,
+      methodology,
+      requiredMethodology: cfg.methodology ?? null,
+      requiredSourceVersion: cfg.sourceVersion ?? null,
+      p05: typeof parsed.p05 === 'number' && Number.isFinite(parsed.p05) ? parsed.p05 : null,
+      p95: typeof parsed.p95 === 'number' && Number.isFinite(parsed.p95) ? parsed.p95 : null,
     };
   }
 
@@ -178,7 +242,8 @@ function evaluateDataProbe(cfg, raw) {
     methodology,
     requiredMethodology: cfg.methodology ?? null,
     requiredSourceVersion: cfg.sourceVersion ?? null,
-    formula: typeof parsed._formula === 'string' ? parsed._formula : null,
+    formula,
+    requiredFormula,
     computedAt: typeof parsed.computedAt === 'string' ? parsed.computedAt : null,
   };
 }

@@ -915,6 +915,11 @@ export function isCurrentResilienceIntervalPayload(
     Number.isFinite(payload.p05) &&
     typeof payload.p95 === 'number' &&
     Number.isFinite(payload.p95) &&
+    payload.p05 >= 0 &&
+    payload.p05 <= 100 &&
+    payload.p95 >= 0 &&
+    payload.p95 <= 100 &&
+    payload.p05 <= payload.p95 &&
     payload._formula === currentCacheFormula() &&
     payload.methodology === RESILIENCE_INTERVAL_METHODOLOGY
   );

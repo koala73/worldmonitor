@@ -87,7 +87,7 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
     );
   });
 
-  it('api/seed-health.js resilience interval probe mirrors the script prefix and methodology', () => {
+  it('api/seed-health.js resilience interval probe mirrors the script prefix, methodology, and formula gate', () => {
     const seedHealthText = readFileSync(join(repoRoot, 'api/seed-health.js'), 'utf-8');
     assert.ok(
       seedHealthText.includes(`const RESILIENCE_INTERVAL_KEY_PREFIX = '${SCRIPT_INTERVAL_KEY_PREFIX}';`) ||
@@ -98,6 +98,19 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
       seedHealthText.includes(`const RESILIENCE_INTERVAL_METHODOLOGY = '${SCRIPT_INTERVAL_METHODOLOGY}';`) ||
         seedHealthText.includes(`const RESILIENCE_INTERVAL_METHODOLOGY = "${SCRIPT_INTERVAL_METHODOLOGY}";`),
       `api/seed-health.js must mirror scripts/_resilience-intervals.mjs RESILIENCE_INTERVAL_METHODOLOGY=${SCRIPT_INTERVAL_METHODOLOGY}`,
+    );
+    assert.ok(
+      seedHealthText.includes("function currentResilienceCacheFormula()") &&
+        seedHealthText.includes("RESILIENCE_PILLAR_COMBINE_ENABLED") &&
+        seedHealthText.includes("RESILIENCE_SCHEMA_V2_ENABLED") &&
+        seedHealthText.includes("formula: currentResilienceCacheFormula()"),
+      'api/seed-health.js must mirror the server currentCacheFormula gate for resilience interval probes',
+    );
+    assert.ok(
+      seedHealthText.includes("kind: 'resilience_interval'") &&
+        seedHealthText.includes('isValidResilienceIntervalPayload') &&
+        seedHealthText.includes('payload.p05 <= payload.p95'),
+      'api/seed-health.js must validate resilience interval payload shape before reporting healthy',
     );
   });
 
