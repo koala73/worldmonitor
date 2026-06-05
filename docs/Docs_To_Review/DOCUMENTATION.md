@@ -43,7 +43,7 @@ The primary variant focuses on geopolitical intelligence, military tracking, and
 |-------|---------|
 | **AI Insights** | LLM-synthesized world brief with focal point detection |
 | **AI Strategic Posture** | Theater-level military force aggregation with strike capability assessment |
-| **Country Instability Index** | Real-time stability scores for 20 monitored countries |
+| **Country Instability Index** | Real-time CII v3 stability scores for 31 Tier-1 countries |
 | **Strategic Risk Overview** | Composite risk score combining all intelligence modules |
 | **Infrastructure Cascade** | Dependency analysis for cables, pipelines, and chokepoints |
 | **Live Intelligence** | GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions) |
@@ -191,7 +191,7 @@ Beyond raw data feeds, the dashboard provides synthesized intelligence panels:
 |-------|---------|
 | **AI Strategic Posture** | Theater-level military aggregation with strike capability analysis |
 | **Strategic Risk Overview** | Composite risk score combining all intelligence modules |
-| **Country Instability Index** | Real-time stability scores for 20 monitored countries |
+| **Country Instability Index** | Real-time CII v3 stability scores for 31 Tier-1 countries |
 | **Infrastructure Cascade** | Dependency analysis for cables, pipelines, and chokepoints |
 | **Live Intelligence** | GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions) |
 | **Intel Feed** | Curated defense and security news sources |
@@ -939,80 +939,42 @@ Pin state persists across sessions via localStorage.
 
 ## Country Instability Index (CII)
 
-The dashboard maintains a **real-time instability score** for 20 strategically significant countries. Rather than relying on static risk ratings, the CII dynamically reflects current conditions based on multiple input streams.
+The dashboard maintains a **real-time CII v3 instability score** for 31
+Tier-1 countries. Rather than relying on static risk ratings, CII combines an
+editorial baseline with live unrest, conflict, security, and information
+signals.
 
-### Monitored Countries (Tier 1)
+This review copy intentionally does not duplicate the full formula table. The
+canonical public source is
+[CII Risk Scoring Methodology](methodology/cii-risk-scores.mdx); update that
+document with any formula or coefficient changes.
 
-| Region | Countries |
-|--------|-----------|
-| **Americas** | United States, Venezuela |
-| **Europe** | Germany, France, United Kingdom, Poland |
-| **Eastern Europe** | Russia, Ukraine |
-| **Middle East** | Iran, Israel, Saudi Arabia, Turkey, Syria, Yemen |
-| **Asia-Pacific** | China, Taiwan, North Korea, India, Pakistan, Myanmar |
+### Current Score Model
 
-### Three Component Scores
-
-Each country's CII is computed from three weighted components:
-
-| Component | Weight | Data Sources | What It Measures |
-|-----------|--------|--------------|------------------|
-| **Unrest** | 40% | ACLED protests, GDELT events | Civil unrest intensity, fatalities, event severity |
-| **Security** | 30% | Military flights, naval vessels | Unusual military activity patterns |
-| **Information** | 30% | News velocity, alert clusters | Media attention intensity and acceleration |
-
-### Scoring Algorithm
+Each score blends four event components with static baseline risk:
 
 ```
-Unrest Score:
-  base = min(50, protest_count × 8)
-  fatality_boost = min(30, total_fatalities × 5)
-  severity_boost = min(20, high_severity_count × 10)
-  unrest = min(100, base + fatality_boost + severity_boost)
+eventScore = Unrest * 0.25
+           + Conflict * 0.30
+           + Security * 0.20
+           + Information * 0.25
 
-Security Score:
-  flight_score = min(50, military_flights × 3)
-  vessel_score = min(30, naval_vessels × 5)
-  security = min(100, flight_score + vessel_score)
-
-Information Score:
-  base = min(40, news_count × 5)
-  velocity_boost = min(40, avg_velocity × 10)
-  alert_boost = 20 if any_alert else 0
-  information = min(100, base + velocity_boost + alert_boost)
-
-Final CII = round(unrest × 0.4 + security × 0.3 + information × 0.3)
+combinedScore = baselineRisk * 0.40
+              + eventScore * 0.60
+              + supplemental boosts
 ```
 
-### Scoring Bias Prevention
+| Component | Weight | Main Inputs |
+|-----------|-------:|-------------|
+| **Unrest** | 25% | ACLED protests/riots, protest fatalities, high-severity unrest, outages |
+| **Conflict** | 30% | ACLED battles/explosions/civilian violence, fatalities, Iran strikes, OREF alerts |
+| **Security** | 20% | Military flights, military vessels, aviation disruptions, GPS/GNSS jamming |
+| **Information** | 25% | Classified news headlines and country-attributed threat summaries |
 
-Raw news volume creates a natural bias—English-language media generates far more coverage of the US, UK, and Western Europe than conflict zones. Without correction, stable democracies would consistently score higher than actual crisis regions.
-
-**Log Scaling for High-Volume Countries**
-
-Countries with high media coverage receive logarithmic dampening on their unrest and information scores:
-
-```
-if (newsVolume > threshold):
-  dampingFactor = 1 / (1 + log10(newsVolume / threshold))
-  score = rawScore × dampingFactor
-```
-
-This ensures the US receiving 50 news mentions about routine political activity doesn't outscore Ukraine with 10 mentions about active combat.
-
-**Conflict Zone Floor Scores**
-
-Active conflict zones have minimum score floors that prevent them from appearing stable during data gaps or low-coverage periods:
-
-| Country | Floor | Rationale |
-|---------|-------|-----------|
-| Ukraine | 55 | Active war with Russia |
-| Syria | 50 | Ongoing civil war |
-| Yemen | 50 | Ongoing civil war |
-| Myanmar | 45 | Military coup, civil conflict |
-| Israel | 45 | Active Gaza conflict |
-
-The floor applies *after* the standard calculation—if the computed score exceeds the floor, the computed score is used. This prevents false "all clear" signals while preserving sensitivity to actual escalations.
+Supplemental boosts include advisory, OREF, climate, cyber, fire,
+displacement, news urgency, earthquake, sanctions, and AIS disruption signals.
+UCDP conflict and State Department advisory floors prevent active crises from
+appearing stable during data gaps.
 
 ### Instability Levels
 
@@ -1024,46 +986,16 @@ The floor applies *after* the standard calculation—if the computed score excee
 | **Normal** | 31-50 | Gray | Baseline geopolitical activity |
 | **Low** | 0-30 | Green | Unusually quiet period |
 
-### Trend Detection
-
-The CII tracks 24-hour changes to identify trajectory:
-
-- **Rising**: Score increased by ≥5 points (escalating situation)
-- **Stable**: Change within ±5 points (steady state)
-- **Falling**: Score decreased by ≥5 points (de-escalation)
-
-### Contextual Score Boosts
-
-Beyond the base component scores, several contextual factors can boost a country's CII score (up to a combined maximum of 23 additional points):
-
-| Boost Type | Max Points | Condition | Purpose |
-|------------|------------|-----------|---------|
-| **Hotspot Activity** | 10 | Events near defined hotspots | Captures localized escalation |
-| **News Urgency** | 5 | Information component ≥50 | High media attention indicator |
-| **Focal Point** | 8 | AI focal point detection on country | Multi-source convergence indicator |
-
-**Hotspot Boost Calculation**:
-
-- Hotspot activity (0-100) scaled by 1.5× then capped at 10
-- Zero boost for countries with no associated hotspot activity
-
-**News Urgency Boost Tiers**:
-
-- Information ≥70: +5 points
-- Information ≥50: +3 points
-- Information <50: +0 points
-
-**Focal Point Boost Tiers**:
-
-- Critical urgency: +8 points
-- Elevated urgency: +4 points
-- Normal urgency: +0 points
-
-These boosts are designed to elevate scores only when corroborating evidence exists—a country must have both high base scores AND contextual signals to reach extreme levels.
-
 ### Server-Side Pre-Computation
 
-To eliminate the "cold start" problem where new users would see blank data during the Learning Mode warmup, CII scores are **pre-computed server-side** via the `/api/risk-scores` endpoint. See the [Server-Side Risk Score API](#server-side-risk-score-api) section for details.
+To eliminate the "cold start" problem, CII scores are pre-computed
+server-side via `GET /api/intelligence/v1/get-risk-scores` and cached in
+versioned Redis live/stale keys.
+
+The Railway relay process also runs an active CII warm-ping loop every 8
+minutes against the same RPC and writes
+`seed-meta:intelligence:risk-scores` for health monitoring when scores are
+returned.
 
 ### Learning Mode (15-Minute Warmup)
 
@@ -1103,16 +1035,6 @@ After 15 minutes: Learning Complete
 ```
 
 This ensures users understand that early scores are provisional while preventing alert fatigue during the calibration period.
-
-### Keyword Attribution
-
-Countries are matched to data via keyword lists:
-
-- **Russia**: `russia`, `moscow`, `kremlin`, `putin`
-- **China**: `china`, `beijing`, `xi jinping`, `prc`
-- **Taiwan**: `taiwan`, `taipei`
-
-This enables attribution of news and events to specific countries even when formal country codes aren't present in the source data.
 
 ---
 
@@ -3089,43 +3011,29 @@ Strategic risk and Country Instability Index (CII) scores are pre-computed serve
 
 ### How It Works
 
-The `/api/risk-scores` edge function:
+The `GET /api/intelligence/v1/get-risk-scores` RPC handler:
 
-1. Fetches recent protest/riot data from ACLED (7-day window)
-2. Computes CII scores for 20 Tier 1 countries
-3. Derives strategic risk from weighted top-5 CII scores
-4. Caches results in Redis (10-minute TTL)
+1. Fetches recent ACLED unrest/conflict events.
+2. Reads auxiliary Redis sources for conflict floors, advisories, outages, climate, cyber, fires, GPS jamming, OREF alerts, displacement, news threat summaries, aviation alerts, earthquakes, sanctions, and military/AIS CII aggregates.
+3. Computes CII v3 scores for 31 Tier-1 countries.
+4. Derives Strategic Risk from the weighted top 5 CII scores.
+5. Caches results in Redis using versioned live and stale keys tied to the current CII formula version.
 
 ### CII Score Calculation
 
-Each country's score combines:
+Each country combines `baselineRisk * 0.40` with a dynamic event blend:
 
-**Baseline Risk** (0–50 points): Static geopolitical risk based on historical instability, ongoing conflicts, and authoritarian governance.
+| Component | Weight | Main Inputs |
+|-----------|-------:|-------------|
+| Unrest | 25% | Protests, riots, protest fatalities, high-severity unrest, outages |
+| Conflict | 30% | Battles, explosions, violence against civilians, fatalities, Iran strikes, OREF alerts |
+| Security | 20% | Military flights, military vessels, aviation disruptions, GPS/GNSS jamming |
+| Information | 25% | Classified news headlines and country-attributed threat summaries |
 
-| Country | Baseline | Rationale |
-|---------|----------|-----------|
-| Syria, Ukraine, Yemen | 50 | Active conflict zones |
-| Myanmar, Venezuela, North Korea | 40-45 | Civil unrest, authoritarian |
-| Iran, Israel, Pakistan | 35-45 | Regional tensions |
-| Saudi Arabia, Turkey, India | 20-25 | Moderate instability |
-| Germany, UK, US | 5-10 | Stable democracies |
-
-**Unrest Component** (0–50 points): Recent protest and riot activity, weighted by event significance multiplier.
-
-**Information Component** (0–25 points): News coverage intensity (proxy for international attention).
-
-**Security Component** (0–25 points): Baseline plus riot contribution.
-
-### Event Significance Multipliers
-
-Events in some countries carry more global significance than others:
-
-| Multiplier | Countries | Rationale |
-|------------|-----------|-----------|
-| 3.0× | North Korea | Any visible unrest is highly unusual |
-| 2.0-2.5× | China, Russia, Iran, Saudi Arabia | Authoritarian states suppress protests |
-| 1.5-1.8× | Taiwan, Pakistan, Myanmar, Venezuela | Regional flashpoints |
-| 0.5-0.8× | US, UK, France, Germany | Protests are routine in democracies |
+Supplemental boosts and floors are documented in
+[CII Risk Scoring Methodology](methodology/cii-risk-scores.mdx), which is the
+canonical source for per-country baselines, event multipliers, and formula
+version changes.
 
 ### Strategic Risk Derivation
 
@@ -3140,12 +3048,14 @@ The top countries contribute most heavily, with diminishing influence for lower-
 
 ### Fallback Behavior
 
-When ACLED data is unavailable (API errors, rate limits, expired auth):
+When upstream data is unavailable (API errors, rate limits, expired auth):
 
-1. **Stale cache** (1-hour TTL): Return recent scores with `stale: true` flag
-2. **Baseline fallback**: Return scores using only static baseline values with `baseline: true` flag
+1. **Stale cache**: Return the latest versioned stale risk-score payload when available.
+2. **Baseline fallback**: Return scores using static baselines and available floors when no usable live or stale payload exists.
 
-This ensures the dashboard always displays meaningful data even during upstream outages.
+The relay CII warm-ping loop in `scripts/ais-relay.cjs` calls the RPC every
+8 minutes and writes `seed-meta:intelligence:risk-scores` when scores are
+returned, keeping the cache warm for bootstrap and health monitoring.
 
 ---
 
@@ -3654,7 +3564,7 @@ See [ROADMAP.md](ROADMAP.md) for detailed planning. Recent intelligence enhancem
 - ✅ **WebGL Map (deck.gl)** - High-performance rendering for desktop users
 - ✅ **Browser ML Fallback** - ONNX Runtime for offline summarization capability
 - ✅ **Multi-Signal Geographic Convergence** - Alerts when 3+ data types converge on same region within 24h
-- ✅ **Country Instability Index (CII)** - Real-time composite risk score for 20 Tier-1 countries
+- ✅ **Country Instability Index (CII)** - Real-time composite risk score for 31 Tier-1 countries
 - ✅ **Infrastructure Cascade Visualization** - Dependency graph showing downstream effects of disruptions
 - ✅ **Strategic Risk Overview** - Unified alert system with cross-module correlation and deduplication
 - ✅ **GDELT Topic Intelligence** - Categorized feeds for military, cyber, nuclear, and sanctions topics

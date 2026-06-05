@@ -137,7 +137,7 @@ Run AI summarization entirely on your own hardware — no API keys, no cloud, no
 
 - "7-signal crypto macro radar with BUY/CASH composite verdict"
 - "92 global stock exchanges mapped with market caps and trading hours"
-- "Country Instability Index tracking 22 nations in real-time"
+- "Country Instability Index tracking 31 Tier-1 countries in real time"
 - "Prediction market integration for geopolitical forecasting"
 - "Air-gapped AI analysis — run Ollama locally for sensitive intelligence work"
 

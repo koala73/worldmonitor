@@ -644,6 +644,42 @@ describe('CII scoring', () => {
       `methodology doc must mention current CII_FORMULA_VERSION '${CII_FORMULA_VERSION}' — bump the version and update the doc together.`);
   });
 
+  it('current public CII docs do not reintroduce pre-v3 stale claims', () => {
+    const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
+    const publicDocPaths = [
+      'docs/country-instability-index.mdx',
+      'docs/strategic-risk.mdx',
+      'docs/algorithms.mdx',
+      'docs/overview.mdx',
+      'docs/features.mdx',
+      'docs/COMMUNITY-PROMOTION-GUIDE.md',
+    ];
+    const stalePatterns = [
+      /\b(?:20|22|24)\s+(?:curated\s+)?(?:monitored\s+|strategically\s+significant\s+)?(?:Tier[- ]?1\s+)?(?:countries|nations)\b/i,
+      /\b(?:20|22|24)\s+(?:curated\s+)?tier[- ]?1\b/i,
+      /Information\s+score:\s+Reserved\s+\(0\)/i,
+      /Information\s*\|\s*25%\s*\|\s*Reserved\s+\(0\)/i,
+      /known\s+7-country\s+server\s+vs\s+frontend\s+drift/i,
+      /relay\s+CII\s+seed\s+loop\s+is\s+disabled/i,
+      /GPS[-/ ]only\s+security/i,
+      /GPS\s+jamming\s+only/i,
+    ];
+
+    const violations: string[] = [];
+    for (const relPath of publicDocPaths) {
+      const text = readFileSync(resolve(root, relPath), 'utf8');
+      for (const pattern of stalePatterns) {
+        if (pattern.test(text)) violations.push(`${relPath}: ${pattern}`);
+      }
+    }
+
+    assert.equal(
+      violations.length,
+      0,
+      `public CII docs contain pre-v3 stale claims:\n  ${violations.join('\n  ')}`,
+    );
+  });
+
   it('methodology doc and browser CII engine expose the v3 conflict curve coefficients', () => {
     const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
     const doc = readFileSync(resolve(root, 'docs', 'methodology', 'cii-risk-scores.mdx'), 'utf8');
