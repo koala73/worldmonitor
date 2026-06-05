@@ -1,4 +1,5 @@
-import { calculateCII, type CountryScore } from './country-instability';
+import { calculateCII, hasIntelligenceSignalsLoaded, type CountryScore } from './country-instability';
+import { getCachedScores, toCountryScore } from './cached-risk-scores';
 import type { ClusteredEvent } from '@/types';
 import type { ThreatLevel } from './threat-classifier';
 import { CURATED_COUNTRIES } from '@/config/countries';
@@ -62,8 +63,15 @@ export function collectStoryData(
   signals?: { protests: number; militaryFlights: number; militaryVessels: number; outages: number; gpsJammingHexes: number },
   convergence?: { score: number; signalTypes: string[]; regionalDescriptions: string[] } | null,
 ): StoryData {
-  const scores = calculateCII();
-  const countryScore = scores.find(s => s.code === countryCode) || null;
+  let countryScore: CountryScore | null = null;
+  if (!hasIntelligenceSignalsLoaded()) {
+    const cached = getCachedScores()?.cii.find(s => s.code === countryCode);
+    if (cached) countryScore = toCountryScore(cached);
+  }
+  if (!countryScore) {
+    const scores = calculateCII();
+    countryScore = scores.find(s => s.code === countryCode) || null;
+  }
 
   const keywords = CURATED_COUNTRIES[countryCode]?.scoringKeywords || [countryName.toLowerCase()];
   const countryNews = allNews.filter(e => {
@@ -138,4 +146,3 @@ export function collectStoryData(
     convergence: convergence || null,
   };
 }
-

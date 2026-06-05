@@ -112,7 +112,7 @@ import { updateAndCheck, consumeServerAnomalies, fetchLiveAnomalies } from '@/se
 import { fetchAllFires, flattenFires, computeRegionStats, toMapFires } from '@/services/wildfires';
 import { analyzeFlightsForSurge, surgeAlertToSignal, detectForeignMilitaryPresence, foreignPresenceToSignal, type TheaterPostureSummary } from '@/services/military-surge';
 import { fetchCachedTheaterPosture } from '@/services/cached-theater-posture';
-import { ingestProtestsForCII, ingestMilitaryForCII, ingestNewsForCII, ingestOutagesForCII, ingestConflictsForCII, ingestUcdpForCII, ingestHapiForCII, ingestDisplacementForCII, ingestClimateForCII, ingestStrikesForCII, ingestOrefForCII, ingestAviationForCII, ingestAdvisoriesForCII, ingestGpsJammingForCII, ingestAisDisruptionsForCII, ingestSatelliteFiresForCII, ingestCyberThreatsForCII, ingestTemporalAnomaliesForCII, ingestEarthquakesForCII, ingestSanctionsForCII, isInLearningMode, resetHotspotActivity, setIntelligenceSignalsLoaded, hasAnyIntelligenceData, calculateCII } from '@/services/country-instability';
+import { ingestProtestsForCII, ingestMilitaryForCII, ingestNewsForCII, ingestOutagesForCII, ingestConflictsForCII, ingestUcdpForCII, ingestHapiForCII, ingestDisplacementForCII, ingestClimateForCII, ingestStrikesForCII, ingestOrefForCII, ingestAviationForCII, ingestAdvisoriesForCII, ingestGpsJammingForCII, ingestAisDisruptionsForCII, ingestSatelliteFiresForCII, ingestCyberThreatsForCII, ingestTemporalAnomaliesForCII, ingestEarthquakesForCII, ingestSanctionsForCII, isInLearningMode, resetHotspotActivity, setIntelligenceSignalsLoaded, hasAnyIntelligenceData, calculateCII, type CountryScore } from '@/services/country-instability';
 import { fetchGpsInterference } from '@/services/gps-interference';
 import { fetchSatelliteTLEs, initSatRecs, propagatePositions, startPropagationLoop } from '@/services/satellites';
 import type { SatRecEntry } from '@/services/satellites';
@@ -195,7 +195,7 @@ import {
   type YieldCurveContext,
   type SectorBriefContext,
 } from '@/services/daily-market-brief';
-import { fetchCachedRiskScores } from '@/services/cached-risk-scores';
+import { fetchCachedRiskScores, getCachedScores, toCountryScore, type CachedRiskScores } from '@/services/cached-risk-scores';
 import type { ThreatLevel as ClientThreatLevel } from '@/types';
 import type { NewsItem as ProtoNewsItem, ThreatLevel as ProtoThreatLevel } from '@/generated/client/worldmonitor/news/v1/service_client';
 import { fetchMarketImplications } from '@/services/market-implications';
@@ -293,6 +293,8 @@ export class DataLoaderManager implements AppModule {
   private dailyBriefFrameworkUnsubscribe: (() => void) | null = null;
   private marketImplicationsFrameworkUnsubscribe: (() => void) | null = null;
   private cachedSatRecs: SatRecEntry[] | null = null;
+  private cachedRiskScores: CachedRiskScores | null = null;
+  private preferLocalCii = false;
 
   private digestBreaker = { state: 'closed' as 'closed' | 'open' | 'half-open', failures: 0, cooldownUntil: 0 };
   private readonly digestRequestTimeoutMs = 8000;
@@ -343,12 +345,40 @@ export class DataLoaderManager implements AppModule {
     this.marketImplicationsFrameworkUnsubscribe = null;
   }
 
+  private getAuthoritativeCachedRiskScores(forceLocal: boolean): CachedRiskScores | null {
+    if (forceLocal) {
+      this.preferLocalCii = true;
+      this.cachedRiskScores = null;
+      return null;
+    }
+    if (this.preferLocalCii) return null;
+    const cached = this.cachedRiskScores ?? getCachedScores();
+    return cached?.cii.length ? cached : null;
+  }
+
+  private applyCiiScoresToMap(scores: CountryScore[]): void {
+    this.ctx.map?.setCIIScores(scores.map(s => ({ code: s.code, score: s.score, level: s.level })));
+    this.ctx.map?.setLayerReady('ciiChoropleth', scores.length > 0);
+  }
+
+  private renderCachedCiiScores(cached: CachedRiskScores): void {
+    this.cachedRiskScores = cached;
+    (this.ctx.panels['cii'] as CIIPanel)?.renderFromCached(cached);
+    this.applyCiiScoresToMap(cached.cii.map(toCountryScore));
+  }
+
   private refreshCiiAndBrief(forceLocal = false): void {
+    const cached = this.getAuthoritativeCachedRiskScores(forceLocal);
+    if (cached) {
+      this.renderCachedCiiScores(cached);
+      this.callbacks.refreshOpenCountryBrief();
+      return;
+    }
+
     (this.ctx.panels['cii'] as CIIPanel)?.refresh(forceLocal);
     this.callbacks.refreshOpenCountryBrief();
     const scores = calculateCII();
-    this.ctx.map?.setCIIScores(scores.map(s => ({ code: s.code, score: s.score, level: s.level })));
-    this.ctx.map?.setLayerReady('ciiChoropleth', scores.length > 0);
+    this.applyCiiScoresToMap(scores);
   }
 
   private async tryFetchDigest(): Promise<ListFeedDigestResponse | null> {
@@ -551,9 +581,7 @@ export class DataLoaderManager implements AppModule {
       try {
         const cached = await fetchCachedRiskScores().catch(() => null);
         if (cached && cached.cii.length > 0) {
-          (this.ctx.panels['cii'] as CIIPanel)?.renderFromCached(cached);
-          this.ctx.map?.setCIIScores(cached.cii.map(s => ({ code: s.code, score: s.score, level: s.level })));
-          this.ctx.map?.setLayerReady('ciiChoropleth', true);
+          this.renderCachedCiiScores(cached);
         }
       } catch { /* non-fatal */ }
     }
@@ -2358,10 +2386,11 @@ export class DataLoaderManager implements AppModule {
       dataFreshness.recordError('worldpop', String(error));
     }
 
-    if (hasAnyIntelligenceData()) {
+    const hasLocalCiiData = hasAnyIntelligenceData();
+    if (hasLocalCiiData) {
       setIntelligenceSignalsLoaded();
     }
-    this.refreshCiiAndBrief(true);
+    this.refreshCiiAndBrief(hasLocalCiiData);
     console.log('[Intelligence] All signals loaded for CII calculation');
   }
 

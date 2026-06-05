@@ -18,8 +18,8 @@ import {
   type DataSourceState,
   type DataFreshnessSummary,
 } from '@/services/data-freshness';
-import { getLearningProgress } from '@/services/country-instability';
-import { fetchCachedRiskScores } from '@/services/cached-risk-scores';
+import { getLearningProgress, hasIntelligenceSignalsLoaded, type CountryScore } from '@/services/country-instability';
+import { fetchCachedRiskScores, toCountryScore, type CachedRiskScores } from '@/services/cached-risk-scores';
 import { getCachedPosture } from '@/services/cached-theater-posture';
 import { refreshDataFreshnessFromHealth } from '@/services/health-freshness';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
@@ -123,21 +123,24 @@ export class StrategicRiskPanel extends Panel {
     const postures = cached?.postures;
     const staleFactor = cached?.stale ? 0.5 : 1;
 
-    this.overview = calculateStrategicRiskOverview(
+    const localOverview = calculateStrategicRiskOverview(
       this.convergenceAlerts,
       postures ?? undefined,
       breakingScore,
       staleFactor
     );
+    this.overview = localOverview;
     this.alerts = getRecentAlerts(24);
 
     // Try to get cached scores during learning mode OR when data sources are insufficient
     const { inLearning } = getLearningProgress();
     this.usedCachedScores = false;
-    if (inLearning || this.freshnessSummary.overallStatus === 'insufficient') {
+    const shouldUseCachedScores = inLearning || !hasIntelligenceSignalsLoaded() || this.freshnessSummary.overallStatus === 'insufficient';
+    if (shouldUseCachedScores) {
       const cached = await fetchCachedRiskScores(this.signal);
       if (!this.element?.isConnected) return false;
       if (cached?.strategicRisk) {
+        this.applyCachedRiskOverview(cached, localOverview);
         this.usedCachedScores = true;
         console.log('[StrategicRiskPanel] Using cached scores from backend');
       }
@@ -149,10 +152,10 @@ export class StrategicRiskPanel extends Panel {
         total: this.freshnessSummary.totalSources,
       })
       : undefined;
-    if (!this.freshnessSummary || this.freshnessSummary.activeSources === 0) {
-      this.setDataBadge('unavailable');
-    } else if (this.usedCachedScores) {
+    if (this.usedCachedScores) {
       this.setDataBadge('cached', badgeDetail);
+    } else if (!this.freshnessSummary || this.freshnessSummary.activeSources === 0) {
+      this.setDataBadge('unavailable');
     } else {
       this.setDataBadge('live', badgeDetail);
     }
@@ -177,6 +180,47 @@ export class StrategicRiskPanel extends Panel {
     } finally {
       this.lastHealthFreshnessRefreshAt = Date.now();
     }
+  }
+
+  private cachedTrendToOverviewTrend(trend: string): StrategicRiskOverview['trend'] {
+    if (trend === 'rising' || trend === 'escalating') return 'escalating';
+    if (trend === 'falling' || trend === 'de-escalating') return 'de-escalating';
+    return 'stable';
+  }
+
+  private cachedTimestamp(cached: CachedRiskScores): Date {
+    const raw = cached.strategicRisk.lastUpdated ?? cached.computedAt;
+    if (!raw) return new Date();
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  }
+
+  private cachedTopRisks(cached: CachedRiskScores, ciiScores: CountryScore[]): string[] {
+    const contributors = cached.strategicRisk.contributors
+      .filter((c) => c.score > 0)
+      .slice(0, 5)
+      .map((c) => `${c.country}: ${c.score} (${c.level})`);
+    if (contributors.length > 0) return contributors;
+    return ciiScores
+      .filter((s) => s.score > 0)
+      .slice(0, 5)
+      .map((s) => `${s.name}: ${s.score} (${s.level})`);
+  }
+
+  private applyCachedRiskOverview(cached: CachedRiskScores, localOverview: StrategicRiskOverview): void {
+    const ciiScores = cached.cii
+      .map(toCountryScore)
+      .sort((a, b) => b.score - a.score);
+
+    this.overview = {
+      ...localOverview,
+      avgCIIDeviation: ciiScores[0]?.score ?? cached.strategicRisk.score,
+      compositeScore: Math.max(0, Math.min(100, Math.round(cached.strategicRisk.score))),
+      trend: this.cachedTrendToOverviewTrend(cached.strategicRisk.trend),
+      topRisks: this.cachedTopRisks(cached, ciiScores),
+      unstableCountries: ciiScores.filter(s => s.score >= 50).slice(0, 5),
+      timestamp: this.cachedTimestamp(cached),
+    };
   }
 
   private getScoreColor(score: number): string {
