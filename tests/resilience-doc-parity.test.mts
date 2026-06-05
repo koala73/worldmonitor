@@ -228,9 +228,21 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
 
   it('keeps the v23 score-generation changelog batch aligned across docs and seed comments', () => {
     const surfaces = [
-      { label: 'methodology doc', text: docText },
-      { label: 'server score cache comment', text: sharedText },
-      { label: 'seed score cache comment', text: seedScoreScriptText },
+      {
+        label: 'methodology doc',
+        text: docText,
+        sectionRe: /v23 ships[\s\S]*?(?=, and v24 ships)/i,
+      },
+      {
+        label: 'server score cache comment',
+        text: sharedText,
+        sectionRe: /v22\s*→\s*v23 bump batches three same-tag `pc` scorer changes:[\s\S]*?(?=\n\/\/ v23\s*→\s*v24 bump)/i,
+      },
+      {
+        label: 'seed score cache comment',
+        text: seedScoreScriptText,
+        sectionRe: /v22\s*→\s*v23 batches three same-tag `pc` scorer changes:[\s\S]*?(?=\n\/\/ v23\s*→\s*v24)/i,
+      },
     ];
     const requiredClaims = [
       { label: 'import-HHI source-year certainty derate', re: /import-HHI[\s\S]{0,180}(?:source years|certainty|coverage)/i },
@@ -239,8 +251,8 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
     ];
 
     for (const surface of surfaces) {
-      const v23Block = surface.text.match(/v22[\s`:'-]*(?:→|->|&rarr;)[\s`:'-]*v23[\s\S]{0,1600}/i)?.[0] ?? '';
-      assert.ok(v23Block, `${surface.label} must document the v22→v23 cache-generation bump.`);
+      const v23Block = surface.text.match(surface.sectionRe)?.[0] ?? '';
+      assert.ok(v23Block, `${surface.label} must document the anchored v23 score-generation changelog block.`);
       for (const claim of requiredClaims) {
         assert.match(
           v23Block,
