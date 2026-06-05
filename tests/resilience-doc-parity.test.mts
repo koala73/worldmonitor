@@ -75,6 +75,8 @@ const FEATURES_PATH = resolve(here, '../docs/features.mdx');
 const SEED_SCORE_SCRIPT_PATH = resolve(here, '../scripts/seed-resilience-scores.mjs');
 const STATIC_SEED_SCRIPT_PATH = resolve(here, '../scripts/seed-resilience-static.mjs');
 const HEALTH_API_PATH = resolve(here, '../api/health.js');
+const RESILIENCE_SCORE_PROTO_PATH = resolve(here, '../proto/worldmonitor/resilience/v1/get_resilience_score.proto');
+const RESILIENCE_PROTO_PATH = resolve(here, '../proto/worldmonitor/resilience/v1/resilience.proto');
 const RESILIENCE_OPENAPI_YAML_PATH = resolve(here, '../docs/api/ResilienceService.openapi.yaml');
 const RESILIENCE_OPENAPI_JSON_PATH = resolve(here, '../docs/api/ResilienceService.openapi.json');
 const BUNDLED_OPENAPI_YAML_PATH = resolve(here, '../docs/api/worldmonitor.openapi.yaml');
@@ -113,6 +115,19 @@ const GENERATED_OPENAPI_SURFACES = [
     path: BUNDLED_OPENAPI_YAML_PATH,
     text: readFileSync(BUNDLED_OPENAPI_YAML_PATH, 'utf8'),
   },
+];
+const HEADLINE_ELIGIBLE_CONTRACT_SURFACES = [
+  {
+    label: 'GetResilienceScore proto',
+    path: RESILIENCE_SCORE_PROTO_PATH,
+    text: readFileSync(RESILIENCE_SCORE_PROTO_PATH, 'utf8'),
+  },
+  {
+    label: 'Resilience shared proto',
+    path: RESILIENCE_PROTO_PATH,
+    text: readFileSync(RESILIENCE_PROTO_PATH, 'utf8'),
+  },
+  ...GENERATED_OPENAPI_SURFACES,
 ];
 const ACTIVE_ENERGY_V2_INDICATOR_WEIGHTS = new Map([
   ['importedFossilDependence', 0.35],
@@ -811,6 +826,40 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
       /PR 1 additions \(not yet in the scorer\)/,
       'indicator source catalog must not describe active energy-v2 inputs as pending/not yet in the scorer.',
     );
+  });
+
+  it('headlineEligible API prose describes the current gate, not PR-stage rollout behavior', () => {
+    for (const surface of HEADLINE_ELIGIBLE_CONTRACT_SURFACES) {
+      const text = surface.text
+        .replaceAll('\\n', '\n')
+        .replaceAll('\\u003e', '>')
+        .replaceAll('\\u003c', '<');
+      assert.doesNotMatch(
+        text,
+        /PR 2 (?:introduces the field populated `true`|populates `true`)/,
+        `${surface.label} must not say headlineEligible was populated true everywhere (${surface.path}).`,
+      );
+      assert.doesNotMatch(
+        text,
+        /PR 6 \/ §U7 swaps/,
+        `${surface.label} must not describe headlineEligible as future PR-stage swap behavior (${surface.path}).`,
+      );
+      assert.doesNotMatch(
+        text,
+        /Low confidence — outside headline ranking/,
+        `${surface.label} must not preserve the superseded widget copy (${surface.path}).`,
+      );
+      assert.match(
+        text,
+        /coverage >= 0\.65 AND \(population >= 200k OR(?:\s|\/\/)+coverage >= 0\.85\) AND !lowConfidence/,
+        `${surface.label} must document the current headline eligibility gate (${surface.path}).`,
+      );
+      assert.match(
+        text,
+        /scored but ineligible countries(?:\s|\/\/)+remain in greyedOut\[\]/,
+        `${surface.label} must document that scored ineligible countries remain in greyedOut[] (${surface.path}).`,
+      );
+    }
   });
 
   it('indicator source catalog mirrors every active registry-backed indicator row', () => {

@@ -174,15 +174,14 @@ components:
                 headlineEligible:
                     type: boolean
                     description: |-
-                        Plan 2026-04-26-002 §U3 (PR 2) — eligibility flag for headline
-                         ranking inclusion. PR 2 introduces the field populated `true` for
-                         every country (no behavior change). PR 6 / §U7 swaps the population
-                         logic to coverage ≥ 0.65 AND (population ≥ 200k OR coverage ≥ 0.85)
-                         AND !lowConfidence; the headline ranking endpoint then filters by
-                         `headlineEligible: true`. Raw API endpoints keep returning the full
-                         set unfiltered. Widget consumes the field starting in PR 6 to show
-                         a "Low confidence — outside headline ranking" badge for
-                         `headlineEligible: false` countries on country detail pages.
+                        Current headline-ranking eligibility. True only when the country passes
+                         the headline gate: coverage >= 0.65 AND (population >= 200k OR
+                         coverage >= 0.85) AND !lowConfidence. GetResilienceRanking includes
+                         only eligible countries in items[]; scored but ineligible countries
+                         remain in greyedOut[]. Raw score endpoints still return the country
+                         score when available. Widget and country detail copy should show
+                         "Outside headline ranking" when false unless low-confidence is the more
+                         specific reason.
         ResilienceDomain:
             type: object
             properties:
@@ -340,10 +339,11 @@ components:
                 headlineEligible:
                     type: boolean
                     description: |-
-                        Plan 2026-04-26-002 §U3 (PR 2) — eligibility flag for headline
-                         ranking. PR 2 populates `true` for every country; PR 6 / §U7 swaps
-                         to coverage-and-population logic and the headline endpoint then
-                         filters by this field.
+                        Current headline-ranking eligibility. True only when the country passes
+                         the headline gate: coverage >= 0.65 AND (population >= 200k OR
+                         coverage >= 0.85) AND !lowConfidence. GetResilienceRanking includes
+                         only eligible countries in items[]; scored but ineligible countries
+                         remain in greyedOut[].
         GetResilienceRuntimeManifestRequest:
             type: object
         GetResilienceRuntimeManifestResponse:
