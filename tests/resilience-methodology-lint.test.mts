@@ -83,6 +83,22 @@ function extractH4Headings(source: string): string[] {
   return headings;
 }
 
+function splitActiveMethodologyClaims(source: string): string[] {
+  return source
+    .split(/\n{2,}/)
+    .flatMap((block) => block.trim().startsWith('|') ? block.split('\n') : [block])
+    .map((claim) => claim.trim())
+    .filter(Boolean);
+}
+
+function isOfacRetirementExplanation(claim: string): boolean {
+  return (
+    /\b(?:dropped|removed|retired|replaces?|rejected)\b/i.test(claim) ||
+    /Renamed from "Trade & Sanctions"/i.test(claim) ||
+    /\bno longer read\b/i.test(claim)
+  );
+}
+
 describe('resilience methodology doc linter (T1.8)', () => {
   const methodologyPath = findMethodologyFile();
   const source = readFileSync(methodologyPath, 'utf8');
@@ -230,6 +246,36 @@ describe('resilience methodology doc linter (T1.8)', () => {
       currentStateSource,
       /constructVersions\.energy=`?"v2"`?/i,
       'Current methodology prose should document that live runtime reports energy v2 active.',
+    );
+  });
+
+  it('does not present OFAC or sanctionCount as active scoring inputs', () => {
+    const claims = splitActiveMethodologyClaims(source);
+    const offenders = claims.filter((claim) =>
+      /\bOFAC\b|\bsanctionCount\b|sanctions:country-counts:v1/i.test(claim) &&
+      !isOfacRetirementExplanation(claim)
+    );
+
+    assert.deepEqual(
+      offenders,
+      [],
+      'OFAC/sanctionCount may appear only in explicit dropped/removed/retired/replacement explanations, not as active methodology prose.',
+    );
+  });
+
+  it('does not present generic sanctions signals as active current methodology before the changelog', () => {
+    const changelogIndex = source.indexOf('\n## Changelog');
+    assert.notEqual(changelogIndex, -1, 'Methodology doc should have a Changelog section.');
+    const currentStateSource = source.slice(0, changelogIndex);
+    const offenders = splitActiveMethodologyClaims(currentStateSource).filter((claim) =>
+      /\bsanctions?\b/i.test(claim) &&
+      !isOfacRetirementExplanation(claim)
+    );
+
+    assert.deepEqual(
+      offenders,
+      [],
+      'Current methodology prose must not describe sanctions as an active scoring signal unless the claim is explicitly a retirement/replacement explanation.',
     );
   });
 });
