@@ -89,6 +89,10 @@ async function loadAdapter() {
       'const setHasCachedScores = (_: boolean) => {};',
     )
     .replace(
+      "import { TIER1_COUNTRIES } from '@/config/countries';",
+      'const TIER1_COUNTRIES: Record<string, string> = { US: "United States", CN: "China", RU: "Russia", LB: "Lebanon", IQ: "Iraq", AF: "Afghanistan", KR: "South Korea", EG: "Egypt", JP: "Japan", QA: "Qatar" };',
+    )
+    .replace(
       /import\s*\{[^}]*IntelligenceServiceClient[^}]*\}\s*from\s*'@\/generated\/client\/worldmonitor\/intelligence\/v1\/service_client';/,
       'class IntelligenceServiceClient { constructor(..._args: any[]) {} async getRiskScores(_: any) { return { ciiScores: [], strategicRisks: [] }; } }',
     )
@@ -223,6 +227,20 @@ describe('cached-risk-scores — functional adapter behavior', () => {
     });
     assert.equal(out.strategicRisk.lastUpdated, null);
     assert.equal(out.computedAt, null);
+  });
+
+  it('uses the shared Tier-1 country table for newer cached CII country names', async () => {
+    const { toRiskScores } = await loadAdapter();
+    const out = toRiskScores({
+      ciiScores: [makeCii('LB', 1_700_000_000_000)],
+      strategicRisks: [{ region: 'GLOBAL', level: 'SEVERITY_LEVEL_LOW', score: 12, factors: ['LB'], trend: 'TREND_DIRECTION_STABLE' }],
+    }) as unknown as {
+      cii: Array<{ code: string; name: string }>;
+      strategicRisk: { contributors: Array<{ code: string; country: string }> };
+    };
+
+    assert.equal(out.cii[0]!.name, 'Lebanon');
+    assert.equal(out.strategicRisk.contributors[0]!.country, 'Lebanon');
   });
 
   it('toCountryScore returns Date for non-null cached lastUpdated', async () => {

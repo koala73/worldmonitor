@@ -97,18 +97,37 @@ export function hasAnyIntelligenceData(): boolean {
     if (
       data.conflicts.length > 0 ||
       data.protests.length > 0 ||
+      data.newsEvents.length > 0 ||
       data.strikes.length > 0 ||
       data.militaryFlights.length > 0 ||
       data.militaryVessels.length > 0 ||
       data.outages.length > 0 ||
+      data.aviationDisruptions.length > 0 ||
       data.ucdpStatus !== null ||
       data.hapiSummary !== null ||
+      data.displacementOutflow > 0 ||
       data.climateStress > 0 ||
+      data.orefAlertCount > 0 ||
+      data.orefHistoryCount24h > 0 ||
+      data.advisoryCount > 0 ||
+      data.advisoryMaxLevel !== null ||
       data.gpsJammingHighCount > 0 ||
       data.gpsJammingMediumCount > 0 ||
       data.aisDisruptionHighCount > 0 ||
       data.aisDisruptionElevatedCount > 0 ||
-      data.aisDisruptionLowCount > 0
+      data.aisDisruptionLowCount > 0 ||
+      data.satelliteFireCount > 0 ||
+      data.satelliteFireHighCount > 0 ||
+      data.cyberThreatCriticalCount > 0 ||
+      data.cyberThreatHighCount > 0 ||
+      data.cyberThreatMediumCount > 0 ||
+      data.temporalAnomalyCount > 0 ||
+      data.temporalAnomalyCriticalCount > 0 ||
+      data.earthquakeSignificantCount > 0 ||
+      data.earthquakeMajorCount > 0 ||
+      data.earthquakeSevereCount > 0 ||
+      data.sanctionsEntryCount > 0 ||
+      data.sanctionsNewEntryCount > 0
     ) {
       return true;
     }
@@ -776,8 +795,8 @@ export function ingestSanctionsForCII(countries: CountrySanctionsPressure[]): vo
     const code = c.countryCode.toUpperCase();
     if (!countryDataMap.has(code)) countryDataMap.set(code, initCountryData());
     const data = countryDataMap.get(code)!;
-    data.sanctionsEntryCount = c.entryCount;
-    data.sanctionsNewEntryCount = c.newEntryCount;
+    data.sanctionsEntryCount += c.entryCount;
+    data.sanctionsNewEntryCount += c.newEntryCount;
   }
 }
 
@@ -992,6 +1011,52 @@ function getTrend(code: string, current: number): CountryScore['trend'] {
   return 'stable';
 }
 
+function calculateCountryScoreSnapshot(
+  code: string,
+  data: CountryData,
+  focalUrgency: 'watch' | 'elevated' | 'critical' | null | undefined,
+): { score: number; components: ComponentScores } {
+  const baselineRisk = CURATED_COUNTRIES[code]?.baselineRisk ?? DEFAULT_BASELINE_RISK;
+
+  const components: ComponentScores = {
+    unrest: Math.round(calcUnrestScore(data, code)),
+    conflict: Math.round(calcConflictScore(data, code)),
+    security: Math.round(calcSecurityScore(data)),
+    information: Math.round(calcInformationScore(data, code)),
+  };
+
+  const eventScore = components.unrest * 0.25 + components.conflict * 0.30 + components.security * 0.20 + components.information * 0.25;
+  const hotspotBoost = getHotspotBoost(code);
+  const newsUrgencyBoost = components.information >= 70 ? 5
+    : components.information >= 50 ? 3
+    : 0;
+  const focalBoost = focalUrgency === 'critical' ? 8
+    : focalUrgency === 'elevated' ? 4
+    : 0;
+
+  const displacementBoost = getDisplacementBoost(data.displacementOutflow);
+  const climateBoost = data.climateStress;
+  const advisoryBoost = getAdvisoryBoost(data);
+  const supplementalSignalBoost = getSupplementalSignalBoost(data);
+  const blendedScore = baselineRisk * 0.4
+    + eventScore * 0.6
+    + hotspotBoost
+    + newsUrgencyBoost
+    + focalBoost
+    + displacementBoost
+    + climateBoost
+    + getOrefBlendBoost(code, data)
+    + advisoryBoost
+    + supplementalSignalBoost
+    + getEarthquakeBoost(data)
+    + getSanctionsBoost(data);
+
+  const floor = Math.max(getUcdpFloor(data), getAdvisoryFloor(data));
+  const score = Math.round(Math.min(100, Math.max(floor, blendedScore)));
+
+  return { score, components };
+}
+
 export function calculateCII(): CountryScore[] {
   const scores: CountryScore[] = [];
   const focalUrgencies = focalPointDetector.getCountryUrgencyMap();
@@ -1004,35 +1069,7 @@ export function calculateCII(): CountryScore[] {
   for (const code of countryCodes) {
     const name = CURATED_COUNTRIES[code]?.name || getCountryNameByCode(code) || code;
     const data = countryDataMap.get(code) || initCountryData();
-    const baselineRisk = CURATED_COUNTRIES[code]?.baselineRisk ?? DEFAULT_BASELINE_RISK;
-
-    const components: ComponentScores = {
-      unrest: Math.round(calcUnrestScore(data, code)),
-      conflict: Math.round(calcConflictScore(data, code)),
-      security: Math.round(calcSecurityScore(data)),
-      information: Math.round(calcInformationScore(data, code)),
-    };
-
-    const eventScore = components.unrest * 0.25 + components.conflict * 0.30 + components.security * 0.20 + components.information * 0.25;
-
-    const hotspotBoost = getHotspotBoost(code);
-    const newsUrgencyBoost = components.information >= 70 ? 5
-      : components.information >= 50 ? 3
-      : 0;
-    const focalUrgency = focalUrgencies.get(code);
-    const focalBoost = focalUrgency === 'critical' ? 8
-      : focalUrgency === 'elevated' ? 4
-      : 0;
-
-    const displacementBoost = getDisplacementBoost(data.displacementOutflow);
-    const climateBoost = data.climateStress;
-
-    const advisoryBoost = getAdvisoryBoost(data);
-    const supplementalSignalBoost = getSupplementalSignalBoost(data);
-    const blendedScore = baselineRisk * 0.4 + eventScore * 0.6 + hotspotBoost + newsUrgencyBoost + focalBoost + displacementBoost + climateBoost + getOrefBlendBoost(code, data) + advisoryBoost + supplementalSignalBoost + getEarthquakeBoost(data) + getSanctionsBoost(data);
-
-    const floor = Math.max(getUcdpFloor(data), getAdvisoryFloor(data));
-    const score = Math.round(Math.min(100, Math.max(floor, blendedScore)));
+    const { score, components } = calculateCountryScoreSnapshot(code, data, focalUrgencies.get(code));
 
     const prev = previousScores.get(code) ?? score;
 
@@ -1058,32 +1095,13 @@ export function getTopUnstableCountries(limit = 10): CountryScore[] {
 }
 
 export function getCountryScore(code: string): number | null {
-  const data = countryDataMap.get(code);
+  const normalizedCode = code.toUpperCase();
+  const data = countryDataMap.get(normalizedCode);
   if (!data) return null;
 
-  const baselineRisk = CURATED_COUNTRIES[code]?.baselineRisk ?? DEFAULT_BASELINE_RISK;
-  const components: ComponentScores = {
-    unrest: calcUnrestScore(data, code),
-    conflict: calcConflictScore(data, code),
-    security: calcSecurityScore(data),
-    information: calcInformationScore(data, code),
-  };
-
-  const eventScore = components.unrest * 0.25 + components.conflict * 0.30 + components.security * 0.20 + components.information * 0.25;
-  const hotspotBoost = getHotspotBoost(code);
-  const newsUrgencyBoost = components.information >= 70 ? 5
-    : components.information >= 50 ? 3
-    : 0;
-  const focalUrgency = focalPointDetector.getCountryUrgency(code);
-  const focalBoost = focalUrgency === 'critical' ? 8
-    : focalUrgency === 'elevated' ? 4
-    : 0;
-  const displacementBoost = getDisplacementBoost(data.displacementOutflow);
-  const climateBoost = data.climateStress;
-  const advisoryBoost = getAdvisoryBoost(data);
-  const supplementalSignalBoost = getSupplementalSignalBoost(data);
-  const blendedScore = baselineRisk * 0.4 + eventScore * 0.6 + hotspotBoost + newsUrgencyBoost + focalBoost + displacementBoost + climateBoost + getOrefBlendBoost(code, data) + advisoryBoost + supplementalSignalBoost;
-
-  const floor = Math.max(getUcdpFloor(data), getAdvisoryFloor(data));
-  return Math.round(Math.min(100, Math.max(floor, blendedScore)));
+  return calculateCountryScoreSnapshot(
+    normalizedCode,
+    data,
+    focalPointDetector.getCountryUrgency(normalizedCode),
+  ).score;
 }

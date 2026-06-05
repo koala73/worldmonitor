@@ -590,8 +590,9 @@ export function checkCIIChanges(): UnifiedAlert[] {
 }
 
 function getHighestComponent(score: CountryScore): string {
-  const { unrest, security, information } = score.components;
-  if (unrest >= security && unrest >= information) return 'Civil Unrest';
+  const { unrest, conflict, security, information } = score.components;
+  if (unrest >= conflict && unrest >= security && unrest >= information) return 'Civil Unrest';
+  if (conflict >= security && conflict >= information) return 'Conflict Activity';
   if (security >= information) return 'Security Activity';
   return 'Information Velocity';
 }

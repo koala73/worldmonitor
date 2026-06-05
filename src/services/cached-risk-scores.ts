@@ -1,6 +1,7 @@
 import type { CountryScore, ComponentScores } from './country-instability';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { setHasCachedScores } from './country-instability';
+import { TIER1_COUNTRIES } from '@/config/countries';
 import {
   IntelligenceServiceClient,
   type GetRiskScoresResponse,
@@ -53,14 +54,6 @@ export interface CachedRiskScores {
 
 // ---- Proto → legacy adapters ----
 
-const TIER1_NAMES: Record<string, string> = {
-  US: 'United States', RU: 'Russia', CN: 'China', UA: 'Ukraine', IR: 'Iran',
-  IL: 'Israel', TW: 'Taiwan', KP: 'North Korea', SA: 'Saudi Arabia', TR: 'Turkey',
-  PL: 'Poland', DE: 'Germany', FR: 'France', GB: 'United Kingdom', IN: 'India',
-  PK: 'Pakistan', SY: 'Syria', YE: 'Yemen', MM: 'Myanmar', VE: 'Venezuela',
-  CU: 'Cuba', MX: 'Mexico', BR: 'Brazil', AE: 'United Arab Emirates',
-};
-
 const TREND_REVERSE: Record<string, 'rising' | 'stable' | 'falling'> = {
   TREND_DIRECTION_RISING: 'rising',
   TREND_DIRECTION_STABLE: 'stable',
@@ -86,7 +79,7 @@ function getScoreLevel(score: number): 'low' | 'normal' | 'elevated' | 'high' | 
 function toCachedCII(proto: CiiScore): CachedCIIScore {
   return {
     code: proto.region,
-    name: TIER1_NAMES[proto.region] || proto.region,
+    name: TIER1_COUNTRIES[proto.region] || proto.region,
     score: proto.combinedScore,
     level: getScoreLevel(proto.combinedScore),
     trend: TREND_REVERSE[proto.trend] || 'stable',
@@ -128,7 +121,7 @@ function toCachedStrategicRisk(
     contributors: (global?.factors ?? []).map((code) => {
       const cii = ciiMap.get(code);
       return {
-        country: TIER1_NAMES[code] || code,
+        country: TIER1_COUNTRIES[code] || code,
         code,
         score: cii?.combinedScore ?? 0,
         level: cii ? getScoreLevel(cii.combinedScore) : 'low',
