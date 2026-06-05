@@ -815,6 +815,33 @@ export function computeStrategicRisks(ciiScores: CiiScore[]): StrategicRisk[] {
   ];
 }
 
+export function normalizeRiskScoreRegion(region: string | undefined | null): string | null {
+  const normalized = String(region || '').trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(normalized) ? normalized : null;
+}
+
+function hasRiskScoreRegionFilter(region: string | undefined | null): boolean {
+  return String(region || '').trim() !== '';
+}
+
+export function filterRiskScoresResponse(
+  response: GetRiskScoresResponse,
+  region: string | undefined | null,
+): GetRiskScoresResponse {
+  if (!hasRiskScoreRegionFilter(region)) return response;
+  const normalizedRegion = normalizeRiskScoreRegion(region);
+  if (!normalizedRegion) return { ciiScores: [], strategicRisks: [] };
+
+  return {
+    ciiScores: response.ciiScores.filter((score) => score.region.toUpperCase() === normalizedRegion),
+    // StrategicRisk is currently a global top-N roll-up. Recomputing it over a
+    // single filtered country would still label the result "global", so a
+    // region-filtered response only returns region-specific strategic risks if
+    // such risks are added later.
+    strategicRisks: response.strategicRisks.filter((risk) => risk.region.toUpperCase() === normalizedRegion),
+  };
+}
+
 // ========================================================================
 // Cache keys
 // ========================================================================
@@ -838,7 +865,7 @@ const RISK_STALE_TTL = 3600;
 
 export async function getRiskScores(
   _ctx: ServerContext,
-  _req: GetRiskScoresRequest,
+  req: GetRiskScoresRequest,
 ): Promise<GetRiskScoresResponse> {
   try {
     const { data: result, source } = await cachedFetchJsonWithMeta<GetRiskScoresResponse>(
@@ -887,13 +914,13 @@ export async function getRiskScores(
           ).catch(() => {});
         }
       }
-      return result;
+      return filterRiskScoresResponse(result, req.region);
     }
   } catch { /* upstream failed, fall through to stale */ }
 
   const stale = (await getCachedJson(RISK_STALE_CACHE_KEY)) as GetRiskScoresResponse | null;
-  if (stale) return stale;
+  if (stale) return filterRiskScoresResponse(stale, req.region);
   const emptyAux: AuxiliarySources = { ucdpEvents: [], outages: [], climate: [], cyber: [], fires: [], gpsHexes: [], iranEvents: [], orefData: null, advisories: null, displacedByIso3: {}, newsTopStories: [], threatSummaryByCountry: null, aviationAlerts: [], earthquakes: [], sanctionsCountries: [], temporalAnomalies: [], militaryCii: null };
   const ciiScores = computeCIIScores([], emptyAux);
-  return { ciiScores, strategicRisks: computeStrategicRisks(ciiScores) };
+  return filterRiskScoresResponse({ ciiScores, strategicRisks: computeStrategicRisks(ciiScores) }, req.region);
 }

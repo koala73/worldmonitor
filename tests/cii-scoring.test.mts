@@ -20,6 +20,7 @@ import {
   EVENT_MULTIPLIER,
   computeCIIScores,
   computeStrategicRisks,
+  filterRiskScoresResponse,
 } from '../server/worldmonitor/intelligence/v1/get-risk-scores.ts';
 import {
   CII_BASELINE_RISK as SHARED_BASELINE_RISK,
@@ -536,6 +537,44 @@ describe('CII scoring', () => {
     // STRATEGIC_RISK_SCALE_FACTOR sanity (used in the doc).
     assert.equal(STRATEGIC_RISK_SCALE_FACTOR, 0.7,
       `STRATEGIC_RISK_SCALE_FACTOR is documented as 0.7 — bump CII_FORMULA_VERSION and update docs/methodology/cii-risk-scores.mdx if changing.`);
+  });
+
+  it('region filter normalizes ISO2 input and omits global strategic risk', () => {
+    const ciiScores = computeCIIScores([], emptyAux());
+    const response = {
+      ciiScores,
+      strategicRisks: computeStrategicRisks(ciiScores),
+    };
+
+    const filtered = filterRiskScoresResponse(response, ' us ');
+    assert.equal(filtered.ciiScores.length, 1);
+    assert.equal(filtered.ciiScores[0]!.region, 'US');
+    assert.deepEqual(filtered.strategicRisks, [],
+      'country-filtered responses must not relabel the global strategic roll-up as country-scoped');
+    assert.equal(response.ciiScores.length, ciiScores.length,
+      'filtering is a post-cache projection and must not mutate the cached all-country payload');
+    assert.equal(response.strategicRisks.length, 1);
+  });
+
+  it('region filter returns empty arrays for unknown ISO2 regions', () => {
+    const ciiScores = computeCIIScores([], emptyAux());
+    const filtered = filterRiskScoresResponse(
+      { ciiScores, strategicRisks: computeStrategicRisks(ciiScores) },
+      'zz',
+    );
+
+    assert.deepEqual(filtered, { ciiScores: [], strategicRisks: [] });
+  });
+
+  it('region filter leaves empty requests on the all-country response and rejects malformed non-empty input', () => {
+    const ciiScores = computeCIIScores([], emptyAux());
+    const response = {
+      ciiScores,
+      strategicRisks: computeStrategicRisks(ciiScores),
+    };
+
+    assert.equal(filterRiskScoresResponse(response, '').ciiScores.length, ciiScores.length);
+    assert.deepEqual(filterRiskScoresResponse(response, 'USA'), { ciiScores: [], strategicRisks: [] });
   });
 
   // ===== Methodology doc drift guard (issue #3725) =====
