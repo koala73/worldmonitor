@@ -13,6 +13,7 @@ import {
   INDICATOR_REGISTRY,
   getIndicatorSourceKeys,
 } from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
+import { STANDALONE_SOURCE_META_MAX_STALE_MIN } from '../server/worldmonitor/resilience/v1/_standalone-source-thresholds.ts';
 import {
   AGING_MULTIPLIER,
   FRESH_MULTIPLIER,
@@ -28,6 +29,8 @@ import type { ResilienceDimensionId } from '../server/worldmonitor/resilience/v1
 const NOW = 1_700_000_000_000;
 const RECOVERY_RESERVE_ADEQUACY_KEY = 'resilience:recovery:reserve-adequacy:v1';
 const RECOVERY_REEXPORT_SHARE_KEY = 'resilience:recovery:reexport-share:v1';
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
 
 function freshAt(cadenceKey: Parameters<typeof cadenceUnitMs>[0], factor = 0.5): number {
   // factor < FRESH_MULTIPLIER keeps the age in the fresh band.
@@ -45,12 +48,28 @@ function staleAt(cadenceKey: Parameters<typeof cadenceUnitMs>[0]): number {
   return NOW - cadenceUnitMs(cadenceKey) * (AGING_MULTIPLIER + 2);
 }
 
+function daysAgo(days: number): number {
+  return NOW - days * DAY_MS;
+}
+
+function freshSourceAt(
+  sourceKey: string,
+  cadenceKey: Parameters<typeof cadenceUnitMs>[0],
+  factor = 0.5,
+): number {
+  const maxStaleMin = STANDALONE_SOURCE_META_MAX_STALE_MIN[resolveSeedMetaKey(sourceKey)];
+  if (typeof maxStaleMin === 'number') {
+    return NOW - maxStaleMin * MINUTE_MS * factor;
+  }
+  return freshAt(cadenceKey, factor);
+}
+
 function buildAllFreshMap(dimensionId: ResilienceDimensionId): Map<string, number> {
   const map = new Map<string, number>();
   for (const indicator of INDICATOR_REGISTRY) {
     if (indicator.dimension !== dimensionId) continue;
     for (const sourceKey of getIndicatorSourceKeys(indicator)) {
-      map.set(sourceKey, freshAt(indicator.cadence));
+      map.set(sourceKey, freshSourceAt(sourceKey, indicator.cadence));
     }
   }
   return map;
@@ -70,16 +89,19 @@ describe('classifyDimensionFreshness (T1.5 propagation pass)', () => {
   });
 
   it('one aging indicator + rest fresh returns aging and stays below stale', () => {
-    // Pick a dimension with multiple source keys so we can tip one to aging.
-    // socialCohesion has 3 indicators across 3 source keys.
-    const dimensionId: ResilienceDimensionId = 'socialCohesion';
+    // Pick a dimension with multiple source keys and tip a static source
+    // without a standalone seed-health SLA to aging. Source keys with
+    // explicit seed-health SLAs may jump directly from fresh to stale.
+    const dimensionId: ResilienceDimensionId = 'energy';
     const map = new Map<string, number>();
     const indicators = INDICATOR_REGISTRY.filter((i) => i.dimension === dimensionId);
     assert.ok(indicators.length >= 2);
-    map.set(indicators[0]!.sourceKey, agingAt(indicators[0]!.cadence));
-    for (let i = 1; i < indicators.length; i += 1) {
-      map.set(indicators[i]!.sourceKey, freshAt(indicators[i]!.cadence));
+    for (const indicator of indicators) {
+      for (const sourceKey of getIndicatorSourceKeys(indicator)) {
+        map.set(sourceKey, freshSourceAt(sourceKey, indicator.cadence));
+      }
     }
+    map.set('resilience:static:{ISO2}', agingAt('annual'));
     const result = classifyDimensionFreshness(dimensionId, map, NOW);
     assert.equal(result.staleness, 'aging', 'one aging + rest fresh should escalate to aging');
   });
@@ -106,7 +128,7 @@ describe('classifyDimensionFreshness (T1.5 propagation pass)', () => {
 
   it('liquidReserveAdequacy is stale when the re-export-share modifier is missing', () => {
     const map = new Map<string, number>([
-      [RECOVERY_RESERVE_ADEQUACY_KEY, freshAt('annual')],
+      [RECOVERY_RESERVE_ADEQUACY_KEY, freshSourceAt(RECOVERY_RESERVE_ADEQUACY_KEY, 'annual')],
     ]);
 
     const result = classifyDimensionFreshness('liquidReserveAdequacy', map, NOW);
@@ -120,7 +142,7 @@ describe('classifyDimensionFreshness (T1.5 propagation pass)', () => {
 
   it('liquidReserveAdequacy is stale when the re-export-share modifier is stale', () => {
     const map = new Map<string, number>([
-      [RECOVERY_RESERVE_ADEQUACY_KEY, freshAt('annual')],
+      [RECOVERY_RESERVE_ADEQUACY_KEY, freshSourceAt(RECOVERY_RESERVE_ADEQUACY_KEY, 'annual')],
       [RECOVERY_REEXPORT_SHARE_KEY, staleAt('annual')],
     ]);
 
@@ -133,10 +155,25 @@ describe('classifyDimensionFreshness (T1.5 propagation pass)', () => {
     );
   });
 
+  it('liquidReserveAdequacy is stale when re-export-share exceeds its seed-health SLA', () => {
+    const map = new Map<string, number>([
+      [RECOVERY_RESERVE_ADEQUACY_KEY, daysAgo(30)],
+      [RECOVERY_REEXPORT_SHARE_KEY, daysAgo(70)],
+    ]);
+
+    const result = classifyDimensionFreshness('liquidReserveAdequacy', map, NOW);
+
+    assert.equal(
+      result.staleness,
+      'stale',
+      '70-day-old re-export-share must stale the badge even though annual cadence alone would still be fresh',
+    );
+  });
+
   it('liquidReserveAdequacy stays fresh when reserve adequacy and re-export-share are both fresh', () => {
     const map = new Map<string, number>([
-      [RECOVERY_RESERVE_ADEQUACY_KEY, freshAt('annual', 0.25)],
-      [RECOVERY_REEXPORT_SHARE_KEY, freshAt('annual', 0.5)],
+      [RECOVERY_RESERVE_ADEQUACY_KEY, daysAgo(10)],
+      [RECOVERY_REEXPORT_SHARE_KEY, daysAgo(30)],
     ]);
 
     const result = classifyDimensionFreshness('liquidReserveAdequacy', map, NOW);

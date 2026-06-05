@@ -20,10 +20,12 @@
 
 import {
   classifyStaleness,
+  type ResilienceCadence,
   type StalenessLevel,
 } from '../../../_shared/resilience-freshness';
 import type { ResilienceDimensionId } from './_dimension-scorers';
 import { INDICATOR_REGISTRY, getIndicatorSourceKeys } from './_indicator-registry';
+import { STANDALONE_SOURCE_META_MAX_STALE_MIN } from './_standalone-source-thresholds';
 
 export interface DimensionFreshnessResult {
   /** Oldest (min) `fetchedAt` across the dimension's indicators. 0 when nothing ever observed. */
@@ -147,6 +149,33 @@ const STALENESS_ORDER: Record<StalenessLevel, number> = {
   stale: 2,
 };
 
+const MINUTE_MS = 60 * 1000;
+
+function classifySourceKeyFreshness(
+  sourceKey: string,
+  lastObservedAtMs: number | null,
+  cadence: ResilienceCadence,
+  nowMs: number,
+): StalenessLevel {
+  const result = classifyStaleness({
+    lastObservedAtMs,
+    cadence,
+    nowMs,
+  });
+
+  const maxStaleMin = STANDALONE_SOURCE_META_MAX_STALE_MIN[resolveSeedMetaKey(sourceKey)];
+  if (
+    typeof maxStaleMin === 'number'
+    && lastObservedAtMs != null
+    && Number.isFinite(lastObservedAtMs)
+    && nowMs - lastObservedAtMs > maxStaleMin * MINUTE_MS
+  ) {
+    return 'stale';
+  }
+
+  return result.staleness;
+}
+
 /**
  * Aggregate freshness across all indicators in a dimension.
  *
@@ -175,17 +204,19 @@ export function classifyDimensionFreshness(
 
   let oldestMs = Number.POSITIVE_INFINITY;
   let worstStaleness: StalenessLevel = 'fresh';
+  const effectiveNowMs = nowMs ?? Date.now();
 
   for (const indicator of indicators) {
     for (const sourceKey of getIndicatorSourceKeys(indicator)) {
       const lastObservedAtMs = freshnessMap.get(sourceKey) ?? null;
-      const result = classifyStaleness({
+      const staleness = classifySourceKeyFreshness(
+        sourceKey,
         lastObservedAtMs,
-        cadence: indicator.cadence,
-        nowMs,
-      });
-      if (STALENESS_ORDER[result.staleness] > STALENESS_ORDER[worstStaleness]) {
-        worstStaleness = result.staleness;
+        indicator.cadence,
+        effectiveNowMs,
+      );
+      if (STALENESS_ORDER[staleness] > STALENESS_ORDER[worstStaleness]) {
+        worstStaleness = staleness;
       }
       if (lastObservedAtMs != null && Number.isFinite(lastObservedAtMs) && lastObservedAtMs < oldestMs) {
         oldestMs = lastObservedAtMs;
