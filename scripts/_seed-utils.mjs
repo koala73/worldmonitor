@@ -1445,6 +1445,12 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     // the canonical one.
     if (extraKeys) {
       for (const ek of extraKeys) {
+        // skipWhenEmpty needs a resolved recordCount, which only exists in
+        // contract mode (declareRecords). Warn loudly on misconfig instead of
+        // silently writing the empty payload the flag was meant to guard against.
+        if (ek.skipWhenEmpty && !contractMode) {
+          console.warn(`  [extraKey] ${ek.key} declares skipWhenEmpty but ${domain}:${resource} is not in contract mode (no declareRecords) — guard inactive`);
+        }
         const ekData = ek.transform ? ek.transform(data) : data;
         let ekEnvelope = null;
         if (contractMode) {

@@ -2532,8 +2532,13 @@ async function seedTokenPanels() {
   const results = [];
   for (const p of panels) {
     if (p.payload.tokens.length === 0) {
-      try { await upstashExpire(p.key, TOKEN_PANELS_SEED_TTL); } catch {}
-      results.push(`${p.label}:skip-empty`);
+      // Preserve last-good by extending the existing key's TTL. upstashExpire
+      // resolves false when the key is already missing/expired — surface that as
+      // (TTL-MISS) so the log never implies a cache was preserved when it wasn't
+      // (the probe will then legitimately read `missing` until the next good write).
+      const extended = await upstashExpire(p.key, TOKEN_PANELS_SEED_TTL);
+      if (!extended) console.warn(`[TokenPanels] ${p.key} EXPIRE no-op — key missing/expired, last-good NOT preserved`);
+      results.push(`${p.label}:skip-empty${extended ? '' : '(TTL-MISS)'}`);
       continue;
     }
     const ok = await envelopeWrite(p.key, p.payload, TOKEN_PANELS_SEED_TTL, { recordCount: p.payload.tokens.length, sourceVersion: p.sourceVersion });
