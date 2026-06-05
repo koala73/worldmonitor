@@ -87,6 +87,20 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
     );
   });
 
+  it('api/seed-health.js resilience interval probe mirrors the script prefix and methodology', () => {
+    const seedHealthText = readFileSync(join(repoRoot, 'api/seed-health.js'), 'utf-8');
+    assert.ok(
+      seedHealthText.includes(`const RESILIENCE_INTERVAL_KEY_PREFIX = '${SCRIPT_INTERVAL_KEY_PREFIX}';`) ||
+        seedHealthText.includes(`const RESILIENCE_INTERVAL_KEY_PREFIX = "${SCRIPT_INTERVAL_KEY_PREFIX}";`),
+      `api/seed-health.js must mirror scripts/_resilience-intervals.mjs RESILIENCE_INTERVAL_KEY_PREFIX=${SCRIPT_INTERVAL_KEY_PREFIX}`,
+    );
+    assert.ok(
+      seedHealthText.includes(`const RESILIENCE_INTERVAL_METHODOLOGY = '${SCRIPT_INTERVAL_METHODOLOGY}';`) ||
+        seedHealthText.includes(`const RESILIENCE_INTERVAL_METHODOLOGY = "${SCRIPT_INTERVAL_METHODOLOGY}";`),
+      `api/seed-health.js must mirror scripts/_resilience-intervals.mjs RESILIENCE_INTERVAL_METHODOLOGY=${SCRIPT_INTERVAL_METHODOLOGY}`,
+    );
+  });
+
   it('score and ranking cache namespaces share the same methodology generation', () => {
     const scoreVersion = cacheVersion(
       'RESILIENCE_SCORE_CACHE_PREFIX',

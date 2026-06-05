@@ -19,6 +19,26 @@ const PROBE_KEY = 'resilience:intervals:v8:US';
 const METHODOLOGY = 'weight-perturbation-sensitivity-v3';
 const SOURCE_VERSION = `resilience-intervals:resilience:intervals:v8:${METHODOLOGY}`;
 
+function intervalMeta(overrides = {}) {
+  return {
+    fetchedAt: Date.now(),
+    recordCount: 196,
+    sourceVersion: SOURCE_VERSION,
+    ...overrides,
+  };
+}
+
+function intervalPayload(overrides = {}) {
+  return {
+    p05: 65.2,
+    p95: 72.8,
+    _formula: 'pc',
+    computedAt: '2026-06-04T18:03:20.983Z',
+    methodology: METHODOLOGY,
+    ...overrides,
+  };
+}
+
 before(() => {
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
@@ -64,11 +84,7 @@ async function readSeedHealth() {
 
 test('seed-health flags fresh resilience interval meta when the current v8 data probe is absent', async () => {
   installPipelineMock(new Map([
-    [META_KEY, {
-      fetchedAt: Date.now(),
-      recordCount: 196,
-      sourceVersion: SOURCE_VERSION,
-    }],
+    [META_KEY, intervalMeta()],
   ]));
 
   const { res, body } = await readSeedHealth();
@@ -89,18 +105,8 @@ test('seed-health flags fresh resilience interval meta when the current v8 data 
 
 test('seed-health keeps resilience intervals green when fresh meta matches the current probe methodology', async () => {
   installPipelineMock(new Map([
-    [META_KEY, {
-      fetchedAt: Date.now(),
-      recordCount: 196,
-      sourceVersion: SOURCE_VERSION,
-    }],
-    [PROBE_KEY, {
-      p05: 65.2,
-      p95: 72.8,
-      _formula: 'pc',
-      computedAt: '2026-06-04T18:03:20.983Z',
-      methodology: METHODOLOGY,
-    }],
+    [META_KEY, intervalMeta()],
+    [PROBE_KEY, intervalPayload()],
   ]));
 
   const { res, body } = await readSeedHealth();
@@ -113,4 +119,46 @@ test('seed-health keeps resilience intervals green when fresh meta matches the c
   assert.equal(body.seeds['resilience:intervals'].dataProbe.key, PROBE_KEY);
   assert.equal(body.seeds['resilience:intervals'].dataProbe.methodology, METHODOLOGY);
   assert.equal(body.seeds['resilience:intervals'].dataProbe.formula, 'pc');
+});
+
+test('seed-health flags resilience interval methodology mismatches', async () => {
+  installPipelineMock(new Map([
+    [META_KEY, intervalMeta()],
+    [PROBE_KEY, intervalPayload({ methodology: 'weight-perturbation-sensitivity-v2' })],
+  ]));
+
+  const { res, body } = await readSeedHealth();
+
+  assert.equal(res.status, 200);
+  assert.equal(body.overall, 'warning');
+  assert.equal(body.seeds['resilience:intervals'].status, 'methodology_mismatch');
+  assert.equal(body.seeds['resilience:intervals'].stale, true);
+  assert.deepEqual(body.seeds['resilience:intervals'].dataProbe, {
+    ok: false,
+    status: 'methodology_mismatch',
+    key: PROBE_KEY,
+    methodology: 'weight-perturbation-sensitivity-v2',
+    requiredMethodology: METHODOLOGY,
+    requiredSourceVersion: SOURCE_VERSION,
+  });
+});
+
+test('seed-health flags resilience interval source-version mismatches', async () => {
+  installPipelineMock(new Map([
+    [META_KEY, intervalMeta({ sourceVersion: 'resilience-intervals:resilience:intervals:v7:old-methodology' })],
+    [PROBE_KEY, intervalPayload()],
+  ]));
+
+  const { res, body } = await readSeedHealth();
+
+  assert.equal(res.status, 200);
+  assert.equal(body.overall, 'warning');
+  assert.equal(body.seeds['resilience:intervals'].status, 'source_version_mismatch');
+  assert.equal(body.seeds['resilience:intervals'].stale, true);
+  assert.equal(
+    body.seeds['resilience:intervals'].sourceVersion,
+    'resilience-intervals:resilience:intervals:v7:old-methodology',
+  );
+  assert.equal(body.seeds['resilience:intervals'].dataProbe.ok, true);
+  assert.equal(body.seeds['resilience:intervals'].dataProbe.requiredSourceVersion, SOURCE_VERSION);
 });
