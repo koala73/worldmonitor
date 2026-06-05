@@ -1414,3 +1414,36 @@ describe('setCachedJson wire shape and failure reporting', { concurrency: 1 }, (
     }
   });
 });
+
+describe('getHashFieldsBatch empty-string handling', { concurrency: 1 }, () => {
+  it('preserves empty-string values (does not drop them)', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+
+    globalThis.fetch = async (_url, init = {}) => {
+      const pipeline = JSON.parse(String(init.body));
+      // Mock HMGET response: ["", null, "value"] — empty string, null, and a real value
+      return jsonResponse([
+        { result: ['', null, 'value'] },
+      ]);
+    };
+
+    try {
+      const map = await redis.getHashFieldsBatch('test:key', ['fieldA', 'fieldB', 'fieldC']);
+      assert.equal(map.size, 2, 'should have 2 fields (empty string + value, null skipped)');
+      assert.equal(map.get('fieldA'), '', 'empty string must be preserved');
+      assert.equal(map.has('fieldB'), false, 'null should be skipped');
+      assert.equal(map.get('fieldC'), 'value', 'real value should be present');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+});

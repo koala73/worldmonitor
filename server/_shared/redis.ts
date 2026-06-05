@@ -738,7 +738,7 @@ export async function getHashFieldsBatch(key: string, fields: string[], raw = fa
     const values = data[0]?.result;
     if (values) {
       for (let i = 0; i < fields.length; i++) {
-        if (values[i]) result.set(fields[i]!, values[i]!);
+        if (values[i] != null) result.set(fields[i]!, values[i]!);
       }
     }
   } catch (err) {
