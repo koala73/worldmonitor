@@ -354,12 +354,12 @@ function acledEvent(country: string, type: string, fatalities = 0) {
 // ais-relay.cjs): { country, violenceType, deathsBest, dateStart }. There is NO
 // `intensity_level`/`type_of_violence` field — the scorer classifies per-country
 // using deaths + event count over a 2-year window (deriveUcdpClassifications parity).
-function ucdpEvent(country: string, deathsBest = 1) {
+function ucdpEvent(country: string, deathsBest = 1, dateStart = Date.now()) {
   return {
     country,
     violenceType: 'UCDP_VIOLENCE_TYPE_STATE_BASED',
     deathsBest,
-    dateStart: Date.now(),
+    dateStart,
   };
 }
 
@@ -1524,6 +1524,25 @@ describe('CII scoring', () => {
       CII_REALTIME_REQUIRED_SIGNAL_FAMILY_COUNT,
       'UCDP must satisfy the conflict family when ACLED is empty so /api/health.riskScores stays green',
     );
+  });
+
+  it('riskScores UCDP health coverage uses the supplied clock', () => {
+    const aux = emptyAux();
+    aux.ucdpEvents = [ucdpEvent('Ukraine', 1500, TREND_TEST_NOW - 24 * 60 * 60 * 1000)];
+    aux.newsTopStories = [{ countryCode: 'GB', threatLevel: 'high', primaryTitle: 'UK security alert' }];
+    aux.cyber = [{ country: 'US', severity: 'CRITICALITY_LEVEL_CRITICAL' }];
+
+    const originalDateNow = Date.now;
+    Date.now = () => TREND_TEST_NOW + 3 * 365 * 24 * 60 * 60 * 1000;
+    try {
+      assert.equal(
+        countCiiRealtimeSignalDensityCoverage([], aux, TREND_TEST_NOW),
+        CII_REALTIME_REQUIRED_SIGNAL_FAMILY_COUNT,
+        'UCDP coverage should use the injected health clock instead of the ambient Date.now()',
+      );
+    } finally {
+      Date.now = originalDateNow;
+    }
   });
 
   it('riskScores conflict family stays uncovered when both ACLED and UCDP are empty', () => {

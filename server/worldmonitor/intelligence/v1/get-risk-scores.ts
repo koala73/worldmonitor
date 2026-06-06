@@ -438,6 +438,8 @@ const ISO3_TO_ISO2: Record<string, string> = iso3ToIso2Json;
 // non-existent keys, so `parseInt(...) === 0` for every event and the UCDP floor/coverage
 // were silently dead. The correct classification is the same per-country aggregate the
 // frontend uses: a 2-year trailing window scored by total deaths and event count.
+// The Redis writers currently keep only a 1-year trailing slice, so the effective
+// cached-event window is seed-bounded until retention changes upstream.
 const UCDP_CLASSIFICATION_WINDOW_MS = 2 * 365 * 24 * 60 * 60 * 1000;
 
 type UcdpIntensity = 'minor' | 'war';
@@ -463,7 +465,7 @@ function deriveUcdpIntensityByRegion(
   const byRegion = new Map<string, UcdpIntensity>();
   for (const [countryName, events] of eventsByCountryName) {
     const code = normalizeCountryName(countryName);
-    if (!code) continue;
+    if (!code || !isTier1CountryCode(code)) continue;
     const recent = events.filter((e) => nowMs - (safeNum(e?.dateStart)) < UCDP_CLASSIFICATION_WINDOW_MS);
     const totalDeaths = recent.reduce((sum, e) => sum + safeNonNegativeNum(e?.deathsBest), 0);
     const eventCount = recent.length;
@@ -1218,6 +1220,7 @@ function isTier1CountryCode(code: string | undefined | null): boolean {
 export function countCiiRealtimeSignalDensityCoverage(
   acled: Array<{ country: string; event_type: string; fatalities: number; daysAgo?: number }> | undefined | null,
   aux: AuxiliarySources | undefined | null,
+  nowMs = Date.now(),
 ): number {
   // Health semantics: this is signal-density coverage for score-relevant
   // realtime families, not a raw feed heartbeat. Quiet-but-available feeds may
@@ -1233,7 +1236,7 @@ export function countCiiRealtimeSignalDensityCoverage(
   // Requiring ACLED specifically here flipped /api/health.riskScores to COVERAGE_PARTIAL
   // whenever ACLED was thin even though UCDP was fully healthy.
   const acledCoversTier1 = (acled ?? []).some((ev) => isTier1CountryCode(normalizeCountryName(ev.country)));
-  const ucdpCoversTier1 = deriveUcdpIntensityByRegion(aux?.ucdpEvents, Date.now()).size > 0;
+  const ucdpCoversTier1 = deriveUcdpIntensityByRegion(aux?.ucdpEvents, nowMs).size > 0;
   if (acledCoversTier1 || ucdpCoversTier1) {
     coveredFamilies.add('conflict');
   }
@@ -1447,7 +1450,7 @@ export async function getRiskScores(
           readCiiTrendPriorScores(nowMs),
         ]);
         if (!priorCiiScores?.length) recordCiiTrendPriorGap(nowMs);
-        realtimeSignalDensityCoverageCount = countCiiRealtimeSignalDensityCoverage(acled, aux);
+        realtimeSignalDensityCoverageCount = countCiiRealtimeSignalDensityCoverage(acled, aux, nowMs);
         const ciiScores = computeCIIScores(acled, aux, { priorScores: priorCiiScores, nowMs });
         const strategicRisks = computeStrategicRisks(ciiScores);
         return { ciiScores, strategicRisks, degraded: false, stale: false };
