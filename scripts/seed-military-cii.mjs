@@ -594,6 +594,7 @@ async function main() {
     // signal until the relay recovers; fall through to a flights-only publish only when
     // there is no prior key (cold start).
     if (!relay.ok) {
+      console.warn(`  relay unavailable - preserving last-good complete military CII if present; ${flights.length} freshly read flights will not be published unless this is a cold start`);
       if (await preserveLastGoodMilitaryCii(url, token, 'relay unavailable (vessels/AIS not overwritten)', 'publishing flights-only')) return;
     }
 

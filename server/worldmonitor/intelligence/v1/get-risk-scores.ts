@@ -1095,6 +1095,8 @@ function hasRiskScoreRegionFilter(region: string | undefined | null): boolean {
   return String(region || '').trim() !== '';
 }
 
+// Lazy so Edge cold starts do not do baseline score work unless fresh CII
+// scoring needs the signal-coverage comparison.
 let baselineOnlyScoresByRegion: Map<string, number> | null = null;
 
 function getBaselineOnlyScoresByRegion(): Map<string, number> {
