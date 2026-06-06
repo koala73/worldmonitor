@@ -37,7 +37,7 @@ The dashboard's design draws from established intelligence analysis methodology,
 
 **Analysis of Competing Hypotheses (ACH)** — the multi-source corroboration requirement (news + military + markets + protests before escalating to critical) is an automated form of ACH. No single data stream can drive a critical alert alone — the system requires convergence across independent streams, reducing the impact of single-source reporting errors or propaganda campaigns.
 
-**Intelligence gap awareness** — professional intelligence assessments always note what they *don't* know. The data freshness tracker explicitly reports "what can't be seen" — 31 sources with status categorization (fresh, stale, very_stale, no_data, error, disabled). Two sources (GDELT, RSS) are flagged as `requiredForRisk`, meaning their absence directly degrades CII scoring quality. When a critical data source goes down, the system displays the gap prominently rather than silently omitting it, preventing false confidence from incomplete data.
+**Intelligence gap awareness** — professional intelligence assessments always note what they *don't* know. The data freshness tracker explicitly reports "what can't be seen" — 35 sources with status categorization (fresh, stale, very_stale, no_data, error, disabled). Two browser-tracker sources (GDELT, RSS) are flagged as `requiredForRisk`, meaning their absence can force the Strategic Risk panel into its hard insufficient-data state. That flag is narrower than the full CII scoring dependency graph: UCDP events, ACLED conflict, news summaries, cyber threats, and other score inputs are monitored through source-specific health plus `/api/health.riskScores` signal-density coverage. When a critical data source goes down, the system displays the gap prominently rather than silently omitting it, preventing false confidence from incomplete data.
 
 **Source credibility weighting** — the 4-tier source hierarchy (wire services → major outlets → specialty → aggregators) mirrors intelligence community source evaluation (A–F reliability, 1–6 confidence). State-affiliated sources are included for completeness but tagged with propaganda risk indicators, enabling analysts to factor in editorial bias. Higher-tier sources carry more weight in focal point detection and alert generation.
 
@@ -227,7 +227,7 @@ The `SmartPollLoop` is the core refresh orchestration primitive used by all data
 
 ### Railway Seed Data Pipeline
 
-21 Railway cron jobs continuously refresh the Redis cache with pre-computed data from external APIs. Seeds run on configurable schedules (typically every 5–15 minutes) and write both a canonical domain key (for RPC handler lookups) and a bootstrap key (for page-load hydration). This dual-key strategy ensures that bootstrap hydration and RPC handlers always agree on data format and freshness.
+21 Railway cron jobs continuously refresh the Redis cache with pre-computed data from external APIs. Seeds run on configurable schedules from minutes to daily cadence and write both a canonical domain key (for RPC handler lookups) and a bootstrap key (for page-load hydration). This dual-key strategy ensures that bootstrap hydration and RPC handlers always agree on data format and freshness.
 
 | Seed Script | Data Source | Update Frequency | Bootstrap Key |
 | --- | --- | --- | --- |
@@ -247,7 +247,7 @@ The `SmartPollLoop` is the core refresh orchestration primitive used by all data
 | `seed-stablecoin-markets` | CoinGecko (USDT, USDC, DAI+) | 10 min | `market:stablecoins:v1` |
 | `seed-gulf-quotes` | Yahoo Finance (Tadawul, DFM, ADX) | 10 min | `market:gulf-quotes:v1` |
 | `seed-unrest-events` | ACLED protests + GDELT | 45 min | `unrest:events:v1` |
-| `seed-ucdp-events` | UCDP GED API | 15 min | `conflict:ucdp-events:v1` |
+| `seed-ucdp-events` | UCDP GED API | 6 hours | `conflict:ucdp-events:v1` |
 | `seed-iran-events` | LiveUAMap geocoded events | 10 min | `conflict:iran-events:v1` |
 | `seed-displacement-summary` | UNHCR / IOM | 30 min | N/A |
 | `seed-military-bases` | Curated 210+ base database | Daily | N/A |

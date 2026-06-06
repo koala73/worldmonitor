@@ -19,7 +19,8 @@ export interface DataSourceState {
   itemCount: number;
   enabled: boolean;
   status: FreshnessStatus;
-  requiredForRisk: boolean; // Is this source important for risk assessment?
+  // Drives the StrategicRiskPanel hard insufficient-data gate; not the full list of CII score inputs.
+  requiredForRisk: boolean;
   maxStaleMin?: number;
   healthStatus?: string;
 }
@@ -52,8 +53,10 @@ const FRESH_THRESHOLD = 15 * 60 * 1000;      // 15 minutes
 const STALE_THRESHOLD = 2 * 60 * 60 * 1000;  // 2 hours
 const VERY_STALE_THRESHOLD = 6 * 60 * 60 * 1000; // 6 hours
 
-// Core sources needed for meaningful risk assessment
-// Note: ACLED is optional since GDELT provides protest data as fallback
+// Core browser-tracker sources needed before the Strategic Risk panel leaves its
+// hard insufficient-data state. This is intentionally narrower than the full CII
+// scorer input graph; source-specific health and /api/health.riskScores monitor
+// ACLED/UCDP conflict, cyber, and other score-relevant feeds.
 const CORE_SOURCES: DataSourceId[] = ['gdelt', 'rss'];
 
 const SOURCE_METADATA: Record<DataSourceId, { name: string; requiredForRisk: boolean; panelId?: string }> = {
@@ -223,7 +226,7 @@ class DataFreshnessTracker {
   }
 
   /**
-   * Get sources required for risk assessment
+   * Get sources required for the Strategic Risk insufficient-data gate.
    */
   getRiskSources(): DataSourceState[] {
     return this.getAllSources().filter(s => s.requiredForRisk);
@@ -246,7 +249,7 @@ class DataFreshnessTracker {
       .filter(s => s.lastUpdate)
       .map(s => s.lastUpdate!.getTime());
 
-    // Coverage is based on risk-required sources
+    // Coverage is based on sources required by the panel's hard gate, not every CII input.
     const coveragePercent = riskSources.length > 0
       ? Math.round((activeRiskSources.length / riskSources.length) * 100)
       : 0;

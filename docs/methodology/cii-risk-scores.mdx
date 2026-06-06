@@ -27,7 +27,10 @@ The current version is **v8**.
 > `/api/health.riskScores` realtime signal coverage. UCDP is now classified
 > per country over a 2-year trailing window (war when total deaths > 1000 or
 > event count > 100; minor when event count > 10), matching the frontend
-> `deriveUcdpClassifications` heuristic. The health coverage metric's conflict
+> `deriveUcdpClassifications` heuristic. The classifier is configured for that
+> 2-year window, but the Redis writers currently retain a 365-day trailing event
+> slice, so live scoring is seed-input-bounded until UCDP retention is widened.
+> The health coverage metric's conflict
 > family is now satisfied by EITHER the ACLED API path OR UCDP, so a thin/empty
 > ACLED window no longer flips health to `COVERAGE_PARTIAL` while UCDP is healthy.
 > `combinedScore` values rise for active UCDP conflict countries (e.g. UA/PK/MX
