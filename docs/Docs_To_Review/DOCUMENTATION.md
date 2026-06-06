@@ -43,7 +43,7 @@ The primary variant focuses on geopolitical intelligence, military tracking, and
 |-------|---------|
 | **AI Insights** | LLM-synthesized world brief with focal point detection |
 | **AI Strategic Posture** | Theater-level military force aggregation with strike capability assessment |
-| **Country Instability Index** | Real-time CII v5 stability scores and signed 24-hour movement deltas for 31 Tier-1 countries |
+| **Country Instability Index** | Real-time CII v6 stability scores and signed 24-hour movement deltas for 31 Tier-1 countries |
 | **Strategic Risk Overview** | Composite risk score combining all intelligence modules |
 | **Infrastructure Cascade** | Dependency analysis for cables, pipelines, and chokepoints |
 | **Live Intelligence** | GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions) |
@@ -191,7 +191,7 @@ Beyond raw data feeds, the dashboard provides synthesized intelligence panels:
 |-------|---------|
 | **AI Strategic Posture** | Theater-level military aggregation with strike capability analysis |
 | **Strategic Risk Overview** | Composite risk score combining all intelligence modules |
-| **Country Instability Index** | Real-time CII v5 stability scores and signed 24-hour movement deltas for 31 Tier-1 countries |
+| **Country Instability Index** | Real-time CII v6 stability scores and signed 24-hour movement deltas for 31 Tier-1 countries |
 | **Infrastructure Cascade** | Dependency analysis for cables, pipelines, and chokepoints |
 | **Live Intelligence** | GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions) |
 | **Intel Feed** | Curated defense and security news sources |
@@ -939,7 +939,7 @@ Pin state persists across sessions via localStorage.
 
 ## Country Instability Index (CII)
 
-The dashboard maintains a **real-time CII v5 instability score** for 31
+The dashboard maintains a **real-time CII v6 instability score** for 31
 Tier-1 countries. Rather than relying on static risk ratings, CII combines an
 editorial baseline with live unrest, conflict, security, and information
 signals.
@@ -3019,7 +3019,7 @@ The `GET /api/intelligence/v1/get-risk-scores` RPC handler:
 
 1. Fetches recent ACLED unrest/conflict events.
 2. Reads auxiliary Redis sources for conflict floors, advisories, outages, climate, cyber, fires, GPS jamming, OREF alerts, displacement, news threat summaries, aviation alerts, earthquakes, sanctions, and military/AIS CII aggregates.
-3. Computes CII v5 scores for 31 Tier-1 countries.
+3. Computes CII v6 scores for 31 Tier-1 countries.
 4. Derives Strategic Risk from the weighted top 5 CII scores.
 5. Caches results in Redis using versioned live and stale keys tied to the current CII formula version.
 

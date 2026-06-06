@@ -179,7 +179,7 @@ The `GetRiskScores` RPC handler (`get-risk-scores.ts`):
 
 1. Fetches recent protest/riot/battle/explosion/civilian-violence data from ACLED.
 2. Fetches auxiliary sources from Redis, including UCDP conflicts, outages, climate, cyber threats, fires, GPS jamming, Iran events, OREF alerts, advisories, displacement, classified news summaries, aviation alerts, earthquakes, sanctions, and military/AIS CII aggregates.
-3. Computes CII v5 scores for 31 Tier-1 countries using the shared coefficient table documented in [CII Risk Scoring Methodology](/methodology/cii-risk-scores).
+3. Computes CII v6 scores for 31 Tier-1 countries using the shared coefficient table documented in [CII Risk Scoring Methodology](/methodology/cii-risk-scores).
 4. Derives Strategic Risk from the weighted top 5 CII scores.
 5. Caches results in Redis with versioned live and stale keys tied to the current CII formula version.
 

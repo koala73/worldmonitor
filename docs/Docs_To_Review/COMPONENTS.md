@@ -592,7 +592,7 @@ domain-specific markup.
 |---|---|
 | **File** | `src/components/CIIPanel.ts` |
 | **Panel ID** | `cii` |
-| **Purpose** | Renders server-authoritative CII v5 scores for 31 Tier-1 countries from cached risk-score ingestion, with local fallback scoring when forced or no cached data is available. |
+| **Purpose** | Renders server-authoritative CII v6 scores for 31 Tier-1 countries from cached risk-score ingestion, with local fallback scoring when forced or no cached data is available. |
 | **Key methods** | `setShareStoryHandler()`, `setCountryClickHandler()`, `refresh(forceLocal?)`, `renderFromCached(cached)`, `getScores()` |
 | **DOM** | `.cii-list` → `.cii-country` each with header (emoji flag, name, score, trend arrow, share button), colour bar, sub-score row (U/C/S/I). |
 | **Services** | `toCountryScore()`, `calculateCII()` fallback path, `getCSSColor` |

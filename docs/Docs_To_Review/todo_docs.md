@@ -178,7 +178,7 @@
 - [ ] **Threat Classification** (`threat-classifier.ts`): hybrid keyword + LLM pipeline
 - [ ] **Signal Correlation** (`correlation.ts`): cross-source pattern matching logic
 - [ ] **Hotspot Escalation** (`hotspot-escalation.ts`): 4-signal scoring methodology
-- [ ] **Country Instability Index** (`server/worldmonitor/intelligence/v1/get-risk-scores.ts`, `shared/cii-weights.ts`): server-authoritative CII v5 scoring for 31 Tier-1 countries, with frontend cached risk-score ingestion and `country-instability.ts` retained as the local fallback renderer path
+- [ ] **Country Instability Index** (`server/worldmonitor/intelligence/v1/get-risk-scores.ts`, `shared/cii-weights.ts`): server-authoritative CII v6 scoring for 31 Tier-1 countries, with frontend cached risk-score ingestion and `country-instability.ts` retained as the local fallback renderer path
 - [ ] **Temporal Baseline** (`temporal-baseline.ts`): Welford's online algorithm for anomaly detection
 - [ ] **Trending Keywords** (`trending-keywords.ts`): 2h vs 7d window spike detection
 - [ ] **Infrastructure Cascade** (`infrastructure-cascade.ts`): BFS propagation model

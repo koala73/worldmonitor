@@ -9,7 +9,7 @@ description: "Detailed documentation of World Monitor's scoring formulas, detect
 
 ### Country Instability Index (CII)
 
-Every Tier-1 country receives a live instability score (0-100). CII v5 tracks 31 Tier-1 countries with shared server/frontend `baselineRisk` and `eventMultiplier` coefficients plus signed 24-hour movement deltas: US, Russia, China, Ukraine, Iran, Israel, Taiwan, North Korea, Saudi Arabia, Turkey, Poland, Germany, France, UK, India, Pakistan, Syria, Yemen, Myanmar, Venezuela, Cuba, Mexico, Brazil, UAE, South Korea, Iraq, Afghanistan, Lebanon, Egypt, Japan, and Qatar. Countries outside the curated Tier-1 set use the default editorial coefficients when they are scored by supporting systems (`DEFAULT_CII_BASELINE_RISK = 15`, `DEFAULT_CII_EVENT_MULTIPLIER = 1.0`).
+Every Tier-1 country receives a live instability score (0-100). CII v6 tracks 31 Tier-1 countries with shared server/frontend `baselineRisk` and `eventMultiplier` coefficients plus signed 24-hour movement deltas: US, Russia, China, Ukraine, Iran, Israel, Taiwan, North Korea, Saudi Arabia, Turkey, Poland, Germany, France, UK, India, Pakistan, Syria, Yemen, Myanmar, Venezuela, Cuba, Mexico, Brazil, UAE, South Korea, Iraq, Afghanistan, Lebanon, Egypt, Japan, and Qatar. Countries outside the curated Tier-1 set use the default editorial coefficients when they are scored by supporting systems (`DEFAULT_CII_BASELINE_RISK = 15`, `DEFAULT_CII_EVENT_MULTIPLIER = 1.0`).
 
 Authoritative CII scores come from the server-side `GET /api/intelligence/v1/get-risk-scores` RPC (`server/worldmonitor/intelligence/v1/get-risk-scores.ts`) and are served to the browser through the cached risk-score feed. The frontend `country-instability.ts` path shares the published `baselineRisk` / `eventMultiplier` coefficients and v3 conflict curve constants, but it is a fallback/local renderer path after cached backend scores, not the source of truth for published scores:
 
@@ -30,7 +30,7 @@ Authoritative CII scores come from the server-side `GET /api/intelligence/v1/get
 
 **Boosts**: Advisory boost (+15 do-not-travel, +10 reconsider, +5 caution), OREF blend boost for Israel (+15 active alerts, +5/10 based on 24h history count), climate severity (up to +15), cyber threats (up to +12), wildfires (up to +8), displacement (up to +20), news urgency (up to +5), earthquakes (up to +25), sanctions (up to +14), and AIS disruptions (up to +10).
 
-See [CII Risk Scoring Methodology](/methodology/cii-risk-scores) for the published per-country `baselineRisk` and `eventMultiplier` tables, the v5 formula, and the strategic-risk band derivation.
+See [CII Risk Scoring Methodology](/methodology/cii-risk-scores) for the published per-country `baselineRisk` and `eventMultiplier` tables, the v6 formula, and the strategic-risk band derivation.
 
 ### Hotspot Escalation Scoring
 

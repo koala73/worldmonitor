@@ -67,11 +67,13 @@ const resolveCountryFromBounds = (_lat: number, _lon: number, _bounds: unknown) 
     getCountryData: (code: string) => {
       sanctionsEntryCount: number;
       sanctionsNewEntryCount: number;
+      climateStress: number;
     } | undefined;
     hasAnyIntelligenceData: () => boolean;
     ingestSanctionsForCII: (countries: Array<{ countryCode: string; entryCount: number; newEntryCount: number }>) => void;
     ingestEarthquakesForCII: (earthquakes: Array<{ magnitude: number; occurredAt: number; location: { latitude: number; longitude: number } }>, now?: number) => void;
     ingestCyberThreatsForCII: (threats: Array<{ country: string; severity: string; lat: number; lon: number }>) => void;
+    ingestClimateForCII: (anomalies: Array<{ zone: string; severity: 'normal' | 'moderate' | 'extreme' }>) => void;
   };
 }
 
@@ -120,6 +122,25 @@ describe('frontend CII closeout regressions', () => {
     cii.clearCountryData();
     cii.ingestSanctionsForCII([{ countryCode: 'US', entryCount: 1, newEntryCount: 0 }]);
     assert.equal(cii.hasAnyIntelligenceData(), true);
+  });
+
+  it('frontend climate fallback maps producer zones into CII country stress', async () => {
+    const cii = await loadCountryInstability();
+    cii.clearCountryData();
+
+    cii.ingestClimateForCII([
+      { zone: 'California', severity: 'extreme' },
+      { zone: 'Amazon', severity: 'moderate' },
+      { zone: 'Taiwan Strait', severity: 'extreme' },
+      { zone: 'Caribbean', severity: 'moderate' },
+    ]);
+
+    assert.equal(cii.getCountryData('US')?.climateStress, 15);
+    assert.equal(cii.getCountryData('BR')?.climateStress, 8);
+    assert.equal(cii.getCountryData('TW')?.climateStress, 15);
+    assert.equal(cii.getCountryData('CN')?.climateStress, 15);
+    assert.equal(cii.getCountryData('MX')?.climateStress, 8);
+    assert.equal(cii.getCountryData('CU')?.climateStress, 8);
   });
 });
 

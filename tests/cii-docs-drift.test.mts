@@ -17,6 +17,10 @@ describe('CII docs drift guards', () => {
     const stalePatterns = [
       /22-country CII computation/i,
       /20 hardcoded Tier 1 countries/i,
+      /\bCII\s+v5\s+(?:stability|stress|instability|scores?|scoring)\b/i,
+      /\breal-time\s+CII\s+v5\s+instability\s+score\b/i,
+      /\bComputes\s+CII\s+v5\s+scores\b/i,
+      /\bserver-authoritative\s+CII\s+v5\s+scoring\b/i,
       /src\/workers\/cii\.worker\.ts/i,
       /src\/components\/CIIPanel\.ts` \(150 lines\)/i,
       /\*\*Country Instability Index\*\* \(`country-instability\.ts`\)/i,

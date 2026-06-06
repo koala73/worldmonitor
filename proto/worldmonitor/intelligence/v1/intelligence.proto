@@ -32,7 +32,7 @@ message CiiScore {
   CiiComponents components = 6;
   // Last computation time, as Unix epoch milliseconds.
   int64 computed_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
-  // Methodology version string for this score (e.g. "v5").
+  // Methodology version string for this score (for example, the current CII formula version).
   // Bumped whenever CII_FORMULA_VERSION changes so API clients can detect
   // score or movement-semantics drift. See docs/methodology/cii-risk-scores.mdx.
   string methodology_version = 8;

@@ -1,6 +1,6 @@
 ---
 title: "Country Instability Index"
-description: "Real-time CII v5 stability scoring for 31 Tier-1 countries, combining baseline risk with unrest, conflict, security, information signals, and signed 24-hour movement deltas."
+description: "Real-time CII v6 stability scoring for 31 Tier-1 countries, combining baseline risk with unrest, conflict, security, information signals, and signed 24-hour movement deltas."
 ---
 The Country Instability Index (CII) maintains a high-frequency instability
 score for the 31 Tier-1 countries tracked by the Strategic Risk API. Rather
@@ -8,7 +8,7 @@ than relying on static ratings, CII blends an editorial baseline with live
 event pressure and publishes the result through the server-side
 `GetRiskScores` RPC.
 
-For the full v5 formula, coefficient table, and change history, see
+For the full v6 formula, coefficient table, and change history, see
 [CII Risk Scoring Methodology](/methodology/cii-risk-scores). This page is
 the operator-facing overview.
 
@@ -90,7 +90,7 @@ advisory floors:
 
 ## Bias Prevention
 
-CII is intentionally not a raw media-volume index. The v5 model separates
+CII is intentionally not a raw media-volume index. The v6 model separates
 news pressure from conflict scoring, applies lower event multipliers and log
 dampening in high-observability countries, and uses conflict/advisory floors
 so active crises do not appear quiet during data gaps.
@@ -103,7 +103,7 @@ values are published in
 
 CII scores are computed server-side by `GET /api/intelligence/v1/get-risk-scores`
 and cached in Redis. The live cache is versioned by the current
-`methodology_version` (`v5`), with a stale-cache key used as a fallback during
+`methodology_version` (`v6`), with a stale-cache key used as a fallback during
 upstream outages.
 
 The Railway relay process also runs an active CII warm-ping loop every 8
