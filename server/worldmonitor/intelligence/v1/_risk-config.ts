@@ -13,19 +13,18 @@
 //   2. Update docs/methodology/cii-risk-scores.mdx (the public methodology
 //      note) in the same commit. Tests assert the doc lists every coefficient
 //      and every CURATED_COUNTRIES code.
-//   3. Note the change in CHANGELOG.md under the public-facing section so
+//   3. Note the change in docs/changelog.mdx under the public-facing section so
 //      downstream users of the proto API see why combinedScore values may
 //      shift between deploys.
 //
-// Last reviewed: 2026-05-27 (CII calibration / bias reduction, v2→v3; lands on
-// top of the v2-stable CII weights source-of-truth refactor #3789).
+// Last reviewed: 2026-06-06 (CII attribution/source semantics, v3->v4).
 // ============================================================================
 
 /**
  * Formula version emitted on every CiiScore as `methodology_version`.
  * Bump on any coefficient change so API clients can detect score drift.
  */
-export const CII_FORMULA_VERSION = 'v3';
+export const CII_FORMULA_VERSION = 'v4';
 
 /**
  * Conflict event activity log curve used before fatality/civilian/strike boosts.

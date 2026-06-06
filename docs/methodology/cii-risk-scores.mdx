@@ -1,6 +1,6 @@
 ---
 title: "CII Risk Scoring Methodology"
-description: "Editorial methodology behind the Composite Instability Index (CII) and Strategic Risk roll-up. Documents per-country baselineRisk, eventMultiplier, the four-component score (Unrest, Conflict, Security, Information), strategic-risk band derivation, and the v3 formula version stamped on every CiiScore."
+description: "Editorial methodology behind the Composite Instability Index (CII) and Strategic Risk roll-up. Documents per-country baselineRisk, eventMultiplier, the four-component score (Unrest, Conflict, Security, Information), strategic-risk band derivation, and the v4 formula version stamped on every CiiScore."
 ---
 
 Published methodology note for the **Composite Instability Index (CII)** and
@@ -17,7 +17,18 @@ agree.
 
 The on-the-wire `methodology_version` field on every `CiiScore` reflects
 which revision of this document was active when the score was computed.
-The current version is **v3**.
+The current version is **v4**.
+
+> **v4 (2026-06-06).** Attribution and source-input semantics changed while
+> keeping the published coefficient table intact. Country text attribution now
+> uses normalized token exact-match / phrase matching instead of raw substring
+> matches, coordinate attribution routes known bounding-box overlaps through
+> explicit border heuristics, the earthquake seed uses the USGS 4.5-week
+> (`4.5_week`) feed, and sanctions scoring reads the full country-count map
+> from `sanctions:country-counts:v1` instead of relying on the top-pressure
+> display list. `combinedScore` values can shift where these sources previously
+> misattributed or omitted country pressure; clients pinned on
+> `methodology_version` should re-baseline.
 
 > **v3 (2026-05-27).** Conflict event activity now uses a log-scaled curve
 > before the final component cap (`cap = 70`, `pivot = 4000`), replacing the

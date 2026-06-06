@@ -49,36 +49,36 @@ export const BASELINE_RISK: Record<string, number> = { ...CII_BASELINE_RISK };
 export const EVENT_MULTIPLIER: Record<string, number> = { ...CII_EVENT_MULTIPLIER };
 
 const COUNTRY_KEYWORDS: Record<string, string[]> = {
-  US: ['united states', 'usa', 'america', 'washington', 'biden', 'trump', 'pentagon'],
-  RU: ['russia', 'moscow', 'kremlin', 'putin'],
-  CN: ['china', 'beijing', 'xi jinping', 'prc'],
-  UA: ['ukraine', 'kyiv', 'zelensky', 'donbas'],
-  IR: ['iran', 'tehran', 'khamenei', 'irgc'],
-  IL: ['israel', 'tel aviv', 'netanyahu', 'idf', 'gaza'],
+  US: ['united states', 'usa', 'u.s.', 'u.s.a.', 'america', 'american', 'washington', 'biden', 'trump', 'pentagon'],
+  RU: ['russia', 'russian', 'moscow', 'kremlin', 'putin'],
+  CN: ['china', 'chinese', 'beijing', 'xi jinping', 'prc'],
+  UA: ['ukraine', 'ukrainian', 'kyiv', 'zelensky', 'donbas'],
+  IR: ['iran', 'iranian', 'tehran', 'khamenei', 'irgc'],
+  IL: ['israel', 'israeli', 'tel aviv', 'netanyahu', 'idf', 'gaza'],
   TW: ['taiwan', 'taipei'],
   KP: ['north korea', 'pyongyang', 'kim jong'],
-  SA: ['saudi arabia', 'riyadh'],
-  TR: ['turkey', 'ankara', 'erdogan'],
+  SA: ['saudi arabia', 'saudi', 'riyadh'],
+  TR: ['turkey', 'turkiye', 'turkish', 'ankara', 'erdogan'],
   PL: ['poland', 'warsaw'],
-  DE: ['germany', 'berlin'],
-  FR: ['france', 'paris', 'macron'],
-  GB: ['britain', 'uk', 'london'],
-  IN: ['india', 'delhi', 'modi'],
-  PK: ['pakistan', 'islamabad'],
-  SY: ['syria', 'damascus'],
-  YE: ['yemen', 'sanaa', 'houthi'],
-  MM: ['myanmar', 'burma'],
-  VE: ['venezuela', 'caracas', 'maduro'],
-  CU: ['cuba', 'havana', 'diaz-canel'],
+  DE: ['germany', 'german', 'berlin'],
+  FR: ['france', 'french', 'paris', 'macron'],
+  GB: ['united kingdom', 'britain', 'british', 'uk', 'u.k.', 'london'],
+  IN: ['india', 'indian', 'delhi', 'modi'],
+  PK: ['pakistan', 'pakistani', 'islamabad'],
+  SY: ['syria', 'syrian', 'damascus'],
+  YE: ['yemen', 'yemeni', 'sanaa', 'houthi'],
+  MM: ['myanmar', 'burma', 'burmese'],
+  VE: ['venezuela', 'venezuelan', 'caracas', 'maduro'],
+  CU: ['cuba', 'cuban', 'havana', 'diaz-canel'],
   MX: ['mexico', 'mexican', 'sheinbaum', 'cartel', 'sinaloa'],
-  BR: ['brazil', 'brasilia', 'lula'],
+  BR: ['brazil', 'brazilian', 'brasilia', 'lula'],
   AE: ['uae', 'emirates', 'dubai', 'abu dhabi', 'united arab emirates'],
-  KR: ['south korea', 'korean peninsula', 'seoul', 'yoon'],
+  KR: ['south korea', 'south korean', 'korean peninsula', 'seoul', 'yoon'],
   IQ: ['iraq', 'iraqi', 'baghdad', 'kurdistan', 'mosul', 'basra'],
   AF: ['afghanistan', 'afghan', 'kabul', 'taliban', 'kandahar'],
   LB: ['lebanon', 'lebanese', 'beirut', 'hezbollah', 'nasrallah'],
   EG: ['egypt', 'egyptian', 'cairo', 'suez', 'sisi'],
-  JP: ['japan', 'japanese', 'tokyo', 'okinawa', 'kishida'],
+  JP: ['japan', 'japanese', 'tokyo', 'okinawa', 'fukushima', 'kishida'],
   QA: ['qatar', 'qatari', 'doha', 'al jazeera'],
 };
 
@@ -135,10 +135,30 @@ const ADVISORY_LEVELS_FALLBACK: Record<string, 'do-not-travel' | 'reconsider' | 
 // Internal helpers
 // ========================================================================
 
-function normalizeCountryName(text: string): string | null {
-  const lower = text.toLowerCase();
-  for (const [code, keywords] of Object.entries(COUNTRY_KEYWORDS)) {
-    if (keywords.some((kw) => lower.includes(kw))) return code;
+function normalizeForCountryMatch(value: string): string {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+const COUNTRY_KEYWORDS_NORMALIZED: Record<string, string[]> = Object.fromEntries(
+  Object.entries(COUNTRY_KEYWORDS).map(([code, keywords]) => [code, keywords.map(normalizeForCountryMatch)]),
+);
+
+function hasCountryPhraseMatch(normalizedText: string, normalizedKeyword: string): boolean {
+  if (!normalizedText || !normalizedKeyword) return false;
+  return ` ${normalizedText} `.includes(` ${normalizedKeyword} `);
+}
+
+export function normalizeCountryName(text: string): string | null {
+  const normalized = normalizeForCountryMatch(text);
+  for (const [code, keywords] of Object.entries(COUNTRY_KEYWORDS_NORMALIZED)) {
+    if (keywords.some((kw) => hasCountryPhraseMatch(normalized, kw))) return code;
   }
   return null;
 }
@@ -147,15 +167,54 @@ const BBOX_BY_AREA = Object.entries(COUNTRY_BBOX)
   .map(([code, b]) => ({ code, ...b, area: (b.maxLat - b.minLat) * (b.maxLon - b.minLon) }))
   .sort((a, b) => a.area - b.area);
 
+type CountryBBoxCandidate = (typeof BBOX_BY_AREA)[number];
+
+function isInsideBBox(b: CountryBBoxCandidate, lat: number, lon: number): boolean {
+  return lat >= b.minLat && lat <= b.maxLat && lon >= b.minLon && lon <= b.maxLon;
+}
+
+function isNorthOfApproxUsMxBorder(lat: number, lon: number): boolean {
+  // Coarse segmented US/MX border approximation inside the shared bbox overlap.
+  if (lon <= -114.70) return lat >= 32.53; // California / Baja California
+  if (lon <= -111.05) return lat >= 31.33; // Arizona / Sonora
+  if (lon <= -106.45) return lat >= 31.73; // New Mexico-Texas / Chihuahua
+  if (lon >= -97.10) return lat >= 25.85;
+  const progress = (lon + 106.45) / 9.35;
+  const borderLat = 31.73 + progress * (25.85 - 31.73);
+  return lat >= borderLat;
+}
+
+function resolveKnownBBoxOverlap(lat: number, lon: number, candidates: CountryBBoxCandidate[]): string | null {
+  const codes = new Set(candidates.map((candidate) => candidate.code));
+
+  if (codes.has('US') && codes.has('MX')) {
+    return isNorthOfApproxUsMxBorder(lat, lon) ? 'US' : 'MX';
+  }
+  if (codes.has('SY') && codes.has('LB')) {
+    if (lon >= 36.35 || (lat <= 33.75 && lon >= 36.05)) return 'SY';
+    return 'LB';
+  }
+  if (codes.has('JP') && codes.has('KR')) {
+    if (lat <= 34.85 && lon >= 129.20) return 'JP';
+    return 'KR';
+  }
+  if (codes.has('SA') && codes.has('YE')) {
+    return lat >= 17.35 ? 'SA' : 'YE';
+  }
+
+  return null;
+}
+
 // Exported so scripts/seed-military-cii.mjs's re-embedded copy can be cross-checked
 // for parity in tests/seed-military-cii-table-drift.test.mts. The seed cannot import
 // from server/ under Railway nixpacks packaging.
 export function geoToCountry(lat: number, lon: number): string | null {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  for (const b of BBOX_BY_AREA) {
-    if (lat >= b.minLat && lat <= b.maxLat && lon >= b.minLon && lon <= b.maxLon) return b.code;
-  }
-  return null;
+  const candidates = BBOX_BY_AREA.filter((b) => isInsideBBox(b, lat, lon));
+  if (candidates.length === 0) return null;
+  // Preserve the previous smallest-area bbox tie-break for overlap pairs that
+  // do not yet have an explicit border heuristic.
+  return resolveKnownBBoxOverlap(lat, lon, candidates) ?? candidates[0]!.code;
 }
 
 function safeNum(v: unknown): number {
@@ -253,11 +312,31 @@ function emptySignals(): CountrySignals {
   };
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function utcDateOnly(ms: number): string {
+  return new Date(ms).toISOString().split('T')[0]!;
+}
+
+export function getAcledFetchWindows(now = Date.now()): {
+  recent: { startDate: string; endDate: string };
+  older: { startDate: string; endDate: string };
+} {
+  return {
+    recent: {
+      startDate: utcDateOnly(now - 7 * DAY_MS),
+      endDate: utcDateOnly(now),
+    },
+    older: {
+      startDate: utcDateOnly(now - 30 * DAY_MS),
+      endDate: utcDateOnly(now - 8 * DAY_MS),
+    },
+  };
+}
+
 async function fetchACLEDEvents(): Promise<Array<{ country: string; event_type: string; fatalities: number; daysAgo: number }>> {
   const now = Date.now();
-  const today = new Date(now).toISOString().split('T')[0]!;
-  const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]!;
-  const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]!;
+  const { recent: recentWindow, older: olderWindow } = getAcledFetchWindows(now);
   const eventTypes = 'Protests|Riots|Battles|Explosions/Remote violence|Violence against civilians';
 
   // Two separate cached queries so each window has its own 1 000-event budget.
@@ -265,8 +344,8 @@ async function fetchACLEDEvents(): Promise<Array<{ country: string; event_type: 
   // global count exceeds the cap; splitting ensures post-conflict countries
   // (low recent activity, higher older activity) are not squeezed out.
   const [recent, older] = await Promise.all([
-    fetchAcledCached({ eventTypes, startDate: sevenDaysAgo, endDate: today, limit: 1000 }),
-    fetchAcledCached({ eventTypes, startDate: thirtyDaysAgo, endDate: sevenDaysAgo, limit: 1000 }),
+    fetchAcledCached({ eventTypes, startDate: recentWindow.startDate, endDate: recentWindow.endDate, limit: 1000 }),
+    fetchAcledCached({ eventTypes, startDate: olderWindow.startDate, endDate: olderWindow.endDate, limit: 1000 }),
   ]);
 
   const toRow = (e: (typeof recent)[number]) => {
@@ -301,6 +380,7 @@ interface AuxiliarySources {
   aviationAlerts: any[];
   earthquakes: any[];
   sanctionsCountries: any[];
+  sanctionsCountryCounts?: Record<string, number> | null;
   temporalAnomalies: any[];
   // Phase 2 (CII unification) — per-country military activity from intelligence:military-cii:v1
   // (written by scripts/seed-military-cii.mjs). Keyed by ISO2.
@@ -309,7 +389,7 @@ interface AuxiliarySources {
 
 async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   const currentYear = new Date().getFullYear();
-  const [ucdpRaw, outagesRaw, climateRaw, cyberRaw, firesRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementRaw, insightsRaw, threatSummaryRaw, aviationRaw, earthquakesRaw, sanctionsRaw, temporalRaw, militaryCiiRaw] = await Promise.all([
+  const [ucdpRaw, outagesRaw, climateRaw, cyberRaw, firesRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementRaw, insightsRaw, threatSummaryRaw, aviationRaw, earthquakesRaw, sanctionsRaw, sanctionsCountsRaw, temporalRaw, militaryCiiRaw] = await Promise.all([
     getCachedJson('conflict:ucdp-events:v1', true).catch(() => null),
     getCachedJson('infra:outages:v1', true).catch(() => null),
     getCachedJson(CLIMATE_ANOMALIES_KEY, true).catch(() => null),
@@ -331,6 +411,7 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     getCachedJson('aviation:delays-bootstrap:v2', true).catch(() => null),
     getCachedJson('seismology:earthquakes:v1', true).catch(() => null),
     getCachedJson('sanctions:pressure:v1', true).catch(() => null),
+    getCachedJson('sanctions:country-counts:v1', true).catch(() => null),
     getCachedJson('temporal:anomalies:v1', true).catch(() => null),
     getCachedJson('intelligence:military-cii:v1', true).catch(() => null),
   ]);
@@ -376,6 +457,14 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     threatSummaryRaw && typeof threatSummaryRaw === 'object' && (threatSummaryRaw as any).byCountry
       ? (threatSummaryRaw as any).byCountry
       : null;
+  const sanctionsCountryCounts: Record<string, number> = {};
+  if (sanctionsCountsRaw && typeof sanctionsCountsRaw === 'object' && !Array.isArray(sanctionsCountsRaw)) {
+    for (const [rawCode, rawCount] of Object.entries(sanctionsCountsRaw as Record<string, unknown>)) {
+      const code = String(rawCode || '').toUpperCase();
+      const count = safeNum(rawCount);
+      if (/^[A-Z]{2}$/.test(code) && count > 0) sanctionsCountryCounts[code] = count;
+    }
+  }
 
   return {
     ucdpEvents: arr(ucdpRaw, 'events'),
@@ -395,6 +484,7 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     aviationAlerts: arr(aviationRaw, 'alerts'),
     earthquakes: arr(earthquakesRaw, 'earthquakes'),
     sanctionsCountries: arr(sanctionsRaw, 'countries'),
+    sanctionsCountryCounts: Object.keys(sanctionsCountryCounts).length > 0 ? sanctionsCountryCounts : null,
     temporalAnomalies: arr(temporalRaw, 'anomalies'),
     militaryCii: militaryCiiRaw && typeof militaryCiiRaw === 'object' && (militaryCiiRaw as any).byCountry
       ? (militaryCiiRaw as any).byCountry
@@ -550,12 +640,22 @@ export function computeCIIScores(
   }
 
   // --- Sanctions pressure (Phase 1) — direct ISO2 attribution ---
+  // Prefer the full ISO2→entryCount map because the pressure payload's `countries`
+  // array is intentionally a top-pressure display summary.
+  const fullSanctionsCounts = aux.sanctionsCountryCounts ?? null;
+  for (const [rawCode, rawCount] of Object.entries(fullSanctionsCounts ?? {})) {
+    const code = String(rawCode || '').toUpperCase();
+    if (!data[code]) continue;
+    data[code].sanctionsEntryCount = safeNum(rawCount);
+  }
   for (const c of aux.sanctionsCountries ?? []) {
     const code = String(c.countryCode || '').toUpperCase();
     if (!data[code]) continue;
     // Accumulate (not assign): the producer keys per-country rows by `code:name`, so one
     // ISO2 can appear in multiple rows when the source spells the name differently.
-    data[code].sanctionsEntryCount += safeNum(c.entryCount);
+    if (!fullSanctionsCounts || !Object.prototype.hasOwnProperty.call(fullSanctionsCounts, code)) {
+      data[code].sanctionsEntryCount += safeNum(c.entryCount);
+    }
     data[code].sanctionsNewEntryCount += safeNum(c.newEntryCount);
   }
 
@@ -850,12 +950,12 @@ export function filterRiskScoresResponse(
 // methodology payloads cannot survive deploy via Redis. Bump propagated to
 // every reader: get-country-risk.ts, chat-analyst-context.ts,
 // brief-story-context.ts, server/_shared/cache-keys.ts, api/bootstrap.js,
-// api/health.js, api/mcp.ts, scripts/seed-cross-source-signals.mjs,
+// api/health.js, api/mcp/registry/cache-tools.ts, scripts/seed-cross-source-signals.mjs,
 // scripts/seed-forecasts.mjs, scripts/regional-snapshot/*. The seed-meta key
-// (`seed-meta:risk:scores:sebuf`) is unchanged — that's freshness tracking,
+// (`seed-meta:intelligence:risk-scores`) is unchanged — that's freshness tracking,
 // not the payload itself.
-const RISK_CACHE_KEY = 'risk:scores:sebuf:v3';
-const RISK_STALE_CACHE_KEY = 'risk:scores:sebuf:stale:v3';
+const RISK_CACHE_KEY = 'risk:scores:sebuf:v4';
+const RISK_STALE_CACHE_KEY = 'risk:scores:sebuf:stale:v4';
 // `region` is deliberately excluded from the Redis key: this endpoint caches
 // the all-country payload once and applies any region filter as a read-only
 // projection at return time, so per-region requests cannot poison global cache.
@@ -923,7 +1023,7 @@ export async function getRiskScores(
 
   const stale = (await getCachedJson(RISK_STALE_CACHE_KEY)) as GetRiskScoresResponse | null;
   if (stale) return filterRiskScoresResponse(stale, req.region);
-  const emptyAux: AuxiliarySources = { ucdpEvents: [], outages: [], climate: [], cyber: [], fires: [], gpsHexes: [], iranEvents: [], orefData: null, advisories: null, displacedByIso3: {}, newsTopStories: [], threatSummaryByCountry: null, aviationAlerts: [], earthquakes: [], sanctionsCountries: [], temporalAnomalies: [], militaryCii: null };
+  const emptyAux: AuxiliarySources = { ucdpEvents: [], outages: [], climate: [], cyber: [], fires: [], gpsHexes: [], iranEvents: [], orefData: null, advisories: null, displacedByIso3: {}, newsTopStories: [], threatSummaryByCountry: null, aviationAlerts: [], earthquakes: [], sanctionsCountries: [], sanctionsCountryCounts: null, temporalAnomalies: [], militaryCii: null };
   const ciiScores = computeCIIScores([], emptyAux);
   return filterRiskScoresResponse({ ciiScores, strategicRisks: computeStrategicRisks(ciiScores) }, req.region);
 }

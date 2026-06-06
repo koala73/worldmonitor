@@ -21,6 +21,9 @@ import {
   computeCIIScores,
   computeStrategicRisks,
   filterRiskScoresResponse,
+  geoToCountry,
+  getAcledFetchWindows,
+  normalizeCountryName,
 } from '../server/worldmonitor/intelligence/v1/get-risk-scores.ts';
 import {
   CII_BASELINE_RISK as SHARED_BASELINE_RISK,
@@ -45,6 +48,7 @@ function emptyAux() {
     aviationAlerts: [] as any[],
     earthquakes: [] as any[],
     sanctionsCountries: [] as any[],
+    sanctionsCountryCounts: null as Record<string, number> | null,
     temporalAnomalies: [] as any[],
     militaryCii: null as Record<string, any> | null,
   };
@@ -59,6 +63,65 @@ function scoreFor(scores: ReturnType<typeof computeCIIScores>, code: string) {
 }
 
 describe('CII signal wiring', () => {
+  it('country text attribution uses token boundaries and preserves explicit aliases', () => {
+    assert.equal(normalizeCountryName('Jerusalem security alert'), null,
+      'Jerusalem must not match US via the embedded "usa" substring');
+    assert.equal(normalizeCountryName('Sukhoi incident reported'), null,
+      'Sukhoi must not match GB via the embedded "uk" substring');
+    assert.equal(normalizeCountryName('New England outage'), null,
+      'New England must not match GB via a bare England alias');
+    assert.equal(normalizeCountryName('Fukushima plant inspection'), 'JP',
+      'Fukushima is a legitimate Japan place alias, not a GB substring match');
+    assert.equal(normalizeCountryName('United Kingdom sanctions update'), 'GB',
+      'United Kingdom must resolve to GB');
+    assert.equal(normalizeCountryName('UK sanctions update'), 'GB',
+      'UK remains a valid token alias for GB');
+    assert.equal(normalizeCountryName('U.K. sanctions update'), 'GB',
+      'dotted U.K. remains a valid token alias for GB');
+    assert.equal(normalizeCountryName('Iranian sanctions debate'), 'IR',
+      'demonym aliases that raw substring matching used to cover must stay covered explicitly');
+  });
+
+  it('geoToCountry disambiguates known overlapping bboxes with deterministic border heuristics', () => {
+    assert.equal(geoToCountry(33.5138, 36.2765), 'SY', 'Damascus must resolve to Syria, not Lebanon');
+    assert.equal(geoToCountry(29.7604, -95.3698), 'US', 'southern US coordinates must resolve to US, not Mexico');
+    assert.equal(geoToCountry(33.5904, 130.4017), 'JP', 'Fukuoka must resolve to Japan, not South Korea');
+    assert.equal(geoToCountry(17.5656, 44.2289), 'SA', 'Najran must resolve to Saudi Arabia, not Yemen');
+
+    assert.equal(geoToCountry(32.7157, -117.1611), 'US', 'San Diego remains US');
+    assert.equal(geoToCountry(32.5149, -117.0382), 'MX', 'Tijuana remains Mexico');
+    assert.equal(geoToCountry(31.7619, -106.4850), 'US', 'El Paso remains US');
+    assert.equal(geoToCountry(31.6904, -106.4245), 'MX', 'Ciudad Juarez remains Mexico');
+    assert.equal(geoToCountry(25.6866, -100.3161), 'MX', 'Monterrey remains Mexico');
+    assert.equal(geoToCountry(33.8938, 35.5018), 'LB', 'Beirut remains Lebanon');
+    assert.equal(geoToCountry(37.5665, 126.9780), 'KR', 'Seoul remains South Korea');
+    assert.equal(geoToCountry(15.3694, 44.1910), 'YE', 'Sanaa remains Yemen');
+  });
+
+  it('ACLED 7d and 30d fetch windows do not double-count the 7-day boundary date', () => {
+    const windows = getAcledFetchWindows(Date.UTC(2026, 5, 6, 12, 0, 0));
+    assert.deepEqual(windows, {
+      recent: { startDate: '2026-05-30', endDate: '2026-06-06' },
+      older: { startDate: '2026-05-07', endDate: '2026-05-29' },
+    });
+    assert.notEqual(windows.recent.startDate, windows.older.endDate,
+      'older window must end before the recent inclusive start date');
+  });
+
+  it('earthquake seed fetches the same 7-day window that CII scoring claims', () => {
+    const seedPath = resolve(
+      fileURLToPath(new URL('.', import.meta.url)),
+      '..',
+      'scripts',
+      'seed-earthquakes.mjs',
+    );
+    const seed = readFileSync(seedPath, 'utf8');
+    assert.match(seed, /summary\/4\.5_week\.geojson/,
+      'seed-earthquakes must use the USGS 7-day feed because CII scores a 7-day earthquake lookback');
+    assert.doesNotMatch(seed, /summary\/4\.5_day\.geojson/,
+      'seed-earthquakes must not publish only a 1-day feed under the 7-day CII scoring contract');
+  });
+
   it('Phase 3b D5/D6: earthquake / sanctions signals raise the score', () => {
     // Temporal anomalies are deliberately NOT scored — the temporal:anomalies:v1
     // producer emits region:'global' so they cannot be country-attributed. The
@@ -115,6 +178,16 @@ describe('CII signal wiring', () => {
     // instead of accumulated, 60 alone → tier <101 → boost 3+2 = 5. The gap proves accumulation.
     assert.ok(us!.combinedScore - none!.combinedScore >= 7,
       'duplicate-ISO2 sanctions rows accumulate (120 entries crosses the ≥101 tier)');
+  });
+
+  it('Phase 3b D6: sanctions all-country count map scores countries outside the top pressure rows', () => {
+    const aux = emptyAux();
+    aux.sanctionsCountries = [];
+    aux.sanctionsCountryCounts = { GB: 120 };
+    const gb = scoreFor(computeCIIScores([], aux), 'GB');
+    const none = scoreFor(computeCIIScores([], emptyAux()), 'GB');
+    assert.ok(gb!.combinedScore > none!.combinedScore,
+      'CII must use sanctions:country-counts:v1 so countries outside the top-12 pressure rows are not silently ignored');
   });
 
   it('C3: security component scores military flights/vessels/aviation, not just GPS', () => {
@@ -724,6 +797,28 @@ describe('CII scoring', () => {
     );
   });
 
+  it('public changelog documents the current CII_FORMULA_VERSION and cache impact', () => {
+    const changelogPath = resolve(
+      fileURLToPath(new URL('.', import.meta.url)),
+      '..',
+      'docs',
+      'changelog.mdx',
+    );
+    const changelog = readFileSync(changelogPath, 'utf8');
+    assert.match(
+      changelog,
+      new RegExp(`CII methodology ${CII_FORMULA_VERSION}`),
+      `docs/changelog.mdx must publish the CII methodology ${CII_FORMULA_VERSION} entry`,
+    );
+    assert.ok(
+      changelog.includes('combinedScore') &&
+      changelog.includes(`risk:scores:sebuf:${CII_FORMULA_VERSION}`) &&
+      changelog.includes(`methodology_version`) &&
+      changelog.includes(CII_FORMULA_VERSION),
+      'docs/changelog.mdx must describe combinedScore, cache-key, and methodology_version impact',
+    );
+  });
+
   it('current public CII docs do not reintroduce pre-v3 stale claims', () => {
     const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
     const publicDocPaths = [
@@ -760,14 +855,14 @@ describe('CII scoring', () => {
     );
   });
 
-  it('methodology doc and browser CII engine expose the v3 conflict curve coefficients', () => {
+  it('methodology doc and browser CII engine expose the current conflict curve coefficients', () => {
     const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
     const doc = readFileSync(resolve(root, 'docs', 'methodology', 'cii-risk-scores.mdx'), 'utf8');
     const browserSource = readFileSync(resolve(root, 'src', 'services', 'country-instability.ts'), 'utf8');
 
     assert.ok(
       doc.includes(`cap = ${CII_CONFLICT_ACTIVITY_CAP}`) && doc.includes(`pivot = ${CII_CONFLICT_ACTIVITY_PIVOT}`),
-      'methodology doc must publish the v3 conflict activity curve cap and pivot',
+      'methodology doc must publish the current conflict activity curve cap and pivot',
     );
     assert.ok(
       browserSource.includes(`const CII_CONFLICT_ACTIVITY_CAP = ${CII_CONFLICT_ACTIVITY_CAP}`),

@@ -23,6 +23,8 @@ All notable changes to World Monitor are documented here. Subscribe via [RSS](/c
 
 ### Changed
 
+- **CII methodology v4**: Country attribution and source inputs were tightened for the Composite Instability Index. Text attribution now uses token exact-match / phrase matching, known bounding-box overlaps route through explicit heuristics, the earthquake seed uses the USGS 4.5-week (`4.5_week`) feed, and sanctions scoring reads the full country-count map. Client impact: `combinedScore` values may shift for affected countries, the risk-score cache key family moved to `risk:scores:sebuf:v4`, and emitted `methodology_version` is now `v4`.
+
 - **CII weights source of truth (#3789, foundation for #2457)**: `baselineRisk` and `eventMultiplier` now come from one shared coefficient table used by both server-side risk scoring and frontend client-side CII rendering. The previous 7-country frontend/server drift was resolved to the published server/API values. Because those server/API values did not change, `CII_FORMULA_VERSION` remains `v2`.
 
 - **Sebuf API migration (#3207)** — scenario + supply-chain endpoints moved to the typed sebuf contract. RPC URLs now derive from method names; five renamed v1 URLs remain live as thin aliases so existing integrations keep working:
