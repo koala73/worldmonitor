@@ -445,6 +445,34 @@ describe('existing beforeSend filters', () => {
     assert.ok(beforeSend(event) !== null, 'Plain first-party fetch failure should surface');
   });
 
+  it('suppresses bare "Failed to fetch" when an extension monkeypatched window.fetch (WORLDMONITOR-SG)', () => {
+    // Real WORLDMONITOR-SG stack: our runtime fetch interceptor + country-geometry
+    // loader are first-party frames, but the leaked rejection comes from an
+    // extension (Adjust SDK injectScriptAdjust.js / page-inspector) that wrapped
+    // window.fetch and chained an uncaught `.then()`. hasFirstParty is true, so
+    // the generic !hasFirstParty gate misses it; the extension `window.fetch`
+    // frame is what proves third-party interference.
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/assets/main-BHkAr2lX.js', lineno: 1394, function: 'rS.init' },
+      { filename: '/assets/panels-B8qWCRUs.js', lineno: 63, function: 'd1' },
+      { filename: '/assets/panels-B8qWCRUs.js', lineno: 61, function: 'DY.window.fetch' },
+      { filename: 'chrome-extension://dbjbempljhcmhlfpfacalomonjpalpko/scripts/inspector.js', lineno: 7, function: 'window.fetch' },
+      { filename: 'chrome-extension://bkkbcggnhapdmkeljlodobbkopceiche/injectScriptAdjust.js', lineno: 1, function: 'doDefault' },
+    ]);
+    assert.equal(beforeSend(event), null, 'Extension-wrapped window.fetch network blip should be suppressed');
+  });
+
+  it('does NOT suppress bare "Failed to fetch" with a first-party frame and a NON-fetch extension frame', () => {
+    // Precision guard for WORLDMONITOR-SG: an extension frame whose function is
+    // not a fetch wrapper is NOT evidence the extension owns the orphan fetch
+    // promise, so a genuine first-party fetch failure must still surface.
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/assets/panels-wF5GXf0N.js', lineno: 100, function: 'MyApiCall' },
+      { filename: 'chrome-extension://abcdefghijklmnopabcdefghijklmnop/content.js', lineno: 1, function: 'inject' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'First-party fetch failure with a non-fetch extension frame must surface');
+  });
+
   it('does NOT suppress "Failed to fetch (<hostname>)" when no maplibre frame is present', () => {
     // Guards against broad message-only suppression hiding a real first-party fetch
     // regression that happens to wrap host into the message.

@@ -475,9 +475,13 @@ export class CommoditiesPanel extends Panel {
       return;
     }
 
-    // Metals/Commodities tab — exclude FX and spot gold symbols from the display grid
+    // Metals/Commodities tab — exclude FX and spot gold symbols from the display grid.
+    // Require a finite numeric price: the feed sometimes omits `price` (undefined),
+    // and `d.price !== null` lets undefined through to `formatPrice(c.price!)`
+    // (WORLDMONITOR-SH). A finite-price guard also keeps the adjacent `c.change!`
+    // row meaningful (a record with no price carries no usable change either).
     const validData = this._commodityData.filter(
-      (d) => d.price !== null && !d.symbol?.endsWith('=X'),
+      (d) => typeof d.price === 'number' && Number.isFinite(d.price) && !d.symbol?.endsWith('=X'),
     );
     if (validData.length === 0) {
       if (!hasFx) {

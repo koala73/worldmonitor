@@ -438,6 +438,24 @@ Sentry.init({
     // A first-party frame elsewhere in the stack means the error likely originated in our code; surface it even if
     // an extension wrapped the call.
     if (!hasFirstParty && frames.some(f => /^(?:chrome|moz|safari(?:-web)?)-extension:\/\//.test(f.filename ?? ''))) return null;
+    // Bare `Failed to fetch` leaking via onunhandledrejection when a browser
+    // extension has monkeypatched `window.fetch` (e.g. Adjust SDK's
+    // injectScriptAdjust.js, page-inspector extensions) and chained an uncaught
+    // `.then()` on the result. A transient network blip rejects the underlying
+    // fetch and the extension's orphan promise surfaces as an unhandled rejection.
+    // Our first-party frames (the runtime fetch interceptor + country-geometry
+    // loader) appear ONLY because our wrapper sits in the call chain — our own
+    // fetch callers already wrap rejections in try/catch (country-geometry's
+    // ensureLoaded logs a warning and resolves), so this is NOT a first-party
+    // leak. Unlike the generic `!hasFirstParty` `Failed to fetch` gate below,
+    // this fires WITH first-party frames present, but only when an extension has
+    // a `window.fetch` frame on the stack — a genuine API outage (host-suffixed
+    // `Failed to fetch (<host>)`, handled above) and any non-extension user are
+    // unaffected (WORLDMONITOR-SG).
+    if (/^(?:TypeError: )?Failed to fetch$/.test(msg)
+        && frames.some(f => /^(?:chrome|moz|safari(?:-web)?)-extension:\/\//.test(f.filename ?? '') && /fetch/i.test(f.function ?? ''))) {
+      return null;
+    }
     // Suppress Sentry SDK DOM breadcrumb null-access on document.activeElement/contains.
     // Gated on !hasFirstParty because Sentry wraps first-party handlers, so a genuine app `el.contains(...)` bug
     // can produce a stack containing both main-*.js and sentry-*.js frames.
