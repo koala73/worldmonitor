@@ -878,6 +878,63 @@ describe('CII scoring', () => {
     assert.ok(ua.components!.newsActivity >= 0, 'negative threat counts must not lower news below zero');
   });
 
+  it('replays ACLED age weights, earthquake lookback, trend prior, and computedAt from fixed nowMs', () => {
+    const replayNowMs = Date.UTC(2020, 0, 10, 12, 0, 0);
+    const recentAcled = [
+      { ...acledEvent('United States', 'Protests', 0), daysAgo: 7 },
+      { ...acledEvent('United States', 'Battles', 2), daysAgo: 7 },
+    ];
+    const tailAcled = [
+      { ...acledEvent('United States', 'Protests', 0), daysAgo: 8 },
+      { ...acledEvent('United States', 'Battles', 2), daysAgo: 8 },
+    ];
+
+    const base = scoreFor(computeCIIScores([], emptyAux(), { nowMs: replayNowMs }), 'US')!;
+    const recent = scoreFor(computeCIIScores(recentAcled, emptyAux(), { nowMs: replayNowMs }), 'US')!;
+    const tail = scoreFor(computeCIIScores(tailAcled, emptyAux(), { nowMs: replayNowMs }), 'US')!;
+    assert.equal(base.computedAt, replayNowMs);
+    assert.equal(recent.computedAt, replayNowMs);
+    assert.equal(tail.computedAt, replayNowMs);
+    assert.ok(
+      recent.components!.ciiContribution > tail.components!.ciiContribution,
+      `0-7d ACLED weight (${recent.components!.ciiContribution}) should exceed 8-30d tail weight (${tail.components!.ciiContribution})`,
+    );
+    assert.ok(
+      tail.components!.ciiContribution > base.components!.ciiContribution,
+      '8-30d ACLED tail still contributes to deterministic replay scoring',
+    );
+
+    const withRecentEqAux = emptyAux();
+    withRecentEqAux.earthquakes = [
+      { magnitude: 7.0, occurredAt: replayNowMs - 24 * 60 * 60 * 1000, location: { latitude: 39, longitude: -98 } },
+    ];
+    const withStaleEqAux = emptyAux();
+    withStaleEqAux.earthquakes = [
+      { magnitude: 7.0, occurredAt: replayNowMs - 8 * 24 * 60 * 60 * 1000, location: { latitude: 39, longitude: -98 } },
+    ];
+    const withRecentEq = scoreFor(computeCIIScores([], withRecentEqAux, { nowMs: replayNowMs }), 'US')!;
+    const withStaleEq = scoreFor(computeCIIScores([], withStaleEqAux, { nowMs: replayNowMs }), 'US')!;
+    assert.ok(withRecentEq.combinedScore > base.combinedScore, 'earthquake inside fixed 7d replay window raises score');
+    assert.equal(withStaleEq.combinedScore, base.combinedScore, 'earthquake outside fixed 7d replay window is ignored');
+
+    const targetSnapshot = trendSnapshot(replayNowMs - CII_TREND_TARGET_AGE_MS);
+    targetSnapshot.ciiScores = [priorCiiScore('US', withRecentEq.combinedScore - 5, targetSnapshot.capturedAt)];
+    const recentSnapshot = trendSnapshot(replayNowMs - 10 * 60 * 1000);
+    recentSnapshot.ciiScores = [priorCiiScore('US', withRecentEq.combinedScore + 40, recentSnapshot.capturedAt)];
+    const selectedPrior = selectCiiTrendPriorSnapshot([recentSnapshot, targetSnapshot], replayNowMs);
+    const replayed = scoreFor(
+      computeCIIScores([], withRecentEqAux, {
+        nowMs: replayNowMs,
+        priorScores: selectedPrior?.ciiScores ?? null,
+      }),
+      'US',
+    )!;
+    assert.equal(selectedPrior, targetSnapshot);
+    assert.equal(replayed.computedAt, replayNowMs);
+    assert.equal(replayed.dynamicScore, 5);
+    assert.equal(replayed.trend, 'TREND_DIRECTION_RISING');
+  });
+
   it('cold-start emits flat movement instead of baseline delta', () => {
     const us = scoreFor(computeCIIScores([], emptyAux(), { nowMs: TREND_TEST_NOW }), 'US')!;
     assert.notEqual(us.combinedScore - us.staticBaseline, 0, 'fixture should have a non-zero structural baseline gap');

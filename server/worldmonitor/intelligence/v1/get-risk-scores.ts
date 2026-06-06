@@ -862,7 +862,7 @@ export function computeCIIScores(
   }
 
   // --- Earthquakes (Phase 1) — magnitude >= 5.5, within 7-day lookback ---
-  const eqCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const eqCutoff = computedAt - 7 * 24 * 60 * 60 * 1000;
   for (const eq of aux.earthquakes ?? []) {
     const mag = safeNonNegativeNum(eq.magnitude);
     if (mag < 5.5) continue;
