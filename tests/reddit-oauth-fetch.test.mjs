@@ -48,7 +48,7 @@ test('token is cached single-flight with early refresh and a post-failure cooldo
 });
 
 test('shared helper prefers oauth.reddit.com and falls back to the public endpoint', () => {
-  const body = fnBody('async function fetchRedditHotListing(subreddit', 2900);
+  const body = fnBody('async function fetchRedditHotListing(subreddit', 3600);
   assert.match(body, /if \(REDDIT_OAUTH_ENABLED\) \{/);
   assert.match(body, /https:\/\/oauth\.reddit\.com\/r\/\$\{subreddit\}\/hot\?limit=\$\{limit\}/);
   assert.match(body, /https:\/\/www\.reddit\.com\/r\/\$\{subreddit\}\/hot\.json\?limit=\$\{limit\}/);
@@ -56,36 +56,40 @@ test('shared helper prefers oauth.reddit.com and falls back to the public endpoi
   assert.match(body, /if \(!resp\.ok\) return \{ ok: false, status: resp\.status, posts: \[\], source \}/);
 });
 
-test('ScrapeCreators is gated on the api key and is the preferred path', () => {
+test('ScrapeCreators is the gated, preferred path with bounded cursor pagination (no limit param)', () => {
   assert.match(relaySource, /const SCRAPECREATORS_API_KEY = process\.env\.SCRAPECREATORS_API_KEY \|\| ''/);
   assert.match(relaySource, /const SCRAPECREATORS_ENABLED = !!SCRAPECREATORS_API_KEY/);
-  const body = fnBody('async function fetchRedditHotListing(subreddit', 2900);
-  // vendor branch: subreddit posts endpoint, sort=hot, passes limit, x-api-key header
+  assert.match(relaySource, /const SC_MAX_PAGES = 4/);
+  const body = fnBody('async function fetchRedditHotListing(subreddit', 3600);
   assert.match(body, /if \(SCRAPECREATORS_ENABLED\) \{/);
-  assert.match(body, /https:\/\/api\.scrapecreators\.com\/v1\/reddit\/subreddit\?subreddit=\$\{encodeURIComponent\(subreddit\)\}&sort=hot&limit=\$\{limit\}/);
+  // subreddit posts endpoint, sort=hot, x-api-key — and NO &limit (endpoint has no such param)
+  assert.match(body, /https:\/\/api\.scrapecreators\.com\/v1\/reddit\/subreddit\?subreddit=\$\{encodeURIComponent\(subreddit\)\}&sort=hot/);
+  assert.doesNotMatch(body, /scrapecreators\.com[^`]*&limit=/);
   assert.match(body, /'x-api-key': SCRAPECREATORS_API_KEY/);
-  // array-guarded, capped to limit, and normalized to match the OAuth/public shape
-  assert.match(body, /\(Array\.isArray\(data\?\.posts\) \? data\.posts : \[\]\)\.filter\(Boolean\)\.slice\(0, limit\)\.map\(_normalizeVendorPost\)/);
-  // success returns immediately, tagged with its source
-  assert.match(body, /return \{ ok: true, status: resp\.status, posts, source: 'scrapecreators' \}/);
+  // cursor pagination bounded by SC_MAX_PAGES and the requested limit
+  assert.match(body, /for \(let page = 0; page < SC_MAX_PAGES && collected\.length < limit; page\+\+\)/);
+  assert.match(body, /\$\{after \? `&after=\$\{encodeURIComponent\(after\)\}` : ''\}/);
+  assert.match(body, /after = typeof data\?\.after === 'string' \? data\.after : ''/);
+  // normalized + capped to limit on success, tagged with source
+  assert.match(body, /return \{ ok: true, status: lastStatus, posts: collected\.slice\(0, limit\)\.map\(_normalizeVendorPost\), source: 'scrapecreators' \}/);
 });
 
-test('ScrapeCreators failure (non-2xx OR throw) falls through to OAuth/public, not an immediate return', () => {
-  const body = fnBody('async function fetchRedditHotListing(subreddit', 2900);
-  // wrapped in try/catch; only resp.ok returns from the SC branch
+test('ScrapeCreators failure falls through to OAuth/public (page-1 non-2xx OR throw); later-page failure keeps data', () => {
+  const body = fnBody('async function fetchRedditHotListing(subreddit', 3600);
   assert.match(body, /try \{/);
-  assert.match(body, /if \(resp\.ok\) \{/);
-  // both failure modes log and fall through (no immediate return)
+  // a later-page failure keeps the pages already gathered; a page-1 failure logs + falls through
+  assert.match(body, /if \(collected\.length > 0\) break;/);
   assert.match(body, /ScrapeCreators HTTP \$\{resp\.status\}/);
   assert.match(body, /catch \(e\) \{/);
   assert.match(body, /ScrapeCreators error for r\/\$\{subreddit\}/);
   assert.match(body, /falling back to OAuth\/public/);
-  // a SC failure must NOT short-circuit with {ok:false, source:'scrapecreators'} (that skipped the fallback)
+  // only a vendor that actually responded (anyOk) returns from the SC branch; else fall through
+  assert.match(body, /if \(anyOk\) \{/);
   assert.doesNotMatch(body, /return \{ ok: false[^}]*source: 'scrapecreators'/);
 });
 
 test('path precedence is ScrapeCreators -> OAuth -> public (ordered in source)', () => {
-  const body = fnBody('async function fetchRedditHotListing(subreddit', 2900);
+  const body = fnBody('async function fetchRedditHotListing(subreddit', 3600);
   const sc = body.indexOf('if (SCRAPECREATORS_ENABLED)');
   const oauth = body.indexOf('if (REDDIT_OAUTH_ENABLED)');
   const pub = body.indexOf('www.reddit.com/r/${subreddit}/hot.json');
@@ -134,7 +138,7 @@ test('both reddit consumers route through fetchRedditHotListing and label failur
 });
 
 test('helper tags each path with a source for accurate SEED_ERROR reasons', () => {
-  const body = fnBody('async function fetchRedditHotListing(subreddit', 2900);
+  const body = fnBody('async function fetchRedditHotListing(subreddit', 3600);
   assert.match(body, /source: 'scrapecreators'/);
   assert.match(body, /source = 'oauth'/);
   assert.match(body, /source = 'public'/);

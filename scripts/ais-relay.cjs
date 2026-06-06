@@ -5777,6 +5777,10 @@ const REDDIT_AUTH_COOLDOWN_MS = 5 * 60 * 1000;
 // (pre-policy creds only) then the public endpoint — today's behavior, no regression.
 const SCRAPECREATORS_API_KEY = process.env.SCRAPECREATORS_API_KEY || '';
 const SCRAPECREATORS_ENABLED = !!SCRAPECREATORS_API_KEY;
+// The SC subreddit endpoint has no `limit` param — only `after` cursor pagination.
+// Cap the page walk so a caller asking for `limit` posts can't run away on credits
+// (≈25 posts/page → 4 pages covers WSB's limit:50 with headroom).
+const SC_MAX_PAGES = 4;
 
 let _redditToken = null;
 let _redditTokenExpiry = 0;
@@ -5876,25 +5880,44 @@ function _normalizeVendorPost(p) {
 // are unchanged. ScrapeCreators returns a flat `posts` array (normalized via
 // _normalizeVendorPost); the Reddit hosts return data.children[].data.
 async function fetchRedditHotListing(subreddit, { limit = 25, legacyUserAgent } = {}) {
-  // 1. ScrapeCreators (preferred) — flat { posts, after } with native Reddit fields.
-  // On success return immediately. On ANY failure (non-2xx OR network/timeout
-  // throw) log and FALL THROUGH to OAuth → public, honoring the ordered-fallback
-  // contract: SC is preferred but a runtime blip shouldn't skip the other paths
-  // when their creds are configured. `&limit` is sent best-effort (the endpoint
-  // documents `after` pagination, not limit; the .slice below caps regardless).
+  // 1. ScrapeCreators (preferred). Cursor-paginate with `after` (the endpoint has
+  // NO `limit` param) until we reach `limit` posts or run out of pages, capped at
+  // SC_MAX_PAGES to bound credit spend — this preserves the old limit:50 coverage
+  // for WSB even if the vendor's first page is smaller. Failure handling honors the
+  // ordered-fallback contract: a page-1 HTTP failure (non-2xx) OR any network/
+  // timeout throw logs and FALLS THROUGH to OAuth → public; a failure AFTER page 1
+  // keeps the pages already gathered. The loop degrades to first-page-only if the
+  // vendor ever omits the `after` cursor.
   if (SCRAPECREATORS_ENABLED) {
-    const scUrl = `https://api.scrapecreators.com/v1/reddit/subreddit?subreddit=${encodeURIComponent(subreddit)}&sort=hot&limit=${limit}`;
     try {
-      const resp = await fetch(scUrl, {
-        headers: { 'x-api-key': SCRAPECREATORS_API_KEY, Accept: 'application/json' },
-        signal: AbortSignal.timeout(10000),
-      });
-      if (resp.ok) {
+      const collected = [];
+      let after = '';
+      let anyOk = false;
+      let lastStatus = 0;
+      for (let page = 0; page < SC_MAX_PAGES && collected.length < limit; page++) {
+        const scUrl = `https://api.scrapecreators.com/v1/reddit/subreddit?subreddit=${encodeURIComponent(subreddit)}&sort=hot${after ? `&after=${encodeURIComponent(after)}` : ''}`;
+        const resp = await fetch(scUrl, {
+          headers: { 'x-api-key': SCRAPECREATORS_API_KEY, Accept: 'application/json' },
+          signal: AbortSignal.timeout(10000),
+        });
+        lastStatus = resp.status;
+        if (!resp.ok) {
+          if (collected.length > 0) break; // keep what we already paginated
+          console.warn(`[Reddit] ScrapeCreators HTTP ${resp.status} for r/${subreddit} — falling back to OAuth/public`);
+          break; // page-1 failure → fall through below
+        }
+        anyOk = true;
         const data = await resp.json();
-        const posts = (Array.isArray(data?.posts) ? data.posts : []).filter(Boolean).slice(0, limit).map(_normalizeVendorPost);
-        return { ok: true, status: resp.status, posts, source: 'scrapecreators' };
+        const pagePosts = (Array.isArray(data?.posts) ? data.posts : []).filter(Boolean);
+        collected.push(...pagePosts);
+        after = typeof data?.after === 'string' ? data.after : '';
+        if (!after || pagePosts.length === 0) break; // no more pages
       }
-      console.warn(`[Reddit] ScrapeCreators HTTP ${resp.status} for r/${subreddit} — falling back to OAuth/public`);
+      // anyOk distinguishes "vendor responded (even with 0 posts)" from "page-1
+      // failed" — only the latter falls through; a legit empty SC response returns ok.
+      if (anyOk) {
+        return { ok: true, status: lastStatus, posts: collected.slice(0, limit).map(_normalizeVendorPost), source: 'scrapecreators' };
+      }
     } catch (e) {
       console.warn(`[Reddit] ScrapeCreators error for r/${subreddit}: ${e?.message || e} — falling back to OAuth/public`);
     }
@@ -5928,10 +5951,12 @@ async function fetchRedditHotListing(subreddit, { limit = 25, legacyUserAgent } 
 
 const SOCIAL_VELOCITY_REDIS_KEY = 'intelligence:social:reddit:v1';
 const SOCIAL_VELOCITY_SEED_META_KEY = 'seed-meta:intelligence:social-reddit';
-// Hourly cadence (bumped from 10min). Reddit rate-limits Railway datacenter IPs
-// after ~50min of 10-min polling (empirically observed 2026-04-16: both subs
-// returned HTTP 403 on every cycle after 16:26 UTC). Dropping the success-path
-// frequency to 1/hour reduces the traffic Reddit's behavioral heuristic flags on.
+// 3h cadence (was hourly, originally 10min). History: Reddit rate-limited the
+// Railway datacenter IP under fast polling (2026-04-16: both subs 403 every cycle
+// after ~50min of 10-min polling), which forced hourly. Now that fetches go via
+// ScrapeCreators (not Reddit directly) the IP-rate-limit driver is gone, so the
+// interval is set purely by freshness need: velocity decays over ~6h, so 3h is
+// ample. See SOCIAL_VELOCITY_INTERVAL_MS / _TTL below.
 const SOCIAL_VELOCITY_TTL = 43200; // 12h — STRICTLY > health maxStaleMin=540min (9h) so a dead relay surfaces STALE_SEED (warn) for the 9h–12h window while the key is still present, BEFORE it expires and escalates to EMPTY (crit). TTL==maxStaleMin would skip STALE_SEED entirely: classifyKey checks !hasData before seedStale (api/health.js). On failure cycles the relay re-extends this TTL (upstashExpire below), so a live-but-failing relay keeps last-good present.
 const SOCIAL_VELOCITY_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3h — velocity decays over ~6h; hourly was a Reddit-rate-limit leftover, not a freshness need
 const REDDIT_SUBREDDITS = ['worldnews', 'geopolitics'];
@@ -6072,8 +6097,7 @@ async function startSocialVelocitySeedLoop() {
 // ─────────────────────────────────────────────────────────────
 
 const WSB_TICKERS_REDIS_KEY = 'intelligence:wsb-tickers:v1';
-// Hourly cadence (bumped from 10min). Same Reddit-datacenter-IP blocking
-// rationale as SocialVelocity — see comment above.
+// 3h cadence — same history + ScrapeCreators rationale as SocialVelocity above.
 const WSB_TICKERS_TTL = 43200; // 12h — STRICTLY > health maxStaleMin=540min (9h) so a dead relay surfaces STALE_SEED before the key expires to EMPTY (see SOCIAL_VELOCITY_TTL note); re-extended on failure cycles via upstashExpire below.
 const WSB_TICKERS_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3h — same cadence rationale as SocialVelocity above
 const WSB_TICKERS_RETRY_MS = 20 * 60 * 1000;
