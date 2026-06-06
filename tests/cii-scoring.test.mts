@@ -48,6 +48,11 @@ const REPO_ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 
 const CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION: Record<string, string> = {
   v5: '13a339323a4b1c92bec967a2b006d97330ef7f1d596326bf8a438a129fa89c10',
+  // v6 (#4147/#4148/#4149): attribution, climate-wiring, observability and
+  // advisory-fallback changes did not touch any *hashed* coefficient
+  // (country weights, defaults, strategic constants, getScoreLevel cutoffs),
+  // so the protocol snapshot is unchanged from v5.
+  v6: '13a339323a4b1c92bec967a2b006d97330ef7f1d596326bf8a438a129fa89c10',
 };
 
 function readRepoFile(path: string): string {
