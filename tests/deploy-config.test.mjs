@@ -383,6 +383,20 @@ describe('security header guardrails', () => {
     );
   });
 
+  it('docker/nginx CSP frame-src includes Clerk origin for auth modals', () => {
+    // Parity with the Vercel/index.html frame-src above. The sign-in modal itself
+    // renders in-DOM (no clerk-origin iframe today), so this is defense-in-depth
+    // for self-hosted deploys should Clerk reintroduce a handshake iframe — and it
+    // keeps the docker surface from silently drifting from the hosted one.
+    const nginxCsp = getNginxHeaderValue('Content-Security-Policy');
+    assert.ok(nginxCsp, 'nginx-security-headers.conf must have a Content-Security-Policy header');
+    const frameSrc = nginxCsp.match(/frame-src\s+([^;]+)/)?.[1] ?? '';
+    assert.ok(
+      frameSrc.includes('clerk.accounts.dev') || frameSrc.includes('clerk.worldmonitor.app'),
+      'docker/nginx CSP frame-src must include Clerk origin for the self-hosted sign-in modal'
+    );
+  });
+
   it('CSP script-src is in sync between vercel.json header and index.html meta tag', () => {
     const indexHtml = readFileSync(resolve(__dirname, '../index.html'), 'utf-8');
     const headerCsp = getHeaderValue('Content-Security-Policy');
