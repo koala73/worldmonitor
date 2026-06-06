@@ -62,9 +62,9 @@ export const REGULATORY_ACTIONS_KEY = 'regulatory:actions:v1';
  * api/_cii-risk-cache-keys.js and scripts/_cii-risk-cache-keys.mjs aligned.
  */
 export const CII_RISK_SCORE_CACHE_KEYS = {
-  live: 'risk:scores:sebuf:v7',
-  stale: 'risk:scores:sebuf:stale:v7',
-  trendHistoryPrefix: 'risk:scores:sebuf:trend-history:v7',
+  live: 'risk:scores:sebuf:v8',
+  stale: 'risk:scores:sebuf:stale:v8',
+  trendHistoryPrefix: 'risk:scores:sebuf:trend-history:v8',
 } as const;
 export const CLIMATE_ANOMALIES_KEY = 'climate:anomalies:v2';
 export const CLIMATE_AIR_QUALITY_KEY = 'climate:air-quality:v1';

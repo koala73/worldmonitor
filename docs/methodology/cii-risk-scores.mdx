@@ -1,6 +1,6 @@
 ---
 title: "CII Risk Scoring Methodology"
-description: "Editorial methodology behind the Composite Instability Index (CII) and Strategic Risk roll-up. Documents per-country baselineRisk, eventMultiplier, the four-component score (Unrest, Conflict, Security, Information), strategic-risk band derivation, and the v7 formula version stamped on every CiiScore."
+description: "Editorial methodology behind the Composite Instability Index (CII) and Strategic Risk roll-up. Documents per-country baselineRisk, eventMultiplier, the four-component score (Unrest, Conflict, Security, Information), strategic-risk band derivation, and the v8 formula version stamped on every CiiScore."
 ---
 
 Published methodology note for the **Composite Instability Index (CII)** and
@@ -17,7 +17,23 @@ agree.
 
 The on-the-wire `methodology_version` field on every `CiiScore` reflects
 which revision of this document was active when the score was computed.
-The current version is **v7**.
+The current version is **v8**.
+
+> **v8 (2026-06-06).** Fixed dead UCDP conflict-floor attribution. The server
+> scorer read non-existent `intensity_level` / `type_of_violence` fields from the
+> cached `conflict:ucdp-events:v1` feed (whose rows actually carry
+> `violenceType` / `deathsBest` / `dateStart`), so UCDP never applied its
+> war (floor 70) / minor (floor 50) score floor and never counted toward
+> `/api/health.riskScores` realtime signal coverage. UCDP is now classified
+> per country over a 2-year trailing window (war when total deaths > 1000 or
+> event count > 100; minor when event count > 10), matching the frontend
+> `deriveUcdpClassifications` heuristic. The health coverage metric's conflict
+> family is now satisfied by EITHER the ACLED API path OR UCDP, so a thin/empty
+> ACLED window no longer flips health to `COVERAGE_PARTIAL` while UCDP is healthy.
+> `combinedScore` values rise for active UCDP conflict countries (e.g. UA/PK/MX
+> gain a war floor); the risk-score cache key family moved to
+> `risk:scores:sebuf:v8` and emitted `methodology_version` is now `v8`, so clients
+> pinned on `methodology_version` should re-baseline.
 
 > **v7 (2026-06-06).** Score attribution changed for the second CII gap-closure
 > batch. Coordinate attribution now handles three-way bbox overlaps before

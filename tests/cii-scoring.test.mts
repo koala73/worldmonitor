@@ -60,6 +60,13 @@ const CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION: Record<string, string> = {
   // attribution inputs (bbox resolution and climate country coverage), and
   // preserves the expanded formula-literal guard from v6.
   v7: '35c2d7270c6473e457d0b189e1411b9eeb0a79bfe2ae9316485ea14369c12369',
+  // v8 fixes dead UCDP conflict-floor attribution: the scorer read non-existent
+  // `intensity_level`/`type_of_violence` fields, so UCDP never applied a war/minor
+  // floor. The inline `parseInt(...)` classification (and its literals) moved into
+  // the `deriveUcdpIntensityByRegion` helper, changing the guarded formula-literal
+  // set inside computeCIIScores. Live scores now shift upward for UCDP conflict
+  // countries (e.g. UA/PK/MX gain a war floor).
+  v8: '19a22e58c6ff935a3370d17f59efac38dda7d95ce22505fe459b03396641dac9',
 };
 
 const GUARDED_TOP_LEVEL_SCORE_CONST_NAMES = ['NEWS_THREAT_WEIGHT'];
@@ -341,6 +348,28 @@ function emptyAux() {
 
 function acledEvent(country: string, type: string, fatalities = 0) {
   return { country, event_type: type, fatalities };
+}
+
+// Mirror of the real `conflict:ucdp-events:v1` row shape (seed-ucdp-events.mjs /
+// ais-relay.cjs): { country, violenceType, deathsBest, dateStart }. There is NO
+// `intensity_level`/`type_of_violence` field — the scorer classifies per-country
+// using deaths + event count over a 2-year window (deriveUcdpClassifications parity).
+function ucdpEvent(country: string, deathsBest = 1) {
+  return {
+    country,
+    violenceType: 'UCDP_VIOLENCE_TYPE_STATE_BASED',
+    deathsBest,
+    dateStart: Date.now(),
+  };
+}
+
+// `war` = totalDeaths > 1000 OR eventCount > 100. A single high-death event is the
+// simplest war fixture; >10 low-death events is the simplest `minor` fixture.
+function ucdpWarEvents(country: string) {
+  return [ucdpEvent(country, 1500)];
+}
+function ucdpMinorEvents(country: string) {
+  return Array.from({ length: 11 }, () => ucdpEvent(country, 1));
 }
 
 function acledEvents(country: string, type: string, count: number) {
@@ -717,7 +746,8 @@ describe('CII scoring', () => {
 
   it('UCDP war floor: composite >= 70', () => {
     const aux = emptyAux();
-    aux.ucdpEvents = [{ country: 'Ukraine', intensity_level: '2' }];
+    // Real feed shape: high-death state-based events → war (totalDeaths > 1000).
+    aux.ucdpEvents = ucdpWarEvents('Ukraine');
     const scores = computeCIIScores([], aux);
     const ua = scoreFor(scores, 'UA')!;
     assert.ok(ua.combinedScore >= 70, `UA score ${ua.combinedScore} should be >= 70 with UCDP war`);
@@ -725,10 +755,29 @@ describe('CII scoring', () => {
 
   it('UCDP minor conflict floor: composite >= 50', () => {
     const aux = emptyAux();
-    aux.ucdpEvents = [{ country: 'Pakistan', intensity_level: '1' }];
+    // Real feed shape: > 10 low-death events but below the war thresholds → minor.
+    aux.ucdpEvents = ucdpMinorEvents('Pakistan');
     const scores = computeCIIScores([], aux);
     const pk = scoreFor(scores, 'PK')!;
     assert.ok(pk.combinedScore >= 50, `PK score ${pk.combinedScore} should be >= 50 with UCDP minor`);
+  });
+
+  it('UCDP regression: feed without intensity_level/type_of_violence still classifies (real shape)', () => {
+    // The cached feed has NO intensity_level/type_of_violence — the old scorer read
+    // those non-existent keys and never applied a UCDP floor. Guard the field names.
+    const aux = emptyAux();
+    aux.ucdpEvents = [
+      { country: 'Ukraine', violenceType: 'UCDP_VIOLENCE_TYPE_STATE_BASED', deathsBest: 2000, dateStart: Date.now() },
+    ];
+    const scores = computeCIIScores([], aux);
+    const ua = scoreFor(scores, 'UA')!;
+    assert.ok(ua.combinedScore >= 70,
+      `UA must reach the war floor from the real UCDP shape (violenceType/deathsBest), got ${ua.combinedScore}`);
+    // A handful of low-death events stays below thresholds → no floor beyond baseline/advisory.
+    const auxQuiet = emptyAux();
+    auxQuiet.ucdpEvents = [{ country: 'Brazil', violenceType: 'UCDP_VIOLENCE_TYPE_NON_STATE', deathsBest: 1, dateStart: Date.now() }];
+    const br = scoreFor(computeCIIScores([], auxQuiet), 'BR')!;
+    assert.ok(br.combinedScore < 50, `BR with a single quiet UCDP event must not reach the minor floor, got ${br.combinedScore}`);
   });
 
   it('advisory do-not-travel floor: composite >= 60', () => {
@@ -842,7 +891,7 @@ describe('CII scoring', () => {
       acledEvent('Mexico', 'Riots', 3),
     ];
     const aux = emptyAux();
-    aux.ucdpEvents = [{ country: 'Israel', intensity_level: '1' }];
+    aux.ucdpEvents = ucdpMinorEvents('Israel');
     aux.orefData = { activeAlertCount: 3, historyCount24h: 8 };
     const scores = computeCIIScores(acled, aux);
     const il = scoreFor(scores, 'IL')!;
@@ -854,7 +903,7 @@ describe('CII scoring', () => {
   it('scores capped at 100', () => {
     const acled = Array.from({ length: 200 }, () => acledEvent('Syria', 'Battles', 50));
     const aux = emptyAux();
-    aux.ucdpEvents = [{ country: 'Syria', intensity_level: '2' }];
+    aux.ucdpEvents = ucdpWarEvents('Syria');
     aux.iranEvents = Array.from({ length: 50 }, () => ({ lat: 35.0, lon: 38.0, severity: 'critical' }));
     const scores = computeCIIScores(acled, aux);
     for (const s of scores) {
@@ -1451,11 +1500,41 @@ describe('CII scoring', () => {
     const aux = emptyAux();
     aux.newsTopStories = [{ countryCode: null, threatLevel: 'high', primaryTitle: 'Andorra security alert' }];
     aux.cyber = [{ country: 'AD', severity: 'CRITICALITY_LEVEL_CRITICAL' }];
+    // Non-Tier-1 UCDP events must not satisfy the conflict family either.
+    aux.ucdpEvents = ucdpWarEvents('Andorra');
 
     assert.equal(
       countCiiRealtimeSignalDensityCoverage(acled, aux),
       0,
-      'non-Tier-1 ACLED/news/cyber inputs must not satisfy Tier-1 CII realtime health coverage',
+      'non-Tier-1 ACLED/news/cyber/UCDP inputs must not satisfy Tier-1 CII realtime health coverage',
+    );
+  });
+
+  it('riskScores conflict family is satisfied by UCDP when the ACLED API path is empty', () => {
+    // Production root cause (recordCount=2 → COVERAGE_PARTIAL): the ACLED API path
+    // returned zero events while the rich UCDP feed (15+ Tier-1 countries) was healthy.
+    // The conflict family must count from EITHER source, so health stays green.
+    const aux = emptyAux();
+    aux.ucdpEvents = ucdpWarEvents('Ukraine'); // healthy UCDP conflict, no ACLED
+    aux.newsTopStories = [{ countryCode: 'GB', threatLevel: 'high', primaryTitle: 'UK security alert' }];
+    aux.cyber = [{ country: 'US', severity: 'CRITICALITY_LEVEL_CRITICAL' }];
+
+    assert.equal(
+      countCiiRealtimeSignalDensityCoverage([], aux),
+      CII_REALTIME_REQUIRED_SIGNAL_FAMILY_COUNT,
+      'UCDP must satisfy the conflict family when ACLED is empty so /api/health.riskScores stays green',
+    );
+  });
+
+  it('riskScores conflict family stays uncovered when both ACLED and UCDP are empty', () => {
+    const aux = emptyAux();
+    aux.newsTopStories = [{ countryCode: 'GB', threatLevel: 'high', primaryTitle: 'UK security alert' }];
+    aux.cyber = [{ country: 'US', severity: 'CRITICALITY_LEVEL_CRITICAL' }];
+
+    assert.equal(
+      countCiiRealtimeSignalDensityCoverage([], aux),
+      2,
+      'with no ACLED and no UCDP, only news + cyber families count → below minRecordCount',
     );
   });
 

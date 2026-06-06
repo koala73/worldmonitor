@@ -6,6 +6,20 @@ All notable changes to World Monitor are documented here.
 
 ### Changed
 
+- **CII formula `v8`** — fixed dead UCDP conflict-floor attribution. The server
+  scorer read non-existent `intensity_level` / `type_of_violence` fields from the
+  cached `conflict:ucdp-events:v1` feed (whose rows actually carry `violenceType`,
+  `deathsBest`, and `dateStart`), so UCDP never applied its war (floor 70) / minor
+  (floor 50) score floor and never counted toward `/api/health.riskScores`
+  realtime signal coverage. UCDP is now classified per country over a 2-year
+  trailing window (war when total deaths > 1000 or event count > 100; minor when
+  event count > 10), matching the frontend `deriveUcdpClassifications` heuristic.
+  The health coverage metric's conflict family is now satisfied by EITHER the
+  ACLED API path OR UCDP, so a thin/empty ACLED window no longer flips health to
+  `COVERAGE_PARTIAL` while UCDP is healthy. `combinedScore` values rise for active
+  UCDP conflict countries (e.g. UA/PK/MX gain a war floor); the risk-score cache
+  key family moved to `risk:scores:sebuf:v8` and emitted `methodology_version` is
+  now `v8`, so clients should re-baseline.
 - **CII formula `v7`** — score attribution now changes for the second
   gap-closure batch. Coordinate attribution resolves three-way bbox overlaps
   before pairwise border rules, so Punggye-ri maps to KP instead of CN and
