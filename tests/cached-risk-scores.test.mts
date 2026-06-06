@@ -303,10 +303,13 @@ describe('cached-risk-scores — functional adapter behavior', () => {
     });
 
     const cached = getCachedScores();
-    assert.equal(cached?.cii[0]!.code, 'US');
-    assert.equal(cached?.cii[0]!.name, 'United States');
-    assert.equal(cached?.cii[0]!.score, 42);
-    assert.deepEqual(cached?.cii[0]!.components, { unrest: 10, conflict: 20, security: 30, information: 40 });
+    assert.ok(cached);
+    const row = cached.cii[0];
+    assert.ok(row);
+    assert.equal(row.code, 'US');
+    assert.equal(row.name, 'United States');
+    assert.equal(row.score, 42);
+    assert.deepEqual(row.components, { unrest: 10, conflict: 20, security: 30, information: 40 });
     assert.deepEqual(removedKeys, []);
   });
 
@@ -315,7 +318,11 @@ describe('cached-risk-scores — functional adapter behavior', () => {
       storageValue: makeStoredScores([makeCachedCii({ name: 'Poisoned United States Display Name' })]),
     });
 
-    assert.equal(getCachedScores()?.cii[0]!.name, 'United States');
+    const cached = getCachedScores();
+    assert.ok(cached);
+    const row = cached.cii[0];
+    assert.ok(row);
+    assert.equal(row.name, 'United States');
     assert.deepEqual(removedKeys, []);
   });
 
