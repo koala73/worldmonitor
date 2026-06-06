@@ -878,8 +878,10 @@ describe('CII scoring', () => {
     assert.ok(ua.components!.newsActivity >= 0, 'negative threat counts must not lower news below zero');
   });
 
-  it('replays ACLED age weights, earthquake lookback, trend prior, and computedAt from fixed nowMs', () => {
+  it('applies ACLED bucket weights and replays earthquake lookback, trend prior, and computedAt from fixed nowMs', () => {
     const replayNowMs = Date.UTC(2020, 0, 10, 12, 0, 0);
+    // ACLED `daysAgo` is computed before computeCIIScores runs; this guards the
+    // scorer's bucket weights, not clock-derived ACLED age calculation.
     const recentAcled = [
       { ...acledEvent('United States', 'Protests', 0), daysAgo: 7 },
       { ...acledEvent('United States', 'Battles', 2), daysAgo: 7 },
@@ -901,7 +903,7 @@ describe('CII scoring', () => {
     );
     assert.ok(
       tail.components!.ciiContribution > base.components!.ciiContribution,
-      '8-30d ACLED tail still contributes to deterministic replay scoring',
+      '8-30d ACLED bucket still contributes to scoring',
     );
 
     const withRecentEqAux = emptyAux();
