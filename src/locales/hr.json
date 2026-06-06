@@ -1597,9 +1597,8 @@
     "strategicRisk": {
       "noRisks": "Nema otkrivenih značajnih rizika",
       "levels": {
-        "critical": "Kritičan",
-        "elevated": "Povišen",
-        "moderate": "Umjeren",
+        "high": "Visok",
+        "medium": "Srednji",
         "low": "Nizak"
       },
       "trend": "Trend",

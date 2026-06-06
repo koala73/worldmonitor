@@ -1293,9 +1293,8 @@
       "noRisks": "Aucun risque significatif détecté",
       "infoTooltip": "<strong>Méthodologie</strong> Score composite (0-100) mélange :<ul><li>50 % d'instabilité du pays (5 premiers pondérés)</li><li>30 % Zones de convergence géographique</li><li>20 % Incidents d'infrastructure</li></ul>Actualisation automatique toutes les 5 minutes.",
       "levels": {
-        "critical": "Critique",
-        "elevated": "Élevé",
-        "moderate": "Modéré",
+        "high": "Élevé",
+        "medium": "Moyen",
         "low": "Faible"
       },
       "trend": "Tendance",

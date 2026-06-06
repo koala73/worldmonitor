@@ -24,15 +24,26 @@ import { getCachedPosture } from '@/services/cached-theater-posture';
 import { refreshDataFreshnessFromHealth } from '@/services/health-freshness';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
+type StrategicRiskDisplayLevel = 'high' | 'medium' | 'low';
+
 const STRATEGIC_RISK_BANDS = [
-  { min: 70, levelKey: 'critical', colorVar: '--semantic-critical' },
-  { min: 50, levelKey: 'elevated', colorVar: '--semantic-elevated' },
-  { min: 30, levelKey: 'moderate', colorVar: '--semantic-normal' },
+  { min: 70, levelKey: 'high', colorVar: '--semantic-high' },
+  { min: 40, levelKey: 'medium', colorVar: '--semantic-elevated' },
   { min: 0, levelKey: 'low', colorVar: '--semantic-low' },
 ] as const;
 
+const STRATEGIC_RISK_LEVEL_ALIASES: Record<string, StrategicRiskDisplayLevel> = {
+  HIGH: 'high',
+  MEDIUM: 'medium',
+  LOW: 'low',
+  SEVERITY_LEVEL_HIGH: 'high',
+  SEVERITY_LEVEL_MEDIUM: 'medium',
+  SEVERITY_LEVEL_LOW: 'low',
+};
+
 export class StrategicRiskPanel extends Panel {
   private overview: StrategicRiskOverview | null = null;
+  private strategicRiskLevel: StrategicRiskDisplayLevel | null = null;
   private alerts: UnifiedAlert[] = [];
   private convergenceAlerts: GeoConvergenceAlert[] = [];
   private freshnessSummary: DataFreshnessSummary | null = null;
@@ -143,6 +154,7 @@ export class StrategicRiskPanel extends Panel {
       staleFactor
     );
     this.overview = localOverview;
+    this.strategicRiskLevel = null;
     this.alerts = getRecentAlerts(24);
 
     if (cachedRiskScores?.strategicRisk) {
@@ -230,6 +242,9 @@ export class StrategicRiskPanel extends Panel {
       degraded: cached.degraded,
       stale: cached.stale,
     };
+    this.strategicRiskLevel =
+      this.normalizeStrategicRiskLevel(cached.strategicRisk.level)
+      ?? this.getFallbackScoreBand(cached.strategicRisk.score).levelKey;
   }
 
   private getScoreColor(score: number): string {
@@ -241,7 +256,20 @@ export class StrategicRiskPanel extends Panel {
   }
 
   private getScoreBand(score: number): typeof STRATEGIC_RISK_BANDS[number] {
+    if (this.strategicRiskLevel) return this.getBandForLevel(this.strategicRiskLevel);
+    return this.getFallbackScoreBand(score);
+  }
+
+  private getFallbackScoreBand(score: number): typeof STRATEGIC_RISK_BANDS[number] {
     return STRATEGIC_RISK_BANDS.find((band) => score >= band.min) ?? STRATEGIC_RISK_BANDS[STRATEGIC_RISK_BANDS.length - 1]!;
+  }
+
+  private getBandForLevel(level: StrategicRiskDisplayLevel): typeof STRATEGIC_RISK_BANDS[number] {
+    return STRATEGIC_RISK_BANDS.find((band) => band.levelKey === level) ?? STRATEGIC_RISK_BANDS[STRATEGIC_RISK_BANDS.length - 1]!;
+  }
+
+  private normalizeStrategicRiskLevel(level: string | undefined | null): StrategicRiskDisplayLevel | null {
+    return STRATEGIC_RISK_LEVEL_ALIASES[String(level ?? '').trim().toUpperCase()] ?? null;
   }
 
   private getTrendEmoji(trend: string): string {

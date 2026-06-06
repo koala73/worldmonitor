@@ -1334,9 +1334,8 @@
     "strategicRisk": {
       "noRisks": "Δεν ανιχνεύθηκαν σημαντικοί κίνδυνοι",
       "levels": {
-        "critical": "Κρίσιμο",
-        "elevated": "Αυξημένο",
-        "moderate": "Μέτριο",
+        "high": "Υψηλό",
+        "medium": "Μεσαίο",
         "low": "Χαμηλό"
       },
       "trend": "Τάση",

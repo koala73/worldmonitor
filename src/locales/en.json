@@ -1483,9 +1483,8 @@
     "strategicRisk": {
       "noRisks": "No significant risks detected",
       "levels": {
-        "critical": "Critical",
-        "elevated": "Elevated",
-        "moderate": "Moderate",
+        "high": "High",
+        "medium": "Medium",
         "low": "Low"
       },
       "trend": "Trend",

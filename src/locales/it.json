@@ -1476,9 +1476,8 @@
       "noRisks": "Nessun rischio significativo rilevato",
       "infoTooltip": "<strong>Metodologia</strong> Punteggio composito (0-100) combinazione:<ul><li>50% Instabilità paese (primi 5 ponderati)</li><li>30% Zone di convergenza geografica</li><li>20% Incidenti infrastrutturali</li></ul>Si aggiorna automaticamente ogni 5 minuti.",
       "levels": {
-        "critical": "Critico",
-        "elevated": "Elevato",
-        "moderate": "Moderato",
+        "high": "Alto",
+        "medium": "Medio",
         "low": "Basso"
       },
       "trend": "Tendenza",
