@@ -9,15 +9,23 @@ const conflictServiceSource = readFileSync(resolve(root, 'src/services/conflict/
 
 let moduleCounter = 0;
 
+function replaceRequired(source: string, search: string | RegExp, replacement: string, label: string): string {
+  const patched = source.replace(search, replacement);
+  assert.notEqual(patched, source, `failed to patch conflict service import: ${label}`);
+  return patched;
+}
+
 async function loadUcdpDeriver() {
-  const patched = conflictServiceSource
-    .replace(
-      "import { getRpcBaseUrl } from '@/services/rpc-client';",
-      "const getRpcBaseUrl = () => '';",
-    )
-    .replace(
-      /import \{\n[\s\S]*?\} from '@\/generated\/client\/worldmonitor\/conflict\/v1\/service_client';/,
-      `class ConflictServiceClient {
+  let patched = replaceRequired(
+    conflictServiceSource,
+    "import { getRpcBaseUrl } from '@/services/rpc-client';",
+    "const getRpcBaseUrl = () => '';",
+    'rpc-client',
+  );
+  patched = replaceRequired(
+    patched,
+    /import \{\n[\s\S]*?\} from '@\/generated\/client\/worldmonitor\/conflict\/v1\/service_client';/,
+    `class ConflictServiceClient {
   constructor(..._args: unknown[]) {}
   listAcledEvents() { return { events: [], pagination: undefined }; }
   listUcdpEvents() { return { events: [], pagination: undefined }; }
@@ -32,24 +40,33 @@ type GetHumanitarianSummaryResponse = any;
 type GetHumanitarianSummaryBatchResponse = any;
 type IranEvent = any;
 type ListIranEventsResponse = any;`,
-    )
-    .replace(
-      "import type { UcdpGeoEvent, UcdpEventType } from '@/types';",
-      'type UcdpGeoEvent = any; type UcdpEventType = any;',
-    )
-    .replace(
-      "import { createCircuitBreaker } from '@/utils';",
-      'const createCircuitBreaker = (_config: unknown) => ({ execute: async (_fn: unknown, fallback: unknown) => fallback });',
-    )
-    .replace(
-      "import { getHydratedData } from '@/services/bootstrap';",
-      'const getHydratedData = (_key: string) => null;',
-    )
-    .replace(
-      "import { toApiUrl } from '@/services/runtime';",
-      'const toApiUrl = (path: string) => path;',
-    )
-    .concat('\nexport { deriveUcdpClassifications };\n');
+    'generated conflict client',
+  );
+  patched = replaceRequired(
+    patched,
+    "import type { UcdpGeoEvent, UcdpEventType } from '@/types';",
+    'type UcdpGeoEvent = any; type UcdpEventType = any;',
+    'types',
+  );
+  patched = replaceRequired(
+    patched,
+    "import { createCircuitBreaker } from '@/utils';",
+    'const createCircuitBreaker = (_config: unknown) => ({ execute: async (_fn: unknown, fallback: unknown) => fallback });',
+    'utils',
+  );
+  patched = replaceRequired(
+    patched,
+    "import { getHydratedData } from '@/services/bootstrap';",
+    'const getHydratedData = (_key: string) => null;',
+    'bootstrap',
+  );
+  patched = replaceRequired(
+    patched,
+    "import { toApiUrl } from '@/services/runtime';",
+    'const toApiUrl = (path: string) => path;',
+    'runtime',
+  );
+  patched = `${patched}\nexport { deriveUcdpClassifications };\n`;
 
   const transformed = transformSync(patched, {
     loader: 'ts',
