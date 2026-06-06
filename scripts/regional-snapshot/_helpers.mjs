@@ -1,6 +1,8 @@
 // @ts-check
 // Shared helpers for snapshot compute modules.
 
+import { stripSeedEnvelope } from '../_seed-envelope-source.mjs';
+
 /** Clamp a number to the [lo, hi] range. */
 export function clip(value, lo, hi) {
   if (Number.isNaN(value) || !Number.isFinite(value)) return lo;
@@ -61,20 +63,15 @@ export function generateSnapshotId() {
  * `fetchedAt`) — and forecast:predictions:v2, whose `generatedAt` was hidden one
  * level down, now dates correctly instead of reading as present-but-undated.
  *
+ * Uses the repo's canonical seed-envelope contract: only well-formed envelopes
+ * with a numeric `_seed.fetchedAt` unwrap. Malformed `_seed` objects pass through
+ * unchanged so seed-contract violations stay visible instead of being silently
+ * accepted as valid regional inputs.
+ *
  * @template T
  * @param {T} parsed
  * @returns {T | unknown}
  */
 export function unwrapEnvelope(parsed) {
-  if (
-    parsed !== null &&
-    typeof parsed === 'object' &&
-    !Array.isArray(parsed) &&
-    'data' in parsed &&
-    parsed._seed !== null &&
-    typeof parsed._seed === 'object'
-  ) {
-    return parsed.data;
-  }
-  return parsed;
+  return stripSeedEnvelope(parsed);
 }
