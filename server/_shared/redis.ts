@@ -574,9 +574,10 @@ export interface UsageHook {
  * Use when callers need to distinguish cache hits from fresh fetches
  * (e.g. to set provider/cached metadata on responses).
  *
- * Returns { data, source } where source is:
+ * Returns { data, source, leader } where source is:
  *   'cache'  — served from Redis
  *   'fresh'  — fetcher ran (leader) or joined an in-flight fetch (follower)
+ * and leader is true only for the caller that actually ran the fetcher.
  *
  * If `opts.usage` is supplied, an upstream event is emitted on the fresh
  * path (issue #3381). Pass-through for callers that don't care about
