@@ -12,6 +12,7 @@ const RISK_SCORES_KEY = 'risk:scores:sebuf:stale:v5';
 const ADVISORIES_KEY = 'intelligence:advisories:v1';
 // Full ISO2 → entryCount map across all OFAC entries (not the top-12 summary slice).
 const SANCTIONS_COUNTS_KEY = 'sanctions:country-counts:v1';
+const UNKNOWN_CII_COMPUTED_AT = 0;
 
 function resolveCountryName(
   code: string,
@@ -34,7 +35,7 @@ export async function getCountryRisk(
       advisoryLevel: '',
       sanctionsActive: false,
       sanctionsCount: 0,
-      fetchedAt: Date.now(),
+      fetchedAt: UNKNOWN_CII_COMPUTED_AT,
       upstreamUnavailable: false,
     };
   }
@@ -56,7 +57,7 @@ export async function getCountryRisk(
       advisoryLevel: '',
       sanctionsActive: false,
       sanctionsCount: 0,
-      fetchedAt: Date.now(),
+      fetchedAt: UNKNOWN_CII_COMPUTED_AT,
       upstreamUnavailable: true,
     };
   }
@@ -78,7 +79,7 @@ export async function getCountryRisk(
     advisoryLevel,
     sanctionsActive: sanctionsCount > 0,
     sanctionsCount,
-    fetchedAt: cii?.computedAt ?? Date.now(),
+    fetchedAt: cii?.computedAt ?? UNKNOWN_CII_COMPUTED_AT,
     upstreamUnavailable: false,
   };
 }

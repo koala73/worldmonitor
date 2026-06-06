@@ -796,6 +796,118 @@ describe('cachedFetchJson inflight timeout (#3539)', { concurrency: 1 }, () => {
   });
 });
 
+describe('country risk freshness behavior', { concurrency: 1 }, () => {
+  async function importCountryRisk() {
+    return importPatchedTsModule('server/worldmonitor/intelligence/v1/get-country-risk.ts', {
+      './_shared': resolve(root, 'server/worldmonitor/intelligence/v1/_shared.ts'),
+      '../../../_shared/redis': resolve(root, 'server/_shared/redis.ts'),
+    });
+  }
+
+  function parseGetKey(rawUrl) {
+    return decodeURIComponent(rawUrl.split('/get/').pop() || '');
+  }
+
+  function withMockedNow(nowMs) {
+    const originalDateNow = Date.now;
+    Date.now = () => nowMs;
+    return () => {
+      Date.now = originalDateNow;
+    };
+  }
+
+  it('returns fetchedAt=0 for missing country code instead of fabricating request time', async () => {
+    const { module, cleanup } = await importCountryRisk();
+    const restoreNow = withMockedNow(1_777_000_000_000);
+    const originalFetch = globalThis.fetch;
+    let fetchCalls = 0;
+    globalThis.fetch = async () => {
+      fetchCalls += 1;
+      return jsonResponse({ result: undefined });
+    };
+
+    try {
+      const result = await module.getCountryRisk({}, { countryCode: '' });
+      assert.equal(result.fetchedAt, 0);
+      assert.equal(result.upstreamUnavailable, false);
+      assert.equal(fetchCalls, 0, 'missing-code path must not hit Redis');
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreNow();
+    }
+  });
+
+  it('returns fetchedAt=0 when upstream Redis keys are unavailable', async () => {
+    const { module, cleanup } = await importCountryRisk();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+    });
+    const restoreNow = withMockedNow(1_777_000_000_000);
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const result = await module.getCountryRisk({}, { countryCode: 'US' });
+      assert.equal(result.fetchedAt, 0);
+      assert.equal(result.upstreamUnavailable, true);
+      assert.equal(result.cii, undefined);
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreNow();
+      restoreEnv();
+    }
+  });
+
+  it('returns fetchedAt=0 for untracked countries with no CII score', async () => {
+    const { module, cleanup } = await importCountryRisk();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+    });
+    const restoreNow = withMockedNow(1_777_000_000_000);
+    const originalFetch = globalThis.fetch;
+    const redisValues = new Map([
+      ['risk:scores:sebuf:stale:v5', JSON.stringify({
+        ciiScores: [{ region: 'US', combinedScore: 10, computedAt: 1_700_000_000_000 }],
+      })],
+      ['intelligence:advisories:v1', JSON.stringify({
+        byCountry: { ZZ: 'caution' },
+        byCountryName: { ZZ: 'Untracked Testland' },
+      })],
+      ['sanctions:country-counts:v1', JSON.stringify({ ZZ: 2 })],
+    ]);
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: redisValues.get(parseGetKey(raw)) });
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const result = await module.getCountryRisk({}, { countryCode: 'ZZ' });
+      assert.equal(result.countryName, 'Untracked Testland');
+      assert.equal(result.cii, undefined);
+      assert.equal(result.fetchedAt, 0);
+      assert.equal(result.upstreamUnavailable, false);
+      assert.equal(result.sanctionsActive, true);
+      assert.equal(result.sanctionsCount, 2);
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreNow();
+      restoreEnv();
+    }
+  });
+});
+
 describe('theater posture caching behavior', { concurrency: 1 }, () => {
   async function importTheaterPosture() {
     return importPatchedTsModule('server/worldmonitor/military/v1/get-theater-posture.ts', {
