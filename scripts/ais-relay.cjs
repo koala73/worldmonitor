@@ -4382,14 +4382,20 @@ function warmPingHeaders(extra = {}) {
 // ─────────────────────────────────────────────────────────────
 // CII Risk Scores warm-ping — keeps RPC cache fresh so
 // bootstrap stale key never expires.
-// The RPC handler itself refreshes the stale key on every call.
+// The RPC handler owns seed-meta:intelligence:risk-scores so recordCount uses
+// signal coverage, not the structural Tier-1 CII row count. The cache-buster
+// keeps CDN caching from hiding the handler from the warm-ping loop.
 // ─────────────────────────────────────────────────────────────
 const CII_WARM_PING_INTERVAL_MS = 8 * 60 * 1000; // 8 min (live cache TTL is 10 min)
 const CII_RPC_URL = 'https://api.worldmonitor.app/api/intelligence/v1/get-risk-scores';
 
+function ciiWarmPingUrl() {
+  return `${CII_RPC_URL}?_wm_warm_ping=${Date.now()}`;
+}
+
 async function seedCiiWarmPing() {
   try {
-    const resp = await fetch(CII_RPC_URL, {
+    const resp = await fetch(ciiWarmPingUrl(), {
       headers: warmPingHeaders(),
       signal: AbortSignal.timeout(60_000),
     });
@@ -4400,9 +4406,6 @@ async function seedCiiWarmPing() {
     const data = await resp.json();
     const count = data?.ciiScores?.length || 0;
     console.log(`[CII] Warm-ping OK: ${count} scores`);
-    if (count > 0) {
-      await upstashSet('seed-meta:intelligence:risk-scores', { fetchedAt: Date.now(), recordCount: count }, 604800);
-    }
   } catch (e) {
     console.warn('[CII] Warm-ping error:', e?.message || e);
   }
