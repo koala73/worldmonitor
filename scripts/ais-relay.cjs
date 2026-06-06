@@ -391,6 +391,57 @@ function upstashSetNx(key, value, ttlSeconds) {
   });
 }
 
+// ─────────────────────────────────────────────────────────────
+// Boot-seed freshness guard
+//
+// ais-relay is a long-running HTTP service on proxy.worldmonitor.app that
+// Railway recycles frequently (deploys, crashes, OOM). Every seed loop fires an
+// IMMEDIATE seed on boot and then schedules a setInterval at its real cadence —
+// but the process is usually recycled long before that interval elapses, so the
+// boot seed, not the interval, is the de-facto scheduler. During a reboot storm
+// that means every upstream gets re-fetched on every boot (~8 min apart in the
+// wild, observed 2026-06-06) instead of on its interval: paid credits burned for
+// ScrapeCreators, and rate-limit/ban risk for Reddit, Yahoo, CoinGecko, UCDP,
+// OpenSky, CelesTrak, USNI, etc.
+//
+// maybeBootSeed gates the immediate boot seed on the existing seed-meta age: it
+// runs the seed only when the data is already older than its interval (i.e. a
+// refresh is actually due). On a frequently-recycled relay this self-throttles
+// the boot seed to the intended cadence; on a long-lived relay it runs once at
+// boot (if due) and the setInterval takes over — both correct. The interval path
+// is intentionally untouched: when the timer fires the data is due by definition.
+//
+// It keys on `fetchedAt` ("recently attempted — don't re-attempt"), NOT
+// recordCount/status, so a recent FAILED attempt also suppresses the next-boot
+// retry. That is deliberate: re-attempting a failing paid upstream on every 8-min
+// reboot is the exact abuse being prevented. Seeders that only write seed-meta on
+// success leave `fetchedAt` stale on failure and so still retry on boot; the
+// in-process retry timers cover stable relays.
+//
+// `metaKey` is the FULL Redis key the seeder writes (usually `seed-meta:<key>`,
+// sometimes a `relay:heartbeat:<key>` for script-delegated seeders). On any
+// read/parse failure the guard fails OPEN (seeds) so a Redis blip never starves a
+// panel. Returns the seedFn() promise (or a resolved promise when skipped) so the
+// call site's existing `.catch` still applies.
+async function maybeBootSeed(label, metaKey, intervalMs, seedFn) {
+  if (UPSTASH_ENABLED && metaKey && intervalMs > 0) {
+    try {
+      const meta = await upstashGet(metaKey);
+      const fetchedAt = Number(meta && meta.fetchedAt) || 0;
+      if (fetchedAt > 0) {
+        const ageMs = Date.now() - fetchedAt;
+        if (ageMs >= 0 && ageMs < intervalMs) {
+          console.log(`[${label}] Boot seed skipped — data fresh (age ${Math.round(ageMs / 60000)}min < ${Math.round(intervalMs / 60000)}min interval); next refresh via setInterval or a later reboot`);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn(`[${label}] Boot freshness check failed (${(e && e.message) || e}); seeding`);
+    }
+  }
+  return seedFn();
+}
+
 function upstashDel(key) {
   return new Promise((resolve) => {
     if (!UPSTASH_ENABLED) return resolve(false);
@@ -1586,7 +1637,7 @@ async function startUcdpSeedLoop() {
     return;
   }
   console.log(`[UCDP] Seed loop starting (interval ${UCDP_POLL_INTERVAL_MS / 1000 / 60}min, token: ${UCDP_ACCESS_TOKEN ? 'yes' : 'no'})`);
-  seedUcdpEvents().catch(e => console.warn('[UCDP] Initial seed error:', e?.message || e));
+  maybeBootSeed('UCDP', 'seed-meta:conflict:ucdp-events', UCDP_POLL_INTERVAL_MS, seedUcdpEvents).catch(e => console.warn('[UCDP] Initial seed error:', e?.message || e));
   setInterval(() => {
     seedUcdpEvents().catch(e => console.warn('[UCDP] Seed error:', e?.message || e));
   }, UCDP_POLL_INTERVAL_MS).unref?.();
@@ -1719,7 +1770,7 @@ async function startSatelliteSeedLoop() {
     return;
   }
   console.log(`[Satellites] Seed loop starting (interval ${SAT_SEED_INTERVAL_MS / 1000 / 60}min)`);
-  seedSatelliteTLEs().catch(e => console.warn('[Satellites] Initial seed error:', e?.message || e));
+  maybeBootSeed('Satellites', 'seed-meta:intelligence:satellites', SAT_SEED_INTERVAL_MS, seedSatelliteTLEs).catch(e => console.warn('[Satellites] Initial seed error:', e?.message || e));
   setInterval(() => {
     seedSatelliteTLEs().catch(e => console.warn('[Satellites] Seed error:', e?.message || e));
   }, SAT_SEED_INTERVAL_MS).unref?.();
@@ -2573,7 +2624,7 @@ async function startMarketDataSeedLoop() {
     return;
   }
   console.log(`[Market] Seed loop starting (interval ${MARKET_SEED_INTERVAL_MS / 1000 / 60}min, finnhub: ${FINNHUB_API_KEY ? 'yes' : 'no'})`);
-  seedAllMarketData().catch((e) => console.warn('[Market] Initial seed error:', e?.message || e));
+  maybeBootSeed('Market', 'seed-meta:market:stocks', MARKET_SEED_INTERVAL_MS, seedAllMarketData).catch((e) => console.warn('[Market] Initial seed error:', e?.message || e));
   setInterval(() => {
     seedAllMarketData().catch((e) => console.warn('[Market] Seed error:', e?.message || e));
   }, MARKET_SEED_INTERVAL_MS).unref?.();
@@ -2966,7 +3017,7 @@ async function startCyberThreatsSeedLoop() {
     return;
   }
   console.log(`[Cyber] Seed loop starting (interval ${CYBER_SEED_INTERVAL_MS / 1000 / 60 / 60}h, urlhaus:${URLHAUS_AUTH_KEY ? 'yes' : 'no'} otx:${OTX_API_KEY ? 'yes' : 'no'} abuseipdb:${ABUSEIPDB_API_KEY ? 'yes' : 'no'})`);
-  seedCyberThreats().catch((e) => console.warn('[Cyber] Initial seed error:', e?.message || e));
+  maybeBootSeed('Cyber', 'seed-meta:cyber:threats', CYBER_SEED_INTERVAL_MS, seedCyberThreats).catch((e) => console.warn('[Cyber] Initial seed error:', e?.message || e));
   setInterval(() => {
     seedCyberThreats().catch((e) => console.warn('[Cyber] Seed error:', e?.message || e));
   }, CYBER_SEED_INTERVAL_MS).unref?.();
@@ -3148,7 +3199,7 @@ async function startPositiveEventsSeedLoop() {
     return;
   }
   console.log(`[PositiveEvents] Seed loop starting (interval ${POSITIVE_EVENTS_INTERVAL_MS / 1000 / 60}min)`);
-  seedPositiveEvents().catch((e) => console.warn('[PositiveEvents] Initial seed error:', e?.message || e));
+  maybeBootSeed('PositiveEvents', 'seed-meta:positive-events:geo', POSITIVE_EVENTS_INTERVAL_MS, seedPositiveEvents).catch((e) => console.warn('[PositiveEvents] Initial seed error:', e?.message || e));
   setInterval(() => {
     seedPositiveEvents().catch((e) => console.warn('[PositiveEvents] Seed error:', e?.message || e));
   }, POSITIVE_EVENTS_INTERVAL_MS).unref?.();
@@ -3752,7 +3803,7 @@ async function startClassifySeedLoop() {
   }
   const activeProviders = CLASSIFY_LLM_PROVIDERS.filter((p) => !!process.env[p.envKey]).map((p) => p.name);
   console.log(`[Classify] Seed loop starting (interval ${CLASSIFY_SEED_INTERVAL_MS / 1000 / 60}min, providers:${activeProviders.length ? activeProviders.join(',') : 'none'})`);
-  seedClassify().catch((e) => console.warn('[Classify] Initial seed error:', e?.message || e));
+  maybeBootSeed('Classify', 'seed-meta:classify', CLASSIFY_SEED_INTERVAL_MS, seedClassify).catch((e) => console.warn('[Classify] Initial seed error:', e?.message || e));
   setInterval(() => {
     seedClassify().catch((e) => console.warn('[Classify] Seed error:', e?.message || e));
   }, CLASSIFY_SEED_INTERVAL_MS).unref?.();
@@ -4330,7 +4381,7 @@ function startTheaterPostureSeedLoop() {
   console.log(`[TheaterPosture] Seed loop starting (interval ${THEATER_POSTURE_SEED_INTERVAL_MS / 1000 / 60}min)`);
   // Delay initial seed 30s to let the relay's OpenSky proxy start up
   setTimeout(() => {
-    seedTheaterPosture().catch((e) => console.warn('[TheaterPosture] Initial seed error:', e?.message || e));
+    maybeBootSeed('TheaterPosture', 'seed-meta:theater-posture', THEATER_POSTURE_SEED_INTERVAL_MS, seedTheaterPosture).catch((e) => console.warn('[TheaterPosture] Initial seed error:', e?.message || e));
     setInterval(() => {
       seedTheaterPosture().catch((e) => console.warn('[TheaterPosture] Seed error:', e?.message || e));
     }, THEATER_POSTURE_SEED_INTERVAL_MS).unref?.();
@@ -4619,7 +4670,7 @@ async function startWeatherSeedLoop() {
     return;
   }
   console.log(`[Weather] Seed loop starting (interval ${WEATHER_SEED_INTERVAL_MS / 1000 / 60}min)`);
-  seedWeatherAlerts().catch((e) => console.warn('[Weather] Initial seed error:', e?.message || e));
+  maybeBootSeed('Weather', 'seed-meta:weather:alerts', WEATHER_SEED_INTERVAL_MS, seedWeatherAlerts).catch((e) => console.warn('[Weather] Initial seed error:', e?.message || e));
   setInterval(() => {
     seedWeatherAlerts().catch((e) => console.warn('[Weather] Seed error:', e?.message || e));
   }, WEATHER_SEED_INTERVAL_MS).unref?.();
@@ -4716,7 +4767,7 @@ async function startSpendingSeedLoop() {
     return;
   }
   console.log(`[Spending] Seed loop starting (interval ${SPENDING_SEED_INTERVAL_MS / 1000 / 60}min)`);
-  seedUsaSpending().catch((e) => console.warn('[Spending] Initial seed error:', e?.message || e));
+  maybeBootSeed('Spending', 'seed-meta:economic:spending', SPENDING_SEED_INTERVAL_MS, seedUsaSpending).catch((e) => console.warn('[Spending] Initial seed error:', e?.message || e));
   setInterval(() => {
     seedUsaSpending().catch((e) => console.warn('[Spending] Seed error:', e?.message || e));
   }, SPENDING_SEED_INTERVAL_MS).unref?.();
@@ -4831,7 +4882,7 @@ async function startGscpiSeedLoop() {
     return;
   }
   console.log('[GSCPI] Seed loop starting (interval 24h)');
-  seedGscpi().catch((e) => console.warn('[GSCPI] Initial seed error:', e?.message || e));
+  maybeBootSeed('GSCPI', 'seed-meta:economic:gscpi', GSCPI_SEED_INTERVAL_MS, seedGscpi).catch((e) => console.warn('[GSCPI] Initial seed error:', e?.message || e));
   setInterval(() => {
     seedGscpi().catch((e) => console.warn('[GSCPI] Seed error:', e?.message || e));
   }, GSCPI_SEED_INTERVAL_MS).unref?.();
@@ -5040,7 +5091,7 @@ async function startTechEventsSeedLoop() {
     return;
   }
   console.log(`[TechEvents] Seed loop starting (interval ${TECH_EVENTS_SEED_INTERVAL_MS / 1000 / 60 / 60}h)`);
-  seedTechEvents().catch((e) => console.warn('[TechEvents] Initial seed error:', e?.message || e));
+  maybeBootSeed('TechEvents', 'seed-meta:research:tech-events', TECH_EVENTS_SEED_INTERVAL_MS, seedTechEvents).catch((e) => console.warn('[TechEvents] Initial seed error:', e?.message || e));
   setInterval(() => {
     seedTechEvents().catch((e) => console.warn('[TechEvents] Seed error:', e?.message || e));
   }, TECH_EVENTS_SEED_INTERVAL_MS).unref?.();
@@ -5302,7 +5353,7 @@ async function startWorldBankSeedLoop() {
     return;
   }
   console.log(`[WB] Seed loop starting (interval ${WB_SEED_INTERVAL_MS / 1000 / 60 / 60}h)`);
-  seedWorldBank().catch(e => console.warn('[WB] Initial seed error:', e?.message || e));
+  maybeBootSeed('WB', `seed-meta:${WB_BOOTSTRAP_KEY}`, WB_SEED_INTERVAL_MS, seedWorldBank).catch(e => console.warn('[WB] Initial seed error:', e?.message || e));
   setInterval(() => {
     seedWorldBank().catch(e => console.warn('[WB] Seed error:', e?.message || e));
   }, WB_SEED_INTERVAL_MS).unref?.();
@@ -5406,7 +5457,7 @@ async function startCorridorRiskSeedLoop() {
     return;
   }
   console.log(`[CorridorRisk] Seed loop starting (interval ${CORRIDOR_RISK_SEED_INTERVAL_MS / 1000 / 60}min)`);
-  seedCorridorRisk().catch(e => console.warn('[CorridorRisk] Initial seed error:', e?.message || e));
+  maybeBootSeed('CorridorRisk', 'seed-meta:supply_chain:corridorrisk', CORRIDOR_RISK_SEED_INTERVAL_MS, seedCorridorRisk).catch(e => console.warn('[CorridorRisk] Initial seed error:', e?.message || e));
   setInterval(() => {
     seedCorridorRisk().catch(e => console.warn('[CorridorRisk] Seed error:', e?.message || e));
   }, CORRIDOR_RISK_SEED_INTERVAL_MS).unref?.();
@@ -5655,7 +5706,7 @@ async function startUsniFleetSeedLoop() {
     return;
   }
   console.log(`[USNI] Seed loop starting (interval ${USNI_SEED_INTERVAL_MS / 1000 / 60 / 60}h)`);
-  seedUsniFleet().catch(e => console.warn('[USNI] Initial seed error:', e?.message || e));
+  maybeBootSeed('USNI', 'seed-meta:military:usni-fleet', USNI_SEED_INTERVAL_MS, seedUsniFleet).catch(e => console.warn('[USNI] Initial seed error:', e?.message || e));
   setInterval(() => {
     seedUsniFleet().catch(e => console.warn('[USNI] Seed error:', e?.message || e));
   }, USNI_SEED_INTERVAL_MS).unref?.();
@@ -5740,7 +5791,7 @@ async function startShippingStressSeedLoop() {
     return;
   }
   console.log(`[ShippingStress] Seed loop starting (interval ${SHIPPING_STRESS_INTERVAL_MS / 1000 / 60}min)`);
-  seedShippingStress().catch(e => console.warn('[ShippingStress] Initial seed error:', e?.message || e));
+  maybeBootSeed('ShippingStress', 'seed-meta:supply_chain:shipping_stress', SHIPPING_STRESS_INTERVAL_MS, seedShippingStress).catch(e => console.warn('[ShippingStress] Initial seed error:', e?.message || e));
   setInterval(() => {
     seedShippingStress().catch(e => console.warn('[ShippingStress] Seed error:', e?.message || e));
   }, SHIPPING_STRESS_INTERVAL_MS).unref?.();
@@ -6101,7 +6152,7 @@ async function startSocialVelocitySeedLoop() {
     return;
   }
   console.log(`[SocialVelocity] Seed loop starting (interval ${SOCIAL_VELOCITY_INTERVAL_MS / 1000 / 60}min)`);
-  seedSocialVelocity().catch(e => console.warn('[SocialVelocity] Initial seed error:', e?.message || e));
+  maybeBootSeed('SocialVelocity', SOCIAL_VELOCITY_SEED_META_KEY, SOCIAL_VELOCITY_INTERVAL_MS, seedSocialVelocity).catch(e => console.warn('[SocialVelocity] Initial seed error:', e?.message || e));
   setInterval(() => {
     seedSocialVelocity().catch(e => console.warn('[SocialVelocity] Seed error:', e?.message || e));
   }, SOCIAL_VELOCITY_INTERVAL_MS).unref?.();
@@ -6293,7 +6344,7 @@ async function startWsbTickersSeedLoop() {
     return;
   }
   console.log(`[WsbTickers] Seed loop starting (interval ${WSB_TICKERS_INTERVAL_MS / 1000 / 60}min)`);
-  seedWsbTickers().catch(e => console.warn('[WsbTickers] Initial seed error:', e?.message || e));
+  maybeBootSeed('WsbTickers', 'seed-meta:intelligence:wsb-tickers', WSB_TICKERS_INTERVAL_MS, seedWsbTickers).catch(e => console.warn('[WsbTickers] Initial seed error:', e?.message || e));
   setInterval(() => {
     seedWsbTickers().catch(e => console.warn('[WsbTickers] Seed error:', e?.message || e));
   }, WSB_TICKERS_INTERVAL_MS).unref?.();
@@ -6369,7 +6420,7 @@ function startClimateNewsSeedLoop() {
     return;
   }
   console.log(`[ClimateNewsSeed] Seed loop starting (interval ${CLIMATE_NEWS_SEED_INTERVAL_MS / 1000 / 60}min)`);
-  seedClimateNews().catch((e) => console.warn('[ClimateNewsSeed] Initial seed error:', e?.message || e));
+  maybeBootSeed('ClimateNewsSeed', 'relay:heartbeat:climate-news', CLIMATE_NEWS_SEED_INTERVAL_MS, seedClimateNews).catch((e) => console.warn('[ClimateNewsSeed] Initial seed error:', e?.message || e));
   setInterval(() => {
     seedClimateNews().catch((e) => console.warn('[ClimateNewsSeed] Seed error:', e?.message || e));
   }, CLIMATE_NEWS_SEED_INTERVAL_MS).unref?.();
@@ -6441,7 +6492,7 @@ function startChokepointFlowsSeedLoop() {
     return;
   }
   console.log(`[ChokepointFlows] Seed loop starting (interval ${CHOKEPOINT_FLOWS_SEED_INTERVAL_MS / 1000 / 60}min)`);
-  seedChokepointFlows().catch((e) => console.warn('[ChokepointFlows] Initial seed error:', e?.message || e));
+  maybeBootSeed('ChokepointFlows', 'relay:heartbeat:chokepoint-flows', CHOKEPOINT_FLOWS_SEED_INTERVAL_MS, seedChokepointFlows).catch((e) => console.warn('[ChokepointFlows] Initial seed error:', e?.message || e));
   setInterval(() => {
     seedChokepointFlows().catch((e) => console.warn('[ChokepointFlows] Seed error:', e?.message || e));
   }, CHOKEPOINT_FLOWS_SEED_INTERVAL_MS).unref?.();
@@ -6571,7 +6622,7 @@ function startPizzintSeedLoop() {
     return;
   }
   console.log(`[PizzINT] Seed loop starting (interval ${PIZZINT_SEED_INTERVAL_MS / 1000 / 60}min)`);
-  seedPizzint().catch((e) => console.warn('[PizzINT] Initial seed error:', e?.message || e));
+  maybeBootSeed('PizzINT', 'seed-meta:intelligence:pizzint', PIZZINT_SEED_INTERVAL_MS, seedPizzint).catch((e) => console.warn('[PizzINT] Initial seed error:', e?.message || e));
   setInterval(() => {
     seedPizzint().catch((e) => console.warn('[PizzINT] Seed error:', e?.message || e));
   }, PIZZINT_SEED_INTERVAL_MS).unref?.();
@@ -6725,7 +6776,7 @@ function startDodoPriceSeedLoop() {
   if (!UPSTASH_ENABLED) { console.log('[DodoPrices] Disabled (no Upstash Redis)'); return; }
   if (!DODO_PRICE_API_KEY) { console.log('[DodoPrices] Disabled (no DODO_API_KEY)'); return; }
   console.log(`[DodoPrices] Seed loop starting (interval ${DODO_PRICE_SEED_INTERVAL_MS / 1000 / 60}min)`);
-  seedDodoPrices().catch((e) => console.warn('[DodoPrices] Initial seed error:', e?.message || e));
+  maybeBootSeed('DodoPrices', 'seed-meta:product-catalog', DODO_PRICE_SEED_INTERVAL_MS, seedDodoPrices).catch((e) => console.warn('[DodoPrices] Initial seed error:', e?.message || e));
   setInterval(() => {
     seedDodoPrices().catch((e) => console.warn('[DodoPrices] Seed error:', e?.message || e));
   }, DODO_PRICE_SEED_INTERVAL_MS).unref?.();
@@ -7741,7 +7792,7 @@ async function seedChokepointTransits() {
 }
 
 setTimeout(() => {
-  seedChokepointTransits().catch(err => console.error('[Transit] Initial seed error:', err.message));
+  maybeBootSeed('Transit', 'seed-meta:supply_chain:chokepoint_transits', CHOKEPOINT_TRANSIT_INTERVAL_MS, seedChokepointTransits).catch(err => console.error('[Transit] Initial seed error:', err.message));
 }, 30_000);
 setInterval(() => {
   seedChokepointTransits().catch(err => console.error('[Transit] Seed error:', err.message));
@@ -7897,7 +7948,7 @@ async function seedTransitSummaries() {
 
 // Seed transit summaries every 10 min (same as transit counter)
 setTimeout(() => {
-  seedTransitSummaries().catch(e => console.warn('[TransitSummary] Initial seed error:', e?.message || e));
+  maybeBootSeed('TransitSummary', 'seed-meta:supply_chain:transit-summaries', TRANSIT_SUMMARY_INTERVAL_MS, seedTransitSummaries).catch(e => console.warn('[TransitSummary] Initial seed error:', e?.message || e));
 }, 35_000);
 setInterval(() => {
   seedTransitSummaries().catch(e => console.warn('[TransitSummary] Seed error:', e?.message || e));
