@@ -394,6 +394,8 @@ function countScoredRealtimeComponents(scores: ReturnType<typeof computeCIIScore
 }
 
 const TREND_TEST_NOW = 1_700_000_000_000;
+const CII_TEST_DAY_MS = 24 * 60 * 60 * 1000;
+const UCDP_TEST_WINDOW_MS = 2 * 365 * CII_TEST_DAY_MS;
 
 function priorCiiScore(region: string, combinedScore: number, computedAt = TREND_TEST_NOW - CII_TREND_TARGET_AGE_MS) {
   return {
@@ -778,6 +780,36 @@ describe('CII scoring', () => {
     auxQuiet.ucdpEvents = [{ country: 'Brazil', violenceType: 'UCDP_VIOLENCE_TYPE_NON_STATE', deathsBest: 1, dateStart: Date.now() }];
     const br = scoreFor(computeCIIScores([], auxQuiet), 'BR')!;
     assert.ok(br.combinedScore < 50, `BR with a single quiet UCDP event must not reach the minor floor, got ${br.combinedScore}`);
+  });
+
+  it('UCDP date guard ignores future and non-finite dates for conflict floors', () => {
+    const baseline = scoreFor(computeCIIScores([], emptyAux(), { nowMs: TREND_TEST_NOW }), 'UA')!;
+    const aux = emptyAux();
+    aux.ucdpEvents = [
+      ucdpEvent('Ukraine', 2000, TREND_TEST_NOW + 365 * CII_TEST_DAY_MS),
+      ucdpEvent('Ukraine', 2000, Number.NaN),
+      { country: 'Ukraine', violenceType: 'UCDP_VIOLENCE_TYPE_STATE_BASED', deathsBest: 2000 },
+    ];
+
+    const ua = scoreFor(computeCIIScores([], aux, { nowMs: TREND_TEST_NOW }), 'UA')!;
+    assert.equal(
+      ua.combinedScore,
+      baseline.combinedScore,
+      `future/non-finite UCDP rows must not impose a war floor; got ${ua.combinedScore} vs baseline ${baseline.combinedScore}`,
+    );
+    assert.ok(ua.combinedScore < 70, `future-dated UCDP row must not trigger war floor, got ${ua.combinedScore}`);
+  });
+
+  it('UCDP date guard preserves valid current and trailing-window conflict floors', () => {
+    for (const dateStart of [
+      TREND_TEST_NOW,
+      TREND_TEST_NOW - UCDP_TEST_WINDOW_MS + CII_TEST_DAY_MS,
+    ]) {
+      const aux = emptyAux();
+      aux.ucdpEvents = [ucdpEvent('Ukraine', 2000, dateStart)];
+      const ua = scoreFor(computeCIIScores([], aux, { nowMs: TREND_TEST_NOW }), 'UA')!;
+      assert.ok(ua.combinedScore >= 70, `valid UCDP date ${dateStart} must still trigger war floor, got ${ua.combinedScore}`);
+    }
   });
 
   it('advisory do-not-travel floor: composite >= 60', () => {
@@ -1526,9 +1558,22 @@ describe('CII scoring', () => {
     );
   });
 
+  it('riskScores UCDP health coverage ignores future-dated conflict rows', () => {
+    const aux = emptyAux();
+    aux.ucdpEvents = [ucdpEvent('Ukraine', 1500, TREND_TEST_NOW + 365 * CII_TEST_DAY_MS)];
+    aux.newsTopStories = [{ countryCode: 'GB', threatLevel: 'high', primaryTitle: 'UK security alert' }];
+    aux.cyber = [{ country: 'US', severity: 'CRITICALITY_LEVEL_CRITICAL' }];
+
+    assert.equal(
+      countCiiRealtimeSignalDensityCoverage([], aux, TREND_TEST_NOW),
+      2,
+      'future-dated UCDP rows must not satisfy the conflict family when ACLED is empty',
+    );
+  });
+
   it('riskScores UCDP health coverage uses the supplied clock', () => {
     const aux = emptyAux();
-    aux.ucdpEvents = [ucdpEvent('Ukraine', 1500, TREND_TEST_NOW - 24 * 60 * 60 * 1000)];
+    aux.ucdpEvents = [ucdpEvent('Ukraine', 1500, TREND_TEST_NOW - CII_TEST_DAY_MS)];
     aux.newsTopStories = [{ countryCode: 'GB', threatLevel: 'high', primaryTitle: 'UK security alert' }];
     aux.cyber = [{ country: 'US', severity: 'CRITICALITY_LEVEL_CRITICAL' }];
 

@@ -444,6 +444,14 @@ const UCDP_CLASSIFICATION_WINDOW_MS = 2 * 365 * 24 * 60 * 60 * 1000;
 
 type UcdpIntensity = 'minor' | 'war';
 
+function isRecentUcdpClassificationDate(dateStart: unknown, nowMs: number): boolean {
+  const eventMs = finiteNumber(dateStart);
+  return eventMs !== null
+    && Number.isFinite(nowMs)
+    && eventMs <= nowMs
+    && nowMs - eventMs < UCDP_CLASSIFICATION_WINDOW_MS;
+}
+
 /**
  * Classify each Tier-1 country's live UCDP conflict intensity from the cached event list,
  * matching the frontend `deriveUcdpClassifications` heuristic. Returns only countries that
@@ -466,7 +474,7 @@ function deriveUcdpIntensityByRegion(
   for (const [countryName, events] of eventsByCountryName) {
     const code = normalizeCountryName(countryName);
     if (!code || !isTier1CountryCode(code)) continue;
-    const recent = events.filter((e) => nowMs - (safeNum(e?.dateStart)) < UCDP_CLASSIFICATION_WINDOW_MS);
+    const recent = events.filter((e) => isRecentUcdpClassificationDate(e?.dateStart, nowMs));
     const totalDeaths = recent.reduce((sum, e) => sum + safeNonNegativeNum(e?.deathsBest), 0);
     const eventCount = recent.length;
     let intensity: UcdpIntensity | null = null;
