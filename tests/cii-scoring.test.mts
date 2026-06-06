@@ -369,7 +369,7 @@ describe('CII scoring', () => {
 
   it('advisory do-not-travel floor: composite >= 60', () => {
     const scores = computeCIIScores([], emptyAux());
-    for (const code of ['UA', 'SY', 'YE', 'MM']) {
+    for (const code of ['UA', 'SY', 'YE', 'MM', 'KP']) {
       const s = scoreFor(scores, code)!;
       assert.ok(s.combinedScore >= 60, `${code} score ${s.combinedScore} should be >= 60 (do-not-travel)`);
     }
@@ -377,7 +377,7 @@ describe('CII scoring', () => {
 
   it('advisory reconsider floor: composite >= 50', () => {
     const scores = computeCIIScores([], emptyAux());
-    for (const code of ['MX', 'IR', 'PK', 'VE', 'CU']) {
+    for (const code of ['MX', 'IR', 'PK', 'VE', 'CU', 'CN']) {
       const s = scoreFor(scores, code)!;
       assert.ok(s.combinedScore >= 50, `${code} score ${s.combinedScore} should be >= 50 (reconsider)`);
     }
@@ -514,6 +514,32 @@ describe('CII scoring', () => {
     assert.ok(us.combinedScore >= 2 && us.combinedScore <= 10, `US baseline score ${us.combinedScore} should be ~2-10`);
   });
 
+  it('clamps negative upstream counts before score math', () => {
+    const aux = emptyAux();
+    aux.militaryCii = {
+      UA: {
+        ownFlights: -5,
+        foreignFlights: -3,
+        ownVessels: -2,
+        foreignVessels: -1,
+        aisDisruptionHigh: -4,
+        aisDisruptionElevated: -8,
+        aisDisruptionLow: -13,
+      },
+    };
+    aux.orefData = { activeAlertCount: -5, historyCount24h: -12 };
+    aux.threatSummaryByCountry = { UA: { critical: -2, high: -3, medium: -5, low: -8, info: -13 } };
+    aux.sanctionsCountryCounts = { UA: -200 };
+
+    const scores = computeCIIScores([acledEvent('Ukraine', 'Battles', -9)], aux, { nowMs: TREND_TEST_NOW });
+    const ua = scoreFor(scores, 'UA')!;
+
+    assert.equal(Number.isFinite(ua.combinedScore), true, 'negative fatalities must not produce NaN scores');
+    assert.equal(Number.isFinite(ua.components!.ciiContribution), true, 'negative counts must not produce NaN components');
+    assert.ok(ua.components!.militaryActivity >= 0, 'negative military counts must not lower security below zero');
+    assert.ok(ua.components!.newsActivity >= 0, 'negative threat counts must not lower news below zero');
+  });
+
   it('cold-start emits flat movement instead of baseline delta', () => {
     const us = scoreFor(computeCIIScores([], emptyAux(), { nowMs: TREND_TEST_NOW }), 'US')!;
     assert.notEqual(us.combinedScore - us.staticBaseline, 0, 'fixture should have a non-zero structural baseline gap');
@@ -624,11 +650,15 @@ describe('CII scoring', () => {
       'get-risk-scores.ts',
     );
     const handlerSource = readFileSync(handlerPath, 'utf8');
-    const freshGateIndex = handlerSource.indexOf("if (source === 'fresh')");
-    const trendPersistIndex = handlerSource.indexOf('await persistCiiTrendSnapshot(result)');
+    const freshGateIndex = handlerSource.indexOf("if (source === 'fresh' && leader)");
+    const trendPersistIndex = handlerSource.indexOf('persistCiiTrendSnapshot(result)');
 
     assert.match(handlerSource, /readCiiTrendPriorScores\(nowMs\)/);
     assert.doesNotMatch(handlerSource, /priorRiskScores/);
+    assert.match(handlerSource, /recordCiiTrendPriorGap\(nowMs\)/,
+      'fresh computations without a valid 24h prior must leave an operator-visible trend gap signal');
+    assert.match(handlerSource, /Promise\.all\(writes\.map/,
+      'leader-only post-fetch writes should run in parallel instead of serially');
     assert.ok(trendPersistIndex > freshGateIndex, 'trend history writes must be gated to fresh upstream computations');
   });
 

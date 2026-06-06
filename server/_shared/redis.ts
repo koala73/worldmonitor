@@ -588,24 +588,24 @@ export async function cachedFetchJsonWithMeta<T extends object>(
   fetcher: () => Promise<T | null>,
   negativeTtlSeconds = 120,
   opts?: { usage?: UsageHook; timeoutMs?: number },
-): Promise<{ data: T | null; source: 'cache' | 'fresh' }> {
+): Promise<{ data: T | null; source: 'cache' | 'fresh'; leader: boolean }> {
   const cached = await readCachedJson(key);
   if (cached.status === 'hit') {
-    if (cached.value === NEG_SENTINEL) return { data: null, source: 'cache' };
-    return { data: cached.value as T, source: 'cache' };
+    if (cached.value === NEG_SENTINEL) return { data: null, source: 'cache', leader: false };
+    return { data: cached.value as T, source: 'cache', leader: false };
   }
   const localPositive = readLocalPositiveFallback(key);
-  if (localPositive !== undefined) return { data: localPositive as T, source: 'cache' };
+  if (localPositive !== undefined) return { data: localPositive as T, source: 'cache', leader: false };
   const hadCacheReadError = cached.status === 'error';
   if (cached.status === 'error') {
     logCacheReadError(key, cached.error);
-    if (hasLocalNegativeCooldown(key)) return { data: null, source: 'cache' };
+    if (hasLocalNegativeCooldown(key)) return { data: null, source: 'cache', leader: false };
   }
 
   const existing = inflight.get(key);
   if (existing) {
     const data = (await existing) as T | null;
-    return { data, source: 'fresh' };
+    return { data, source: 'fresh', leader: false };
   }
 
   const fetchT0 = Date.now();
@@ -657,7 +657,7 @@ export async function cachedFetchJsonWithMeta<T extends object>(
   } finally {
     emitUpstreamFromHook(opts?.usage, upstreamStatus, Date.now() - fetchT0, cacheStatus);
   }
-  return { data, source: 'fresh' };
+  return { data, source: 'fresh', leader: true };
 }
 
 function emitUpstreamFromHook(usage: UsageHook | undefined, status: number, durationMs: number, cacheStatus: 'miss' | 'fresh' | 'stale-while-revalidate' | 'neg-sentinel'): void {

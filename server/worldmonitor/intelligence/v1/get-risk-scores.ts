@@ -136,7 +136,8 @@ export const ZONE_COUNTRY_MAP: Record<string, string[]> = {
 
 const ADVISORY_LEVELS_FALLBACK: Record<string, 'do-not-travel' | 'reconsider' | 'caution'> = {
   UA: 'do-not-travel', SY: 'do-not-travel', YE: 'do-not-travel', MM: 'do-not-travel',
-  IL: 'reconsider', IR: 'reconsider', PK: 'reconsider', VE: 'reconsider', CU: 'reconsider', MX: 'reconsider',
+  KP: 'do-not-travel',
+  IL: 'reconsider', IR: 'reconsider', PK: 'reconsider', VE: 'reconsider', CU: 'reconsider', MX: 'reconsider', CN: 'reconsider',
   RU: 'caution', TR: 'caution', IQ: 'reconsider', AF: 'do-not-travel', LB: 'reconsider',
 };
 
@@ -280,6 +281,10 @@ export function geoToCountry(lat: number, lon: number): string | null {
 function safeNum(v: unknown): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
+}
+
+function safeNonNegativeNum(v: unknown): number {
+  return Math.max(0, safeNum(v));
 }
 
 function logScaledScore(raw: number, cap: number, pivot: number): number {
@@ -558,8 +563,8 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
 
   let orefData: AuxiliarySources['orefData'] = null;
   if (orefRaw && typeof orefRaw === 'object') {
-    const alertCount = safeNum((orefRaw as any).activeAlertCount);
-    const histCount = safeNum((orefRaw as any).historyCount24h);
+    const alertCount = safeNonNegativeNum((orefRaw as any).activeAlertCount);
+    const histCount = safeNonNegativeNum((orefRaw as any).historyCount24h);
     orefData = { activeAlertCount: alertCount, historyCount24h: histCount };
   }
 
@@ -568,14 +573,14 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   const dispCountries: any[] = arr(displacementRaw, 'countries');
   for (const c of dispCountries) {
     const iso3 = String(c.code || '').toUpperCase();
-    if (iso3) displacedByIso3[iso3] = safeNum(c.totalDisplaced);
+    if (iso3) displacedByIso3[iso3] = safeNonNegativeNum(c.totalDisplaced);
   }
   // Also try nested summary.countries (seed wraps in { summary: { countries: [...] } })
   if (dispCountries.length === 0) {
     const summaryCountries: any[] = arr((displacementRaw as any)?.summary, 'countries');
     for (const c of summaryCountries) {
       const iso3 = String(c.code || '').toUpperCase();
-      if (iso3) displacedByIso3[iso3] = safeNum(c.totalDisplaced);
+      if (iso3) displacedByIso3[iso3] = safeNonNegativeNum(c.totalDisplaced);
     }
   }
 
@@ -595,7 +600,7 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   if (sanctionsCountsRaw && typeof sanctionsCountsRaw === 'object' && !Array.isArray(sanctionsCountsRaw)) {
     for (const [rawCode, rawCount] of Object.entries(sanctionsCountsRaw as Record<string, unknown>)) {
       const code = String(rawCode || '').toUpperCase();
-      const count = safeNum(rawCount);
+      const count = safeNonNegativeNum(rawCount);
       if (/^[A-Z]{2}$/.test(code) && count > 0) sanctionsCountryCounts[code] = count;
     }
   }
@@ -656,12 +661,13 @@ export function computeCIIScores(
     if (!code || !data[code]) continue;
     const type = ev.event_type.toLowerCase();
     const weight = (ev.daysAgo ?? 0) <= 7 ? 1.0 : 0.4;
-    const fat = safeNum(ev.fatalities) * weight;
+    const fatalities = safeNonNegativeNum(ev.fatalities);
+    const fat = fatalities * weight;
     if (type.includes('protest')) {
       data[code].protests += weight;
       data[code].protestFatalities += fat;
       // High-severity = the event killed someone (classifySeverity rule).
-      if (safeNum(ev.fatalities) > 0) data[code].highSeverityUnrest += weight;
+      if (fatalities > 0) data[code].highSeverityUnrest += weight;
     } else if (type.includes('riot')) {
       data[code].riots += weight;
       data[code].protestFatalities += fat;
@@ -736,7 +742,7 @@ export function computeCIIScores(
     if (!code || !data[code]) continue;
     data[code].fireCount++;
     // "High" fire — bright or high radiative power (Phase 3b / D8, matches the frontend).
-    if (safeNum(f.brightness) >= 360 || safeNum(f.frp) >= 50) data[code].fireHighCount++;
+    if (safeNonNegativeNum(f.brightness) >= 360 || safeNonNegativeNum(f.frp) >= 50) data[code].fireHighCount++;
   }
 
   // --- GPS hex severity split ---
@@ -766,7 +772,7 @@ export function computeCIIScores(
   // --- Earthquakes (Phase 1) — magnitude >= 5.5, within 7-day lookback ---
   const eqCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
   for (const eq of aux.earthquakes ?? []) {
-    const mag = safeNum(eq.magnitude);
+    const mag = safeNonNegativeNum(eq.magnitude);
     if (mag < 5.5) continue;
     if (safeNum(eq.occurredAt) < eqCutoff) continue;
     const code = geoToCountry(safeNum(eq.location?.latitude), safeNum(eq.location?.longitude));
@@ -783,7 +789,7 @@ export function computeCIIScores(
   for (const [rawCode, rawCount] of Object.entries(fullSanctionsCounts ?? {})) {
     const code = String(rawCode || '').toUpperCase();
     if (!data[code]) continue;
-    data[code].sanctionsEntryCount = safeNum(rawCount);
+    data[code].sanctionsEntryCount = safeNonNegativeNum(rawCount);
   }
   for (const c of aux.sanctionsCountries ?? []) {
     const code = String(c.countryCode || '').toUpperCase();
@@ -791,9 +797,9 @@ export function computeCIIScores(
     // Accumulate (not assign): the producer keys per-country rows by `code:name`, so one
     // ISO2 can appear in multiple rows when the source spells the name differently.
     if (!fullSanctionsCounts || !Object.prototype.hasOwnProperty.call(fullSanctionsCounts, code)) {
-      data[code].sanctionsEntryCount += safeNum(c.entryCount);
+      data[code].sanctionsEntryCount += safeNonNegativeNum(c.entryCount);
     }
-    data[code].sanctionsNewEntryCount += safeNum(c.newEntryCount);
+    data[code].sanctionsNewEntryCount += safeNonNegativeNum(c.newEntryCount);
   }
 
   // --- Temporal anomalies (Phase 1) — region is ISO2 or country name; skip 'global' ---
@@ -810,13 +816,13 @@ export function computeCIIScores(
   for (const [code, m] of Object.entries(aux.militaryCii ?? {})) {
     const d = data[code];
     if (!d || !m || typeof m !== 'object') continue;
-    d.militaryOwnFlights = safeNum((m as any).ownFlights);
-    d.militaryForeignFlights = safeNum((m as any).foreignFlights);
-    d.militaryOwnVessels = safeNum((m as any).ownVessels);
-    d.militaryForeignVessels = safeNum((m as any).foreignVessels);
-    d.aisDisruptionHighCount = safeNum((m as any).aisDisruptionHigh);
-    d.aisDisruptionElevatedCount = safeNum((m as any).aisDisruptionElevated);
-    d.aisDisruptionLowCount = safeNum((m as any).aisDisruptionLow);
+    d.militaryOwnFlights = safeNonNegativeNum((m as any).ownFlights);
+    d.militaryForeignFlights = safeNonNegativeNum((m as any).foreignFlights);
+    d.militaryOwnVessels = safeNonNegativeNum((m as any).ownVessels);
+    d.militaryForeignVessels = safeNonNegativeNum((m as any).foreignVessels);
+    d.aisDisruptionHighCount = safeNonNegativeNum((m as any).aisDisruptionHigh);
+    d.aisDisruptionElevatedCount = safeNonNegativeNum((m as any).aisDisruptionElevated);
+    d.aisDisruptionLowCount = safeNonNegativeNum((m as any).aisDisruptionLow);
   }
 
   // --- Iran strikes with severity ---
@@ -859,7 +865,7 @@ export function computeCIIScores(
       if (!signals) continue;
       let score = 0;
       for (const [lvl, w] of Object.entries(SUMMARY_WEIGHT)) {
-        score += (counts[lvl as keyof typeof counts] || 0) * w;
+        score += safeNonNegativeNum(counts[lvl as keyof typeof counts]) * w;
       }
       signals.threatSummaryScore = Math.min(20, score);
     }
@@ -1179,6 +1185,20 @@ async function readCiiTrendPriorScores(nowMs: number): Promise<CiiScore[] | null
   return selectCiiTrendPriorSnapshot(snapshots, nowMs)?.ciiScores ?? null;
 }
 
+const CII_TREND_PRIOR_GAP_LOG_THROTTLE_MS = 10 * 60 * 1000;
+let lastCiiTrendPriorGapLogAt = 0;
+
+function recordCiiTrendPriorGap(nowMs: number): void {
+  if (nowMs - lastCiiTrendPriorGapLogAt < CII_TREND_PRIOR_GAP_LOG_THROTTLE_MS) return;
+  lastCiiTrendPriorGapLogAt = nowMs;
+  console.info('[cii] trend prior unavailable; returning stable movement labels until 24h trend history is populated', {
+    nowMs,
+    candidateBuckets: getCiiTrendPriorCandidateBuckets(nowMs),
+    targetAgeMs: CII_TREND_TARGET_AGE_MS,
+    bucketMs: CII_TREND_BUCKET_MS,
+  });
+}
+
 async function persistCiiTrendSnapshot(response: GetRiskScoresResponse): Promise<void> {
   const snapshot = ciiTrendSnapshotFromResponse(response);
   if (!snapshot) return;
@@ -1199,7 +1219,7 @@ export async function getRiskScores(
   req: GetRiskScoresRequest,
 ): Promise<GetRiskScoresResponse> {
   try {
-    const { data: result, source } = await cachedFetchJsonWithMeta<GetRiskScoresResponse>(
+    const { data: result, source, leader } = await cachedFetchJsonWithMeta<GetRiskScoresResponse>(
       RISK_CACHE_KEY,
       RISK_CACHE_TTL,
       async () => {
@@ -1209,14 +1229,15 @@ export async function getRiskScores(
           fetchAuxiliarySources(),
           readCiiTrendPriorScores(nowMs),
         ]);
+        if (!priorCiiScores?.length) recordCiiTrendPriorGap(nowMs);
         const ciiScores = computeCIIScores(acled, aux, { priorScores: priorCiiScores, nowMs });
         const strategicRisks = computeStrategicRisks(ciiScores);
         return { ciiScores, strategicRisks };
       },
     );
     if (result) {
-      await setCachedJson(RISK_STALE_CACHE_KEY, result, RISK_STALE_TTL).catch(() => {});
-      // Write seed-meta on every FRESH upstream fetch so /api/health.riskScores
+      // Write stale fallback, trend history, and seed-meta on every FRESH upstream
+      // fetch by the true in-process leader so /api/health.riskScores
       // stays green from real user traffic, independent of the ais-relay
       // CII warm-ping. Pre-2026-05-02 the warm-ping was the SOLE writer of
       // this seed-meta — when the relay → api.worldmonitor.app auth path
@@ -1226,8 +1247,10 @@ export async function getRiskScores(
       // via real user traffic. This brings riskScores into the same pattern
       // as those two: defense-in-depth, no single point of freshness failure.
       //
-      // Gated on source === 'fresh' (PR #3562 review P2): cachedFetchJsonWithMeta
-      // returns immediately on cache hits with `source: 'cache'`. Stamping
+      // Gated on source === 'fresh' && leader (PR #3562 review P2 + CII P3
+      // runtime polish): cachedFetchJsonWithMeta returns immediately on cache
+      // hits with `source: 'cache'`, and concurrent followers of the same miss
+      // get `leader: false`. Stamping
       // `fetchedAt: Date.now()` on cache hits would conflate "data was
       // recently re-fetched" with "data was recently served," letting
       // health.riskScores stay fresh even when upstream stopped responding
@@ -1237,16 +1260,20 @@ export async function getRiskScores(
       // hit). Only stamp on actual upstream re-fetches.
       // 7-day TTL matches the warm-ping write so health.maxStaleMin (30min)
       // logic is unchanged.
-      if (source === 'fresh') {
-        await persistCiiTrendSnapshot(result).catch(() => {});
+      if (source === 'fresh' && leader) {
         const count = result.ciiScores?.length || 0;
+        const writes: Array<Promise<unknown>> = [
+          setCachedJson(RISK_STALE_CACHE_KEY, result, RISK_STALE_TTL),
+          persistCiiTrendSnapshot(result),
+        ];
         if (count > 0) {
-          await setCachedJson(
+          writes.push(setCachedJson(
             'seed-meta:intelligence:risk-scores',
             { fetchedAt: Date.now(), recordCount: count },
             604800,
-          ).catch(() => {});
+          ));
         }
+        await Promise.all(writes.map((write) => write.catch(() => undefined)));
       }
       return filterRiskScoresResponse(result, req.region);
     }

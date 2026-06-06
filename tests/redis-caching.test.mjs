@@ -224,11 +224,12 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
     };
 
     try {
-      const { data, source } = await redis.cachedFetchJsonWithMeta('meta:test:miss', 60, async () => {
+      const { data, source, leader } = await redis.cachedFetchJsonWithMeta('meta:test:miss', 60, async () => {
         return { value: 'fresh-data' };
       });
 
       assert.equal(source, 'fresh', 'should report source=fresh on cache miss');
+      assert.equal(leader, true, 'cache miss caller that runs the fetcher should be marked leader');
       assert.deepEqual(data, { value: 'fresh-data' });
     } finally {
       globalThis.fetch = originalFetch;
@@ -236,7 +237,7 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
     }
   });
 
-  it('reports source=fresh for ALL coalesced concurrent callers', async () => {
+  it('reports source=fresh for all coalesced callers but marks only the fetch leader', async () => {
     const redis = await importRedisFresh();
     const restoreEnv = withEnv({
       UPSTASH_REDIS_REST_URL: 'https://redis.test',
@@ -271,6 +272,7 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
       assert.equal(a.source, 'fresh', 'leader should report fresh');
       assert.equal(b.source, 'fresh', 'follower 1 should report fresh (not cache)');
       assert.equal(c.source, 'fresh', 'follower 2 should report fresh (not cache)');
+      assert.equal([a, b, c].filter((r) => r.leader).length, 1, 'only one coalesced caller should be the write leader');
       assert.deepEqual(a.data, { value: 'coalesced' });
       assert.deepEqual(b.data, { value: 'coalesced' });
       assert.deepEqual(c.data, { value: 'coalesced' });
