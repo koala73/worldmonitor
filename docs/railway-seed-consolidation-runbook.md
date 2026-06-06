@@ -412,6 +412,43 @@ entries.
 
 ---
 
+## Standalone seed crons added after this snapshot
+
+> These data seeds were added **after** the 2026-04-10 inventory above and each
+> runs as its own Railway nixpacks cron service (root directory `.`, start
+> command `node scripts/<file>`, watch paths `scripts/**`, `shared/**`). They
+> are intentionally **not** part of the 100-service inventory count above and
+> are not in `scripts/railway-services.json` (the registry only covers bundles,
+> Dockerfile services, and long-running workers — standalone crons live here in
+> the runbook, like the 43 above).
+>
+> **Cadence below is inferred from each seed's cache TTL** as a documentation
+> aid; confirm the live cron schedule and Service ID against the Railway
+> dashboard before relying on it.
+
+| Service | Start command | Inferred cadence | Domain |
+|---|---|---|---|
+| seed-aaii-sentiment | `node scripts/seed-aaii-sentiment.mjs` | weekly (7d TTL) | AAII bull/bear investor sentiment survey |
+| seed-market-quotes | `node scripts/seed-market-quotes.mjs` | ~30 min (30m TTL) | Equity index / stock bootstrap quotes (Yahoo + Finnhub + Alpha Vantage) |
+| seed-commodity-quotes | `node scripts/seed-commodity-quotes.mjs` | ~30 min (30m TTL) | Commodity + extended-gold bootstrap quotes |
+| seed-crypto-sectors | `node scripts/seed-crypto-sectors.mjs` | hourly (1h TTL) | CoinGecko crypto sector performance |
+| seed-market-breadth | `node scripts/seed-market-breadth.mjs` | daily (30d history window) | S&P 500 breadth (% above 20/50/200-day, Barchart) |
+| seed-weather-alerts | `node scripts/seed-weather-alerts.mjs` | ~15 min (15m TTL) | NWS active weather alerts |
+| seed-fx-yoy | `node scripts/seed-fx-yoy.mjs` | daily (25h TTL) | Wide-coverage FX YoY + 24m drawdown (resilience FX-stress inputs) |
+| seed-comtrade-bilateral-hs4 | `node scripts/seed-comtrade-bilateral-hs4.mjs` | periodic (72h TTL) | UN Comtrade bilateral HS4 trade flows |
+| seed-hs2-chokepoint-exposure | `node scripts/seed-hs2-chokepoint-exposure.mjs` | periodic (TTL-extended) | HS2 chokepoint trade-exposure (derived) |
+| seed-service-statuses | `node scripts/seed-service-statuses.mjs` | frequent (relay-fallback) | Service-status warm-ping; primary seeder is the AIS relay loop |
+
+**Not standalone services (documented here to avoid confusion):**
+
+- `scripts/seed-chokepoint-flows.mjs` — spawned in-process by the AIS relay
+  (`ais-relay.cjs`), not deployed as its own cron.
+- `scripts/seed-military-maritime-news.mjs` — this is the script behind the
+  existing `seed-military-maritime` standalone cron (USNI/NGA warm-ping) listed
+  in the inventory above.
+
+---
+
 ## Execution Order (recommended)
 
 Start with lowest-risk, highest-savings bundles.

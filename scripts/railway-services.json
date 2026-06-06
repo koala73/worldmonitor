@@ -61,25 +61,25 @@
     "entry": "scripts/seed-bundle-ecb-eu.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-ecb-eu",
-    "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-ecb-eu"
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-1-seed-bundle-ecb-eu"
   },
   {
     "entry": "scripts/seed-bundle-portwatch.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-portwatch",
-    "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-portwatch"
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-2-seed-bundle-portwatch"
   },
   {
     "entry": "scripts/seed-bundle-static-ref.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-static-ref",
-    "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-static-ref"
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-3-seed-bundle-static-ref"
   },
   {
     "entry": "scripts/seed-bundle-resilience.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-resilience",
-    "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-resilience"
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-4-seed-bundle-resilience"
   },
   {
     "entry": "scripts/seed-bundle-resilience-recovery.mjs",
@@ -97,43 +97,43 @@
     "entry": "scripts/seed-bundle-derived-signals.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-derived-signals",
-    "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-derived-signals"
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-5-seed-bundle-derived-signals"
   },
   {
     "entry": "scripts/seed-bundle-climate.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-climate",
-    "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-climate"
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-6-seed-bundle-climate"
   },
   {
     "entry": "scripts/seed-bundle-energy-sources.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-energy-sources",
-    "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-energy-sources"
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-7-seed-bundle-energy-sources"
   },
   {
     "entry": "scripts/seed-bundle-macro.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-macro",
-    "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-macro"
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-8-seed-bundle-macro"
   },
   {
     "entry": "scripts/seed-bundle-health.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-health",
-    "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-health"
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-9-seed-bundle-health"
   },
   {
     "entry": "scripts/seed-bundle-market-backup.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-market-backup",
-    "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-market-backup"
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-10-seed-bundle-market-backup"
   },
   {
     "entry": "scripts/seed-bundle-relay-backup.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-relay-backup",
-    "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-relay-backup"
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-11-seed-bundle-relay-backup"
   },
   {
     "entry": "scripts/scenario-worker.mjs",
