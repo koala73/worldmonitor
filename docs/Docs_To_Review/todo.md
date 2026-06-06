@@ -193,14 +193,16 @@ Overlay the map with country-colored fills based on CII score.
 | **Depends on** | — |
 
 **Description**
-CII currently monitors 20 hardcoded Tier 1 countries.
-Allow users to add custom countries to a Tier 2 watchlist with the same scoring pipeline.
+CII currently publishes server-authoritative v5 scores for 31 Tier-1 countries
+from `shared/cii-weights.ts`, then the browser ingests the cached risk-score
+feed with a local `country-instability.ts` fallback. This TODO is only current
+if reframed as user-defined Tier 2 monitoring layered on top of that contract.
 
 **AI instructions**
 
 1. Add a "+" button in the CII panel to search and add countries by name.
 2. Store Tier 2 list in localStorage.
-3. Run the same `calculateCII()` pipeline for Tier 2 countries (without conflict-zone floor scores).
+3. Define whether Tier 2 scores are server/API-backed or explicitly local-only fallback scores.
 4. Display Tier 2 countries in a collapsible sub-section of the CII panel.
 
 ---
