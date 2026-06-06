@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
+import ts from 'typescript';
 
 import { CURATED_COUNTRIES, TIER1_COUNTRIES } from '../src/config/countries.ts';
 import {
@@ -53,32 +54,98 @@ function readRepoFile(path: string): string {
   return readFileSync(resolve(REPO_ROOT, path), 'utf8');
 }
 
-function extractFunctionBody(source: string, functionName: string): string {
-  const signatureStart = source.indexOf(`function ${functionName}(`);
-  assert.notEqual(signatureStart, -1, `missing function ${functionName}`);
-  const bodyStart = source.indexOf('{', signatureStart);
-  assert.notEqual(bodyStart, -1, `missing body for function ${functionName}`);
+interface ScoreLevelCutoff {
+  min: number;
+  level: string;
+}
 
-  let depth = 0;
-  for (let i = bodyStart; i < source.length; i++) {
-    const ch = source[i];
-    if (ch === '{') depth++;
-    if (ch === '}') depth--;
-    if (depth === 0) return source.slice(bodyStart + 1, i);
+interface ParsedScoreLevelFunction {
+  cutoffs: ScoreLevelCutoff[];
+  fallback: string;
+}
+
+function findFunctionDeclaration(sourceFile: ts.SourceFile, functionName: string): ts.FunctionDeclaration {
+  let found: ts.FunctionDeclaration | null = null;
+
+  function visit(node: ts.Node): void {
+    if (ts.isFunctionDeclaration(node) && node.name?.text === functionName) {
+      found = node;
+      return;
+    }
+    ts.forEachChild(node, visit);
   }
-  throw new Error(`unterminated function ${functionName}`);
+
+  visit(sourceFile);
+  assert.ok(found, `missing function declaration: ${functionName}`);
+  return found;
 }
 
-function extractScoreLevelCutoffs(source: string, functionName: string) {
-  const body = extractFunctionBody(source, functionName);
-  return Array.from(body.matchAll(/if\s*\(\s*score\s*>=\s*(\d+)\s*\)\s*return\s*'([^']+)'/g))
-    .map((match) => ({ min: Number(match[1]), level: match[2] }));
+function getReturnString(statement: ts.Statement): string | null {
+  const returnStatement = ts.isBlock(statement)
+    ? statement.statements.length === 1 && ts.isReturnStatement(statement.statements[0])
+      ? statement.statements[0]
+      : null
+    : ts.isReturnStatement(statement)
+      ? statement
+      : null;
+
+  const expression = returnStatement?.expression;
+  if (!expression) return null;
+  return ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)
+    ? expression.text
+    : null;
 }
 
-function evaluateScoreLevel(source: string, functionName: string, score: number): string {
-  const body = extractFunctionBody(source, functionName);
-  const fn = new Function('score', body) as (score: number) => string;
-  return fn(score);
+function getScoreCutoff(expression: ts.Expression): number | null {
+  if (!ts.isBinaryExpression(expression)) return null;
+  if (expression.operatorToken.kind !== ts.SyntaxKind.GreaterThanEqualsToken) return null;
+  if (!ts.isIdentifier(expression.left) || expression.left.text !== 'score') return null;
+  return ts.isNumericLiteral(expression.right) ? Number(expression.right.text) : null;
+}
+
+function parseScoreLevelFunction(source: string, functionName: string): ParsedScoreLevelFunction {
+  const sourceFile = ts.createSourceFile(
+    `${functionName}.ts`,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const fn = findFunctionDeclaration(sourceFile, functionName);
+  assert.ok(fn.body, `${functionName} must have a function body`);
+
+  const cutoffs: ScoreLevelCutoff[] = [];
+  let fallback: string | null = null;
+
+  for (const statement of fn.body.statements) {
+    if (ts.isIfStatement(statement)) {
+      const min = getScoreCutoff(statement.expression);
+      const level = getReturnString(statement.thenStatement);
+      assert.notEqual(min, null, `${functionName} has an unsupported cutoff condition`);
+      assert.notEqual(level, null, `${functionName} cutoff ${min} must return a string literal`);
+      cutoffs.push({ min, level });
+      continue;
+    }
+
+    if (ts.isReturnStatement(statement)) {
+      fallback = getReturnString(statement);
+    }
+  }
+
+  assert.ok(cutoffs.length > 0, `${functionName} must declare score >= cutoff returns`);
+  assert.ok(fallback, `${functionName} must end with a string fallback return`);
+  return { cutoffs, fallback };
+}
+
+function extractScoreLevelCutoffs(source: string, functionName: string): ScoreLevelCutoff[] {
+  return parseScoreLevelFunction(source, functionName).cutoffs;
+}
+
+function evaluateScoreLevel(parsed: ParsedScoreLevelFunction, score: number): string {
+  for (const cutoff of parsed.cutoffs) {
+    if (score >= cutoff.min) return cutoff.level;
+  }
+  return parsed.fallback;
 }
 
 function hashJson(value: unknown): string {
@@ -906,6 +973,8 @@ describe('CII scoring', () => {
   it('getScoreLevel uses canonical CII UI bands at 81/66/51/31', () => {
     const cachedRiskSource = readRepoFile('src/services/cached-risk-scores.ts');
     const browserCiiSource = readRepoFile('src/services/country-instability.ts');
+    const cachedScoreLevel = parseScoreLevelFunction(cachedRiskSource, 'getScoreLevel');
+    const browserScoreLevel = parseScoreLevelFunction(browserCiiSource, 'getLevel');
     const expectedCutoffs = [
       { min: 81, level: 'critical' },
       { min: 66, level: 'high' },
@@ -913,8 +982,10 @@ describe('CII scoring', () => {
       { min: 31, level: 'normal' },
     ];
 
-    assert.deepEqual(extractScoreLevelCutoffs(cachedRiskSource, 'getScoreLevel'), expectedCutoffs);
-    assert.deepEqual(extractScoreLevelCutoffs(browserCiiSource, 'getLevel'), expectedCutoffs);
+    assert.deepEqual(cachedScoreLevel.cutoffs, expectedCutoffs);
+    assert.deepEqual(browserScoreLevel.cutoffs, expectedCutoffs);
+    assert.equal(cachedScoreLevel.fallback, 'low');
+    assert.equal(browserScoreLevel.fallback, 'low');
 
     for (const [score, level] of [
       [81, 'critical'], [80, 'high'],
@@ -922,9 +993,9 @@ describe('CII scoring', () => {
       [51, 'elevated'], [50, 'normal'],
       [31, 'normal'], [30, 'low'],
     ] as const) {
-      assert.equal(evaluateScoreLevel(cachedRiskSource, 'getScoreLevel', score), level,
+      assert.equal(evaluateScoreLevel(cachedScoreLevel, score), level,
         `cached getScoreLevel(${score}) should be ${level}`);
-      assert.equal(evaluateScoreLevel(browserCiiSource, 'getLevel', score), level,
+      assert.equal(evaluateScoreLevel(browserScoreLevel, score), level,
         `browser getLevel(${score}) should be ${level}`);
     }
   });
