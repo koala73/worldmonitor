@@ -62,14 +62,14 @@ const CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION: Record<string, string> = {
   v7: '35c2d7270c6473e457d0b189e1411b9eeb0a79bfe2ae9316485ea14369c12369',
   // v8 fixes dead UCDP conflict-floor attribution: the scorer read non-existent
   // `intensity_level`/`type_of_violence` fields, so UCDP never applied a war/minor
-  // floor. The inline `parseInt(...)` classification (and its literals) moved into
-  // the `deriveUcdpIntensityByRegion` helper, changing the guarded formula-literal
-  // set inside computeCIIScores. Live scores now shift upward for UCDP conflict
-  // countries (e.g. UA/PK/MX gain a war floor).
-  v8: '19a22e58c6ff935a3370d17f59efac38dda7d95ce22505fe459b03396641dac9',
+  // floor. The classification thresholds are guarded through the expanded helper
+  // input snapshot, including `deriveUcdpIntensityByRegion` literals. Live scores
+  // now shift upward for UCDP conflict countries (e.g. UA/PK/MX gain a war floor).
+  v8: 'c03b6dbd4e28bded34a5adb1864374ee6e30dfe244288ee1f24f56fc4a4129fd',
 };
 
-const GUARDED_TOP_LEVEL_SCORE_CONST_NAMES = ['NEWS_THREAT_WEIGHT'];
+const GUARDED_TOP_LEVEL_SCORE_CONST_NAMES = ['NEWS_THREAT_WEIGHT', 'UCDP_CLASSIFICATION_WINDOW_MS'];
+const GUARDED_SCORE_FUNCTION_NAMES = ['climateSeverityScore', 'deriveUcdpIntensityByRegion', 'computeCIIScores'];
 
 function readRepoFile(path: string): string {
   return readFileSync(resolve(REPO_ROOT, path), 'utf8');
@@ -178,6 +178,181 @@ function extractScoreLevelCutoffs(source: string, functionName: string): ScoreLe
   return parseScoreLevelFunction(source, functionName).cutoffs;
 }
 
+type ScoreHelperSnapshotValue = string | number | ScoreHelperSnapshotValue[] | {
+  [key: string]: ScoreHelperSnapshotValue;
+};
+
+interface NumericConstSnapshot {
+  expression: string;
+  value: number;
+}
+
+interface ScoreHelperInputSnapshot {
+  ucdpClassificationWindowMs: NumericConstSnapshot;
+  advisoryLevelsFallback: ScoreHelperSnapshotValue;
+  zoneCountryMap: ScoreHelperSnapshotValue;
+}
+
+function requireTopLevelConstDeclaration(sourceFile: ts.SourceFile, constName: string): ts.VariableDeclaration {
+  const declaration = findTopLevelConstDeclaration(sourceFile, constName);
+  assert.ok(declaration, `missing top-level const declaration: ${constName}`);
+  assert.ok(declaration.initializer, `${constName} must have an initializer`);
+  return declaration;
+}
+
+function normalizeAstText(node: ts.Node, sourceFile: ts.SourceFile): string {
+  return node.getText(sourceFile).replace(/\s+/g, ' ').trim();
+}
+
+function propertyNameText(name: ts.PropertyName, sourceFile: ts.SourceFile): string {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) {
+    return name.text;
+  }
+  assert.fail(`unsupported object property name in helper snapshot: ${name.getText(sourceFile)}`);
+}
+
+function isSnapshotObject(value: ScoreHelperSnapshotValue): value is { [key: string]: ScoreHelperSnapshotValue } {
+  return typeof value === 'object' && !Array.isArray(value);
+}
+
+function literalExpressionSnapshot(
+  expression: ts.Expression,
+  sourceFile: ts.SourceFile,
+  resolving = new Set<string>(),
+): ScoreHelperSnapshotValue {
+  if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
+    return expression.text;
+  }
+  if (ts.isNumericLiteral(expression)) {
+    return Number(expression.text.replace(/_/g, ''));
+  }
+  if (ts.isIdentifier(expression)) {
+    const constName = expression.text;
+    assert.ok(!resolving.has(constName), `cyclic helper snapshot const reference: ${constName}`);
+    resolving.add(constName);
+    const declaration = requireTopLevelConstDeclaration(sourceFile, constName);
+    const value = literalExpressionSnapshot(declaration.initializer!, sourceFile, resolving);
+    resolving.delete(constName);
+    return value;
+  }
+  if (ts.isArrayLiteralExpression(expression)) {
+    const values: ScoreHelperSnapshotValue[] = [];
+    for (const element of expression.elements) {
+      if (ts.isSpreadElement(element)) {
+        const spreadValue = literalExpressionSnapshot(element.expression, sourceFile, resolving);
+        assert.ok(
+          Array.isArray(spreadValue),
+          `helper snapshot array spread must resolve to an array: ${element.getText(sourceFile)}`,
+        );
+        values.push(...spreadValue);
+        continue;
+      }
+      values.push(literalExpressionSnapshot(element, sourceFile, resolving));
+    }
+    return values;
+  }
+  if (ts.isObjectLiteralExpression(expression)) {
+    const entries: [string, ScoreHelperSnapshotValue][] = [];
+    for (const property of expression.properties) {
+      if (ts.isSpreadAssignment(property)) {
+        const spreadValue = literalExpressionSnapshot(property.expression, sourceFile, resolving);
+        assert.ok(
+          isSnapshotObject(spreadValue),
+          `helper snapshot object spread must resolve to an object: ${property.getText(sourceFile)}`,
+        );
+        entries.push(...Object.entries(spreadValue));
+        continue;
+      }
+      assert.ok(
+        ts.isPropertyAssignment(property),
+        `unsupported object property in helper snapshot: ${property.getText(sourceFile)}`,
+      );
+      entries.push([
+        propertyNameText(property.name, sourceFile),
+        literalExpressionSnapshot(property.initializer, sourceFile, resolving),
+      ]);
+    }
+    return Object.fromEntries(entries.sort(([a], [b]) => a.localeCompare(b)));
+  }
+  assert.fail(`unsupported helper snapshot expression: ${expression.getText(sourceFile)}`);
+}
+
+function evaluateNumericExpression(
+  expression: ts.Expression,
+  sourceFile: ts.SourceFile,
+  resolving = new Set<string>(),
+): number {
+  if (ts.isNumericLiteral(expression)) return Number(expression.text.replace(/_/g, ''));
+  if (ts.isParenthesizedExpression(expression)) {
+    return evaluateNumericExpression(expression.expression, sourceFile, resolving);
+  }
+  if (ts.isIdentifier(expression)) {
+    const constName = expression.text;
+    assert.ok(!resolving.has(constName), `cyclic numeric helper const reference: ${constName}`);
+    resolving.add(constName);
+    const declaration = requireTopLevelConstDeclaration(sourceFile, constName);
+    const value = evaluateNumericExpression(declaration.initializer!, sourceFile, resolving);
+    resolving.delete(constName);
+    return value;
+  }
+  if (
+    ts.isPrefixUnaryExpression(expression)
+    && expression.operator === ts.SyntaxKind.MinusToken
+  ) {
+    return -evaluateNumericExpression(expression.operand, sourceFile, resolving);
+  }
+  if (ts.isBinaryExpression(expression)) {
+    const left = evaluateNumericExpression(expression.left, sourceFile, resolving);
+    const right = evaluateNumericExpression(expression.right, sourceFile, resolving);
+    switch (expression.operatorToken.kind) {
+      case ts.SyntaxKind.AsteriskToken:
+        return left * right;
+      case ts.SyntaxKind.SlashToken:
+        return left / right;
+      case ts.SyntaxKind.PlusToken:
+        return left + right;
+      case ts.SyntaxKind.MinusToken:
+        return left - right;
+      default:
+        assert.fail(`unsupported numeric operator in helper snapshot: ${expression.getText(sourceFile)}`);
+    }
+  }
+  assert.fail(`unsupported numeric expression in helper snapshot: ${expression.getText(sourceFile)}`);
+}
+
+function extractNumericConstSnapshot(sourceFile: ts.SourceFile, constName: string): NumericConstSnapshot {
+  const declaration = requireTopLevelConstDeclaration(sourceFile, constName);
+  const initializer = declaration.initializer!;
+  return {
+    expression: normalizeAstText(initializer, sourceFile),
+    value: evaluateNumericExpression(initializer, sourceFile),
+  };
+}
+
+function extractTopLevelConstLiteralSnapshot(
+  sourceFile: ts.SourceFile,
+  constName: string,
+): ScoreHelperSnapshotValue {
+  const declaration = requireTopLevelConstDeclaration(sourceFile, constName);
+  return literalExpressionSnapshot(declaration.initializer!, sourceFile);
+}
+
+function extractScoreHelperInputSnapshot(source: string): ScoreHelperInputSnapshot {
+  const sourceFile = ts.createSourceFile(
+    'get-risk-scores.ts',
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+
+  return {
+    ucdpClassificationWindowMs: extractNumericConstSnapshot(sourceFile, 'UCDP_CLASSIFICATION_WINDOW_MS'),
+    advisoryLevelsFallback: extractTopLevelConstLiteralSnapshot(sourceFile, 'ADVISORY_LEVELS_FALLBACK'),
+    zoneCountryMap: extractTopLevelConstLiteralSnapshot(sourceFile, 'ZONE_COUNTRY_MAP'),
+  };
+}
+
 interface ScoreFormulaLiteral {
   region: string;
   order: number;
@@ -260,7 +435,6 @@ function extractScoreFormulaLiterals(source: string): ScoreFormulaLiteral[] {
     true,
     ts.ScriptKind.TS,
   );
-  const guardedFunctions = ['climateSeverityScore', 'computeCIIScores'];
   const literals: ScoreFormulaLiteral[] = [];
 
   for (const constName of GUARDED_TOP_LEVEL_SCORE_CONST_NAMES) {
@@ -278,7 +452,7 @@ function extractScoreFormulaLiterals(source: string): ScoreFormulaLiteral[] {
     );
   }
 
-  for (const functionName of guardedFunctions) {
+  for (const functionName of GUARDED_SCORE_FUNCTION_NAMES) {
     const fn = findFunctionDeclaration(sourceFile, functionName);
     assert.ok(fn.body, `${functionName} must have a function body`);
     literals.push(
@@ -1337,7 +1511,17 @@ describe('CII scoring', () => {
     const cachedRiskSource = readRepoFile('src/services/cached-risk-scores.ts');
     const getRiskScoresSource = readRepoFile('server/worldmonitor/intelligence/v1/get-risk-scores.ts');
     const scoreFormulaLiterals = extractScoreFormulaLiterals(getRiskScoresSource);
+    const scoreHelperInputs = extractScoreHelperInputSnapshot(getRiskScoresSource);
     assertFormulaLiteralCovered(scoreFormulaLiterals, 'climateSeverityScore', 5, 'return 5');
+    assertFormulaLiteralCovered(scoreFormulaLiterals, 'UCDP_CLASSIFICATION_WINDOW_MS', 2, '2 * 365');
+    assertFormulaLiteralCovered(scoreFormulaLiterals, 'deriveUcdpIntensityByRegion', 1000, 'totalDeaths > 1000');
+    assertFormulaLiteralCovered(scoreFormulaLiterals, 'deriveUcdpIntensityByRegion', 100, 'eventCount > 100');
+    assertFormulaLiteralCovered(scoreFormulaLiterals, 'deriveUcdpIntensityByRegion', 10, 'eventCount > 10');
+    assert.equal(
+      scoreHelperInputs.ucdpClassificationWindowMs.value,
+      2 * 365 * 24 * 60 * 60 * 1000,
+      'UCDP classification window must remain a two-year trailing window',
+    );
     assertFormulaLiteralCovered(scoreFormulaLiterals, 'computeCIIScores', 0.4, '(ev.daysAgo ?? 0) <= 7 ? 1.0 : 0.4');
     assertFormulaLiteralCovered(scoreFormulaLiterals, 'computeCIIScores', 360, 'safeNonNegativeNum(f.brightness) >= 360');
     assertFormulaLiteralCovered(scoreFormulaLiterals, 'computeCIIScores', 5.5, 'mag < 5.5');
@@ -1362,6 +1546,7 @@ describe('CII scoring', () => {
         STRATEGIC_RISK_TOP_N,
       },
       scoreFormulaLiterals,
+      scoreHelperInputs,
       scoreLevelCutoffs: extractScoreLevelCutoffs(cachedRiskSource, 'getScoreLevel'),
     };
 
@@ -1372,8 +1557,9 @@ describe('CII scoring', () => {
     );
   });
 
-  it('CII protocol snapshot includes guarded top-level score constants', () => {
+  it('CII protocol snapshot includes guarded top-level score constants and helpers', () => {
     const literals = extractScoreFormulaLiterals(`
+      const UCDP_CLASSIFICATION_WINDOW_MS = 2 * 365 * 24 * 60 * 60 * 1000;
       const NEWS_THREAT_WEIGHT: Record<string, number> = {
         critical: 4,
         high: 2,
@@ -1384,13 +1570,57 @@ describe('CII scoring', () => {
       function climateSeverityScore(): number {
         return 5;
       }
+      function deriveUcdpIntensityByRegion(): string {
+        const totalDeaths = 1001;
+        const eventCount = 101;
+        if (totalDeaths > 1000 || eventCount > 100) return 'war';
+        if (eventCount > 10) return 'minor';
+        return 'none';
+      }
       export function computeCIIScores(): number {
         return 1;
       }
     `);
 
+    assertFormulaLiteralCovered(literals, 'UCDP_CLASSIFICATION_WINDOW_MS', 2, '2 * 365');
     assertFormulaLiteralCovered(literals, 'NEWS_THREAT_WEIGHT', 4, 'critical: 4');
     assertFormulaLiteralCovered(literals, 'NEWS_THREAT_WEIGHT', 0.5, 'low: 0.5');
+    assertFormulaLiteralCovered(literals, 'deriveUcdpIntensityByRegion', 1000, 'totalDeaths > 1000');
+    assertFormulaLiteralCovered(literals, 'deriveUcdpIntensityByRegion', 100, 'eventCount > 100');
+    assertFormulaLiteralCovered(literals, 'deriveUcdpIntensityByRegion', 10, 'eventCount > 10');
+  });
+
+  it('CII helper input snapshot resolves local literal aliases and spreads', () => {
+    const helperInputs = extractScoreHelperInputSnapshot(`
+      const TWO_YEARS_MS = 2 * 365 * 24 * 60 * 60 * 1000;
+      const UCDP_CLASSIFICATION_WINDOW_MS = TWO_YEARS_MS;
+      const HIGH_RISK_FALLBACKS = { UA: 'do-not-travel', SY: 'do-not-travel' };
+      const CAUTION_FALLBACKS = { RU: 'caution' };
+      const ADVISORY_LEVELS_FALLBACK = {
+        ...CAUTION_FALLBACKS,
+        ...HIGH_RISK_FALLBACKS,
+        IL: 'reconsider',
+      };
+      const EUROPE_COUNTRIES = ['DE', 'FR'];
+      const MIDDLE_EAST_COUNTRIES = ['IR', ...['IL', 'SA']];
+      const CLIMATE_ZONE_GROUPS = { Europe: EUROPE_COUNTRIES };
+      const ZONE_COUNTRY_MAP = {
+        ...CLIMATE_ZONE_GROUPS,
+        'Middle East': MIDDLE_EAST_COUNTRIES,
+      };
+    `);
+
+    assert.equal(helperInputs.ucdpClassificationWindowMs.value, 2 * 365 * 24 * 60 * 60 * 1000);
+    assert.deepEqual(helperInputs.advisoryLevelsFallback, {
+      IL: 'reconsider',
+      RU: 'caution',
+      SY: 'do-not-travel',
+      UA: 'do-not-travel',
+    });
+    assert.deepEqual(helperInputs.zoneCountryMap, {
+      Europe: ['DE', 'FR'],
+      'Middle East': ['IR', 'IL', 'SA'],
+    });
   });
 
   it('getScoreLevel uses canonical CII UI bands at 81/66/51/31', () => {
