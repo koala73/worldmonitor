@@ -27,6 +27,9 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 
+import { TIER1_COUNTRIES } from '../src/config/countries.ts';
+import { CII_COUNTRY_WEIGHTS } from '../shared/cii-weights.ts';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 const sourcePath = resolve(root, 'src/services/cached-risk-scores.ts');
@@ -68,6 +71,29 @@ describe('cached-risk-scores — no fabricated timestamps in source', () => {
       source,
       /interface\s+CachedRiskScores\b[\s\S]*?computedAt:\s*string\s*\|\s*null/,
       'CachedRiskScores.computedAt must be `string | null`',
+    );
+  });
+
+  it('localStorage Tier-1 validation uses the canonical country table, not a second hardcoded list', () => {
+    assert.deepEqual(
+      Object.keys(TIER1_COUNTRIES).sort(),
+      Object.keys(CII_COUNTRY_WEIGHTS).sort(),
+      'frontend Tier-1 country names must stay in parity with shared CII weights',
+    );
+    assert.match(
+      source,
+      /function\s+isKnownTier1Code[\s\S]*hasOwnProperty\.call\(TIER1_COUNTRIES,\s*value\)/,
+      'localStorage validator must validate ISO2 codes against TIER1_COUNTRIES',
+    );
+    assert.match(
+      source,
+      /function\s+canonicalizeCachedCiiEntry[\s\S]*name:\s*TIER1_COUNTRIES\[entry\.code\]\s*\?\?\s*entry\.code/,
+      'localStorage canonicalizer must rewrite display names from TIER1_COUNTRIES',
+    );
+    assert.doesNotMatch(
+      source,
+      /const\s+(?:TIER1_NAMES|KNOWN_TIER1_COUNTRIES|VALID_TIER1_COUNTRIES)\b/,
+      'cached-risk-scores.ts must not reintroduce a second Tier-1 name/code list',
     );
   });
 });

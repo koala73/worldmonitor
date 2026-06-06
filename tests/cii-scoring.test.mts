@@ -48,11 +48,11 @@ const REPO_ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 
 const CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION: Record<string, string> = {
   v5: '13a339323a4b1c92bec967a2b006d97330ef7f1d596326bf8a438a129fa89c10',
-  // v6 (#4147/#4148/#4149): attribution, climate-wiring, observability and
-  // advisory-fallback changes did not touch any *hashed* coefficient
-  // (country weights, defaults, strategic constants, getScoreLevel cutoffs),
-  // so the protocol snapshot is unchanged from v5.
-  v6: '13a339323a4b1c92bec967a2b006d97330ef7f1d596326bf8a438a129fa89c10',
+  // v6 (#4147/#4148/#4149/#4151): attribution/climate fixes plus the
+  // formula guard expansion. The guard now includes score-relevant inline
+  // literals from get-risk-scores.ts, so a v7 scoring branch must refresh this
+  // hash after it deliberately changes formula literals.
+  v6: '522a12cf805357a7a4df5c32186591c4af11053f5fd6decbff6572abd7e8a9ad',
 };
 
 function readRepoFile(path: string): string {
@@ -144,6 +144,117 @@ function parseScoreLevelFunction(source: string, functionName: string): ParsedSc
 
 function extractScoreLevelCutoffs(source: string, functionName: string): ScoreLevelCutoff[] {
   return parseScoreLevelFunction(source, functionName).cutoffs;
+}
+
+interface ScoreFormulaLiteral {
+  region: string;
+  order: number;
+  value: number;
+  context: string;
+}
+
+function enclosingFormulaContext(node: ts.Node, sourceFile: ts.SourceFile, rangeEnd: number): string {
+  let current: ts.Node = node;
+  while (current.parent && current.parent.end <= rangeEnd) {
+    current = current.parent;
+    if (
+      ts.isVariableDeclaration(current)
+      || ts.isConditionalExpression(current)
+      || ts.isCallExpression(current)
+      || ts.isBinaryExpression(current)
+      || ts.isReturnStatement(current)
+    ) {
+      return current.getText(sourceFile).replace(/\s+/g, ' ').trim();
+    }
+  }
+  return node.getText(sourceFile).replace(/\s+/g, ' ').trim();
+}
+
+function numericLiteralValue(node: ts.Node): number | null {
+  if (ts.isNumericLiteral(node)) return Number(node.text.replace(/_/g, ''));
+  if (
+    ts.isPrefixUnaryExpression(node)
+    && node.operator === ts.SyntaxKind.MinusToken
+    && ts.isNumericLiteral(node.operand)
+  ) {
+    return -Number(node.operand.text.replace(/_/g, ''));
+  }
+  return null;
+}
+
+function collectNumericLiteralsInRange(
+  sourceFile: ts.SourceFile,
+  region: string,
+  rangeStart: number,
+  rangeEnd: number,
+  orderOffset: number,
+): ScoreFormulaLiteral[] {
+  const literals: ScoreFormulaLiteral[] = [];
+
+  function visit(node: ts.Node): void {
+    if (node.end < rangeStart || node.getStart(sourceFile) > rangeEnd) return;
+
+    const value = numericLiteralValue(node);
+    if (value !== null) {
+      literals.push({
+        region,
+        order: orderOffset + literals.length,
+        value,
+        context: enclosingFormulaContext(node, sourceFile, rangeEnd),
+      });
+      return;
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return literals;
+}
+
+function extractScoreFormulaLiterals(source: string): ScoreFormulaLiteral[] {
+  const sourceFile = ts.createSourceFile(
+    'get-risk-scores.ts',
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const guardedFunctions = ['climateSeverityScore', 'computeCIIScores'];
+  const literals: ScoreFormulaLiteral[] = [];
+
+  for (const functionName of guardedFunctions) {
+    const fn = findFunctionDeclaration(sourceFile, functionName);
+    assert.ok(fn.body, `${functionName} must have a function body`);
+    literals.push(
+      ...collectNumericLiteralsInRange(
+        sourceFile,
+        functionName,
+        fn.body.getStart(sourceFile),
+        fn.body.end,
+        literals.length,
+      ),
+    );
+  }
+
+  assert.ok(literals.length > 0, 'CII scorer must expose numeric formula literals to the snapshot guard');
+  return literals;
+}
+
+function assertFormulaLiteralCovered(
+  literals: ScoreFormulaLiteral[],
+  region: string,
+  value: number,
+  contextSnippet: string,
+): void {
+  assert.ok(
+    literals.some((literal) => (
+      literal.region === region
+      && literal.value === value
+      && literal.context.includes(contextSnippet)
+    )),
+    `CII formula snapshot must cover ${region} literal ${value} in context: ${contextSnippet}`,
+  );
 }
 
 function evaluateScoreLevel(parsed: ParsedScoreLevelFunction, score: number): string {
@@ -949,6 +1060,12 @@ describe('CII scoring', () => {
     );
 
     const cachedRiskSource = readRepoFile('src/services/cached-risk-scores.ts');
+    const getRiskScoresSource = readRepoFile('server/worldmonitor/intelligence/v1/get-risk-scores.ts');
+    const scoreFormulaLiterals = extractScoreFormulaLiterals(getRiskScoresSource);
+    assertFormulaLiteralCovered(scoreFormulaLiterals, 'climateSeverityScore', 5, 'return 5');
+    assertFormulaLiteralCovered(scoreFormulaLiterals, 'computeCIIScores', 0.4, '(ev.daysAgo ?? 0) <= 7 ? 1.0 : 0.4');
+    assertFormulaLiteralCovered(scoreFormulaLiterals, 'computeCIIScores', 360, 'safeNonNegativeNum(f.brightness) >= 360');
+    assertFormulaLiteralCovered(scoreFormulaLiterals, 'computeCIIScores', 5.5, 'mag < 5.5');
     const snapshot = {
       countryWeights: Object.fromEntries(
         Object.entries(CII_COUNTRY_WEIGHTS).sort(([a], [b]) => a.localeCompare(b)),
@@ -965,13 +1082,14 @@ describe('CII scoring', () => {
         STRATEGIC_RISK_SCALE_FLOOR,
         STRATEGIC_RISK_TOP_N,
       },
+      scoreFormulaLiterals,
       scoreLevelCutoffs: extractScoreLevelCutoffs(cachedRiskSource, 'getScoreLevel'),
     };
 
     assert.equal(
       hashJson(snapshot),
       expectedHash,
-      'CII coefficient/cutoff snapshot changed. Bump CII_FORMULA_VERSION, update methodology docs/changelogs, and add the new version-keyed snapshot hash.',
+      'CII coefficient/formula/cutoff snapshot changed. Bump CII_FORMULA_VERSION, update methodology docs/changelogs, and add the new version-keyed snapshot hash.',
     );
   });
 

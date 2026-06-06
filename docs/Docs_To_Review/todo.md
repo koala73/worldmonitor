@@ -193,7 +193,7 @@ Overlay the map with country-colored fills based on CII score.
 | **Depends on** | — |
 
 **Description**
-CII currently publishes server-authoritative v5 scores for 31 Tier-1 countries
+CII currently publishes server-authoritative v6 scores for 31 Tier-1 countries
 from `shared/cii-weights.ts`, then the browser ingests the cached risk-score
 feed with a local `country-instability.ts` fallback. This TODO is only current
 if reframed as user-defined Tier 2 monitoring layered on top of that contract.
