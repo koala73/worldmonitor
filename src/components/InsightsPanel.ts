@@ -6,6 +6,7 @@ import { signalAggregator, type RegionalConvergence } from '@/services/signal-ag
 import { focalPointDetector } from '@/services/focal-point-detector';
 import { stripOrefLabels } from '@/services/oref-alerts';
 import { ingestNewsForCII, getCountryScore } from '@/services/country-instability';
+import { getCachedCountryScoreValue } from '@/services/cached-risk-scores';
 import { getTheaterPostureSummaries } from '@/services/military-surge';
 import { getCachedPosture } from '@/services/cached-theater-posture';
 import { isMobileDevice } from '@/utils';
@@ -24,6 +25,10 @@ import { extractEntitiesFromTitle } from '@/services/entity-extraction';
 import { getEntityIndex } from '@/services/entity-index';
 
 import type { ClusteredEvent, FocalPoint, MilitaryFlight } from '@/types';
+
+function getAuthoritativeCountryScore(code: string): number | null {
+  return getCachedCountryScoreValue(code) ?? getCountryScore(code);
+}
 
 export class InsightsPanel extends Panel {
   private lastBriefUpdate = 0;
@@ -272,11 +277,11 @@ export class InsightsPanel extends Panel {
       const sortedStories = [...serverInsights.topStories].sort((a, b) => {
         const isqA = computeISQ(
           { sourceCount: a.sourceCount, isAlert: a.isAlert, threatLevel: a.threatLevel ?? undefined, countryCode: a.countryCode, velocity: a.velocity },
-          focalFnServer, getCountryScore, isFocalReadyServer,
+          focalFnServer, getAuthoritativeCountryScore, isFocalReadyServer,
         );
         const isqB = computeISQ(
           { sourceCount: b.sourceCount, isAlert: b.isAlert, threatLevel: b.threatLevel ?? undefined, countryCode: b.countryCode, velocity: b.velocity },
-          focalFnServer, getCountryScore, isFocalReadyServer,
+          focalFnServer, getAuthoritativeCountryScore, isFocalReadyServer,
         );
         return isqB.composite - isqA.composite;
       });
@@ -373,7 +378,7 @@ export class InsightsPanel extends Panel {
       const isFocalReady = () => (focalPointDetector.getLastSummary()?.topCountries.some(
         fp => fp.signalCount > 0 || fp.signalTypes.includes('active_strike')
       ) ?? false);
-      const importantItems = this.selectTopStories(clusters, 8, focalFn, getCountryScore, isFocalReady);
+      const importantItems = this.selectTopStories(clusters, 8, focalFn, getAuthoritativeCountryScore, isFocalReady);
       const importantClusters = importantItems.map(({ cluster }) => cluster);
 
       if (importantClusters.length === 0) {

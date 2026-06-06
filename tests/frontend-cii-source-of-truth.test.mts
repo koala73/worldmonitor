@@ -348,6 +348,8 @@ describe('frontend CII source of truth', () => {
     const militarySrc = readSrc('src/services/military-surge.ts');
     const mapSrc = readSrc('src/components/Map.ts');
     const deckSrc = readSrc('src/components/DeckGLMap.ts');
+    const searchSrc = readSrc('src/app/search-manager.ts');
+    const insightsSrc = readSrc('src/components/InsightsPanel.ts');
 
     assert.doesNotMatch(storySrc, /hasIntelligenceSignalsLoaded/);
     assert.match(storySrc, /const normalizedCountryCode = normalizeCiiCountryCode\(countryCode\);/);
@@ -367,6 +369,10 @@ describe('frontend CII source of truth', () => {
     assert.match(militarySrc, /getCachedCountryScoreValue\(code\) \?\? getCountryScore\(code\)/);
     assert.match(mapSrc, /setCIIGetter\(\(code\) => getCachedCountryScoreValue\(code\) \?\? getCountryScore\(code\)\)/);
     assert.match(deckSrc, /setCIIGetter\(\(code\) => getCachedCountryScoreValue\(code\) \?\? getCountryScore\(code\)\)/);
+    assert.match(searchSrc, /const cachedScores = getCachedCountryScores\(\);[\s\S]*const scores = cachedScores\.length > 0[\s\S]*\? cachedScores[\s\S]*: \(panelScores\.length > 0 \? panelScores : calculateCII\(\)\);/);
+    assert.match(insightsSrc, /function getAuthoritativeCountryScore\(code: string\): number \| null \{[\s\S]*return getCachedCountryScoreValue\(code\) \?\? getCountryScore\(code\);[\s\S]*\}/);
+    assert.match(insightsSrc, /focalFnServer, getAuthoritativeCountryScore, isFocalReadyServer/);
+    assert.match(insightsSrc, /this\.selectTopStories\(clusters, 8, focalFn, getAuthoritativeCountryScore, isFocalReady\)/);
   });
 
   it('aligns CII badge and fill colors to the canonical frontend bands', () => {
