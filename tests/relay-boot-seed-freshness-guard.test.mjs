@@ -8,14 +8,16 @@
 // interval: paid ScrapeCreators credits, plus rate-limit/ban risk for Reddit,
 // Yahoo, CoinGecko, UCDP, OpenSky, etc.
 //
-// `maybeBootSeed(label, metaKey, intervalMs, seedFn)` gates the boot seed on the
-// existing seed-meta age and only runs the seed when a refresh is actually due.
+// `bootSeedDelayMs(label, metaKey, intervalMs)` gates the boot seed on the
+// existing seed-meta age, and `startBootSeedLoop` schedules the first skipped
+// refresh for the remaining freshness window before starting the recurring
+// interval.
 //
 // ais-relay.cjs calls server.listen() at top level and has no module.exports, so
-// it cannot be imported. These tests (1) extract the real maybeBootSeed body and
-// exercise its behavior against mocked Redis, and (2) assert the source wires
-// every fixed-schedule external seeder through it while leaving the setInterval
-// path — and real-time pollers / internal warm-pings — untouched.
+// it cannot be imported. These tests (1) extract the real guard/scheduler bodies
+// and exercise them against mocked Redis/timers, and (2) assert the source wires
+// every fixed-schedule external seeder through the scheduler while leaving
+// real-time pollers / internal warm-pings untouched.
 
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -26,7 +28,7 @@ import assert from 'node:assert/strict';
 const here = dirname(fileURLToPath(import.meta.url));
 const relaySource = readFileSync(resolve(here, '../scripts/ais-relay.cjs'), 'utf8');
 
-// ── Extract the real maybeBootSeed function body via brace-matching ──────────
+// -- Extract real function bodies via brace-matching ---------------------------
 function extractFunction(src, signature) {
   const start = src.indexOf(signature);
   assert.notEqual(start, -1, `missing function: ${signature}`);
@@ -43,81 +45,128 @@ function extractFunction(src, signature) {
   throw new Error(`unbalanced braces for ${signature}`);
 }
 
-const fnText = extractFunction(relaySource, 'async function maybeBootSeed(label, metaKey, intervalMs, seedFn)');
+const delayFnText = extractFunction(relaySource, 'async function bootSeedDelayMs(label, metaKey, intervalMs)');
+const loopFnText = extractFunction(relaySource, 'function startBootSeedLoop(label, metaKey, intervalMs, seedFn, onInitialError, onSeedError = onInitialError)');
 
 // Rebuild the function with its free variables injected as closure params.
 // (It references UPSTASH_ENABLED, upstashGet, console, plus globals Date/Number/Math.)
-function buildGuard({ enabled = true, get = async () => null } = {}) {
+function buildDelayResolver({ enabled = true, get = async () => null } = {}) {
   const logs = [];
   const fakeConsole = { log: (...a) => logs.push(['log', ...a]), warn: (...a) => logs.push(['warn', ...a]) };
-  const factory = new Function('UPSTASH_ENABLED', 'upstashGet', 'console', `return (${fnText});`);
-  return { guard: factory(enabled, get, fakeConsole), logs };
+  const factory = new Function('UPSTASH_ENABLED', 'upstashGet', 'console', `return (${delayFnText});`);
+  return { resolveDelay: factory(enabled, get, fakeConsole), logs };
+}
+
+function buildLoop({ delay = 0 } = {}) {
+  const timeouts = [];
+  const intervals = [];
+  const initialErrors = [];
+  const seedErrors = [];
+  let seedCalls = 0;
+  const fakeSetTimeout = (fn, ms) => {
+    const timer = { fn, ms, unrefCalled: false, unref() { this.unrefCalled = true; } };
+    timeouts.push(timer);
+    return timer;
+  };
+  const fakeSetInterval = (fn, ms) => {
+    const timer = { fn, ms, unrefCalled: false, unref() { this.unrefCalled = true; } };
+    intervals.push(timer);
+    return timer;
+  };
+  const fakeDelayResolver = async () => delay;
+  const factory = new Function('bootSeedDelayMs', 'setTimeout', 'setInterval', `return (${loopFnText});`);
+  const loop = factory(fakeDelayResolver, fakeSetTimeout, fakeSetInterval);
+  const seedFn = async () => { seedCalls++; };
+  const onInitialError = (e) => { initialErrors.push(e); };
+  const onSeedError = (e) => { seedErrors.push(e); };
+  return {
+    loop,
+    seedFn,
+    onInitialError,
+    onSeedError,
+    timeouts,
+    intervals,
+    initialErrors,
+    seedErrors,
+    get seedCalls() { return seedCalls; },
+  };
 }
 
 const MIN = 60 * 1000;
 
-test('skips the boot seed when data is fresher than the interval', async () => {
-  let called = false;
-  const { guard } = buildGuard({ get: async () => ({ fetchedAt: Date.now() - 5 * MIN, recordCount: 10 }) });
-  await guard('X', 'seed-meta:x', 180 * MIN, async () => { called = true; });
-  assert.equal(called, false, 'fresh data must suppress the boot seed');
+async function flushMicrotasks() {
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+}
+
+test('returns the remaining freshness window when data is fresher than the interval', async () => {
+  const { resolveDelay } = buildDelayResolver({ get: async () => ({ fetchedAt: Date.now() - 5 * MIN, recordCount: 10 }) });
+  const delayMs = await resolveDelay('X', 'seed-meta:x', 180 * MIN);
+  assert.ok(delayMs > 174 * MIN && delayMs <= 175 * MIN, `fresh data should delay roughly 175min, got ${delayMs}`);
 });
 
-test('runs the boot seed when data is older than the interval (refresh due)', async () => {
-  let called = false;
-  const { guard } = buildGuard({ get: async () => ({ fetchedAt: Date.now() - 200 * MIN, recordCount: 10 }) });
-  await guard('X', 'seed-meta:x', 180 * MIN, async () => { called = true; });
-  assert.equal(called, true, 'stale data must trigger the boot seed');
+test('returns 0 delay when data is older than the interval (refresh due)', async () => {
+  const { resolveDelay } = buildDelayResolver({ get: async () => ({ fetchedAt: Date.now() - 200 * MIN, recordCount: 10 }) });
+  assert.equal(await resolveDelay('X', 'seed-meta:x', 180 * MIN), 0);
 });
 
-test('runs the boot seed when there is no prior seed-meta', async () => {
-  let called = false;
-  const { guard } = buildGuard({ get: async () => null });
-  await guard('X', 'seed-meta:x', 180 * MIN, async () => { called = true; });
-  assert.equal(called, true);
+test('returns 0 delay when there is no prior seed-meta', async () => {
+  const { resolveDelay } = buildDelayResolver({ get: async () => null });
+  assert.equal(await resolveDelay('X', 'seed-meta:x', 180 * MIN), 0);
 });
 
-test('fails OPEN — a Redis read error still seeds (never starves a panel)', async () => {
-  let called = false;
-  const { guard, logs } = buildGuard({ get: async () => { throw new Error('redis down'); } });
-  await guard('X', 'seed-meta:x', 180 * MIN, async () => { called = true; });
-  assert.equal(called, true, 'a meta read failure must fall through to seeding');
+test('fails OPEN — a Redis read error returns 0 delay (never starves a panel)', async () => {
+  const { resolveDelay, logs } = buildDelayResolver({ get: async () => { throw new Error('redis down'); } });
+  assert.equal(await resolveDelay('X', 'seed-meta:x', 180 * MIN), 0);
   assert.ok(logs.some(([lvl, msg]) => lvl === 'warn' && /freshness check failed/.test(String(msg))));
 });
 
-test('runs the boot seed when Upstash is disabled (no gate possible)', async () => {
-  let called = false;
-  const { guard } = buildGuard({ enabled: false, get: async () => ({ fetchedAt: Date.now() }) });
-  await guard('X', 'seed-meta:x', 180 * MIN, async () => { called = true; });
-  assert.equal(called, true);
+test('returns 0 delay when Upstash is disabled (no gate possible)', async () => {
+  const { resolveDelay } = buildDelayResolver({ enabled: false, get: async () => ({ fetchedAt: Date.now() }) });
+  assert.equal(await resolveDelay('X', 'seed-meta:x', 180 * MIN), 0);
 });
 
-test('a future-dated fetchedAt (negative age) is treated defensively — seeds', async () => {
-  let called = false;
-  const { guard } = buildGuard({ get: async () => ({ fetchedAt: Date.now() + 60 * MIN }) });
-  await guard('X', 'seed-meta:x', 180 * MIN, async () => { called = true; });
-  assert.equal(called, true, 'corrupt future timestamp must not permanently suppress seeding');
+test('a future-dated fetchedAt (negative age) is treated defensively — 0 delay', async () => {
+  const { resolveDelay } = buildDelayResolver({ get: async () => ({ fetchedAt: Date.now() + 60 * MIN }) });
+  assert.equal(await resolveDelay('X', 'seed-meta:x', 180 * MIN), 0);
 });
 
-test('intervalMs<=0 disables the gate (always seeds)', async () => {
-  let called = false;
-  const { guard } = buildGuard({ get: async () => ({ fetchedAt: Date.now() }) });
-  await guard('X', 'seed-meta:x', 0, async () => { called = true; });
-  assert.equal(called, true);
+test('intervalMs<=0 disables the gate (0 delay)', async () => {
+  const { resolveDelay } = buildDelayResolver({ get: async () => ({ fetchedAt: Date.now() }) });
+  assert.equal(await resolveDelay('X', 'seed-meta:x', 0), 0);
 });
 
-test('propagates the seedFn promise so the call site .catch still applies', async () => {
-  const { guard } = buildGuard({ get: async () => null });
-  await assert.rejects(
-    () => guard('X', 'seed-meta:x', 180 * MIN, async () => { throw new Error('seed boom'); }),
-    /seed boom/,
-  );
+test('startBootSeedLoop seeds immediately and starts the recurring interval when delay is 0', async () => {
+  const harness = buildLoop({ delay: 0 });
+  harness.loop('X', 'seed-meta:x', 180 * MIN, harness.seedFn, harness.onInitialError, harness.onSeedError);
+  await flushMicrotasks();
+  assert.equal(harness.seedCalls, 1);
+  assert.equal(harness.timeouts.length, 0);
+  assert.equal(harness.intervals.length, 1);
+  assert.equal(harness.intervals[0].ms, 180 * MIN);
+  assert.equal(harness.intervals[0].unrefCalled, true);
 });
 
-// ── Wiring: every fixed-schedule external seeder routes its boot seed through
-// maybeBootSeed with the exact (label, metaKey, intervalConst, seedFn). The
+test('startBootSeedLoop waits the remaining freshness window before first skipped refresh', async () => {
+  const harness = buildLoop({ delay: 60 * MIN });
+  harness.loop('X', 'seed-meta:x', 180 * MIN, harness.seedFn, harness.onInitialError, harness.onSeedError);
+  await flushMicrotasks();
+  assert.equal(harness.seedCalls, 0, 'fresh data must not seed at boot');
+  assert.equal(harness.intervals.length, 0, 'recurring interval must not start before the due refresh');
+  assert.equal(harness.timeouts.length, 1);
+  assert.equal(harness.timeouts[0].ms, 60 * MIN);
+  assert.equal(harness.timeouts[0].unrefCalled, true);
+
+  harness.timeouts[0].fn();
+  await flushMicrotasks();
+  assert.equal(harness.seedCalls, 1, 'remaining-window timer should run the skipped boot seed');
+  assert.equal(harness.intervals.length, 1, 'recurring interval starts after the due refresh');
+  assert.equal(harness.intervals[0].ms, 180 * MIN);
+});
+
+// -- Wiring: every fixed-schedule external seeder routes through
+// startBootSeedLoop with the exact (label, metaKey, intervalConst, seedFn). The
 // exact-string match pins all four arguments so a future edit can't silently
-// drift the meta key or interval and re-open the boot-abuse hole. ────────────
+// drift the meta key or interval and re-open the boot-abuse hole.
 const SEEDERS = [
   ['UCDP', "'seed-meta:conflict:ucdp-events'", 'UCDP_POLL_INTERVAL_MS', 'seedUcdpEvents'],
   ['Satellites', "'seed-meta:intelligence:satellites'", 'SAT_SEED_INTERVAL_MS', 'seedSatelliteTLEs'],
@@ -145,17 +194,14 @@ const SEEDERS = [
 ];
 
 for (const [label, metaKey, intervalConst, seedFn] of SEEDERS) {
-  test(`${label} boot seed is gated through maybeBootSeed(${intervalConst}, ${seedFn})`, () => {
-    const call = `maybeBootSeed('${label}', ${metaKey}, ${intervalConst}, ${seedFn})`;
+  test(`${label} boot seed is scheduled through startBootSeedLoop(${intervalConst}, ${seedFn})`, () => {
+    const call = `startBootSeedLoop('${label}', ${metaKey}, ${intervalConst}, ${seedFn},`;
     assert.ok(relaySource.includes(call), `expected boot-seed wiring: ${call}`);
-    // The setInterval (real-cadence) path must remain a direct, UNGATED call so a
-    // long-lived relay still refreshes when the timer fires (data is due then).
-    assert.ok(relaySource.includes(`${seedFn}().catch`), `${seedFn} interval path must stay a direct call`);
   });
 }
 
-test('exactly the expected number of boot seeds are gated (no drift)', () => {
-  const count = (relaySource.match(/maybeBootSeed\('/g) || []).length;
+test('exactly the expected number of boot seeds are scheduled (no drift)', () => {
+  const count = (relaySource.match(/startBootSeedLoop\('/g) || []).length;
   assert.equal(count, SEEDERS.length, `expected ${SEEDERS.length} gated boot seeds, found ${count}`);
 });
 
@@ -164,7 +210,7 @@ test('exactly the expected number of boot seeds are gated (no drift)', () => {
 // pollers must run continuously. None of these may be wrapped. ───────────────
 test('internal warm-pings are NOT gated (self-limiting at the endpoint)', () => {
   for (const label of ['ServiceStatuses', 'CII', 'Chokepoints', 'CableHealth']) {
-    assert.ok(!relaySource.includes(`maybeBootSeed('${label}'`), `warm-ping ${label} must not be gated`);
+    assert.ok(!relaySource.includes(`startBootSeedLoop('${label}'`), `warm-ping ${label} must not be gated`);
   }
   // and the warm-pings still fire their immediate boot ping
   assert.match(relaySource, /seedServiceStatuses\(\)\.catch/);
@@ -173,15 +219,18 @@ test('internal warm-pings are NOT gated (self-limiting at the endpoint)', () => 
 
 test('real-time pollers are NOT gated (must run continuously on every boot)', () => {
   for (const label of ['Telegram', 'Oref', 'OREF']) {
-    assert.ok(!relaySource.includes(`maybeBootSeed('${label}'`), `poller ${label} must not be gated`);
+    assert.ok(!relaySource.includes(`startBootSeedLoop('${label}'`), `poller ${label} must not be gated`);
   }
 });
 
-test('maybeBootSeed fails open and keys on fetchedAt (source contract)', () => {
+test('bootSeedDelayMs fails open and keys on fetchedAt (source contract)', () => {
   // guard only engages when Upstash is on AND a key + positive interval are given
-  assert.match(fnText, /if \(UPSTASH_ENABLED && metaKey && intervalMs > 0\)/);
-  // sane positive age strictly under the interval → skip
-  assert.match(fnText, /if \(ageMs >= 0 && ageMs < intervalMs\)/);
-  // terminal path always seeds (fail-open / not-fresh)
-  assert.match(fnText, /return seedFn\(\);\s*}$/);
+  assert.match(delayFnText, /if \(UPSTASH_ENABLED && metaKey && intervalMs > 0\)/);
+  // sane positive age strictly under the interval -> delay until the data is due
+  assert.match(delayFnText, /if \(ageMs >= 0 && ageMs < intervalMs\)/);
+  assert.match(delayFnText, /const delayMs = intervalMs - ageMs/);
+  // terminal path always returns 0 delay (fail-open / not-fresh)
+  assert.match(delayFnText, /return 0;\s*}$/);
+  assert.match(loopFnText, /setTimeout\(\(\) => \{/);
+  assert.match(loopFnText, /\.finally\(startInterval\)/);
 });
