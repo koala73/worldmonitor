@@ -1427,8 +1427,7 @@ describe('getHashFieldsBatch empty-string handling', { concurrency: 1 }, () => {
     const originalFetch = globalThis.fetch;
 
 
-    globalThis.fetch = async (_url, init = {}) => {
-      const pipeline = JSON.parse(String(init.body));
+    globalThis.fetch = async (_url, _init = {}) => {
       // Mock HMGET response: ["", null, "value"] — empty string, null, and a real value
       return jsonResponse([
         { result: ['', null, 'value'] },
