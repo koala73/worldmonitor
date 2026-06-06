@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,8 +38,52 @@ import {
   CII_BASELINE_RISK as SHARED_BASELINE_RISK,
   CII_COUNTRY_WEIGHTS,
   CII_EVENT_MULTIPLIER as SHARED_EVENT_MULTIPLIER,
+  DEFAULT_CII_BASELINE_RISK,
+  DEFAULT_CII_EVENT_MULTIPLIER,
 } from '../shared/cii-weights.ts';
 import { CLIMATE_ZONES } from '../scripts/_climate-zones.mjs';
+
+const REPO_ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
+
+const CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION: Record<string, string> = {
+  v5: '13a339323a4b1c92bec967a2b006d97330ef7f1d596326bf8a438a129fa89c10',
+};
+
+function readRepoFile(path: string): string {
+  return readFileSync(resolve(REPO_ROOT, path), 'utf8');
+}
+
+function extractFunctionBody(source: string, functionName: string): string {
+  const signatureStart = source.indexOf(`function ${functionName}(`);
+  assert.notEqual(signatureStart, -1, `missing function ${functionName}`);
+  const bodyStart = source.indexOf('{', signatureStart);
+  assert.notEqual(bodyStart, -1, `missing body for function ${functionName}`);
+
+  let depth = 0;
+  for (let i = bodyStart; i < source.length; i++) {
+    const ch = source[i];
+    if (ch === '{') depth++;
+    if (ch === '}') depth--;
+    if (depth === 0) return source.slice(bodyStart + 1, i);
+  }
+  throw new Error(`unterminated function ${functionName}`);
+}
+
+function extractScoreLevelCutoffs(source: string, functionName: string) {
+  const body = extractFunctionBody(source, functionName);
+  return Array.from(body.matchAll(/if\s*\(\s*score\s*>=\s*(\d+)\s*\)\s*return\s*'([^']+)'/g))
+    .map((match) => ({ min: Number(match[1]), level: match[2] }));
+}
+
+function evaluateScoreLevel(source: string, functionName: string, score: number): string {
+  const body = extractFunctionBody(source, functionName);
+  const fn = new Function('score', body) as (score: number) => string;
+  return fn(score);
+}
+
+function hashJson(value: unknown): string {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
 
 function emptyAux() {
   return {
@@ -821,6 +866,66 @@ describe('CII scoring', () => {
       const actualMult = (s as unknown as { eventMultiplier: number }).eventMultiplier;
       assert.equal(actualMult, expected.eventMultiplier,
         `${code} eventMultiplier ${actualMult} should match shared eventMultiplier ${expected.eventMultiplier}`);
+    }
+  });
+
+  it('CII protocol coefficients are snapshot-keyed to CII_FORMULA_VERSION', () => {
+    const expectedHash = CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION[CII_FORMULA_VERSION];
+    assert.ok(
+      expectedHash,
+      `No CII protocol snapshot for ${CII_FORMULA_VERSION}. Add a new snapshot hash when bumping CII_FORMULA_VERSION.`,
+    );
+
+    const cachedRiskSource = readRepoFile('src/services/cached-risk-scores.ts');
+    const snapshot = {
+      countryWeights: Object.fromEntries(
+        Object.entries(CII_COUNTRY_WEIGHTS).sort(([a], [b]) => a.localeCompare(b)),
+      ),
+      defaultWeight: {
+        baselineRisk: DEFAULT_CII_BASELINE_RISK,
+        eventMultiplier: DEFAULT_CII_EVENT_MULTIPLIER,
+      },
+      riskConfig: {
+        CII_CONFLICT_ACTIVITY_CAP,
+        CII_CONFLICT_ACTIVITY_PIVOT,
+        STRATEGIC_RISK_POSITIONAL_DECAY,
+        STRATEGIC_RISK_SCALE_FACTOR,
+        STRATEGIC_RISK_SCALE_FLOOR,
+        STRATEGIC_RISK_TOP_N,
+      },
+      scoreLevelCutoffs: extractScoreLevelCutoffs(cachedRiskSource, 'getScoreLevel'),
+    };
+
+    assert.equal(
+      hashJson(snapshot),
+      expectedHash,
+      'CII coefficient/cutoff snapshot changed. Bump CII_FORMULA_VERSION, update methodology docs/changelogs, and add the new version-keyed snapshot hash.',
+    );
+  });
+
+  it('getScoreLevel uses canonical CII UI bands at 81/66/51/31', () => {
+    const cachedRiskSource = readRepoFile('src/services/cached-risk-scores.ts');
+    const browserCiiSource = readRepoFile('src/services/country-instability.ts');
+    const expectedCutoffs = [
+      { min: 81, level: 'critical' },
+      { min: 66, level: 'high' },
+      { min: 51, level: 'elevated' },
+      { min: 31, level: 'normal' },
+    ];
+
+    assert.deepEqual(extractScoreLevelCutoffs(cachedRiskSource, 'getScoreLevel'), expectedCutoffs);
+    assert.deepEqual(extractScoreLevelCutoffs(browserCiiSource, 'getLevel'), expectedCutoffs);
+
+    for (const [score, level] of [
+      [81, 'critical'], [80, 'high'],
+      [66, 'high'], [65, 'elevated'],
+      [51, 'elevated'], [50, 'normal'],
+      [31, 'normal'], [30, 'low'],
+    ] as const) {
+      assert.equal(evaluateScoreLevel(cachedRiskSource, 'getScoreLevel', score), level,
+        `cached getScoreLevel(${score}) should be ${level}`);
+      assert.equal(evaluateScoreLevel(browserCiiSource, 'getLevel', score), level,
+        `browser getLevel(${score}) should be ${level}`);
     }
   });
 

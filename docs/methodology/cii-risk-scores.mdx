@@ -102,8 +102,8 @@ exposed on the wire as `CiiComponents`:
 
 | Wire field | Editorial meaning |
 |---|---|
-| `cii_contribution` (**U**nrest) | Civil disorder pressure: ACLED protests + riots, fatalities from those events, and confirmed internet/power outages. Reflects pre-violent friction. |
-| `geo_convergence` (**C**onflict) | Kinetic activity: ACLED battles, explosions/remote violence, and violence-against-civilians events, plus Iran-region strike intensity. Event activity is log-scaled before the component cap so moderate and extreme event volumes remain ordered; square-root fatality scaling prevents single-event saturation. |
+| `cii_contribution` (**U**nrest) | Civil disorder pressure: ACLED protests + riots, fatalities from those events, confirmed internet/power outages, and a high-severity unrest boost. Reflects pre-violent friction. |
+| `geo_convergence` (**C**onflict) | Kinetic activity: ACLED battles, explosions/remote violence, and violence-against-civilians events, plus Iran-region strike intensity and Israel OREF alert pressure. Event activity is log-scaled before the component cap so moderate and extreme event volumes remain ordered; square-root fatality scaling prevents single-event saturation. |
 | `military_activity` (**S**ecurity) | Hard-security tempo near the country: military flight activity, military vessel activity, aviation disruptions (closures/delays), and GPS-jamming hex density. Foreign military presence is weighted ×2. |
 | `news_activity` (**I**nformation) | Information-environment pressure: weighted count of classified critical/high/medium news headlines geo-attributed to the country. |
 
@@ -125,6 +125,26 @@ composite = baseline * 0.4
           + sanctionsBoost    (≤ 14)
           + aisBoost          (≤ 10, AIS disruptions)
 ```
+
+Component details that are easy to miss:
+
+- **Unrest severity boost**: high-severity ACLED unrest events (for example,
+  riots) add `min(20, highSeverityUnrest * 10 * eventMultiplier)` inside the
+  Unrest component.
+- **Conflict civilian boost**: violence-against-civilians events add
+  `min(10, civilianViolence * 3)` after the log-scaled conflict activity and
+  fatality terms.
+- **Conflict OREF boost**: for Israel only, active OREF rocket-alert pressure
+  adds `25 + min(25, activeAlertCount * 5)` inside the Conflict component, so
+  the component-level OREF contribution is capped at `+50`. This is separate
+  from the composite `orefBlendBoost` term listed above, which is also Israel
+  only and capped at `+25`.
+- **Information severity handling**: classified top stories use weights
+  `critical = 4`, `high = 2`, `medium/elevated = 1`,
+  `moderate/low = 0.5`, and `info = 0`. The per-country threat-summary feed
+  uses `critical = 4`, `high = 2`, `medium = 1`, `low = 0.5`, and `info = 0`,
+  with that threat-summary sub-score capped at `20`; the combined Information
+  component is capped at `100`.
 
 `composite` is then clamped to `[floor, 100]` where `floor` is the larger of:
 
