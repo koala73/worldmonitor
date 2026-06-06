@@ -17,13 +17,19 @@ import {
 import { TIER1_COUNTRIES as SERVER_TIER1_COUNTRIES } from '../server/worldmonitor/intelligence/v1/_shared.ts';
 import {
   BASELINE_RISK,
+  CII_TREND_BUCKET_LOOKUP_RADIUS,
+  CII_TREND_BUCKET_MS,
+  CII_TREND_TARGET_AGE_MS,
   EVENT_MULTIPLIER,
   computeCIIScores,
   computeStrategicRisks,
   filterRiskScoresResponse,
   geoToCountry,
   getAcledFetchWindows,
+  getCiiTrendHistoryBucket,
+  getCiiTrendPriorCandidateBuckets,
   normalizeCountryName,
+  selectCiiTrendPriorSnapshot,
 } from '../server/worldmonitor/intelligence/v1/get-risk-scores.ts';
 import {
   CII_BASELINE_RISK as SHARED_BASELINE_RISK,
@@ -64,7 +70,7 @@ function scoreFor(scores: ReturnType<typeof computeCIIScores>, code: string) {
 
 const TREND_TEST_NOW = 1_700_000_000_000;
 
-function priorCiiScore(region: string, combinedScore: number, computedAt = TREND_TEST_NOW - 60_000) {
+function priorCiiScore(region: string, combinedScore: number, computedAt = TREND_TEST_NOW - CII_TREND_TARGET_AGE_MS) {
   return {
     region,
     staticBaseline: 0,
@@ -76,6 +82,13 @@ function priorCiiScore(region: string, combinedScore: number, computedAt = TREND
     methodologyVersion: CII_FORMULA_VERSION,
     eventMultiplier: 1,
   } as ReturnType<typeof computeCIIScores>[number];
+}
+
+function trendSnapshot(capturedAt: number) {
+  return {
+    capturedAt,
+    ciiScores: [priorCiiScore('US', 42, capturedAt)],
+  };
 }
 
 describe('CII signal wiring', () => {
@@ -469,6 +482,20 @@ describe('CII scoring', () => {
     assert.equal(us.trend, 'TREND_DIRECTION_STABLE');
   });
 
+  it('rejects live-cache-age prior snapshots when deriving CII movement', () => {
+    const current = scoreFor(computeCIIScores([], emptyAux(), { nowMs: TREND_TEST_NOW }), 'US')!;
+    const us = scoreFor(
+      computeCIIScores([], emptyAux(), {
+        nowMs: TREND_TEST_NOW,
+        priorScores: [priorCiiScore('US', current.combinedScore - 10, TREND_TEST_NOW - 10 * 60 * 1000)],
+      }),
+      'US',
+    )!;
+
+    assert.equal(us.dynamicScore, 0);
+    assert.equal(us.trend, 'TREND_DIRECTION_STABLE');
+  });
+
   it('ignores stale prior snapshots when deriving CII movement', () => {
     const current = scoreFor(computeCIIScores([], emptyAux(), { nowMs: TREND_TEST_NOW }), 'US')!;
     const us = scoreFor(
@@ -481,6 +508,47 @@ describe('CII scoring', () => {
 
     assert.equal(us.dynamicScore, 0);
     assert.equal(us.trend, 'TREND_DIRECTION_STABLE');
+  });
+
+  it('targets trend history buckets around the 24-hour comparison window', () => {
+    const targetBucket = getCiiTrendHistoryBucket(TREND_TEST_NOW - CII_TREND_TARGET_AGE_MS);
+    const currentBucket = getCiiTrendHistoryBucket(TREND_TEST_NOW);
+    const buckets = getCiiTrendPriorCandidateBuckets(TREND_TEST_NOW);
+
+    assert.equal(buckets[0], targetBucket);
+    assert.equal(new Set(buckets).size, 1 + CII_TREND_BUCKET_LOOKUP_RADIUS * 2);
+    assert.equal(buckets.includes(currentBucket), false, 'trend lookup must not target the live cache bucket');
+  });
+
+  it('selects the prior snapshot closest to 24 hours and ignores outside-window snapshots', () => {
+    const recent = trendSnapshot(TREND_TEST_NOW - 10 * 60 * 1000);
+    const outside = trendSnapshot(
+      TREND_TEST_NOW - CII_TREND_TARGET_AGE_MS - (CII_TREND_BUCKET_LOOKUP_RADIUS + 1) * CII_TREND_BUCKET_MS,
+    );
+    const farther = trendSnapshot(TREND_TEST_NOW - CII_TREND_TARGET_AGE_MS - 2 * CII_TREND_BUCKET_MS);
+    const closest = trendSnapshot(TREND_TEST_NOW - CII_TREND_TARGET_AGE_MS + CII_TREND_BUCKET_MS);
+
+    assert.equal(selectCiiTrendPriorSnapshot([recent, outside], TREND_TEST_NOW), null);
+    assert.equal(selectCiiTrendPriorSnapshot([recent, farther, closest], TREND_TEST_NOW), closest);
+  });
+
+  it('handler uses dedicated trend history rather than stale fallback as the movement prior', () => {
+    const handlerPath = resolve(
+      fileURLToPath(new URL('.', import.meta.url)),
+      '..',
+      'server',
+      'worldmonitor',
+      'intelligence',
+      'v1',
+      'get-risk-scores.ts',
+    );
+    const handlerSource = readFileSync(handlerPath, 'utf8');
+    const freshGateIndex = handlerSource.indexOf("if (source === 'fresh')");
+    const trendPersistIndex = handlerSource.indexOf('await persistCiiTrendSnapshot(result)');
+
+    assert.match(handlerSource, /readCiiTrendPriorScores\(nowMs\)/);
+    assert.doesNotMatch(handlerSource, /priorRiskScores/);
+    assert.ok(trendPersistIndex > freshGateIndex, 'trend history writes must be gated to fresh upstream computations');
   });
 
   it('newsTopStories critical threat boosts newsActivity for attributed country', () => {
@@ -907,7 +975,7 @@ describe('CII scoring', () => {
     assert.match(
       proto,
       /Approximate 24-hour score movement delta \(-100 to 100\)[\s\S]*double dynamic_score = 3 \[[\s\S]*double\.gte = -100,[\s\S]*double\.lte = 100/,
-      'proto CiiScore.dynamic_score must be a signed movement delta, not a non-negative real-time score',
+      'proto CiiScore.dynamic_score must be a signed 24-hour movement delta, not a non-negative real-time score',
     );
     for (const [label, yaml] of [
       ['IntelligenceService.openapi.yaml', serviceOpenapi],
@@ -930,6 +998,7 @@ describe('CII scoring', () => {
       'docs/algorithms.mdx',
       'docs/overview.mdx',
       'docs/features.mdx',
+      'docs/methodology/cii-risk-scores.mdx',
       'docs/COMMUNITY-PROMOTION-GUIDE.md',
     ];
     const stalePatterns = [
@@ -941,6 +1010,8 @@ describe('CII scoring', () => {
       /relay\s+CII\s+seed\s+loop\s+is\s+disabled/i,
       /GPS[-/ ]only\s+security/i,
       /GPS\s+jamming\s+only/i,
+      /dynamicScore[\s\S]{0,120}composite\s+−\s+staticBaseline/i,
+      /dynamicScore[\s\S]{0,120}composite\s+-\s+staticBaseline/i,
     ];
 
     const violations: string[] = [];

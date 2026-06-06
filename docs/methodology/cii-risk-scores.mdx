@@ -108,8 +108,10 @@ composite = baseline * 0.4
 - **State Department advisory floor**: 60 for "do not travel", 50 for
   "reconsider travel", else 0.
 
-The `dynamicScore` exposed on the wire is `composite − staticBaseline` — i.e.
-the live-event contribution above the per-country baseline.
+The `dynamicScore` exposed on the wire is the signed score movement versus a
+valid CII snapshot from approximately 24 hours earlier. Positive values mean
+the country score rose, negative values mean it fell, and `0` means stable or
+that no valid prior snapshot is available.
 
 ---
 

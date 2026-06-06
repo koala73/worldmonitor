@@ -228,12 +228,23 @@ function logScaledScore(raw: number, cap: number, pivot: number): number {
   return Math.min(cap, (Math.log1p(value) / Math.log1p(pivot)) * cap);
 }
 
-const CII_TREND_DEADBAND_POINTS = 1;
-const CII_TREND_PRIOR_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+export const CII_TREND_DEADBAND_POINTS = 1;
+export const CII_TREND_TARGET_AGE_MS = 24 * 60 * 60 * 1000;
+export const CII_TREND_BUCKET_MS = 10 * 60 * 1000;
+export const CII_TREND_BUCKET_LOOKUP_RADIUS = 3;
+export const CII_TREND_PRIOR_MIN_AGE_MS =
+  CII_TREND_TARGET_AGE_MS - CII_TREND_BUCKET_LOOKUP_RADIUS * CII_TREND_BUCKET_MS;
+export const CII_TREND_PRIOR_MAX_AGE_MS =
+  CII_TREND_TARGET_AGE_MS + CII_TREND_BUCKET_LOOKUP_RADIUS * CII_TREND_BUCKET_MS;
 
 interface CiiTrendComparisonOptions {
   priorScores?: CiiScore[] | null;
   nowMs?: number;
+}
+
+export interface CiiTrendSnapshot {
+  capturedAt: number;
+  ciiScores: CiiScore[];
 }
 
 function finiteNumber(value: unknown): number | null {
@@ -252,17 +263,22 @@ export function deriveCiiTrendDelta(
 ): { dynamicScore: number; trend: TrendDirection } {
   const previous = finiteNumber(priorScore?.combinedScore);
   const priorComputedAt = finiteNumber(priorScore?.computedAt);
+  const priorAgeMs = priorComputedAt === null ? null : nowMs - priorComputedAt;
   if (
     previous === null ||
     priorComputedAt === null ||
     priorComputedAt <= 0 ||
     priorComputedAt > nowMs ||
-    nowMs - priorComputedAt > CII_TREND_PRIOR_MAX_AGE_MS
+    priorAgeMs === null ||
+    priorAgeMs < CII_TREND_PRIOR_MIN_AGE_MS ||
+    priorAgeMs > CII_TREND_PRIOR_MAX_AGE_MS
   ) {
     return { dynamicScore: 0, trend: 'TREND_DIRECTION_STABLE' as TrendDirection };
   }
 
   const dynamicScore = roundCiiDelta(combinedScore - previous);
+  // Composite CII scores are whole points, so strict > 1 / < -1 keeps a
+  // one-point move stable; two integer points is the first directional label.
   const trend = dynamicScore > CII_TREND_DEADBAND_POINTS
     ? 'TREND_DIRECTION_RISING'
     : dynamicScore < -CII_TREND_DEADBAND_POINTS
@@ -1019,13 +1035,100 @@ export function filterRiskScoresResponse(
 // scripts/seed-forecasts.mjs, scripts/regional-snapshot/*. The seed-meta key
 // (`seed-meta:intelligence:risk-scores`) is unchanged — that's freshness tracking,
 // not the payload itself.
-const RISK_CACHE_KEY = 'risk:scores:sebuf:v4';
-const RISK_STALE_CACHE_KEY = 'risk:scores:sebuf:stale:v4';
+const RISK_CACHE_KEY = `risk:scores:sebuf:${CII_FORMULA_VERSION}`;
+const RISK_STALE_CACHE_KEY = `risk:scores:sebuf:stale:${CII_FORMULA_VERSION}`;
+const RISK_TREND_HISTORY_CACHE_KEY_PREFIX = `risk:scores:sebuf:trend-history:${CII_FORMULA_VERSION}`;
 // `region` is deliberately excluded from the Redis key: this endpoint caches
 // the all-country payload once and applies any region filter as a read-only
 // projection at return time, so per-region requests cannot poison global cache.
 const RISK_CACHE_TTL = 600;
 const RISK_STALE_TTL = 3600;
+const CII_TREND_HISTORY_TTL = 3 * 24 * 60 * 60;
+
+export function getCiiTrendHistoryBucket(capturedAtMs: number): number {
+  const capturedAt = finiteNumber(capturedAtMs);
+  return capturedAt === null ? 0 : Math.floor(capturedAt / CII_TREND_BUCKET_MS);
+}
+
+function ciiTrendHistoryCacheKey(bucket: number): string {
+  return `${RISK_TREND_HISTORY_CACHE_KEY_PREFIX}:${bucket}`;
+}
+
+export function getCiiTrendPriorCandidateBuckets(nowMs: number): number[] {
+  const targetBucket = getCiiTrendHistoryBucket(nowMs - CII_TREND_TARGET_AGE_MS);
+  const buckets = [targetBucket];
+  for (let offset = 1; offset <= CII_TREND_BUCKET_LOOKUP_RADIUS; offset += 1) {
+    buckets.push(targetBucket - offset, targetBucket + offset);
+  }
+  return buckets;
+}
+
+function isCiiTrendSnapshot(value: unknown): value is CiiTrendSnapshot {
+  if (!value || typeof value !== 'object') return false;
+  const snapshot = value as Partial<CiiTrendSnapshot>;
+  return finiteNumber(snapshot.capturedAt) !== null
+    && Array.isArray(snapshot.ciiScores)
+    && snapshot.ciiScores.length > 0;
+}
+
+export function selectCiiTrendPriorSnapshot(
+  snapshots: Array<CiiTrendSnapshot | null | undefined>,
+  nowMs: number,
+): CiiTrendSnapshot | null {
+  let selected: CiiTrendSnapshot | null = null;
+  let selectedDistance = Number.POSITIVE_INFINITY;
+  let selectedCapturedAt = Number.NEGATIVE_INFINITY;
+
+  for (const snapshot of snapshots) {
+    if (!isCiiTrendSnapshot(snapshot)) continue;
+    const capturedAt = finiteNumber(snapshot.capturedAt);
+    if (capturedAt === null || capturedAt <= 0 || capturedAt > nowMs) continue;
+
+    const ageMs = nowMs - capturedAt;
+    if (ageMs < CII_TREND_PRIOR_MIN_AGE_MS || ageMs > CII_TREND_PRIOR_MAX_AGE_MS) continue;
+
+    const distance = Math.abs(ageMs - CII_TREND_TARGET_AGE_MS);
+    if (distance < selectedDistance || (distance === selectedDistance && capturedAt > selectedCapturedAt)) {
+      selected = snapshot;
+      selectedDistance = distance;
+      selectedCapturedAt = capturedAt;
+    }
+  }
+
+  return selected;
+}
+
+function ciiTrendSnapshotFromResponse(response: GetRiskScoresResponse): CiiTrendSnapshot | null {
+  let latestComputedAt = Number.NEGATIVE_INFINITY;
+  for (const score of response.ciiScores ?? []) {
+    const computedAt = finiteNumber(score.computedAt);
+    if (computedAt !== null && computedAt > latestComputedAt) latestComputedAt = computedAt;
+  }
+
+  if (!Number.isFinite(latestComputedAt) || latestComputedAt <= 0 || !response.ciiScores?.length) return null;
+  return { capturedAt: latestComputedAt, ciiScores: response.ciiScores };
+}
+
+async function readCiiTrendPriorScores(nowMs: number): Promise<CiiScore[] | null> {
+  const snapshots = await Promise.all(
+    getCiiTrendPriorCandidateBuckets(nowMs).map(async (bucket) => {
+      const value = await getCachedJson(ciiTrendHistoryCacheKey(bucket)).catch(() => null);
+      return isCiiTrendSnapshot(value) ? value : null;
+    }),
+  );
+  return selectCiiTrendPriorSnapshot(snapshots, nowMs)?.ciiScores ?? null;
+}
+
+async function persistCiiTrendSnapshot(response: GetRiskScoresResponse): Promise<void> {
+  const snapshot = ciiTrendSnapshotFromResponse(response);
+  if (!snapshot) return;
+
+  await setCachedJson(
+    ciiTrendHistoryCacheKey(getCiiTrendHistoryBucket(snapshot.capturedAt)),
+    snapshot,
+    CII_TREND_HISTORY_TTL,
+  );
+}
 
 // ========================================================================
 // RPC handler
@@ -1040,12 +1143,13 @@ export async function getRiskScores(
       RISK_CACHE_KEY,
       RISK_CACHE_TTL,
       async () => {
-        const [acled, aux, priorRiskScores] = await Promise.all([
+        const nowMs = Date.now();
+        const [acled, aux, priorCiiScores] = await Promise.all([
           fetchACLEDEvents(),
           fetchAuxiliarySources(),
-          getCachedJson(RISK_STALE_CACHE_KEY).catch(() => null) as Promise<GetRiskScoresResponse | null>,
+          readCiiTrendPriorScores(nowMs),
         ]);
-        const ciiScores = computeCIIScores(acled, aux, { priorScores: priorRiskScores?.ciiScores ?? null });
+        const ciiScores = computeCIIScores(acled, aux, { priorScores: priorCiiScores, nowMs });
         const strategicRisks = computeStrategicRisks(ciiScores);
         return { ciiScores, strategicRisks };
       },
@@ -1074,6 +1178,7 @@ export async function getRiskScores(
       // 7-day TTL matches the warm-ping write so health.maxStaleMin (30min)
       // logic is unchanged.
       if (source === 'fresh') {
+        await persistCiiTrendSnapshot(result).catch(() => {});
         const count = result.ciiScores?.length || 0;
         if (count > 0) {
           await setCachedJson(

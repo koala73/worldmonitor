@@ -982,7 +982,7 @@ components:
                     minimum: -100
                     format: double
                     description: |-
-                        Recent score movement delta (-100 to 100). Positive means rising,
+                        Approximate 24-hour score movement delta (-100 to 100). Positive means rising,
                          negative means falling, and 0 means stable or no valid prior snapshot.
                 combinedScore:
                     type: number
