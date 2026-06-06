@@ -683,6 +683,47 @@ describe('CII scoring', () => {
       `methodology doc must mention current CII_FORMULA_VERSION '${CII_FORMULA_VERSION}' — bump the version and update the doc together.`);
   });
 
+  it('public CII docs reference the current RPC route and backend-authoritative v3 conflict curve', () => {
+    const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
+    const methodologyDoc = readFileSync(resolve(root, 'docs', 'methodology', 'cii-risk-scores.mdx'), 'utf8');
+    const algorithmsDoc = readFileSync(resolve(root, 'docs', 'algorithms.mdx'), 'utf8');
+
+    assert.ok(
+      methodologyDoc.includes('GET /api/intelligence/v1/get-risk-scores'),
+      'methodology doc must point to the current get-risk-scores RPC route',
+    );
+    assert.doesNotMatch(
+      methodologyDoc,
+      /GET \/api\/intelligence\/risk-scores/,
+      'methodology doc must not reference the retired pre-RPC CII route',
+    );
+    assert.match(
+      algorithmsDoc,
+      /Authoritative CII scores come from the server-side `GET \/api\/intelligence\/v1\/get-risk-scores` RPC/,
+      'algorithms doc must identify the server RPC as the authoritative CII source',
+    );
+    assert.match(
+      algorithmsDoc,
+      /fallback\/local renderer path after cached backend scores/,
+      'algorithms doc must describe frontend scoring as fallback/local rendering after cached backend scores',
+    );
+    assert.match(
+      algorithmsDoc,
+      /min\(70, log1p\(rawActivity\) \/ log1p\(4000\) \* 70\)/,
+      'algorithms doc must publish the v3 conflict activity cap=70 curve',
+    );
+    assert.doesNotMatch(
+      algorithmsDoc,
+      /server-side score .* uses the same formulas as the frontend/i,
+      'algorithms doc must not overclaim server/frontend formula parity',
+    );
+    assert.doesNotMatch(
+      algorithmsDoc,
+      /Weighted ACLED events .* capped at 50/i,
+      'algorithms doc must not describe the server-authoritative v3 conflict activity cap as 50',
+    );
+  });
+
   it('current public CII docs do not reintroduce pre-v3 stale claims', () => {
     const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
     const publicDocPaths = [

@@ -11,7 +11,7 @@ description: "Detailed documentation of World Monitor's scoring formulas, detect
 
 Every Tier-1 country receives a live instability score (0-100). CII v3 tracks 31 Tier-1 countries with shared server/frontend `baselineRisk` and `eventMultiplier` coefficients: US, Russia, China, Ukraine, Iran, Israel, Taiwan, North Korea, Saudi Arabia, Turkey, Poland, Germany, France, UK, India, Pakistan, Syria, Yemen, Myanmar, Venezuela, Cuba, Mexico, Brazil, UAE, South Korea, Iraq, Afghanistan, Lebanon, Egypt, Japan, and Qatar. Countries outside the curated Tier-1 set use the default editorial coefficients when they are scored by supporting systems (`DEFAULT_CII_BASELINE_RISK = 15`, `DEFAULT_CII_EVENT_MULTIPLIER = 1.0`).
 
-The server-side score (`get-risk-scores.ts`) uses the same formulas as the frontend (`country-instability.ts`):
+Authoritative CII scores come from the server-side `GET /api/intelligence/v1/get-risk-scores` RPC (`server/worldmonitor/intelligence/v1/get-risk-scores.ts`) and are served to the browser through the cached risk-score feed. The frontend `country-instability.ts` path shares the published `baselineRisk` / `eventMultiplier` coefficients and v3 conflict curve constants, but it is a fallback/local renderer path after cached backend scores, not the source of truth for published scores:
 
 | Component            | Weight | Details |
 | -------------------- | ------ | ------- |
@@ -20,7 +20,7 @@ The server-side score (`get-risk-scores.ts`) uses the same formulas as the front
 
 **Unrest score** (0-100): Log2 dampening for high-volume low-multiplier countries (`multiplier &lt; 0.7`), linear otherwise. Base capped at 50, plus protest/riot fatality boost (up to 30), plus outage severity boost (TOTAL: 30pts, MAJOR: 15pts, PARTIAL: 5pts, capped at 50).
 
-**Conflict score** (0-100): Weighted ACLED events (battles x3, explosions x4, civilian violence x5, capped at 50), sqrt-scaled fatalities (up to 40), civilian boost (up to 10), Iran strike boost with severity weighting (up to 50), and OREF alert boost for Israel (25 base + 5 per active alert, up to 50 total). Rolling 24-hour history adds a secondary boost: 3-9 alerts contribute +5, 10+ contribute +10 to the blended score.
+**Conflict score** (0-100): Weighted ACLED activity (battles x3, explosions x4, civilian violence x5, multiplied by `eventMultiplier`) is log-scaled with the v3 curve `min(70, log1p(rawActivity) / log1p(4000) * 70)` before additional boosts. Sqrt-scaled fatalities contribute up to 40, civilian targeting up to 10, Iran strike severity up to 50, and OREF alerts for Israel add 25 base + 5 per active alert up to 50 total. Rolling 24-hour OREF history contributes through the Israel blend boost described below.
 
 **Security score** (0-100): Military flights (3pts each, capped at 50), military vessels (5pts each, capped at 30), aviation closures/delays (severity-weighted, capped at 40), and GPS/GNSS jamming (high: 5pts, medium: 2pts per hex, capped at 35). Foreign military presence is weighted ×2.
 
