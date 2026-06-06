@@ -749,6 +749,13 @@ export default defineConfig(({ mode }) => {
   return {
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version),
+      // @clerk/clerk-js is loaded as the UMD bundle from the Clerk Frontend
+      // API at runtime (src/services/clerk.ts), not bundled. Pin the loaded
+      // version to the dependency declared in package.json so the runtime SDK
+      // matches the @clerk/clerk-js types we compile against.
+      __CLERK_JS_VERSION__: JSON.stringify(
+        (pkg.dependencies['@clerk/clerk-js'] || '').replace(/^[\^~>=<\s]*/, ''),
+      ),
       // Vercel sets VERCEL_GIT_COMMIT_SHA on production + preview builds.
       // Local `vite build` falls back to 'dev' — installStaleBundleCheck
       // detects the marker and skips the comparison so dev tabs don't

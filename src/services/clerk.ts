@@ -1,12 +1,13 @@
 /**
  * Clerk JS initialization and thin wrapper.
  *
- * Uses dynamic import so the module is safe to import in Node.js test
- * environments where @clerk/clerk-js (browser-only) is not available.
- *
- * The @clerk/clerk-js bundle is ~2.98 MB and 96% unused on first paint, so
- * the actual `await import('@clerk/clerk-js')` is deferred off the critical
- * path. Three triggers can start the load:
+ * The SDK + UI controller are loaded as UMD bundles from the Clerk Frontend API
+ * via <script> tags (see `loadClerkUmd`) rather than bundled. The v6 default
+ * `import('@clerk/clerk-js')` resolves to the headless RHC build, whose runtime
+ * UI-chunk loader breaks once Vite bundles it ("Clerk was not loaded with Ui
+ * components"). Loading clerk.browser.js + @clerk/ui's ui.browser.js standalone
+ * lets each resolve its own chunk host, and keeps ~1.5 MB off the bundle and off
+ * the critical path. Three triggers can start the load:
  *   1. `scheduleClerkLoad()` — requestIdleCallback after first paint (the
  *      default for the main-app boot path; called from auth-state.ts).
  *   2. User interaction — `openSignIn`/`openSignUp`/`mountUserButton` force
@@ -102,6 +103,106 @@ function getAfterSignOutUrl(): string {
   return new URL('/', window.location.origin).toString();
 }
 
+// Version of @clerk/clerk-js to load from the Frontend API, injected at build
+// time from package.json so the runtime SDK always matches the @clerk/clerk-js
+// types we compile against. See vite.config.ts `define`. The `typeof` guard
+// keeps this module importable under Node test runners where the Vite define
+// is absent (mirrors stale-bundle-check.ts's __BUILD_HASH__ handling).
+const CLERK_JS_VERSION = typeof __CLERK_JS_VERSION__ !== 'undefined' ? __CLERK_JS_VERSION__ : '';
+
+// @clerk/ui major paired with @clerk/clerk-js v6. The UI controller ships in a
+// SEPARATE package from the (headless) SDK and is loaded from the same Frontend
+// API; its UMD bundle exposes `window.__internal_ClerkUICtor`, which we pass to
+// `clerk.load()`. Bump this alongside any @clerk/clerk-js MAJOR upgrade.
+const CLERK_UI_VERSION = '1';
+
+// The SDK UMD bundle, loaded with a `data-clerk-publishable-key` attribute,
+// auto-creates a (not-yet-loaded) Clerk instance on `window.Clerk` — it exposes
+// the instance, NOT a constructor. We then drive `.load()` ourselves so the
+// clerkUICtor / appearance / afterSignOutUrl options apply.
+function getClerkInstance(): ClerkInstance | undefined {
+  return (window as unknown as { Clerk?: ClerkInstance }).Clerk;
+}
+
+// UI controller constructor published by @clerk/ui's UMD bundle (ui.browser.js).
+function getClerkUICtor(): unknown {
+  return (window as unknown as { __internal_ClerkUICtor?: unknown }).__internal_ClerkUICtor;
+}
+
+/**
+ * Derive the Clerk Frontend API host from the publishable key. Clerk keys are
+ * `pk_(live|test)_<base64("<frontend-api>$")>` and carry no secret, so the host
+ * is recoverable client-side — this mirrors Clerk's own parsePublishableKey.
+ * Returns '' when the key is malformed.
+ */
+function clerkFapiHost(publishableKey: string): string {
+  const encoded = publishableKey.replace(/^pk_(live|test)_/, '');
+  try {
+    return atob(encoded).replace(/\$+$/, '');
+  } catch {
+    return '';
+  }
+}
+
+let umdLoadPromise: Promise<void> | null = null;
+
+/** Inject a <script> from the Frontend API and resolve on load. */
+function loadScriptOnce(src: string, attrs?: Record<string, string>): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    if (attrs) for (const [k, v] of Object.entries(attrs)) script.setAttribute(k, v);
+    script.addEventListener('load', () => resolve(), { once: true });
+    script.addEventListener('error', () => {
+      script.remove();
+      reject(new Error(`[clerk] failed to load ${src}`));
+    }, { once: true });
+    document.head.appendChild(script);
+  });
+}
+
+/**
+ * Load the Clerk SDK + UI controller from the Frontend API via <script> tags.
+ *
+ * The @clerk/clerk-js v6 default export (`import`) is the RHC build: it resolves
+ * its UI-component chunk host from `document.currentScript`, which Vite bundling
+ * breaks — so the UI controller never attaches and `openSignIn()` throws "Clerk
+ * was not loaded with Ui components". The fix loads, from the Frontend API:
+ *   1. `clerk.browser.js` (headless SDK) with `data-clerk-publishable-key`, which
+ *      bootstraps a not-yet-loaded instance on `window.Clerk`; and
+ *   2. `ui.browser.js` (@clerk/ui), which publishes `window.__internal_ClerkUICtor`.
+ * `initClerk()` then calls `clerk.load({ clerkUICtor })` to attach the UI. Both
+ * scripts resolve their own chunk hosts (loaded standalone, not bundled). See the
+ * clerk-auth-gotchas skill. Clears the cached promise on failure so a transient
+ * network error doesn't permanently poison auth.
+ */
+function loadClerkUmd(publishableKey: string): Promise<void> {
+  if (getClerkInstance() && getClerkUICtor()) return Promise.resolve();
+  if (umdLoadPromise) return umdLoadPromise;
+  umdLoadPromise = (async () => {
+    const host = clerkFapiHost(publishableKey);
+    if (!host) throw new Error('[clerk] cannot derive Frontend API host from publishable key');
+    const base = `https://${host}/npm`;
+    await Promise.all([
+      getClerkUICtor()
+        ? Promise.resolve()
+        : loadScriptOnce(`${base}/@clerk/ui@${CLERK_UI_VERSION}/dist/ui.browser.js`),
+      getClerkInstance()
+        ? Promise.resolve()
+        : loadScriptOnce(`${base}/@clerk/clerk-js@${CLERK_JS_VERSION}/dist/clerk.browser.js`, {
+            'data-clerk-publishable-key': publishableKey,
+          }),
+    ]);
+    if (!getClerkInstance()) throw new Error('[clerk] clerk.browser.js loaded but window.Clerk instance missing');
+    if (!getClerkUICtor()) throw new Error('[clerk] ui.browser.js loaded but window.__internal_ClerkUICtor missing');
+  })().catch((e) => {
+    umdLoadPromise = null; // allow retry on next call
+    throw e;
+  });
+  return umdLoadPromise;
+}
+
 /**
  * Force Clerk to load now. Call when the SDK is required synchronously
  * (mcp-grant page bootstrap, getClerkToken on first authenticated request).
@@ -116,12 +217,16 @@ export async function initClerk(): Promise<void> {
   }
   loadPromise = (async () => {
     try {
-      const { Clerk } = await import('@clerk/clerk-js');
-      const clerk = new Clerk(PUBLISHABLE_KEY);
+      await loadClerkUmd(PUBLISHABLE_KEY);
+      const clerk = getClerkInstance();
+      if (!clerk) throw new Error('[clerk] window.Clerk unavailable after load');
+      // `clerkUICtor` is the UI controller from @clerk/ui — a runtime load()
+      // option the public types don't surface, so cast the options object.
       await clerk.load({
+        clerkUICtor: getClerkUICtor(),
         appearance: getAppearance(),
         afterSignOutUrl: getAfterSignOutUrl(),
-      });
+      } as Parameters<typeof clerk.load>[0]);
       clerkInstance = clerk;
       attachPendingSubscribers();
     } catch (e) {
