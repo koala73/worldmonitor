@@ -29,7 +29,7 @@ export const STANDALONE_SOURCE_META_MAX_STALE_MIN: Readonly<Record<string, numbe
   'seed-meta:displacement:summary': 720,
   'seed-meta:unrest:events': 120,
   'seed-meta:conflict:ucdp-events': 420,
-  'seed-meta:intelligence:social-reddit': 180,
+  'seed-meta:intelligence:social-reddit': 540,
   'seed-meta:news:threat-summary': 60,
   'seed-meta:resilience:recovery:fiscal-space': 129600,
   'seed-meta:resilience:recovery:reserve-adequacy': 86400,

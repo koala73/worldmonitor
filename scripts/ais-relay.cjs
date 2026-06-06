@@ -5747,6 +5747,170 @@ async function startShippingStressSeedLoop() {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Reddit data fetch (shared across social-velocity + WSB tickers)
+// ─────────────────────────────────────────────────────────────
+// Reddit's Responsible Builder Policy (2026) serves an HTML 403 to the
+// unauthenticated www.reddit.com/r/<sub>/hot.json endpoint regardless of exit
+// IP or User-Agent (verified 2026-06-05: residential IP, Decodo residential
+// proxy, browser UA, and WM UA ALL 403 with the same HTML block page — it is a
+// policy block on the endpoint, NOT an IP/UA block, so a proxy does not help)
+// AND removed self-serve API-app creation, so a NEW OAuth app cannot be made.
+// Both Reddit consumers route through fetchRedditHotListing(); see its own
+// comment for the ScrapeCreators → OAuth → public path precedence. OAuth (usable
+// only with pre-policy app creds) and the public endpoint are kept as fallbacks
+// (the public path is today's no-cred default that surfaces SEED_ERROR — no
+// regression when no key is set).
+const REDDIT_CLIENT_ID = process.env.REDDIT_CLIENT_ID || '';
+const REDDIT_CLIENT_SECRET = process.env.REDDIT_CLIENT_SECRET || '';
+const REDDIT_OAUTH_ENABLED = !!(REDDIT_CLIENT_ID && REDDIT_CLIENT_SECRET);
+// Reddit requires a unique, descriptive UA: "<platform>:<appid>:<version> (by
+// /u/<username>)". Set REDDIT_USER_AGENT to include the developer's reddit
+// username so requests are attributable per Reddit's API rules.
+const REDDIT_USER_AGENT = process.env.REDDIT_USER_AGENT || 'server:app.worldmonitor:1.0 (by /u/worldmonitor)';
+const REDDIT_AUTH_COOLDOWN_MS = 5 * 60 * 1000;
+
+// ScrapeCreators — third-party Reddit data vendor (same key /last30days uses).
+// PREFERRED path: it's the only one that works now that Reddit 403s the public
+// .json endpoint AND removed self-serve API-app creation (Responsible Builder
+// Policy 2026). Returns native Reddit fields in a flat `posts` array, so the
+// downstream consumers are unchanged. When unset, the relay falls back to OAuth
+// (pre-policy creds only) then the public endpoint — today's behavior, no regression.
+const SCRAPECREATORS_API_KEY = process.env.SCRAPECREATORS_API_KEY || '';
+const SCRAPECREATORS_ENABLED = !!SCRAPECREATORS_API_KEY;
+
+let _redditToken = null;
+let _redditTokenExpiry = 0;
+let _redditTokenPromise = null;
+let _redditAuthCooldownUntil = 0;
+
+async function _fetchRedditToken() {
+  const basic = Buffer.from(`${REDDIT_CLIENT_ID}:${REDDIT_CLIENT_SECRET}`).toString('base64');
+  const resp = await fetch('https://www.reddit.com/api/v1/access_token', {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${basic}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': REDDIT_USER_AGENT,
+    },
+    body: 'grant_type=client_credentials',
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!resp.ok) throw new Error(`token HTTP ${resp.status}`);
+  const json = await resp.json();
+  if (!json.access_token) throw new Error(`no access_token (${json.error || 'unknown'})`);
+  return { token: json.access_token, expiresIn: Number(json.expires_in) || 3600 };
+}
+
+// Returns a cached userless bearer token, or null when auth is unavailable.
+// Single-flight (concurrent callers share one in-flight fetch) with a 5-min
+// cooldown after a failure so a broken credential doesn't hammer the auth
+// endpoint every seed cycle.
+async function getRedditToken() {
+  const now = Date.now();
+  if (_redditToken && now < _redditTokenExpiry) return _redditToken;
+  if (now < _redditAuthCooldownUntil) return null;
+  if (_redditTokenPromise) return _redditTokenPromise;
+  _redditTokenPromise = (async () => {
+    try {
+      const { token, expiresIn } = await _fetchRedditToken();
+      _redditToken = token;
+      _redditTokenExpiry = Date.now() + Math.max(60, expiresIn - 60) * 1000; // refresh 60s early
+      console.log(`[Reddit] OAuth token acquired, expires in ${expiresIn}s`);
+      return token;
+    } catch (e) {
+      _redditToken = null;
+      _redditTokenExpiry = 0;
+      _redditAuthCooldownUntil = Date.now() + REDDIT_AUTH_COOLDOWN_MS;
+      console.warn(`[Reddit] OAuth token fetch failed: ${e?.message || e} — cooldown ${REDDIT_AUTH_COOLDOWN_MS / 1000}s`);
+      return null;
+    } finally {
+      _redditTokenPromise = null;
+    }
+  })();
+  return _redditTokenPromise;
+}
+
+// Coerce a Reddit timestamp to epoch SECONDS. Native Reddit (and the Reddit
+// hosts with raw_json=1) return numeric seconds (~1.7e9); a vendor could hand
+// back milliseconds (~1.7e12) or an ISO string. The downstream velocity math
+// (ageSec = now/1000 - created_utc) and createdAt (created_utc * 1000) both
+// assume seconds, so normalize before the consumers see it.
+function _redditEpochSeconds(v) {
+  if (typeof v === 'number') return v > 1e12 ? Math.floor(v / 1000) : v;
+  if (typeof v === 'string') {
+    const n = Number(v);
+    if (Number.isFinite(n)) return n > 1e12 ? Math.floor(n / 1000) : n;
+    const ms = Date.parse(v);
+    return Number.isFinite(ms) ? Math.floor(ms / 1000) : undefined;
+  }
+  return v;
+}
+
+// The Reddit hosts pass raw_json=1, which un-escapes &amp; &lt; &gt; in text
+// fields. A vendor response may still be HTML-escaped, so decode the few entities
+// Reddit emits to keep panel titles identical across paths.
+function _decodeRedditEntities(s) {
+  if (typeof s !== 'string') return s;
+  return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+}
+
+// Normalize a ScrapeCreators post so its shape matches the OAuth/public paths
+// exactly (numeric-seconds created_utc, unescaped title/selftext). Other native
+// fields (score, upvote_ratio, num_comments, id, permalink, url) pass through.
+function _normalizeVendorPost(p) {
+  if (!p || typeof p !== 'object') return p;
+  return { ...p, created_utc: _redditEpochSeconds(p.created_utc), title: _decodeRedditEntities(p.title), selftext: _decodeRedditEntities(p.selftext) };
+}
+
+// Shared "hot" listing fetch for every Reddit consumer. Returns
+// { ok, status, posts, source } and never throws on an HTTP status (network/
+// timeout errors still bubble to the caller's try/catch). `source` names the
+// path that actually ran ('scrapecreators' | 'oauth' | 'public') so the caller's
+// SEED_ERROR reason is accurate. Path precedence:
+//   1. ScrapeCreators (vendor) when SCRAPECREATORS_API_KEY is set — preferred.
+//   2. oauth.reddit.com when REDDIT_CLIENT_ID/SECRET are set (pre-policy app creds).
+//   3. public www.reddit.com/.../hot.json (currently 403-walled; correct no-cred default).
+// All paths yield the same per-post native field names (score, upvote_ratio,
+// num_comments, created_utc, id, title, permalink, url), so downstream consumers
+// are unchanged. ScrapeCreators returns a flat `posts` array (normalized via
+// _normalizeVendorPost); the Reddit hosts return data.children[].data.
+async function fetchRedditHotListing(subreddit, { limit = 25, legacyUserAgent } = {}) {
+  // 1. ScrapeCreators (preferred) — flat { posts, after } with native Reddit fields.
+  if (SCRAPECREATORS_ENABLED) {
+    const scUrl = `https://api.scrapecreators.com/v1/reddit/subreddit?subreddit=${encodeURIComponent(subreddit)}&sort=hot`;
+    const resp = await fetch(scUrl, {
+      headers: { 'x-api-key': SCRAPECREATORS_API_KEY, Accept: 'application/json' },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!resp.ok) return { ok: false, status: resp.status, posts: [], source: 'scrapecreators' };
+    const data = await resp.json();
+    const posts = (Array.isArray(data?.posts) ? data.posts : []).filter(Boolean).slice(0, limit).map(_normalizeVendorPost);
+    return { ok: true, status: resp.status, posts, source: 'scrapecreators' };
+  }
+  let url;
+  let headers;
+  let source;
+  if (REDDIT_OAUTH_ENABLED) {
+    const token = await getRedditToken();
+    if (token) {
+      url = `https://oauth.reddit.com/r/${subreddit}/hot?limit=${limit}&raw_json=1`;
+      headers = { Authorization: `Bearer ${token}`, 'User-Agent': REDDIT_USER_AGENT, Accept: 'application/json' };
+      source = 'oauth';
+    }
+  }
+  if (!url) {
+    url = `https://www.reddit.com/r/${subreddit}/hot.json?limit=${limit}&raw_json=1`;
+    headers = { Accept: 'application/json', 'User-Agent': legacyUserAgent || REDDIT_USER_AGENT };
+    source = 'public';
+  }
+  const resp = await fetch(url, { headers, signal: AbortSignal.timeout(10000) });
+  if (!resp.ok) return { ok: false, status: resp.status, posts: [], source };
+  const data = await resp.json();
+  return { ok: true, status: resp.status, posts: (data?.data?.children || []).map(c => c.data).filter(Boolean), source };
+}
+
+// ─────────────────────────────────────────────────────────────
 // Social Velocity — Reddit r/worldnews + r/geopolitics trending
 // ─────────────────────────────────────────────────────────────
 
@@ -5756,8 +5920,8 @@ const SOCIAL_VELOCITY_SEED_META_KEY = 'seed-meta:intelligence:social-reddit';
 // after ~50min of 10-min polling (empirically observed 2026-04-16: both subs
 // returned HTTP 403 on every cycle after 16:26 UTC). Dropping the success-path
 // frequency to 1/hour reduces the traffic Reddit's behavioral heuristic flags on.
-const SOCIAL_VELOCITY_TTL = 10800; // 3h — 3× the 60min interval
-const SOCIAL_VELOCITY_INTERVAL_MS = 60 * 60 * 1000;
+const SOCIAL_VELOCITY_TTL = 32400; // 9h — co-pinned ≥ health maxStaleMin=540 (api/health.js) so the data key never expires before STALE_SEED fires (avoids the EMPTY-vs-STALE_SEED gap); ~3× the 3h interval
+const SOCIAL_VELOCITY_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3h — velocity decays over ~6h; hourly was a Reddit-rate-limit leftover, not a freshness need
 const REDDIT_SUBREDDITS = ['worldnews', 'geopolitics'];
 
 let socialVelocityInFlight = false;
@@ -5797,19 +5961,17 @@ async function writeSocialVelocityHealthyMeta(recordCount) {
 }
 
 async function fetchRedditHot(subreddit, failures = []) {
-  const url = `https://www.reddit.com/r/${subreddit}/hot.json?limit=25&raw_json=1`;
-  const resp = await fetch(url, {
-    headers: { Accept: 'application/json', 'User-Agent': 'WorldMonitor/1.0 (contact: info@worldmonitor.app)' },
-    signal: AbortSignal.timeout(10000),
+  const { ok, status, posts, source } = await fetchRedditHotListing(subreddit, {
+    limit: 25,
+    legacyUserAgent: 'WorldMonitor/1.0 (contact: info@worldmonitor.app)',
   });
-  if (!resp.ok) {
-    const failure = `r/${subreddit} HTTP ${resp.status}`;
+  if (!ok) {
+    const failure = `r/${subreddit} HTTP ${status} (${source})`;
     failures.push(failure);
     console.warn(`[SocialVelocity] Reddit ${failure}`);
     return [];
   }
-  const data = await resp.json();
-  return (data?.data?.children || []).map(c => c.data).filter(Boolean);
+  return posts;
 }
 
 async function seedSocialVelocity() {
@@ -5900,8 +6062,8 @@ async function startSocialVelocitySeedLoop() {
 const WSB_TICKERS_REDIS_KEY = 'intelligence:wsb-tickers:v1';
 // Hourly cadence (bumped from 10min). Same Reddit-datacenter-IP blocking
 // rationale as SocialVelocity — see comment above.
-const WSB_TICKERS_TTL = 10800; // 3h — 3× the 60min interval
-const WSB_TICKERS_INTERVAL_MS = 60 * 60 * 1000;
+const WSB_TICKERS_TTL = 32400; // 9h — co-pinned ≥ health maxStaleMin=540 (api/health.js) so the data key never expires before STALE_SEED fires (avoids the EMPTY-vs-STALE_SEED gap); ~3× the 3h interval
+const WSB_TICKERS_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3h — same cadence rationale as SocialVelocity above
 const WSB_TICKERS_RETRY_MS = 20 * 60 * 1000;
 const WSB_SUBREDDITS = ['wallstreetbets', 'stocks', 'investing'];
 
@@ -5937,14 +6099,9 @@ async function loadWsbTickerSet() {
 }
 
 async function fetchWsbRedditHot(subreddit) {
-  const url = `https://www.reddit.com/r/${subreddit}/hot.json?limit=50&raw_json=1`;
-  const resp = await fetch(url, {
-    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(10000),
-  });
-  if (!resp.ok) { console.warn(`[WsbTickers] Reddit r/${subreddit} HTTP ${resp.status}`); return []; }
-  const data = await resp.json();
-  return (data?.data?.children || []).map(c => c.data).filter(Boolean);
+  const { ok, status, posts, source } = await fetchRedditHotListing(subreddit, { limit: 50, legacyUserAgent: CHROME_UA });
+  if (!ok) { console.warn(`[WsbTickers] Reddit r/${subreddit} HTTP ${status} (${source})`); return []; }
+  return posts;
 }
 
 function normalizeTicker(raw) {

@@ -102,6 +102,39 @@ test('classifyKey: socialVelocity error seed-meta → SEED_ERROR while data is p
   assert.equal(entry.records, 1);
 });
 
+test('classifyKey: socialVelocity/wsbTickers tolerate the 3h cadence — fresh at 300min → OK', () => {
+  // Cadence dropped 1h→3h (ScrapeCreators), so maxStaleMin was raised 180→540.
+  // A healthy seed-meta aged 300min (5h, inside 540) must NOT false-alarm.
+  for (const [name, metaKey] of [
+    ['socialVelocity', 'seed-meta:intelligence:social-reddit'],
+    ['wsbTickers', 'seed-meta:intelligence:wsb-tickers'],
+  ]) {
+    const entry = classifyKey(name, BOOTSTRAP_KEYS[name], { allowOnDemand: false },
+      makeCtx({
+        strens: { [BOOTSTRAP_KEYS[name]]: 4096 },
+        metaValues: { [metaKey]: seedMeta({ fetchedAt: NOW - 300 * ONE_MIN_MS }) },
+      }));
+    assert.equal(entry.status, 'OK', `${name} at 300min should be OK`);
+  }
+});
+
+test('classifyKey: socialVelocity/wsbTickers still alarm if the relay stops — stale at 600min → STALE_SEED', () => {
+  // The raised maxStaleMin (540) must not mask a genuine relay outage: 600min (>540)
+  // still degrades to STALE_SEED (warn).
+  for (const [name, metaKey] of [
+    ['socialVelocity', 'seed-meta:intelligence:social-reddit'],
+    ['wsbTickers', 'seed-meta:intelligence:wsb-tickers'],
+  ]) {
+    const entry = classifyKey(name, BOOTSTRAP_KEYS[name], { allowOnDemand: false },
+      makeCtx({
+        strens: { [BOOTSTRAP_KEYS[name]]: 4096 },
+        metaValues: { [metaKey]: seedMeta({ fetchedAt: NOW - 600 * ONE_MIN_MS }) },
+      }));
+    assert.equal(entry.status, 'STALE_SEED', `${name} at 600min should be STALE_SEED`);
+    assert.equal(STATUS_COUNTS[entry.status], 'warn');
+  }
+});
+
 test('classifyKey: empty bootstrap key (no cascade) → EMPTY (crit)', () => {
   const entry = classifyKey('earthquakes', BOOTSTRAP_KEYS.earthquakes, { allowOnDemand: false },
     makeCtx({ metaValues: { 'seed-meta:seismology:earthquakes': seedMeta() } }));
