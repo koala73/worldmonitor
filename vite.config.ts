@@ -13,6 +13,28 @@ import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
 const brotliCompressAsync = promisify(brotliCompress);
 const BROTLI_EXTENSIONS = new Set(['.js', '.mjs', '.css', '.html', '.svg', '.json', '.txt', '.xml', '.wasm']);
 
+// @clerk/clerk-js is loaded as a UMD bundle from the Clerk Frontend API at
+// runtime (src/services/clerk.ts), not bundled. Resolve the version from
+// package.json so the runtime SDK matches the @clerk/clerk-js types we compile
+// against, and inject it via `define` (__CLERK_JS_VERSION__). Fall back to
+// devDependencies in case the (types-only) dep is moved there, and fail the
+// build loudly if it can't be resolved — an empty version yields a `.../@/dist`
+// URL that 404s and silently breaks auth in production.
+const CLERK_DEPS = pkg.dependencies as Record<string, string>;
+const CLERK_DEV_DEPS = (pkg.devDependencies ?? {}) as Record<string, string>;
+const CLERK_JS_VERSION = (CLERK_DEPS['@clerk/clerk-js'] || CLERK_DEV_DEPS['@clerk/clerk-js'] || '')
+  .replace(/^[\^~>=<\s]*/, '');
+if (!CLERK_JS_VERSION) {
+  throw new Error('[vite] @clerk/clerk-js not found in package.json — __CLERK_JS_VERSION__ would be empty and 404 the Clerk Frontend API script URL.');
+}
+// @clerk/ui (the runtime UI controller, pinned by CLERK_UI_VERSION in
+// src/services/clerk.ts) is major 1, which pairs with @clerk/clerk-js major 6.
+// Fail the build if the SDK major drifts so the pairing is updated deliberately
+// rather than loading an incompatible UI controller and breaking auth at runtime.
+if (CLERK_JS_VERSION.split('.')[0] !== '6') {
+  throw new Error(`[vite] @clerk/clerk-js major is ${CLERK_JS_VERSION.split('.')[0]}, expected 6 — update CLERK_UI_VERSION in src/services/clerk.ts to the paired @clerk/ui major, then bump this guard.`);
+}
+
 // Single source of truth for chunk names that must NOT be hoisted into the
 // entry HTML's modulepreload list. Used by both `manualChunks` (return values
 // must literally match these strings) and `modulePreload.resolveDependencies`
@@ -749,13 +771,9 @@ export default defineConfig(({ mode }) => {
   return {
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version),
-      // @clerk/clerk-js is loaded as the UMD bundle from the Clerk Frontend
-      // API at runtime (src/services/clerk.ts), not bundled. Pin the loaded
-      // version to the dependency declared in package.json so the runtime SDK
-      // matches the @clerk/clerk-js types we compile against.
-      __CLERK_JS_VERSION__: JSON.stringify(
-        (pkg.dependencies['@clerk/clerk-js'] || '').replace(/^[\^~>=<\s]*/, ''),
-      ),
+      // Resolved + build-time validated above (devDependencies fallback +
+      // non-empty + major-pairing guards).
+      __CLERK_JS_VERSION__: JSON.stringify(CLERK_JS_VERSION),
       // Vercel sets VERCEL_GIT_COMMIT_SHA on production + preview builds.
       // Local `vite build` falls back to 'dev' — installStaleBundleCheck
       // detects the marker and skips the comparison so dev tabs don't

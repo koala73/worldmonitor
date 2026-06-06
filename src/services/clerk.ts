@@ -147,7 +147,7 @@ function clerkFapiHost(publishableKey: string): string {
 let umdLoadPromise: Promise<void> | null = null;
 
 /** Inject a <script> from the Frontend API and resolve on load. */
-function loadScriptOnce(src: string, attrs?: Record<string, string>): Promise<void> {
+function injectScript(src: string, attrs?: Record<string, string>): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const script = document.createElement('script');
     script.src = src;
@@ -187,10 +187,10 @@ function loadClerkUmd(publishableKey: string): Promise<void> {
     await Promise.all([
       getClerkUICtor()
         ? Promise.resolve()
-        : loadScriptOnce(`${base}/@clerk/ui@${CLERK_UI_VERSION}/dist/ui.browser.js`),
+        : injectScript(`${base}/@clerk/ui@${CLERK_UI_VERSION}/dist/ui.browser.js`),
       getClerkInstance()
         ? Promise.resolve()
-        : loadScriptOnce(`${base}/@clerk/clerk-js@${CLERK_JS_VERSION}/dist/clerk.browser.js`, {
+        : injectScript(`${base}/@clerk/clerk-js@${CLERK_JS_VERSION}/dist/clerk.browser.js`, {
             'data-clerk-publishable-key': publishableKey,
           }),
     ]);
