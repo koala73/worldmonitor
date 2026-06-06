@@ -944,26 +944,57 @@ describe('CII scoring', () => {
     );
   });
 
-  it('public changelog documents the current CII_FORMULA_VERSION and cache impact', () => {
-    const changelogPath = resolve(
-      fileURLToPath(new URL('.', import.meta.url)),
-      '..',
-      'docs',
-      'changelog.mdx',
-    );
-    const changelog = readFileSync(changelogPath, 'utf8');
-    assert.match(
-      changelog,
-      new RegExp(`CII (?:methodology|formula)[^\\n]*${CII_FORMULA_VERSION}`),
-      `docs/changelog.mdx must publish the CII ${CII_FORMULA_VERSION} entry`,
-    );
-    assert.ok(
-      changelog.includes('combinedScore') &&
-      changelog.includes(`risk:scores:sebuf:${CII_FORMULA_VERSION}`) &&
-      changelog.includes(`methodology_version`) &&
-      changelog.includes(CII_FORMULA_VERSION),
-      'docs/changelog.mdx must describe combinedScore, cache-key, and methodology_version impact',
-    );
+  it('public changelogs document the current CII_FORMULA_VERSION and cache impact', () => {
+    const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
+    const changelogs = [
+      ['CHANGELOG.md', readFileSync(resolve(root, 'CHANGELOG.md'), 'utf8')],
+      ['docs/changelog.mdx', readFileSync(resolve(root, 'docs', 'changelog.mdx'), 'utf8')],
+    ] as const;
+
+    for (const [label, changelog] of changelogs) {
+      assert.match(
+        changelog,
+        new RegExp(`CII (?:methodology|formula)[^\\n]*${CII_FORMULA_VERSION}`),
+        `${label} must publish the CII ${CII_FORMULA_VERSION} entry`,
+      );
+      assert.ok(
+        changelog.includes('combinedScore') &&
+        changelog.includes(`risk:scores:sebuf:${CII_FORMULA_VERSION}`) &&
+        changelog.includes(`methodology_version`) &&
+        changelog.includes(CII_FORMULA_VERSION),
+        `${label} must describe combinedScore, cache-key, and methodology_version impact`,
+      );
+    }
+  });
+
+  it('public changelogs retain the CII v4 attribution/source semantics entry', () => {
+    const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
+    const changelogs = [
+      ['CHANGELOG.md', readFileSync(resolve(root, 'CHANGELOG.md'), 'utf8')],
+      ['docs/changelog.mdx', readFileSync(resolve(root, 'docs', 'changelog.mdx'), 'utf8')],
+    ] as const;
+
+    for (const [label, changelog] of changelogs) {
+      const normalizedChangelog = changelog.replace(/\s+/g, ' ');
+      assert.match(
+        changelog,
+        /CII (?:methodology|formula)[^\n]*`?v4`?/,
+        `${label} must retain the CII v4 changelog entry`,
+      );
+      for (const requiredText of [
+        'token exact-match',
+        '4.5_week',
+        'country-count map',
+        'combinedScore',
+        'risk:scores:sebuf:v4',
+        'methodology_version',
+      ]) {
+        assert.ok(
+          normalizedChangelog.includes(requiredText),
+          `${label} CII v4 entry must mention ${requiredText}`,
+        );
+      }
+    }
   });
 
   it('CII dynamicScore contract allows signed 24-hour movement deltas', () => {
