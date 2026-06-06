@@ -256,6 +256,8 @@ function resolveKnownBBoxOverlap(lat: number, lon: number, candidates: CountryBB
 function climateSeverityScore(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   const normalized = String(value || '').toLowerCase();
+  // Scaled later by climateBoost = min(15, severity * 3), matching the
+  // browser fallback boosts: extreme = 15 and moderate = 8.
   if (normalized.includes('extreme')) return 5;
   if (normalized.includes('moderate')) return 8 / 3;
   return 0;
