@@ -552,6 +552,14 @@ const ZERO_RECORD_DATA_OK_KEYS = new Set([
   // published normally. Treat 0 records as OK while fresh; STALE_SEED still
   // fires if the publish job itself stops.
   'consumerPricesSpread',
+  // CF Radar curated outage annotations (seed-internet-outages, zeroIsValid)
+  // are sparse — most 28d windows publish an empty {outages:[]} envelope with
+  // recordCount=0 (hasData=true). NARROW set, not EMPTY_DATA_OK_KEYS: the
+  // seeder always publishes the array, so a MISSING canonical key is a real
+  // publish failure → still EMPTY (crit). Siblings ddosAttacks/trafficAnomalies
+  // sit in the broad set because their data key can be wholly absent on quiet
+  // (writeSeedMeta-only path).
+  'outages',
 ]);
 
 // Cascade groups: if any key in the group has data, all empty siblings are OK.

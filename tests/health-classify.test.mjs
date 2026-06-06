@@ -169,6 +169,46 @@ test('classifyKey: suppressed retailer-spread that goes STALE still warns (publi
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 
+// ── CF Radar outages: sparse zeroIsValid feed (seed-internet-outages) ───────
+
+test('classifyKey: outages present key + 0 records while fresh → OK (sparse feed, not EMPTY_DATA)', () => {
+  // CF Radar curated outage annotations are sparse; most 28d windows publish an
+  // empty {outages:[]} envelope (hasData=true) with recordCount=0. With
+  // zeroIsValid the seeder refreshes seed-meta fresh, so this must classify OK,
+  // not EMPTY_DATA (crit) and not STALE_SEED.
+  const entry = classifyKey('outages', BOOTSTRAP_KEYS.outages, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.outages]: 149 }, // empty {outages:[]} envelope
+      metaValues: { 'seed-meta:infra:outages': seedMeta({ recordCount: 0 }) },
+    }));
+  assert.equal(entry.status, 'OK');
+  assert.equal(STATUS_COUNTS[entry.status], 'ok');
+});
+
+test('classifyKey: missing outages payload is still EMPTY even with fresh 0-record meta', () => {
+  // The zero-record exemption is NARROW: it only applies once Redis proves the
+  // payload exists. A missing canonical key means publish died and must alarm
+  // EMPTY (crit), not be hidden by the sparse-feed allowance.
+  const entry = classifyKey('outages', BOOTSTRAP_KEYS.outages, { allowOnDemand: false },
+    makeCtx({
+      metaValues: { 'seed-meta:infra:outages': seedMeta({ recordCount: 0 }) },
+    }));
+  assert.equal(entry.status, 'EMPTY');
+  assert.equal(STATUS_COUNTS[entry.status], 'crit');
+});
+
+test('classifyKey: outages present + 0 records that goes STALE still warns (cron stopped)', () => {
+  // The exemption must NOT mask a genuine cron outage: once seed-meta age
+  // exceeds maxStaleMin (30), 0 records degrades to STALE_SEED (warn), not OK.
+  const entry = classifyKey('outages', BOOTSTRAP_KEYS.outages, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.outages]: 149 },
+      metaValues: { 'seed-meta:infra:outages': seedMeta({ recordCount: 0, fetchedAt: NOW - 200 * ONE_MIN_MS }) },
+    }));
+  assert.equal(entry.status, 'STALE_SEED');
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
 // ── cascade coverage (proactive, via isCascadeCovered) ──────────────────────
 
 test('cascade: empty theaterPostureLive with data in a sibling → OK_CASCADE (no crit/warn leak)', () => {
