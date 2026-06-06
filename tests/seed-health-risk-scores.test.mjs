@@ -41,6 +41,16 @@ test('seed-health CII risk score freshness mirrors api/health riskScores', () =>
     healthRiskScores.minutes,
     'seed-health intervalMin*2 must match api/health.js riskScores maxStaleMin',
   );
+  assert.match(
+    health,
+    /riskScores:\s*\{\s*key:\s*'seed-meta:intelligence:risk-scores',\s*maxStaleMin:\s*30,\s*minRecordCount:\s*3\s*\}/,
+    'api/health.js riskScores must degrade partial realtime signal-density coverage via minRecordCount=3',
+  );
+  assert.match(
+    health,
+    /signal-density coverage/i,
+    'api/health.js riskScores comment must document that recordCount is not raw feed availability',
+  );
   assert.ok(
     seedHealth.includes('api/health.js riskScores'),
     'seed-health CII comment should keep the alignment target explicit',
@@ -88,7 +98,12 @@ test('relay CII warm-ping delegates risk-score health count to the RPC handler',
   );
   assert.match(
     handler,
-    /countCiiSignalCoverage\(freshResult\.ciiScores\)/,
-    'get-risk-scores handler must remain the source of truth for riskScores signal-coverage recordCount',
+    /countCiiRealtimeSignalDensityCoverage\(acled,\s*aux\)/,
+    'get-risk-scores handler must derive riskScores recordCount from real-time CII signal-density coverage',
+  );
+  assert.match(
+    handler,
+    /not a raw feed heartbeat/i,
+    'get-risk-scores handler must document that signal-density health can differ from feed availability',
   );
 });

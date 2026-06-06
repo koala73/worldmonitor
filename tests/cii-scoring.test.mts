@@ -19,11 +19,12 @@ import {
 import { TIER1_COUNTRIES as SERVER_TIER1_COUNTRIES } from '../server/worldmonitor/intelligence/v1/_shared.ts';
 import {
   BASELINE_RISK,
+  CII_REALTIME_REQUIRED_SIGNAL_FAMILY_COUNT,
   CII_TREND_BUCKET_LOOKUP_RADIUS,
   CII_TREND_BUCKET_MS,
   CII_TREND_TARGET_AGE_MS,
   EVENT_MULTIPLIER,
-  countCiiSignalCoverage,
+  countCiiRealtimeSignalDensityCoverage,
   computeCIIScores,
   computeStrategicRisks,
   filterRiskScoresResponse,
@@ -190,6 +191,19 @@ function acledEvents(country: string, type: string, count: number) {
 
 function scoreFor(scores: ReturnType<typeof computeCIIScores>, code: string) {
   return scores.find((s) => s.region === code);
+}
+
+function countScoredRealtimeComponents(scores: ReturnType<typeof computeCIIScores>): number {
+  return scores.filter((score) => {
+    const components = score.components;
+    return Boolean(
+      components
+      && (components.newsActivity > 0
+        || components.ciiContribution > 0
+        || components.geoConvergence > 0
+        || components.militaryActivity > 0),
+    );
+  }).length;
 }
 
 const TREND_TEST_NOW = 1_700_000_000_000;
@@ -1037,23 +1051,89 @@ describe('CII scoring', () => {
     assert.equal(risks[0]!.score, STRATEGIC_RISK_SCALE_FLOOR);
   });
 
-  it('riskScores health coverage ignores structural Tier-1 baseline rows', () => {
+  it('riskScores health coverage reports zero for total real-time outage', () => {
+    const aux = emptyAux();
     const scores = computeCIIScores([], emptyAux());
 
     assert.equal(scores.length, Object.keys(SERVER_TIER1_COUNTRIES).length);
     assert.equal(
-      countCiiSignalCoverage(scores),
+      countScoredRealtimeComponents(scores),
       0,
       'baseline-only CII emits Tier-1 rows but must report zero live signal coverage to seed health',
     );
+    assert.equal(
+      countCiiRealtimeSignalDensityCoverage([], aux),
+      0,
+      'no ACLED/news/cyber-style inputs means riskScores seed health must fail closed',
+    );
   });
 
-  it('riskScores health coverage counts countries with live component or supplemental signals', () => {
+  it('riskScores health coverage ignores slow/static score movers during real-time outage', () => {
+    const aux = emptyAux();
+    aux.displacedByIso3 = { USA: 5_600_000 };
+    aux.sanctionsCountryCounts = { US: 2_500 };
+    aux.advisories = { byCountry: { US: 'do-not-travel' } };
+    const baseline = scoreFor(computeCIIScores([], emptyAux()), 'US')!;
+    const slowOnly = scoreFor(computeCIIScores([], aux), 'US')!;
+    const scores = computeCIIScores([], aux);
+
+    assert.ok(
+      slowOnly.combinedScore > baseline.combinedScore,
+      'slow/static displacement, sanctions, and advisory inputs still move the CII score',
+    );
+    assert.equal(
+      countScoredRealtimeComponents(scores),
+      0,
+      'slow/static-only score deltas must not count as live component coverage',
+    );
+    assert.equal(
+      countCiiRealtimeSignalDensityCoverage([], aux),
+      0,
+      'slow/static-only score deltas must not keep /api/health.riskScores green',
+    );
+  });
+
+  it('riskScores health coverage reports partial when only one required real-time family is alive', () => {
     const aux = emptyAux();
     aux.cyber = [{ country: 'US', severity: 'CRITICALITY_LEVEL_CRITICAL' }];
-    const scores = computeCIIScores([acledEvent('Ukraine', 'Battles', 0)], aux);
 
-    assert.equal(countCiiSignalCoverage(scores), 2);
+    assert.equal(
+      countCiiRealtimeSignalDensityCoverage([], aux),
+      1,
+      'one surviving real-time family must stay below the health minRecordCount threshold',
+    );
+  });
+
+  it('riskScores health coverage counts normal mixed real-time source families', () => {
+    const acled = [acledEvent('Ukraine', 'Battles', 0)];
+    const aux = emptyAux();
+    aux.cyber = [{ country: 'US', severity: 'CRITICALITY_LEVEL_CRITICAL' }];
+    aux.newsTopStories = [{ countryCode: 'GB', threatLevel: 'high', primaryTitle: 'UK security alert' }];
+    const scores = computeCIIScores(acled, aux);
+
+    assert.equal(
+      countScoredRealtimeComponents(scores),
+      2,
+      'ACLED and news feed scored CII components for UA and GB',
+    );
+    assert.equal(
+      countCiiRealtimeSignalDensityCoverage(acled, aux),
+      CII_REALTIME_REQUIRED_SIGNAL_FAMILY_COUNT,
+      'health coverage counts ACLED, news, and cyber source families even when cyber lands as supplemental boost',
+    );
+  });
+
+  it('riskScores health coverage ignores non-Tier-1 realtime family inputs', () => {
+    const acled = [acledEvent('Andorra', 'Battles', 0)];
+    const aux = emptyAux();
+    aux.newsTopStories = [{ countryCode: null, threatLevel: 'high', primaryTitle: 'Andorra security alert' }];
+    aux.cyber = [{ country: 'AD', severity: 'CRITICALITY_LEVEL_CRITICAL' }];
+
+    assert.equal(
+      countCiiRealtimeSignalDensityCoverage(acled, aux),
+      0,
+      'non-Tier-1 ACLED/news/cyber inputs must not satisfy Tier-1 CII realtime health coverage',
+    );
   });
 
   it('strategic risk uses positional decay 1 - i * 0.15 (top-5 weights = [1, 0.85, 0.7, 0.55, 0.4])', () => {

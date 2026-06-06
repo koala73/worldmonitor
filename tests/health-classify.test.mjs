@@ -86,6 +86,19 @@ test('classifyKey: present-but-stale seed → STALE_SEED (warn), data still pres
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 
+test('classifyKey: riskScores partial realtime family coverage → COVERAGE_PARTIAL', () => {
+  const entry = classifyKey('riskScores', BOOTSTRAP_KEYS.riskScores, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.riskScores]: 1234 },
+      metaValues: { 'seed-meta:intelligence:risk-scores': seedMeta({ recordCount: 1 }) },
+    }));
+
+  assert.equal(entry.status, 'COVERAGE_PARTIAL');
+  assert.equal(entry.records, 1);
+  assert.equal(entry.minRecordCount, 3);
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
 test('classifyKey: socialVelocity error seed-meta → SEED_ERROR while data is preserved', () => {
   const entry = classifyKey('socialVelocity', BOOTSTRAP_KEYS.socialVelocity, { allowOnDemand: false },
     makeCtx({

@@ -527,6 +527,18 @@ interface AuxiliarySources {
   militaryCii: Record<string, any> | null;
 }
 
+const NEWS_THREAT_WEIGHT: Record<string, number> = {
+  critical: 4,
+  high: 2,
+  medium: 1,
+  elevated: 1,
+  moderate: 0.5,
+  low: 0.5,
+  info: 0,
+};
+
+export const CII_REALTIME_REQUIRED_SIGNAL_FAMILY_COUNT = 3;
+
 function emptyAuxiliarySources(): AuxiliarySources {
   return {
     ucdpEvents: [],
@@ -867,11 +879,8 @@ export function computeCIIScores(
   }
 
   // --- News insights threat scoring ---
-  const THREAT_WEIGHT: Record<string, number> = {
-    critical: 4, high: 2, medium: 1, elevated: 1, moderate: 0.5, low: 0.5, info: 0,
-  };
   for (const story of aux.newsTopStories) {
-    const weight = THREAT_WEIGHT[story.threatLevel] ?? 0;
+    const weight = NEWS_THREAT_WEIGHT[story.threatLevel] ?? 0;
     if (weight === 0) continue;
     // Primary attribution via countryCode from seed-insights geo-extraction
     let code: string | null = story.countryCode && data[story.countryCode] ? story.countryCode : null;
@@ -1095,37 +1104,63 @@ function hasRiskScoreRegionFilter(region: string | undefined | null): boolean {
   return String(region || '').trim() !== '';
 }
 
-// Lazy so Edge cold starts do not do baseline score work unless fresh CII
-// scoring needs the signal-coverage comparison.
-let baselineOnlyScoresByRegion: Map<string, number> | null = null;
-
-function getBaselineOnlyScoresByRegion(): Map<string, number> {
-  if (!baselineOnlyScoresByRegion) {
-    baselineOnlyScoresByRegion = new Map(
-      computeCIIScores([], emptyAuxiliarySources()).map((score) => [score.region.toUpperCase(), score.combinedScore]),
-    );
-  }
-  return baselineOnlyScoresByRegion;
+function isTier1CountryCode(code: string | undefined | null): boolean {
+  return Object.prototype.hasOwnProperty.call(TIER1_COUNTRIES, String(code || '').trim().toUpperCase());
 }
 
-function hasLiveCiiSignalCoverage(score: CiiScore): boolean {
-  const components = score.components;
-  if (
-    components
-    && (components.newsActivity > 0
-      || components.ciiContribution > 0
-      || components.geoConvergence > 0
-      || components.militaryActivity > 0)
-  ) {
-    return true;
+export function countCiiRealtimeSignalDensityCoverage(
+  acled: Array<{ country: string; event_type: string; fatalities: number; daysAgo?: number }> | undefined | null,
+  aux: AuxiliarySources | undefined | null,
+): number {
+  // Health semantics: this is signal-density coverage for score-relevant
+  // realtime families, not a raw feed heartbeat. Quiet-but-available feeds may
+  // produce 0 here; underlying feed freshness is monitored by their own
+  // seed-meta/TTL health entries where available.
+  const coveredFamilies = new Set<'acled' | 'news' | 'cyber'>();
+
+  if ((acled ?? []).some((ev) => isTier1CountryCode(normalizeCountryName(ev.country)))) {
+    coveredFamilies.add('acled');
   }
 
-  const baselineOnly = getBaselineOnlyScoresByRegion().get(String(score.region || '').toUpperCase());
-  return baselineOnly !== undefined && score.combinedScore !== baselineOnly;
-}
+  for (const story of aux?.newsTopStories ?? []) {
+    const weight = NEWS_THREAT_WEIGHT[String(story.threatLevel || '').toLowerCase()] ?? 0;
+    if (weight <= 0) continue;
+    if (
+      isTier1CountryCode(story.countryCode)
+      || isTier1CountryCode(normalizeCountryName(story.primaryTitle))
+    ) {
+      coveredFamilies.add('news');
+      break;
+    }
+  }
 
-export function countCiiSignalCoverage(ciiScores: CiiScore[] | undefined | null): number {
-  return (ciiScores ?? []).filter(hasLiveCiiSignalCoverage).length;
+  if (!coveredFamilies.has('news')) {
+    for (const [code, counts] of Object.entries(aux?.threatSummaryByCountry ?? {})) {
+      if (!isTier1CountryCode(code)) continue;
+      const weightedCount = Object.entries(NEWS_THREAT_WEIGHT).reduce(
+        (sum, [level, weight]) => sum + safeNonNegativeNum(counts[level as keyof typeof counts]) * weight,
+        0,
+      );
+      if (weightedCount > 0) {
+        coveredFamilies.add('news');
+        break;
+      }
+    }
+  }
+
+  for (const threat of aux?.cyber ?? []) {
+    const code = String(threat.country || '').trim().toUpperCase();
+    const severity = String(threat.severity || '').toLowerCase().replace(/^criticality_level_/, '');
+    if (
+      isTier1CountryCode(code)
+      && (severity === 'critical' || severity === 'high' || severity === 'medium')
+    ) {
+      coveredFamilies.add('cyber');
+      break;
+    }
+  }
+
+  return coveredFamilies.size;
 }
 
 function withRiskScoreRuntimeState(
@@ -1284,6 +1319,7 @@ export async function getRiskScores(
   req: GetRiskScoresRequest,
 ): Promise<GetRiskScoresResponse> {
   try {
+    let realtimeSignalDensityCoverageCount = 0;
     const { data: result, source, leader } = await cachedFetchJsonWithMeta<GetRiskScoresResponse>(
       RISK_CACHE_KEY,
       RISK_CACHE_TTL,
@@ -1295,6 +1331,7 @@ export async function getRiskScores(
           readCiiTrendPriorScores(nowMs),
         ]);
         if (!priorCiiScores?.length) recordCiiTrendPriorGap(nowMs);
+        realtimeSignalDensityCoverageCount = countCiiRealtimeSignalDensityCoverage(acled, aux);
         const ciiScores = computeCIIScores(acled, aux, { priorScores: priorCiiScores, nowMs });
         const strategicRisks = computeStrategicRisks(ciiScores);
         return { ciiScores, strategicRisks, degraded: false, stale: false };
@@ -1327,13 +1364,12 @@ export async function getRiskScores(
       // 7-day TTL matches the warm-ping write so health.maxStaleMin (30min)
       // logic is unchanged.
       if (source === 'fresh' && leader) {
-        const signalCoverageCount = countCiiSignalCoverage(freshResult.ciiScores);
         const writes: Array<Promise<unknown>> = [
           setCachedJson(RISK_STALE_CACHE_KEY, freshResult, RISK_STALE_TTL),
           persistCiiTrendSnapshot(freshResult),
           setCachedJson(
             'seed-meta:intelligence:risk-scores',
-            { fetchedAt: Date.now(), recordCount: signalCoverageCount },
+            { fetchedAt: Date.now(), recordCount: realtimeSignalDensityCoverageCount },
             604800,
           ),
         ];
