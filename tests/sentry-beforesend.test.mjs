@@ -473,6 +473,20 @@ describe('existing beforeSend filters', () => {
     assert.ok(beforeSend(event) !== null, 'First-party fetch failure with a non-fetch extension frame must surface');
   });
 
+  it('does NOT suppress when the extension frame function merely CONTAINS "fetch" (prefetch/fetchContent)', () => {
+    // The function match is anchored to exactly `window.fetch`/`fetch`, not a
+    // loose `/fetch/`, so an extension frame named `prefetch` or `fetchContent`
+    // is not treated as a monkeypatched window.fetch — a real bare "Failed to
+    // fetch" from our own code must still surface (Greptile review on #4157).
+    for (const fn of ['prefetch', 'fetchContent', 'fetchUserData']) {
+      const event = makeEvent('Failed to fetch', 'TypeError', [
+        { filename: '/assets/panels-wF5GXf0N.js', lineno: 100, function: 'MyApiCall' },
+        { filename: 'chrome-extension://abcdefghijklmnopabcdefghijklmnop/inject.js', lineno: 1, function: fn },
+      ]);
+      assert.ok(beforeSend(event) !== null, `extension frame function "${fn}" must not trigger SG suppression`);
+    }
+  });
+
   it('does NOT suppress "Failed to fetch (<hostname>)" when no maplibre frame is present', () => {
     // Guards against broad message-only suppression hiding a real first-party fetch
     // regression that happens to wrap host into the message.

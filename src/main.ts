@@ -449,11 +449,14 @@ Sentry.init({
     // ensureLoaded logs a warning and resolves), so this is NOT a first-party
     // leak. Unlike the generic `!hasFirstParty` `Failed to fetch` gate below,
     // this fires WITH first-party frames present, but only when an extension has
-    // a `window.fetch` frame on the stack — a genuine API outage (host-suffixed
-    // `Failed to fetch (<host>)`, handled above) and any non-extension user are
-    // unaffected (WORLDMONITOR-SG).
+    // a monkeypatched-`window.fetch` frame on the stack — a genuine API outage
+    // (host-suffixed `Failed to fetch (<host>)`, handled above) and any
+    // non-extension user are unaffected. The function match is anchored to
+    // exactly `window.fetch` / `fetch` (not a loose `/fetch/`) so an extension
+    // frame named `fetchContent` / `prefetch` does NOT swallow a real bare
+    // `Failed to fetch` from our own code (WORLDMONITOR-SG).
     if (/^(?:TypeError: )?Failed to fetch$/.test(msg)
-        && frames.some(f => /^(?:chrome|moz|safari(?:-web)?)-extension:\/\//.test(f.filename ?? '') && /fetch/i.test(f.function ?? ''))) {
+        && frames.some(f => /^(?:chrome|moz|safari(?:-web)?)-extension:\/\//.test(f.filename ?? '') && /^(?:window\.)?fetch$/i.test(f.function ?? ''))) {
       return null;
     }
     // Suppress Sentry SDK DOM breadcrumb null-access on document.activeElement/contains.
