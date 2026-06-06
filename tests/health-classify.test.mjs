@@ -118,9 +118,12 @@ test('classifyKey: socialVelocity/wsbTickers tolerate the 3h cadence — fresh a
   }
 });
 
-test('classifyKey: socialVelocity/wsbTickers still alarm if the relay stops — stale at 600min → STALE_SEED', () => {
-  // The raised maxStaleMin (540) must not mask a genuine relay outage: 600min (>540)
-  // still degrades to STALE_SEED (warn).
+test('classifyKey: dead relay, data still present (9h–12h window) → STALE_SEED (warn)', () => {
+  // A dead relay stops refreshing seed-meta, but the data key lives for its full
+  // 12h TTL (> maxStaleMin=540min/9h), so 540–720min is a real present-but-stale
+  // window → STALE_SEED. This is reachable in production ONLY because the data-key
+  // TTL (43200s) STRICTLY exceeds maxStaleMin; at TTL==maxStaleMin the key would
+  // expire exactly when staleness begins and classifyKey would emit EMPTY instead.
   for (const [name, metaKey] of [
     ['socialVelocity', 'seed-meta:intelligence:social-reddit'],
     ['wsbTickers', 'seed-meta:intelligence:wsb-tickers'],
@@ -130,8 +133,28 @@ test('classifyKey: socialVelocity/wsbTickers still alarm if the relay stops — 
         strens: { [BOOTSTRAP_KEYS[name]]: 4096 },
         metaValues: { [metaKey]: seedMeta({ fetchedAt: NOW - 600 * ONE_MIN_MS }) },
       }));
-    assert.equal(entry.status, 'STALE_SEED', `${name} at 600min should be STALE_SEED`);
+    assert.equal(entry.status, 'STALE_SEED', `${name} at 600min (data present) should be STALE_SEED`);
     assert.equal(STATUS_COUNTS[entry.status], 'warn');
+  }
+});
+
+test('classifyKey: dead relay past the 12h TTL, data key expired → EMPTY (crit) escalation', () => {
+  // Once the data key expires (after the 12h TTL on a fully-dead relay),
+  // hasData=false → classifyKey hits the !hasData branch (checked BEFORE seedStale,
+  // api/health.js) and returns EMPTY (crit), escalating from the earlier STALE_SEED
+  // warn. Verified shape: { status: 'EMPTY', records: 0 }.
+  for (const [name, metaKey] of [
+    ['socialVelocity', 'seed-meta:intelligence:social-reddit'],
+    ['wsbTickers', 'seed-meta:intelligence:wsb-tickers'],
+  ]) {
+    const entry = classifyKey(name, BOOTSTRAP_KEYS[name], { allowOnDemand: false },
+      makeCtx({
+        // no strens entry → data key absent (expired)
+        metaValues: { [metaKey]: seedMeta({ fetchedAt: NOW - 800 * ONE_MIN_MS }) },
+      }));
+    assert.equal(entry.status, 'EMPTY', `${name} with expired data should be EMPTY`);
+    assert.equal(STATUS_COUNTS[entry.status], 'crit');
+    assert.equal(entry.records, 0);
   }
 });
 

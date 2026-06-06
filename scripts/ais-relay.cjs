@@ -5920,7 +5920,7 @@ const SOCIAL_VELOCITY_SEED_META_KEY = 'seed-meta:intelligence:social-reddit';
 // after ~50min of 10-min polling (empirically observed 2026-04-16: both subs
 // returned HTTP 403 on every cycle after 16:26 UTC). Dropping the success-path
 // frequency to 1/hour reduces the traffic Reddit's behavioral heuristic flags on.
-const SOCIAL_VELOCITY_TTL = 32400; // 9h — co-pinned ≥ health maxStaleMin=540 (api/health.js) so the data key never expires before STALE_SEED fires (avoids the EMPTY-vs-STALE_SEED gap); ~3× the 3h interval
+const SOCIAL_VELOCITY_TTL = 43200; // 12h — STRICTLY > health maxStaleMin=540min (9h) so a dead relay surfaces STALE_SEED (warn) for the 9h–12h window while the key is still present, BEFORE it expires and escalates to EMPTY (crit). TTL==maxStaleMin would skip STALE_SEED entirely: classifyKey checks !hasData before seedStale (api/health.js). On failure cycles the relay re-extends this TTL (upstashExpire below), so a live-but-failing relay keeps last-good present.
 const SOCIAL_VELOCITY_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3h — velocity decays over ~6h; hourly was a Reddit-rate-limit leftover, not a freshness need
 const REDDIT_SUBREDDITS = ['worldnews', 'geopolitics'];
 
@@ -6062,7 +6062,7 @@ async function startSocialVelocitySeedLoop() {
 const WSB_TICKERS_REDIS_KEY = 'intelligence:wsb-tickers:v1';
 // Hourly cadence (bumped from 10min). Same Reddit-datacenter-IP blocking
 // rationale as SocialVelocity — see comment above.
-const WSB_TICKERS_TTL = 32400; // 9h — co-pinned ≥ health maxStaleMin=540 (api/health.js) so the data key never expires before STALE_SEED fires (avoids the EMPTY-vs-STALE_SEED gap); ~3× the 3h interval
+const WSB_TICKERS_TTL = 43200; // 12h — STRICTLY > health maxStaleMin=540min (9h) so a dead relay surfaces STALE_SEED before the key expires to EMPTY (see SOCIAL_VELOCITY_TTL note); re-extended on failure cycles via upstashExpire below.
 const WSB_TICKERS_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3h — same cadence rationale as SocialVelocity above
 const WSB_TICKERS_RETRY_MS = 20 * 60 * 1000;
 const WSB_SUBREDDITS = ['wallstreetbets', 'stocks', 'investing'];
