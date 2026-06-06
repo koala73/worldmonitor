@@ -326,6 +326,17 @@ describe('cached-risk-scores — functional adapter behavior', () => {
     assert.deepEqual(removedKeys, []);
   });
 
+  it('accepts null localStorage CII lastUpdated values', async () => {
+    const { getCachedScores, removedKeys } = await loadAdapter({
+      storageValue: makeStoredScores([makeCachedCii({ lastUpdated: null })]),
+    });
+
+    const cached = getCachedScores();
+    assert.ok(cached);
+    assert.equal(cached.cii[0]?.lastUpdated, null);
+    assert.deepEqual(removedKeys, []);
+  });
+
   it('rejects localStorage CII scores outside the safe render ranges', async () => {
     const invalidEntries = [
       makeCachedCii({ score: 10_000 }),
@@ -334,6 +345,22 @@ describe('cached-risk-scores — functional adapter behavior', () => {
       makeCachedCii({ change24h: -250 }),
       makeCachedCii({ components: { unrest: 10, conflict: 20, security: 30, information: 101 } }),
       makeCachedCii({ components: { unrest: -1, conflict: 20, security: 30, information: 40 } }),
+    ];
+
+    for (const entry of invalidEntries) {
+      const { getCachedScores, removedKeys } = await loadAdapter({
+        storageValue: makeStoredScores([entry]),
+      });
+      assert.equal(getCachedScores(), null);
+      assert.deepEqual(removedKeys, ['wm:risk-scores']);
+    }
+  });
+
+  it('rejects localStorage CII entries with unparseable or unreasonable lastUpdated values', async () => {
+    const invalidEntries = [
+      makeCachedCii({ lastUpdated: 'not-a-date' }),
+      makeCachedCii({ lastUpdated: '1999-12-31T23:59:59.999Z' }),
+      makeCachedCii({ lastUpdated: new Date(Date.now() + 10 * 60 * 1000).toISOString() }),
     ];
 
     for (const entry of invalidEntries) {
