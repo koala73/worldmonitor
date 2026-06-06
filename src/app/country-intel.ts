@@ -22,7 +22,7 @@ import {
   nameToCountryCode,
 } from '@/services/country-geometry';
 import { calculateCII, getCountryData, TIER1_COUNTRIES, type CountryScore } from '@/services/country-instability';
-import { getCachedCountryScore } from '@/services/cached-risk-scores';
+import { getCachedCountryScore, normalizeCiiCountryCode } from '@/services/cached-risk-scores';
 import { signalAggregator } from '@/services/signal-aggregator';
 import { dataFreshness } from '@/services/data-freshness';
 import { fetchCountryMarkets } from '@/services/prediction';
@@ -216,7 +216,8 @@ export class CountryIntelManager implements AppModule {
     const canonicalName = TIER1_COUNTRIES[code] || CountryIntelManager.resolveCountryName(code);
     if (canonicalName !== code) country = canonicalName;
 
-    const score = getCachedCountryScore(code) ?? calculateCII().find((s) => s.code === code) ?? null;
+    const scoreCode = normalizeCiiCountryCode(code);
+    const score = getCachedCountryScore(scoreCode) ?? calculateCII().find((s) => s.code === scoreCode) ?? null;
 
     const signals = this.getCountrySignals(code, country);
 
@@ -732,7 +733,8 @@ export class CountryIntelManager implements AppModule {
     const code = page.getCode();
     if (!code || code === '__loading__' || code === '__error__') return;
     const name = TIER1_COUNTRIES[code] ?? CountryIntelManager.resolveCountryName(code);
-    const score = getCachedCountryScore(code) ?? calculateCII().find((s) => s.code === code) ?? null;
+    const scoreCode = normalizeCiiCountryCode(code);
+    const score = getCachedCountryScore(scoreCode) ?? calculateCII().find((s) => s.code === scoreCode) ?? null;
     const signals = this.getCountrySignals(code, name);
     page.updateScore?.(score, signals);
   }

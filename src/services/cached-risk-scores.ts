@@ -296,8 +296,12 @@ export function toCountryScore(cached: CachedCIIScore): CountryScore {
   };
 }
 
+export function normalizeCiiCountryCode(code: string): string {
+  return code.toUpperCase();
+}
+
 export function getCachedCountryScore(code: string): CountryScore | null {
-  const normalizedCode = code.toUpperCase();
+  const normalizedCode = normalizeCiiCountryCode(code);
   const cached = getCachedScores()?.cii.find((score) => score.code === normalizedCode);
   return cached ? toCountryScore(cached) : null;
 }

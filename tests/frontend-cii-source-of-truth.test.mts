@@ -36,8 +36,9 @@ async function loadStoryDataForTest() {
 const calculateCII = () => (globalThis as any).__ciiSourceTruthTest.calculateCII();`,
     )
     .replace(
-      "import { getCachedCountryScore } from './cached-risk-scores';",
-      `const getCachedCountryScore = (code: string) => (globalThis as any).__ciiSourceTruthTest.getCachedCountryScore(code);`,
+      "import { getCachedCountryScore, normalizeCiiCountryCode } from './cached-risk-scores';",
+      `const getCachedCountryScore = (code: string) => (globalThis as any).__ciiSourceTruthTest.getCachedCountryScore(code);
+const normalizeCiiCountryCode = (code: string) => code.toUpperCase();`,
     )
     .replace(
       "import { CURATED_COUNTRIES } from '@/config/countries';",
@@ -71,7 +72,15 @@ function makeScore(score: number) {
     code: 'IR',
     name: 'Iran',
     score,
-    level: score >= 81 ? 'critical' : 'high',
+    level: score >= 81
+      ? 'critical'
+      : score >= 66
+        ? 'high'
+        : score >= 51
+          ? 'elevated'
+          : score >= 31
+            ? 'normal'
+            : 'low',
     trend: 'stable',
     change24h: 0,
     components: { unrest: 0, conflict: 0, security: 0, information: 0 },
@@ -150,6 +159,18 @@ describe('frontend CII source of truth', () => {
     assert.equal(localCalls, 1);
   });
 
+  it('story data normalizes country code before cached and local score lookup', async () => {
+    (globalThis as any).__ciiSourceTruthTest = {
+      getCachedCountryScore: () => null,
+      calculateCII: () => [makeScore(55)],
+    };
+    const story = await loadStoryDataForTest();
+
+    const result = story.collectStoryData('ir', 'Iran', [], [], []);
+    assert.equal(result.cii?.score, 55);
+    assert.equal(result.cii?.level, 'elevated');
+  });
+
   it('routes remaining on-demand CII consumers through cached/server scores first', () => {
     const storySrc = readSrc('src/services/story-data.ts');
     const countryIntelSrc = readSrc('src/app/country-intel.ts');
@@ -159,15 +180,17 @@ describe('frontend CII source of truth', () => {
     const deckSrc = readSrc('src/components/DeckGLMap.ts');
 
     assert.doesNotMatch(storySrc, /hasIntelligenceSignalsLoaded/);
-    assert.match(storySrc, /getCachedCountryScore\(countryCode\)[\s\S]*calculateCII\(\)/);
+    assert.match(storySrc, /const normalizedCountryCode = normalizeCiiCountryCode\(countryCode\);/);
+    assert.match(storySrc, /getCachedCountryScore\(normalizedCountryCode\)[\s\S]*s\.code === normalizedCountryCode/);
 
     assert.doesNotMatch(countryIntelSrc, /hasIntelligenceSignalsLoaded/);
-    assert.match(countryIntelSrc, /getCachedCountryScore\(code\) \?\? calculateCII\(\)\.find/);
+    assert.match(countryIntelSrc, /const scoreCode = normalizeCiiCountryCode\(code\);[\s\S]*getCachedCountryScore\(scoreCode\) \?\? calculateCII\(\)\.find\(\(s\) => s\.code === scoreCode\)/);
 
-    assert.match(crossModuleSrc, /function getAuthoritativeCIIScores\(\): CountryScore\[\]/);
-    assert.match(crossModuleSrc, /const cachedScores = getCachedCountryScores\(\);[\s\S]*return cachedScores\.length > 0 \? cachedScores : calculateCII\(\);/);
-    assert.match(crossModuleSrc, /const scores = getAuthoritativeCIIScores\(\);/);
-    assert.match(crossModuleSrc, /const ciiScores = getAuthoritativeCIIScores\(\);/);
+    assert.match(crossModuleSrc, /type CIIScoreSource = 'cached' \| 'local';/);
+    assert.match(crossModuleSrc, /let previousCIIScoreSource: CIIScoreSource \| null = null;/);
+    assert.match(crossModuleSrc, /if \(previousCIIScoreSource !== null && previousCIIScoreSource !== source\) \{[\s\S]*previousCIIScores\.clear\(\);[\s\S]*\}/);
+    assert.match(crossModuleSrc, /const \{ scores, source \} = getAuthoritativeCIIScores\(\);/);
+    assert.match(crossModuleSrc, /const \{ scores: ciiScores \} = getAuthoritativeCIIScores\(\);/);
 
     assert.match(militarySrc, /getCachedCountryScoreValue\(code\) \?\? getCountryScore\(code\)/);
     assert.match(mapSrc, /setCIIGetter\(\(code\) => getCachedCountryScoreValue\(code\) \?\? getCountryScore\(code\)\)/);

@@ -103,9 +103,15 @@ const previousCIIScores = new Map<string, number>();
 const ALERT_MERGE_WINDOW_MS = 2 * 60 * 60 * 1000;
 const ALERT_MERGE_DISTANCE_KM = 200;
 
-function getAuthoritativeCIIScores(): CountryScore[] {
+type CIIScoreSource = 'cached' | 'local';
+let previousCIIScoreSource: CIIScoreSource | null = null;
+
+function getAuthoritativeCIIScores(): { scores: CountryScore[]; source: CIIScoreSource } {
   const cachedScores = getCachedCountryScores();
-  return cachedScores.length > 0 ? cachedScores : calculateCII();
+  if (cachedScores.length > 0) {
+    return { scores: cachedScores, source: 'cached' };
+  }
+  return { scores: calculateCII(), source: 'local' };
 }
 
 let alertIdCounter = 0;
@@ -566,7 +572,11 @@ function getCountriesNearLocation(lat: number, lon: number): string[] {
 
 export function checkCIIChanges(): UnifiedAlert[] {
   const newAlerts: UnifiedAlert[] = [];
-  const scores = getAuthoritativeCIIScores();
+  const { scores, source } = getAuthoritativeCIIScores();
+  if (previousCIIScoreSource !== null && previousCIIScoreSource !== source) {
+    previousCIIScores.clear();
+  }
+  previousCIIScoreSource = source;
 
   // Skip alerting during learning mode - data not yet reliable
   const inLearning = isInLearningMode();
@@ -634,7 +644,7 @@ export function calculateStrategicRiskOverview(
   breakingAlertScore?: number,
   theaterStaleFactor?: number
 ): StrategicRiskOverview {
-  const ciiScores = getAuthoritativeCIIScores();
+  const { scores: ciiScores } = getAuthoritativeCIIScores();
 
   // Update the alerts array with current data
   updateAlerts(convergenceAlerts);
