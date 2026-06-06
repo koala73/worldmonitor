@@ -1,6 +1,6 @@
 ---
 title: "CII Risk Scoring Methodology"
-description: "Editorial methodology behind the Composite Instability Index (CII) and Strategic Risk roll-up. Documents per-country baselineRisk, eventMultiplier, the four-component score (Unrest, Conflict, Security, Information), strategic-risk band derivation, and the v4 formula version stamped on every CiiScore."
+description: "Editorial methodology behind the Composite Instability Index (CII) and Strategic Risk roll-up. Documents per-country baselineRisk, eventMultiplier, the four-component score (Unrest, Conflict, Security, Information), strategic-risk band derivation, and the v5 formula version stamped on every CiiScore."
 ---
 
 Published methodology note for the **Composite Instability Index (CII)** and
@@ -17,7 +17,17 @@ agree.
 
 The on-the-wire `methodology_version` field on every `CiiScore` reflects
 which revision of this document was active when the score was computed.
-The current version is **v4**.
+The current version is **v5**.
+
+> **v5 (2026-06-06).** `dynamicScore` is now a signed movement delta in the
+> range `-100..100`, derived from a valid CII snapshot from approximately 24
+> hours earlier. Positive values mean the country score rose, negative values
+> mean it fell, and `0` means stable or no valid prior snapshot. The server
+> trend label uses a strict one-point deadband: whole-point score changes of
+> `+1` or `-1` remain stable, while `+2` and `-2` are the first rising/falling
+> labels. The browser fallback uses the same trend deadband. `combinedScore`
+> coefficients are unchanged by this bump, but API clients that previously
+> treated `dynamicScore` as a non-negative live score should re-baseline.
 
 > **v4 (2026-06-06).** Attribution and source-input semantics changed while
 > keeping the published coefficient table intact. Country text attribution now
@@ -59,9 +69,10 @@ The current version is **v4**.
 > counts. `combinedScore` values shift accordingly — clients pinned on
 > `methodology_version` should re-baseline.
 
-> **Heads up — coefficient changes.** Any edit that changes server/API
-> per-country baselines, event multipliers, or strategic-risk roll-up
-> coefficients MUST come with a bump of `CII_FORMULA_VERSION` in
+> **Heads up — score contract changes.** Any edit that changes server/API
+> per-country baselines, event multipliers, strategic-risk roll-up
+> coefficients, or CII movement semantics MUST come with a bump of
+> `CII_FORMULA_VERSION` in
 > `server/worldmonitor/intelligence/v1/_risk-config.ts`, an update to this
 > document in the same commit, and a public CHANGELOG entry. Source-of-truth
 > refactors that preserve server/API scores do not bump the wire version. Tests

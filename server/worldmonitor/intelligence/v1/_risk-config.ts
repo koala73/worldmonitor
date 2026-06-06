@@ -13,18 +13,20 @@
 //   2. Update docs/methodology/cii-risk-scores.mdx (the public methodology
 //      note) in the same commit. Tests assert the doc lists every coefficient
 //      and every CURATED_COUNTRIES code.
-//   3. Note the change in docs/changelog.mdx under the public-facing section so
-//      downstream users of the proto API see why combinedScore values may
-//      shift between deploys.
+//   3. Note the change in docs/changelog.mdx and CHANGELOG.md under the
+//      public-facing section so downstream users of the proto API see why score
+//      values or movement semantics may shift between deploys.
 //
-// Last reviewed: 2026-06-06 (CII attribution/source semantics, v3->v4).
+// Last reviewed: 2026-06-06 (signed 24-hour trend/delta semantics, v5; dynamicScore
+// is a signed movement delta against an approximate 24-hour prior snapshot).
 // ============================================================================
 
 /**
  * Formula version emitted on every CiiScore as `methodology_version`.
- * Bump on any coefficient change so API clients can detect score drift.
+ * Bump on coefficient or scoring-contract changes so API clients can detect
+ * score or movement-semantics drift.
  */
-export const CII_FORMULA_VERSION = 'v4';
+export const CII_FORMULA_VERSION = 'v5';
 
 /**
  * Conflict event activity log curve used before fatality/civilian/strike boosts.

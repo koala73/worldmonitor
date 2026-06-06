@@ -999,6 +999,7 @@ describe('CII scoring', () => {
       'docs/overview.mdx',
       'docs/features.mdx',
       'docs/methodology/cii-risk-scores.mdx',
+      'docs/Docs_To_Review/DOCUMENTATION.md',
       'docs/COMMUNITY-PROMOTION-GUIDE.md',
     ];
     const stalePatterns = [
@@ -1012,6 +1013,13 @@ describe('CII scoring', () => {
       /GPS\s+jamming\s+only/i,
       /dynamicScore[\s\S]{0,120}composite\s+−\s+staticBaseline/i,
       /dynamicScore[\s\S]{0,120}composite\s+-\s+staticBaseline/i,
+      /CII\s+v3\s+stability\s+scores/i,
+      /real-time\s+CII\s+v3\s+instability\s+score/i,
+      /Computes\s+CII\s+v3\s+scores/i,
+      /Subsequent\s+changes\s+of\s+±5\s+points\s+trigger\s+trend\s+changes/i,
+      /score\s+increased\s+by\s+at\s+least\s+5\s+points/i,
+      /change\s+is\s+within\s+5\s+points/i,
+      /score\s+decreased\s+by\s+at\s+least\s+5\s+points/i,
     ];
 
     const violations: string[] = [];
@@ -1048,19 +1056,67 @@ describe('CII scoring', () => {
     );
   });
 
-  it('risk-score Redis payload keys are bumped with the CII formula version', () => {
+  it('risk-score Redis payload keys are derived from the CII formula version', () => {
     const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
     const source = readFileSync(
       resolve(root, 'server', 'worldmonitor', 'intelligence', 'v1', 'get-risk-scores.ts'),
       'utf8',
     );
-    assert.ok(
-      source.includes(`risk:scores:sebuf:${CII_FORMULA_VERSION}`),
-      `live CII cache key must include CII_FORMULA_VERSION ${CII_FORMULA_VERSION}`,
+    assert.match(
+      source,
+      /RISK_CACHE_KEY\s*=\s*`risk:scores:sebuf:\$\{CII_FORMULA_VERSION\}`/,
+      `live CII cache key must derive from CII_FORMULA_VERSION ${CII_FORMULA_VERSION}`,
     );
-    assert.ok(
-      source.includes(`risk:scores:sebuf:stale:${CII_FORMULA_VERSION}`),
-      `stale CII cache key must include CII_FORMULA_VERSION ${CII_FORMULA_VERSION}`,
+    assert.match(
+      source,
+      /RISK_STALE_CACHE_KEY\s*=\s*`risk:scores:sebuf:stale:\$\{CII_FORMULA_VERSION\}`/,
+      `stale CII cache key must derive from CII_FORMULA_VERSION ${CII_FORMULA_VERSION}`,
+    );
+    assert.match(
+      source,
+      /RISK_TREND_HISTORY_CACHE_KEY_PREFIX\s*=\s*`risk:scores:sebuf:trend-history:\$\{CII_FORMULA_VERSION\}`/,
+      `trend-history CII cache key must derive from CII_FORMULA_VERSION ${CII_FORMULA_VERSION}`,
+    );
+  });
+
+  it('downstream CII risk-score consumers use the current cache key family', () => {
+    const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
+    const expectedLiveKey = `risk:scores:sebuf:${CII_FORMULA_VERSION}`;
+    const expectedStaleKey = `risk:scores:sebuf:stale:${CII_FORMULA_VERSION}`;
+    const keyPattern = /risk:scores:sebuf(?::stale)?:v\d+/g;
+    const consumers: Array<{ relPath: string; expectedKeys: string[] }> = [
+      { relPath: 'api/bootstrap.js', expectedKeys: [expectedStaleKey] },
+      { relPath: 'api/health.js', expectedKeys: [expectedStaleKey, expectedLiveKey] },
+      { relPath: 'api/mcp/registry/cache-tools.ts', expectedKeys: [expectedStaleKey] },
+      { relPath: 'server/_shared/cache-keys.ts', expectedKeys: [expectedStaleKey] },
+      { relPath: 'server/worldmonitor/intelligence/v1/brief-story-context.ts', expectedKeys: [expectedStaleKey] },
+      { relPath: 'server/worldmonitor/intelligence/v1/chat-analyst-context.ts', expectedKeys: [expectedStaleKey] },
+      { relPath: 'server/worldmonitor/intelligence/v1/get-country-risk.ts', expectedKeys: [expectedStaleKey] },
+      { relPath: 'scripts/seed-cross-source-signals.mjs', expectedKeys: [expectedStaleKey] },
+      { relPath: 'scripts/seed-forecasts.mjs', expectedKeys: [expectedStaleKey] },
+      { relPath: 'scripts/regional-snapshot/balance-vector.mjs', expectedKeys: [expectedStaleKey] },
+      { relPath: 'scripts/regional-snapshot/evidence-collector.mjs', expectedKeys: [expectedStaleKey] },
+      { relPath: 'scripts/regional-snapshot/freshness.mjs', expectedKeys: [expectedStaleKey] },
+      { relPath: 'scripts/regional-snapshot/trigger-evaluator.mjs', expectedKeys: [expectedStaleKey] },
+      { relPath: 'tests/mcp-bootstrap-parity.test.mjs', expectedKeys: [expectedLiveKey, expectedStaleKey] },
+      { relPath: 'tests/regional-snapshot.test.mjs', expectedKeys: [expectedStaleKey] },
+    ];
+
+    const violations: string[] = [];
+    for (const { relPath, expectedKeys } of consumers) {
+      const source = readFileSync(resolve(root, relPath), 'utf8');
+      for (const expectedKey of expectedKeys) {
+        if (!source.includes(expectedKey)) violations.push(`${relPath}: missing ${expectedKey}`);
+      }
+      for (const match of source.matchAll(keyPattern)) {
+        if (!expectedKeys.includes(match[0])) violations.push(`${relPath}: stale ${match[0]}`);
+      }
+    }
+
+    assert.equal(
+      violations.length,
+      0,
+      `CII risk-score cache consumers must track ${CII_FORMULA_VERSION}:\n  ${violations.join('\n  ')}`,
     );
   });
 

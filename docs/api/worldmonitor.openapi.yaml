@@ -12701,9 +12701,9 @@ components:
                 methodologyVersion:
                     type: string
                     description: |-
-                        Methodology version string for this score (e.g. "v1").
-                         Bumped whenever the editorial weights in CII_FORMULA_VERSION change so
-                         API clients can detect score drift. See docs/methodology/cii-risk-scores.mdx.
+                        Methodology version string for this score (e.g. "v5").
+                         Bumped whenever CII_FORMULA_VERSION changes so API clients can detect
+                         score or movement-semantics drift. See docs/methodology/cii-risk-scores.mdx.
                 eventMultiplier:
                     type: number
                     maximum: 10

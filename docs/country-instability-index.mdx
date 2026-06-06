@@ -1,6 +1,6 @@
 ---
 title: "Country Instability Index"
-description: "Real-time CII v3 stability scoring for 31 Tier-1 countries, combining baseline risk with unrest, conflict, security, and information signals."
+description: "Real-time CII v5 stability scoring for 31 Tier-1 countries, combining baseline risk with unrest, conflict, security, information signals, and signed 24-hour movement deltas."
 ---
 The Country Instability Index (CII) maintains a high-frequency instability
 score for the 31 Tier-1 countries tracked by the Strategic Risk API. Rather
@@ -8,7 +8,7 @@ than relying on static ratings, CII blends an editorial baseline with live
 event pressure and publishes the result through the server-side
 `GetRiskScores` RPC.
 
-For the full v3 formula, coefficient table, and change history, see
+For the full v5 formula, coefficient table, and change history, see
 [CII Risk Scoring Methodology](/methodology/cii-risk-scores). This page is
 the operator-facing overview.
 
@@ -90,7 +90,7 @@ advisory floors:
 
 ## Bias Prevention
 
-CII is intentionally not a raw media-volume index. The v3 model separates
+CII is intentionally not a raw media-volume index. The v5 model separates
 news pressure from conflict scoring, applies lower event multipliers and log
 dampening in high-observability countries, and uses conflict/advisory floors
 so active crises do not appear quiet during data gaps.
@@ -103,7 +103,7 @@ values are published in
 
 CII scores are computed server-side by `GET /api/intelligence/v1/get-risk-scores`
 and cached in Redis. The live cache is versioned by the current
-`methodology_version` (`v3`), with a stale-cache key used as a fallback during
+`methodology_version` (`v5`), with a stale-cache key used as a fallback during
 upstream outages.
 
 The Railway relay process also runs an active CII warm-ping loop every 8
@@ -113,11 +113,18 @@ scoring source of truth.
 
 ## Trend Detection
 
-The dashboard tracks recent score changes to identify trajectory:
+The server publishes `dynamicScore` as a signed movement delta in the range
+`-100..100` against a valid CII snapshot from approximately 24 hours earlier:
 
-- **Rising**: score increased by at least 5 points
-- **Stable**: change is within 5 points
-- **Falling**: score decreased by at least 5 points
+- **Rising**: score movement is greater than 1 point.
+- **Stable**: score movement is between -1 and +1 points, or no valid prior
+  snapshot is available.
+- **Falling**: score movement is less than -1 point.
+
+Because CII `combinedScore` is rounded to whole points, `+2` and `-2` are the
+first integer movements that produce rising/falling trend labels. `dynamicScore`
+is `0` during cold start or when the server cannot find a valid approximate
+24-hour prior snapshot.
 
 During initial dashboard startup, Learning Mode suppresses noisy early CII
 alerts while data and trend baselines settle. Server-side pre-computation means

@@ -38,6 +38,7 @@ export interface ComponentScores {
 // still needs the same curve when it recalculates local CII state.
 const CII_CONFLICT_ACTIVITY_CAP = 70;
 const CII_CONFLICT_ACTIVITY_PIVOT = 4000;
+const CII_TREND_DEADBAND_POINTS = 1;
 
 interface CountryData {
   protests: SocialUnrestEvent[];
@@ -1006,8 +1007,10 @@ function getTrend(code: string, current: number): CountryScore['trend'] {
   const prev = previousScores.get(code);
   if (prev === undefined) return 'stable';
   const diff = current - prev;
-  if (diff >= 5) return 'rising';
-  if (diff <= -5) return 'falling';
+  // Keep the local fallback aligned with the server trend rule: strict +/-1
+  // deadband means whole-point scores need at least a two-point move to flip.
+  if (diff > CII_TREND_DEADBAND_POINTS) return 'rising';
+  if (diff < -CII_TREND_DEADBAND_POINTS) return 'falling';
   return 'stable';
 }
 
