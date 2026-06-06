@@ -5884,30 +5884,30 @@ async function fetchRedditHotListing(subreddit, { limit = 25, legacyUserAgent } 
   // NO `limit` param) until we reach `limit` posts or run out of pages, capped at
   // SC_MAX_PAGES to bound credit spend — this preserves the old limit:50 coverage
   // for WSB even if the vendor's first page is smaller. Failure handling honors the
-  // ordered-fallback contract: a page-1 HTTP failure (non-2xx) OR any network/
-  // timeout throw logs and FALLS THROUGH to OAuth → public; a failure AFTER page 1
-  // keeps the pages already gathered. The loop degrades to first-page-only if the
-  // vendor ever omits the `after` cursor.
+  // ordered-fallback contract: a page-1 HTTP failure (non-2xx) OR page-1 network/
+  // timeout/parse throw logs and FALLS THROUGH to OAuth → public; a failure AFTER
+  // page 1 keeps the pages already gathered. The loop degrades to first-page-only
+  // if the vendor ever omits the `after` cursor.
   if (SCRAPECREATORS_ENABLED) {
+    const collected = [];
+    let after = '';
+    let anyOk = false;
+    let lastOkStatus = 0;
     try {
-      const collected = [];
-      let after = '';
-      let anyOk = false;
-      let lastStatus = 0;
       for (let page = 0; page < SC_MAX_PAGES && collected.length < limit; page++) {
         const scUrl = `https://api.scrapecreators.com/v1/reddit/subreddit?subreddit=${encodeURIComponent(subreddit)}&sort=hot${after ? `&after=${encodeURIComponent(after)}` : ''}`;
         const resp = await fetch(scUrl, {
           headers: { 'x-api-key': SCRAPECREATORS_API_KEY, Accept: 'application/json' },
           signal: AbortSignal.timeout(10000),
         });
-        lastStatus = resp.status;
         if (!resp.ok) {
           if (collected.length > 0) break; // keep what we already paginated
           console.warn(`[Reddit] ScrapeCreators HTTP ${resp.status} for r/${subreddit} — falling back to OAuth/public`);
           break; // page-1 failure → fall through below
         }
-        anyOk = true;
         const data = await resp.json();
+        anyOk = true;
+        lastOkStatus = resp.status;
         const pagePosts = (Array.isArray(data?.posts) ? data.posts : []).filter(Boolean);
         collected.push(...pagePosts);
         after = typeof data?.after === 'string' ? data.after : '';
@@ -5916,9 +5916,13 @@ async function fetchRedditHotListing(subreddit, { limit = 25, legacyUserAgent } 
       // anyOk distinguishes "vendor responded (even with 0 posts)" from "page-1
       // failed" — only the latter falls through; a legit empty SC response returns ok.
       if (anyOk) {
-        return { ok: true, status: lastStatus, posts: collected.slice(0, limit).map(_normalizeVendorPost), source: 'scrapecreators' };
+        return { ok: true, status: lastOkStatus, posts: collected.slice(0, limit).map(_normalizeVendorPost), source: 'scrapecreators' };
       }
     } catch (e) {
+      if (anyOk) {
+        console.warn(`[Reddit] ScrapeCreators error after ${collected.length} posts for r/${subreddit}: ${e?.message || e} — using partial ScrapeCreators data`);
+        return { ok: true, status: lastOkStatus, posts: collected.slice(0, limit).map(_normalizeVendorPost), source: 'scrapecreators' };
+      }
       console.warn(`[Reddit] ScrapeCreators error for r/${subreddit}: ${e?.message || e} — falling back to OAuth/public`);
     }
     // fall through to OAuth → public
