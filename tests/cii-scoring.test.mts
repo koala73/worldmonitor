@@ -588,6 +588,32 @@ describe('CII signal wiring', () => {
       'earthquake + sanctions feed earthquakeBoost + sanctionsBoost in the blend');
   });
 
+  it('earthquake lookback honors injected CII scorer clock', () => {
+    const nowMs = Date.UTC(2020, 0, 10);
+    const base = scoreFor(computeCIIScores([], emptyAux(), { nowMs }), 'US')!;
+
+    const recentAux = emptyAux();
+    recentAux.earthquakes = [
+      { magnitude: 7.0, occurredAt: nowMs - 24 * 60 * 60 * 1000, location: { latitude: 39, longitude: -98 } },
+    ];
+    const recent = scoreFor(computeCIIScores([], recentAux, { nowMs }), 'US')!;
+    assert.ok(
+      recent.combinedScore > base.combinedScore,
+      'a one-day-old magnitude 7 earthquake must boost scores relative to injected nowMs',
+    );
+
+    const staleAux = emptyAux();
+    staleAux.earthquakes = [
+      { magnitude: 7.0, occurredAt: nowMs - 8 * 24 * 60 * 60 * 1000, location: { latitude: 39, longitude: -98 } },
+    ];
+    const stale = scoreFor(computeCIIScores([], staleAux, { nowMs }), 'US')!;
+    assert.equal(
+      stale.combinedScore,
+      base.combinedScore,
+      'an eight-day-old earthquake must be ignored relative to injected nowMs',
+    );
+  });
+
   it('Phase 3b D7/D8: cyber severity + high-brightness fires raise the score', () => {
     const base = scoreFor(computeCIIScores([], emptyAux()), 'US');
     const aux = emptyAux();
