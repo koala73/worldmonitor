@@ -6,6 +6,17 @@ import { describe, it } from 'node:test';
 
 const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 
+function markdownSection(text: string, heading: string): string {
+  const marker = `${heading}\n`;
+  const start = text.indexOf(marker);
+  assert.notEqual(start, -1, `Expected markdown section heading "${heading}"`);
+  const sectionStart = start + marker.length;
+  const nextHeading = text.slice(sectionStart).search(/^#{1,3} /m);
+  return nextHeading === -1
+    ? text.slice(sectionStart)
+    : text.slice(sectionStart, sectionStart + nextHeading);
+}
+
 describe('CII docs drift guards', () => {
   it('internal review docs do not retain stale CII country-count or source-of-truth claims', () => {
     const internalDocPaths = [
@@ -38,6 +49,62 @@ describe('CII docs drift guards', () => {
       violations.length,
       0,
       `internal CII review docs contain stale claims:\n  ${violations.join('\n  ')}`,
+    );
+  });
+
+  it('strategic risk doc publishes current server severity bands and roll-up', () => {
+    const doc = readFileSync(resolve(root, 'docs', 'strategic-risk.mdx'), 'utf8');
+    const scoreSection = markdownSection(doc, '### Server Score and Browser Fallback (0-100)');
+    const riskLevels = markdownSection(doc, '### Risk Levels');
+
+    assert.match(
+      scoreSection,
+      /weights = \[1\.00, 0\.85, 0\.70, 0\.55, 0\.40\][\s\S]*\* 0\.70 \+ 15/,
+      'strategic-risk doc must publish the server top-5 weights, scale factor, and floor',
+    );
+    assert.match(
+      scoreSection,
+      /local\s+fallback/i,
+      'strategic-risk doc must label the additive overview as browser/local fallback',
+    );
+    assert.match(riskLevels, /\|\s*70-100\s*\|\s*\*\*High\*\*/);
+    assert.match(riskLevels, /\|\s*40-69\s*\|\s*\*\*Medium\*\*/);
+    assert.match(riskLevels, /\|\s*0-39\s*\|\s*\*\*Low\*\*/);
+    assert.doesNotMatch(
+      riskLevels,
+      /\*\*(?:Critical|Elevated|Moderate)\*\*|50-69|30-49/,
+      'strategic-risk risk-level table must not retain old Critical/Elevated/Moderate 70/50/30 semantics',
+    );
+  });
+
+  it('algorithms doc separates authoritative Strategic Risk from local fallback', () => {
+    const doc = readFileSync(resolve(root, 'docs', 'algorithms.mdx'), 'utf8');
+    const section = markdownSection(doc, '### Strategic Risk Score Algorithm');
+
+    assert.match(
+      section,
+      /authoritative `StrategicRisk\[0\]` score is the server roll-up of the top five CII `combinedScore` values with weights `\[1\.00, 0\.85, 0\.70, 0\.55, 0\.40\]`, scale factor `0\.70`, floor `15`/i,
+      'algorithms doc must identify the server roll-up as authoritative Strategic Risk',
+    );
+    assert.match(
+      section,
+      /server severity bands High >= 70, Medium 40-69, Low < 40/i,
+      'algorithms doc must publish current server Strategic Risk severity bands',
+    );
+    assert.match(
+      section,
+      /Browser\/local fallback composite formula[\s\S]*`ciiRiskScore` — Local fallback only:[\s\S]*`\[0\.40, 0\.25, 0\.20, 0\.10, 0\.05\]`/,
+      'algorithms doc may describe old additive weights only as local fallback',
+    );
+    assert.doesNotMatch(
+      section,
+      /`ciiRiskScore` — Top 5 countries by CII score, weighted `\[0\.40, 0\.25, 0\.20, 0\.10, 0\.05\]`/,
+      'algorithms doc must not present the old fallback CII weights as canonical',
+    );
+    assert.doesNotMatch(
+      section,
+      /Critical\/Elevated\/Moderate|70\/50\/30/,
+      'algorithms Strategic Risk section must not reintroduce old four-band risk semantics',
     );
   });
 });

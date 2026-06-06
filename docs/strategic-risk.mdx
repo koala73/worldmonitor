@@ -8,22 +8,27 @@ The Strategic Risk system provides a composite dashboard for global risk triage.
 
 The Strategic Risk Overview displays the server-side Strategic Risk headline and nearby operational context from the browser panel.
 
-### Composite Score (0-100)
+### Server Score and Browser Fallback (0-100)
 
 The displayed/server headline score comes from `GetRiskScores.strategicRisks[0]`.
-The server derives it from the weighted top 5 CII countries, not from the
-additive panel context formula:
+The server derives it from the weighted top 5 CII countries by `combinedScore`,
+not from the additive panel context formula:
 
 ```
-top5         = ciiScores.slice(0, 5)
-weights      = [1.00, 0.85, 0.70, 0.55, 0.40]
-weightedAvg  = sum(CII[i] * weight[i]) / sum(weights)
-headline     = round(weightedAvg * 0.70 + 15)
+topScores = top 5 countries by combinedScore
+weights = [1.00, 0.85, 0.70, 0.55, 0.40]
+weightedAvg = sum(topScores[i] * weights[i]) / sum(weights)
+headline = round(weightedAvg * 0.70 + 15)
 ```
 
-The browser panel may also compute additive context from map-side convergence,
-infrastructure, theater posture, breaking news, sanctions, and radiation-watch
-signals:
+See
+[CII Risk Scoring Methodology](/methodology/cii-risk-scores#3-strategic-risk-roll-up)
+for the exact top-5 window, scale factor, floor, and severity bands.
+
+When cached server scores are unavailable, the browser can render a local
+fallback overview that combines map-side convergence, infrastructure, theater
+posture, breaking news, sanctions, radiation-watch signals, and the locally
+available CII summary:
 
 ```
 compositeScore =
@@ -36,27 +41,20 @@ compositeScore =
   + radiationScore
 ```
 
-The server-side Strategic Risk API derives its global score from the weighted
-top 5 CII countries. The additive terms above are panel context and alerting
-inputs, not the server headline formula. See
-[CII Risk Scoring Methodology](/methodology/cii-risk-scores#3-strategic-risk-roll-up)
-for the exact top-5 weights, scale factor, and severity bands.
-
-Additional additive terms come from sanctions pressure and radiation-watch
-signals when those modules have fresh data: `sanctionsScore` is capped at 10
-from new sanctions entries, largest-country entry volume, and sanctioned
-vessel/aircraft counts; `radiationScore` is capped at 12 from radiation-watch
-spikes, elevated readings, and corroborated observations, reduced by
-low-confidence or conflicting observations.
+Those additive terms are local fallback context, not the server Strategic Risk
+contract. `sanctionsScore` is capped at 10 from new sanctions entries,
+largest-country entry volume, and sanctioned vessel/aircraft counts;
+`radiationScore` is capped at 12 from radiation-watch spikes, elevated readings,
+and corroborated observations, reduced by low-confidence or conflicting
+observations.
 
 ### Risk Levels
 
 | Score | Level | Trend Icon | Meaning |
 |-------|-------|------------|---------|
-| 70-100 | **Critical** | Escalating | Multiple converging crises |
-| 50-69 | **Elevated** | Stable | Heightened global tension |
-| 30-49 | **Moderate** | Stable | Normal fluctuation |
-| 0-29 | **Low** | De-escalating | Unusually quiet period |
+| 70-100 | **High** | Escalating | Multiple converging crises |
+| 40-69 | **Medium** | Stable | Heightened global tension |
+| 0-39 | **Low** | De-escalating | Lower global strategic pressure |
 
 ### Unified Alert System
 
