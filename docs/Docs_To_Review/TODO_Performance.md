@@ -108,7 +108,6 @@ Status:  · 🔄 Partial · ❌ Not started
 - Several components build HTML strings and assign to `innerHTML`. For complex panels, pre-build a `DocumentFragment` off-DOM and append once.
 - **Expected gain:** Single reflow per panel update instead of multiple.
 
-
 ### PERF-012 — Remove Inline `<style>` Tags from Panel Renders
 
 - **Impact:** 🟡 Medium | **Effort:** ~1 day
@@ -344,8 +343,8 @@ Status:  · 🔄 Partial · ❌ Not started
 ### PERF-040 — Move CII Calculation to Web Worker
 
 - **Impact:** 🟡 Medium | **Effort:** ~4 hours
-- **Status:**  — `src/workers/cii.worker.ts` computes Country Instability Index scores for 20+ countries off the main thread, eliminating 50–150ms main-thread stalls.
-- **Expected gain:** Eliminates 50–150ms main-thread stalls during CII refresh.
+- **Status:** Deprecated premise — the proposed CII worker file was never added. Published CII is server-authoritative v5 for 31 Tier-1 countries from `shared/cii-weights.ts`; the frontend normally renders cached risk scores and only uses `calculateCII()` as the local fallback path.
+- **Expected gain:** Re-open only with fresh profiling evidence that the local fallback path, not cached server-score ingestion, causes measurable main-thread stalls.
 
 ### PERF-041 — SharedArrayBuffer for Large Datasets
 

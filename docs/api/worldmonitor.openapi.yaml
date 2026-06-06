@@ -13030,7 +13030,9 @@ components:
                 fetchedAt:
                     type: integer
                     format: int64
-                    description: 'Data freshness timestamp derived from CII computedAt, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        Data freshness timestamp derived from CII computedAt, as Unix epoch milliseconds.
+                         0 means the CII computation time is unknown, including no CII score for this country. Warning: Values > 2^53 may lose precision in JavaScript
                 upstreamUnavailable:
                     type: boolean
                     description: True when all upstream Redis keys were unavailable. Signals CDN cache bypass.

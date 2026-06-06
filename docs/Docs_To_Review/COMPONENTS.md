@@ -590,12 +590,12 @@ domain-specific markup.
 
 | Field | Detail |
 |---|---|
-| **File** | `src/components/CIIPanel.ts` (150 lines) |
+| **File** | `src/components/CIIPanel.ts` |
 | **Panel ID** | `cii` |
-| **Purpose** | Ranks countries by a composite instability score (U/C/S/I sub-scores). |
-| **Key methods** | `setShareStoryHandler()`, `refresh(forceLocal?)`, `getScores()` |
+| **Purpose** | Renders server-authoritative CII v5 scores for 31 Tier-1 countries from cached risk-score ingestion, with local fallback scoring when forced or no cached data is available. |
+| **Key methods** | `setShareStoryHandler()`, `setCountryClickHandler()`, `refresh(forceLocal?)`, `renderFromCached(cached)`, `getScores()` |
 | **DOM** | `.cii-list` → `.cii-country` each with header (emoji flag, name, score, trend arrow, share button), colour bar, sub-score row (U/C/S/I). |
-| **Services** | `calculateCII()`, `getCSSColor` |
+| **Services** | `toCountryScore()`, `calculateCII()` fallback path, `getCSSColor` |
 | **Variant** | `full` only |
 
 #### GdeltIntelPanel
