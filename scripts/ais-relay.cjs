@@ -5877,16 +5877,28 @@ function _normalizeVendorPost(p) {
 // _normalizeVendorPost); the Reddit hosts return data.children[].data.
 async function fetchRedditHotListing(subreddit, { limit = 25, legacyUserAgent } = {}) {
   // 1. ScrapeCreators (preferred) — flat { posts, after } with native Reddit fields.
+  // On success return immediately. On ANY failure (non-2xx OR network/timeout
+  // throw) log and FALL THROUGH to OAuth → public, honoring the ordered-fallback
+  // contract: SC is preferred but a runtime blip shouldn't skip the other paths
+  // when their creds are configured. `&limit` is sent best-effort (the endpoint
+  // documents `after` pagination, not limit; the .slice below caps regardless).
   if (SCRAPECREATORS_ENABLED) {
-    const scUrl = `https://api.scrapecreators.com/v1/reddit/subreddit?subreddit=${encodeURIComponent(subreddit)}&sort=hot`;
-    const resp = await fetch(scUrl, {
-      headers: { 'x-api-key': SCRAPECREATORS_API_KEY, Accept: 'application/json' },
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!resp.ok) return { ok: false, status: resp.status, posts: [], source: 'scrapecreators' };
-    const data = await resp.json();
-    const posts = (Array.isArray(data?.posts) ? data.posts : []).filter(Boolean).slice(0, limit).map(_normalizeVendorPost);
-    return { ok: true, status: resp.status, posts, source: 'scrapecreators' };
+    const scUrl = `https://api.scrapecreators.com/v1/reddit/subreddit?subreddit=${encodeURIComponent(subreddit)}&sort=hot&limit=${limit}`;
+    try {
+      const resp = await fetch(scUrl, {
+        headers: { 'x-api-key': SCRAPECREATORS_API_KEY, Accept: 'application/json' },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        const posts = (Array.isArray(data?.posts) ? data.posts : []).filter(Boolean).slice(0, limit).map(_normalizeVendorPost);
+        return { ok: true, status: resp.status, posts, source: 'scrapecreators' };
+      }
+      console.warn(`[Reddit] ScrapeCreators HTTP ${resp.status} for r/${subreddit} — falling back to OAuth/public`);
+    } catch (e) {
+      console.warn(`[Reddit] ScrapeCreators error for r/${subreddit}: ${e?.message || e} — falling back to OAuth/public`);
+    }
+    // fall through to OAuth → public
   }
   let url;
   let headers;

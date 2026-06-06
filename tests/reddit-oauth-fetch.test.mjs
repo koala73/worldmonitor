@@ -48,7 +48,7 @@ test('token is cached single-flight with early refresh and a post-failure cooldo
 });
 
 test('shared helper prefers oauth.reddit.com and falls back to the public endpoint', () => {
-  const body = fnBody('async function fetchRedditHotListing(subreddit', 2600);
+  const body = fnBody('async function fetchRedditHotListing(subreddit', 2900);
   assert.match(body, /if \(REDDIT_OAUTH_ENABLED\) \{/);
   assert.match(body, /https:\/\/oauth\.reddit\.com\/r\/\$\{subreddit\}\/hot\?limit=\$\{limit\}/);
   assert.match(body, /https:\/\/www\.reddit\.com\/r\/\$\{subreddit\}\/hot\.json\?limit=\$\{limit\}/);
@@ -59,19 +59,33 @@ test('shared helper prefers oauth.reddit.com and falls back to the public endpoi
 test('ScrapeCreators is gated on the api key and is the preferred path', () => {
   assert.match(relaySource, /const SCRAPECREATORS_API_KEY = process\.env\.SCRAPECREATORS_API_KEY \|\| ''/);
   assert.match(relaySource, /const SCRAPECREATORS_ENABLED = !!SCRAPECREATORS_API_KEY/);
-  const body = fnBody('async function fetchRedditHotListing(subreddit', 2600);
-  // vendor branch: subreddit posts endpoint, sort=hot, x-api-key header, returns data.posts
+  const body = fnBody('async function fetchRedditHotListing(subreddit', 2900);
+  // vendor branch: subreddit posts endpoint, sort=hot, passes limit, x-api-key header
   assert.match(body, /if \(SCRAPECREATORS_ENABLED\) \{/);
-  assert.match(body, /https:\/\/api\.scrapecreators\.com\/v1\/reddit\/subreddit\?subreddit=\$\{encodeURIComponent\(subreddit\)\}&sort=hot/);
+  assert.match(body, /https:\/\/api\.scrapecreators\.com\/v1\/reddit\/subreddit\?subreddit=\$\{encodeURIComponent\(subreddit\)\}&sort=hot&limit=\$\{limit\}/);
   assert.match(body, /'x-api-key': SCRAPECREATORS_API_KEY/);
   // array-guarded, capped to limit, and normalized to match the OAuth/public shape
   assert.match(body, /\(Array\.isArray\(data\?\.posts\) \? data\.posts : \[\]\)\.filter\(Boolean\)\.slice\(0, limit\)\.map\(_normalizeVendorPost\)/);
-  // error contract preserved, tagged with its source
-  assert.match(body, /if \(!resp\.ok\) return \{ ok: false, status: resp\.status, posts: \[\], source: 'scrapecreators' \}/);
+  // success returns immediately, tagged with its source
+  assert.match(body, /return \{ ok: true, status: resp\.status, posts, source: 'scrapecreators' \}/);
+});
+
+test('ScrapeCreators failure (non-2xx OR throw) falls through to OAuth/public, not an immediate return', () => {
+  const body = fnBody('async function fetchRedditHotListing(subreddit', 2900);
+  // wrapped in try/catch; only resp.ok returns from the SC branch
+  assert.match(body, /try \{/);
+  assert.match(body, /if \(resp\.ok\) \{/);
+  // both failure modes log and fall through (no immediate return)
+  assert.match(body, /ScrapeCreators HTTP \$\{resp\.status\}/);
+  assert.match(body, /catch \(e\) \{/);
+  assert.match(body, /ScrapeCreators error for r\/\$\{subreddit\}/);
+  assert.match(body, /falling back to OAuth\/public/);
+  // a SC failure must NOT short-circuit with {ok:false, source:'scrapecreators'} (that skipped the fallback)
+  assert.doesNotMatch(body, /return \{ ok: false[^}]*source: 'scrapecreators'/);
 });
 
 test('path precedence is ScrapeCreators -> OAuth -> public (ordered in source)', () => {
-  const body = fnBody('async function fetchRedditHotListing(subreddit', 2600);
+  const body = fnBody('async function fetchRedditHotListing(subreddit', 2900);
   const sc = body.indexOf('if (SCRAPECREATORS_ENABLED)');
   const oauth = body.indexOf('if (REDDIT_OAUTH_ENABLED)');
   const pub = body.indexOf('www.reddit.com/r/${subreddit}/hot.json');
@@ -120,7 +134,7 @@ test('both reddit consumers route through fetchRedditHotListing and label failur
 });
 
 test('helper tags each path with a source for accurate SEED_ERROR reasons', () => {
-  const body = fnBody('async function fetchRedditHotListing(subreddit', 2600);
+  const body = fnBody('async function fetchRedditHotListing(subreddit', 2900);
   assert.match(body, /source: 'scrapecreators'/);
   assert.match(body, /source = 'oauth'/);
   assert.match(body, /source = 'public'/);
