@@ -209,7 +209,7 @@ function resolveKnownBBoxOverlap(lat, lon, candidates) {
     return 'LB';
   }
   if (codes.has('RU') && codes.has('UA')) {
-    if ((lat >= 50.25 && lon >= 34.5) || (lon >= 38.7 && lat < 47.8)) return 'RU';
+    if ((lat >= 50.25 && lon >= 35.6) || (lon >= 38.7 && lat < 47.8)) return 'RU';
     return 'UA';
   }
   if (codes.has('IN') && codes.has('PK')) {
@@ -217,11 +217,13 @@ function resolveKnownBBoxOverlap(lat, lon, candidates) {
     return 'PK';
   }
   if (codes.has('CN') && codes.has('RU')) {
-    if ((lon >= 130.70 && lat >= 42.40) || (lon >= 119.0 && lat >= 50.0)) return 'RU';
+    if (lon >= 132.0 && lat >= 42.40) return 'RU';
+    if (lon >= 131.65 && lat <= 44.10) return 'RU';
+    if (lon >= 126.80 && lon <= 128.20 && lat >= 50.27) return 'RU';
     return 'CN';
   }
   if (codes.has('RU') && codes.has('JP')) {
-    return lat >= 45.70 && lon >= 140.50 ? 'RU' : 'JP';
+    return lat >= 45.25 && lon >= 142.00 ? 'RU' : 'JP';
   }
   if (codes.has('KP') && codes.has('KR')) {
     const westernDmzLat = 37.75;

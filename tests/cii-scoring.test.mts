@@ -144,12 +144,20 @@ describe('CII signal wiring', () => {
     assert.equal(geoToCountry(38.0400, 125.7140), 'KP', 'Haeju must resolve to North Korea, not South Korea');
     assert.equal(geoToCountry(15.3694, 44.1910), 'YE', 'Sanaa remains Yemen');
     assert.equal(geoToCountry(47.2357, 39.7015), 'RU', 'Rostov-on-Don must resolve to Russia, not Ukraine');
+    assert.equal(geoToCountry(51.7304, 36.1939), 'RU', 'Kursk remains Russia');
+    assert.equal(geoToCountry(50.5954, 36.5873), 'RU', 'Belgorod remains Russia');
+    assert.equal(geoToCountry(50.9077, 34.7981), 'UA', 'Sumy must resolve to Ukraine, not Russia');
     assert.equal(geoToCountry(49.9935, 36.2304), 'UA', 'Kharkiv remains Ukraine');
     assert.equal(geoToCountry(31.5204, 74.3587), 'PK', 'Lahore remains Pakistan');
     assert.equal(geoToCountry(31.6340, 74.8723), 'IN', 'Amritsar must resolve to India, not Pakistan');
     assert.equal(geoToCountry(43.1155, 131.8855), 'RU', 'Vladivostok must resolve to Russia, not China');
+    assert.equal(geoToCountry(50.2907, 127.5272), 'RU', 'Blagoveshchensk remains Russia');
+    assert.equal(geoToCountry(50.2458, 127.4886), 'CN', 'Heihe must resolve to China, not Russia');
+    assert.equal(geoToCountry(52.9721, 122.5386), 'CN', 'Mohe must resolve to China, not Russia');
     assert.equal(geoToCountry(45.8038, 126.5350), 'CN', 'Harbin remains China');
     assert.equal(geoToCountry(46.9591, 142.7380), 'RU', 'Yuzhno-Sakhalinsk must resolve to Russia, not Japan');
+    assert.equal(geoToCountry(45.4500, 142.0500), 'RU', 'southern Sakhalin inside the JP bbox must resolve to Russia');
+    assert.equal(geoToCountry(45.4150, 141.6730), 'JP', 'Wakkanai remains Japan');
     assert.equal(geoToCountry(43.0618, 141.3545), 'JP', 'Sapporo remains Japan');
   });
 
