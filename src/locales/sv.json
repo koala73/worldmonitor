@@ -1151,9 +1151,8 @@
       "infoTooltip": "<strong>Metodik</strong> Sammansatt poäng (0-100) blandning:<ul><li>50 % Landinstabilitet (topp 5 viktade)</li><li>30% Geografiska konvergenszoner</li><li>20% infrastrukturincidenter PH_5______4 minuter PH_5____upps.",
       "noRisks": "Inga betydande risker upptäckta",
       "levels": {
-        "critical": "Kritisk",
-        "elevated": "Förhöjd",
-        "moderate": "Måttlig",
+        "high": "Hög",
+        "medium": "Måttlig",
         "low": "Låg"
       },
       "trend": "Trend",

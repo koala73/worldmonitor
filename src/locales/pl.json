@@ -1412,9 +1412,8 @@
       "noRisks": "Nie wykryto istotnych zagrożeń",
       "infoTooltip": "<strong>Metodologia</strong> Łączny wynik (0-100) mieszanie:<ul><li>50% Niestabilność kraju (5 pierwszych ważonych)</li><li>30% Strefy konwergencji geograficznej</li><li>20% Incydenty w infrastrukturze</li></ul>Automatyczne odświeżanie co 5 minut.",
       "levels": {
-        "critical": "Krytyczny",
-        "elevated": "Podwyższony",
-        "moderate": "Umiarkowany",
+        "high": "Wysoki",
+        "medium": "Umiarkowany",
         "low": "Niski"
       },
       "trend": "Trend",

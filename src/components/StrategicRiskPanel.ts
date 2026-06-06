@@ -27,7 +27,7 @@ import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 type StrategicRiskDisplayLevel = 'high' | 'medium' | 'low';
 
 const STRATEGIC_RISK_BANDS = [
-  { min: 70, levelKey: 'high', colorVar: '--semantic-high' },
+  { min: 70, levelKey: 'high', colorVar: '--semantic-critical' },
   { min: 40, levelKey: 'medium', colorVar: '--semantic-elevated' },
   { min: 0, levelKey: 'low', colorVar: '--semantic-low' },
 ] as const;

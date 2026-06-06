@@ -1460,9 +1460,8 @@
     "strategicRisk": {
       "noRisks": "Nem észleltek jelentős kockázatokat",
       "levels": {
-        "critical": "Kritikus",
-        "elevated": "Emelt",
-        "moderate": "Mérsékelt",
+        "high": "Magas",
+        "medium": "Mérsékelt",
         "low": "Alacsony"
       },
       "trend": "Tendencia",

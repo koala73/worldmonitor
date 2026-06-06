@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { transformSync } from 'esbuild';
 
@@ -390,12 +390,27 @@ describe('frontend CII source of truth', () => {
 
     assert.match(serverRiskSrc, /overallScore >= 70[\s\S]*'SEVERITY_LEVEL_HIGH'[\s\S]*overallScore >= 40[\s\S]*'SEVERITY_LEVEL_MEDIUM'[\s\S]*'SEVERITY_LEVEL_LOW'/);
     assert.match(methodologySrc, /`SEVERITY_LEVEL_HIGH` if `overallScore ≥ 70`[\s\S]*`SEVERITY_LEVEL_MEDIUM` if `40 ≤ overallScore < 70`[\s\S]*`SEVERITY_LEVEL_LOW` if `overallScore < 40`/);
-    assert.match(strategicRiskSrc, /const STRATEGIC_RISK_BANDS = \[[\s\S]*min: 70[\s\S]*levelKey: 'high'[\s\S]*min: 40[\s\S]*levelKey: 'medium'[\s\S]*min: 0[\s\S]*levelKey: 'low'/);
+    assert.match(strategicRiskSrc, /const STRATEGIC_RISK_BANDS = \[[\s\S]*min: 70[\s\S]*levelKey: 'high'[\s\S]*colorVar: '--semantic-critical'[\s\S]*min: 40[\s\S]*levelKey: 'medium'[\s\S]*min: 0[\s\S]*levelKey: 'low'/);
     assert.doesNotMatch(strategicRiskSrc, /min: 50[\s\S]*levelKey: 'elevated'/);
     assert.doesNotMatch(strategicRiskSrc, /min: 30[\s\S]*levelKey: 'moderate'/);
     assert.match(strategicRiskSrc, /this\.strategicRiskLevel =[\s\S]*this\.normalizeStrategicRiskLevel\(cached\.strategicRisk\.level\)[\s\S]*this\.getFallbackScoreBand\(cached\.strategicRisk\.score\)\.levelKey/);
     assert.match(extractMethod(strategicRiskSrc, 'private getScoreColor(score: number): string'), /this\.getScoreBand\(score\)\.colorVar/);
     assert.match(extractMethod(strategicRiskSrc, 'private getScoreLevel(score: number): string'), /this\.getScoreBand\(score\)\.levelKey/);
     assert.match(extractMethod(strategicRiskSrc, 'private getScoreBand(score: number): typeof STRATEGIC_RISK_BANDS[number]'), /this\.strategicRiskLevel[\s\S]*this\.getBandForLevel\(this\.strategicRiskLevel\)[\s\S]*this\.getFallbackScoreBand\(score\)/);
+  });
+
+  it('keeps Strategic Risk level labels complete in every locale', () => {
+    const localeDir = resolve(root, 'src/locales');
+    const localeFiles = readdirSync(localeDir).filter((file) => file.endsWith('.json')).sort();
+
+    for (const file of localeFiles) {
+      const locale = JSON.parse(readFileSync(resolve(localeDir, file), 'utf8')) as {
+        components?: { strategicRisk?: { levels?: Record<string, string> } };
+      };
+      const levels = locale.components?.strategicRisk?.levels;
+      assert.ok(levels?.high, `${file} must define components.strategicRisk.levels.high`);
+      assert.ok(levels?.medium, `${file} must define components.strategicRisk.levels.medium`);
+      assert.ok(levels?.low, `${file} must define components.strategicRisk.levels.low`);
+    }
   });
 });

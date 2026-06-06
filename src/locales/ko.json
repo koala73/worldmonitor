@@ -1334,9 +1334,8 @@
     "strategicRisk": {
       "noRisks": "중대한 위험 감지되지 않음",
       "levels": {
-        "critical": "심각",
-        "elevated": "경계",
-        "moderate": "보통",
+        "high": "높음",
+        "medium": "보통",
         "low": "낮음"
       },
       "trend": "추세",

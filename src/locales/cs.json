@@ -1315,9 +1315,8 @@
     "strategicRisk": {
       "noRisks": "Nezjištěna žádná významná rizika",
       "levels": {
-        "critical": "Kritická",
-        "elevated": "Zvýšená",
-        "moderate": "Střední",
+        "high": "Vysoký",
+        "medium": "Střední",
         "low": "Nízká"
       },
       "trend": "Trend",

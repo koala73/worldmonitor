@@ -1334,9 +1334,8 @@
     "strategicRisk": {
       "noRisks": "Onemli risk tespit edilmedi",
       "levels": {
-        "critical": "Kritik",
-        "elevated": "Artmis",
-        "moderate": "Orta",
+        "high": "Yuksek",
+        "medium": "Orta",
         "low": "Dusuk"
       },
       "trend": "Egilim",

@@ -1477,9 +1477,8 @@
     "strategicRisk": {
       "noRisks": "कोई महत्वपूर्ण जोखिम नहीं पाया गया",
       "levels": {
-        "critical": "गंभीर",
-        "elevated": "ऊँचा",
-        "moderate": "मध्यम",
+        "high": "उच्च",
+        "medium": "मध्यम",
         "low": "निम्न"
       },
       "trend": "रुझान",

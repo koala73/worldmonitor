@@ -1334,9 +1334,8 @@
     "strategicRisk": {
       "noRisks": "未检测到重大风险",
       "levels": {
-        "critical": "危急",
-        "elevated": "升高",
-        "moderate": "中等",
+        "high": "高",
+        "medium": "中等",
         "low": "低"
       },
       "trend": "趋势",

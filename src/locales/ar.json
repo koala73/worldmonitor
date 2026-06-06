@@ -1286,9 +1286,8 @@
     "strategicRisk": {
       "noRisks": "لم يتم رصد مخاطر كبيرة",
       "levels": {
-        "critical": "حرج",
-        "elevated": "متصاعد",
-        "moderate": "معتدل",
+        "high": "مرتفع",
+        "medium": "معتدل",
         "low": "منخفض"
       },
       "trend": "الاتجاه",

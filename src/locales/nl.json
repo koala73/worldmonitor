@@ -1151,9 +1151,8 @@
       "infoTooltip": "<strong>Methodologie</strong> Samengestelde score (0-100) menging:<ul><li>50% Landinstabiliteit (top 5 gewogen)</li><li>30% Geografische convergentiezones</li><li>20% Infrastructuurincidenten</li></ul>Wordt elke 5 minuten automatisch vernieuwd.",
       "noRisks": "Geen significante risico's gedetecteerd",
       "levels": {
-        "critical": "Kritiek",
-        "elevated": "Verhoogd",
-        "moderate": "Matig",
+        "high": "Hoog",
+        "medium": "Matig",
         "low": "Laag"
       },
       "trend": "Trend",

@@ -1335,9 +1335,8 @@
     "strategicRisk": {
       "noRisks": "Nu au fost detectate riscuri semnificative",
       "levels": {
-        "critical": "Critic",
-        "elevated": "Ridicat",
-        "moderate": "Moderat",
+        "high": "Mare",
+        "medium": "Moderat",
         "low": "Scăzut"
       },
       "trend": "Tendință",

@@ -1476,9 +1476,8 @@
       "noRisks": "Keine signifikanten Risiken erkannt",
       "infoTooltip": "<strong>Methodik</strong> Zusammengesetzte Bewertung (0–100), Mischung:<ul><li>50 % Länderinstabilität (Top 5 gewichtet)</li><li>30 % Geografische Konvergenzzonen</li><li>20 % Infrastrukturvorfälle</li></ul>Automatische Aktualisierung alle 5 Minuten.",
       "levels": {
-        "critical": "Kritisch",
-        "elevated": "Erhöht",
-        "moderate": "Mäßig",
+        "high": "Hoch",
+        "medium": "Mäßig",
         "low": "Niedrig"
       },
       "trend": "Trend",
