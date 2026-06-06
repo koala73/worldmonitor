@@ -209,6 +209,8 @@ Scope: CII dependency-audit gap check against worktree HEAD `3a8b10ad99f34d5ef67
 
 Current audit results with Node `v26.0.0` and npm `11.12.1`:
 
+Runtime note: Round 9 was captured on Node `v24.15.0`; this follow-up used the active Codex workspace toolchain on 2026-06-06 (`v26.0.0`). The counts below are therefore recorded with the exact Node/npm runtime and should be compared as a point-in-time audit result, not as a runtime-invariant package metric.
+
 - `npm_config_cache=/tmp/worldmonitor-npm-cache npm audit --omit=dev --audit-level=moderate --json`: 0 critical, 0 high, 12 moderate.
 - `npm_config_cache=/tmp/worldmonitor-npm-cache npm audit --audit-level=moderate --json`: 0 critical, 0 high, 13 moderate.
 
@@ -228,6 +230,7 @@ Commands run for this check:
 
 - `node --version`
 - `npm --version`
+- `npm_config_cache=/tmp/worldmonitor-npm-cache npm ci --ignore-scripts`
 - `npm_config_cache=/tmp/worldmonitor-npm-cache npm audit --omit=dev --audit-level=moderate --json`
 - `npm_config_cache=/tmp/worldmonitor-npm-cache npm audit --audit-level=moderate --json`
 - `npm_config_cache=/tmp/worldmonitor-npm-cache npm audit fix --package-lock-only --dry-run --json`
