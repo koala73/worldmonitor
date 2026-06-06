@@ -1,6 +1,6 @@
 ---
 title: "CII Risk Scoring Methodology"
-description: "Editorial methodology behind the Composite Instability Index (CII) and Strategic Risk roll-up. Documents per-country baselineRisk, eventMultiplier, the four-component score (Unrest, Conflict, Security, Information), strategic-risk band derivation, and the v6 formula version stamped on every CiiScore."
+description: "Editorial methodology behind the Composite Instability Index (CII) and Strategic Risk roll-up. Documents per-country baselineRisk, eventMultiplier, the four-component score (Unrest, Conflict, Security, Information), strategic-risk band derivation, and the v7 formula version stamped on every CiiScore."
 ---
 
 Published methodology note for the **Composite Instability Index (CII)** and
@@ -17,7 +17,22 @@ agree.
 
 The on-the-wire `methodology_version` field on every `CiiScore` reflects
 which revision of this document was active when the score was computed.
-The current version is **v6**.
+The current version is **v7**.
+
+> **v7 (2026-06-06).** Score attribution changed for the second CII gap-closure
+> batch. Coordinate attribution now handles three-way bbox overlaps before
+> pairwise border rules, so Punggye-ri resolves to KP instead of CN and Lublin
+> resolves to PL instead of UA; the seed mirror uses the same resolver. Targeted
+> rectangular-bbox probes were added for Lhasa, Gaziantep, Kermanshah, Quetta,
+> Islamabad, Dammam, Tabuk, Ruili, Belogorsk, north Hokkaido, and Amman. Climate
+> anomaly boosts now cover the producer-emitted `Europe`, `East Asia`, and
+> `Latin America` zones, restoring boost coverage for KP/KR/JP/PL/DE/FR/GB/VE,
+> and unknown future zone names can fall back through anomaly coordinates when
+> present. `combinedScore` values can shift where affected records were
+> previously attributed to the wrong country or ignored. The risk-score cache key
+> family moved to `risk:scores:sebuf:v7`; clients pinned on
+> `methodology_version` should re-baseline. Remaining coordinate attribution is
+> still a rectangular approximation, not full point-in-polygon border geometry.
 
 > **v6 (2026-06-06).** Score attribution changed for country text, coordinate,
 > and climate anomaly inputs. Text attribution now recognizes `north korean`

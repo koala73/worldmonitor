@@ -212,8 +212,50 @@ function isNorthOfApproxUsMxBorder(lat: number, lon: number): boolean {
   return lat >= borderLat;
 }
 
+function isWestOfApproxPlUaBorder(lat: number, lon: number): boolean {
+  const border: Array<[number, number]> = [
+    [22.70, 49.05], // Bieszczady / Zakarpattia
+    [23.05, 50.05], // Przemysl / Lviv corridor
+    [23.65, 51.50], // Bug River north of Lublin
+  ];
+  if (lat <= border[0]![1]) return lon <= border[0]![0];
+  for (let i = 1; i < border.length; i++) {
+    const [prevLon, prevLat] = border[i - 1]!;
+    const [nextLon, nextLat] = border[i]!;
+    if (lat <= nextLat) {
+      const progress = (lat - prevLat) / (nextLat - prevLat);
+      const borderLon = prevLon + progress * (nextLon - prevLon);
+      return lon <= borderLon;
+    }
+  }
+  return lon <= border[border.length - 1]![0];
+}
+
+function isKnownNonTier1BBoxGap(lat: number, lon: number, candidates: CountryBBoxCandidate[]): boolean {
+  // Jordan is not a Tier-1 CII country. Its rectangle overlaps Saudi Arabia's
+  // broad bbox; fail closed only when SA is the sole tracked-country candidate.
+  // If a tighter Tier-1 bbox also matches, keep the normal attribution path.
+  return candidates.length === 1
+    && candidates[0]!.code === 'SA'
+    && lat >= 30.8
+    && lat <= 32.6
+    && lon >= 35.4
+    && lon <= 37.4;
+}
+
 function resolveKnownBBoxOverlap(lat: number, lon: number, candidates: CountryBBoxCandidate[]): string | null {
   const codes = new Set(candidates.map((candidate) => candidate.code));
+
+  if (codes.has('KP') && codes.has('CN') && codes.has('RU')) return 'KP';
+  if (codes.has('PL') && codes.has('UA')) return isWestOfApproxPlUaBorder(lat, lon) ? 'PL' : 'UA';
+  if (codes.has('CN') && codes.has('IN') && lat >= 28.5 && lat <= 32.0 && lon >= 89.0 && lon <= 93.5) return 'CN';
+  if (codes.has('TR') && codes.has('SY') && lat >= 36.6 && lat <= 37.6 && lon >= 36.0 && lon <= 38.8) return 'TR';
+  if (codes.has('IR') && codes.has('IQ') && lat >= 33.4 && lat <= 35.2 && lon >= 45.5 && lon <= 48.6) return 'IR';
+  if (codes.has('PK') && codes.has('AF') && lat >= 29.4 && lat <= 31.5 && lon >= 65.0 && lon <= 68.2) return 'PK';
+  if (codes.has('SA') && codes.has('EG') && lat >= 27.5 && lat <= 29.6 && lon >= 35.0 && lon <= 37.1) return 'SA';
+  if (codes.has('SA') && codes.has('IR') && lat >= 25.0 && lat <= 27.8 && lon >= 48.0 && lon <= 51.5) return 'SA';
+  if (codes.has('CN') && codes.has('MM') && lat >= 23.5 && lat <= 25.0 && lon >= 97.3 && lon <= 98.4) return 'CN';
+  if (codes.has('CN') && codes.has('RU') && lat >= 50.5 && lat <= 51.5 && lon >= 127.8 && lon <= 129.6) return 'RU';
 
   if (codes.has('US') && codes.has('MX')) {
     return isNorthOfApproxUsMxBorder(lat, lon) ? 'US' : 'MX';
@@ -267,6 +309,21 @@ function climateSeverityScore(value: unknown): number {
   return 0;
 }
 
+function getClimateAnomalyCoordinateCountry(anomaly: any): string | null {
+  const lat = anomaly?.location?.latitude ?? anomaly?.lat ?? anomaly?.latitude;
+  const lon = anomaly?.location?.longitude ?? anomaly?.lon ?? anomaly?.longitude ?? anomaly?.lng;
+  if (lat == null || lon == null) return null;
+  return geoToCountry(Number(lat), Number(lon));
+}
+
+export function climateCountriesForAnomaly(anomaly: any): string[] {
+  const zone = anomaly?.zone || anomaly?.region || '';
+  const countries = new Set<string>(ZONE_COUNTRY_MAP[zone] || []);
+  const coordinateCountry = getClimateAnomalyCoordinateCountry(anomaly);
+  if (coordinateCountry) countries.add(coordinateCountry);
+  return [...countries].filter((code) => code in TIER1_COUNTRIES);
+}
+
 // Exported so scripts/seed-military-cii.mjs's re-embedded copy can be cross-checked
 // for parity in tests/seed-military-cii-table-drift.test.mts. The seed cannot import
 // from server/ under Railway nixpacks packaging.
@@ -274,6 +331,7 @@ export function geoToCountry(lat: number, lon: number): string | null {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   const candidates = BBOX_BY_AREA.filter((b) => isInsideBBox(b, lat, lon));
   if (candidates.length === 0) return null;
+  if (isKnownNonTier1BBoxGap(lat, lon, candidates)) return null;
   // Preserve the previous smallest-area bbox tie-break for overlap pairs that
   // do not yet have an explicit border heuristic.
   return resolveKnownBBoxOverlap(lat, lon, candidates) ?? candidates[0]!.code;
@@ -743,10 +801,8 @@ export function computeCIIScores(
 
   // --- Climate ---
   for (const a of aux.climate) {
-    const zone = a.zone || a.region || '';
-    const countries = ZONE_COUNTRY_MAP[zone] || [];
     const severity = climateSeverityScore(a.severity ?? a.score);
-    for (const code of countries) {
+    for (const code of climateCountriesForAnomaly(a)) {
       if (data[code]) data[code].climateSeverity = Math.max(data[code].climateSeverity, severity);
     }
   }

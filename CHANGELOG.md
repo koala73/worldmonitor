@@ -6,6 +6,20 @@ All notable changes to World Monitor are documented here.
 
 ### Changed
 
+- **CII formula `v7`** — score attribution now changes for the second
+  gap-closure batch. Coordinate attribution resolves three-way bbox overlaps
+  before pairwise border rules, so Punggye-ri maps to KP instead of CN and
+  Lublin maps to PL instead of UA; the seed mirror uses the same resolver.
+  Targeted probes also cover Lhasa, Gaziantep, Kermanshah, Quetta/Islamabad,
+  Dammam, Tabuk, Ruili, Belogorsk, north Hokkaido, and Amman. Climate anomaly
+  boosts now cover the producer-emitted `Europe`, `East Asia`, and
+  `Latin America` zones, restoring KP/KR/JP/PL/DE/FR/GB/VE coverage, and future
+  unknown zones can fall back through anomaly coordinates when available.
+  `combinedScore` values may shift for affected records, the risk-score cache
+  key family moved to `risk:scores:sebuf:v7`, and emitted
+  `methodology_version` is now `v7`; clients should re-baseline. Remaining
+  coordinate attribution is still a rectangular approximation, not full
+  point-in-polygon border geometry.
 - **CII formula `v6`** — score attribution now changes as one batch for country
   text, coordinate, and climate anomaly inputs. The seed and server country
   resolvers now agree on token/phrase matching, Rio Grande US/MX border

@@ -198,8 +198,47 @@ function isNorthOfApproxUsMxBorder(lat, lon) {
   return lat >= 25.89;
 }
 
+function isWestOfApproxPlUaBorder(lat, lon) {
+  const border = [
+    [22.70, 49.05],
+    [23.05, 50.05],
+    [23.65, 51.50],
+  ];
+  if (lat <= border[0][1]) return lon <= border[0][0];
+  for (let i = 1; i < border.length; i++) {
+    const [prevLon, prevLat] = border[i - 1];
+    const [nextLon, nextLat] = border[i];
+    if (lat <= nextLat) {
+      const progress = (lat - prevLat) / (nextLat - prevLat);
+      const borderLon = prevLon + progress * (nextLon - prevLon);
+      return lon <= borderLon;
+    }
+  }
+  return lon <= border[border.length - 1][0];
+}
+
+function isKnownNonTier1BBoxGap(lat, lon, candidates) {
+  return candidates.length === 1
+    && candidates[0].code === 'SA'
+    && lat >= 30.8
+    && lat <= 32.6
+    && lon >= 35.4
+    && lon <= 37.4;
+}
+
 function resolveKnownBBoxOverlap(lat, lon, candidates) {
   const codes = new Set(candidates.map((candidate) => candidate.code));
+
+  if (codes.has('KP') && codes.has('CN') && codes.has('RU')) return 'KP';
+  if (codes.has('PL') && codes.has('UA')) return isWestOfApproxPlUaBorder(lat, lon) ? 'PL' : 'UA';
+  if (codes.has('CN') && codes.has('IN') && lat >= 28.5 && lat <= 32.0 && lon >= 89.0 && lon <= 93.5) return 'CN';
+  if (codes.has('TR') && codes.has('SY') && lat >= 36.6 && lat <= 37.6 && lon >= 36.0 && lon <= 38.8) return 'TR';
+  if (codes.has('IR') && codes.has('IQ') && lat >= 33.4 && lat <= 35.2 && lon >= 45.5 && lon <= 48.6) return 'IR';
+  if (codes.has('PK') && codes.has('AF') && lat >= 29.4 && lat <= 31.5 && lon >= 65.0 && lon <= 68.2) return 'PK';
+  if (codes.has('SA') && codes.has('EG') && lat >= 27.5 && lat <= 29.6 && lon >= 35.0 && lon <= 37.1) return 'SA';
+  if (codes.has('SA') && codes.has('IR') && lat >= 25.0 && lat <= 27.8 && lon >= 48.0 && lon <= 51.5) return 'SA';
+  if (codes.has('CN') && codes.has('MM') && lat >= 23.5 && lat <= 25.0 && lon >= 97.3 && lon <= 98.4) return 'CN';
+  if (codes.has('CN') && codes.has('RU') && lat >= 50.5 && lat <= 51.5 && lon >= 127.8 && lon <= 129.6) return 'RU';
 
   if (codes.has('US') && codes.has('MX')) {
     return isNorthOfApproxUsMxBorder(lat, lon) ? 'US' : 'MX';
@@ -247,6 +286,7 @@ function geoToCountry(lat, lon) {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   const candidates = BBOX_BY_AREA.filter((b) => isInsideBBox(b, lat, lon));
   if (candidates.length === 0) return null;
+  if (isKnownNonTier1BBoxGap(lat, lon, candidates)) return null;
   return resolveKnownBBoxOverlap(lat, lon, candidates) ?? candidates[0].code;
 }
 

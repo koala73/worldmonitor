@@ -242,7 +242,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       'conflict:ucdp-events:v1',
       'conflict:iran-events:v1',
       'unrest:events:v1',
-      'risk:scores:sebuf:stale:v6',
+      'risk:scores:sebuf:stale:v7',
     ],
     _seedMetaKey: 'seed-meta:conflict:ucdp-events',
     _maxStaleMin: 30,
@@ -253,7 +253,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     // cyber threats, wildfires, GPS jamming, OREF history, security
     // advisories, displacement, news insights, news threats, aviation,
     // earthquakes, sanctions, temporal anomalies, and military CII). Excluded
-    // as `deferred-to-future-tool` —
+    // as `deferred-to-future-tool` -
     // belongs in a future expanded_risk_scores composite tool, not here.
     _apiPaths: [
       "GET /api/conflict/v1/list-iran-events",

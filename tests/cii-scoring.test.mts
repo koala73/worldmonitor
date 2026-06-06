@@ -23,6 +23,7 @@ import {
   CII_TREND_BUCKET_LOOKUP_RADIUS,
   CII_TREND_BUCKET_MS,
   CII_TREND_TARGET_AGE_MS,
+  climateCountriesForAnomaly,
   EVENT_MULTIPLIER,
   countCiiRealtimeSignalDensityCoverage,
   computeCIIScores,
@@ -55,6 +56,10 @@ const CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION: Record<string, string> = {
   // so a v7 scoring branch must refresh this hash after it deliberately
   // changes formula literals.
   v6: '522a12cf805357a7a4df5c32186591c4af11053f5fd6decbff6572abd7e8a9ad',
+  // v7 keeps coefficients/cutoffs stable while changing score-shifting
+  // attribution inputs (bbox resolution and climate country coverage), and
+  // preserves the expanded formula-literal guard from v6.
+  v7: '35c2d7270c6473e457d0b189e1411b9eeb0a79bfe2ae9316485ea14369c12369',
 };
 
 const GUARDED_TOP_LEVEL_SCORE_CONST_NAMES = ['NEWS_THREAT_WEIGHT'];
@@ -413,6 +418,8 @@ describe('CII signal wiring', () => {
     assert.equal(geoToCountry(29.7604, -95.3698), 'US', 'southern US coordinates must resolve to US, not Mexico');
     assert.equal(geoToCountry(33.5904, 130.4017), 'JP', 'Fukuoka must resolve to Japan, not South Korea');
     assert.equal(geoToCountry(17.5656, 44.2289), 'SA', 'Najran must resolve to Saudi Arabia, not Yemen');
+    assert.equal(geoToCountry(41.28, 129.09), 'KP', 'Punggye-ri must resolve to North Korea, not China');
+    assert.equal(geoToCountry(51.25, 22.57), 'PL', 'Lublin must resolve to Poland, not Ukraine');
 
     assert.equal(geoToCountry(32.7157, -117.1611), 'US', 'San Diego remains US');
     assert.equal(geoToCountry(32.5149, -117.0382), 'MX', 'Tijuana remains Mexico');
@@ -433,26 +440,43 @@ describe('CII signal wiring', () => {
     assert.equal(geoToCountry(50.5954, 36.5873), 'RU', 'Belgorod remains Russia');
     assert.equal(geoToCountry(50.9077, 34.7981), 'UA', 'Sumy must resolve to Ukraine, not Russia');
     assert.equal(geoToCountry(49.9935, 36.2304), 'UA', 'Kharkiv remains Ukraine');
+    assert.equal(geoToCountry(49.8397, 24.0297), 'UA', 'Lviv remains Ukraine east of the PL/UA border heuristic');
     assert.equal(geoToCountry(31.5204, 74.3587), 'PK', 'Lahore remains Pakistan');
     assert.equal(geoToCountry(31.6340, 74.8723), 'IN', 'Amritsar must resolve to India, not Pakistan');
+    assert.equal(geoToCountry(29.6520, 91.1721), 'CN', 'Lhasa must resolve to China, not India');
+    assert.equal(geoToCountry(37.0662, 37.3833), 'TR', 'Gaziantep must resolve to Turkey, not Syria');
+    assert.equal(geoToCountry(34.3277, 47.0778), 'IR', 'Kermanshah must resolve to Iran, not Iraq');
+    assert.equal(geoToCountry(30.1798, 66.9750), 'PK', 'Quetta must resolve to Pakistan, not Afghanistan');
+    assert.equal(geoToCountry(33.6844, 73.0479), 'PK', 'Islamabad remains Pakistan');
+    assert.equal(geoToCountry(26.4207, 50.0888), 'SA', 'Dammam remains Saudi Arabia');
+    assert.equal(geoToCountry(28.3835, 36.5662), 'SA', 'Tabuk must resolve to Saudi Arabia, not Egypt');
+    assert.equal(geoToCountry(24.0128, 97.8519), 'CN', 'Ruili must resolve to China, not Myanmar');
     assert.equal(geoToCountry(43.1155, 131.8855), 'RU', 'Vladivostok must resolve to Russia, not China');
     assert.equal(geoToCountry(50.2907, 127.5272), 'RU', 'Blagoveshchensk remains Russia');
+    assert.equal(geoToCountry(50.9213, 128.4739), 'RU', 'Belogorsk must resolve to Russia, not China');
     assert.equal(geoToCountry(50.2458, 127.4886), 'CN', 'Heihe must resolve to China, not Russia');
     assert.equal(geoToCountry(52.9721, 122.5386), 'CN', 'Mohe must resolve to China, not Russia');
     assert.equal(geoToCountry(45.8038, 126.5350), 'CN', 'Harbin remains China');
     assert.equal(geoToCountry(46.9591, 142.7380), 'RU', 'Yuzhno-Sakhalinsk must resolve to Russia, not Japan');
     assert.equal(geoToCountry(45.4500, 142.0500), 'RU', 'southern Sakhalin inside the JP bbox must resolve to Russia');
+    assert.equal(geoToCountry(44.3500, 142.4600), 'JP', 'north Hokkaido must resolve to Japan, not Russia');
     assert.equal(geoToCountry(45.4150, 141.6730), 'JP', 'Wakkanai remains Japan');
     assert.equal(geoToCountry(43.0618, 141.3545), 'JP', 'Sapporo remains Japan');
+    assert.equal(geoToCountry(31.8560, 35.4590), 'IL', 'Jordan fail-closed gap must not mask tighter IL bbox attribution');
+    assert.equal(geoToCountry(32.4500, 36.1000), 'SY', 'Jordan fail-closed gap must not mask Syria bbox attribution');
+    assert.equal(geoToCountry(31.9539, 35.9106), null, 'Amman must fail closed because Jordan is not a Tier-1 CII country');
   });
 
   it('climate producer zones intersect the CII consumer map for score-relevant zones', () => {
     const producerZones = new Set(CLIMATE_ZONES.map((zone) => zone.name));
     const expected: Record<string, string[]> = {
       Ukraine: ['UA'],
+      Europe: ['DE', 'FR', 'GB', 'PL'],
+      'East Asia': ['KP', 'KR', 'JP'],
       California: ['US'],
       Amazon: ['BR'],
       'Taiwan Strait': ['TW'],
+      'Latin America': ['VE'],
       Caribbean: ['CU', 'MX'],
       'Middle East': ['IR', 'IL', 'SA', 'SY', 'YE', 'AE', 'IQ', 'LB', 'QA'],
       'South Asia': ['IN', 'PK', 'AF'],
@@ -473,6 +497,14 @@ describe('CII signal wiring', () => {
     const cases: Array<[string, string]> = [
       ['California', 'US'],
       ['Ukraine', 'UA'],
+      ['East Asia', 'KP'],
+      ['East Asia', 'KR'],
+      ['East Asia', 'JP'],
+      ['Europe', 'PL'],
+      ['Europe', 'DE'],
+      ['Europe', 'FR'],
+      ['Europe', 'GB'],
+      ['Latin America', 'VE'],
       ['Amazon', 'BR'],
       ['Taiwan Strait', 'TW'],
       ['Caribbean', 'MX'],
@@ -491,6 +523,24 @@ describe('CII signal wiring', () => {
         `${zone} anomaly should raise ${code} through climateBoost`,
       );
     }
+  });
+
+  it('climate anomaly coordinate fallback attributes producer records with unknown zone vocabulary', () => {
+    assert.deepEqual(
+      climateCountriesForAnomaly({
+        zone: 'Producer Vocabulary Added After Consumer Deploy',
+        location: { latitude: 41.28, longitude: 129.09 },
+      }),
+      ['KP'],
+    );
+    assert.deepEqual(
+      climateCountriesForAnomaly({
+        zone: 'Producer Vocabulary Added After Consumer Deploy',
+        lat: 51.25,
+        lon: 22.57,
+      }),
+      ['PL'],
+    );
   });
 
   it('ACLED 7d and 30d fetch windows do not double-count the 7-day boundary date', () => {
