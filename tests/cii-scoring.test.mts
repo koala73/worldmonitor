@@ -50,10 +50,13 @@ const CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION: Record<string, string> = {
   v5: '13a339323a4b1c92bec967a2b006d97330ef7f1d596326bf8a438a129fa89c10',
   // v6 (#4147/#4148/#4149/#4151): attribution/climate fixes plus the
   // formula guard expansion. The guard now includes score-relevant inline
-  // literals from get-risk-scores.ts, so a v7 scoring branch must refresh this
-  // hash after it deliberately changes formula literals.
+  // literals and guarded top-level formula constants from get-risk-scores.ts,
+  // so a v7 scoring branch must refresh this hash after it deliberately
+  // changes formula literals.
   v6: '522a12cf805357a7a4df5c32186591c4af11053f5fd6decbff6572abd7e8a9ad',
 };
+
+const GUARDED_TOP_LEVEL_SCORE_CONST_NAMES = ['NEWS_THREAT_WEIGHT'];
 
 function readRepoFile(path: string): string {
   return readFileSync(resolve(REPO_ROOT, path), 'utf8');
@@ -83,6 +86,22 @@ function findFunctionDeclaration(sourceFile: ts.SourceFile, functionName: string
   visit(sourceFile);
   assert.ok(found, `missing function declaration: ${functionName}`);
   return found;
+}
+
+function findTopLevelConstDeclaration(
+  sourceFile: ts.SourceFile,
+  constName: string,
+): ts.VariableDeclaration | null {
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (ts.isIdentifier(declaration.name) && declaration.name.text === constName) {
+        return declaration;
+      }
+    }
+  }
+  return null;
 }
 
 function getReturnString(statement: ts.Statement): string | null {
@@ -230,6 +249,21 @@ function extractScoreFormulaLiterals(source: string): ScoreFormulaLiteral[] {
   );
   const guardedFunctions = ['climateSeverityScore', 'computeCIIScores'];
   const literals: ScoreFormulaLiteral[] = [];
+
+  for (const constName of GUARDED_TOP_LEVEL_SCORE_CONST_NAMES) {
+    const declaration = findTopLevelConstDeclaration(sourceFile, constName);
+    if (!declaration) continue;
+    assert.ok(declaration.initializer, `${constName} must have an initializer`);
+    literals.push(
+      ...collectNumericLiteralsInRange(
+        sourceFile,
+        constName,
+        declaration.initializer.getStart(sourceFile),
+        declaration.initializer.end,
+        literals.length,
+      ),
+    );
+  }
 
   for (const functionName of guardedFunctions) {
     const fn = findFunctionDeclaration(sourceFile, functionName);
@@ -1074,6 +1108,10 @@ describe('CII scoring', () => {
     assertFormulaLiteralCovered(scoreFormulaLiterals, 'computeCIIScores', 0.4, '(ev.daysAgo ?? 0) <= 7 ? 1.0 : 0.4');
     assertFormulaLiteralCovered(scoreFormulaLiterals, 'computeCIIScores', 360, 'safeNonNegativeNum(f.brightness) >= 360');
     assertFormulaLiteralCovered(scoreFormulaLiterals, 'computeCIIScores', 5.5, 'mag < 5.5');
+    if (getRiskScoresSource.includes('NEWS_THREAT_WEIGHT')) {
+      assertFormulaLiteralCovered(scoreFormulaLiterals, 'NEWS_THREAT_WEIGHT', 4, 'critical: 4');
+      assertFormulaLiteralCovered(scoreFormulaLiterals, 'NEWS_THREAT_WEIGHT', 0.5, 'low: 0.5');
+    }
     const snapshot = {
       countryWeights: Object.fromEntries(
         Object.entries(CII_COUNTRY_WEIGHTS).sort(([a], [b]) => a.localeCompare(b)),
@@ -1099,6 +1137,27 @@ describe('CII scoring', () => {
       expectedHash,
       'CII coefficient/formula/cutoff snapshot changed. Bump CII_FORMULA_VERSION, update methodology docs/changelogs, and add the new version-keyed snapshot hash.',
     );
+  });
+
+  it('CII protocol snapshot includes guarded top-level score constants', () => {
+    const literals = extractScoreFormulaLiterals(`
+      const NEWS_THREAT_WEIGHT: Record<string, number> = {
+        critical: 4,
+        high: 2,
+        medium: 1,
+        low: 0.5,
+        info: 0,
+      };
+      function climateSeverityScore(): number {
+        return 5;
+      }
+      export function computeCIIScores(): number {
+        return 1;
+      }
+    `);
+
+    assertFormulaLiteralCovered(literals, 'NEWS_THREAT_WEIGHT', 4, 'critical: 4');
+    assertFormulaLiteralCovered(literals, 'NEWS_THREAT_WEIGHT', 0.5, 'low: 0.5');
   });
 
   it('getScoreLevel uses canonical CII UI bands at 81/66/51/31', () => {
