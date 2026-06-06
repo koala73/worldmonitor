@@ -42,7 +42,7 @@ function extractHealthMilitaryCiiSeedMeta(): { key: string; maxStaleMin: number 
 
 function extractHealthMilitaryCiiDataKey(): string {
   const match = /militaryCii:\s*'([^']+)'/.exec(healthSrc);
-  assert.ok(match, 'api/health.js must define DATA_KEYS.militaryCii');
+  assert.ok(match, 'api/health.js must define STANDALONE_KEYS.militaryCii');
   return match[1]!;
 }
 
