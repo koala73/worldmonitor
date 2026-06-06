@@ -63,7 +63,69 @@ const matchKeyword = (tokens: string[], keyword: string) => tokens.includes(keyw
       allNews: unknown[],
       theaterPostures: unknown[],
       predictionMarkets: unknown[],
-    ) => { cii: { score: number; level: string; trend: string; change24h: number } | null };
+    ) => { countryCode: string; cii: { score: number; level: string; trend: string; change24h: number } | null };
+  };
+}
+
+async function loadCrossModuleForTest() {
+  const src = readSrc('src/services/cross-module-integration.ts')
+    .replace(
+      "import { getLocationName, type GeoConvergenceAlert } from './geo-convergence';",
+      `type GeoConvergenceAlert = any;
+const getLocationName = () => 'Test Location';`,
+    )
+    .replace(
+      "import type { CountryScore } from './country-instability';",
+      `type CountryScore = any;`,
+    )
+    .replace(
+      "import { getLatestSanctionsPressure, type SanctionsPressureResult } from './sanctions-pressure';",
+      `type SanctionsPressureResult = any;
+const getLatestSanctionsPressure = () => null;`,
+    )
+    .replace(
+      "import { getLatestRadiationWatch, type RadiationObservation } from './radiation';",
+      `type RadiationObservation = any;
+const getLatestRadiationWatch = () => null;`,
+    )
+    .replace(
+      "import type { CascadeResult, CascadeImpactLevel } from '@/types';",
+      `type CascadeResult = any;
+type CascadeImpactLevel = any;`,
+    )
+    .replace(
+      "import { calculateCII, isInLearningMode } from './country-instability';",
+      `const calculateCII = () => (globalThis as any).__ciiSourceTruthTest.localScores;
+const isInLearningMode = () => Boolean((globalThis as any).__ciiSourceTruthTest.inLearning);`,
+    )
+    .replace(
+      "import { getCachedCountryScores } from './cached-risk-scores';",
+      `const getCachedCountryScores = () => (globalThis as any).__ciiSourceTruthTest.cachedScores;`,
+    )
+    .replace(
+      "import { getCountryNameByCode } from './country-geometry';",
+      `const getCountryNameByCode = (code: string) => ({ IR: 'Iran' } as Record<string, string>)[code] || code;`,
+    )
+    .replace(
+      "import { t } from '@/services/i18n';",
+      `const t = (key: string, params?: Record<string, unknown>) => String(params?.country ?? key);`,
+    )
+    .replace(
+      "import type { TheaterPostureSummary } from '@/services/military-surge';",
+      `type TheaterPostureSummary = any;`,
+    );
+
+  const transformed = transformSync(src, {
+    loader: 'ts',
+    format: 'esm',
+    target: 'es2022',
+  });
+  const dataUrl = `data:text/javascript;base64,${Buffer.from(transformed.code).toString('base64')}#${++moduleCounter}`;
+  return (await import(dataUrl)) as {
+    checkCIIChanges: () => Array<{
+      type: string;
+      components: { ciiChange?: { previousScore: number; currentScore: number } };
+    }>;
   };
 }
 
@@ -167,8 +229,49 @@ describe('frontend CII source of truth', () => {
     const story = await loadStoryDataForTest();
 
     const result = story.collectStoryData('ir', 'Iran', [], [], []);
+    assert.equal(result.countryCode, 'IR');
     assert.equal(result.cii?.score, 55);
     assert.equal(result.cii?.level, 'elevated');
+  });
+
+  it('does not emit false CII-spike alerts when score source switches from local to cached', async () => {
+    const previousDocument = (globalThis as any).document;
+    const previousCustomEvent = (globalThis as any).CustomEvent;
+    (globalThis as any).document = { dispatchEvent: () => undefined };
+    (globalThis as any).CustomEvent = class CustomEvent {
+      constructor(public type: string) {}
+    };
+
+    try {
+      (globalThis as any).__ciiSourceTruthTest = {
+        cachedScores: [],
+        localScores: [makeScore(5)],
+        inLearning: false,
+      };
+      const crossModule = await loadCrossModuleForTest();
+
+      assert.equal(crossModule.checkCIIChanges().length, 0);
+
+      (globalThis as any).__ciiSourceTruthTest.cachedScores = [makeScore(80)];
+      assert.equal(
+        crossModule.checkCIIChanges().length,
+        0,
+        'local-to-cached source switch must rebaseline instead of alerting on formula drift',
+      );
+
+      (globalThis as any).__ciiSourceTruthTest.cachedScores = [makeScore(95)];
+      const alerts = crossModule.checkCIIChanges();
+      assert.equal(alerts.length, 1, 'same-source cached changes should still emit CII spike alerts');
+      assert.equal(alerts[0]?.type, 'cii_spike');
+      assert.equal(alerts[0]?.components.ciiChange?.previousScore, 80);
+      assert.equal(alerts[0]?.components.ciiChange?.currentScore, 95);
+    } finally {
+      if (previousDocument === undefined) delete (globalThis as any).document;
+      else (globalThis as any).document = previousDocument;
+      if (previousCustomEvent === undefined) delete (globalThis as any).CustomEvent;
+      else (globalThis as any).CustomEvent = previousCustomEvent;
+      delete (globalThis as any).__ciiSourceTruthTest;
+    }
   });
 
   it('routes remaining on-demand CII consumers through cached/server scores first', () => {
@@ -182,6 +285,7 @@ describe('frontend CII source of truth', () => {
     assert.doesNotMatch(storySrc, /hasIntelligenceSignalsLoaded/);
     assert.match(storySrc, /const normalizedCountryCode = normalizeCiiCountryCode\(countryCode\);/);
     assert.match(storySrc, /getCachedCountryScore\(normalizedCountryCode\)[\s\S]*s\.code === normalizedCountryCode/);
+    assert.match(storySrc, /countryCode: normalizedCountryCode/);
 
     assert.doesNotMatch(countryIntelSrc, /hasIntelligenceSignalsLoaded/);
     assert.match(countryIntelSrc, /const scoreCode = normalizeCiiCountryCode\(code\);[\s\S]*getCachedCountryScore\(scoreCode\) \?\? calculateCII\(\)\.find\(\(s\) => s\.code === scoreCode\)/);
@@ -191,6 +295,7 @@ describe('frontend CII source of truth', () => {
     assert.match(crossModuleSrc, /if \(previousCIIScoreSource !== null && previousCIIScoreSource !== source\) \{[\s\S]*previousCIIScores\.clear\(\);[\s\S]*\}/);
     assert.match(crossModuleSrc, /const \{ scores, source \} = getAuthoritativeCIIScores\(\);/);
     assert.match(crossModuleSrc, /const \{ scores: ciiScores \} = getAuthoritativeCIIScores\(\);/);
+    assert.match(crossModuleSrc, /export function clearAlerts\(\): void \{[\s\S]*previousCIIScores\.clear\(\);[\s\S]*previousCIIScoreSource = null;[\s\S]*\}/);
 
     assert.match(militarySrc, /getCachedCountryScoreValue\(code\) \?\? getCountryScore\(code\)/);
     assert.match(mapSrc, /setCIIGetter\(\(code\) => getCachedCountryScoreValue\(code\) \?\? getCountryScore\(code\)\)/);

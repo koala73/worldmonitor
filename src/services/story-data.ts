@@ -105,7 +105,7 @@ export function collectStoryData(
   }
 
   return {
-    countryCode,
+    countryCode: normalizedCountryCode,
     countryName,
     cii: countryScore ? {
       score: countryScore.score,

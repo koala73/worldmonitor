@@ -826,6 +826,8 @@ export function getRecentAlerts(hours: number = 24): UnifiedAlert[] {
 
 export function clearAlerts(): void {
   alerts.length = 0;
+  previousCIIScores.clear();
+  previousCIIScoreSource = null;
 }
 
 export function getAlertCount(): { critical: number; high: number; medium: number; low: number } {
