@@ -356,7 +356,7 @@ Feeds also carry a **propaganda risk rating** and **state affiliation flag**. St
 
 ### Data Freshness & Intelligence Gaps
 
-A singleton tracker monitors 35 data sources (GDELT, GDELT Doc, RSS, AIS, OpenSky, Wingbits, USGS, weather, outages, ACLED, ACLED conflict, Polymarket, predictions, PizzINT, economic, oil, spending, NASA FIRMS, cyber threats, UCDP, UCDP events, HAPI, UNHCR, climate, WorldPop, giving, BIS, BLS, WTO trade, supply chain, security advisories, sanctions pressure, radiation, GPS jamming, Treasury revenue) with status categorization: fresh (&lt;15 min), stale (2h), very_stale (6h), no_data, error, disabled. Two sources (GDELT, RSS) are flagged as `requiredForRisk` — their absence directly impacts CII scoring quality. The tracker explicitly reports **intelligence gaps** — what analysts can't see — preventing false confidence when critical data sources are down or degraded.
+A singleton tracker monitors 35 data sources (GDELT, GDELT Doc, RSS, AIS, OpenSky, Wingbits, USGS, weather, outages, ACLED, ACLED conflict, Polymarket, predictions, PizzINT, economic, oil, spending, NASA FIRMS, cyber threats, UCDP, UCDP events, HAPI, UNHCR, climate, WorldPop, giving, BIS, BLS, WTO trade, supply chain, security advisories, sanctions pressure, radiation, GPS jamming, Treasury revenue) with status categorization: fresh (&lt;15 min), stale (2h), very_stale (6h), no_data, error, disabled. Two browser-tracker sources (GDELT, RSS) are flagged as `requiredForRisk`; that flag drives the Strategic Risk panel's hard insufficient-data gate, not the exhaustive list of CII score inputs. Score-relevant feeds such as UCDP events, ACLED conflict, news summaries, and cyber threats are tracked through source-specific health plus `/api/health.riskScores` signal-density coverage. The tracker explicitly reports **intelligence gaps** — what analysts can't see — preventing false confidence when critical data sources are down or degraded.
 
 ---
 
@@ -396,12 +396,14 @@ Markets are filtered to exclude sports and entertainment (100+ exclusion keyword
 WorldMonitor is grateful to the following organizations for making their data publicly accessible.
 
 ### Energy & Commodities
+
 | Provider | Data | Link |
 |----------|------|------|
 | GIE AGSI+ | EU natural gas storage levels | [agsi.gie.eu](https://agsi.gie.eu) |
 | U.S. EIA | Crude oil inventories, fuel prices, energy data | [eia.gov/opendata](https://www.eia.gov/opendata) |
 
 ### Finance & Economics
+
 | Provider | Data | Link |
 |----------|------|------|
 | ECB Data Portal | FX reference rates, yield curve, ESTR/EURIBOR, financial stress index | [data-api.ecb.europa.eu](https://data-api.ecb.europa.eu) |
@@ -415,6 +417,7 @@ WorldMonitor is grateful to the following organizations for making their data pu
 | CoinGecko | Cryptocurrency prices and market data | [coingecko.com](https://www.coingecko.com) |
 
 ### Geopolitics & Conflict
+
 | Provider | Data | Link |
 |----------|------|------|
 | ACLED | Armed conflict and protest event data | [acleddata.com](https://acleddata.com) |
@@ -423,6 +426,7 @@ WorldMonitor is grateful to the following organizations for making their data pu
 | IMF PortWatch | Chokepoint transit intelligence | [portwatch.imf.org](https://portwatch.imf.org) |
 
 ### Environment & Disasters
+
 | Provider | Data | Link |
 |----------|------|------|
 | USGS Earthquake Hazards | Global seismic activity | [earthquake.usgs.gov](https://earthquake.usgs.gov) |
@@ -432,6 +436,7 @@ WorldMonitor is grateful to the following organizations for making their data pu
 | Open-Meteo | ERA5 reanalysis climate data | [open-meteo.com](https://open-meteo.com) |
 
 ### Infrastructure & Cyber
+
 | Provider | Data | Link |
 |----------|------|------|
 | Cloudflare Radar | Internet outages and traffic anomalies | [radar.cloudflare.com](https://radar.cloudflare.com) |
@@ -440,6 +445,7 @@ WorldMonitor is grateful to the following organizations for making their data pu
 | CelesTrak | Satellite TLE data for orbital tracking | [celestrak.org](https://celestrak.org) |
 
 ### Aviation
+
 | Provider | Data | Link |
 |----------|------|------|
 | Wingbits | Live ADS-B flight data | [wingbits.com](https://wingbits.com) |

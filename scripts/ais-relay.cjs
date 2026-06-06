@@ -1437,6 +1437,8 @@ const UCDP_REDIS_KEY = 'conflict:ucdp-events:v1';
 const UCDP_PAGE_SIZE = 1000;
 const UCDP_MAX_PAGES = 6;
 const UCDP_MAX_EVENTS = 2000; // TODO: review cap after observing real map density & panel usage
+// Retained Redis input window. CII v8's classifier accepts a 2-year window, but
+// live scoring is bounded by this retained 365-day slice until retention widens.
 const UCDP_TRAILING_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
 const UCDP_POLL_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const UCDP_TTL_SECONDS = 86400; // 24h safety net

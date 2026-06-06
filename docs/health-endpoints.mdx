@@ -93,8 +93,10 @@ Some keys use fallback chains. If any sibling has data, empty siblings report `O
 
 `riskScores` is intentionally stricter than a raw feed heartbeat. Its
 `recordCount` is realtime signal-density coverage: the count of score-relevant
-Tier-1 ACLED, news, and cyber signal families present during the CII refresh.
-When those feeds are reachable but quiet, `riskScores` can still report
+Tier-1 conflict, news, and cyber signal families present during the CII refresh.
+The conflict family is satisfied by either the ACLED path or the UCDP event
+feed, matching the CII v8 scorer. When those feeds are reachable but quiet,
+`riskScores` can still report
 `COVERAGE_PARTIAL`; underlying feed freshness is tracked by the source-specific
 health entries where those feeds publish seed metadata.
 
