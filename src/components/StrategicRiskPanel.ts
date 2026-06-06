@@ -18,7 +18,7 @@ import {
   type DataSourceState,
   type DataFreshnessSummary,
 } from '@/services/data-freshness';
-import { getLearningProgress, hasIntelligenceSignalsLoaded, type CountryScore } from '@/services/country-instability';
+import { getLearningProgress, type CountryScore } from '@/services/country-instability';
 import { fetchCachedRiskScores, toCountryScore, type CachedRiskScores } from '@/services/cached-risk-scores';
 import { getCachedPosture } from '@/services/cached-theater-posture';
 import { refreshDataFreshnessFromHealth } from '@/services/health-freshness';
@@ -119,9 +119,9 @@ export class StrategicRiskPanel extends Panel {
     breakingScore = Math.min(15, breakingScore);
 
     // Gather theater postures from cached service
-    const cached = getCachedPosture();
-    const postures = cached?.postures;
-    const staleFactor = cached?.stale ? 0.5 : 1;
+    const cachedPosture = getCachedPosture();
+    const postures = cachedPosture?.postures;
+    const staleFactor = cachedPosture?.stale ? 0.5 : 1;
 
     const localOverview = calculateStrategicRiskOverview(
       this.convergenceAlerts,
@@ -132,18 +132,18 @@ export class StrategicRiskPanel extends Panel {
     this.overview = localOverview;
     this.alerts = getRecentAlerts(24);
 
-    // Try to get cached scores during learning mode OR when data sources are insufficient
+    // Prefer server/cached scores whenever available so CII-derived overview values
+    // do not diverge from the CII panel, map, and on-demand surfaces.
     const { inLearning } = getLearningProgress();
     this.usedCachedScores = false;
-    const shouldUseCachedScores = inLearning || !hasIntelligenceSignalsLoaded() || this.freshnessSummary.overallStatus === 'insufficient';
-    if (shouldUseCachedScores) {
-      const cached = await fetchCachedRiskScores(this.signal);
-      if (!this.element?.isConnected) return false;
-      if (cached?.strategicRisk) {
-        this.applyCachedRiskOverview(cached, localOverview);
-        this.usedCachedScores = true;
-        console.log('[StrategicRiskPanel] Using cached scores from backend');
-      }
+    const cachedRiskScores = await fetchCachedRiskScores(this.signal);
+    if (!this.element?.isConnected) return false;
+    if (cachedRiskScores?.strategicRisk) {
+      this.applyCachedRiskOverview(cachedRiskScores, localOverview);
+      this.usedCachedScores = true;
+      console.log('[StrategicRiskPanel] Using cached scores from backend');
+    } else if (inLearning || this.freshnessSummary.overallStatus === 'insufficient') {
+      console.log('[StrategicRiskPanel] Cached backend scores unavailable; using local fallback');
     }
 
     const badgeDetail = this.freshnessSummary
@@ -224,9 +224,9 @@ export class StrategicRiskPanel extends Panel {
   }
 
   private getScoreColor(score: number): string {
-    if (score >= 70) return getCSSColor('--semantic-critical');
-    if (score >= 50) return getCSSColor('--semantic-high');
-    if (score >= 30) return getCSSColor('--semantic-elevated');
+    if (score >= 81) return getCSSColor('--semantic-critical');
+    if (score >= 66) return getCSSColor('--semantic-high');
+    if (score >= 51) return getCSSColor('--semantic-elevated');
     return getCSSColor('--semantic-normal');
   }
 

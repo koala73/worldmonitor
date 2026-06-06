@@ -103,7 +103,7 @@ export class CountryIntelModal {
 
   private scoreBar(score: number): string {
     const pct = Math.min(100, Math.max(0, score));
-    const color = pct >= 70 ? getCSSColor('--semantic-critical') : pct >= 50 ? getCSSColor('--semantic-high') : pct >= 30 ? getCSSColor('--semantic-elevated') : getCSSColor('--semantic-normal');
+    const color = pct >= 81 ? getCSSColor('--semantic-critical') : pct >= 66 ? getCSSColor('--semantic-high') : pct >= 51 ? getCSSColor('--semantic-elevated') : getCSSColor('--semantic-normal');
     return `
       <div class="cii-score-bar">
         <div class="cii-score-fill" style="width:${pct}%;background:${color}"></div>

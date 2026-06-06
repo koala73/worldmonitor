@@ -4,6 +4,7 @@ import { getLatestSanctionsPressure, type SanctionsPressureResult } from './sanc
 import { getLatestRadiationWatch, type RadiationObservation } from './radiation';
 import type { CascadeResult, CascadeImpactLevel } from '@/types';
 import { calculateCII, isInLearningMode } from './country-instability';
+import { getCachedCountryScores } from './cached-risk-scores';
 import { getCountryNameByCode } from './country-geometry';
 import { t } from '@/services/i18n';
 import type { TheaterPostureSummary } from '@/services/military-surge';
@@ -101,6 +102,11 @@ const alerts: UnifiedAlert[] = [];
 const previousCIIScores = new Map<string, number>();
 const ALERT_MERGE_WINDOW_MS = 2 * 60 * 60 * 1000;
 const ALERT_MERGE_DISTANCE_KM = 200;
+
+function getAuthoritativeCIIScores(): CountryScore[] {
+  const cachedScores = getCachedCountryScores();
+  return cachedScores.length > 0 ? cachedScores : calculateCII();
+}
 
 let alertIdCounter = 0;
 function generateAlertId(): string {
@@ -560,7 +566,7 @@ function getCountriesNearLocation(lat: number, lon: number): string[] {
 
 export function checkCIIChanges(): UnifiedAlert[] {
   const newAlerts: UnifiedAlert[] = [];
-  const scores = calculateCII();
+  const scores = getAuthoritativeCIIScores();
 
   // Skip alerting during learning mode - data not yet reliable
   const inLearning = isInLearningMode();
@@ -628,7 +634,7 @@ export function calculateStrategicRiskOverview(
   breakingAlertScore?: number,
   theaterStaleFactor?: number
 ): StrategicRiskOverview {
-  const ciiScores = calculateCII();
+  const ciiScores = getAuthoritativeCIIScores();
 
   // Update the alerts array with current data
   updateAlerts(convergenceAlerts);
