@@ -23,6 +23,15 @@
 // Run cadence ~10 min; the output key TTL (3600s) tolerates a few skipped runs.
 // Self-contained by necessity — scripts/ cannot import from server/ or src/ under the
 // Railway nixpacks packaging.
+//
+// Railway service config (set up manually via Railway dashboard or `railway service`):
+//   - Service name: seed-military-cii
+//   - Builder: NIXPACKS (root Dockerfile not used for this seed)
+//   - rootDirectory: scripts
+//   - startCommand: node seed-military-cii.mjs
+//   - Cron schedule: "*/10 * * * *" (every 10min UTC)
+//   - Required env: UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN, WS_RELAY_URL
+//   - Optional env: RELAY_SHARED_SECRET, RELAY_AUTH_HEADER
 
 import { pathToFileURL } from 'node:url';
 import { loadEnvFile, CHROME_UA, getRedisCredentials, acquireLockSafely, releaseLock, withRetry, writeFreshnessMetadata } from './_seed-utils.mjs';

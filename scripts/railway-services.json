@@ -52,6 +52,12 @@
     "documentedAt": "tests/scripts-railway-nixpacks-no-escape-import.test.mts (added PR #3836)"
   },
   {
+    "entry": "scripts/seed-military-cii.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-military-cii",
+    "documentedAt": "scripts/seed-military-cii.mjs (header docblock declares rootDirectory: scripts and */10 cron)"
+  },
+  {
     "entry": "scripts/seed-bundle-ecb-eu.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-ecb-eu",
