@@ -123,6 +123,13 @@ export class StrategicRiskPanel extends Panel {
     const postures = cachedPosture?.postures;
     const staleFactor = cachedPosture?.stale ? 0.5 : 1;
 
+    // Prefer server/cached scores before calculating the overview so the
+    // cross-module alert baseline is not seeded from local CII on first refresh.
+    const { inLearning } = getLearningProgress();
+    this.usedCachedScores = false;
+    const cachedRiskScores = await fetchCachedRiskScores(this.signal);
+    if (!this.element?.isConnected) return false;
+
     const localOverview = calculateStrategicRiskOverview(
       this.convergenceAlerts,
       postures ?? undefined,
@@ -132,12 +139,6 @@ export class StrategicRiskPanel extends Panel {
     this.overview = localOverview;
     this.alerts = getRecentAlerts(24);
 
-    // Prefer server/cached scores whenever available so CII-derived overview values
-    // do not diverge from the CII panel, map, and on-demand surfaces.
-    const { inLearning } = getLearningProgress();
-    this.usedCachedScores = false;
-    const cachedRiskScores = await fetchCachedRiskScores(this.signal);
-    if (!this.element?.isConnected) return false;
     if (cachedRiskScores?.strategicRisk) {
       this.applyCachedRiskOverview(cachedRiskScores, localOverview);
       this.usedCachedScores = true;

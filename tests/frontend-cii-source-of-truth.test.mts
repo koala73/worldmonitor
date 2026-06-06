@@ -26,6 +26,14 @@ function extractMethod(src: string, signature: string): string {
   throw new Error(`unterminated method body: ${signature}`);
 }
 
+function assertBefore(src: string, first: string, second: string): void {
+  const firstIndex = src.indexOf(first);
+  const secondIndex = src.indexOf(second);
+  assert.notEqual(firstIndex, -1, `missing first marker: ${first}`);
+  assert.notEqual(secondIndex, -1, `missing second marker: ${second}`);
+  assert.ok(firstIndex < secondIndex, `expected "${first}" before "${second}"`);
+}
+
 let moduleCounter = 0;
 
 async function loadStoryDataForTest() {
@@ -185,6 +193,11 @@ describe('frontend CII source of truth', () => {
     assert.match(src, /compositeScore: Math\.max\(0, Math\.min\(100, Math\.round\(cached\.strategicRisk\.score\)\)\)/);
     assert.match(src, /unstableCountries: ciiScores\.filter\(s => s\.score >= 50\)\.slice\(0, 5\)/);
     assert.doesNotMatch(src, /hasIntelligenceSignalsLoaded/);
+    assertBefore(
+      refreshBody,
+      'const cachedRiskScores = await fetchCachedRiskScores(this.signal);',
+      'const localOverview = calculateStrategicRiskOverview(',
+    );
     assert.match(refreshBody, /this\.applyCachedRiskOverview\(cachedRiskScores, localOverview\);[\s\S]*this\.usedCachedScores = true;/);
     assert.match(refreshBody, /if \(this\.usedCachedScores\) \{[\s\S]*this\.setDataBadge\('cached', badgeDetail\);[\s\S]*\} else if \(!this\.freshnessSummary \|\| this\.freshnessSummary\.activeSources === 0\) \{[\s\S]*this\.setDataBadge\('unavailable'\);/);
   });
