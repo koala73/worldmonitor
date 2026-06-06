@@ -254,7 +254,7 @@ Conclusion: the dependency-audit gap is intentionally bounded, not green. Close 
 
 ## Round 11 / delegated CII dependency-audit follow-up - 2026-06-06
 
-Scope: delegated dependency-audit follow-up against fetched `origin/main` / detached HEAD `a560cb8c8f64cfd23058a42a41d4017ffadbe5f2` in `/Users/eliehabib/.codex/worktrees/28ba/worldmonitor`. This pass checked whether a minimal safe manifest or lockfile movement now exists for the residual `uuid <11.1.1` moderate advisory chain. No package manifest, lockfile, runtime code, or override was changed.
+Scope: delegated dependency-audit follow-up against fetched `origin/main` / detached HEAD `a560cb8c8f64cfd23058a42a41d4017ffadbe5f2` in an isolated Codex worktree. This pass checked whether a minimal safe manifest or lockfile movement now exists for the residual `uuid <11.1.1` moderate advisory chain. No package manifest, lockfile, runtime code, or override was changed.
 
 Current runtime for this check:
 
