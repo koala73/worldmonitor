@@ -229,7 +229,7 @@ function isKnownNonTier1BBoxGap(lat, lon, candidates) {
 function resolveKnownBBoxOverlap(lat, lon, candidates) {
   const codes = new Set(candidates.map((candidate) => candidate.code));
 
-  if (codes.has('KP') && codes.has('CN') && codes.has('RU')) return 'KP';
+  if (codes.has('KP') && codes.has('CN') && codes.has('RU') && lat < 42.5) return 'KP';
   if (codes.has('PL') && codes.has('UA')) return isWestOfApproxPlUaBorder(lat, lon) ? 'PL' : 'UA';
   if (codes.has('CN') && codes.has('IN') && lat >= 28.5 && lat <= 32.0 && lon >= 89.0 && lon <= 93.5) return 'CN';
   if (codes.has('TR') && codes.has('SY') && lat >= 36.6 && lat <= 37.6 && lon >= 36.0 && lon <= 38.8) return 'TR';

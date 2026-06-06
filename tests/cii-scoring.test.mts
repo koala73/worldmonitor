@@ -419,6 +419,9 @@ describe('CII signal wiring', () => {
     assert.equal(geoToCountry(33.5904, 130.4017), 'JP', 'Fukuoka must resolve to Japan, not South Korea');
     assert.equal(geoToCountry(17.5656, 44.2289), 'SA', 'Najran must resolve to Saudi Arabia, not Yemen');
     assert.equal(geoToCountry(41.28, 129.09), 'KP', 'Punggye-ri must resolve to North Korea, not China');
+    assert.equal(geoToCountry(42.89, 129.51), 'CN', 'Yanji must resolve to China, not North Korea');
+    assert.equal(geoToCountry(42.86, 130.36), 'CN', 'Hunchun must resolve to China, not North Korea');
+    assert.equal(geoToCountry(42.77, 129.51), 'CN', 'Longjing must resolve to China, not North Korea');
     assert.equal(geoToCountry(51.25, 22.57), 'PL', 'Lublin must resolve to Poland, not Ukraine');
 
     assert.equal(geoToCountry(32.7157, -117.1611), 'US', 'San Diego remains US');
