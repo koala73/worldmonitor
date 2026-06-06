@@ -182,6 +182,13 @@ function numericLiteralValue(node: ts.Node): number | null {
   return null;
 }
 
+function isInsideTypeNode(node: ts.Node): boolean {
+  for (let current: ts.Node | undefined = node.parent; current; current = current.parent) {
+    if (ts.isTypeNode(current) || ts.isTypeParameterDeclaration(current)) return true;
+  }
+  return false;
+}
+
 function collectNumericLiteralsInRange(
   sourceFile: ts.SourceFile,
   region: string,
@@ -193,9 +200,10 @@ function collectNumericLiteralsInRange(
 
   function visit(node: ts.Node): void {
     if (node.end < rangeStart || node.getStart(sourceFile) > rangeEnd) return;
+    if (ts.isTypeNode(node) || ts.isTypeParameterDeclaration(node)) return;
 
     const value = numericLiteralValue(node);
-    if (value !== null) {
+    if (value !== null && !isInsideTypeNode(node)) {
       literals.push({
         region,
         order: orderOffset + literals.length,

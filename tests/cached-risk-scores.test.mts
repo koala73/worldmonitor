@@ -26,6 +26,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
+import ts from 'typescript';
 
 import { TIER1_COUNTRIES } from '../src/config/countries.ts';
 import { CII_COUNTRY_WEIGHTS } from '../shared/cii-weights.ts';
@@ -34,6 +35,49 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 const sourcePath = resolve(root, 'src/services/cached-risk-scores.ts');
 const source = readFileSync(sourcePath, 'utf-8');
+const sourceFile = ts.createSourceFile(
+  sourcePath,
+  source,
+  ts.ScriptTarget.Latest,
+  true,
+  ts.ScriptKind.TS,
+);
+
+function findFunctionDeclaration(name: string): ts.FunctionDeclaration {
+  let found: ts.FunctionDeclaration | undefined;
+
+  function visit(node: ts.Node): void {
+    if (ts.isFunctionDeclaration(node) && node.name?.text === name) {
+      found = node;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  assert.ok(found, `${name} must exist in cached-risk-scores.ts`);
+  return found;
+}
+
+function functionBodyText(name: string): string {
+  const fn = findFunctionDeclaration(name);
+  assert.ok(fn.body, `${name} must have a function body`);
+  return fn.body.getText(sourceFile).replace(/\s+/g, ' ').trim();
+}
+
+function topLevelConstNamesMatching(pattern: RegExp): string[] {
+  const matches: string[] = [];
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (ts.isIdentifier(declaration.name) && pattern.test(declaration.name.text)) {
+        matches.push(declaration.name.text);
+      }
+    }
+  }
+  return matches;
+}
 
 // ============================================================
 // 1. Static analysis: source guarantees no fabrication
@@ -81,18 +125,18 @@ describe('cached-risk-scores — no fabricated timestamps in source', () => {
       'frontend Tier-1 country names must stay in parity with shared CII weights',
     );
     assert.match(
-      source,
-      /function\s+isKnownTier1Code[\s\S]*hasOwnProperty\.call\(TIER1_COUNTRIES,\s*value\)/,
+      functionBodyText('isKnownTier1Code'),
+      /hasOwnProperty\.call\(TIER1_COUNTRIES,\s*value\)/,
       'localStorage validator must validate ISO2 codes against TIER1_COUNTRIES',
     );
     assert.match(
-      source,
-      /function\s+canonicalizeCachedCiiEntry[\s\S]*name:\s*TIER1_COUNTRIES\[entry\.code\]\s*\?\?\s*entry\.code/,
+      functionBodyText('canonicalizeCachedCiiEntry'),
+      /name:\s*TIER1_COUNTRIES\[entry\.code\]\s*\?\?\s*entry\.code/,
       'localStorage canonicalizer must rewrite display names from TIER1_COUNTRIES',
     );
-    assert.doesNotMatch(
-      source,
-      /const\s+(?:TIER1_NAMES|KNOWN_TIER1_COUNTRIES|VALID_TIER1_COUNTRIES)\b/,
+    assert.deepEqual(
+      topLevelConstNamesMatching(/^(?:TIER1_(?!COUNTRIES$)\w+|(?:KNOWN_|VALID_)?TIER1_\w+|(?:KNOWN_|VALID_)?COUNTRY_(?:CODES|LIST|NAMES))$/),
+      [],
       'cached-risk-scores.ts must not reintroduce a second Tier-1 name/code list',
     );
   });
