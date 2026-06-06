@@ -141,7 +141,7 @@ async function loadAdapter() {
       }>;
       strategicRisks: Array<{ region: string; level: string; score: number; factors: string[]; trend: string }>;
     }) => {
-      cii: Array<{ code: string; lastUpdated: string | null }>;
+      cii: Array<{ code: string; change24h: number; lastUpdated: string | null }>;
       strategicRisk: { lastUpdated: string | null };
       computedAt: string | null;
     };
@@ -152,7 +152,7 @@ async function loadAdapter() {
   };
 }
 
-function makeCii(region: string, computedAt: number): {
+function makeCii(region: string, computedAt: number, dynamicScore = 5, staticBaseline = 10, combinedScore = 30): {
   region: string;
   staticBaseline: number;
   dynamicScore: number;
@@ -165,9 +165,9 @@ function makeCii(region: string, computedAt: number): {
 } {
   return {
     region,
-    staticBaseline: 10,
-    dynamicScore: 5,
-    combinedScore: 30,
+    staticBaseline,
+    dynamicScore,
+    combinedScore,
     trend: 'TREND_DIRECTION_STABLE',
     components: { newsActivity: 1, ciiContribution: 2, geoConvergence: 3, militaryActivity: 4 },
     computedAt,
@@ -185,6 +185,18 @@ describe('cached-risk-scores — functional adapter behavior', () => {
       strategicRisks: [],
     });
     assert.equal(out.cii[0]!.lastUpdated, new Date(ts).toISOString());
+  });
+
+  it('maps proto.dynamicScore as change24h without recomputing the baseline delta', async () => {
+    const { toRiskScores } = await loadAdapter();
+    const out = toRiskScores({
+      // staticBaseline -> combinedScore is +2, but the server has no prior
+      // snapshot on cold start, so dynamicScore/change24h must stay 0.
+      ciiScores: [makeCii('US', 1_700_000_000_000, 0, 80, 82)],
+      strategicRisks: [],
+    });
+
+    assert.equal(out.cii[0]!.change24h, 0);
   });
 
   it('surfaces null on CII when proto.computedAt is missing (no more fabricated "now")', async () => {

@@ -979,9 +979,11 @@ components:
                 dynamicScore:
                     type: number
                     maximum: 100
-                    minimum: 0
+                    minimum: -100
                     format: double
-                    description: Dynamic real-time score (0-100).
+                    description: |-
+                        Recent score movement delta (-100 to 100). Positive means rising,
+                         negative means falling, and 0 means stable or no valid prior snapshot.
                 combinedScore:
                     type: number
                     maximum: 100

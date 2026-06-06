@@ -62,6 +62,22 @@ function scoreFor(scores: ReturnType<typeof computeCIIScores>, code: string) {
   return scores.find((s) => s.region === code);
 }
 
+const TREND_TEST_NOW = 1_700_000_000_000;
+
+function priorCiiScore(region: string, combinedScore: number, computedAt = TREND_TEST_NOW - 60_000) {
+  return {
+    region,
+    staticBaseline: 0,
+    dynamicScore: 0,
+    combinedScore,
+    trend: 'TREND_DIRECTION_STABLE',
+    components: { newsActivity: 0, ciiContribution: 0, geoConvergence: 0, militaryActivity: 0 },
+    computedAt,
+    methodologyVersion: CII_FORMULA_VERSION,
+    eventMultiplier: 1,
+  } as ReturnType<typeof computeCIIScores>[number];
+}
+
 describe('CII signal wiring', () => {
   it('country text attribution uses token boundaries and preserves explicit aliases', () => {
     assert.equal(normalizeCountryName('Jerusalem security alert'), null,
@@ -402,6 +418,69 @@ describe('CII scoring', () => {
     const scores = computeCIIScores([], emptyAux());
     const us = scoreFor(scores, 'US')!;
     assert.ok(us.combinedScore >= 2 && us.combinedScore <= 10, `US baseline score ${us.combinedScore} should be ~2-10`);
+  });
+
+  it('cold-start emits flat movement instead of baseline delta', () => {
+    const us = scoreFor(computeCIIScores([], emptyAux(), { nowMs: TREND_TEST_NOW }), 'US')!;
+    assert.notEqual(us.combinedScore - us.staticBaseline, 0, 'fixture should have a non-zero structural baseline gap');
+    assert.equal(us.dynamicScore, 0, 'cold-start movement must not reuse combinedScore - staticBaseline');
+    assert.equal(us.trend, 'TREND_DIRECTION_STABLE');
+  });
+
+  it('derives rising trend and dynamicScore from a prior CII snapshot', () => {
+    const current = scoreFor(computeCIIScores([], emptyAux(), { nowMs: TREND_TEST_NOW }), 'US')!;
+    const us = scoreFor(
+      computeCIIScores([], emptyAux(), {
+        nowMs: TREND_TEST_NOW,
+        priorScores: [priorCiiScore('US', current.combinedScore - 5)],
+      }),
+      'US',
+    )!;
+
+    assert.equal(us.dynamicScore, 5);
+    assert.equal(us.trend, 'TREND_DIRECTION_RISING');
+  });
+
+  it('derives falling trend and negative dynamicScore from a prior CII snapshot', () => {
+    const current = scoreFor(computeCIIScores([], emptyAux(), { nowMs: TREND_TEST_NOW }), 'US')!;
+    const us = scoreFor(
+      computeCIIScores([], emptyAux(), {
+        nowMs: TREND_TEST_NOW,
+        priorScores: [priorCiiScore('US', current.combinedScore + 5)],
+      }),
+      'US',
+    )!;
+
+    assert.equal(us.dynamicScore, -5);
+    assert.equal(us.trend, 'TREND_DIRECTION_FALLING');
+  });
+
+  it('keeps trend stable inside the one-point deadband while preserving the measured delta', () => {
+    const current = scoreFor(computeCIIScores([], emptyAux(), { nowMs: TREND_TEST_NOW }), 'US')!;
+    const us = scoreFor(
+      computeCIIScores([], emptyAux(), {
+        nowMs: TREND_TEST_NOW,
+        priorScores: [priorCiiScore('US', current.combinedScore - 1)],
+      }),
+      'US',
+    )!;
+
+    assert.equal(us.dynamicScore, 1);
+    assert.equal(us.trend, 'TREND_DIRECTION_STABLE');
+  });
+
+  it('ignores stale prior snapshots when deriving CII movement', () => {
+    const current = scoreFor(computeCIIScores([], emptyAux(), { nowMs: TREND_TEST_NOW }), 'US')!;
+    const us = scoreFor(
+      computeCIIScores([], emptyAux(), {
+        nowMs: TREND_TEST_NOW,
+        priorScores: [priorCiiScore('US', current.combinedScore - 10, TREND_TEST_NOW - 25 * 60 * 60 * 1000)],
+      }),
+      'US',
+    )!;
+
+    assert.equal(us.dynamicScore, 0);
+    assert.equal(us.trend, 'TREND_DIRECTION_STABLE');
   });
 
   it('newsTopStories critical threat boosts newsActivity for attributed country', () => {
@@ -807,8 +886,8 @@ describe('CII scoring', () => {
     const changelog = readFileSync(changelogPath, 'utf8');
     assert.match(
       changelog,
-      new RegExp(`CII methodology ${CII_FORMULA_VERSION}`),
-      `docs/changelog.mdx must publish the CII methodology ${CII_FORMULA_VERSION} entry`,
+      new RegExp(`CII (?:methodology|formula)[^\\n]*${CII_FORMULA_VERSION}`),
+      `docs/changelog.mdx must publish the CII ${CII_FORMULA_VERSION} entry`,
     );
     assert.ok(
       changelog.includes('combinedScore') &&
@@ -817,6 +896,30 @@ describe('CII scoring', () => {
       changelog.includes(CII_FORMULA_VERSION),
       'docs/changelog.mdx must describe combinedScore, cache-key, and methodology_version impact',
     );
+  });
+
+  it('CII dynamicScore contract allows signed 24-hour movement deltas', () => {
+    const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
+    const proto = readFileSync(resolve(root, 'proto', 'worldmonitor', 'intelligence', 'v1', 'intelligence.proto'), 'utf8');
+    const serviceOpenapi = readFileSync(resolve(root, 'docs', 'api', 'IntelligenceService.openapi.yaml'), 'utf8');
+    const unifiedOpenapi = readFileSync(resolve(root, 'docs', 'api', 'worldmonitor.openapi.yaml'), 'utf8');
+
+    assert.match(
+      proto,
+      /Approximate 24-hour score movement delta \(-100 to 100\)[\s\S]*double dynamic_score = 3 \[[\s\S]*double\.gte = -100,[\s\S]*double\.lte = 100/,
+      'proto CiiScore.dynamic_score must be a signed movement delta, not a non-negative real-time score',
+    );
+    for (const [label, yaml] of [
+      ['IntelligenceService.openapi.yaml', serviceOpenapi],
+      ['worldmonitor.openapi.yaml', unifiedOpenapi],
+    ] as const) {
+      const dynamicScoreBlock = yaml.match(/dynamicScore:\n(?: {20}.+\n)+/);
+      assert.ok(dynamicScoreBlock, `${label} must expose CiiScore.dynamicScore`);
+      assert.match(dynamicScoreBlock[0], /minimum: -100/, `${label} dynamicScore minimum must allow falling deltas`);
+      assert.match(dynamicScoreBlock[0], /maximum: 100/, `${label} dynamicScore maximum must cap rising deltas`);
+      assert.match(dynamicScoreBlock[0], /Approximate 24-hour score movement delta \(-100 to 100\)/, `${label} dynamicScore description must match proto semantics`);
+      assert.doesNotMatch(dynamicScoreBlock[0], /Dynamic real-time score \(0-100\)/, `${label} must not retain stale non-negative dynamicScore prose`);
+    }
   });
 
   it('current public CII docs do not reintroduce pre-v3 stale claims', () => {

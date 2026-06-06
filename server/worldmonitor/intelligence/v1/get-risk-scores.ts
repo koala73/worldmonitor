@@ -228,6 +228,64 @@ function logScaledScore(raw: number, cap: number, pivot: number): number {
   return Math.min(cap, (Math.log1p(value) / Math.log1p(pivot)) * cap);
 }
 
+const CII_TREND_DEADBAND_POINTS = 1;
+const CII_TREND_PRIOR_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+interface CiiTrendComparisonOptions {
+  priorScores?: CiiScore[] | null;
+  nowMs?: number;
+}
+
+function finiteNumber(value: unknown): number | null {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function roundCiiDelta(delta: number): number {
+  return Math.round(delta * 10) / 10;
+}
+
+export function deriveCiiTrendDelta(
+  combinedScore: number,
+  priorScore: Pick<CiiScore, 'combinedScore' | 'computedAt'> | undefined,
+  nowMs: number,
+): { dynamicScore: number; trend: TrendDirection } {
+  const previous = finiteNumber(priorScore?.combinedScore);
+  const priorComputedAt = finiteNumber(priorScore?.computedAt);
+  if (
+    previous === null ||
+    priorComputedAt === null ||
+    priorComputedAt <= 0 ||
+    priorComputedAt > nowMs ||
+    nowMs - priorComputedAt > CII_TREND_PRIOR_MAX_AGE_MS
+  ) {
+    return { dynamicScore: 0, trend: 'TREND_DIRECTION_STABLE' as TrendDirection };
+  }
+
+  const dynamicScore = roundCiiDelta(combinedScore - previous);
+  const trend = dynamicScore > CII_TREND_DEADBAND_POINTS
+    ? 'TREND_DIRECTION_RISING'
+    : dynamicScore < -CII_TREND_DEADBAND_POINTS
+      ? 'TREND_DIRECTION_FALLING'
+      : 'TREND_DIRECTION_STABLE';
+
+  return { dynamicScore, trend: trend as TrendDirection };
+}
+
+function buildPriorCiiScoreMap(priorScores: CiiScore[] | null | undefined): Map<string, CiiScore> {
+  const byRegion = new Map<string, CiiScore>();
+  for (const score of priorScores ?? []) {
+    const region = String(score.region || '').trim().toUpperCase();
+    if (!region) continue;
+
+    const existing = byRegion.get(region);
+    const existingComputedAt = finiteNumber(existing?.computedAt) ?? -Infinity;
+    const scoreComputedAt = finiteNumber(score.computedAt) ?? -Infinity;
+    if (!existing || scoreComputedAt > existingComputedAt) byRegion.set(region, score);
+  }
+  return byRegion;
+}
+
 const ISO3_TO_ISO2: Record<string, string> = iso3ToIso2Json;
 
 interface CountrySignals {
@@ -495,7 +553,10 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
 export function computeCIIScores(
   acled: Array<{ country: string; event_type: string; fatalities: number; daysAgo?: number }>,
   aux: AuxiliarySources,
+  trendOptions: CiiTrendComparisonOptions = {},
 ): CiiScore[] {
+  const computedAt = Number.isFinite(trendOptions.nowMs) ? Number(trendOptions.nowMs) : Date.now();
+  const priorByRegion = buildPriorCiiScoreMap(trendOptions.priorScores);
   const data: Record<string, CountrySignals> = {};
   for (const code of Object.keys(TIER1_COUNTRIES)) {
     data[code] = emptySignals();
@@ -861,20 +922,24 @@ export function computeCIIScores(
     const floor = Math.max(ucdpFloor, advisoryFloor);
 
     const composite = Math.min(100, Math.max(floor, Math.round(blended)));
+    const { dynamicScore, trend } = deriveCiiTrendDelta(composite, priorByRegion.get(code), computedAt);
 
     scores.push({
       region: code,
       staticBaseline: baseline,
-      dynamicScore: composite - baseline,
+      // Back-compat field name: clients already read dynamicScore as the
+      // recent score movement. With no valid prior snapshot, emit a flat
+      // cold-start delta instead of the structural baseline gap.
+      dynamicScore,
       combinedScore: composite,
-      trend: 'TREND_DIRECTION_STABLE' as TrendDirection,
+      trend,
       components: {
         newsActivity: information,
         ciiContribution: unrest,
         geoConvergence: conflict,
         militaryActivity: security,
       },
-      computedAt: Date.now(),
+      computedAt,
       // Disclosure fields (issue #3725) — make the editorial weights and
       // formula version visible on the wire so API clients can detect drift.
       // See docs/methodology/cii-risk-scores.mdx.
@@ -975,11 +1040,12 @@ export async function getRiskScores(
       RISK_CACHE_KEY,
       RISK_CACHE_TTL,
       async () => {
-        const [acled, aux] = await Promise.all([
+        const [acled, aux, priorRiskScores] = await Promise.all([
           fetchACLEDEvents(),
           fetchAuxiliarySources(),
+          getCachedJson(RISK_STALE_CACHE_KEY).catch(() => null) as Promise<GetRiskScoresResponse | null>,
         ]);
-        const ciiScores = computeCIIScores(acled, aux);
+        const ciiScores = computeCIIScores(acled, aux, { priorScores: priorRiskScores?.ciiScores ?? null });
         const strategicRisks = computeStrategicRisks(ciiScores);
         return { ciiScores, strategicRisks };
       },

@@ -15,9 +15,10 @@ message CiiScore {
     (buf.validate.field).double.gte = 0,
     (buf.validate.field).double.lte = 100
   ];
-  // Dynamic real-time score (0-100).
+  // Recent score movement delta (-100 to 100). Positive means rising,
+  // negative means falling, and 0 means stable or no valid prior snapshot.
   double dynamic_score = 3 [
-    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.gte = -100,
     (buf.validate.field).double.lte = 100
   ];
   // Combined weighted score (0-100).
