@@ -115,7 +115,12 @@ test('returns 0 delay when there is no prior seed-meta', async () => {
 });
 
 test('fails OPEN — a Redis read error returns 0 delay (never starves a panel)', async () => {
-  const { resolveDelay, logs } = buildDelayResolver({ get: async () => { throw new Error('redis down'); } });
+  const { resolveDelay, logs } = buildDelayResolver({
+    get: async (_key, onFailure) => {
+      onFailure('redis down');
+      return null;
+    },
+  });
   assert.equal(await resolveDelay('X', 'seed-meta:x', 180 * MIN), 0);
   assert.ok(logs.some(([lvl, msg]) => lvl === 'warn' && /freshness check failed/.test(String(msg))));
 });
@@ -226,11 +231,13 @@ test('real-time pollers are NOT gated (must run continuously on every boot)', ()
 test('bootSeedDelayMs fails open and keys on fetchedAt (source contract)', () => {
   // guard only engages when Upstash is on AND a key + positive interval are given
   assert.match(delayFnText, /if \(UPSTASH_ENABLED && metaKey && intervalMs > 0\)/);
+  assert.match(delayFnText, /upstashGet\(metaKey, \(reason\) => \{/);
   // sane positive age strictly under the interval -> delay until the data is due
   assert.match(delayFnText, /if \(ageMs >= 0 && ageMs < intervalMs\)/);
   assert.match(delayFnText, /const delayMs = intervalMs - ageMs/);
   // terminal path always returns 0 delay (fail-open / not-fresh)
   assert.match(delayFnText, /return 0;\s*}$/);
+  assert.doesNotMatch(delayFnText, /catch \(e\)/);
   assert.match(loopFnText, /setTimeout\(\(\) => \{/);
   assert.match(loopFnText, /\.finally\(startInterval\)/);
 });

@@ -213,9 +213,21 @@ if (UPSTASH_ENABLED) {
   console.log(`[Relay] Upstash Redis enabled (key: ${OREF_REDIS_KEY})`);
 }
 
-function upstashGet(key) {
+function upstashGet(key, onFailure) {
   return new Promise((resolve) => {
     if (!UPSTASH_ENABLED) return resolve(null);
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    const fail = (reason) => {
+      if (settled) return;
+      settled = true;
+      if (onFailure) onFailure(reason);
+      resolve(null);
+    };
     const url = new URL(`/get/${encodeURIComponent(key)}`, UPSTASH_REDIS_REST_URL);
     const req = https.request(url, {
       method: 'GET',
@@ -224,20 +236,28 @@ function upstashGet(key) {
     }, (resp) => {
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         resp.resume();
-        return resolve(null);
+        return fail(`HTTP ${resp.statusCode}`);
       }
       let data = '';
       resp.on('data', (chunk) => { data += chunk; });
       resp.on('end', () => {
         try {
           const parsed = JSON.parse(data);
-          if (parsed?.result) return resolve(JSON.parse(parsed.result));
-          resolve(null);
-        } catch { resolve(null); }
+          if (parsed?.result) {
+            try {
+              return finish(JSON.parse(parsed.result));
+            } catch (e) {
+              return fail(`JSON result parse failed: ${(e && e.message) || e}`);
+            }
+          }
+          finish(null);
+        } catch (e) {
+          fail(`JSON response parse failed: ${(e && e.message) || e}`);
+        }
       });
     });
-    req.on('error', () => resolve(null));
-    req.on('timeout', () => { req.destroy(); resolve(null); });
+    req.on('error', (e) => fail((e && e.message) || e));
+    req.on('timeout', () => { req.destroy(); fail('timeout'); });
     req.end();
   });
 }
@@ -422,23 +442,21 @@ function upstashSetNx(key, value, ttlSeconds) {
 //
 // `metaKey` is the FULL Redis key the seeder writes (usually `seed-meta:<key>`,
 // sometimes a `relay:heartbeat:<key>` for script-delegated seeders). On any
-// read/parse failure the guard fails OPEN (returns 0 delay, so the caller seeds)
-// so a Redis blip never starves a panel.
+// read/parse failure the guard logs and fails OPEN (returns 0 delay, so the
+// caller seeds) so a Redis blip never starves a panel.
 async function bootSeedDelayMs(label, metaKey, intervalMs) {
   if (UPSTASH_ENABLED && metaKey && intervalMs > 0) {
-    try {
-      const meta = await upstashGet(metaKey);
-      const fetchedAt = Number(meta && meta.fetchedAt) || 0;
-      if (fetchedAt > 0) {
-        const ageMs = Date.now() - fetchedAt;
-        if (ageMs >= 0 && ageMs < intervalMs) {
-          const delayMs = intervalMs - ageMs;
-          console.log(`[${label}] Boot seed delayed — data fresh (age ${Math.round(ageMs / 60000)}min < ${Math.round(intervalMs / 60000)}min interval); next refresh in ${Math.round(delayMs / 60000)}min`);
-          return delayMs;
-        }
+    const meta = await upstashGet(metaKey, (reason) => {
+      console.warn(`[${label}] Boot freshness check failed (${reason}); seeding`);
+    });
+    const fetchedAt = Number(meta && meta.fetchedAt) || 0;
+    if (fetchedAt > 0) {
+      const ageMs = Date.now() - fetchedAt;
+      if (ageMs >= 0 && ageMs < intervalMs) {
+        const delayMs = intervalMs - ageMs;
+        console.log(`[${label}] Boot seed delayed — data fresh (age ${Math.round(ageMs / 60000)}min < ${Math.round(intervalMs / 60000)}min interval); next refresh in ${Math.round(delayMs / 60000)}min`);
+        return delayMs;
       }
-    } catch (e) {
-      console.warn(`[${label}] Boot freshness check failed (${(e && e.message) || e}); seeding`);
     }
   }
   return 0;
