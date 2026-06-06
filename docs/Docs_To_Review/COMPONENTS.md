@@ -1000,14 +1000,6 @@ small UI affordances.
 | **Audio** | Inline base64-encoded WAV notification sound. |
 | **Types** | `CorrelationSignal`, `UnifiedAlert` |
 
-### CountryIntelModal
-
-| Field | Detail |
-|---|---|
-| **File** | `src/components/CountryIntelModal.ts` |
-| **Purpose** | AI-generated country intelligence briefing modal. |
-| **Services** | `getCSSColor`, `country-instability` types. |
-
 ### CountryBriefPage
 
 | Field | Detail |
@@ -1138,7 +1130,6 @@ small UI affordances.
 | LanguageSelector | ✅ | ✅ | ✅ |
 | PlaybackControl | ✅ | ✅ | ✅ |
 | SignalModal | ✅ | ✅ | ✅ |
-| CountryIntelModal | ✅ | ✅ | — |
 | CountryBriefPage | ✅ | ✅ | — |
 | CountryTimeline | ✅ | ✅ | — |
 | StoryModal | ✅ | ✅ | ✅ |
@@ -1228,7 +1219,6 @@ graph TD
 
     subgraph Modals["Modals & Widgets"]
         SIG[SignalModal]
-        CIM[CountryIntelModal]
         CBP[CountryBriefPage]
         CTL[CountryTimeline]
         STM[StoryModal]
@@ -1345,7 +1335,6 @@ export { SearchModal } from './SearchModal';
 
 // Modals & widgets
 export { SignalModal } from './SignalModal';
-export { CountryIntelModal } from './CountryIntelModal';
 export { CountryBriefPage } from './CountryBriefPage';
 export { CountryTimeline } from './CountryTimeline';
 export { PlaybackControl } from './PlaybackControl';

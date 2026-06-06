@@ -45,7 +45,8 @@ Keep the `App` class as a thin composition root that wires controllers together.
 | Field | Value |
 |---|---|
 | **Severity** | Critical (security) |
-| **Affected** | `src/components/MapPopup.ts`, `src/components/DeckGLMap.ts`, `src/components/CascadePanel.ts`, `src/components/CountryBriefPage.ts`, `src/components/CountryIntelModal.ts`, `src/components/InsightsPanel.ts`, `src/App.ts` (lines ~2763, ~2817) |
+| **Affected** | `src/components/MapPopup.ts`, `src/components/DeckGLMap.ts`, `src/components/CascadePanel.ts`, `src/components/CountryBriefPage.ts`, `src/components/InsightsPanel.ts`, `src/App.ts` (lines ~2763, ~2817) |
+| **Historical removals** | CountryIntelModal was part of the original audit set but has since been deleted as an unused orphan. |
 | **Depends on** | — |
 
 **Description**
