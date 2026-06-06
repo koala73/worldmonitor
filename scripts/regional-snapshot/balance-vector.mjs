@@ -20,7 +20,13 @@ import iso3ToIso2Raw from '../shared/iso3-to-iso2.json' with { type: 'json' };
 /** @type {Record<string, string>} */
 const ISO3_TO_ISO2 = iso3ToIso2Raw;
 
-const SCORING_VERSION = '1.0.0';
+// 1.1.0: balance vector now consumes the cross-source-signals, forecasts,
+// national-debt, and transit-summaries inputs that were silently dropped while
+// they were stored as { _seed, data } envelopes but read flat (coercive_pressure
+// scored 0 for every region → flat 'calm'). Fixed at the loader via
+// unwrapEnvelope; bumped so the scoring_version in snapshot meta makes the
+// resulting score shift traceable.
+const SCORING_VERSION = '1.1.0';
 
 export { SCORING_VERSION };
 

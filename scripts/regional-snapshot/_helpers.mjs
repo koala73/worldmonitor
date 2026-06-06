@@ -43,3 +43,38 @@ export function generateSnapshotId() {
   const r = Math.random().toString(16).slice(2, 14).padStart(12, '0');
   return `${t}-${r}`;
 }
+
+/**
+ * Unwrap the `{ _seed, data }` envelope written by the relay's envelopeWrite-based
+ * seeders (cross-source-signals, forecasts, national-debt, transit-summaries, …)
+ * so the compute modules — which read flat fields like `.signals`, `.predictions`,
+ * `.entries`, `.summaries` — see the payload shape they were written for.
+ *
+ * Without this, `sources['intelligence:cross-source-signals:v1'].signals` is
+ * `undefined` (the signals live at `.data.signals`), so coercive_pressure scored
+ * 0 for every region and the regime engine reported a flat `calm` regardless of
+ * actual conflict. Flat payloads (no `_seed`) pass through unchanged.
+ *
+ * Freshness classification (freshness.mjs) keeps working after the unwrap: every
+ * enveloped input either declares a companion seed-meta key or carries its own
+ * timestamp inside `data` (forecast `generatedAt`, debt `seededAt`, transit
+ * `fetchedAt`) — and forecast:predictions:v2, whose `generatedAt` was hidden one
+ * level down, now dates correctly instead of reading as present-but-undated.
+ *
+ * @template T
+ * @param {T} parsed
+ * @returns {T | unknown}
+ */
+export function unwrapEnvelope(parsed) {
+  if (
+    parsed !== null &&
+    typeof parsed === 'object' &&
+    !Array.isArray(parsed) &&
+    'data' in parsed &&
+    parsed._seed !== null &&
+    typeof parsed._seed === 'object'
+  ) {
+    return parsed.data;
+  }
+  return parsed;
+}
