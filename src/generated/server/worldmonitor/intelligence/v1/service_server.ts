@@ -8,6 +8,8 @@ export interface GetRiskScoresRequest {
 export interface GetRiskScoresResponse {
   ciiScores: CiiScore[];
   strategicRisks: StrategicRisk[];
+  degraded: boolean;
+  stale: boolean;
 }
 
 export interface CiiScore {

@@ -21,6 +21,7 @@ import {
   CII_TREND_BUCKET_MS,
   CII_TREND_TARGET_AGE_MS,
   EVENT_MULTIPLIER,
+  countCiiSignalCoverage,
   computeCIIScores,
   computeStrategicRisks,
   filterRiskScoresResponse,
@@ -651,7 +652,7 @@ describe('CII scoring', () => {
     );
     const handlerSource = readFileSync(handlerPath, 'utf8');
     const freshGateIndex = handlerSource.indexOf("if (source === 'fresh' && leader)");
-    const trendPersistIndex = handlerSource.indexOf('persistCiiTrendSnapshot(result)');
+    const trendPersistIndex = handlerSource.indexOf('persistCiiTrendSnapshot(freshResult)');
 
     assert.match(handlerSource, /readCiiTrendPriorScores\(nowMs\)/);
     assert.doesNotMatch(handlerSource, /priorRiskScores/);
@@ -855,6 +856,25 @@ describe('CII scoring', () => {
     assert.equal(risks[0]!.score, STRATEGIC_RISK_SCALE_FLOOR);
   });
 
+  it('riskScores health coverage ignores structural Tier-1 baseline rows', () => {
+    const scores = computeCIIScores([], emptyAux());
+
+    assert.equal(scores.length, Object.keys(SERVER_TIER1_COUNTRIES).length);
+    assert.equal(
+      countCiiSignalCoverage(scores),
+      0,
+      'baseline-only CII emits Tier-1 rows but must report zero live signal coverage to seed health',
+    );
+  });
+
+  it('riskScores health coverage counts countries with live component or supplemental signals', () => {
+    const aux = emptyAux();
+    aux.cyber = [{ country: 'US', severity: 'CRITICALITY_LEVEL_CRITICAL' }];
+    const scores = computeCIIScores([acledEvent('Ukraine', 'Battles', 0)], aux);
+
+    assert.equal(countCiiSignalCoverage(scores), 2);
+  });
+
   it('strategic risk uses positional decay 1 - i * 0.15 (top-5 weights = [1, 0.85, 0.7, 0.55, 0.4])', () => {
     // Two top entries with very different scores should produce a roll-up
     // score that respects the weighted-average — first slot heavier than
@@ -875,6 +895,8 @@ describe('CII scoring', () => {
     const response = {
       ciiScores,
       strategicRisks: computeStrategicRisks(ciiScores),
+      degraded: false,
+      stale: false,
     };
 
     const filtered = filterRiskScoresResponse(response, ' us ');
@@ -890,11 +912,11 @@ describe('CII scoring', () => {
   it('region filter returns empty arrays for unknown ISO2 regions', () => {
     const ciiScores = computeCIIScores([], emptyAux());
     const filtered = filterRiskScoresResponse(
-      { ciiScores, strategicRisks: computeStrategicRisks(ciiScores) },
+      { ciiScores, strategicRisks: computeStrategicRisks(ciiScores), degraded: true, stale: true },
       'zz',
     );
 
-    assert.deepEqual(filtered, { ciiScores: [], strategicRisks: [] });
+    assert.deepEqual(filtered, { ciiScores: [], strategicRisks: [], degraded: true, stale: true });
   });
 
   it('region filter leaves empty requests on the all-country response and rejects malformed non-empty input', () => {
@@ -902,10 +924,36 @@ describe('CII scoring', () => {
     const response = {
       ciiScores,
       strategicRisks: computeStrategicRisks(ciiScores),
+      degraded: false,
+      stale: false,
     };
 
     assert.equal(filterRiskScoresResponse(response, '').ciiScores.length, ciiScores.length);
-    assert.deepEqual(filterRiskScoresResponse(response, 'USA'), { ciiScores: [], strategicRisks: [] });
+    assert.deepEqual(filterRiskScoresResponse(response, 'USA'), {
+      ciiScores: [],
+      strategicRisks: [],
+      degraded: false,
+      stale: false,
+    });
+  });
+
+  it('handler marks stale-cache and cold-cache fallback responses as degraded', () => {
+    const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
+    const source = readFileSync(
+      resolve(root, 'server', 'worldmonitor', 'intelligence', 'v1', 'get-risk-scores.ts'),
+      'utf8',
+    );
+
+    assert.match(
+      source,
+      /if \(stale\) return filterRiskScoresResponse\(withRiskScoreRuntimeState\(stale, \{ degraded: true, stale: true \}\), req\.region\);/,
+      'stale-cache fallback must carry degraded=true and stale=true',
+    );
+    assert.match(
+      source,
+      /\{ ciiScores, strategicRisks: computeStrategicRisks\(ciiScores\), degraded: true, stale: false \}/,
+      'cold baseline-only fallback must carry degraded=true and stale=false',
+    );
   });
 
   // ===== Methodology doc drift guard (issue #3725) =====

@@ -138,6 +138,12 @@ valid CII snapshot from approximately 24 hours earlier. Positive values mean
 the country score rose, negative values mean it fell, and `0` means stable or
 that no valid prior snapshot is available.
 
+`GetRiskScoresResponse.degraded` is `true` when upstream scoring inputs failed
+and the response is served from a stale cache or from the baseline-only cold
+fallback. `GetRiskScoresResponse.stale` is `true` only for the stale-cache
+branch; a cold baseline-only fallback returns `degraded=true` and `stale=false`.
+These flags are runtime quality markers and do not change `methodology_version`.
+
 ---
 
 ## 2. Per-country `baselineRisk` and `eventMultiplier`

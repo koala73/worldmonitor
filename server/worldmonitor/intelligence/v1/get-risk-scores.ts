@@ -527,6 +527,29 @@ interface AuxiliarySources {
   militaryCii: Record<string, any> | null;
 }
 
+function emptyAuxiliarySources(): AuxiliarySources {
+  return {
+    ucdpEvents: [],
+    outages: [],
+    climate: [],
+    cyber: [],
+    fires: [],
+    gpsHexes: [],
+    iranEvents: [],
+    orefData: null,
+    advisories: null,
+    displacedByIso3: {},
+    newsTopStories: [],
+    threatSummaryByCountry: null,
+    aviationAlerts: [],
+    earthquakes: [],
+    sanctionsCountries: [],
+    sanctionsCountryCounts: null,
+    temporalAnomalies: [],
+    militaryCii: null,
+  };
+}
+
 async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   const currentYear = new Date().getFullYear();
   const [ucdpRaw, outagesRaw, climateRaw, cyberRaw, firesRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementRaw, insightsRaw, threatSummaryRaw, aviationRaw, earthquakesRaw, sanctionsRaw, sanctionsCountsRaw, temporalRaw, militaryCiiRaw] = await Promise.all([
@@ -1072,15 +1095,54 @@ function hasRiskScoreRegionFilter(region: string | undefined | null): boolean {
   return String(region || '').trim() !== '';
 }
 
+let baselineOnlyScoresByRegion: Map<string, number> | null = null;
+
+function getBaselineOnlyScoresByRegion(): Map<string, number> {
+  if (!baselineOnlyScoresByRegion) {
+    baselineOnlyScoresByRegion = new Map(
+      computeCIIScores([], emptyAuxiliarySources()).map((score) => [score.region.toUpperCase(), score.combinedScore]),
+    );
+  }
+  return baselineOnlyScoresByRegion;
+}
+
+function hasLiveCiiSignalCoverage(score: CiiScore): boolean {
+  const components = score.components;
+  if (
+    components
+    && (components.newsActivity > 0
+      || components.ciiContribution > 0
+      || components.geoConvergence > 0
+      || components.militaryActivity > 0)
+  ) {
+    return true;
+  }
+
+  const baselineOnly = getBaselineOnlyScoresByRegion().get(String(score.region || '').toUpperCase());
+  return baselineOnly !== undefined && score.combinedScore !== baselineOnly;
+}
+
+export function countCiiSignalCoverage(ciiScores: CiiScore[] | undefined | null): number {
+  return (ciiScores ?? []).filter(hasLiveCiiSignalCoverage).length;
+}
+
+function withRiskScoreRuntimeState(
+  response: GetRiskScoresResponse,
+  state: Pick<GetRiskScoresResponse, 'degraded' | 'stale'>,
+): GetRiskScoresResponse {
+  return { ...response, degraded: state.degraded, stale: state.stale };
+}
+
 export function filterRiskScoresResponse(
   response: GetRiskScoresResponse,
   region: string | undefined | null,
 ): GetRiskScoresResponse {
   if (!hasRiskScoreRegionFilter(region)) return response;
   const normalizedRegion = normalizeRiskScoreRegion(region);
-  if (!normalizedRegion) return { ciiScores: [], strategicRisks: [] };
+  if (!normalizedRegion) return { ...response, ciiScores: [], strategicRisks: [] };
 
   return {
+    ...response,
     ciiScores: response.ciiScores.filter((score) => score.region.toUpperCase() === normalizedRegion),
     // StrategicRisk is currently a global top-N roll-up. Recomputing it over a
     // single filtered country would still label the result "global", so a
@@ -1233,10 +1295,11 @@ export async function getRiskScores(
         if (!priorCiiScores?.length) recordCiiTrendPriorGap(nowMs);
         const ciiScores = computeCIIScores(acled, aux, { priorScores: priorCiiScores, nowMs });
         const strategicRisks = computeStrategicRisks(ciiScores);
-        return { ciiScores, strategicRisks };
+        return { ciiScores, strategicRisks, degraded: false, stale: false };
       },
     );
     if (result) {
+      const freshResult = withRiskScoreRuntimeState(result, { degraded: false, stale: false });
       // Write stale fallback, trend history, and seed-meta on every FRESH upstream
       // fetch by the true in-process leader so /api/health.riskScores
       // stays green from real user traffic, independent of the ais-relay
@@ -1262,27 +1325,27 @@ export async function getRiskScores(
       // 7-day TTL matches the warm-ping write so health.maxStaleMin (30min)
       // logic is unchanged.
       if (source === 'fresh' && leader) {
-        const count = result.ciiScores?.length || 0;
+        const signalCoverageCount = countCiiSignalCoverage(freshResult.ciiScores);
         const writes: Array<Promise<unknown>> = [
-          setCachedJson(RISK_STALE_CACHE_KEY, result, RISK_STALE_TTL),
-          persistCiiTrendSnapshot(result),
-        ];
-        if (count > 0) {
-          writes.push(setCachedJson(
+          setCachedJson(RISK_STALE_CACHE_KEY, freshResult, RISK_STALE_TTL),
+          persistCiiTrendSnapshot(freshResult),
+          setCachedJson(
             'seed-meta:intelligence:risk-scores',
-            { fetchedAt: Date.now(), recordCount: count },
+            { fetchedAt: Date.now(), recordCount: signalCoverageCount },
             604800,
-          ));
-        }
+          ),
+        ];
         await Promise.all(writes.map((write) => write.catch(() => undefined)));
       }
-      return filterRiskScoresResponse(result, req.region);
+      return filterRiskScoresResponse(freshResult, req.region);
     }
   } catch { /* upstream failed, fall through to stale */ }
 
   const stale = (await getCachedJson(RISK_STALE_CACHE_KEY)) as GetRiskScoresResponse | null;
-  if (stale) return filterRiskScoresResponse(stale, req.region);
-  const emptyAux: AuxiliarySources = { ucdpEvents: [], outages: [], climate: [], cyber: [], fires: [], gpsHexes: [], iranEvents: [], orefData: null, advisories: null, displacedByIso3: {}, newsTopStories: [], threatSummaryByCountry: null, aviationAlerts: [], earthquakes: [], sanctionsCountries: [], sanctionsCountryCounts: null, temporalAnomalies: [], militaryCii: null };
-  const ciiScores = computeCIIScores([], emptyAux);
-  return filterRiskScoresResponse({ ciiScores, strategicRisks: computeStrategicRisks(ciiScores) }, req.region);
+  if (stale) return filterRiskScoresResponse(withRiskScoreRuntimeState(stale, { degraded: true, stale: true }), req.region);
+  const ciiScores = computeCIIScores([], emptyAuxiliarySources());
+  return filterRiskScoresResponse(
+    { ciiScores, strategicRisks: computeStrategicRisks(ciiScores), degraded: true, stale: false },
+    req.region,
+  );
 }

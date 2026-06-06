@@ -259,6 +259,11 @@ When upstream data is unavailable (API errors, rate limits):
 1. **Stale cache**: Return the latest versioned stale risk-score payload when available.
 2. **Baseline fallback**: Return scores using static baselines and available floors when no usable live or stale payload exists.
 
+The RPC exposes the fallback state on `GetRiskScoresResponse`: stale-cache
+responses set `degraded=true` and `stale=true`; cold baseline-only responses set
+`degraded=true` and `stale=false`. Fresh/cache-hit responses set both flags to
+`false`.
+
 The relay CII warm-ping loop is active in `scripts/ais-relay.cjs`: it calls
 `/api/intelligence/v1/get-risk-scores` every 8 minutes, lets the RPC handler
 refresh live/stale cache state, and writes `seed-meta:intelligence:risk-scores`

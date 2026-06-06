@@ -12655,6 +12655,16 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_intelligence_v1_StrategicRisk'
+                degraded:
+                    type: boolean
+                    description: |-
+                        True when upstream scoring inputs failed and the response is served from
+                         a stale cache or from the baseline-only cold fallback.
+                stale:
+                    type: boolean
+                    description: |-
+                        True when degraded=true because a stale cached score payload was served.
+                         Baseline-only cold fallback sets degraded=true and stale=false.
             description: GetRiskScoresResponse contains composite risk scores and strategic assessments.
         worldmonitor_intelligence_v1_CiiScore:
             type: object

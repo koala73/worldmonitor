@@ -426,6 +426,29 @@ async function redisSetJson(url, token, key, value, ttl) {
   await redisCommand(url, token, ['SET', key, JSON.stringify(value), 'EX', ttl]);
 }
 
+async function readMilitaryFlights(readJson) {
+  try {
+    const flightsData = await readJson('military:flights:v1');
+    const flights = Array.isArray(flightsData?.flights) ? flightsData.flights : [];
+    return { ok: flights.length > 0, flights };
+  } catch (err) {
+    return { ok: false, flights: [], error: err };
+  }
+}
+
+async function preserveLastGoodMilitaryCii(url, token, reason, missingSuffix = 'skipped publish') {
+  const existing = await redisGetJson(url, token, LIVE_KEY).catch(() => null);
+  if (existing && existing.byCountry) {
+    await withRetry(() => redisSetJson(url, token, LIVE_KEY, existing, LIVE_TTL), 2, 1000);
+    await writeFreshnessMetadata('intelligence', 'military-cii', Object.keys(existing.byCountry).length, 'seed-military-cii', LIVE_TTL);
+    console.warn(`  ${reason} — preserved last-good ${LIVE_KEY}`);
+    return true;
+  }
+
+  console.warn(`  ${reason}, no prior ${LIVE_KEY} — ${missingSuffix}`);
+  return false;
+}
+
 // ── Relay ────────────────────────────────────────────────────────────────────────────
 
 function getRelayBaseUrl() {
@@ -553,13 +576,15 @@ async function main() {
 
   try {
     // Military flights — already classified upstream by seed-military-flights.mjs.
-    let flights = [];
-    try {
-      const flightsData = await redisGetJson(url, token, 'military:flights:v1');
-      flights = Array.isArray(flightsData?.flights) ? flightsData.flights : [];
-    } catch (err) {
-      console.warn(`  military:flights:v1 read failed (${err.message || err}) — flights skipped`);
+    const flightsRead = await readMilitaryFlights((key) => redisGetJson(url, token, key));
+    if (!flightsRead.ok) {
+      const reason = flightsRead.error
+        ? `military:flights:v1 read failed (${flightsRead.error.message || flightsRead.error})`
+        : 'military:flights:v1 read returned no flights';
+      await preserveLastGoodMilitaryCii(url, token, reason);
+      return;
     }
+    const flights = flightsRead.flights;
 
     const relay = await fetchRelaySnapshot();
     console.log(`  inputs: ${flights.length} flights, ${relay.candidateReports.length} vessel candidates, ${relay.disruptions.length} AIS disruptions`);
@@ -569,15 +594,7 @@ async function main() {
     // signal until the relay recovers; fall through to a flights-only publish only when
     // there is no prior key (cold start).
     if (!relay.ok) {
-      const existing = await redisGetJson(url, token, LIVE_KEY).catch(() => null);
-      if (existing && existing.byCountry) {
-        await withRetry(() => redisSetJson(url, token, LIVE_KEY, existing, LIVE_TTL), 2, 1000);
-        // The cron ran successfully (data preserved) — freshness reflects "job alive".
-        await writeFreshnessMetadata('intelligence', 'military-cii', Object.keys(existing.byCountry).length, 'seed-military-cii', LIVE_TTL);
-        console.warn(`  relay unavailable — preserved last-good ${LIVE_KEY} (vessels/AIS not overwritten)`);
-        return;
-      }
-      console.warn(`  relay unavailable, no prior ${LIVE_KEY} — publishing flights-only`);
+      if (await preserveLastGoodMilitaryCii(url, token, 'relay unavailable (vessels/AIS not overwritten)', 'publishing flights-only')) return;
     }
 
     const { byCountry, militaryVesselCount } = aggregate(
@@ -624,4 +641,4 @@ if (isDirectRun) {
   });
 }
 
-export { aggregate, classifyVessel, analyzeMmsi, geoToCountry, normalizeCountryName, TIER1_COUNTRIES, COUNTRY_BBOX };
+export { aggregate, classifyVessel, analyzeMmsi, geoToCountry, normalizeCountryName, readMilitaryFlights, TIER1_COUNTRIES, COUNTRY_BBOX };
