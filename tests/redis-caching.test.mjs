@@ -875,7 +875,7 @@ describe('country risk freshness behavior', { concurrency: 1 }, () => {
     const restoreNow = withMockedNow(1_777_000_000_000);
     const originalFetch = globalThis.fetch;
     const redisValues = new Map([
-      ['risk:scores:sebuf:stale:v5', JSON.stringify({
+      ['risk:scores:sebuf:stale:v6', JSON.stringify({
         ciiScores: [{ region: 'US', combinedScore: 10, computedAt: 1_700_000_000_000 }],
       })],
       ['intelligence:advisories:v1', JSON.stringify({
