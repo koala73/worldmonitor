@@ -44,7 +44,7 @@ export function collectEvidence(regionId, sources) {
   }
 
   // CII spikes for region countries
-  const cii = sources['risk:scores:sebuf:stale:v5']?.ciiScores;
+  const cii = sources['risk:scores:sebuf:stale:v6']?.ciiScores;
   if (Array.isArray(cii)) {
     const regionCountries = new Set(region.keyCountries);
     for (const c of cii) {

@@ -69,7 +69,7 @@ export async function assembleBriefStoryContext(
     countryResult,
   ] = await Promise.allSettled([
     getCachedJson('news:insights:v1', true),
-    getCachedJson('risk:scores:sebuf:stale:v5', true),
+    getCachedJson('risk:scores:sebuf:stale:v6', true),
     getCachedJson('forecast:predictions:v2', true),
     getCachedJson('market:stocks-bootstrap:v1', true),
     getCachedJson('market:commodities-bootstrap:v1', true),

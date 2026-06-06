@@ -28,7 +28,7 @@
  * @type {SourceFreshnessSpec[]}
  */
 export const FRESHNESS_REGISTRY = [
-  { key: 'risk:scores:sebuf:stale:v5',          maxAgeMin: 30,    feedsAxes: ['domestic_fragility', 'coercive_pressure'], metaKey: 'seed-meta:intelligence:risk-scores' },
+  { key: 'risk:scores:sebuf:stale:v6',          maxAgeMin: 30,    feedsAxes: ['domestic_fragility', 'coercive_pressure'], metaKey: 'seed-meta:intelligence:risk-scores' },
   { key: 'forecast:predictions:v2',              maxAgeMin: 180,   feedsAxes: ['scenarios', 'actors'] },
   { key: 'supply_chain:chokepoints:v4',          maxAgeMin: 30,    feedsAxes: ['maritime_access', 'corridors'] },
   { key: 'supply_chain:transit-summaries:v1',    maxAgeMin: 30,    feedsAxes: ['maritime_access'], metaKey: 'seed-meta:supply_chain:transit-summaries' },

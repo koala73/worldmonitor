@@ -68,8 +68,8 @@ const COUNTRY_KEYWORDS = {
   UA: ['ukraine', 'kyiv'],
   IR: ['iran', 'tehran'],
   IL: ['israel', 'tel aviv'],
-  TW: ['taiwan', 'taipei'],
-  KP: ['north korea', 'pyongyang'],
+  TW: ['taiwan', 'taiwanese', 'taipei'],
+  KP: ['north korea', 'north korean', 'pyongyang'],
   SA: ['saudi arabia', 'riyadh'],
   TR: ['turkey', 'ankara', 'turkiye'],
   PL: ['poland', 'warsaw'],
@@ -140,21 +140,112 @@ function safeNum(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function normalizeForCountryMatch(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+const COUNTRY_KEYWORDS_NORMALIZED = Object.fromEntries(
+  Object.entries(COUNTRY_KEYWORDS).map(([code, keywords]) => [code, keywords.map(normalizeForCountryMatch)]),
+);
+
+function hasCountryPhraseMatch(normalizedText, normalizedKeyword) {
+  if (!normalizedText || !normalizedKeyword) return false;
+  return ` ${normalizedText} `.includes(` ${normalizedKeyword} `);
+}
+
 function normalizeCountryName(text) {
-  const lower = String(text || '').toLowerCase();
-  if (!lower) return null;
-  for (const [code, keywords] of Object.entries(COUNTRY_KEYWORDS)) {
-    if (keywords.some((kw) => lower.includes(kw))) return code;
+  const normalized = normalizeForCountryMatch(text);
+  for (const [code, keywords] of Object.entries(COUNTRY_KEYWORDS_NORMALIZED)) {
+    if (keywords.some((kw) => hasCountryPhraseMatch(normalized, kw))) return code;
   }
+  return null;
+}
+
+function isInsideBBox(b, lat, lon) {
+  return lat >= b.minLat && lat <= b.maxLat && lon >= b.minLon && lon <= b.maxLon;
+}
+
+function isNorthOfApproxUsMxBorder(lat, lon) {
+  if (lon <= -114.70) return lat >= 32.53;
+  if (lon <= -111.05) return lat >= 31.33;
+  if (lon <= -106.45) return lat >= 31.73;
+
+  const rioGrandeChord = [
+    [-106.45, 31.73],
+    [-104.40, 29.60],
+    [-100.95, 29.37],
+    [-100.50, 28.72],
+    [-99.50, 27.50],
+    [-98.20, 26.22],
+    [-97.50, 25.89],
+  ];
+  for (let i = 1; i < rioGrandeChord.length; i++) {
+    const [prevLon, prevLat] = rioGrandeChord[i - 1];
+    const [nextLon, nextLat] = rioGrandeChord[i];
+    if (lon <= nextLon) {
+      const progress = (lon - prevLon) / (nextLon - prevLon);
+      const borderLat = prevLat + progress * (nextLat - prevLat);
+      return lat >= borderLat;
+    }
+  }
+  return lat >= 25.89;
+}
+
+function resolveKnownBBoxOverlap(lat, lon, candidates) {
+  const codes = new Set(candidates.map((candidate) => candidate.code));
+
+  if (codes.has('US') && codes.has('MX')) {
+    return isNorthOfApproxUsMxBorder(lat, lon) ? 'US' : 'MX';
+  }
+  if (codes.has('SY') && codes.has('LB')) {
+    if (lon >= 36.35 || (lat <= 33.75 && lon >= 36.05)) return 'SY';
+    return 'LB';
+  }
+  if (codes.has('RU') && codes.has('UA')) {
+    if ((lat >= 50.25 && lon >= 34.5) || (lon >= 38.7 && lat < 47.8)) return 'RU';
+    return 'UA';
+  }
+  if (codes.has('IN') && codes.has('PK')) {
+    if (lon >= 75.20 || (lon >= 74.75 && lat <= 32.10)) return 'IN';
+    return 'PK';
+  }
+  if (codes.has('CN') && codes.has('RU')) {
+    if ((lon >= 130.70 && lat >= 42.40) || (lon >= 119.0 && lat >= 50.0)) return 'RU';
+    return 'CN';
+  }
+  if (codes.has('RU') && codes.has('JP')) {
+    return lat >= 45.70 && lon >= 140.50 ? 'RU' : 'JP';
+  }
+  if (codes.has('KP') && codes.has('KR')) {
+    const westernDmzLat = 37.75;
+    const easternDmzLat = 38.35;
+    const progress = Math.min(1, Math.max(0, (lon - 126.0) / 2.5));
+    const borderLat = westernDmzLat + progress * (easternDmzLat - westernDmzLat);
+    return lat >= borderLat ? 'KP' : 'KR';
+  }
+  if (codes.has('JP') && codes.has('KR')) {
+    if (lat <= 34.85 && lon >= 129.20) return 'JP';
+    return 'KR';
+  }
+  if (codes.has('SA') && codes.has('YE')) {
+    return lat >= 17.35 ? 'SA' : 'YE';
+  }
+
   return null;
 }
 
 function geoToCountry(lat, lon) {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  for (const b of BBOX_BY_AREA) {
-    if (lat >= b.minLat && lat <= b.maxLat && lon >= b.minLon && lon <= b.maxLon) return b.code;
-  }
-  return null;
+  const candidates = BBOX_BY_AREA.filter((b) => isInsideBBox(b, lat, lon));
+  if (candidates.length === 0) return null;
+  return resolveKnownBBoxOverlap(lat, lon, candidates) ?? candidates[0].code;
 }
 
 // ── Military vessel classifier (mirror src/config/military.ts + military-vessels.ts) ──

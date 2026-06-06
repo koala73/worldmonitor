@@ -30,12 +30,14 @@ import {
   getCiiTrendPriorCandidateBuckets,
   normalizeCountryName,
   selectCiiTrendPriorSnapshot,
+  ZONE_COUNTRY_MAP,
 } from '../server/worldmonitor/intelligence/v1/get-risk-scores.ts';
 import {
   CII_BASELINE_RISK as SHARED_BASELINE_RISK,
   CII_COUNTRY_WEIGHTS,
   CII_EVENT_MULTIPLIER as SHARED_EVENT_MULTIPLIER,
 } from '../shared/cii-weights.ts';
+import { CLIMATE_ZONES } from '../scripts/_climate-zones.mjs';
 
 function emptyAux() {
   return {
@@ -62,6 +64,10 @@ function emptyAux() {
 
 function acledEvent(country: string, type: string, fatalities = 0) {
   return { country, event_type: type, fatalities };
+}
+
+function acledEvents(country: string, type: string, count: number) {
+  return Array.from({ length: count }, () => acledEvent(country, type));
 }
 
 function scoreFor(scores: ReturnType<typeof computeCIIScores>, code: string) {
@@ -109,6 +115,12 @@ describe('CII signal wiring', () => {
       'dotted U.K. remains a valid token alias for GB');
     assert.equal(normalizeCountryName('Iranian sanctions debate'), 'IR',
       'demonym aliases that raw substring matching used to cover must stay covered explicitly');
+    assert.equal(normalizeCountryName('North Korean missile drill'), 'KP',
+      'North Korean demonym should resolve to KP');
+    assert.equal(normalizeCountryName('Taiwanese election pressure'), 'TW',
+      'Taiwanese demonym should resolve to TW');
+    assert.equal(normalizeCountryName('Korean export data'), null,
+      'bare Korean remains ambiguous and must not resolve to KR/KP');
   });
 
   it('geoToCountry disambiguates known overlapping bboxes with deterministic border heuristics', () => {
@@ -121,10 +133,71 @@ describe('CII signal wiring', () => {
     assert.equal(geoToCountry(32.5149, -117.0382), 'MX', 'Tijuana remains Mexico');
     assert.equal(geoToCountry(31.7619, -106.4850), 'US', 'El Paso remains US');
     assert.equal(geoToCountry(31.6904, -106.4245), 'MX', 'Ciudad Juarez remains Mexico');
+    assert.equal(geoToCountry(25.9017, -97.4975), 'US', 'Brownsville remains US');
+    assert.equal(geoToCountry(27.4763, -99.5164), 'MX', 'Nuevo Laredo must resolve to Mexico, not Texas');
+    assert.equal(geoToCountry(28.6916, -100.5409), 'MX', 'Piedras Negras must resolve to Mexico, not Texas');
+    assert.equal(geoToCountry(29.3232, -100.9522), 'MX', 'Ciudad Acuna must resolve to Mexico, not Texas');
     assert.equal(geoToCountry(25.6866, -100.3161), 'MX', 'Monterrey remains Mexico');
     assert.equal(geoToCountry(33.8938, 35.5018), 'LB', 'Beirut remains Lebanon');
     assert.equal(geoToCountry(37.5665, 126.9780), 'KR', 'Seoul remains South Korea');
+    assert.equal(geoToCountry(37.9382, 126.5878), 'KP', 'Kaesong must resolve to North Korea, not South Korea');
+    assert.equal(geoToCountry(38.0400, 125.7140), 'KP', 'Haeju must resolve to North Korea, not South Korea');
     assert.equal(geoToCountry(15.3694, 44.1910), 'YE', 'Sanaa remains Yemen');
+    assert.equal(geoToCountry(47.2357, 39.7015), 'RU', 'Rostov-on-Don must resolve to Russia, not Ukraine');
+    assert.equal(geoToCountry(49.9935, 36.2304), 'UA', 'Kharkiv remains Ukraine');
+    assert.equal(geoToCountry(31.5204, 74.3587), 'PK', 'Lahore remains Pakistan');
+    assert.equal(geoToCountry(31.6340, 74.8723), 'IN', 'Amritsar must resolve to India, not Pakistan');
+    assert.equal(geoToCountry(43.1155, 131.8855), 'RU', 'Vladivostok must resolve to Russia, not China');
+    assert.equal(geoToCountry(45.8038, 126.5350), 'CN', 'Harbin remains China');
+    assert.equal(geoToCountry(46.9591, 142.7380), 'RU', 'Yuzhno-Sakhalinsk must resolve to Russia, not Japan');
+    assert.equal(geoToCountry(43.0618, 141.3545), 'JP', 'Sapporo remains Japan');
+  });
+
+  it('climate producer zones intersect the CII consumer map for score-relevant zones', () => {
+    const producerZones = new Set(CLIMATE_ZONES.map((zone) => zone.name));
+    const expected: Record<string, string[]> = {
+      Ukraine: ['UA'],
+      California: ['US'],
+      Amazon: ['BR'],
+      'Taiwan Strait': ['TW'],
+      Caribbean: ['CU', 'MX'],
+      'Middle East': ['IR', 'IL', 'SA', 'SY', 'YE', 'AE', 'IQ', 'LB', 'QA'],
+      'South Asia': ['IN', 'PK', 'AF'],
+      Myanmar: ['MM'],
+    };
+
+    for (const [zone, expectedCodes] of Object.entries(expected)) {
+      assert.equal(producerZones.has(zone), true, `${zone} must still be emitted by the climate producer`);
+      assert.deepEqual(
+        expectedCodes.filter((code) => ZONE_COUNTRY_MAP[zone]?.includes(code)),
+        expectedCodes,
+        `${zone} must feed CII countries ${expectedCodes.join(', ')}`,
+      );
+    }
+  });
+
+  it('climate anomaly enum severities raise scores for producer zone names', () => {
+    const cases: Array<[string, string]> = [
+      ['California', 'US'],
+      ['Ukraine', 'UA'],
+      ['Amazon', 'BR'],
+      ['Taiwan Strait', 'TW'],
+      ['Caribbean', 'MX'],
+      ['Caribbean', 'CU'],
+    ];
+
+    for (const [zone, code] of cases) {
+      const countryName = TIER1_COUNTRIES[code as keyof typeof TIER1_COUNTRIES];
+      const activity = acledEvents(countryName, 'Battles', 1000);
+      const base = scoreFor(computeCIIScores(activity, emptyAux()), code);
+      const aux = emptyAux();
+      aux.climate = [{ zone, severity: 'ANOMALY_SEVERITY_EXTREME' }];
+      const withClimate = scoreFor(computeCIIScores(activity, aux), code);
+      assert.ok(
+        withClimate!.combinedScore > base!.combinedScore,
+        `${zone} anomaly should raise ${code} through climateBoost`,
+      );
+    }
   });
 
   it('ACLED 7d and 30d fetch windows do not double-count the 7-day boundary date', () => {

@@ -8,7 +8,7 @@ import type {
 import { getCachedJson } from '../../../_shared/redis';
 import { TIER1_COUNTRIES } from './_shared';
 
-const RISK_SCORES_KEY = 'risk:scores:sebuf:stale:v5';
+const RISK_SCORES_KEY = 'risk:scores:sebuf:stale:v6';
 const ADVISORIES_KEY = 'intelligence:advisories:v1';
 // Full ISO2 → entryCount map across all OFAC entries (not the top-12 summary slice).
 const SANCTIONS_COUNTS_KEY = 'sanctions:country-counts:v1';

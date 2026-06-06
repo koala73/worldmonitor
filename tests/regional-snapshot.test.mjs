@@ -202,7 +202,7 @@ describe('helpers', () => {
 // ────────────────────────────────────────────────────────────────────────────
 
 const baseSources = () => ({
-  'risk:scores:sebuf:stale:v5': {
+  'risk:scores:sebuf:stale:v6': {
     ciiScores: [
       { region: 'IR', combinedScore: 65, trend: 'TREND_DIRECTION_UP' },
       { region: 'IL', combinedScore: 55, trend: 'TREND_DIRECTION_STABLE' },
@@ -281,7 +281,7 @@ describe('computeBalanceVector', () => {
 
   it('weighted-tail domestic fragility amplifies high-criticality countries', () => {
     const sources = {
-      'risk:scores:sebuf:stale:v5': {
+      'risk:scores:sebuf:stale:v6': {
         ciiScores: [
           // Low CII for low-criticality countries
           { region: 'JO', combinedScore: 10 },
@@ -549,9 +549,9 @@ describe('snapshot meta', () => {
 
   it('buildPreMeta marks stale inputs based on max-age', () => {
     const old = { fetchedAt: Date.now() - 999_999_999 };
-    const sources = { 'risk:scores:sebuf:stale:v5': old };
+    const sources = { 'risk:scores:sebuf:stale:v6': old };
     const { pre } = buildPreMeta(sources, '1.0.0', '1.0.0');
-    assert.ok(pre.stale_inputs.includes('risk:scores:sebuf:stale:v5'));
+    assert.ok(pre.stale_inputs.includes('risk:scores:sebuf:stale:v6'));
   });
 
   it('buildFinalMeta merges pre + finalFields preserving snapshot_id', () => {
@@ -572,16 +572,16 @@ describe('snapshot meta', () => {
   // snapshot_confidence whenever an upstream seeder stalled without a
   // timestamp. Flipped to stale so the confidence score reflects reality.
   it('buildPreMeta treats present-but-undated inputs as stale (#3728)', () => {
-    // risk:scores:sebuf:stale:v5 has no metaKey and the payload below has
+    // risk:scores:sebuf:stale:v6 has no metaKey and the payload below has
     // no parseable timestamp field — exactly the case that used to slip
     // through as "fresh".
     const { pre } = buildPreMeta(
-      { 'risk:scores:sebuf:stale:v5': { ciiScores: [] } },
+      { 'risk:scores:sebuf:stale:v6': { ciiScores: [] } },
       '1.0.0',
       '1.0.0',
     );
     assert.ok(
-      pre.stale_inputs.includes('risk:scores:sebuf:stale:v5'),
+      pre.stale_inputs.includes('risk:scores:sebuf:stale:v6'),
       'undated payload should land in stale_inputs, not be silently treated as fresh',
     );
   });
@@ -591,12 +591,12 @@ describe('snapshot meta', () => {
   // old would advertise validity 5.7 hours past the point where its
   // upstream input goes stale. Derive from the registry instead.
   it('valid_until reflects oldest fresh input TTL (#3728)', () => {
-    // risk:scores:sebuf:stale:v5 has maxAgeMin=30. With fetchedAt=20min
+    // risk:scores:sebuf:stale:v6 has maxAgeMin=30. With fetchedAt=20min
     // ago, the input expires in ~10min, well before the 6h cap.
     const now = Date.now();
     const fetchedAt = now - 20 * 60_000;
     const { pre } = buildPreMeta(
-      { 'risk:scores:sebuf:stale:v5': { ciiScores: [], fetchedAt } },
+      { 'risk:scores:sebuf:stale:v6': { ciiScores: [], fetchedAt } },
       '1.0.0',
       '1.0.0',
     );
@@ -699,7 +699,7 @@ describe('snapshot meta', () => {
   // metaKey hint (or the companion key going missing) would re-introduce
   // the on-deploy STALE noise this PR removes.
   for (const [inputKey, metaKey] of [
-    ['risk:scores:sebuf:stale:v5',          'seed-meta:intelligence:risk-scores'],
+    ['risk:scores:sebuf:stale:v6',          'seed-meta:intelligence:risk-scores'],
     ['intelligence:cross-source-signals:v1', 'seed-meta:intelligence:cross-source-signals'],
     ['energy:mix:v1:_all',                   'seed-meta:economic:owid-energy-mix'],
     ['supply_chain:transit-summaries:v1',    'seed-meta:supply_chain:transit-summaries'],
@@ -732,7 +732,7 @@ describe('snapshot meta', () => {
     // entry points at an existing seed-meta:* companion. Lock the wiring
     // in so a later removal will trip a test, not production.
     const expected = {
-      'risk:scores:sebuf:stale:v5':          'seed-meta:intelligence:risk-scores',
+      'risk:scores:sebuf:stale:v6':          'seed-meta:intelligence:risk-scores',
       'intelligence:cross-source-signals:v1': 'seed-meta:intelligence:cross-source-signals',
       'energy:mix:v1:_all':                   'seed-meta:economic:owid-energy-mix',
       'supply_chain:transit-summaries:v1':    'seed-meta:supply_chain:transit-summaries',
@@ -1030,7 +1030,7 @@ describe('writer-side XSS hardening (issue #3730)', () => {
         },
       ],
     },
-    'risk:scores:sebuf:stale:v5': {
+    'risk:scores:sebuf:stale:v6': {
       ciiScores: [
         { region: 'IR', combinedScore: 75, trend: `RISING${IMG_XSS}`, computedAt: Date.now() },
       ],

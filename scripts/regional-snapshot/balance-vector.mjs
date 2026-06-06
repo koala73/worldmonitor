@@ -128,7 +128,7 @@ function computeCoercivePressure(region, sources, drivers) {
 }
 
 function computeDomesticFragility(countries, sources, drivers) {
-  const cii = sources['risk:scores:sebuf:stale:v5'];
+  const cii = sources['risk:scores:sebuf:stale:v6'];
   const ciiScores = Array.isArray(cii?.ciiScores) ? cii.ciiScores : [];
   const inRegion = ciiScores.filter((s) => countries.has(String(s?.region ?? '')));
   if (!inRegion.length) return 0;

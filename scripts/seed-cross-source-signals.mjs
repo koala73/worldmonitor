@@ -30,7 +30,7 @@ const SOURCE_KEYS = [
   'gdelt:intel:tone:nuclear',
   'gdelt:intel:tone:maritime',
   'weather:alerts:v1',
-  'risk:scores:sebuf:stale:v5',
+  'risk:scores:sebuf:stale:v6',
   'regulatory:actions:v1',
 ];
 
@@ -694,7 +694,7 @@ function extractMediaToneDeterioration(d) {
 }
 
 function extractRiskScoreSpike(d) {
-  const payload = d['risk:scores:sebuf:stale:v5'];
+  const payload = d['risk:scores:sebuf:stale:v6'];
   if (!payload) return [];
   const ciiScores = Array.isArray(payload.ciiScores) ? payload.ciiScores : [];
   const spiking = ciiScores.filter(s => safeNum(s.combinedScore) > 80 || s.trend === 'TREND_DIRECTION_RISING');

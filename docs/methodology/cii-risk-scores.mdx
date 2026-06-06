@@ -1,6 +1,6 @@
 ---
 title: "CII Risk Scoring Methodology"
-description: "Editorial methodology behind the Composite Instability Index (CII) and Strategic Risk roll-up. Documents per-country baselineRisk, eventMultiplier, the four-component score (Unrest, Conflict, Security, Information), strategic-risk band derivation, and the v5 formula version stamped on every CiiScore."
+description: "Editorial methodology behind the Composite Instability Index (CII) and Strategic Risk roll-up. Documents per-country baselineRisk, eventMultiplier, the four-component score (Unrest, Conflict, Security, Information), strategic-risk band derivation, and the v6 formula version stamped on every CiiScore."
 ---
 
 Published methodology note for the **Composite Instability Index (CII)** and
@@ -17,7 +17,21 @@ agree.
 
 The on-the-wire `methodology_version` field on every `CiiScore` reflects
 which revision of this document was active when the score was computed.
-The current version is **v5**.
+The current version is **v6**.
+
+> **v6 (2026-06-06).** Score attribution changed for country text, coordinate,
+> and climate anomaly inputs. Text attribution now recognizes `north korean`
+> as KP and `taiwanese` as TW while still rejecting ambiguous bare `korean`.
+> Coordinate attribution keeps the seed and server in parity for high-value
+> overlap zones: Rio Grande US/MX border segments, the western Korean DMZ,
+> RU/UA, IN/PK, CN/RU and RU/JP. Climate anomaly boosts now consume the zone
+> names emitted by the climate producer (`Ukraine`, `California`, `Amazon`,
+> `Taiwan Strait`, `Caribbean`, etc.) and map enum severities into the
+> numeric boost scale. `combinedScore` values can shift where affected military,
+> fire, GPS, earthquake, news, or climate records were previously attributed
+> to the wrong country or ignored. The risk-score cache key family moved to
+> `risk:scores:sebuf:v6`; clients pinned on `methodology_version` should
+> re-baseline.
 
 > **v5 (2026-06-06).** `dynamicScore` is now a signed movement delta in the
 > range `-100..100`, derived from a valid CII snapshot from approximately 24

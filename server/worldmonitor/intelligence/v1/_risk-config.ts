@@ -17,8 +17,7 @@
 //      public-facing section so downstream users of the proto API see why score
 //      values or movement semantics may shift between deploys.
 //
-// Last reviewed: 2026-06-06 (signed 24-hour trend/delta semantics, v5; dynamicScore
-// is a signed movement delta against an approximate 24-hour prior snapshot).
+// Last reviewed: 2026-06-06 (attribution and climate-consumer fixes, v6).
 // ============================================================================
 
 /**
@@ -26,7 +25,7 @@
  * Bump on coefficient or scoring-contract changes so API clients can detect
  * score or movement-semantics drift.
  */
-export const CII_FORMULA_VERSION = 'v5';
+export const CII_FORMULA_VERSION = 'v6';
 
 /**
  * Conflict event activity log curve used before fatality/civilian/strike boosts.

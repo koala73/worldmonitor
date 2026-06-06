@@ -798,7 +798,7 @@ export async function assembleAnalystContext(
 ): Promise<AnalystContext> {
   const keys = {
     insights: 'news:insights:v1',
-    riskScores: 'risk:scores:sebuf:stale:v5',
+    riskScores: 'risk:scores:sebuf:stale:v6',
     marketImplications: 'intelligence:market-implications:v1',
     forecasts: 'forecast:predictions:v2',
     stocks: 'market:stocks-bootstrap:v1',

@@ -6,6 +6,17 @@ All notable changes to World Monitor are documented here.
 
 ### Changed
 
+- **CII formula `v6`** — score attribution now changes as one batch for country
+  text, coordinate, and climate anomaly inputs. The seed and server country
+  resolvers now agree on token/phrase matching, Rio Grande US/MX border
+  segments, the western Korean DMZ, RU/UA, IN/PK, CN/RU, and RU/JP bbox
+  overlaps; `north korean` maps to KP and `taiwanese` maps to TW while bare
+  `korean` remains ambiguous. Climate anomalies now feed the emitted producer
+  zones (`Ukraine`, `California`, `Amazon`, `Taiwan Strait`, `Caribbean`, etc.)
+  into CII and translate enum severities into the numeric climate boost scale.
+  `combinedScore` values may shift for affected records, the risk-score cache
+  key family moved to `risk:scores:sebuf:v6`, and emitted
+  `methodology_version` is now `v6`; clients should re-baseline.
 - **CII formula `v5`** — `dynamicScore` is now a signed movement delta in the
   range `-100..100`, derived from a valid CII snapshot from approximately 24
   hours earlier. Positive values mean rising risk, negative values mean falling

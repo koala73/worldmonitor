@@ -341,8 +341,17 @@ export function ingestDisplacementForCII(countries: CountryDisplacement[]): void
 }
 
 const ZONE_COUNTRY_MAP: Record<string, string[]> = {
-  'Ukraine': ['UA'], 'Middle East': ['IR', 'IL', 'SA', 'SY', 'YE'],
-  'South Asia': ['PK', 'IN'], 'Myanmar': ['MM'],
+  'Ukraine': ['UA'],
+  'Middle East': ['IR', 'IL', 'SA', 'SY', 'YE', 'AE', 'IQ', 'LB', 'QA'],
+  'South Asia': ['PK', 'IN', 'AF'],
+  'Myanmar': ['MM'],
+  'California': ['US'],
+  'Amazon': ['BR'],
+  'Taiwan Strait': ['TW', 'CN'],
+  'Caribbean': ['CU', 'MX'],
+  'Mediterranean': ['TR', 'IL', 'SY', 'LB', 'EG'],
+  'Arctic': ['RU'],
+  'Tibetan Plateau': ['CN', 'IN'],
 };
 
 export function ingestClimateForCII(anomalies: ClimateAnomaly[]): void {

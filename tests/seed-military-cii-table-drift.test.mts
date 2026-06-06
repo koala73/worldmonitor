@@ -41,40 +41,45 @@ test('seed COUNTRY_BBOX matches the server source of truth exactly', () => {
   );
 });
 
-test('seed geoToCountry agrees with server geoToCountry across overlap + non-overlap probes', () => {
-  // The drift tests above lock down BBOX entries by value, but the
-  // smallest-area-first sort heuristic decides who wins for points inside
-  // multiple bboxes — a future change to that heuristic on the server
-  // (e.g., centroid-distance) would silently diverge. These probes hit
-  // four real TIER1 overlap zones where the area-sort is the discriminator:
-  //   - LB inside IL bbox (LB area ~2.4 < IL area ~6.1)
-  //   - AE inside SA bbox (AE area ~14.7 < SA area ~331)
-  //   - AF inside IR bbox (AF area ~132 < IR area ~284)
-  //   - KP inside CN bbox (KP area ~41 < CN area ~2178)
-  // Plus four unambiguous interior points so a degenerate seed implementation
-  // (e.g., always returning null or always returning the first match) can't pass.
-  const PROBES: Array<[number, number, string]> = [
-    [33.2, 35.5, 'LB'],   // overlap: IL∩LB → LB smaller wins
-    [24.0, 53.0, 'AE'],   // overlap: SA∩AE → AE smaller wins
-    [33.0, 62.0, 'AF'],   // overlap: IR∩AF → AF smaller wins
-    [40.0, 126.0, 'KP'],  // overlap: CN∩KP → KP smaller wins
-    [39.0, -98.0, 'US'],  // unambiguous central US
-    [55.7, 37.6, 'RU'],   // Moscow
-    [31.5, 35.0, 'IL'],   // unambiguous interior IL (south of LB overlap zone)
-    [0.0, -150.0, null as unknown as string], // open Pacific — neither resolves
+test('seed geoToCountry agrees with server geoToCountry and the intended border heuristic', () => {
+  const PROBES: Array<{ name: string; lat: number; lon: number; expected: string | null }> = [
+    { name: 'San Diego, US side of US/MX border', lat: 32.7157, lon: -117.1611, expected: 'US' },
+    { name: 'Tijuana, MX side of US/MX border', lat: 32.5149, lon: -117.0382, expected: 'MX' },
+    { name: 'El Paso, US side of US/MX border', lat: 31.7619, lon: -106.4850, expected: 'US' },
+    { name: 'Ciudad Juarez, MX side of US/MX border', lat: 31.6904, lon: -106.4245, expected: 'MX' },
+    { name: 'Brownsville, US side of Rio Grande', lat: 25.9017, lon: -97.4975, expected: 'US' },
+    { name: 'Nuevo Laredo, MX side of Rio Grande', lat: 27.4763, lon: -99.5164, expected: 'MX' },
+    { name: 'Piedras Negras, MX side of Rio Grande', lat: 28.6916, lon: -100.5409, expected: 'MX' },
+    { name: 'Ciudad Acuna, MX side of Rio Grande', lat: 29.3232, lon: -100.9522, expected: 'MX' },
+    { name: 'Kaesong, KP side of western DMZ', lat: 37.9382, lon: 126.5878, expected: 'KP' },
+    { name: 'Haeju, KP side of western DMZ', lat: 38.0400, lon: 125.7140, expected: 'KP' },
+    { name: 'Seoul, KR side of DMZ', lat: 37.5665, lon: 126.9780, expected: 'KR' },
+    { name: 'Damascus, Syria side of SY/LB overlap', lat: 33.5138, lon: 36.2765, expected: 'SY' },
+    { name: 'Beirut, Lebanon side of SY/LB overlap', lat: 33.8938, lon: 35.5018, expected: 'LB' },
+    { name: 'Najran, Saudi side of SA/YE overlap', lat: 17.5656, lon: 44.2289, expected: 'SA' },
+    { name: 'Sanaa, Yemen side of SA/YE overlap', lat: 15.3694, lon: 44.1910, expected: 'YE' },
+    { name: 'Rostov-on-Don, Russia side of RU/UA overlap', lat: 47.2357, lon: 39.7015, expected: 'RU' },
+    { name: 'Kharkiv, Ukraine side of RU/UA overlap', lat: 49.9935, lon: 36.2304, expected: 'UA' },
+    { name: 'Lahore, Pakistan side of IN/PK overlap', lat: 31.5204, lon: 74.3587, expected: 'PK' },
+    { name: 'Amritsar, India side of IN/PK overlap', lat: 31.6340, lon: 74.8723, expected: 'IN' },
+    { name: 'Vladivostok, Russia side of CN/RU overlap', lat: 43.1155, lon: 131.8855, expected: 'RU' },
+    { name: 'Harbin, China side of CN/RU overlap', lat: 45.8038, lon: 126.5350, expected: 'CN' },
+    { name: 'Yuzhno-Sakhalinsk, Russia side of RU/JP overlap', lat: 46.9591, lon: 142.7380, expected: 'RU' },
+    { name: 'Sapporo, Japan side of RU/JP overlap', lat: 43.0618, lon: 141.3545, expected: 'JP' },
+    { name: 'open Pacific', lat: 0.0, lon: -150.0, expected: null },
   ];
-  for (const [lat, lon, expected] of PROBES) {
+  for (const { name, lat, lon, expected } of PROBES) {
     const seedResult = seedGeoToCountry(lat, lon);
     const serverResult = serverGeoToCountry(lat, lon);
     assert.equal(
       seedResult,
       serverResult,
-      `seed/server geoToCountry disagree at (${lat}, ${lon}): seed=${seedResult} server=${serverResult}`,
+      `${name}: seed/server geoToCountry disagree at (${lat}, ${lon}): seed=${seedResult} server=${serverResult}`,
     );
     assert.equal(
       seedResult,
       expected,
-      `probe (${lat}, ${lon}) — expected ${expected}, both returned ${seedResult}`,
+      `${name}: expected heuristic-correct ${expected}, both returned ${seedResult}`,
     );
   }
 });

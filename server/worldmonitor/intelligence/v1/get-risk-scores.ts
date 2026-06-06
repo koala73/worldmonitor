@@ -55,8 +55,8 @@ const COUNTRY_KEYWORDS: Record<string, string[]> = {
   UA: ['ukraine', 'ukrainian', 'kyiv', 'zelensky', 'donbas'],
   IR: ['iran', 'iranian', 'tehran', 'khamenei', 'irgc'],
   IL: ['israel', 'israeli', 'tel aviv', 'netanyahu', 'idf', 'gaza'],
-  TW: ['taiwan', 'taipei'],
-  KP: ['north korea', 'pyongyang', 'kim jong'],
+  TW: ['taiwan', 'taiwanese', 'taipei'],
+  KP: ['north korea', 'north korean', 'pyongyang', 'kim jong'],
   SA: ['saudi arabia', 'saudi', 'riyadh'],
   TR: ['turkey', 'turkiye', 'turkish', 'ankara', 'erdogan'],
   PL: ['poland', 'warsaw'],
@@ -118,11 +118,20 @@ export const COUNTRY_BBOX: Record<string, { minLat: number; maxLat: number; minL
   QA: { minLat: 24.5, maxLat: 26.2, minLon: 50.7, maxLon: 51.7 },
 };
 
-const ZONE_COUNTRY_MAP: Record<string, string[]> = {
+export const ZONE_COUNTRY_MAP: Record<string, string[]> = {
   'North America': ['US'], 'Europe': ['DE', 'FR', 'GB', 'PL', 'TR', 'UA'],
   'East Asia': ['CN', 'TW', 'KP', 'KR', 'JP'], 'South Asia': ['IN', 'PK', 'MM', 'AF'],
   'Middle East': ['IR', 'IL', 'SA', 'SY', 'YE', 'AE', 'IQ', 'LB', 'QA'], 'Russia': ['RU'],
   'Latin America': ['VE', 'CU', 'MX', 'BR'], 'North Africa': ['EG'],
+  Ukraine: ['UA'],
+  California: ['US'],
+  Amazon: ['BR'],
+  'Taiwan Strait': ['TW', 'CN'],
+  Myanmar: ['MM'],
+  Caribbean: ['CU', 'MX'],
+  Mediterranean: ['TR', 'IL', 'SY', 'LB', 'EG'],
+  Arctic: ['RU'],
+  'Tibetan Plateau': ['CN', 'IN'],
 };
 
 const ADVISORY_LEVELS_FALLBACK: Record<string, 'do-not-travel' | 'reconsider' | 'caution'> = {
@@ -177,10 +186,27 @@ function isNorthOfApproxUsMxBorder(lat: number, lon: number): boolean {
   // Coarse segmented US/MX border approximation inside the shared bbox overlap.
   if (lon <= -114.70) return lat >= 32.53; // California / Baja California
   if (lon <= -111.05) return lat >= 31.33; // Arizona / Sonora
-  if (lon <= -106.45) return lat >= 31.73; // New Mexico-Texas / Chihuahua
-  if (lon >= -97.10) return lat >= 25.85;
-  const progress = (lon + 106.45) / 9.35;
-  const borderLat = 31.73 + progress * (25.85 - 31.73);
+  if (lon <= -106.45) return lat >= 31.73; // New Mexico / Chihuahua
+
+  const rioGrandeChord: Array<[number, number]> = [
+    [-106.45, 31.73], // El Paso / Ciudad Juarez
+    [-104.40, 29.60], // Big Bend / Ojinaga
+    [-100.95, 29.37], // Del Rio / Ciudad Acuna
+    [-100.50, 28.72], // Eagle Pass / Piedras Negras
+    [-99.50, 27.50],  // Laredo / Nuevo Laredo
+    [-98.20, 26.22],  // McAllen / Reynosa
+    [-97.50, 25.89],  // Brownsville / Matamoros
+  ];
+  for (let i = 1; i < rioGrandeChord.length; i++) {
+    const [prevLon, prevLat] = rioGrandeChord[i - 1]!;
+    const [nextLon, nextLat] = rioGrandeChord[i]!;
+    if (lon <= nextLon) {
+      const progress = (lon - prevLon) / (nextLon - prevLon);
+      const borderLat = prevLat + progress * (nextLat - prevLat);
+      return lat >= borderLat;
+    }
+  }
+  const borderLat = 25.89;
   return lat >= borderLat;
 }
 
@@ -194,6 +220,28 @@ function resolveKnownBBoxOverlap(lat: number, lon: number, candidates: CountryBB
     if (lon >= 36.35 || (lat <= 33.75 && lon >= 36.05)) return 'SY';
     return 'LB';
   }
+  if (codes.has('RU') && codes.has('UA')) {
+    if ((lat >= 50.25 && lon >= 34.5) || (lon >= 38.7 && lat < 47.8)) return 'RU';
+    return 'UA';
+  }
+  if (codes.has('IN') && codes.has('PK')) {
+    if (lon >= 75.20 || (lon >= 74.75 && lat <= 32.10)) return 'IN';
+    return 'PK';
+  }
+  if (codes.has('CN') && codes.has('RU')) {
+    if ((lon >= 130.70 && lat >= 42.40) || (lon >= 119.0 && lat >= 50.0)) return 'RU';
+    return 'CN';
+  }
+  if (codes.has('RU') && codes.has('JP')) {
+    return lat >= 45.70 && lon >= 140.50 ? 'RU' : 'JP';
+  }
+  if (codes.has('KP') && codes.has('KR')) {
+    const westernDmzLat = 37.75;
+    const easternDmzLat = 38.35;
+    const progress = Math.min(1, Math.max(0, (lon - 126.0) / 2.5));
+    const borderLat = westernDmzLat + progress * (easternDmzLat - westernDmzLat);
+    return lat >= borderLat ? 'KP' : 'KR';
+  }
   if (codes.has('JP') && codes.has('KR')) {
     if (lat <= 34.85 && lon >= 129.20) return 'JP';
     return 'KR';
@@ -203,6 +251,14 @@ function resolveKnownBBoxOverlap(lat: number, lon: number, candidates: CountryBB
   }
 
   return null;
+}
+
+function climateSeverityScore(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  const normalized = String(value || '').toLowerCase();
+  if (normalized.includes('extreme')) return 5;
+  if (normalized.includes('moderate')) return 8 / 3;
+  return 0;
 }
 
 // Exported so scripts/seed-military-cii.mjs's re-embedded copy can be cross-checked
@@ -643,7 +699,7 @@ export function computeCIIScores(
   for (const a of aux.climate) {
     const zone = a.zone || a.region || '';
     const countries = ZONE_COUNTRY_MAP[zone] || [];
-    const severity = safeNum(a.severity ?? a.score);
+    const severity = climateSeverityScore(a.severity ?? a.score);
     for (const code of countries) {
       if (data[code]) data[code].climateSeverity = Math.max(data[code].climateSeverity, severity);
     }

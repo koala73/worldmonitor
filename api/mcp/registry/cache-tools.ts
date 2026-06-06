@@ -242,13 +242,13 @@ export const CACHE_TOOLS: ToolDef[] = [
       'conflict:ucdp-events:v1',
       'conflict:iran-events:v1',
       'unrest:events:v1',
-      'risk:scores:sebuf:stale:v5',
+      'risk:scores:sebuf:stale:v6',
     ],
     _seedMetaKey: 'seed-meta:conflict:ucdp-events',
     _maxStaleMin: 30,
     // NOTE: `GET /api/intelligence/v1/get-risk-scores` is NOT covered here.
     // The audit-time hint matched on 3 keys (conflict:ucdp-events:v1,
-    // conflict:iran-events:v1, risk:scores:sebuf:stale:v5) but the handler at
+    // conflict:iran-events:v1, risk:scores:sebuf:stale:v6) but the handler at
     // server/worldmonitor/intelligence/v1/get-risk-scores.ts:242-256 reads 12
     // cross-domain keys (infra outages, climate anomalies, cyber threats,
     // wildfires, GPS jamming, OREF history, security advisories, displacement,
