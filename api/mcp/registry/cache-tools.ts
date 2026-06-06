@@ -1,4 +1,5 @@
 import ISO2_TO_ISO3 from '../../../shared/iso2-to-iso3.js';
+import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 import { DEFAULT_LIST_LIMIT } from '../constants';
 import {
   argBool,
@@ -242,7 +243,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       'conflict:ucdp-events:v1',
       'conflict:iran-events:v1',
       'unrest:events:v1',
-      'risk:scores:sebuf:stale:v7',
+      CII_RISK_SCORE_CACHE_KEYS.stale,
     ],
     _seedMetaKey: 'seed-meta:conflict:ucdp-events',
     _maxStaleMin: 30,

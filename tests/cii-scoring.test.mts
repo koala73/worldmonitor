@@ -1775,30 +1775,50 @@ describe('CII scoring', () => {
     const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
     const expectedLiveKey = `risk:scores:sebuf:${CII_FORMULA_VERSION}`;
     const expectedStaleKey = `risk:scores:sebuf:stale:${CII_FORMULA_VERSION}`;
-    const keyPattern = /risk:scores:sebuf(?::stale)?:v\d+/g;
-    const consumers: Array<{ relPath: string; expectedKeys: string[] }> = [
-      { relPath: 'api/bootstrap.js', expectedKeys: [expectedStaleKey] },
-      { relPath: 'api/health.js', expectedKeys: [expectedStaleKey, expectedLiveKey] },
-      { relPath: 'api/mcp/registry/cache-tools.ts', expectedKeys: [expectedStaleKey] },
-      { relPath: 'server/_shared/cache-keys.ts', expectedKeys: [expectedStaleKey] },
-      { relPath: 'server/worldmonitor/intelligence/v1/brief-story-context.ts', expectedKeys: [expectedStaleKey] },
-      { relPath: 'server/worldmonitor/intelligence/v1/chat-analyst-context.ts', expectedKeys: [expectedStaleKey] },
-      { relPath: 'server/worldmonitor/intelligence/v1/get-country-risk.ts', expectedKeys: [expectedStaleKey] },
-      { relPath: 'scripts/seed-cross-source-signals.mjs', expectedKeys: [expectedStaleKey] },
-      { relPath: 'scripts/seed-forecasts.mjs', expectedKeys: [expectedStaleKey] },
-      { relPath: 'scripts/regional-snapshot/balance-vector.mjs', expectedKeys: [expectedStaleKey] },
-      { relPath: 'scripts/regional-snapshot/evidence-collector.mjs', expectedKeys: [expectedStaleKey] },
-      { relPath: 'scripts/regional-snapshot/freshness.mjs', expectedKeys: [expectedStaleKey] },
-      { relPath: 'scripts/regional-snapshot/trigger-evaluator.mjs', expectedKeys: [expectedStaleKey] },
-      { relPath: 'tests/mcp-bootstrap-parity.test.mjs', expectedKeys: [expectedLiveKey, expectedStaleKey] },
-      { relPath: 'tests/regional-snapshot.test.mjs', expectedKeys: [expectedStaleKey] },
+    const expectedTrendPrefix = `risk:scores:sebuf:trend-history:${CII_FORMULA_VERSION}`;
+    const keyPattern = /risk:scores:sebuf(?::(?:stale|trend-history))?:v\d+/g;
+    const consumers: Array<{ relPath: string; expectedKeys?: string[]; expectedRefs?: string[] }> = [
+      {
+        relPath: 'api/_cii-risk-cache-keys.js',
+        expectedKeys: [expectedLiveKey, expectedStaleKey, expectedTrendPrefix],
+      },
+      {
+        relPath: 'api/_cii-risk-cache-keys.d.ts',
+        expectedKeys: [expectedLiveKey, expectedStaleKey, expectedTrendPrefix],
+      },
+      {
+        relPath: 'scripts/_cii-risk-cache-keys.mjs',
+        expectedKeys: [expectedLiveKey, expectedStaleKey, expectedTrendPrefix],
+      },
+      {
+        relPath: 'server/_shared/cache-keys.ts',
+        expectedKeys: [expectedLiveKey, expectedStaleKey, expectedTrendPrefix],
+        expectedRefs: ['riskScores:       CII_RISK_SCORE_CACHE_KEYS.stale'],
+      },
+      { relPath: 'api/bootstrap.js', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale'] },
+      { relPath: 'api/health.js', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale', 'CII_RISK_SCORE_CACHE_KEYS.live'] },
+      { relPath: 'api/mcp/registry/cache-tools.ts', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale'] },
+      { relPath: 'server/worldmonitor/intelligence/v1/brief-story-context.ts', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale'] },
+      { relPath: 'server/worldmonitor/intelligence/v1/chat-analyst-context.ts', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale'] },
+      { relPath: 'server/worldmonitor/intelligence/v1/get-country-risk.ts', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale'] },
+      { relPath: 'scripts/seed-cross-source-signals.mjs', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale'] },
+      { relPath: 'scripts/seed-forecasts.mjs', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale'] },
+      { relPath: 'scripts/regional-snapshot/balance-vector.mjs', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale'] },
+      { relPath: 'scripts/regional-snapshot/evidence-collector.mjs', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale'] },
+      { relPath: 'scripts/regional-snapshot/freshness.mjs', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale'] },
+      { relPath: 'scripts/regional-snapshot/trigger-evaluator.mjs', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale'] },
+      { relPath: 'tests/mcp-bootstrap-parity.test.mjs', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.live', 'CII_RISK_SCORE_CACHE_KEYS.stale'] },
+      { relPath: 'tests/regional-snapshot.test.mjs', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale'] },
     ];
 
     const violations: string[] = [];
-    for (const { relPath, expectedKeys } of consumers) {
+    for (const { relPath, expectedKeys = [], expectedRefs = [] } of consumers) {
       const source = readFileSync(resolve(root, relPath), 'utf8');
       for (const expectedKey of expectedKeys) {
         if (!source.includes(expectedKey)) violations.push(`${relPath}: missing ${expectedKey}`);
+      }
+      for (const expectedRef of expectedRefs) {
+        if (!source.includes(expectedRef)) violations.push(`${relPath}: missing ${expectedRef}`);
       }
       for (const match of source.matchAll(keyPattern)) {
         if (!expectedKeys.includes(match[0])) violations.push(`${relPath}: stale ${match[0]}`);

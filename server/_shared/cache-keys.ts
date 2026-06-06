@@ -56,6 +56,16 @@ export const DIGEST_ACCUMULATOR_TTL = 172800; // 48h — lookback window for dig
 export const SIMULATION_OUTCOME_LATEST_KEY = 'forecast:simulation-outcome:latest';
 export const SIMULATION_PACKAGE_LATEST_KEY = 'forecast:simulation-package:latest';
 export const REGULATORY_ACTIONS_KEY = 'regulatory:actions:v1';
+
+/**
+ * CII risk-score payload key family. Keep runtime-local mirrors in
+ * api/_cii-risk-cache-keys.js and scripts/_cii-risk-cache-keys.mjs aligned.
+ */
+export const CII_RISK_SCORE_CACHE_KEYS = {
+  live: 'risk:scores:sebuf:v7',
+  stale: 'risk:scores:sebuf:stale:v7',
+  trendHistoryPrefix: 'risk:scores:sebuf:trend-history:v7',
+} as const;
 export const CLIMATE_ANOMALIES_KEY = 'climate:anomalies:v2';
 export const CLIMATE_AIR_QUALITY_KEY = 'climate:air-quality:v1';
 export const CLIMATE_ZONE_NORMALS_KEY = 'climate:zone-normals:v1';
@@ -174,7 +184,7 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   renewableEnergy:  'economic:worldbank-renewable:v1',
   positiveGeoEvents: 'positive_events:geo-bootstrap:v1',
   theaterPosture:   'theater_posture:sebuf:stale:v1',
-  riskScores:       'risk:scores:sebuf:stale:v7',
+  riskScores:       CII_RISK_SCORE_CACHE_KEYS.stale,
   naturalEvents:    'natural:events:v1',
   flightDelays:     'aviation:delays-bootstrap:v2',
   insights:         'news:insights:v1',

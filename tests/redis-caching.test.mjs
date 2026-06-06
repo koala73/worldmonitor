@@ -803,6 +803,7 @@ describe('country risk freshness behavior', { concurrency: 1 }, () => {
     return importPatchedTsModule('server/worldmonitor/intelligence/v1/get-country-risk.ts', {
       './_shared': resolve(root, 'server/worldmonitor/intelligence/v1/_shared.ts'),
       '../../../_shared/redis': resolve(root, 'server/_shared/redis.ts'),
+      '../../../_shared/cache-keys': resolve(root, 'server/_shared/cache-keys.ts'),
     });
   }
 

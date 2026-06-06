@@ -6,6 +6,8 @@
 // The snapshot writer marks inputs as stale or missing based on this table
 // and feeds those flags into SnapshotMeta.snapshot_confidence.
 
+import { CII_RISK_SCORE_CACHE_KEYS } from '../_cii-risk-cache-keys.mjs';
+
 /**
  * @typedef {object} SourceFreshnessSpec
  * @property {string} key      - Redis key (literal, no template variables)
@@ -28,7 +30,7 @@
  * @type {SourceFreshnessSpec[]}
  */
 export const FRESHNESS_REGISTRY = [
-  { key: 'risk:scores:sebuf:stale:v7',          maxAgeMin: 30,    feedsAxes: ['domestic_fragility', 'coercive_pressure'], metaKey: 'seed-meta:intelligence:risk-scores' },
+  { key: CII_RISK_SCORE_CACHE_KEYS.stale,        maxAgeMin: 30,    feedsAxes: ['domestic_fragility', 'coercive_pressure'], metaKey: 'seed-meta:intelligence:risk-scores' },
   { key: 'forecast:predictions:v2',              maxAgeMin: 180,   feedsAxes: ['scenarios', 'actors'] },
   { key: 'supply_chain:chokepoints:v4',          maxAgeMin: 30,    feedsAxes: ['maritime_access', 'corridors'] },
   { key: 'supply_chain:transit-summaries:v1',    maxAgeMin: 30,    feedsAxes: ['maritime_access'], metaKey: 'seed-meta:supply_chain:transit-summaries' },

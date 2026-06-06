@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 
 import { __testing__ as healthTesting } from '../api/health.js';
 import { __testing__ as mcpTesting } from '../api/mcp.ts';
+import { CII_RISK_SCORE_CACHE_KEYS } from '../api/_cii-risk-cache-keys.js';
 
 const { BOOTSTRAP_KEYS, STANDALONE_KEYS } = healthTesting;
 const { TOOL_REGISTRY } = mcpTesting;
@@ -55,8 +56,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'cascade-mirror: live counterpart of theater_posture:sebuf:stale:v1 (covered by get_military_posture). CASCADE_GROUPS theaterPosture entry.'],
   ['theater-posture:sebuf:backup:v1',
     'cascade-mirror: backup counterpart of theater_posture:sebuf:stale:v1 (covered by get_military_posture). CASCADE_GROUPS theaterPosture entry.'],
-  ['risk:scores:sebuf:v7',
-    'cascade-mirror: live counterpart of risk:scores:sebuf:stale:v7 (covered by get_conflict_events).'],
+  [CII_RISK_SCORE_CACHE_KEYS.live,
+    `cascade-mirror: live counterpart of ${CII_RISK_SCORE_CACHE_KEYS.stale} (covered by get_conflict_events).`],
   ['military:flights:v1',
     'cascade-mirror: live counterpart of military:flights:stale:v1 — deferred to a future expanded military tool (no current tool exposes either variant).'],
   ['military:flights:stale:v1',

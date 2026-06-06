@@ -11,6 +11,7 @@ import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-
 import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
 import { loadTickerSet } from './_ticker-validation.mjs';
 import { computeEmaWindows, computeRisk24h } from './_ema-threat-engine.mjs';
+import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.mjs';
 // Queue / outcome / runId constants live in the shared shim so the
 // HTTP-trigger handler (server/_shared/simulation-queue.ts) and this
 // seeder agree on the Redis schema. See #3734 + docs/plans/2026-05-18-
@@ -679,7 +680,7 @@ async function readInputKeys() {
   const { url, token } = getRedisCredentials();
   const fredKeys = FRED_MARKET_SERIES.map((seriesId) => FRED_MARKET_INPUT_KEYS[seriesId]);
   const keys = [
-    'risk:scores:sebuf:stale:v7',
+    CII_RISK_SCORE_CACHE_KEYS.stale,
     'temporal:anomalies:v1',
     'theater_posture:sebuf:stale:v1',
     'military:forecast-inputs:stale:v1',
@@ -764,7 +765,7 @@ async function readInputKeys() {
   );
 
   return {
-    ciiScores: parsedByKey['risk:scores:sebuf:stale:v7'],
+    ciiScores: parsedByKey[CII_RISK_SCORE_CACHE_KEYS.stale],
     temporalAnomalies: parsedByKey['temporal:anomalies:v1'],
     theaterPosture: parsedByKey['theater_posture:sebuf:stale:v1'],
     militaryForecastInputs: parsedByKey['military:forecast-inputs:stale:v1'],

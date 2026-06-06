@@ -5,6 +5,7 @@
 
 import { clip, num, weightedAverage, percentile } from './_helpers.mjs';
 import { sanitizeEvidenceString } from './_sanitize.mjs';
+import { CII_RISK_SCORE_CACHE_KEYS } from '../_cii-risk-cache-keys.mjs';
 // Use scripts/shared mirror (not repo-root shared/): Railway service has
 // rootDirectory=scripts so ../../shared/ escapes the deploy root. See #2954.
 import {
@@ -128,7 +129,7 @@ function computeCoercivePressure(region, sources, drivers) {
 }
 
 function computeDomesticFragility(countries, sources, drivers) {
-  const cii = sources['risk:scores:sebuf:stale:v7'];
+  const cii = sources[CII_RISK_SCORE_CACHE_KEYS.stale];
   const ciiScores = Array.isArray(cii?.ciiScores) ? cii.ciiScores : [];
   const inRegion = ciiScores.filter((s) => countries.has(String(s?.region ?? '')));
   if (!inRegion.length) return 0;

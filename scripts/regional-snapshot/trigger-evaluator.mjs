@@ -4,6 +4,7 @@
 
 import { num } from './_helpers.mjs';
 import { TRIGGER_DEFS } from './triggers.config.mjs';
+import { CII_RISK_SCORE_CACHE_KEYS } from '../_cii-risk-cache-keys.mjs';
 
 /**
  * @param {string} regionId
@@ -87,7 +88,7 @@ function resolveMetric(metric, sources, balance, regionId) {
   if (metric.startsWith('cii:')) {
     const parts = metric.split(':');
     const [, iso] = parts;
-    const cii = sources['risk:scores:sebuf:stale:v7']?.ciiScores;
+    const cii = sources[CII_RISK_SCORE_CACHE_KEYS.stale]?.ciiScores;
     if (!Array.isArray(cii)) return null;
     const entry = cii.find((s) => s?.region === iso);
     return entry ? num(entry.combinedScore) : null;

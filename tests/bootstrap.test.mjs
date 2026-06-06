@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { CII_RISK_SCORE_CACHE_KEYS } from '../api/_cii-risk-cache-keys.js';
+import { __testing__ as healthTesting } from '../api/health.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -14,6 +16,14 @@ describe('Bootstrap cache key registry', () => {
 
   const cacheKeysBlock = cacheKeysSrc.match(/BOOTSTRAP_CACHE_KEYS[^{]*\{([^}]+)\}/)?.[1] ?? '';
 
+  const resolveCiiCacheKeyRef = (prop) => {
+    assert.ok(
+      Object.hasOwn(CII_RISK_SCORE_CACHE_KEYS, prop),
+      `Unknown CII_RISK_SCORE_CACHE_KEYS property '${prop}'`,
+    );
+    return CII_RISK_SCORE_CACHE_KEYS[prop];
+  };
+
   it('exports BOOTSTRAP_CACHE_KEYS with at least 10 entries', () => {
     const matches = cacheKeysBlock.match(/^\s+\w+:\s+'[^']+'/gm);
     assert.ok(matches && matches.length >= 10, `Expected ≥10 keys, found ${matches?.length ?? 0}`);
@@ -23,10 +33,12 @@ describe('Bootstrap cache key registry', () => {
     const extractKeys = (src) => {
       const block = src.match(/BOOTSTRAP_CACHE_KEYS[^=]*=\s*\{([^}]+)\}/);
       if (!block) return {};
-      const re = /(\w+):\s+'([a-z0-9_-]+(?::[a-z0-9_-]+)+)'/g;
+      const re = /(\w+):\s*(?:'([a-z0-9_-]+(?::[a-z0-9_-]+)+)'|CII_RISK_SCORE_CACHE_KEYS\.(\w+))/g;
       const keys = {};
       let m;
-      while ((m = re.exec(block[1])) !== null) keys[m[1]] = m[2];
+      while ((m = re.exec(block[1])) !== null) {
+        keys[m[1]] = m[2] ?? resolveCiiCacheKeyRef(m[3]);
+      }
       return keys;
     };
     const canonical = extractKeys(cacheKeysSrc);
@@ -41,11 +53,11 @@ describe('Bootstrap cache key registry', () => {
   });
 
   it('every cache key matches a handler cache key pattern', () => {
-    const keyRe = /:\s+'([^']+)'/g;
+    const keyRe = /:\s*(?:'([^']+)'|CII_RISK_SCORE_CACHE_KEYS\.(\w+))/g;
     let m;
     const keys = [];
     while ((m = keyRe.exec(cacheKeysBlock)) !== null) {
-      keys.push(m[1]);
+      keys.push(m[1] ?? resolveCiiCacheKeyRef(m[2]));
     }
     for (const key of keys) {
       assert.match(key, /^[a-z0-9_-]+(?::[a-z0-9_-]+)+(?::v\d+)?(?::[a-z0-9_-]+)*$/, `Cache key "${key}" does not match expected pattern`);
@@ -53,11 +65,11 @@ describe('Bootstrap cache key registry', () => {
   });
 
   it('has no duplicate cache keys', () => {
-    const keyRe = /:\s+'([^']+)'/g;
+    const keyRe = /:\s*(?:'([^']+)'|CII_RISK_SCORE_CACHE_KEYS\.(\w+))/g;
     let m;
     const keys = [];
     while ((m = keyRe.exec(cacheKeysBlock)) !== null) {
-      keys.push(m[1]);
+      keys.push(m[1] ?? resolveCiiCacheKeyRef(m[2]));
     }
     const unique = new Set(keys);
     assert.equal(unique.size, keys.length, `Found duplicate cache keys: ${keys.filter((k, i) => keys.indexOf(k) !== i)}`);
@@ -240,7 +252,7 @@ describe('Bootstrap key hydration coverage', () => {
   it('every bootstrap key has a getHydratedData consumer in src/', () => {
     const bootstrapSrc = readFileSync(join(root, 'api', 'bootstrap.js'), 'utf-8');
     const block = bootstrapSrc.match(/BOOTSTRAP_CACHE_KEYS\s*=\s*\{([^}]+)\}/);
-    const keyRe = /(\w+):\s+'[a-z0-9_-]+(?::[a-z0-9_-]+)+'/g;
+    const keyRe = /(\w+):\s*(?:'[a-z0-9_-]+(?::[a-z0-9_-]+)+'|CII_RISK_SCORE_CACHE_KEYS\.\w+)/g;
     const keys = [];
     let m;
     while ((m = keyRe.exec(block[1])) !== null) keys.push(m[1]);
@@ -285,15 +297,8 @@ describe('Bootstrap key hydration coverage', () => {
 
 describe('Health key registries', () => {
   it('does not duplicate Redis keys across BOOTSTRAP_KEYS and STANDALONE_KEYS', () => {
-    const healthSrc = readFileSync(join(root, 'api', 'health.js'), 'utf-8');
-    const extractValues = (name) => {
-      const block = healthSrc.match(new RegExp(`${name}\\s*=\\s*\\{([\\s\\S]*?)\\n\\};`));
-      if (!block) return [];
-      return [...block[1].matchAll(/:\s+'([^']+)'/g)].map((m) => m[1]);
-    };
-
-    const bootstrap = new Set(extractValues('BOOTSTRAP_KEYS'));
-    const standalone = new Set(extractValues('STANDALONE_KEYS'));
+    const bootstrap = new Set(Object.values(healthTesting.BOOTSTRAP_KEYS));
+    const standalone = new Set(Object.values(healthTesting.STANDALONE_KEYS));
     const overlap = [...bootstrap].filter((key) => standalone.has(key));
 
     assert.deepEqual(overlap, [], `health.js duplicates keys across registries: ${overlap.join(', ')}`);
@@ -314,7 +319,7 @@ describe('Bootstrap tier definitions', () => {
   function extractBootstrapKeys(src) {
     const block = src.match(/BOOTSTRAP_CACHE_KEYS\s*=\s*\{([^}]+)\}/);
     if (!block) return new Set();
-    return new Set([...block[1].matchAll(/(\w+):\s+'/g)].map(x => x[1]));
+    return new Set([...block[1].matchAll(/(\w+):\s*(?:'|CII_RISK_SCORE_CACHE_KEYS\.)/g)].map(x => x[1]));
   }
 
   function extractTierKeys(src) {
