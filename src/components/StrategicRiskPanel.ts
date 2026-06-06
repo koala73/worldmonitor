@@ -401,12 +401,12 @@ export class StrategicRiskPanel extends Panel {
   private renderCachedRiskStateBanner(): string {
     if (!this.overview || (!this.overview.degraded && !this.overview.stale)) return '';
     const labels = [
-      this.overview.degraded ? 'degraded' : '',
-      this.overview.stale ? 'stale' : '',
+      this.overview.degraded ? t('components.strategicRisk.sourceStates.degraded') : '',
+      this.overview.stale ? t('components.strategicRisk.sourceStates.stale') : '',
     ].filter(Boolean);
     return `<div class="risk-status-banner risk-status-cached">
       <span class="risk-status-icon">!</span>
-      <span class="risk-status-text">Cached CII ${labels.join(' · ')}</span>
+      <span class="risk-status-text">${t('components.strategicRisk.cachedCiiStatus', { states: labels.join(' · ') })}</span>
     </div>`;
   }
 

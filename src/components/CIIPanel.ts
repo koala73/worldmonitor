@@ -223,8 +223,8 @@ export class CIIPanel extends Panel {
 
   private formatCachedSourceDetail(cached: Pick<CachedRiskScores, 'degraded' | 'stale'>): string {
     const flags: string[] = [];
-    if (cached.degraded) flags.push('degraded');
-    if (cached.stale) flags.push('stale');
+    if (cached.degraded) flags.push(t('components.cii.sourceStates.degraded'));
+    if (cached.stale) flags.push(t('components.cii.sourceStates.stale'));
     return flags.join(' · ');
   }
 

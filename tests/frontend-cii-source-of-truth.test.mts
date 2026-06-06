@@ -217,6 +217,11 @@ describe('frontend CII source of truth', () => {
     assert.match(src, /stale: cached\.stale/);
     assert.match(src, /private renderCachedRiskStateBanner\(\): string/);
     assert.match(src, /risk-status-cached/);
+    const cachedBannerBody = extractMethod(src, 'private renderCachedRiskStateBanner(): string');
+    assert.match(cachedBannerBody, /t\('components\.strategicRisk\.sourceStates\.degraded'\)/);
+    assert.match(cachedBannerBody, /t\('components\.strategicRisk\.sourceStates\.stale'\)/);
+    assert.match(cachedBannerBody, /t\('components\.strategicRisk\.cachedCiiStatus', \{ states: labels\.join\(' · '\) \}\)/);
+    assert.doesNotMatch(cachedBannerBody, /'degraded'|'stale'|Cached CII/);
     assert.match(src, /unstableCountries: ciiScores\.filter\(s => s\.score >= 50\)\.slice\(0, 5\)/);
     assert.doesNotMatch(src, /hasIntelligenceSignalsLoaded/);
     assertBefore(
@@ -226,6 +231,29 @@ describe('frontend CII source of truth', () => {
     );
     assert.match(refreshBody, /this\.applyCachedRiskOverview\(cachedRiskScores, localOverview\);[\s\S]*this\.usedCachedScores = true;/);
     assert.match(refreshBody, /if \(this\.usedCachedScores\) \{[\s\S]*this\.setDataBadge\('cached', badgeDetail\);[\s\S]*\} else if \(!this\.freshnessSummary \|\| this\.freshnessSummary\.activeSources === 0\) \{[\s\S]*this\.setDataBadge\('unavailable'\);/);
+  });
+
+  it('localizes cached CII degraded/stale state labels', () => {
+    const ciiSrc = readSrc('src/components/CIIPanel.ts');
+    const riskSrc = readSrc('src/components/StrategicRiskPanel.ts');
+    const enLocaleSrc = readSrc('src/locales/en.json');
+    const ciiDetailBody = extractMethod(
+      ciiSrc,
+      "private formatCachedSourceDetail(cached: Pick<CachedRiskScores, 'degraded' | 'stale'>): string",
+    );
+    const cachedBannerBody = extractMethod(riskSrc, 'private renderCachedRiskStateBanner(): string');
+
+    assert.match(ciiDetailBody, /t\('components\.cii\.sourceStates\.degraded'\)/);
+    assert.match(ciiDetailBody, /t\('components\.cii\.sourceStates\.stale'\)/);
+    assert.doesNotMatch(ciiDetailBody, /flags\.push\('degraded'\)|flags\.push\('stale'\)/);
+
+    assert.match(cachedBannerBody, /t\('components\.strategicRisk\.sourceStates\.degraded'\)/);
+    assert.match(cachedBannerBody, /t\('components\.strategicRisk\.sourceStates\.stale'\)/);
+    assert.match(cachedBannerBody, /t\('components\.strategicRisk\.cachedCiiStatus', \{ states: labels\.join\(' · '\) \}\)/);
+    assert.doesNotMatch(cachedBannerBody, /'degraded'|'stale'|Cached CII/);
+
+    assert.match(enLocaleSrc, /"sourceStates": \{\n        "degraded": "degraded",\n        "stale": "stale"\n      \}/);
+    assert.match(enLocaleSrc, /"cachedCiiStatus": "Cached CII \{\{states\}\}"/);
   });
 
   it('story data consumes cached/server CII before recomputing local scores', async () => {
