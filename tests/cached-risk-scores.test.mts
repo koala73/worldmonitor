@@ -145,10 +145,14 @@ async function loadAdapter(options: { storageValue?: string | null } = {}) {
         eventMultiplier: number;
       }>;
       strategicRisks: Array<{ region: string; level: string; score: number; factors: string[]; trend: string }>;
+      degraded?: boolean;
+      stale?: boolean;
     }) => {
       cii: Array<{ code: string; change24h: number; lastUpdated: string | null }>;
       strategicRisk: { lastUpdated: string | null };
       computedAt: string | null;
+      degraded: boolean;
+      stale: boolean;
     };
     toCountryScore: (cached: { lastUpdated: string | null; [k: string]: unknown }) => {
       lastUpdated: Date | null;
@@ -205,7 +209,10 @@ function makeCachedCii(overrides: Record<string, unknown> = {}): Record<string, 
   };
 }
 
-function makeStoredScores(cii: Array<Record<string, unknown>>): string {
+function makeStoredScores(
+  cii: Array<Record<string, unknown>>,
+  dataOverrides: Record<string, unknown> = {},
+): string {
   return JSON.stringify({
     savedAt: Date.now(),
     data: {
@@ -214,6 +221,9 @@ function makeStoredScores(cii: Array<Record<string, unknown>>): string {
       protestCount: 0,
       computedAt: null,
       cached: true,
+      degraded: false,
+      stale: false,
+      ...dataOverrides,
     },
   });
 }
@@ -273,6 +283,28 @@ describe('cached-risk-scores — functional adapter behavior', () => {
     assert.equal(out.computedAt, new Date(t2).toISOString());
   });
 
+  it('preserves degraded and stale proto flags on the cached model', async () => {
+    const { toRiskScores } = await loadAdapter();
+    const out = toRiskScores({
+      ciiScores: [makeCii('US', 1_700_000_000_000)],
+      strategicRisks: [],
+      degraded: true,
+      stale: true,
+    });
+    assert.equal(out.degraded, true);
+    assert.equal(out.stale, true);
+  });
+
+  it('defaults absent legacy degraded and stale flags to false', async () => {
+    const { toRiskScores } = await loadAdapter();
+    const out = toRiskScores({
+      ciiScores: [makeCii('US', 1_700_000_000_000)],
+      strategicRisks: [],
+    });
+    assert.equal(out.degraded, false);
+    assert.equal(out.stale, false);
+  });
+
   it('strategicRisk.lastUpdated and aggregate.computedAt are null when no CII carries a timestamp', async () => {
     const { toRiskScores } = await loadAdapter();
     const out = toRiskScores({
@@ -323,6 +355,18 @@ describe('cached-risk-scores — functional adapter behavior', () => {
     const row = cached.cii[0];
     assert.ok(row);
     assert.equal(row.name, 'United States');
+    assert.deepEqual(removedKeys, []);
+  });
+
+  it('does not coerce non-boolean localStorage degraded and stale flags to true', async () => {
+    const { getCachedScores, removedKeys } = await loadAdapter({
+      storageValue: makeStoredScores([makeCachedCii()], { degraded: 'false', stale: 'false' }),
+    });
+
+    const cached = getCachedScores();
+    assert.ok(cached);
+    assert.equal(cached.degraded, false);
+    assert.equal(cached.stale, false);
     assert.deepEqual(removedKeys, []);
   });
 

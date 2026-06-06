@@ -83,15 +83,6 @@ const LEARNING_DURATION_MS = 15 * 60 * 1000;
 let learningStartTime: number | null = null;
 let isLearningComplete = false;
 let hasCachedScoresAvailable = false;
-let intelligenceSignalsLoaded = false;
-
-export function setIntelligenceSignalsLoaded(): void {
-  intelligenceSignalsLoaded = true;
-}
-
-export function hasIntelligenceSignalsLoaded(): boolean {
-  return intelligenceSignalsLoaded;
-}
 
 export function hasAnyIntelligenceData(): boolean {
   for (const data of countryDataMap.values()) {
@@ -252,7 +243,6 @@ export function clearCountryData(): void {
   countryDataMap.clear();
   hotspotActivityMap.clear();
   newsEventIndexMap.clear();
-  intelligenceSignalsLoaded = false;
 }
 
 export function getCountryData(code: string): CountryData | undefined {

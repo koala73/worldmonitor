@@ -96,6 +96,8 @@ export interface StrategicRiskOverview {
   topConvergenceZones: { cellId: string; lat: number; lon: number; score: number }[];
   unstableCountries: CountryScore[];
   timestamp: Date | null;
+  degraded: boolean;
+  stale: boolean;
 }
 
 const alerts: UnifiedAlert[] = [];
@@ -725,6 +727,8 @@ export function calculateStrategicRiskOverview(
       .map(a => ({ cellId: a.cellId, lat: a.lat, lon: a.lon, score: a.score })),
     unstableCountries: ciiScores.filter(s => s.score >= 50).slice(0, 5),
     timestamp: new Date(),
+    degraded: false,
+    stale: false,
   };
 }
 

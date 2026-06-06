@@ -3575,22 +3575,6 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   color: var(--threat-medium);
 }
 
-.country-intel-share-btn {
-  background: none;
-  border: 1px solid #ff444440;
-  color: var(--semantic-critical);
-  font-size: 16px;
-  cursor: pointer;
-  padding: 2px 8px;
-  border-radius: 4px;
-  margin-left: auto;
-  transition: background 0.2s;
-}
-
-.country-intel-share-btn:hover {
-  background: rgba(255, 68, 68, 0.15);
-}
-
 .category-tag {
   font-size: 8px;
   padding: 1px 5px;
@@ -13844,6 +13828,16 @@ a.prediction-link:hover {
   color: var(--semantic-elevated);
 }
 
+.risk-status-cached {
+  background: color-mix(in srgb, var(--semantic-elevated) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--semantic-elevated) 28%, transparent);
+}
+
+.risk-status-cached .risk-status-icon,
+.risk-status-cached .risk-status-text {
+  color: var(--semantic-elevated);
+}
+
 .risk-status-learning .learning-progress-mini {
   width: 40px;
   height: 2px;
@@ -18488,161 +18482,6 @@ body.has-breaking-alert .panels-grid {
   color: var(--accent);
 }
 
-/* ── Country Intel Modal ── */
-.country-intel-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 10000;
-  background: var(--bg);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s ease;
-}
-
-.country-intel-overlay.active {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.country-intel-modal {
-  background: var(--surface);
-  border: 1px solid var(--overlay-medium);
-  border-radius: 12px;
-  width: 480px;
-  max-width: 92vw;
-  max-height: 80vh;
-  overflow-y: auto;
-  box-shadow: 0 20px 60px var(--shadow-color);
-  transform: translateY(20px);
-  transition: transform 0.2s ease;
-}
-
-.country-intel-overlay.active .country-intel-modal {
-  transform: translateY(0);
-}
-
-.country-intel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--overlay-medium);
-}
-
-.country-intel-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--accent);
-}
-
-.country-flag {
-  font-size: 24px;
-}
-
-.country-intel-close {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 24px;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 6px;
-  transition: all 0.15s;
-}
-
-.country-intel-close:hover {
-  background: var(--overlay-medium);
-  color: var(--accent);
-}
-
-.country-intel-content {
-  padding: 16px 20px;
-}
-
-/* CII section */
-.cii-section {
-  margin-bottom: 16px;
-}
-
-.cii-label {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  color: var(--accent);
-  margin-bottom: 6px;
-}
-
-.cii-badge {
-  font-size: 10px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 4px;
-  letter-spacing: 0.5px;
-}
-
-.cii-score-bar {
-  flex: 1;
-  height: 6px;
-  background: var(--overlay-medium);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.cii-score-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.5s ease;
-}
-
-.cii-score-value {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--accent);
-  min-width: 48px;
-  text-align: right;
-}
-
-.cii-components {
-  display: flex;
-  gap: 12px;
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-top: 6px;
-}
-
-.cii-trend {
-  margin-left: auto;
-  text-transform: capitalize;
-}
-
-.cii-trend.rising {
-  color: var(--semantic-high);
-}
-
-.cii-trend.falling {
-  color: var(--semantic-normal);
-}
-
-.cii-trend.stable {
-  color: var(--text-muted);
-}
-
-/* Signal chips */
-.active-signals {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 16px;
-}
-
 .signal-chip {
   font-size: 11px;
   padding: 4px 10px;
@@ -18688,11 +18527,6 @@ body.has-breaking-alert .panels-grid {
   color: var(--semantic-critical);
 }
 
-/* Intel brief */
-.intel-brief-section {
-  min-height: 100px;
-}
-
 .intel-brief-loading {
   padding: 8px 0;
 }
@@ -18726,21 +18560,6 @@ body.has-breaking-alert .panels-grid {
   100% {
     background-position: -200% 0;
   }
-}
-
-.country-markets-section {
-  padding: 8px 0;
-  border-bottom: 1px solid var(--overlay-light);
-  margin-bottom: 8px;
-}
-
-.markets-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-  margin-bottom: 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
 .market-item {
@@ -18788,31 +18607,6 @@ body.has-breaking-alert .panels-grid {
   font-size: 10px;
   color: var(--text-faint);
   margin-top: 1px;
-}
-
-.intel-brief {
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--accent);
-}
-
-.intel-brief p {
-  margin: 0 0 12px;
-}
-
-.intel-brief strong {
-  color: var(--accent);
-}
-
-.intel-footer {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--overlay-light);
-  font-size: 11px;
-  color: var(--text-faint);
 }
 
 .intel-cached {
@@ -23688,14 +23482,6 @@ body.map-width-resizing {
   display: inline-flex;
   align-items: center;
   align-self: center;
-}
-
-/* CountryIntelModal — host inserted between `.country-name` and the level
- * badge inside `.country-intel-title` (already a flex container with
- * `align-items: center` and `gap: 10px`). Parent's gap handles spacing. */
-.country-intel-follow-host {
-  display: inline-flex;
-  align-items: center;
 }
 
 /* ---------------------------------------------------------------------------

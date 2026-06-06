@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { transformSync } from 'esbuild';
 
@@ -161,21 +161,41 @@ function makeScore(score: number) {
 describe('frontend CII source of truth', () => {
   it('keeps cached backend CII authoritative until the explicit force-local path', () => {
     const src = readSrc('src/app/data-loader.ts');
+    const eventHandlersSrc = readSrc('src/app/event-handlers.ts');
+    const appSrc = readSrc('src/App.ts');
+    const ciiPanelSrc = readSrc('src/components/CIIPanel.ts');
     const refreshBody = extractMethod(src, 'private refreshCiiAndBrief(forceLocal = false): void');
+    const ciiRefreshBody = extractMethod(ciiPanelSrc, 'public async refresh(forceLocal = false): Promise<void>');
+    const eventHandlerWiringStart = appSrc.indexOf('this.eventHandlers = new EventHandlerManager');
+    const eventHandlerWiringEnd = appSrc.indexOf('// Wire cross-module callback', eventHandlerWiringStart);
+    assert.notEqual(eventHandlerWiringStart, -1, 'missing EventHandlerManager wiring');
+    assert.notEqual(eventHandlerWiringEnd, -1, 'missing EventHandlerManager wiring end marker');
+    const eventHandlerWiring = appSrc.slice(eventHandlerWiringStart, eventHandlerWiringEnd);
 
     assert.match(src, /private cachedRiskScores: CachedRiskScores \| null = null;/);
     assert.match(src, /private preferLocalCii = false;/);
     assert.match(src, /private getAuthoritativeCachedRiskScores\(forceLocal: boolean\): CachedRiskScores \| null/);
     assert.match(src, /if \(forceLocal\) \{[\s\S]*this\.preferLocalCii = true;[\s\S]*return null;[\s\S]*\}/);
-    assert.match(src, /const hasLocalCiiData = hasAnyIntelligenceData\(\);[\s\S]*if \(hasLocalCiiData\) \{[\s\S]*setIntelligenceSignalsLoaded\(\);[\s\S]*\}[\s\S]*this\.refreshCiiAndBrief\(\);/);
+    assert.match(src, /public refreshCiiAfterFocalPointsReady\(\): void \{[\s\S]*this\.refreshCiiAndBrief\(false\);[\s\S]*\}/);
     assert.doesNotMatch(src, /this\.refreshCiiAndBrief\(hasLocalCiiData\);/);
     assert.doesNotMatch(src, /this\.refreshCiiAndBrief\(true\);/);
+    assert.doesNotMatch(src, /setIntelligenceSignalsLoaded/);
 
     assert.match(refreshBody, /const cached = this\.getAuthoritativeCachedRiskScores\(forceLocal\);/);
     assert.match(refreshBody, /if \(cached\) \{[\s\S]*this\.renderCachedCiiScores\(cached\);[\s\S]*return;[\s\S]*\}/);
     assert.match(refreshBody, /const shouldUseLocalFallback = forceLocal \|\| !this\.cachedRiskScores;/);
     assert.match(refreshBody, /\(this\.ctx\.panels\['cii'\] as CIIPanel\)\?\.refresh\(shouldUseLocalFallback\);/);
     assert.match(refreshBody, /const scores = calculateCII\(\);[\s\S]*this\.applyCiiScoresToMap\(scores\);/);
+
+    assert.match(eventHandlersSrc, /refreshCiiAfterFocalPointsReady\?: \(\) => void;/);
+    assert.match(eventHandlersSrc, /this\.boundFocalPointsReadyHandler = \(\) => \{[\s\S]*this\.callbacks\.refreshCiiAfterFocalPointsReady\?\.\(\);[\s\S]*\};/);
+    assert.doesNotMatch(eventHandlersSrc, /refreshOpenCountryBrief/);
+    assert.doesNotMatch(eventHandlersSrc, /CIIPanel/);
+    assert.doesNotMatch(eventHandlersSrc, /\.refresh\(true\)/);
+    assert.doesNotMatch(eventHandlerWiring, /refreshOpenCountryBrief/);
+    assert.match(appSrc, /refreshCiiAfterFocalPointsReady: \(\) => this\.dataLoader\.refreshCiiAfterFocalPointsReady\(\)/);
+
+    assert.match(ciiRefreshBody, /if \(withData\.length === 0\) \{[\s\S]*this\.updateSourceBadge\(null\);[\s\S]*return;/);
   });
 
   it('renders Strategic Risk from cached strategic risk/CII instead of only marking the badge cached', () => {
@@ -186,11 +206,17 @@ describe('frontend CII source of truth', () => {
 
     assert.match(overviewSrc, /export interface StrategicRiskOverview[\s\S]*timestamp: Date \| null;/);
     assert.match(src, /private applyCachedRiskOverview\(cached: CachedRiskScores, localOverview: StrategicRiskOverview\): void/);
+    assert.match(overviewSrc, /degraded: boolean;/);
+    assert.match(overviewSrc, /stale: boolean;/);
     assert.match(cachedTimestampBody, /if \(!raw\) return null;/);
     assert.match(cachedTimestampBody, /Number\.isNaN\(parsed\.getTime\(\)\) \? null : parsed/);
     assert.doesNotMatch(cachedTimestampBody, /new Date\(\)/);
     assert.match(src, /private formatOverviewTimestamp\(\): string \{[\s\S]*return this\.overview\?\.timestamp \? this\.overview\.timestamp\.toLocaleTimeString\(\) : '&mdash;';[\s\S]*\}/);
     assert.match(src, /compositeScore: Math\.max\(0, Math\.min\(100, Math\.round\(cached\.strategicRisk\.score\)\)\)/);
+    assert.match(src, /degraded: cached\.degraded/);
+    assert.match(src, /stale: cached\.stale/);
+    assert.match(src, /private renderCachedRiskStateBanner\(\): string/);
+    assert.match(src, /risk-status-cached/);
     assert.match(src, /unstableCountries: ciiScores\.filter\(s => s\.score >= 50\)\.slice\(0, 5\)/);
     assert.doesNotMatch(src, /hasIntelligenceSignalsLoaded/);
     assertBefore(
@@ -316,10 +342,17 @@ describe('frontend CII source of truth', () => {
   });
 
   it('aligns CII badge and fill colors to the canonical frontend bands', () => {
-    const modalSrc = readSrc('src/components/CountryIntelModal.ts');
+    const modalPath = resolve(root, 'src/components/CountryIntelModal.ts');
     const strategicRiskSrc = readSrc('src/components/StrategicRiskPanel.ts');
+    const mainCss = readSrc('src/styles/main.css');
+    const rtlCss = readSrc('src/styles/rtl-overrides.css');
 
-    assert.match(extractMethod(modalSrc, 'private scoreBar(score: number): string'), /pct >= 81[\s\S]*pct >= 66[\s\S]*pct >= 51/);
-    assert.match(extractMethod(strategicRiskSrc, 'private getScoreColor(score: number): string'), /score >= 81[\s\S]*score >= 66[\s\S]*score >= 51/);
+    assert.equal(existsSync(modalPath), false, 'CountryIntelModal is an unused orphan and should stay deleted');
+    assert.doesNotMatch(mainCss, /country-intel-/);
+    assert.doesNotMatch(mainCss, /\.cii-score-(bar|fill|value)|\.cii-label|\.cii-badge/);
+    assert.doesNotMatch(rtlCss, /country-intel-/);
+    assert.match(strategicRiskSrc, /const STRATEGIC_RISK_BANDS = \[[\s\S]*min: 70[\s\S]*critical[\s\S]*min: 50[\s\S]*elevated[\s\S]*min: 30[\s\S]*moderate/);
+    assert.match(extractMethod(strategicRiskSrc, 'private getScoreColor(score: number): string'), /this\.getScoreBand\(score\)\.colorVar/);
+    assert.match(extractMethod(strategicRiskSrc, 'private getScoreLevel(score: number): string'), /this\.getScoreBand\(score\)\.levelKey/);
   });
 });

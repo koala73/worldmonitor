@@ -17,7 +17,6 @@ import {
   StatusPanel,
   PizzIntIndicator,
   LlmStatusIndicator,
-  CIIPanel,
   PredictionPanel,
 } from '@/components';
 import {
@@ -83,7 +82,7 @@ export interface EventHandlerCallbacks {
   waitForAisData: () => void;
   syncDataFreshnessWithLayers: () => void;
   ensureCorrectZones: () => void;
-  refreshOpenCountryBrief?: () => void;
+  refreshCiiAfterFocalPointsReady?: () => void;
   stopLayerActivity?: (layer: keyof MapLayers) => void;
   mountLiveNewsIfReady?: () => void;
 }
@@ -537,8 +536,7 @@ export class EventHandlerManager implements AppModule {
     document.addEventListener('visibilitychange', this.boundVisibilityHandler);
 
     this.boundFocalPointsReadyHandler = () => {
-      (this.ctx.panels.cii as CIIPanel)?.refresh(true);
-      this.callbacks.refreshOpenCountryBrief?.();
+      this.callbacks.refreshCiiAfterFocalPointsReady?.();
     };
     window.addEventListener('focal-points-ready', this.boundFocalPointsReadyHandler);
 

@@ -1,8 +1,7 @@
 /**
  * FollowButton — reusable star/follow-button helper for U4.
  *
- * Mounted by all three PR-A surfaces (CountryDeepDivePanel,
- * CountryIntelModal, CIIPanel rows) via `renderFollowButton({...})`.
+ * Mounted by CountryDeepDivePanel and CIIPanel rows via `renderFollowButton({...})`.
  *
  * Owns:
  *  - Visual states: outlined star (not followed), filled star (followed),

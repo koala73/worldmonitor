@@ -24,6 +24,12 @@ import { getCachedPosture } from '@/services/cached-theater-posture';
 import { refreshDataFreshnessFromHealth } from '@/services/health-freshness';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
+const STRATEGIC_RISK_BANDS = [
+  { min: 70, levelKey: 'critical', colorVar: '--semantic-critical' },
+  { min: 50, levelKey: 'elevated', colorVar: '--semantic-elevated' },
+  { min: 30, levelKey: 'moderate', colorVar: '--semantic-normal' },
+  { min: 0, levelKey: 'low', colorVar: '--semantic-low' },
+] as const;
 
 export class StrategicRiskPanel extends Panel {
   private overview: StrategicRiskOverview | null = null;
@@ -221,21 +227,21 @@ export class StrategicRiskPanel extends Panel {
       topRisks: this.cachedTopRisks(cached, ciiScores),
       unstableCountries: ciiScores.filter(s => s.score >= 50).slice(0, 5),
       timestamp: this.cachedTimestamp(cached),
+      degraded: cached.degraded,
+      stale: cached.stale,
     };
   }
 
   private getScoreColor(score: number): string {
-    if (score >= 81) return getCSSColor('--semantic-critical');
-    if (score >= 66) return getCSSColor('--semantic-high');
-    if (score >= 51) return getCSSColor('--semantic-elevated');
-    return getCSSColor('--semantic-normal');
+    return getCSSColor(this.getScoreBand(score).colorVar);
   }
 
   private getScoreLevel(score: number): string {
-    if (score >= 70) return t('components.strategicRisk.levels.critical');
-    if (score >= 50) return t('components.strategicRisk.levels.elevated');
-    if (score >= 30) return t('components.strategicRisk.levels.moderate');
-    return t('components.strategicRisk.levels.low');
+    return t(`components.strategicRisk.levels.${this.getScoreBand(score).levelKey}`);
+  }
+
+  private getScoreBand(score: number): typeof STRATEGIC_RISK_BANDS[number] {
+    return STRATEGIC_RISK_BANDS.find((band) => score >= band.min) ?? STRATEGIC_RISK_BANDS[STRATEGIC_RISK_BANDS.length - 1]!;
   }
 
   private getTrendEmoji(trend: string): string {
@@ -355,10 +361,12 @@ export class StrategicRiskPanel extends Panel {
           </div>
         </div>`
       : '';
+    const cacheStateBanner = this.renderCachedRiskStateBanner();
 
     return `
       <div class="strategic-risk-panel">
         ${statusBanner}
+        ${cacheStateBanner}
 
         <div class="risk-gauge">
           <div class="risk-score-container">
@@ -388,6 +396,18 @@ export class StrategicRiskPanel extends Panel {
         </div>
       </div>
     `;
+  }
+
+  private renderCachedRiskStateBanner(): string {
+    if (!this.overview || (!this.overview.degraded && !this.overview.stale)) return '';
+    const labels = [
+      this.overview.degraded ? 'degraded' : '',
+      this.overview.stale ? 'stale' : '',
+    ].filter(Boolean);
+    return `<div class="risk-status-banner risk-status-cached">
+      <span class="risk-status-icon">!</span>
+      <span class="risk-status-text">Cached CII ${labels.join(' · ')}</span>
+    </div>`;
   }
 
   private renderSourceRow(source: DataSourceState): string {

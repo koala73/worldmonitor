@@ -50,6 +50,8 @@ export interface CachedRiskScores {
   // Derived from max CII computedAt; null when no CII carries a real timestamp.
   computedAt: string | null;
   cached: boolean;
+  degraded: boolean;
+  stale: boolean;
 }
 
 // ---- Proto → legacy adapters ----
@@ -138,6 +140,8 @@ export function toRiskScores(resp: GetRiskScoresResponse): CachedRiskScores {
     protestCount: 0,
     computedAt: derivedTimestamp,
     cached: true,
+    degraded: Boolean(resp.degraded),
+    stale: Boolean(resp.stale),
   };
 }
 
@@ -195,6 +199,15 @@ function canonicalizeCachedCiiEntry(entry: CachedCIIScore): CachedCIIScore {
   };
 }
 
+function canonicalizeCachedRiskScores(data: CachedRiskScores): CachedRiskScores {
+  return {
+    ...data,
+    cii: data.cii.map(canonicalizeCachedCiiEntry),
+    degraded: data.degraded === true,
+    stale: data.stale === true,
+  };
+}
+
 // ---- localStorage persistence (sync prime for getCachedScores) ----
 
 const LS_KEY = 'wm:risk-scores';
@@ -217,7 +230,7 @@ function loadFromStorage(): CachedRiskScores | null {
       localStorage.removeItem(LS_KEY);
       return null;
     }
-    return { ...data, cii: data.cii.map(canonicalizeCachedCiiEntry) };
+    return canonicalizeCachedRiskScores(data);
   } catch { return null; }
 }
 
@@ -251,6 +264,8 @@ function emptyFallback(): CachedRiskScores {
     protestCount: 0,
     computedAt: null,
     cached: true,
+    degraded: true,
+    stale: true,
   };
 }
 

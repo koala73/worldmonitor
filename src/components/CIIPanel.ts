@@ -221,6 +221,22 @@ export class CIIPanel extends Panel {
     );
   }
 
+  private formatCachedSourceDetail(cached: Pick<CachedRiskScores, 'degraded' | 'stale'>): string {
+    const flags: string[] = [];
+    if (cached.degraded) flags.push('degraded');
+    if (cached.stale) flags.push('stale');
+    return flags.join(' · ');
+  }
+
+  private updateSourceBadge(cached: Pick<CachedRiskScores, 'degraded' | 'stale'> | null): void {
+    if (!cached) {
+      this.clearDataBadge();
+      return;
+    }
+    const detail = this.formatCachedSourceDetail(cached);
+    this.setDataBadge('cached', detail || undefined);
+  }
+
   /**
    * U6 — Cheap re-render path used by the watchlist subscription. Rebuilds
    * the row list from the cached `this.scores` (no re-fetch) so the
@@ -283,6 +299,7 @@ export class CIIPanel extends Panel {
       this.setCount(withData.length);
 
       if (withData.length === 0) {
+        this.updateSourceBadge(null);
         // Tear down any previously-mounted FollowButtons before swapping
         // the empty-state markup in (otherwise their subscriptions leak).
         this.tearDownFollowButtons();
@@ -292,6 +309,7 @@ export class CIIPanel extends Panel {
       }
 
       this.setErrorState(false);
+      this.updateSourceBadge(null);
       // Tear down the previous batch of FollowButtons BEFORE we
       // construct fresh rows; `buildCountry` will repopulate the map.
       this.tearDownFollowButtons();
@@ -308,6 +326,7 @@ export class CIIPanel extends Panel {
     if (scores.length === 0) return;
     this.scores = scores;
     this.hasCachedRender = true;
+    this.updateSourceBadge(cached);
     this.setCount(scores.length);
     this.setErrorState(false);
     // Tear down previous FollowButtons before mounting the new batch.
