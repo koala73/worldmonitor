@@ -5775,7 +5775,18 @@ const REDDIT_AUTH_COOLDOWN_MS = 5 * 60 * 1000;
 // Policy 2026). Returns native Reddit fields in a flat `posts` array, so the
 // downstream consumers are unchanged. When unset, the relay falls back to OAuth
 // (pre-policy creds only) then the public endpoint — today's behavior, no regression.
-const SCRAPECREATORS_API_KEY = process.env.SCRAPECREATORS_API_KEY || '';
+// Sanitize: trim whitespace and strip surrounding quotes — straight AND curly
+// (U+2018/U+2019/U+201C/U+201D). A smart-quote pasted into the env var makes the
+// `x-api-key` header un-encodable ("Cannot convert argument to a ByteString …
+// value 8221") which throws on EVERY fetch and silently disables the vendor path
+// (observed in prod 2026-06-06). Stripping surrounding quotes makes the common
+// paste mistake harmless; a clear warning fires if a non-Latin1 byte survives.
+const SCRAPECREATORS_API_KEY = (process.env.SCRAPECREATORS_API_KEY || '')
+  .trim()
+  .replace(/^[\s"'‘’“”]+|[\s"'‘’“”]+$/g, '');
+if (SCRAPECREATORS_API_KEY && /[^ -ÿ]/.test(SCRAPECREATORS_API_KEY)) {
+  console.warn('[Reddit] SCRAPECREATORS_API_KEY contains a non-Latin1 character (likely a smart quote or stray Unicode) — the vendor path will fail to build its header. Re-paste the key as plain ASCII.');
+}
 const SCRAPECREATORS_ENABLED = !!SCRAPECREATORS_API_KEY;
 // The SC subreddit endpoint has no `limit` param — only `after` cursor pagination.
 // Cap the page walk so a caller asking for `limit` posts can't run away on credits

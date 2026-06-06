@@ -57,7 +57,10 @@ test('shared helper prefers oauth.reddit.com and falls back to the public endpoi
 });
 
 test('ScrapeCreators is the gated, preferred path with bounded cursor pagination (no limit param)', () => {
-  assert.match(relaySource, /const SCRAPECREATORS_API_KEY = process\.env\.SCRAPECREATORS_API_KEY \|\| ''/);
+  assert.match(relaySource, /const SCRAPECREATORS_API_KEY = \(process\.env\.SCRAPECREATORS_API_KEY \|\| ''\)/);
+  assert.match(relaySource, /\.trim\(\)/);
+  assert.match(relaySource, /\.replace\(\/\^\[\\s"'‘’“”\]\+\|\[\\s"'‘’“”\]\+\$\/g, ''\)/);
+  assert.match(relaySource, /non-Latin1 character/);
   assert.match(relaySource, /const SCRAPECREATORS_ENABLED = !!SCRAPECREATORS_API_KEY/);
   assert.match(relaySource, /const SC_MAX_PAGES = 4/);
   const body = fnBody('async function fetchRedditHotListing(subreddit', 5200);
