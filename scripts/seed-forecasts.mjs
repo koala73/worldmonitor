@@ -15976,6 +15976,39 @@ function validateMarketImplications(cards, allowedTickers = ALL_ALLOWED_TICKERS)
   return valid;
 }
 
+const MARKET_IMPLICATIONS_META_KEY = 'seed-meta:intelligence:market-implications';
+const MARKET_IMPLICATIONS_META_TTL = 86400 * 7;
+
+function marketImplicationsMetaErrorReason(reason) {
+  return String(reason || 'unknown').replace(/\s+/g, ' ').slice(0, 240);
+}
+
+// Surface a producer-side LLM failure to /api/health instead of silently
+// returning. Without this the success-only seed-meta write freezes at the
+// last-good fetchedAt; the canonical key then TTLs out and health reports
+// `marketImplications: EMPTY` — indistinguishable from a stopped cron. Writing
+// a `status:'error'` seed-meta makes api/health.js classifyKey emit SEED_ERROR
+// (warn: producer failing) per the socialVelocity precedent (PR #4084). We also
+// re-EXPIRE the canonical key so the last-good cards survive while the LLM step
+// retries on the next cron, rather than expiring to EMPTY mid-outage.
+async function writeMarketImplicationsFailureMeta(reason) {
+  const { url, token } = getRedisCredentials();
+  const meta = {
+    fetchedAt: Date.now(),
+    recordCount: 0,
+    status: 'error',
+    errorReason: marketImplicationsMetaErrorReason(reason),
+  };
+  await redisSet(url, token, MARKET_IMPLICATIONS_META_KEY, meta, MARKET_IMPLICATIONS_META_TTL);
+  // EXPIRE is a best-effort last-good preservation hint — failure here only
+  // shortens how long stale cards linger, it never loses the error signal above.
+  try {
+    await redisCommand(url, token, ['EXPIRE', MARKET_IMPLICATIONS_KEY, String(MARKET_IMPLICATIONS_TTL)]);
+  } catch (err) {
+    console.warn(`  [MarketImplications] last-good EXPIRE refresh failed: ${err.message}`);
+  }
+}
+
 async function buildAndSeedMarketImplications(inputs) {
   const startMs = Date.now();
   console.log('  [MarketImplications] Building world-state context...');
@@ -15991,7 +16024,8 @@ async function buildAndSeedMarketImplications(inputs) {
   });
 
   if (!result?.text) {
-    console.warn('  [MarketImplications] LLM returned no response — skipping write');
+    console.warn('  [MarketImplications] LLM returned no response — writing error seed-meta');
+    await writeMarketImplicationsFailureMeta('llm_no_response');
     return;
   }
 
@@ -16000,6 +16034,7 @@ async function buildAndSeedMarketImplications(inputs) {
 
   if (!Array.isArray(rawCards) || rawCards.length === 0) {
     console.warn(`  [MarketImplications] No parseable cards in LLM response (diagnostics: ${JSON.stringify(parsed.diagnostics)})`);
+    await writeMarketImplicationsFailureMeta('no_parseable_cards');
     return;
   }
 
@@ -16026,7 +16061,8 @@ async function buildAndSeedMarketImplications(inputs) {
 
   const cards = validateMarketImplications(rawCards, effectiveTickers);
   if (cards.length === 0) {
-    console.warn('  [MarketImplications] All cards failed validation — skipping write');
+    console.warn('  [MarketImplications] All cards failed validation — writing error seed-meta');
+    await writeMarketImplicationsFailureMeta('all_cards_failed_validation');
     return;
   }
   if (cards.length < rawCards.length) {
@@ -16036,9 +16072,8 @@ async function buildAndSeedMarketImplications(inputs) {
   const payload = { cards, generatedAt: new Date().toISOString(), model: result.model || '' };
   await redisSet(url, token, MARKET_IMPLICATIONS_KEY, payload, MARKET_IMPLICATIONS_TTL);
 
-  const metaKey = 'seed-meta:intelligence:market-implications';
-  const meta = { fetchedAt: Date.now(), recordCount: cards.length };
-  await redisSet(url, token, metaKey, meta, 86400 * 7);
+  const meta = { fetchedAt: Date.now(), recordCount: cards.length, status: 'ok' };
+  await redisSet(url, token, MARKET_IMPLICATIONS_META_KEY, meta, MARKET_IMPLICATIONS_META_TTL);
 
   const durationMs = Date.now() - startMs;
   console.log(`  [MarketImplications] Published ${cards.length} cards to ${MARKET_IMPLICATIONS_KEY} (${Math.round(durationMs)}ms, model=${result.model || 'unknown'})`);
