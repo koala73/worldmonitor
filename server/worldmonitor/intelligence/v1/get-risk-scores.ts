@@ -135,9 +135,10 @@ export const ZONE_COUNTRY_MAP: Record<string, string[]> = {
 };
 
 const ADVISORY_LEVELS_FALLBACK: Record<string, 'do-not-travel' | 'reconsider' | 'caution'> = {
+  // These floors are score-affecting methodology inputs; new country additions
+  // must go through a formula-version/docs changelog batch.
   UA: 'do-not-travel', SY: 'do-not-travel', YE: 'do-not-travel', MM: 'do-not-travel',
-  KP: 'do-not-travel',
-  IL: 'reconsider', IR: 'reconsider', PK: 'reconsider', VE: 'reconsider', CU: 'reconsider', MX: 'reconsider', CN: 'reconsider',
+  IL: 'reconsider', IR: 'reconsider', PK: 'reconsider', VE: 'reconsider', CU: 'reconsider', MX: 'reconsider',
   RU: 'caution', TR: 'caution', IQ: 'reconsider', AF: 'do-not-travel', LB: 'reconsider',
 };
 

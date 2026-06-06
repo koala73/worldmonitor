@@ -369,7 +369,7 @@ describe('CII scoring', () => {
 
   it('advisory do-not-travel floor: composite >= 60', () => {
     const scores = computeCIIScores([], emptyAux());
-    for (const code of ['UA', 'SY', 'YE', 'MM', 'KP']) {
+    for (const code of ['UA', 'SY', 'YE', 'MM']) {
       const s = scoreFor(scores, code)!;
       assert.ok(s.combinedScore >= 60, `${code} score ${s.combinedScore} should be >= 60 (do-not-travel)`);
     }
@@ -377,7 +377,7 @@ describe('CII scoring', () => {
 
   it('advisory reconsider floor: composite >= 50', () => {
     const scores = computeCIIScores([], emptyAux());
-    for (const code of ['MX', 'IR', 'PK', 'VE', 'CU', 'CN']) {
+    for (const code of ['MX', 'IR', 'PK', 'VE', 'CU']) {
       const s = scoreFor(scores, code)!;
       assert.ok(s.combinedScore >= 50, `${code} score ${s.combinedScore} should be >= 50 (reconsider)`);
     }
