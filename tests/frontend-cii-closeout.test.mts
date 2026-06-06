@@ -133,6 +133,9 @@ describe('frontend CII closeout regressions', () => {
       { zone: 'Amazon', severity: 'moderate' },
       { zone: 'Taiwan Strait', severity: 'extreme' },
       { zone: 'Caribbean', severity: 'moderate' },
+      { zone: 'Europe', severity: 'extreme' },
+      { zone: 'East Asia', severity: 'extreme' },
+      { zone: 'Latin America', severity: 'moderate' },
     ]);
 
     assert.equal(cii.getCountryData('US')?.climateStress, 15);
@@ -141,6 +144,14 @@ describe('frontend CII closeout regressions', () => {
     assert.equal(cii.getCountryData('CN')?.climateStress, 15);
     assert.equal(cii.getCountryData('MX')?.climateStress, 8);
     assert.equal(cii.getCountryData('CU')?.climateStress, 8);
+    assert.equal(cii.getCountryData('PL')?.climateStress, 15);
+    assert.equal(cii.getCountryData('DE')?.climateStress, 15);
+    assert.equal(cii.getCountryData('FR')?.climateStress, 15);
+    assert.equal(cii.getCountryData('GB')?.climateStress, 15);
+    assert.equal(cii.getCountryData('KP')?.climateStress, 15);
+    assert.equal(cii.getCountryData('KR')?.climateStress, 15);
+    assert.equal(cii.getCountryData('JP')?.climateStress, 15);
+    assert.equal(cii.getCountryData('VE')?.climateStress, 8);
   });
 });
 
