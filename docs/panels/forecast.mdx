@@ -30,12 +30,42 @@ Panel id is `forecast`; canonical component is `src/components/ForecastPanel.ts`
 
 ## Data sources
 
-Primary RPC: `GET /api/forecast/v1/get-forecasts`. The panel also consumes two adjacent RPCs for the richer deep-simulation surface:
+Primary RPC: `GET /api/forecast/v1/get-forecasts`. The panel also consumes adjacent RPCs for the richer deep-simulation surface:
 
 - `GET /api/forecast/v1/get-simulation-package` — the most recent simulation inputs bundle.
 - `GET /api/forecast/v1/get-simulation-outcome` — the most recent simulation result.
+- `POST /api/forecast/v1/trigger-simulation` — starts a fresh simulation run outside the cached cron output.
 
 The forecasting pipeline runs as a Railway cron that pulls recent conflict, intelligence, markets, and supply-chain signals, runs them through the forecasting model, and writes the aggregated result at `forecast:predictions:v2` in Redis. Macro-region classification comes from `shared/forecast-macro-regions.js`.
+
+## Scoring and calibration
+
+Published forecasts are capped and deduplicated before they reach the panel:
+
+| Rule | Cap |
+| --- | --- |
+| Forecasts per situation | 3 |
+| Forecasts per situation/domain pair | 2 |
+| Forecasts per family | 4 |
+| Forecasts per family/domain pair | 2 |
+| Target published count | 10-14 |
+| Cyber probability ceiling | 0.72 |
+
+When a forecast can be matched to a geopolitical prediction market, the seeder records the market title, market price, drift from the internal probability, and market source. The final probability is then blended as `0.4 * market_probability + 0.6 * internal_probability`.
+
+Probability projections are anchored to the forecast's own time horizon and then expanded to 24h, 7d, and 30d with domain curves:
+
+| Domain | 24h | 7d | 30d |
+| --- | ---: | ---: | ---: |
+| Conflict | 0.91 | 1.00 | 0.78 |
+| Market | 1.00 | 0.58 | 0.42 |
+| Supply chain | 0.91 | 1.00 | 0.64 |
+| Political | 0.83 | 0.87 | 1.00 |
+| Military | 1.00 | 0.91 | 0.65 |
+| Cyber | 1.00 | 0.78 | 0.40 |
+| Infrastructure | 1.00 | 0.50 | 0.25 |
+
+Trend is serialized as a string, not an enum. The current values are `rising`, `falling`, and `stable`, based on a +/- `0.05` probability delta versus the prior forecast snapshot.
 
 ## Refresh cadence
 
@@ -47,5 +77,5 @@ On **web**, AI Forecasts is currently in **trial** — free to anyone, including
 
 ## API reference
 
-- [Forecast service](/api/ForecastService.openapi.yaml) — covers `get-forecasts`, `get-simulation-outcome`, and `get-simulation-package`.
+- [Forecast service](/api/ForecastService.openapi.yaml) — covers `get-forecasts`, `get-simulation-outcome`, `get-simulation-package`, and `trigger-simulation`.
 - For **programmatic prediction generation** (fresh probabilities outside the cached cron output), see the [MCP `generate_forecasts` tool](/mcp-server#ai-intelligence-live-llm).

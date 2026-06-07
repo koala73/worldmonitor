@@ -49,6 +49,13 @@ message CiiScore {
     (buf.validate.field).double.gte = 0,
     (buf.validate.field).double.lte = 10
   ];
+  // Travel advisory level used by the score, when any advisory input applies.
+  // Empty means no live or fallback advisory level affected boosts/floors.
+  string advisory_level = 10;
+  // Provenance for advisory_level: "live" when sourced from the Redis advisory
+  // feed, "fallback" when using the embedded State Department fallback table,
+  // and "absent" when no advisory input affected this score.
+  string advisory_provenance = 11 [(buf.validate.field).string.pattern = "^(live|fallback|absent)$"];
 }
 
 // CiiComponents represents the contributing factors to a CII score.

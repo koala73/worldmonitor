@@ -1037,6 +1037,18 @@ components:
                          future weight changes while still catching obviously-wrong inputs (e.g.
                          a runaway computation producing 1e6 or NaN-coerced values). Added in
                          PR #3780 review.
+                advisoryLevel:
+                    type: string
+                    description: |-
+                        Travel advisory level used by the score, when any advisory input applies.
+                         Empty means no live or fallback advisory level affected boosts/floors.
+                advisoryProvenance:
+                    type: string
+                    pattern: ^(live|fallback|absent)$
+                    description: |-
+                        Provenance for advisory_level: "live" when sourced from the Redis advisory
+                         feed, "fallback" when using the embedded State Department fallback table,
+                         and "absent" when no advisory input affected this score.
             description: CiiScore represents a Composite Instability Index score for a region or country.
         CiiComponents:
             type: object

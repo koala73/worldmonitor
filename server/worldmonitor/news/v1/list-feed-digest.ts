@@ -1221,7 +1221,7 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     }
 
     // U3 — hard freshness floor. Drop items older than NEWS_MAX_AGE_HOURS
-    // (default 48h) BEFORE corroboration counting so a stale duplicate of a
+    // (default 96h) BEFORE corroboration counting so a stale duplicate of a
     // fresh story can't inflate the cluster's source count. Runs after parse
     // (where U2 already dropped undated items) so every item here carries a
     // real publishedAt. See R3.

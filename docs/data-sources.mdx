@@ -49,7 +49,7 @@ description: "Comprehensive documentation of all data sources, feed tiers, and c
 - Critical mineral deposits
 - NASA FIRMS satellite fire detection (VIIRS thermal hotspots)
 - 19 global trade routes (container, energy, bulk) with multi-segment arcs through strategic chokepoints
-- Airport delays and closures across 107 monitored airports (FAA + AviationStack + ICAO NOTAM)
+- Airport delays and closures across 111 monitored airports (FAA + AviationStack + ICAO NOTAM)
 - **Aviation intelligence** — 6-tab airline intel panel (ops, flights, airlines, tracking, news, prices) with customizable airport/airline watchlists, live ADS-B flight tracking, and flight price search
 
 </details>
@@ -85,7 +85,7 @@ description: "Comprehensive documentation of all data sources, feed tiers, and c
 <details>
 <summary><strong>Finance & Markets</strong> (Finance variant)</summary>
 
-- 92 global stock exchanges — mega (NYSE, NASDAQ, Shanghai, Euronext, Tokyo), major (Hong Kong, London, NSE/BSE, Toronto, Korea, Saudi Tadawul), and emerging markets — with market caps and trading hours
+- 29 global stock exchanges — mega (NYSE, NASDAQ, Shanghai, Euronext, Tokyo), major (Hong Kong, London, NSE/BSE, Toronto, Korea, Saudi Tadawul), and emerging markets — with market caps and trading hours
 - 19 financial centers — ranked by Global Financial Centres Index (New York #1 through offshore centers: Cayman Islands, Luxembourg, Bermuda, Channel Islands)
 - 13 central banks — Federal Reserve, ECB, BoJ, BoE, PBoC, SNB, RBA, BoC, RBI, BoK, BCB, SAMA, plus supranational institutions (BIS, IMF)
 - BIS central bank data — policy rates across major economies, real effective exchange rates (REER), and credit-to-GDP ratios sourced from the Bank for International Settlements
@@ -101,13 +101,13 @@ description: "Comprehensive documentation of all data sources, feed tiers, and c
 
 ### Telegram OSINT Intelligence Feed
 
-26 curated Telegram channels provide a raw, low-latency intelligence feed covering conflict zones, OSINT analysis, and breaking news — sources that are often minutes ahead of traditional wire services during fast-moving events.
+56 enabled channels in the default `full` Telegram channel set provide a raw, low-latency intelligence feed covering conflict zones, OSINT analysis, and breaking news — sources that are often minutes ahead of traditional wire services during fast-moving events.
 
-| Tier       | Channels                                                                                                              |
-| ---------- | --------------------------------------------------------------------------------------------------------------------- |
-| **Tier 1** | VahidOnline (Iran politics)                                                                                           |
-| **Tier 2** | Abu Ali Express, Aurora Intel, BNO News, Clash Report, DeepState, Defender Dome, Iran International, LiveUAMap, OSINTdefender, OSINT Updates, Ukraine Air Force (kpszsu), Povitryani Tryvoha |
-| **Tier 3** | Bellingcat, CyberDetective, GeopoliticalCenter, Middle East Spectator, Middle East Now Breaking, NEXTA, OSINT Industries, OsintOps News, OSINT Live, OsintTV, The Spectator Index, War Monitor, WFWitness |
+| Tier       | Enabled channels in `full` set |
+| ---------- | ------------------------------ |
+| **Tier 1** | 3                              |
+| **Tier 2** | 23                             |
+| **Tier 3** | 30                             |
 
 **Architecture**: A GramJS MTProto client running on the Railway relay polls all channels sequentially on a 60-second cycle. Each channel has a 15-second timeout (GramJS `getEntity`/`getMessages` can hang indefinitely on FLOOD_WAIT or MTProto stalls), and the entire cycle has a 3-minute hard timeout. A stuck-poll guard force-clears the mutex after 3.5 minutes, and FLOOD_WAIT errors from Telegram's API stop the cycle early rather than propagating to every remaining channel.
 
@@ -147,7 +147,13 @@ Government travel advisories serve as expert risk assessments from national inte
 
 **Architecture**: Advisories follow the gold standard pattern. A Railway cron seed (`seed-security-advisories.mjs`) fetches all 24 feeds hourly via the relay RSS proxy, deduplicates by title, builds a `byCountry` risk-level map, and writes to Redis. The Vercel `ListSecurityAdvisories` RPC reads Redis only (no external calls). Bootstrap hydration provides instant advisory data on page load.
 
-**CII integration** — advisories feed into instability scores through two mechanisms:
+**CII integration** — the server-side CII scorer reads the seeded advisory
+`byCountry` level when available and otherwise may use an embedded State
+Department fallback table for selected countries. Each emitted `CiiScore`
+exposes `advisoryLevel` and `advisoryProvenance` (`live`, `fallback`, or
+`absent`) so downstream users can tell whether the score used the live feed,
+fallback table, or no advisory input. Advisories feed into instability scores
+through two mechanisms:
 
 - **Score boost**: Do-Not-Travel → +15 points, Reconsider → +10, Caution → +5. The server scorer uses the live `byCountry` level when present; if live data is missing for selected Tier-1 countries, it falls back to the published CII advisory table rather than adding a separate multi-source agreement boost.
 - **Score floor**: Do-Not-Travel forces a minimum CII score of 60; Reconsider forces minimum 50. This prevents a country with low event data but active or curated advisory risk from showing an artificially calm score.

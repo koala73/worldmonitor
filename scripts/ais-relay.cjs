@@ -3854,16 +3854,12 @@ async function seedServiceStatuses() {
   try {
     const resp = await fetch(SERVICE_STATUSES_RPC_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': CHROME_UA,
-        Origin: 'https://worldmonitor.app',
-      },
+      headers: warmPingHeaders({ 'Content-Type': 'application/json' }),
       body: '{}',
       signal: AbortSignal.timeout(60_000),
     });
     if (!resp.ok) {
-      console.warn(`[ServiceStatuses] Seed ping failed: HTTP ${resp.status}`);
+      console.warn(`[ServiceStatuses] Seed ping failed: HTTP ${resp.status}${RELAY_API_KEY ? '' : ' (WORLDMONITOR_RELAY_KEY not set — 401 expected; set it on the relay AND the Vercel api project)'}`);
       return;
     }
     const data = await resp.json();
@@ -4422,31 +4418,32 @@ function startTheaterPostureSeedLoop() {
 // ─────────────────────────────────────────────────────────────
 // Warm-ping shared auth — relay → api.worldmonitor.app
 //
-// All warm-pings call api.worldmonitor.app/api/* edge functions. Pre-2026-05-02
-// these used Origin-trust alone (the relay sent `Origin: https://worldmonitor.app`
-// which `api/_api-key.js::validateApiKey` accepts via BROWSER_ORIGIN_PATTERNS).
-// On 2026-05-02 ALL three warm-pings (CII + Chokepoints + CableHealth) started
-// returning HTTP 401 simultaneously despite the relay sending the correct
-// Origin header. Root cause unclear (Vercel firewall change, CDN cache
-// poisoning, deploy mismatch) — but Origin-trust is fragile by nature: any
-// intermediary (CF, Vercel firewall, future CDN) can strip or rewrite Origin
-// without leaving a trace.
+// All warm-pings call api.worldmonitor.app/api/* edge functions. These are
+// non-premium but NOT anonymous: in normal traffic they require a browser
+// session token or an API key. Origin-trust used to satisfy them, but the
+// gateway dropped all Origin/Referer trust in the #3541 hardening — Origin
+// headers are client-forgeable, so they are no longer an auth signal. There is
+// NO Origin-only fallback anymore: without a recognized key, every warm-ping
+// 401s (observed in prod 2026-06-06 — all three warm-pings dark).
 //
-// Defense-in-depth: send an explicit X-WorldMonitor-Key in addition to the
-// Origin header. The gateway accepts EITHER, so when Origin trust breaks
-// the key carries the auth. When the key isn't configured, fall through to
-// Origin-only — preserves backward compatibility for local dev / before the
-// env var is provisioned on Railway.
+// The relay authenticates as a trusted internal caller via X-WorldMonitor-Key =
+// WORLDMONITOR_RELAY_KEY. The gateway validates this (timing-safe) against its
+// OWN WORLDMONITOR_RELAY_KEY for the warm-ping path allowlist only
+// (server/gateway.ts isRelayWarmPingRequest / RELAY_WARM_PING_PATHS). It is a
+// DEDICATED relay↔gateway secret — it does NOT need to be a
+// WORLDMONITOR_VALID_KEYS enterprise key, and shouldn't be (least privilege: it
+// unlocks only a cache-warm on these free endpoints, nothing else).
 //
-// Required env var on Railway ais-relay service:
-//   WORLDMONITOR_RELAY_KEY=<value present in Vercel WORLDMONITOR_VALID_KEYS>
+// Required env var, SAME value on BOTH sides:
+//   Railway ais-relay service  : WORLDMONITOR_RELAY_KEY=<dedicated secret>
+//   Vercel api project (gateway): WORLDMONITOR_RELAY_KEY=<same dedicated secret>
 // ─────────────────────────────────────────────────────────────
 const RELAY_API_KEY = process.env.WORLDMONITOR_RELAY_KEY || '';
 // Surface the auth-mode at boot so misconfig (env var on wrong service,
 // typo'd name, missing on a fresh Railway deploy) is visible in the first
 // log lines instead of waiting for the first 401. PR #3565 review P2.
 if (!RELAY_API_KEY) {
-  console.warn('[Relay] WORLDMONITOR_RELAY_KEY not set — warm-pings will rely on Origin-trust only (fragile against CDN/firewall changes)');
+  console.warn('[Relay] WORLDMONITOR_RELAY_KEY not set — warm-pings will 401 (no Origin-trust fallback since #3541). Set the same value on the Railway relay and the Vercel api project.');
 } else {
   console.log('[Relay] WORLDMONITOR_RELAY_KEY configured — warm-pings will send X-WorldMonitor-Key');
 }
@@ -4482,7 +4479,7 @@ async function seedCiiWarmPing() {
       signal: AbortSignal.timeout(60_000),
     });
     if (!resp.ok) {
-      console.warn(`[CII] Warm-ping failed: HTTP ${resp.status}${RELAY_API_KEY ? '' : ' (no WORLDMONITOR_RELAY_KEY set; relying on Origin-trust)'}`);
+      console.warn(`[CII] Warm-ping failed: HTTP ${resp.status}${RELAY_API_KEY ? '' : ' (WORLDMONITOR_RELAY_KEY not set — 401 expected; set it on the relay AND the Vercel api project)'}`);
       return;
     }
     const data = await resp.json();
@@ -4519,7 +4516,7 @@ async function seedChokepointWarmPing() {
       signal: AbortSignal.timeout(60_000),
     });
     if (!resp.ok) {
-      console.warn(`[Chokepoints] Warm-ping failed: HTTP ${resp.status}${RELAY_API_KEY ? '' : ' (no WORLDMONITOR_RELAY_KEY set; relying on Origin-trust)'}`);
+      console.warn(`[Chokepoints] Warm-ping failed: HTTP ${resp.status}${RELAY_API_KEY ? '' : ' (WORLDMONITOR_RELAY_KEY not set — 401 expected; set it on the relay AND the Vercel api project)'}`);
       return;
     }
     const data = await resp.json();
@@ -4557,7 +4554,7 @@ async function seedCableHealthWarmPing() {
       signal: AbortSignal.timeout(60_000),
     });
     if (!resp.ok) {
-      console.warn(`[CableHealth] Warm-ping failed: HTTP ${resp.status}${RELAY_API_KEY ? '' : ' (no WORLDMONITOR_RELAY_KEY set; relying on Origin-trust)'}`);
+      console.warn(`[CableHealth] Warm-ping failed: HTTP ${resp.status}${RELAY_API_KEY ? '' : ' (WORLDMONITOR_RELAY_KEY not set — 401 expected; set it on the relay AND the Vercel api project)'}`);
       return;
     }
     const data = await resp.json();

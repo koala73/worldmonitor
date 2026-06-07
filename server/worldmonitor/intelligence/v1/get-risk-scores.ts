@@ -142,6 +142,26 @@ const ADVISORY_LEVELS_FALLBACK: Record<string, 'do-not-travel' | 'reconsider' | 
   RU: 'caution', TR: 'caution', IQ: 'reconsider', AF: 'do-not-travel', LB: 'reconsider',
 };
 
+type AdvisoryLevel = 'do-not-travel' | 'reconsider' | 'caution';
+type AdvisoryProvenance = 'live' | 'fallback' | 'absent';
+
+function isAdvisoryLevel(value: unknown): value is AdvisoryLevel {
+  return value === 'do-not-travel' || value === 'reconsider' || value === 'caution';
+}
+
+function isAdvisoryLevelOrEmpty(value: unknown): value is AdvisoryLevel | '' {
+  return value === '' || isAdvisoryLevel(value);
+}
+
+function isAdvisoryProvenance(value: unknown): value is AdvisoryProvenance {
+  return value === 'live' || value === 'fallback' || value === 'absent';
+}
+
+function advisoryFallbackLevel(region: string | undefined | null): AdvisoryLevel | null {
+  const code = String(region || '').trim().toUpperCase();
+  return ADVISORY_LEVELS_FALLBACK[code] ?? null;
+}
+
 // ========================================================================
 // Internal helpers
 // ========================================================================
@@ -514,7 +534,8 @@ interface CountrySignals {
   highSeverityStrikes: number;
   orefAlertCount: number;
   orefHistoryCount24h: number;
-  advisoryLevel: 'do-not-travel' | 'reconsider' | 'caution' | null;
+  advisoryLevel: AdvisoryLevel | null;
+  advisoryProvenance: AdvisoryProvenance;
   totalDisplaced: number;
   newsScore: number;
   threatSummaryScore: number;
@@ -556,6 +577,7 @@ function emptySignals(): CountrySignals {
     iranStrikes: 0, highSeverityStrikes: 0,
     orefAlertCount: 0, orefHistoryCount24h: 0,
     advisoryLevel: null,
+    advisoryProvenance: 'absent',
     totalDisplaced: 0,
     newsScore: 0,
     threatSummaryScore: 0,
@@ -795,8 +817,12 @@ export function computeCIIScores(
   const data: Record<string, CountrySignals> = {};
   for (const code of Object.keys(TIER1_COUNTRIES)) {
     data[code] = emptySignals();
-    const liveLevel = aux.advisories?.byCountry?.[code] ?? null;
-    data[code].advisoryLevel = liveLevel || ADVISORY_LEVELS_FALLBACK[code] || null;
+    const liveLevel = isAdvisoryLevel(aux.advisories?.byCountry?.[code])
+      ? aux.advisories.byCountry[code]
+      : null;
+    const fallbackLevel = advisoryFallbackLevel(code);
+    data[code].advisoryLevel = liveLevel || fallbackLevel;
+    data[code].advisoryProvenance = liveLevel ? 'live' : fallbackLevel ? 'fallback' : 'absent';
   }
 
   // --- Displacement ingestion (UNHCR — persists after ceasefires) ---
@@ -1177,6 +1203,11 @@ export function computeCIIScores(
       // See docs/methodology/cii-risk-scores.mdx.
       eventMultiplier: multiplier,
       methodologyVersion: CII_FORMULA_VERSION,
+      // Advisory levels can boost/floor CII scores. Keep the level and its
+      // source visible so clients know whether the input was live, embedded
+      // fallback, or absent for the country.
+      advisoryLevel: d.advisoryLevel ?? '',
+      advisoryProvenance: d.advisoryProvenance,
     });
   }
 
@@ -1295,6 +1326,34 @@ function withRiskScoreRuntimeState(
   state: Pick<GetRiskScoresResponse, 'degraded' | 'stale'>,
 ): GetRiskScoresResponse {
   return { ...response, degraded: state.degraded, stale: state.stale };
+}
+
+export function hasCompleteRiskScoreAdvisoryDisclosure(response: GetRiskScoresResponse): boolean {
+  return (response.ciiScores ?? []).every((score) => (
+    isAdvisoryLevelOrEmpty(score.advisoryLevel)
+    && isAdvisoryProvenance(score.advisoryProvenance)
+  ));
+}
+
+export function normalizeRiskScoreAdvisoryDisclosure(response: GetRiskScoresResponse): GetRiskScoresResponse {
+  return {
+    ...response,
+    ciiScores: (response.ciiScores ?? []).map((score) => {
+      if (
+        isAdvisoryLevelOrEmpty(score.advisoryLevel)
+        && isAdvisoryProvenance(score.advisoryProvenance)
+      ) {
+        return score;
+      }
+
+      const fallbackLevel = advisoryFallbackLevel(score.region);
+      return {
+        ...score,
+        advisoryLevel: fallbackLevel ?? '',
+        advisoryProvenance: fallbackLevel ? 'fallback' : 'absent',
+      };
+    }),
+  };
 }
 
 export function filterRiskScoresResponse(
@@ -1437,6 +1496,45 @@ async function persistCiiTrendSnapshot(response: GetRiskScoresResponse): Promise
   );
 }
 
+async function buildRiskScoresPayload(): Promise<{
+  response: GetRiskScoresResponse;
+  realtimeSignalDensityCoverageCount: number;
+}> {
+  const nowMs = Date.now();
+  const [acled, aux, priorCiiScores] = await Promise.all([
+    fetchACLEDEvents(),
+    fetchAuxiliarySources(),
+    readCiiTrendPriorScores(nowMs),
+  ]);
+  if (!priorCiiScores?.length) recordCiiTrendPriorGap(nowMs);
+  const realtimeSignalDensityCoverageCount = countCiiRealtimeSignalDensityCoverage(acled, aux, nowMs);
+  const ciiScores = computeCIIScores(acled, aux, { priorScores: priorCiiScores, nowMs });
+  const strategicRisks = computeStrategicRisks(ciiScores);
+  return {
+    response: { ciiScores, strategicRisks, degraded: false, stale: false },
+    realtimeSignalDensityCoverageCount,
+  };
+}
+
+async function persistFreshRiskScorePayload(
+  freshResult: GetRiskScoresResponse,
+  realtimeSignalDensityCoverageCount: number,
+  options: { liveCache?: boolean } = {},
+): Promise<void> {
+  const writes: Array<Promise<unknown>> = [
+    setCachedJson(RISK_STALE_CACHE_KEY, freshResult, RISK_STALE_TTL),
+    persistCiiTrendSnapshot(freshResult),
+    setCachedJson(
+      'seed-meta:intelligence:risk-scores',
+      { fetchedAt: Date.now(), recordCount: realtimeSignalDensityCoverageCount },
+      604800,
+    ),
+  ];
+
+  if (options.liveCache) writes.unshift(setCachedJson(RISK_CACHE_KEY, freshResult, RISK_CACHE_TTL));
+  await Promise.all(writes.map((write) => write.catch(() => undefined)));
+}
+
 // ========================================================================
 // RPC handler
 // ========================================================================
@@ -1451,21 +1549,27 @@ export async function getRiskScores(
       RISK_CACHE_KEY,
       RISK_CACHE_TTL,
       async () => {
-        const nowMs = Date.now();
-        const [acled, aux, priorCiiScores] = await Promise.all([
-          fetchACLEDEvents(),
-          fetchAuxiliarySources(),
-          readCiiTrendPriorScores(nowMs),
-        ]);
-        if (!priorCiiScores?.length) recordCiiTrendPriorGap(nowMs);
-        realtimeSignalDensityCoverageCount = countCiiRealtimeSignalDensityCoverage(acled, aux, nowMs);
-        const ciiScores = computeCIIScores(acled, aux, { priorScores: priorCiiScores, nowMs });
-        const strategicRisks = computeStrategicRisks(ciiScores);
-        return { ciiScores, strategicRisks, degraded: false, stale: false };
+        const built = await buildRiskScoresPayload();
+        realtimeSignalDensityCoverageCount = built.realtimeSignalDensityCoverageCount;
+        return built.response;
       },
     );
     if (result) {
-      const freshResult = withRiskScoreRuntimeState(result, { degraded: false, stale: false });
+      let freshResult = withRiskScoreRuntimeState(result, { degraded: false, stale: false });
+      let liveCacheBackfill = false;
+      if (!hasCompleteRiskScoreAdvisoryDisclosure(freshResult)) {
+        try {
+          const built = await buildRiskScoresPayload();
+          realtimeSignalDensityCoverageCount = built.realtimeSignalDensityCoverageCount;
+          freshResult = withRiskScoreRuntimeState(built.response, { degraded: false, stale: false });
+          liveCacheBackfill = true;
+        } catch {
+          freshResult = withRiskScoreRuntimeState(normalizeRiskScoreAdvisoryDisclosure(freshResult), {
+            degraded: false,
+            stale: false,
+          });
+        }
+      }
       // Write stale fallback, trend history, and seed-meta on every FRESH upstream
       // fetch by the true in-process leader so /api/health.riskScores
       // stays green from real user traffic, independent of the ais-relay
@@ -1490,24 +1594,22 @@ export async function getRiskScores(
       // hit). Only stamp on actual upstream re-fetches.
       // 7-day TTL matches the warm-ping write so health.maxStaleMin (30min)
       // logic is unchanged.
-      if (source === 'fresh' && leader) {
-        const writes: Array<Promise<unknown>> = [
-          setCachedJson(RISK_STALE_CACHE_KEY, freshResult, RISK_STALE_TTL),
-          persistCiiTrendSnapshot(freshResult),
-          setCachedJson(
-            'seed-meta:intelligence:risk-scores',
-            { fetchedAt: Date.now(), recordCount: realtimeSignalDensityCoverageCount },
-            604800,
-          ),
-        ];
-        await Promise.all(writes.map((write) => write.catch(() => undefined)));
+      if ((source === 'fresh' && leader) || liveCacheBackfill) {
+        await persistFreshRiskScorePayload(freshResult, realtimeSignalDensityCoverageCount, {
+          liveCache: liveCacheBackfill,
+        });
       }
       return filterRiskScoresResponse(freshResult, req.region);
     }
   } catch { /* upstream failed, fall through to stale */ }
 
   const stale = (await getCachedJson(RISK_STALE_CACHE_KEY)) as GetRiskScoresResponse | null;
-  if (stale) return filterRiskScoresResponse(withRiskScoreRuntimeState(stale, { degraded: true, stale: true }), req.region);
+  if (stale) {
+    return filterRiskScoresResponse(
+      withRiskScoreRuntimeState(normalizeRiskScoreAdvisoryDisclosure(stale), { degraded: true, stale: true }),
+      req.region,
+    );
+  }
   const ciiScores = computeCIIScores([], emptyAuxiliarySources());
   return filterRiskScoresResponse(
     { ciiScores, strategicRisks: computeStrategicRisks(ciiScores), degraded: true, stale: false },

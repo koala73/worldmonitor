@@ -34,5 +34,15 @@
   "workflowCount": 14,
   "freshnessSources": 35,
   "freshnessRequiredForRisk": 2,
-  "feedDefinitions": 567
+  "feedDefinitions": 567,
+  "airportCount": 111,
+  "stockExchangeCount": 29,
+  "telegramFullEnabledChannels": 56,
+  "telegramFullTierCounts": {
+    "1": 3,
+    "2": 23,
+    "3": 30
+  },
+  "leaderNames": 16,
+  "populationPriorityCountries": 20
 }

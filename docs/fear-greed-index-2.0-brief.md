@@ -46,10 +46,10 @@ Each category scores **0–100** (0 = Extreme Fear, 100 = Extreme Greed). The we
 | CNN F&G | CNN dataviz API | 0–100 score + label |
 | AAII Bear % | AAII survey | vs historical average |
 | AAII Bull % | AAII survey | vs historical average |
-| Put/Call Ratio | CBOE CDN CSV | vs 1yr average |
+| Put/Call Ratio | Barchart `$CPC` scrape | current total put/call ratio |
 | VIX | Yahoo / FRED | % change |
 | HY Spread | FRED | vs long-term average |
-| % > 200 DMA | Yahoo `^MMTH` | vs recent peak |
+| % > 200 DMA | Barchart `$S5TH` scrape | exact S&P 500 share above 200 DMA |
 | 10Y Yield | FRED | level |
 | Fed Rate | FRED | current range |
 
@@ -86,10 +86,10 @@ All sources are free with no paid API keys required.
 |--------|----------|--------|------|-------------|
 | **CNN Fear & Greed** | `production.dataviz.cnn.io/index/fearandgreed/graphdata/{date}` | JSON | User-Agent header | MEDIUM |
 | **AAII Sentiment** | `aaii.com/sentimentsurvey` (HTML scrape) | HTML | User-Agent header | LOW (blocks bots) |
-| **CBOE Total P/C** | `cdn.cboe.com/.../totalpc.csv` | CSV | None | HIGH |
-| **CBOE Equity P/C** | `cdn.cboe.com/.../equitypc.csv` | CSV | None | HIGH |
+| **Barchart Total P/C** | `barchart.com/stocks/quotes/%24CPC` | HTML / Next data | User-Agent header | MEDIUM |
+| **Barchart S&P 500 > 200 DMA** | `barchart.com/stocks/quotes/%24S5TH` | HTML / Next data | User-Agent header | MEDIUM |
 
-### Yahoo Finance Symbols (19 total)
+### Yahoo Finance Symbols (22 total)
 
 Uses `query1.finance.yahoo.com/v8/finance/chart` — no API key, User-Agent header only.
 
@@ -100,26 +100,29 @@ Uses `query1.finance.yahoo.com/v8/finance/chart` — no API key, User-Agent head
 | 3 | `^VIX9D` | Volatility | 9-day VIX for term structure |
 | 4 | `^VIX3M` | Volatility | 3-month VIX for term structure |
 | 5 | `^SKEW` | Positioning | CBOE SKEW index |
-| 6 | `^MMTH` | Breadth | % of stocks above 200 DMA |
-| 7 | `^NYA` | Breadth | NYSE Composite for breadth divergence |
-| 8 | `C:ISSU` | Breadth | NYSE advances/declines/unchanged |
-| 9 | `GLD` | Cross-Asset | Gold proxy |
-| 10 | `TLT` | Cross-Asset | Bonds proxy |
-| 11 | `SPY` | Cross-Asset, Breadth | Equity benchmark |
-| 12 | `RSP` | Breadth | Equal-weight S&P 500 (vs SPY divergence) |
-| 13 | `DX-Y.NYB` | Cross-Asset | USD Dollar Index |
-| 14 | `HYG` | Credit | HY bond ETF trend |
-| 15 | `LQD` | Credit | IG bond ETF trend |
-| 16 | `XLK` | Momentum | Tech sector |
-| 17 | `XLF` | Momentum | Financial sector |
-| 18 | `XLE` | Momentum | Energy sector |
-| 19 | `XLV` | Momentum | Healthcare sector |
+| 6 | `GLD` | Cross-Asset | Gold proxy |
+| 7 | `TLT` | Cross-Asset | Bonds proxy |
+| 8 | `HYG` | Credit | HY bond ETF stress input |
+| 9 | `SPY` | Cross-Asset, Breadth | Equity benchmark |
+| 10 | `RSP` | Breadth | Equal-weight S&P 500 (vs SPY divergence) |
+| 11 | `DX-Y.NYB` | Cross-Asset | USD Dollar Index |
+| 12 | `XLK` | Momentum | Tech sector |
+| 13 | `XLF` | Momentum | Financial sector |
+| 14 | `XLE` | Momentum | Energy sector |
+| 15 | `XLV` | Momentum | Healthcare sector |
+| 16 | `XLY` | Momentum | Consumer discretionary sector |
+| 17 | `XLP` | Momentum | Consumer staples sector |
+| 18 | `XLI` | Momentum | Industrials sector |
+| 19 | `XLB` | Momentum | Materials sector |
+| 20 | `XLU` | Momentum | Utilities sector |
+| 21 | `XLRE` | Momentum | Real estate sector |
+| 22 | `XLC` | Momentum | Communication services sector |
 
 **Notes:**
 
-- `^MMTH` = % above **200-day** MA (not `^MMTW` which is 20-day)
-- `C:ISSU` = NYSE advance/decline/unchanged data. **Unvalidated via `/v8/finance/chart` endpoint** — must confirm it returns advance/decline figures before relying on it. If unavailable, Breadth drops `ad_score` and reweights: `breadth_score * 0.57 + rsp_score * 0.43`
-- Fallback: Finnhub candle API for ETF symbols; breadth symbols Yahoo-only
+- `$S5TH` from Barchart is the implemented % above **200-day** MA input; `^MMTH` is not fetched by the current seeder.
+- Advance/decline ratio is currently `null`. Breadth drops `ad_score` and reweights to `breadth_score * 0.57 + rsp_score * 0.43`.
+- Fallback: VIX can fall back to FRED `VIXCLS`; Yahoo failures for ETF symbols leave their derived categories neutral or degraded.
 
 ---
 
@@ -144,7 +147,7 @@ score = CNN_FG  // 100% weight on CNN F&G; crypto F&G from Redis as secondary si
 
 ```
 inputs: VIX, VIX_Term_Structure
-vix_score = clamp(100 - ((VIX - 12) / 28) * 100, 0, 100)  // VIX 12=100, VIX 40=0
+vix_score = clamp(100 - ((VIX - 12) / 23) * 100, 0, 100)  // VIX 12=100, VIX 35=0
 term_score = contango ? 70 : backwardation ? 30 : 50
 score = vix_score * 0.7 + term_score * 0.3
 ```
@@ -170,11 +173,13 @@ score = (above_count / 3) * 50 + clamp(distance_200 * 500 + 50, 0, 100) * 0.5
 ### 5. Breadth (10%)
 
 ```
-inputs: Pct_Above_200DMA, Advance_Decline, RSP_SPY_Divergence
+inputs: Pct_Above_200DMA from Barchart $S5TH, Advance_Decline, RSP_SPY_Divergence
 breadth_score = Pct_Above_200DMA  // already 0-100
 ad_score = clamp((AD_Ratio - 0.5) / 1.5 * 100, 0, 100)
 rsp_score = clamp(RSP_SPY_30d_diff * 10 + 50, 0, 100)
 score = breadth_score * 0.4 + ad_score * 0.3 + rsp_score * 0.3
+// implemented degraded path when AD_Ratio is null:
+score = breadth_score * 0.57 + rsp_score * 0.43
 ```
 
 ### 6. Momentum (10%)
@@ -190,7 +195,7 @@ score = rsi_score * 0.5 + roc_score * 0.5
 
 ```
 inputs: M2_YoY_Change, Fed_Balance_Sheet_Change, SOFR_Rate
-m2_score = clamp(M2_YoY * 10 + 50, 0, 100)
+m2_score = clamp(M2_YoY * 5 + 50, 0, 100)
 fed_score = clamp(Fed_BS_MoM * 20 + 50, 0, 100)
 sofr_score = clamp(100 - SOFR * 15, 0, 100)
 score = m2_score * 0.4 + fed_score * 0.3 + sofr_score * 0.3
@@ -200,8 +205,8 @@ score = m2_score * 0.4 + fed_score * 0.3 + sofr_score * 0.3
 
 ```
 inputs: HY_Spread, IG_Spread, HY_Spread_Change_30d
-hy_score = clamp(100 - ((HY_Spread - 3.0) / 5.0) * 100, 0, 100)
-ig_score = clamp(100 - ((IG_Spread - 0.8) / 2.0) * 100, 0, 100)
+hy_score = clamp(100 - ((HY_Spread - 2.0) / 8.0) * 100, 0, 100)
+ig_score = clamp(100 - ((IG_Spread - 0.4) / 2.6) * 100, 0, 100)
 trend_score = HY_narrowing ? 70 : HY_widening ? 30 : 50
 score = hy_score * 0.4 + ig_score * 0.3 + trend_score * 0.3
 ```
@@ -235,9 +240,9 @@ score = weighted combination with mean reversion
 | VIX Term Structure | ^VIX, ^VIX9D, ^VIX3M | `VIX/VIX3M` ratio (&lt;1 = contango) | Volatility |
 | Sector RSI (14d) | XLK/XLF/XLE/XLV | Standard RSI formula | Momentum |
 | Cross-asset 30d returns | GLD, TLT, SPY, DXY | `rateOfChange(prices, 30)` | Cross-Asset |
-| M2 YoY change | M2SL | `(latest - 12mo_ago) / 12mo_ago` | Liquidity |
+| M2 YoY change | M2SL | `(latest - 52wk_ago) / 52wk_ago` | Liquidity |
 | Fed BS MoM change | WALCL | `(latest - 4wk_ago) / 4wk_ago` | Liquidity |
-| HY spread trend | BAMLH0A0HYM2 | `30d change direction` | Credit |
+| HY spread trend | BAMLH0A0HYM2 | `20 trading-day change direction` | Credit |
 | RSP/SPY ratio | RSP, SPY | `RSP_return_30d - SPY_return_30d` | Breadth |
 
 ---
@@ -265,14 +270,14 @@ seed-lock:market:fear-greed       # Concurrency lock
 
 | Source | Calls | Rate Limited? | Auth |
 |--------|-------|--------------|------|
-| Yahoo Finance | 19 symbols | 150ms gaps | User-Agent only |
-| CBOE CDN | 2 CSVs | No | None |
+| Yahoo Finance | 22 symbols | 150ms gaps | User-Agent only |
+| Barchart | 2 HTML quote pages (`$CPC`, `$S5TH`) | No | User-Agent only |
 | CNN dataviz | 1 | No | User-Agent only |
 | AAII | 1 | Blocks bots | User-Agent + scrape |
 | Redis reads | ~10 FRED series | No | Bearer token |
-| **Total** | **~33** | — | — |
+| **Total** | **~34** | — | — |
 
-**Estimated runtime**: ~3s (Yahoo sequential) + ~2s (CBOE/CNN/AAII parallel) + ~1s (Redis) = **~6s per run**
+**Estimated runtime**: ~3.3s (Yahoo sequential) + ~2s (Barchart/CNN/AAII parallel) + ~1s (Redis) = **~6-7s per run**
 
 **Timeouts**: Set `AbortSignal.timeout(8000)` on AAII scrape (frequently stalls). AAII failure must not block the entire seed run — wrap in `try/catch`, log warn, continue with degraded Sentiment scoring.
 
@@ -370,7 +375,7 @@ Build the initial version using only data we already have + easy additions:
 6. **Sentiment** — CNN F&G endpoint + crypto F&G (already have)
 7. **Momentum** — Sector ETF returns from Yahoo
 8. **Cross-Asset** — GLD/TLT/SPY/DXY returns from Yahoo
-9. **Positioning** — CBOE put/call CSVs + SKEW from Yahoo
-10. **Breadth** — ^MMTH + RSP/SPY divergence + C:ISSU from Yahoo
+9. **Positioning** — Barchart `$CPC` put/call + SKEW from Yahoo
+10. **Breadth** — Barchart `$S5TH` + RSP/SPY divergence, with advance/decline currently null
 
 All 10 categories covered from day one. No paid sources needed.

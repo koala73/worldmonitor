@@ -46,17 +46,25 @@ Each hotspot's escalation score blends four weighted components:
 **Score Calculation**
 
 ```
-static_baseline = hotspot.baselineRisk  // 1-5 per hotspot
-dynamic_score = (
+static_baseline = hotspot.escalationScore ?? 3  // 1-5 per hotspot
+dynamic_raw = (
   news_component × 0.35 +
   cii_component × 0.25 +
   geo_component × 0.25 +
   military_component × 0.15
 )
-proximity_boost = hotspot_proximity_multiplier  // 1.0-2.0
 
-final_score = (static_baseline × 0.30 + dynamic_score × 0.70) × proximity_boost
+dynamic_score = 1 + (dynamic_raw / 100) × 4  // maps 0-100 inputs onto 1-5
+final_score = static_baseline × 0.30 + dynamic_score × 0.70
 ```
+
+The static baseline is the editorial `escalationScore` on each hotspot config
+(default `3` when absent). It is deliberately kept on the same 1-5 scale as the
+dynamic output; the popup exposes it as `staticBaseline` alongside the component
+bars so users can separate structural risk from live movement. Many hotspots
+also carry a `whyItMatters` narrative rationale for the popup, but that text is
+not score-affecting. The code does not apply a geographic proximity multiplier
+to the final score.
 
 **Trend Detection**
 
@@ -71,9 +79,10 @@ The system maintains 48-point history (24 hours at 30-minute intervals) per hots
 
 Escalation signals (`hotspot_escalation`) are emitted when:
 
-1. Final score exceeds threshold (typically 60)
+1. A hotspot crosses into a higher whole-number score band at or above `2/5`
 2. At least 2 hours since last signal for this hotspot (cooldown)
-3. Trend is rising or score is critical (>80)
+3. Or the score rises by at least `0.5` points
+4. Or the score first reaches the critical threshold (`>=4.5/5`)
 
 **Signal Context**
 

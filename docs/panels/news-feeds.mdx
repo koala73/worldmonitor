@@ -3,9 +3,13 @@ title: "News Feeds"
 description: "Catalogue of regional, topical, and variant-specific news-feed panels — content-stream surfaces that share a common panel framework with per-topic or per-region scoping."
 ---
 
-Every variant of WorldMonitor ships a set of **content-stream panels** — regional news, topical news, tech / startup feeds, commodity news, and happy-variant feel-good streams. They share a common panel framework: ranked headlines, source attribution, activity tracking, and Cmd+K / custom-monitor highlighting. This page is the collective reference so the per-panel behaviour is findable without writing one page per feed.
+Every variant of WorldMonitor ships a set of **content-stream panels** — regional news, topical news, tech / startup feeds, finance and commodity streams, energy headlines, and happy-variant feel-good streams. They share a common panel framework: ranked headlines, source attribution, activity tracking, and Cmd+K / custom-monitor highlighting. This page is the collective reference so the per-panel behaviour is findable without writing one page per feed.
 
 Every panel name in the tables below is also registered in at least one `*_PANELS` block in `src/config/panels.ts`. When you open a panel and the content is empty, check [Data Sources](/data-sources) and the global [health endpoint](/health-endpoints) for the underlying feed's status.
+
+For the scoring, freshness, dedupe, story tracking, brief filtering, cooldown,
+LLM, and bias controls shared across these feeds, see the canonical
+[News Digest and Briefing methodology](/methodology/news-digest-and-briefing).
 
 ## Regional news
 
@@ -85,6 +89,23 @@ The finance variant's content-stream panels are tighter and market-focused.
 
 All free. Stream configuration lives in `src/config/variants/finance.ts`.
 
+## Energy streams (energy variant)
+
+The energy variant ships a focused set of content streams for live energy
+headlines, oil and gas markets, and supply-chain chokepoints. The site has
+client-side `ENERGY_FEEDS`; the server digest currently normalises
+`variant=energy` to `full`, so energy-only categories can use direct per-feed
+fallback when they are absent from the digest.
+
+| Panel id | Title |
+|---|---|
+| `live-news` | Energy Headlines |
+| `energy` | Energy Markets News |
+| `supply-chain` | Chokepoints & Routes |
+
+All free. Stream configuration lives in `src/config/variants/energy.ts` and
+`src/config/feeds.ts`.
+
 ## Happy variant feeds
 
 The happy variant (positive-news product) replaces conflict-centric feeds with a curated set of constructive-news surfaces.
@@ -115,5 +136,6 @@ All free. Stream configuration lives in `src/config/variants/happy.ts`.
 ## Related
 
 - [Signal Intelligence](/signal-intelligence) — structural overview of how news feeds are classified, deduplicated, and ranked.
+- [News Digest and Briefing methodology](/methodology/news-digest-and-briefing) — canonical scoring, freshness, story tracking, brief filtering, cooldown, LLM, and bias controls.
 - [Data Sources](/data-sources) — the full upstream source list.
 - [My Monitors](/panels/monitors) — how keyword monitors work across news feeds.

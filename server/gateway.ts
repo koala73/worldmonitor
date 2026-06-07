@@ -332,6 +332,26 @@ export const PUBLIC_NO_AUTH_RPC_PATHS = new Set<string>([
   '/api/resilience/v1/get-runtime-manifest',
 ]);
 
+// Cacheable, non-premium RPC endpoints the Railway relay periodically warm-pings
+// to keep their compute caches hot (so the first real user request isn't a cold
+// miss). These require a browser session token or an API key in normal traffic;
+// the relay is a trusted internal service with neither, so it authenticates as
+// itself via WORLDMONITOR_RELAY_KEY (validated below in isRelayWarmPingRequest).
+//
+// Least privilege: WORLDMONITOR_RELAY_KEY is a DEDICATED relay↔gateway secret —
+// it does NOT need to be (and should not be) a WORLDMONITOR_VALID_KEYS enterprise
+// key. It unlocks ONLY a cache-warm on these specific free endpoints — exactly
+// what any session holder could already trigger — so the blast radius of the
+// secret is a recompute on public data: no premium access, no entitlement bypass
+// beyond anonymous-equivalent. Mirrors the isResilienceRankingSeedRefreshRequest
+// internal-auth path below.
+export const RELAY_WARM_PING_PATHS = new Set<string>([
+  '/api/infrastructure/v1/list-service-statuses',
+  '/api/infrastructure/v1/get-cable-health',
+  '/api/intelligence/v1/get-risk-scores',
+  '/api/supply-chain/v1/get-chokepoint-status',
+]);
+
 /**
  * Creates a Vercel Edge handler for a single domain's routes.
  *
@@ -386,6 +406,19 @@ async function isResilienceRankingSeedRefreshRequest(request: Request, pathname:
   } catch {
     return false;
   }
+  const candidate = request.headers.get('X-WorldMonitor-Key') ?? '';
+  return timingSafeEqual(candidate, expected);
+}
+
+// Authenticate a relay warm-ping as a trusted internal caller. True only when
+// the path is an explicit warm-ping target AND the request carries the dedicated
+// relay secret in X-WorldMonitor-Key (timing-safe compared). Returns false when
+// the secret is unset so a misconfigured deploy fails CLOSED (no bypass) rather
+// than silently opening these paths. Mirrors isResilienceRankingSeedRefreshRequest.
+export async function isRelayWarmPingRequest(request: Request, pathname: string): Promise<boolean> {
+  if (!RELAY_WARM_PING_PATHS.has(pathname)) return false;
+  const expected = process.env.WORLDMONITOR_RELAY_KEY?.trim() ?? '';
+  if (!expected) return false;
   const candidate = request.headers.get('X-WorldMonitor-Key') ?? '';
   return timingSafeEqual(candidate, expected);
 }
@@ -757,7 +790,8 @@ export function createDomainGateway(
     // that has no Authorization header would just no-op anyway.
     const isPublicNoAuthRpc = PUBLIC_NO_AUTH_RPC_PATHS.has(pathname);
     const seedRefreshVerified = await isResilienceRankingSeedRefreshRequest(request, pathname);
-    const isTierGated = !internalMcpVerified && !isPublicNoAuthRpc && !seedRefreshVerified && getRequiredTier(pathname) !== null;
+    const relayWarmPingVerified = await isRelayWarmPingRequest(request, pathname);
+    const isTierGated = !internalMcpVerified && !isPublicNoAuthRpc && !seedRefreshVerified && !relayWarmPingVerified && getRequiredTier(pathname) !== null;
     const needsLegacyProBearerGate = !internalMcpVerified && !isPublicNoAuthRpc && PREMIUM_RPC_PATHS.has(pathname) && !isTierGated;
 
     // Session resolution — extract userId from bearer token (Clerk JWT) if present.
@@ -782,7 +816,7 @@ export function createDomainGateway(
     // request). Telemetry stays attributed via the verified userId set
     // above; entitlement re-check (`features.tier ≥ 1 && mcpAccess`) was
     // already performed before flipping `internalMcpVerified = true`.
-    let keyCheck: { valid: boolean; required: boolean; error?: string; kind?: 'enterprise' | 'session' | 'user' } = internalMcpVerified || isPublicNoAuthRpc || seedRefreshVerified
+    let keyCheck: { valid: boolean; required: boolean; error?: string; kind?: 'enterprise' | 'session' | 'user' } = internalMcpVerified || isPublicNoAuthRpc || seedRefreshVerified || relayWarmPingVerified
       ? { valid: true, required: false }
       : ((await validateApiKey(request, {
           forceKey: (isTierGated && !sessionUserId) || needsLegacyProBearerGate,
@@ -925,7 +959,7 @@ export function createDomainGateway(
     // routes require tier 2, but Pro MCP callers only reach the gateway
     // through the MCP edge's whitelisted tool set.
     const isEnterpriseAuth = keyCheck.valid && wmKey && !isUserApiKey && keyCheck.kind === 'enterprise';
-    if (!isEnterpriseAuth && !internalMcpVerified && !seedRefreshVerified) {
+    if (!isEnterpriseAuth && !internalMcpVerified && !seedRefreshVerified && !relayWarmPingVerified) {
       const entitlementResponse = await checkEntitlement(sessionUserId, pathname, corsHeaders);
       if (entitlementResponse) {
         const entReason: RequestReason =
