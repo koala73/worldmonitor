@@ -46,7 +46,7 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
 | [`/llms-full.txt`](https://worldmonitor.app/llms-full.txt) | (extension) | Long-form variant covering all data layers, panels, and data sources |
 | [`/api/health`](https://api.worldmonitor.app/api/health) | (custom) | Per-key seed status, freshness, record counts — agents can gate fetches on this |
 
-The static discovery assets (`.well-known/*`, `/openapi.yaml`, `/llms*.txt`) serve `Access-Control-Allow-Origin: *` and are cached `public, max-age=3600` — safe to memoize. `/api/health` uses the normal API CORS allowlist and is **not** cached (`private, no-store`) because it reflects real-time seed freshness; agents should hit it fresh whenever they need to gate on data availability.
+The header-discoverable static assets (`.well-known/*`, `/openapi.yaml`) serve `Access-Control-Allow-Origin: *` and are cached `public, max-age=3600` — safe to memoize. `/api/health` uses the normal API CORS allowlist and is **not** cached (`private, no-store`) because it reflects real-time seed freshness; agents should hit it fresh whenever they need to gate on data availability.
 
 ## Agent walkthroughs
 
