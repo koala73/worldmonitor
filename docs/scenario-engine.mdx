@@ -3,7 +3,7 @@ title: "Scenario Engine"
 description: "Run pre-built supply-chain disruption scenarios — conflicts, sanctions, tariff shocks, and weather events — and see which chokepoints, sectors, and countries are exposed, directly on the map."
 ---
 
-Scenario Engine turns WorldMonitor's live supply-chain graph into an interactive what-if tool. Instead of asking "what is the state of this lane today," you pick a named disruption scenario — a Hormuz closure, a Panama drought, a tariff shock on semiconductors — and the engine resolves the downstream impact on chokepoints, HS2 sectors, and countries, then paints the result onto the existing map.
+Scenario Engine turns WorldMonitor's live supply-chain graph into an interactive what-if tool. Instead of asking "what is the state of this lane today," you pick a named disruption scenario — a Hormuz closure, a Panama drought, a tariff shock on semiconductors — and the engine resolves the downstream impact on chokepoints, HS2 sectors, and the currently seeded reporter countries, then paints the result onto the existing map.
 
 ## Who it is for
 
@@ -37,7 +37,7 @@ Each template declares the chokepoints it affects (IDs from the chokepoint regis
 A completed scenario returns:
 
 - **Affected chokepoints** — which ones go red on the map.
-- **Impact ranking** — the top affected countries by ISO-2, ordered by exposure, with per-country import-value impact against the selected HS2 sectors.
+- **Impact ranking** — the top affected seeded reporter countries by ISO-2, ordered by the worker's relative weighted impact score. `totalImpact` is not a currency amount.
 - **Sector call-outs** — which HS2 chapters take the biggest hit.
 - **A summary card** injected into the Supply Chain panel that stays visible until you deactivate the scenario.
 
@@ -47,7 +47,7 @@ The UI is state-driven, not modal — activating a scenario sets a `scenarioStat
 
 Scenario Engine is **PRO**. Free users see the trigger buttons but are blocked at activation: a `scenario-engine` gate-hit event is logged and the map is not repainted. The `ScenarioService.RunScenario` handler also enforces PRO at the edge (`server/worldmonitor/scenario/v1/run-scenario.ts`).
 
-Rate limits on the API side — 10 jobs / minute / IP, with a global queue cap at 100 in-flight — are documented in [Scenarios API](/api-scenarios#run-a-scenario).
+Rate limits on the API side — 10 jobs / minute / IP, with queue backpressure once the pending queue is already above 100 jobs — are documented in [Scenarios API](/api-scenarios#run-a-scenario).
 
 ## Run it yourself
 
@@ -66,7 +66,29 @@ For scripted use, see [`POST /api/scenario/v1/run-scenario`](/api-scenarios#run-
 - **Scenario templates** — `server/worldmonitor/supply-chain/v1/scenario-templates.ts`. Additions require a proto-side change; not user-configurable today.
 - **Job queue** — Redis list `scenario-queue:pending`; worker results land at `scenario-result:{jobId}`.
 - **Chokepoint registry** — the same registry that backs live chokepoint status and Route Explorer, ensuring scenario results visually align with the rest of the product.
-- **Trade / impact data** — HS2 import exposure per country, sourced from the supply-chain cache set.
+- **Trade / impact data** — HS2 exposure cache entries read from `supply-chain:exposure:{ISO2}:{HS2}:v1`. If `iso2` is omitted, v1 computes only the seeded reporter set: `US`, `CN`, `RU`, `IR`, `IN`, and `TW`. Supplying `iso2` scopes the job to that single country key.
+
+## Impact Math
+
+For physical chokepoint scenarios, each matching exposure entry contributes:
+
+```text
+adjustedImpact = exposureScore * (disruptionPct / 100) * costShockMultiplier
+```
+
+For tariff-shock scenarios with no physical chokepoint closure, the worker uses
+the country's cached `vulnerabilityIndex` as the exposure proxy:
+
+```text
+adjustedImpact = vulnerabilityIndex * costShockMultiplier
+```
+
+The worker sums `adjustedImpact` by country, sorts descending, and returns the
+top 20. `impactPct` is a 0-100 share of the worst-hit returned country:
+
+```text
+impactPct = round(countryTotalImpact / maxReturnedTotalImpact * 100)
+```
 
 ## Related workflows
 

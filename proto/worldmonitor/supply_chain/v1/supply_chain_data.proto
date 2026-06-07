@@ -19,9 +19,17 @@ message ShippingIndex {
 }
 
 message FlowEstimate {
+  // Current estimated flow in million barrels/day. Computed as
+  // baseline_mbd * flow_ratio.
   double current_mbd = 1;
+  // EIA 2023 annual reference level in million barrels/day for the mapped
+  // seven-item live-flow subset.
   double baseline_mbd = 2;
+  // Latest 7-day PortWatch average divided by the preceding rolling baseline
+  // window of up to 90 days, clamped to 0.0-1.5.
   double flow_ratio = 3;
+  // True when each of the latest 3 daily ratios is below 85% of the same
+  // rolling baseline window. Separate from the green/yellow/red status badge.
   bool disrupted = 4;
   string source = 5;
   string hazard_alert_level = 6;
@@ -49,6 +57,8 @@ message ChokepointInfo {
   double lat = 3;
   double lon = 4;
   int32 disruption_score = 5;
+  // Traffic-light score badge: green (<20), yellow (20-49), or red (>=50).
+  // Not an operational closure taxonomy.
   string status = 6;
   int32 active_warnings = 7;
   string congestion_level = 8;

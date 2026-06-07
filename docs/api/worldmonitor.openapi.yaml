@@ -18947,7 +18947,8 @@ components:
                     pattern: ^([A-Z]{2})?$
                     description: |-
                         Optional 2-letter ISO country code to scope the impact computation.
-                         When absent, the worker computes for all countries with seeded exposure.
+                         When absent, v1 computes only the seeded reporter set:
+                         US, CN, RU, IR, IN, TW.
             required:
                 - scenarioId
             description: |-
@@ -19037,12 +19038,14 @@ components:
                     format: double
                     description: |-
                         Raw weighted impact value aggregated across the country's exposed HS2
-                         chapters. Relative-only — not a currency amount.
+                         chapters. Physical scenarios use exposureScore * (disruption_pct / 100)
+                         * cost_shock_multiplier; tariff-shock scenarios use vulnerabilityIndex
+                         * cost_shock_multiplier. Relative-only - not a currency amount.
                 impactPct:
                     type: integer
                     format: int32
-                    description: Impact as a 0-100 share of the worst-hit country.
-            description: ScenarioImpactCountry carries a single country's scenario impact score.
+                    description: Impact as a 0-100 share of the worst-hit returned country.
+            description: ScenarioImpactCountry carries a single country's relative scenario impact score.
         worldmonitor_scenario_v1_ScenarioResultTemplate:
             type: object
             properties:
@@ -19444,6 +19447,9 @@ components:
                     format: int32
                 status:
                     type: string
+                    description: |-
+                        Traffic-light score badge: green (<20), yellow (20-49), or red (>=50).
+                         Not an operational closure taxonomy.
                 activeWarnings:
                     type: integer
                     format: int32
@@ -19587,14 +19593,26 @@ components:
                 currentMbd:
                     type: number
                     format: double
+                    description: |-
+                        Current estimated flow in million barrels/day. Computed as
+                         baseline_mbd * flow_ratio.
                 baselineMbd:
                     type: number
                     format: double
+                    description: |-
+                        EIA 2023 annual reference level in million barrels/day for the mapped
+                         seven-item live-flow subset.
                 flowRatio:
                     type: number
                     format: double
+                    description: |-
+                        Latest 7-day PortWatch average divided by the preceding rolling baseline
+                         window of up to 90 days, clamped to 0.0-1.5.
                 disrupted:
                     type: boolean
+                    description: |-
+                        True when each of the latest 3 daily ratios is below 85% of the same
+                         rolling baseline window. Separate from the green/yellow/red status badge.
                 source:
                     type: string
                 hazardAlertLevel:
@@ -19751,7 +19769,7 @@ components:
                 vulnerabilityIndex:
                     type: number
                     format: double
-                    description: Composite vulnerability index 0–100 (weighted sum of top-3 exposures).
+                    description: 'Composite vulnerability index 0-100: top1 * 0.5 + top2 * 0.3 + top3 * 0.2.'
                 fetchedAt:
                     type: string
                     description: ISO timestamp of when this data was last seeded.
@@ -19768,7 +19786,11 @@ components:
                 exposureScore:
                     type: number
                     format: double
-                    description: Exposure score 0–100; higher = more dependent on this chokepoint.
+                    description: |-
+                        Exposure score 0-100; higher = more dependent on this chokepoint. With
+                         bilateral product data, sums routeCoverage * exporterShare * productWeight
+                         * 100 across matching products; fallback uses route overlap only. HS2 27
+                         supported energy chokepoints receive a 1.5x boost capped at 100.
                 coastSide:
                     type: string
                     description: Which ocean/basin side the country's ports face (atlantic, pacific, indian, med, multi, landlocked).

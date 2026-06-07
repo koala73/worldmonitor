@@ -5,14 +5,16 @@ package worldmonitor.scenario.v1;
 import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 
-// ScenarioImpactCountry carries a single country's scenario impact score.
+// ScenarioImpactCountry carries a single country's relative scenario impact score.
 message ScenarioImpactCountry {
   // 2-letter ISO country code.
   string iso2 = 1;
   // Raw weighted impact value aggregated across the country's exposed HS2
-  // chapters. Relative-only — not a currency amount.
+  // chapters. Physical scenarios use exposureScore * (disruption_pct / 100)
+  // * cost_shock_multiplier; tariff-shock scenarios use vulnerabilityIndex
+  // * cost_shock_multiplier. Relative-only - not a currency amount.
   double total_impact = 2;
-  // Impact as a 0-100 share of the worst-hit country.
+  // Impact as a 0-100 share of the worst-hit returned country.
   int32 impact_pct = 3;
 }
 

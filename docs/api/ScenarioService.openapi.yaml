@@ -150,7 +150,8 @@ components:
                     pattern: ^([A-Z]{2})?$
                     description: |-
                         Optional 2-letter ISO country code to scope the impact computation.
-                         When absent, the worker computes for all countries with seeded exposure.
+                         When absent, v1 computes only the seeded reporter set:
+                         US, CN, RU, IR, IN, TW.
             required:
                 - scenarioId
             description: |-
@@ -240,12 +241,14 @@ components:
                     format: double
                     description: |-
                         Raw weighted impact value aggregated across the country's exposed HS2
-                         chapters. Relative-only — not a currency amount.
+                         chapters. Physical scenarios use exposureScore * (disruption_pct / 100)
+                         * cost_shock_multiplier; tariff-shock scenarios use vulnerabilityIndex
+                         * cost_shock_multiplier. Relative-only - not a currency amount.
                 impactPct:
                     type: integer
                     format: int32
-                    description: Impact as a 0-100 share of the worst-hit country.
-            description: ScenarioImpactCountry carries a single country's scenario impact score.
+                    description: Impact as a 0-100 share of the worst-hit returned country.
+            description: ScenarioImpactCountry carries a single country's relative scenario impact score.
         ScenarioResultTemplate:
             type: object
             properties:
