@@ -132,10 +132,18 @@ test('public algorithms docs describe tracked leader names without overclaiming 
   const leaderBlock = trendingCode.match(/const\s+LEADER_NAMES\s*=\s*\[([\s\S]*?)\];/);
   assert.ok(leaderBlock, 'trending keywords must define LEADER_NAMES');
 
-  const leaderNames = leaderBlock[1].match(/'[^']+'/g) || [];
-  const multiWordNames = leaderNames.filter((name) => /\s/.test(name.slice(1, -1)));
-  assert.equal(leaderNames.length, 16);
-  assert.equal(multiWordNames.length, 2);
+  const leaderNames = (leaderBlock[1].match(/'[^']+'/g) || []).map((name) => name.slice(1, -1));
+  const multiWordNames = leaderNames.filter((name) => /\s/.test(name));
+  assert.equal(
+    leaderNames.length,
+    16,
+    `LEADER_NAMES changed to ${leaderNames.length}; update docs/algorithms.mdx and scripts/docs-stats.mjs wording if intentional. Values: ${leaderNames.join(', ')}`,
+  );
+  assert.equal(
+    multiWordNames.length,
+    2,
+    `LEADER_NAMES multi-word count changed to ${multiWordNames.length}; update the tokenizer docs examples/wording if intentional. Multi-word values: ${multiWordNames.join(', ')}`,
+  );
 
   assert.match(algorithmsDoc, /16 tracked world-leader names/);
   assert.match(algorithmsDoc, /multi-word names such as "Xi Jinping" and "Kim Jong Un"/);
@@ -150,9 +158,16 @@ test('public data-source docs disclose Telegram source-bias metadata limits', ()
   };
   const dataSourcesDoc = readRepo('docs/data-sources.mdx');
   const fullChannels = telegramConfig.channels?.full || [];
+  const channelLabels = fullChannels.map((channel) => String(channel.label || channel.handle || ''));
 
-  assert.ok(fullChannels.some((channel) => channel.label === 'IDF Official'));
-  assert.ok(fullChannels.some((channel) => channel.label === 'IRGC Official'));
+  assert.ok(
+    channelLabels.includes('IDF Official'),
+    `Telegram disclosure guard expects an official belligerent-party channel example. Available labels: ${channelLabels.join(', ')}`,
+  );
+  assert.ok(
+    channelLabels.includes('IRGC Official'),
+    `Telegram disclosure guard expects a state/belligerent official channel example. Available labels: ${channelLabels.join(', ')}`,
+  );
   assert.ok(fullChannels.every((channel) => typeof channel.tier === 'number'));
   assert.ok(fullChannels.every((channel) => !('stateAffiliation' in channel)));
   assert.ok(fullChannels.every((channel) => !('propagandaRisk' in channel)));
