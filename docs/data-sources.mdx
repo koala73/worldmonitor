@@ -317,6 +317,76 @@ Resource management is aggressive — iframes are lazy-loaded via Intersection O
 
 Rather than each client browser independently fetching dozens of RSS feeds through individual edge function invocations, the `listFeedDigest` RPC endpoint aggregates all feeds server-side into a single categorized response.
 
+The public server digest feed inventory below is source-backed from `server/worldmonitor/news/v1/_feeds.ts`; that code file remains the source of truth for exact URLs, Google News query wrappers, and locale-specific URL parameters. Feed choices are intentionally visible here so regional coverage, official-source inclusion, and politically sensitive inclusions such as `Trump - Truth Social` can be reviewed rather than hidden behind a generic "RSS" label. Language-scoped feeds are marked with their language code and are only included when the request language matches. The `full` variant also appends `INTEL_SOURCES` under the `intel` category.
+
+| Variant | Category | Server feed sources |
+| --- | --- | --- |
+| `full` | `politics` | BBC World; Guardian World; AP News; Reuters World; CNN World; Trump - Truth Social |
+| `full` | `us` | Reuters US; NPR News; PBS NewsHour; ABC News; CBS News; NBC News; Wall Street Journal; Politico; The Hill; Axios |
+| `full` | `europe` | France 24; EuroNews; Le Monde; DW News; Tagesschau (de); ANSA (it); NOS Nieuws (nl); SVT Nyheter (sv); Telex (hu); Index.hu (hu); HVG (hu); 444.hu (hu); 24.hu (hu); Híradó (hu); Portfolio.hu (hu); ATV (hu); N1 Croatia (hr); Index.hr (hr); Jutarnji list (hr); Balkan Insight |
+| `full` | `middleeast` | BBC Middle East; Al Jazeera; Guardian ME; Oman Observer; BBC Persian (fa); The National |
+| `full` | `tech` | Hacker News; Ars Technica; The Verge; MIT Tech Review |
+| `full` | `ai` | AI News; VentureBeat AI; The Verge AI; MIT Tech Review; ArXiv AI |
+| `full` | `finance` | CNBC; MarketWatch; Yahoo Finance; Financial Times; Reuters Business |
+| `full` | `gov` | White House; White House Actions; State Dept; Pentagon; Federal Reserve; SEC; UN News; CISA; Treasury; DOJ |
+| `full` | `africa` | BBC Africa; News24; Africanews; Jeune Afrique (fr); Premium Times |
+| `full` | `latam` | BBC Latin America; Guardian Americas; Primicias (es); Infobae Americas (es); El Universo (es); Clarín (es); InSight Crime |
+| `full` | `asia` | BBC Asia; The Diplomat; Nikkei Asia; CNA; NDTV; South China Morning Post; The Hindu; Asia News; BBC Hindi (hi); Aaj Tak (hi); NDTV India (hi); Amar Ujala (hi) |
+| `full` | `energy` | Oil & Gas; Reuters Energy; Nuclear Energy |
+| `full` | `thinktanks` | Foreign Policy; Atlantic Council; Foreign Affairs; War on the Rocks; CSIS |
+| `full` | `crisis` | CrisisWatch; IAEA; WHO |
+| `full` | `layoffs` | Layoffs.fyi; TechCrunch Layoffs; Layoffs News |
+| `full` | `intel` | Defense One; The War Zone; Defense News; Military Times; Task & Purpose; USNI News; gCaptain; Oryx OSINT; Foreign Policy; Foreign Affairs; Atlantic Council; Bellingcat; Krebs Security; Arms Control Assn; Bulletin of Atomic Scientists; FAO News; OCCRP; DFRLab; Lighthouse Reports; The Sentry; GITOC; VSquare; Correctiv |
+| `tech` | `tech` | TechCrunch; The Verge; Ars Technica; Hacker News |
+| `tech` | `ai` | AI News; VentureBeat AI; The Verge AI; ArXiv AI |
+| `tech` | `startups` | TechCrunch Startups; VentureBeat; Crunchbase News |
+| `tech` | `vcblogs` | Y Combinator Blog; a16z Blog; First Round Review; Sequoia Blog; Stratechery |
+| `tech` | `regionalStartups` | EU Startups; Tech.eu; Sifted (Europe); Tech in Asia; TechCabal (Africa); Inc42 (India) |
+| `tech` | `unicorns` | Unicorn News; Decacorn News |
+| `tech` | `accelerators` | YC News; YC Blog; Demo Day News |
+| `tech` | `security` | Krebs Security; Dark Reading |
+| `tech` | `policy` | Politico Tech; AI Regulation; Tech Antitrust |
+| `tech` | `github` | GitHub Blog |
+| `tech` | `funding` | VC News |
+| `tech` | `cloud` | InfoQ; The New Stack |
+| `tech` | `layoffs` | Layoffs.fyi; TechCrunch Layoffs |
+| `tech` | `finance` | CNBC Tech; Yahoo Finance |
+| `tech` | `dev` | Dev.to; Lobsters; Changelog; Show HN |
+| `tech` | `ipo` | IPO News; Tech IPO News |
+| `tech` | `producthunt` | Product Hunt |
+| `tech` | `hardware` | Tom's Hardware; SemiAnalysis; Semiconductor News |
+| `tech` | `outages` | AWS Status; Cloud Outages |
+| `finance` | `markets` | CNBC; Yahoo Finance; Seeking Alpha |
+| `finance` | `forex` | Forex News |
+| `finance` | `bonds` | Bond Market |
+| `finance` | `commodities` | Oil & Gas; Gold & Metals |
+| `finance` | `crypto` | CoinDesk; Cointelegraph; The Block; Decrypt; The Defiant; Bitcoin Magazine; DL News; CryptoSlate; Unchained; DeFi News; Bloomberg Crypto; Reuters Crypto; Wu Blockchain; Messari; NFT News; Stablecoin Policy |
+| `finance` | `centralbanks` | Federal Reserve |
+| `finance` | `economic` | Economic Data |
+| `finance` | `ipo` | IPO News |
+| `finance` | `derivatives` | Options Market; Futures Trading |
+| `finance` | `fintech` | Fintech News; Trading Tech; Blockchain Finance |
+| `finance` | `fin-regulation` | SEC; Financial Regulation; Banking Rules; Crypto Regulation |
+| `finance` | `institutional` | Hedge Fund News; Private Equity; Sovereign Wealth |
+| `finance` | `analysis` | Market Outlook; Risk & Volatility; Bank Research |
+| `finance` | `gccNews` | Arabian Business; The National; Arab News; Gulf FDI; Gulf Investments; Vision 2030 |
+| `commodity` | `commodity-news` | Kitco News; Mining.com; Bloomberg Commodities; Reuters Commodities; S&P Global Commodity; CNBC Commodities |
+| `commodity` | `gold-silver` | Kitco Gold; Gold Price News; Silver Price News; Precious Metals; World Gold Council |
+| `commodity` | `energy` | OilPrice.com; Rigzone; EIA Reports; OPEC News; Natural Gas News; Energy Intel; Reuters Energy |
+| `commodity` | `mining-news` | Mining Journal; Northern Miner; Mining Weekly; Mining Technology; Australian Mining; Mine Web (SNL); Resource World |
+| `commodity` | `critical-minerals` | Benchmark Mineral; Lithium Market; Cobalt Market; Rare Earths News; EV Battery Supply; IEA Critical Minerals; Uranium Market |
+| `commodity` | `base-metals` | LME Metals; Copper Market; Nickel News; Aluminum & Zinc; Iron Ore Market; Metals Bulletin |
+| `commodity` | `mining-companies` | BHP News; Rio Tinto News; Glencore & Vale; Gold Majors; Freeport & Copper Miners; Critical Mineral Companies |
+| `commodity` | `supply-chain` | Shipping & Freight; Trade Routes; China Commodity Imports; Port & Logistics |
+| `commodity` | `commodity-regulation` | Mining Regulation; ESG in Mining; Trade & Tariffs; Indonesia Nickel Policy; China Mineral Policy |
+| `commodity` | `markets` | Yahoo Finance Commodities; CNBC Markets; Seeking Alpha Metals; Commodity Futures |
+| `commodity` | `finance` | CNBC; MarketWatch; Yahoo Finance; Financial Times; Reuters Business |
+| `happy` | `positive` | Good News Network; Positive.News; Reasons to be Cheerful; Optimist Daily |
+| `happy` | `science` | ScienceDaily; Nature News; Singularity Hub; Human Progress |
+| `happy` | `nature` | Mongabay; Conservation Optimism |
+| `happy` | `inspiring` | GNN Heroes; GNN Health |
+| `happy` | `community` | Yes! Magazine; Shareable |
+
 **Architecture**:
 
 ```
@@ -333,7 +403,7 @@ Client (1 RPC call) → listFeedDigest → Redis check (digest:v1:{variant}:{lan
                            └────────┬────────────────┘
                                     │
                               ┌─────┴─────┐
-                              │ Per-feed   │ ← cached 600s per URL
+                              │ Per-feed   │ ← healthy 3600s, empty/failed 300s
                               │ Redis      │
                               └─────┬─────┘
                                     │
@@ -345,7 +415,7 @@ Client (1 RPC call) → listFeedDigest → Redis check (digest:v1:{variant}:{lan
                            └─────────────────────────┘
 ```
 
-The digest cache key is `news:digest:v1:{variant}:{lang}` with a 900-second TTL. Individual feed results are separately cached per URL for 600 seconds. Items per feed are capped at 5, categories at 20 items each. XML parsing is edge-runtime-compatible (regex-based, no DOM parser), handling both RSS item and Atom entry formats. Each item is keyword-classified at aggregation time. An in-memory fallback cache (capped at 50 entries) provides last-known-good data if Redis fails.
+The digest cache key is `news:digest:v1:{variant}:{lang}` with a 900-second TTL. Individual feed results are separately cached per URL: healthy parsed feeds use 3600 seconds, while empty or failed zero-item parses use 300 seconds so transient blocks are retried sooner. Items per feed are capped at 5, categories at 20 items each. XML parsing is edge-runtime-compatible (regex-based, no DOM parser), handling both RSS item and Atom entry formats. Each item is keyword-classified at aggregation time. An in-memory fallback cache (capped at 50 entries) provides last-known-good data if Redis fails.
 
 This eliminates per-client feed fan-out — 1,000 concurrent users each polling 25 feed categories would have generated 25,000 edge invocations per poll cycle. With server-side aggregation, they generate exactly 1 (or 0 if the digest is cached).
 

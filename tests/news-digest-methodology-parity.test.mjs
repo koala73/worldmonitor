@@ -18,12 +18,28 @@ const docText = readFileSync(
   resolve(repoRoot, 'docs/methodology/news-digest-and-briefing.mdx'),
   'utf8',
 );
+const dataSourcesText = readFileSync(
+  resolve(repoRoot, 'docs/data-sources.mdx'),
+  'utf8',
+);
+const panelNewsFeedsText = readFileSync(
+  resolve(repoRoot, 'docs/panels/news-feeds.mdx'),
+  'utf8',
+);
+const panelIndicatorsText = readFileSync(
+  resolve(repoRoot, 'docs/panels/indicators-and-signals.mdx'),
+  'utf8',
+);
 const digestSrc = readFileSync(
   resolve(repoRoot, 'server/worldmonitor/news/v1/list-feed-digest.ts'),
   'utf8',
 );
 const summarizeSrc = readFileSync(
   resolve(repoRoot, 'server/worldmonitor/news/v1/summarize-article.ts'),
+  'utf8',
+);
+const feedsSrc = readFileSync(
+  resolve(repoRoot, 'server/worldmonitor/news/v1/_feeds.ts'),
   'utf8',
 );
 const cacheKeysSrc = readFileSync(
@@ -175,6 +191,86 @@ function extractYamlSchemaBlock(yamlText, schemaName) {
   return lines.slice(start, end === -1 ? undefined : end).join('\n');
 }
 
+function formatFeedName(name, lang) {
+  return lang ? `${name} (${lang})` : name;
+}
+
+function extractFeedInventoryRows(src) {
+  const rows = [];
+  let inVariants = false;
+  let currentVariant = null;
+  let currentCategory = null;
+
+  for (const line of src.split(/\r?\n/)) {
+    if (line.startsWith('export const VARIANT_FEEDS')) {
+      inVariants = true;
+      continue;
+    }
+    if (!inVariants) continue;
+    if (line.startsWith('};')) break;
+
+    const variantMatch = line.match(/^  ([A-Za-z][A-Za-z0-9_]*): \{$/);
+    if (variantMatch) {
+      currentVariant = variantMatch[1];
+      currentCategory = null;
+      continue;
+    }
+    if (currentVariant && line === '  },') {
+      currentVariant = null;
+      currentCategory = null;
+      continue;
+    }
+
+    const categoryMatch = line.match(/^    (?:(['"])(.*?)\1|([A-Za-z][A-Za-z0-9_]*)):\s\[$/);
+    if (currentVariant && categoryMatch) {
+      currentCategory = categoryMatch[2] ?? categoryMatch[3];
+      rows.push({ variant: currentVariant, category: currentCategory, sources: [] });
+      continue;
+    }
+    if (currentCategory && line === '    ],') {
+      currentCategory = null;
+      continue;
+    }
+
+    const feedMatch = line.match(/\{\s*name:\s*(['"])(.*?)\1,/);
+    if (currentVariant && currentCategory && feedMatch) {
+      const lang = line.match(/lang:\s*'([^']+)'/)?.[1];
+      rows.at(-1).sources.push(formatFeedName(feedMatch[2], lang));
+    }
+  }
+
+  const intelSources = [];
+  let inIntelSources = false;
+  for (const line of src.split(/\r?\n/)) {
+    if (line.startsWith('export const INTEL_SOURCES')) {
+      inIntelSources = true;
+      continue;
+    }
+    if (!inIntelSources) continue;
+    if (line.startsWith('];')) break;
+    const feedMatch = line.match(/\{\s*name:\s*(['"])(.*?)\1,/);
+    if (feedMatch) {
+      const lang = line.match(/lang:\s*'([^']+)'/)?.[1];
+      intelSources.push(formatFeedName(feedMatch[2], lang));
+    }
+  }
+
+  assert.ok(rows.length > 0, 'failed to extract VARIANT_FEEDS inventory rows');
+  assert.ok(intelSources.length > 0, 'failed to extract INTEL_SOURCES inventory');
+  const fullSectionInsertAt = rows.findLastIndex((row) => row.variant === 'full');
+  assert.notEqual(fullSectionInsertAt, -1, 'failed to extract full variant rows for INTEL_SOURCES insertion');
+  rows.splice(
+    fullSectionInsertAt + 1,
+    0,
+    { variant: 'full', category: 'intel', sources: intelSources },
+  );
+  return rows;
+}
+
+function formatInventoryRow(row) {
+  return `| \`${row.variant}\` | \`${row.category}\` | ${row.sources.join('; ')} |`;
+}
+
 function assertDocIncludes(value, label) {
   assert.ok(
     docText.includes(String(value)),
@@ -225,6 +321,78 @@ describe('news digest methodology parity', () => {
         'SummarizeArticle docs must not retain the stale max-8 contract',
       );
     }
+  });
+
+  it('documents the server news feed inventory in public data-source docs', () => {
+    assert.ok(
+      dataSourcesText.includes('source-backed from `server/worldmonitor/news/v1/_feeds.ts`'),
+      'data sources page must identify _feeds.ts as the server inventory source of truth',
+    );
+
+    const rows = extractFeedInventoryRows(feedsSrc);
+    assert.equal(
+      rows.length,
+      65,
+      'server news feed inventory row count changed; update _feeds.ts, docs/data-sources.mdx, and this assertion together',
+    );
+    for (const row of rows) {
+      assert.ok(
+        dataSourcesText.includes(formatInventoryRow(row)),
+        `data sources page must disclose feed inventory row ${row.variant}/${row.category}`,
+      );
+    }
+
+    assert.ok(
+      dataSourcesText.includes('Trump - Truth Social'),
+      'data sources page must disclose politically sensitive source choices',
+    );
+    assert.ok(
+      panelNewsFeedsText.includes('server digest feed inventory'),
+      'news-feeds panel docs should point readers to disclosed server inventory',
+    );
+    for (const [label, text] of [
+      ['news-feeds panel docs', panelNewsFeedsText],
+      ['indicators-and-signals panel docs', panelIndicatorsText],
+    ]) {
+      assert.doesNotMatch(
+        text,
+        /full upstream source list/i,
+        `${label} must not reintroduce the unbacked full upstream source list claim`,
+      );
+    }
+  });
+
+  it('documents news digest cache TTLs from the implementation', () => {
+    const healthyTtl = extractNumericConst(digestSrc, 'CACHE_TTL_HEALTHY_S');
+    const emptyTtl = extractNumericConst(digestSrc, 'CACHE_TTL_EMPTY_S');
+    const digestTtl = digestSrc.match(/cachedFetchJson<ListFeedDigestResponse>\(\s*digestCacheKey,\s*([0-9_]+)/s);
+
+    assert.equal(
+      healthyTtl,
+      3600,
+      'healthy feed TTL changed; update data-sources and methodology docs plus this disclosure guard together',
+    );
+    assert.equal(
+      emptyTtl,
+      300,
+      'empty or failed feed TTL changed; update data-sources and methodology docs plus this disclosure guard together',
+    );
+    assert.equal(
+      Number(digestTtl?.[1]?.replace(/_/g, '')),
+      900,
+      'digest cache TTL changed; update docs/data-sources.mdx and this disclosure guard together',
+    );
+
+    for (const text of [docText, dataSourcesText]) {
+      assert.ok(text.includes(`${healthyTtl} seconds`), 'docs must mention healthy feed TTL');
+      assert.ok(text.includes(`${emptyTtl} seconds`), 'docs must mention empty or failed feed TTL');
+    }
+    assert.ok(dataSourcesText.includes('900-second TTL'), 'data sources page must mention digest TTL');
+    assert.doesNotMatch(
+      dataSourcesText,
+      /cached\s+600s\s+per URL|per URL for 600 seconds/i,
+      'data sources page must not retain stale 600s per-feed TTL wording',
+    );
   });
 
   it('documents the accepted feed digest variants from VALID_VARIANTS', () => {
