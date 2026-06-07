@@ -1611,7 +1611,10 @@ async function ucdpDiscoverVersion() {
     const reasons = settled.map((s) => s.reason?.message).filter(Boolean).join('; ');
     throw new Error(`No valid UCDP GED version found (${reasons})`);
   }
-  valid.sort((a, b) => (ucdpVersionNewer(a.version, b.version) ? -1 : 1));
+  // 3-way comparator: equal versions must return 0 (Array.sort contract — an
+  // inconsistent comparator is undefined behaviour and can reorder
+  // non-deterministically). Set-dedup makes ties unlikely, but stay spec-correct.
+  valid.sort((a, b) => (ucdpVersionNewer(a.version, b.version) ? -1 : ucdpVersionNewer(b.version, a.version) ? 1 : 0));
   return valid[0];
 }
 

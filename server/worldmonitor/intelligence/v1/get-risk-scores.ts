@@ -647,8 +647,12 @@ async function fetchACLEDEvents(): Promise<Array<{ country: string; event_type: 
   // conflict-recency window and flip /api/health.riskScores to COVERAGE_PARTIAL.
   // Without this line the gap is undiagnosable.
   if (recent.length === 0 && older.length === 0) {
+    // 0 events means EITHER ACLED auth is unconfigured (getAcledAccessToken →
+    // null) OR an upstream failure (API error, rate-limit, timeout) — both make
+    // fetchAcledCached return []. Name both so an operator doesn't chase a
+    // phantom auth problem during an ACLED outage.
     console.warn(
-      '[CII] ACLED returned 0 events for both windows — verify ACLED_EMAIL/ACLED_PASSWORD (or ACLED_ACCESS_TOKEN) on the api project; CII conflict realtime signal-density coverage is falling back to UCDP only.',
+      '[CII] ACLED returned 0 events for both windows — if auth is unconfigured set ACLED_EMAIL/ACLED_PASSWORD (or ACLED_ACCESS_TOKEN) on the api project, else check for an upstream ACLED API error/rate-limit. CII conflict realtime signal-density coverage is falling back to UCDP only.',
     );
   }
 
