@@ -18,12 +18,23 @@ function parseThreatLevels(source) {
 }
 
 function parseChokepoints(source) {
-  return [...source.matchAll(/\{\s*id:\s*'([^']+)'.*?name:\s*'([^']+)'.*?threatLevel:\s*'([^']+)'/g)]
+  return [...source.matchAll(/\{\s*id:\s*'([^']+)'.*?name:\s*'([^']+)'.*?threatLevel:\s*'([^']+)'/gs)]
     .map(([, id, name, threatLevel]) => ({ id, name, threatLevel }));
 }
 
 function parseLiveFlowMappings(source) {
-  return [...source.matchAll(/\{\s*canonicalId:\s*'([^']+)'\s*,\s*baselineId:\s*'([^']+)'/g)]
+  return [...source.matchAll(/\{\s*canonicalId:\s*'([^']+)'.*?baselineId:\s*'([^']+)'/gs)]
+    .map(([, canonicalId, baselineId]) => ({ canonicalId, baselineId }));
+}
+
+function parseMethodologyLiveFlowMappings(source) {
+  const tableHeader = '| Canonical id | Public name | EIA baseline id | Baseline flow (mb/d) |';
+  const tableStart = source.indexOf(tableHeader);
+  assert.notEqual(tableStart, -1, 'methodology live-flow table not found');
+  const tableEnd = source.indexOf('\n\nThe other six', tableStart);
+  assert.notEqual(tableEnd, -1, 'methodology live-flow table end not found');
+  const table = source.slice(tableStart, tableEnd);
+  return [...table.matchAll(/^\| `([^`]+)` \| [^|]+ \| `([^`]+)` \| [0-9.]+ \|$/gm)]
     .map(([, canonicalId, baselineId]) => ({ canonicalId, baselineId }));
 }
 
@@ -78,13 +89,17 @@ describe('chokepoint methodology docs match scoring code', () => {
 
   it('distinguishes the seven live-flow rows from the 13 monitored waterways', () => {
     const liveFlowMappings = parseLiveFlowMappings(flowSeeder);
+    const methodologyMappings = parseMethodologyLiveFlowMappings(methodology);
+    const methodologyBaselineByCanonicalId = new Map(methodologyMappings.map(({ canonicalId, baselineId }) => [canonicalId, baselineId]));
 
     assert.equal(liveFlowMappings.length, 7, 'flow seeder should keep the seven-item live-flow subset');
+    assert.equal(methodologyMappings.length, liveFlowMappings.length, 'methodology should document one row per live-flow mapping');
     assert.match(methodology, /Only \*\*seven\*\* of those 13/);
 
     for (const { canonicalId, baselineId } of liveFlowMappings) {
-      assert.ok(
-        methodology.includes(`| \`${canonicalId}\``) && methodology.includes(`| \`${baselineId}\``),
+      assert.equal(
+        methodologyBaselineByCanonicalId.get(canonicalId),
+        baselineId,
         `methodology is missing live-flow mapping ${canonicalId} -> ${baselineId}`,
       );
     }
