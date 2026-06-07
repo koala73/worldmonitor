@@ -37,7 +37,6 @@ import {
   HEADLINE_ELIGIBLE_MIN_COVERAGE,
   HEADLINE_ELIGIBLE_MIN_POPULATION_MILLIONS,
   HEADLINE_ELIGIBLE_HIGH_COVERAGE,
-  GREY_OUT_COVERAGE_THRESHOLD,
 } from '../server/worldmonitor/resilience/v1/_shared.ts';
 import {
   RESILIENCE_DIMENSION_ORDER,
@@ -873,7 +872,7 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
     }
   });
 
-  it('methodology distinguishes UI grey-out coverage from headline ranking eligibility', () => {
+  it('methodology distinguishes retained legacy coverage constant from headline ranking eligibility', () => {
     const gatePattern = new RegExp(
       `overallCoverage >= ${HEADLINE_ELIGIBLE_MIN_COVERAGE} AND ` +
         `\\(populationMillions >= ${HEADLINE_ELIGIBLE_MIN_POPULATION_MILLIONS} OR overallCoverage >= ${HEADLINE_ELIGIBLE_HIGH_COVERAGE}\\) AND !lowConfidence`,
@@ -881,8 +880,8 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
 
     assert.match(
       docText,
-      new RegExp(`overall coverage below \\*\\*${GREY_OUT_COVERAGE_THRESHOLD.toFixed(2)}\\*\\*`),
-      'methodology should still document the UI grey-out coverage threshold',
+      /historical \*\*0\.40\*\* sparse-coverage grey-out constant[\s\S]{0,120}currently unconsumed/,
+      'methodology must frame the 0.40 grey-out constant as retained but currently unconsumed',
     );
     assert.match(
       docText,
@@ -898,6 +897,11 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
       docText,
       /overall coverage below \*\*0\.40\*\* are greyed out in the UI and excluded from rankings/i,
       'methodology must not preserve the superseded 0.40-only ranking exclusion claim',
+    );
+    assert.doesNotMatch(
+      docText,
+      /below \*\*0\.40\*\* still trigger the\s+legacy grey-out treatment in UI surfaces/i,
+      'methodology must not present the 0.40 constant as active UI grey-out behavior',
     );
   });
 

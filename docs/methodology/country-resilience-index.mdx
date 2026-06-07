@@ -613,9 +613,10 @@ A score is flagged as `lowConfidence` when either:
 
 ### Grey-Out and Ranking Eligibility
 
-Countries with very sparse overall coverage below **0.40** still trigger the
-legacy grey-out treatment in UI surfaces. Public ranking inclusion, however,
-is governed by the stricter server-side `headlineEligible` gate:
+The historical **0.40** sparse-coverage grey-out constant is retained in code
+for legacy context but is currently unconsumed by the ranking/UI eligibility
+path. Public ranking inclusion is governed by the stricter server-side
+`headlineEligible` gate:
 `overallCoverage >= 0.65 AND (populationMillions >= 0.2 OR overallCoverage >= 0.85) AND !lowConfidence`.
 Scored but ineligible countries remain in `greyedOut[]` for analyst inspection
 and are excluded from the headline ranking.
