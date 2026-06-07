@@ -86,6 +86,26 @@ const latestBriefApiSrc = readFileSync(
   resolve(repoRoot, 'api/latest-brief.ts'),
   'utf8',
 );
+const briefShareUrlApiSrc = readFileSync(
+  resolve(repoRoot, 'api/brief/share-url.ts'),
+  'utf8',
+);
+const publicBriefApiSrc = readFileSync(
+  resolve(repoRoot, 'api/brief/public/[hash].ts'),
+  'utf8',
+);
+const signedBriefApiSrc = readFileSync(
+  resolve(repoRoot, 'api/brief/[userId]/[issueDate].ts'),
+  'utf8',
+);
+const sharedBriefEnvelopeText = readFileSync(
+  resolve(repoRoot, 'shared/brief-envelope.d.ts'),
+  'utf8',
+);
+const briefShareUrlSrc = readFileSync(
+  resolve(repoRoot, 'server/_shared/brief-share-url.ts'),
+  'utf8',
+);
 const briefComposeSrc = readFileSync(
   resolve(repoRoot, 'scripts/lib/brief-compose.mjs'),
   'utf8',
@@ -771,10 +791,27 @@ describe('news digest methodology parity', () => {
       'latest-brief API must still expose issueDate plus issueSlot where a slot is known',
     );
     assert.ok(
+      briefShareUrlApiSrc.includes('brief:latest:{userId}') &&
+        briefShareUrlApiSrc.includes('{userId, issueSlot, BRIEF_SHARE_SECRET}') &&
+        briefShareUrlApiSrc.includes('return jsonResponse({ shareUrl, hash, issueSlot }, 200, cors);'),
+      'share-url API docs must stay slot-keyed and expose issueSlot',
+    );
+    assert.ok(
       apiBriefText.includes('`issueDate` remains the display/date field') &&
         /`issueSlot` is the\s+frozen edition key/.test(apiBriefText) &&
         apiBriefText.includes('{ status: "ready", issueDate, issueSlot'),
       'api brief docs must distinguish issueDate from issueSlot response fields',
+    );
+    assert.ok(
+      sharedBriefEnvelopeText.includes('brief:{userId}:{issueSlot}') &&
+        sharedBriefEnvelopeText.includes('frozen edition id'),
+      'shared brief-envelope boundary must document the slot-keyed Redis envelope',
+    );
+    assert.ok(
+      briefShareUrlSrc.includes('/api/brief/{userId}/{issueSlot}') &&
+        briefShareUrlSrc.includes('HMAC over (userId, issueSlot)') &&
+        briefShareUrlSrc.includes('brief:{userId}:{issueSlot}'),
+      'brief share-url helper comments must describe slot-keyed public sharing',
     );
     for (const text of [apiBriefText, latestBriefPanelText]) {
       assert.ok(text.includes('`brief:{userId}:{issueSlot}`'), 'brief docs must document slot-keyed envelope');
@@ -787,6 +824,24 @@ describe('news digest methodology parity', () => {
         'brief docs must not retain stale issueDate key shape',
       );
     }
+    for (const [label, text] of Object.entries({
+      sharedBriefEnvelopeText,
+      briefShareUrlSrc,
+      seedDigestSrc,
+      signedBriefApiSrc,
+      publicBriefApiSrc,
+    })) {
+      assert.doesNotMatch(
+        text,
+        /brief:\{userId\}:\{issueDate\}/,
+        `${label} must not retain stale issueDate Redis key shape`,
+      );
+    }
+    assert.doesNotMatch(
+      briefShareUrlSrc,
+      /HMAC over \(userId, issueDate\)/,
+      'brief share-url helper must not describe share hashes as issueDate-bound',
+    );
     assert.doesNotMatch(
       latestBriefPanelText,
       /strictly daily|once per eligible user per day/,

@@ -51,7 +51,7 @@ OAuth endpoints follow [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rf
 | `pro_required` | Authenticated, but account is not PRO. |
 | `invalid_payload` | Body failed schema validation. |
 | `invalid_date_shape` | Date param not `YYYY-MM-DD`. |
-| `brief_not_found` | No composed brief for the requested `{userId, issueDate}`. |
+| `brief_not_found` | No composed brief for the requested `{userId, issueSlot}`. |
 | `Too many requests` | 429 fired; honor `Retry-After`. |
 | `Service temporarily unavailable` | Upstash or another hard dependency missing at request time. |
 | `service_unavailable` | Signing secret / required env not configured. |

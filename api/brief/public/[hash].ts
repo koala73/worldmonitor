@@ -135,7 +135,7 @@ export default async function handler(
     ? refCodeRaw
     : undefined;
 
-  // Step 1: resolve pointer → {userId, issueDate}.
+  // Step 1: resolve pointer → {userId, issueSlot}.
   const pointerKey = `${BRIEF_PUBLIC_POINTER_PREFIX}${rawHash}`;
   let pointerRaw: unknown;
   try {
@@ -149,7 +149,7 @@ export default async function handler(
   // api/brief/share-url.ts and api/brief/[userId]/[issueDate].ts
   // JSON.stringify the encoded string before SET). readRawJsonFromUpstash
   // parses it back to a bare JS string, which decodePublicPointer
-  // handles directly. We also accept an object form ({userId, issueDate})
+  // handles directly. We also accept an object form ({userId, issueSlot})
   // as defence-in-depth in case a future writer switches the wire
   // format — a non-string/non-object (or a string that fails to decode)
   // falls through to null and we 404.
@@ -158,14 +158,12 @@ export default async function handler(
   // string without JSON quotes), readRawJsonFromUpstash throws at
   // JSON.parse and the catch block above returns 503 — that is the
   // intended (loud) failure mode so the bug isn't silently served.
-  const pointer =
-    typeof pointerRaw === 'string'
-      ? decodePublicPointer(pointerRaw)
-      : decodePublicPointer(
-          pointerRaw != null && typeof pointerRaw === 'object'
-            ? `${(pointerRaw as { userId?: string }).userId}:${(pointerRaw as { issueDate?: string }).issueDate}`
-            : null,
-        );
+  let pointerInput: unknown = pointerRaw;
+  if (pointerRaw != null && typeof pointerRaw === 'object') {
+    const pointerObj = pointerRaw as { userId?: string; issueSlot?: string; issueDate?: string };
+    pointerInput = `${pointerObj.userId}:${pointerObj.issueSlot ?? pointerObj.issueDate}`;
+  }
+  const pointer = decodePublicPointer(pointerInput);
   if (!pointer) {
     return htmlResponse(req, 404, NOT_FOUND_PAGE);
   }
