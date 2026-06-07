@@ -73,9 +73,9 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 
 ## Data Layers — Finance & Markets (Finance Variant)
 
-- **Stock Exchanges**: 92 global exchanges — mega (NYSE, NASDAQ, Shanghai, Euronext, Tokyo), major (Hong Kong, London, NSE/BSE, Toronto, Korea, Saudi Tadawul), and emerging markets — with market caps and trading hours
+- **Stock Exchanges**: 29 global exchanges — mega (NYSE, NASDAQ, Shanghai, Euronext, Tokyo), major (Hong Kong, London, NSE/BSE, Toronto, Korea, Saudi Tadawul), and emerging markets — with market caps and trading hours
 - **Financial Centers**: 19 centers ranked by Global Financial Centres Index (New York through offshore centers)
-- **Central Banks**: 13 institutions (Federal Reserve, ECB, BoJ, BoE, PBoC, SNB, RBA, BoC, RBI, BoK, BCB, SAMA) plus supranational (BIS, IMF)
+- **Central Banks & Institutions**: 14 central-bank and supranational finance institutions — 12 policy-rate institutions (Federal Reserve, ECB, BoJ, BoE, PBoC, SNB, RBA, BoC, RBI, BoK, BCB, SAMA) plus BIS and IMF
 - **Commodity Hubs**: 10 exchanges and physical hubs (CME Group, ICE, LME, SHFE, DCE, TOCOM, DGCX, MCX, Rotterdam, Houston)
 - **Gulf FDI Investments**: 64 Saudi/UAE foreign direct investments plotted globally, color-coded by status (operational, under-construction, announced), sized by investment amount — across ports, energy, manufacturing, renewables, megaprojects, telecoms
 
@@ -160,7 +160,7 @@ A single codebase produces three specialized dashboards controlled by the VITE_V
 
 - **World Monitor** (worldmonitor.app): ~25 RSS categories, 44 panels. Focus: geopolitics, military, conflicts, infrastructure security. Unique layers: military bases, nuclear facilities, hotspots, APT groups, spaceports, critical minerals
 - **Tech Monitor** (tech.worldmonitor.app): ~20 RSS categories, 31 panels. Focus: AI/ML, startups, cybersecurity, cloud. Unique layers: tech HQs, cloud regions, startup hubs, accelerators, tech events
-- **Finance Monitor** (finance.worldmonitor.app): ~18 RSS categories, 30 panels. Focus: global markets, trading, central banks, Gulf FDI. Unique layers: 92 stock exchanges, 19 financial centers, 13 central banks, 10 commodity hubs, 64 Gulf FDI investments
+- **Finance Monitor** (finance.worldmonitor.app): ~18 RSS categories, 30 panels. Focus: global markets, trading, central banks, Gulf FDI. Unique layers: 29 stock exchanges, 19 financial centers, 14 central-bank and supranational finance institutions, 10 commodity hubs, 64 Gulf FDI investments
 
 Build-time: Vite HTML plugin transforms meta tags, Open Graph data, PWA manifest, and JSON-LD structured data. Each variant tree-shakes unused data files. Runtime: variant selector in header navigates between deployed domains (web) or sets localStorage preference (desktop).
 
