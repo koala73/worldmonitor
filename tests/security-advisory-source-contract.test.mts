@@ -4,6 +4,8 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 
+import { parseAuLevel, parseRssItems } from '../scripts/seed-security-advisories.mjs';
+
 const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 
 type AdvisoryFeed = {
@@ -91,6 +93,30 @@ function assertDoesNotClaimInactiveSources(label: string, text: string, sourceCo
 }
 
 describe('security advisory source contract', () => {
+  it('maps Smartraveller ta:level values on the current 1-4 advice scale', () => {
+    const ukraineRssItemFixture = parseRssItems(`
+      <rss version="2.0" xmlns:ta="http://www.smartraveller.gov.au/schema/rss/travel_advisories/">
+        <channel>
+          <item>
+            <title>Ukraine</title>
+            <description>We continue to advise do not travel to Ukraine due to the volatile security environment and military conflict.</description>
+            <link>https://www.smartraveller.gov.au/destinations/europe/ukraine</link>
+            <pubDate>27 Feb 2026 00:00:00 GMT</pubDate>
+            <ta:warnings>
+              <ta:level>4</ta:level>
+            </ta:warnings>
+          </item>
+        </channel>
+      </rss>
+    `)[0]!;
+
+    assert.equal(parseAuLevel(ukraineRssItemFixture), 'do-not-travel');
+    assert.equal(parseAuLevel({ advisoryLevel: '4/5' }), 'do-not-travel');
+    assert.equal(parseAuLevel({ advisoryLevel: '3' }), 'reconsider');
+    assert.equal(parseAuLevel({ advisoryLevel: '2' }), 'caution');
+    assert.equal(parseAuLevel({ advisoryLevel: '1' }), 'normal');
+  });
+
   it('known advisory feeds use their published feed endpoints', () => {
     const feeds = extractAdvisoryFeeds();
 
