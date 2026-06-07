@@ -26,13 +26,15 @@ const RSE_KEY = 'conflict:archive:rse:v1';
 /** Conflict visibility gate: a cluster is shown when it has ≥ MIN_RSS distinct
  *  RSS publishers AND ≥ MIN_TOTAL total sources (RSS + GDELT corroboration).
  *
- *  Looser than the live-news ≥3-RSS gate (which is unchanged): a breaking
- *  conflict story often surfaces on 1–2 trusted RSS outlets first, with GDELT
- *  corroboration filling in. Requiring ≥1 RSS still guarantees a trusted anchor
- *  (no GDELT-only stories), while the ≥3-total floor keeps a corroboration bar.
+ *  Default is ≥1 RSS, ≥1 total — i.e. a trusted RSS anchor is the only
+ *  requirement; GDELT corroboration is no longer needed to surface a conflict
+ *  story. Requiring ≥1 RSS still guarantees a trusted anchor (no GDELT-only
+ *  stories). This is volume-first; the feed shows the RSS lede (never an AI
+ *  summary) so a lone-RSS conflict story is safe to surface. Raise
+ *  WM_CONFLICT_MIN_TOTAL_SOURCES (e.g. to 3) to re-require corroboration.
  *  Both env-tunable. */
 const DEFAULT_MIN_RSS = 1;
-const DEFAULT_MIN_TOTAL = 3;
+const DEFAULT_MIN_TOTAL = 1;
 function conflictGate(): { minRss: number; minTotal: number } {
   const r = Number(process.env.WM_CONFLICT_MIN_RSS_SOURCES);
   const t = Number(process.env.WM_CONFLICT_MIN_TOTAL_SOURCES);

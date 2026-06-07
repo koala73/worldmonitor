@@ -22,21 +22,28 @@ export interface ListUsHeadlinesV6Response {
 
 /**
  * Minimum cross-outlet corroboration before a story is shown to iOS.
- * Default 3 — every visible story must have at least 3 distinct
- * **RSS** publishers covering it. Override at runtime via
- * `WM_V6_MIN_SOURCES` (`1` disables the filter, `2` relaxes, `4`+ tightens).
+ * Default 2 — a story shows once ≥2 distinct RSS publishers carry it.
+ * Looser than the old ≥3 gate (more volume) but still keeps single-source
+ * singletons out of the firehose. Override via `WM_V6_MIN_SOURCES`
+ * (`1` shows everything, `3`+ tightens) — see the env caveat below.
+ *
+ * GDELT sources do NOT count toward this threshold — they're corroboration
+ * depth, not trusted publishers. The feed shows the RSS lede only (never an
+ * AI summary), so even a lightly-corroborated story is safe to surface.
  *
  * GDELT sources do NOT count toward this threshold — they're
- * corroboration depth, not trusted publishers. A cluster with 2 RSS +
- * 40 GDELT sources still fails a min-3 gate. This is what stops
- * GDELT's volume from spoiling feed quality.
+ * corroboration depth, not trusted publishers.
+ *
+ * The world-brief live-news section keeps its OWN ≥3 floor (it AI-writes
+ * summaries, so it stays corroborated per the copyright rule) — DON'T set
+ * `WM_V6_MIN_SOURCES` in the env, as the brief reads the same var and it
+ * would lower the AI gate too. Change this code default instead.
  *
  * Applied at READ time, not at digest write — the cron's digest keeps
- * every cluster so a 2-source story can promote to 3 on a later refresh
- * as more outlets cover it. Without that, breaking-then-corroborated
- * stories would be permanently dropped on their first appearance.
+ * every cluster so a 2-source story can promote on a later refresh as more
+ * outlets cover it.
  */
-const DEFAULT_MIN_SOURCES = 3;
+const DEFAULT_MIN_SOURCES = 2;
 function minSources(): number {
   const raw = process.env.WM_V6_MIN_SOURCES;
   if (!raw) return DEFAULT_MIN_SOURCES;

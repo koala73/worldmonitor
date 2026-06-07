@@ -65,12 +65,14 @@ const CONFLICT_ARCHIVE_GDELT_KEY = 'conflict:archive:v1:gdelt';
 const CONFLICT_ARCHIVE_WN_KEY = 'conflict:archive:wn:v1';
 const CONFLICT_ARCHIVE_TTL_S = 3 * 24 * 60 * 60; // Redis key TTL — 3-day safety net
 // Visibility/retention window: only conflict items newer than this are kept
-// in the written archive blob. Decoupled from the key TTL so we shrink the
-// user-facing payload (the v5 archive was a ~2.2 MB blob — 929 items, mostly
-// old) without expiring the Redis keys early. 30h ≈ the live-news window
-// plus a small buffer; conflict events are sparser, so this still leaves a
-// healthy feed while cutting the blob (and Redis read bandwidth) ~2-3×.
-const CONFLICT_ARCHIVE_WINDOW_S = 30 * 60 * 60;
+// in the written archive blob. Decoupled from the key TTL (and from the 24h
+// live-news digest the items originate in) so the conflict feed can run
+// DEEPER than the digest without touching that fragile multi-MB blob — a
+// conflict cluster stays visible here for the full window even after it ages
+// out of the 24h digest. 60h ≈ 2.5 days of conflict history; conflict events
+// are sparse (~140/24h), so this lands well under the 1000-item cap below
+// (~350 items) while giving the feed meaningfully more depth.
+const CONFLICT_ARCHIVE_WINDOW_S = 60 * 60 * 60;
 
 // Live-news v3 (World News bucket) — populated by the search-news cron
 // at `/api/live-news/v3/refresh-worldnews`. Enrichment fills
@@ -1254,7 +1256,7 @@ async function runEnrichment(): Promise<EnrichResult> {
     for (const c of conflictItems) {
       byId.set(c.id, c);
     }
-    // 30h visibility window (CONFLICT_ARCHIVE_WINDOW_S) + 1000-item cap.
+    // 60h visibility window (CONFLICT_ARCHIVE_WINDOW_S) + 1000-item cap.
     const cutoff = Date.now() - CONFLICT_ARCHIVE_WINDOW_S * 1000;
     const merged = Array.from(byId.values())
       .filter((c) => typeof c.publishedAt === 'number' && c.publishedAt >= cutoff)

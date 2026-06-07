@@ -39,6 +39,12 @@ const MIN_RSS_SOURCES = Number(process.env.WM_V6_MIN_SOURCES) || 3;
 const CONFLICT_MIN_RSS = Number(process.env.WM_CONFLICT_MIN_RSS_SOURCES) || 1;
 const CONFLICT_MIN_TOTAL = Number(process.env.WM_CONFLICT_MIN_TOTAL_SOURCES) || 3;
 
+/** Category BRIEF corroboration floor — DECOUPLED from the category FEED gate
+ *  (which is now ≥1 RSS, single-outlet stories allowed). The AI only writes a
+ *  category brief for stories carried by ≥2 outlets, per the copyright rule
+ *  (source count gates AI summaries). Feed volume ≠ brief safety. */
+const CATEGORY_BRIEF_MIN_TOTAL = Number(process.env.WM_CATEGORY_BRIEF_MIN_TOTAL) || 2;
+
 const TOP_N = 8;
 const MAX_MEMBER_HEADLINES = 10;
 const MAX_TEXT_LEN = 600;
@@ -193,6 +199,7 @@ function pickClusters(clusters: ClusteredItem[], mode: BriefMode): PickedCluster
       }
       return (
         Array.isArray(c.topics) && c.topics.includes(mode) && isCategoryCorroborated(c)
+        && c.sources.length >= CATEGORY_BRIEF_MIN_TOTAL
       );
     })
     .map((c) => ({
