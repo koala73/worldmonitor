@@ -53,7 +53,11 @@ describe('forecast integrity and provenance surfaces', () => {
     assert.match(docs, /market-calibrated only when/);
     assert.match(docs, /calibration: null/);
     assert.match(docs, /Conflict base detector probability ceiling \| 0\.90/);
+    assert.match(docs, /Market probability ceiling \| 0\.85/);
     assert.match(docs, /Supply-chain \/ maritime probability ceiling \| 0\.85/);
+    assert.match(docs, /GPS supply-chain detector probability ceiling \| 0\.60/);
+    assert.match(docs, /Political probability ceiling \| 0\.80/);
+    assert.match(docs, /Military probability ceiling \| 0\.90/);
     assert.match(docs, /Infrastructure probability ceiling \| 0\.85/);
     assert.match(docs, /Cyber probability ceiling \| 0\.72/);
     assert.match(docs, /Market-bucket scenario calibration is an editorial calibration layer/);
