@@ -10,13 +10,9 @@ function readRepoFile(path) {
 }
 
 describe('UCDP retained window is intentionally smaller than CII classification window', () => {
-  const scorer = readRepoFile('server/worldmonitor/intelligence/v1/get-risk-scores.ts');
-  const standaloneSeed = readRepoFile('scripts/seed-ucdp-events.mjs');
-  const relay = readRepoFile('scripts/ais-relay.cjs');
-  const methodology = readRepoFile('docs/methodology/cii-risk-scores.mdx');
-  const changelog = readRepoFile('docs/changelog.mdx');
-
   it('keeps the CII scorer on a two-year UCDP classification window', () => {
+    const scorer = readRepoFile('server/worldmonitor/intelligence/v1/get-risk-scores.ts');
+
     assert.match(
       scorer,
       /const UCDP_CLASSIFICATION_WINDOW_MS = 2 \* 365 \* 24 \* 60 \* 60 \* 1000;/,
@@ -25,6 +21,9 @@ describe('UCDP retained window is intentionally smaller than CII classification 
   });
 
   it('guards the intentionally capped one-year Redis writer window', () => {
+    const standaloneSeed = readRepoFile('scripts/seed-ucdp-events.mjs');
+    const relay = readRepoFile('scripts/ais-relay.cjs');
+
     assert.match(
       standaloneSeed,
       /const MAX_PAGES = 6;/,
@@ -58,6 +57,10 @@ describe('UCDP retained window is intentionally smaller than CII classification 
   });
 
   it('documents the relay reader page cap separately from Redis writer retention', () => {
+    const relay = readRepoFile('scripts/ais-relay.cjs');
+    const methodology = readRepoFile('docs/methodology/cii-risk-scores.mdx');
+    const changelog = readRepoFile('docs/changelog.mdx');
+
     assert.match(
       relay,
       /const UCDP_RELAY_MAX_PAGES = 12;/,
