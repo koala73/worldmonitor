@@ -66,6 +66,43 @@ also carry a `whyItMatters` narrative rationale for the popup, but that text is
 not score-affecting. The code does not apply a geographic proximity multiplier
 to the final score.
 
+**Static Baseline Table**
+
+These values come from `INTEL_HOTSPOTS` in `src/config/geo.ts`. Rows without an
+explicit `escalationScore` inherit the default `3/5` baseline.
+
+| Hotspot | Baseline | Rationale |
+|---|---:|---|
+| Sahel | 4 | Coups, jihadist insurgency, and Wagner/Africa Corps expansion. |
+| Port-au-Prince | 4 | Gang control, government collapse, displacement, and international security mission. |
+| Horn of Africa | 4 | Red Sea spillover, piracy, Al-Shabaab activity, and Ethiopia-Somaliland tension. |
+| Pakistan–Afghanistan Border | 4 | Recurring border clashes, TTP attacks, and cross-border military pressure. |
+| DC | 3 | US government, military, and intelligence activity hub. |
+| Silicon Valley | 3 | AI and major technology-sector activity hub. |
+| Wall Street | 3 | Financial-market and Federal Reserve policy activity hub. |
+| Houston | 3 | Energy-sector and space-industry activity hub. |
+| Moscow | 4 | Nuclear power at war, Ukraine operations, mobilization potential, and nuclear rhetoric. |
+| Beijing | 3 | CCP and PLA command center with Taiwan and South China Sea monitoring. |
+| Kyiv | 5 | Active war zone with Western support, drone warfare, and nuclear-plant risk. |
+| Taipei | 3 | Taiwan Strait and semiconductor supply-chain monitoring. |
+| Tehran | 4 | Nuclear threshold, proxy activity, succession uncertainty, and Strait of Hormuz risk. |
+| Tel Aviv | 5 | Active Gaza operations, northern-front tension, and Iran confrontation risk. |
+| Pyongyang | 3 | Nuclear, missile, cyber, and Russia arms-cooperation monitoring. |
+| London | 3 | UK intelligence and Five Eyes activity hub. |
+| Brussels | 3 | NATO and EU alliance center. |
+| Caracas | 3 | Venezuela political crisis, sanctions, and regional instability. |
+| Mexico City | 4 | Cartel fragmentation, fentanyl trafficking, and military deployments. |
+| Nuuk | 3 | Arctic strategic territory, US presence, and sovereignty questions. |
+| Riyadh | 3 | Saudi power center, OPEC+ decisions, and regional influence. |
+| Cairo | 3 | Gaza border control and Suez Canal security. |
+| Baghdad | 3 | Iran-backed militias and US military presence. |
+| Damascus | 3 | Syrian civil-war aftermath and foreign interventions. |
+| Doha | 3 | Diplomatic hub and CENTCOM forward base. |
+| Ankara | 3 | NATO member with Kurdish, Syria, and Libya operations. |
+| Beirut | 3 | Hezbollah, Lebanon crisis, and Israel border tension. |
+| Sana'a | 4 | Houthi Red Sea attacks, ship seizures, and US/UK strike risk. |
+| Abu Dhabi | 3 | UAE strategic and regional military hub. |
+
 **Trend Detection**
 
 The system maintains 48-point history (24 hours at 30-minute intervals) per hotspot:

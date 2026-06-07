@@ -45,8 +45,9 @@ export const CII_CONFLICT_ACTIVITY_PIVOT = 4000;
  * and a top-5 window, weights are [1.00, 0.85, 0.70, 0.55, 0.40].
  *
  * Rationale: gives the most-affected country full weight, lets the next four
- * contribute decreasing influence, and reaches zero weight at position 6 so
- * the slice size of 5 is naturally bounded.
+ * contribute decreasing influence, and keeps the roll-up focused on the
+ * published top-5 window. Position 6 would still carry weight 0.10, so the
+ * window cap, not a zero-weight cutoff, bounds the slice.
  */
 export const STRATEGIC_RISK_POSITIONAL_DECAY = 0.15;
 

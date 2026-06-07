@@ -181,8 +181,8 @@
 # source itself is preserved (still consumed by country-brief generation
 # and ad-hoc analysis); only the resilience-scorer binding was removed.
 # A separate `financialSystemExposure` dim (plan Phase 2) will add
-# structural sanctions-vulnerability via BIS Locational Banking
-# Statistics + WB IDS short-term external debt + FATF AML/CFT listing
+# structural sanctions-vulnerability via BIS Consolidated Banking
+# Statistics (CBS, WS_CBS_PUB) + WB IDS short-term external debt + FATF AML/CFT listing
 # status. Remaining 3 components reweighted to total 1.0:
 - indicator: tradeRestrictions
   dimension: tradePolicy
@@ -251,13 +251,13 @@
   weight: 0.30
   direction: lower-better
   scoringTier: enrichment
-  source: BIS Locational Banking Statistics
+  source: BIS Consolidated Banking Statistics
   seriesId: By-parent cross-border claims as % GDP
-  seriesUrl: https://data.bis.org/topics/LBS
+  seriesUrl: https://data.bis.org/topics/CBS
   coveragePct: 0.90
   lastObservedYear: 2024
   license: Proprietary-with-fair-use
-  mechanismTestRationale: Cross-border banking claims as % GDP measure external financial-channel exposure; the scorer applies a U-shape penalty for isolation and over-exposure.
+  mechanismTestRationale: CBS by-parent foreign claims as % GDP measure external financial-channel exposure; the scorer applies a U-shape penalty for isolation and over-exposure.
   constructStatus: regional-only
   reviewNotes: Active financialSystemExposure Enrichment scorer input from curated BIS reporters.
 
@@ -283,13 +283,13 @@
   weight: 0.15
   direction: higher-better
   scoringTier: enrichment
-  source: BIS Locational Banking Statistics
+  source: BIS Consolidated Banking Statistics
   seriesId: Count of by-parent reporters with non-trivial claims
-  seriesUrl: https://data.bis.org/topics/LBS
+  seriesUrl: https://data.bis.org/topics/CBS
   coveragePct: 0.90
   lastObservedYear: 2024
   license: Proprietary-with-fair-use
-  mechanismTestRationale: Distinct cross-border counterparties measure redundancy in financial-center links and offset single-counterparty exposure.
+  mechanismTestRationale: Distinct CBS by-parent counterparties measure redundancy in financial-center links and offset single-counterparty exposure.
   constructStatus: regional-only
   reviewNotes: Active financialSystemExposure Enrichment scorer input from curated BIS reporters.
 

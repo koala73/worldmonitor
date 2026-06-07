@@ -292,11 +292,12 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
 
   // ── financialSystemExposure (4 sub-metrics) ───────────────────────────────
   // plan 2026-04-25-004 Phase 2: structural sanctions vulnerability built
-  // from BIS Locational Banking Statistics + WB IDS short-term external
-  // debt + FATF AML/CFT listing status. Replaces the dropped OFAC-domicile
-  // signal (Phase 1) with audited cross-border banking + AML/CFT data
-  // that doesn't conflate transit-hub corporate domicile with host-country
-  // risk. Components 2 + 4 share the BIS LBS payload (no separate seed).
+  // from BIS Consolidated Banking Statistics (CBS, WS_CBS_PUB) + WB IDS
+  // short-term external debt + FATF AML/CFT listing status. Replaces the
+  // dropped OFAC-domicile signal (Phase 1) with audited cross-border banking
+  // + AML/CFT data that doesn't conflate transit-hub corporate domicile with
+  // host-country risk. Components 2 + 4 share the retained
+  // `economic:bis-lbs:v1` payload (no separate seed).
   // Dim is 'core' (contributes to headline score) but BIS-derived
   // indicators are 'enrichment' / 'non-commercial' per Codex R1 #8 to
   // match the existing BIS classification convention.
@@ -311,7 +312,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     scope: 'global',
     cadence: 'annual',
     imputation: { type: 'conservative', score: 50, certainty: 0.3 },
-    // WB IDS publishes for ~125 LMICs only; HIC fall through to BIS LBS structural-exposure component.
+    // WB IDS publishes for ~125 LMICs only; HIC fall through to the BIS CBS structural-exposure component.
     // Tagged 'enrichment' (not 'core') because the lint test enforces
     // core indicators must have coverage >= 180; LMIC-only is below
     // that gate by definition. Component carries weight 0.35 inside the
@@ -322,7 +323,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     // §U5 review fix: comprehensive=false. WB IDS coverage is the LMIC
     // subset (~125 countries), NOT the universe. HIC absence from this
     // source is NOT a stable-absence signal — those countries fall through
-    // to the BIS LBS structural-exposure component instead. Marking
+    // to the BIS CBS structural-exposure component instead. Marking
     // comprehensive=true would let any future IMPUTE caller treat HIC
     // absence as the high stable-absence anchor (85+), which would
     // misrepresent HIC financial-system exposure.
@@ -331,7 +332,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'bisLbsXborderPctGdp',
     dimension: 'financialSystemExposure',
-    description: 'BIS LBS sum of by-parent cross-border claims (US/UK/major-EU/CH/JP/CA/AU/SG) as % of GDP; U-shape band — both isolation (<5%) and over-exposure (>60%) score low',
+    description: 'BIS CBS (WS_CBS_PUB) sum of by-parent foreign claims (US/UK/major-EU/CH/JP/CA/AU/SG) as % of GDP; U-shape band — both isolation (<5%) and over-exposure (>60%) score low',
     direction: 'lowerBetter', // U-shape is "lowerBetter" in semantic sense (concentrated exposure penalized)
     // NOTE (Greptile P2 catch, PR #3407 review): goalposts here are
     // DOCUMENTATION-ONLY for the over-exposed branch. The actual scorer
@@ -378,11 +379,11 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'financialCenterRedundancy',
     dimension: 'financialSystemExposure',
-    description: 'Count of distinct BIS LBS by-parent reporters with non-trivial (>1% GDP) cross-border claims on the country; rewards multi-counterparty financial centers, balances Component 2 over-exposure penalty',
+    description: 'Count of distinct BIS CBS by-parent reporters with non-trivial (>1% GDP) foreign claims on the country; rewards multi-counterparty financial centers, balances Component 2 over-exposure penalty',
     direction: 'higherBetter',
     goalposts: { worst: 1, best: 10 },
     weight: 0.15,
-    sourceKey: 'economic:bis-lbs:v1', // shares BIS LBS seed with Component 2
+    sourceKey: 'economic:bis-lbs:v1', // historical key; shares BIS CBS seed with Component 2
     scope: 'global',
     cadence: 'quarterly',
     tier: 'enrichment',

@@ -386,8 +386,10 @@ are all defined in
 Their **rationale**:
 
 - **`STRATEGIC_RISK_POSITIONAL_DECAY = 0.15`** — the most-affected country
-  gets full weight; weight reaches zero at position 6. Chosen so the slice
-  size of 5 falls out naturally.
+  gets full weight; the next four positions decay to `0.85`, `0.70`,
+  `0.55`, and `0.40`. A hypothetical 0-based position 6 would still carry
+  `0.10`, so the explicit top-5 window, not a zero-weight cutoff, bounds the
+  roll-up.
 - **`STRATEGIC_RISK_TOP_N = 5`** — large enough to dilute single-country
   spikes, small enough that the score reflects the "very top" of the
   dashboard rather than a long tail.

@@ -3,7 +3,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
-import { CII_FORMULA_VERSION } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
+import {
+  CII_FORMULA_VERSION,
+  STRATEGIC_RISK_POSITIONAL_DECAY,
+  STRATEGIC_RISK_TOP_N,
+} from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
 
 const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 
@@ -102,6 +106,7 @@ describe('CII docs drift guards', () => {
     const doc = readFileSync(resolve(root, 'docs', 'strategic-risk.mdx'), 'utf8');
     const scoreSection = markdownSection(doc, '### Server Score and Browser Fallback (0-100)');
     const riskLevels = markdownSection(doc, '### Risk Levels');
+    const trendSection = markdownSection(doc, '### Trend Detection');
 
     assert.match(
       scoreSection,
@@ -118,9 +123,58 @@ describe('CII docs drift guards', () => {
     assert.match(riskLevels, /\|\s*0-39\s*\|\s*\*\*Low\*\*/);
     assert.doesNotMatch(
       riskLevels,
+      /Trend Icon|Escalating|De-escalating/,
+      'strategic-risk risk-level table must not imply score bands determine trend labels',
+    );
+    assert.match(
+      trendSection,
+      /server-published global `StrategicRisk` headline[\s\S]{0,140}sets `trend` to stable/i,
+      'strategic-risk doc must disclose the current server StrategicRisk trend contract',
+    );
+    assert.match(
+      trendSection,
+      /browser fallback computes its own[\s\S]{0,120}panel trend/i,
+      'strategic-risk doc must separate browser fallback trend from the server contract',
+    );
+    assert.doesNotMatch(
+      riskLevels,
       /\*\*(?:Critical|Elevated|Moderate)\*\*|50-69|30-49/,
       'strategic-risk risk-level table must not retain old Critical/Elevated/Moderate 70/50/30 semantics',
     );
+  });
+
+  it('CII methodology doc keeps Strategic Risk positional-decay rationale aligned with the top-N cap', () => {
+    const doc = readFileSync(resolve(root, 'docs/methodology/cii-risk-scores.mdx'), 'utf8');
+    const config = readFileSync(resolve(root, 'server/worldmonitor/intelligence/v1/_risk-config.ts'), 'utf8');
+    const section = markdownSection(doc, '## 3. Strategic Risk roll-up');
+    const hypotheticalPosition6Weight = 1 - 6 * STRATEGIC_RISK_POSITIONAL_DECAY;
+
+    assert.equal(STRATEGIC_RISK_TOP_N, 5, 'test assumes the current published top-5 roll-up window');
+    assert.equal(
+      Math.round(hypotheticalPosition6Weight * 100) / 100,
+      0.1,
+      'position 6 remains non-zero with decay=0.15; docs must not claim it hits zero',
+    );
+    for (const surface of [
+      { label: 'methodology doc', text: section },
+      { label: 'risk config comment', text: config },
+    ]) {
+      assert.doesNotMatch(
+        surface.text,
+        /reaches zero (?:weight )?at position 6|weight reaches zero at position 6/i,
+        `${surface.label} must not claim 0-based position 6 has zero Strategic Risk weight`,
+      );
+      assert.match(
+        surface.text,
+        /position 6[\s\S]{0,80}(?:0\.10|weight=0\.10)/i,
+        `${surface.label} must disclose that position 6 would still carry 0.10 weight`,
+      );
+      assert.match(
+        surface.text,
+        /top-5 window|window cap|cap at 5/i,
+        `${surface.label} must identify the explicit top-5 window as the bounding rule`,
+      );
+    }
   });
 
   it('section extraction ignores heading-looking lines inside fenced code blocks', () => {

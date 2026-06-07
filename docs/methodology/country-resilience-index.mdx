@@ -113,7 +113,7 @@ and 0%.
 
 #### Currency & External
 
-PR 3 §3.5 point 2 retired the BIS-backed core construct. BIS REER and DSR cover only the 64 BIS-reporting economies, so the old composite fell through to curated_list_absent (coverage 0.3) or a thin IMF proxy (coverage 0.45) for roughly two-thirds of the 196-country public rankable universe. The rebuilt dimension uses two globally-covered World Bank / IMF series.
+PR 3 §3.5 point 2 retired the BIS REER-backed core construct. BIS REER covers only the BIS-reporting economy set, so the old composite fell through to curated_list_absent (coverage 0.3) or a thin IMF proxy (coverage 0.45) for roughly two-thirds of the 196-country public rankable universe. The rebuilt dimension uses two globally-covered World Bank / IMF series. BIS household debt-service ratio remains a separate `macroFiscal` source (`economic:bis:dsr:v1`) and does not drive `currencyExternal`.
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
@@ -133,8 +133,10 @@ not a country-resilience indicator (a transit-hub like UAE or Singapore
 hosts many shell-company entries without that reflecting on the host
 country's structural resilience). The remaining 3 components were reweighted
 to total 1.0. The separate `financialSystemExposure` dimension replaces that
-dropped proxy with structural sanctions exposure via BIS Locational Banking
-Statistics + WB IDS short-term external debt + FATF AML/CFT listing status.
+dropped proxy with structural sanctions exposure via BIS Consolidated Banking
+Statistics (CBS, `WS_CBS_PUB`) + WB IDS short-term external debt + FATF
+AML/CFT listing status. The Redis key is still `economic:bis-lbs:v1` for
+historical continuity.
 
 For the full construct rationale and the rejected alternatives (program-
 weight categorization, transit-hub exclusion lists), see
@@ -157,8 +159,8 @@ defaults to `false`; when the flag is off, the scorer returns the empty-data
 shape (`score=0`, `coverage=0`, `observedWeight=0`, `imputedWeight=0`,
 `imputationClass=null`) and the dimension contributes no signal through the
 coverage-weighted economic-domain mean. This dark default is intentional until
-the BIS LBS, FATF listing, and WB external-debt seeders are provisioned and
-healthy in production.
+the BIS CBS (`economic:bis-lbs:v1`), FATF listing, and WB external-debt seeders
+are provisioned and healthy in production.
 
 When the flag is on, the dimension uses a **fail-closed preflight** pattern
 (mirrors `scoreEnergy` v2): all 3 required seed envelopes
@@ -167,15 +169,18 @@ When the flag is on, the dimension uses a **fail-closed preflight** pattern
 Railway bundle outage and surfaces as `imputationClass='source-failure'` rather
 than silently zeroing the dim. Per-country data gaps are distinct:
 per-component reads return null and the slot drops out of the weighted blend.
+The `economic:bis-lbs:v1` payload is produced from BIS Consolidated Banking
+Statistics (CBS, `WS_CBS_PUB`), not Locational Banking Statistics; the retained
+key name reflects the original draft and is not a source label. Redis key is still `economic:bis-lbs:v1` for historical continuity.
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
 | shortTermExternalDebtPctGni | Short-term external debt as % of GNI (WB IDS DT.DOD.DSTC.IR.ZS × DT.DOD.DECT.GN.ZS); IMF Article IV vulnerability threshold is 15% GNI | Lower is better | 15 - 0 | 0.35 | World Bank IDS | Annual |
-| bisLbsXborderPctGdp | BIS LBS sum of by-parent cross-border claims (US/UK/major-EU/CH/JP/CA/AU/SG) as % of GDP; U-shape band — both isolation (under 5%) and over-exposure (above 60%) score low | Lower is better (U-shape) | 60 - 25 | 0.30 | BIS LBS | Quarterly |
+| bisLbsXborderPctGdp | BIS CBS (`WS_CBS_PUB`) sum of by-parent foreign claims (US/UK/major-EU/CH/JP/CA/AU/SG) as % of GDP; U-shape band — both isolation (under 5%) and over-exposure (above 60%) score low | Lower is better (U-shape) | 60 - 25 | 0.30 | BIS CBS | Quarterly |
 | fatfListingStatus | FATF AML/CFT listing status — black list (call for action) → 0, gray list (increased monitoring) → 30, compliant → 100 | Higher is better | 0 - 100 | 0.20 | FATF | Monthly |
-| financialCenterRedundancy | Count of distinct BIS LBS by-parent reporters with non-trivial (>1% GDP) cross-border claims; rewards multi-counterparty financial centers, balances Component 2 over-exposure penalty | Higher is better | 1 - 10 | 0.15 | BIS LBS | Quarterly |
+| financialCenterRedundancy | Count of distinct BIS CBS by-parent reporters with non-trivial (>1% GDP) foreign claims; rewards multi-counterparty financial centers, balances Component 2 over-exposure penalty | Higher is better | 1 - 10 | 0.15 | BIS CBS | Quarterly |
 
-**Coverage**: WB IDS publishes for ~125 LMICs only; HIC fall through to the BIS LBS structural-exposure component (which has ~200-country coverage). FATF + BIS LBS together cover effectively all manifest countries.
+**Coverage**: WB IDS publishes for ~125 LMICs only; HIC fall through to the BIS CBS structural-exposure component (which has ~200-country coverage). FATF + BIS CBS together cover effectively all manifest countries.
 
 **Data sources and licensing**: BIS data (Components 2 + 4) is published under [BIS terms of use](https://www.bis.org/terms_conditions.htm) — publicly available with attribution; redistribution restricted. WB IDS (Component 1) and FATF (Component 3) are open-data. The BIS-derived indicators are tagged `non-commercial` / `enrichment` in the indicator registry per the existing BIS classification convention; the dimension itself is `core` (contributes to the headline score) per Codex R1 #8.
 
@@ -581,7 +586,7 @@ When data is absent, the system tags it with one of four classes so downstream c
 | Class | Meaning | Typical score | Certainty | Example sources |
 |---|---|---:|---:|---|
 | `stable-absence` | The source publishes globally. Country is not listed, which means the tracked phenomenon is not happening. Strong positive signal. | 85 to 88 | 0.6 to 0.7 | IPC food crisis, UNHCR displacement, UCDP conflict events |
-| `unmonitored` | The source is a curated list that may not cover every country. Absence is ambiguous; penalized conservatively. | 50 to 60 | 0.3 to 0.4 | BIS / WTO / FATF curated feeds and other partial-coverage enrichments |
+| `unmonitored` | The source is a curated list that may not cover every country. Absence is ambiguous; penalized conservatively. | 50 to 60 | 0.3 to 0.4 | BIS / WTO curated feeds and other partial-coverage enrichments |
 | `source-failure` | The upstream API was unavailable at seed time. Detected from `seed-meta` `failedDatasets`. Should be rare and transient. | inherits from the source being substituted | 0.3 to 0.5 | any source listed in `failedDatasets` during a seed run |
 | `not-applicable` | The dimension is structurally N/A for this country (the construct does not apply). The scorer emits `score=0, coverage=0, observedWeight=0, imputedWeight=0` so the dim contributes zero weight to the domain coverage-weighted mean and is filtered from user-facing low-confidence and overall-coverage signals on both server and client. The dim is excluded ONLY when it appears in `RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE` AND the triple-zero Path-3 fingerprint matches; a real data outage on a country that DOES carry the construct (`coverage=0` with `observedWeight>0`) still drags confidence so an operator notices. | 0 (by definition) | 0 (by definition) | `sovereignFiscalBuffer` for non-SWF countries (plan 2026-04-26-001 §U3 + review fixup) |
 
@@ -606,9 +611,14 @@ A score is flagged as `lowConfidence` when either:
 - Average dimension coverage falls below **0.55**, or
 - Imputation share (imputed weight / total weight) exceeds **0.40**.
 
-### Grey-Out Threshold
+### Grey-Out and Ranking Eligibility
 
-Countries with overall coverage below **0.40** are greyed out in the UI and excluded from rankings. Their scores are too data-sparse to be meaningful.
+Countries with very sparse overall coverage below **0.40** still trigger the
+legacy grey-out treatment in UI surfaces. Public ranking inclusion, however,
+is governed by the stricter server-side `headlineEligible` gate:
+`overallCoverage >= 0.65 AND (populationMillions >= 0.2 OR overallCoverage >= 0.85) AND !lowConfidence`.
+Scored but ineligible countries remain in `greyedOut[]` for analyst inspection
+and are excluded from the headline ranking.
 
 ### Imputation Share
 
@@ -621,7 +631,7 @@ The API response includes `imputationShare` (0.0-1.0), representing the fraction
 | IMF (WEO/IFS) | Government revenue, current account, inflation | Annual | Global |
 | World Bank (WDI) | Electricity access, paved roads, reserves, tariffs, low-carbon generation components, power losses | Annual | Global |
 | World Bank (WGI) | 6 governance indicators | Annual | Global |
-| BIS | Locational Banking Statistics for `financialSystemExposure`; REER remains experimental enrichment / rollback support | Quarterly / monthly | LBS broad coverage; REER ~60 countries |
+| BIS | Consolidated Banking Statistics (CBS, `WS_CBS_PUB`) for `financialSystemExposure` via retained key `economic:bis-lbs:v1`; household debt-service ratio (`economic:bis:dsr:v1`) for `macroFiscal`; REER only experimental enrichment / rollback support | Quarterly / monthly | CBS broad coverage; DSR and REER cover curated BIS-reporting economies |
 | WTO | Trade restrictions, trade barriers | Weekly | ~50 reporters |
 | WHO | UHC index, measles coverage, hospital beds | Annual | Global |
 | FAO (IPC) | People in food crisis, crisis phase | Annual | Affected countries |
@@ -701,7 +711,7 @@ The reference-edition bundle under `docs/methodology/country-resilience-index/re
 
 **The five mechanisms now in the score:**
 
-1. **Source-comprehensiveness flag (PR #3452, §U5).** 19 indicators are tagged `comprehensive: false` because their absence does not imply "nothing is happening" — event-only feeds (UCDP, IPC, GPS jamming, internet outages), curated lists with partial coverage (BIS-64, WTO top-50, FATF), and bilateral-only series. For these, `IMPUTE` swaps from the optimistic `stable-absence` (85, certainty 0.6) to the conservative `unmonitored` (50, certainty 0.3). Microstates that previously rode an "absence is good news" assumption no longer get the free lift.
+1. **Source-comprehensiveness flag (PR #3452, §U5).** 20 indicators are tagged `comprehensive: false` because their absence does not imply "nothing is happening" — event-only or sensor feeds (GPS jamming, internet outages, port activity), curated lists with partial coverage (BIS CBS/DSR, BIS REER, WTO), LMIC-only or bilateral series, and retired/rollback-only constructs. For these, `IMPUTE` swaps from the optimistic `stable-absence` (85, certainty 0.6) to the conservative `unmonitored` (50, certainty 0.3). Microstates that previously rode an "absence is good news" assumption no longer get the free lift. UCDP, IPC, and FATF are not examples here in the current registry.
 2. **Coverage penalty multiplier (PR #3452, §U4).** Imputed indicators carry a 0.5× weight in the dimension blend. The dimension still scores, the imputed value still influences the result, but it does so at half-strength. Combined with the comprehensiveness flag this means a country whose dimension is entirely curated-list-absent contributes weight 0.15 (0.3 × 0.5) instead of weight 1.0 — the dim is functionally informational, not load-bearing.
 3. **Per-capita normalization with 0.5M tiny-state floor (PR #3452, §U6).** `unrestEvents` and `ucdpConflict` divide by `max(populationMillions, 0.5)`. Tiny states with absolute event counts of zero used to score the same as large states with zero events; now the per-capita event rate is what enters normalization, and the floor caps the divisor so a country at 0.05M doesn't get a 200× artificial boost. UNHCR `displacementTotal` and `displacementHosted` are still scored on log10 absolute displaced-person counts, not population-normalized rates. The IMF labor seeder writes population to the static record (PR #3452 review-round-1 fix corrected a 1e6× units bug — the field is `populationMillions` but the upstream IMF `LP` series is in raw persons; fixed in commit 724dd4e95).
 4. **Headline-eligible gate (PR #3469, §U7).** A country is `headlineEligible: true` only if `overallCoverage >= 0.65 AND (populationMillions >= 0.2 OR overallCoverage >= 0.85) AND !lowConfidence`. Ineligible countries surface in `greyedOut[]` (still served via the raw API for analysts who want them) but are excluded from the public ranking. This is the single change that solved the inflation defect end-to-end: the previously-inflated PW, NR, AD, FM, KI, GD, GQ, ER cohort is now routed by the headline-eligible gate instead of being described as part of the headline ranking.
@@ -793,7 +803,7 @@ Self-assessed against the standard composite-indicator review axes on a 0-10 sca
 
 - **T2.1** (#2977): Three-pillar schema added to proto and OpenAPI. `schemaVersion: "2.0"` feature flag introduced with backward-compatible `"1.0"` fallback path for one release cycle. Response now carries a `pillars` array alongside existing `domains`.
 - **T2.2a** (#2979): Signal tiering registry committed. Every indicator tagged Core, Enrichment, or Experimental with per-signal coverage percentage and license audit status. Registry enforced by CI linter.
-- **T2.2b** (#2987): Recovery capacity pillar with 6 new dimensions across a new `recovery` domain: fiscal space (debt service ratio), reserve adequacy (months of imports), short-term external debt coverage, import concentration (HHI), hospital surge capacity, and state continuity composite (WGI subset). Five new seeders following Railway gold-standard pattern (3 real data sources, 2 stubs pending source configuration). Cache key bumped to the current version.
+- **T2.2b** (#2987): Recovery capacity pillar with new dimensions across a new `recovery` domain. The plan originally named hospital surge capacity, but the active recovery dimensions are fiscal space, the liquid-reserve / sovereign-fiscal-buffer split, external debt coverage, import concentration (HHI), and state continuity composite (WGI subset). Hospital capacity remains part of `healthPublicService`, not an active recovery-domain dimension. Five new seeders followed the Railway gold-standard pattern (3 real data sources, 2 stubs pending source configuration). Cache key bumped to the current version.
 - **T2.3** (#2990/#3954): Three-pillar aggregation shape shipped and activated. Every response now carries real domain-weighted, coverage-scaled pillar scores and pillar coverage at `pillars[]`. Pillar weights: structural readiness 0.40, live shock exposure 0.35, recovery capacity 0.25. A penalty factor `(1 − α × (1 − min_pillar / 100))` with α = 0.5 is implemented as `penalizedPillarScore` in `server/worldmonitor/resilience/v1/_shared.ts` and is exercised by the sensitivity suite. The **top-level `overall_score` is the penalized pillar-combined form** in production; the six-domain weighted aggregate is retained as the flag-off rollback path.
 - **T2.4** (#2985): Cross-index benchmark script validates the overall resilience score against three current public comparators: INFORM Risk Index, UNDP HDI, and the WorldRiskIndex vulnerability component. ND-GAIN is deferred until the validation image can unzip the 2026 archive, and Fragile States Index is retired from public artifacts because fresh bulk data is no longer available. Results are stored in `resilience:benchmark:external:v1` and committed as validation artifacts.
 - **T2.5** (#2986): Outcome backtest framework covering 7 event families (FX stress, sovereign stress, power outages, food-crisis escalation, refugee surges, sanctions shocks, conflict spillover). Each family has a binary event definition, a 2024-2025 hold-out window, an AUC target of 0.75, and a 0.03 gate width for release decisions. Four families currently use frozen independently sourced 2024-2025 reference sets (FX stress, sovereign stress, power outages, sanctions shocks); three read live Redis seed outputs (food-crisis escalation, refugee surges, conflict spillover). The committed artifact exposes `dataSource` and `labelSources` per family so this split is auditable.

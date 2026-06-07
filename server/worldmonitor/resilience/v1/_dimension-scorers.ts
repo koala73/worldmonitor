@@ -1441,9 +1441,9 @@ export async function scoreTradePolicy(
 //
 // Components (weights total 1.0):
 //   short_term_external_debt_pct_gni     0.35 (WB IDS — lowerBetter; goalpost worst=15% best=0%)
-//   bis_lbs_xborder_us_eu_uk_pct_gdp     0.30 (BIS LBS by-parent — U-shape band)
+//   bis_lbs_xborder_us_eu_uk_pct_gdp     0.30 (BIS CBS by-parent — U-shape band)
 //   fatf_listing_status                   0.20 (FATF — discrete: black=0, gray=30, compliant=100)
-//   financial_center_redundancy           0.15 (BIS LBS by-parent count — higherBetter; goalpost worst=1 best=10)
+//   financial_center_redundancy           0.15 (BIS CBS by-parent count — higherBetter; goalpost worst=1 best=10)
 //
 // Flag-gated rollout. `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED` defaults off
 // so the dim ships dark until the 3 component seeders (seed-bis-lbs,
@@ -1454,7 +1454,7 @@ export async function scoreTradePolicy(
 // `docs/plans/2026-04-24-001-fix-resilience-v2-fail-closed-on-missing-seeds-plan.md`.
 //
 // Fail-closed preflight (when flag is ON): all 3 required seed
-// envelopes (component 4 shares the BIS LBS seed) MUST be reachable.
+// envelopes (component 4 shares the retained economic:bis-lbs CBS seed) MUST be reachable.
 // Missing seed-meta indicates a Railway bundle/cron failure and is
 // surfaced as `source-failure` via
 // `ResilienceConfigurationError(message, missingKeys)` — caught at
@@ -1522,12 +1522,13 @@ export async function scoreFinancialSystemExposure(
 
   // Component 1: short-term external debt as % of GNI. WB IDS coverage is
   // ~125 LMICs; HIC fall through to per-component-null and the blend
-  // covers the gap via the BIS LBS structural-exposure component.
+  // covers the gap via the BIS CBS structural-exposure component.
   // Payload shape: { countries: { [iso2]: { value: number, year: number } } }.
   const debtPct = readWbExternalDebtPct(debtRaw, countryCode);
 
-  // Component 2 + 4 share the BIS LBS payload. Component 2: sum of
-  // by-parent claims for the enumerated Western parents as % of GDP.
+  // Component 2 + 4 share the retained economic:bis-lbs payload, sourced
+  // from BIS CBS (WS_CBS_PUB). Component 2: sum of by-parent foreign
+  // claims for the enumerated Western parents as % of GDP.
   // Component 4: count of distinct by-parent reporters with non-trivial
   // claims (>1% of GDP).
   // Payload shape: { countries: { [iso2]: { totalXborderPctGdp: number,

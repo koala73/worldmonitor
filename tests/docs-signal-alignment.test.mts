@@ -10,6 +10,40 @@ function readRepo(path: string): string {
   return readFileSync(resolve(root, path), 'utf8');
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function extractHotspotSegment(source: string): string {
+  const start = source.indexOf('export const INTEL_HOTSPOTS');
+  assert.notEqual(start, -1, 'src/config/geo.ts must define INTEL_HOTSPOTS');
+  const end = source.indexOf('\n];', start);
+  assert.notEqual(end, -1, 'INTEL_HOTSPOTS array must have a closing bracket');
+  return source.slice(start, end);
+}
+
+function extractHotspotBaselines(source: string): Array<{ id: string; name: string; baseline: number }> {
+  const segment = extractHotspotSegment(source);
+  const entries: Array<{ id: string; name: string; baseline: number }> = [];
+  const blockRe = /^  \{\n([\s\S]*?)^  \},/gm;
+  let blockMatch: RegExpExecArray | null;
+  while ((blockMatch = blockRe.exec(segment)) !== null) {
+    const block = blockMatch[1]!;
+    const id = block.match(/^\s+id: '([^']+)'/m)?.[1];
+    const singleQuotedName = block.match(/^\s+name: '([^']+)'/m)?.[1];
+    const doubleQuotedName = block.match(/^\s+name: "([^"]+)"/m)?.[1];
+    const scoreText = block.match(/^\s+escalationScore: (\d),/m)?.[1];
+    assert.ok(id, `hotspot block is missing id:\n${block}`);
+    assert.ok(singleQuotedName || doubleQuotedName, `hotspot ${id} is missing name`);
+    entries.push({
+      id,
+      name: singleQuotedName ?? doubleQuotedName!,
+      baseline: scoreText == null ? 3 : Number(scoreText),
+    });
+  }
+  return entries;
+}
+
 function countSignalTableRows(doc: string): number {
   const section = doc.match(/### Signal Types([\s\S]*?)### How It Works/);
   assert.ok(section, 'signal docs must include a Signal Types section before How It Works');
@@ -36,8 +70,10 @@ test('public signal docs keep their listed signal count in sync with the SignalT
 
 test('public signal docs stay aligned with hotspot escalation math', () => {
   const hotspotCode = readRepo('src/services/hotspot-escalation.ts');
+  const geoCode = readRepo('src/config/geo.ts');
   const hotspotsDoc = readRepo('docs/hotspots.mdx');
   const algorithmsDoc = readRepo('docs/algorithms.mdx');
+  const hotspotBaselines = extractHotspotBaselines(geoCode);
 
   assert.match(hotspotCode, /return hotspot\.escalationScore \?\? 3;/);
   assert.match(hotspotCode, /return 1 \+ \(raw \/ 100\) \* 4;/);
@@ -56,6 +92,21 @@ test('public signal docs stay aligned with hotspot escalation math', () => {
     assert.match(doc, /1-5/, `${label} must state hotspot scores are on a 1-5 scale`);
     assert.doesNotMatch(doc, /proximity_boost/, `${label} must not document a nonexistent hotspot proximity boost`);
   }
+
+  assert.ok(hotspotBaselines.length >= 20, 'hotspot baseline parser should cover the configured hotspot list');
+  for (const hotspot of hotspotBaselines) {
+    const rowRe = new RegExp(`\\|\\s*${escapeRegExp(hotspot.name)}\\s*\\|\\s*${hotspot.baseline}\\s*\\|`);
+    assert.match(
+      hotspotsDoc,
+      rowRe,
+      `docs/hotspots.mdx must publish the ${hotspot.baseline}/5 static baseline for ${hotspot.id}`,
+    );
+  }
+  assert.match(
+    hotspotsDoc,
+    /without an\s+explicit `escalationScore` inherit the default `3\/5` baseline/i,
+    'hotspots doc must explain the default baseline used by omitted escalationScore configs',
+  );
 });
 
 test('public convergence and alert docs stay aligned with current priority and queue caps', () => {

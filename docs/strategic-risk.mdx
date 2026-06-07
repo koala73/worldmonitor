@@ -50,11 +50,11 @@ observations.
 
 ### Risk Levels
 
-| Score | Level | Trend Icon | Meaning |
-|-------|-------|------------|---------|
-| 70-100 | **High** | Escalating | Multiple converging crises |
-| 40-69 | **Medium** | Stable | Heightened global tension |
-| 0-39 | **Low** | De-escalating | Lower global strategic pressure |
+| Score | Level | Meaning |
+|-------|-------|---------|
+| 70-100 | **High** | Multiple converging crises |
+| 40-69 | **Medium** | Heightened global tension |
+| 0-39 | **Low** | Lower global strategic pressure |
 
 ### Unified Alert System
 
@@ -92,11 +92,19 @@ Index country-score bands documented in
 
 ### Trend Detection
 
-The system tracks approximate 24-hour CII movement through `dynamicScore`:
+Country-level CII rows track approximate 24-hour movement through
+`dynamicScore`:
 
 - `dynamicScore` is a signed delta from -100 to 100 against the nearest valid prior CII snapshot.
 - Positive values mean the score rose, negative values mean it fell, and `0` means stable or no valid prior snapshot.
 - Trend labels use the server deadband: greater than `+1` is rising, less than `-1` is falling, and values from `-1` through `+1` remain stable.
+
+The server-published global `StrategicRisk` headline is different: it currently
+sets `trend` to stable while publishing the top-5 CII roll-up score. If cached
+server scores are unavailable, the browser fallback computes its own
+escalating/stable/de-escalating panel trend from local additive context; that
+fallback trend is a UI continuity signal, not the authoritative server
+Strategic Risk trend contract.
 
 ## Pentagon Pizza Index (PizzINT)
 

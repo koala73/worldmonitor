@@ -34,6 +34,10 @@ import {
   RESILIENCE_RANKING_CACHE_KEY,
   RESILIENCE_HISTORY_KEY_PREFIX,
   RESILIENCE_INTERVAL_KEY_PREFIX,
+  HEADLINE_ELIGIBLE_MIN_COVERAGE,
+  HEADLINE_ELIGIBLE_MIN_POPULATION_MILLIONS,
+  HEADLINE_ELIGIBLE_HIGH_COVERAGE,
+  GREY_OUT_COVERAGE_THRESHOLD,
 } from '../server/worldmonitor/resilience/v1/_shared.ts';
 import {
   RESILIENCE_DIMENSION_ORDER,
@@ -867,6 +871,86 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
         `${surface.label} must document that scored ineligible countries remain in greyedOut[] (${surface.path}).`,
       );
     }
+  });
+
+  it('methodology distinguishes UI grey-out coverage from headline ranking eligibility', () => {
+    const gatePattern = new RegExp(
+      `overallCoverage >= ${HEADLINE_ELIGIBLE_MIN_COVERAGE} AND ` +
+        `\\(populationMillions >= ${HEADLINE_ELIGIBLE_MIN_POPULATION_MILLIONS} OR overallCoverage >= ${HEADLINE_ELIGIBLE_HIGH_COVERAGE}\\) AND !lowConfidence`,
+    );
+
+    assert.match(
+      docText,
+      new RegExp(`overall coverage below \\*\\*${GREY_OUT_COVERAGE_THRESHOLD.toFixed(2)}\\*\\*`),
+      'methodology should still document the UI grey-out coverage threshold',
+    );
+    assert.match(
+      docText,
+      gatePattern,
+      'methodology must document the stricter headlineEligible ranking gate',
+    );
+    assert.match(
+      docText,
+      /Scored but ineligible countries remain in `greyedOut\[\]`[\s\S]{0,120}excluded from the headline ranking/,
+      'methodology must state that ranking exclusion follows headlineEligible, not the 0.40 UI threshold alone',
+    );
+    assert.doesNotMatch(
+      docText,
+      /overall coverage below \*\*0\.40\*\* are greyed out in the UI and excluded from rankings/i,
+      'methodology must not preserve the superseded 0.40-only ranking exclusion claim',
+    );
+  });
+
+  it('methodology BIS source prose uses CBS for financialSystemExposure and DSR for macroFiscal', () => {
+    const dataSourcesMatch = /^## Data Sources\s*$([\s\S]*?)^## /m.exec(docText);
+    assert.ok(dataSourcesMatch, 'methodology Data Sources section must exist.');
+    const dataSources = dataSourcesMatch[1]!;
+    const financialSystemExposure = extractSectionText(docText, 'Financial System Exposure');
+    const macroFiscal = extractSectionText(docText, 'Macro-Fiscal');
+    const bisLbsBlock = extractIndicatorSourceBlock(indicatorSourceCatalogText, 'bisLbsXborderPctGdp');
+    const financialCenterBlock = extractIndicatorSourceBlock(indicatorSourceCatalogText, 'financialCenterRedundancy');
+
+    assert.match(dataSources, /Consolidated Banking Statistics \(CBS, `WS_CBS_PUB`\) for `financialSystemExposure`/);
+    assert.match(dataSources, /household debt-service ratio \(`economic:bis:dsr:v1`\) for `macroFiscal`/);
+    assert.match(dataSources, /REER only experimental enrichment \/ rollback support/);
+    assert.match(financialSystemExposure, /BIS Consolidated Banking\s+Statistics \(CBS, `WS_CBS_PUB`\)/);
+    assert.match(financialSystemExposure, /Redis key is still `economic:bis-lbs:v1` for\s+historical continuity/);
+    assert.match(macroFiscal, /householdDebtService[\s\S]*BIS household debt service ratio/);
+    for (const block of [bisLbsBlock, financialCenterBlock]) {
+      assert.match(block, /source: BIS Consolidated Banking Statistics/);
+      assert.match(block, /seriesUrl: https:\/\/data\.bis\.org\/topics\/CBS/);
+      assert.doesNotMatch(block, /source: BIS Locational Banking Statistics|topics\/LBS/);
+    }
+    assert.doesNotMatch(
+      dataSources,
+      /Locational Banking Statistics for `financialSystemExposure`/,
+      'BIS data-source row must not misname CBS financialSystemExposure as Locational Banking Statistics',
+    );
+  });
+
+  it('source-comprehensiveness changelog examples match the current registry', () => {
+    const falseCount = INDICATOR_REGISTRY.filter((indicator) => indicator.comprehensive === false).length;
+    assert.equal(falseCount, 20, 'update docs and this assertion together when comprehensive:false registry count changes');
+
+    const changelog = extractSectionText(docText, 'v17 (April 2026) — universe + coverage rebuild (plan 2026-04-26-002)');
+    assert.match(changelog, /20 indicators are tagged `comprehensive: false`/);
+    assert.match(changelog, /UCDP, IPC, and FATF are not examples here in the current registry/);
+    assert.doesNotMatch(
+      changelog,
+      /event-only feeds \(UCDP, IPC[\s\S]{0,160}FATF\)/,
+      'changelog must not list comprehensive:true UCDP/IPC/FATF as comprehensive:false examples',
+    );
+  });
+
+  it('recovery changelog does not claim hospital surge capacity is an active recovery dimension', () => {
+    const changelog = extractSectionText(docText, 'v2.0 (April 2026) — Phase 2 structural rebuild');
+    assert.match(changelog, /active recovery dimensions are[\s\S]{0,180}liquid-reserve[\s\S]{0,80}sovereign-fiscal-buffer/i);
+    assert.match(changelog, /Hospital capacity remains part of `healthPublicService`, not an active recovery-domain dimension/);
+    assert.doesNotMatch(
+      changelog,
+      /Recovery capacity pillar with 6 new dimensions[\s\S]{0,180}hospital surge capacity/i,
+      'current changelog must not claim hospital surge capacity shipped as an active recovery dimension',
+    );
   });
 
   it('indicator source catalog mirrors every active registry-backed indicator row', () => {
