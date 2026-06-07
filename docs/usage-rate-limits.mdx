@@ -29,7 +29,7 @@ See [MCP](/mcp-server) for details.
 | `GET /api/oauth/authorize` | 10 | 60 s | Per IP |
 | `POST /api/oauth/token` | 10 | 60 s | Per IP |
 
-Matches the implementations in `api/oauth/{register,authorize,token}.js`.
+Matches the implementations in `api/oauth/register.js`, `api/oauth/authorize.js`, and `api/oauth/token.ts`.
 
 Exceeding any of these during the OAuth flow will cause the MCP client to fail the connection handshake — wait 60 s and retry.
 
@@ -44,13 +44,13 @@ Exceeding any of these during the OAuth flow will cause the MCP client to fail t
 
 Other write endpoints (`/api/brief/share-url`, `/api/notification-channels`, `/api/create-checkout`, `/api/customer-portal`, etc.) fall back to the default per-IP limit above.
 
-## Bootstrap / health
+## Bootstrap / health / version
 
-These are cached aggressively and have no custom limit beyond the default:
+These have no custom limit beyond the default. Cache headers vary by endpoint:
 
-- `GET /api/bootstrap` — `s-maxage=30`
-- `GET /api/health` — `s-maxage=15`
-- `GET /api/version` — `s-maxage=60`
+- `GET /api/bootstrap` — default all-keys response uses `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` plus fast-tier `CDN-Cache-Control`; explicit `?tier=fast` / `?tier=slow` requests use browser `max-age=60` / `max-age=300` and CDN `s-maxage=600` / `s-maxage=7200`.
+- `GET /api/health` — `private, no-store, max-age=0` plus `CDN-Cache-Control: no-store`.
+- `GET /api/version` — `public, s-maxage=300, stale-while-revalidate=60, stale-if-error=3600`.
 
 ## Response when limited
 
@@ -60,7 +60,7 @@ HTTP 429 with:
 Retry-After: <seconds>
 Content-Type: application/json
 
-{ "error": "Rate limit exceeded" }
+{ "error": "Too many requests" }
 ```
 
 ## Retry guidance

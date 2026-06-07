@@ -76,7 +76,7 @@ WWW-Authenticate: Bearer realm="worldmonitor", resource_metadata="https://worldm
 Content-Type: application/json
 ```
 
-**What to do.** Re-run the OAuth flow (`/api/oauth/token` with a fresh authorization code, OR refresh-grant with a valid refresh token). For API-key clients, double-check the `X-WorldMonitor-Key` header — `wm_live_…` keys must go in that header, NOT as `Authorization: Bearer`. The `WWW-Authenticate` header's `resource_metadata` pointer is the canonical place to start the discovery flow from scratch.
+**What to do.** Re-run the OAuth flow (`/api/oauth/token` with a fresh authorization code, OR refresh-grant with a valid refresh token). For API-key clients, double-check the `X-WorldMonitor-Key` header — user-issued `wm_` keys and operator-issued enterprise keys must go in that header, NOT as `Authorization: Bearer`. The `WWW-Authenticate` header's `resource_metadata` pointer is the canonical place to start the discovery flow from scratch.
 
 ### `-32029` — Rate limited (per-minute OR daily)
 

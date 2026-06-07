@@ -46,7 +46,7 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
 | [`/llms-full.txt`](https://worldmonitor.app/llms-full.txt) | (extension) | Long-form variant covering all data layers, panels, and data sources |
 | [`/api/health`](https://api.worldmonitor.app/api/health) | (custom) | Per-key seed status, freshness, record counts — agents can gate fetches on this |
 
-All endpoints serve `Access-Control-Allow-Origin: *`. The static discovery assets (`.well-known/*`, `/openapi.yaml`, `/llms*.txt`) are cached `public, max-age=3600` — safe to memoize. `/api/health` is **not** cached (`private, no-store`) because it reflects real-time seed freshness; agents should hit it fresh whenever they need to gate on data availability.
+The static discovery assets (`.well-known/*`, `/openapi.yaml`, `/llms*.txt`) serve `Access-Control-Allow-Origin: *` and are cached `public, max-age=3600` — safe to memoize. `/api/health` uses the normal API CORS allowlist and is **not** cached (`private, no-store`) because it reflects real-time seed freshness; agents should hit it fresh whenever they need to gate on data availability.
 
 ## Agent walkthroughs
 
@@ -91,7 +91,7 @@ See [MCP Server](/mcp-server) for client-specific config snippets.
 
 ### Server-side with a direct API key
 
-If you don't want OAuth, every REST endpoint and the MCP endpoint accept `X-WorldMonitor-Key: wm_live_...`:
+If you don't want OAuth, REST endpoints and the MCP endpoint accept a user API key or operator-issued enterprise key in `X-WorldMonitor-Key`:
 
 ```bash
 curl -s https://api.worldmonitor.app/api/resilience/v1/get-resilience-ranking \

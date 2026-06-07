@@ -5,10 +5,10 @@ description: "Make your first WorldMonitor API call in under a minute — curl, 
 
 ## 1. Get an API key
 
-PRO subscribers get an API key from [worldmonitor.app/pro](https://www.worldmonitor.app/pro). Keys look like `wm_live_...` and are at least 16 characters.
+PRO subscribers get an API key from [worldmonitor.app/pro](https://www.worldmonitor.app/pro). User-issued keys are exactly `wm_` followed by 40 lowercase hex characters.
 
 <Tip>
-Browser origins on `worldmonitor.app` / `localhost` are trusted without a key. You only need a key for server-to-server use or from untrusted origins.
+The dashboard browser session can call supported public endpoints without a user API key. You need a key for server-to-server use, untrusted browser origins, and routes that explicitly require an API key.
 </Tip>
 
 ## 2. Call an endpoint
@@ -17,7 +17,7 @@ Browser origins on `worldmonitor.app` / `localhost` are trusted without a key. Y
 
 ```bash
 curl -s 'https://api.worldmonitor.app/api/conflict/v1/list-conflict-events?limit=5' \
-  -H 'X-WorldMonitor-Key: wm_live_...'
+  -H 'X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567'
 ```
 
 ### JavaScript (Node or browser)
@@ -51,7 +51,7 @@ For dashboards, use `/api/bootstrap` to pull all seeded caches in one request:
 
 ```bash
 curl -s 'https://api.worldmonitor.app/api/bootstrap' \
-  -H 'X-WorldMonitor-Key: wm_live_...'
+  -H 'X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567'
 ```
 
 See [Platform endpoints](/api-platform#bootstrap) for the response shape.

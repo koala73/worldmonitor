@@ -1058,25 +1058,25 @@ components:
                     maximum: 100
                     minimum: 0
                     format: double
-                    description: News activity signal contribution (0-100).
+                    description: Information-environment contribution from news urgency and threat-summary signals (0-100).
                 ciiContribution:
                     type: number
                     maximum: 100
                     minimum: 0
                     format: double
-                    description: CII index contribution (0-100).
+                    description: Domestic unrest contribution from protests, riots, fatalities, severity, and outages (0-100).
                 geoConvergence:
                     type: number
                     maximum: 100
                     minimum: 0
                     format: double
-                    description: Geographic convergence score (0-100).
+                    description: Armed-conflict contribution from ACLED/UCDP events, fatalities, civilian violence, strikes, and OREF alerts (0-100).
                 militaryActivity:
                     type: number
                     maximum: 100
                     minimum: 0
                     format: double
-                    description: Military activity contribution (0-100).
+                    description: Security-mobility contribution from military flights, AIS disruption, aviation disruption, and GPS interference (0-100).
             description: CiiComponents represents the contributing factors to a CII score.
         StrategicRisk:
             type: object

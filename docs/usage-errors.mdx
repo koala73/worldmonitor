@@ -52,7 +52,7 @@ OAuth endpoints follow [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rf
 | `invalid_payload` | Body failed schema validation. |
 | `invalid_date_shape` | Date param not `YYYY-MM-DD`. |
 | `brief_not_found` | No composed brief for the requested `{userId, issueDate}`. |
-| `Rate limit exceeded` | 429 fired; honor `Retry-After`. |
+| `Too many requests` | 429 fired; honor `Retry-After`. |
 | `Service temporarily unavailable` | Upstash or another hard dependency missing at request time. |
 | `service_unavailable` | Signing secret / required env not configured. |
 | `Failed to enqueue scenario job` | Redis pipeline failure on `/api/scenario/v1/run-scenario`. |

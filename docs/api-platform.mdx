@@ -11,8 +11,8 @@ These endpoints are not part of a domain RPC service — they sit at the root of
 
 Single round-trip hydration for the dashboard. Returns **all bootstrap-registered Redis cache keys** unwrapped from their seed envelopes in one response.
 
-- **Auth**: browser origin OR `X-WorldMonitor-Key`
-- **Cache**: `Cache-Control: public, max-age=30, s-maxage=30`
+- **Auth**: browser `wm-session` cookie OR `X-WorldMonitor-Key`
+- **Cache**: the default all-keys response uses `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` plus fast-tier `CDN-Cache-Control`; explicit `?tier=fast` / `?tier=slow` requests use browser `max-age=60` / `max-age=300` and CDN `s-maxage=600` / `s-maxage=7200`.
 - **Shape**: `{ earthquakes, outages, marketQuotes, commodityQuotes, imfMacro, bisPolicy, ... }` — ~40+ top-level fields, each the unwrapped payload of one seeded domain.
 
 Use this on initial page load to avoid 40 parallel RPC calls.
@@ -61,7 +61,9 @@ Internal. Invalidates Redis cache keys by explicit list or glob patterns.
 
 ### `GET /api/health`
 
-Aggregated freshness report for **all registered seed keys**. Returns `HEALTHY`, `WARNING` (stale), or `CRIT` (missing / empty with `emptyDataIsFailure`).
+Aggregated freshness report for **all registered seed keys**. Returns `HEALTHY`, `WARNING`, `DEGRADED`, `UNHEALTHY`, or `REDIS_DOWN` in the JSON `status` field.
+
+All states except `REDIS_DOWN` return HTTP 200; `REDIS_DOWN` returns HTTP 503 because Redis was unreachable and the endpoint could not assess seed state. Responses are not cached (`private, no-store, max-age=0` plus `CDN-Cache-Control: no-store`).
 
 Monitor via UptimeRobot / Better Stack — alert on any status other than `HEALTHY`.
 
@@ -69,9 +71,17 @@ Monitor via UptimeRobot / Better Stack — alert on any status other than `HEALT
 {
   "status": "HEALTHY",
   "checkedAt": "2026-04-19T12:00:00Z",
-  "keys": {
-    "market:stocks-bootstrap:v1": { "status": "HEALTHY", "fetchedAt": "...", "recordCount": 78 },
-    "seismology:earthquakes:v1":  { "status": "WARNING", "staleMin": 12 }
+  "summary": {
+    "total": 194,
+    "ok": 180,
+    "warn": 5,
+    "onDemandWarn": 9,
+    "staleContent": 0,
+    "crit": 0
+  },
+  "checks": {
+    "marketQuotes": { "status": "OK", "records": 78, "seedAgeMin": 12 },
+    "earthquakes": { "status": "OK", "records": 142, "seedAgeMin": 8 }
   }
 }
 ```

@@ -60,22 +60,22 @@ message CiiScore {
 
 // CiiComponents represents the contributing factors to a CII score.
 message CiiComponents {
-  // News activity signal contribution (0-100).
+  // Information-environment contribution from news urgency and threat-summary signals (0-100).
   double news_activity = 1 [
     (buf.validate.field).double.gte = 0,
     (buf.validate.field).double.lte = 100
   ];
-  // CII index contribution (0-100).
+  // Domestic unrest contribution from protests, riots, fatalities, severity, and outages (0-100).
   double cii_contribution = 2 [
     (buf.validate.field).double.gte = 0,
     (buf.validate.field).double.lte = 100
   ];
-  // Geographic convergence score (0-100).
+  // Armed-conflict contribution from ACLED/UCDP events, fatalities, civilian violence, strikes, and OREF alerts (0-100).
   double geo_convergence = 3 [
     (buf.validate.field).double.gte = 0,
     (buf.validate.field).double.lte = 100
   ];
-  // Military activity contribution (0-100).
+  // Security-mobility contribution from military flights, AIS disruption, aviation disruption, and GPS interference (0-100).
   double military_activity = 4 [
     (buf.validate.field).double.gte = 0,
     (buf.validate.field).double.lte = 100

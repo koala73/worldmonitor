@@ -46,7 +46,7 @@ Tool `outputSchema` metadata is emitted on `tools/list` regardless of the negoti
 The MCP handler accepts two auth modes, in priority order:
 
 1. **OAuth 2.1 bearer** — `Authorization: Bearer <token>` where `<token>` was issued by `/api/oauth/token`. This is what Claude Desktop, claude.ai, Cursor, and MCP Inspector use automatically. Required for any client that hits MCP from a browser origin.
-2. **Direct API key** — `X-WorldMonitor-Key: wm_live_...`. Intended for server-side scripts, `curl`, and custom integrations. Do **not** send a `wm_live_...` key as a `Bearer` token — it will fail OAuth resolution and return `401 invalid_token`.
+2. **Direct API key** — `X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567` for user-issued keys, or an opaque operator-issued enterprise key. Intended for server-side scripts, `curl`, and custom integrations. Do **not** send an API key as a `Bearer` token — it will fail OAuth resolution and return `401 invalid_token`.
 
 Both modes check the same PRO entitlement before every tool call, so a subscription downgrade revokes access on the next request.
 
@@ -85,7 +85,7 @@ Pro subscribers (and API Starter+ users who'd rather not paste a key) can author
 
 3. **Done.** No `wm_…` key is created or stored on your machine. The client receives a standard OAuth 2.1 access token (1 h TTL, 7 d refresh).
 
-If you'd rather paste an API key (Starter+ / scripted clients), expand "Use API key instead" on the consent page and submit a `wm_live_…` key — that path is unchanged.
+If you'd rather paste an API key (Starter+ / scripted clients), expand "Use API key instead" on the consent page and submit your `wm_` user key or operator-issued enterprise key — that path is unchanged.
 
 ### Daily limit (Pro tier)
 
@@ -347,7 +347,7 @@ In addition to the 39 tools, WorldMonitor exposes MCP prompts and resources so c
 Server-side with a direct API key — send it as `X-WorldMonitor-Key`, **not** as a bearer token.
 
 ```bash
-WM_KEY="wm_live_..."
+WM_KEY="wm_0123456789abcdef0123456789abcdef01234567"
 
 # 1. List tools
 curl -s https://worldmonitor.app/mcp \
