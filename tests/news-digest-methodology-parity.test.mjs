@@ -82,6 +82,10 @@ const seedDigestSrc = readFileSync(
   resolve(repoRoot, 'scripts/seed-digest-notifications.mjs'),
   'utf8',
 );
+const latestBriefApiSrc = readFileSync(
+  resolve(repoRoot, 'api/latest-brief.ts'),
+  'utf8',
+);
 const briefComposeSrc = readFileSync(
   resolve(repoRoot, 'scripts/lib/brief-compose.mjs'),
   'utf8',
@@ -134,10 +138,38 @@ function extractSetLiteralValues(src, constName) {
 }
 
 function extractArrayLiteralValues(src, constName) {
-  const re = new RegExp(`const\\s+${constName}\\s*=\\s*\\[([\\s\\S]*?)\\]\\s*;`);
+  const re = new RegExp(`const\\s+${constName}\\s*=\\s*\\[`);
   const match = src.match(re);
-  assert.ok(match, `failed to locate ${constName}`);
-  return [...match[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  assert.ok(match?.index !== undefined, `failed to locate ${constName}`);
+
+  let depth = 1;
+  let quote = null;
+  let escaped = false;
+  const bodyStart = match.index + match[0].length;
+  for (let i = bodyStart; i < src.length; i++) {
+    const ch = src[i];
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (ch === '\'' || ch === '"' || ch === '`') {
+      quote = ch;
+      continue;
+    }
+    if (ch === '[') depth++;
+    if (ch === ']') depth--;
+    if (depth === 0) {
+      const body = src.slice(bodyStart, i);
+      return [...body.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    }
+  }
+  assert.fail(`failed to parse array literal ${constName}`);
 }
 
 function extractFunctionBody(src, functionName) {
@@ -490,12 +522,17 @@ describe('news digest methodology parity', () => {
 
   it('documents keyword-classifier lifestyle exclusions and substring behavior', () => {
     const exclusions = extractArrayLiteralValues(classifierSrc, 'EXCLUSIONS');
-    assert.deepEqual(exclusions, [
+    const expectedExclusions = [
       'protein', 'couples', 'relationship', 'dating', 'diet', 'fitness',
       'recipe', 'cooking', 'shopping', 'fashion', 'celebrity', 'movie',
       'tv show', 'sports', 'game', 'concert', 'festival', 'wedding',
       'vacation', 'travel tips', 'life hack', 'self-care', 'wellness',
-    ]);
+    ];
+    assert.deepEqual(
+      [...exclusions].sort(),
+      [...expectedExclusions].sort(),
+      'EXCLUSIONS array values must match docs (order-insensitive)',
+    );
     assert.ok(
       classifierSrc.includes('EXCLUSIONS.some(ex => lower.includes(ex))'),
       'classifier exclusions must remain substring checks unless docs are updated',
@@ -726,6 +763,18 @@ describe('news digest methodology parity', () => {
       seedDigestSrc.includes('const key = `brief:${userId}:${issueSlot}`') &&
         seedDigestSrc.includes('const latestPointerKey = `brief:latest:${userId}`'),
       'digest cron must still write slot-keyed brief envelope and latest pointer',
+    );
+    assert.ok(
+      latestBriefApiSrc.includes('issueDate: preview.issueDate') &&
+        latestBriefApiSrc.includes('issueSlot,') &&
+        latestBriefApiSrc.includes("issueDate: requestedSlot.slice(0, 10)"),
+      'latest-brief API must still expose issueDate plus issueSlot where a slot is known',
+    );
+    assert.ok(
+      apiBriefText.includes('`issueDate` remains the display/date field') &&
+        /`issueSlot` is the\s+frozen edition key/.test(apiBriefText) &&
+        apiBriefText.includes('{ status: "ready", issueDate, issueSlot'),
+      'api brief docs must distinguish issueDate from issueSlot response fields',
     );
     for (const text of [apiBriefText, latestBriefPanelText]) {
       assert.ok(text.includes('`brief:{userId}:{issueSlot}`'), 'brief docs must document slot-keyed envelope');

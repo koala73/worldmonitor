@@ -27,13 +27,17 @@ brief yet.
 
 | Status | Response |
 |--------|----------|
-| 200 OK | `{ issueDate, dateLong, greeting, threadCount, magazineUrl }` |
-| 200 OK | `{ status: "composing" }` — no brief for the current/requested slot yet |
+| 200 OK | `{ status: "ready", issueDate, issueSlot, dateLong, greeting, threadCount, magazineUrl }` |
+| 200 OK | `{ status: "composing", issueDate, issueSlot? }` — no brief for the current/requested slot yet |
 | 401 | Missing / invalid Clerk JWT |
 | 403 | `pro_required` |
 | 503 | `BRIEF_URL_SIGNING_SECRET` not configured |
 
-The `magazineUrl` is a freshly-signed URL — the HMAC binds `{userId, issueSlot}` so it only works for the authenticated owner.
+`issueDate` remains the display/date field (`YYYY-MM-DD`). `issueSlot` is the
+frozen edition key (`YYYY-MM-DD-HHMM`) used for Redis lookup and HMAC binding;
+it is present on ready responses and on misses for an explicitly requested
+slot. The `magazineUrl` is freshly signed against `{userId, issueSlot}` so it
+only works for the authenticated owner.
 
 ### `GET /api/brief/{userId}/{issueSlot}`
 
