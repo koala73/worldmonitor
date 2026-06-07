@@ -38,7 +38,7 @@ A completed scenario returns:
 
 - **Affected chokepoints** — which ones go red on the map.
 - **Impact ranking** — the top affected seeded reporter countries by ISO-2, ordered by the worker's relative weighted impact score. `totalImpact` is not a currency amount.
-- **Sector call-outs** — which HS2 chapters take the biggest hit.
+- **Sector scope** — the targeted HS2 chapters declared by the selected template. `affectedHs2: []` means all HS2 chapters; the worker does not compute a separate per-sector impact ranking in v1.
 - **A summary card** injected into the Supply Chain panel that stays visible until you deactivate the scenario.
 
 The UI is state-driven, not modal — activating a scenario sets a `scenarioState` on every map renderer (deck.gl, globe, SVG fallback) so chokepoint colors and country choropleths reflect the disruption until you deactivate. This is coordinated by `MapContainer.activateScenario` at `src/components/MapContainer.ts:1010`, which is explicitly PRO-gated.
@@ -84,10 +84,10 @@ adjustedImpact = vulnerabilityIndex * costShockMultiplier
 ```
 
 The worker sums `adjustedImpact` by country, sorts descending, and returns the
-top 20. `impactPct` is a 0-100 share of the worst-hit returned country:
+top 20. `impactPct` is a 0-100 share against a denominator floor of `1`, so the top returned country can be below 100 when every returned `totalImpact` is below `1`:
 
 ```text
-impactPct = round(countryTotalImpact / maxReturnedTotalImpact * 100)
+impactPct = round(countryTotalImpact / max(maxReturnedTotalImpact, 1) * 100)
 ```
 
 ## Related workflows

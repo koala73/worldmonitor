@@ -19,6 +19,8 @@ A 5-second cooldown (`COOLDOWN_MS = 5_000` in `src/components/DeductionPanel.ts`
 
 The panel can consume the latest-news feed via an optional `getLatestNews` hook passed by the host at mount time — the news context is folded into the request so the deduction reflects today's state of the world.
 
+When the analyst text includes a source probability, the panel extracts a compact badge from the rendered Markdown. Rough ranges are preserved as ranges, for example `40-55%`; single values render with an approximate marker, for example `~55%`. Badge tooltips label these as rough or approximate source probabilities, and the value is parsed from the analyst text rather than computed by the UI. Alternative-path badges are only extracted from leading percentages so incidental percentages later in a sentence do not become false precision.
+
 Panel id is `deduction`; canonical component is `src/components/DeductionPanel.ts`. Title "Deduct Situation" per `src/config/panels.ts:111`.
 
 ## How you reach it

@@ -46,8 +46,18 @@ describe('forecast integrity and provenance surfaces', () => {
     const seeder = read('scripts/seed-forecasts.mjs');
 
     assert.doesNotMatch(docs, /probability-calibrated/);
+    assert.match(docs, /deterministic, rule-based signal detectors/);
+    assert.match(docs, /LLM calls do not set the numeric probability/);
+    assert.match(docs, /Groq `llama-3\.1-8b-instant`/);
+    assert.match(docs, /OpenRouter `google\/gemini-2\.5-flash`/);
     assert.match(docs, /market-calibrated only when/);
     assert.match(docs, /calibration: null/);
+    assert.match(docs, /Conflict base detector probability ceiling \| 0\.90/);
+    assert.match(docs, /Supply-chain \/ maritime probability ceiling \| 0\.85/);
+    assert.match(docs, /Infrastructure probability ceiling \| 0\.85/);
+    assert.match(docs, /Cyber probability ceiling \| 0\.72/);
+    assert.match(docs, /Market-bucket scenario calibration is an editorial calibration layer/);
+    assert.match(docs, /Defense.*0\.12/);
     assert.match(docs, /1% floor and 95% cap/);
     assert.match(seeder, /const PROJECTION_PROBABILITY_FLOOR = 0\.01;/);
     assert.match(seeder, /const PROJECTION_PROBABILITY_CAP = 0\.95;/);

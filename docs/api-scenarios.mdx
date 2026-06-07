@@ -152,7 +152,9 @@ value. For physical chokepoint scenarios, the worker computes
 exposure entry, then sums by country. For tariff-shock scenarios with no
 affected chokepoint ids, it uses
 `vulnerabilityIndex * costShockMultiplier`. `impactPct` is each returned
-country's share of the worst-hit returned country, capped at 100.
+country's share of `max(maxReturnedTotalImpact, 1)`, capped at 100. That
+denominator floor means the top returned country can be below 100 when every
+returned `totalImpact` is below `1`.
 
 **Failed response (`200`)**:
 

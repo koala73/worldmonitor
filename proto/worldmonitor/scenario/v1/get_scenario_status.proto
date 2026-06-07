@@ -14,7 +14,9 @@ message ScenarioImpactCountry {
   // * cost_shock_multiplier; tariff-shock scenarios use vulnerabilityIndex
   // * cost_shock_multiplier. Relative-only - not a currency amount.
   double total_impact = 2;
-  // Impact as a 0-100 share of the worst-hit returned country.
+  // Impact as a 0-100 share of max(maxReturnedTotalImpact, 1), capped at 100.
+  // Because of the denominator floor, the top country can be below 100 when
+  // all returned totalImpact values are below 1.
   int32 impact_pct = 3;
 }
 

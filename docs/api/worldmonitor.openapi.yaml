@@ -11435,6 +11435,11 @@ components:
                         $ref: '#/components/schemas/worldmonitor_forecast_v1_CascadeEffect'
                 trend:
                     type: string
+                    description: |-
+                        Forecast trend direction. Current values are "rising", "falling", and
+                         "stable". The seeder compares probability against the prior forecast
+                         snapshot and uses a +/-0.05 deadband: deltas above +0.05 are rising,
+                         below -0.05 are falling, and everything inside the band is stable.
                 priorProbability:
                     type: number
                     format: double
@@ -19083,7 +19088,10 @@ components:
                 impactPct:
                     type: integer
                     format: int32
-                    description: Impact as a 0-100 share of the worst-hit returned country.
+                    description: |-
+                        Impact as a 0-100 share of max(maxReturnedTotalImpact, 1), capped at 100.
+                         Because of the denominator floor, the top country can be below 100 when
+                         all returned totalImpact values are below 1.
             description: ScenarioImpactCountry carries a single country's relative scenario impact score.
         worldmonitor_scenario_v1_ScenarioResultTemplate:
             type: object

@@ -168,7 +168,7 @@ describe('scenario docs match worker scope and impact math', () => {
       assert.match(text, /exposureScore \* \(disruptionPct \/ 100\) \* costShockMultiplier|exposureScore \* \(disruption_pct \/ 100\).*cost_shock_multiplier/s, `${label} must document physical impact formula`);
       assert.match(text, /vulnerabilityIndex \* costShockMultiplier|vulnerabilityIndex.*cost_shock_multiplier/s, `${label} must document tariff impact formula`);
       assert.match(text, /not a currency amount|Relative-only - not a currency amount/i, `${label} must call totalImpact relative`);
-      assert.match(text, /worst-hit returned country/i, `${label} must define impactPct denominator`);
+      assert.match(text, /max\(maxReturnedTotalImpact, 1\)|maxReturnedTotalImpact, 1|denominator floor/i, `${label} must define impactPct denominator floor`);
     }
 
     assert.match(apiDoc, /depth `> 100` is rejected/);

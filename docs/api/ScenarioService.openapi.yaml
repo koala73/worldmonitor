@@ -247,7 +247,10 @@ components:
                 impactPct:
                     type: integer
                     format: int32
-                    description: Impact as a 0-100 share of the worst-hit returned country.
+                    description: |-
+                        Impact as a 0-100 share of max(maxReturnedTotalImpact, 1), capped at 100.
+                         Because of the denominator floor, the top country can be below 100 when
+                         all returned totalImpact values are below 1.
             description: ScenarioImpactCountry carries a single country's relative scenario impact score.
         ScenarioResultTemplate:
             type: object

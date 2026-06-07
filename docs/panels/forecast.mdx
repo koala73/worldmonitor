@@ -11,7 +11,7 @@ A list of active forecasts, filtered by two pill rows:
 
 ### Domain filter
 
-`All` / `Conflict` / `Market` / `Supply Chain` / `Political` / `Military` / `Cyber` / `Infrastructure`
+`All` / `Conflict` / `Market` / `Supply Chain` / `Political` / `Military` / `Cyber` / `Infra`
 
 ### Region filter
 
@@ -23,7 +23,9 @@ Each forecast row shows the prediction text, the event probability, the domain (
 
 ## Calibration & Projection Notes
 
-Forecast probabilities are market-calibrated only when the seeder can match the forecast to a prediction-market anchor. In those cases the `calibration` object includes the market title, market price, drift, and source, and the displayed probability is blended with that market anchor. Forecasts with `calibration: null` are internal/legacy model estimates derived from WorldMonitor signals rather than externally market-calibrated probabilities.
+Forecast probabilities come from deterministic, rule-based signal detectors in `scripts/seed-forecasts.mjs`, with an optional prediction-market blend when a matching market anchor exists. LLM calls do not set the numeric probability. They generate the narrative scenario, case-file, branches, and perspective text around the already-scored forecast. The default source-backed LLM routes in the seeder are Groq `llama-3.1-8b-instant` and OpenRouter `google/gemini-2.5-flash`.
+
+Forecast probabilities are market-calibrated only when the seeder can match the forecast to a prediction-market anchor. In those cases the `calibration` object includes the market title, market price, drift, and source, and the displayed probability is blended with that market anchor. Forecasts with `calibration: null` are internal/legacy estimates derived from WorldMonitor signal rules rather than externally market-calibrated probabilities.
 
 The seeder also publishes horizon projections (`24h`, `7d`, `30d`) from domain-specific projection curves in `scripts/seed-forecasts.mjs`. Those projected probabilities are clamped to a 1% floor and 95% cap (`0.01` / `0.95`) as a presentation heuristic, so projection endpoints should be interpreted as bounded scenario paths rather than unconstrained calibrated probabilities.
 
@@ -57,9 +59,25 @@ Published forecasts are capped and deduplicated before they reach the panel:
 | Forecasts per family | 4 |
 | Forecasts per family/domain pair | 2 |
 | Target published count | 10-14 |
+| Conflict base detector probability ceiling | 0.90 |
+| Supply-chain / maritime probability ceiling | 0.85 |
+| Infrastructure probability ceiling | 0.85 |
 | Cyber probability ceiling | 0.72 |
 
 When a forecast can be matched to a geopolitical prediction market, the seeder records the market title, market price, drift from the internal probability, and market source. The final probability is then blended as `0.4 * market_probability + 0.6 * internal_probability`.
+
+Market-bucket scenario calibration is an editorial calibration layer in `scripts/seed-forecasts.mjs`, not a learned market model. It biases how market-context simulation states contribute to forecast pressure and confidence so that direct energy/freight transmission receives more lift, broad macro buckets stay moderate, and defense repricing is damped unless the evidence is strong.
+
+| Bucket | Simulation bias: confirmation / pressure / edge / contradiction | State calibration: edgeLift / macroLift / confidenceLift / dampener | Rationale |
+| --- | --- | --- | --- |
+| Energy | `0.20 / 0.12 / 0.10 / 0.14` | `0.08 / 0.14 / 0.05 / -` | Strong direct route, commodity, and macro pass-through. |
+| Freight | `0.18 / 0.12 / 0.10 / 0.14` | `0.09 / 0.12 / 0.04 / -` | Shipping-cost shocks are treated as high-signal supply-chain pressure. |
+| Sovereign risk | `0.17 / 0.11 / 0.09 / 0.15` | `0.07 / 0.10 / 0.04 / -` | Macro stress matters, but confirmation still needs country/market evidence. |
+| Rates / inflation | `0.16 / 0.10 / 0.08 / 0.16` | `0.06 / 0.12 / 0.05 / -` | Policy and inflation transmission is broad but less event-specific. |
+| FX stress | `0.15 / 0.09 / 0.08 / 0.14` | `0.05 / 0.10 / 0.04 / -` | Currency pressure is allowed to lift risk, with moderate confidence. |
+| Semis | `0.13 / 0.08 / 0.09 / 0.12` | `0.04 / 0.04 / 0.02 / -` | Semiconductor shocks need targeted infrastructure or shipping evidence. |
+| Crypto / stablecoins | `0.11 / 0.07 / 0.08 / 0.12` | `0.03 / 0.05 / 0.02 / -` | Digital-asset stress is useful context but gets a lighter macro lift. |
+| Defense | `0.08 / 0.04 / 0.05 / 0.10` | `-0.03 / 0 / -0.03 / 0.12` | Defense signals are intentionally damped to avoid over-reacting to noisy security headlines. |
 
 Probability projections are anchored to the forecast's own time horizon and then expanded to 24h, 7d, and 30d with domain curves:
 

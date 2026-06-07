@@ -249,6 +249,11 @@ components:
                         $ref: '#/components/schemas/CascadeEffect'
                 trend:
                     type: string
+                    description: |-
+                        Forecast trend direction. Current values are "rising", "falling", and
+                         "stable". The seeder compares probability against the prior forecast
+                         snapshot and uses a +/-0.05 deadband: deltas above +0.05 are rising,
+                         below -0.05 are falling, and everything inside the band is stable.
                 priorProbability:
                     type: number
                     format: double
