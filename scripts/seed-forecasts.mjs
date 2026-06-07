@@ -2287,6 +2287,8 @@ const PROJECTION_CURVES = {
   cyber:          { h24: 1.0, d7: 0.78, d30: 0.4 },
   infrastructure: { h24: 1.0, d7: 0.5, d30: 0.25 },
 };
+const PROJECTION_PROBABILITY_FLOOR = 0.01;
+const PROJECTION_PROBABILITY_CAP = 0.95;
 
 function computeProjections(predictions) {
   for (const pred of predictions) {
@@ -2295,9 +2297,9 @@ function computeProjections(predictions) {
     const anchorMult = curve[anchor] || 1;
     const base = anchorMult > 0 ? pred.probability / anchorMult : pred.probability;
     pred.projections = {
-      h24: Math.round(Math.min(0.95, Math.max(0.01, base * curve.h24)) * 1000) / 1000,
-      d7:  Math.round(Math.min(0.95, Math.max(0.01, base * curve.d7)) * 1000) / 1000,
-      d30: Math.round(Math.min(0.95, Math.max(0.01, base * curve.d30)) * 1000) / 1000,
+      h24: Math.round(Math.min(PROJECTION_PROBABILITY_CAP, Math.max(PROJECTION_PROBABILITY_FLOOR, base * curve.h24)) * 1000) / 1000,
+      d7:  Math.round(Math.min(PROJECTION_PROBABILITY_CAP, Math.max(PROJECTION_PROBABILITY_FLOOR, base * curve.d7)) * 1000) / 1000,
+      d30: Math.round(Math.min(PROJECTION_PROBABILITY_CAP, Math.max(PROJECTION_PROBABILITY_FLOOR, base * curve.d30)) * 1000) / 1000,
     };
   }
 }

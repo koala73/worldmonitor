@@ -11387,6 +11387,21 @@ components:
                     type: integer
                     format: int64
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                degraded:
+                    type: boolean
+                    description: |-
+                        True when the forecast backend could not read the canonical cache.
+                         Distinguishes an outage from a healthy empty forecast set.
+                stale:
+                    type: boolean
+                    description: |-
+                        True when forecasts are served from a stale fallback. Currently false for
+                         this endpoint because get-forecasts does not have a stale fallback cache.
+                error:
+                    type: string
+                    description: |-
+                        Stable machine-readable reason when degraded=true, empty otherwise.
+                         Value: "forecast_backend_unavailable" on Redis/backend read failures.
         worldmonitor_forecast_v1_Forecast:
             type: object
             properties:

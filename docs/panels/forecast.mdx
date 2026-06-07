@@ -1,9 +1,9 @@
 ---
 title: "AI Forecasts"
-description: "AI-generated geopolitical forecasts — probability-calibrated predictions across conflict, markets, supply chain, political, military, cyber, and infrastructure domains, filterable by macro region."
+description: "AI-generated geopolitical forecasts across conflict, markets, supply chain, political, military, cyber, and infrastructure domains, with prediction-market calibration when an anchor exists."
 ---
 
-The **AI Forecasts** panel (internal id `forecast`) surfaces probability-calibrated forecasts produced by WorldMonitor's forecasting pipeline. Each forecast is a structured prediction with a probability, a domain classification, a time horizon, and supporting signals; the panel exposes two axes of filtering (domain and macro-region) so you can home in on the slice that matters to you.
+The **AI Forecasts** panel (internal id `forecast`) surfaces forecasts produced by WorldMonitor's forecasting pipeline. Each forecast is a structured prediction with a probability, a domain classification, a time horizon, and supporting signals; the panel exposes two axes of filtering (domain and macro-region) so you can home in on the slice that matters to you.
 
 ## What the panel shows
 
@@ -19,7 +19,15 @@ A list of active forecasts, filtered by two pill rows:
 
 Forecasts whose region does not classify (unknown or `global`) only appear under **All Regions**. The panel's minimum-probability floor is `0.1` (10%) — predictions below that threshold are suppressed from the panel view.
 
-Each forecast row shows the prediction text, the probability, the domain (color-coded), the time horizon, and a compact provenance trail.
+Each forecast row shows the prediction text, the event probability, the domain (color-coded), the time horizon, and a compact provenance trail. Deep-simulation path confidence is shown separately as confidence, not as event probability.
+
+## Calibration & Projection Notes
+
+Forecast probabilities are market-calibrated only when the seeder can match the forecast to a prediction-market anchor. In those cases the `calibration` object includes the market title, market price, drift, and source, and the displayed probability is blended with that market anchor. Forecasts with `calibration: null` are internal/legacy model estimates derived from WorldMonitor signals rather than externally market-calibrated probabilities.
+
+The seeder also publishes horizon projections (`24h`, `7d`, `30d`) from domain-specific projection curves in `scripts/seed-forecasts.mjs`. Those projected probabilities are clamped to a 1% floor and 95% cap (`0.01` / `0.95`) as a presentation heuristic, so projection endpoints should be interpreted as bounded scenario paths rather than unconstrained calibrated probabilities.
+
+The `GET /api/forecast/v1/get-forecasts` response includes `degraded`, `stale`, and `error` fields so clients can distinguish a backend/cache outage from a healthy empty forecast set.
 
 Panel id is `forecast`; canonical component is `src/components/ForecastPanel.ts`.
 

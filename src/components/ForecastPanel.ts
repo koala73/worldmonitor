@@ -8,6 +8,13 @@ import { unsafeRawHtml } from '@/utils/sanitize';
 const DOMAINS = ['all', 'conflict', 'market', 'supply_chain', 'political', 'military', 'cyber', 'infrastructure'] as const;
 const PANEL_MIN_PROBABILITY = 0.1;
 
+interface ForecastSourceState {
+  generatedAt: number;
+  degraded: boolean;
+  stale: boolean;
+  error: string;
+}
+
 // Macro region pill values. Each non-empty id matches an entry in the
 // ForecastMacroRegionId union emitted by getForecastMacroRegion() (see
 // shared/forecast-macro-regions.js). Filtering is entirely client-side:
@@ -220,6 +227,7 @@ function injectStyles(): void {
     .fc-signal { color: var(--text-secondary, #a0a0a0); font-size: 11px; padding: 3px 0 3px 12px; line-height: 1.45; position: relative; margin-top: 2px; }
     .fc-signal::before { content: ''; position: absolute; left: 0; top: 9px; display: inline-block; width: 6px; height: 1px; background: var(--text-secondary, #555); }
     .fc-empty { padding: 20px; text-align: center; color: var(--text-secondary, #888); }
+    .fc-source-notice { margin: 6px 8px 0; padding: 6px 8px; border: 1px solid rgba(210,153,34,0.35); border-radius: 4px; color: #d29922; background: rgba(210,153,34,0.08); font-size: 10px; line-height: 1.35; }
 
     /* ── Simulation confidence sub-bar (Option D) ────────────────────────── */
     /* Thin colored underbar below the forecast title. Width encodes sim       */
@@ -251,6 +259,7 @@ export class ForecastPanel extends Panel {
   // applied on every render() — never mutate this by filtering, or refresh
   // updates from data-loader will wipe the filter state.
   private forecasts: Forecast[] = [];
+  private sourceState: ForecastSourceState = { generatedAt: 0, degraded: false, stale: false, error: '' };
   private activeDomain: string = 'all';
   private selectedRegion: string = '';
   private theaters: SimulationTheater[] = [];
@@ -310,8 +319,14 @@ export class ForecastPanel extends Panel {
     });
   }
 
-  updateForecasts(forecasts: Forecast[]): void {
+  updateForecasts(forecasts: Forecast[], sourceState?: Partial<ForecastSourceState>): void {
     this.forecasts = forecasts;
+    this.sourceState = {
+      generatedAt: sourceState?.generatedAt ?? this.sourceState.generatedAt,
+      degraded: sourceState?.degraded === true,
+      stale: sourceState?.stale === true,
+      error: sourceState?.error || '',
+    };
     const visible = this.getVisibleForecasts();
     this.setCount(visible.length);
     // Badge reflects fetch success (this.forecasts.length), not the filtered
@@ -319,7 +334,7 @@ export class ForecastPanel extends Panel {
     // the feed as "live" — the empty-state copy inside the panel communicates
     // the filter miss. Tying the badge to the filter caused the panel to
     // flip to "unavailable" on any empty region pill.
-    this.setDataBadge(this.forecasts.length > 0 ? 'live' : 'unavailable');
+    this.setDataBadge(this.forecasts.length > 0 && !this.sourceState.degraded ? 'live' : 'unavailable');
     this.render();
   }
 
@@ -365,11 +380,15 @@ export class ForecastPanel extends Panel {
       const hasAnyForecasts = this.forecasts.length > 0;
       const emptyCopy = hasAnyForecasts
         ? 'No forecasts match the current filter'
-        : 'No forecasts available';
+        : this.sourceState.degraded
+          ? 'Forecast backend unavailable'
+          : 'No forecasts available';
+      const sourceHtml = this.renderSourceNotice();
       this.setSafeContent(unsafeRawHtml(`
         <div class="fc-panel">
           <div class="fc-filters">${filtersHtml}</div>
           <div class="fc-filters">${regionsHtml}</div>
+          ${sourceHtml}
           <div class="fc-empty">${escapeHtml(emptyCopy)}</div>
         </div>
       `, 'legacy Panel.setContent() migration'));
@@ -384,15 +403,27 @@ export class ForecastPanel extends Panel {
       ? `<div class="fc-nexus">${this.renderNexus()}</div><div class="fc-section-label">Probability Bets</div>`
       : '';
     const tableHtml = this.renderProbTable(filtered);
+    const sourceHtml = this.renderSourceNotice();
 
     this.setSafeContent(unsafeRawHtml(`
       <div class="fc-panel">
         <div class="fc-filters">${filtersHtml}</div>
         <div class="fc-filters">${regionsHtml}</div>
+        ${sourceHtml}
         ${nexusHtml}
         ${tableHtml}
       </div>
     `, 'legacy Panel.setContent() migration'));
+  }
+
+  private renderSourceNotice(): string {
+    if (!this.sourceState.degraded && !this.sourceState.stale) return '';
+    const parts = [
+      this.sourceState.degraded ? 'Forecast source degraded' : '',
+      this.sourceState.stale ? 'stale cache' : '',
+      this.sourceState.error ? this.sourceState.error.replace(/_/g, ' ') : '',
+    ].filter(Boolean);
+    return `<div class="fc-source-notice">${escapeHtml(parts.join(' · '))}</div>`;
   }
 
   // ── NEXUS theater grid + expandable detail ──────────────────────────────
@@ -457,7 +488,7 @@ export class ForecastPanel extends Panel {
       const pctColor = p.confidence >= 0.65 ? '#3fb950' : p.confidence >= 0.45 ? '#d29922' : '#e05252';
       const actors = p.keyActors.map(a => `<span class="fc-actor-chip">${escapeHtml(a)}</span>`).join('');
       const typeTag = p.pathId ? `<span class="fc-path-type fc-path-type-${escapeHtml(p.pathId)}">${escapeHtml(PATH_ID_LABELS[p.pathId] ?? p.pathId)}</span>` : '';
-      const confText = p.confidence > 0 ? `${Math.round(p.confidence * 100)}% probability` : '—';
+      const confText = p.confidence > 0 ? `${Math.round(p.confidence * 100)}% confidence` : '—';
       return `
         <div class="fc-path-card">
           <div class="fc-path-label">${typeTag}${escapeHtml(p.label)}</div>

@@ -1939,15 +1939,32 @@ export class DataLoaderManager implements AppModule {
 
   async loadForecasts(): Promise<void> {
     try {
-      const hydrated = getHydratedData('forecasts') as { predictions?: import('@/generated/client/worldmonitor/forecast/v1/service_client').Forecast[] } | undefined;
+      const hydrated = getHydratedData('forecasts') as { predictions?: import('@/generated/client/worldmonitor/forecast/v1/service_client').Forecast[]; generatedAt?: number } | undefined;
       if (hydrated?.predictions?.length) {
-        this.callPanel('forecast', 'updateForecasts', hydrated.predictions);
+        this.callPanel('forecast', 'updateForecasts', hydrated.predictions, {
+          generatedAt: hydrated.generatedAt || 0,
+          degraded: false,
+          stale: false,
+          error: '',
+        });
         return;
       }
-      const { fetchForecasts } = await import('@/services/forecast');
-      const forecasts = await fetchForecasts();
-      this.callPanel('forecast', 'updateForecasts', forecasts);
-    } catch { /* premium feature, silent fail */ }
+      const { fetchForecastFeed } = await import('@/services/forecast');
+      const feed = await fetchForecastFeed();
+      this.callPanel('forecast', 'updateForecasts', feed.forecasts, {
+        generatedAt: feed.generatedAt,
+        degraded: feed.degraded,
+        stale: feed.stale,
+        error: feed.error,
+      });
+    } catch {
+      this.callPanel('forecast', 'updateForecasts', [], {
+        generatedAt: 0,
+        degraded: true,
+        stale: false,
+        error: 'forecast_request_failed',
+      });
+    }
   }
 
   async loadSimulationOutcome(): Promise<void> {
