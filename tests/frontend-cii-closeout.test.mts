@@ -148,10 +148,29 @@ describe('frontend CII closeout regressions', () => {
     assert.equal(cii.getCountryData('DE')?.climateStress, 15);
     assert.equal(cii.getCountryData('FR')?.climateStress, 15);
     assert.equal(cii.getCountryData('GB')?.climateStress, 15);
+    assert.equal(cii.getCountryData('UA')?.climateStress, 15);
+    assert.equal(cii.getCountryData('TR')?.climateStress, 15);
     assert.equal(cii.getCountryData('KP')?.climateStress, 15);
     assert.equal(cii.getCountryData('KR')?.climateStress, 15);
     assert.equal(cii.getCountryData('JP')?.climateStress, 15);
     assert.equal(cii.getCountryData('VE')?.climateStress, 8);
+  });
+
+  it('frontend climate fallback accepts backend-named CII climate zones', async () => {
+    const cii = await loadCountryInstability();
+    cii.clearCountryData();
+
+    cii.ingestClimateForCII([
+      { zone: 'North America', severity: 'moderate' },
+      { zone: 'Russia', severity: 'extreme' },
+      { zone: 'North Africa', severity: 'moderate' },
+      { zone: 'South Asia', severity: 'extreme' },
+    ]);
+
+    assert.equal(cii.getCountryData('US')?.climateStress, 8);
+    assert.equal(cii.getCountryData('RU')?.climateStress, 15);
+    assert.equal(cii.getCountryData('EG')?.climateStress, 8);
+    assert.equal(cii.getCountryData('MM')?.climateStress, 15);
   });
 });
 
