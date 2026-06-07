@@ -147,10 +147,16 @@ Government travel advisories serve as expert risk assessments from national inte
 
 **Architecture**: Advisories follow the gold standard pattern. A Railway cron seed (`seed-security-advisories.mjs`) fetches all 24 feeds hourly via the relay RSS proxy, deduplicates by title, builds a `byCountry` risk-level map, and writes to Redis. The Vercel `ListSecurityAdvisories` RPC reads Redis only (no external calls). Bootstrap hydration provides instant advisory data on page load.
 
-**CII integration** — advisories feed into instability scores through two mechanisms:
+**CII integration** — the server-side CII scorer reads the seeded advisory
+`byCountry` level when available and otherwise may use an embedded State
+Department fallback table for selected countries. Each emitted `CiiScore`
+exposes `advisoryLevel` and `advisoryProvenance` (`live`, `fallback`, or
+`absent`) so downstream users can tell whether the score used the live feed,
+fallback table, or no advisory input. Advisories feed into instability scores
+through two mechanisms:
 
-- **Score boost**: Do-Not-Travel → +15 points, Reconsider → +10, Caution → +5. Multi-source agreement adds a consensus bonus: ≥3 governments concur → +5, ≥2 → +3
-- **Score floor**: Do-Not-Travel from any government forces a minimum CII score of 60; Reconsider forces minimum 50. This prevents a country with low event data but active DNT warnings from showing an artificially calm score
+- **Score boost**: Do-Not-Travel → +15 points, Reconsider → +10, Caution → +5
+- **Score floor**: Do-Not-Travel forces a minimum CII score of 60; Reconsider forces minimum 50. This prevents a country with low event data but active high-severity advisory input from showing an artificially calm score
 
 The Security Advisories panel displays advisories with colored level badges and source country flags, filterable by severity (Critical, All) and issuing government (US, AU, UK, NZ, Health).
 

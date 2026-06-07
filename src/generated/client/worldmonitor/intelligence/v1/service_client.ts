@@ -22,6 +22,8 @@ export interface CiiScore {
   computedAt: number;
   methodologyVersion: string;
   eventMultiplier: number;
+  advisoryLevel: string;
+  advisoryProvenance: string;
 }
 
 export interface CiiComponents {

@@ -33,6 +33,8 @@ import {
   getAcledFetchWindows,
   getCiiTrendHistoryBucket,
   getCiiTrendPriorCandidateBuckets,
+  hasCompleteRiskScoreAdvisoryDisclosure,
+  normalizeRiskScoreAdvisoryDisclosure,
   normalizeCountryName,
   selectCiiTrendPriorSnapshot,
   ZONE_COUNTRY_MAP,
@@ -828,6 +830,45 @@ describe('CII scoring', () => {
     }
   });
 
+  it('advisory provenance distinguishes live, fallback, and absent inputs', () => {
+    const fallbackScores = computeCIIScores([], emptyAux());
+    const uaFallback = scoreFor(fallbackScores, 'UA') as unknown as {
+      advisoryLevel: string;
+      advisoryProvenance: string;
+    };
+    const usAbsent = scoreFor(fallbackScores, 'US') as unknown as {
+      advisoryLevel: string;
+      advisoryProvenance: string;
+    };
+
+    assert.equal(uaFallback.advisoryLevel, 'do-not-travel');
+    assert.equal(uaFallback.advisoryProvenance, 'fallback');
+    assert.equal(usAbsent.advisoryLevel, '');
+    assert.equal(usAbsent.advisoryProvenance, 'absent');
+
+    const aux = emptyAux();
+    aux.advisories = { byCountry: { UA: 'caution' } };
+    const uaLive = scoreFor(computeCIIScores([], aux), 'UA') as unknown as {
+      advisoryLevel: string;
+      advisoryProvenance: string;
+    };
+    assert.equal(uaLive.advisoryLevel, 'caution');
+    assert.equal(uaLive.advisoryProvenance, 'live');
+  });
+
+  it('invalid live advisory levels do not suppress the fallback table', () => {
+    const aux = emptyAux();
+    aux.advisories = { byCountry: { UA: 'unknown-level' as 'do-not-travel' } };
+
+    const ua = scoreFor(computeCIIScores([], aux), 'UA') as unknown as {
+      advisoryLevel: string;
+      advisoryProvenance: string;
+    };
+
+    assert.equal(ua.advisoryLevel, 'do-not-travel');
+    assert.equal(ua.advisoryProvenance, 'fallback');
+  });
+
   it('OREF active alerts boost IL conflict score', () => {
     const aux = emptyAux();
     aux.orefData = { activeAlertCount: 5, historyCount24h: 12 };
@@ -1284,6 +1325,50 @@ describe('CII scoring', () => {
     }
   });
 
+  it('every score exposes advisoryLevel and advisoryProvenance', () => {
+    const scores = computeCIIScores([], emptyAux());
+    for (const s of scores) {
+      const disclosure = s as unknown as { advisoryLevel: string; advisoryProvenance: string };
+      assert.equal(typeof disclosure.advisoryLevel, 'string', `${s.region} advisoryLevel should be a string`);
+      assert.match(
+        disclosure.advisoryProvenance,
+        /^(live|fallback|absent)$/,
+        `${s.region} advisoryProvenance should be live, fallback, or absent`,
+      );
+    }
+  });
+
+  it('normalizes pre-provenance cached risk-score payloads before return', () => {
+    const scores = computeCIIScores([], emptyAux()).map((score) => {
+      const { advisoryLevel: _advisoryLevel, advisoryProvenance: _advisoryProvenance, ...legacyScore } =
+        score as typeof score & { advisoryLevel?: string; advisoryProvenance?: string };
+      return legacyScore;
+    });
+    const response = {
+      ciiScores: scores,
+      strategicRisks: computeStrategicRisks(scores),
+      degraded: false,
+      stale: false,
+    };
+
+    assert.equal(hasCompleteRiskScoreAdvisoryDisclosure(response), false);
+    const normalized = normalizeRiskScoreAdvisoryDisclosure(response);
+    assert.equal(hasCompleteRiskScoreAdvisoryDisclosure(normalized), true);
+
+    const ua = scoreFor(normalized.ciiScores, 'UA') as unknown as {
+      advisoryLevel: string;
+      advisoryProvenance: string;
+    };
+    const us = scoreFor(normalized.ciiScores, 'US') as unknown as {
+      advisoryLevel: string;
+      advisoryProvenance: string;
+    };
+    assert.equal(ua.advisoryLevel, 'do-not-travel');
+    assert.equal(ua.advisoryProvenance, 'fallback');
+    assert.equal(us.advisoryLevel, '');
+    assert.equal(us.advisoryProvenance, 'absent');
+  });
+
   it('staticBaseline is in [0, 100] for every score', () => {
     const scores = computeCIIScores([], emptyAux());
     for (const s of scores) {
@@ -1673,7 +1758,7 @@ describe('CII scoring', () => {
 
     assert.match(
       source,
-      /if \(stale\) return filterRiskScoresResponse\(withRiskScoreRuntimeState\(stale, \{ degraded: true, stale: true \}\), req\.region\);/,
+      /if \(stale\) \{[\s\S]*normalizeRiskScoreAdvisoryDisclosure\(stale\)[\s\S]*\{ degraded: true, stale: true \}[\s\S]*\}/,
       'stale-cache fallback must carry degraded=true and stale=true',
     );
     assert.match(
@@ -1827,6 +1912,39 @@ describe('CII scoring', () => {
       algorithmsDoc,
       /Weighted ACLED events .* capped at 50/i,
       'algorithms doc must not describe the server-authoritative v3 conflict activity cap as 50',
+    );
+  });
+
+  it('public docs separate server Strategic Risk headline from panel additive context', () => {
+    const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
+    const algorithmsDoc = readFileSync(resolve(root, 'docs', 'algorithms.mdx'), 'utf8');
+    const strategicRiskDoc = readFileSync(resolve(root, 'docs', 'strategic-risk.mdx'), 'utf8');
+    const methodologyDoc = readFileSync(resolve(root, 'docs', 'methodology', 'cii-risk-scores.mdx'), 'utf8');
+
+    for (const [label, doc] of [
+      ['docs/algorithms.mdx', algorithmsDoc],
+      ['docs/strategic-risk.mdx', strategicRiskDoc],
+    ] as const) {
+      assert.match(
+        doc,
+        /server(?:-published|-side)? Strategic Risk headline|displayed\/server headline/i,
+        `${label} must name the server/displayed headline Strategic Risk score`,
+      );
+      assert.match(
+        doc,
+        /top 5 CII|top-5 CII/i,
+        `${label} must say the server headline comes from the top-5 CII roll-up`,
+      );
+      assert.match(
+        doc,
+        /panel(?:-local)? context|panel context/i,
+        `${label} must distinguish additive panel context from the server headline`,
+      );
+    }
+    assert.match(
+      methodologyDoc,
+      /advisory_provenance[\s\S]*live[\s\S]*fallback[\s\S]*absent/,
+      'methodology doc must publish advisory provenance values',
     );
   });
 

@@ -2,16 +2,28 @@
 title: "Strategic Risk"
 description: "Composite risk scoring that synthesizes all intelligence modules into a unified strategic assessment, including the Pentagon Pizza Index and server-side risk computation."
 ---
-The Strategic Risk system provides a composite dashboard that synthesizes all intelligence modules into a single risk assessment, combining convergence detection, country instability, infrastructure monitoring, theater posture, and breaking-news pressure into actionable risk levels.
+The Strategic Risk system provides a composite dashboard for global risk triage. Its server-published headline score is a top-5 Country Instability Index (CII) roll-up, while the panel layers additional convergence, infrastructure, theater posture, breaking-news, sanctions, and radiation-watch context around that headline.
 
 ## Strategic Risk Overview
 
-The Strategic Risk Overview synthesizes all intelligence modules into a single risk assessment.
+The Strategic Risk Overview displays the server-side Strategic Risk headline and nearby operational context from the browser panel.
 
 ### Composite Score (0-100)
 
-The Strategic Risk panel combines map-side convergence and infrastructure
-signals with the server-side CII roll-up:
+The displayed/server headline score comes from `GetRiskScores.strategicRisks[0]`.
+The server derives it from the weighted top 5 CII countries, not from the
+additive panel context formula:
+
+```
+top5         = ciiScores.slice(0, 5)
+weights      = [1.00, 0.85, 0.70, 0.55, 0.40]
+weightedAvg  = sum(CII[i] * weight[i]) / sum(weights)
+headline     = round(weightedAvg * 0.70 + 15)
+```
+
+The browser panel may also compute additive context from map-side convergence,
+infrastructure, theater posture, breaking news, sanctions, and radiation-watch
+signals:
 
 ```
 compositeScore =
@@ -25,7 +37,8 @@ compositeScore =
 ```
 
 The server-side Strategic Risk API derives its global score from the weighted
-top 5 CII countries. See
+top 5 CII countries. The additive terms above are panel context and alerting
+inputs, not the server headline formula. See
 [CII Risk Scoring Methodology](/methodology/cii-risk-scores#3-strategic-risk-roll-up)
 for the exact top-5 weights, scale factor, and severity bands.
 
@@ -202,12 +215,17 @@ Each country's score combines a static baseline (40%) with a dynamic event score
 
 | Floor type | Threshold | Trigger |
 |------------|-----------|---------|
-| UCDP active war | >= 70 | UCDP intensity level 2+ |
-| UCDP minor conflict | >= 50 | UCDP intensity level 1 |
-| Advisory do-not-travel | >= 60 | UA, SY, YE, MM |
-| Advisory reconsider | >= 50 | IL, IR, PK, VE, CU, MX |
+| UCDP active war | >= 70 | UCDP war-level classification |
+| UCDP minor conflict | >= 50 | UCDP minor-conflict classification |
+| Advisory do-not-travel | >= 60 | Live advisory feed when present; otherwise embedded State Department fallback table |
+| Advisory reconsider | >= 50 | Live advisory feed when present; otherwise embedded State Department fallback table |
 
 **Supplemental Boosts**: Advisory boost (+15/+10/+5), OREF blend boost for IL (+15 active + history tiers), climate (+15 max), cyber (+12 max), fires (+8 max), displacement (+20 max), news urgency (+5 max), earthquakes (+25 max), sanctions (+14 max), and AIS disruptions (+10 max).
+
+Advisory outputs expose both `advisoryLevel` and `advisoryProvenance` on each
+`CiiScore`. `advisoryProvenance` is `live` when the score used the seeded
+advisory feed, `fallback` when it used the embedded State Department fallback
+table, and `absent` when no advisory level affected boosts or floors.
 
 ### Event Significance Multipliers
 
@@ -251,6 +269,7 @@ The top countries contribute most heavily, with diminishing influence for lower-
 | Displacement | Humanitarian displacement aggregate | Displacement boost |
 | Earthquakes | Earthquake feed | Earthquake boost |
 | Sanctions | Sanctions country aggregate | Sanctions boost |
+| Security advisories | `intelligence:advisories:v1` plus embedded fallback table | Advisory boost/floor with `advisoryProvenance` |
 
 ### Fallback Behavior
 

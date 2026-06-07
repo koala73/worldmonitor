@@ -26,7 +26,7 @@ Authoritative CII scores come from the server-side `GET /api/intelligence/v1/get
 
 **Information score** (0-100): Country-attributed classified news pressure from top-story country attribution and threat summaries. Critical/high/medium headlines contribute with descending weights; info-level headlines do not move the score.
 
-**Floors**: UCDP active war pins score at >= 70, UCDP minor conflict at >= 50. Travel advisory do-not-travel pins at >= 60, reconsider at >= 50.
+**Floors**: UCDP active war pins score at >= 70, UCDP minor conflict at >= 50. Travel advisory do-not-travel pins at >= 60, reconsider at >= 50. Advisory floors and boosts use the live advisory feed when available; otherwise the server may apply the embedded State Department fallback table. Each `CiiScore` exposes `advisoryLevel` plus `advisoryProvenance` (`live`, `fallback`, or `absent`) so clients can tell which path affected the score.
 
 **Boosts**: Advisory boost (+15 do-not-travel, +10 reconsider, +5 caution), OREF blend boost for Israel (+15 active alerts, +5/10 based on 24h history count), climate severity (up to +15), cyber threats (up to +12), wildfires (up to +8), displacement (up to +20), news urgency (up to +5), earthquakes (up to +25), sanctions (up to +14), and AIS disruptions (up to +10).
 
@@ -49,9 +49,19 @@ Events (protests, military flights, vessels, earthquakes) are binned into 1°×1
 
 ### Strategic Risk Score Algorithm
 
-The Strategic Risk panel computes a 0–100 composite geopolitical risk score that synthesizes data from all intelligence modules into a single, continuously updated metric.
+The server-published Strategic Risk headline score comes from
+`GET /api/intelligence/v1/get-risk-scores`: it rolls up the top 5 countries by
+server-authoritative CII `combinedScore`, using positional weights
+`[1.00, 0.85, 0.70, 0.55, 0.40]`, then applies `score = round(weightedAvg * 0.70 + 15)`.
+That server value is the headline score displayed by the Strategic Risk
+overview.
 
-**Composite formula**:
+The Strategic Risk panel also computes additional local context from map-side
+convergence, infrastructure, theater posture, breaking-news, sanctions, and
+radiation-watch signals. These terms inform panel context and alerts; they are
+not the server headline Strategic Risk score.
+
+**Panel-local context formula**:
 
 ```
 compositeScore =
@@ -67,7 +77,7 @@ compositeScore =
 **Sub-scores**:
 
 - `convergenceScore` — `min(100, convergenceAlertCount × 25)`. Each geographic cell with 3+ distinct event types contributing 25 points
-- `ciiRiskScore` — Top 5 countries by CII score, weighted `[0.40, 0.25, 0.20, 0.10, 0.05]`, with a bonus of `min(20, elevatedCount × 5)` for each country above CII 50
+- `ciiRiskScore` — panel-local CII context from top countries and elevated-country counts. The server headline instead uses the top-5 CII roll-up documented above and in [CII Risk Scoring Methodology](/methodology/cii-risk-scores#3-strategic-risk-roll-up).
 - `infraScore` — `min(100, cascadeAlertCount × 25)`. Each infrastructure cascade incident contributing 25 points
 - `theaterBoost` — For each theater posture summary: `min(10, floor((aircraft + vessels) / 5))` + 5 if strike-capable (tanker + AWACS + fighters co-present). Summed across theaters, capped at 25. Halved when posture data is stale
 - `breakingBoost` — Critical breaking news alerts add 15 points, high adds 8, capped at 15. Breaking alerts expire after 30 minutes

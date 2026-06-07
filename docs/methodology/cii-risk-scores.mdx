@@ -189,6 +189,19 @@ Component details that are easy to miss:
 - **State Department advisory floor**: 60 for "do not travel", 50 for
   "reconsider travel", else 0.
 
+Advisory levels can also add `advisoryBoost` before the floor is applied:
+`+15` for "do not travel", `+10` for "reconsider travel", and `+5` for
+"caution". The server first uses the live `intelligence:advisories:v1`
+`byCountry` level when available. If no live level is present for a tracked
+country, it may apply the embedded State Department fallback table in
+`server/worldmonitor/intelligence/v1/get-risk-scores.ts`. Each `CiiScore`
+therefore exposes:
+
+| Wire field | Values | Meaning |
+|---|---|---|
+| `advisory_level` / `advisoryLevel` | `do-not-travel`, `reconsider`, `caution`, or empty | Advisory level used for score boosts/floors, if any. |
+| `advisory_provenance` / `advisoryProvenance` | `live`, `fallback`, `absent` | Whether `advisory_level` came from the live seeded advisory feed, the embedded fallback table, or no advisory input. |
+
 The `dynamicScore` exposed on the wire is the signed score movement versus a
 valid CII snapshot from approximately 24 hours earlier. Positive values mean
 the country score rose, negative values mean it fell, and `0` means stable or
