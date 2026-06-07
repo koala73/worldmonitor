@@ -6,6 +6,16 @@ import { describe, it } from 'node:test';
 const root = resolve(new URL('..', import.meta.url).pathname);
 const read = (rel) => readFileSync(resolve(root, rel), 'utf8');
 
+function parseNumericConst(source, name) {
+  const match = source.match(new RegExp(`const ${name} = ([0-9.]+);`));
+  assert.ok(match, `${name} declaration not found`);
+  return Number(match[1]);
+}
+
+function formatProbability(value) {
+  return value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+}
+
 describe('forecast integrity and provenance surfaces', () => {
   it('labels simulation path confidence separately from event probability', () => {
     const src = read('src/components/ForecastPanel.ts');
@@ -44,6 +54,7 @@ describe('forecast integrity and provenance surfaces', () => {
   it('documents market calibration limits and projection clamp heuristics', () => {
     const docs = read('docs/panels/forecast.mdx');
     const seeder = read('scripts/seed-forecasts.mjs');
+    const cyberProbMax = parseNumericConst(seeder, 'CYBER_PROB_MAX');
 
     assert.doesNotMatch(docs, /probability-calibrated/);
     assert.match(docs, /market-calibrated only when/);
@@ -51,5 +62,9 @@ describe('forecast integrity and provenance surfaces', () => {
     assert.match(docs, /1% floor and 95% cap/);
     assert.match(seeder, /const PROJECTION_PROBABILITY_FLOOR = 0\.01;/);
     assert.match(seeder, /const PROJECTION_PROBABILITY_CAP = 0\.95;/);
+    assert.ok(
+      docs.includes(`| Cyber probability ceiling | ${formatProbability(cyberProbMax)} |`),
+      `forecast panel doc must derive cyber ceiling from CYBER_PROB_MAX=${cyberProbMax}`,
+    );
   });
 });

@@ -11,24 +11,79 @@ function readRepo(path) {
   return readFileSync(resolve(root, path), 'utf8');
 }
 
+function parseYahooSymbols(source) {
+  const match = source.match(/const YAHOO_SYMBOLS = \[([^\]]+)\];/);
+  assert.ok(match, 'YAHOO_SYMBOLS declaration not found');
+  return [...match[1].matchAll(/'([^']+)'/g)].map(([, symbol]) => symbol);
+}
+
+function parseCnnEndpoint(source) {
+  const match = source.match(/fetch\('https:\/\/([^']*\/index\/fearandgreed\/current)'/);
+  assert.ok(match, 'CNN Fear & Greed current endpoint not found in seeder');
+  return match[1];
+}
+
+function parseAaiiAnchors(source) {
+  const bull = source.match(/bullPercentile\s*=\s*clamp\(\(bullPct\s*\/\s*(\d+)\)\s*\*\s*100,\s*0,\s*100\)/);
+  const bear = source.match(/bearPercentile\s*=\s*clamp\(\(bearPct\s*\/\s*(\d+)\)\s*\*\s*100,\s*0,\s*100\)/);
+  assert.ok(bull, 'AAII bull anchor not found in seeder');
+  assert.ok(bear, 'AAII bear anchor not found in seeder');
+  return { bull: Number(bull[1]), bear: Number(bear[1]) };
+}
+
+function parseMomentumSectorEtfs(source) {
+  const match = source.match(/sectorCloses:\s*\{([^}]+)\}/);
+  assert.ok(match, 'momentum sectorCloses mapping not found in seeder');
+  return [...match[1].matchAll(/\b([A-Z]{3,4}):/g)].map(([, symbol]) => symbol);
+}
+
+function parseFsiBands(source) {
+  const thresholdBands = [...source.matchAll(/(?:if|else if)\s*\(fsiValue\s*>=\s*([0-9.]+)\)\s*fsiLabel\s*=\s*'([^']+)'/g)]
+    .map(([, threshold, label]) => ({ threshold, label }));
+  const fallback = source.match(/else\s*fsiLabel\s*=\s*'([^']+)'/);
+  assert.equal(thresholdBands.length, 3, 'expected three thresholded FSI bands in seeder');
+  assert.ok(fallback, 'expected fallback FSI band in seeder');
+  return [...thresholdBands, { threshold: null, label: fallback[1] }];
+}
+
+function compactComparisonWhitespace(text) {
+  return text.replace(/\s+/g, '');
+}
+
 describe('market and health methodology docs match source contracts', () => {
   const fearGreedDoc = readRepo('docs/fear-greed-index-2.0-brief.md');
+  const fearGreedSeeder = readRepo('scripts/seed-fear-greed.mjs');
   const fearGreedProto = readRepo('proto/worldmonitor/market/v1/get_fear_greed_index.proto');
   const marketOpenApi = readRepo('docs/api/MarketService.openapi.yaml');
   const fsiPanelDoc = readRepo('docs/panels/fsi.mdx');
   const diseaseMethodology = readRepo('docs/methodology/disease-alert-level.mdx');
 
   it('documents the current Fear & Greed data sources and derived inputs', () => {
-    assert.match(fearGreedDoc, /production\.dataviz\.cnn\.io\/index\/fearandgreed\/current/);
+    const cnnEndpoint = parseCnnEndpoint(fearGreedSeeder);
+    const { bull, bear } = parseAaiiAnchors(fearGreedSeeder);
+    const sectorEtfs = parseMomentumSectorEtfs(fearGreedSeeder);
+    const yahooSymbols = new Set(parseYahooSymbols(fearGreedSeeder));
+
+    assert.ok(fearGreedDoc.includes(cnnEndpoint), `Fear & Greed doc must include CNN endpoint ${cnnEndpoint}`);
     assert.doesNotMatch(fearGreedDoc, /graphdata\/\{date\}/);
-    assert.match(fearGreedDoc, /AAII_Bull_Percentile = clamp\(bull% \/ 60 \* 100, 0, 100\)/);
-    assert.match(fearGreedDoc, /AAII_Bear_Percentile = clamp\(bear% \/ 55 \* 100, 0, 100\)/);
-    assert.match(fearGreedDoc, /all 11 GICS sector ETFs: XLK, XLF, XLE, XLV, XLY, XLP, XLI, XLB, XLU, XLRE, XLC/);
+    assert.match(fearGreedDoc, new RegExp(`AAII_Bull_Percentile = clamp\\(bull% / ${bull} \\* 100, 0, 100\\)`));
+    assert.match(fearGreedDoc, new RegExp(`AAII_Bear_Percentile = clamp\\(bear% / ${bear} \\* 100, 0, 100\\)`));
+    assert.equal(sectorEtfs.length, 11, 'seeder should keep all 11 GICS sector ETFs in momentum sector RSI');
+    for (const symbol of sectorEtfs) {
+      assert.ok(yahooSymbols.has(symbol), `sector RSI ETF ${symbol} should be fetched from Yahoo`);
+    }
+    assert.ok(fearGreedDoc.includes(`all ${sectorEtfs.length} GICS sector ETFs: ${sectorEtfs.join(', ')}`));
   });
 
   it('documents the bespoke Fear & Greed header FSI separately from the FSI panel', () => {
     const formula = /\(HYG \/ TLT\) \/ \(VIX \* HY(?:_OAS| OAS) \/ 100\)/;
-    const bands = /Low Stress[\s\S]*Moderate Stress[\s\S]*Elevated Stress[\s\S]*High Stress/;
+    const bands = parseFsiBands(fearGreedSeeder);
+
+    assert.match(
+      fearGreedSeeder,
+      /fsiValue\s*=\s*Math\.round\(\(\(hygPrice \/ tltPrice\) \/ \(vixLive \* hySpreadVal \/ 100\)\) \* 10000\) \/ 10000/,
+      'seeder should compute the documented header FSI formula',
+    );
 
     for (const [label, text] of [
       ['fear-greed doc', fearGreedDoc],
@@ -39,9 +94,17 @@ describe('market and health methodology docs match source contracts', () => {
       assert.match(text, /KCFSI\/ECB FSI panel|KCFSI or ECB CISS\/EU FSI composite|KCFSI\/ECB FSI/, `${label} must distinguish the header FSI from the panel composite`);
     }
 
-    assert.match(fearGreedDoc, bands);
-    assert.match(fearGreedProto, /Low Stress \(>=1\.5\), Moderate Stress \(>=0\.8\)/);
-    assert.match(marketOpenApi, /Low Stress \(>=1\.5\), Moderate Stress \(>=0\.8\)/);
+    for (const { threshold, label } of bands) {
+      assert.ok(fearGreedDoc.includes(label), `fear-greed doc must include FSI band ${label}`);
+      assert.ok(fearGreedProto.includes(label), `fear-greed proto must include FSI band ${label}`);
+      assert.ok(marketOpenApi.includes(label), `MarketService OpenAPI must include FSI band ${label}`);
+      if (threshold != null) {
+        const thresholdText = `>=${threshold}`;
+        assert.ok(compactComparisonWhitespace(fearGreedDoc).includes(thresholdText), `fear-greed doc must include FSI threshold ${thresholdText}`);
+        assert.ok(compactComparisonWhitespace(fearGreedProto).includes(thresholdText), `fear-greed proto must include FSI threshold ${thresholdText}`);
+        assert.ok(compactComparisonWhitespace(marketOpenApi).includes(thresholdText), `MarketService OpenAPI must include FSI threshold ${thresholdText}`);
+      }
+    }
   });
 
   it('documents implemented disease source paths without the old RSS source names', () => {
