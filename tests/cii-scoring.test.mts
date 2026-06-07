@@ -215,11 +215,28 @@ function isSnapshotObject(value: ScoreHelperSnapshotValue): value is { [key: str
   return typeof value === 'object' && !Array.isArray(value);
 }
 
+function unwrapSnapshotExpression(expression: ts.Expression): ts.Expression {
+  let current = expression;
+  while (
+    ts.isParenthesizedExpression(current)
+    || ts.isAsExpression(current)
+    || ts.isTypeAssertionExpression(current)
+    || ts.isSatisfiesExpression(current)
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
 function literalExpressionSnapshot(
   expression: ts.Expression,
   sourceFile: ts.SourceFile,
   resolving = new Set<string>(),
 ): ScoreHelperSnapshotValue {
+  const unwrappedExpression = unwrapSnapshotExpression(expression);
+  if (unwrappedExpression !== expression) {
+    return literalExpressionSnapshot(unwrappedExpression, sourceFile, resolving);
+  }
   if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
     return expression.text;
   }
@@ -282,10 +299,11 @@ function evaluateNumericExpression(
   sourceFile: ts.SourceFile,
   resolving = new Set<string>(),
 ): number {
-  if (ts.isNumericLiteral(expression)) return Number(expression.text.replace(/_/g, ''));
-  if (ts.isParenthesizedExpression(expression)) {
-    return evaluateNumericExpression(expression.expression, sourceFile, resolving);
+  const unwrappedExpression = unwrapSnapshotExpression(expression);
+  if (unwrappedExpression !== expression) {
+    return evaluateNumericExpression(unwrappedExpression, sourceFile, resolving);
   }
+  if (ts.isNumericLiteral(expression)) return Number(expression.text.replace(/_/g, ''));
   if (ts.isIdentifier(expression)) {
     const constName = expression.text;
     assert.ok(!resolving.has(constName), `cyclic numeric helper const reference: ${constName}`);
@@ -1592,18 +1610,19 @@ describe('CII scoring', () => {
 
   it('CII helper input snapshot resolves local literal aliases and spreads', () => {
     const helperInputs = extractScoreHelperInputSnapshot(`
-      const TWO_YEARS_MS = 2 * 365 * 24 * 60 * 60 * 1000;
+      const TWO_YEARS_MS = (2 * 365 * 24 * 60 * 60 * 1000) as const;
       const UCDP_CLASSIFICATION_WINDOW_MS = TWO_YEARS_MS;
-      const HIGH_RISK_FALLBACKS = { UA: 'do-not-travel', SY: 'do-not-travel' };
-      const CAUTION_FALLBACKS = { RU: 'caution' };
+      const HIGH_RISK_FALLBACKS = { UA: 'do-not-travel', SY: 'do-not-travel' } as const;
+      const CAUTION_FALLBACKS = <Record<string, string>>{ RU: 'caution' };
       const ADVISORY_LEVELS_FALLBACK = {
         ...CAUTION_FALLBACKS,
         ...HIGH_RISK_FALLBACKS,
         IL: 'reconsider',
-      };
-      const EUROPE_COUNTRIES = ['DE', 'FR'];
-      const MIDDLE_EAST_COUNTRIES = ['IR', ...['IL', 'SA']];
-      const CLIMATE_ZONE_GROUPS = { Europe: EUROPE_COUNTRIES };
+      } satisfies Record<string, string>;
+      const EUROPE_COUNTRIES = ['DE', 'FR'] as const;
+      const EXTRA_MIDDLE_EAST_COUNTRIES = ['IL', 'SA'] as const;
+      const MIDDLE_EAST_COUNTRIES = ['IR', ...EXTRA_MIDDLE_EAST_COUNTRIES];
+      const CLIMATE_ZONE_GROUPS = { Europe: EUROPE_COUNTRIES } satisfies Record<string, readonly string[]>;
       const ZONE_COUNTRY_MAP = {
         ...CLIMATE_ZONE_GROUPS,
         'Middle East': MIDDLE_EAST_COUNTRIES,
