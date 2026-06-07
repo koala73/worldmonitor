@@ -53,6 +53,7 @@ export default [
   "taskandpurpose.com",
   "news.usni.org",
   "www.oryxspioenkop.com",
+  "www.smartraveller.gov.au",
   "www.gov.uk",
   "www.foreignaffairs.com",
   "www.atlanticcouncil.org",

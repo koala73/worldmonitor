@@ -554,7 +554,8 @@ const RSS_PROXY_ALLOWED_DOMAINS = new Set([
   'www.ft.com', 'openai.com', 'www.reutersagency.com', 'feeds.reuters.com',
   'asia.nikkei.com', 'www.cfr.org', 'www.csis.org', 'www.politico.com',
   'www.brookings.edu', 'layoffs.fyi', 'www.defensenews.com', 'www.militarytimes.com',
-  'taskandpurpose.com', 'news.usni.org', 'www.oryxspioenkop.com', 'www.gov.uk',
+  'taskandpurpose.com', 'news.usni.org', 'www.oryxspioenkop.com',
+  'www.smartraveller.gov.au', 'www.gov.uk',
   'www.foreignaffairs.com', 'www.atlanticcouncil.org',
   // Tech variant
   'www.zdnet.com', 'www.techmeme.com', 'www.darkreading.com', 'www.schneier.com',

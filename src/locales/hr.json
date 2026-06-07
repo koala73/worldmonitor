@@ -1676,7 +1676,7 @@
       "noMatching": "Nema savjeta koji se podudaraju s ovim filterom",
       "critical": "Kritično",
       "health": "Zdravlje",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
       "refresh": "Osvježi",
       "levels": {
         "doNotTravel": "Nemojte putovati",
@@ -1691,7 +1691,7 @@
         "hoursAgo": "prije {{count}}h",
         "daysAgo": "prije {{count}}d"
       },
-      "infoTooltip": "<strong>Sigurnosni savjeti</strong><br>Putni savjeti i sigurnosna upozorenja od vladinih agencija:<br><br><strong>Izvori:</strong><br>🇺🇸 US State Dept putni savjeti<br>🇦🇺 AU DFAT Smartraveller<br>🇬🇧 UK FCDO Travel Advice<br>🇳🇿 NZ MFAT SafeTravel<br><br><strong>Nivoi:</strong><br>🟥 Nemojte putovati<br>🟧 Ponovno razmotriti putovanje<br>🟨 Vježbajte oprez<br>🟩 Normalne mjere opreza"
+      "infoTooltip": "<strong>Sigurnosni savjeti</strong><br>Putni savjeti i sigurnosna upozorenja od vladinih agencija:<br><br><strong>Izvori:</strong><br>🇺🇸 US State Dept putni savjeti<br>🇦🇺 AU DFAT Smartraveller<br>🇬🇧 UK FCDO Travel Advice<br><br><strong>Nivoi:</strong><br>🟥 Nemojte putovati<br>🟧 Ponovno razmotriti putovanje<br>🟨 Vježbajte oprez<br>🟩 Normalne mjere opreza"
     },
     "orefSirens": {
       "checking": "Provjera upozorenja sirena...",

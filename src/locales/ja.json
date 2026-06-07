@@ -1411,7 +1411,7 @@
       "noMatching": "該当する情報なし",
       "critical": "重大",
       "health": "健康",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
       "refresh": "更新",
       "levels": {
         "doNotTravel": "渡航中止",

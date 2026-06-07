@@ -1436,7 +1436,7 @@
       "noMatching": "Geen adviezen voor dit filter",
       "critical": "Kritiek",
       "health": "Gezondheid",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
       "refresh": "Vernieuwen",
       "levels": {
         "doNotTravel": "Niet reizen",

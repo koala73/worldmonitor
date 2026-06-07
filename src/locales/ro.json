@@ -1412,7 +1412,7 @@
       "noMatching": "Niciun aviz nu corespunde acestui filtru",
       "critical": "Critic",
       "health": "Sănătate",
-      "sources": "Departamentul de Stat al SUA, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, OMS, Ambasadele SUA",
+      "sources": "Departamentul de Stat al SUA, AU DFAT, UK FCDO, CDC, ECDC, OMS, Ambasadele SUA",
       "refresh": "Actualizează",
       "levels": {
         "doNotTravel": "Nu călători",
@@ -1427,7 +1427,7 @@
         "hoursAgo": "acum {{count}}h",
         "daysAgo": "{{count}}d acum"
       },
-      "infoTooltip": "<strong>Aviz de securitate</strong><br>Aviz de călătorie și alerte de securitate de la agențiile guvernamentale de afaceri externe:<br><br><strong>Surse:</strong><br>🇺🇸 Avizele de călătorie ale Departamentului de Stat al SUA<br>🇦🇺 AU DFAT Smartraveller<br>🇬🇧 Sfat de călătorie 🇬🇧 Marea Britanie SafeTravel<br><br><strong>Niveluri:</strong><br>🟥 Nu călătoriți<br>🟧 Reconsiderați călătoriile<br>🟨 Fiți atenți<br>🟩 Precauții normale"
+      "infoTooltip": "<strong>Aviz de securitate</strong><br>Aviz de călătorie și alerte de securitate de la agențiile guvernamentale de afaceri externe:<br><br><strong>Surse:</strong><br>🇺🇸 Avizele de călătorie ale Departamentului de Stat al SUA<br>🇦🇺 AU DFAT Smartraveller<br>🇬🇧 UK FCDO Travel Advice<br><br><strong>Niveluri:</strong><br>🟥 Nu călătoriți<br>🟧 Reconsiderați călătoriile<br>🟨 Fiți atenți<br>🟩 Precauții normale"
     },
     "orefSirens": {
       "checking": "Se verifică alertele sirenelor...",

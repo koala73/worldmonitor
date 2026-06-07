@@ -1537,7 +1537,7 @@
       "noMatching": "Nincsenek szűrőnek megfelelő tanácsok",
       "critical": "Kritikus",
       "health": "Egészség",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
       "refresh": "Frissítés",
       "levels": {
         "doNotTravel": "Ne utazzon",
@@ -1552,7 +1552,7 @@
         "hoursAgo": "{{count}}ó ezelőtt",
         "daysAgo": "{{count}}n ezelőtt"
       },
-      "infoTooltip": "<strong>Biztonsági tanácsok</strong><br>Utazási tanácsok és biztonsági riasztások kormányzati külügyminisztériumoktól:<br><br><strong>Források:</strong><br>🇺🇸 US State Dept utazási tanácsok<br>🇦🇺 AU DFAT Smartraveller<br>🇬🇧 UK FCDO utazási tanácsok<br>🇳🇿 NZ MFAT SafeTravel<br><br><strong>Szintek:</strong><br>🟥 Ne utazzon<br>🟧 Gondolja át az utazást<br>🟨 Óvatossággal járjon el<br>🟩 Normális óvintézkedések"
+      "infoTooltip": "<strong>Biztonsági tanácsok</strong><br>Utazási tanácsok és biztonsági riasztások kormányzati külügyminisztériumoktól:<br><br><strong>Források:</strong><br>🇺🇸 US State Dept utazási tanácsok<br>🇦🇺 AU DFAT Smartraveller<br>🇬🇧 UK FCDO utazási tanácsok<br><br><strong>Szintek:</strong><br>🟥 Ne utazzon<br>🟧 Gondolja át az utazást<br>🟨 Óvatossággal járjon el<br>🟩 Normális óvintézkedések"
     },
     "orefSirens": {
       "checking": "Szirénariasztások ellenőrzése...",

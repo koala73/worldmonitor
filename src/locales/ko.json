@@ -1411,7 +1411,7 @@
       "noMatching": "필터에 일치하는 주의보 없음",
       "critical": "심각",
       "health": "보건",
-      "sources": "미 국무부, 호주 DFAT, 영국 FCDO, 뉴질랜드 MFAT, CDC, ECDC, WHO, 미 대사관",
+      "sources": "미 국무부, 호주 DFAT, 영국 FCDO, CDC, ECDC, WHO, 미 대사관",
       "refresh": "새로고침",
       "levels": {
         "doNotTravel": "여행 금지",
@@ -1426,7 +1426,7 @@
         "hoursAgo": "{{count}}h 전",
         "daysAgo": "{{count}}d 전"
       },
-      "infoTooltip": "<strong>보안 주의보</strong><br>각국 외교부의 여행 주의보 및 보안 경보:<br><br><strong>출처:</strong><br>🇺🇸 미 국무부 여행 주의보<br>🇦🇺 호주 DFAT Smartraveller<br>🇬🇧 영국 FCDO 여행 안내<br>🇳🇿 뉴질랜드 MFAT SafeTravel<br><br><strong>수준:</strong><br>🟥 여행 금지<br>🟧 여행 재고<br>🟨 주의 필요<br>🟩 일반 주의"
+      "infoTooltip": "<strong>보안 주의보</strong><br>각국 외교부의 여행 주의보 및 보안 경보:<br><br><strong>출처:</strong><br>🇺🇸 미 국무부 여행 주의보<br>🇦🇺 호주 DFAT Smartraveller<br>🇬🇧 영국 FCDO 여행 안내<br><br><strong>수준:</strong><br>🟥 여행 금지<br>🟧 여행 재고<br>🟨 주의 필요<br>🟩 일반 주의"
     },
     "orefSirens": {
       "checking": "공습 경보 확인 중...",

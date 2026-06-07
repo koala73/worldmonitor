@@ -401,7 +401,7 @@ entries.
 | 35 | seed-regulatory-actions | `249ae8df-5746-4cdb-9978-ec61dce9121f` | Financial regulator RSS |
 | 36 | seed-research | `ab850199-4d48-4af8-9681-aafbe2f31b8e` | arXiv + HN + GitHub |
 | 37 | seed-sanctions-pressure | `e1686cdf-980f-426d-b5f2-a7757729fe9b` | 120MB+ XML streaming |
-| 38 | seed-security-advisories | `8fb9c6b7-0ae9-441b-ae02-0f31baa3aed6` | 22 advisory feeds |
+| 38 | seed-security-advisories | `8fb9c6b7-0ae9-441b-ae02-0f31baa3aed6` | 24 advisory feeds |
 | 39 | seed-supply-chain-trade | `d7cc29f0-691b-40fd-84f2-ce8e8f12b567` | Already multi-section |
 | 40 | seed-thermal-escalation | `71d124d5-a4fb-42c3-9c5b-2fb0e5645e5b` | Derived from fire detections |
 | 41 | seed-trade-flows | `dd3097f7-df65-4b0e-89ca-86a5fac7d558` | UN Comtrade, 6 reporters |

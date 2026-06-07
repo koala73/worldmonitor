@@ -1411,7 +1411,7 @@
       "noMatching": "Δεν βρέθηκαν οδηγίες για αυτό το φίλτρο",
       "critical": "Κρίσιμο",
       "health": "Υγεία",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
       "refresh": "Ανανέωση",
       "levels": {
         "doNotTravel": "Μην ταξιδεύετε",

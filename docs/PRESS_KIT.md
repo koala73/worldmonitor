@@ -60,7 +60,7 @@ World Monitor aggregates publicly available data from dozens of sources. No prop
 - **GDELT** (Global Database of Events, Language, and Tone): Global event detection
 - **OREF** (Israel Home Front Command): Real-time rocket alert sirens
 - **LiveUAMap**: Conflict event mapping (Iran theater)
-- **Government travel advisories**: US State Department, UK FCDO, Australia DFAT, NZ MFAT
+- **Government travel advisories**: US State Department, UK FCDO, Australia DFAT
 - **13 US Embassy feeds** for country-specific security updates
 
 ### Military & Strategic

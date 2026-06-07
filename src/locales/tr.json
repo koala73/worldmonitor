@@ -1411,7 +1411,7 @@
       "noMatching": "Bu filtre için uyarı yok",
       "critical": "Kritik",
       "health": "Sağlık",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
       "refresh": "Yenile",
       "levels": {
         "doNotTravel": "Seyahat etmeyin",

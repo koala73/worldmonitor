@@ -1392,7 +1392,7 @@
       "noMatching": "Tomuto filtru neodpovídají žádná varování",
       "critical": "Kritické",
       "health": "Zdraví",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Velvyslanectví",
+      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Velvyslanectví",
       "refresh": "Obnovit",
       "levels": {
         "doNotTravel": "Necestovat",
@@ -1407,7 +1407,7 @@
         "hoursAgo": "před {{count}} h",
         "daysAgo": "před {{count}} d"
       },
-      "infoTooltip": "<strong>Bezpečnostní varování</strong><br>Cestovní doporučení a bezpečnostní upozornění od vládních úřadů pro zahraniční věci:<br><br><strong>Zdroje:</strong><br>🇺🇸 US State Dept Travel Advisories<br>🇦🇺 AU DFAT Smartraveller<br>🇬🇧 UK FCDO Travel Advice<br>🇳🇿 NZ MFAT SafeTravel<br><br><strong>Úrovně:</strong><br>🟥 Necestovat<br>🟧 Zvážit cestu<br>🟨 Zvýšená opatrnost<br>🟩 Běžná opatření"
+      "infoTooltip": "<strong>Bezpečnostní varování</strong><br>Cestovní doporučení a bezpečnostní upozornění od vládních úřadů pro zahraniční věci:<br><br><strong>Zdroje:</strong><br>🇺🇸 US State Dept Travel Advisories<br>🇦🇺 AU DFAT Smartraveller<br>🇬🇧 UK FCDO Travel Advice<br><br><strong>Úrovně:</strong><br>🟥 Necestovat<br>🟧 Zvážit cestu<br>🟨 Zvýšená opatrnost<br>🟩 Běžná opatření"
     },
     "orefSirens": {
       "checking": "Kontrola upozornění sirén...",

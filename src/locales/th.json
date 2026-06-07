@@ -1411,7 +1411,7 @@
       "noMatching": "ไม่พบคำเตือนสำหรับตัวกรองนี้",
       "critical": "วิกฤต",
       "health": "สุขภาพ",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
       "refresh": "รีเฟรช",
       "levels": {
         "doNotTravel": "ห้ามเดินทาง",

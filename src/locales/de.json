@@ -1710,7 +1710,7 @@
       "noMatching": "Keine Hinweise für diesen Filter",
       "critical": "Kritisch",
       "health": "Gesundheit",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
       "refresh": "Aktualisieren",
       "levels": {
         "doNotTravel": "Nicht reisen",

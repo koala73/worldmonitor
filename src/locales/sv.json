@@ -1436,7 +1436,7 @@
       "noMatching": "Inga varningar för detta filter",
       "critical": "Kritisk",
       "health": "Hälsa",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
       "refresh": "Uppdatera",
       "levels": {
         "doNotTravel": "Res inte",

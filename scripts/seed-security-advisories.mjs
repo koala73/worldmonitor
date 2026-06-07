@@ -12,7 +12,8 @@ const ALLOWED_DOMAINS = new Set(loadSharedConfig('rss-allowed-domains.json'));
 
 const ADVISORY_FEEDS = [
   { name: 'US State Dept', sourceCountry: 'US', url: 'https://travel.state.gov/_res/rss/TAsTWs.xml', levelParser: 'us' },
-{ name: 'UK FCDO', sourceCountry: 'UK', url: 'https://www.gov.uk/foreign-travel-advice.atom' },
+  { name: 'Australia DFAT Smartraveller', sourceCountry: 'AU', url: 'https://www.smartraveller.gov.au/rss', levelParser: 'au' },
+  { name: 'UK FCDO', sourceCountry: 'UK', url: 'https://www.gov.uk/foreign-travel-advice.atom' },
   { name: 'US Embassy Thailand', sourceCountry: 'US', url: 'https://th.usembassy.gov/category/alert/feed/', targetCountry: 'TH' },
   { name: 'US Embassy UAE', sourceCountry: 'US', url: 'https://ae.usembassy.gov/category/alert/feed/', targetCountry: 'AE' },
   { name: 'US Embassy Germany', sourceCountry: 'US', url: 'https://de.usembassy.gov/category/alert/feed/', targetCountry: 'DE' },
@@ -44,17 +45,24 @@ function parseUsLevel(title) {
   return { '4': 'do-not-travel', '3': 'reconsider', '2': 'caution', '1': 'normal' }[m[1]] || 'info';
 }
 
-function parseAuLevel(title) {
-  const l = title.toLowerCase();
+function parseAuLevel(item) {
+  const advisoryLevel = String(item.advisoryLevel || '').trim();
+  if (/^5(?:\/5)?$/.test(advisoryLevel)) return 'do-not-travel';
+  if (/^4(?:\/5)?$/.test(advisoryLevel)) return 'reconsider';
+  if (/^3(?:\/5)?$/.test(advisoryLevel)) return 'caution';
+  if (/^[12](?:\/5)?$/.test(advisoryLevel)) return 'normal';
+
+  const l = `${item.title || ''} ${item.description || ''}`.toLowerCase();
   if (l.includes('do not travel')) return 'do-not-travel';
   if (l.includes('reconsider')) return 'reconsider';
   if (l.includes('high degree of caution') || l.includes('high degree')) return 'caution';
+  if (l.includes('normal safety precautions') || l.includes('normal precautions')) return 'normal';
   return 'info';
 }
 
-function parseLevel(title, parser) {
-  if (parser === 'us') return parseUsLevel(title);
-  if (parser === 'au') return parseAuLevel(title);
+function parseLevel(item, parser) {
+  if (parser === 'us') return parseUsLevel(item.title || '');
+  if (parser === 'au') return parseAuLevel(item);
   return 'info';
 }
 
@@ -102,8 +110,10 @@ function parseRssItems(xml) {
     const block = match[1];
     const title = stripHtml((block.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '');
     const link = stripHtml((block.match(/<link[^>]*>([\s\S]*?)<\/link>/i) || [])[1] || '');
+    const description = stripHtml((block.match(/<description[^>]*>([\s\S]*?)<\/description>/i) || [])[1] || '');
     const pubDate = stripHtml((block.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i) || [])[1] || '');
-    items.push({ title, link, pubDate });
+    const advisoryLevel = stripHtml((block.match(/<ta:level[^>]*>([\s\S]*?)<\/ta:level>/i) || [])[1] || '');
+    items.push({ title, link, description, pubDate, advisoryLevel });
   }
   return items;
 }
@@ -117,9 +127,10 @@ function parseAtomEntries(xml) {
     const title = stripHtml((block.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '');
     const linkMatch = block.match(/<link[^>]*href=["']([^"']+)["']/i);
     const link = linkMatch ? linkMatch[1] : '';
+    const description = stripHtml((block.match(/<summary[^>]*>([\s\S]*?)<\/summary>/i) || [])[1] || '');
     const updated = stripHtml((block.match(/<updated[^>]*>([\s\S]*?)<\/updated>/i) || [])[1] || '');
     const published = stripHtml((block.match(/<published[^>]*>([\s\S]*?)<\/published>/i) || [])[1] || '');
-    entries.push({ title, link, pubDate: updated || published });
+    entries.push({ title, link, description, pubDate: updated || published });
   }
   return entries;
 }
@@ -161,7 +172,7 @@ async function fetchFeed(feed) {
         pubDate: item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString(),
         source: feed.name,
         sourceCountry: feed.sourceCountry,
-        level: parseLevel(item.title, feed.levelParser),
+        level: parseLevel(item, feed.levelParser),
         country: extractCountry(item.title, feed) || '',
       }));
   } catch (e) {

@@ -1711,7 +1711,7 @@
       "noMatching": "Nessun avviso per questo filtro",
       "critical": "Critico",
       "health": "Salute",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
       "refresh": "Aggiorna",
       "levels": {
         "doNotTravel": "Non viaggiare",

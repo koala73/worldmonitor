@@ -1650,7 +1650,7 @@
       "noMatching": "لا توجد تحذيرات مطابقة لهذا الفلتر",
       "critical": "حرج",
       "health": "صحة",
-      "sources": "وزارة الخارجية الأمريكية، DFAT الأسترالية، FCDO البريطانية، MFAT النيوزيلندية, CDC, ECDC, WHO, US Embassies",
+      "sources": "وزارة الخارجية الأمريكية، DFAT الأسترالية، FCDO البريطانية, CDC, ECDC, WHO, US Embassies",
       "refresh": "تحديث",
       "levels": {
         "doNotTravel": "لا تسافر",
