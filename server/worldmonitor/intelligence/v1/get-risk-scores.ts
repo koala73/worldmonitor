@@ -639,18 +639,15 @@ async function fetchACLEDEvents(): Promise<Array<{ country: string; event_type: 
     };
   };
 
-  // Surface the silent missing-auth/empty case: fetchAcledCached returns [] when
-  // ACLED auth is unconfigured (getAcledAccessToken → null) or the API fails.
-  // With active conflicts ACLED normally returns thousands of events, so 0 from
-  // BOTH windows means the conflict realtime signal is dark — CII then relies on
-  // UCDP alone, which (being an annual release) can fall outside the 2-year
-  // conflict-recency window and flip /api/health.riskScores to COVERAGE_PARTIAL.
-  // Without this line the gap is undiagnosable.
+  // Surface the otherwise-silent empty case. fetchAcledCached returns [] both
+  // when ACLED auth is unconfigured (getAcledAccessToken → null) AND on upstream
+  // failure (API error, rate-limit, timeout). With active conflicts ACLED returns
+  // thousands of events, so 0 from BOTH windows means the conflict realtime signal
+  // is dark — CII then relies on UCDP alone, which (an annual release) can fall
+  // outside the 2-year recency window and flip /api/health.riskScores to
+  // COVERAGE_PARTIAL. The message names both causes so an operator doesn't chase a
+  // phantom auth problem during an ACLED outage.
   if (recent.length === 0 && older.length === 0) {
-    // 0 events means EITHER ACLED auth is unconfigured (getAcledAccessToken →
-    // null) OR an upstream failure (API error, rate-limit, timeout) — both make
-    // fetchAcledCached return []. Name both so an operator doesn't chase a
-    // phantom auth problem during an ACLED outage.
     console.warn(
       '[CII] ACLED returned 0 events for both windows — if auth is unconfigured set ACLED_EMAIL/ACLED_PASSWORD (or ACLED_ACCESS_TOKEN) on the api project, else check for an upstream ACLED API error/rate-limit. CII conflict realtime signal-density coverage is falling back to UCDP only.',
     );

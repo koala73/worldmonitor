@@ -1546,12 +1546,12 @@ const UCDP_POLL_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const UCDP_TTL_SECONDS = 86400; // 24h safety net
 const UCDP_VIOLENCE_TYPE_MAP = { 1: 'UCDP_VIOLENCE_TYPE_STATE_BASED', 2: 'UCDP_VIOLENCE_TYPE_NON_STATE', 3: 'UCDP_VIOLENCE_TYPE_ONE_SIDED' };
 
-function ucdpFetchPage(version, page) {
+function ucdpFetchPage(version, page, timeoutMs = 30000) {
   return new Promise((resolve, reject) => {
     const pageUrl = new URL(`https://ucdpapi.pcr.uu.se/api/gedevents/${version}?pagesize=${UCDP_PAGE_SIZE}&page=${page}`);
     const headers = { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' };
     if (UCDP_ACCESS_TOKEN) headers['x-ucdp-access-token'] = UCDP_ACCESS_TOKEN;
-    const req = https.request(pageUrl, { method: 'GET', headers, timeout: 30000 }, (resp) => {
+    const req = https.request(pageUrl, { method: 'GET', headers, timeout: timeoutMs }, (resp) => {
       if (resp.statusCode === 401 || resp.statusCode === 403) {
         resp.resume();
         return reject(new Error(`UCDP ${version} page ${page}: HTTP ${resp.statusCode} — API token required (set UCDP_ACCESS_TOKEN env var)`));
@@ -1595,14 +1595,17 @@ async function ucdpDiscoverVersion() {
   const year = new Date().getFullYear() - 2000;
   const candidates = [...new Set([`${year}.1`, `${year - 1}.1`, '25.1', '24.1'])];
   // Probe ALL candidates, then prefer the NEWEST version that returned events.
-  // Each ucdpFetchPage has a 30s timeout, so a broken/slow version can't hang the
-  // batch — allSettled waits at most one timeout. Promise.any (first-responder)
-  // used to win here, which let an OLDER release that merely replied faster win:
-  // it froze conflict:ucdp-events:v1 at v24.1 (2023 data, 889 days old) while
-  // v25.1 was available, dropping every event outside the CII 2-year conflict
-  // recency window and flipping /api/health.riskScores to COVERAGE_PARTIAL.
+  // Promise.any (first-responder) used to win here, which let an OLDER release
+  // that merely replied faster win: it froze conflict:ucdp-events:v1 at v24.1
+  // (2023 data, 889 days old) while v25.1 was available, dropping every event
+  // outside the CII 2-year conflict recency window and flipping
+  // /api/health.riskScores to COVERAGE_PARTIAL. allSettled waits for the slowest
+  // candidate, so the discovery probe uses a tighter 15s timeout (vs the 30s
+  // full-page default) — a non-existent version that hangs can't stall the
+  // 6h seed for 30s, while one page is comfortably fetchable in 15s.
+  const DISCOVER_TIMEOUT_MS = 15000;
   const settled = await Promise.allSettled(candidates.map(async (v) => {
-    const p0 = await ucdpFetchPage(v, 0);
+    const p0 = await ucdpFetchPage(v, 0, DISCOVER_TIMEOUT_MS);
     if (!Array.isArray(p0?.Result) || p0.Result.length === 0) throw new Error(`${v}: no results`);
     return { version: v, page0: p0 };
   }));
