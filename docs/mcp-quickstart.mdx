@@ -10,7 +10,7 @@ WorldMonitor exposes 39 live tools — markets, conflict events, maritime chokep
 Free accounts can't reach the MCP server — the OAuth flow returns `401 INSUFFICIENT_TIER`. You need one of:
 
 - **Pro** — sign in with your WorldMonitor account, no key to manage. 50 quota-consuming calls per UTC day.
-- **API Starter / Business / Enterprise** — paste a `wm_live_…` key in your client, or use the same OAuth flow as Pro. 1,000 / 10,000 / unlimited calls per day.
+- **API Starter / Business / Enterprise** — paste a user-issued `wm_…` key in your client, or use the same OAuth flow as Pro. 1,000 / 10,000 / unlimited calls per day.
 
 Upgrade or generate a key at [worldmonitor.app/pro](https://www.worldmonitor.app/pro). The rest of this guide assumes Claude Desktop + OAuth (the simplest path); if you'd rather paste a `wm_…` key into a `curl` script, jump to [Server-side curl](#server-side-curl) at the bottom.
 
@@ -115,7 +115,7 @@ The MCP handshake is invisible from the chat side, but here's the sequence so yo
 If you'd rather skip the OAuth dance and drive MCP from a script:
 
 ```bash
-export WM_KEY="wm_live_..."  # API Starter+ key from worldmonitor.app/settings
+export WM_KEY="wm_0123456789abcdef0123456789abcdef01234567"  # API Starter+ key from worldmonitor.app/settings
 
 # 1. List tools (compressed descriptions)
 curl -s https://worldmonitor.app/mcp \
@@ -153,14 +153,14 @@ curl -s https://worldmonitor.app/mcp \
 EOF
 ```
 
-The `wm_live_…` key goes in `X-WorldMonitor-Key`, **not** as a `Bearer` token — sending it as a bearer fails OAuth resolution and returns `401 invalid_token`. If you already have an OAuth access token from `/api/oauth/token`, use `Authorization: Bearer $TOKEN` instead and drop the `X-WorldMonitor-Key` header.
+The `wm_…` user key goes in `X-WorldMonitor-Key`, **not** as a `Bearer` token — sending it as a bearer fails OAuth resolution and returns `401 invalid_token`. If you already have an OAuth access token from `/api/oauth/token`, use `Authorization: Bearer $TOKEN` instead and drop the `X-WorldMonitor-Key` header.
 
 ## Where to go next
 
 - **[JMESPath guide](/mcp-jmespath)** — projection grammar with 12 worked examples against real response shapes. Read this before your second day of MCP use; it will pay for itself in saved tokens within an hour.
 - **[MCP Tools Reference](/mcp-tools-reference)** — per-tool parameters, freshness budgets, API endpoint mapping, and `curl` examples for every tool.
 - **[MCP Server reference](/mcp-server)** — auth modes, OAuth setup, plans & quotas, error codes, and freshness model.
-- **[Authentication overview](/authentication)** — when to use a `wm_live_…` key vs. OAuth vs. browser session.
+- **[Authentication overview](/authentication)** — when to use a `wm_…` user key vs. OAuth vs. browser session.
 
 ## Operational note (for ops, not callers)
 
