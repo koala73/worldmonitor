@@ -418,10 +418,11 @@ export class ForecastPanel extends Panel {
 
   private renderSourceNotice(): string {
     if (!this.sourceState.degraded && !this.sourceState.stale) return '';
+    const errorDetail = this.sourceState.degraded ? '' : this.sourceState.error.replace(/_/g, ' ');
     const parts = [
       this.sourceState.degraded ? 'Forecast source degraded' : '',
       this.sourceState.stale ? 'stale cache' : '',
-      !this.sourceState.degraded && this.sourceState.error ? this.sourceState.error.replace(/_/g, ' ') : '',
+      errorDetail,
     ].filter(Boolean);
     return `<div class="fc-source-notice">${escapeHtml(parts.join(' · '))}</div>`;
   }

@@ -25,6 +25,13 @@ describe('forecast integrity and provenance surfaces', () => {
     assert.match(handler, /error:\s*'forecast_backend_unavailable'/);
   });
 
+  it('does not repeat backend-unavailable detail in degraded forecast notices', () => {
+    const src = read('src/components/ForecastPanel.ts');
+
+    assert.match(src, /const errorDetail = this\.sourceState\.degraded \? '' : this\.sourceState\.error\.replace/);
+    assert.doesNotMatch(src, /this\.sourceState\.error \? this\.sourceState\.error\.replace/);
+  });
+
   it('documents market calibration limits and projection clamp heuristics', () => {
     const docs = read('docs/panels/forecast.mdx');
     const seeder = read('scripts/seed-forecasts.mjs');
