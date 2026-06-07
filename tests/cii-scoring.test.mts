@@ -1789,6 +1789,61 @@ describe('CII scoring', () => {
       `methodology doc must mention current CII_FORMULA_VERSION '${CII_FORMULA_VERSION}' — bump the version and update the doc together.`);
   });
 
+  it('methodology doc discloses advisory fallback and CII attribution caveats', () => {
+    const methodologyDoc = readRepoFile('docs/methodology/cii-risk-scores.mdx');
+    const overviewDoc = readRepoFile('docs/country-instability-index.mdx');
+    const dataSourcesDoc = readRepoFile('docs/data-sources.mdx');
+    const riskScoresSource = readRepoFile('server/worldmonitor/intelligence/v1/get-risk-scores.ts');
+    const fallbackBlock = riskScoresSource.match(/const ADVISORY_LEVELS_FALLBACK[\s\S]*?\};/)?.[0] ?? '';
+    assert.ok(fallbackBlock, 'get-risk-scores.ts must keep the advisory fallback table inspectable.');
+
+    const fallbackRows = [...fallbackBlock.matchAll(/\b([A-Z]{2}): '([^']+)'/g)]
+      .map((match) => ({ code: match[1]!, level: match[2]! }));
+    assert.equal(fallbackRows.length, 15, 'advisory fallback table size changed; update methodology disclosure.');
+
+    for (const { code, level } of fallbackRows) {
+      const label = level === 'do-not-travel' ? 'Do not travel'
+        : level === 'reconsider' ? 'Reconsider'
+        : 'Caution';
+      assert.match(
+        methodologyDoc,
+        new RegExp(`^\\| \`${code}\` \\| [^|]+ \\| ${label} \\|`, 'm'),
+        `cii-risk-scores.mdx must disclose fallback advisory level for ${code}.`,
+      );
+    }
+
+    assert.match(
+      methodologyDoc,
+      /live security-advisory feed[\s\S]{0,160}fallback/i,
+      'methodology doc must state that live advisory data wins before fallback.',
+    );
+    assert.match(
+      dataSourcesDoc,
+      /Live advisory feed values override the fallback/i,
+      'data-sources doc must state that CII advisory fallback does not override live feed values.',
+    );
+    assert.doesNotMatch(
+      dataSourcesDoc,
+      /consensus bonus/i,
+      'data-sources doc must not preserve the retired server-side consensus bonus claim.',
+    );
+    assert.match(
+      methodologyDoc,
+      /`gaza`[\s\S]{0,120}IL/i,
+      'methodology doc must disclose that Gaza text fallback routes to IL.',
+    );
+    assert.match(
+      methodologyDoc,
+      /min\(50, iranStrikes \* 3 \+ highSeverityStrikes \* 5\)/,
+      'methodology doc must disclose the Iran-region strike boost formula.',
+    );
+    assert.match(
+      overviewDoc,
+      /Tier-1 membership is curated rather than algorithmic/i,
+      'country-instability overview must disclose Tier-1 inclusion criteria.',
+    );
+  });
+
   it('public CII docs reference the current RPC route and backend-authoritative v3 conflict curve', () => {
     const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
     const methodologyDoc = readFileSync(resolve(root, 'docs', 'methodology', 'cii-risk-scores.mdx'), 'utf8');

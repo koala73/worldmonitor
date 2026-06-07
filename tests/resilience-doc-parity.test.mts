@@ -38,6 +38,7 @@ import {
 import {
   RESILIENCE_DIMENSION_ORDER,
   RESILIENCE_DIMENSION_DOMAINS,
+  RESILIENCE_DIMENSION_WEIGHTS,
   RESILIENCE_DOMAIN_ORDER,
   RESILIENCE_RETIRED_DIMENSIONS,
   type ResilienceDomainId,
@@ -45,9 +46,14 @@ import {
   getResilienceDomainWeight,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
 import {
+  PILLAR_DOMAINS,
   PILLAR_ORDER,
   PILLAR_WEIGHTS,
 } from '../server/worldmonitor/resilience/v1/_pillar-membership.ts';
+import {
+  COUNTRY_LANGUAGE_TIER,
+  LANGUAGE_TIERS,
+} from '../server/worldmonitor/resilience/v1/_language-coverage.ts';
 import {
   INDICATOR_REGISTRY,
 } from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
@@ -82,6 +88,7 @@ const RESILIENCE_OPENAPI_JSON_PATH = resolve(here, '../docs/api/ResilienceServic
 const BUNDLED_OPENAPI_YAML_PATH = resolve(here, '../docs/api/worldmonitor.openapi.yaml');
 const docText = readFileSync(DOC_PATH, 'utf8');
 const sharedText = readFileSync(resolve(here, '../server/worldmonitor/resilience/v1/_shared.ts'), 'utf8');
+const dimensionScorerText = readFileSync(resolve(here, '../server/worldmonitor/resilience/v1/_dimension-scorers.ts'), 'utf8');
 const indicatorSourceCatalogText = readFileSync(INDICATOR_SOURCE_CATALOG_PATH, 'utf8');
 const seedScoreScriptText = readFileSync(SEED_SCORE_SCRIPT_PATH, 'utf8');
 const staticSeedScriptText = readFileSync(STATIC_SEED_SCRIPT_PATH, 'utf8');
@@ -1083,6 +1090,89 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
         `${surface.label} (${surface.path}) must list pillar ids in PILLAR_ORDER.`,
       );
     }
+  });
+
+  it('methodology doc publishes active pillar membership from _pillar-membership.ts', () => {
+    for (const pillarId of PILLAR_ORDER) {
+      const memberDomains = PILLAR_DOMAINS[pillarId];
+      const rowRe = new RegExp(
+        `^\\| \`${escapeRegex(pillarId)}\` \\| ${PILLAR_WEIGHTS[pillarId].toFixed(2)} \\| ([^\\n]+) \\|$`,
+        'm',
+      );
+      const match = docText.match(rowRe);
+      assert.ok(match, `methodology doc must publish pillar row for ${pillarId}.`);
+      const row = match[1]!;
+      for (const domainId of memberDomains) {
+        assert.match(
+          row,
+          new RegExp(`\`${escapeRegex(domainId)}\``),
+          `methodology doc pillar row ${pillarId} must include member domain ${domainId}.`,
+        );
+      }
+    }
+  });
+
+  it('methodology doc publishes economic split weights and financial-system flag default', () => {
+    const economicDimensions: ResilienceDimensionId[] = [
+      'macroFiscal',
+      'currencyExternal',
+      'tradePolicy',
+      'financialSystemExposure',
+    ];
+    for (const dimensionId of economicDimensions) {
+      assert.match(
+        docText,
+        new RegExp(`^\\| \`${dimensionId}\` \\| ${RESILIENCE_DIMENSION_WEIGHTS[dimensionId].toFixed(1)} \\|`, 'm'),
+        `methodology doc must publish economic dimension weight for ${dimensionId}.`,
+      );
+    }
+    assert.equal(RESILIENCE_DIMENSION_WEIGHTS.tradePolicy, 0.5);
+    assert.equal(RESILIENCE_DIMENSION_WEIGHTS.financialSystemExposure, 0.5);
+    assert.match(
+      dimensionScorerText,
+      /process\.env\.RESILIENCE_FIN_SYS_EXPOSURE_ENABLED \?\? 'false'/,
+      'financialSystemExposure scorer must still default the flag off.',
+    );
+    assert.match(
+      docText,
+      /`RESILIENCE_FIN_SYS_EXPOSURE_ENABLED`\s+defaults to `false`/,
+      'methodology doc must disclose that financialSystemExposure defaults off.',
+    );
+    assert.match(
+      docText,
+      /`score=0`, `coverage=0`, `observedWeight=0`, `imputedWeight=0`,\s+`imputationClass=null`/,
+      'methodology doc must disclose the dark-by-default empty-data shape.',
+    );
+  });
+
+  it('methodology doc publishes language coverage tiers from _language-coverage.ts', () => {
+    for (const [tier, multiplier] of Object.entries(LANGUAGE_TIERS)) {
+      assert.match(
+        docText,
+        new RegExp(`^\\| \`${tier}\` \\| ${multiplier.toFixed(1)} \\|`, 'm'),
+        `methodology doc must publish language tier ${tier} with multiplier ${multiplier}.`,
+      );
+    }
+
+    for (const [countryCode, tier] of Object.entries(COUNTRY_LANGUAGE_TIER)) {
+      const tierRow = docText.match(new RegExp(`^\\| \`${tier}\` \\| [^|]+ \\| ([^\\n]+) \\|$`, 'm'))?.[1] ?? '';
+      assert.match(
+        tierRow,
+        new RegExp(`(?:^|, )${countryCode}(?:,|$| )`),
+        `methodology doc language tier ${tier} must list ${countryCode}.`,
+      );
+    }
+
+    assert.match(
+      docText,
+      /Unlisted countries default to the `minimal` tier/,
+      'methodology doc must disclose the minimal-tier default for unlisted countries.',
+    );
+    assert.match(
+      docText,
+      /`socialVelocity` and `newsThreatScore`[\s\S]{0,220}multiplied by the\s+country's language-coverage tier/,
+      'methodology doc must explain that language coverage attenuates weights, not raw signal values.',
+    );
   });
 
   it('static resilience seed-meta TTL in Redis key table matches seed script and health threshold', () => {

@@ -170,6 +170,13 @@ Component details that are easy to miss:
 - **Conflict civilian boost**: violence-against-civilians events add
   `min(10, civilianViolence * 3)` after the log-scaled conflict activity and
   fatality terms.
+- **Iran-region strike boost**: geocoded Iran-event strikes, or title/location
+  fallback matches from the same feed, add
+  `min(50, iranStrikes * 3 + highSeverityStrikes * 5)` inside the Conflict
+  component. High and critical severity strikes therefore count twice: once in
+  the per-strike term and once in the high-severity term. This feed is a
+  theatre-intensity input, not a full armed-conflict casualty source; ACLED and
+  UCDP remain the general conflict anchors.
 - **Conflict OREF boost**: for Israel only, active OREF rocket-alert pressure
   adds `25 + min(25, activeAlertCount * 5)` inside the Conflict component, so
   the component-level OREF contribution is capped at `+50`. This is separate
@@ -188,6 +195,47 @@ Component details that are easy to miss:
   conflict-level event is active, else 0.
 - **State Department advisory floor**: 60 for "do not travel", 50 for
   "reconsider travel", else 0.
+
+### Advisory fallback table
+
+When the live security-advisory feed has no current level for a Tier-1 country,
+the scorer applies a curated fallback level before computing both
+`advisoryBoost` and the advisory score floor. Live feed data wins whenever it is
+present; the fallback is not an additional consensus bonus.
+
+| Code | Country | Fallback level | Score effect when live level is absent |
+|---|---|---|---|
+| `AF` | Afghanistan | Do not travel | `advisoryBoost +15`; floor `60` |
+| `MM` | Myanmar | Do not travel | `advisoryBoost +15`; floor `60` |
+| `SY` | Syria | Do not travel | `advisoryBoost +15`; floor `60` |
+| `UA` | Ukraine | Do not travel | `advisoryBoost +15`; floor `60` |
+| `YE` | Yemen | Do not travel | `advisoryBoost +15`; floor `60` |
+| `CU` | Cuba | Reconsider | `advisoryBoost +10`; floor `50` |
+| `IL` | Israel | Reconsider | `advisoryBoost +10`; floor `50` |
+| `IQ` | Iraq | Reconsider | `advisoryBoost +10`; floor `50` |
+| `IR` | Iran | Reconsider | `advisoryBoost +10`; floor `50` |
+| `LB` | Lebanon | Reconsider | `advisoryBoost +10`; floor `50` |
+| `MX` | Mexico | Reconsider | `advisoryBoost +10`; floor `50` |
+| `PK` | Pakistan | Reconsider | `advisoryBoost +10`; floor `50` |
+| `VE` | Venezuela | Reconsider | `advisoryBoost +10`; floor `50` |
+| `RU` | Russia | Caution | `advisoryBoost +5`; no advisory floor |
+| `TR` | Turkey | Caution | `advisoryBoost +5`; no advisory floor |
+
+Rationale: these defaults cover Tier-1 countries where a missing or delayed
+advisory seed would otherwise make known high-risk theatres look artificially
+calm. Because the table is score-shifting editorial policy, adding, removing,
+or re-leveling a country is a formula-versioned methodology change.
+
+### Text attribution caveat
+
+Country text fallback uses curated aliases after structured country codes and
+coordinates fail. The current Israel alias set includes `gaza`, so an otherwise
+unattributed headline or strike-location text mentioning Gaza is routed to IL
+for CII scoring. This is an operational limitation of the 31-country Tier-1 CII
+surface: CII does not currently publish a separate Gaza/Palestinian-territories
+country score, and readers should treat those Israel-attributed text-fallback
+signals as Israel/Gaza-theatre pressure rather than a claim that the event
+occurred inside internationally recognized Israeli territory.
 
 The `dynamicScore` exposed on the wire is the signed score movement versus a
 valid CII snapshot from approximately 24 hours earlier. Positive values mean
@@ -209,6 +257,15 @@ frontend client-side CII rendering. The source of truth is
 [`shared/cii-weights.ts`](../../shared/cii-weights.ts); server and frontend
 tables derive from that module so coefficient drift fails in tests instead of
 shipping silently.
+
+The Tier-1 country set is a curated monitoring universe, not an automatic
+ranking of all sovereign states. Countries enter the set when they satisfy at
+least one of these editorial criteria: sustained global-risk relevance,
+active/recent armed conflict or severe domestic instability, high-impact
+regional escalation potential, major economic/security-system importance, or
+specific operational coverage needs in the dashboard. The set is intentionally
+small so CII remains a high-frequency triage surface; CRI covers the broader
+196-country rankable universe.
 
 | Code | Country | `baselineRisk` | `eventMultiplier` |
 |------|---------|---------------:|------------------:|

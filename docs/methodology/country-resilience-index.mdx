@@ -70,11 +70,32 @@ Weights sum to 1.00. The authoritative values live in `RESILIENCE_DOMAIN_WEIGHTS
 
 The 6 domains are regrouped into 3 pillars (structural-readiness, live-shock-exposure, recovery-capacity) with weights 0.40 / 0.35 / 0.25 for the Phase 2 pillar-combined score. The pillar shape is emitted today on every response (`schemaVersion="2.0"`, `pillars[]` populated with real domain-weighted, coverage-scaled scores). The top-level `overallScore` is computed by `_shared.ts#penalizedPillarScore`: the weighted pillar mean multiplied by the min-pillar penalty factor `(1 - 0.5 * (1 - min_pillar / 100))`.
 
+| Pillar | Weight | Member domains |
+|---|---:|---|
+| `structural-readiness` | 0.40 | `economic`, `social-governance` |
+| `live-shock-exposure` | 0.35 | `infrastructure`, `energy`, `health-food` |
+| `recovery-capacity` | 0.25 | `recovery` |
+
 ## Dimensions and Indicators
 
 Each dimension is scored from 0-100 using a weighted blend of its sub-metrics. Below is the complete indicator registry.
 
 ### Economic Domain (weight 0.17)
+
+The Economic domain has four active dimensions. `macroFiscal` and
+`currencyExternal` carry the default per-dimension weight `1.0`.
+`tradePolicy` and `financialSystemExposure` each carry weight `0.5`, splitting
+the Phase 2 trade-and-financial-exposure design space so tariff-policy friction
+and cross-border financial-system exposure do not each claim a full equal-share
+slot. With all four economic dimensions at full coverage, their economic-domain
+shares are approximately 33.3%, 33.3%, 16.7%, and 16.7%.
+
+| Dimension | Weight | Share at full coverage |
+|---|---:|---:|
+| `macroFiscal` | 1.0 | 33.3% |
+| `currencyExternal` | 1.0 | 33.3% |
+| `tradePolicy` | 0.5 | 16.7% |
+| `financialSystemExposure` | 0.5 | 16.7% |
 
 #### Macro-Fiscal
 
@@ -127,7 +148,21 @@ weight categorization, transit-hub exclusion lists), see
 
 Added in plan 2026-04-25-004 Phase 2 (Ship 2). Replaces the dropped OFAC-domicile signal (Phase 1) with a structural-exposure construct built from audited cross-border banking + AML/CFT data. Where the OFAC count conflated transit-hub corporate domicile with host-country risk (penalizing financial centers like UAE / Singapore / Hong Kong for shell-entity behavior), this dimension uses sources that measure actual sovereign vulnerability: short-term external debt overhang, concentrated cross-border banking exposure, and AML/CFT compliance status.
 
-The dimension uses a **fail-closed preflight** pattern (mirrors `scoreEnergy` v2): all 3 required seed envelopes (`economic:wb-external-debt:v1`, `economic:bis-lbs:v1`, `economic:fatf-listing:v1`) MUST be reachable. Missing seed-meta indicates a Railway bundle outage and surfaces as `imputationClass='source-failure'` rather than silently zeroing the dim. Per-country data gaps are distinct: per-component reads return null and the slot drops out of the weighted blend.
+The dimension is currently flag-gated. `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED`
+defaults to `false`; when the flag is off, the scorer returns the empty-data
+shape (`score=0`, `coverage=0`, `observedWeight=0`, `imputedWeight=0`,
+`imputationClass=null`) and the dimension contributes no signal through the
+coverage-weighted economic-domain mean. This dark default is intentional until
+the BIS LBS, FATF listing, and WB external-debt seeders are provisioned and
+healthy in production.
+
+When the flag is on, the dimension uses a **fail-closed preflight** pattern
+(mirrors `scoreEnergy` v2): all 3 required seed envelopes
+(`economic:wb-external-debt:v1`, `economic:bis-lbs:v1`,
+`economic:fatf-listing:v1`) MUST be reachable. Missing seed-meta indicates a
+Railway bundle outage and surfaces as `imputationClass='source-failure'` rather
+than silently zeroing the dim. Per-country data gaps are distinct:
+per-component reads return null and the slot drops out of the weighted blend.
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
@@ -281,6 +316,20 @@ relabeling is tracked in #3737.
 | rsfPressFreedom | RSF press freedom score | Lower is better | 100 - 0 | 0.55 | RSF | Annual |
 | socialVelocity | Reddit social velocity (log10(velocity+1)) | Lower is better | 3 - 0 | 0.15 | Reddit intelligence | Hourly relay (freshness budget: 180 min) |
 | newsThreatScore | AI news threat severity (critical 4x, high 2x, medium 1x, low 0.5x) | Lower is better | 20 - 0 | 0.30 | News threat analysis | Daily |
+
+**Language-coverage weighting.** `socialVelocity` and `newsThreatScore` are
+English-source-sensitive signals, so their score weights are multiplied by the
+country's language-coverage tier. The raw signal values are not divided or
+amplified. Lower-coverage countries therefore lean more heavily on the static
+RSF press-freedom signal while preserving nominal coverage math for the
+dimension. Unlisted countries default to the `minimal` tier.
+
+| Tier | Multiplier | Countries |
+|---|---:|---|
+| `primary` | 1.0 | AU, CA, GB, IE, NZ, SG, US |
+| `secondary` | 0.7 | AE, BB, BD, BH, BW, CM, CY, ET, FJ, GH, GM, GY, HK, IL, IN, JM, JO, KE, KH, KW, LK, LR, LS, MT, MW, MY, MM, MZ, NA, NG, NP, PG, PH, PK, QA, RW, SL, SZ, TT, TZ, UG, WS, ZA, ZM, ZW |
+| `limited` | 0.4 | AM, AR, AT, AZ, BE, BG, BR, BY, CH, CL, CN, CO, CZ, DE, DK, DZ, EC, EE, EG, ES, FI, FR, GE, GR, HR, HU, ID, IQ, IR, IT, JP, KR, KZ, LB, LT, LV, MA, MX, NL, NO, PE, PL, PT, RO, RS, RU, SA, SE, SI, SK, TH, TN, TR, TW, UA, UZ, VE, VN |
+| `minimal` | 0.2 | Default for any country not listed above |
 
 ### Health & Food Domain (weight 0.13)
 
@@ -528,7 +577,7 @@ When data is absent, the system tags it with one of four classes so downstream c
 | Class | Meaning | Typical score | Certainty | Example sources |
 |---|---|---:|---:|---|
 | `stable-absence` | The source publishes globally. Country is not listed, which means the tracked phenomenon is not happening. Strong positive signal. | 85 to 88 | 0.6 to 0.7 | IPC food crisis, UNHCR displacement, UCDP conflict events |
-| `unmonitored` | The source is a curated list that may not cover every country. Absence is ambiguous; penalized conservatively. | 50 to 60 | 0.3 to 0.4 | BIS exchange rates and credit, WTO trade data, OECD ICU capacity |
+| `unmonitored` | The source is a curated list that may not cover every country. Absence is ambiguous; penalized conservatively. | 50 to 60 | 0.3 to 0.4 | BIS / WTO / FATF curated feeds and other partial-coverage enrichments |
 | `source-failure` | The upstream API was unavailable at seed time. Detected from `seed-meta` `failedDatasets`. Should be rare and transient. | inherits from the source being substituted | 0.3 to 0.5 | any source listed in `failedDatasets` during a seed run |
 | `not-applicable` | The dimension is structurally N/A for this country (the construct does not apply). The scorer emits `score=0, coverage=0, observedWeight=0, imputedWeight=0` so the dim contributes zero weight to the domain coverage-weighted mean and is filtered from user-facing low-confidence and overall-coverage signals on both server and client. The dim is excluded ONLY when it appears in `RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE` AND the triple-zero Path-3 fingerprint matches; a real data outage on a country that DOES carry the construct (`coverage=0` with `observedWeight>0`) still drags confidence so an operator notices. | 0 (by definition) | 0 (by definition) | `sovereignFiscalBuffer` for non-SWF countries (plan 2026-04-26-001 §U3 + review fixup) |
 
@@ -541,7 +590,7 @@ The generic imputation entries are declared in the `IMPUTATION` table and shared
 | `ipcFood` (food-specific crisis monitoring) | `stable-absence` | 88 | 0.7 | Slightly higher score because no IPC data strongly implies food security |
 | `wtoData` (trade-specific curated list) | `unmonitored` | 60 | 0.4 | Slightly higher than the generic curated list default |
 | `unhcrDisplacement` (displacement-specific crisis monitoring) | `stable-absence` | 85 | 0.6 | Lower certainty than IPC because displacement is noisier |
-| `bisEer` and `bisCredit` | `unmonitored` | 50 | 0.3 | Shared reference to `curated_list_absent`; same tag |
+| `bisEer` / `bisCredit` legacy fallbacks | `unmonitored` | 50 | 0.3 | Shared reference to `curated_list_absent`; retained for rollback and sparse-coverage compatibility paths |
 | Runtime `failedDatasets` re-tag | `source-failure` | preserves substituted score | preserves substituted certainty | Applied at score aggregation time when `seed-meta:resilience:static.failedDatasets` lists the adapter behind an otherwise-imputed dimension |
 
 The `source-failure` class is applied by the runtime scoring path: the aggregation pass reads `seed-meta:resilience:static.failedDatasets` through `_source-failure.ts` and re-tags affected imputed dimensions as `source-failure` when the underlying seed adapter failed. This keeps a country-level absence signal distinct from an upstream-source outage. The `not-applicable` class is emitted by `scoreSovereignFiscalBuffer` Path 3 (plan 2026-04-26-001 §U3 + review fixup): when the SWF manifest payload is present but the country is absent from it, the scorer returns `score=0, coverage=0, observedWeight=0, imputedWeight=0, imputationClass='not-applicable'`. The `RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE` set in `_dimension-scorers.ts` enumerates which dimensions can emit this class, and `isExcludedFromConfidenceMean` is the single-source helper used by both server-side coverage means and the client widget — keeping cross-surface filter parity (server `overallCoverage` and widget "Coverage X% ✓" string match for non-SWF advanced economies). New dimensions that need structural N/A handling can opt in by adding their id to `RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE` and following the 6-site lockstep recipe documented in the project memory.
@@ -566,14 +615,14 @@ The API response includes `imputationShare` (0.0-1.0), representing the fraction
 | Source | Indicators | Cadence | Scope |
 |---|---|---|---|
 | IMF (WEO/IFS) | Government revenue, current account, inflation | Annual | Global |
-| World Bank (WDI) | Electricity access, paved roads, reserves, tariffs, electricity consumption | Annual | Global |
+| World Bank (WDI) | Electricity access, paved roads, reserves, tariffs, low-carbon generation components, power losses | Annual | Global |
 | World Bank (WGI) | 6 governance indicators | Annual | Global |
-| BIS | Real effective exchange rates | Monthly | ~60 countries |
+| BIS | Locational Banking Statistics for `financialSystemExposure`; REER remains experimental enrichment / rollback support | Quarterly / monthly | LBS broad coverage; REER ~60 countries |
 | WTO | Trade restrictions, trade barriers | Weekly | ~50 reporters |
 | WHO | UHC index, measles coverage, hospital beds | Annual | Global |
 | FAO (IPC) | People in food crisis, crisis phase | Annual | Affected countries |
 | FAO (AQUASTAT) | Water stress, water availability | Annual | Global |
-| IEA | Energy import dependency | Annual | Global |
+| IEA / national energy balance inputs | Net energy import dependency used inside `importedFossilDependence`; legacy standalone energy-import-dependency path is rollback only | Annual | Global |
 | IEP | Global Peace Index | Annual | Global |
 | RSF | Press freedom score | Annual | Global |
 | UNHCR | Displaced persons, hosted refugees | Annual | Affected countries |
@@ -746,7 +795,7 @@ Self-assessed against the standard composite-indicator review axes on a 0-10 sca
 - **T2.5** (#2986): Outcome backtest framework covering 7 event families (FX stress, sovereign stress, power outages, food-crisis escalation, refugee surges, sanctions shocks, conflict spillover). Each family has a binary event definition, a 2024-2025 hold-out window, an AUC target of 0.75, and a 0.03 gate width for release decisions. Four families currently use frozen independently sourced 2024-2025 reference sets (FX stress, sovereign stress, power outages, sanctions shocks); three read live Redis seed outputs (food-crisis escalation, refugee surges, conflict spillover). The committed artifact exposes `dataSource` and `labelSources` per family so this split is auditable.
 - **T2.6/T2.8** (#2991): Sensitivity suite v2 with 4-pass perturbation (weight, goalpost, imputation, alpha), alpha-curve analysis, and ceiling-effect detection. Release gate: no single-axis perturbation moves a top-50 country by more than 5 rank positions; overall dimension failure rate must be 20% or lower.
 - **T2.7** (#2988): Railway cron service wired for weekly benchmark, backtest, and sensitivity runs. Results published to Redis with health monitoring integration. Weekly cron leaves the previous artifact in place on cold-start skips; release regeneration runs the scripts with `--strict` or `RESILIENCE_VALIDATION_STRICT=1` so skipped or failing artifacts block publication.
-- **T2.9** (#2992): Language and source-density normalization for the informationCognitive dimension. RSF press freedom and social velocity scores are weighted by language coverage of the source set to correct for English-press bias. The dimension is promoted back to Core tier after normalization.
+- **T2.9** (#2992): Language and source-density normalization for the informationCognitive dimension. The English-source-sensitive `socialVelocity` and `newsThreatScore` sub-indicator weights are attenuated by the language coverage of the source set so lower-coverage countries lean more heavily on the static RSF press-freedom indicator, which is not language-adjusted. The dimension is promoted back to Core tier after normalization.
 
 **What changed from v1.1**: The five-domain flat structure was extended into a six-domain structure by adding the Recovery domain with six new dimensions, and a three-pillar outer layer groups the six domains into structural readiness (0.40), live shock exposure (0.35), and recovery capacity (0.25). Every response now carries real pillar scores at `pillars[]`. The `schemaVersion` field is `"2.0"` by default (env var `RESILIENCE_SCHEMA_V2_ENABLED=false` provides a rollback path). **The top-level `overall_score` is now the pillar-combined penalized formula**, which reduces compensatory washout by applying the min-pillar penalty to the weighted pillar mean. The cache key is bumped to the current version.
 

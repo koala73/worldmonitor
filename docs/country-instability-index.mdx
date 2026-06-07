@@ -25,6 +25,13 @@ The current Tier-1 set is:
 | **Asia-Pacific** | China, Taiwan, North Korea, India, Pakistan, Myanmar, South Korea, Japan |
 | **Central/South Asia** | Afghanistan |
 
+Tier-1 membership is curated rather than algorithmic. A country is included
+when it has sustained global-risk relevance, active/recent armed conflict or
+severe domestic instability, high regional escalation potential, major
+economic/security-system importance, or a dashboard-specific monitoring need.
+Changes to this set are methodology-significant because the Strategic Risk
+roll-up is computed from the top-scoring countries inside this universe.
+
 ## Score Model
 
 Each country's score combines a static baseline with a dynamic event score:
@@ -69,7 +76,10 @@ arrive outside the base event components:
 | AIS disruptions | 10 | Maritime disruption buckets |
 
 The score floor is the larger of UCDP conflict floors and State Department
-advisory floors:
+advisory floors. When live advisory data is absent, the scorer applies the
+curated fallback levels published in the
+[methodology](/methodology/cii-risk-scores#advisory-fallback-table) before
+calculating the advisory boost and floor.
 
 | Floor | Threshold |
 |-------|----------:|
@@ -95,8 +105,9 @@ news pressure from conflict scoring, applies lower event multipliers and log
 dampening in high-observability countries, and uses conflict/advisory floors
 so active crises do not appear quiet during data gaps.
 
-The editorial rationale and per-country `baselineRisk` / `eventMultiplier`
-values are published in
+The editorial rationale, Tier-1 inclusion criteria, advisory fallback table,
+Gaza text-attribution caveat, and per-country `baselineRisk` /
+`eventMultiplier` values are published in
 [CII Risk Scoring Methodology](/methodology/cii-risk-scores).
 
 ## Server-Side Pre-Computation
