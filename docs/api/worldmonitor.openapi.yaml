@@ -17721,7 +17721,10 @@ components:
                     items:
                         type: string
                         minItems: 1
-                        description: Headlines to summarize (max 8 used).
+                        description: |-
+                            Headlines to summarize. Up to 10 raw headlines are used for request
+                             identity/cache matching; the LLM prompt uses up to 5 unique, non-empty
+                             sanitized headline/body pairs.
                     minItems: 1
                 mode:
                     type: string
@@ -17878,7 +17881,12 @@ components:
                 importanceScore:
                     type: integer
                     format: int32
-                    description: 'Composite importance score (0-100): severity × 55% + source tier × 20% + corroboration × 15% + recency × 10%.'
+                    description: |-
+                        Composite importance score. The base 0-100 score uses severity × 55% +
+                         source tier × 20% + corroboration × 15% + recency × 10%, then may add an
+                         18-point diplomacy/flashpoint boost and 4 points per entity-level
+                         corroborating source, capped at five sources. The final score can exceed
+                         100; with current boosts it is approximately capped at 138.
                 corroborationCount:
                     type: integer
                     format: int32
@@ -17920,7 +17928,9 @@ components:
                     description: Confidence score (0.0 to 1.0).
                 source:
                     type: string
-                    description: Classification source — "keyword", "ml", or "llm".
+                    description: |-
+                        Classification source — "keyword", "keyword-historical-downgrade", or
+                         "llm".
             description: ThreatClassification represents an AI-assessed threat level for a news item.
         worldmonitor_news_v1_StoryMeta:
             type: object

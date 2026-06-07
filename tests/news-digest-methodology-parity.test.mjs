@@ -22,6 +22,10 @@ const digestSrc = readFileSync(
   resolve(repoRoot, 'server/worldmonitor/news/v1/list-feed-digest.ts'),
   'utf8',
 );
+const summarizeSrc = readFileSync(
+  resolve(repoRoot, 'server/worldmonitor/news/v1/summarize-article.ts'),
+  'utf8',
+);
 const cacheKeysSrc = readFileSync(
   resolve(repoRoot, 'server/_shared/cache-keys.ts'),
   'utf8',
@@ -50,6 +54,27 @@ const protoText = readFileSync(
   resolve(repoRoot, 'proto/worldmonitor/news/v1/list_feed_digest.proto'),
   'utf8',
 );
+const newsItemProtoText = readFileSync(
+  resolve(repoRoot, 'proto/worldmonitor/news/v1/news_item.proto'),
+  'utf8',
+);
+const summarizeArticleProtoText = readFileSync(
+  resolve(repoRoot, 'proto/worldmonitor/news/v1/summarize_article.proto'),
+  'utf8',
+);
+const newsServiceOpenApiText = readFileSync(
+  resolve(repoRoot, 'docs/api/NewsService.openapi.json'),
+  'utf8',
+);
+const newsServiceOpenApiYaml = readFileSync(
+  resolve(repoRoot, 'docs/api/NewsService.openapi.yaml'),
+  'utf8',
+);
+const worldmonitorOpenApiYaml = readFileSync(
+  resolve(repoRoot, 'docs/api/worldmonitor.openapi.yaml'),
+  'utf8',
+);
+const newsServiceOpenApi = JSON.parse(newsServiceOpenApiText);
 
 function extractSetLiteralValues(src, constName) {
   const re = new RegExp(
@@ -61,7 +86,7 @@ function extractSetLiteralValues(src, constName) {
 }
 
 function extractFunctionBody(src, functionName) {
-  const re = new RegExp(`function\\s+${functionName}\\s*\\([^)]*\\)\\s*\\{`);
+  const re = new RegExp(`function\\s+${functionName}\\s*\\([^)]*\\)\\s*(?::[^\\{]+)?\\{`);
   const match = src.match(re);
   assert.ok(match?.index !== undefined, `failed to locate function ${functionName}`);
 
@@ -74,6 +99,22 @@ function extractFunctionBody(src, functionName) {
     if (depth === 0) return src.slice(bodyStart, i);
   }
   assert.fail(`failed to parse function body for ${functionName}`);
+}
+
+function extractInterfaceBody(src, interfaceName) {
+  const re = new RegExp(`interface\\s+${interfaceName}\\s*\\{`);
+  const match = src.match(re);
+  assert.ok(match?.index !== undefined, `failed to locate interface ${interfaceName}`);
+
+  let depth = 1;
+  const bodyStart = match.index + match[0].length;
+  for (let i = bodyStart; i < src.length; i++) {
+    const ch = src[i];
+    if (ch === '{') depth++;
+    if (ch === '}') depth--;
+    if (depth === 0) return src.slice(bodyStart, i);
+  }
+  assert.fail(`failed to parse interface body for ${interfaceName}`);
 }
 
 function extractNumberMapLiteral(src, constName) {
@@ -95,6 +136,45 @@ function extractNumericConst(src, constName) {
     : Number(match[1].replace(/_/g, ''));
 }
 
+function extractStringUnionValues(src, propertyName) {
+  const re = new RegExp(`${propertyName}\\s*:\\s*([^;]+);`);
+  const match = src.match(re);
+  assert.ok(match, `failed to locate union property ${propertyName}`);
+  return [...match[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+}
+
+function extractPromptPairLimit(src) {
+  const match = src.match(/nonEmpty\.slice\(0,\s*([0-9]+)\)/);
+  assert.ok(match, 'failed to locate prompt-pair headline limit');
+  return Number(match[1]);
+}
+
+function extractEntityCorroborationCap(src) {
+  const body = extractFunctionBody(src, 'entityCorroborationScore');
+  const match = body.match(/Math\.min\(\s*Math\.max\([^,]+,\s*0\s*\),\s*([0-9]+)\s*\)/);
+  assert.ok(match, 'failed to locate entity corroboration source cap');
+  return Number(match[1]);
+}
+
+function openApiDescription(schemaName, propertyName, nestedPropertyName) {
+  let property = newsServiceOpenApi.components.schemas[schemaName]?.properties?.[propertyName];
+  if (nestedPropertyName) property = property?.items?.properties?.[nestedPropertyName] ?? property?.items;
+  const description = property?.description ?? property?.items?.description;
+  assert.ok(description, `failed to locate ${schemaName}.${propertyName} description`);
+  return description;
+}
+
+function extractYamlSchemaBlock(yamlText, schemaName) {
+  const lines = yamlText.split('\n');
+  const start = lines.findIndex((line) => line === `        ${schemaName}:`);
+  assert.notEqual(start, -1, `failed to locate YAML schema ${schemaName}`);
+
+  const end = lines.findIndex((line, index) =>
+    index > start && /^        \S.*:\s*$/.test(line),
+  );
+  return lines.slice(start, end === -1 ? undefined : end).join('\n');
+}
+
 function assertDocIncludes(value, label) {
   assert.ok(
     docText.includes(String(value)),
@@ -110,6 +190,43 @@ function assertDocMatches(re, label) {
 }
 
 describe('news digest methodology parity', () => {
+  it('keeps SummarizeArticle headline limits aligned across implementation and API docs', () => {
+    const rawHeadlineLimit = extractNumericConst(summarizeSrc, 'MAX_HEADLINES');
+    const promptPairLimit = extractPromptPairLimit(summarizeSrc);
+    assert.equal(rawHeadlineLimit, 10);
+    assert.equal(promptPairLimit, 5);
+
+    const headlineDescription = openApiDescription('SummarizeArticleRequest', 'headlines');
+    const newsServiceRequestYaml = extractYamlSchemaBlock(newsServiceOpenApiYaml, 'SummarizeArticleRequest');
+    const worldmonitorRequestYaml = extractYamlSchemaBlock(
+      worldmonitorOpenApiYaml,
+      'worldmonitor_news_v1_SummarizeArticleRequest',
+    );
+    for (const surface of [
+      summarizeArticleProtoText,
+      headlineDescription,
+      newsServiceRequestYaml,
+      worldmonitorRequestYaml,
+    ]) {
+      assert.ok(
+        surface.includes(`Up to ${rawHeadlineLimit} raw headlines`),
+        'SummarizeArticle docs must document raw headline cache/input limit',
+      );
+      assert.ok(
+        surface.includes(`up to ${promptPairLimit} unique, non-empty`),
+        'SummarizeArticle docs must document prompt-pair limit',
+      );
+      assert.ok(
+        surface.includes('headline/body pairs'),
+        'SummarizeArticle docs must document paired headline/body behavior',
+      );
+      assert.ok(
+        !surface.includes('max 8 used'),
+        'SummarizeArticle docs must not retain the stale max-8 contract',
+      );
+    }
+  });
+
   it('documents the accepted feed digest variants from VALID_VARIANTS', () => {
     const variants = extractSetLiteralValues(digestSrc, 'VALID_VARIANTS');
     assert.deepEqual(variants, ['full', 'tech', 'finance', 'happy', 'commodity']);
@@ -161,6 +278,80 @@ describe('news digest methodology parity', () => {
     for (const [name, value] of Object.entries(severityScores)) {
       assertDocIncludes(`\`${name}\``, `severity label ${name}`);
       assertDocIncludes(`\`${value}\``, `SEVERITY_SCORES.${name}`);
+    }
+  });
+
+  it('documents importance-score boosts in the API contract', () => {
+    const diplomacyBoost = extractNumericConst(digestSrc, 'DIPLOMACY_FLASHPOINT_BOOST');
+    const entityBoost = extractNumericConst(digestSrc, 'ENTITY_CORROBORATION_SCORE_PER_SOURCE');
+    const entityCap = extractEntityCorroborationCap(digestSrc);
+    assert.equal(diplomacyBoost, 18);
+    assert.equal(entityBoost, 4);
+    assert.equal(entityCap, 5);
+    const boostedScoreCap = 100 + diplomacyBoost + entityBoost * entityCap;
+    assert.equal(boostedScoreCap, 138);
+
+    const importanceDescription = openApiDescription('NewsItem', 'importanceScore');
+    const newsServiceNewsItemYaml = extractYamlSchemaBlock(newsServiceOpenApiYaml, 'NewsItem');
+    const worldmonitorNewsItemYaml = extractYamlSchemaBlock(
+      worldmonitorOpenApiYaml,
+      'worldmonitor_news_v1_NewsItem',
+    );
+    for (const surface of [
+      newsItemProtoText,
+      importanceDescription,
+      newsServiceNewsItemYaml,
+      worldmonitorNewsItemYaml,
+    ]) {
+      assert.ok(
+        surface.includes(`${diplomacyBoost}-point diplomacy/flashpoint boost`),
+        'NewsItem.importanceScore docs must document the diplomacy/flashpoint boost',
+      );
+      assert.ok(
+        surface.includes(`${entityBoost} points per entity-level`) &&
+          surface.includes('capped at five sources'),
+        'NewsItem.importanceScore docs must document entity corroboration boost and cap',
+      );
+      assert.ok(
+        surface.includes('final score can exceed') &&
+          surface.includes('100') &&
+          surface.includes(String(boostedScoreCap)),
+        'NewsItem.importanceScore docs must document the boosted final score range',
+      );
+      assert.ok(
+        !surface.includes('Composite importance score (0-100):'),
+        'NewsItem.importanceScore docs must not imply the final score is only the base 0-100 formula',
+      );
+    }
+  });
+
+  it('documents emitted threat classification sources in the API contract', () => {
+    const parsedItemInterface = extractInterfaceBody(digestSrc, 'ParsedItem');
+    const classSources = extractStringUnionValues(parsedItemInterface, 'classSource');
+    assert.deepEqual(classSources, ['keyword', 'keyword-historical-downgrade', 'llm']);
+
+    const sourceDescription = openApiDescription('ThreatClassification', 'source');
+    const newsServiceThreatYaml = extractYamlSchemaBlock(newsServiceOpenApiYaml, 'ThreatClassification');
+    const worldmonitorThreatYaml = extractYamlSchemaBlock(
+      worldmonitorOpenApiYaml,
+      'worldmonitor_news_v1_ThreatClassification',
+    );
+    for (const surface of [
+      newsItemProtoText,
+      sourceDescription,
+      newsServiceThreatYaml,
+      worldmonitorThreatYaml,
+    ]) {
+      for (const classSource of classSources) {
+        assert.ok(
+          surface.includes(`"${classSource}"`),
+          `ThreatClassification.source docs must mention ${classSource}`,
+        );
+      }
+      assert.ok(
+        !surface.includes('"ml"'),
+        'ThreatClassification.source docs must not retain stale ml vocabulary',
+      );
     }
   });
 

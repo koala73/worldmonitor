@@ -30,7 +30,11 @@ message NewsItem {
   worldmonitor.core.v1.GeoCoordinates location = 7;
   // Human-readable location name.
   string location_name = 8;
-  // Composite importance score (0-100): severity × 55% + source tier × 20% + corroboration × 15% + recency × 10%.
+  // Composite importance score. The base 0-100 score uses severity × 55% +
+  // source tier × 20% + corroboration × 15% + recency × 10%, then may add an
+  // 18-point diplomacy/flashpoint boost and 4 points per entity-level
+  // corroborating source, capped at five sources. The final score can exceed
+  // 100; with current boosts it is approximately capped at 138.
   int32 importance_score = 9;
   // Number of distinct sources that reported the same story in this digest cycle.
   int32 corroboration_count = 10;
@@ -81,7 +85,8 @@ message ThreatClassification {
     (buf.validate.field).double.gte = 0,
     (buf.validate.field).double.lte = 1
   ];
-  // Classification source — "keyword", "ml", or "llm".
+  // Classification source — "keyword", "keyword-historical-downgrade", or
+  // "llm".
   string source = 4;
 }
 
