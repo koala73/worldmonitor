@@ -9,6 +9,7 @@ const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 type AdvisoryFeed = {
   name: string;
   sourceCountry: string;
+  sourceCategory: 'travel-advisory' | 'health';
   url: string;
 };
 
@@ -50,9 +51,15 @@ function extractAdvisoryFeeds(): AdvisoryFeed[] {
 
   return [...match[1]!.matchAll(/\{([^{}]+)\}/g)].map((entry) => {
     const objectLiteral = entry[1]!;
+    const sourceCategory = getStringProperty(objectLiteral, 'sourceCategory');
+    assert.ok(
+      sourceCategory === 'travel-advisory' || sourceCategory === 'health',
+      `Expected sourceCategory to be travel-advisory or health: ${objectLiteral}`,
+    );
     return {
       name: getStringProperty(objectLiteral, 'name'),
       sourceCountry: getStringProperty(objectLiteral, 'sourceCountry'),
+      sourceCategory,
       url: getStringProperty(objectLiteral, 'url'),
     };
   });
@@ -60,8 +67,7 @@ function extractAdvisoryFeeds(): AdvisoryFeed[] {
 
 function travelAdvisorySourceCountries(feeds: AdvisoryFeed[]): string[] {
   return [...new Set(feeds
-    .filter((feed) => !['EU', 'INT'].includes(feed.sourceCountry))
-    .filter((feed) => !/^CDC\b/i.test(feed.name))
+    .filter((feed) => feed.sourceCategory === 'travel-advisory')
     .map((feed) => feed.sourceCountry))]
     .sort();
 }
