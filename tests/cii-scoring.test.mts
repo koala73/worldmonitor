@@ -2047,8 +2047,8 @@ describe('CII scoring', () => {
     const proto = readRepoFile('proto/worldmonitor/intelligence/v1/intelligence.proto');
     const protoBlock = proto.match(/message CiiComponents \{[\s\S]*?\n\}/)?.[0] ?? '';
     assert.ok(protoBlock, 'intelligence.proto must define CiiComponents.');
-    assert.ok(protoBlock.includes(expectedGeo));
-    assert.ok(protoBlock.includes(expectedMilitary));
+    assert.ok(protoBlock.includes(expectedGeo), 'intelligence.proto must describe geo_convergence with current ACLED-only sources.');
+    assert.ok(protoBlock.includes(expectedMilitary), 'intelligence.proto must describe military_activity with military vessels.');
     assert.doesNotMatch(protoBlock, staleSourcePattern);
 
     const serviceOpenApi = JSON.parse(readRepoFile('docs/api/IntelligenceService.openapi.json')) as {
