@@ -137,7 +137,7 @@ inputs: CNN_FG, AAII_Bull, AAII_Bear  (AAII is LOW reliability — blocks bots)
 score = (CNN_FG * 0.4) + (AAII_Bull_Percentile * 0.3) + ((100 - AAII_Bear_Percentile) * 0.3)
 
 // Degraded path (AAII unavailable — store aaiBull/aaiBear as null, not 0):
-score = CNN_FG  // 100% weight on CNN F&G; crypto F&G from Redis as secondary signal if CNN also fails
+score = CNN_FG  // 100% weight on CNN F&G; crypto F&G from Redis as secondary signal if CNN also fails; neutral 50 if both are absent
 // aaiBull and aaiBear fields: null (not 0 — zero skews score toward Extreme Fear)
 ```
 
