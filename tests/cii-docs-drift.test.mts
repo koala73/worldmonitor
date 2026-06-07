@@ -6,12 +6,31 @@ import { describe, it } from 'node:test';
 
 const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 
+function findNextMarkdownHeadingOffset(text: string, start: number): number {
+  const remainder = text.slice(start);
+  const lines = remainder.split('\n');
+  let offset = 0;
+  let inFence = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (/^\s*(?:```|~~~)/.test(line)) {
+      inFence = !inFence;
+    } else if (!inFence && /^#{1,3} /.test(line)) {
+      return offset;
+    }
+    offset += line.length + (i < lines.length - 1 ? 1 : 0);
+  }
+
+  return -1;
+}
+
 function markdownSection(text: string, heading: string): string {
   const marker = `${heading}\n`;
   const start = text.indexOf(marker);
   assert.notEqual(start, -1, `Expected markdown section heading "${heading}"`);
   const sectionStart = start + marker.length;
-  const nextHeading = text.slice(sectionStart).search(/^#{1,3} /m);
+  const nextHeading = findNextMarkdownHeadingOffset(text, sectionStart);
   return nextHeading === -1
     ? text.slice(sectionStart)
     : text.slice(sectionStart, sectionStart + nextHeading);
@@ -77,13 +96,34 @@ describe('CII docs drift guards', () => {
     );
   });
 
+  it('section extraction ignores heading-looking lines inside fenced code blocks', () => {
+    const section = markdownSection(
+      [
+        '### Target',
+        'Before fence.',
+        '```sh',
+        '# install',
+        '### not a section boundary',
+        '```',
+        'After fence.',
+        '### Next',
+        'Outside target.',
+      ].join('\n'),
+      '### Target',
+    );
+
+    assert.match(section, /### not a section boundary/);
+    assert.match(section, /After fence\./);
+    assert.doesNotMatch(section, /Outside target\./);
+  });
+
   it('algorithms doc separates authoritative Strategic Risk from local fallback', () => {
     const doc = readFileSync(resolve(root, 'docs', 'algorithms.mdx'), 'utf8');
     const section = markdownSection(doc, '### Strategic Risk Score Algorithm');
 
     assert.match(
       section,
-      /authoritative `StrategicRisk\[0\]` score is the server roll-up of the top five CII `combinedScore` values with weights `\[1\.00, 0\.85, 0\.70, 0\.55, 0\.40\]`, scale factor `0\.70`, floor `15`/i,
+      /authoritative `StrategicRisk\[0\]` score is the server roll-up of the top(?: five|-5) CII `combinedScore` values with weights `\[1\.00, 0\.85, 0\.70, 0\.55, 0\.40\]`, scale factor `0\.70`, floor `15`/i,
       'algorithms doc must identify the server roll-up as authoritative Strategic Risk',
     );
     assert.match(

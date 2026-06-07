@@ -49,9 +49,9 @@ Events (protests, military flights, vessels, earthquakes) are binned into 1°×1
 
 ### Strategic Risk Score Algorithm
 
-The Strategic Risk panel prefers the cached server score from `GET /api/intelligence/v1/get-risk-scores`. In cached mode, the authoritative `StrategicRisk[0]` score is the server roll-up of the top five CII `combinedScore` values with weights `[1.00, 0.85, 0.70, 0.55, 0.40]`, scale factor `0.70`, floor `15`, and server severity bands High >= 70, Medium 40-69, Low < 40.
+The Strategic Risk panel prefers the cached server-published Strategic Risk headline from `GET /api/intelligence/v1/get-risk-scores`. In cached mode, the authoritative `StrategicRisk[0]` score is the server roll-up of the top-5 CII `combinedScore` values with weights `[1.00, 0.85, 0.70, 0.55, 0.40]`, scale factor `0.70`, floor `15`, and server severity bands High >= 70, Medium 40-69, Low < 40.
 
-When cached server scores are unavailable, the browser renders a local fallback overview that synthesizes locally available module data into a temporary 0-100 metric. This fallback is useful for continuity during cache misses, but it is not the published Strategic Risk contract.
+When cached server scores are unavailable, the browser renders a local fallback overview that synthesizes locally available module data into temporary panel context. This panel-local context is useful for continuity during cache misses, but it is not the published Strategic Risk contract.
 
 **Browser/local fallback composite formula**:
 
