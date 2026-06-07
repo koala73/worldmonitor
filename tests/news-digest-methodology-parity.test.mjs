@@ -18,6 +18,22 @@ const docText = readFileSync(
   resolve(repoRoot, 'docs/methodology/news-digest-and-briefing.mdx'),
   'utf8',
 );
+const aiIntelligenceText = readFileSync(
+  resolve(repoRoot, 'docs/ai-intelligence.mdx'),
+  'utf8',
+);
+const algorithmsText = readFileSync(
+  resolve(repoRoot, 'docs/algorithms.mdx'),
+  'utf8',
+);
+const apiBriefText = readFileSync(
+  resolve(repoRoot, 'docs/api-brief.mdx'),
+  'utf8',
+);
+const latestBriefPanelText = readFileSync(
+  resolve(repoRoot, 'docs/panels/latest-brief.mdx'),
+  'utf8',
+);
 const dataSourcesText = readFileSync(
   resolve(repoRoot, 'docs/data-sources.mdx'),
   'utf8',
@@ -32,6 +48,14 @@ const panelIndicatorsText = readFileSync(
 );
 const digestSrc = readFileSync(
   resolve(repoRoot, 'server/worldmonitor/news/v1/list-feed-digest.ts'),
+  'utf8',
+);
+const classifierSrc = readFileSync(
+  resolve(repoRoot, 'server/worldmonitor/news/v1/_classifier.ts'),
+  'utf8',
+);
+const breakingAlertsSrc = readFileSync(
+  resolve(repoRoot, 'src/services/breaking-news-alerts.ts'),
   'utf8',
 );
 const summarizeSrc = readFileSync(
@@ -60,6 +84,14 @@ const seedDigestSrc = readFileSync(
 );
 const briefComposeSrc = readFileSync(
   resolve(repoRoot, 'scripts/lib/brief-compose.mjs'),
+  'utf8',
+);
+const briefDedupConstsSrc = readFileSync(
+  resolve(repoRoot, 'scripts/lib/brief-dedup-consts.mjs'),
+  'utf8',
+);
+const briefDedupJaccardSrc = readFileSync(
+  resolve(repoRoot, 'scripts/lib/brief-dedup-jaccard.mjs'),
   'utf8',
 );
 const briefFilterSrc = readFileSync(
@@ -96,6 +128,13 @@ function extractSetLiteralValues(src, constName) {
   const re = new RegExp(
     `const\\s+${constName}\\s*=\\s*(?:Object\\.freeze\\()?\\s*new\\s+Set\\s*\\(\\s*\\[([\\s\\S]*?)\\]\\s*\\)\\s*\\)?\\s*;`,
   );
+  const match = src.match(re);
+  assert.ok(match, `failed to locate ${constName}`);
+  return [...match[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+}
+
+function extractArrayLiteralValues(src, constName) {
+  const re = new RegExp(`const\\s+${constName}\\s*=\\s*\\[([\\s\\S]*?)\\]\\s*;`);
   const match = src.match(re);
   assert.ok(match, `failed to locate ${constName}`);
   return [...match[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
@@ -144,7 +183,7 @@ function extractNumberMapLiteral(src, constName) {
 }
 
 function extractNumericConst(src, constName) {
-  const re = new RegExp(`const\\s+${constName}\\s*=\\s*([0-9_]+|Infinity)\\s*;`);
+  const re = new RegExp(`const\\s+${constName}\\s*=\\s*([0-9_]+(?:\\.[0-9_]+)?|Infinity)\\s*;`);
   const match = src.match(re);
   assert.ok(match, `failed to locate ${constName}`);
   return match[1] === 'Infinity'
@@ -449,6 +488,32 @@ describe('news digest methodology parity', () => {
     }
   });
 
+  it('documents keyword-classifier lifestyle exclusions and substring behavior', () => {
+    const exclusions = extractArrayLiteralValues(classifierSrc, 'EXCLUSIONS');
+    assert.deepEqual(exclusions, [
+      'protein', 'couples', 'relationship', 'dating', 'diet', 'fitness',
+      'recipe', 'cooking', 'shopping', 'fashion', 'celebrity', 'movie',
+      'tv show', 'sports', 'game', 'concert', 'festival', 'wedding',
+      'vacation', 'travel tips', 'life hack', 'self-care', 'wellness',
+    ]);
+    assert.ok(
+      classifierSrc.includes('EXCLUSIONS.some(ex => lower.includes(ex))'),
+      'classifier exclusions must remain substring checks unless docs are updated',
+    );
+    for (const exclusion of exclusions) {
+      assertDocIncludes(`\`${exclusion}\``, `classifier exclusion ${exclusion}`);
+      assert.ok(
+        aiIntelligenceText.includes(`\`${exclusion}\``),
+        `ai-intelligence docs must disclose classifier exclusion ${exclusion}`,
+      );
+    }
+    assertDocMatches(/substring matches[\s\S]*word-boundary keyword matches/, 'classifier exclusion substring behavior');
+    assert.ok(
+      aiIntelligenceText.includes('lower-case substring checks'),
+      'ai-intelligence docs must document exclusion substring behavior',
+    );
+  });
+
   it('documents importance-score boosts in the API contract', () => {
     const diplomacyBoost = extractNumericConst(digestSrc, 'DIPLOMACY_FLASHPOINT_BOOST');
     const entityBoost = extractNumericConst(digestSrc, 'ENTITY_CORROBORATION_SCORE_PER_SOURCE');
@@ -491,6 +556,18 @@ describe('news digest methodology parity', () => {
         'NewsItem.importanceScore docs must not imply the final score is only the base 0-100 formula',
       );
     }
+  });
+
+  it('documents diplomacy severity promotion scope', () => {
+    const promotionBody = extractFunctionBody(digestSrc, 'promoteDiplomacySeverity');
+    assert.ok(
+      /if\s*\(\s*level\s*===\s*'critical'\s*\|\|\s*level\s*===\s*'high'\s*\)\s*return\s+level\s*;/.test(promotionBody),
+      'diplomacy promotion should only skip critical/high levels',
+    );
+    assertDocMatches(
+      /Any non-`critical`, non-`high` item, including `info`, can[\s\S]*promoted to `high`/,
+      'diplomacy promotion from any non-critical/non-high level',
+    );
   });
 
   it('documents emitted threat classification sources in the API contract', () => {
@@ -604,6 +681,87 @@ describe('news digest methodology parity', () => {
     assertDocIncludes('`story:track:v1:{titleHash}`', 'story track key');
     assertDocIncludes('7 days', 'story tracking TTL');
     assertDocIncludes('48 hours', 'digest accumulator TTL');
+  });
+
+  it('documents reserved feed fading phase and digest read-path fading behavior', () => {
+    assert.ok(
+      digestSrc.includes('branch is intentionally') &&
+        digestSrc.includes("return 'STORY_PHASE_FADING'"),
+      'feed digest fading branch must remain explicitly guarded/inactive unless docs are updated',
+    );
+    assertDocMatches(
+      /`fading`[\s\S]*Reserved for score-history support[\s\S]*zero placeholders[\s\S]*inert/,
+      'reserved feed fading phase',
+    );
+    assertDocMatches(
+      /notification cron[\s\S]*more than 24 hours of silence[\s\S]*`fading`/,
+      'digest read-path fading phase',
+    );
+  });
+
+  it('documents dedup fallback and followed-country personalization knobs', () => {
+    const jaccardThreshold = extractNumericConst(briefDedupConstsSrc, 'JACCARD_MERGE_THRESHOLD');
+    assert.equal(jaccardThreshold, 0.55);
+    assert.ok(
+      briefDedupJaccardSrc.includes(`> ${jaccardThreshold}`),
+      'Jaccard fallback implementation must still merge above the documented threshold',
+    );
+    assertDocIncludes(`\`${jaccardThreshold.toFixed(2)}\``, 'Jaccard fallback threshold');
+    assertDocIncludes('DIGEST_DEDUP_CLUSTERING', 'dedup clustering env knob');
+
+    assert.ok(
+      /return\s+1\.25\s*;/.test(extractFunctionBody(briefComposeSrc, 'readFollowedBiasMultiplier')),
+      'FOLLOWED_BIAS_MULTIPLIER default must remain 1.25 unless docs are updated',
+    );
+    for (const text of [docText, latestBriefPanelText]) {
+      assert.ok(text.includes('FOLLOWED_BIAS_MULTIPLIER'), 'brief docs must name followed bias env knob');
+      assert.ok(text.includes('`1.25`'), 'brief docs must document followed bias default');
+      assert.ok(text.includes('same severity lane'), 'brief docs must document within-lane behavior');
+      assert.ok(text.includes('`3`'), 'brief docs must document free-tier followed-country cap');
+    }
+  });
+
+  it('documents brief Redis slot keys and supported digest cadences', () => {
+    assert.ok(
+      seedDigestSrc.includes('const key = `brief:${userId}:${issueSlot}`') &&
+        seedDigestSrc.includes('const latestPointerKey = `brief:latest:${userId}`'),
+      'digest cron must still write slot-keyed brief envelope and latest pointer',
+    );
+    for (const text of [apiBriefText, latestBriefPanelText]) {
+      assert.ok(text.includes('`brief:{userId}:{issueSlot}`'), 'brief docs must document slot-keyed envelope');
+      assert.ok(text.includes('`brief:latest:{userId}`'), 'brief docs must document latest pointer');
+      assert.ok(text.includes('twice-daily') || text.includes('twice_daily'), 'brief docs must mention twice-daily cadence');
+      assert.ok(text.includes('weekly'), 'brief docs must mention weekly cadence');
+      assert.doesNotMatch(
+        text,
+        /brief:\{userId\}:\{issueDate\}/,
+        'brief docs must not retain stale issueDate key shape',
+      );
+    }
+    assert.doesNotMatch(
+      latestBriefPanelText,
+      /strictly daily|once per eligible user per day/,
+      'latest brief panel docs must not claim a strictly daily-only product',
+    );
+  });
+
+  it('documents breaking-news banner gates on public alert docs', () => {
+    const importanceFloor = extractNumericConst(breakingAlertsSrc, 'IMPORTANCE_SCORE_MIN');
+    assert.equal(importanceFloor, 30);
+    assert.ok(
+      breakingAlertsSrc.includes('const STARTUP_GRACE_MS = 10 * 1000;'),
+      'startup grace must remain 10 seconds unless docs are updated',
+    );
+    assert.ok(
+      breakingAlertsSrc.includes("if (phase === 'sustained' || phase === 'fading') continue;"),
+      'breaking banner must still suppress sustained/fading story phases',
+    );
+    for (const text of [aiIntelligenceText, algorithmsText]) {
+      assert.ok(text.includes('importanceScore < 30'), 'alert docs must document importance score floor');
+      assert.ok(text.includes('sustained and fading'), 'alert docs must document story-phase suppression');
+      assert.ok(text.includes('10 seconds'), 'alert docs must document startup grace');
+      assert.ok(text.includes('OREF siren alerts are exempt'), 'alert docs must document OREF exemption');
+    }
   });
 
   it('documents cooldown modes and table types', () => {

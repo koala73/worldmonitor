@@ -135,7 +135,7 @@ RSS Feed Parse → isHeadlineMemoryEnabled()? → ML Worker (Web Worker)
 
 Every news item passes through a three-stage classification pipeline:
 
-1. **Keyword classifier** (instant, `source: 'keyword'`) — pattern-matches against ~120 threat keywords organized by severity tier (critical → high → medium → low → info) and 14 event categories (conflict, protest, disaster, diplomatic, economic, terrorism, cyber, health, environmental, military, crime, infrastructure, tech, general). Keywords use word-boundary regex matching to prevent false positives (e.g., "war" won't match "award"). Each match returns a severity level, category, and confidence score. Variant-specific keyword sets ensure the tech variant doesn't flag "sanctions" in non-geopolitical contexts.
+1. **Keyword classifier** (instant, `source: 'keyword'`) — pattern-matches against ~120 threat keywords organized by severity tier (critical → high → medium → low → info) and 14 event categories (conflict, protest, disaster, diplomatic, economic, terrorism, cyber, health, environmental, military, crime, infrastructure, tech, general). Short keywords use word-boundary regex matching to prevent false positives (e.g., "war" won't match "award"). Longer keywords use literal substring regexes. Before keyword tiers run, lifestyle/entertainment exclusions force matching titles to `info` / `general` via lower-case substring checks (`protein`, `couples`, `relationship`, `dating`, `diet`, `fitness`, `recipe`, `cooking`, `shopping`, `fashion`, `celebrity`, `movie`, `tv show`, `sports`, `game`, `concert`, `festival`, `wedding`, `vacation`, `travel tips`, `life hack`, `self-care`, `wellness`). This prevents consumer headlines from being promoted by generic terms such as "virus", "ban", or "war". Each match returns a severity level, category, and confidence score. Variant-specific keyword sets ensure the tech variant doesn't flag "sanctions" in non-geopolitical contexts.
 
 2. **Browser-side ML** (async, `source: 'ml'`) — Transformers.js runs NER, sentiment analysis, and topic classification directly in the browser with no server dependency. Provides a second classification opinion without any API call.
 
@@ -163,6 +163,9 @@ The dashboard monitors five independent alert origins and fuses them into a unif
 - **Global cooldown** — after any alert fires, a 60-second global cooldown prevents rapid-fire notification bursts
 - **Recency gate** — items older than 15 minutes at processing time are silently dropped, preventing stale events from generating alerts after a reconnection
 - **Source tier gating** — Tier 3+ sources (niche outlets, aggregators) must have LLM-confirmed classification (`threat.source !== 'keyword'`) to fire an alert; Tier 1–2 sources bypass this gate
+- **Story-phase gate** — sustained and fading RSS stories are suppressed; the banner is reserved for breaking/developing stories or items without story metadata
+- **Importance floor** — RSS items with `importanceScore < 30` are too low-signal for the banner
+- **Startup grace** — RSS alerts are suppressed for the first 10 seconds after app load so the initial feed fetch does not replay old articles as breaking news. OREF siren alerts are exempt
 - **User sensitivity control** — configurable between `critical-only` (only critical severity fires) and `critical-and-high` (both critical and high severities)
 
 When an alert passes all gates, the system dispatches a `wm:breaking-news` CustomEvent on `document`, which the Breaking News Banner consumes to display a persistent top-of-screen notification. Optional browser Notification API popups and an audio chime are available as user settings. Clicking the banner scrolls to the RSS panel that sourced the alert and applies a 1.5-second flash highlight animation.
