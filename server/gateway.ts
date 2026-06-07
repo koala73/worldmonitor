@@ -346,9 +346,10 @@ export const PUBLIC_NO_AUTH_RPC_PATHS = new Set<string>([
 // beyond anonymous-equivalent. Mirrors the isResilienceRankingSeedRefreshRequest
 // internal-auth path below.
 export const RELAY_WARM_PING_PATHS = new Set<string>([
+  '/api/infrastructure/v1/list-service-statuses',
+  '/api/infrastructure/v1/get-cable-health',
   '/api/intelligence/v1/get-risk-scores',
   '/api/supply-chain/v1/get-chokepoint-status',
-  '/api/infrastructure/v1/get-cable-health',
 ]);
 
 /**

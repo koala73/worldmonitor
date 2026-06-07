@@ -1,12 +1,13 @@
 // Relay warm-ping internal-auth — behavioral + wiring regression tests.
 //
-// The Railway relay warm-pings three cacheable, non-premium RPC endpoints
-// (get-risk-scores, get-chokepoint-status, get-cable-health) to keep their
-// compute caches hot. These require a session token or API key in normal
-// traffic, and the #3541 hardening removed Origin-trust — so all three warm-
-// pings 401'd in prod (2026-06-06). The relay now authenticates as a trusted
-// internal caller via X-WorldMonitor-Key = WORLDMONITOR_RELAY_KEY, validated by
-// the gateway against its own WORLDMONITOR_RELAY_KEY for these paths only.
+// The Railway relay warm-pings cacheable, non-premium RPC endpoints
+// (service-statuses, get-risk-scores, get-chokepoint-status, get-cable-health)
+// to keep their compute caches hot. These require a session token or API key in
+// normal traffic, and the #3541 hardening removed Origin-trust — so relay
+// warm-pings 401 without a real credential. The relay now authenticates as a
+// trusted internal caller via X-WorldMonitor-Key = WORLDMONITOR_RELAY_KEY,
+// validated by the gateway against its own WORLDMONITOR_RELAY_KEY for these
+// paths only.
 //
 // These tests exercise the real isRelayWarmPingRequest verifier and pin the
 // least-privilege scoping + timing-safe comparison so a future edit can't widen
@@ -35,19 +36,22 @@ describe('relay warm-ping internal auth', () => {
     else process.env.WORLDMONITOR_RELAY_KEY = original;
   });
 
-  it('covers exactly the three free warm-ping endpoints', () => {
+  it('covers exactly the free relay warm-ping endpoints', () => {
     assert.deepEqual(
       [...RELAY_WARM_PING_PATHS].sort(),
       [
         '/api/infrastructure/v1/get-cable-health',
+        '/api/infrastructure/v1/list-service-statuses',
         '/api/intelligence/v1/get-risk-scores',
         '/api/supply-chain/v1/get-chokepoint-status',
       ],
     );
   });
 
-  it('accepts a warm-ping path carrying the correct relay key', async () => {
-    assert.equal(await isRelayWarmPingRequest(req(WARM_PATH, SECRET), WARM_PATH), true);
+  it('accepts warm-ping paths carrying the correct relay key', async () => {
+    for (const path of RELAY_WARM_PING_PATHS) {
+      assert.equal(await isRelayWarmPingRequest(req(path, SECRET), path), true, path);
+    }
   });
 
   it('rejects the wrong key on a warm-ping path', async () => {
@@ -78,6 +82,16 @@ describe('relay warm-ping internal auth', () => {
 // wired into BOTH the key-check bypass and the entitlement skip so the bypass
 // can't silently drift to a forgeable check or grant entitlement access.
 describe('relay warm-ping auth wiring (source guardrail)', () => {
+  it('keeps the active Service Statuses relay loop on shared warm-ping auth headers', async () => {
+    const src = await readFile(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
+    assert.match(src, /const SERVICE_STATUSES_RPC_URL = 'https:\/\/api\.worldmonitor\.app\/api\/infrastructure\/v1\/list-service-statuses'/);
+    assert.match(
+      src,
+      /fetch\(SERVICE_STATUSES_RPC_URL,\s*\{[\s\S]{0,240}?headers: warmPingHeaders\(\{ 'Content-Type': 'application\/json' \}\)/,
+      'Service Statuses warm-ping must keep sending the relay key via warmPingHeaders()',
+    );
+  });
+
   it('uses timingSafeEqual (no direct equality) and is wired into both gates', async () => {
     const src = await readFile(new URL('../server/gateway.ts', import.meta.url), 'utf8');
     // verifier uses the timing-safe comparator against the env secret + header

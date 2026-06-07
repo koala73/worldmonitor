@@ -3854,16 +3854,12 @@ async function seedServiceStatuses() {
   try {
     const resp = await fetch(SERVICE_STATUSES_RPC_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': CHROME_UA,
-        Origin: 'https://worldmonitor.app',
-      },
+      headers: warmPingHeaders({ 'Content-Type': 'application/json' }),
       body: '{}',
       signal: AbortSignal.timeout(60_000),
     });
     if (!resp.ok) {
-      console.warn(`[ServiceStatuses] Seed ping failed: HTTP ${resp.status}`);
+      console.warn(`[ServiceStatuses] Seed ping failed: HTTP ${resp.status}${RELAY_API_KEY ? '' : ' (WORLDMONITOR_RELAY_KEY not set — 401 expected; set it on the relay AND the Vercel api project)'}`);
       return;
     }
     const data = await resp.json();
