@@ -36,8 +36,9 @@ export const RPC_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     _execute: async (params, base, context) => {
       const UA = 'worldmonitor-mcp-edge/1.0';
-      // Step 1: fetch current geopolitical headlines (budget: 6 s, leaves ~24 s for LLM)
-      const digestUrl = `${base}/api/news/v1/list-feed-digest?variant=geo&lang=en`;
+      // Step 1: fetch current geopolitical headlines (budget: 6 s, leaves ~24 s for LLM).
+      // `full` is the documented geopolitical/default digest variant.
+      const digestUrl = `${base}/api/news/v1/list-feed-digest?variant=full&lang=en`;
       const digestAuth = await buildAuthHeaders(context, 'GET', digestUrl, null);
       const digestRes = await fetch(digestUrl, {
         headers: { ...digestAuth, 'User-Agent': UA },
@@ -63,7 +64,7 @@ export const RPC_TOOLS: ToolDef[] = [
         bodies,
         mode: 'brief',
         geoContext: String(params.geo_context ?? ''),
-        variant: 'geo',
+        variant: 'full',
         lang: 'en',
       });
       const briefAuth = await buildAuthHeaders(context, 'POST', briefUrl, briefBody);
@@ -114,7 +115,7 @@ export const RPC_TOOLS: ToolDef[] = [
       // 2 s + 22 s brief = 24 s worst-case; 6 s margin before the 30 s Edge kill.
       let contextParam = '';
       try {
-        const digestUrl = `${base}/api/news/v1/list-feed-digest?variant=geo&lang=en`;
+        const digestUrl = `${base}/api/news/v1/list-feed-digest?variant=full&lang=en`;
         const digestAuth = await buildAuthHeaders(context, 'GET', digestUrl, null);
         const digestRes = await fetch(digestUrl, {
           headers: { ...digestAuth, 'User-Agent': UA },

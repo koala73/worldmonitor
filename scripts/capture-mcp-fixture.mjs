@@ -9,7 +9,13 @@
  * filter arg via `--arg key=value` to capture a narrowed response.
  *
  * Usage:
- *   WM_MCP_BEARER="wm_live_..." node scripts/capture-mcp-fixture.mjs \
+ *   WM_MCP_KEY="wm_0123456789abcdef0123456789abcdef01234567" \
+ *     node scripts/capture-mcp-fixture.mjs \
+ *     --tool get_market_data \
+ *     --name fat-get-market-data
+ *
+ *   # Or use an OAuth access token from /api/oauth/token:
+ *   WM_MCP_OAUTH_TOKEN="eyJhbGciOi..." node scripts/capture-mcp-fixture.mjs \
  *     --tool get_market_data \
  *     --name fat-get-market-data
  *
@@ -17,9 +23,9 @@
  *   node scripts/capture-mcp-fixture.mjs --tool get_conflict_events \
  *     --name medium-get-conflict-events --arg limit=30
  *
- * The bearer must be one of:
- *   - A wm_live_... env key (header: X-WorldMonitor-Key)
- *   - A wm_pro_... Pro MCP token (header: Authorization: Bearer ...)
+ * Authentication:
+ *   - WM_MCP_KEY sends X-WorldMonitor-Key: <key>
+ *   - WM_MCP_OAUTH_TOKEN sends Authorization: Bearer <token>
  *
  * Endpoint defaults to https://worldmonitor.app/mcp; override with
  * WM_MCP_ENDPOINT for staging.
@@ -32,7 +38,8 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
 const FIXTURES_DIR = resolve(ROOT, 'tests/fixtures/jmespath-samples');
 const ENDPOINT = process.env.WM_MCP_ENDPOINT ?? 'https://worldmonitor.app/mcp';
-const BEARER = process.env.WM_MCP_BEARER;
+const API_KEY = process.env.WM_MCP_KEY;
+const OAUTH_TOKEN = process.env.WM_MCP_OAUTH_TOKEN;
 
 function parseArgs(argv) {
   const out = { args: {} };
@@ -60,11 +67,12 @@ function fail(msg) { process.stderr.write(`ERROR: ${msg}\n`); process.exit(1); }
 const { tool, name, args } = parseArgs(process.argv);
 if (!tool) fail('--tool required (e.g. get_market_data)');
 if (!name) fail('--name required (e.g. fat-get-market-data)');
-if (!BEARER) fail('WM_MCP_BEARER env var required');
+if (API_KEY && OAUTH_TOKEN) fail('Set only one of WM_MCP_KEY or WM_MCP_OAUTH_TOKEN');
+if (!API_KEY && !OAUTH_TOKEN) fail('WM_MCP_KEY or WM_MCP_OAUTH_TOKEN env var required');
 
 const headers = { 'Content-Type': 'application/json' };
-if (BEARER.startsWith('wm_pro_')) headers['Authorization'] = `Bearer ${BEARER}`;
-else headers['X-WorldMonitor-Key'] = BEARER;
+if (OAUTH_TOKEN) headers['Authorization'] = `Bearer ${OAUTH_TOKEN}`;
+else headers['X-WorldMonitor-Key'] = API_KEY;
 
 const body = JSON.stringify({
   jsonrpc: '2.0', id: 1,

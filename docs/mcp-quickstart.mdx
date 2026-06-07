@@ -153,14 +153,14 @@ curl -s https://worldmonitor.app/mcp \
 EOF
 ```
 
-The `wm_…` user key goes in `X-WorldMonitor-Key`, **not** as a `Bearer` token — sending it as a bearer fails OAuth resolution and returns `401 invalid_token`. If you already have an OAuth access token from `/api/oauth/token`, use `Authorization: Bearer $TOKEN` instead and drop the `X-WorldMonitor-Key` header.
+The `wm_…` user API key goes in `X-WorldMonitor-Key`, **not** as a `Bearer` token — sending it as a bearer fails OAuth resolution and returns `401 invalid_token`. If you already have an OAuth access token from `/api/oauth/token`, use `Authorization: Bearer $TOKEN` instead and drop the `X-WorldMonitor-Key` header.
 
 ## Where to go next
 
 - **[JMESPath guide](/mcp-jmespath)** — projection grammar with 12 worked examples against real response shapes. Read this before your second day of MCP use; it will pay for itself in saved tokens within an hour.
 - **[MCP Tools Reference](/mcp-tools-reference)** — per-tool parameters, freshness budgets, API endpoint mapping, and `curl` examples for every tool.
 - **[MCP Server reference](/mcp-server)** — auth modes, OAuth setup, plans & quotas, error codes, and freshness model.
-- **[Authentication overview](/authentication)** — when to use a `wm_…` user key vs. OAuth vs. browser session.
+- **[Authentication overview](/authentication)** — when to use an API key in `X-WorldMonitor-Key` vs. OAuth vs. browser session.
 
 ## Operational note (for ops, not callers)
 
