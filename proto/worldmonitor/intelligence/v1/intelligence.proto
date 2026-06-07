@@ -70,12 +70,12 @@ message CiiComponents {
     (buf.validate.field).double.gte = 0,
     (buf.validate.field).double.lte = 100
   ];
-  // Armed-conflict contribution from ACLED/UCDP events, fatalities, civilian violence, strikes, and OREF alerts (0-100).
+  // Armed-conflict contribution from ACLED events, fatalities, civilian violence, strikes, and OREF alerts (0-100).
   double geo_convergence = 3 [
     (buf.validate.field).double.gte = 0,
     (buf.validate.field).double.lte = 100
   ];
-  // Security-mobility contribution from military flights, AIS disruption, aviation disruption, and GPS interference (0-100).
+  // Security-mobility contribution from military flights, military vessels, aviation disruption, and GPS interference (0-100).
   double military_activity = 4 [
     (buf.validate.field).double.gte = 0,
     (buf.validate.field).double.lte = 100

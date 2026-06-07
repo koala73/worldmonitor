@@ -2039,6 +2039,35 @@ describe('CII scoring', () => {
     );
   });
 
+  it('proto and OpenAPI CiiComponents descriptions match the server scoring sources', () => {
+    const expectedGeo = 'Armed-conflict contribution from ACLED events, fatalities, civilian violence, strikes, and OREF alerts (0-100).';
+    const expectedMilitary = 'Security-mobility contribution from military flights, military vessels, aviation disruption, and GPS interference (0-100).';
+    const staleSourcePattern = /ACLED\/UCDP|AIS disruption/;
+
+    const proto = readRepoFile('proto/worldmonitor/intelligence/v1/intelligence.proto');
+    const protoBlock = proto.match(/message CiiComponents \{[\s\S]*?\n\}/)?.[0] ?? '';
+    assert.ok(protoBlock, 'intelligence.proto must define CiiComponents.');
+    assert.ok(protoBlock.includes(expectedGeo));
+    assert.ok(protoBlock.includes(expectedMilitary));
+    assert.doesNotMatch(protoBlock, staleSourcePattern);
+
+    const serviceOpenApi = JSON.parse(readRepoFile('docs/api/IntelligenceService.openapi.json')) as {
+      components?: { schemas?: { CiiComponents?: { properties?: Record<string, { description?: string }> } } };
+    };
+    const ciiProperties = serviceOpenApi.components?.schemas?.CiiComponents?.properties ?? {};
+    assert.equal(ciiProperties.geoConvergence?.description, expectedGeo);
+    assert.equal(ciiProperties.militaryActivity?.description, expectedMilitary);
+
+    for (const path of ['docs/api/IntelligenceService.openapi.yaml', 'docs/api/worldmonitor.openapi.yaml']) {
+      const openApi = readRepoFile(path);
+      const block = openApi.match(/\n {8}[A-Za-z0-9_]*CiiComponents:\n[\s\S]*?(?=\n {8}[A-Za-z][A-Za-z0-9_]*:\n)/)?.[0] ?? '';
+      assert.ok(block, `${path} must define CiiComponents.`);
+      assert.ok(block.includes(`description: ${expectedGeo}`), `${path} must describe geoConvergence with current ACLED-only sources.`);
+      assert.ok(block.includes(`description: ${expectedMilitary}`), `${path} must describe militaryActivity with military vessels.`);
+      assert.doesNotMatch(block, staleSourcePattern);
+    }
+  });
+
   // ===== Methodology doc drift guard (issue #3725) =====
 
   it('docs/methodology/cii-risk-scores.mdx lists every CURATED_COUNTRIES code', () => {
