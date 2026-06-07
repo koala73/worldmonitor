@@ -33,11 +33,15 @@ The panel uses the generated RPC clients directly:
 - **Economic service** (`EconomicServiceClient.getEuFsi()`) — EU FSI (`GetEuFsiResponse`).
 - **Bootstrap-hydrated data** — the panel prefers `getHydratedData(...)` first and falls back to fresh RPC calls (the standard hydration pattern).
 
-Upstream KCFSI data is from the Federal Reserve Bank of Kansas City; EU FSI is from the ECB.
+Upstream KCFSI data is from the Federal Reserve Bank of Kansas City; EU FSI is
+from the ECB CISS `SS_CIN` daily series, the live successor to the legacy
+`SS_CI` series.
 
 ## Refresh cadence
 
-Weekly for both KCFSI (published by KC Fed) and EU FSI (published by ECB). The panel reads the hydrated snapshot on mount; no polling.
+Weekly for KCFSI (published by KC Fed). EU FSI is seeded daily from the ECB
+CISS `SS_CIN` daily series. The panel reads the hydrated snapshot on mount; no
+polling.
 
 ## Tier & gating
 

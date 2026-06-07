@@ -16186,14 +16186,22 @@ components:
                 fsiValue:
                     type: number
                     format: double
+                    description: |-
+                        Bespoke Fear & Greed header stress ratio, not the KCFSI/ECB FSI panel
+                         composite. Formula: (HYG / TLT) / (VIX * HY OAS / 100).
                 fsiLabel:
                     type: string
+                    description: |-
+                        Label for fsi_value: Low Stress (>=1.5), Moderate Stress (>=0.8),
+                         Elevated Stress (>=0.3), otherwise High Stress.
                 hygPrice:
                     type: number
                     format: double
+                    description: Latest HYG ETF price used in the Fear & Greed header stress ratio.
                 tltPrice:
                     type: number
                     format: double
+                    description: Latest TLT ETF price used in the Fear & Greed header stress ratio.
                 sectorPerformance:
                     type: array
                     items:

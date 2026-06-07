@@ -31,8 +31,8 @@ The classifier sees the item's `title` and `desc` fields after they are
 normalized by the per-source parser:
 
 - WHO Disease Outbreak News (`whoNormalizeItem`)
-- HealthMap / ProMED RSS (`rssNormalizeItem`)
-- TGH (`tghNormalizeItem`)
+- CDC HAN and Outbreak News Today RSS (`rssNormalizeItem`)
+- ThinkGlobalHealth disease tracker, backed by ProMED-sourced real-time alerts (`tghNormalizeItem`)
 
 There are no numeric scoring weights. The label is purely categorical and
 the order shown in the panel is `alert > warning > watch`.

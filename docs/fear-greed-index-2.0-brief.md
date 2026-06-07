@@ -39,7 +39,7 @@ Each category scores **0–100** (0 = Extreme Fear, 100 = Extreme Greed). The we
 | 60–80 | Greed |
 | 80–100| Extreme Greed |
 
-### Header Metrics (9 key stats)
+### Header Metrics (10 key stats)
 
 | Metric | Source | Context |
 |--------|--------|---------|
@@ -49,6 +49,7 @@ Each category scores **0–100** (0 = Extreme Fear, 100 = Extreme Greed). The we
 | Put/Call Ratio | Barchart `$CPC` scrape | current total put/call ratio |
 | VIX | Yahoo / FRED | % change |
 | HY Spread | FRED | vs long-term average |
+| F&G Header FSI | Yahoo + FRED | bespoke HYG/TLT/VIX/HY OAS stress ratio |
 | % > 200 DMA | Barchart `$S5TH` scrape | exact S&P 500 share above 200 DMA |
 | 10Y Yield | FRED | level |
 | Fed Rate | FRED | current range |
@@ -84,7 +85,7 @@ All sources are free with no paid API keys required.
 
 | Source | Endpoint | Format | Auth | Reliability |
 |--------|----------|--------|------|-------------|
-| **CNN Fear & Greed** | `production.dataviz.cnn.io/index/fearandgreed/graphdata/{date}` | JSON | User-Agent header | MEDIUM |
+| **CNN Fear & Greed** | `production.dataviz.cnn.io/index/fearandgreed/current` | JSON | User-Agent header | MEDIUM |
 | **AAII Sentiment** | `aaii.com/sentimentsurvey` (HTML scrape) | HTML | User-Agent header | LOW (blocks bots) |
 | **Barchart Total P/C** | `barchart.com/stocks/quotes/%24CPC` | HTML / Next data | User-Agent header | MEDIUM |
 | **Barchart S&P 500 > 200 DMA** | `barchart.com/stocks/quotes/%24S5TH` | HTML / Next data | User-Agent header | MEDIUM |
@@ -140,6 +141,18 @@ score = (CNN_FG * 0.4) + (AAII_Bull_Percentile * 0.3) + ((100 - AAII_Bear_Percen
 score = CNN_FG  // 100% weight on CNN F&G; crypto F&G from Redis as secondary signal if CNN also fails
 // aaiBull and aaiBear fields: null (not 0 — zero skews score toward Extreme Fear)
 ```
+
+AAII survey inputs are anchored to deliberately conservative historical stress
+ceilings:
+
+```text
+AAII_Bull_Percentile = clamp(bull% / 60 * 100, 0, 100)
+AAII_Bear_Percentile = clamp(bear% / 55 * 100, 0, 100)
+```
+
+The 60% bull and 55% bear anchors treat unusually one-sided survey readings as
+the 100-point reference instead of letting rare extremes stretch the scale on
+ordinary weeks.
 
 **Reliability notes:** CNN F&G is MEDIUM reliability. If both CNN and AAII fail, use `cryptoFearGreed` from Redis (already seeded via macro-signals) as a proxy — it is directionally correlated. Mark `unavailable: true` only if all three sentiment sources are absent.
 
@@ -238,12 +251,33 @@ score = weighted combination with mean reversion
 | SPX 20/50/200 DMA | ^GSPC closes | `smaCalc(prices, period)` | Trend |
 | SPX ROC 20d | ^GSPC closes | `rateOfChange(prices, 20)` | Momentum |
 | VIX Term Structure | ^VIX, ^VIX9D, ^VIX3M | `VIX/VIX3M` ratio (&lt;1 = contango) | Volatility |
-| Sector RSI (14d) | XLK/XLF/XLE/XLV | Standard RSI formula | Momentum |
+| Sector RSI (14d) | all 11 GICS sector ETFs: XLK, XLF, XLE, XLV, XLY, XLP, XLI, XLB, XLU, XLRE, XLC | Standard RSI formula | Momentum |
 | Cross-asset 30d returns | GLD, TLT, SPY, DXY | `rateOfChange(prices, 30)` | Cross-Asset |
 | M2 YoY change | M2SL | `(latest - 52wk_ago) / 52wk_ago` | Liquidity |
 | Fed BS MoM change | WALCL | `(latest - 4wk_ago) / 4wk_ago` | Liquidity |
 | HY spread trend | BAMLH0A0HYM2 | `20 trading-day change direction` | Credit |
 | RSP/SPY ratio | RSP, SPY | `RSP_return_30d - SPY_return_30d` | Breadth |
+
+### Header Financial Stress Ratio
+
+The Fear & Greed header also publishes a small inline stress ratio:
+
+```text
+F&G Header FSI = (HYG / TLT) / (VIX * HY_OAS / 100)
+```
+
+It is computed from the latest HYG and TLT Yahoo prices, live VIX, and the FRED
+high-yield option-adjusted spread. Labels are:
+
+| Ratio | Label |
+|---:|---|
+| `>= 1.5` | Low Stress |
+| `>= 0.8` | Moderate Stress |
+| `>= 0.3` | Elevated Stress |
+| `< 0.3` | High Stress |
+
+This is a bespoke Fear & Greed header metric only. It is not the Financial
+Stress panel's KCFSI or ECB CISS/EU FSI composite.
 
 ---
 
@@ -311,6 +345,7 @@ seed-lock:market:fear-greed       # Concurrency lock
     "putCall": { "value": 1.01, "context": "vs 0.87 yr avg" },
     "vix": { "value": 26.78, "context": "+11.31%" },
     "hySpread": { "value": 3.27, "context": "vs LT avg" },
+    "fsi": { "value": 0.7421, "label": "Elevated Stress", "hygPrice": 79.46, "tltPrice": 83.66 },
     "pctAbove200d": { "value": 43.93, "context": "Down from 68.5%" },
     "yield10y": { "value": 4.25 },
     "fedRate": { "value": "3.50-3.75%" }

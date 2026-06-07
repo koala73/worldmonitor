@@ -105,6 +105,25 @@ describe('chokepoint methodology docs match scoring code', () => {
     }
   });
 
+  it('documents live-flow and transit-anomaly eligibility gates', () => {
+    assert.match(flowSeeder, /history\.length\s*<\s*40/, 'flow seeder should keep the 40-day total-history gate');
+    assert.match(flowSeeder, /prev90\.length\s*<\s*20/, 'flow seeder should keep the 20-baseline-day gate');
+    assert.match(flowSeeder, /baseline90d\s*<\s*\(useDwt\s*\?\s*1\s*:\s*0\.5\)/, 'flow seeder should keep thin-baseline floors');
+    assert.match(scoring, /history\.length\s*<\s*37/, 'traffic anomaly should keep the 37-day history gate');
+    assert.match(scoring, /baselineAvg7\s*<\s*14/, 'traffic anomaly should keep the 14-transit floor');
+
+    for (const expected of [
+      /at least 40 total days/i,
+      /20 prior-window baseline days/i,
+      /1 DWT-day/i,
+      /0\.5 tanker-count/i,
+      /at least 37 days/i,
+      /at least 14 transits/i,
+    ]) {
+      assert.match(methodology, expected);
+    }
+  });
+
   it('documents current flow, status, and exposure formulas on user-facing and contract surfaces', () => {
     for (const [label, text] of [
       ['methodology', methodology],
