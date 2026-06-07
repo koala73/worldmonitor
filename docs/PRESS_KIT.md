@@ -119,7 +119,7 @@ World Monitor aggregates publicly available data from dozens of sources. No prop
 | Languages supported | 21 (including RTL) |
 | Military bases mapped | 210+ |
 | AI datacenters mapped | 111 |
-| Stock exchanges mapped | 92 |
+| Stock exchanges mapped | 29 |
 | Strategic ports mapped | 83 |
 | Undersea cables tracked | 55+ |
 | Pipelines mapped | 88 |

@@ -136,7 +136,7 @@ Run AI summarization entirely on your own hardware — no API keys, no cloud, no
 ### For Finance/OSINT Audience
 
 - "7-signal crypto macro radar with BUY/CASH composite verdict"
-- "92 global stock exchanges mapped with market caps and trading hours"
+- "29 global stock exchanges mapped with market caps and trading hours"
 - "Country Instability Index tracking 31 Tier-1 countries in real time"
 - "Prediction market integration for geopolitical forecasting"
 - "Air-gapped AI analysis — run Ollama locally for sensitive intelligence work"
@@ -159,7 +159,7 @@ Run AI summarization entirely on your own hardware — no API keys, no cloud, no
 | v2.4.1 | Ultra-wide layout (panels wrap around map on 2000px+ screens) |
 | v2.4.0 | Live webcams from 19 geopolitical hotspots, 4 regions |
 | v2.3.9 | Full i18n: 19 languages including Japanese, Arabic (RTL), Chinese |
-| v2.3.8 | Finance variant with 92 exchanges, Gulf FDI investments |
+| v2.3.8 | Finance variant with 29 exchanges, Gulf FDI investments |
 | v2.3.7 | Light/dark theme system, UCDP/UNHCR/Climate panels |
 | v2.3.6 | Desktop app with Tauri, OS keychain, auto-updates |
 | v2.3.0 | Country Intelligence dossiers, story sharing |

@@ -37,6 +37,7 @@
   "feedDefinitions": 567,
   "airportCount": 111,
   "stockExchangeCount": 29,
+  "centralBankInstitutionCount": 14,
   "telegramFullEnabledChannels": 56,
   "telegramFullTierCounts": {
     "1": 3,

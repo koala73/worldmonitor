@@ -360,7 +360,7 @@ This provides a unified command center for all intelligence findings, whether ge
 
 ### Signal Types
 
-The system detects 12 distinct signal types across news, markets, military, and infrastructure domains:
+The system lists 13 distinct signal types across news, markets, military, and infrastructure domains:
 
 **News & Source Signals**
 

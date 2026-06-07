@@ -10,6 +10,21 @@ function readRepo(path: string): string {
   return readFileSync(resolve(root, path), 'utf8');
 }
 
+function countSignalTableRows(doc: string): number {
+  const section = doc.match(/### Signal Types([\s\S]*?)### How It Works/);
+  assert.ok(section, 'signal docs must include a Signal Types section before How It Works');
+  return (section[1].match(/^\| \*\*/gm) || []).length;
+}
+
+test('public signal docs keep their listed signal count in sync with the tables', () => {
+  for (const path of ['docs/signal-intelligence.mdx', 'docs/Docs_To_Review/DOCUMENTATION.md'] as const) {
+    const doc = readRepo(path);
+    const countMatch = doc.match(/lists (\d+) distinct signal types/);
+    assert.ok(countMatch, `${path} must publish the listed signal type count`);
+    assert.equal(Number(countMatch[1]), countSignalTableRows(doc), `${path} signal count must match listed rows`);
+  }
+});
+
 test('public signal docs stay aligned with hotspot escalation math', () => {
   const hotspotCode = readRepo('src/services/hotspot-escalation.ts');
   const hotspotsDoc = readRepo('docs/hotspots.mdx');
