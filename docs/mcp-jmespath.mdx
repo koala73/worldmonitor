@@ -231,7 +231,7 @@ The three response shapes used below are the captured fixtures under `tests/fixt
 **Why this works.** `[start:stop]` is the slice projection (`stop` is exclusive). Negative indices and a step are also supported — `[-5:]` for the last five, `[::-1]` to reverse, `[::2]` for every other element. Slicing is **post-filter** in the pipeline — to slice the filtered set, pipe (see example 12).
 
 <Tip>
-**`limit` vs. slicing.** Several tools (`get_country_macro`, `get_eu_*`, `get_displacement_data`) accept a tool-level `limit` argument that caps the response **before** projection. `limit` and JMESPath compose: the tool-level cap narrows the candidate set, then your `[0:N]` slice picks the prefix. Pass `limit: 0` to disable the tool-level cap when you want everything and intend to project further with JMESPath.
+**`limit` vs. slicing.** Cache tools accept a tool-level `limit` argument that caps list- or map-shaped slices **before** projection (default 30 where the tool applies a cap). `limit` and JMESPath compose: the tool-level cap narrows the candidate set, then your `[0:N]` slice picks the prefix. Pass `limit: 0` to disable the tool-level cap when you want everything and intend to project further with JMESPath.
 </Tip>
 
 ---
@@ -428,7 +428,7 @@ The flatten drops the original map keys (the chokepoint names). If you need the 
 
 ### Get the full payload (no projection)
 
-Omit the `jmespath` argument entirely. Some tools (`get_country_macro`, the three `get_eu_*` tools, `get_displacement_data`) also default-cap their list-shaped fields at 30 rows for the same reason; pass `limit: 0` to disable that cap when you genuinely want the whole bundle:
+Omit the `jmespath` argument entirely. Cache tools also default-cap list- or map-shaped fields at 30 items where the tool applies a cap; pass `limit: 0` to disable that cap when you genuinely want the whole bundle:
 
 ```json
 {

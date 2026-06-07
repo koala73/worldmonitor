@@ -75,7 +75,7 @@ Two payload-level fields you'll see on every cache tool:
 
 ## 4. Trim the response (when it matters)
 
-`get_market_data` returns roughly 100 KB unfiltered. That's fine for one call, but if you're chaining several reads inside a longer conversation, you'll burn context fast. Every tool accepts an optional `jmespath` argument that projects the response server-side **before** it crosses the wire:
+Broad cache calls can still be large even with their default list caps. That's fine for one call, but if you're chaining several reads inside a longer conversation, you'll burn context fast. Every tool accepts an optional `jmespath` argument that projects the response server-side **before** it crosses the wire:
 
 ```json
 {
@@ -164,4 +164,4 @@ The `wm_live_…` key goes in `X-WorldMonitor-Key`, **not** as a `Bearer` token 
 
 ## Operational note (for ops, not callers)
 
-Every `initialize` and `tools/call` emits a structured telemetry line tagged `mcp.toolcall` or `mcp.initialize` with latency, payload bytes (pre and post JMESPath), `jmespath_used`, and `budget_exceeded`. Pipe Vercel / log-drain consumers at this line if you want a real P95 per tool. Caller-facing behaviour is unaffected.
+Every `tools/call` emits a structured telemetry line tagged `mcp.toolcall` with latency, payload bytes (pre and post JMESPath), `jmespath_used`, and `budget_exceeded`. `initialize` emits `mcp.tools_list_emitted` with tool-count and tools-list byte metrics. Pipe Vercel / log-drain consumers at these lines if you want real P95 and payload-size tracking. Caller-facing behaviour is unaffected.

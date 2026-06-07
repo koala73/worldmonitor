@@ -14,10 +14,10 @@ description: "Every error shape WorldMonitor's MCP server can emit — JSON-RPC 
   - Auth -32001 / -32603 emitters       api/mcp/auth.ts:126-238
   - Per-minute -32029                   api/mcp/auth.ts:243-260
   - Pro daily-cap -32029 (HTTP 429)     api/mcp/dispatch.ts:130-144
-  - Tool exec -32603                    api/mcp/dispatch.ts:230-270
+  - Tool exec -32603                    api/mcp/dispatch.ts:231-269
   - _budget_exceeded envelope           api/mcp/dispatch.ts:183-229
   - _jmespath_error envelope            api/mcp/jmespath.ts:46-94
-  - JMESPath caps                       api/mcp/constants.ts:213-214
+  - JMESPath caps                       api/mcp/constants.ts:232-233
   - Prompts -32602                      api/mcp/prompts/index.ts:296-316
   - Resources -32602 / -32603           api/mcp/resources/index.ts:198-289
 */}
@@ -162,8 +162,8 @@ The most common error code, shared across `tools/call`, `prompts/get`, `resource
 | `tools/call` with no/non-string `name`                 | `api/mcp/dispatch.ts:113`         | `Invalid params: missing tool name`                                        |
 | `tools/call` with `name` that isn't in the registry    | `api/mcp/dispatch.ts:117`         | `Unknown tool: get_foo`                                                    |
 | `prompts/get` with no/non-string `name`                | `api/mcp/handler.ts:133`          | `Invalid params: missing prompt name`                                      |
-| `prompts/get` with unknown name or missing required arg | `api/mcp/prompts/index.ts:302`    | `Unknown prompt: …` / `Missing required argument "country_code" for prompt "country-briefing"` |
-| `resources/read` with no/unknown/malformed `uri`       | `api/mcp/resources/index.ts:200`  | `Invalid params: missing resource uri` / `Unknown resource uri "..."` |
+| `prompts/get` with unknown name or missing required arg | `api/mcp/prompts/index.ts:302/310` | `Unknown prompt: …` / `Missing required argument "country_code" for prompt "country-briefing"` |
+| `resources/read` with no/unknown/malformed `uri`       | `api/mcp/resources/index.ts:200/223` | `Invalid params: missing resource uri` / `Unknown resource uri "..."` |
 | `logging/setLevel` with non-string or out-of-set level | `api/mcp/handler.ts:156`          | `Invalid params: level must be one of debug, info, notice, warning, error, critical, alert, emergency` |
 
 ```json
