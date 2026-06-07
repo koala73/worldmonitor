@@ -12,7 +12,7 @@ const ALLOWED_DOMAINS = new Set(loadSharedConfig('rss-allowed-domains.json'));
 
 const ADVISORY_FEEDS = [
   { name: 'US State Dept', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://travel.state.gov/_res/rss/TAsTWs.xml', levelParser: 'us' },
-  { name: 'Australia DFAT Smartraveller', sourceCountry: 'AU', sourceCategory: 'travel-advisory', url: 'https://www.smartraveller.gov.au/rss', levelParser: 'au' },
+  { name: 'Australia DFAT Smartraveller', sourceCountry: 'AU', sourceCategory: 'travel-advisory', url: 'https://www.smartraveller.gov.au/countries/documents/index.rss', levelParser: 'au' },
   { name: 'UK FCDO', sourceCountry: 'UK', sourceCategory: 'travel-advisory', url: 'https://www.gov.uk/foreign-travel-advice.atom' },
   { name: 'US Embassy Thailand', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://th.usembassy.gov/category/alert/feed/', targetCountry: 'TH' },
   { name: 'US Embassy UAE', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://ae.usembassy.gov/category/alert/feed/', targetCountry: 'AE' },

@@ -20,6 +20,10 @@ const DISCLOSURE_PATTERNS_BY_COUNTRY: Record<string, RegExp[]> = {
   US: [/\bUS\b/i, /\bU\.S\.\b/i, /\bState Dept\b/i, /\bState Department\b/i],
 };
 
+const REQUIRED_FEED_URLS_BY_NAME: Record<string, string> = {
+  'Australia DFAT Smartraveller': 'https://www.smartraveller.gov.au/countries/documents/index.rss',
+};
+
 function readRepoFile(path: string): string {
   return readFileSync(resolve(root, path), 'utf8');
 }
@@ -87,6 +91,16 @@ function assertDoesNotClaimInactiveSources(label: string, text: string, sourceCo
 }
 
 describe('security advisory source contract', () => {
+  it('known advisory feeds use their published feed endpoints', () => {
+    const feeds = extractAdvisoryFeeds();
+
+    for (const [name, expectedUrl] of Object.entries(REQUIRED_FEED_URLS_BY_NAME)) {
+      const feed = feeds.find((candidate) => candidate.name === name);
+      assert.ok(feed, `ADVISORY_FEEDS must include ${name}.`);
+      assert.equal(feed.url, expectedUrl);
+    }
+  });
+
   it('panel country filters are derived from active travel-advisory feed countries', () => {
     const expectedCountries = travelAdvisorySourceCountries(extractAdvisoryFeeds());
     const panel = readRepoFile('src/components/SecurityAdvisoriesPanel.ts');
