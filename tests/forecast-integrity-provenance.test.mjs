@@ -32,6 +32,15 @@ describe('forecast integrity and provenance surfaces', () => {
     assert.doesNotMatch(src, /this\.sourceState\.error \? this\.sourceState\.error\.replace/);
   });
 
+  it('keeps client request failures distinct from backend degradation', () => {
+    const dataLoader = read('src/app/data-loader.ts');
+    const forecastService = read('src/services/forecast.ts');
+
+    assert.match(dataLoader, /degraded:\s*false,\n\s*stale:\s*false,\n\s*error:\s*'forecast_request_failed'/);
+    assert.match(forecastService, /export async function fetchForecastFeed/);
+    assert.doesNotMatch(forecastService, /export async function fetchForecasts/);
+  });
+
   it('documents market calibration limits and projection clamp heuristics', () => {
     const docs = read('docs/panels/forecast.mdx');
     const seeder = read('scripts/seed-forecasts.mjs');

@@ -30,11 +30,6 @@ export async function fetchForecastFeed(domain?: string, region?: string): Promi
   return normalizeForecastFeed(resp);
 }
 
-export async function fetchForecasts(domain?: string, region?: string): Promise<Forecast[]> {
-  const resp = await fetchForecastFeed(domain, region);
-  return resp.forecasts;
-}
-
 function normalizeForecastFeed(resp: GetForecastsResponse): ForecastFeed {
   return {
     forecasts: resp.forecasts || [],

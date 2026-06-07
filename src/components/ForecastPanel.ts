@@ -382,7 +382,9 @@ export class ForecastPanel extends Panel {
         ? 'No forecasts match the current filter'
         : this.sourceState.degraded
           ? 'Forecast backend unavailable'
-          : 'No forecasts available';
+          : this.sourceState.error
+            ? 'Forecast request failed'
+            : 'No forecasts available';
       const sourceHtml = this.renderSourceNotice();
       this.setSafeContent(unsafeRawHtml(`
         <div class="fc-panel">
@@ -417,7 +419,7 @@ export class ForecastPanel extends Panel {
   }
 
   private renderSourceNotice(): string {
-    if (!this.sourceState.degraded && !this.sourceState.stale) return '';
+    if (!this.sourceState.degraded && !this.sourceState.stale && !this.sourceState.error) return '';
     const errorDetail = this.sourceState.degraded ? '' : this.sourceState.error.replace(/_/g, ' ');
     const parts = [
       this.sourceState.degraded ? 'Forecast source degraded' : '',

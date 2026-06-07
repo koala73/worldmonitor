@@ -1960,7 +1960,7 @@ export class DataLoaderManager implements AppModule {
     } catch {
       this.callPanel('forecast', 'updateForecasts', [], {
         generatedAt: 0,
-        degraded: true,
+        degraded: false,
         stale: false,
         error: 'forecast_request_failed',
       });
