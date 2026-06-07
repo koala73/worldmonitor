@@ -24,7 +24,8 @@ export const getForecasts: ForecastServiceHandler['getForecasts'] = async (
     if (req.region) forecasts = forecasts.filter(f => f.region.toLowerCase().includes(req.region.toLowerCase()));
 
     return { forecasts, generatedAt: data.generatedAt || 0, degraded: false, stale: false, error: '' };
-  } catch {
+  } catch (err) {
+    console.error('[forecast] getRawJson failed:', err instanceof Error ? err.message : String(err));
     return {
       forecasts: [],
       generatedAt: 0,

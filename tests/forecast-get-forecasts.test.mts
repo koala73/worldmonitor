@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
 const originalFetch = globalThis.fetch;
+const originalConsoleError = console.error;
 const originalEnv = { ...process.env };
 
 const REDIS_KEY = 'forecast:predictions:v2';
@@ -30,10 +31,15 @@ describe('getForecasts backend status', () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    console.error = originalConsoleError;
     restoreEnv();
   });
 
   it('returns degraded=true when the Redis/backend read fails', async () => {
+    const errors: unknown[][] = [];
+    console.error = (...args: unknown[]) => {
+      errors.push(args);
+    };
     globalThis.fetch = (async () => {
       throw new Error('redis unavailable');
     }) as typeof fetch;
@@ -47,6 +53,7 @@ describe('getForecasts backend status', () => {
       stale: false,
       error: 'forecast_backend_unavailable',
     });
+    assert.deepEqual(errors, [['[forecast] getRawJson failed:', 'redis unavailable']]);
   });
 
   it('keeps a healthy cache miss distinct from a backend failure', async () => {
