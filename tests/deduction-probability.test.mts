@@ -8,7 +8,7 @@ describe('deduction probability parsing', () => {
     const parsed = extractDeductionProbability('Most likely path (next 24-72h, 40-55%)');
 
     assert.deepEqual(parsed, {
-      label: '40-55% range',
+      label: '40-55%',
       remainder: 'Most likely path (next 24-72h, 40-55%)',
       isRange: true,
     });
@@ -28,7 +28,7 @@ describe('deduction probability parsing', () => {
     const parsed = extractDeductionProbability('40-55%: Negotiated pause after shuttle diplomacy', { leadingOnly: true });
 
     assert.deepEqual(parsed, {
-      label: '40-55% range',
+      label: '40-55%',
       remainder: 'Negotiated pause after shuttle diplomacy',
       isRange: true,
     });
@@ -64,6 +64,16 @@ describe('deduction probability parsing', () => {
     assert.deepEqual(parsed, {
       label: '~50%',
       remainder: 'Most likely path (40-125%, ~50%)',
+      isRange: false,
+    });
+  });
+
+  it('uses document order when a single percentage appears before a later range', () => {
+    const parsed = extractDeductionProbability('55% likely, escalation case 30-40%');
+
+    assert.deepEqual(parsed, {
+      label: '~55%',
+      remainder: '55% likely, escalation case 30-40%',
       isRange: false,
     });
   });

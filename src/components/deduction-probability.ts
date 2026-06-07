@@ -15,12 +15,16 @@ interface Span {
   end: number;
 }
 
+interface Candidate extends DeductionProbabilityBadge {
+  start: number;
+}
+
 function isValidProbability(value: number): boolean {
   return Number.isInteger(value) && value >= 0 && value <= 100;
 }
 
 function formatRangeLabel(low: number, high: number): string {
-  return `${low}-${high}% range`;
+  return `${low}-${high}%`;
 }
 
 function formatSingleLabel(value: number): string {
@@ -53,15 +57,18 @@ export function extractDeductionProbability(text: string, options: { leadingOnly
 
   if (!options.leadingOnly) {
     const invalidRangeSpans: Span[] = [];
+    const candidates: Candidate[] = [];
     for (const match of text.matchAll(RANGE_RE_GLOBAL)) {
       const low = toValidInt(match[1] ?? '');
       const high = toValidInt(match[2] ?? '');
       if (low !== null && high !== null && low <= high) {
-        return {
+        candidates.push({
+          start: match.index ?? 0,
           label: formatRangeLabel(low, high),
           remainder: text,
           isRange: true,
-        };
+        });
+        continue;
       }
       invalidRangeSpans.push({ start: match.index ?? 0, end: (match.index ?? 0) + match[0].length });
     }
@@ -70,14 +77,22 @@ export function extractDeductionProbability(text: string, options: { leadingOnly
       if (isInsideSpan(match.index ?? 0, invalidRangeSpans)) continue;
       const value = toValidInt(match[1] ?? '');
       if (value === null) continue;
-      return {
+      candidates.push({
+        start: match.index ?? 0,
         label: formatSingleLabel(value),
         remainder: text,
         isRange: false,
-      };
+      });
     }
 
-    return null;
+    candidates.sort((a, b) => a.start - b.start);
+    const candidate = candidates[0];
+    if (!candidate) return null;
+    return {
+      label: candidate.label,
+      remainder: candidate.remainder,
+      isRange: candidate.isRange,
+    };
   }
 
   const singleMatch = LEADING_SINGLE_RE.exec(text);
