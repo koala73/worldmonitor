@@ -6,17 +6,14 @@ import { describe, it } from 'node:test';
 const root = resolve(new URL('..', import.meta.url).pathname);
 const read = (rel) => readFileSync(resolve(root, rel), 'utf8');
 
-function parseNumericConstant(source, name) {
+function parseNumericConst(source, name) {
   const match = source.match(new RegExp(`const ${name} = ([0-9.]+);`));
-  assert.ok(match, `${name} constant not found`);
+  assert.ok(match, `${name} declaration not found`);
   return Number(match[1]);
 }
 
-function parseForecastDocCap(docs, label) {
-  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = docs.match(new RegExp(`\\| ${escapedLabel} \\| ([0-9.]+) \\|`));
-  assert.ok(match, `${label} docs cap not found`);
-  return Number(match[1]);
+function formatProbability(value) {
+  return value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 }
 
 describe('forecast integrity and provenance surfaces', () => {
@@ -57,6 +54,7 @@ describe('forecast integrity and provenance surfaces', () => {
   it('documents market calibration limits and projection clamp heuristics', () => {
     const docs = read('docs/panels/forecast.mdx');
     const seeder = read('scripts/seed-forecasts.mjs');
+    const cyberProbMax = parseNumericConst(seeder, 'CYBER_PROB_MAX');
 
     assert.doesNotMatch(docs, /probability-calibrated/);
     assert.match(docs, /deterministic, rule-based signal detectors/);
@@ -72,12 +70,15 @@ describe('forecast integrity and provenance surfaces', () => {
     assert.match(docs, /Political probability ceiling \| 0\.80/);
     assert.match(docs, /Military probability ceiling \| 0\.90/);
     assert.match(docs, /Infrastructure probability ceiling \| 0\.85/);
-    assert.equal(parseForecastDocCap(docs, 'Cyber probability ceiling'), parseNumericConstant(seeder, 'CYBER_PROB_MAX'));
     assert.match(seeder, /Math\.min\(CYBER_PROB_MAX,/);
     assert.match(docs, /Market-bucket scenario calibration is an editorial calibration layer/);
     assert.match(docs, /Defense.*0\.12/);
     assert.match(docs, /1% floor and 95% cap/);
     assert.match(seeder, /const PROJECTION_PROBABILITY_FLOOR = 0\.01;/);
     assert.match(seeder, /const PROJECTION_PROBABILITY_CAP = 0\.95;/);
+    assert.ok(
+      docs.includes(`| Cyber probability ceiling | ${formatProbability(cyberProbMax)} |`),
+      `forecast panel doc must derive cyber ceiling from CYBER_PROB_MAX=${cyberProbMax}`,
+    );
   });
 });

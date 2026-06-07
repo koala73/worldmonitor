@@ -1,9 +1,17 @@
 ---
 title: "AI Brief Endpoints"
-description: "Read, share, and render the AI-composed daily intelligence brief."
+description: "Read, share, and render the AI-composed intelligence brief."
 ---
 
-WorldMonitor composes a per-user **daily intelligence brief** on Railway, stores it in Redis at `brief:{userId}:{issueDate}`, and exposes these routes for dashboard readback, public sharing, and Telegram/Slack carousel rendering.
+WorldMonitor composes a per-user intelligence brief on Railway, stores each
+edition in Redis at `brief:{userId}:{issueSlot}`, writes a latest pointer at
+`brief:latest:{userId}`, and exposes these routes for dashboard readback,
+public sharing, and Telegram/Slack carousel rendering. Default cadence is
+daily, but each alert rule's `digestMode` can schedule daily, twice-daily, or
+weekly editions.
+
+For source selection, filtering, deduplication, LLM grounding, and bias
+controls, see [News Digest and Briefing Methodology](/methodology/news-digest-and-briefing).
 
 <Info>
 All read routes require a valid Clerk session and a PRO tier, except the public share route (`/api/brief/public/{hash}`).
@@ -13,32 +21,42 @@ All read routes require a valid Clerk session and a PRO tier, except the public 
 
 ### `GET /api/latest-brief`
 
-Returns a short summary of the caller's most recent composed brief, or `{ status: "composing" }` if today's run hasn't produced a brief yet.
+Returns a short summary of the caller's most recent composed brief, or
+`{ status: "composing" }` if the requested/current slot has not produced a
+brief yet.
 
 | Status | Response |
 |--------|----------|
-| 200 OK | `{ issueDate, dateLong, greeting, threadCount, magazineUrl }` |
-| 200 OK | `{ status: "composing" }` — no brief for today yet |
+| 200 OK | `{ status: "ready", issueDate, issueSlot, dateLong, greeting, threadCount, magazineUrl }` |
+| 200 OK | `{ status: "composing", issueDate, issueSlot? }` — no brief for the current/requested slot yet |
 | 401 | Missing / invalid Clerk JWT |
 | 403 | `pro_required` |
 | 503 | `BRIEF_URL_SIGNING_SECRET` not configured |
 
-The `magazineUrl` is a freshly-signed URL — the HMAC binds `{userId, issueDate}` so it only works for the authenticated owner.
+`issueDate` remains the display/date field (`YYYY-MM-DD`). `issueSlot` is the
+frozen edition key (`YYYY-MM-DD-HHMM`) used for Redis lookup and HMAC binding;
+it is present on ready responses and on misses for an explicitly requested
+slot. The `magazineUrl` is freshly signed against `{userId, issueSlot}` so it
+only works for the authenticated owner.
 
-### `GET /api/brief/{userId}/{issueDate}`
+### `GET /api/brief/{userId}/{issueSlot}`
 
-Full brief body for `issueDate` (YYYY-MM-DD). HMAC-signed URL required. Returns the structured brief JSON used by the magazine reader view.
+Full magazine reader for `issueSlot` (`YYYY-MM-DD-HHMM`). HMAC-signed URL
+required. The slot format lets two same-day digest sends produce distinct
+frozen editions.
 
 ## Sharing
 
-### `POST /api/brief/share-url?date=YYYY-MM-DD`
+### `POST /api/brief/share-url?slot=YYYY-MM-DD-HHMM`
 
-Materialises a public share pointer for the caller's brief on `date`. Idempotent — hash is a pure function of `{userId, issueDate, BRIEF_SHARE_SECRET}`.
+Materialises a public share pointer for the caller's brief on `slot`. If the
+slot is omitted, the route resolves `brief:latest:{userId}`. Idempotent — hash
+is a pure function of `{userId, issueSlot, BRIEF_SHARE_SECRET}`.
 
 | Status | Response |
 |--------|----------|
-| 200 | `{ shareUrl, hash, issueDate }` |
-| 400 | `invalid_date_shape` / `invalid_payload` |
+| 200 | `{ shareUrl, hash, issueSlot }` |
+| 400 | `invalid_slot_shape` / `invalid_payload` |
 | 401 | `UNAUTHENTICATED` |
 | 403 | `pro_required` |
 | 404 | `brief_not_found` — reader can't share what doesn't exist |
@@ -46,11 +64,11 @@ Materialises a public share pointer for the caller's brief on `date`. Idempotent
 
 ### `GET /api/brief/public/{hash}`
 
-**Unauthenticated** public read of a previously-shared brief. The hash resolves to a `brief:public:{hash} → {userId, issueDate}` Redis pointer; if absent, the brief was never shared. Share pointers are written lazily (on share, not on compose).
+**Unauthenticated** public read of a previously-shared brief. The hash resolves to a `brief:public:{hash} → {userId, issueSlot}` Redis pointer; if absent, the brief was never shared. Share pointers are written lazily (on share, not on compose).
 
 ## Carousel (images for social)
 
-### `GET /api/brief/carousel/{userId}/{issueDate}/{page}.png`
+### `GET /api/brief/carousel/{userId}/{issueSlot}/{page}.png`
 
 Server-rendered PNG page (`page` = 1..N) of the brief, intended for Telegram `sendMediaGroup`, Slack `chat.postMessage`, LinkedIn, etc.
 

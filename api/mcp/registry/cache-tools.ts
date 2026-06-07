@@ -710,8 +710,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         for (const label of ['macro', 'growth', 'labor', 'external']) pickNestedMap(data, label, 'countries', codes);
         return data;
       }
-      const defaultLimit = process.env.MCP_LIMIT_DEFAULT_30 === 'on' ? DEFAULT_LIST_LIMIT : 0;
-      const limit = argNum(params.limit) ?? defaultLimit;
+      const limit = argNum(params.limit) ?? DEFAULT_LIST_LIMIT;
       for (const label of ['macro', 'growth', 'labor', 'external']) capNestedMap(data, label, 'countries', limit);
       return data;
     },
@@ -763,8 +762,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         pickNestedMap(data, 'house-prices', 'countries', codes);
         return data;
       }
-      const defaultLimit = process.env.MCP_LIMIT_DEFAULT_30 === 'on' ? DEFAULT_LIST_LIMIT : 0;
-      capNestedMap(data, 'house-prices', 'countries', argNum(params.limit) ?? defaultLimit);
+      capNestedMap(data, 'house-prices', 'countries', argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       return data;
     },
     _cacheKeys: ['economic:eurostat:house-prices:v1'],
@@ -804,8 +802,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         pickNestedMap(data, 'gov-debt-q', 'countries', codes);
         return data;
       }
-      const defaultLimit = process.env.MCP_LIMIT_DEFAULT_30 === 'on' ? DEFAULT_LIST_LIMIT : 0;
-      capNestedMap(data, 'gov-debt-q', 'countries', argNum(params.limit) ?? defaultLimit);
+      capNestedMap(data, 'gov-debt-q', 'countries', argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       return data;
     },
     _cacheKeys: ['economic:eurostat:gov-debt-q:v1'],
@@ -845,8 +842,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         pickNestedMap(data, 'industrial-production', 'countries', codes);
         return data;
       }
-      const defaultLimit = process.env.MCP_LIMIT_DEFAULT_30 === 'on' ? DEFAULT_LIST_LIMIT : 0;
-      capNestedMap(data, 'industrial-production', 'countries', argNum(params.limit) ?? defaultLimit);
+      capNestedMap(data, 'industrial-production', 'countries', argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       return data;
     },
     _cacheKeys: ['economic:eurostat:industrial-production:v1'],

@@ -83,3 +83,57 @@ describe('UCDP seed resilience branches', () => {
     );
   });
 });
+
+// Brace-matched extraction of a top-level function declaration from the source.
+function extractFn(name) {
+  const start = src.indexOf(`function ${name}(`);
+  assert.notEqual(start, -1, `missing function ${name}`);
+  const open = src.indexOf('{', start);
+  let depth = 0;
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}') { depth--; if (depth === 0) return src.slice(start, i + 1); }
+  }
+  throw new Error(`unbalanced ${name}`);
+}
+
+describe('UCDP version selection prefers the newest release', () => {
+  const discover = src.slice(
+    src.indexOf('async function ucdpDiscoverVersion()'),
+    src.indexOf('async function seedUcdpEvents()'),
+  );
+
+  it('probes all candidates and does NOT first-responder race (Promise.any)', () => {
+    // Promise.any let an older release that merely replied faster win, freezing
+    // conflict:ucdp-events:v1 at v24.1 (2023 data) outside the CII 2-year window.
+    // Match the CALL form (`Promise.any(`) so the explanatory comment that names
+    // the old behavior doesn't trip this guard.
+    assert.doesNotMatch(discover, /Promise\.any\(/, 'must not first-responder race');
+    assert.match(discover, /Promise\.allSettled\(/, 'must probe all candidates');
+  });
+
+  it('selects the newest valid version (sorts by ucdpVersionNewer)', () => {
+    assert.match(discover, /ucdpVersionNewer\(/, 'must rank candidates by version recency');
+    // only versions that returned a non-empty Result are eligible
+    assert.match(discover, /Result\.length === 0\) throw/);
+  });
+
+  it('on-demand relay discovery requires a non-empty Result (no empty newer wins)', () => {
+    const relayDiscover = src.slice(
+      src.indexOf('async function ucdpRelayDiscoverVersion()'),
+      src.indexOf('async function ucdpFetchAllEvents()'),
+    );
+    assert.match(relayDiscover, /Array\.isArray\(page0\?\.Result\) && page0\.Result\.length > 0/);
+  });
+
+  it('ucdpVersionNewer ranks GED versions newest-first (behavioral)', () => {
+    const ucdpVersionNewer = new Function(
+      `${extractFn('ucdpVersionRank')}\n${extractFn('ucdpVersionNewer')}\nreturn ucdpVersionNewer;`,
+    )();
+    assert.equal(ucdpVersionNewer('25.1', '24.1'), true, '25.1 newer than 24.1');
+    assert.equal(ucdpVersionNewer('24.1', '25.1'), false, '24.1 not newer than 25.1');
+    assert.equal(ucdpVersionNewer('26.1', '25.1'), true, '26.1 newer than 25.1');
+    assert.equal(ucdpVersionNewer('25.0.6', '25.0.5'), true, 'monthly candidate ordering');
+    assert.equal(ucdpVersionNewer('24.1', '24.1'), false, 'equal versions are not newer');
+  });
+});

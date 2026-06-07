@@ -1,7 +1,7 @@
 /**
  * Public brief magazine endpoint.
  *
- * GET /api/brief/{userId}/{issueDate}?t={token}
+ * GET /api/brief/{userId}/{issueSlot}?t={token}
  *   -> 200 text/html (rendered magazine)
  *   -> 403 on bad token (generic message, no userId echo)
  *   -> 404 on Redis miss (minimal "expired" HTML)
@@ -12,11 +12,10 @@
  * the magazine. URLs are delivered to users via already-authenticated
  * channels (push, email, dashboard panel).
  *
- * The Redis key brief:{userId}:{issueDate} is per-user and written by
- * the Phase 3 composer (not yet shipped). Until then every request
- * will 404 with a neutral expired page. That is intentional and
- * correct behaviour — the route is safe to deploy ahead of the
- * composer.
+ * The Redis key brief:{userId}:{issueSlot} is per-user and written by
+ * the digest composer. The file/variable name still says issueDate for
+ * backwards-compatible route plumbing; the value is the slot string
+ * (YYYY-MM-DD-HHMM), matching the signing helpers and share API.
  */
 
 export const config = { runtime: 'edge' };

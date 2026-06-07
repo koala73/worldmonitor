@@ -93,7 +93,7 @@ refresh_token=<from previous exchange>
 client_id=<from DCR>
 ```
 
-**Rate limit**: 10 token requests / minute / IP.
+**Rate limit**: 10 token requests / minute. The limiter is keyed by `client_secret` hash for `client_credentials`, by `client_id` when present (`authorization_code` and `refresh_token`), and falls back to caller IP only when neither identifier is available.
 
 **Token TTLs**:
 

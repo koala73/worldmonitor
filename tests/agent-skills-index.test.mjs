@@ -95,6 +95,16 @@ describe('agent readiness: agent-skills index', () => {
     assert.deepEqual(names, dirs, 'every skill directory must have an index entry');
   });
 
+  it('public skills use the current wm_<40 hex> API-key shape', () => {
+    const hexKey = /wm_[0-9a-f]{40}/;
+    const stalePrefixes = /wm_live_|wm_pro_/;
+    for (const name of ['fetch-country-brief', 'fetch-resilience-score']) {
+      const skill = readFileSync(join(SKILLS_DIR, name, 'SKILL.md'), 'utf-8');
+      assert.match(skill, hexKey, `${name} must show the current user API-key shape`);
+      assert.doesNotMatch(skill, stalePrefixes, `${name} must not teach stale API-key prefixes`);
+    }
+  });
+
   it('fetch-resilience-score documents the generated score contract', () => {
     const skill = readFileSync(
       join(SKILLS_DIR, 'fetch-resilience-score', 'SKILL.md'),

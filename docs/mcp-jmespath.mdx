@@ -18,7 +18,7 @@ This page is the practical reference: a quick orientation, then twelve worked ex
 
   Failures return `{ _jmespath_error, original_keys, ... }` inside the normal result envelope — the tool call still succeeds at the JSON-RPC layer (no `isError: true`), and `original_keys` echoes the top-level keys of the unprojected response so the model can self-correct on the next call.
 
-The three response shapes used below are the captured fixtures under `tests/fixtures/jmespath-samples/` (re-captured periodically against the prod MCP endpoint). They were picked deliberately — fat (~100 KB), medium (~30 KB), and thin (~10 KB) — to span the size tiers you'll actually project against.
+The three response shapes used below are the captured fixtures under `tests/fixtures/jmespath-samples/` (re-captured periodically against the prod MCP endpoint). They were picked deliberately — fat (~100 KB with `limit: 0`), medium (~30 KB), and thin (~10 KB) — to span the size tiers you'll actually project against.
 
 ## The twelve examples
 
@@ -32,12 +32,13 @@ The three response shapes used below are the captured fixtures under `tests/fixt
 {
   "name": "get_market_data",
   "arguments": {
+    "limit": 0,
     "jmespath": "data.\"fear-greed\".composite"
   }
 }
 ```
 
-**Unprojected response (~100 KB).** Hundreds of equity quotes, every sector, all of crypto, every Gulf ticker, the full fear-greed breakdown:
+**Unprojected response (~100 KB with `limit: 0`).** Hundreds of equity quotes, every sector, all of crypto, every Gulf ticker, the full fear-greed breakdown:
 
 ```json
 {
@@ -67,11 +68,13 @@ The three response shapes used below are the captured fixtures under `tests/fixt
 
 **Why this works.** Drill-down is just dotted path navigation. `data."fear-greed"` quotes the hyphenated key, then `.composite` plucks the nested object. Everything else in the payload — the 100 KB of quotes — never crosses the wire.
 
+Omit `limit: 0` for ordinary use: cache tools default-cap list- and map-shaped fields at 30 items when `limit` is omitted.
+
 ---
 
 ### 2. Slim each item to a few fields (multiselect-hash)
 
-**Intent.** From `get_market_data`, get a compact table of all equity quotes: symbol, price, percent change.
+**Intent.** From `get_market_data`, get a compact table of the default-capped equity quotes: symbol, price, percent change.
 
 **Tool call:**
 
@@ -231,7 +234,7 @@ The three response shapes used below are the captured fixtures under `tests/fixt
 **Why this works.** `[start:stop]` is the slice projection (`stop` is exclusive). Negative indices and a step are also supported — `[-5:]` for the last five, `[::-1]` to reverse, `[::2]` for every other element. Slicing is **post-filter** in the pipeline — to slice the filtered set, pipe (see example 12).
 
 <Tip>
-**`limit` vs. slicing.** Cache tools accept a tool-level `limit` argument that caps list- or map-shaped slices **before** projection (default 30 where the tool applies a cap). `limit` and JMESPath compose: the tool-level cap narrows the candidate set, then your `[0:N]` slice picks the prefix. Pass `limit: 0` to disable the tool-level cap when you want everything and intend to project further with JMESPath.
+**`limit` vs. slicing.** Cache tools accept a tool-level `limit` argument that caps list- or map-shaped slices **before** projection (default 30 for cache tools that expose list/map fields). `limit` and JMESPath compose: the tool-level cap narrows the candidate set, then your `[0:N]` slice picks the prefix. Pass `limit: 0` to disable the tool-level cap when you want everything and intend to project further with JMESPath.
 </Tip>
 
 ---
@@ -428,7 +431,7 @@ The flatten drops the original map keys (the chokepoint names). If you need the 
 
 ### Get the full payload (no projection)
 
-Omit the `jmespath` argument entirely. Cache tools also default-cap list- or map-shaped fields at 30 items where the tool applies a cap; pass `limit: 0` to disable that cap when you genuinely want the whole bundle:
+Omit the `jmespath` argument entirely. Cache tools default-cap list- or map-shaped fields at 30 items when `limit` is omitted; pass `limit: 0` to disable that cap when you genuinely want the whole bundle:
 
 ```json
 {
@@ -465,13 +468,13 @@ A JMESPath expression can fail three ways: the expression itself exceeds 1024 by
 }
 ```
 
-`original_keys` is the top-level keys of the unprojected response — enough context for the model to retry with a corrected expression in one extra call. A bad expression **does** consume one daily quota slot per attempt; the echoed `original_keys` exists specifically to make the retry self-correcting rather than guesswork. The three kinds (`expression_too_long`, `invalid_expression`, `projection_too_large`) and their exact discriminator strings live in the [MCP Error Catalog](/mcp-error-catalog#_jmespath_error--projection-failed).
+`original_keys` is the top-level keys of the unprojected response — enough context for the model to retry with a corrected expression in one extra call. A bad expression **does** consume one Pro/OAuth daily quota slot per attempt when that quota path applies; the echoed `original_keys` exists specifically to make the retry self-correcting rather than guesswork. The three kinds (`expression_too_long`, `invalid_expression`, `projection_too_large`) and their exact discriminator strings live in the [MCP Error Catalog](/mcp-error-catalog#_jmespath_error--projection-failed).
 
 ## Complements to projection
 
 ### `summary: true` flag
 
-Every cache tool also accepts a universal `summary: true` argument that returns a server-built summary (counts + samples) instead of the full payload. Use it when:
+Every cache tool also accepts a universal `summary: true` argument that returns a server-built summary instead of the full payload. Arrays become `{ count, sample }` with up to 3 sample items; object fields with more than 5 keys are treated as entity maps and become `{ count, sample_keys }` with up to 3 sample keys. Use it when:
 
 - You want a quick sanity-check of what's in the bundle before designing a projection — `summary: true` returns the shape and tier counts in a handful of fields.
 - The model only needs aggregate counts ("how many active conflicts?", "how many critical chokepoints?") and not the underlying rows.

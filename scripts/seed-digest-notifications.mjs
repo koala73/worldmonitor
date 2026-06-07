@@ -1577,7 +1577,8 @@ function injectBriefCta(html, magazineUrl) {
 // ── Brief composition (runs once per cron tick, before digest loop) ─────────
 
 /**
- * Write brief:{userId}:{issueDate} for every eligible user and
+ * Write brief:{userId}:{issueSlot} for every eligible user and
+ * brief:latest:{userId} as the latest-pointer for share/readback, then
  * return { briefByUser, counters } for the digest loop + main's
  * end-of-run exit gate. One brief per user regardless of how many
  * variants they have enabled.

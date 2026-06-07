@@ -100,6 +100,17 @@ dates at least two years in the past. If a critical/high keyword match has a
 historical marker, it is downgraded to `info` and tagged
 `keyword-historical-downgrade`.
 
+Before severity keywords run, the classifier applies a consumer/lifestyle
+exclusion list. If the lower-cased title contains any of these substrings,
+the story is forced to `info` / `general` with low confidence:
+`protein`, `couples`, `relationship`, `dating`, `diet`, `fitness`, `recipe`,
+`cooking`, `shopping`, `fashion`, `celebrity`, `movie`, `tv show`, `sports`,
+`game`, `concert`, `festival`, `wedding`, `vacation`, `travel tips`,
+`life hack`, `self-care`, and `wellness`. These are substring matches, not
+word-boundary keyword matches, because the goal is to suppress broad lifestyle
+and entertainment false positives before words such as "war", "ban", or
+"virus" can promote them.
+
 The digest can enrich items from the LLM classify cache. Cached LLM results
 are bounded by three controls:
 
@@ -155,9 +166,10 @@ per entity-level source, capped at five sources.
 
 Diplomacy/flashpoint stories get an additional `18` point boost when the title
 contains a configured entity-action pair or a diplomacy keyword plus a
-flashpoint keyword. A low/medium item can also be promoted to `high` when it is
-not historical, has a diplomacy/flashpoint signal, and has at least `3`
-Tier 1 or Tier 2 entity-level sources.
+flashpoint keyword. Any non-`critical`, non-`high` item, including `info`, can
+also be promoted to `high` when it is not historical, has a
+diplomacy/flashpoint signal, and has at least `3` Tier 1 or Tier 2
+entity-level sources.
 
 Within each category, items sort by `importanceScore` descending, then
 publication time descending. The feed digest returns at most `20` items per
@@ -192,8 +204,12 @@ Story phase is derived from first seen time, mention count, and score trend:
 | --- | --- |
 | `breaking` | Mention count is 1. |
 | `developing` | Mention count is 2-5 and the story is under 2 hours old. |
-| `fading` | Current score is less than half the peak score. |
+| `fading` | Reserved for score-history support: the feed API branch requires both `currentScore` and `peakScore` to be positive and the current score to fall below half the peak. The current digest writer still stores zero placeholders for those fields, so this branch is inert on the feed-panel story phase. |
 | `sustained` | Fallback for ongoing tracked stories. |
+
+The notification cron has its own read-path phase helper for digest delivery.
+There, a story with more than 24 hours of silence is treated as `fading` and
+dropped from the delayed digest/brief pool.
 
 ## Digest And Brief Read Path
 
@@ -224,7 +240,11 @@ embedding-based (`DIGEST_DEDUP_MODE=embed`) with single-link clustering,
 entity veto on, cosine threshold `0.60`, and a `45000` ms wall-clock budget.
 `DIGEST_DEDUP_MODE=jaccard` is the instant rollback. If the embedding path
 throws because a provider, key, timeout, or response shape failed, the whole
-batch falls back to Jaccard. Topic grouping is enabled by default after dedupe
+batch falls back to Jaccard. The Jaccard fallback merges clusters when title
+word overlap is greater than `0.55`; that threshold is intentionally not
+env-tunable. `DIGEST_DEDUP_CLUSTERING=complete` switches the embedding path to
+the more conservative complete-link mode, and invalid clustering values also
+fall back to complete-link. Topic grouping is enabled by default after dedupe
 with threshold `0.45`; `DIGEST_DEDUP_TOPIC_GROUPING=0` disables it.
 
 An optional absolute score floor runs after dedupe. `DIGEST_SCORE_MIN` defaults
@@ -301,6 +321,19 @@ calls to action, and generic editorial filler. The product language should
 describe what changed and why it may matter, not tell the reader what to buy,
 sell, do, or believe.
 
+The canonical digest prose and direct fallback `whyMatters` paths pin the
+provider chain to OpenRouter by skipping Ollama and Groq, so the live brief
+uses Gemini 2.5 Flash (`google/gemini-2.5-flash`) for those surfaces when the
+LLM layer is enabled. Digest prose and story-description calls use
+temperature `0.4`; the regional weekly brief provider chain uses temperature
+`0.3`. The digest prompt requires a named actor/event lead, bans generic
+editorial phrases such as "the global stage" and weak stitching phrases such
+as "this comes as" or "meanwhile", requires substantive linkage before a lead
+combines two stories, and validates cache hits and fresh outputs through the
+same shape and proper-noun grounding gate. Per-story prompts also require
+named actors where possible and can use the RSS description as grounding
+context.
+
 ## Bias Posture
 
 The system intentionally favours false-positive reduction in the brief path.
@@ -322,6 +355,15 @@ LLM grounding heuristics are strongest in English.
 Geography is similarly uneven. Regions with many curated feeds and strong
 wire coverage will surface more reliably than regions with sparse RSS,
 blocked publisher feeds, or weak date metadata.
+
+Followed-country personalisation is a soft within-lane lift. The nominal
+`FOLLOWED_BIAS_MULTIPLIER` is `1.25` and is env-tunable between `1` and `2`,
+but the live list mechanism is a stable severity-lane sort: a followed-country
+story can move ahead of non-followed stories inside the same severity lane, and
+never promotes a lower-severity story above a higher-severity one. Free-tier
+readers can follow up to `3` countries; PRO readers can keep a larger followed
+set. If the followed-country relay is unavailable, the brief falls back to the
+unbiased ordering rather than treating the missing list as ground truth.
 
 The `happy` variant is intentionally different from intelligence briefs. It
 surfaces constructive and positive-news streams and should not be interpreted

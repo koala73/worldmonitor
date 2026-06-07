@@ -27,9 +27,11 @@ See [MCP](/mcp-server) for details.
 |----------|-------|--------|-------|
 | `POST /api/oauth/register` | 5 | 60 s | Per IP |
 | `GET /api/oauth/authorize` | 10 | 60 s | Per IP |
-| `POST /api/oauth/token` | 10 | 60 s | Per IP |
+| `POST /api/oauth/token` | 10 | 60 s | Per credential / client / IP fallback |
 
 Matches the implementations in `api/oauth/register.js`, `api/oauth/authorize.js`, and `api/oauth/token.ts`.
+
+For `/api/oauth/token`, the limiter key is `client_secret` hash for `client_credentials`, then `client_id` when present, and only falls back to caller IP when neither credential identifier is available.
 
 Exceeding any of these during the OAuth flow will cause the MCP client to fail the connection handshake — wait 60 s and retry.
 

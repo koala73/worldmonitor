@@ -39,7 +39,7 @@
       {
         "type": "api_key",
         "header": "X-WorldMonitor-Key",
-        "description": "API-tier subscribers may pass a wm_live_... key directly instead of completing the OAuth flow."
+        "description": "API-tier subscribers may pass a wm_<40 lowercase hex> key directly instead of completing the OAuth flow."
       }
     ]
   },
@@ -53,11 +53,11 @@
     "perMinute": 60,
     "dailyByPlan": {
       "pro": 50,
-      "apiStarter": 1000,
-      "apiBusiness": 10000,
+      "apiStarter": null,
+      "apiBusiness": null,
       "enterprise": null
     },
-    "notes": "Per-day quota (dailyByPlan) counts tools/call AND resources/read — initialize, tools/list, ping, notifications/initialized, prompts/list, prompts/get, and resources/list are exempt. The `describe_tool` tools/call is also exempt (v1.5.0 metadata escape hatch — SERVER_INSTRUCTIONS encourages calling it freely while exploring; otherwise a Pro user at the 50/day cap could not fetch tool definitions). resources/read intentionally counts toward the cap symmetrically with the equivalent tools/call — asymmetric auth is a known MCP data-leak vector. Per-minute (60/min, per-user on Pro, per-key on API tiers) counts ALL methods, so a tight discovery probe loop on tools/list will still trip the throttle."
+    "notes": "MCP hard daily reservation is currently enforced for Pro/OAuth contexts only: tools/call and resources/read reserve against the 50/day Pro counter, except describe_tool. API-key (env_key, wm_...) MCP callers do not use this MCP daily reservation path; they are protected here by the 60/min per-key limiter, while broader REST/API plan allowances are enforced outside the MCP handler. Exempt Pro/OAuth daily-quota methods: initialize, tools/list, prompts/list, prompts/get, resources/list, logging/setLevel, notifications/initialized, and ping. The describe_tool tools/call is also exempt (v1.5.0 metadata escape hatch; SERVER_INSTRUCTIONS encourages calling it freely while exploring). resources/read intentionally counts toward the Pro/OAuth cap symmetrically with the equivalent tools/call. Per-minute (60/min, per-user on OAuth contexts, per-key on API-key contexts) counts ALL methods, so a tight discovery probe loop on tools/list or logging/setLevel will still trip the throttle."
   },
   "tags": [
     "geopolitical-intelligence",

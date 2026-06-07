@@ -26,7 +26,7 @@ Authoritative CII scores come from the server-side `GET /api/intelligence/v1/get
 
 **Information score** (0-100): Country-attributed classified news pressure from top-story country attribution and threat summaries. Critical/high/medium headlines contribute with descending weights; info-level headlines do not move the score.
 
-**Floors**: UCDP active war pins score at >= 70, UCDP minor conflict at >= 50. Travel advisory do-not-travel pins at >= 60, reconsider at >= 50. Advisory floors and boosts use the live advisory feed when available; otherwise the server may apply the embedded State Department fallback table. Each `CiiScore` exposes `advisoryLevel` plus `advisoryProvenance` (`live`, `fallback`, or `absent`) so clients can tell which path affected the score.
+**Floors**: UCDP active war pins score at >= 70, UCDP minor conflict at >= 50. Travel advisory do-not-travel pins at >= 60, reconsider at >= 50. Advisory floors and boosts use the live advisory feed when available; otherwise the server may apply the embedded State Department fallback table. Each `CiiScore` exposes `advisoryLevel` plus `advisoryProvenance` (`live`, `fallback`, or `absent`) so clients can tell which path affected the score. UCDP floors read from the **latest** UCDP GED release (the seeder picks the newest version returning events, not the first to respond) and only count events within a **2-year recency window**; since UCDP GED is an annual, lagging dataset, recent conflict is driven by the real-time ACLED feed. The `/api/health.riskScores` signal-density check counts three realtime families — conflict (ACLED **or** recent UCDP), news, and cyber — and reads `COVERAGE_PARTIAL` if any family has no Tier-1 signal (e.g. ACLED auth missing while UCDP is out of window).
 
 **Boosts**: Advisory boost (+15 do-not-travel, +10 reconsider, +5 caution), OREF blend boost for Israel (+15 active alerts, +5/10 based on 24h history count), climate severity (up to +15), cyber threats (up to +12), wildfires (up to +8), displacement (up to +20), news urgency (up to +5), earthquakes (up to +25), sanctions (up to +14), and AIS disruptions (up to +10).
 
@@ -266,7 +266,7 @@ Every RSS headline is tokenized into individual terms and tracked in per-term fr
 | **Source diversity** | ≥ 2 unique RSS feed sources                   |
 | **Cooldown**         | 30 minutes since last spike for the same term |
 
-The tokenizer extracts CVE identifiers (`CVE-2024-xxxxx`), APT/FIN threat actor designators, and 16 compound terms for world leaders (e.g., "Xi Jinping", "Kim Jong Un") that would be lost by naive whitespace splitting. A configurable blocklist suppresses common noise terms.
+The tokenizer extracts CVE identifiers (`CVE-2024-xxxxx`), APT/FIN threat actor designators, and 16 tracked world-leader names, including multi-word names such as "Xi Jinping" and "Kim Jong Un" that would be lost by naive whitespace splitting. A configurable blocklist suppresses common noise terms.
 
 Detected spikes are auto-summarized via Groq (rate-limited to 5 summaries/hour) and emitted as `keyword_spike` signals into the correlation engine, where they compound with other signal types for convergence detection. The term registry is capped at 10,000 entries with LRU eviction to bound memory usage. All thresholds (spike multiplier, min count, cooldown, blocked terms) are configurable via the Settings panel.
 
@@ -278,9 +278,9 @@ The algorithm uses **Welford's online method** for numerically stable streaming 
 
 | Z-Score | Severity      | Example                            |
 | ------- | ------------- | ---------------------------------- |
-| ≥ 1.5   | Low           | Slightly elevated protest activity |
-| ≥ 2.0   | Medium        | Unusual naval presence             |
-| ≥ 3.0   | High/Critical | Military flights 3x above baseline |
+| ≥ 1.5   | Medium        | Slightly elevated protest activity |
+| ≥ 2.0   | High          | Unusual naval presence             |
+| ≥ 3.0   | Critical      | Military flights 3x above baseline |
 
 A minimum of 10 historical samples is required before anomalies are reported, preventing false positives during the learning phase. Anomalies are ingested back into the signal aggregator, where they compound with other signals for convergence detection.
 
@@ -302,6 +302,9 @@ The dashboard monitors five independent alert origins and fuses them into a unif
 - **Global cooldown** — after any alert fires, a 60-second global cooldown prevents rapid-fire notification bursts
 - **Recency gate** — items older than 15 minutes at processing time are silently dropped, preventing stale events from generating alerts after a reconnection
 - **Source tier gating** — Tier 3+ sources (niche outlets, aggregators) must have LLM-confirmed classification (`threat.source !== 'keyword'`) to fire an alert; Tier 1–2 sources bypass this gate
+- **Story-phase gate** — sustained and fading RSS stories are suppressed; the banner is reserved for breaking/developing stories or items without story metadata
+- **Importance floor** — RSS items with `importanceScore < 30` are too low-signal for the banner
+- **Startup grace** — RSS alerts are suppressed for the first 10 seconds after app load so the initial feed fetch does not replay old articles as breaking news. OREF siren alerts are exempt
 - **User sensitivity control** — configurable between `critical-only` (only critical severity fires) and `critical-and-high` (both critical and high severities)
 
 When an alert passes all gates, the system dispatches a `wm:breaking-news` CustomEvent on `document`, which the Breaking News Banner consumes to display a persistent top-of-screen notification. Optional browser Notification API popups and an audio chime are available as user settings. Clicking the banner scrolls to the RSS panel that sourced the alert and applies a 1.5-second flash highlight animation.

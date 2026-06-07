@@ -196,4 +196,41 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
       `'logging' must remain in LOGGING_HAS_NO_REGISTRY — removing it requires editing this test deliberately`,
     );
   });
+
+  it('server-card daily-quota notes mirror metadata exemptions', () => {
+    const card = JSON.parse(
+      readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'),
+    );
+    assert.deepEqual(
+      card.rateLimits?.dailyByPlan,
+      {
+        pro: 50,
+        apiStarter: null,
+        apiBusiness: null,
+        enterprise: null,
+      },
+      'server-card must not advertise API-tier MCP daily caps that the handler does not enforce',
+    );
+    const notes = card.rateLimits?.notes;
+    assert.equal(typeof notes, 'string', 'server-card rateLimits.notes must be a string');
+    assert.match(notes, /Pro\/OAuth contexts only/i, 'notes must scope the hard daily reservation to Pro/OAuth contexts');
+    assert.match(notes, /API-key .* do not use this MCP daily reservation path/i,
+      'notes must disclose that env_key/API-key MCP callers do not use the daily reservation path');
+    assert.doesNotMatch(notes, /1,000|1000|10,000|10000/,
+      'notes must not publish API Starter/Business MCP daily caps that are not enforced');
+    for (const method of [
+      'initialize',
+      'tools/list',
+      'prompts/list',
+      'prompts/get',
+      'resources/list',
+      'logging/setLevel',
+      'notifications/initialized',
+      'ping',
+      'describe_tool',
+    ]) {
+      assert.ok(notes.includes(method), `${method} must be named in daily-quota notes`);
+    }
+    assert.match(notes, /Per-minute .* counts ALL methods/i, 'notes must distinguish per-minute from daily exemptions');
+  });
 });
