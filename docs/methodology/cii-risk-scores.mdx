@@ -28,8 +28,11 @@ The current version is **v8**.
 > per country over a 2-year trailing window (war when total deaths > 1000 or
 > event count > 100; minor when event count > 10), matching the frontend
 > `deriveUcdpClassifications` heuristic. The classifier is configured for that
-> 2-year window, but the Redis writers currently retain a 365-day trailing event
-> slice, so live scoring is seed-input-bounded until UCDP retention is widened.
+> 2-year window, but the Redis writers currently fetch the newest six UCDP pages
+> and retain at most 2,000 mapped events from a 365-day trailing slice. The relay
+> `/ucdp-events` reader can fetch up to 12 pages, but it applies the same 365-day
+> filter. Live scoring is therefore seed-input-bounded until UCDP retention is
+> widened with production API-volume and Redis-payload safeguards.
 > The health coverage metric's conflict
 > family is now satisfied by EITHER the ACLED API path OR UCDP, so a thin/empty
 > ACLED window no longer flips health to `COVERAGE_PARTIAL` while UCDP is healthy.

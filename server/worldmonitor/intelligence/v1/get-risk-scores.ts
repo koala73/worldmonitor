@@ -458,8 +458,9 @@ const ISO3_TO_ISO2: Record<string, string> = iso3ToIso2Json;
 // non-existent keys, so `parseInt(...) === 0` for every event and the UCDP floor/coverage
 // were silently dead. The correct classification is the same per-country aggregate the
 // frontend uses: a 2-year trailing window scored by total deaths and event count.
-// The Redis writers currently keep only a 1-year trailing slice, so the effective
-// cached-event window is seed-bounded until retention changes upstream.
+// The Redis writers currently keep only a capped 1-year trailing slice
+// (newest pages, max 2,000 mapped rows), so the effective cached-event window is
+// seed-bounded until UCDP retention is widened with production volume safeguards.
 const UCDP_CLASSIFICATION_WINDOW_MS = 2 * 365 * 24 * 60 * 60 * 1000;
 
 type UcdpIntensity = 'minor' | 'war';

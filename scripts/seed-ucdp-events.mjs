@@ -10,9 +10,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REDIS_KEY = 'conflict:ucdp-events:v1';
 const UCDP_PAGE_SIZE = 1000;
 const MAX_PAGES = 6;
-const MAX_EVENTS = 2000; // TODO: review cap after observing real map density & panel usage
+const MAX_EVENTS = 2000; // Redis payload guard; widening needs live UCDP volume + Upstash payload validation.
 // Retained Redis input window. CII v8's classifier accepts a 2-year window, but
-// live scoring is bounded by this retained 365-day slice until retention widens.
+// this writer fetches the newest pages only and keeps at most MAX_EVENTS from a
+// 365-day trailing slice until retention is deliberately widened.
 const TRAILING_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
 
 const VIOLENCE_TYPE_MAP = {
