@@ -120,6 +120,12 @@ describe('news digest methodology parity', () => {
         `list_feed_digest.proto variant comment must mention ${variant}`,
       );
     }
+    assertDocIncludes('`energy` is a site and client-feed variant', 'energy site-variant distinction');
+    assertDocMatches(/variant=energy[\s\S]*to\s+`full`/, 'energy digest fallback');
+    assert.ok(
+      protoText.includes('including energy') && protoText.includes('fall back to full'),
+      'list_feed_digest.proto variant comment must document energy fallback',
+    );
   });
 
   it('documents the ingest freshness floor default', () => {

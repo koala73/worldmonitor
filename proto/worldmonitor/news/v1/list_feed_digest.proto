@@ -6,7 +6,7 @@ import "sebuf/http/annotations.proto";
 import "worldmonitor/news/v1/news_item.proto";
 
 message ListFeedDigestRequest {
-  // Site variant: full, tech, finance, happy, commodity
+  // Digest variant: full, tech, finance, happy, commodity. Unsupported site variants, including energy, currently fall back to full.
   string variant = 1 [(sebuf.http.query) = { name: "variant" }];
   // ISO 639-1 language code (en, fr, ar, etc.)
   string lang = 2 [(sebuf.http.query) = { name: "lang" }];

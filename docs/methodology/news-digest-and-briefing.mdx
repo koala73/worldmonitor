@@ -27,6 +27,14 @@ The accepted digest variants are:
 | `happy` | Constructive-news streams for conservation, science, philanthropy, progress, events, and positive public action. |
 | `commodity` | Commodity, mining, energy, shipping, agriculture, metals, and policy streams. |
 
+`energy` is a site and client-feed variant (`energy.worldmonitor.app`), but it
+is not a separate server digest variant yet: `listFeedDigest` accepts only the
+variants above and normalises any other request, including `variant=energy`, to
+`full`. Energy panels still have client-side feed inventory for energy
+headlines, energy markets, and chokepoints/routes; categories absent from the
+server digest use the direct per-feed fallback path instead of a dedicated
+`news:digest:v1:energy:{lang}` cache key.
+
 Each feed entry carries a display name, URL, and optional language tag.
 Language-scoped feeds are included only when the request language matches.
 For the `full` variant, the build also adds the `INTEL_SOURCES` feed set under

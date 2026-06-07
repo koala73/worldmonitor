@@ -78,7 +78,7 @@ paths:
             parameters:
                 - name: variant
                   in: query
-                  description: 'Site variant: full, tech, finance, happy, commodity'
+                  description: 'Digest variant: full, tech, finance, happy, commodity. Unsupported site variants, including energy, currently fall back to full.'
                   required: false
                   schema:
                     type: string
@@ -233,7 +233,7 @@ components:
             properties:
                 variant:
                     type: string
-                    description: 'Site variant: full, tech, finance, happy, commodity'
+                    description: 'Digest variant: full, tech, finance, happy, commodity. Unsupported site variants, including energy, currently fall back to full.'
                 lang:
                     type: string
                     description: ISO 639-1 language code (en, fr, ar, etc.)
