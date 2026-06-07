@@ -80,10 +80,12 @@ function computeStats() {
   const airportCount = (read('src/config/airports.ts').match(/\biata:\s*'/g) || []).length;
 
   const financeGeo = read('src/config/finance-geo.ts');
-  const stockExchangeBlock = financeGeo.slice(
-    financeGeo.indexOf('export const STOCK_EXCHANGES'),
-    financeGeo.indexOf('export const FINANCIAL_CENTERS'),
-  );
+  const stockExchangeStart = financeGeo.indexOf('export const STOCK_EXCHANGES');
+  const stockExchangeEnd = financeGeo.indexOf('export const FINANCIAL_CENTERS');
+  if (stockExchangeStart === -1 || stockExchangeEnd === -1 || stockExchangeEnd <= stockExchangeStart) {
+    throw new Error('docs-stats: could not isolate STOCK_EXCHANGES block in src/config/finance-geo.ts');
+  }
+  const stockExchangeBlock = financeGeo.slice(stockExchangeStart, stockExchangeEnd);
   const stockExchangeCount = (stockExchangeBlock.match(/\bid:\s*'/g) || []).length;
 
   const telegram = JSON.parse(read('data/telegram-channels.json'));
@@ -96,8 +98,13 @@ function computeStats() {
     return acc;
   }, {});
 
-  const leaderBlock = read('src/services/trending-keywords.ts').match(/const LEADER_NAMES = \[([\s\S]*?)\];/);
-  const leaderNames = leaderBlock ? (leaderBlock[1].match(/'[^']+'/g) || []).length : 0;
+  const leaderBlock = read('src/services/trending-keywords.ts').match(
+    /const\s+LEADER_NAMES\s*(?::[^=]*)?\s*=\s*\[([\s\S]*?)\];/,
+  );
+  if (!leaderBlock) {
+    throw new Error('docs-stats: could not find LEADER_NAMES array in src/services/trending-keywords.ts');
+  }
+  const leaderNames = (leaderBlock[1].match(/'[^']+'/g) || []).length;
 
   const populationBlock = read('src/services/population-exposure.ts').match(
     /const PRIORITY_COUNTRIES:[\s\S]*?=\s*\{([\s\S]*?)\n\};/,
