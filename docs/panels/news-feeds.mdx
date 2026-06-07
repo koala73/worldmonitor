@@ -7,6 +7,10 @@ Every variant of WorldMonitor ships a set of **content-stream panels** — regio
 
 Every panel name in the tables below is also registered in at least one `*_PANELS` block in `src/config/panels.ts`. When you open a panel and the content is empty, check [Data Sources](/data-sources) and the global [health endpoint](/health-endpoints) for the underlying feed's status.
 
+For the scoring, freshness, dedupe, story tracking, brief filtering, cooldown,
+LLM, and bias controls shared across these feeds, see the canonical
+[News Digest and Briefing methodology](/methodology/news-digest-and-briefing).
+
 ## Regional news
 
 Regional panels scope the world to one macro-region's news stream, with language coverage and source curation optimised for that region. They share the `regional news` family in the geopolitical variant and appear in the Cmd+K "News" group.
@@ -115,5 +119,6 @@ All free. Stream configuration lives in `src/config/variants/happy.ts`.
 ## Related
 
 - [Signal Intelligence](/signal-intelligence) — structural overview of how news feeds are classified, deduplicated, and ranked.
+- [News Digest and Briefing methodology](/methodology/news-digest-and-briefing) — canonical scoring, freshness, story tracking, brief filtering, cooldown, LLM, and bias controls.
 - [Data Sources](/data-sources) — the full upstream source list.
 - [My Monitors](/panels/monitors) — how keyword monitors work across news feeds.
