@@ -13,7 +13,7 @@ WorldMonitor exposes its intelligence stack as a [Model Context Protocol](https:
 **Pro and API tiers can both connect via OAuth — no API key required.** Pro subscribers click _"Sign in with WorldMonitor Pro"_ on the consent page; API Starter / Business / Enterprise users may sign in the same way OR paste a `wm_…` key. Free-tier users see a 401 at the OAuth step.
 </Info>
 
-All paid tiers share the same MCP server, the same 39 tools, and the same OAuth flow — they differ only in **daily quotas**. Pro starts at **50 tool calls/day**; API Starter and API Business have generous daily allowances; Enterprise is uncapped. See the [Plans & limits](#plans--limits) table below. (`describe_tool`, the v1.5.0 metadata-lookup helper, is exempt from the daily quota.)
+All paid tiers share the same MCP server, the same 39 tools, and the same OAuth flow — they differ only in **daily quotas**. Pro starts at **50 quota-consuming calls/day**; API Starter and API Business have generous daily allowances; Enterprise is uncapped. See the [Plans & limits](#plans--limits) table below. (`describe_tool`, the v1.5.0 metadata-lookup helper, is exempt from the daily quota.)
 
 Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pasting an API key — see [Pro sign-in flow](#pro-sign-in-flow) below. API Starter+ holders may continue to paste a `wm_…` key on the consent page (the original flow), or use the same OAuth path as Pro.
 
@@ -21,14 +21,25 @@ Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pas
 
 | Endpoint | Purpose |
 |----------|---------|
-| `https://worldmonitor.app/mcp` | JSON-RPC server (Streamable HTTP transport, protocol `2025-03-26`) |
+| `https://worldmonitor.app/mcp` | JSON-RPC server (Streamable HTTP transport; `initialize` defaults to protocol `2025-03-26`) |
 | `https://api.worldmonitor.app/api/oauth/register` | Dynamic Client Registration (RFC 7591) |
 | `https://api.worldmonitor.app/api/oauth/authorize` | OAuth 2.1 authorization endpoint (PKCE required) |
 | `https://api.worldmonitor.app/api/oauth/token` | Token endpoint (authorization_code + refresh_token) |
 | `https://api.worldmonitor.app/.well-known/oauth-authorization-server` | AS metadata (RFC 8414) |
 | `https://worldmonitor.app/.well-known/oauth-protected-resource` | Resource server metadata (RFC 9728) |
 
-Protocol version: `2025-03-26`. Server identifier: `worldmonitor` v1.5.0.
+Server identifier: `worldmonitor` v1.10.0.
+
+### Protocol negotiation
+
+WorldMonitor's static server card at `/.well-known/mcp/server-card.json` advertises protocol version `2025-06-18`, matching the current published capability card. The live `initialize` handshake is intentionally more conservative during the rollout:
+
+- By default, `initialize` negotiates `2025-03-26`.
+- When `MCP_PROTOCOL_FLOOR_2025_06_18=on` is enabled for the deploy, the server supports both `2025-03-26` and `2025-06-18`.
+- With that flag on, clients requesting `2025-06-18` receive `2025-06-18`; clients pinned to `2025-03-26` continue receiving `2025-03-26`.
+- With that flag off, a client that requests `2025-06-18` receives the safe default `2025-03-26`.
+
+Tool `outputSchema` metadata is emitted on `tools/list` regardless of the negotiated protocol version. Older `2025-03-26` clients should ignore unknown fields, while newer clients can use the schema immediately.
 
 ## Authentication
 
@@ -78,10 +89,11 @@ If you'd rather paste an API key (Starter+ / scripted clients), expand "Use API 
 
 ### Daily limit (Pro tier)
 
-- **50 tool calls per UTC day**, reset at 00:00 UTC.
-- `tools/list` and `initialize` do **not** count against the cap.
+- **50 quota-consuming calls per UTC day**, reset at 00:00 UTC.
+- `tools/call` and `resources/read` consume the Pro daily quota, except the metadata helper `describe_tool`.
+- `initialize`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `logging/setLevel`, `notifications/initialized`, `ping`, and `describe_tool` do **not** count against the daily cap.
 - Hitting the cap returns JSON-RPC error `-32029` plus HTTP `429` with a `Retry-After` header pointing at the next UTC midnight.
-- The cap is hard: concurrent `tools/call`s near the boundary use an atomic Redis reservation, so exactly the call that crosses 50 rejects.
+- The cap is hard: concurrent `tools/call` or `resources/read` requests near the boundary use an atomic Redis reservation, so exactly the call that crosses 50 rejects.
 
 Need a higher daily allowance? **API Starter** (1,000/day) and **API Business** (10,000/day) keep the same OAuth flow and add a `wm_…` key option for scripted clients. **Enterprise** is uncapped — see [Plans & limits](#plans--limits).
 
@@ -99,7 +111,7 @@ Each authorization mints a separate row, so revoking Claude Desktop does not aff
 | Plan | MCP access | Auth modes | Daily quota | Notes |
 |------|------------|------------|-------------|-------|
 | **Free** | ❌ No | — | — | OAuth flow returns 401 `INSUFFICIENT_TIER`. Upgrade at [worldmonitor.app/pro](https://www.worldmonitor.app/pro). |
-| **Pro** | ✅ Yes | OAuth only | **50 tool calls / UTC day** | Bounce-via-apex Clerk sign-in. No `wm_…` key needed or stored. |
+| **Pro** | ✅ Yes | OAuth only | **50 quota-consuming calls / UTC day** | Bounce-via-apex Clerk sign-in. No `wm_…` key needed or stored. |
 | **API Starter** | ✅ Yes | OAuth **or** `wm_…` key | **1,000 requests / day** | Standard developer-tier API access. |
 | **API Business** | ✅ Yes | OAuth **or** `wm_…` key | **10,000 requests / day** | Higher daily throughput. |
 | **Enterprise** | ✅ Yes | OAuth **or** `wm_…` key | **Unlimited** | Custom SLA available. |
@@ -251,7 +263,7 @@ For per-tool parameters, freshness budgets, timeouts, and concrete `curl` exampl
 
 ## API coverage
 
-Most MCP tools wrap one or more REST/RPC endpoints from the [API Reference](/api-reference). The table below maps each covered tool to the API paths it serves — useful when you know the API endpoint you want and need to find the corresponding MCP tool, or vice versa. A handful of tools don't appear in this table because they don't expose a 1:1 public OpenAPI operation — see the trailing note below the table for the categories, and the [MCP Tools Reference](/mcp-tools-reference) for the complete 38-tool set.
+Most MCP tools wrap one or more REST/RPC endpoints from the [API Reference](/api-reference). The table below maps each covered tool to the API paths it serves — useful when you know the API endpoint you want and need to find the corresponding MCP tool, or vice versa. A handful of tools don't appear in this table because they don't expose a 1:1 public OpenAPI operation — see the trailing note below the table for the categories, and the [MCP Tools Reference](/mcp-tools-reference) for the complete 39-tool set.
 
 | MCP tool | API endpoints served |
 |----------|---------------------|
@@ -297,6 +309,38 @@ See the [Tool catalog](#tool-catalog) above for the complete list of 39 tools, o
 <Tip>
 **Reverse lookup** — if you know the API path you want, search this table with Cmd/Ctrl+F. The same data is also queryable via the running server's `tools/list` response, where each tool description names its domain.
 </Tip>
+
+## Prompts and resources
+
+In addition to the 39 tools, WorldMonitor exposes MCP prompts and resources so clients can discover common workflows and address stable data slices without inventing tool plans from scratch.
+
+### Prompts
+
+`prompts/list` returns six workflow templates. `prompts/get` renders the selected template into a user message with the right `tools/call` sequence and pre-baked JMESPath projections.
+
+| Prompt | Purpose |
+|--------|---------|
+| `country-briefing` | Country risk, AI intelligence brief, and macro indicators for one ISO 3166-1 alpha-2 country. |
+| `energy-shock-watch` | Active energy disruptions, fuel shortages, and government crisis policies; optional country focus. |
+| `market-open-prep` | Lightweight equity, commodity, and crypto mover briefing for a market-open scan. |
+| `conflict-pulse` | Active UCDP conflict events plus alert-flagged top news, globally or for one country. |
+| `route-risk-check` | Maritime chokepoint transit summary and risk posture for one chokepoint. |
+| `freshness-audit` | Cache freshness check across market, energy, and chokepoint bootstrap envelopes. |
+
+`prompts/list` and `prompts/get` are metadata/workflow discovery methods: they are exempt from the Pro daily quota, though they still count toward the 60/minute per-minute limiter.
+
+### Resources
+
+`resources/list` returns four read-only URI shapes:
+
+| Resource URI shape | Backing data |
+|--------------------|--------------|
+| `worldmonitor://countries/{iso2}/risk` | Country risk score, component breakdown, travel advisory, and sanctions exposure. `{iso2}` is lowercase alpha-2, for example `de` or `us`. |
+| `worldmonitor://chokepoints/{slug}/status` | Chokepoint transit summary and risk narrative. `{slug}` is one of the published kebab-case chokepoint slugs, such as `suez`, `strait-of-hormuz`, or `bab-el-mandeb`. |
+| `worldmonitor://seed-meta/freshness` | Market-data bootstrap freshness envelope only: `cached_at` and `stale`. |
+| `worldmonitor://markets/{symbol}/quote` | Single-symbol market quote slice. `{symbol}` is uppercase, for example `AAPL`, `GC=F`, or `BTC-USD`. |
+
+`resources/list` is metadata and does not consume the Pro daily quota. `resources/read` intentionally does consume the same daily quota slot as the equivalent `tools/call`; it routes through the same dispatcher so resources cannot bypass the Pro cap. As with every MCP method, both `resources/list` and `resources/read` still count toward the 60/minute limiter. For the exact `-32029` status/header differences between per-minute throttling and daily quota exhaustion, see the [MCP Error Catalog](/mcp-error-catalog#-32029--rate-limited-per-minute-or-daily).
 
 ## JSON-RPC example
 
