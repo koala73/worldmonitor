@@ -4,16 +4,82 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 import { transformSync } from 'esbuild';
+import ts from 'typescript';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 const countryInstabilityPath = resolve(root, 'src/services/country-instability.ts');
+const serverRiskScoresPath = resolve(root, 'server/worldmonitor/intelligence/v1/get-risk-scores.ts');
 const crossModulePath = resolve(root, 'src/services/cross-module-integration.ts');
 const cachedRiskScoresPath = resolve(root, 'src/services/cached-risk-scores.ts');
 
 const countryInstabilitySource = readFileSync(countryInstabilityPath, 'utf8');
+const serverRiskScoresSource = readFileSync(serverRiskScoresPath, 'utf8');
 const crossModuleSource = readFileSync(crossModulePath, 'utf8');
 const cachedRiskScoresSource = readFileSync(cachedRiskScoresPath, 'utf8');
+
+function findTopLevelConstDeclaration(
+  sourceFile: ts.SourceFile,
+  constName: string,
+): ts.VariableDeclaration | null {
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (ts.isIdentifier(declaration.name) && declaration.name.text === constName) {
+        return declaration;
+      }
+    }
+  }
+  return null;
+}
+
+function propertyNameText(name: ts.PropertyName, sourceFile: ts.SourceFile): string {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNoSubstitutionTemplateLiteral(name)) {
+    return name.text;
+  }
+  assert.fail(`unsupported ZONE_COUNTRY_MAP key syntax: ${name.getText(sourceFile)}`);
+}
+
+function extractTopLevelStringArrayRecord(
+  source: string,
+  fileName: string,
+  constName: string,
+): Record<string, string[]> {
+  const sourceFile = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const declaration = findTopLevelConstDeclaration(sourceFile, constName);
+  assert.ok(declaration, `${fileName} must declare top-level const ${constName}`);
+  assert.ok(declaration.initializer, `${fileName} ${constName} must have an initializer`);
+  assert.ok(
+    ts.isObjectLiteralExpression(declaration.initializer),
+    `${fileName} ${constName} must be an object literal`,
+  );
+
+  const out: Record<string, string[]> = {};
+  for (const property of declaration.initializer.properties) {
+    assert.ok(
+      ts.isPropertyAssignment(property),
+      `${fileName} ${constName} must only contain property assignments`,
+    );
+    assert.ok(
+      ts.isArrayLiteralExpression(property.initializer),
+      `${fileName} ${constName}.${property.name.getText(sourceFile)} must be an array literal`,
+    );
+
+    out[propertyNameText(property.name, sourceFile)] = property.initializer.elements.map((element) => {
+      assert.ok(
+        ts.isStringLiteral(element) || ts.isNoSubstitutionTemplateLiteral(element),
+        `${fileName} ${constName}.${property.name.getText(sourceFile)} entries must be string literals`,
+      );
+      return element.text;
+    });
+  }
+  return out;
+}
+
+function sortRecord<T>(record: Record<string, T>): Record<string, T> {
+  return Object.fromEntries(Object.entries(record).sort(([left], [right]) => left.localeCompare(right)));
+}
 
 async function loadCountryInstability() {
   const patched = countryInstabilitySource
@@ -171,6 +237,21 @@ describe('frontend CII closeout regressions', () => {
     assert.equal(cii.getCountryData('RU')?.climateStress, 15);
     assert.equal(cii.getCountryData('EG')?.climateStress, 8);
     assert.equal(cii.getCountryData('MM')?.climateStress, 15);
+  });
+
+  it('browser and server CII climate zone maps stay in lockstep', () => {
+    const browserMap = extractTopLevelStringArrayRecord(
+      countryInstabilitySource,
+      'src/services/country-instability.ts',
+      'ZONE_COUNTRY_MAP',
+    );
+    const serverMap = extractTopLevelStringArrayRecord(
+      serverRiskScoresSource,
+      'server/worldmonitor/intelligence/v1/get-risk-scores.ts',
+      'ZONE_COUNTRY_MAP',
+    );
+
+    assert.deepEqual(sortRecord(browserMap), sortRecord(serverMap));
   });
 });
 
