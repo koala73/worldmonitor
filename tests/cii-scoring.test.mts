@@ -65,7 +65,7 @@ const CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION: Record<string, string> = {
   // floor. The classification thresholds are guarded through the expanded helper
   // input snapshot, including `deriveUcdpIntensityByRegion` literals. Live scores
   // now shift upward for UCDP conflict countries (e.g. UA/PK/MX gain a war floor).
-  v8: 'c03b6dbd4e28bded34a5adb1864374ee6e30dfe244288ee1f24f56fc4a4129fd',
+  v8: '87fcd775ca953f849c686b8c229c7b1a662056c9751d5c902b811257a1735b5e',
 };
 
 const GUARDED_TOP_LEVEL_SCORE_CONST_NAMES = ['NEWS_THREAT_WEIGHT', 'UCDP_CLASSIFICATION_WINDOW_MS'];
@@ -183,7 +183,6 @@ type ScoreHelperSnapshotValue = string | number | ScoreHelperSnapshotValue[] | {
 };
 
 interface NumericConstSnapshot {
-  expression: string;
   value: number;
 }
 
@@ -198,10 +197,6 @@ function requireTopLevelConstDeclaration(sourceFile: ts.SourceFile, constName: s
   assert.ok(declaration, `missing top-level const declaration: ${constName}`);
   assert.ok(declaration.initializer, `${constName} must have an initializer`);
   return declaration;
-}
-
-function normalizeAstText(node: ts.Node, sourceFile: ts.SourceFile): string {
-  return node.getText(sourceFile).replace(/\s+/g, ' ').trim();
 }
 
 function propertyNameText(name: ts.PropertyName, sourceFile: ts.SourceFile): string {
@@ -342,7 +337,6 @@ function extractNumericConstSnapshot(sourceFile: ts.SourceFile, constName: strin
   const declaration = requireTopLevelConstDeclaration(sourceFile, constName);
   const initializer = declaration.initializer!;
   return {
-    expression: normalizeAstText(initializer, sourceFile),
     value: evaluateNumericExpression(initializer, sourceFile),
   };
 }
