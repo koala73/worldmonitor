@@ -53,6 +53,8 @@ X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567
 
 User-issued keys are exactly `wm_` followed by 40 lowercase hex characters. Enterprise keys are opaque operator-issued strings and are only distributed out of band. Keep keys out of client-side code — use a server-side proxy if you need to call from the browser to a `forceKey` endpoint.
 
+`X-WorldMonitor-Key` is the canonical header. Gateway-backed API-key routes also accept `X-Api-Key` as an alias for compatibility with generic API clients.
+
 ### Server-side validation
 
 The edge function calls `validateApiKey(req, { forceKey?: boolean })`:

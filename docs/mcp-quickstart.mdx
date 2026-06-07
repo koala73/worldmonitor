@@ -10,7 +10,7 @@ WorldMonitor exposes 39 live tools — markets, conflict events, maritime chokep
 Free accounts can't reach the MCP server — the OAuth flow returns `401 INSUFFICIENT_TIER`. You need one of:
 
 - **Pro** — sign in with your WorldMonitor account, no key to manage. 50 quota-consuming calls per UTC day.
-- **API Starter / Business / Enterprise** — paste a user-issued `wm_…` key in your client, or use the same OAuth flow as Pro. 1,000 / 10,000 / unlimited calls per day.
+- **API Starter / Business / Enterprise** — paste a user-issued `wm_…` key in your client, or use the same OAuth flow as Pro. `wm_…` MCP calls are throttled at 60 requests/minute/key in this handler; REST/API plan allowances are separate from the Pro/OAuth MCP daily counter.
 
 Upgrade or generate a key at [worldmonitor.app/pro](https://www.worldmonitor.app/pro). The rest of this guide assumes Claude Desktop + OAuth (the simplest path); if you'd rather paste a `wm_…` key into a `curl` script, jump to [Server-side curl](#server-side-curl) at the bottom.
 
@@ -40,7 +40,7 @@ Open a new chat in Claude Desktop and try:
 
 > _What's the current US equity market sentiment and which sectors are leading or lagging today?_
 
-Claude will pick `get_market_data` from the WorldMonitor toolset, call it with no arguments, and answer in plain English. The raw tool response is a single bootstrap bundle covering quotes, sector ETFs, crypto, gulf quotes, ETF flows, and the WorldMonitor fear-greed composite. Typical latency: **300–800 ms** (cache read from Redis, no upstream API call).
+Claude will pick `get_market_data` from the WorldMonitor toolset, call it with no arguments, and answer in plain English. The raw tool response is a single bootstrap bundle covering quotes, sector ETFs, crypto, gulf quotes, ETF flows, and the WorldMonitor fear-greed composite. Because cache tools default-cap list/map fields at 30 items when `limit` is omitted, this first response is intentionally compact; pass `limit: 0` only when you genuinely need the full 200+ quote / ~100 KB market bundle. Typical latency: **300–800 ms** (cache read from Redis, no upstream API call).
 
 Behind the scenes, the tool call looks like this:
 
@@ -86,7 +86,7 @@ Broad cache calls can still be large even with their default list caps. That's f
 }
 ```
 
-Same call, ~120 bytes of response instead of 100 KB. JMESPath cuts payload by **80–95%** for typical projections.
+Same call, ~120 bytes of response instead of the broader default-capped market bundle. JMESPath cuts payload by **80–95%** for typical projections. If you disable the default cap with `limit: 0`, projection becomes even more important because `get_market_data` can return the full 200+ quote / ~100 KB bundle.
 
 Don't try to memorise the grammar from scratch — head to the [JMESPath guide](/mcp-jmespath) for the 12 worked examples covering filters, projections, multiselect-hash, and the rest of the slices you'll actually use.
 
@@ -100,7 +100,7 @@ Don't try to memorise the grammar from scratch — head to the [JMESPath guide](
 - **Environment & health** — `get_climate_data`, `get_natural_disasters`, `get_radiation_data`, `get_health_signals`.
 - **AI synthesis** (live LLM, slower — 1–4 s) — `get_world_brief`, `get_country_brief`, `analyze_situation`, `generate_forecasts`.
 
-Full per-tool parameters, freshness budgets, and `curl` examples are in the [MCP Tools Reference](/mcp-tools-reference). When the compressed `tools/list` description is ambiguous about a specific tool, call `describe_tool` with `tool_name: "<name>"` for the full uncompressed definition — it's exempt from your daily quota, so use it freely while exploring.
+Full per-tool parameters, freshness budgets, and `curl` examples are in the [MCP Tools Reference](/mcp-tools-reference). When the compressed `tools/list` description is ambiguous about a specific tool, call `describe_tool` with `tool_name: "<name>"` for the full uncompressed definition — it's exempt from the Pro daily quota, so use it freely while exploring.
 
 ## What just happened
 

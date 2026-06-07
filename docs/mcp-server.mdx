@@ -13,7 +13,7 @@ WorldMonitor exposes its intelligence stack as a [Model Context Protocol](https:
 **Pro and API tiers can both connect via OAuth — no API key required.** Pro subscribers click _"Sign in with WorldMonitor Pro"_ on the consent page; API Starter / Business / Enterprise users may sign in the same way OR paste a `wm_…` key. Free-tier users see a 401 at the OAuth step.
 </Info>
 
-All paid tiers share the same MCP server, the same 39 tools, and the same OAuth flow — they differ only in **daily quotas**. Pro starts at **50 quota-consuming calls/day**; API Starter and API Business have generous daily allowances; Enterprise is uncapped. See the [Plans & limits](#plans--limits) table below. (`describe_tool`, the v1.5.0 metadata-lookup helper, is exempt from the daily quota.)
+All paid tiers share the same MCP server and the same 39 tools. The current hard MCP daily reservation is enforced only for OAuth contexts at the Pro counter: **50 quota-consuming `tools/call` / `resources/read` calls per UTC day**. API-key (`wm_…`) MCP clients are protected by the **60 requests/minute/key** limiter in this handler; broader API Starter / Business REST allowances are enforced outside the MCP daily reservation path. (`describe_tool`, the v1.5.0 metadata-lookup helper, is exempt from the Pro daily quota.)
 
 Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pasting an API key — see [Pro sign-in flow](#pro-sign-in-flow) below. API Starter+ holders may continue to paste a `wm_…` key on the consent page (the original flow), or use the same OAuth path as Pro.
 
@@ -95,7 +95,7 @@ If you'd rather paste an API key (Starter+ / scripted clients), expand "Use API 
 - Hitting the cap returns JSON-RPC error `-32029` plus HTTP `429` with a `Retry-After` header pointing at the next UTC midnight.
 - The cap is hard: concurrent `tools/call` or `resources/read` requests near the boundary use an atomic Redis reservation, so exactly the call that crosses 50 rejects.
 
-Need a higher daily allowance? **API Starter** (1,000/day) and **API Business** (10,000/day) keep the same OAuth flow and add a `wm_…` key option for scripted clients. **Enterprise** is uncapped — see [Plans & limits](#plans--limits).
+Need higher-volume scripted access? **API Starter** and **API Business** add a `wm_…` key option plus REST/API plan allowances, but `wm_…` MCP calls are not metered by the MCP daily reservation counter; they still have the 60/minute/key MCP throttle. For batch or high-volume workflows, prefer the REST/API endpoints or contact Enterprise — see [Plans & limits](#plans--limits).
 
 ### Connected MCP clients
 
@@ -108,19 +108,19 @@ Each authorization mints a separate row, so revoking Claude Desktop does not aff
 
 ## Plans & limits
 
-| Plan | MCP access | Auth modes | Daily quota | Notes |
-|------|------------|------------|-------------|-------|
+| Plan | MCP access | Auth modes | MCP daily reservation | Notes |
+|------|------------|------------|-----------------------|-------|
 | **Free** | ❌ No | — | — | OAuth flow returns 401 `INSUFFICIENT_TIER`. Upgrade at [worldmonitor.app/pro](https://www.worldmonitor.app/pro). |
 | **Pro** | ✅ Yes | OAuth only | **50 quota-consuming calls / UTC day** | Bounce-via-apex Clerk sign-in. No `wm_…` key needed or stored. |
-| **API Starter** | ✅ Yes | OAuth **or** `wm_…` key | **1,000 requests / day** | Standard developer-tier API access. |
-| **API Business** | ✅ Yes | OAuth **or** `wm_…` key | **10,000 requests / day** | Higher daily throughput. |
-| **Enterprise** | ✅ Yes | OAuth **or** `wm_…` key | **Unlimited** | Custom SLA available. |
+| **API Starter** | ✅ Yes | OAuth **or** `wm_…` key | OAuth contexts use the Pro counter; `wm_…` MCP calls have **no MCP daily reservation** | Standard developer-tier REST/API access. |
+| **API Business** | ✅ Yes | OAuth **or** `wm_…` key | OAuth contexts use the Pro counter; `wm_…` MCP calls have **no MCP daily reservation** | Higher REST/API throughput. |
+| **Enterprise** | ✅ Yes | OAuth **or** `wm_…` key | Custom; `wm_…` MCP calls have **no default MCP daily reservation** | Custom SLA available. |
 
-Per-minute throttling of 60 calls/minute/key (API tiers) or 60/minute/user (Pro) protects against burst storms across all paid tiers. **The per-minute limiter runs before method dispatch, so every method (including `initialize`, `tools/list`, `prompts/list`, `resources/list`, `describe_tool`, etc.) counts toward 60/min.** Only the daily-quota cap is selective — that one is consumed exclusively by `tools/call` and `resources/read` reservations (see [Daily limit (Pro tier)](#daily-limit-pro-tier) above, and the [Error Catalog](/mcp-error-catalog#-32029--rate-limited-per-minute-or-daily) for the full method-exemption tables for both limits).
+Per-minute throttling of 60 calls/minute/key (API-key clients) or 60/minute/user (OAuth contexts) protects against burst storms across all paid tiers. **The per-minute limiter runs before method dispatch, so every method (including `initialize`, `tools/list`, `prompts/list`, `resources/list`, `describe_tool`, etc.) counts toward 60/min.** Only the Pro/OAuth daily-quota cap is selective — that one is consumed exclusively by `tools/call` and `resources/read` reservations (see [Daily limit (Pro tier)](#daily-limit-pro-tier) above, and the [Error Catalog](/mcp-error-catalog#-32029--rate-limited-per-minute-or-daily) for the full method-exemption tables for both limits).
 
-Pro's 60/min is per-USER (a Pro user with 3 Claude installations shares one 60/min pool); API tiers' 60/min is per-KEY (multiple keys = higher throughput).
+OAuth 60/min is per-USER (a user with 3 Claude installations shares one 60/min pool); API-key 60/min is per-KEY (multiple keys = higher throughput).
 
-Hitting the daily quota returns JSON-RPC error `-32029` plus HTTP `429` with a `Retry-After` header pointing at the next UTC midnight. Hitting the per-minute limit returns the same error code with a short `Retry-After`.
+Hitting the Pro/OAuth daily quota returns JSON-RPC error `-32029` plus HTTP `429` with a `Retry-After` header pointing at the next UTC midnight. Hitting the per-minute limit returns the same error code with a short `Retry-After`.
 
 ### Other rate limits
 
@@ -177,7 +177,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 ## Tool catalog
 
-The server exposes 39 tools. Most are cache-reads over pre-seeded Redis keys (sub-second). Six (`get_world_brief`, `get_country_brief`, `analyze_situation`, `generate_forecasts`, `search_flights`, `search_flight_prices_by_date`) call live LLMs or external APIs and are slower. One (`describe_tool`, added v1.5.0) returns the full uncompressed definition of any other tool — useful when the compressed `tools/list` description is ambiguous; exempt from the Pro daily quota.
+The server exposes 39 tools. Most are cache-reads over pre-seeded Redis keys (sub-second). The slower, non-cache paths are the six live LLM/external-API tools (`get_world_brief`, `get_country_brief`, `analyze_situation`, `generate_forecasts`, `search_flights`, `search_flight_prices_by_date`) plus the live geo RPC tools (`get_airspace`, `get_maritime_activity`), which proxy fresh aviation/maritime API calls with edge timeouts. One (`describe_tool`, added v1.5.0) returns the full uncompressed definition of any other tool — useful when the compressed `tools/list` description is ambiguous; exempt from the Pro daily quota.
 
 <Tip>
 For per-tool parameters, freshness budgets, timeouts, and concrete `curl` examples, see the [MCP Tools Reference](/mcp-tools-reference). For payload projection — every tool accepts an optional `jmespath` argument that typically cuts response size by 80-95% — see the [JMESPath guide](/mcp-jmespath).
