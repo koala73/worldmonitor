@@ -32,7 +32,7 @@ function extractHotspotBaselines(source: string): Array<{ id: string; name: stri
     const id = block.match(/^\s+id: '([^']+)'/m)?.[1];
     const singleQuotedName = block.match(/^\s+name: '([^']+)'/m)?.[1];
     const doubleQuotedName = block.match(/^\s+name: "([^"]+)"/m)?.[1];
-    const scoreText = block.match(/^\s+escalationScore: (\d),/m)?.[1];
+    const scoreText = block.match(/^\s+escalationScore: (\d),?/m)?.[1];
     assert.ok(id, `hotspot block is missing id:\n${block}`);
     assert.ok(singleQuotedName || doubleQuotedName, `hotspot ${id} is missing name`);
     entries.push({
@@ -42,6 +42,17 @@ function extractHotspotBaselines(source: string): Array<{ id: string; name: stri
     });
   }
   return entries;
+}
+
+function extractHotspotBaselineRows(doc: string): Array<{ name: string; baseline: number }> {
+  const section = doc.match(/\*\*Static Baseline Table\*\*([\s\S]*?)\*\*Trend Detection\*\*/);
+  assert.ok(section, 'docs/hotspots.mdx must include a Static Baseline Table before Trend Detection');
+  return [...section[1]!.matchAll(/^\| ([^|]+?) \| (\d+) \| [^|]+ \|$/gm)]
+    .filter((match) => match[1] !== 'Hotspot')
+    .map((match) => ({
+      name: match[1]!.trim(),
+      baseline: Number(match[2]),
+    }));
 }
 
 function countSignalTableRows(doc: string): number {
@@ -74,6 +85,7 @@ test('public signal docs stay aligned with hotspot escalation math', () => {
   const hotspotsDoc = readRepo('docs/hotspots.mdx');
   const algorithmsDoc = readRepo('docs/algorithms.mdx');
   const hotspotBaselines = extractHotspotBaselines(geoCode);
+  const baselineRows = extractHotspotBaselineRows(hotspotsDoc);
 
   assert.match(hotspotCode, /return hotspot\.escalationScore \?\? 3;/);
   assert.match(hotspotCode, /return 1 \+ \(raw \/ 100\) \* 4;/);
@@ -100,6 +112,18 @@ test('public signal docs stay aligned with hotspot escalation math', () => {
       hotspotsDoc,
       rowRe,
       `docs/hotspots.mdx must publish the ${hotspot.baseline}/5 static baseline for ${hotspot.id}`,
+    );
+  }
+  const baselinesByName = new Map(hotspotBaselines.map((hotspot) => [hotspot.name, hotspot.baseline]));
+  for (const row of baselineRows) {
+    assert.ok(
+      baselinesByName.has(row.name),
+      `docs/hotspots.mdx static baseline row "${row.name}" must still exist in INTEL_HOTSPOTS`,
+    );
+    assert.equal(
+      row.baseline,
+      baselinesByName.get(row.name),
+      `docs/hotspots.mdx static baseline row "${row.name}" must match INTEL_HOTSPOTS`,
     );
   }
   assert.match(
