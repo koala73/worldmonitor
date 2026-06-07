@@ -41,11 +41,17 @@ Intelligence hotspots receive dynamic escalation scores blending four normalized
 - **Geo-convergence alerts** (25%) — spatial binning detects 3+ event types (protests + military + earthquakes) co-occurring within 1° lat/lon cells
 - **Military activity** (15%) — vessel clusters and flight density near the hotspot
 
-The system blends static baseline risk (40%) with detected events (60%) and tracks trends via linear regression on 48-hour history. Signal emissions cool down for 2 hours to prevent alert fatigue.
+The dynamic raw score is converted from 0-100 onto the hotspot's 1-5 escalation
+scale, then blended as `staticBaseline × 0.30 + dynamicScore × 0.70`.
+`staticBaseline` is the hotspot config's `escalationScore` (default `3`) and
+the dynamic component is the weighted news/CII/geo/military signal. Signal
+emissions cool down for 2 hours and fire on whole-band upward crossings at
+`>=2/5`, rapid increases of at least `0.5`, or first entry into the critical
+band at `>=4.5/5`.
 
 ### Geographic Convergence Detection
 
-Events (protests, military flights, vessels, earthquakes) are binned into 1°×1° geographic cells within a 24-hour window. When 3+ distinct event types converge in one cell, a convergence alert fires. Scoring is based on type diversity (×25pts per unique type) plus event count bonuses (×2pts). Alerts are reverse-geocoded to human-readable names using conflict zones, waterways, and hotspot databases.
+Events (protests, military flights, vessels, earthquakes) are binned into 1°×1° geographic cells within a 24-hour window. When 3+ distinct event types converge in one cell, a convergence alert fires. Scoring is based on type diversity (×25pts per unique type) plus event count bonuses (×2pts, capped at 25). Current emitted alerts are high or critical priority: 4 types or score ≥90 is critical; 3-type alerts below 90 are high. Alerts are reverse-geocoded to human-readable names using conflict zones, waterways, and hotspot databases.
 
 ### Strategic Risk Score Algorithm
 
@@ -57,7 +63,7 @@ When cached server scores are unavailable, the browser renders a local fallback 
 
 ```
 compositeScore =
-    convergenceScore × 0.30     // multi-type events co-located in same H3 cell
+    convergenceScore × 0.30     // multi-type events co-located in same 1° cell
   + ciiRiskScore     × 0.50     // CII top-5 country weighted blend
   + infraScore       × 0.20     // infrastructure cascade incidents
   + theaterBoost     (0–25)     // military asset density + strike packaging
@@ -76,7 +82,7 @@ compositeScore =
 - `sanctionsScore` — Up to 10 points from new sanctions entries, largest-country entry volume, and sanctioned vessel/aircraft counts
 - `radiationScore` — Up to 12 points from radiation-watch spikes, elevated readings, and corroborated observations, reduced by low-confidence or conflicting observations
 
-**Alert fusion**: Alerts from convergence detection, CII spikes (≥10-point change), and infrastructure cascades are merged when they occur within a 2-hour window and are within 200km or in the same country. Merged alerts carry the highest priority and combine summaries. The alert queue caps at 50 entries with 24-hour pruning.
+**Alert fusion**: Alerts from convergence detection, CII spikes (≥10-point change), infrastructure cascades, sanctions pressure, and radiation watch are merged when they occur within a 2-hour window and are within 200km or in the same country. Merged alerts carry the highest priority and combine summaries. Direct inserts pop the oldest alert after 50 entries; the Strategic Risk refresh path then sorts by newest timestamp and trims the recomputed queue to 100 entries after 24-hour pruning.
 
 **Trend detection**: Delta ≥3 from previous composite = "escalating", ≤−3 = "de-escalating", otherwise "stable". A 15-minute learning period after panel initialization suppresses CII spike alerts to prevent false positives from initial data loading.
 
@@ -330,6 +336,15 @@ Beyond aggregating signals by geography, the system detects meaningful correlati
 | `military_surge`          | Theater posture assessment detects unusual force concentration                 | Military escalation warning                              |
 
 Each signal carries a severity (low/medium/high), geographic coordinates, a human-readable summary, and the raw data that triggered it. Signals are deduplicated per-type with configurable cooldown windows (30 minutes to 6 hours) to prevent alert fatigue. The correlation output feeds into the AI Insights panel, where the narrative synthesis engine weaves detected correlations into a structured intelligence brief.
+
+The Escalation Monitor correlation adapter clusters by country over a 48-hour
+window and emits cards at a composite threshold of `20`. Its current signal
+weights are `conflict_event` 45%, `escalation_outage` 25%, and `news_severity`
+30%. Conflict/protest severities map high/medium/low to `85/55/30`; internet
+outages map total/major/partial to `90/70/40` and are only kept for countries
+that also have a conflict event; qualifying news clusters must be medium or
+higher, match escalation keywords, and map critical/high/medium threat levels
+to `85/65/45`.
 
 ### PizzINT Activity Monitor & GDELT Tension Index
 
