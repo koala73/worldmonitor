@@ -1576,21 +1576,43 @@ function ucdpFetchPage(version, page) {
   });
 }
 
+// Compare UCDP GED version strings ('26.1' > '25.1' > '24.1', '25.0.6' > '25.0.5')
+// numerically segment-by-segment so the NEWEST release sorts first.
+function ucdpVersionRank(v) {
+  return String(v).split('.').map((n) => Number(n) || 0);
+}
+function ucdpVersionNewer(a, b) {
+  const ra = ucdpVersionRank(a);
+  const rb = ucdpVersionRank(b);
+  for (let i = 0; i < Math.max(ra.length, rb.length); i++) {
+    const d = (ra[i] || 0) - (rb[i] || 0);
+    if (d !== 0) return d > 0;
+  }
+  return false;
+}
+
 async function ucdpDiscoverVersion() {
   const year = new Date().getFullYear() - 2000;
   const candidates = [...new Set([`${year}.1`, `${year - 1}.1`, '25.1', '24.1'])];
-  // Race all candidates — first valid result wins (avoids 30s hang on broken versions)
-  const attempts = candidates.map(async (v) => {
+  // Probe ALL candidates, then prefer the NEWEST version that returned events.
+  // Each ucdpFetchPage has a 30s timeout, so a broken/slow version can't hang the
+  // batch — allSettled waits at most one timeout. Promise.any (first-responder)
+  // used to win here, which let an OLDER release that merely replied faster win:
+  // it froze conflict:ucdp-events:v1 at v24.1 (2023 data, 889 days old) while
+  // v25.1 was available, dropping every event outside the CII 2-year conflict
+  // recency window and flipping /api/health.riskScores to COVERAGE_PARTIAL.
+  const settled = await Promise.allSettled(candidates.map(async (v) => {
     const p0 = await ucdpFetchPage(v, 0);
     if (!Array.isArray(p0?.Result) || p0.Result.length === 0) throw new Error(`${v}: no results`);
     return { version: v, page0: p0 };
-  });
-  try {
-    return await Promise.any(attempts);
-  } catch (aggErr) {
-    const reasons = aggErr.errors?.map(e => e?.message).join('; ') || aggErr.message;
+  }));
+  const valid = settled.filter((s) => s.status === 'fulfilled').map((s) => s.value);
+  if (valid.length === 0) {
+    const reasons = settled.map((s) => s.reason?.message).filter(Boolean).join('; ');
     throw new Error(`No valid UCDP GED version found (${reasons})`);
   }
+  valid.sort((a, b) => (ucdpVersionNewer(a.version, b.version) ? -1 : 1));
+  return valid[0];
 }
 
 async function seedUcdpEvents() {
@@ -7993,11 +8015,15 @@ async function ucdpRelayFetchPage(version, page) {
 }
 
 async function ucdpRelayDiscoverVersion() {
+  // Candidates are newest-first ([26.1, 25.1, 24.1]); take the newest version that
+  // actually returns events. Require Result.length > 0 (not just isArray) so a
+  // newer release that exists but is still empty doesn't win over a populated
+  // older one — same recency concern as ucdpDiscoverVersion above.
   const candidates = ucdpBuildVersionCandidates();
   for (const version of candidates) {
     try {
       const page0 = await ucdpRelayFetchPage(version, 0);
-      if (Array.isArray(page0?.Result)) return { version, page0 };
+      if (Array.isArray(page0?.Result) && page0.Result.length > 0) return { version, page0 };
     } catch { /* next candidate */ }
   }
   throw new Error('No valid UCDP GED version found');

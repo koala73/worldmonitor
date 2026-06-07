@@ -639,6 +639,19 @@ async function fetchACLEDEvents(): Promise<Array<{ country: string; event_type: 
     };
   };
 
+  // Surface the silent missing-auth/empty case: fetchAcledCached returns [] when
+  // ACLED auth is unconfigured (getAcledAccessToken → null) or the API fails.
+  // With active conflicts ACLED normally returns thousands of events, so 0 from
+  // BOTH windows means the conflict realtime signal is dark — CII then relies on
+  // UCDP alone, which (being an annual release) can fall outside the 2-year
+  // conflict-recency window and flip /api/health.riskScores to COVERAGE_PARTIAL.
+  // Without this line the gap is undiagnosable.
+  if (recent.length === 0 && older.length === 0) {
+    console.warn(
+      '[CII] ACLED returned 0 events for both windows — verify ACLED_EMAIL/ACLED_PASSWORD (or ACLED_ACCESS_TOKEN) on the api project; CII conflict realtime signal-density coverage is falling back to UCDP only.',
+    );
+  }
+
   return [...recent.map(toRow), ...older.map(toRow)];
 }
 

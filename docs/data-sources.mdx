@@ -249,6 +249,8 @@ Events from both sources are **Haversine-deduplicated** on a 0.1° grid (~10km) 
 
 Protest scoring is regime-aware: democratic countries use logarithmic scaling (routine protests don't trigger instability), while authoritarian states use linear scoring (every protest is significant). Fatalities and concurrent internet outages apply severity boosts.
 
+ACLED is authenticated: set either `ACLED_EMAIL` + `ACLED_PASSWORD` (OAuth, auto-refreshed) or a static `ACLED_ACCESS_TOKEN` on the API project. When ACLED auth is absent the fetch degrades gracefully to an empty result — but ACLED is also the **real-time conflict source** for the Country Instability Index, so without it CII conflict scoring falls back to UCDP alone. Since UCDP GED ships as lagging annual releases, that fallback can leave no conflict events inside the CII 2-year recency window, which `/api/health.riskScores` reports as `COVERAGE_PARTIAL` (cyber and news families still cover, so the metric reads 2 of 3). The `get-risk-scores` RPC logs a `[CII] ACLED returned 0 events` warning when this happens.
+
 ### Climate Anomaly Detection
 
 15 conflict-prone and disaster-prone zones are continuously monitored for temperature and precipitation anomalies using Open-Meteo ERA5 reanalysis data. A 30-day baseline is computed, and current conditions are compared against it to determine severity:
