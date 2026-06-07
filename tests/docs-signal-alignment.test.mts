@@ -106,3 +106,59 @@ test('public Escalation Monitor docs publish the current adapter weights and gat
     assert.match(doc, /48h|48-hour/, `${label} must publish Escalation Monitor window`);
   }
 });
+
+test('public algorithms docs publish current temporal anomaly severities', () => {
+  const temporalCode = readRepo('server/worldmonitor/infrastructure/v1/_shared.ts');
+  const algorithmsDoc = readRepo('docs/algorithms.mdx');
+
+  assert.match(temporalCode, /export const Z_THRESHOLD_LOW = 1\.5;/);
+  assert.match(temporalCode, /export const Z_THRESHOLD_MEDIUM = 2\.0;/);
+  assert.match(temporalCode, /export const Z_THRESHOLD_HIGH = 3\.0;/);
+  assert.match(temporalCode, /if \(zScore >= Z_THRESHOLD_HIGH\) return 'critical';/);
+  assert.match(temporalCode, /if \(zScore >= Z_THRESHOLD_MEDIUM\) return 'high';/);
+  assert.match(temporalCode, /if \(zScore >= Z_THRESHOLD_LOW\) return 'medium';/);
+
+  assert.match(algorithmsDoc, /\| [≥>] 1\.5\s+\|\s+Medium\s+\|/);
+  assert.match(algorithmsDoc, /\| [≥>] 2\.0\s+\|\s+High\s+\|/);
+  assert.match(algorithmsDoc, /\| [≥>] 3\.0\s+\|\s+Critical\s+\|/);
+  assert.doesNotMatch(algorithmsDoc, /\| [≥>] 1\.5\s+\|\s+Low\s+\|/);
+  assert.doesNotMatch(algorithmsDoc, /High\/Critical/);
+});
+
+test('public algorithms docs describe tracked leader names without overclaiming compounds', () => {
+  const trendingCode = readRepo('src/services/trending-keywords.ts');
+  const docsStats = readRepo('scripts/docs-stats.mjs');
+  const algorithmsDoc = readRepo('docs/algorithms.mdx');
+  const leaderBlock = trendingCode.match(/const\s+LEADER_NAMES\s*=\s*\[([\s\S]*?)\];/);
+  assert.ok(leaderBlock, 'trending keywords must define LEADER_NAMES');
+
+  const leaderNames = leaderBlock[1].match(/'[^']+'/g) || [];
+  const multiWordNames = leaderNames.filter((name) => /\s/.test(name.slice(1, -1)));
+  assert.equal(leaderNames.length, 16);
+  assert.equal(multiWordNames.length, 2);
+
+  assert.match(algorithmsDoc, /16 tracked world-leader names/);
+  assert.match(algorithmsDoc, /multi-word names such as "Xi Jinping" and "Kim Jong Un"/);
+  assert.doesNotMatch(algorithmsDoc, /16 compound terms for world leaders/);
+  assert.match(docsStats, /tracked world-leader names/);
+  assert.doesNotMatch(docsStats, /compound terms for world leaders/);
+});
+
+test('public data-source docs disclose Telegram source-bias metadata limits', () => {
+  const telegramConfig = JSON.parse(readRepo('data/telegram-channels.json')) as {
+    channels?: Record<string, Array<Record<string, unknown>>>;
+  };
+  const dataSourcesDoc = readRepo('docs/data-sources.mdx');
+  const fullChannels = telegramConfig.channels?.full || [];
+
+  assert.ok(fullChannels.some((channel) => channel.label === 'IDF Official'));
+  assert.ok(fullChannels.some((channel) => channel.label === 'IRGC Official'));
+  assert.ok(fullChannels.every((channel) => typeof channel.tier === 'number'));
+  assert.ok(fullChannels.every((channel) => !('stateAffiliation' in channel)));
+  assert.ok(fullChannels.every((channel) => !('propagandaRisk' in channel)));
+
+  assert.match(dataSourcesDoc, /official, state-affiliated, partisan, and belligerent-party channels/);
+  assert.match(dataSourcesDoc, /raw OSINT leads, not endorsed truth/);
+  assert.match(dataSourcesDoc, /operational `tier`, `topic`, and `region` metadata/);
+  assert.match(dataSourcesDoc, /do not currently carry the RSS `stateAffiliation` or propaganda-risk fields/);
+});

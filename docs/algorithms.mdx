@@ -266,7 +266,7 @@ Every RSS headline is tokenized into individual terms and tracked in per-term fr
 | **Source diversity** | ≥ 2 unique RSS feed sources                   |
 | **Cooldown**         | 30 minutes since last spike for the same term |
 
-The tokenizer extracts CVE identifiers (`CVE-2024-xxxxx`), APT/FIN threat actor designators, and 16 compound terms for world leaders (e.g., "Xi Jinping", "Kim Jong Un") that would be lost by naive whitespace splitting. A configurable blocklist suppresses common noise terms.
+The tokenizer extracts CVE identifiers (`CVE-2024-xxxxx`), APT/FIN threat actor designators, and 16 tracked world-leader names, including multi-word names such as "Xi Jinping" and "Kim Jong Un" that would be lost by naive whitespace splitting. A configurable blocklist suppresses common noise terms.
 
 Detected spikes are auto-summarized via Groq (rate-limited to 5 summaries/hour) and emitted as `keyword_spike` signals into the correlation engine, where they compound with other signal types for convergence detection. The term registry is capped at 10,000 entries with LRU eviction to bound memory usage. All thresholds (spike multiplier, min count, cooldown, blocked terms) are configurable via the Settings panel.
 
@@ -278,9 +278,9 @@ The algorithm uses **Welford's online method** for numerically stable streaming 
 
 | Z-Score | Severity      | Example                            |
 | ------- | ------------- | ---------------------------------- |
-| ≥ 1.5   | Low           | Slightly elevated protest activity |
-| ≥ 2.0   | Medium        | Unusual naval presence             |
-| ≥ 3.0   | High/Critical | Military flights 3x above baseline |
+| ≥ 1.5   | Medium        | Slightly elevated protest activity |
+| ≥ 2.0   | High          | Unusual naval presence             |
+| ≥ 3.0   | Critical      | Military flights 3x above baseline |
 
 A minimum of 10 historical samples is required before anomalies are reported, preventing false positives during the learning phase. Anomalies are ingested back into the signal aggregator, where they compound with other signals for convergence detection.
 
