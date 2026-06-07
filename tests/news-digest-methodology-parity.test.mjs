@@ -51,11 +51,29 @@ const protoText = readFileSync(
   'utf8',
 );
 
-function extractStringArrayLiteral(src, constName) {
-  const re = new RegExp(`const\\s+${constName}\\s*=\\s*new\\s+Set\\(\\[([^\\]]+)\\]\\)`);
+function extractSetLiteralValues(src, constName) {
+  const re = new RegExp(
+    `const\\s+${constName}\\s*=\\s*(?:Object\\.freeze\\()?\\s*new\\s+Set\\s*\\(\\s*\\[([\\s\\S]*?)\\]\\s*\\)\\s*\\)?\\s*;`,
+  );
   const match = src.match(re);
   assert.ok(match, `failed to locate ${constName}`);
   return [...match[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+}
+
+function extractFunctionBody(src, functionName) {
+  const re = new RegExp(`function\\s+${functionName}\\s*\\([^)]*\\)\\s*\\{`);
+  const match = src.match(re);
+  assert.ok(match?.index !== undefined, `failed to locate function ${functionName}`);
+
+  let depth = 1;
+  const bodyStart = match.index + match[0].length;
+  for (let i = bodyStart; i < src.length; i++) {
+    const ch = src[i];
+    if (ch === '{') depth++;
+    if (ch === '}') depth--;
+    if (depth === 0) return src.slice(bodyStart, i);
+  }
+  assert.fail(`failed to parse function body for ${functionName}`);
 }
 
 function extractNumberMapLiteral(src, constName) {
@@ -93,7 +111,7 @@ function assertDocMatches(re, label) {
 
 describe('news digest methodology parity', () => {
   it('documents the accepted feed digest variants from VALID_VARIANTS', () => {
-    const variants = extractStringArrayLiteral(digestSrc, 'VALID_VARIANTS');
+    const variants = extractSetLiteralValues(digestSrc, 'VALID_VARIANTS');
     assert.deepEqual(variants, ['full', 'tech', 'finance', 'happy', 'commodity']);
     for (const variant of variants) assertDocIncludes(`\`${variant}\``, `variant ${variant}`);
     for (const variant of variants) {
@@ -156,9 +174,18 @@ describe('news digest methodology parity', () => {
     assertDocMatches(new RegExp(`high stories at\\s+\`${digestHighLimit}\``), 'DIGEST_HIGH_LIMIT');
     assertDocMatches(new RegExp(`medium stories at\\s+\`${digestMediumLimit}\``), 'DIGEST_MEDIUM_LIMIT');
 
+    const readMaxStoriesBody = extractFunctionBody(briefComposeSrc, 'readMaxStoriesPerUser');
     assert.ok(
-      /return\s+12\s*;[\s\S]*export\s+const\s+MAX_STORIES_PER_USER/s.test(briefComposeSrc),
-      'MAX_STORIES_PER_USER default must remain 12 or the methodology/test should update',
+      /if\s*\(\s*raw\s*==\s*null\s*\|\|\s*raw\s*===\s*''\s*\)\s*return\s+12\s*;/.test(readMaxStoriesBody),
+      'readMaxStoriesPerUser must default unset DIGEST_MAX_STORIES_PER_USER to 12',
+    );
+    assert.ok(
+      /return\s+Number\.isFinite\(n\)\s*&&\s*n\s*>\s*0\s*\?\s*n\s*:\s*12\s*;/.test(readMaxStoriesBody),
+      'readMaxStoriesPerUser must fall back to 12 for invalid or non-positive values',
+    );
+    assert.ok(
+      /export\s+const\s+MAX_STORIES_PER_USER\s*=\s*readMaxStoriesPerUser\(\)\s*;/.test(briefComposeSrc),
+      'MAX_STORIES_PER_USER must still be exported from readMaxStoriesPerUser()',
     );
     assertDocIncludes('MAX_STORIES_PER_USER', 'brief story cap name');
     assertDocIncludes('default `12`', 'MAX_STORIES_PER_USER default');
@@ -215,8 +242,7 @@ describe('news digest methodology parity', () => {
   });
 
   it('documents cooldown modes and table types', () => {
-    const modes = [...cooldownConfigSrc.matchAll(/new Set\(\[['"]([^'"]+)['"],\s*['"]([^'"]+)['"]\]\)/g)]
-      .flatMap((m) => [m[1], m[2]]);
+    const modes = extractSetLiteralValues(cooldownConfigSrc, 'VALID_MODES');
     assert.deepEqual(modes, ['shadow', 'off']);
     for (const mode of modes) assertDocIncludes(`\`${mode}\``, `cooldown mode ${mode}`);
 

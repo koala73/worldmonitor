@@ -18,7 +18,7 @@ export const DIGEST_ACCUMULATOR_KEY_PREFIX = 'digest:accumulator:v1:';
  * Story tracking keys — written by list-feed-digest.ts, read by digest cron (E2).
  * All keys use 32-char SHA-256 hex prefix of the normalised title as ${titleHash}.
  *
- *   story:track:v1:${titleHash}     Hash   firstSeen/lastSeen/title/link/severity/mentionCount/currentScore/lang/description/publishedAt/entityCorroborationCount/isOpinion/isFeelGood/isEphemeralLiveCoverage/category (always-written)
+ *   story:track:v1:${titleHash}     Hash   firstSeen/lastSeen/title/link/severity/mentionCount/currentScore/peakScore/lang/description/publishedAt/entityCorroborationCount/isOpinion/isFeelGood/isEphemeralLiveCoverage/category (always-written)
  *   story:sources:v1:${titleHash}   Set    feed IDs (SADD per appearance)
  *   story:peak:v1:${titleHash}      ZSet   single member "peak", score = highest importanceScore (ZADD GT)
  *   digest:accumulator:v1:${variant}:${lang} ZSet  member=titleHash, score=lastSeen_ms (updated every appearance)
