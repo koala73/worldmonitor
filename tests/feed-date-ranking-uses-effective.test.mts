@@ -92,7 +92,7 @@ const ALLOW_LIST: AllowEntry[] = [
   },
   {
     file: 'src/app/data-loader.ts',
-    line: 3320,
+    line: 3337,
     reason: 'Cache serialization step — wraps pubDate.getTime() into the persisted entry payload, not a comparator.',
   },
 ];
