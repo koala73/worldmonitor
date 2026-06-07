@@ -2,7 +2,7 @@
 /**
  * Capture a real MCP tool response for the JMESPath fixture set (U6).
  *
- * Hits the production MCP HTTP endpoint with a supplied bearer and writes
+ * Hits the production MCP HTTP endpoint with supplied MCP credentials and writes
  * the response envelope (`{cached_at, stale, data}` for cache tools, or
  * the raw RPC return for `_execute` tools) to disk under
  * `tests/fixtures/jmespath-samples/`. Pass `summary: true` or any other

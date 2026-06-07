@@ -109,5 +109,6 @@ describe('MCP news/auth public contract', () => {
     const captureScript = readRepoFile('scripts/capture-mcp-fixture.mjs');
     assert.match(captureScript, /WM_MCP_KEY/, 'fixture capture should expose an API-key env var');
     assert.match(captureScript, /WM_MCP_OAUTH_TOKEN/, 'fixture capture should expose an OAuth-token env var');
+    assert.doesNotMatch(captureScript, /supplied bearer/i, 'fixture capture should not call API-key credentials bearer credentials');
   });
 });
