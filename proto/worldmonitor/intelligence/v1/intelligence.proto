@@ -55,7 +55,7 @@ message CiiScore {
   // Provenance for advisory_level: "live" when sourced from the Redis advisory
   // feed, "fallback" when using the embedded State Department fallback table,
   // and "absent" when no advisory input affected this score.
-  string advisory_provenance = 11;
+  string advisory_provenance = 11 [(buf.validate.field).string.pattern = "^(live|fallback|absent)$"];
 }
 
 // CiiComponents represents the contributing factors to a CII score.

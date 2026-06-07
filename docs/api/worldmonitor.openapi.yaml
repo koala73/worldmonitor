@@ -12736,6 +12736,7 @@ components:
                          Empty means no live or fallback advisory level affected boosts/floors.
                 advisoryProvenance:
                     type: string
+                    pattern: ^(live|fallback|absent)$
                     description: |-
                         Provenance for advisory_level: "live" when sourced from the Redis advisory
                          feed, "fallback" when using the embedded State Department fallback table,

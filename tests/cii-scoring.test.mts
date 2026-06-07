@@ -1768,6 +1768,34 @@ describe('CII scoring', () => {
     );
   });
 
+  it('handler preserves live cached payloads if advisory backfill rebuild fails', () => {
+    const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
+    const source = readFileSync(
+      resolve(root, 'server', 'worldmonitor', 'intelligence', 'v1', 'get-risk-scores.ts'),
+      'utf8',
+    );
+
+    assert.match(
+      source,
+      /if \(!hasCompleteRiskScoreAdvisoryDisclosure\(freshResult\)\) \{[\s\S]*try \{[\s\S]*buildRiskScoresPayload\(\)[\s\S]*\} catch \{[\s\S]*normalizeRiskScoreAdvisoryDisclosure\(freshResult\)[\s\S]*degraded: false,[\s\S]*stale: false,[\s\S]*\}[\s\S]*\}/,
+      'live-cache advisory backfill must fall back to normalized cached data instead of dropping the cache hit',
+    );
+  });
+
+  it('proto schema constrains advisory_provenance vocabulary', () => {
+    const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
+    const proto = readFileSync(
+      resolve(root, 'proto', 'worldmonitor', 'intelligence', 'v1', 'intelligence.proto'),
+      'utf8',
+    );
+
+    assert.match(
+      proto,
+      /string advisory_provenance = 11 \[\(buf\.validate\.field\)\.string\.pattern = "\^\(live\|fallback\|absent\)\$"\]/,
+      'advisory_provenance must publish its fixed live/fallback/absent vocabulary in the proto schema',
+    );
+  });
+
   // ===== Methodology doc drift guard (issue #3725) =====
 
   it('docs/methodology/cii-risk-scores.mdx lists every CURATED_COUNTRIES code', () => {

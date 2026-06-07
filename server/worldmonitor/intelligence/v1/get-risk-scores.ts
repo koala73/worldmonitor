@@ -1558,10 +1558,17 @@ export async function getRiskScores(
       let freshResult = withRiskScoreRuntimeState(result, { degraded: false, stale: false });
       let liveCacheBackfill = false;
       if (!hasCompleteRiskScoreAdvisoryDisclosure(freshResult)) {
-        const built = await buildRiskScoresPayload();
-        realtimeSignalDensityCoverageCount = built.realtimeSignalDensityCoverageCount;
-        freshResult = withRiskScoreRuntimeState(built.response, { degraded: false, stale: false });
-        liveCacheBackfill = true;
+        try {
+          const built = await buildRiskScoresPayload();
+          realtimeSignalDensityCoverageCount = built.realtimeSignalDensityCoverageCount;
+          freshResult = withRiskScoreRuntimeState(built.response, { degraded: false, stale: false });
+          liveCacheBackfill = true;
+        } catch {
+          freshResult = withRiskScoreRuntimeState(normalizeRiskScoreAdvisoryDisclosure(freshResult), {
+            degraded: false,
+            stale: false,
+          });
+        }
       }
       // Write stale fallback, trend history, and seed-meta on every FRESH upstream
       // fetch by the true in-process leader so /api/health.riskScores
