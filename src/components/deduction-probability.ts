@@ -5,10 +5,15 @@ export interface DeductionProbabilityBadge {
 }
 
 const RANGE_SEPARATOR_RE = String.raw`(?:%?\s*[-–—]\s*)`;
-const RANGE_RE = new RegExp(String.raw`\b(\d{1,3})\s*${RANGE_SEPARATOR_RE}(\d{1,3})\s*%`);
+const RANGE_RE_GLOBAL = new RegExp(String.raw`\b(\d{1,3})\s*${RANGE_SEPARATOR_RE}(\d{1,3})\s*%`, 'g');
 const LEADING_RANGE_RE = new RegExp(String.raw`^\s*(\d{1,3})\s*${RANGE_SEPARATOR_RE}(\d{1,3})\s*%\s*[:\s-]*`);
-const SINGLE_RE = /\b(\d{1,3})\s*%/;
+const SINGLE_RE_GLOBAL = /\b(\d{1,3})\s*%/g;
 const LEADING_SINGLE_RE = /^\s*(\d{1,3})\s*%\s*[:\s-]*/;
+
+interface Span {
+  start: number;
+  end: number;
+}
 
 function isValidProbability(value: number): boolean {
   return Number.isInteger(value) && value >= 0 && value <= 100;
@@ -27,22 +32,55 @@ function toValidInt(value: string): number | null {
   return isValidProbability(parsed) ? parsed : null;
 }
 
+function isInsideSpan(index: number, spans: Span[]): boolean {
+  return spans.some(span => index >= span.start && index < span.end);
+}
+
 export function extractDeductionProbability(text: string, options: { leadingOnly?: boolean } = {}): DeductionProbabilityBadge | null {
-  const rangeMatch = (options.leadingOnly ? LEADING_RANGE_RE : RANGE_RE).exec(text);
+  const rangeMatch = options.leadingOnly ? LEADING_RANGE_RE.exec(text) : null;
   if (rangeMatch) {
     const low = toValidInt(rangeMatch[1] ?? '');
     const high = toValidInt(rangeMatch[2] ?? '');
-    if (low !== null && high !== null) {
+    if (low !== null && high !== null && low <= high) {
       return {
         label: formatRangeLabel(low, high),
-        remainder: options.leadingOnly ? text.slice(rangeMatch[0].length).trim() : text,
+        remainder: text.slice(rangeMatch[0].length).trim(),
         isRange: true,
       };
     }
     return null;
   }
 
-  const singleMatch = (options.leadingOnly ? LEADING_SINGLE_RE : SINGLE_RE).exec(text);
+  if (!options.leadingOnly) {
+    const invalidRangeSpans: Span[] = [];
+    for (const match of text.matchAll(RANGE_RE_GLOBAL)) {
+      const low = toValidInt(match[1] ?? '');
+      const high = toValidInt(match[2] ?? '');
+      if (low !== null && high !== null && low <= high) {
+        return {
+          label: formatRangeLabel(low, high),
+          remainder: text,
+          isRange: true,
+        };
+      }
+      invalidRangeSpans.push({ start: match.index ?? 0, end: (match.index ?? 0) + match[0].length });
+    }
+
+    for (const match of text.matchAll(SINGLE_RE_GLOBAL)) {
+      if (isInsideSpan(match.index ?? 0, invalidRangeSpans)) continue;
+      const value = toValidInt(match[1] ?? '');
+      if (value === null) continue;
+      return {
+        label: formatSingleLabel(value),
+        remainder: text,
+        isRange: false,
+      };
+    }
+
+    return null;
+  }
+
+  const singleMatch = LEADING_SINGLE_RE.exec(text);
   if (!singleMatch) return null;
 
   const value = toValidInt(singleMatch[1] ?? '');

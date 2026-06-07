@@ -53,6 +53,18 @@ describe('deduction probability parsing', () => {
   it('does not badge invalid percentage values', () => {
     assert.equal(extractDeductionProbability('Most likely path (125%)'), null);
     assert.equal(extractDeductionProbability('Most likely path (125-90%)'), null);
+    assert.equal(extractDeductionProbability('Most likely path (90-40%)'), null);
+    assert.equal(extractDeductionProbability('40-125%: impossible range', { leadingOnly: true }), null);
     assert.equal(extractDeductionProbability('125-150%: impossible range', { leadingOnly: true }), null);
+  });
+
+  it('skips invalid range endpoints before falling back to a later standalone percentage', () => {
+    const parsed = extractDeductionProbability('Most likely path (40-125%, ~50%)');
+
+    assert.deepEqual(parsed, {
+      label: '~50%',
+      remainder: 'Most likely path (40-125%, ~50%)',
+      isRange: false,
+    });
   });
 });
