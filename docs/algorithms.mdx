@@ -80,7 +80,7 @@ compositeScore =
 
 ### Population Exposure Estimation
 
-Active events (conflicts, earthquakes, floods, wildfires) are cross-referenced against WorldPop population density data to estimate the number of civilians within the impact zone. Event-specific radii reflect typical impact footprints:
+Active events (conflicts, earthquakes, floods, wildfires) are matched to the nearest centroid in the local 20-country priority population table and then estimated from `population / area` density. This is a coarse exposure approximation, not a live WorldPop lookup. Event-specific radii reflect typical impact footprints:
 
 | Event Type      | Radius | Rationale                                |
 | --------------- | ------ | ---------------------------------------- |
@@ -89,7 +89,7 @@ Active events (conflicts, earthquakes, floods, wildfires) are cross-referenced a
 | **Floods**      | 100 km | Watershed and drainage basin extent      |
 | **Wildfires**   | 30 km  | Smoke and evacuation perimeter           |
 
-API calls to WorldPop are batched concurrently (max 10 parallel requests) to handle multiple simultaneous events without sequential bottlenecks. The Population Exposure panel displays a summary header with total affected population and a per-event breakdown table.
+If an event falls outside the priority centroid table, the fallback density uses a synthetic `50,000,000 / 500,000 km2` country profile. The Population Exposure panel displays a summary header with total affected population and a per-event breakdown table.
 
 ---
 
@@ -165,14 +165,15 @@ Beyond displaying static cable routes on the map, the system actively monitors c
 
 Advisories are classified by severity: `fault` (cable break, cut, or damage — potential traffic rerouting) or `degraded` (repair work in progress with partial capacity). Impact descriptions are generated dynamically, linking the advisory to the specific cable and the countries it serves — enabling questions like "which cables serving South Asia are currently under repair?"
 
-**Health scoring algorithm** — Each cable receives a composite health score (0–100) computed from weighted signals with exponential time decay:
+**Health scoring algorithm** — Each cable receives a status score computed from the strongest live signal after linear per-signal TTL decay:
 
 ```
-signal_weight = severity × (e^(-λ × age_hours))     where λ = ln(2) / 168 (7-day half-life)
-health_score  = max(0, 100 − Σ(signal_weights) × 100)
+recency_weight = clamp(1 - age_seconds / ttl_seconds, 0, 1)
+effective      = severity * confidence * recency_weight
+score          = round(max(effective) * 100) / 100
 ```
 
-Signals are classified into two kinds: `operator_fault` (confirmed cable damage — severity 1.0) and `cable_advisory` (repair operations, navigational warnings — severity 0.6). Geographic matching uses cosine-latitude-corrected equirectangular approximation to find the nearest cataloged cable within 50km of each NGA warning's coordinates. Results are cached in Redis (6-hour TTL for complete results, 10 minutes for partial) with an in-memory fallback that serves stale data when Redis is unavailable — ensuring the cable health layer never shows blank data even during cache failures.
+Signals are classified as `operator_fault`, `cable_advisory`, or `repair_activity`, each with its own severity, confidence, and TTL. A cable is marked `FAULT` when the top effective score is at least `0.80` and an operator-fault signal is present; `DEGRADED` when the top score is at least `0.50`, or at least `0.80` with repair activity; otherwise `OK`. Geographic matching uses cosine-latitude-corrected equirectangular distance to find the nearest cataloged cable within `555km` (about 5 degrees at the equator) of each NGA warning coordinate. Computed cable-health results are Redis-cached for `1800` seconds, and the NGA warning fetch is cached for `86400` seconds.
 
 ### Infrastructure Cascade Modeling
 
@@ -225,19 +226,22 @@ Entity matching uses word-boundary regex to prevent false positives (e.g., "Iran
 
 ### Headline Scoring
 
-The AI Insights panel ranks news items by geopolitical significance using a multi-signal importance scoring algorithm. Rather than displaying stories in chronological order, the algorithm surfaces the most consequential developments by applying keyword-weighted scoring across five severity tiers:
+The AI Insights panel ranks news clusters by geopolitical significance using `scoreImportance` in `scripts/_clustering.mjs`. Rather than displaying stories in chronological order, the algorithm combines upstream classifier scores, source quality, corroboration, keyword groups, recency, and demotion rules:
 
-| Category | Base Score | Per-Match Bonus | Keywords |
-| --- | --- | --- | --- |
-| **Violence** | +100 | +25 | killed, dead, death, shot, casualty, massacre, crackdown |
-| **Military** | +80 | +20 | war, invasion, airstrike, missile, troops, combat, fleet |
-| **Unrest** | +40 | +15 | protest, uprising, riot, demonstration, revolution |
-| **Flashpoint** | — | +20 | iran, russia, china, taiwan, ukraine, israel, gaza, north korea, syria, yemen, hamas, hezbollah, nato, kremlin |
-| **Crisis** | — | +10 | sanctions, escalation, breaking, urgent, humanitarian |
+| Signal | Scoring rule |
+| --- | --- |
+| **Upstream classifier** | `upstreamImportanceScore * 2.2` when present |
+| **Threat level** | LLM-sourced threats add critical `+220`, high `+150`, medium `+80`, low `+20`; non-LLM threat scores contribute 35% only when backed by upstream signal and not keyword-historical downgrade |
+| **Source tier** | Tier 1 `+35`, Tier 2 `+20`, Tier 3 `+8` |
+| **Source count** | `min(sourceCount, 6) * 12` |
+| **Entity corroboration** | `+45` when the cluster has corroborated entities |
+| **Keyword groups** | Violence `+50 + 12/match`; military `+40 + 10/match`; unrest `+35 + 9/match`; flashpoint `+30 + 8/match`; diplomacy `+35 + 9/match`; crisis `+15 + 5/match` |
+| **Flashpoint interaction** | Violence, unrest, or diplomacy terms combined with flashpoint terms multiply the score by `1.25` |
+| **Recency** | A 16-hour linear recency multiplier bottoms out at `0.5` |
 
-**Source confirmation boost** — each additional independent source reporting the same story adds +10 points, rewarding multi-source corroboration over single-source reporting.
+**Source confirmation boost** — source count and entity corroboration reward multi-source reporting over single-source reporting.
 
-**Demotion keywords** — corporate and financial noise (CEO, earnings, stock, startup, revenue) reduces scores, preventing business news from crowding out geopolitical developments in the full/geopolitical variant.
+**Demotion keywords** — corporate and financial noise reduces scores to 35% when no corroborated entity or strong non-keyword signal is present, preventing business news from crowding out geopolitical developments in the full/geopolitical variant.
 
 **Theater posture integration** — when the Strategic Posture Assessment detects elevated military activity (e.g., unusual flight patterns in a theater), related news stories receive additional scoring boosts, surfacing contextually relevant reporting alongside the military signal.
 
@@ -254,7 +258,7 @@ Every RSS headline is tokenized into individual terms and tracked in per-term fr
 | **Source diversity** | ≥ 2 unique RSS feed sources                   |
 | **Cooldown**         | 30 minutes since last spike for the same term |
 
-The tokenizer extracts CVE identifiers (`CVE-2024-xxxxx`), APT/FIN threat actor designators, and 12 compound terms for world leaders (e.g., "Xi Jinping", "Kim Jong Un") that would be lost by naive whitespace splitting. A configurable blocklist suppresses common noise terms.
+The tokenizer extracts CVE identifiers (`CVE-2024-xxxxx`), APT/FIN threat actor designators, and 16 compound terms for world leaders (e.g., "Xi Jinping", "Kim Jong Un") that would be lost by naive whitespace splitting. A configurable blocklist suppresses common noise terms.
 
 Detected spikes are auto-summarized via Groq (rate-limited to 5 summaries/hour) and emitted as `keyword_spike` signals into the correlation engine, where they compound with other signal types for convergence detection. The term registry is capped at 10,000 entries with LRU eviction to bound memory usage. All thresholds (spike multiplier, min count, cooldown, blocked terms) are configurable via the Settings panel.
 

@@ -76,6 +76,36 @@ function computeStats() {
   // ---- Feed definitions (src/config/feeds.ts) — floor metric ----
   const feedDefinitions = (read('src/config/feeds.ts').match(/name:\s*'/g) || []).length;
 
+  // ---- Operational source counts used by data-source and methodology docs ----
+  const airportCount = (read('src/config/airports.ts').match(/\biata:\s*'/g) || []).length;
+
+  const financeGeo = read('src/config/finance-geo.ts');
+  const stockExchangeBlock = financeGeo.slice(
+    financeGeo.indexOf('export const STOCK_EXCHANGES'),
+    financeGeo.indexOf('export const FINANCIAL_CENTERS'),
+  );
+  const stockExchangeCount = (stockExchangeBlock.match(/\bid:\s*'/g) || []).length;
+
+  const telegram = JSON.parse(read('data/telegram-channels.json'));
+  const telegramFullEnabled = Array.isArray(telegram?.channels?.full)
+    ? telegram.channels.full.filter((c) => c?.enabled !== false)
+    : [];
+  const telegramFullTierCounts = telegramFullEnabled.reduce((acc, c) => {
+    const tier = String(c?.tier ?? 'unknown');
+    acc[tier] = (acc[tier] || 0) + 1;
+    return acc;
+  }, {});
+
+  const leaderBlock = read('src/services/trending-keywords.ts').match(/const LEADER_NAMES = \[([\s\S]*?)\];/);
+  const leaderNames = leaderBlock ? (leaderBlock[1].match(/'[^']+'/g) || []).length : 0;
+
+  const populationBlock = read('src/services/population-exposure.ts').match(
+    /const PRIORITY_COUNTRIES:[\s\S]*?=\s*\{([\s\S]*?)\n\};/,
+  );
+  const populationPriorityCountries = populationBlock
+    ? (populationBlock[1].match(/^\s+[A-Z]{3}:\s*\{/gm) || []).length
+    : 0;
+
   return {
     _generated: 'scripts/docs-stats.mjs — do not edit by hand; run `npm run docs:stats`',
     layerDefinitions,
@@ -91,6 +121,12 @@ function computeStats() {
     freshnessSources,
     freshnessRequiredForRisk,
     feedDefinitions,
+    airportCount,
+    stockExchangeCount,
+    telegramFullEnabledChannels: telegramFullEnabled.length,
+    telegramFullTierCounts,
+    leaderNames,
+    populationPriorityCountries,
   };
 }
 
@@ -128,6 +164,15 @@ function claims(s) {
     { file: 'docs/api-reference.mdx', re: /all (\d+)\s+services/, value: s.protoServices },
 
     { file: 'docs/data-sources.mdx', re: /monitors (\d+)\s+data sources/, value: s.freshnessSources },
+    { file: 'docs/data-sources.mdx', re: /across (\d+)\s+monitored airports/, value: s.airportCount },
+    { file: 'docs/data-sources.mdx', re: /^(\d+)\s+airports across 5 regions/m, value: s.airportCount },
+    { file: 'docs/data-sources.mdx', re: /(\d+)\s+global stock exchanges/, value: s.stockExchangeCount },
+    { file: 'docs/data-sources.mdx', re: /^(\d+)\s+enabled channels in the default `full` Telegram channel set/m, value: s.telegramFullEnabledChannels },
+    { file: 'docs/data-sources.mdx', re: /\*\*Tier 1\*\* \| (\d+)\s+\|/, value: s.telegramFullTierCounts['1'] },
+    { file: 'docs/data-sources.mdx', re: /\*\*Tier 2\*\* \| (\d+)\s+\|/, value: s.telegramFullTierCounts['2'] },
+    { file: 'docs/data-sources.mdx', re: /\*\*Tier 3\*\* \| (\d+)\s+\|/, value: s.telegramFullTierCounts['3'] },
+    { file: 'docs/algorithms.mdx', re: /local (\d+)-country priority population table/, value: s.populationPriorityCountries },
+    { file: 'docs/algorithms.mdx', re: /and (\d+)\s+compound terms for world leaders/, value: s.leaderNames },
   ];
 }
 
