@@ -24,9 +24,11 @@ function typeText(schema) {
 function splitMarkdownRow(line) {
   const cells = [];
   let current = '';
+  let inBacktick = false;
   for (let i = 1; i < line.length - 1; i += 1) {
     const ch = line[i];
-    if (ch === '|' && line[i - 1] !== '\\') {
+    if (ch === '`') inBacktick = !inBacktick;
+    if (ch === '|' && !inBacktick && line[i - 1] !== '\\') {
       cells.push(current.trim().replace(/\\\|/g, '|'));
       current = '';
       continue;
@@ -69,6 +71,15 @@ function documentedToolSpecificParams(toolName) {
   return rows;
 }
 
+function documentedCacheToolNames() {
+  const sections = DOC.split(/(?=\n### `)/);
+  return sections.flatMap((section) => {
+    const heading = section.match(/^### `([^`]+)`/m);
+    if (!heading || !section.includes('**Parameters (tool-specific):**')) return [];
+    return [heading[1]];
+  });
+}
+
 function expectedToolSpecificParams(tool) {
   const publicTool = buildPublicTool(tool, { compressDescriptions: false });
   return Object.entries(publicTool.inputSchema.properties)
@@ -89,7 +100,11 @@ describe('MCP tools reference docs — cache tool parameter parity', () => {
 
   it('cache tool-specific parameter tables match registry inputSchema properties', () => {
     const cacheTools = __testing__.TOOL_REGISTRY.filter((tool) => tool._execute === undefined);
-    assert.ok(cacheTools.length >= 27, `expected at least 27 cache tools, got ${cacheTools.length}`);
+    assert.deepEqual(
+      documentedCacheToolNames().sort(),
+      cacheTools.map((tool) => tool.name).sort(),
+      'docs/mcp-tools-reference.mdx cache-tool sections must be bidirectional with TOOL_REGISTRY',
+    );
 
     const failures = [];
     for (const tool of cacheTools) {
