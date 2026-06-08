@@ -57,7 +57,7 @@ export type IndicatorSpec = {
   // (or as close as the underlying universe allows): IPC, UNHCR, UCDP,
   // FATF listings, WHO global indicators, IMF WEO, WB annual statistical
   // series. False when the source is an event-scraping feed, English-
-  // biased, a curated subset (BIS LBS by-parent reporters list, WTO
+  // biased, a curated subset (BIS CBS by-parent reporters list, WTO
   // tariff-overview top-50 reporters, IEA OECD-only series), or a
   // real-time signal whose absence does not encode "stable absence."
   // Used by IMPUTE callers in _dimension-scorers.ts: when reaching for
@@ -304,7 +304,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'shortTermExternalDebtPctGni',
     dimension: 'financialSystemExposure',
-    description: 'Short-term external debt as % of GNI (WB IDS DT.DOD.DSTC.IR.ZS × DT.DOD.DECT.GN.ZS); IMF Article IV vulnerability threshold is 15% GNI',
+    description: 'Short-term external debt as % of GNI ((WB IDS DT.DOD.DSTC.CD / NY.GNP.MKTP.CD) × 100); IMF Article IV vulnerability threshold is 15% GNI',
     direction: 'lowerBetter',
     goalposts: { worst: 15, best: 0 },
     weight: 0.35,
@@ -884,7 +884,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     weight: 0.65,
     sourceKey: 'conflict:ucdp-events:v1',
     scope: 'global',
-    cadence: 'realtime',
+    cadence: 'annual',
     // UCDP is global (193 countries) but the license is research-only
     // (Uppsala). The parent plan keeps UCDP Core; the linter allowlist
     // KNOWN_EXCEPTIONS in tests/resilience-indicator-tiering.test.mts holds
@@ -1321,7 +1321,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     weight: 0.3,
     sourceKey: 'conflict:ucdp-events:v1',
     scope: 'global',
-    cadence: 'realtime',
+    cadence: 'annual',
     tier: 'core',
     coverage: 193,
     license: 'research-only',

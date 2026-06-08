@@ -175,7 +175,7 @@ key name reflects the original draft and is not a source label. Redis key is sti
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
-| shortTermExternalDebtPctGni | Short-term external debt as % of GNI (WB IDS DT.DOD.DSTC.IR.ZS × DT.DOD.DECT.GN.ZS); IMF Article IV vulnerability threshold is 15% GNI | Lower is better | 15 - 0 | 0.35 | World Bank IDS | Annual |
+| shortTermExternalDebtPctGni | Short-term external debt as % of GNI ((WB IDS DT.DOD.DSTC.CD / NY.GNP.MKTP.CD) × 100); IMF Article IV vulnerability threshold is 15% GNI | Lower is better | 15 - 0 | 0.35 | World Bank IDS | Annual |
 | bisLbsXborderPctGdp | BIS CBS (`WS_CBS_PUB`) sum of by-parent foreign claims (US/UK/major-EU/CH/JP/CA/AU/SG) as % of GDP; U-shape band — both isolation (under 5%) and over-exposure (above 60%) score low | Lower is better (U-shape) | 60 - 25 | 0.30 | BIS CBS | Quarterly |
 | fatfListingStatus | FATF AML/CFT listing status — black list (call for action) → 0, gray list (increased monitoring) → 30, compliant → 100 | Higher is better | 0 - 100 | 0.20 | FATF | Monthly |
 | financialCenterRedundancy | Count of distinct BIS CBS by-parent reporters with non-trivial (>1% GDP) foreign claims; rewards multi-counterparty financial centers, balances Component 2 over-exposure penalty | Higher is better | 1 - 10 | 0.15 | BIS CBS | Quarterly |
@@ -315,7 +315,7 @@ relabeling is tracked in #3737.
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
-| ucdpConflict | UCDP armed conflict: eventCount*2 + typeWeight + sqrt(deaths), population-normalized per million with a 0.5M floor | Lower is better | 15 - 0 | 0.65 | UCDP | Realtime |
+| ucdpConflict | UCDP armed conflict: eventCount*2 + typeWeight + sqrt(deaths), population-normalized per million with a 0.5M floor | Lower is better | 15 - 0 | 0.65 | UCDP | Annual GED releases |
 | displacementHosted | UNHCR hosted displaced persons (log10 scale) | Lower is better | 7 - 0 | 0.35 | UNHCR | Annual |
 
 #### Information & Cognitive
@@ -488,7 +488,7 @@ from each other based on `effectiveMonths`.
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
 | recoveryWgiContinuity | Mean WGI score as institutional durability proxy | Higher is better | -2.5 - 2.5 | 0.50 | World Bank | Annual |
-| recoveryConflictPressure | UCDP conflict metric inverted to state continuity | Lower is better | 30 - 0 | 0.30 | UCDP | Realtime |
+| recoveryConflictPressure | UCDP conflict metric inverted to state continuity | Lower is better | 30 - 0 | 0.30 | UCDP | Annual GED releases |
 | recoveryDisplacementVelocity | UNHCR displacement as state continuity signal | Lower is better | 7 - 0 | 0.20 | UNHCR | Annual |
 
 State continuity is a derived dimension: it reads from existing WGI, UCDP, and displacement keys rather than a dedicated seeder.
@@ -641,7 +641,7 @@ The API response includes `imputationShare` (0.0-1.0), representing the fraction
 | IEP | Global Peace Index | Annual | Global |
 | RSF | Press freedom score | Annual | Global |
 | UNHCR | Displaced persons, hosted refugees | Annual | Affected countries |
-| UCDP | Armed conflict events, fatalities | Realtime | Global |
+| UCDP | Armed conflict events, fatalities | Annual GED releases; seeder liveness is monitored separately from source-data cadence | Global |
 | Cyber threat feeds | Severity-weighted cyber threats | Daily | Global |
 | Outage monitoring | Internet outages | Realtime | Global |
 | GPSJam | GPS jamming incidents | Daily | Global |
@@ -689,7 +689,7 @@ The public runtime manifest intentionally does not echo these Redis key names. I
 
 ### dataVersion semantics
 
-The `dataVersion` field on every `GetResilienceScoreResponse` is the ISO date of the `fetchedAt` timestamp stored in `seed-meta:resilience:static`. It reflects the most recent successful run of the Railway static-seed job; the widget renders it in the footer as `Seed date YYYY-MM-DD`. The label is narrower than "Data" because live inputs (conflict events, outages, prices) can refresh at their own cadence after the static bundle runs — per-dimension freshness is surfaced separately via the freshness badge in the confidence grid.
+The `dataVersion` field on every `GetResilienceScoreResponse` is the ISO date of the `fetchedAt` timestamp stored in `seed-meta:resilience:static`. It reflects the most recent successful run of the Railway static-seed job; the widget renders it in the footer as `Seed date YYYY-MM-DD`. The label is narrower than "Data" because rolling inputs (annual UCDP GED conflict releases, outages, prices) can refresh at their own cadence after the static bundle runs — per-dimension freshness is surfaced separately via the freshness badge in the confidence grid.
 
 ### Reproducing a score by hand
 
@@ -697,7 +697,7 @@ Given a Redis snapshot at time T:
 
 1. Read `seed-meta:resilience:static` for the `dataVersion`.
 2. Read `resilience:static:{cc}` for the country's baseline record (WGI, WHO, GPI, RSF, FAO, IEA, and so on).
-3. Read the live-signal keys (UCDP, UNHCR, outages, cyber threats, prices, shipping stress, and so on) for the country's slice.
+3. Read the rolling signal keys (annual UCDP GED releases, UNHCR, outages, cyber threats, prices, shipping stress, and so on) for the country's slice.
 4. For each of the 20 active dimensions, apply the formulas in the Scoring Formula section with the goalposts from the Dimensions and Indicators tables. For missing signals, consult the Imputation Taxonomy table in this document.
 5. Aggregate dimension scores into domain scores via coverage-weighted mean.
 6. Aggregate domain scores into the three pillar scores using `domainWeight * averageDimensionCoverage` as each member domain's pillar-score influence, then compute the overall score with the pillar-combined penalized formula used by the production `pc` cache tag.
@@ -793,7 +793,7 @@ Self-assessed against the standard composite-indicator review axes on a 0-10 sca
 | **Explainability** | 7.5 | Per-dimension confidence grid in the widget shows coverage %, imputation class, and freshness for every dimension on every country. Tooltip text is generated from the taxonomy so analysts can click through to the meaning without reading this document. Gap: no waterfall chart of individual signal contributions yet, that lands in Phase 3 T3.3. |
 | **Reproducibility** | 8.0 | Every dimension's sourceKey, cadence, and goalpost lives in `_indicator-registry.ts` and is linted against this doc. Cache keys were already versioned in the v1.1 implementation; see the Redis keys table above for the current score, ranking, history, and interval prefixes. `dataVersion` is written by the seed and plumbed to the widget footer. Gap: the benchmark and backtest scripts do not yet run on a CI cron; those land in Phase 2 T2.7. |
 | **Source quality** | 7.0 | World Bank, IMF, WHO, IEA, UNHCR, UCDP, IPC, BIS, FAO, RSF, GPI: all authoritative. Gap: curated-list sources (BIS ~40 economies, WTO) do not cover the full WorldMonitor country set, which is why the `unmonitored` imputation class exists. Phase 2 T2.9 adds language-normalized information signal to reduce English-press bias. |
-| **Timeliness** | 6.5 | Structural sources are annual (WGI, GPI, RSF, WHO, IMF macro) and dominate the total weight of the index. BIS EER is monthly. The Freshness classifier (T1.5) surfaces this at the dimension level so users can see which parts of a country score are 12 months old. Twelve stress-side indicators already run at realtime/hourly or daily cadence via the cross-source stack (`ucdpConflict`, `internetOutages`, `infraOutages`, `unrestEvents` at realtime; `socialVelocity` via the hourly Reddit relay with a 180-minute health budget; `cyberThreats`, `gpsJamming`, `shippingStress`, `transitDisruption`, `euGasStorageStress`, `energyPriceStress`, `newsThreatScore` at daily). Gap: the live-shock pillar relies on those signals but the structural pillar is still capped by annual sources; Phase 2 T2.2 adds FX volatility at daily cadence to narrow the cadence gap on the currency-external dimension and the Phase 3 reference-edition split will formalize annual vs rolling cadences per pillar. |
+| **Timeliness** | 6.5 | Structural sources are annual (WGI, GPI, RSF, WHO, IMF macro) and dominate the total weight of the index. BIS EER is monthly. The Freshness classifier (T1.5) surfaces this at the dimension level so users can see which parts of a country score are 12 months old. The stress-side stack already includes realtime/hourly or daily inputs (`internetOutages`, `infraOutages`, `unrestEvents` at realtime; `socialVelocity` via the hourly Reddit relay with a 180-minute health budget; `cyberThreats`, `gpsJamming`, `shippingStress`, `transitDisruption`, `euGasStorageStress`, `energyPriceStress`, `newsThreatScore` at daily), while `ucdpConflict` follows annual UCDP GED releases with separate seeder-liveness monitoring. Gap: the live-shock pillar relies on those signals but the structural pillar is still capped by annual sources; Phase 2 T2.2 adds FX volatility at daily cadence to narrow the cadence gap on the currency-external dimension and the Phase 3 reference-edition split will formalize annual vs rolling cadences per pillar. |
 | **Sensitivity** | 7.0 | Weight-perturbation Monte Carlo sensitivity (#2823) exists in the backtesting layer. Phase 1 did not add new sensitivity work. Overall p5/p95 score sensitivity bands are computed under the active score formula and exposed (#2877, #2885, #3967), and the widget renders the overall `[p05–p95]` range next to the score. The band is a formula-aware weight-perturbation sensitivity range, not an input-data uncertainty interval. Gap: no waterfall chart of individual signal contributions yet; that lands in Phase 3 T3.3. |
 
 **Phase 1 acceptance gate status: met.** Both required thresholds (Methodology ≥7.5, Explainability ≥7.5) are satisfied with honest rationales. The two gaps flagged in each axis are tracked against Phase 2 and Phase 3 tasks in the upgrade plan.
@@ -861,7 +861,7 @@ Self-assessed against the standard composite-indicator review axes on a 0-10 sca
 | **Architecture** | 9.0 | Three-pillar schema with schemaVersion feature flag for backward compat. Penalized weighted mean aggregation with documented alpha. Domain-weighted pillar scores. Cache-key versioning (bumped per schema change). Language normalization corrects English-press bias. Gap: alpha tuning is initial (0.5), needs backtest-driven refinement after live data accumulates. |
 | **Methodology** | 8.5 | Every dimension has a named source, direction, goalpost, weight, cadence, imputation class, AND tier. Four-class imputation taxonomy live end-to-end. Freshness classifier surfaces staleness at the dimension level. Methodology doc linter enforces parity. Gap: three-pillar weight rationale is defensible but not yet empirically optimized. |
 | **Explainability** | 8.0 | Per-dimension confidence grid with imputation icon + freshness badge. Pillar structure makes the index decomposable (structural vs live-shock vs recovery). Gap: no waterfall chart yet (Phase 3 T3.3), no change attribution (Phase 3 T3.5). |
-| **Timeliness** | 7.0 | 13 stress-side indicators at realtime/daily cadence. Language normalization corrects for source-density bias. Recovery capacity adds monthly reserve + debt signals. Gap: structural sources still annual (WGI/GPI/RSF/WHO). Phase 3 reference-edition split formalizes annual vs rolling cadences per pillar. |
+| **Timeliness** | 7.0 | Stress-side indicators include realtime/daily inputs, with UCDP conflict pressure updated on annual GED releases and monitored separately for seeder liveness. Language normalization corrects for source-density bias. Recovery capacity adds monthly reserve + debt signals. Gap: structural sources still annual (WGI/GPI/RSF/WHO). Phase 3 reference-edition split formalizes annual vs rolling cadences per pillar. |
 
 **Phase 2 acceptance gate status: met.** All three required thresholds (Validation >= 8.0, Data >= 9.0, Architecture >= 9.0) are satisfied. The gaps flagged in each axis are tracked against Phase 3 tasks in the upgrade plan.
 

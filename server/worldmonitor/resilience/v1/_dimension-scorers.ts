@@ -17,7 +17,7 @@ export type ResilienceDimensionId =
   | 'macroFiscal'
   | 'currencyExternal'
   | 'tradePolicy'
-  | 'financialSystemExposure'  // plan 2026-04-25-004 Phase 2: structural sanctions vulnerability via BIS LBS + WB IDS + FATF
+  | 'financialSystemExposure'  // plan 2026-04-25-004 Phase 2: structural sanctions vulnerability via BIS CBS + WB IDS + FATF
   | 'cyberDigital'
   | 'logisticsSupply'
   | 'infrastructure'
@@ -627,7 +627,7 @@ export function scoreInflationStability(inflationPct: number): number {
 }
 
 // U-shaped band normalization. Used by `financialSystemExposure` Component 2
-// (BIS LBS cross-border claims as % of GDP). Both extremes are bad — too
+// (BIS CBS cross-border claims as % of GDP). Both extremes are bad — too
 // little integration suggests financial isolation (sanctions-target
 // jurisdictions; thin correspondent-banking access), too much suggests
 // over-exposure to Western-bank pulls (Iceland-2008 territory). The score
@@ -1396,7 +1396,7 @@ export async function scoreCurrencyExternal(
 // `RESILIENCE_SANCTIONS_KEY` constant and `normalizeSanctionCount` helper
 // were removed in this PR (see retire-tag at lines ~263 and ~542).
 // Phase 2 (Ship 2) adds the `financialSystemExposure` dim built from
-// BIS LBS + WB IDS + FATF status — a structural-exposure construct that
+// BIS CBS + WB IDS + FATF status — a structural-exposure construct that
 // does not rely on the OFAC count.
 export async function scoreTradePolicy(
   countryCode: string,

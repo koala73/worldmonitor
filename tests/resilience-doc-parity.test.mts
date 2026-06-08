@@ -546,6 +546,31 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
     );
   });
 
+  it('Financial System Exposure short-term external debt formula uses direct WB IDS USD/GNI division', () => {
+    const row = extractIndicatorRowsForSection(docText, 'Financial System Exposure')
+      .find((indicator) => indicator.id === 'shortTermExternalDebtPctGni');
+    const spec = INDICATOR_REGISTRY.find((indicator) => indicator.id === 'shortTermExternalDebtPctGni');
+    assert.ok(row, 'shortTermExternalDebtPctGni methodology row must exist.');
+    assert.ok(spec, 'shortTermExternalDebtPctGni must exist in INDICATOR_REGISTRY.');
+
+    assert.equal(
+      row.description,
+      spec.description,
+      'shortTermExternalDebtPctGni methodology text must mirror the registry description.',
+    );
+    assert.match(row.description, /DT\.DOD\.DSTC\.CD \/ NY\.GNP\.MKTP\.CD\) × 100/);
+    assert.doesNotMatch(
+      row.description,
+      /DT\.DOD\.DSTC\.IR\.ZS × DT\.DOD\.DECT\.GN\.ZS/,
+      'methodology must not regress to the stale composed short-term-debt ratio.',
+    );
+    assert.doesNotMatch(
+      spec.description,
+      /DT\.DOD\.DSTC\.IR\.ZS × DT\.DOD\.DECT\.GN\.ZS/,
+      'registry must not regress to the stale composed short-term-debt ratio.',
+    );
+  });
+
   it('Energy v2 methodology table matches active production registry weights', () => {
     const tableWeights = extractIndicatorWeightsForMarkedTable(
       docText,
@@ -929,6 +954,36 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
       dataSources,
       /Locational Banking Statistics for `financialSystemExposure`/,
       'BIS data-source row must not misname CBS financialSystemExposure as Locational Banking Statistics',
+    );
+  });
+
+  it('methodology documents UCDP as annual GED source data while preserving seeder-liveness distinction', () => {
+    const borderRow = extractIndicatorRowsForSection(docText, 'Conflict & Displacement')
+      .find((indicator) => indicator.id === 'ucdpConflict');
+    const continuityRow = extractIndicatorRowsForSection(docText, 'State Continuity')
+      .find((indicator) => indicator.id === 'recoveryConflictPressure');
+    const dataSourcesMatch = /^## Data Sources\s*$([\s\S]*?)^## /m.exec(docText);
+    assert.ok(dataSourcesMatch, 'methodology Data Sources section must exist.');
+    const dataSources = dataSourcesMatch[1]!;
+    const ucdpConflict = INDICATOR_REGISTRY.find((indicator) => indicator.id === 'ucdpConflict');
+    const recoveryConflictPressure = INDICATOR_REGISTRY.find((indicator) => indicator.id === 'recoveryConflictPressure');
+    assert.ok(borderRow, 'ucdpConflict methodology row must exist.');
+    assert.ok(continuityRow, 'recoveryConflictPressure methodology row must exist.');
+    assert.ok(ucdpConflict, 'ucdpConflict must exist in INDICATOR_REGISTRY.');
+    assert.ok(recoveryConflictPressure, 'recoveryConflictPressure must exist in INDICATOR_REGISTRY.');
+
+    assert.equal(ucdpConflict.cadence, 'annual');
+    assert.equal(recoveryConflictPressure.cadence, 'annual');
+    assert.equal(borderRow.cadence, 'Annual GED releases');
+    assert.equal(continuityRow.cadence, 'Annual GED releases');
+    assert.match(
+      dataSources,
+      /\| UCDP \| Armed conflict events, fatalities \| Annual GED releases; seeder liveness is monitored separately from source-data cadence \| Global \|/,
+    );
+    assert.doesNotMatch(
+      dataSources,
+      /\| UCDP \| Armed conflict events, fatalities \| Realtime \| Global \|/,
+      'UCDP source-data cadence must not be documented as realtime.',
     );
   });
 
