@@ -47,9 +47,11 @@ function parseFsiBands(source) {
 }
 
 function parseEuCissBands(source) {
-  const matches = [...source.matchAll(/if\s*\(value\s*<\s*([0-9.]+)\)\s*return\s*'([^']+)'/g)]
+  const fnBody = source.match(/function classifyLabel\([^)]*\)\s*\{([^}]+)\}/)?.[1];
+  assert.ok(fnBody, 'classifyLabel function not found in EU FSI seeder');
+  const matches = [...fnBody.matchAll(/if\s*\(value\s*<\s*([0-9.]+)\)\s*return\s*'([^']+)'/g)]
     .map(([, upperExclusive, label]) => ({ upperExclusive, label }));
-  const fallback = source.match(/return\s*'([^']+)';\s*\}/);
+  const fallback = fnBody.match(/return\s*'([^']+)'/);
   assert.equal(matches.length, 3, 'expected three upper-bound EU CISS bands in seeder');
   assert.ok(fallback, 'expected fallback EU CISS band in seeder');
   return [...matches, { upperExclusive: null, label: fallback[1] }];
