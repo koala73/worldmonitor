@@ -832,12 +832,15 @@ describe('news digest methodology parity', () => {
     assert.ok(
       briefUrlSrc.includes('/api/brief/{userId}/{issueSlot}') &&
         briefUrlSrc.includes('sign `${userId}:${issueSlot}`') &&
-        briefUrlSrc.includes('token against userId + issueSlot'),
+        briefUrlSrc.includes('token against userId + issueSlot') &&
+        briefUrlSrc.includes('issueDate` is the legacy property name') &&
+        briefUrlSrc.includes('Legacy name for the frozen issueSlot'),
       'brief URL signer comments must describe slot-keyed magazine tokens',
     );
     assert.ok(
       scriptBriefUrlSignSrc.includes('sign `${userId}:${issueSlot}`') &&
-        scriptBriefUrlSignSrc.includes('issueSlot-shaped value'),
+        scriptBriefUrlSignSrc.includes('issueSlot-shaped value') &&
+        scriptBriefUrlSignSrc.includes('issueDate is the legacy property name'),
       'cron brief URL signer comments must describe slot-keyed magazine tokens',
     );
     assert.ok(

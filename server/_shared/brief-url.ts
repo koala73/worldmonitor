@@ -157,7 +157,8 @@ function base64urlDecode(token: string): Uint8Array | null {
  * Compose the full magazine URL with signed token.
  *
  * Producers should always go through this helper rather than string-
- * concatenating URLs by hand. Example:
+ * concatenating URLs by hand. `issueDate` is the legacy property name
+ * for the issueSlot-shaped value (`YYYY-MM-DD-HHMM`). Example:
  *
  *   const url = await signBriefUrl({
  *     userId: 'user_abc',
@@ -173,6 +174,7 @@ export async function signBriefUrl({
   secret,
 }: {
   userId: string;
+  /** Legacy name for the frozen issueSlot (`YYYY-MM-DD-HHMM`). */
   issueDate: string;
   baseUrl: string;
   secret: string;

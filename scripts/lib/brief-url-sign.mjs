@@ -75,6 +75,8 @@ export async function signBriefToken(userId, issueDate, secret) {
 
 /**
  * @param {{ userId: string; issueDate: string; baseUrl: string; secret: string }} opts
+ *   issueDate is the legacy property name for the issueSlot-shaped
+ *   value (`YYYY-MM-DD-HHMM`).
  * @returns {Promise<string>}
  */
 export async function signBriefUrl({ userId, issueDate, baseUrl, secret }) {
