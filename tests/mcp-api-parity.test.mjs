@@ -122,7 +122,7 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
 
   // === fetch-on-miss (29) ===
   ["GET /api/intelligence/v1/get-risk-scores",
-    "fetch-on-miss: paid-upstream — cachedFetchJsonWithMeta + ACLED API on cache miss. Cross-domain composite (12 keys: conflict + infra + climate + cyber + wildfires + GPS-jam + OREF + advisories + displacement + news) intended for a future expanded_risk_scores composite tool; current shape doesn't fit any single existing tool."],
+    "fetch-on-miss: paid-upstream — cachedFetchJsonWithMeta + ACLED API on cache miss. Cross-domain composite spans conflict plus auxiliary infra outages, climate anomalies, cyber threats, wildfires, GPS jamming, OREF history, advisories, displacement, news insights/threats, aviation, earthquakes, sanctions, temporal anomalies, and military CII; intended for a future expanded_risk_scores composite tool because the current shape doesn't fit any single existing tool."],
   ["GET /api/aviation/v1/get-carrier-ops",
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
   ["GET /api/aviation/v1/get-flight-status",
@@ -247,9 +247,12 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   // The handler uses cachedFetchJsonWithMeta (server/.../get-risk-scores.ts:600)
   // with ACLED + auxiliary cross-domain fetches on cache miss — that's the
   // fetch-on-miss shape, NOT pure-read. Recategorized to fetch-on-miss with
-  // paid-upstream secondary (ACLED is rate-limited external API). The cross-
-  // domain composite shape (12 keys aggregated) is the implementer-hint for
-  // a future expanded_risk_scores composite tool, but the structural
+  // paid-upstream secondary (ACLED is rate-limited external API). The broader
+  // cross-domain composite shape (infra outages, climate anomalies, cyber
+  // threats, wildfires, GPS jamming, OREF history, advisories, displacement,
+  // news insights/threats, aviation, earthquakes, sanctions, temporal
+  // anomalies, and military CII) is the implementer-hint for a future
+  // expanded_risk_scores composite tool, but the structural
   // category is fetch-on-miss.
   ["GET /api/market/v1/get-gold-intelligence",
     "deferred-to-future-tool: handler reads 5 keys (commodities-bootstrap + COT + gold-extended + gold-ETF-flows + gold-CB-reserves); only commodities-bootstrap overlaps with get_market_data._cacheKeys — bundle into a future expanded_commodities tool that exposes COT, gold-extended, ETF flows, and CB reserves"],
