@@ -241,15 +241,11 @@ export class StrategicRiskPanel extends Panel {
   }
 
   private getScoreColor(score: number): string {
-    return getCSSColor(this.getScoreBand(score).colorVar);
+    return getCSSColor(this.getFallbackScoreBand(score).colorVar);
   }
 
   private getScoreLevel(score: number): string {
-    return t(`countryBrief.levels.${this.getScoreBand(score).levelKey}`);
-  }
-
-  private getScoreBand(score: number): typeof STRATEGIC_RISK_BANDS[number] {
-    return this.getFallbackScoreBand(score);
+    return t(`countryBrief.levels.${this.getFallbackScoreBand(score).levelKey}`);
   }
 
   private getFallbackScoreBand(score: number): typeof STRATEGIC_RISK_BANDS[number] {

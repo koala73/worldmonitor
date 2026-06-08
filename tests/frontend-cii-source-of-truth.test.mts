@@ -390,15 +390,17 @@ describe('frontend CII source of truth', () => {
 
     assert.match(serverRiskSrc, /overallScore >= 70[\s\S]*'SEVERITY_LEVEL_HIGH'[\s\S]*overallScore >= 40[\s\S]*'SEVERITY_LEVEL_MEDIUM'[\s\S]*'SEVERITY_LEVEL_LOW'/);
     assert.match(methodologySrc, /`SEVERITY_LEVEL_HIGH` if `overallScore ≥ 70`[\s\S]*`SEVERITY_LEVEL_MEDIUM` if `40 ≤ overallScore < 70`[\s\S]*`SEVERITY_LEVEL_LOW` if `overallScore < 40`/);
-    assert.match(strategicRiskSrc, /const STRATEGIC_RISK_BANDS: readonly StrategicRiskDisplayBand\[\] = \[[\s\S]*min: 81[\s\S]*levelKey: 'critical'[\s\S]*colorVar: '--semantic-critical'[\s\S]*min: 66[\s\S]*levelKey: 'high'[\s\S]*colorVar: '--semantic-high'[\s\S]*min: 51[\s\S]*levelKey: 'elevated'[\s\S]*colorVar: '--semantic-elevated'[\s\S]*min: 31[\s\S]*levelKey: 'normal'[\s\S]*colorVar: '--semantic-normal'[\s\S]*min: 0[\s\S]*levelKey: 'low'[\s\S]*colorVar: '--semantic-low'/);
-    assert.doesNotMatch(strategicRiskSrc, /min: 70[\s\S]*levelKey: 'high'/);
-    assert.doesNotMatch(strategicRiskSrc, /min: 40[\s\S]*levelKey: 'medium'/);
-    assert.doesNotMatch(strategicRiskSrc, /min: 50[\s\S]*levelKey: 'elevated'/);
-    assert.doesNotMatch(strategicRiskSrc, /min: 30[\s\S]*levelKey: 'moderate'/);
+    const strategicRiskBands = strategicRiskSrc.match(/const STRATEGIC_RISK_BANDS: readonly StrategicRiskDisplayBand\[\] = \[[\s\S]*?\] as const;/)?.[0] ?? '';
+    assert.notEqual(strategicRiskBands, '', 'missing Strategic Risk display band table');
+    assert.match(strategicRiskBands, /min: 81[\s\S]*levelKey: 'critical'[\s\S]*colorVar: '--semantic-critical'[\s\S]*min: 66[\s\S]*levelKey: 'high'[\s\S]*colorVar: '--semantic-high'[\s\S]*min: 51[\s\S]*levelKey: 'elevated'[\s\S]*colorVar: '--semantic-elevated'[\s\S]*min: 31[\s\S]*levelKey: 'normal'[\s\S]*colorVar: '--semantic-normal'[\s\S]*min: 0[\s\S]*levelKey: 'low'[\s\S]*colorVar: '--semantic-low'/);
+    assert.doesNotMatch(strategicRiskBands, /min: 70[\s\S]*levelKey: 'high'/);
+    assert.doesNotMatch(strategicRiskBands, /min: 40[\s\S]*levelKey: 'medium'/);
+    assert.doesNotMatch(strategicRiskBands, /min: 50[\s\S]*levelKey: 'elevated'/);
+    assert.doesNotMatch(strategicRiskBands, /min: 30[\s\S]*levelKey: 'moderate'/);
     assert.doesNotMatch(strategicRiskSrc, /normalizeStrategicRiskLevel|STRATEGIC_RISK_LEVEL_ALIASES|strategicRiskLevel/);
-    assert.match(extractMethod(strategicRiskSrc, 'private getScoreColor(score: number): string'), /this\.getScoreBand\(score\)\.colorVar/);
-    assert.match(extractMethod(strategicRiskSrc, 'private getScoreLevel(score: number): string'), /t\(`countryBrief\.levels\.\$\{this\.getScoreBand\(score\)\.levelKey\}`\)/);
-    assert.match(extractMethod(strategicRiskSrc, 'private getScoreBand(score: number): typeof STRATEGIC_RISK_BANDS[number]'), /return this\.getFallbackScoreBand\(score\);/);
+    assert.doesNotMatch(strategicRiskSrc, /private getScoreBand\(score: number\)/);
+    assert.match(extractMethod(strategicRiskSrc, 'private getScoreColor(score: number): string'), /this\.getFallbackScoreBand\(score\)\.colorVar/);
+    assert.match(extractMethod(strategicRiskSrc, 'private getScoreLevel(score: number): string'), /t\(`countryBrief\.levels\.\$\{this\.getFallbackScoreBand\(score\)\.levelKey\}`\)/);
   });
 
   it('keeps shared CII level labels complete in every locale', () => {
