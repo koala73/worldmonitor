@@ -528,6 +528,11 @@ interface EnrichmentInput {
   title: string;
   source: string;
   link: string;
+  /** GDELT keyword pre-screen tags (the cluster's `categories[]`). Passed
+   *  ONLY into the location-only classifier to widen topic recall on the
+   *  under-tagged categories — the LLM treats them as candidates, not labels.
+   *  Absent for buckets whose items carry no GDELT category hints. */
+  categoryHints?: string[];
 }
 
 async function enrichOne(item: EnrichmentInput): Promise<EnrichmentPayload | null> {
@@ -591,7 +596,7 @@ const VALID_TOPICS = new Set([
  *  enrichment cache key (cold cache → forces a re-LLM) and the per-cluster
  *  `enrichVersion` re-queue gate, so a prompt change re-classifies every
  *  v6 digest cluster instead of only newly-arriving ones. */
-const LOCATION_PROMPT_VERSION = 4;
+const LOCATION_PROMPT_VERSION = 5;
 
 const LOCATION_ONLY_CACHE_KEY = (link: string): string =>
   `enrichment-loc:v${LOCATION_PROMPT_VERSION}:${createHash('sha256').update(link).digest('hex')}`;
@@ -692,7 +697,20 @@ async function enrichOneLocationOnly(item: EnrichmentInput): Promise<LocationOnl
   }
 
   const body = await fetchArticleBody(item.link);
-  const prompt = buildPrompt(item, body);
+  let prompt = buildPrompt(item, body);
+  // GDELT keyword pre-screen hint — a cheap recall signal for the topics the
+  // strict classifier tends to under-tag (cyber / nuclear / maritime /
+  // sanctions / intelligence). Offered as CANDIDATES only; the LLM keeps full
+  // veto, so keyword false positives never become labels.
+  const hints = Array.isArray(item.categoryHints)
+    ? [...new Set(item.categoryHints.filter((h) => VALID_TOPICS.has(h)))]
+    : [];
+  if (hints.length > 0) {
+    prompt +=
+      `\n\nA keyword pre-screen flagged this story as possibly relating to: ${hints.join(', ')}. ` +
+      `Treat these as CANDIDATES only — include each in "topics" if and only if it is ` +
+      `genuinely a PRIMARY subject of the story, and ignore any that are not.`;
+  }
 
   let raw = await callGeminiJSON(LOCATION_ONLY_SYSTEM_PROMPT, prompt);
   let payload = parseLocationOnlyJSON(raw);
@@ -1087,6 +1105,10 @@ async function runEnrichment(): Promise<EnrichResult> {
           title: item.title,
           source: item.source,
           link: item.link,
+          // GDELT keyword hints (v6 digest clusters carry `categories[]`);
+          // undefined for buckets whose items don't. Lifts topic recall in
+          // the location-only classifier without loosening its strictness.
+          categoryHints: (item as { categories?: string[] }).categories,
         };
 
         // Dispatch on bucket.skipSummary so worldnews-fed items never get
