@@ -91,12 +91,15 @@ calculating the advisory boost and floor.
 UCDP conflict floors are derived from the **latest available** UCDP GED release
 (the seeder selects the newest version that returns events, not merely the first
 to respond) and only count events inside a **2-year recency window** — older
-events no longer pin the floor. Because UCDP GED ships as annual releases that
-lag real time, recent kinetic conflict is carried by **ACLED** (real-time) and
-the cross-source signal feed; UCDP supplies the historical baseline floor. If
-ACLED auth is unconfigured the conflict realtime signal degrades to UCDP-only,
-which `/api/health.riskScores` surfaces as `COVERAGE_PARTIAL` (see
-[Data Sources](/data-sources#dual-source-protest-tracking)).
+events no longer pin the floor. Within that window, CII classifies a Tier-1
+country as UCDP **active war** when total deaths are greater than 1000 or event
+count is greater than 100, and as UCDP **minor conflict** when event count is
+greater than 10 but the war thresholds are not met. Because UCDP GED ships as
+annual releases that lag real time, recent kinetic conflict is carried by
+**ACLED** (real-time) and the cross-source signal feed; UCDP supplies the
+historical baseline floor. If ACLED auth is unconfigured the conflict realtime
+signal degrades to UCDP-only, which `/api/health.riskScores` surfaces as
+`COVERAGE_PARTIAL` (see [Data Sources](/data-sources#dual-source-protest-tracking)).
 
 ## Instability Levels
 

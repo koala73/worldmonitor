@@ -46,8 +46,9 @@ export const CII_CONFLICT_ACTIVITY_PIVOT = 4000;
  *
  * Rationale: gives the most-affected country full weight, lets the next four
  * contribute decreasing influence, and keeps the roll-up focused on the
- * published top-5 window. Position 6 would still carry weight 0.10, so the
- * window cap, not a zero-weight cutoff, bounds the slice.
+ * published top-5 window. The next 1-based position 6 (0-based index 5) would
+ * still carry weight 0.25, so the window cap, not a zero-weight cutoff, bounds
+ * the slice.
  */
 export const STRATEGIC_RISK_POSITIONAL_DECAY = 0.15;
 
@@ -70,8 +71,8 @@ export const STRATEGIC_RISK_SCALE_FACTOR = 0.7;
 
 /**
  * Size of the top-N window used for the strategic-risk roll-up.
- * Tied to STRATEGIC_RISK_POSITIONAL_DECAY: with decay=0.15, position 6 hits
- * weight=0.10 (still contributing); we cap at 5 so the roll-up reflects the
- * "very top" of the dashboard rather than a long tail.
+ * Tied to STRATEGIC_RISK_POSITIONAL_DECAY: with decay=0.15, the next 1-based
+ * position 6 (0-based index 5) still has weight=0.25; we cap at 5 so the
+ * roll-up reflects the "very top" of the dashboard rather than a long tail.
  */
 export const STRATEGIC_RISK_TOP_N = 5;

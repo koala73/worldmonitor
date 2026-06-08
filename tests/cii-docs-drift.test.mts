@@ -8,6 +8,7 @@ import {
   STRATEGIC_RISK_POSITIONAL_DECAY,
   STRATEGIC_RISK_TOP_N,
 } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
+import { CII_COUNTRY_WEIGHTS } from '../shared/cii-weights.ts';
 
 const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 
@@ -107,6 +108,9 @@ describe('CII docs drift guards', () => {
     const scoreSection = markdownSection(doc, '### Server Score and Browser Fallback (0-100)');
     const riskLevels = markdownSection(doc, '### Risk Levels');
     const trendSection = markdownSection(doc, '### Trend Detection');
+    const pizzintSection = markdownSection(doc, '### DEFCON-Style Alerting');
+    const gdeltSection = markdownSection(doc, '### GDELT Tension Pairs');
+    const multipliersSection = markdownSection(doc, '### Event Significance Multipliers');
 
     assert.match(
       scoreSection,
@@ -136,6 +140,42 @@ describe('CII docs drift guards', () => {
       /browser fallback computes its own[\s\S]{0,120}panel trend/i,
       'strategic-risk doc must separate browser fallback trend from the server contract',
     );
+    assert.match(pizzintSection, /\|\s*\*\*DEFCON 1\*\*\s*\|\s*≥85%\s*\|\s*Maximum Activity\s*\|/);
+    assert.match(pizzintSection, /\|\s*\*\*DEFCON 2\*\*\s*\|\s*70% – 84%\s*\|\s*High Activity\s*\|/);
+    assert.match(pizzintSection, /\|\s*\*\*DEFCON 3\*\*\s*\|\s*50% – 69%\s*\|\s*Elevated Activity\s*\|/);
+    assert.match(pizzintSection, /\|\s*\*\*DEFCON 4\*\*\s*\|\s*25% – 49%\s*\|\s*Above Normal\s*\|/);
+    assert.match(pizzintSection, /\|\s*\*\*DEFCON 5\*\*\s*\|\s*&lt;25%\s*\|\s*Normal Activity\s*\|/);
+    assert.doesNotMatch(
+      pizzintSection,
+      /≥90%|≥75%|COCKED PISTOL|FAST PACE|ROUND HOUSE|DOUBLE TAKE|FADE OUT/,
+      'strategic-risk PizzINT table must not retain stale relay thresholds or labels',
+    );
+    for (const pair of [
+      'USA ↔ Russia',
+      'Russia ↔ Ukraine',
+      'USA ↔ China',
+      'China ↔ Taiwan',
+      'USA ↔ Iran',
+      'USA ↔ Venezuela',
+    ]) {
+      assert.match(gdeltSection, new RegExp(`\\|\\s*${pair}\\s*\\|`));
+    }
+    assert.doesNotMatch(
+      gdeltSection,
+      /Israel ↔ Iran/,
+      'strategic-risk GDELT table must match DEFAULT_GDELT_PAIRS and omit stale Israel-Iran pair',
+    );
+    assert.equal(CII_COUNTRY_WEIGHTS.US.eventMultiplier, 0.3);
+    assert.match(
+      multipliersSection,
+      /\|\s*0\.3x\s*\|\s*US\s*\|/,
+      'strategic-risk doc must publish the US event multiplier separately from the 0.5-0.8x bucket',
+    );
+    assert.doesNotMatch(
+      multipliersSection,
+      /\|\s*0\.5-0\.8x\s*\|[^|\n]*\bUS\b/,
+      'strategic-risk doc must not list US in the 0.5-0.8x multiplier bucket',
+    );
     assert.doesNotMatch(
       riskLevels,
       /\*\*(?:Critical|Elevated|Moderate)\*\*|50-69|30-49/,
@@ -147,13 +187,15 @@ describe('CII docs drift guards', () => {
     const doc = readFileSync(resolve(root, 'docs/methodology/cii-risk-scores.mdx'), 'utf8');
     const config = readFileSync(resolve(root, 'server/worldmonitor/intelligence/v1/_risk-config.ts'), 'utf8');
     const section = markdownSection(doc, '## 3. Strategic Risk roll-up');
-    const hypotheticalPosition6Weight = 1 - 6 * STRATEGIC_RISK_POSITIONAL_DECAY;
+    const nextOneBasedPosition = STRATEGIC_RISK_TOP_N + 1;
+    const nextZeroBasedIndex = STRATEGIC_RISK_TOP_N;
+    const nextPositionWeight = 1 - nextZeroBasedIndex * STRATEGIC_RISK_POSITIONAL_DECAY;
 
     assert.equal(STRATEGIC_RISK_TOP_N, 5, 'test assumes the current published top-5 roll-up window');
     assert.equal(
-      Math.round(hypotheticalPosition6Weight * 100) / 100,
-      0.1,
-      'position 6 remains non-zero with decay=0.15; docs must not claim it hits zero',
+      Math.round(nextPositionWeight * 100) / 100,
+      0.25,
+      'the next 1-based position 6 / 0-based index 5 remains non-zero with decay=0.15; docs must not claim it hits zero',
     );
     for (const surface of [
       { label: 'methodology doc', text: section },
@@ -166,8 +208,13 @@ describe('CII docs drift guards', () => {
       );
       assert.match(
         surface.text,
-        /position 6[\s\S]{0,80}(?:0\.10|weight=0\.10)/i,
-        `${surface.label} must disclose that position 6 would still carry 0.10 weight`,
+        new RegExp(`(?:1-based )?position ${nextOneBasedPosition}[\\s\\S]{0,120}(?:0-based index ${nextZeroBasedIndex}[\\s\\S]{0,80})?(?:0\\.25|weight=0\\.25)`, 'i'),
+        `${surface.label} must disclose that 1-based position 6 / 0-based index 5 would still carry 0.25 weight`,
+      );
+      assert.doesNotMatch(
+        surface.text,
+        /position 6[\s\S]{0,120}(?:0\.10|weight=0\.10)/i,
+        `${surface.label} must not retain the off-by-one 0.10 position-6 example`,
       );
       assert.match(
         surface.text,
@@ -196,6 +243,39 @@ describe('CII docs drift guards', () => {
     assert.match(section, /### not a section boundary/);
     assert.match(section, /After fence\./);
     assert.doesNotMatch(section, /Outside target\./);
+  });
+
+  it('CII public docs publish UCDP newest-release behavior and classifier thresholds', () => {
+    const methodologyDoc = readFileSync(resolve(root, 'docs/methodology/cii-risk-scores.mdx'), 'utf8');
+    const countryDoc = readFileSync(resolve(root, 'docs/country-instability-index.mdx'), 'utf8');
+    const algorithmsDoc = readFileSync(resolve(root, 'docs', 'algorithms.mdx'), 'utf8');
+    const countryFloors = markdownSection(countryDoc, '## Boosts And Floors');
+
+    assert.match(
+      methodologyDoc,
+      /v8 amendment \(2026-06-07\)[\s\S]{0,260}newest GED[\s\S]{0,120}returns events[\s\S]{0,140}#4200/i,
+      'methodology changelog must document the #4200 UCDP newest-release discovery amendment without a version bump',
+    );
+    assert.match(
+      methodologyDoc,
+      /ACLED returns zero events[\s\S]{0,80}comparison[\s\S]{0,20}windows/i,
+      'methodology changelog must document the ACLED zero-event warning added with the v8 amendment',
+    );
+    for (const surface of [
+      { label: 'country-instability-index doc', text: countryFloors },
+      { label: 'algorithms doc', text: algorithmsDoc },
+    ]) {
+      assert.match(
+        surface.text,
+        /2-year[\s\S]{0,240}(?:total\s+deaths (?:are\s+)?greater than 1000|total\s+deaths > 1000)[\s\S]{0,120}(?:event\s+count (?:is\s+)?greater than 100|event\s+count > 100)/i,
+        `${surface.label} must publish the UCDP war thresholds`,
+      );
+      assert.match(
+        surface.text,
+        /(?:minor conflict|UCDP \*\*minor conflict\*\*)[\s\S]{0,160}(?:event\s+count (?:is\s+)?greater than 10|event\s+count > 10)/i,
+        `${surface.label} must publish the UCDP minor-conflict threshold`,
+      );
+    }
   });
 
   it('algorithms doc separates authoritative Strategic Risk from local fallback', () => {

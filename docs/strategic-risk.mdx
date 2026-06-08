@@ -124,11 +124,11 @@ Aggregate activity maps to a 5-level readiness scale:
 
 | Level | Threshold | Label | Meaning |
 |-------|-----------|-------|---------|
-| **DEFCON 1** | ≥90% | COCKED PISTOL | Maximum readiness; crisis response active |
-| **DEFCON 2** | ≥75% | FAST PACE | High activity; significant event underway |
-| **DEFCON 3** | ≥50% | ROUND HOUSE | Elevated; above-normal operations |
-| **DEFCON 4** | ≥25% | DOUBLE TAKE | Increased vigilance |
-| **DEFCON 5** | &lt;25% | FADE OUT | Normal peacetime operations |
+| **DEFCON 1** | ≥85% | Maximum Activity | Maximum readiness; crisis response active |
+| **DEFCON 2** | 70% – 84% | High Activity | High activity; significant event underway |
+| **DEFCON 3** | 50% – 69% | Elevated Activity | Elevated; above-normal operations |
+| **DEFCON 4** | 25% – 49% | Above Normal | Increased vigilance |
+| **DEFCON 5** | &lt;25% | Normal Activity | Normal peacetime operations |
 
 ### GDELT Tension Pairs
 
@@ -137,11 +137,11 @@ The indicator also displays geopolitical tension scores from GDELT (Global Datab
 | Pair | Monitored Relationship |
 |------|----------------------|
 | USA ↔ Russia | Primary nuclear peer adversary |
-| USA ↔ China | Economic and military competition |
-| USA ↔ Iran | Middle East regional tensions |
-| Israel ↔ Iran | Direct conflict potential |
-| China ↔ Taiwan | Cross-strait relations |
 | Russia ↔ Ukraine | Active conflict zone |
+| USA ↔ China | Economic and military competition |
+| China ↔ Taiwan | Cross-strait relations |
+| USA ↔ Iran | Middle East regional tensions |
+| USA ↔ Venezuela | Western Hemisphere escalation and sanctions pressure |
 
 Each pair shows:
 
@@ -226,8 +226,8 @@ Each country's score combines a static baseline (40%) with a dynamic event score
 
 | Floor type | Threshold | Trigger |
 |------------|-----------|---------|
-| UCDP active war | >= 70 | UCDP war-level classification |
-| UCDP minor conflict | >= 50 | UCDP minor-conflict classification |
+| UCDP active war | >= 70 | 2-year Tier-1 UCDP total deaths > 1000 or event count > 100 |
+| UCDP minor conflict | >= 50 | 2-year Tier-1 UCDP event count > 10 below the war thresholds |
 | Advisory do-not-travel | >= 60 | Live advisory feed when present; otherwise embedded State Department fallback table |
 | Advisory reconsider | >= 50 | Live advisory feed when present; otherwise embedded State Department fallback table |
 
@@ -248,7 +248,8 @@ Events in some countries carry more global significance than others:
 | 2.0-2.5x | China, Russia, Iran, Saudi Arabia, Cuba | Authoritarian states suppress protests |
 | 1.5-1.8x | Taiwan, Pakistan, Myanmar, Venezuela, UAE | Regional flashpoints |
 | 1.0-1.2x | Mexico, Turkey | Moderate significance |
-| 0.5-0.8x | US, UK, France, Germany, Poland, Ukraine, Syria, Yemen, Israel, India, Brazil | Protests are routine or events already captured by floors |
+| 0.5-0.8x | UK, France, Germany, Poland, Ukraine, Syria, Yemen, Israel, India, Brazil | Protests are routine or events already captured by floors |
+| 0.3x | US | Very high observability and high-volume domestic reporting require stronger dampening |
 
 ### Strategic Risk Derivation
 
