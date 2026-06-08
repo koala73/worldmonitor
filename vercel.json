@@ -5,7 +5,6 @@
     { "path": "/api/live-news/v6/refresh-rss-embed",    "schedule": "3-59/15 * * * *" },
     { "path": "/api/intel-news/v1/enrich",  "schedule": "9-59/15 * * * *" },
     { "path": "/api/world-brief/v1/refresh", "schedule": "12 * * * *" },
-    { "path": "/api/world-brief/v1/refresh-regions", "schedule": "20 * * * *" },
     { "path": "/api/seismology/v1/refresh",  "schedule": "9,39 * * * *" },
     { "path": "/api/wildfire/v1/refresh",    "schedule": "21 * * * *" }
   ],
