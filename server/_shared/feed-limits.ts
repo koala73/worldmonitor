@@ -36,7 +36,13 @@ export interface FeedLimits {
  * A listed field overrides the env var for that version; an omitted field
  * falls back to the env var. Unlisted versions use the env vars entirely.
  */
-const LIMITS_BY_VERSION: Record<string, FeedLimits> = {};
+const LIMITS_BY_VERSION: Record<string, FeedLimits> = {
+  // feedMaxItems covers BOTH live-news and conflict-archive (shared cap).
+  // Retention ceilings: live-news digest holds ≤500, conflict RSE store ≤1000,
+  // so 300 is servable; actual counts = min(cap, what the digest currently
+  // holds after the visibility gates).
+  '2.1': { feedMaxItems: 300, categoryMaxPerTopic: 100 },
+};
 
 function envCap(name: 'WM_FEED_MAX_ITEMS' | 'WM_CATEGORY_MAX_PER_TOPIC'): number {
   const raw = process.env[name];
