@@ -1,8 +1,12 @@
 // ── Story persistence tracking keys (E3) ─────────────────────────────────────
-// Hash: firstSeen, lastSeen, mentionCount, sourceCount, currentScore, peakScore,
+// Hash: firstSeen, lastSeen, mentionCount, currentScore,
 //       title, link, severity, lang, description, publishedAt,
 //       entityCorroborationCount, isOpinion, isFeelGood,
 //       isEphemeralLiveCoverage, category
+// sourceCount is not a hash field for current rows: distinct feed names live in
+// story:sources:v1 and should be counted from the Set. peakScore is held in
+// story:peak:v1's ZSet; the hash-side peakScore reader remains a reserved
+// placeholder for future score-history support.
 // description is authoritative per-mention: written unconditionally on every
 // HSET (empty string when the current mention has no body), so an earlier
 // mention's body never silently grounds LLMs for the current mention.
@@ -18,7 +22,7 @@ export const DIGEST_ACCUMULATOR_KEY_PREFIX = 'digest:accumulator:v1:';
  * Story tracking keys — written by list-feed-digest.ts, read by digest cron (E2).
  * All keys use 32-char SHA-256 hex prefix of the normalised title as ${titleHash}.
  *
- *   story:track:v1:${titleHash}     Hash   firstSeen/lastSeen/title/link/severity/mentionCount/currentScore/peakScore/lang/description/publishedAt/entityCorroborationCount/isOpinion/isFeelGood/isEphemeralLiveCoverage/category (always-written)
+ *   story:track:v1:${titleHash}     Hash   firstSeen/lastSeen/title/link/severity/mentionCount/currentScore/lang/description/publishedAt/entityCorroborationCount/isOpinion/isFeelGood/isEphemeralLiveCoverage/category (always-written)
  *   story:sources:v1:${titleHash}   Set    feed IDs (SADD per appearance)
  *   story:peak:v1:${titleHash}      ZSet   single member "peak", score = highest importanceScore (ZADD GT)
  *   digest:accumulator:v1:${variant}:${lang} ZSet  member=titleHash, score=lastSeen_ms (updated every appearance)

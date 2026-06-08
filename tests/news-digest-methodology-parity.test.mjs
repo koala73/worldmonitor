@@ -122,6 +122,10 @@ const briefFilterSrc = readFileSync(
   resolve(repoRoot, 'shared/brief-filter.js'),
   'utf8',
 );
+const weeklyBriefSrc = readFileSync(
+  resolve(repoRoot, 'scripts/regional-snapshot/weekly-brief.mjs'),
+  'utf8',
+);
 const protoText = readFileSync(
   resolve(repoRoot, 'proto/worldmonitor/news/v1/list_feed_digest.proto'),
   'utf8',
@@ -261,6 +265,30 @@ function extractEntityCorroborationCap(src) {
   const match = body.match(/Math\.min\(\s*Math\.max\([^,]+,\s*0\s*\),\s*([0-9]+)\s*\)/);
   assert.ok(match, 'failed to locate entity corroboration source cap');
   return Number(match[1]);
+}
+
+function extractStoryTrackWriterFields(src) {
+  const body = extractFunctionBody(src, 'buildStoryTrackHsetFields');
+  const hsetFields = [...body.matchAll(/^\s*'([A-Za-z][A-Za-z0-9]*)',/gm)]
+    .map((m) => m[1]);
+  assert.ok(hsetFields.length > 0, 'failed to extract story-track HSET fields');
+
+  const writeStoryTrackingBody = extractFunctionBody(src, 'writeStoryTracking');
+  const commandFields = [...writeStoryTrackingBody.matchAll(
+    /\['(?:HSETNX|HINCRBY)',\s*trackKey,\s*'([A-Za-z][A-Za-z0-9]*)'/g,
+  )].map((m) => m[1]);
+  assert.ok(commandFields.includes('firstSeen'), 'failed to extract story-track HSETNX firstSeen field');
+  assert.ok(commandFields.includes('mentionCount'), 'failed to extract story-track HINCRBY mentionCount field');
+
+  return [...new Set([...hsetFields, ...commandFields])].sort();
+}
+
+function extractDocStoryTrackHashFields(text) {
+  const match = text.match(/The story-track hash fields written today are:\n\n([\s\S]*?)\n\n/);
+  assert.ok(match, 'failed to locate documented story-track hash field list');
+  return [...match[1].matchAll(/`([A-Za-z][A-Za-z0-9]*)`/g)]
+    .map((m) => m[1])
+    .sort();
 }
 
 function openApiDescription(schemaName, propertyName, nestedPropertyName) {
@@ -712,29 +740,29 @@ describe('news digest methodology parity', () => {
   });
 
   it('documents story-track fields and TTL split', () => {
-    const expectedFields = [
-      'firstSeen',
-      'lastSeen',
-      'mentionCount',
-      'sourceCount',
-      'currentScore',
-      'peakScore',
-      'title',
-      'link',
-      'severity',
-      'lang',
-      'description',
-      'publishedAt',
-      'entityCorroborationCount',
-      'isOpinion',
-      'isFeelGood',
-      'isEphemeralLiveCoverage',
-      'category',
-    ];
+    const expectedFields = extractStoryTrackWriterFields(digestSrc);
+    assert.deepEqual(extractDocStoryTrackHashFields(docText), expectedFields);
     for (const field of expectedFields) {
       assert.ok(cacheKeysSrc.includes(field), `cache-key contract comment must mention ${field}`);
       assertDocIncludes(`\`${field}\``, `story-track field ${field}`);
     }
+    for (const reservedField of ['sourceCount', 'peakScore']) {
+      const hashSummary = cacheKeysSrc.match(/^\/\/ Hash:[^\n]*(?:\n\/\/       [^\n]*)*/m)?.[0] ?? '';
+      const alwaysWrittenSummary = cacheKeysSrc.match(/story:track:v1:\$\{titleHash\}.*\(always-written\)/)?.[0] ?? '';
+      assert.ok(hashSummary.length > 0, 'failed to locate cache-key hash summary comment');
+      assert.ok(alwaysWrittenSummary.length > 0, 'failed to locate cache-key always-written summary comment');
+      assert.ok(
+        !hashSummary.includes(reservedField) && !alwaysWrittenSummary.includes(reservedField),
+        `cache-key contract comment must not list ${reservedField} as an always-written hash field`,
+      );
+      assertDocMatches(
+        new RegExp('`' + reservedField + '`[\\s\\S]*(?:not stored|reserved|placeholder|live .*? (?:Set|ZSet))'),
+        `story-track ${reservedField} caveat`,
+      );
+    }
+    assertDocIncludes('`story:sources:v1:{titleHash}` with\n`SADD`', 'story sources set write path');
+    assertDocIncludes('`SCARD`', 'story source-count set cardinality');
+    assertDocIncludes('`story:peak:v1:{titleHash}` ZSet', 'story peak score ZSet');
     assertDocIncludes('`story:track:v1:{titleHash}`', 'story track key');
     assertDocIncludes('7 days', 'story tracking TTL');
     assertDocIncludes('48 hours', 'digest accumulator TTL');
@@ -753,6 +781,31 @@ describe('news digest methodology parity', () => {
     assertDocMatches(
       /notification cron[\s\S]*more than 24 hours of silence[\s\S]*`fading`/,
       'digest read-path fading phase',
+    );
+  });
+
+  it('documents regional weekly brief provider chain separately from digest prose', () => {
+    const providerNames = [...weeklyBriefSrc.matchAll(/name:\s*'([^']+)'/g)]
+      .map((m) => m[1]);
+    const providerModels = [...weeklyBriefSrc.matchAll(/model:\s*'([^']+)'/g)]
+      .map((m) => m[1]);
+    const weeklyTemperature = extractNumericConst(weeklyBriefSrc, 'BRIEF_TEMPERATURE');
+
+    assert.deepEqual(providerNames, ['groq', 'openrouter']);
+    assert.deepEqual(providerModels, ['llama-3.3-70b-versatile', 'google/gemini-2.5-flash']);
+    assert.equal(weeklyTemperature, 0.3);
+
+    assertDocMatches(
+      /Regional weekly briefs[\s\S]*tr(?:y|ies) Groq first[\s\S]*`llama-3\.3-70b-versatile`[\s\S]*OpenRouter `google\/gemini-2\.5-flash`[\s\S]*temperature\s+`0\.3`/,
+      'regional weekly brief provider order, models, and temperature',
+    );
+    assertDocMatches(
+      /intentionally differ[\s\S]*digest prose and `whyMatters` surfaces/,
+      'regional weekly brief chain differs from digest prose and whyMatters',
+    );
+    assertDocMatches(
+      /provider chain to OpenRouter by skipping Ollama and Groq[\s\S]*`google\/gemini-2\.5-flash`/,
+      'digest prose and whyMatters OpenRouter-only posture',
     );
   });
 

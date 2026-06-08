@@ -187,12 +187,19 @@ briefs can read the same story pool.
 | `story:peak:v1:{titleHash}` | ZSet | Single `peak` member holding the highest score seen. | 7 days |
 | `digest:accumulator:v1:{variant}:{lang}` | ZSet | Story hashes by last-seen time for digest windows. | 48 hours |
 
-The story-track hash fields are:
+The story-track hash fields written today are:
 
-`firstSeen`, `lastSeen`, `mentionCount`, `sourceCount`, `currentScore`,
-`peakScore`, `title`, `link`, `severity`, `lang`, `description`,
-`publishedAt`, `entityCorroborationCount`, `isOpinion`, `isFeelGood`,
+`firstSeen`, `lastSeen`, `mentionCount`, `currentScore`, `title`, `link`,
+`severity`, `lang`, `description`, `publishedAt`,
+`entityCorroborationCount`, `isOpinion`, `isFeelGood`,
 `isEphemeralLiveCoverage`, and `category`.
+
+`sourceCount` is not stored in the story-track hash for current rows.
+Distinct feed names are written to `story:sources:v1:{titleHash}` with
+`SADD`; consumers that need the real source count must read the set and count
+it with `SCARD` or equivalent set cardinality. `peakScore` is likewise a
+reserved read-path placeholder in the story-track hash; the live peak score is
+kept in the `story:peak:v1:{titleHash}` ZSet.
 
 The title hash is a SHA-256 hash of a normalised title: lowercased, stripped
 of common publisher suffixes, stripped to Unicode letters/numbers/spaces,
@@ -325,14 +332,18 @@ The canonical digest prose and direct fallback `whyMatters` paths pin the
 provider chain to OpenRouter by skipping Ollama and Groq, so the live brief
 uses Gemini 2.5 Flash (`google/gemini-2.5-flash`) for those surfaces when the
 LLM layer is enabled. Digest prose and story-description calls use
-temperature `0.4`; the regional weekly brief provider chain uses temperature
-`0.3`. The digest prompt requires a named actor/event lead, bans generic
-editorial phrases such as "the global stage" and weak stitching phrases such
-as "this comes as" or "meanwhile", requires substantive linkage before a lead
-combines two stories, and validates cache hits and fresh outputs through the
-same shape and proper-noun grounding gate. Per-story prompts also require
-named actors where possible and can use the RSS description as grounding
-context.
+temperature `0.4`. Regional weekly briefs intentionally differ from those
+digest prose and `whyMatters` surfaces: `scripts/regional-snapshot/weekly-brief.mjs`
+tries Groq first with `llama-3.3-70b-versatile`, then falls back to
+OpenRouter `google/gemini-2.5-flash`, and sends both providers temperature
+`0.3` because the output is structured weekly JSON for regional snapshots
+rather than per-user digest prose. The digest prompt requires a named
+actor/event lead, bans generic editorial phrases such as "the global stage"
+and weak stitching phrases such as "this comes as" or "meanwhile", requires
+substantive linkage before a lead combines two stories, and validates cache
+hits and fresh outputs through the same shape and proper-noun grounding gate.
+Per-story prompts also require named actors where possible and can use the RSS
+description as grounding context.
 
 ## Bias Posture
 
