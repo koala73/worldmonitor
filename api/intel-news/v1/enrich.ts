@@ -28,6 +28,10 @@
 
 import type { IncomingMessage, ServerResponse } from 'http';
 import { createHash } from 'crypto';
+// Deterministic country canonicaliser — turns the LLM's country output
+// ("UK" / "USA" / "United States") into a clean ISO-2 ("GB" / "US" / "US").
+// Same import pattern as api/world-brief/v1/refresh.ts → server/_shared.
+import { canonicalIso } from '../../../server/_shared/geo-regions';
 
 export const config = {
   // Pro-plan ceiling. Cron normally only fires ~150 enrichments per call
@@ -495,10 +499,11 @@ function parseEnrichmentJSON(raw: string | null): EnrichmentPayload | null {
 
   const result: EnrichmentPayload = { summary, region };
 
-  // Country — accept only valid 2-char alpha codes.
+  // Country — canonicalise the LLM's output to a clean ISO-2 (UK→GB, USA→US,
+  // "United States"→US …) via the deterministic geo tables. null → omit.
   if (typeof obj.country === 'string') {
-    const c = obj.country.trim().toUpperCase();
-    if (/^[A-Z]{2}$/.test(c)) result.country = c;
+    const c = canonicalIso(obj.country);
+    if (c) result.country = c;
   }
 
   // locationName — short place string. Cap at 100 chars defensively in
@@ -596,7 +601,7 @@ const VALID_TOPICS = new Set([
  *  enrichment cache key (cold cache → forces a re-LLM) and the per-cluster
  *  `enrichVersion` re-queue gate, so a prompt change re-classifies every
  *  v6 digest cluster instead of only newly-arriving ones. */
-const LOCATION_PROMPT_VERSION = 6;
+const LOCATION_PROMPT_VERSION = 7;
 
 const LOCATION_ONLY_CACHE_KEY = (link: string): string =>
   `enrichment-loc:v${LOCATION_PROMPT_VERSION}:${createHash('sha256').update(link).digest('hex')}`;
@@ -631,7 +636,7 @@ const LOCATION_ONLY_SYSTEM_PROMPT = `You classify a news article. Return ONE JSO
     Be especially strict with "business": NEVER tag it for elections, opinion polls, government budgets, fiscal-policy debates, diplomacy, legal trials, or political-personality stories — even when money or the economy comes up. "business" requires a company, a financial market, or an economic indicator as the literal subject.
     Return [] when none apply.
 
-  - country: ISO 3166-1 alpha-2 code of the primary country in the story. ONLY include when isConflict=true. OMIT for non-conflict stories.
+  - country: ISO 3166-1 alpha-2 code of the primary country the story is about (its dateline / main location). Include this for ANY story with a clear country focus — NOT just conflict (e.g. a US company → "US", German politics → "DE", a Tokyo event → "JP"). OMIT only when the story is genuinely global or has no single country (e.g. an opinion piece on AI, or a multi-country summit with no clear host).
 
   - locationName: short human-readable place name shown as the row header in the feed UI — typically a city ("Tel Aviv", "Kharkiv"), a region/oblast ("Donetsk Oblast", "Sinai"), or a country if no narrower place is named ("Sudan"). Title Case. ONLY include when isConflict=true. OMIT otherwise.
 
@@ -665,9 +670,11 @@ function parseLocationOnlyJSON(raw: string | null): LocationOnlyPayload | null {
 
   const result: LocationOnlyPayload = { region, isConflict, topics };
 
+  // Canonicalise to a clean ISO-2 via the deterministic geo tables — the
+  // regional briefs bucket on this (resolveRegion). null → omit.
   if (typeof obj.country === 'string') {
-    const c = obj.country.trim().toUpperCase();
-    if (/^[A-Z]{2}$/.test(c)) result.country = c;
+    const c = canonicalIso(obj.country);
+    if (c) result.country = c;
   }
 
   if (typeof obj.locationName === 'string') {
