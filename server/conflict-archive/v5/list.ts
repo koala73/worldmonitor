@@ -17,6 +17,7 @@
 
 import { cachedFetchJson, getCachedJson } from '../../_shared/redis';
 import type { ConflictArchiveItem } from '../v1/_store';
+import { feedMaxItemsForVersion } from '../../_shared/feed-limits';
 
 const DIGEST_KEY = 'conflict-archive:v5:digest';
 const TOP_LEVEL_TTL_S = 30;
@@ -52,17 +53,6 @@ function rssSourceCount(item: ConflictArchiveItem): number {
   return (item.sources ?? []).filter((s) => s.origin !== 'gdelt').length;
 }
 
-/** Global cap on items returned (newest-first). Env-tunable via
- *  `WM_FEED_MAX_ITEMS`; unset → no cap (full feed). Set per-environment in
- *  Vercel (e.g. Production=80, Preview unset) to lighten the client payload
- *  without touching the visibility gates. Inert until the env var is set. */
-function feedMaxItems(): number {
-  const raw = process.env.WM_FEED_MAX_ITEMS;
-  if (!raw) return Infinity;
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : Infinity;
-}
-
 export interface ListConflictArchiveV5Response {
   items: Array<{
     source: string;
@@ -88,7 +78,7 @@ export interface ListConflictArchiveV5Response {
   generatedAt: string;
 }
 
-export async function listConflictArchiveV5(): Promise<ListConflictArchiveV5Response> {
+export async function listConflictArchiveV5(av?: string | null): Promise<ListConflictArchiveV5Response> {
   const cached = await cachedFetchJson<ListConflictArchiveV5Response>(
     DIGEST_KEY,
     TOP_LEVEL_TTL_S,
@@ -116,11 +106,14 @@ export async function listConflictArchiveV5(): Promise<ListConflictArchiveV5Resp
 
       // Visibility gate: ≥1 RSS anchor AND ≥3 total sources (GDELT counts
       // toward the total but not the RSS floor).
+      // NOTE: the per-version cap is applied AFTER this cached builder, not
+      // here — otherwise the first app version to warm this shared cache would
+      // bake its cap into the blob for every other version. We cache the full
+      // visible list and slice it per `av` on the way out.
       const { minRss, minTotal } = conflictGate();
       const items = Array.from(merged.values())
         .filter((it) => rssSourceCount(it) >= minRss && (it.sources?.length ?? 0) >= minTotal)
         .sort((a, b) => b.publishedAt - a.publishedAt)
-        .slice(0, feedMaxItems())
         .map((it) => ({
           source: it.source,
           title: it.title,
@@ -149,5 +142,9 @@ export async function listConflictArchiveV5(): Promise<ListConflictArchiveV5Resp
     },
   );
 
-  return cached ?? { items: [], generatedAt: new Date().toISOString() };
+  const full = cached ?? { items: [], generatedAt: new Date().toISOString() };
+  // Per-app-version cap, applied after the shared cache read (see note above).
+  const cap = feedMaxItemsForVersion(av);
+  if (!Number.isFinite(cap)) return full;
+  return { ...full, items: full.items.slice(0, cap) };
 }

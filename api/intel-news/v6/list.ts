@@ -42,9 +42,13 @@ export default async function handler(req: Request): Promise<Response> {
   if (rl) return rl;
 
   try {
-    const raw = new URL(req.url).searchParams.get('category');
+    const url = new URL(req.url);
+    const raw = url.searchParams.get('category');
     const category = raw && raw.trim() ? raw.trim() : null;
-    const body = await listIntelNewsV6(category);
+    // App version (CFBundleShortVersionString) — selects the per-version
+    // per-topic cap. Part of the URL, so the CDN caches each version separately.
+    const av = url.searchParams.get('av');
+    const body = await listIntelNewsV6(category, av);
     return new Response(JSON.stringify(body), {
       status: 200,
       headers: {

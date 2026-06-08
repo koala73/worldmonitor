@@ -15,6 +15,7 @@
 
 import { getCachedJson } from '../../_shared/redis';
 import { isCategoryCorroborated, type ClusteredItem } from '../../live-news/v6/_cluster';
+import { categoryMaxPerTopicForVersion } from '../../_shared/feed-limits';
 
 const DIGEST_KEY = 'live-news:v6:digest';
 
@@ -66,24 +67,14 @@ function toItem(c: ClusteredItem): IntelNewsV6Item {
   };
 }
 
-/** Per-TOPIC cap on items returned. Unlike the single-feed cap, the category
- *  endpoint mixes all 9 topics, so a flat cap would starve the thin security
- *  topics. Instead we keep at most N newest clusters PER topic — each chip
- *  stays bounded, thin categories keep all their items. Env-tunable via
- *  `WM_CATEGORY_MAX_PER_TOPIC`; unset → no cap. Inert until the env var is set. */
-function categoryMaxPerTopic(): number {
-  const raw = process.env.WM_CATEGORY_MAX_PER_TOPIC;
-  if (!raw) return Infinity;
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : Infinity;
-}
-
 /**
  * @param category  optional intel-topic id to filter to; null returns
  *                   every category-tagged cluster (each carries its own
  *                   `topics[]` so the client can filter per chip).
+ * @param av        optional app version (CFBundleShortVersionString) from the
+ *                   `?av=` query — selects the per-version per-topic cap.
  */
-export async function listIntelNewsV6(category: string | null): Promise<ListIntelNewsV6Response> {
+export async function listIntelNewsV6(category: string | null, av?: string | null): Promise<ListIntelNewsV6Response> {
   const digest = (await getCachedJson(DIGEST_KEY, false, 3_000)) as ClusteredItem[] | null;
   const all = Array.isArray(digest) ? digest : [];
 
@@ -101,7 +92,7 @@ export async function listIntelNewsV6(category: string | null): Promise<ListInte
   // Per-topic cap (newest-first). For each topic keep at most N clusters; the
   // response is the union, so a cluster tagged with several topics is counted
   // toward each. Thin topics (cyber/nuclear/…) keep all their items.
-  const perTopic = categoryMaxPerTopic();
+  const perTopic = categoryMaxPerTopicForVersion(av);
   let capped = filtered;
   if (Number.isFinite(perTopic)) {
     const topics = category ? [category] : [...new Set(filtered.flatMap((c) => c.topics ?? []))];

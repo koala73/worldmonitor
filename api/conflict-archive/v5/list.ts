@@ -42,7 +42,10 @@ export default async function handler(req: Request): Promise<Response> {
   if (rl) return rl;
 
   try {
-    const body = await listConflictArchiveV5();
+    // App version (CFBundleShortVersionString) — selects the per-version feed
+    // cap. Part of the URL, so the CDN caches each version separately.
+    const av = new URL(req.url).searchParams.get('av');
+    const body = await listConflictArchiveV5(av);
     const count = body.items?.length ?? 0;
     // Truthful log line — Vercel tags each log with its region, so filtering
     // by region shows what US users were actually served (not just a 200).
