@@ -72,7 +72,7 @@ server-authoritative methodology and guarded by an expanded CII drift test.
   routing.
 - Forecast, scenario, chokepoint, and market methodology docs and parity tests.
 - Public product summaries, LLM files, press kit, community guide, architecture
-  docs, and SEO pre-rendered homepage content.
+  docs, agent entry-point docs, and SEO pre-rendered homepage content.
 
 ## Evidence Matrix
 
@@ -167,6 +167,7 @@ Updated files:
 - `docs/Docs_To_Review/TODO_Performance.md`
 - `docs/Docs_To_Review/todo_docs.md`
 - `index.html`
+- `AGENTS.md`
 - `tests/cii-docs-drift.test.mts`
 
 Corrections made:
@@ -176,6 +177,7 @@ Corrections made:
 - CRI is added to LLM and press surfaces as a distinct 196-country resilience
   index.
 - Product summaries now use six variants, including Energy Monitor.
+- The agent/developer entry point now includes the `energy` variant.
 - Public count claims now align to 500+ feeds, 56 map layer types, and
   24 locales where those counts are used.
 - Public architecture copy now distinguishes browser-side local ML from

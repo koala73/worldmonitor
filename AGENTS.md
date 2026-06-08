@@ -52,6 +52,7 @@ Real-time global intelligence dashboard. TypeScript SPA (Vite + Preact) with 86 
 npm install              # Install deps (also runs blog-site postinstall)
 npm run dev              # Start Vite dev server (full variant)
 npm run dev:tech         # Start tech-only variant
+npm run dev:energy       # Start energy-security variant
 npm run typecheck        # tsc --noEmit (strict mode)
 npm run typecheck:api    # Typecheck API layer separately
 npm run test:data        # Run unit/integration tests
@@ -108,6 +109,7 @@ The app ships multiple variants with different panel/layer configurations:
 - `finance`: Financial markets focus
 - `commodity`: Commodity markets focus
 - `happy`: Positive news only
+- `energy`: Energy security, chokepoints, oil/gas, and disruption timelines
 
 Variant is set via `VITE_VARIANT` env var. Config lives in `src/config/variants/`.
 

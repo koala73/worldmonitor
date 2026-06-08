@@ -162,15 +162,21 @@ graph TD
         TM["TECH_MAP_LAYERS"]
         FiP["FINANCE_PANELS"]
         FiM["FINANCE_MAP_LAYERS"]
+        CP["COMMODITY_PANELS"]
+        CM["COMMODITY_MAP_LAYERS"]
+        HP["HAPPY_PANELS"]
+        HM["HAPPY_MAP_LAYERS"]
+        EP["ENERGY_PANELS"]
+        EM["ENERGY_MAP_LAYERS"]
     end
 
     Variant["SITE_VARIANT"] --> Switch{"Ternary switch"}
     Switch -->|"full"| FP
     Switch -->|"tech"| TP
     Switch -->|"finance"| FiP
-    Switch -->|"commodity"| Commodity
-    Switch -->|"happy"| Happy
-    Switch -->|"energy"| Energy
+    Switch -->|"commodity"| CP
+    Switch -->|"happy"| HP
+    Switch -->|"energy"| EP
 
     Switch --> DefaultPanels["DEFAULT_PANELS"]
     Switch --> DefaultLayers["DEFAULT_MAP_LAYERS"]

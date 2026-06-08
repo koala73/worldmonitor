@@ -319,11 +319,13 @@ describe('CII docs drift guards', () => {
     );
   });
 
-  it('public LLM and press surfaces do not retain stale CII, CRI, or platform-count claims', () => {
+  it('public and developer surfaces do not retain stale CII, CRI, or platform-count claims', () => {
     const surfaces = [
       { label: 'public/llms.txt', text: readFileSync(resolve(root, 'public', 'llms.txt'), 'utf8') },
       { label: 'public/llms-full.txt', text: readFileSync(resolve(root, 'public', 'llms-full.txt'), 'utf8') },
       { label: 'docs/PRESS_KIT.md', text: readFileSync(resolve(root, 'docs', 'PRESS_KIT.md'), 'utf8') },
+      { label: 'docs/COMMUNITY-PROMOTION-GUIDE.md', text: readFileSync(resolve(root, 'docs', 'COMMUNITY-PROMOTION-GUIDE.md'), 'utf8') },
+      { label: 'AGENTS.md', text: readFileSync(resolve(root, 'AGENTS.md'), 'utf8') },
     ];
 
     for (const surface of surfaces) {
@@ -347,7 +349,8 @@ describe('CII docs drift guards', () => {
     const llmsBrief = surfaces[0]!.text;
     const llmsFull = surfaces[1]!.text;
     const pressKit = surfaces[2]!.text;
-    const communityGuide = readFileSync(resolve(root, 'docs', 'COMMUNITY-PROMOTION-GUIDE.md'), 'utf8');
+    const communityGuide = surfaces[3]!.text;
+    const agentsGuide = surfaces[4]!.text;
 
     assert.match(llmsBrief, /CII v8[\s\S]{0,80}31 Tier-1 countries/i);
     assert.match(llmsBrief, /CRI[\s\S]{0,120}196-country public rankable universe/i);
@@ -369,8 +372,9 @@ describe('CII docs drift guards', () => {
     assert.match(pressKit, /500\+ RSS feeds/i);
     assert.match(pressKit, /24 \(including RTL\)/i);
     assert.match(communityGuide, /six specialized views/i);
+    assert.match(agentsGuide, /`energy`:\s+Energy security/i);
     assert.doesNotMatch(
-      `${llmsFull}\n${communityGuide}`,
+      `${llmsFull}\n${communityGuide}\n${agentsGuide}`,
       /Tri-Variant Build System|Three Variant Dashboards|three specialized variants|tri-variant architecture|three specialized views/i,
     );
   });
