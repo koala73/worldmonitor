@@ -241,7 +241,7 @@ Omit `limit: 0` for ordinary use: cache tools default-cap list- and map-shaped f
 
 ### 7. `length()` for counting
 
-**Intent.** How many UCDP events are in the latest bundle?
+**Intent.** How many UCDP events are in the default-capped latest bundle?
 
 **Tool call:**
 
@@ -257,10 +257,12 @@ Omit `limit: 0` for ordinary use: cache tools default-cap list- and map-shaped f
 **Projected response:**
 
 ```json
-38
+30
 ```
 
 **Why this works.** `length()` is one of JMESPath's built-in functions; it works on arrays, strings, and objects (where it returns the key count). Useful as a sanity check before a longer call — a `length()` projection returns a single integer, costs nothing in tokens, and tells the model whether the bundle is empty before deciding what to project next.
+
+Because this call omits `limit`, the tool-level default cap is applied before JMESPath, so the count is the capped candidate set (30). Pass `limit: 0` when you need to count the full underlying bundle instead.
 
 ---
 
@@ -388,7 +390,8 @@ This is the workhorse shape for "give me the top-N by some metric". The same sha
   { "risk": "critical", "count": 28  },
   { "risk": "critical", "count": 627 },
   { "risk": "critical", "count": 33  },
-  { "risk": "critical", "count": 735 }
+  { "risk": "critical", "count": 735 },
+  { "risk": "critical", "count": 274 }
 ]
 ```
 
