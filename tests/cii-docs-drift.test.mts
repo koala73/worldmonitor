@@ -150,6 +150,11 @@ describe('CII docs drift guards', () => {
       /≥90%|≥75%|COCKED PISTOL|FAST PACE|ROUND HOUSE|DOUBLE TAKE|FADE OUT/,
       'strategic-risk PizzINT table must not retain stale relay thresholds or labels',
     );
+    assert.match(
+      gdeltSection,
+      /\|\s*Pair\s*\|\s*Monitored Relationship\s*\|/,
+      'strategic-risk GDELT section must keep the expected pair table',
+    );
     for (const pair of [
       'USA ↔ Russia',
       'Russia ↔ Ukraine',
@@ -249,6 +254,11 @@ describe('CII docs drift guards', () => {
     const methodologyDoc = readFileSync(resolve(root, 'docs/methodology/cii-risk-scores.mdx'), 'utf8');
     const countryDoc = readFileSync(resolve(root, 'docs/country-instability-index.mdx'), 'utf8');
     const algorithmsDoc = readFileSync(resolve(root, 'docs', 'algorithms.mdx'), 'utf8');
+    assert.match(
+      countryDoc,
+      /^## Boosts And Floors$/m,
+      'country-instability-index doc must keep the Boosts And Floors section heading used by UCDP threshold guards',
+    );
     const countryFloors = markdownSection(countryDoc, '## Boosts And Floors');
 
     assert.match(
