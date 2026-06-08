@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -103,7 +103,9 @@ describe('agent readiness: agent-skills index', () => {
     const hexKey = /wm_[0-9a-f]{40}/;
     const stalePrefixes = /wm_live_|wm_pro_/;
     for (const name of listSkillDirs()) {
-      const skill = readFileSync(join(SKILLS_DIR, name, 'SKILL.md'), 'utf-8');
+      const skillPath = join(SKILLS_DIR, name, 'SKILL.md');
+      assert.ok(existsSync(skillPath), `${name}/SKILL.md missing`);
+      const skill = readFileSync(skillPath, 'utf-8');
       assert.match(skill, hexKey, `${name} must show the current user API-key shape`);
       assert.doesNotMatch(skill, stalePrefixes, `${name} must not teach stale API-key prefixes`);
     }
