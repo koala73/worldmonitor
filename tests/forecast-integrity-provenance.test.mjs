@@ -24,6 +24,10 @@ function formatSignedProbability(value) {
   return `${value >= 0 ? '+' : '-'}${Math.abs(value).toFixed(2)}`;
 }
 
+function countMatches(source, pattern) {
+  return [...source.matchAll(pattern)].length;
+}
+
 describe('forecast integrity and provenance surfaces', () => {
   it('labels simulation path confidence separately from event probability', () => {
     const src = read('src/components/ForecastPanel.ts');
@@ -102,6 +106,13 @@ describe('forecast integrity and provenance surfaces', () => {
     assert.match(docs, /Military probability ceiling \| 0\.90/);
     assert.match(docs, /Infrastructure probability ceiling \| 0\.85/);
     assert.match(seeder, /Math\.min\(CYBER_PROB_MAX,/);
+    assert.match(seeder, /Math\.min\(CONFLICT_BASE_DETECTOR_PROB_MAX,/);
+    assert.match(seeder, /Math\.min\(UCDP_CONFLICT_ZONE_PROB_MAX,/);
+    assert.equal(
+      countMatches(seeder, /Math\.min\(VELOCITY_SPIKE_PROBABILITY_MAX,\s*prob \+ VELOCITY_SPIKE_PROBABILITY_LIFT\)/g),
+      2,
+      'forecast seeder must apply the shared velocity-spike max/lift in both conflict detectors',
+    );
     assert.match(docs, /Market-bucket scenario calibration is an editorial calibration layer/);
     assert.match(docs, /Defense.*0\.12/);
     assert.ok(
