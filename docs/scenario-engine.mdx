@@ -30,7 +30,7 @@ The currently shipped types are:
 | `sanctions` | Targeted trade restrictions (e.g. Russia / Baltic grain suspension). |
 | `tariff_shock` | A sudden tariff action and its cost pass-through (e.g. US tariff escalation on electronics). |
 
-Each template declares the chokepoints it affects (IDs from the chokepoint registry), a duration in days, affected HS2 sectors, and a cost-shock multiplier. Run them as-is — there are no sliders in v1. The `ScenarioType` union leaves room for `infrastructure` and `pandemic` categories, but no templates of those types ship today.
+Each template declares the chokepoints it affects (IDs from the chokepoint registry), a duration in days, affected HS2 sectors, and a cost-shock multiplier. On the template-list wire shape, `affectedHs2: []` means all HS2 chapters (the registry stores that sentinel as `null`). Run templates as-is — there are no sliders in v1. The `ScenarioType` union leaves room for `infrastructure` and `pandemic` categories, but no templates of those types ship today.
 
 ## What you get back
 
@@ -38,7 +38,7 @@ A completed scenario returns:
 
 - **Affected chokepoints** — which ones go red on the map.
 - **Impact ranking** — the top affected seeded reporter countries by ISO-2, ordered by the worker's relative weighted impact score. `totalImpact` is not a currency amount.
-- **Sector scope** — the targeted HS2 chapters declared by the selected template. `affectedHs2: []` means all HS2 chapters; the worker does not compute a separate per-sector impact ranking in v1.
+- **Template echo** — the selected template's display name, duration, disruption percent, and cost-shock multiplier so clients can render the run without re-looking up the catalog. The status result does not repeat `affectedHs2`; read sector scope from `/list-scenario-templates`.
 - **A summary card** injected into the Supply Chain panel that stays visible until you deactivate the scenario.
 
 The UI is state-driven, not modal — activating a scenario sets a `scenarioState` on every map renderer (deck.gl, globe, SVG fallback) so chokepoint colors and country choropleths reflect the disruption until you deactivate. This is coordinated by `MapContainer.activateScenario` at `src/components/MapContainer.ts:1010`, which is explicitly PRO-gated.

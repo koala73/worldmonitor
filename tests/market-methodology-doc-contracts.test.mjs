@@ -46,6 +46,15 @@ function parseFsiBands(source) {
   return [...thresholdBands, { threshold: null, label: fallback[1] }];
 }
 
+function parseEuCissBands(source) {
+  const matches = [...source.matchAll(/if\s*\(value\s*<\s*([0-9.]+)\)\s*return\s*'([^']+)'/g)]
+    .map(([, upperExclusive, label]) => ({ upperExclusive, label }));
+  const fallback = source.match(/return\s*'([^']+)';\s*\}/);
+  assert.equal(matches.length, 3, 'expected three upper-bound EU CISS bands in seeder');
+  assert.ok(fallback, 'expected fallback EU CISS band in seeder');
+  return [...matches, { upperExclusive: null, label: fallback[1] }];
+}
+
 function compactComparisonWhitespace(text) {
   return text.replace(/\s+/g, '');
 }
@@ -56,6 +65,7 @@ describe('market and health methodology docs match source contracts', () => {
   const fearGreedProto = readRepo('proto/worldmonitor/market/v1/get_fear_greed_index.proto');
   const marketOpenApi = readRepo('docs/api/MarketService.openapi.yaml');
   const fsiPanelDoc = readRepo('docs/panels/fsi.mdx');
+  const fsiEuSeeder = readRepo('scripts/seed-fsi-eu.mjs');
   const diseaseMethodology = readRepo('docs/methodology/disease-alert-level.mdx');
 
   it('documents the current Fear & Greed data sources and derived inputs', () => {
@@ -64,6 +74,8 @@ describe('market and health methodology docs match source contracts', () => {
     const sectorEtfs = parseMomentumSectorEtfs(fearGreedSeeder);
     const yahooSymbols = new Set(parseYahooSymbols(fearGreedSeeder));
 
+    assert.equal(yahooSymbols.size, 22, 'Yahoo source universe should stay aligned with docs and seeder comment');
+    assert.match(fearGreedSeeder, /Yahoo Finance fetching \(22 symbols, 150ms gaps\)/);
     assert.ok(fearGreedDoc.includes(cnnEndpoint), `Fear & Greed doc must include CNN endpoint ${cnnEndpoint}`);
     assert.doesNotMatch(fearGreedDoc, /graphdata\/\{date\}/);
     assert.match(fearGreedDoc, new RegExp(`AAII_Bull_Percentile = clamp\\(bull% / ${bull} \\* 100, 0, 100\\)`));
@@ -73,6 +85,7 @@ describe('market and health methodology docs match source contracts', () => {
       assert.ok(yahooSymbols.has(symbol), `sector RSI ETF ${symbol} should be fetched from Yahoo`);
     }
     assert.ok(fearGreedDoc.includes(`all ${sectorEtfs.length} GICS sector ETFs: ${sectorEtfs.join(', ')}`));
+    assert.ok(fearGreedDoc.includes(`Yahoo Finance | ${yahooSymbols.size} symbols`));
   });
 
   it('documents the bespoke Fear & Greed header FSI separately from the FSI panel', () => {
@@ -114,9 +127,19 @@ describe('market and health methodology docs match source contracts', () => {
   });
 
   it('documents EU FSI as the daily ECB SS_CIN successor series', () => {
+    const bands = parseEuCissBands(fsiEuSeeder);
+
     assert.match(fsiPanelDoc, /ECB CISS `SS_CIN` daily series/);
     assert.match(fsiPanelDoc, /EU FSI is seeded daily/);
     assert.match(fsiPanelDoc, /legacy\s+`SS_CI` series/);
     assert.doesNotMatch(fsiPanelDoc, /Weekly for both KCFSI.*EU FSI/);
+
+    for (const { upperExclusive, label } of bands) {
+      assert.ok(fsiPanelDoc.includes(`${label} Stress`), `FSI panel doc must include EU CISS band ${label}`);
+      if (upperExclusive != null) {
+        assert.ok(fsiPanelDoc.includes(`< ${upperExclusive}`), `FSI panel doc must include EU CISS cutoff < ${upperExclusive}`);
+      }
+    }
+    assert.ok(fsiPanelDoc.includes('>= 0.6'), 'FSI panel doc must include EU CISS High cutoff >= 0.6');
   });
 });

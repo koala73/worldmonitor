@@ -58,6 +58,13 @@ reported as zero flow.
 The `disrupted` boolean is separate from the color badge: it is true when each
 of the latest three individual days is below 85% of the same `baseline90d`.
 
+Each published flow estimate may also include live hazard context from
+`portwatch:disruptions:active:v1`. The seeder looks for the nearest active
+GDACS `RED` or `ORANGE` alert within 500 km of the supported chokepoint and
+surfaces it as `hazardAlertLevel` and `hazardAlertName`. This is annotation
+only: hazard enrichment does not change `currentMbd`, `flowRatio`, or the
+`disrupted` calculation.
+
 ## Score Badge
 
 The public `status` field on `ChokepointInfo` is a traffic-light score badge:

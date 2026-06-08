@@ -37,6 +37,15 @@ Upstream KCFSI data is from the Federal Reserve Bank of Kansas City; EU FSI is
 from the ECB CISS `SS_CIN` daily series, the live successor to the legacy
 `SS_CI` series.
 
+EU FSI label buckets follow the seeded CISS value directly:
+
+| ECB CISS `SS_CIN` value | Label |
+|---:|---|
+| `< 0.2` | Low Stress |
+| `>= 0.2` and `< 0.4` | Moderate Stress |
+| `>= 0.4` and `< 0.6` | Elevated Stress |
+| `>= 0.6` | High Stress |
+
 ## Refresh cadence
 
 Weekly for KCFSI (published by KC Fed). EU FSI is seeded daily from the ECB
