@@ -68,6 +68,8 @@ describe('seed-imf-growth', () => {
     assert.ok(countries.US, 'USA → US');
     assert.equal(countries.US.realGdpGrowthPct, 2.5);
     assert.equal(countries.US.gdpPerCapitaUsd, 80000);
+    assert.equal(countries.US.realGdpLcuB, 22000);
+    assert.equal('realGdp' in countries.US, false);
     assert.equal(countries.US.savingsInvestmentGap, -3);
     assert.equal(countries.US.year, Number(YEAR));
 
