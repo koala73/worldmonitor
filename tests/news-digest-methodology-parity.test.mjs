@@ -746,11 +746,11 @@ describe('news digest methodology parity', () => {
       assert.ok(cacheKeysSrc.includes(field), `cache-key contract comment must mention ${field}`);
       assertDocIncludes(`\`${field}\``, `story-track field ${field}`);
     }
+    const hashSummary = cacheKeysSrc.match(/^\/\/ Hash:[^\n]*(?:\n\/\/       [^\n]*)*/m)?.[0] ?? '';
+    const alwaysWrittenSummary = cacheKeysSrc.match(/story:track:v1:\$\{titleHash\}.*\(always-written\)/)?.[0] ?? '';
+    assert.ok(hashSummary.length > 0, 'failed to locate cache-key hash summary comment');
+    assert.ok(alwaysWrittenSummary.length > 0, 'failed to locate cache-key always-written summary comment');
     for (const reservedField of ['sourceCount', 'peakScore']) {
-      const hashSummary = cacheKeysSrc.match(/^\/\/ Hash:[^\n]*(?:\n\/\/       [^\n]*)*/m)?.[0] ?? '';
-      const alwaysWrittenSummary = cacheKeysSrc.match(/story:track:v1:\$\{titleHash\}.*\(always-written\)/)?.[0] ?? '';
-      assert.ok(hashSummary.length > 0, 'failed to locate cache-key hash summary comment');
-      assert.ok(alwaysWrittenSummary.length > 0, 'failed to locate cache-key always-written summary comment');
       assert.ok(
         !hashSummary.includes(reservedField) && !alwaysWrittenSummary.includes(reservedField),
         `cache-key contract comment must not list ${reservedField} as an always-written hash field`,
@@ -760,7 +760,7 @@ describe('news digest methodology parity', () => {
         `story-track ${reservedField} caveat`,
       );
     }
-    assertDocIncludes('`story:sources:v1:{titleHash}` with\n`SADD`', 'story sources set write path');
+    assertDocMatches(/`story:sources:v1:\{titleHash\}`[\s\S]*?`SADD`/, 'story sources set write path');
     assertDocIncludes('`SCARD`', 'story source-count set cardinality');
     assertDocIncludes('`story:peak:v1:{titleHash}` ZSet', 'story peak score ZSet');
     assertDocIncludes('`story:track:v1:{titleHash}`', 'story track key');
