@@ -135,9 +135,9 @@ test('low-carbon: live-reality regression guard — frozen at 2021 (~53mo) stays
   );
 });
 
-test('low-carbon: catastrophic stall — max year 2020 (~64mo) trips STALE_CONTENT', () => {
+test('low-carbon: catastrophic stall — max year 2020 (~65mo) trips STALE_CONTENT', () => {
   // A regression below the known-frozen 2021 floor (e.g. the seeder picking an
-  // even older common year) must still alarm: 2020 is ~64mo > 60mo budget.
+  // even older common year) must still alarm: 2020 is ~65mo > 60mo budget.
   const data = { countries: { US: { value: 60.5, year: 2020 } } };
   const cm = wbCountryDictContentMeta(data, FIXED_NOW);
   const ageMin = (FIXED_NOW - cm.newestItemAt) / 60000;
