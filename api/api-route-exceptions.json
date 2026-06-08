@@ -472,7 +472,7 @@
     {
       "path": "api/brief/[userId]/[issueDate].ts",
       "category": "deferred",
-      "reason": "Fetches a specific brief by user + issue date. Part of the brief/v1 service work.",
+      "reason": "Fetches a specific brief by user + frozen issue slot. Part of the brief/v1 service work.",
       "owner": "@SebastienMelki",
       "removal_issue": "TBD"
     },
