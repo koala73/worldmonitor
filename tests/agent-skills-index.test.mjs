@@ -41,6 +41,13 @@ function assertInRange(value, min, max, fieldName) {
   );
 }
 
+function listSkillDirs() {
+  return readdirSync(SKILLS_DIR, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name)
+    .sort();
+}
+
 // Guards for the Agent Skills discovery manifest (#3310 / epic #3306).
 // Agents trust the index.json sha256 fields; if they drift from the
 // served SKILL.md bytes, every downstream verification check fails.
@@ -87,10 +94,7 @@ describe('agent readiness: agent-skills index', () => {
   });
 
   it('every SKILL.md directory is represented in the index (no orphans)', () => {
-    const dirs = readdirSync(SKILLS_DIR, { withFileTypes: true })
-      .filter((d) => d.isDirectory())
-      .map((d) => d.name)
-      .sort();
+    const dirs = listSkillDirs();
     const names = index.skills.map((s) => s.name).sort();
     assert.deepEqual(names, dirs, 'every skill directory must have an index entry');
   });
@@ -98,7 +102,7 @@ describe('agent readiness: agent-skills index', () => {
   it('public skills use the current wm_<40 hex> API-key shape', () => {
     const hexKey = /wm_[0-9a-f]{40}/;
     const stalePrefixes = /wm_live_|wm_pro_/;
-    for (const name of ['fetch-country-brief', 'fetch-resilience-score']) {
+    for (const name of listSkillDirs()) {
       const skill = readFileSync(join(SKILLS_DIR, name, 'SKILL.md'), 'utf-8');
       assert.match(skill, hexKey, `${name} must show the current user API-key shape`);
       assert.doesNotMatch(skill, stalePrefixes, `${name} must not teach stale API-key prefixes`);

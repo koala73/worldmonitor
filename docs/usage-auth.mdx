@@ -23,7 +23,7 @@ Some endpoints explicitly reject anonymous browser session cookies and require a
 - `/api/widget-agent`
 - Vendor / partner endpoints
 
-For these, you **must** send `X-WorldMonitor-Key`.
+For these, you **must** send an API key; `X-WorldMonitor-Key` is the canonical header.
 
 ## Browser session mode
 
@@ -53,7 +53,7 @@ X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567
 
 User-issued keys are exactly `wm_` followed by 40 lowercase hex characters. Enterprise keys are opaque operator-issued strings and are only distributed out of band. Keep keys out of client-side code — use a server-side proxy if you need to call from the browser to a `forceKey` endpoint.
 
-`X-WorldMonitor-Key` is the canonical header. Gateway-backed API-key routes also accept `X-Api-Key` as an alias for compatibility with generic API clients.
+`X-WorldMonitor-Key` is the canonical header. API-key-authenticated endpoints also accept `X-Api-Key` as an alias for compatibility with generic API clients, including standalone edge functions that use `validateApiKey()` and gateway-backed routes.
 
 ### Server-side validation
 
