@@ -222,7 +222,10 @@ const COL_URL = 4;           // V2DOCUMENTIDENTIFIER
 const COL_V1THEMES = 7;      // V1THEMES          ;-delimited bare codes
 const COL_V1LOCATIONS = 9;   // V1LOCATIONS       ;-delimited, #-fielded
 const COL_V2LOCATIONS = 10;  // V2ENHANCEDLOCATIONS  ;-delimited, #-fielded, has CharOffset
+const COL_V1PERSONS = 11;    // V1PERSONS         ;-delimited names
+const COL_V1ORGS = 13;       // V1ORGANIZATIONS   ;-delimited names
 const COL_TONE = 15;         // V1.5TONE          comma-separated
+const COL_ALLNAMES = 23;     // V2.1ALLNAMES      Name,CharOffset;Name,CharOffset;…
 const COL_EXTRAS = 26;       // V2EXTRASXML       contains <PAGE_TITLE>
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -389,6 +392,11 @@ interface GdeltConflictCandidate {
   source: string;            // outlet domain
   publishedAt: number;
   location: GdeltLocation | null;
+  /** Cleaned GKG entity/theme tokens (ALLNAMES + persons + orgs + top
+   *  themes), folded into the v6 embed input for stronger clustering
+   *  vectors. Embedding-only — never displayed, never sent to an LLM.
+   *  '' when the GKG row carried no usable entities. */
+  entities: string;
   /** Every outlet that ran this story (post title-dedup). */
   sources: Array<{ source: string; title: string; link: string; publishedAt: number }>;
 }
@@ -623,6 +631,12 @@ interface ParsedRow {
    *  location parsed — `extractConflictCandidates` does it lazily. */
   v2Locations: string;
   v1Locations: string;
+  /** Raw V2.1ALLNAMES / V1PERSONS / V1ORGANIZATIONS column strings —
+   *  likewise kept un-parsed; only candidate rows fold these into their
+   *  embed text via `buildEntityText`. */
+  allNames: string;
+  persons: string;
+  organizations: string;
 }
 
 function parseGkgRow(line: string): ParsedRow | null {
@@ -649,7 +663,117 @@ function parseGkgRow(line: string): ParsedRow | null {
     date, domain, url, tone, title, themes,
     v2Locations: (fields[COL_V2LOCATIONS] ?? '').trim(),
     v1Locations: (fields[COL_V1LOCATIONS] ?? '').trim(),
+    allNames: (fields[COL_ALLNAMES] ?? '').trim(),
+    persons: (fields[COL_V1PERSONS] ?? '').trim(),
+    organizations: (fields[COL_V1ORGS] ?? '').trim(),
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GKG entity/theme → embed-text tokens
+//
+// GDELT clustering candidates carry no description or article body, so the v6
+// embedder sees only title×2 + URL slug — much thinner than an RSS item's
+// title+description+body input. The GKG row already holds rich named-entity
+// data we were discarding. We fold a cleaned, frequency-ranked, bounded slice
+// of it onto each candidate (`entities`), which inputTextFor appends to the
+// embed input. Embedding-only: never displayed, never sent to an LLM, so the
+// copyright posture is unchanged.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Char budget for the entity/theme tail folded into a candidate. The v6
+ *  embedder caps total input at 800 chars and title×2 + slug already use a
+ *  chunk, so the tail is kept modest. */
+const ENTITY_TEXT_MAX_LEN = 280;
+const ENTITY_MAX_TOKENS = 12;
+const THEME_MAX_TOKENS = 6;
+
+/** Parse V2.1ALLNAMES ("Name,Offset;Name,Offset;…") into distinct names
+ *  ranked by mention frequency (an entity named 5× in the article appears
+ *  5×, so it ranks above one-offs). The comma before the trailing integer
+ *  offset is the field separator → split each entry on its LAST comma. */
+function parseAllNames(raw: string): string[] {
+  if (!raw) return [];
+  const counts = new Map<string, number>();
+  for (const entry of raw.split(';')) {
+    if (!entry) continue;
+    const comma = entry.lastIndexOf(',');
+    const name = (comma >= 0 ? entry.slice(0, comma) : entry).trim();
+    if (name.length < 3) continue;
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name);
+}
+
+/** Turn a raw GKG theme code into a readable token for embed text:
+ *  strips the taxonomy prefix, spaces out underscores, lowercases.
+ *    WB_2433_CONFLICT_AND_VIOLENCE → "conflict and violence"
+ *    TAX_TERROR_GROUP_HAMAS        → "terror group hamas"
+ *    ARMEDCONFLICT                 → "armedconflict" */
+function cleanTheme(code: string): string {
+  return code
+    .replace(/^WB_\d+_/, '')
+    .replace(/^(?:TAX|CRISISLEX|EPU|ECON|UNGP)_/, '')
+    .replace(/^C\d+_/, '')
+    .replace(/_/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Build the cleaned entity/theme token string folded into a candidate's
+ * embed input. Named entities (ALLNAMES ranked by mention frequency,
+ * supplemented by the cleaner V1PERSONS / V1ORGANIZATIONS canonical lists)
+ * carry most of the signal; a few readable theme tokens are appended.
+ * Deduped case-insensitively and capped to ENTITY_TEXT_MAX_LEN. Returns ''
+ * when the row carried no usable entities.
+ */
+function buildEntityText(row: ParsedRow): string {
+  const seen = new Set<string>();
+  const entities: string[] = [];
+  const pushEntity = (name: string) => {
+    if (entities.length >= ENTITY_MAX_TOKENS) return;
+    const n = name.trim();
+    if (n.length < 3) return;
+    const k = n.toLowerCase();
+    if (seen.has(k)) return;
+    seen.add(k);
+    entities.push(n);
+  };
+  for (const n of parseAllNames(row.allNames)) pushEntity(n);
+  for (const raw of [row.persons, row.organizations]) {
+    if (!raw) continue;
+    for (const n of raw.split(';')) pushEntity(n);
+  }
+
+  // V1THEMES preserves repetition → count gives a frequency rank.
+  const themeCounts = new Map<string, number>();
+  for (const code of row.themes) themeCounts.set(code, (themeCounts.get(code) ?? 0) + 1);
+  const themeSeen = new Set<string>();
+  const themes: string[] = [];
+  for (const [code] of [...themeCounts.entries()].sort((a, b) => b[1] - a[1])) {
+    if (themes.length >= THEME_MAX_TOKENS) break;
+    const t = cleanTheme(code);
+    if (t.length < 3 || themeSeen.has(t)) continue;
+    themeSeen.add(t);
+    themes.push(t);
+  }
+
+  const parts: string[] = [];
+  if (entities.length) parts.push(entities.join('. '));
+  if (themes.length) parts.push(themes.join(', '));
+  return parts.join('. ').slice(0, ENTITY_TEXT_MAX_LEN);
+}
+
+/** Entity text for a candidate story: the canonical (freshest) row's, with
+ *  a fallback to the first group member that yields any — mirrors how
+ *  `parsePrimaryLocation` is applied across a syndication group. */
+function entityTextForGroup(group: ParsedRow[]): string {
+  for (const r of group) {
+    const e = buildEntityText(r);
+    if (e) return e;
+  }
+  return '';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -813,6 +937,7 @@ function extractConflictCandidates(rows: ParsedRow[]): GdeltConflictCandidate[] 
       source: canonical.domain,
       publishedAt: canonical.date,
       location,
+      entities: entityTextForGroup(group),
       sources: group.slice(0, GDELT_CANDIDATE_SOURCES_MAX).map((g) => ({
         source: g.domain, title: g.title, link: g.url, publishedAt: g.date,
       })),
@@ -912,6 +1037,9 @@ interface GdeltCategoryCandidate {
   location: GdeltLocation | null;
   /** Non-conflict intel-topic ids this headline matched (≥1). */
   categories: string[];
+  /** Cleaned GKG entity/theme tokens — same role + caveats as
+   *  `GdeltConflictCandidate.entities`. Embedding-only. */
+  entities: string;
   sources: Array<{ source: string; title: string; link: string; publishedAt: number }>;
 }
 
@@ -964,6 +1092,7 @@ function extractCategoryCandidates(rows: ParsedRow[]): GdeltCategoryCandidate[] 
       publishedAt: canonical.row.date,
       location,
       categories,
+      entities: entityTextForGroup(group.map((m) => m.row)),
       sources: group.slice(0, GDELT_CANDIDATE_SOURCES_MAX).map((m) => ({
         source: m.row.domain, title: m.row.title, link: m.row.url, publishedAt: m.row.date,
       })),

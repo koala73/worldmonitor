@@ -71,6 +71,9 @@ interface GdeltConflictCandidate {
   source: string;
   publishedAt: number;
   location: { lat: number; lng: number; country: string | null; locationName: string | null } | null;
+  /** Cleaned GKG entity/theme tokens — folded into the embed input by
+   *  inputTextFor. Optional: pre-enrichment candidates in Redis lack it. */
+  entities?: string;
   sources: Array<{ source: string; title: string; link: string; publishedAt: number }>;
 }
 
@@ -83,6 +86,9 @@ interface GdeltCategoryCandidate {
   publishedAt: number;
   location: { lat: number; lng: number; country: string | null; locationName: string | null } | null;
   categories: string[];
+  /** Cleaned GKG entity/theme tokens — folded into the embed input by
+   *  inputTextFor. Optional: pre-enrichment candidates in Redis lack it. */
+  entities?: string;
   sources: Array<{ source: string; title: string; link: string; publishedAt: number }>;
 }
 
@@ -113,6 +119,7 @@ async function loadGdeltCandidates(): Promise<RawRssItem[]> {
     imageCredit: null,
     titleHash: hashes[i]!,
     origin: 'gdelt' as const,
+    gdeltEntities: c.entities || '',
     gdeltLocation: c.location
       ? {
           latitude: c.location.lat,
@@ -155,6 +162,7 @@ async function loadCategoryCandidates(): Promise<RawRssItem[]> {
     titleHash: hashes[i]!,
     origin: 'gdelt' as const,
     gdeltCategories: c.categories,
+    gdeltEntities: c.entities || '',
     gdeltLocation: c.location
       ? {
           latitude: c.location.lat,

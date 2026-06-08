@@ -111,6 +111,11 @@ export interface RawRssItem {
    *  members into `ClusteredItem.categories`. Absent on conflict
    *  candidates and RSS items. */
   gdeltCategories?: string[];
+  /** GDELT-only: cleaned GKG entity/theme tokens (named entities + top
+   *  themes), folded into the embed input by `inputTextFor` to strengthen
+   *  GDELT clustering vectors. Embedding-only — never displayed, never
+   *  article-fetched, never sent to an LLM. */
+  gdeltEntities?: string;
 }
 
 /** Cap on the cached `body` field. The embedder only ingests the first

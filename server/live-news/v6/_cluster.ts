@@ -35,15 +35,45 @@ function clusterThreshold(): number {
   return Number.isFinite(n) && n > 0 && n < 1 ? n : DEFAULT_THRESHOLD;
 }
 
+/**
+ * Cosine threshold for ATTACHING a GDELT item to an RSS cluster (stage 2).
+ * Defaults to the main cluster threshold. GDELT vectors are built from
+ * title + URL slug only, so they cosine a touch lower against an RSS centroid
+ * (title + desc + body) — set `WM_V6_GDELT_ATTACH_THRESHOLD` (e.g. `0.78`) to
+ * loosen attachment without a redeploy if corroboration looks thin.
+ */
+function gdeltAttachThreshold(base: number): number {
+  const raw = process.env.WM_V6_GDELT_ATTACH_THRESHOLD;
+  if (!raw) return base;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 && n < 1 ? n : base;
+}
+
 /** Cache prefix — bump whenever the embedder INPUT or model changes, so
  *  vectors built under different regimes never get compared:
  *    v2 — switched task type CLUSTERING → SEMANTIC_SIMILARITY
  *    v3 — embed input changed to title×2 + description×2 + body, and
  *         RSS items now embed fetched article-body text. A v2-cached
  *         vector (old `title — text` input) sits ~0.85 cosine from its
- *         v3 equivalent — enough to split a cluster at threshold 0.87. */
-const EMBED_CACHE_PREFIX = 'live-news:v6:embed:v3:';
+ *         v3 equivalent — enough to split a cluster at threshold 0.87.
+ *    v4 — GDELT input gained the GKG entity/theme tail (title×2 + slug +
+ *         entities), so GDELT vectors changed. The key now also carries
+ *         the item ORIGIN (see `embedCacheKey`), which fixes a latent
+ *         RSS/GDELT same-title collision — see that helper. */
+const EMBED_CACHE_PREFIX = 'live-news:v6:embed:v4:';
 const EMBED_TTL_S = 24 * 60 * 60;
+
+/**
+ * Embedding-cache key for an item. RSS and GDELT items can share a
+ * `titleHash` (same headline, different pipeline) but their embed INPUT
+ * differs — RSS embeds title+description+body, GDELT embeds title+slug+GKG
+ * entities. Keying purely on `titleHash` let whichever origin embedded
+ * first poison the other across runs (an RSS item inheriting a GDELT item's
+ * thinner vector, or vice-versa). Folding the origin into the key gives the
+ * two their own cache slots and their own in-memory vectors. */
+function embedCacheKey(it: RawRssItem): string {
+  return `${EMBED_CACHE_PREFIX}${it.origin}:${it.titleHash}`;
+}
 /**
  * Total budget for the text fed to the embedder. Sized to fit:
  *   • Title repeated twice         ~120-240 chars
@@ -444,13 +474,19 @@ function inputTextFor(item: RawRssItem, articleBody?: string): string {
 
   if (item.origin === 'gdelt') {
     // GDELT items carry no description or body — never article-fetched.
-    // The URL slug is the only extra signal. title×2 keeps the headline
-    // weighting consistent with how RSS items are built, so a GDELT
-    // headline and an RSS headline for the same event embed close.
+    // Beyond the headline, the signals are the URL slug and the cleaned
+    // GKG entity/theme tokens (`gdeltEntities`, built in the intel-news
+    // cron from ALLNAMES + persons + orgs + top themes). title×2 keeps the
+    // headline weighting consistent with how RSS items are built so a
+    // GDELT headline and an RSS headline for the same event embed close;
+    // the entities give the vector the named-actor/place signal an RSS
+    // item gets from its description+body.
     const slug = urlSlug(item.link);
+    const entities = (item.gdeltEntities || '').trim();
     const parts: string[] = [];
     if (title) parts.push(title, title);
     if (slug) parts.push(slug);
+    if (entities) parts.push(entities);
     return parts.join('. ').slice(0, MAX_INPUT_LEN);
   }
 
@@ -634,20 +670,22 @@ export async function clusterRssItems(items: RawRssItem[]): Promise<ClusteredIte
   console.log(`[live-news:v6:cluster] threshold=${threshold} (${thresholdSource}) items=${items.length}`);
 
   // ── 1. Load cached embeddings ──
-  const cacheKeys = items.map((it) => `${EMBED_CACHE_PREFIX}${it.titleHash}`);
+  // Keyed by `embedCacheKey` (origin + titleHash), not titleHash alone, so an
+  // RSS item and a GDELT item with the same headline keep separate vectors.
+  const cacheKeys = items.map((it) => embedCacheKey(it));
   const cached = await getCachedJsonBatch(cacheKeys);
 
-  const embedByHash = new Map<string, Float32Array>();
+  const embedByKey = new Map<string, Float32Array>();
   for (const it of items) {
-    const raw = cached.get(`${EMBED_CACHE_PREFIX}${it.titleHash}`);
+    const raw = cached.get(embedCacheKey(it));
     if (typeof raw === 'string') {
       const v = base64ToFloat32(raw);
-      if (v) embedByHash.set(it.titleHash, v);
+      if (v) embedByKey.set(embedCacheKey(it), v);
     }
   }
 
   // ── 2. Embed misses ──
-  const toEmbed = items.filter((it) => !embedByHash.has(it.titleHash));
+  const toEmbed = items.filter((it) => !embedByKey.has(embedCacheKey(it)));
   if (toEmbed.length > 0) {
     // Fetch the publisher's article HTML for the items we're about to
     // embed. Equalises cluster input across feeds with vastly different
@@ -672,10 +710,10 @@ export async function clusterRssItems(items: RawRssItem[]): Promise<ClusteredIte
     for (let i = 0; i < toEmbed.length; i++) {
       const v = fresh[i];
       if (!v) continue;
-      embedByHash.set(toEmbed[i]!.titleHash, v);
+      embedByKey.set(embedCacheKey(toEmbed[i]!), v);
       commands.push([
         'SET',
-        `${EMBED_CACHE_PREFIX}${toEmbed[i]!.titleHash}`,
+        embedCacheKey(toEmbed[i]!),
         JSON.stringify(float32ToBase64(v)),
         'EX',
         EMBED_TTL_S,
@@ -689,10 +727,12 @@ export async function clusterRssItems(items: RawRssItem[]): Promise<ClusteredIte
     Promise.allSettled(batches).then(() => undefined);
   }
 
-  // ── 3. Online greedy clustering ──
-  // Each cluster identified by its canonical's titleHash. Members map
-  // tracks every item that landed in each cluster.
-  const clusterOf = new Map<string, string>();       // item.titleHash → canonical hash
+  // ── 3. Two-stage clustering — cluster RSS, then attach GDELT ──
+  // Each cluster is identified by its starter item's `embedCacheKey`
+  // (origin + titleHash). Members map tracks every item in each cluster.
+  // (The output `ClusteredItem.id` is still the PICKED canonical's
+  // titleHash — set in post-processing, independent of these keys.)
+  const clusterOf = new Map<string, string>();       // item.titleHash → cluster key
   const members = new Map<string, RawRssItem[]>();   // canonical → members
   // For comparison we store the running SUM of member embeddings per
   // cluster, not the first-seen item's vector. Cosine is scale-invariant
@@ -709,73 +749,100 @@ export async function clusterRssItems(items: RawRssItem[]): Promise<ClusteredIte
   // is what keeps the cluster phase inside its time budget.
   const sumNormByCanonical = new Map<string, number>();
 
-  // Process oldest-first so older stories accrete younger reports.
-  const sorted = [...items].sort((a, b) => a.publishedAt - b.publishedAt);
-
-  // Yield to the event loop every N items. The clustering pass is ~20-25 s
-  // of pure CPU; left uninterrupted it freezes Node solid, which drops the
-  // keep-alive connections to Redis — so the digest read/write that run
-  // immediately after then time out. Sub-second chunks keep those
-  // connections (and the fire-and-forget embed-cache writes) healthy, at
-  // no measurable cost to clustering throughput.
-  let processed = 0;
-  for (const it of sorted) {
-    if (++processed % 128 === 0) {
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    }
-    const e = embedByHash.get(it.titleHash);
-    if (!e) {
-      // Embedding failed — fall back to singleton.
-      clusterOf.set(it.titleHash, it.titleHash);
-      members.set(it.titleHash, [it]);
-      continue;
-    }
-
-    // ‖e‖ is constant across every cluster comparison below — compute once.
-    let eNorm = 0;
-    for (let k = 0; k < e.length; k++) eNorm += e[k]! * e[k]!;
-    eNorm = Math.sqrt(eNorm);
-
+  // ── ‖e‖ + nearest-centroid helpers (shared by both stages) ──
+  const norm = (e: Float32Array): number => {
+    let s = 0;
+    for (let k = 0; k < e.length; k++) s += e[k]! * e[k]!;
+    return Math.sqrt(s);
+  };
+  // Highest-cosine cluster for embedding `e` (‖e‖ = eNorm) among the current
+  // centroids → [bestSim, bestKey]. Only the dot needs the inner loop; the
+  // cached magnitudes keep each comparison to a single pass.
+  const bestCluster = (e: Float32Array, eNorm: number): [number, string | null] => {
     let bestSim = -1;
-    let bestCanonical: string | null = null;
+    let bestKey: string | null = null;
     if (eNorm > 0) {
-      for (const [canonical, sumEmbed] of sumEmbedByCanonical) {
-        const sumNorm = sumNormByCanonical.get(canonical)!;
+      for (const [k, sumEmbed] of sumEmbedByCanonical) {
+        const sumNorm = sumNormByCanonical.get(k)!;
         if (sumNorm <= 0) continue;
-        // cosine = dot(e, sum) / (‖e‖·‖sum‖); only the dot needs the loop.
         let dot = 0;
         const n = Math.min(e.length, sumEmbed.length);
-        for (let k = 0; k < n; k++) dot += e[k]! * sumEmbed[k]!;
+        for (let i = 0; i < n; i++) dot += e[i]! * sumEmbed[i]!;
         const s = dot / (eNorm * sumNorm);
-        if (s > bestSim) {
-          bestSim = s;
-          bestCanonical = canonical;
-        }
+        if (s > bestSim) { bestSim = s; bestKey = k; }
       }
     }
+    return [bestSim, bestKey];
+  };
 
-    if (bestSim >= threshold && bestCanonical) {
-      clusterOf.set(it.titleHash, bestCanonical);
-      members.get(bestCanonical)!.push(it);
-      // Fold this item into the running cluster sum, then refresh the
-      // cached magnitude since the sum changed.
-      const sum = sumEmbedByCanonical.get(bestCanonical)!;
+  // Split by origin, each oldest-first. Yield to the event loop every 128
+  // items across BOTH stages — the CPU-heavy pass otherwise freezes Node and
+  // starves the Redis keep-alive connections (the digest read/write that run
+  // right after would then time out).
+  const rssSorted = items
+    .filter((it) => it.origin === 'rss')
+    .sort((a, b) => a.publishedAt - b.publishedAt);
+  const gdeltSorted = items
+    .filter((it) => it.origin === 'gdelt')
+    .sort((a, b) => a.publishedAt - b.publishedAt);
+  let processed = 0;
+
+  // ── Stage 1: greedy-cluster the trusted RSS items among themselves ──
+  for (const it of rssSorted) {
+    if (++processed % 128 === 0) await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const key = embedCacheKey(it);
+    const e = embedByKey.get(key);
+    if (!e) {
+      // Embedding failed — fall back to singleton.
+      clusterOf.set(it.titleHash, key);
+      members.set(key, [it]);
+      continue;
+    }
+    const eNorm = norm(e);
+    const [bestSim, bestKey] = bestCluster(e, eNorm);
+    if (bestSim >= threshold && bestKey) {
+      clusterOf.set(it.titleHash, bestKey);
+      members.get(bestKey)!.push(it);
+      // Fold into the running cluster sum + refresh its cached magnitude.
+      const sum = sumEmbedByCanonical.get(bestKey)!;
       let sn = 0;
-      for (let k = 0; k < sum.length; k++) {
-        sum[k] = sum[k]! + e[k]!;
-        sn += sum[k]! * sum[k]!;
-      }
-      sumNormByCanonical.set(bestCanonical, Math.sqrt(sn));
+      for (let k = 0; k < sum.length; k++) { sum[k] = sum[k]! + e[k]!; sn += sum[k]! * sum[k]!; }
+      sumNormByCanonical.set(bestKey, Math.sqrt(sn));
     } else {
-      // New cluster — start the running sum with a copy of e (don't
-      // mutate the cached embedding shared with embedByHash). The sum is
-      // a copy of e, so its magnitude is ‖e‖.
-      clusterOf.set(it.titleHash, it.titleHash);
-      members.set(it.titleHash, [it]);
-      sumEmbedByCanonical.set(it.titleHash, new Float32Array(e));
-      sumNormByCanonical.set(it.titleHash, eNorm);
+      // New cluster — copy e so the cached embedding is never mutated.
+      clusterOf.set(it.titleHash, key);
+      members.set(key, [it]);
+      sumEmbedByCanonical.set(key, new Float32Array(e));
+      sumNormByCanonical.set(key, eNorm);
     }
   }
+  const rssClusterCount = members.size;
+
+  // ── Stage 2: attach each GDELT item to its nearest RSS centroid ──
+  // GDELT is corroboration only: it never reshapes a cluster (the centroid is
+  // NOT updated) and never starts one (a GDELT item that matches no RSS
+  // cluster is simply dropped, not turned into a GDELT-only cluster). So GDELT
+  // can't bridge two RSS stories, can't drift an RSS centroid with its weaker
+  // title+slug vector, and we never build-then-discard GDELT-only clusters.
+  const gdeltThreshold = gdeltAttachThreshold(threshold);
+  let gdeltAttached = 0;
+  for (const it of gdeltSorted) {
+    if (++processed % 128 === 0) await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const e = embedByKey.get(embedCacheKey(it));
+    if (!e) continue;                         // no vector → can't place → drop
+    const eNorm = norm(e);
+    if (eNorm <= 0) continue;
+    const [bestSim, bestKey] = bestCluster(e, eNorm);
+    if (bestSim >= gdeltThreshold && bestKey) {
+      clusterOf.set(it.titleHash, bestKey);
+      members.get(bestKey)!.push(it);         // attach as corroboration only
+      gdeltAttached++;
+    }
+  }
+  console.log(
+    `[live-news:v6:cluster] stage1_rss=${rssSorted.length}→${rssClusterCount}clusters ` +
+    `stage2_gdelt=${gdeltAttached}/${gdeltSorted.length} attached`,
+  );
 
   // ── 4. Post-process into wire shape ──
   const alertMin = alertMinSources();
