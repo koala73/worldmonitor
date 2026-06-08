@@ -31,9 +31,6 @@ export interface ListUsHeadlinesV6Response {
  * depth, not trusted publishers. The feed shows the RSS lede only (never an
  * AI summary), so even a lightly-corroborated story is safe to surface.
  *
- * GDELT sources do NOT count toward this threshold — they're
- * corroboration depth, not trusted publishers.
- *
  * The world-brief live-news section keeps its OWN ≥3 floor (it AI-writes
  * summaries, so it stays corroborated per the copyright rule) — DON'T set
  * `WM_V6_MIN_SOURCES` in the env, as the brief reads the same var and it

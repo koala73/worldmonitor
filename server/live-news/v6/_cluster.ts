@@ -384,35 +384,32 @@ export interface ClusteredItem {
 
 /**
  * Corroboration gate for the GDELT-category feeds (cyber / military /
- * nuclear / …). A category cluster surfaces when it has ≥ `categoryMinTotal`
- * total sources AND at least one is a trusted RSS feed.
+ * nuclear / …). Default rule: a category cluster surfaces when ≥2 distinct
+ * outlets carry the story and at least one is a trusted RSS feed.
  *
- * Default total floor is 1 (≥1 RSS, any total) — so any category-tagged
- * cluster with a trusted RSS anchor shows, single-outlet stories included.
- * This is the volume-first setting; raise `WM_V6_CATEGORY_MIN_TOTAL` (e.g.
- * to 2) to require cross-outlet corroboration again.
+ * Exception for sparse categories: `cyber`, `maritime`, `nuclear`,
+ * `sanctions`, `intelligence` may pass with a single RSS source so
+ * region-split category briefs do not go empty while inflow is still
+ * growing. (`intelligence` is the most starved of all — included here too.)
  *
  * The RSS-presence half is structurally always true (GDELT-only clusters
  * are dropped at cluster time, so every cluster has ≥1 RSS member); it's
  * checked explicitly anyway so the rule is self-evident and survives any
- * future change to that invariant. Categories carry no copyright concern —
- * the feed shows the RSS lede, never an AI summary — so a lone-RSS story is
- * safe to surface.
+ * future change to that invariant.
  *
  * The conflict + live-news feeds run their own (stricter, RSS-only) gates
  * via separate endpoints and are unaffected by this one.
  */
-const DEFAULT_CATEGORY_MIN_TOTAL = 1;
-function categoryMinTotal(): number {
-  const raw = process.env.WM_V6_CATEGORY_MIN_TOTAL;
-  if (!raw) return DEFAULT_CATEGORY_MIN_TOTAL;
-  const n = Number(raw);
-  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : DEFAULT_CATEGORY_MIN_TOTAL;
-}
+const SINGLE_RSS_CATEGORY_TOPICS = new Set(['cyber', 'maritime', 'nuclear', 'sanctions', 'intelligence']);
 
 export function isCategoryCorroborated(c: ClusteredItem): boolean {
   const sources = Array.isArray(c.sources) ? c.sources : [];
-  return sources.length >= categoryMinTotal() && sources.some((s) => s.origin === 'rss');
+  const hasRss = sources.some((s) => s.origin === 'rss');
+  if (!hasRss) return false;
+  if (sources.length >= 2) return true;
+
+  const topics = Array.isArray(c.topics) ? c.topics : [];
+  return topics.some((topic) => SINGLE_RSS_CATEGORY_TOPICS.has(topic));
 }
 
 /**

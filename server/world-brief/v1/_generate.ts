@@ -40,9 +40,10 @@ const CONFLICT_MIN_RSS = Number(process.env.WM_CONFLICT_MIN_RSS_SOURCES) || 1;
 const CONFLICT_MIN_TOTAL = Number(process.env.WM_CONFLICT_MIN_TOTAL_SOURCES) || 3;
 
 /** Category BRIEF corroboration floor — DECOUPLED from the category FEED gate
- *  (which is now ≥1 RSS, single-outlet stories allowed). The AI only writes a
- *  category brief for stories carried by ≥2 outlets, per the copyright rule
- *  (source count gates AI summaries). Feed volume ≠ brief safety. */
+ *  (`isCategoryCorroborated`, which now allows single-RSS for sparse topics).
+ *  The AI only writes a category brief for stories carried by ≥2 outlets, per
+ *  the copyright rule (source count gates AI summaries). So a sparse single-
+ *  source story shows in the FEED but is withheld from the AI BRIEF. */
 const CATEGORY_BRIEF_MIN_TOTAL = Number(process.env.WM_CATEGORY_BRIEF_MIN_TOTAL) || 2;
 
 const TOP_N = 8;

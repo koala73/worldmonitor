@@ -95,9 +95,12 @@ const INTEL_TOPICS: IntelTopic[] = [
     label: 'CYBER',
     titlePattern: buildPattern([
       'cyberattack', 'cyber attack', 'cybersecurity', 'ransomware', 'hacking',
-      'hacker', 'data breach', 'security breach', 'data leak', 'phishing',
+      'hacker', 'hackers', 'data breach', 'security breach', 'data leak', 'phishing',
       'malware', 'zero-day', 'DDoS', 'APT', 'supply chain attack',
-      'denial of service', 'hacked', 'exploit',
+      'denial of service', 'hacked', 'exploit', 'infosec', 'CVE',
+      'vulnerability', 'state-sponsored', 'critical infrastructure',
+      'cyber espionage', 'botnet', 'LockBit', 'cyber gang', 'exploited',
+      'spyware', 'credential theft'
     ]),
   },
   {
@@ -119,7 +122,9 @@ const INTEL_TOPICS: IntelTopic[] = [
       'nuclear power', 'nuclear plant', 'nuclear reactor', 'nuclear missile',
       'nuclear arsenal', 'nuclear threat', 'nuclear talks', 'uranium',
       'uranium enrichment', 'plutonium', 'IAEA', 'atomic bomb', 'atomic energy',
-      'non-proliferation', 'nuclear inspection',
+      'non-proliferation', 'nuclear inspection', 'nuclear warhead',
+      'enrichment facility', 'spent fuel', 'radiation leak', 'nuclear watchdog',
+      'nuclear facility', 'nuclear sabotage',
     ]),
   },
   {
@@ -130,7 +135,9 @@ const INTEL_TOPICS: IntelTopic[] = [
       'tariff', 'tariffs', 'trade war', 'frozen assets', 'blacklisted',
       'asset freeze', 'trade restriction', 'economic pressure',
       'secondary sanctions', 'sanctions package', 'sanctions list',
-      'designated entity',
+      'designated entity', 'export ban', 'Magnitsky', 'entity list',
+      'SWIFT ban', 'asset seizure', 'trade blacklist', 'financial sanction',
+      'import ban', 
     ]),
   },
   {
@@ -152,7 +159,10 @@ const INTEL_TOPICS: IntelTopic[] = [
       'piracy', 'Strait of Hormuz', 'South China Sea', 'Suez Canal',
       'shipping lane', 'oil tanker', 'freighter', 'submarine', 'coast guard',
       'Bab al-Mandeb', 'Red Sea attack', 'naval patrol',
-      'freedom of navigation', 'maritime security',
+      'freedom of navigation', 'maritime security', 'container ship',
+      'cargo ship', 'port strike', 'Panama Canal', 'carrier strike group',
+      'maritime chokepoint', 'Red Sea shipping', 'maritime incident',
+      'naval fleet', 'aircraft carrier', 'destroyer'
     ]),
   },
   {

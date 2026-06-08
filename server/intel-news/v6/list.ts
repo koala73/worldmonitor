@@ -5,9 +5,9 @@
  *
  * Reads `live-news:v6:digest` and returns the clusters the enrich LLM
  * multi-label-classified into ≥1 category (`ClusteredItem.topics`), gated
- * by the category corroboration rule (≥2 outlets, ≥1 RSS — see
- * `isCategoryCorroborated`). Optional `?category=X` pre-filters to one
- * category server-side.
+ * by the category corroboration rule (default: ≥2 outlets + ≥1 RSS, with
+ * sparse-category single-RSS exceptions in `isCategoryCorroborated`).
+ * Optional `?category=X` pre-filters to one category server-side.
  *
  * The live-news + conflict feeds keep their own endpoints + the ≥3-RSS
  * gate; this endpoint is purely additive.

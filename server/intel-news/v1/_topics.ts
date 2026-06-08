@@ -51,7 +51,10 @@ export const INTEL_TOPICS: IntelTopic[] = [
       '(cyberattack OR "cyber attack" OR cybersecurity OR ransomware OR hacking OR hacker OR ' +
       '"data breach" OR "security breach" OR "data leak" OR phishing OR malware OR ' +
       '"zero-day" OR DDoS OR APT OR "supply chain attack" OR "denial of service" OR ' +
-      '"hacked" OR "exploit") sourcelang:eng',
+      '"hacked" OR "exploit" OR infosec OR CVE OR vulnerability OR state-sponsored OR ' +
+      '"critical infrastructure" OR "cyber espionage" OR botnet OR LockBit OR "cyber gang" OR ' +
+      'hackers OR exploited OR spyware OR "credential theft") ' +
+      'sourcelang:eng',
   },
   {
     id: 'military',
@@ -72,7 +75,9 @@ export const INTEL_TOPICS: IntelTopic[] = [
       '"nuclear power" OR "nuclear plant" OR "nuclear reactor" OR "nuclear missile" OR ' +
       '"nuclear arsenal" OR "nuclear threat" OR "nuclear talks" OR uranium OR ' +
       '"uranium enrichment" OR plutonium OR IAEA OR "atomic bomb" OR "atomic energy" OR ' +
-      '"non-proliferation" OR "nuclear inspection") sourcelang:eng',
+      '"non-proliferation" OR "nuclear inspection" OR "nuclear warhead" OR ' +
+      '"enrichment facility" OR "spent fuel" OR "radiation leak" OR "nuclear watchdog" OR ' +
+      '"nuclear facility" OR "nuclear sabotage") sourcelang:eng',
   },
   {
     id: 'sanctions',
@@ -81,7 +86,9 @@ export const INTEL_TOPICS: IntelTopic[] = [
       '(sanctions OR sanctioned OR embargo OR OFAC OR "export controls" OR tariff OR ' +
       'tariffs OR "trade war" OR "frozen assets" OR blacklisted OR "asset freeze" OR ' +
       '"trade restriction" OR "economic pressure" OR "secondary sanctions" OR ' +
-      '"sanctions package" OR "sanctions list" OR "designated entity") sourcelang:eng',
+      '"sanctions package" OR "sanctions list" OR "designated entity" OR "export ban" OR ' +
+      'Magnitsky OR "entity list" OR "SWIFT ban" OR "asset seizure" OR "trade blacklist" OR ' +
+      '"financial sanction" OR "import ban") sourcelang:eng',
   },
   {
     id: 'intelligence',
@@ -102,7 +109,10 @@ export const INTEL_TOPICS: IntelTopic[] = [
       'piracy OR "Strait of Hormuz" OR "South China Sea" OR "Suez Canal" OR ' +
       '"shipping lane" OR "oil tanker" OR freighter OR submarine OR "coast guard" OR ' +
       '"Bab al-Mandeb" OR "Red Sea attack" OR "naval patrol" OR ' +
-      '"freedom of navigation" OR "maritime security") sourcelang:eng',
+      '"freedom of navigation" OR "maritime security" OR "container ship" OR "cargo ship" OR ' +
+      '"port strike" OR "Panama Canal" OR "carrier strike group" OR "maritime chokepoint" OR ' +
+      '"Red Sea shipping" OR "maritime incident" OR "naval fleet" OR "aircraft carrier" OR ' +
+      'destroyer) sourcelang:eng',
   },
 
   // ────────────────────────────────────────────────────────────────────
