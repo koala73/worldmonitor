@@ -59,7 +59,9 @@ Published forecasts are capped and deduplicated before they reach the panel:
 | Forecasts per family | 4 |
 | Forecasts per family/domain pair | 2 |
 | Target published count | 10-14 |
-| Conflict base detector probability ceiling | 0.90 |
+| Conflict base detector probability ceiling (before velocity spike) | 0.90 |
+| UCDP conflict-zone base probability ceiling (before velocity spike) | 0.85 |
+| Conflict velocity-spike override ceiling | 0.99 |
 | Market probability ceiling | 0.85 |
 | Supply-chain / maritime probability ceiling | 0.85 |
 | GPS supply-chain detector probability ceiling | 0.60 |
@@ -82,6 +84,10 @@ Market-bucket scenario calibration is an editorial calibration layer in `scripts
 | Semis | `0.13 / 0.08 / 0.09 / 0.12` | `0.04 / 0.04 / 0.02 / -` | Semiconductor shocks need targeted infrastructure or shipping evidence. |
 | Crypto / stablecoins | `0.11 / 0.07 / 0.08 / 0.12` | `0.03 / 0.05 / 0.02 / -` | Digital-asset stress is useful context but gets a lighter macro lift. |
 | Defense | `0.08 / 0.04 / 0.05 / 0.10` | `-0.03 / 0 / -0.03 / 0.12` | Defense signals are intentionally damped to avoid over-reacting to noisy security headlines. |
+
+The conflict and UCDP conflict-zone rows are base detector caps. When the matching EMA risk score has `velocitySpike`, the seeder adds a `+0.08` probability override after the base cap and clamps the result to `0.99`.
+
+Defense state calibration has additional direct-confirmation terms outside the table: each unit of direct `defense_repricing` confirmation adds `+0.12` pressure and `+0.08` confidence. When that direct defense confirmation is absent, pressure subtracts the table-driven `dampener` (`0.12`) and confidence subtracts a separate `0.04` absence penalty.
 
 Probability projections are anchored to the forecast's own time horizon and then expanded to 24h, 7d, and 30d with domain curves:
 

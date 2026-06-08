@@ -16,6 +16,14 @@ function formatProbability(value) {
   return value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 }
 
+function formatProbabilityFixed(value) {
+  return value.toFixed(2);
+}
+
+function formatSignedProbability(value) {
+  return `${value >= 0 ? '+' : '-'}${Math.abs(value).toFixed(2)}`;
+}
+
 describe('forecast integrity and provenance surfaces', () => {
   it('labels simulation path confidence separately from event probability', () => {
     const src = read('src/components/ForecastPanel.ts');
@@ -55,6 +63,13 @@ describe('forecast integrity and provenance surfaces', () => {
     const docs = read('docs/panels/forecast.mdx');
     const seeder = read('scripts/seed-forecasts.mjs');
     const cyberProbMax = parseNumericConst(seeder, 'CYBER_PROB_MAX');
+    const conflictBaseMax = parseNumericConst(seeder, 'CONFLICT_BASE_DETECTOR_PROB_MAX');
+    const ucdpConflictZoneMax = parseNumericConst(seeder, 'UCDP_CONFLICT_ZONE_PROB_MAX');
+    const velocitySpikeLift = parseNumericConst(seeder, 'VELOCITY_SPIKE_PROBABILITY_LIFT');
+    const velocitySpikeMax = parseNumericConst(seeder, 'VELOCITY_SPIKE_PROBABILITY_MAX');
+    const defensePressureLift = parseNumericConst(seeder, 'DEFENSE_DIRECT_CONFIRMATION_PRESSURE_LIFT');
+    const defenseConfidenceLift = parseNumericConst(seeder, 'DEFENSE_DIRECT_CONFIRMATION_CONFIDENCE_LIFT');
+    const defenseAbsentConfidencePenalty = parseNumericConst(seeder, 'DEFENSE_ABSENT_CONFIRMATION_CONFIDENCE_PENALTY');
 
     assert.doesNotMatch(docs, /probability-calibrated/);
     assert.match(docs, /deterministic, rule-based signal detectors/);
@@ -63,7 +78,23 @@ describe('forecast integrity and provenance surfaces', () => {
     assert.match(docs, /OpenRouter `google\/gemini-2\.5-flash`/);
     assert.match(docs, /market-calibrated only when/);
     assert.match(docs, /calibration: null/);
-    assert.match(docs, /Conflict base detector probability ceiling \| 0\.90/);
+    assert.doesNotMatch(docs, /Conflict base detector probability ceiling \| 0\.90/);
+    assert.ok(
+      docs.includes(`| Conflict base detector probability ceiling (before velocity spike) | ${formatProbabilityFixed(conflictBaseMax)} |`),
+      `forecast panel doc must disclose conflict base detector cap from CONFLICT_BASE_DETECTOR_PROB_MAX=${conflictBaseMax}`,
+    );
+    assert.ok(
+      docs.includes(`| UCDP conflict-zone base probability ceiling (before velocity spike) | ${formatProbabilityFixed(ucdpConflictZoneMax)} |`),
+      `forecast panel doc must disclose UCDP conflict-zone cap from UCDP_CONFLICT_ZONE_PROB_MAX=${ucdpConflictZoneMax}`,
+    );
+    assert.ok(
+      docs.includes(`| Conflict velocity-spike override ceiling | ${formatProbabilityFixed(velocitySpikeMax)} |`),
+      `forecast panel doc must disclose velocity-spike ceiling from VELOCITY_SPIKE_PROBABILITY_MAX=${velocitySpikeMax}`,
+    );
+    assert.ok(
+      docs.includes(`adds a \`${formatSignedProbability(velocitySpikeLift)}\` probability override after the base cap`),
+      `forecast panel doc must disclose velocity-spike lift from VELOCITY_SPIKE_PROBABILITY_LIFT=${velocitySpikeLift}`,
+    );
     assert.match(docs, /Market probability ceiling \| 0\.85/);
     assert.match(docs, /Supply-chain \/ maritime probability ceiling \| 0\.85/);
     assert.match(docs, /GPS supply-chain detector probability ceiling \| 0\.60/);
@@ -73,6 +104,14 @@ describe('forecast integrity and provenance surfaces', () => {
     assert.match(seeder, /Math\.min\(CYBER_PROB_MAX,/);
     assert.match(docs, /Market-bucket scenario calibration is an editorial calibration layer/);
     assert.match(docs, /Defense.*0\.12/);
+    assert.ok(
+      docs.includes(`each unit of direct \`defense_repricing\` confirmation adds \`${formatSignedProbability(defensePressureLift)}\` pressure and \`${formatSignedProbability(defenseConfidenceLift)}\` confidence`),
+      'forecast panel doc must disclose direct defense_repricing pressure and confidence lifts',
+    );
+    assert.ok(
+      docs.includes(`confidence subtracts a separate \`${formatProbabilityFixed(defenseAbsentConfidencePenalty)}\` absence penalty`),
+      'forecast panel doc must distinguish the extra confidence penalty from the table-driven pressure dampener',
+    );
     assert.match(docs, /1% floor and 95% cap/);
     assert.match(seeder, /const PROJECTION_PROBABILITY_FLOOR = 0\.01;/);
     assert.match(seeder, /const PROJECTION_PROBABILITY_CAP = 0\.95;/);

@@ -104,6 +104,13 @@ const CYBER_SCORE_CRITICAL_MULTIPLIER = 0.75; // bonus per critical-class threat
 const CYBER_PROB_MAX = 0.72;                // probability ceiling for cyber forecasts
 const CYBER_PROB_VOLUME_WEIGHT = 0.5;       // weight of volume in probability formula
 const CYBER_PROB_TYPE_WEIGHT = 0.15;        // weight of type diversity in probability formula
+const CONFLICT_BASE_DETECTOR_PROB_MAX = 0.90;
+const UCDP_CONFLICT_ZONE_PROB_MAX = 0.85;
+const VELOCITY_SPIKE_PROBABILITY_LIFT = 0.08;
+const VELOCITY_SPIKE_PROBABILITY_MAX = 0.99;
+const DEFENSE_DIRECT_CONFIRMATION_PRESSURE_LIFT = 0.12;
+const DEFENSE_DIRECT_CONFIRMATION_CONFIDENCE_LIFT = 0.08;
+const DEFENSE_ABSENT_CONFIRMATION_CONFIDENCE_PENALTY = 0.04;
 const MAX_MILITARY_SURGE_AGE_MS = 3 * 60 * 60 * 1000;
 const MAX_MILITARY_BUNDLE_DRIFT_MS = 5 * 60 * 1000;
 
@@ -1002,7 +1009,7 @@ function detectConflictScenarios(inputs, emaRiskScores) {
 
     const ciiNorm = normalize(c.score, 50, 100);
     const eventBoost = (matchingIran.length + matchingUcdp.length) > 0 ? 0.1 : 0;
-    let prob = Math.min(0.9, ciiNorm * 0.6 + eventBoost + (c.trend === 'rising' ? 0.1 : 0));
+    let prob = Math.min(CONFLICT_BASE_DETECTOR_PROB_MAX, ciiNorm * 0.6 + eventBoost + (c.trend === 'rising' ? 0.1 : 0));
 
     const emaRisk = emaRiskScores?.get(countryName ?? '');
     if (emaRisk?.velocitySpike) {
@@ -1011,7 +1018,7 @@ function detectConflictScenarios(inputs, emaRiskScores) {
         value: `EMA z-score: ${emaRisk.zscore.toFixed(1)} (${emaRisk.risk24h}/100 risk)`,
         weight: 0.35,
       });
-      prob = Math.min(0.99, prob + 0.08);
+      prob = Math.min(VELOCITY_SPIKE_PROBABILITY_MAX, prob + VELOCITY_SPIKE_PROBABILITY_LIFT);
       sourceCount++;
     }
 
@@ -1855,7 +1862,7 @@ function detectUcdpConflictZones(inputs, emaRiskScores) {
     if (count < 10) continue;
 
     const signals = [{ type: 'ucdp', value: `${count} UCDP conflict events`, weight: 0.5 }];
-    let prob = Math.min(0.85, normalize(count, 5, 100) * 0.7);
+    let prob = Math.min(UCDP_CONFLICT_ZONE_PROB_MAX, normalize(count, 5, 100) * 0.7);
 
     const emaRisk = emaRiskScores?.get(country?.toLowerCase?.() ?? '');
     if (emaRisk?.velocitySpike) {
@@ -1864,7 +1871,7 @@ function detectUcdpConflictZones(inputs, emaRiskScores) {
         value: `EMA z-score: ${emaRisk.zscore.toFixed(1)} (${emaRisk.risk24h}/100 risk)`,
         weight: 0.35,
       });
-      prob = Math.min(0.99, prob + 0.08);
+      prob = Math.min(VELOCITY_SPIKE_PROBABILITY_MAX, prob + VELOCITY_SPIKE_PROBABILITY_LIFT);
     }
 
     predictions.push(makePrediction(
@@ -10213,13 +10220,13 @@ function buildMarketState(worldSignals, transmissionGraph) {
     const calibratedPressure = (pressureNumerator / divisor)
       + (macroConfirmation * Number(calibration.macroLift || 0))
       + (edgeDensity * Number(calibration.edgeLift || 0))
-      + (defenseSignalConfirmation * 0.12)
+      + (defenseSignalConfirmation * DEFENSE_DIRECT_CONFIRMATION_PRESSURE_LIFT)
       - (!defenseSignalConfirmation && config.id === 'defense' ? Number(calibration.dampener || 0) : 0);
     const calibratedConfidence = (confidenceNumerator / divisor)
       + Math.min(0.08, macroSignals.length * 0.02)
       + (edgeDensity * Number(calibration.confidenceLift || 0))
-      + (defenseSignalConfirmation * 0.08)
-      - (!defenseSignalConfirmation && config.id === 'defense' ? 0.04 : 0);
+      + (defenseSignalConfirmation * DEFENSE_DIRECT_CONFIRMATION_CONFIDENCE_LIFT)
+      - (!defenseSignalConfirmation && config.id === 'defense' ? DEFENSE_ABSENT_CONFIRMATION_CONFIDENCE_PENALTY : 0);
     const pressureScore = +clampUnitInterval(calibratedPressure).toFixed(3);
     const confidence = +clampUnitInterval(calibratedConfidence).toFixed(3);
     return {
