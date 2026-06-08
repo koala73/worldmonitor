@@ -82,6 +82,8 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 - **Commodity Hubs**: 10 exchanges and physical hubs (CME Group, ICE, LME, SHFE, DCE, TOCOM, DGCX, MCX, Rotterdam, Houston)
 - **Gulf FDI Investments**: 64 Saudi/UAE foreign direct investments plotted globally, color-coded by status (operational, under-construction, announced), sized by investment amount — across ports, energy, manufacturing, renewables, megaprojects, telecoms
 
+Unique layers: 29 stock exchanges, 19 financial centers, 14 central-bank and supranational finance institutions.
+
 ## AI-Powered Intelligence
 
 - **World Brief**: LLM-synthesized summary of top global developments via Groq Llama 3.1, Redis-cached
