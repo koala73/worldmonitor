@@ -233,4 +233,18 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
     }
     assert.match(notes, /Per-minute .* counts ALL methods/i, 'notes must distinguish per-minute from daily exemptions');
   });
+
+  it('mcp-server docs keep API-key auth separate from the Pro/OAuth daily reservation path', () => {
+    const docs = readFileSync(new URL('../docs/mcp-server.mdx', import.meta.url), 'utf8');
+    assert.doesNotMatch(docs, /Both modes check the same PRO entitlement/i,
+      'docs must not claim API-key requests use the OAuth/Pro entitlement pre-check path');
+    assert.match(docs, /OAuth bearer requests re-check .* active entitlement before dispatch/i,
+      'docs must describe the OAuth entitlement re-check path');
+    assert.match(docs, /Direct `X-WorldMonitor-Key` requests validate the configured API key and then use the per-key limiter/i,
+      'docs must describe API-key MCP auth and per-key minute limiting without implying Pro daily quota reservation');
+    assert.match(docs, /REST\/API plan allowances are enforced outside the Pro\/OAuth MCP daily reservation path/i,
+      'docs must keep REST/API plan allowances separate from MCP daily reservation semantics');
+    assert.match(docs, /`wm_…` MCP calls have \*\*no MCP daily reservation\*\*/i,
+      'docs must state that wm_ API-key MCP calls have no MCP daily reservation');
+  });
 });

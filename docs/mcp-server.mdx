@@ -48,7 +48,7 @@ The MCP handler accepts two auth modes, in priority order:
 1. **OAuth 2.1 bearer** — `Authorization: Bearer <token>` where `<token>` was issued by `/api/oauth/token`. This is what Claude Desktop, claude.ai, Cursor, and MCP Inspector use automatically. Required for any client that hits MCP from a browser origin.
 2. **Direct API key** — `X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567` for user-issued keys, or an opaque operator-issued enterprise key. Intended for server-side scripts, `curl`, and custom integrations. Do **not** send an API key as a `Bearer` token — it will fail OAuth resolution and return `401 invalid_token`.
 
-Both modes check the same PRO entitlement before every tool call, so a subscription downgrade revokes access on the next request.
+OAuth bearer requests re-check the resolved MCP token, user binding, and active entitlement before dispatch, so a subscription downgrade revokes OAuth MCP access on the next request. Direct `X-WorldMonitor-Key` requests validate the configured API key and then use the per-key limiter; their REST/API plan allowances are enforced outside the Pro/OAuth MCP daily reservation path.
 
 ### Redirect URI allowlist
 
