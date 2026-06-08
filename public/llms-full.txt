@@ -2,17 +2,20 @@
 
 > Real-time global intelligence dashboard — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
-World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates 150+ news feeds, 35+ interactive map layers, and multiple AI models into a single dashboard. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux.
+World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates 500+ curated news feeds, 56 map layer types, and multiple AI models into a single dashboard. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux.
 
-A single codebase produces three specialized variants — geopolitical, technology, and finance — each with distinct feeds, panels, map layers, and branding. The tri-variant architecture uses build-time selection via the VITE_VARIANT environment variable, with runtime switching available via the header bar. Each variant tree-shakes unused data files — the finance build excludes military base coordinates and APT group data, while the geopolitical build excludes stock exchange listings.
+A single codebase produces six specialized variants — geopolitical, technology, finance, commodity, happy, and energy — each with distinct feeds, panels, map layers, and branding. The multi-variant architecture uses build-time selection via the VITE_VARIANT environment variable, with runtime switching available via the header bar. Each variant tree-shakes unused data files so audience-specific builds can omit unrelated panels, feeds, and map registries.
 
-The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and Tauri. All intelligence analysis (clustering, instability scoring, surge detection) runs client-side in the browser — no backend compute dependency for core intelligence. A browser-side ML pipeline (Transformers.js) provides NER and sentiment analysis without server dependency.
+The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and Tauri. Browser-side clustering, local ML, and offline analysis run in the client; server-authoritative APIs publish CII/CRI scores, briefs, forecasts, MCP tools, and cached operational data with documented methodology and provenance.
 
 ## Live Instances
 
 - [World Monitor](https://worldmonitor.app): Geopolitics, military, conflicts, infrastructure — ~25 RSS categories, 44 panels, military bases, nuclear facilities, hotspots
 - [Tech Monitor](https://tech.worldmonitor.app): Startups, AI/ML, cloud, cybersecurity — ~20 RSS categories, 31 panels, tech HQs, cloud regions, startup hubs
 - [Finance Monitor](https://finance.worldmonitor.app): Global markets, trading, central banks, Gulf FDI — ~18 RSS categories, 30 panels, stock exchanges, central banks, Gulf investments
+- [Commodity Monitor](https://commodity.worldmonitor.app): Mining, metals, energy, supply chains, commodity markets
+- [Happy Monitor](https://happy.worldmonitor.app): Positive news, breakthroughs, conservation, renewable energy
+- [Energy Monitor](https://energy.worldmonitor.app): Energy security, oil and gas, chokepoints, disruption timelines
 
 ## Documentation
 
@@ -84,7 +87,8 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 - **World Brief**: LLM-synthesized summary of top global developments via Groq Llama 3.1, Redis-cached
 - **Hybrid Threat Classification**: Two-stage pipeline — instant keyword classifier (~120 threat keywords by severity tier) with async LLM override (Groq Llama 3.1 8B at temperature 0, 24h Redis cache). LLM overrides keyword result only when confidence is higher
 - **Focal Point Detection**: Correlates entities across news, military activity, protests, outages, and markets to identify convergence. Requires cross-source confirmation before escalating to critical
-- **Country Instability Index (CII)**: Real-time stability scores (0-100) for 22 monitored nations — US, Russia, China, Ukraine, Iran, Israel, Taiwan, North Korea, Saudi Arabia, Turkey, Poland, Germany, France, UK, India, Pakistan, Syria, Yemen, Myanmar, Venezuela, Brazil, UAE. Computed from baseline risk (40%), unrest events (20%), security activity (20%), and information velocity (20%)
+- **Country Instability Index (CII v8)**: Server-authoritative 0-100 stress scores for 31 Tier-1 countries. The documented formula blends four event components into `eventScore = unrest * 0.25 + conflict * 0.30 + security * 0.20 + information * 0.25`, then combines `baselineRisk * 0.4 + eventScore * 0.6` with capped climate, cyber, fire, advisory, OREF, displacement, news-urgency, earthquake, sanctions, AIS, and UCDP/advisory floor terms. Each score emits `methodology_version`, component breakdown, advisory provenance, and signed 24-hour movement delta.
+- **Country Resilience Index (CRI)**: 0-100 resilience scores for the 196-country public rankable universe across 6 domains, 20 active dimensions, and 3 pillars. CRI uses official/authoritative sources, transparent goalposts, coverage tracking, and a four-class imputation taxonomy; the live runtime manifest reports the active formula tag and construct versions.
 - **Trending Keyword Spike Detection**: 2-hour rolling window vs 7-day baseline. Spikes require 5+ mentions, 3x baseline surge, 2+ unique sources, and 30-minute cooldown. Extracts CVE identifiers and APT/FIN designators. Auto-summarized via Groq (5 summaries/hour limit)
 - **Strategic Posture Assessment**: 9 operational theaters (Iran/Persian Gulf, Taiwan Strait, Baltic/Kaliningrad, Korean Peninsula, Eastern Mediterranean, Horn of Africa, South China Sea, Arctic, Black Sea) assessed continuously. Posture levels: NORMAL, ELEVATED, CRITICAL based on aircraft count, strike capability, naval presence, and country instability
 - **Geographic Convergence Detection**: Events binned into 1-degree geographic cells within 24-hour window. 3+ distinct event types in one cell triggers convergence alert
@@ -96,7 +100,8 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 
 - **AI Strategic Posture**: Theater-level military force aggregation with strike capability assessment across 9 theaters linked to 38+ military bases
 - **Strategic Risk Overview**: Composite risk score combining all intelligence modules with trend detection
-- **Country Instability Index**: Real-time stability scores for 22 monitored countries with 4-component breakdown (Unrest, Conflict, Security, Information)
+- **Country Instability Index**: CII v8 scores for 31 Tier-1 countries with component breakdowns, methodology version, advisory provenance, and signed 24-hour movement deltas
+- **Country Resilience Index**: CRI scores and rankings for the 196-country public rankable universe with pillar, domain, coverage, and imputation detail
 - **Infrastructure Cascade**: Dependency analysis for cables, pipelines, ports, and chokepoints with disruption propagation modeling
 - **Live Intelligence**: GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions)
 - **Regional Panels**: Dedicated panels for Middle East, Africa, Latin America, Asia-Pacific, and Energy & Resources
@@ -108,7 +113,7 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 
 ## News Aggregation
 
-- **150+ RSS feeds** across 15+ categories: World/Geopolitical (BBC, Reuters, AP, Guardian), Middle East (Al Jazeera, Al Arabiya, Times of Israel), Africa (BBC Africa, News24), Latin America, Asia-Pacific (SCMP), Energy & Resources, Technology (Hacker News, Ars Technica), AI/ML (ArXiv, VentureBeat), Finance (CNBC, MarketWatch, FT), Government (White House, Pentagon, Treasury, Fed, SEC, UN, CISA), Intel Feed (Defense One, Breaking Defense, Bellingcat, Krebs, Janes), Think Tanks (Foreign Policy, Atlantic Council, CSIS, RAND, Brookings, Carnegie), Crisis Watch (ICG, IAEA, WHO, UNHCR), Regional (Xinhua, TASS, Kyiv Independent)
+- **500+ RSS feeds** across 15+ categories: World/Geopolitical (BBC, Reuters, AP, Guardian), Middle East (Al Jazeera, Al Arabiya, Times of Israel), Africa (BBC Africa, News24), Latin America, Asia-Pacific (SCMP), Energy & Resources, Technology (Hacker News, Ars Technica), AI/ML (ArXiv, VentureBeat), Finance (CNBC, MarketWatch, FT), Government (White House, Pentagon, Treasury, Fed, SEC, UN, CISA), Intel Feed (Defense One, Breaking Defense, Bellingcat, Krebs, Janes), Think Tanks (Foreign Policy, Atlantic Council, CSIS, RAND, Brookings, Carnegie), Crisis Watch (ICG, IAEA, WHO, UNHCR), Regional (Xinhua, TASS, Kyiv Independent)
 - **Source tiering**: Tier 1 (wire services, government), Tier 2 (major outlets), Tier 3 (specialized), Tier 4 (aggregators/blogs) — with propaganda risk ratings and state affiliation flags
 - **8 live video streams**: Bloomberg, Sky News, Al Jazeera, Euronews, DW, France24, CNBC, Al Arabiya — with automatic live detection scraping YouTube channel pages every 5 minutes
 - **19 live webcams**: Geopolitical hotspots across 4 regions — Middle East (Jerusalem, Tehran, Tel Aviv, Mecca), Europe (Kyiv, Odessa, Paris, London), Americas (Washington DC, New York, LA, Miami), Asia-Pacific (Taipei, Shanghai, Tokyo, Seoul, Sydney)
@@ -152,15 +157,18 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 
 ## Supported Languages
 
-English (en), French (fr), Spanish (es), German (de), Italian (it), Polish (pl), Portuguese (pt), Dutch (nl), Swedish (sv), Russian (ru), Arabic (ar) with RTL support, Chinese (zh), Japanese (ja), Turkish (tr). Language bundles are lazy-loaded on demand. Localized news feeds load region-specific RSS sources based on language preference. AI translation available for cross-language intelligence gathering.
+English (en), French (fr), Spanish (es), German (de), Italian (it), Polish (pl), Portuguese (pt), Dutch (nl), Swedish (sv), Russian (ru), Arabic (ar) with RTL support, Chinese (zh), Japanese (ja), Turkish (tr), Korean (ko), Hindi (hi), Thai (th), Vietnamese (vi), Czech (cs), Romanian (ro), Bulgarian (bg), Greek (el), Croatian (hr), and Hungarian (hu). Language bundles are lazy-loaded on demand. Localized news feeds load region-specific RSS sources based on language preference. AI translation available for cross-language intelligence gathering.
 
-## Tri-Variant Build System
+## Multi-Variant Build System
 
-A single codebase produces three specialized dashboards controlled by the VITE_VARIANT environment variable:
+A single codebase produces six specialized dashboards controlled by the VITE_VARIANT environment variable:
 
-- **World Monitor** (worldmonitor.app): ~25 RSS categories, 44 panels. Focus: geopolitics, military, conflicts, infrastructure security. Unique layers: military bases, nuclear facilities, hotspots, APT groups, spaceports, critical minerals
-- **Tech Monitor** (tech.worldmonitor.app): ~20 RSS categories, 31 panels. Focus: AI/ML, startups, cybersecurity, cloud. Unique layers: tech HQs, cloud regions, startup hubs, accelerators, tech events
-- **Finance Monitor** (finance.worldmonitor.app): ~18 RSS categories, 30 panels. Focus: global markets, trading, central banks, Gulf FDI. Unique layers: 29 stock exchanges, 19 financial centers, 14 central-bank and supranational finance institutions, 10 commodity hubs, 64 Gulf FDI investments
+- **World Monitor** (worldmonitor.app): geopolitics, military, conflicts, infrastructure security, regional intelligence, and global risk.
+- **Tech Monitor** (tech.worldmonitor.app): AI/ML, startups, cybersecurity, cloud, semiconductors, and technology policy.
+- **Finance Monitor** (finance.worldmonitor.app): global markets, trading, central banks, macro, Gulf finance, and equity research.
+- **Commodity Monitor** (commodity.worldmonitor.app): commodities, mining, metals, energy markets, shipping, and supply chains.
+- **Happy Monitor** (happy.worldmonitor.app): constructive news, science, climate progress, health, conservation, and positive public action.
+- **Energy Monitor** (energy.worldmonitor.app): energy security, oil and gas, chokepoints, policy response, and energy-market intelligence.
 
 Build-time: Vite HTML plugin transforms meta tags, Open Graph data, PWA manifest, and JSON-LD structured data. Each variant tree-shakes unused data files. Runtime: variant selector in header navigates between deployed domains (web) or sets localStorage preference (desktop).
 
@@ -169,7 +177,7 @@ Build-time: Vite HTML plugin transforms meta tags, Open Graph data, PWA manifest
 - **Speed over perfection**: Keyword classifier is instant; LLM refines asynchronously. Users never wait
 - **Assume failure**: Per-feed circuit breakers with 5-minute cooldowns. AI fallback chain: Groq, OpenRouter, browser-side T5. Redis failures degrade gracefully. Edge functions return stale cached data when upstream APIs are down
 - **Show what you can't see**: Intelligence gap tracker explicitly reports data source outages rather than silently hiding them
-- **Browser-first compute**: Analysis runs client-side — no backend compute dependency for core intelligence
+- **Browser-first compute where appropriate**: clustering, local ML, geolocation, and offline fallbacks run client-side; server-authoritative APIs publish CII/CRI scores, briefs, forecasts, MCP tools, and cached operational data
 - **Local-first geolocation**: Country detection uses browser-side ray-casting against GeoJSON polygons (sub-millisecond, zero API dependency, works offline)
 - **Multi-signal correlation**: No single data source trusted alone. Focal points require convergence across news + military + markets + protests before escalating
 - **Geopolitical grounding**: Hard-coded conflict zones, baseline country risk, and strategic chokepoints prevent false alerts
@@ -185,14 +193,14 @@ Build-time: Vite HTML plugin transforms meta tags, Open Graph data, PWA manifest
 - **Backend**: 60+ Vercel Edge Functions, Railway relay server for blocked RSS feeds
 - **Data Store**: Upstash Redis (caching, Welford baselines, LLM dedup), IndexedDB (historical playback), localStorage (preferences, panel state)
 - **AI Pipeline**: Groq (Llama 3.1 8B), OpenRouter (fallback), Transformers.js (browser fallback for NER, sentiment, summarization)
-- **Monitoring**: Sentry error tracking, data freshness tracker across 22 sources with intelligence gap reporting
+- **Monitoring**: Sentry error tracking, data freshness tracker across 35 source groups with intelligence gap reporting
 - **Testing**: Playwright E2E tests (per-variant), Node.js test runner for data/sidecar tests
 - **PWA**: Service worker with CacheFirst map tiles (500 tiles, 30-day TTL), NetworkOnly for intelligence data, offline fallback page
 
 ## Desktop Application
 
 Native desktop app built with Tauri (Rust + Node.js sidecar). The sidecar mirrors all 60+ cloud API handlers locally with gzip compression. Features:
-- OS keychain integration for 17 API keys (macOS Keychain, Windows Credential Manager)
+- OS keychain integration for configured upstream API keys (macOS Keychain, Windows Credential Manager)
 - Token-authenticated sidecar prevents unauthorized local access
 - Cloud fallback when local handlers fail
 - Settings window (Cmd+,) for API key management with validation
@@ -202,16 +210,17 @@ Native desktop app built with Tauri (Rust + Node.js sidecar). The sidecar mirror
 
 ## Key Features Summary
 
-- Interactive 3D WebGL globe with 35+ toggleable data layers and smart clustering
+- Interactive 3D WebGL globe with 56 map layer types and smart clustering
 - AI-synthesized world briefs with hybrid threat classification
-- Country Instability Index for 22 nations with real-time scoring
+- CII v8 instability scores for 31 Tier-1 countries
+- CRI resilience scores for the 196-country public rankable universe
 - 9-theater strategic posture assessment
 - Geographic convergence detection and infrastructure cascade modeling
-- 150+ curated RSS feeds with source tiering and propaganda risk ratings
+- 500+ curated RSS feeds with source tiering and propaganda risk ratings
 - 8 live news streams and 19 live webcams from geopolitical hotspots
 - 7-signal macro market radar with BUY/CASH verdict
 - Country brief pages with exportable intelligence dossiers (JSON, CSV, PNG)
-- Multilingual UI in 14 languages with RTL support
+- Multilingual UI in 24 languages with RTL support
 - Prediction market integration (Polymarket) with 3-tier JA3 bypass
 - Temporal baseline anomaly detection using Welford's algorithm
 - Dual-source protest tracking (ACLED + GDELT) with regime-aware scoring

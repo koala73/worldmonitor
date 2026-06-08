@@ -40,7 +40,7 @@
 - **500+ curated news feeds** across 15 categories, AI-synthesized into briefs
 - **Dual map engine** — 3D globe (globe.gl) and WebGL flat map (deck.gl) with 56 map layer types
 - **Cross-stream correlation** — military, economic, disaster, and escalation signal convergence
-- **Country Intelligence Index** — composite risk scoring across 12 signal categories
+- **Country Instability Index (CII)** — server-authoritative CII v8 stress scoring for 31 Tier-1 countries
 - **Finance radar** — 29 stock exchanges, commodities, crypto, and 7-signal market composite
 - **Local AI** — run everything with Ollama, no API keys required
 - **6 site variants** from a single codebase (world, tech, finance, commodity, happy, energy)

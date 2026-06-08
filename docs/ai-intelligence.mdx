@@ -174,7 +174,7 @@ When an alert passes all gates, the system dispatches a `wm:breaking-news` Custo
 
 ### Browser-Side ML Pipeline
 
-The dashboard runs a full ML pipeline in the browser via Transformers.js, with no server dependency for core intelligence. This is automatically disabled on mobile devices to conserve memory.
+The dashboard runs a local ML pipeline in the browser via Transformers.js for embeddings, sequence classification, fallback summarization, and entity extraction. CII/CRI scores, source-attributed briefs, forecasts, MCP tools, and cached operational data remain server-authoritative where documented. Browser ML is automatically disabled on mobile devices to conserve memory.
 
 | Capability                   | Model               | Use                                               |
 | ---------------------------- | ------------------- | ------------------------------------------------- |

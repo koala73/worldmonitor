@@ -2,11 +2,11 @@
 
 > Real-time global intelligence dashboard — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
-World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates 435+ news feeds, 45+ interactive map layers, and multiple AI models into a single dashboard. Used by 2M+ people across 190+ countries, as featured in WIRED. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux.
+World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates 500+ news feeds, 56 map layer types, and multiple AI models into a single dashboard. Used by 2M+ people across 190+ countries, as featured in WIRED. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux.
 
-A single codebase produces five specialized variants — geopolitical (World Monitor), technology (Tech Monitor), finance (Finance Monitor), commodities (Commodity Monitor), and positive news (Happy Monitor) — each with distinct feeds, panels, map layers, and branding. The multi-variant architecture uses build-time selection via the VITE_VARIANT environment variable, with runtime switching available via the header bar.
+A single codebase produces six specialized variants — geopolitical (World Monitor), technology (Tech Monitor), finance (Finance Monitor), commodities (Commodity Monitor), positive news (Happy Monitor), and energy (Energy Monitor) — each with distinct feeds, panels, map layers, and branding. The multi-variant architecture uses build-time selection via the VITE_VARIANT environment variable, with runtime switching available via the header bar.
 
-The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and Tauri. All intelligence analysis (clustering, instability scoring, surge detection) runs client-side in the browser — no backend compute dependency for core intelligence. A browser-side ML pipeline (Transformers.js) provides NER and sentiment analysis without server dependency.
+The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and Tauri. Browser-side clustering, local ML, and offline analysis run in the client; server-authoritative APIs publish CII/CRI scores, briefs, forecasts, MCP tools, and cached operational data with documented methodology and provenance.
 
 ## Live Instances
 
@@ -15,6 +15,7 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 - [Finance Monitor](https://finance.worldmonitor.app): Global markets, trading, central banks, Gulf FDI
 - [Commodity Monitor](https://commodity.worldmonitor.app): Mining, metals, energy, supply chains, commodity markets
 - [Happy Monitor](https://happy.worldmonitor.app): Positive news, breakthroughs, conservation, renewable energy
+- [Energy Monitor](https://energy.worldmonitor.app): Energy security, oil and gas, chokepoints, disruption timelines
 - [World Monitor Pro](https://worldmonitor.app/pro): AI-powered equity research, geopolitical analysis, macro intelligence
 - [Blog](https://www.worldmonitor.app/blog/): Analysis, OSINT guides, geopolitics, and market intelligence articles
 
@@ -26,12 +27,12 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 
 ## Key Features
 
-- Interactive 3D WebGL globe with deck.gl rendering and 45+ toggleable data layers (conflicts, military bases, nuclear facilities, undersea cables, pipelines, datacenters, protests, disasters, cyber threats, and more)
-- AI-powered intelligence: LLM-synthesized world briefs, hybrid threat classification, focal point detection, country instability index for 22 nations, trending keyword spike detection, and strategic posture assessment
-- 435+ curated RSS feeds across geopolitics, defense, energy, tech, and finance with domain-allowlisted proxy
+- Interactive 3D WebGL globe with deck.gl rendering and 56 map layer types (conflicts, military bases, nuclear facilities, undersea cables, pipelines, datacenters, protests, disasters, cyber threats, and more)
+- AI-powered intelligence: source-attributed world briefs, hybrid threat classification, focal point detection, CII v8 instability scores for 31 Tier-1 countries, CRI resilience scores for the 196-country public rankable universe, trending keyword spike detection, and strategic posture assessment
+- 500+ curated RSS feeds across geopolitics, defense, energy, tech, and finance with domain-allowlisted proxy
 - 8 live news video streams (Bloomberg, Sky News, Al Jazeera, Euronews, DW, France24, CNBC, Al Arabiya)
 - 19 live webcams from geopolitical hotspots across 4 regions
-- Multilingual UI supporting 21 languages with RTL support
+- Multilingual UI supporting 24 languages with RTL support
 - 7-signal macro market radar with composite BUY/CASH verdict, BTC ETF flow tracking, stablecoin peg monitoring, Fear & Greed Index
 - Country brief pages with AI-generated analysis, CII score ring, prediction markets, 7-day timeline, infrastructure exposure, and stock index
 - Geographic convergence detection — identifies when multiple signal types spike in the same area
@@ -57,12 +58,12 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 - **Backend**: 60+ Vercel Edge Functions, Railway relay server
 - **Data**: Upstash Redis caching, three-tier cache (in-memory, Redis, upstream)
 - **AI**: Groq (Llama 3.1), OpenRouter, browser-side T5 fallback
-- **Monitoring**: Sentry error tracking, data freshness tracker across 22 sources
+- **Monitoring**: Sentry error tracking, data freshness tracker across 35 source groups
 
 ## Blog Posts
 
 - [What Is World Monitor?](https://www.worldmonitor.app/blog/posts/what-is-worldmonitor-real-time-global-intelligence/): Overview of the platform, features, and use cases
-- [Five Dashboards, One Platform](https://www.worldmonitor.app/blog/posts/five-dashboards-one-platform-worldmonitor-variants/): Guide to all five dashboard variants
+- [Dashboard Variants Guide](https://www.worldmonitor.app/blog/posts/five-dashboards-one-platform-worldmonitor-variants/): Guide to the multi-variant dashboard family
 - [Track Global Conflicts in Real Time](https://www.worldmonitor.app/blog/posts/track-global-conflicts-in-real-time/): Conflict monitoring using ACLED, UCDP, and Telegram OSINT
 - [OSINT for Everyone](https://www.worldmonitor.app/blog/posts/osint-for-everyone-open-source-intelligence-democratized/): How open-source intelligence is democratized
 - [Natural Disaster Monitoring](https://www.worldmonitor.app/blog/posts/natural-disaster-monitoring-earthquakes-fires-volcanoes/): USGS earthquakes, NASA FIRMS fires, volcanic activity
@@ -72,7 +73,7 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 - [Satellite Imagery and Orbital Surveillance](https://www.worldmonitor.app/blog/posts/satellite-imagery-orbital-surveillance/): SAR, EO, and OSINT satellite data
 - [Live Webcams from Geopolitical Hotspots](https://www.worldmonitor.app/blog/posts/live-webcams-from-geopolitical-hotspots/): Real-time visual feeds from conflict zones
 - [Prediction Markets and AI Forecasting](https://www.worldmonitor.app/blog/posts/prediction-markets-ai-forecasting-geopolitics/): Polymarket integration and geopolitical forecasting
-- [World Monitor in 21 Languages](https://www.worldmonitor.app/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/): Multilingual global intelligence platform
+- [World Monitor Localization](https://www.worldmonitor.app/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/): Multilingual global intelligence platform
 - [Command Palette Search](https://www.worldmonitor.app/blog/posts/command-palette-search-everything-instantly/): Cmd+K fuzzy search across all data layers
 - [AI-Powered Intelligence Without the Cloud](https://www.worldmonitor.app/blog/posts/ai-powered-intelligence-without-the-cloud/): Local LLMs, Ollama, offline-first AI analysis
 - [Build on World Monitor](https://www.worldmonitor.app/blog/posts/build-on-worldmonitor-developer-api-open-source/): Developer API, proto definitions, open-source contribution

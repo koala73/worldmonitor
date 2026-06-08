@@ -143,14 +143,20 @@ graph TD
         Full["full.ts<br/>VARIANT_CONFIG"]
         Tech["tech.ts<br/>VARIANT_CONFIG"]
         Finance["finance.ts<br/>VARIANT_CONFIG"]
+        Commodity["commodity.ts<br/>VARIANT_CONFIG"]
+        Happy["happy.ts<br/>VARIANT_CONFIG"]
+        Energy["energy.ts<br/>VARIANT_CONFIG"]
         Base --> Full
         Base --> Tech
         Base --> Finance
+        Base --> Commodity
+        Base --> Happy
+        Base --> Energy
     end
 
     subgraph Panels["src/config/panels.ts"]
         FP["FULL_PANELS (44)"]
-        FM["FULL_MAP_LAYERS (35+)"]
+        FM["FULL_MAP_LAYERS (37 enabled of 56 layer types)"]
         FMM["FULL_MOBILE_MAP_LAYERS"]
         TP["TECH_PANELS"]
         TM["TECH_MAP_LAYERS"]
@@ -162,6 +168,9 @@ graph TD
     Switch -->|"full"| FP
     Switch -->|"tech"| TP
     Switch -->|"finance"| FiP
+    Switch -->|"commodity"| Commodity
+    Switch -->|"happy"| Happy
+    Switch -->|"energy"| Energy
 
     Switch --> DefaultPanels["DEFAULT_PANELS"]
     Switch --> DefaultLayers["DEFAULT_MAP_LAYERS"]
@@ -180,37 +189,43 @@ interface VariantConfig {
 }
 ```
 
-Each variant file (full.ts, tech.ts, finance.ts) exports a `VARIANT_CONFIG` conforming to this interface. The shared base re-exports common constants: `API_URLS`, `REFRESH_INTERVALS`, `STORAGE_KEYS`, `MONITOR_COLORS`, `SECTORS`, `COMMODITIES`, `MARKET_SYMBOLS`, `UNDERSEA_CABLES`, and `AI_DATA_CENTERS`.
+Each variant file (full.ts, tech.ts, finance.ts, commodity.ts, happy.ts, energy.ts) exports a `VARIANT_CONFIG` conforming to this interface. The shared base re-exports common constants: `API_URLS`, `REFRESH_INTERVALS`, `STORAGE_KEYS`, `MONITOR_COLORS`, `SECTORS`, `COMMODITIES`, `MARKET_SYMBOLS`, `UNDERSEA_CABLES`, and `AI_DATA_CENTERS`.
 
-At build time, Vite's tree-shaking eliminates the unused variant configs. If `VITE_VARIANT=tech`, the full and finance panel definitions are dead-code-eliminated from the production bundle.
+At build time, Vite's tree-shaking eliminates unused variant configs. If `VITE_VARIANT=tech`, the non-tech panel definitions are dead-code-eliminated from the production bundle.
 
-At runtime, src/config/panels.ts selects the active config via ternary expressions:
+At runtime, src/config/panels.ts selects the active panel set from
+`VARIANT_DEFAULTS` and applies display overrides through
+`getEffectivePanelConfig()`:
 
 ```typescript
-export const DEFAULT_PANELS = SITE_VARIANT === 'tech'
-  ? TECH_PANELS
-  : SITE_VARIANT === 'finance'
-    ? FINANCE_PANELS
-    : FULL_PANELS;
+export const DEFAULT_PANELS: Record<string, PanelConfig> = Object.fromEntries(
+  (VARIANT_DEFAULTS[SITE_VARIANT] ?? VARIANT_DEFAULTS['full'] ?? []).map(key =>
+    [key, getEffectivePanelConfig(key, SITE_VARIANT)]
+  )
+);
 ```
 
-The same pattern applies to `DEFAULT_MAP_LAYERS` and `MOBILE_DEFAULT_MAP_LAYERS`.
+The map layer exports still use explicit variant branches for
+`DEFAULT_MAP_LAYERS` and `MOBILE_DEFAULT_MAP_LAYERS`.
 
 ### Panel and Layer Counts
 
 | Variant | Panels | Desktop Map Layers | Mobile Map Layers |
 |---|---|---|---|
-| `full` | 44 | 35+ | Reduced subset |
+| `full` | 44 | 37 enabled of 56 layer types | Reduced subset |
 | `tech` | ~20 | Tech-focused layers (cloud regions, startup hubs, accelerators) | Minimal |
 | `finance` | ~18 | Finance-focused layers (stock exchanges, financial centres, central banks) | Minimal |
+| `commodity` | commodity-focused | Commodity-focused layers (mines, ports, commodity hubs) | Minimal |
+| `happy` | positive-news focused | Constructive-news layers | Minimal |
+| `energy` | energy-focused | Energy infrastructure, chokepoints, policy, and disruption layers | Minimal |
 
-The `MapLayers` interface contains 35+ boolean toggle keys including: `conflicts`, `bases`, `cables`, `pipelines`, `hotspots`, `ais`, `nuclear`, `irradiators`, `sanctions`, `weather`, `economic`, `waterways`, `outages`, `cyberThreats`, `datacenters`, `protests`, `flights`, `military`, `natural`, `spaceports`, `minerals`, `fires`, `ucdpEvents`, `displacement`, `climate`, `startupHubs`, `cloudRegions`, `accelerators`, `techHQs`, `techEvents`, `stockExchanges`, `financialCenters`, `centralBanks`, `commodityHubs`, and `gulfInvestments`.
+The `MapLayers` interface contains 56 layer-definition keys, with variant defaults deciding which toggles are enabled at startup.
 
 ---
 
 ## 3. Data Flow: RSS Ingestion to Display
 
-The core intelligence pipeline transforms raw RSS feeds into clustered, classified, and scored events displayed across panels. This pipeline runs entirely in the browser.
+The browser intelligence pipeline transforms raw RSS feeds into clustered and classified events displayed across panels. Server-authoritative endpoints publish CII/CRI scores, source-attributed briefs, forecasts, MCP tools, and cached operational data where those contracts are documented.
 
 ```mermaid
 sequenceDiagram
@@ -405,7 +420,7 @@ The `SignalAggregator` class maintains a rolling window of signals and a `WeakMa
 
 ## 5. Map Rendering Pipeline
 
-The map system combines a 2D vector tile base map (MapLibre GL JS) with a 3D WebGL overlay (deck.gl) for globe rendering, supporting 35+ toggleable data layers.
+The map system combines a 2D vector tile base map (MapLibre GL JS) with a 3D WebGL overlay (deck.gl) for globe rendering, supporting 56 layer-definition keys with variant-specific defaults.
 
 ```mermaid
 graph TD
@@ -417,7 +432,7 @@ graph TD
     end
 
     subgraph LayerConfig["Layer Configuration"]
-        Defaults["FULL_MAP_LAYERS<br/>(35+ boolean toggles)"]
+        Defaults["FULL_MAP_LAYERS<br/>(37 enabled of 56 layer types)"]
         UserPref["localStorage overrides<br/>(worldmonitor-layers)"]
         URLState["URL state overrides"]
         Variant["Variant-specific defaults"]

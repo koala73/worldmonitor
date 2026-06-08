@@ -318,4 +318,60 @@ describe('CII docs drift guards', () => {
       'algorithms Strategic Risk section must not reintroduce old four-band risk semantics',
     );
   });
+
+  it('public LLM and press surfaces do not retain stale CII, CRI, or platform-count claims', () => {
+    const surfaces = [
+      { label: 'public/llms.txt', text: readFileSync(resolve(root, 'public', 'llms.txt'), 'utf8') },
+      { label: 'public/llms-full.txt', text: readFileSync(resolve(root, 'public', 'llms-full.txt'), 'utf8') },
+      { label: 'docs/PRESS_KIT.md', text: readFileSync(resolve(root, 'docs', 'PRESS_KIT.md'), 'utf8') },
+    ];
+
+    for (const surface of surfaces) {
+      assert.doesNotMatch(
+        surface.text,
+        /\bCountry Instability Index\b[\s\S]{0,240}\b22\s+(?:monitored\s+)?(?:nations|countries)\b/i,
+        `${surface.label} must not retain the old 22-country CII count`,
+      );
+      assert.doesNotMatch(
+        surface.text,
+        /Baseline risk\s*\(40%\)[\s\S]{0,220}(?:Social unrest|unrest events)\s*\(20%\)[\s\S]{0,220}(?:Security events|security activity)\s*\(20%\)[\s\S]{0,220}Information velocity\s*\(20%\)/i,
+        `${surface.label} must not publish the old 40/20/20/20 CII shortcut as current methodology`,
+      );
+      assert.doesNotMatch(
+        surface.text,
+        /\b(?:150|435)\+\s+(?:curated\s+)?(?:RSS\s+)?(?:news\s+)?feeds\b|\b(?:35|45|50)\+\s+(?:interactive\s+)?(?:map\s+)?(?:data\s+)?layers\b|\b(?:14|19|21)\s+languages\b/i,
+        `${surface.label} must not retain stale feed, layer, or language counts`,
+      );
+    }
+
+    const llmsBrief = surfaces[0]!.text;
+    const llmsFull = surfaces[1]!.text;
+    const pressKit = surfaces[2]!.text;
+    const communityGuide = readFileSync(resolve(root, 'docs', 'COMMUNITY-PROMOTION-GUIDE.md'), 'utf8');
+
+    assert.match(llmsBrief, /CII v8[\s\S]{0,80}31 Tier-1 countries/i);
+    assert.match(llmsBrief, /CRI[\s\S]{0,120}196-country public rankable universe/i);
+    assert.match(llmsBrief, /six specialized variants/i);
+    assert.match(llmsBrief, /56 map layer types/i);
+    assert.match(llmsBrief, /500\+ curated RSS feeds/i);
+    assert.match(llmsBrief, /24 languages/i);
+    assert.match(llmsFull, /Country Instability Index \(CII v8\)[\s\S]{0,240}31 Tier-1 countries/i);
+    assert.match(llmsFull, /eventScore = unrest \* 0\.25 \+ conflict \* 0\.30 \+ security \* 0\.20 \+ information \* 0\.25/i);
+    assert.match(llmsFull, /Country Resilience Index \(CRI\)[\s\S]{0,160}196-country public rankable universe/i);
+    assert.match(llmsFull, /six specialized variants/i);
+    assert.match(llmsFull, /56 map layer types/i);
+    assert.match(llmsFull, /500\+ RSS feeds/i);
+    assert.match(llmsFull, /24 languages/i);
+    assert.match(pressKit, /server-authoritative CII v8[\s\S]{0,120}31 Tier-1 countries/i);
+    assert.match(pressKit, /Country Resilience Index[\s\S]{0,140}196-country public rankable universe/i);
+    assert.match(pressKit, /six thematic variants/i);
+    assert.match(pressKit, /56 map layer types/i);
+    assert.match(pressKit, /500\+ RSS feeds/i);
+    assert.match(pressKit, /24 \(including RTL\)/i);
+    assert.match(communityGuide, /six specialized views/i);
+    assert.doesNotMatch(
+      `${llmsFull}\n${communityGuide}`,
+      /Tri-Variant Build System|Three Variant Dashboards|three specialized variants|tri-variant architecture|three specialized views/i,
+    );
+  });
 });

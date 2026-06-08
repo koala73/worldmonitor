@@ -19,13 +19,16 @@ Thank you for helping spread the word about World Monitor! This guide provides t
 | [worldmonitor.app](https://worldmonitor.app) | Main dashboard — geopolitics, military, conflicts |
 | [tech.worldmonitor.app](https://tech.worldmonitor.app) | Tech variant — startups, AI/ML, cybersecurity |
 | [finance.worldmonitor.app](https://finance.worldmonitor.app) | Finance variant — markets, exchanges, central banks |
+| [commodity.worldmonitor.app](https://commodity.worldmonitor.app) | Commodity variant — mining, metals, energy, supply chains |
+| [happy.worldmonitor.app](https://happy.worldmonitor.app) | Happy variant — positive news, breakthroughs, conservation |
+| [energy.worldmonitor.app](https://energy.worldmonitor.app) | Energy variant — oil, gas, chokepoints, energy security |
 | [GitHub](https://github.com/koala73/worldmonitor) | Source code (AGPL-3.0) |
 
 ---
 
 ## Must-See Features (Top 10)
 
-### 1. Interactive Globe with 40+ Data Layers
+### 1. Interactive Globe with 56 Layer Types
 
 The centerpiece. A WebGL-accelerated globe (deck.gl) with toggleable layers for conflicts, military bases, nuclear facilities, undersea cables, pipelines, satellite fires, protests, cyber threats, and more. Zoom in and the detail layers progressively reveal.
 
@@ -43,9 +46,9 @@ Click any country on the map for a full-page intelligence brief: instability sco
 
 **Show**: Click a country (e.g., Japan, Ukraine, or Iran) → full dossier page.
 
-### 4. 19 Languages Support
+### 4. 24 Languages Support
 
-Full UI in 19 languages including Japanese. Regional news feeds auto-adapt — Japanese users see NHK World, Nikkei Asia, and Japan-relevant sources. Language bundles are lazy-loaded for fast performance.
+Full UI in 24 languages including Japanese. Regional news feeds auto-adapt — Japanese users see NHK World, Nikkei Asia, and Japan-relevant sources. Language bundles are lazy-loaded for fast performance.
 
 **Show**: Switch language to Japanese in the settings. Note how feeds change.
 
@@ -55,11 +58,11 @@ Real-time ADS-B military flight tracking and AIS naval vessel monitoring. Strate
 
 **Show**: Enable the Military layer. Show the Strategic Posture panel.
 
-### 6. Three Variant Dashboards
+### 6. Six Variant Dashboards
 
-One codebase, three specialized views — switch between World (geopolitics), Tech (startups/AI), and Finance (markets/exchanges) with one click in the header bar.
+One codebase, six specialized views — switch between World (geopolitics), Tech (startups/AI), Finance (markets/exchanges), Commodity (resources/supply chains), Happy (positive global trends), and Energy (energy security) with one click in the header bar.
 
-**Show**: Click the variant switcher (🌍 WORLD | 💻 TECH | 📈 FINANCE).
+**Show**: Click the variant switcher and cycle through World, Tech, Finance, Commodity, Happy, and Energy.
 
 ### 7. Market & Crypto Intelligence
 
@@ -128,7 +131,7 @@ Run AI summarization entirely on your own hardware — no API keys, no cloud, no
 ### For Tech Audience
 
 - "Built with TypeScript, Vite, deck.gl, MapLibre GL, Tauri"
-- "40+ WebGL data layers running at 60fps"
+- "56 WebGL map layer types running at 60fps"
 - "ONNX Runtime Web for browser-based ML inference (sentiment, NER, summarization)"
 - "Local LLM support — plug in Ollama or LM Studio, zero cloud dependency"
 - "Open source under AGPL-3.0 — contribute on GitHub"
@@ -158,7 +161,7 @@ Run AI summarization entirely on your own hardware — no API keys, no cloud, no
 | v2.5.0 | Ollama/LM Studio local LLM support, settings split into LLMs + API Keys tabs, keychain vault consolidation |
 | v2.4.1 | Ultra-wide layout (panels wrap around map on 2000px+ screens) |
 | v2.4.0 | Live webcams from 19 geopolitical hotspots, 4 regions |
-| v2.3.9 | Full i18n: 19 languages including Japanese, Arabic (RTL), Chinese |
+| v2.3.9 | Full i18n foundation; current builds support 24 languages including Japanese, Arabic (RTL), Chinese |
 | v2.3.8 | Finance variant with 29 exchanges, Gulf FDI investments |
 | v2.3.7 | Light/dark theme system, UCDP/UNHCR/Climate panels |
 | v2.3.6 | Desktop app with Tauri, OS keychain, auto-updates |
@@ -172,7 +175,7 @@ Run AI summarization entirely on your own hardware — no API keys, no cloud, no
 - **Tagline**: "Real-time global intelligence dashboard"
 - **License**: AGPL-3.0 (free and open source)
 - **Creator**: Credit "World Monitor by Elie Habib" or link to the GitHub repo
-- **Variants**: You can mention all three (World/Tech/Finance) or focus on the main one
+- **Variants**: You can mention all six (World/Tech/Finance/Commodity/Happy/Energy) or focus on the main one
 - **No login required**: Anyone can use the web app immediately — no signup, no paywall
 
 ---
