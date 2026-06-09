@@ -1991,16 +1991,21 @@ export class DeckGLMap {
 
     // Webcam layer (server-side clustered markers)
     if (mapLayers.webcams && this.webcamData.length > 0) {
-      layers.push(new ScatterplotLayer<WebcamEntry | WebcamCluster>({
-        id: 'webcam-layer',
-        data: this.webcamData,
-        getPosition: (d) => [d.lng, d.lat],
-        getRadius: (d) => ('count' in d ? Math.min(8 + d.count * 0.5, 24) : 6),
-        getFillColor: (d) => ('count' in d ? [0, 212, 255, 180] : [255, 215, 0, 200]) as [number, number, number, number],
-        radiusUnits: 'pixels',
-        pickable: true,
-      }));
-    }
+  layers.push(new ScatterplotLayer<WebcamEntry | WebcamCluster>({
+    id: 'webcam-layer',
+    data: this.webcamData,
+    getPosition: (d) => [d.lng, d.lat],
+    getRadius: (d) => ('count' in d ? Math.min(8 + d.count * 0.5, 24) : 6),
+    getFillColor: (d) => ('count' in d ? [0, 212, 255, 180] : [255, 215, 0, 200]) as [number, number, number, number],
+    radiusUnits: 'pixels',
+    pickable: true,
+    onClick: (info) => {
+      if (info.object) {
+        this.showWebcamClickPopup(info.object as WebcamEntry, info.x, info.y);
+      }
+    },
+  }));
+}
 
     // News geo-locations (always shown if data exists)
     if (this.newsLocations.length > 0) {
