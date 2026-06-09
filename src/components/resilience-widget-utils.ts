@@ -1,4 +1,5 @@
 import type { ResilienceScoreResponse } from '@/services/resilience';
+import { isJapaneseLocale } from '@/utils/locale';
 
 // Client-side mirror of the server-side authoritative set
 // (`RESILIENCE_RETIRED_DIMENSIONS` in
@@ -195,7 +196,7 @@ export function getResilienceTrendArrow(trend: string): string {
 }
 
 export function getResilienceDomainLabel(domainId: string): string {
-  const ja = typeof document !== 'undefined' && document?.documentElement?.lang === 'ja';
+  const ja = isJapaneseLocale();
   const labels = ja ? DOMAIN_LABELS_JA : DOMAIN_LABELS_EN;
   return labels[domainId] ?? domainId;
 }
@@ -212,7 +213,7 @@ export function formatResilienceConfidence(data: ResilienceScoreResponse): strin
   // low-confidence; the lowConfidence label is more specific
   // (sparse-data) and more actionable (will fix when more data
   // arrives) so it wins the badge.
-  const ja = typeof document !== 'undefined' && document?.documentElement?.lang === 'ja';
+  const ja = isJapaneseLocale();
   if (data.lowConfidence) return ja ? '信頼度低め - データ不足' : 'Low confidence — sparse data';
   if (data.headlineEligible === false) return ja ? '見出しランキング対象外' : 'Outside headline ranking';
   // Exclude RETIRED dimensions (fuelStockDays, post-PR-3) AND
@@ -248,7 +249,7 @@ export function formatResilienceConfidence(data: ResilienceScoreResponse): strin
   const avgCoverage = coverages.length > 0
     ? Math.round((coverages.reduce((s, c) => s + c, 0) / coverages.length) * 100)
     : 0;
-  return `Coverage ${avgCoverage}% ✓`;
+  return ja ? `カバレッジ ${avgCoverage}% ✓` : `Coverage ${avgCoverage}% ✓`;
 }
 
 export function formatResilienceChange30d(change30d: number): string {
@@ -450,7 +451,7 @@ const STALENESS_LABELS_EN: Record<Exclude<DimensionStaleness, null>, string> = {
 };
 
 export function getImputationClassLabel(c: DimensionImputationClass): string {
-  const ja = typeof document !== 'undefined' && document?.documentElement?.lang === 'ja';
+  const ja = isJapaneseLocale();
   if (!c) return ja ? '補完種別は不明です' : 'Imputation class unknown';
   return (ja ? IMPUTATION_CLASS_LABELS_JA : IMPUTATION_CLASS_LABELS_EN)[c];
 }
@@ -461,7 +462,7 @@ export function getImputationClassIcon(c: DimensionImputationClass): string {
 }
 
 export function getStalenessLabel(s: DimensionStaleness): string {
-  const ja = typeof document !== 'undefined' && document?.documentElement?.lang === 'ja';
+  const ja = isJapaneseLocale();
   if (!s) return ja ? '鮮度は不明です' : 'Freshness unknown';
   return (ja ? STALENESS_LABELS_JA : STALENESS_LABELS_EN)[s];
 }

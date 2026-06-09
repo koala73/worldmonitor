@@ -25,8 +25,9 @@ import type {
 } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import type { NewsItem } from '@/types';
 import { ENTITY_REGISTRY } from '../config/entities.ts';
+import { isJapaneseLocale } from '@/utils/locale';
 
-function isJa(): boolean { return typeof document !== 'undefined' && document?.documentElement?.lang === 'ja'; }
+function isJa(): boolean { return isJapaneseLocale(); }
 
 export interface IdeaCandidate {
   symbol: string;
@@ -217,14 +218,11 @@ function normalizeWatchlistSymbols(symbols: string[] | undefined): Set<string> {
 }
 
 function translateOverlayDirection(value: string | null | undefined): string {
-  // Real upstream values use enum-style strings like 'NET_INFLOW' / 'NET_OUTFLOW'
-  // (see scoring at netDirection.includes('INFLOW')), so match by substring rather
-  // than exact equality — exact 'inflow' cases never matched 'net_inflow'.
-  const v = (value ?? '').toLowerCase();
-  if (v.includes('inflow')) return isJa() ? '流入優勢' : 'Net inflow';
-  if (v.includes('outflow')) return isJa() ? '流出優勢' : 'Net outflow';
-  if (v.includes('mixed')) return isJa() ? '方向感まちまち' : 'Mixed';
-  if (v.includes('neutral')) return isJa() ? '中立' : 'Neutral';
+  const v = (value ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (v === 'inflow' || v === 'net_inflow') return isJa() ? '流入優勢' : 'Net inflow';
+  if (v === 'outflow' || v === 'net_outflow') return isJa() ? '流出優勢' : 'Net outflow';
+  if (v === 'mixed' || v === 'net_mixed') return isJa() ? '方向感まちまち' : 'Mixed';
+  if (v === 'neutral' || v === 'net_neutral') return isJa() ? '中立' : 'Neutral';
   return value || (isJa() ? '不明' : 'Unknown');
 }
 

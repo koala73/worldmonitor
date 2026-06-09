@@ -1560,7 +1560,7 @@
       "signalTypesEvents": "{{types}} signal types • {{events}} events",
       "newsSignals": "{{news}} news • {{signals}} signals",
       "cloudTranslationLabel": "Cloud translation",
-      "cloudTranslationDesc": "Send article text to the Google translation endpoint to translate it. Turn off to stop external egress and use local translation instead."
+      "cloudTranslationDesc": "While on, sends article text to external translation services (including Google's public translate endpoint) to translate it. Turn off to stop sending text to external translation; on-device translation works only when the Browser Local Model is enabled."
     },
     "settings": {
       "dataManagementLabel": "Data Management",

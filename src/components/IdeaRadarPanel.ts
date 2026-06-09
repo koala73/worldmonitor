@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import { h, replaceChildren } from '@/utils/dom-utils';
-import { getCurrentLanguage, t } from '@/services/i18n';
+import { t } from '@/services/i18n';
+import { isJapaneseLocale } from '@/utils/locale';
 import type { MarketData, NewsItem } from '@/types';
 import type { PredictionMarket } from '@/services/prediction';
 import { fetchMarketImplications } from '@/services/market-implications';
@@ -1069,7 +1070,7 @@ export class IdeaRadarPanel extends Panel {
   }
 
   private isJapanese(): boolean {
-    return getCurrentLanguage() === 'ja';
+    return isJapaneseLocale();
   }
 
   private translateIdeaText(text: string): string {

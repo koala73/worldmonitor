@@ -74,7 +74,7 @@ test('getResilienceDomainLabel keeps the deep-dive shorthand labels stable', () 
 });
 
 test('formatResilienceConfidence shows sparse-data copy when low confidence is set', () => {
-  assert.equal(formatResilienceConfidence(baseResponse), 'Coverage 90% ✓');
+  assert.equal(formatResilienceConfidence(baseResponse), 'カバレッジ 90% ✓');
   assert.equal(
     formatResilienceConfidence({ ...baseResponse, lowConfidence: true }),
     '信頼度低め - データ不足',
@@ -110,7 +110,7 @@ test('formatResilienceConfidence: headlineEligible=true is the silent normal cas
   // trip the new false-branch.
   assert.equal(
     formatResilienceConfidence({ ...baseResponse, headlineEligible: true }),
-    'Coverage 90% ✓',
+    'カバレッジ 90% ✓',
   );
 });
 
@@ -150,7 +150,7 @@ test('formatResilienceConfidence excludes retired dimensions by ID (not by cover
   // If fuelStockDays were included: (0.9 + 0 + 0.8 + 0) / 4 = 0.425 → 43%.
   // If we filtered by coverage=0: (0.9 + 0.8) / 2 = 0.85 → 85% (the
   // over-aggressive filter that would mask genuine sparsity).
-  assert.equal(formatResilienceConfidence(withRetired), 'Coverage 57% ✓');
+  assert.equal(formatResilienceConfidence(withRetired), 'カバレッジ 57% ✓');
 });
 
 test('formatResilienceChange30d preserves explicit sign formatting', () => {

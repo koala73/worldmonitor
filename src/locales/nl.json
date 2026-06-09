@@ -1356,7 +1356,9 @@
       "tonePositive": "Positief",
       "overall": "Algemeen: {{tone}}",
       "signalTypesEvents": "{{types}} signaaltypen • {{events}} gebeurtenissen",
-      "newsSignals": "{{news}} nieuws • {{signals}} signalen"
+      "newsSignals": "{{news}} nieuws • {{signals}} signalen",
+      "cloudTranslationLabel": "Cloud translation",
+      "cloudTranslationDesc": "While on, sends article text to external translation services (including Google's public translate endpoint) to translate it. Turn off to stop sending text to external translation; on-device translation works only when the Browser Local Model is enabled."
     },
     "techHubs": {
       "infoTooltip": "<strong>Tech Hub-activiteit</strong><br>Toont tech-hubs met de meeste nieuwsactiviteit.<br><br><em>Activiteitsniveaus:</em><br>• <span style=\"color: {{highColor}}\">Hoog</span> — Breaking news of 50+ score<br>• <span style=\"color: {{elevatedColor}}\">Verhoogd</span> — Score 20-49<br>• <span style=\"color: {{lowColor}}\">Laag</span> — Score lager dan 20<br><br>Klik op een hub om naar de locatie ervan te zoomen.",

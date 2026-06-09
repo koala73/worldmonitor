@@ -1346,7 +1346,9 @@
       "tonePositive": "إيجابي",
       "overall": "إجمالي: {{tone}}",
       "signalTypesEvents": "{{types}} أنواع إشارات • {{events}} أحداث",
-      "newsSignals": "{{news}} أخبار • {{signals}} إشارات"
+      "newsSignals": "{{news}} أخبار • {{signals}} إشارات",
+      "cloudTranslationLabel": "Cloud translation",
+      "cloudTranslationDesc": "While on, sends article text to external translation services (including Google's public translate endpoint) to translate it. Turn off to stop sending text to external translation; on-device translation works only when the Browser Local Model is enabled."
     },
     "cascade": {
       "noImpacts": "لم يتم رصد تأثيرات على الدول",

@@ -1394,7 +1394,9 @@
       "tonePositive": "Pozitiv",
       "overall": "Overall: {{tone}}",
       "signalTypesEvents": "{{types}} tipuri de semnale • {{events}} evenimente",
-      "newsSignals": "{{news}} știri • {{signals}} semnale"
+      "newsSignals": "{{news}} știri • {{signals}} semnale",
+      "cloudTranslationLabel": "Cloud translation",
+      "cloudTranslationDesc": "While on, sends article text to external translation services (including Google's public translate endpoint) to translate it. Turn off to stop sending text to external translation; on-device translation works only when the Browser Local Model is enabled."
     },
     "settings": {
       "dataManagementLabel": "Gestionarea datelor",

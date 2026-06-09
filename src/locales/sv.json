@@ -1356,7 +1356,9 @@
       "tonePositive": "Positiv",
       "overall": "Totalt: {{tone}}",
       "signalTypesEvents": "{{types}} signaltyper • {{events}} händelser",
-      "newsSignals": "{{news}} nyheter • {{signals}} signaler"
+      "newsSignals": "{{news}} nyheter • {{signals}} signaler",
+      "cloudTranslationLabel": "Cloud translation",
+      "cloudTranslationDesc": "While on, sends article text to external translation services (including Google's public translate endpoint) to translate it. Turn off to stop sending text to external translation; on-device translation works only when the Browser Local Model is enabled."
     },
     "techHubs": {
       "infoTooltip": "<strong>Teknisk hubbaktivitet</strong><br>Visar tekniska nav med mest nyhetsaktivitet.<br><br><em>Aktivitetsnivåer:</em><br>• <span style=\"color: {{highColor}}\">Hög</span> — Nyheter från 50+ PH_• 50+ stil: {{elevatedColor}}\">Höjd</span> — Poäng 20-49<br>• <span style=\"color: {{lowColor}}\">Låg</span> — Poäng under 20<br><br>Klicka på ett nav för att zooma till dess plats.",

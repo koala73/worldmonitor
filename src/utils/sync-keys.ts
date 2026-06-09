@@ -24,6 +24,7 @@ export const CLOUD_SYNC_KEYS = [
   // full variant silently runs the local ML worker (HuggingFace model
   // downloads) on every page load, but switching to the tech variant shows
   // the toggle as off because tech-variant localStorage is fresh.
+  'wm-ai-flow-cloud-translation',
   'wm-ai-flow-browser-model',
   'wm-headline-memory',
   'wm-analysis-frameworks',

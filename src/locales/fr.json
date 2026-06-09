@@ -1346,7 +1346,9 @@
       "tonePositive": "Positif",
       "overall": "Général : {{tone}}",
       "signalTypesEvents": "{{types}} types de signaux • {{events}} événements",
-      "newsSignals": "{{news}} actualités • {{signals}} signaux"
+      "newsSignals": "{{news}} actualités • {{signals}} signaux",
+      "cloudTranslationLabel": "Cloud translation",
+      "cloudTranslationDesc": "While on, sends article text to external translation services (including Google's public translate endpoint) to translate it. Turn off to stop sending text to external translation; on-device translation works only when the Browser Local Model is enabled."
     },
     "settings": {
       "dataManagementLabel": "Gestion des données",

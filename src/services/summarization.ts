@@ -197,6 +197,9 @@ async function tryPublicTranslate(
     // ユーザーは設定 UI の cloudTranslation トグルで無効化可能。
     if (!getAiFlowSettings().cloudTranslation) return null;
 
+    // Avoid placing very large article text in a GET URL (log exposure / URL length).
+    if (text.length > 5000) return null;
+
     const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(targetLang)}&dt=t&q=${encodeURIComponent(text)}`;
     const response = await fetch(url, { method: 'GET' });
     if (!response.ok) return null;
@@ -382,6 +385,13 @@ export async function translateText(
   onProgress?: ProgressCallback
 ): Promise<string | null> {
   if (!text) return null;
+
+  if (!getAiFlowSettings().cloudTranslation) {
+    // Privacy gate: when cloud translation is disabled, do not send article text
+    // to ANY remote translation (LLM providers or Google public endpoint).
+    // Fall back to on-device translation only (works when Browser Local Model is enabled).
+    return tryBrowserTranslate(text, targetLang);
+  }
 
   const totalSteps = API_PROVIDERS.length;
   for (const [i, providerDef] of API_PROVIDERS.entries()) {

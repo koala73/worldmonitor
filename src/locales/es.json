@@ -1700,7 +1700,9 @@
       "tonePositive": "Positivo",
       "overall": "General: {{tone}}",
       "signalTypesEvents": "{{types}} tipos de señal • {{events}} eventos",
-      "newsSignals": "{{news}} noticias • {{signals}} señales"
+      "newsSignals": "{{news}} noticias • {{signals}} señales",
+      "cloudTranslationLabel": "Cloud translation",
+      "cloudTranslationDesc": "While on, sends article text to external translation services (including Google's public translate endpoint) to translate it. Turn off to stop sending text to external translation; on-device translation works only when the Browser Local Model is enabled."
     },
     "export": {
       "exportData": "Exportar datos"

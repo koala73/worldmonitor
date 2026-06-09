@@ -1,3 +1,5 @@
+import { isJapaneseLocale } from '@/utils/locale';
+
 export interface PersonalPortfolioHolding {
   ticker: string;
   name: string;
@@ -317,7 +319,7 @@ export async function persistIdeaRadarEvaluationLog(
 }
 
 function isJapanese(): boolean {
-  return typeof document !== 'undefined' && document?.documentElement?.lang === 'ja';
+  return isJapaneseLocale();
 }
 
 function buildThemeSignals(data: PersonalPortfolioExport): PortfolioImpactTheme[] {

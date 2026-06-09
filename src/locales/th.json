@@ -1394,7 +1394,9 @@
       "tonePositive": "บวก",
       "overall": "โดยรวม: {{tone}}",
       "signalTypesEvents": "{{types}} ประเภทสัญญาณ • {{events}} เหตุการณ์",
-      "newsSignals": "{{news}} ข่าว • {{signals}} สัญญาณ"
+      "newsSignals": "{{news}} ข่าว • {{signals}} สัญญาณ",
+      "cloudTranslationLabel": "Cloud translation",
+      "cloudTranslationDesc": "While on, sends article text to external translation services (including Google's public translate endpoint) to translate it. Turn off to stop sending text to external translation; on-device translation works only when the Browser Local Model is enabled."
     },
     "settings": {
       "dataManagementLabel": "การจัดการข้อมูล",

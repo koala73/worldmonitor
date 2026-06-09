@@ -1469,7 +1469,7 @@
       "signalTypesEvents": "{{types}} シグナルタイプ • {{events}} イベント",
       "newsSignals": "{{news}} ニュース • {{signals}} シグナル",
       "cloudTranslationLabel": "クラウド翻訳",
-      "cloudTranslationDesc": "記事テキストをGoogle翻訳エンドポイントへ送信して日本語化します。オフにすると外部送信を止め、ローカル翻訳に切り替えます。"
+      "cloudTranslationDesc": "オンの間、記事テキストを外部翻訳サービス（Google公開翻訳エンドポイント等）へ送信して翻訳します。オフにすると外部翻訳への送信を停止します（ブラウザローカルモデル有効時のみ端末内で翻訳）。"
     },
     "settings": {
       "dataManagementLabel": "データ管理",

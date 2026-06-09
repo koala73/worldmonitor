@@ -1394,7 +1394,9 @@
       "tonePositive": "긍정적",
       "overall": "전체: {{tone}}",
       "signalTypesEvents": "{{types}}개 신호 유형 • {{events}}개 이벤트",
-      "newsSignals": "{{news}}개 뉴스 • {{signals}}개 신호"
+      "newsSignals": "{{news}}개 뉴스 • {{signals}}개 신호",
+      "cloudTranslationLabel": "Cloud translation",
+      "cloudTranslationDesc": "While on, sends article text to external translation services (including Google's public translate endpoint) to translate it. Turn off to stop sending text to external translation; on-device translation works only when the Browser Local Model is enabled."
     },
     "settings": {
       "dataManagementLabel": "데이터 관리",
