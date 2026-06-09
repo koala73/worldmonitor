@@ -22,7 +22,7 @@ function section(doc, heading) {
 }
 
 function codeBlock(example, label) {
-  const match = example.match(new RegExp(`\\*\\*${label}:\\*\\*\\n\\n\`\`\`json\\n([\\s\\S]*?)\\n\`\`\``));
+  const match = example.match(new RegExp(`\\*\\*${label}:\\*\\*[^\\n]*\\n\\n\`\`\`json\\n([\\s\\S]*?)\\n\`\`\``));
   assert.ok(match, `missing ${label} JSON code block`);
   return JSON.parse(match[1]);
 }
@@ -112,7 +112,7 @@ describe('docs/mcp-jmespath.mdx fixture-backed examples', () => {
       const example = section(doc, `### ${number}. ${title}`);
       const actual = jmespath.search(fixture, docJmespath(example));
 
-      assert.deepEqual(projectedResponse(example), actual);
+      assert.deepEqual(actual, projectedResponse(example));
     });
   }
 
