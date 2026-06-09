@@ -848,6 +848,7 @@ describe('news digest methodology parity', () => {
   });
 
   it('documents brief Redis slot keys and supported digest cadences', () => {
+    const latestBriefApiHeader = latestBriefApiSrc.match(/^\/\*\*[\s\S]*?\*\//)?.[0] ?? '';
     assert.ok(
       seedDigestSrc.includes('const key = `brief:${userId}:${issueSlot}`') &&
         seedDigestSrc.includes('const latestPointerKey = `brief:latest:${userId}`'),
@@ -858,6 +859,26 @@ describe('news digest methodology parity', () => {
         latestBriefApiSrc.includes('issueSlot,') &&
         latestBriefApiSrc.includes("issueDate: requestedSlot.slice(0, 10)"),
       'latest-brief API must still expose issueDate plus issueSlot where a slot is known',
+    );
+    assert.match(
+      latestBriefApiHeader,
+      /\{ status: 'ready', issueDate, issueSlot, dateLong, greeting,\s*\*\s+threadCount, magazineUrl \}/,
+      'latest-brief header must document the ready response shape including status and issueSlot',
+    );
+    assert.match(
+      latestBriefApiHeader,
+      /\{ status: 'composing', issueDate, issueSlot\? \}/,
+      'latest-brief header must document the composing response shape including issueDate and optional issueSlot',
+    );
+    assert.match(
+      latestBriefApiHeader,
+      /current\/requested slot/,
+      'latest-brief header must describe the current/requested slot rather than a strictly daily brief',
+    );
+    assert.doesNotMatch(
+      latestBriefApiHeader,
+      /\{ issueDate, dateLong, greeting, threadCount, magazineUrl \}|\{ status: 'composing' \}|today's brief/,
+      'latest-brief header must not retain stale response-shape or daily-only wording',
     );
     assert.ok(
       briefShareUrlApiSrc.includes('brief:latest:{userId}') &&

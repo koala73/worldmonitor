@@ -193,4 +193,23 @@ describe('scenario docs match worker scope and impact math', () => {
     assert.match(apiDoc, /depth `> 100` is rejected/);
     assert.match(scenarioDoc, /already above 100/);
   });
+
+  it('documents scenario result template name as a derived key, not a display name', () => {
+    assert.match(
+      worker,
+      /name:\s*template\.affectedChokepointIds\.join\('\+'\)\s*\|\|\s*'tariff_shock'/,
+      'scenario worker must keep deriving result.template.name from affected chokepoint ids',
+    );
+
+    for (const [label, text] of [
+      ['scenario engine doc', scenarioDoc],
+      ['API scenario doc', apiDoc],
+      ['GetScenarioStatus proto', statusProto],
+      ['ScenarioService OpenAPI', scenarioOpenApi],
+      ['bundled OpenAPI', bundledOpenApi],
+    ]) {
+      assert.match(text, /affectedChokepointIds\.join\('\+'\)|affected_chokepoint_ids with `\+`|hormuz_strait|tariff_shock/, `${label} must describe template.name as a derived key`);
+      assert.doesNotMatch(text, /selected template'?s display name|Display name \(worker derives this from affected_chokepoint_ids/i, `${label} must not describe result.template.name as a display name`);
+    }
+  });
 });

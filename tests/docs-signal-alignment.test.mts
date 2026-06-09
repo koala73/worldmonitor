@@ -90,6 +90,10 @@ test('public signal docs stay aligned with hotspot escalation math', () => {
   assert.match(hotspotCode, /return hotspot\.escalationScore \?\? 3;/);
   assert.match(hotspotCode, /return 1 \+ \(raw \/ 100\) \* 4;/);
   assert.match(hotspotCode, /return staticBaseline \* 0\.3 \+ dynamicScore \* 0\.7;/);
+  assert.match(hotspotCode, /if \(validCount < 3\) return 'stable';/);
+  assert.match(hotspotCode, /if \(denominator === 0\) return 'stable';/);
+  assert.match(hotspotCode, /if \(slope > 0\.1\) return 'escalating';/);
+  assert.match(hotspotCode, /if \(slope < -0\.1\) return 'de-escalating';/);
 
   for (const [label, doc] of [
     ['docs/hotspots.mdx', hotspotsDoc],
@@ -104,6 +108,10 @@ test('public signal docs stay aligned with hotspot escalation math', () => {
     assert.match(doc, /1-5/, `${label} must state hotspot scores are on a 1-5 scale`);
     assert.doesNotMatch(doc, /proximity_boost/, `${label} must not document a nonexistent hotspot proximity boost`);
   }
+  assert.match(hotspotsDoc, /`escalating`[\s\S]{0,80}>\s*\+0\.1/, 'hotspots doc must publish the emitted escalating trend token');
+  assert.match(hotspotsDoc, /`de-escalating`[\s\S]{0,80}&lt;\s*-0\.1/, 'hotspots doc must publish the emitted de-escalating trend token');
+  assert.match(hotspotsDoc, /`stable`[\s\S]{0,80}fewer than 3 valid history points[\s\S]{0,80}zero regression denominator/, 'hotspots doc must publish stable fallbacks');
+  assert.doesNotMatch(hotspotsDoc, /\*\*Rising\*\*|\*\*Falling\*\*/, 'hotspots doc must not use non-emitted trend labels');
 
   assert.ok(hotspotBaselines.length >= 20, 'hotspot baseline parser should cover the configured hotspot list');
   for (const hotspot of hotspotBaselines) {
