@@ -187,13 +187,16 @@ describe('chokepoint methodology docs match scoring code', () => {
       ['SupplyChainService OpenAPI', supplyChainOpenApi],
       ['bundled OpenAPI', bundledOpenApi],
     ]) {
-      assert.match(text, /portwatch-dwt/i, `${label} must document the DWT-backed flow source`);
-      assert.match(text, /portwatch-counts/i, `${label} must document the count-backed flow source`);
-      assert.match(text, /GDACS/i, `${label} must document GDACS hazard enrichment`);
-      assert.match(text, /500 km/i, `${label} must document the hazard matching radius`);
-      assert.match(text, /RED/i, `${label} must document RED hazard alerts`);
-      assert.match(text, /ORANGE/i, `${label} must document ORANGE hazard alerts`);
-      assert.match(text, /empty string/i, `${label} must document the absent-hazard wire value`);
+      const flowEstimateContract = label === 'supply-chain proto'
+        ? extractProtoMessage(text, 'FlowEstimate')
+        : extractYamlSchema(text, label === 'bundled OpenAPI' ? 'worldmonitor_supply_chain_v1_FlowEstimate' : 'FlowEstimate');
+      assert.match(flowEstimateContract, /portwatch-dwt/i, `${label} must document the DWT-backed flow source`);
+      assert.match(flowEstimateContract, /portwatch-counts/i, `${label} must document the count-backed flow source`);
+      assert.match(flowEstimateContract, /GDACS/i, `${label} must document GDACS hazard enrichment`);
+      assert.match(flowEstimateContract, /configured radius/i, `${label} must document the hazard matching radius`);
+      assert.match(flowEstimateContract, /"RED"/, `${label} must document RED hazard alerts`);
+      assert.match(flowEstimateContract, /"ORANGE"/, `${label} must document ORANGE hazard alerts`);
+      assert.match(flowEstimateContract, /empty string/i, `${label} must document the absent-hazard wire value`);
     }
   });
 });
