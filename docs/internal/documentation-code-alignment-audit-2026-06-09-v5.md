@@ -9,6 +9,11 @@ request to validate two internal June 9 artifacts that were not present on
 - `docs/internal/documentation-code-alignment-audit-2026-06-09-v5.md`
 - `docs/internal/documentation-alignment-remaining-work-2026-06-09.md`
 
+The first path above is this replacement file's requested target path. The
+`v5` suffix is preserved because it was part of the external validation request;
+it does not assert that committed `v1` through `v4` artifacts existed or were
+recovered.
+
 No recovered copy of this audit file was found in the current checkout, fetched
 refs, or GitHub contents searched during this pass. This document is therefore a
 replacement closeout artifact, not a restored original.
