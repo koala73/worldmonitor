@@ -50,24 +50,31 @@ observations.
 
 ### Risk Levels
 
-The panel-visible headline label uses the same five display bands as the
-Country Instability Index:
+The browser panel and the server API intentionally expose two related but
+different level schemes for the same 0-100 headline score.
 
-| Score | Panel label | Meaning |
-|-------|-------------|---------|
-| 81-100 | **Critical** | Extreme global strategic pressure |
-| 66-80 | **High** | Multiple converging crises |
-| 51-65 | **Elevated** | Heightened global tension |
-| 31-50 | **Normal** | Watchful but below elevated pressure |
-| 0-30 | **Low** | Lower global strategic pressure |
+**Panel-visible display labels** use the same five CII-aligned bands as country
+risk rows:
 
-The server `StrategicRisk.level` enum remains a coarser API severity field:
+| Headline score | Panel label | Meaning |
+|----------------|-------------|---------|
+| >=81 | **Critical** | Active crisis or major escalation |
+| 66-80 | **High** | Significant instability requiring close monitoring |
+| 51-65 | **Elevated** | Above-normal activity patterns |
+| 31-50 | **Normal** | Baseline geopolitical activity |
+| &lt;31 | **Low** | Unusually quiet period |
 
-| Score | Server enum | Meaning |
-|-------|-------------|---------|
-| 70-100 | `SEVERITY_LEVEL_HIGH` | High API severity |
-| 40-69 | `SEVERITY_LEVEL_MEDIUM` | Medium API severity |
-| 0-39 | `SEVERITY_LEVEL_LOW` | Low API severity |
+**Server/on-wire enum labels** remain the three-tier `StrategicRisk.level`
+contract returned by `GetRiskScores`:
+
+| Headline score | `StrategicRisk.level` | Meaning |
+|----------------|-----------------------|---------|
+| 70-100 | `SEVERITY_LEVEL_HIGH` | Multiple converging crises |
+| 40-69 | `SEVERITY_LEVEL_MEDIUM` | Heightened global tension |
+| 0-39 | `SEVERITY_LEVEL_LOW` | Lower global strategic pressure |
+
+API clients should treat `StrategicRisk.level` as the server severity enum and
+the Strategic Risk panel label as a display mapping of `StrategicRisk.score`.
 
 ### Unified Alert System
 

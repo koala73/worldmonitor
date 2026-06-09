@@ -56,6 +56,8 @@ function parseStrategicRiskDisplayBands(source: string): Array<{ min: number; la
 function displayBandRows(bands: Array<{ min: number; label: string }>): Array<{ range: string; label: string }> {
   return bands.map((band, index) => {
     const upper = index === 0 ? 100 : bands[index - 1]!.min - 1;
+    if (index === 0) return { range: `>=${band.min}`, label: band.label };
+    if (band.min === 0) return { range: `&lt;${upper + 1}`, label: band.label };
     return { range: `${band.min}-${upper}`, label: band.label };
   });
 }
@@ -135,10 +137,13 @@ describe('CII docs drift guards', () => {
     );
   });
 
-  it('strategic risk doc publishes current server severity bands and roll-up', () => {
+  it('strategic risk doc publishes current panel display bands, server severity bands, and roll-up', () => {
     const doc = readFileSync(resolve(root, 'docs', 'strategic-risk.mdx'), 'utf8');
-    const panelSource = readFileSync(resolve(root, 'src/components/StrategicRiskPanel.ts'), 'utf8');
-    const serverSource = readFileSync(resolve(root, 'server/worldmonitor/intelligence/v1/get-risk-scores.ts'), 'utf8');
+    const panelSource = readFileSync(resolve(root, 'src', 'components', 'StrategicRiskPanel.ts'), 'utf8');
+    const serverSource = readFileSync(
+      resolve(root, 'server', 'worldmonitor', 'intelligence', 'v1', 'get-risk-scores.ts'),
+      'utf8',
+    );
     const scoreSection = markdownSection(doc, '### Server Score and Browser Fallback (0-100)');
     const riskLevels = markdownSection(doc, '### Risk Levels');
     const trendSection = markdownSection(doc, '### Trend Detection');
@@ -156,8 +161,8 @@ describe('CII docs drift guards', () => {
       /local\s+fallback/i,
       'strategic-risk doc must label the additive overview as browser/local fallback',
     );
-    assert.match(riskLevels, /panel-visible headline label/i);
-    assert.match(riskLevels, /server `StrategicRisk\.level` enum/i);
+    assert.match(riskLevels, /Panel-visible display labels/i);
+    assert.match(riskLevels, /Server\/on-wire enum labels/i);
     for (const { range, label } of displayBandRows(parseStrategicRiskDisplayBands(panelSource))) {
       assert.match(
         riskLevels,
@@ -230,8 +235,8 @@ describe('CII docs drift guards', () => {
     );
     assert.doesNotMatch(
       riskLevels,
-      /\*\*Moderate\*\*|50-69|30-49/,
-      'strategic-risk risk-level table must not retain old Moderate 70/50/30 semantics',
+      /70\/50\/30|50-69|30-49|\*\*Moderate\*\*/,
+      'strategic-risk risk-level tables must not retain old 70/50/30 display semantics',
     );
   });
 
