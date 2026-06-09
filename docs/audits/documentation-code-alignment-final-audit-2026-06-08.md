@@ -263,13 +263,32 @@ The first focused validation run found one remaining public-count drift:
 `public/llms.txt` still used a historical blog title with an obsolete language
 count. That label is now count-free, and the targeted CII drift guard passed.
 
-Final focused suite:
+June 8 final focused suite (historical audit result):
 
 ```text
 npx tsx --test ...focused bundle...
 tests 488
 suites 61
 pass 488
+fail 0
+cancelled 0
+skipped 0
+todo 0
+```
+
+June 9 rerun addendum:
+
+The same focused bundle was rerun from `origin/main` at
+`1fd6ce88d83ca3832cedaf0cabe8e2d685ab7829` after
+`npm run worktree:bootstrap:test-only`. The rerun preserved the 61-suite shape
+but picked up six additional assertions from current `main`; it passed with no
+failures.
+
+```text
+npm_config_cache=/tmp/worldmonitor-npm-cache npx tsx --test ...focused bundle...
+tests 494
+suites 61
+pass 494
 fail 0
 cancelled 0
 skipped 0
