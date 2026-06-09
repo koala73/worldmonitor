@@ -38,6 +38,26 @@ assert.ok(tpMatch, 'THIRD_PARTY_FETCH_HOST_ALLOWLIST must be defined in src/main
 // eslint-disable-next-line no-new-func
 const beforeSend = new Function('event', `${tpMatch[0]}\n${fnBody}`);
 
+// Extract the `ignoreErrors` array literal so tests can assert which messages
+// Sentry's built-in (pre-beforeSend) filter drops. The array body contains
+// regex/string literals and `//` comments — all valid inside a JS array literal,
+// so it eval's directly. Closing token is the dedented `\n  ],`.
+const ieStart = mainSrc.indexOf('ignoreErrors: [');
+assert.ok(ieStart !== -1, 'ignoreErrors array must exist in src/main.ts');
+const ieEnd = mainSrc.indexOf('\n  ],', ieStart);
+assert.ok(ieEnd > ieStart, 'Failed to find ignoreErrors closing bracket');
+const ieBody = mainSrc.slice(ieStart + 'ignoreErrors: ['.length, ieEnd);
+// The body's final entry ends in a `//` comment with no trailing newline, so the
+// closing bracket must go on its own line or it gets swallowed by that comment.
+// eslint-disable-next-line no-new-func
+const ignoreErrors = new Function(`return [${ieBody}\n]`)();
+
+/** Mirror Sentry's ignoreErrors semantics: RegExp → test, string → substring. */
+function isIgnored(msg) {
+  return ignoreErrors.some(p =>
+    p instanceof RegExp ? p.test(msg) : typeof p === 'string' ? msg.includes(p) : false);
+}
+
 /** Helper to build a minimal Sentry event. */
 function makeEvent(value, type = 'Error', frames = []) {
   return {
@@ -795,4 +815,79 @@ describe('existing beforeSend filters', () => {
     assert.ok(beforeSend(event) !== null, '3+ char variable names must surface');
   });
 
+});
+
+// ─── WORLDMONITOR-SQ: ProgressEvent rejection ignoreErrors entry ──────────
+//
+// A raw DOM `ProgressEvent` (type=error) from a failed resource/XHR load that
+// leaks via onunhandledrejection. Sentry synthesizes the message
+// `Event `ProgressEvent` (type=error) captured as promise rejection`. No
+// first-party path rejects a promise with a raw ProgressEvent (our IDB/worker/
+// FileReader onerror handlers all reject wrapped Errors; the lone XHR caller is
+// fire-and-forget + Tauri-only where Sentry is disabled), so it goes in
+// ignoreErrors alongside the CustomEvent sibling.
+describe('ignoreErrors — ProgressEvent promise rejection (WORLDMONITOR-SQ)', () => {
+  const PROD_MSG = 'Event `ProgressEvent` (type=error) captured as promise rejection';
+  const progressEventPattern = ignoreErrors.find(
+    p => p instanceof RegExp && /ProgressEvent/.test(p.source));
+
+  it('defines a ProgressEvent ignore pattern', () => {
+    assert.ok(progressEventPattern, 'a /ProgressEvent/ ignoreErrors pattern must exist');
+  });
+
+  it('suppresses the exact production ProgressEvent rejection message', () => {
+    assert.ok(isIgnored(PROD_MSG), `ignoreErrors must drop: ${PROD_MSG}`);
+  });
+
+  it('is scoped to the rejection phrase, not a bare ProgressEvent reference', () => {
+    // Guards against an over-broad `/ProgressEvent/` that would mask a real
+    // first-party error merely mentioning the word.
+    assert.ok(!progressEventPattern.test('ProgressEvent fired during upload'),
+      'pattern must require the "captured as promise rejection" phrase');
+  });
+});
+
+// ─── WORLDMONITOR-SP: SyntaxError through the deck.gl/maplibre init path ───
+//
+// `SyntaxError: Invalid or unexpected token` (and the Unexpected token/EOF
+// family) surfacing through deck.gl/maplibre WebGL init. Our compiled bundle
+// can't emit a JS parse error at the first-party `MapContainer.initDeck` call
+// site — the parse failure is in vendor-loaded content (a Worker script, a
+// `new Function` shader builder, or a stale/corrupt lazy chunk). The pre-
+// existing `!hasFirstParty` token-parse gate misses it because `initDeck` rides
+// the stack as the caller, so this gate keys off a deck-stack/maplibre frame.
+describe('SyntaxError via deck.gl/maplibre init path (WORLDMONITOR-SP)', () => {
+  // Mirrors the real WORLDMONITOR-SP stack: deck-stack + maplibre vendor frames
+  // plus the first-party MapContainer.initDeck caller.
+  const mapInitStack = [
+    { filename: '/assets/deck-stack-Dq2qX5Bt.js', lineno: 1606, function: 'Go._getViews' },
+    { filename: '/assets/maplibre-BniwwzLw.js', lineno: 811, function: 'lo.addControl' },
+    { filename: '/assets/MapContainer-C6imt_dN.js', lineno: 1632, function: 'os.initDeck' },
+  ];
+
+  it('suppresses "Invalid or unexpected token" through the map init path despite a first-party initDeck frame', () => {
+    const event = makeEvent('Invalid or unexpected token', 'SyntaxError', mapInitStack);
+    assert.equal(beforeSend(event), null,
+      'deploy/asset parse failure through deck.gl/maplibre init must be suppressed');
+  });
+
+  it('suppresses the Safari "Unexpected EOF" variant through the same path', () => {
+    assert.equal(beforeSend(makeEvent('Unexpected EOF', 'SyntaxError', mapInitStack)), null);
+  });
+
+  it('does NOT suppress the same SyntaxError when no deck/maplibre frame is present', () => {
+    // A genuine first-party parse failure (no map vendor frame) must still surface.
+    const event = makeEvent('Invalid or unexpected token', 'SyntaxError', [
+      firstPartyFrame('/assets/panels-DzUv7BBV.js', 'loadTab'),
+    ]);
+    assert.ok(beforeSend(event) !== null,
+      'first-party SyntaxError without a map frame must reach Sentry');
+  });
+
+  it('does NOT suppress a non-SyntaxError TypeError that merely has a map frame', () => {
+    // Gate is scoped to excType === SyntaxError + the token-parse message family.
+    const event = makeEvent('something broke', 'TypeError', mapInitStack);
+    assert.ok(beforeSend(event) !== null,
+      'non-SyntaxError with a map frame must not be swept up by the SP gate');
+  });
 });

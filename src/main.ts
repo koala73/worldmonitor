@@ -126,6 +126,7 @@ Sentry.init({
     /Unexpected end of script/,
     /Style is not done loading/,
     /Event `CustomEvent`.*captured as promise rejection/,
+    /Event `ProgressEvent`.*captured as promise rejection/, // resource/XHR `error` ProgressEvent leaking via onunhandledrejection (img/script/audio/EventSource load failure). Our IDB/worker/FileReader onerror handlers all reject with wrapped Errors (never a raw ProgressEvent); the only XHR caller is fire-and-forget + Tauri-desktop-only where Sentry is disabled — so a raw ProgressEvent rejection can never originate from our bundle. Sibling of the CustomEvent entry above — WORLDMONITOR-SQ
     /getProgramInfoLog/,
     /__firefox__/,
     /ifameElement\.contentDocument/,
@@ -604,6 +605,19 @@ Sentry.init({
       || /Connection lost while action was in flight/.test(msg)
       || /WEBGLRenderPipeline.*Link error/.test(msg)
     )) return null;
+    // `SyntaxError: Invalid or unexpected token` (and the Unexpected token/keyword/EOF
+    // family) surfacing THROUGH the deck.gl/maplibre WebGL init path. Our compiled,
+    // already-parsed bundle cannot emit a JS parse error at the first-party
+    // `MapContainer.initDeck` call site — a runtime SyntaxError here means deck.gl /
+    // maplibre parsed external content (a Worker script, a `new Function` shader
+    // builder, or a stale/corrupt lazily-loaded chunk after a deploy). The
+    // `!hasFirstParty` token-parse gate above misses this because `initDeck` rides the
+    // stack as the CALLER, not the source. Gate on the presence of a deck-stack /
+    // maplibre vendor frame so a genuine first-party SyntaxError elsewhere still
+    // surfaces (WORLDMONITOR-SP).
+    if (excType === 'SyntaxError'
+        && /^(?:Invalid or unexpected token|Unexpected (?:token|keyword|identifier|EOF|end of script))/.test(msg)
+        && frames.some(f => /\/(?:maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     return event;
   },
 });
