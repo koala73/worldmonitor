@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -274,6 +274,41 @@ describe('Comtrade bilateral HS4 lazy fallback (server/worldmonitor/supply-chain
       !/COMTRADE_REPORTER_OVERRIDES:\s*Record<string,\s*string>\s*=\s*\{\s*IN:\s*'699',\s*TW:\s*'490'\s*\}/.test(src),
       'lazy fallback: must not define an independent IN/TW-only override map',
     );
+  });
+});
+
+describe('Comtrade reporter-code source-of-truth guard', () => {
+  function collectRuntimeSources(dir) {
+    const out = [];
+    for (const name of readdirSync(dir)) {
+      const filePath = join(dir, name);
+      const stat = statSync(filePath);
+      if (stat.isDirectory()) {
+        if (name === 'generated' || name === 'node_modules' || name === '__tests__') continue;
+        out.push(...collectRuntimeSources(filePath));
+        continue;
+      }
+      if (/\.(?:mjs|js|ts)$/.test(name)) out.push(filePath);
+    }
+    return out;
+  }
+
+  const checkedFiles = [
+    ...collectRuntimeSources(join(root, 'scripts')),
+    ...collectRuntimeSources(join(root, 'server')),
+    ...collectRuntimeSources(join(root, 'src')),
+  ];
+  const staleInlineMap = /\b(?:ISO2_TO_COMTRADE(?:_OVERRIDES)?|COMTRADE_REPORTER_OVERRIDES)\b\s*(?::[^=]+)?=\s*\{[\s\S]*?\bIN:\s*['"]699['"][\s\S]*?\bTW:\s*['"]490['"][\s\S]*?\}/;
+
+  it('does not reintroduce stale inline IN/TW-only reporter maps in runtime sources', () => {
+    for (const filePath of checkedFiles) {
+      const src = readFileSync(filePath, 'utf-8');
+      assert.doesNotMatch(
+        src,
+        staleInlineMap,
+        `${filePath}: Comtrade reporter overrides must come from scripts/shared/comtrade-reporter-overrides.json`,
+      );
+    }
   });
 });
 
