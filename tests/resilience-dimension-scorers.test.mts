@@ -739,6 +739,31 @@ describe('resilience dimension scorers', () => {
     );
   });
 
+  it('summarizeCyber: treats Unix-seconds firstSeenAt as an undated current bucket', () => {
+    const nowMs = Date.UTC(2026, 0, 10);
+    const firstSeenSeconds = Math.floor((nowMs - 2 * DAY_MS) / 1000);
+    const numericSecondsBurst = Array.from({ length: 50 }, () => ({
+      country: 'Finland',
+      severity: 'CRITICALITY_LEVEL_CRITICAL',
+      firstSeenAt: firstSeenSeconds,
+    }));
+    const stringSecondsBurst = numericSecondsBurst.map((threat) => ({
+      ...threat,
+      firstSeenAt: String(firstSeenSeconds),
+    }));
+
+    assert.equal(
+      summarizeCyber({ threats: numericSecondsBurst }, 'FI', { nowMs }).weightedCount,
+      CYBER_SNAPSHOT_WEIGHT_CAP,
+      'Unix seconds must fall back to the current bucket instead of decaying to near-zero',
+    );
+    assert.equal(
+      summarizeCyber({ threats: stringSecondsBurst }, 'FI', { nowMs }).weightedCount,
+      CYBER_SNAPSHOT_WEIGHT_CAP,
+      'numeric-string Unix seconds must also fall back to the current bucket',
+    );
+  });
+
   it('summarizeCyber: sustained multi-day pressure reaches the capped penalty', () => {
     const nowMs = Date.UTC(2026, 0, 10);
     const sustained = [0, 1, 2, 3].flatMap((ageDays) => (
@@ -815,16 +840,17 @@ describe('resilience dimension scorers', () => {
   });
 
   it('scoreCyberDigital: discovery-day smoothing improves a stale lone burst', async () => {
+    const nowMs = Date.UTC(2026, 0, 10);
     const currentBurst = await scoreCyberDigital('FI', cyberOnlyReader(
       Array.from({ length: 50 }, () => ({ country: 'Finland', severity: 'CRITICALITY_LEVEL_CRITICAL' })),
-    ));
+    ), { nowMs });
     const twoDayOldBurst = await scoreCyberDigital('FI', cyberOnlyReader(
       Array.from({ length: 50 }, () => ({
         country: 'Finland',
         severity: 'CRITICALITY_LEVEL_CRITICAL',
-        firstSeenAt: Date.now() - 2 * DAY_MS,
+        firstSeenAt: nowMs - 2 * DAY_MS,
       })),
-    ));
+    ), { nowMs });
 
     assert.ok(
       twoDayOldBurst.score > currentBurst.score,

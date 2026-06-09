@@ -1105,13 +1105,23 @@ export function summarizeGps(raw: unknown, countryCode: string): { high: number;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+// Lower than any WorldMonitor-sourced firstSeenAt; smaller numbers are usually
+// Unix seconds and should fall back to the current bucket.
+const MIN_FIRST_SEEN_EPOCH_MS = 1e11;
+
+interface CyberDiscoveryOptions {
+  nowMs?: number;
+}
 
 function readEpochMs(value: unknown): number | null {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (Number.isFinite(numeric) && numeric > 0) return numeric;
-  if (typeof value !== 'string' || value.trim().length === 0) return null;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  const numeric = typeof value === 'number' ? value : trimmed.length > 0 ? Number(trimmed) : NaN;
+  if (Number.isFinite(numeric)) {
+    return numeric >= MIN_FIRST_SEEN_EPOCH_MS ? numeric : null;
+  }
+  if (trimmed.length === 0) return null;
+  const parsed = Date.parse(trimmed);
+  return Number.isFinite(parsed) && parsed >= MIN_FIRST_SEEN_EPOCH_MS ? parsed : null;
 }
 
 function cyberDiscoveryAgeDays(firstSeenAt: unknown, nowMs: number): number {
@@ -1128,7 +1138,7 @@ function cyberDiscoveryDecay(ageDays: number): number {
 export function summarizeCyber(
   raw: unknown,
   countryCode: string,
-  options: { nowMs?: number } = {},
+  options: CyberDiscoveryOptions = {},
 ): { weightedCount: number } {
   const threats: CyberThreat[] = Array.isArray((raw as { threats?: unknown[] } | null)?.threats)
     ? ((raw as { threats?: CyberThreat[] }).threats ?? [])
@@ -1659,13 +1669,14 @@ function fatfStatusToScore(status: FatfStatus): number {
 export async function scoreCyberDigital(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: CyberDiscoveryOptions,
 ): Promise<ResilienceDimensionScore> {
   const [cyberRaw, outagesRaw, gpsRaw] = await Promise.all([
     reader(RESILIENCE_CYBER_KEY),
     reader(RESILIENCE_OUTAGES_KEY),
     reader(RESILIENCE_GPS_KEY),
   ]);
-  const cyber = summarizeCyber(cyberRaw, countryCode);
+  const cyber = summarizeCyber(cyberRaw, countryCode, options);
   const outages = summarizeOutages(outagesRaw, countryCode);
   const gps = summarizeGps(gpsRaw, countryCode);
   const outagePenalty = outages.total * 4 + outages.major * 2 + outages.partial;
