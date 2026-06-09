@@ -62,6 +62,42 @@ function parseAaiiTimeoutMs(source) {
   return Number(match[1].replace(/_/g, ''));
 }
 
+function parseSourceInputKeys(source, category) {
+  const caseStart = source.indexOf(`case '${category}': {`);
+  assert.notEqual(caseStart, -1, `${category} scorer branch not found`);
+  const nextCase = source.indexOf('\n    case ', caseStart + 1);
+  const block = source.slice(caseStart, nextCase === -1 ? source.indexOf('\n    default:', caseStart) : nextCase);
+  const matches = [...block.matchAll(/inputs:\s*\{([^{}]+)\}/g)];
+  assert.ok(matches.length, `${category} emitted inputs object not found`);
+  return matches.at(-1)[1]
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => part.split(':')[0].trim())
+    .sort();
+}
+
+function parseDocOutputExampleInputKeys(doc, category) {
+  const outputSchemaStart = doc.indexOf('### Output Schema (stored in Redis)');
+  assert.notEqual(outputSchemaStart, -1, 'Fear & Greed output schema section not found');
+  const outputSchemaEnd = doc.indexOf('\n```\n', doc.indexOf('```json', outputSchemaStart) + 1);
+  assert.notEqual(outputSchemaEnd, -1, 'Fear & Greed output schema JSON block end not found');
+  const outputSchema = doc.slice(outputSchemaStart, outputSchemaEnd);
+  const escapedCategory = category.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = outputSchema.match(new RegExp(`"${escapedCategory}": [^\\n]*"inputs": \\{([^}]*)\\}`));
+  assert.ok(match, `${category} output schema example inputs not found`);
+  return [...match[1].matchAll(/"([^"]+)":/g)].map(([, key]) => key).sort();
+}
+
+function parseRedisKeyBlock(doc) {
+  const redisStart = doc.indexOf('### Redis Keys');
+  assert.notEqual(redisStart, -1, 'Redis Keys section not found');
+  const fenceStart = doc.indexOf('```', redisStart);
+  const fenceEnd = doc.indexOf('```', fenceStart + 3);
+  assert.notEqual(fenceEnd, -1, 'Redis Keys fenced block end not found');
+  return doc.slice(fenceStart, fenceEnd);
+}
+
 describe('Fear & Greed docs match seed-fear-greed source', () => {
   const source = readRepo('scripts/seed-fear-greed.mjs');
   const doc = readRepo('docs/fear-greed-index-2.0-brief.md');
@@ -93,6 +129,10 @@ describe('Fear & Greed docs match seed-fear-greed source', () => {
     assert.match(doc, /aaiBull\/aaiBear as null, not 0/);
     assert.match(doc, /crypto F&G from Redis as secondary signal/);
     assert.match(doc, /neutral 50 if both are absent/);
+    assert.match(doc, /CNN unavailable but AAII available/);
+    assert.match(doc, /AAII_Bull_Percentile \* 0\.5/);
+    assert.match(doc, /AAII_Bear_Percentile\) \* 0\.5/);
+    assert.match(source, /score = \(bullPercentile \* 0\.5\) \+ \(\(100 - bearPercentile\) \* 0\.5\);/);
     assert.match(doc, new RegExp(`AbortSignal\\.timeout\\(${aaiiTimeoutMs}\\)`));
   });
 
@@ -103,5 +143,34 @@ describe('Fear & Greed docs match seed-fear-greed source', () => {
     assert.match(doc, /Advance\/decline ratio is currently `null`/);
     assert.match(doc, new RegExp(`breadth_score \\* ${normal[0]} \\+ ad_score \\* ${normal[1]} \\+ rsp_score \\* ${normal[2]}`));
     assert.match(doc, new RegExp(`breadth_score \\* ${degraded[0]} \\+ rsp_score \\* ${degraded[2]}`));
+  });
+
+  it('keeps the output schema example aligned with emitted category input keys', () => {
+    const categories = ['sentiment', 'volatility', 'positioning', 'trend', 'breadth', 'momentum', 'liquidity', 'credit', 'macro', 'crossAsset'];
+
+    for (const category of categories) {
+      assert.deepEqual(
+        parseDocOutputExampleInputKeys(doc, category),
+        parseSourceInputKeys(source, category),
+        `${category} output schema example inputs should match emitted seeder inputs`,
+      );
+    }
+
+    assert.match(doc, /"advDecRatio": null/);
+    assert.doesNotMatch(doc, /"vixChange":/);
+    assert.doesNotMatch(doc, /"putCallAvg":/);
+    assert.doesNotMatch(doc, /"leadersVsLaggards":/);
+  });
+
+  it('documents only implemented current Redis keys in the Redis Keys block', () => {
+    const redisKeyBlock = parseRedisKeyBlock(doc);
+
+    assert.match(source, /const FEAR_GREED_KEY = 'market:fear-greed:v1';/);
+    assert.doesNotMatch(source, /extraKeys:/);
+    assert.match(redisKeyBlock, /market:fear-greed:v1/);
+    assert.match(redisKeyBlock, /seed-meta:market:fear-greed/);
+    assert.match(redisKeyBlock, /seed-lock:market:fear-greed/);
+    assert.doesNotMatch(redisKeyBlock, /market:fear-greed:history:v1/);
+    assert.match(doc, /market:fear-greed:history:v1` is planned for historical sparklines in Phase 4/);
   });
 });
