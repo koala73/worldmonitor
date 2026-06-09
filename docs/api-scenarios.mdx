@@ -146,6 +146,10 @@ Returns the job's current state as written by the worker, or a synthesised `pend
 }
 ```
 
+In the status payload, `template.name` is the worker-derived key: physical
+scenarios join affected chokepoint ids with `+`, while tariff-shock scenarios
+with no physical chokepoint use `tariff_shock`. It is not the catalog label.
+
 `totalImpact` is a relative weighted score, not a currency amount or USD import
 value. For physical chokepoint scenarios, the worker computes
 `exposureScore * (disruptionPct / 100) * costShockMultiplier` for each matching

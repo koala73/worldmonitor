@@ -19107,8 +19107,9 @@ components:
                 name:
                     type: string
                     description: |-
-                        Display name (worker derives this from affected_chokepoint_ids; may be
-                         `tariff_shock` for tariff-type scenarios).
+                        Worker-derived template key, not a display name. Physical scenarios join
+                         affected_chokepoint_ids with `+`; tariff-type scenarios may use
+                         `tariff_shock` when no physical chokepoint is affected.
                 disruptionPct:
                     type: integer
                     format: int32
@@ -19670,10 +19671,19 @@ components:
                          rolling baseline window. Separate from the green/yellow/red status badge.
                 source:
                     type: string
+                    description: |-
+                        Flow source: "portwatch-dwt" when DWT-majority coverage is used,
+                         otherwise "portwatch-counts" for vessel-count coverage.
                 hazardAlertLevel:
                     type: string
+                    description: |-
+                        Nearest active GDACS hazard alert level within the configured radius:
+                         "RED", "ORANGE", or empty string when no nearby alert applies.
                 hazardAlertName:
                     type: string
+                    description: |-
+                        Name of the nearest active GDACS hazard event within the configured
+                         radius, or empty string when no nearby alert applies.
         worldmonitor_supply_chain_v1_GetChokepointHistoryRequest:
             type: object
             properties:

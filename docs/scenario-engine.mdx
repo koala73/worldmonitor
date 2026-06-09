@@ -38,7 +38,7 @@ A completed scenario returns:
 
 - **Affected chokepoints** — which ones go red on the map.
 - **Impact ranking** — the top affected seeded reporter countries by ISO-2, ordered by the worker's relative weighted impact score. `totalImpact` is not a currency amount.
-- **Template echo** — the selected template's display name, duration, disruption percent, and cost-shock multiplier so clients can render the run without re-looking up the catalog. The status result does not repeat `affectedHs2`; read sector scope from `/list-scenario-templates`.
+- **Template echo** — the worker-derived template key (`affectedChokepointIds.join('+')`, or `tariff_shock` when there are no physical chokepoints), duration, disruption percent, and cost-shock multiplier so clients can render the run without re-looking up the catalog. The status result does not repeat `affectedHs2`; read sector scope from `/list-scenario-templates`.
 - **A summary card** injected into the Supply Chain panel that stays visible until you deactivate the scenario.
 
 The UI is state-driven, not modal — activating a scenario sets a `scenarioState` on every map renderer (deck.gl, globe, SVG fallback) so chokepoint colors and country choropleths reflect the disruption until you deactivate. This is coordinated by `MapContainer.activateScenario` at `src/components/MapContainer.ts:1010`, which is explicitly PRO-gated.

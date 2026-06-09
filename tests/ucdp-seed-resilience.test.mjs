@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const src = readFileSync('scripts/ais-relay.cjs', 'utf8');
+const standaloneSeedSrc = readFileSync('scripts/seed-ucdp-events.mjs', 'utf8');
 
 // Extract just the seedUcdpEvents function body for targeted assertions
 const fnStart = src.indexOf('async function seedUcdpEvents()');
@@ -124,6 +125,19 @@ describe('UCDP version selection prefers the newest release', () => {
       src.indexOf('async function ucdpFetchAllEvents()'),
     );
     assert.match(relayDiscover, /Array\.isArray\(page0\?\.Result\) && page0\.Result\.length > 0/);
+  });
+
+  it('standalone cron discovery also requires non-empty Result for the same Redis key', () => {
+    assert.match(standaloneSeedSrc, /const REDIS_KEY = 'conflict:ucdp-events:v1'/);
+    const standaloneDiscover = standaloneSeedSrc.slice(
+      standaloneSeedSrc.indexOf('async function discoverVersion('),
+      standaloneSeedSrc.indexOf('function parseDateMs('),
+    );
+    assert.match(
+      standaloneDiscover,
+      /!Array\.isArray\(page0\?\.Result\) \|\| page0\.Result\.length === 0/,
+      'standalone UCDP seeder must not let an empty newer GED release win',
+    );
   });
 
   it('ucdpVersionNewer ranks GED versions newest-first (behavioral)', () => {

@@ -121,11 +121,15 @@ describe('Fear & Greed docs match seed-fear-greed source', () => {
     assert.match(doc, new RegExp(`AAII_Bull_Percentile \\* ${weights.bull}`));
     assert.match(doc, new RegExp(`AAII_Bear_Percentile\\) \\* ${weights.bear}`));
     assert.match(source, /aaiBull == null \|\| aaiBear == null/);
+    assert.match(source, /score = \(bullPercentile \* 0\.5\) \+ \(\(100 - bearPercentile\) \* 0\.5\);/);
     assert.match(source, /score = cnnFg;/);
     assert.match(source, /score = cryptoFg;/);
     assert.match(source, /score = 50;/);
     assert.match(source, /aaiBull: aaiBull \?\? null, aaiBear: aaiBear \?\? null/);
     assert.match(doc, /AAII unavailable/);
+    assert.match(doc, /CNN unavailable, AAII available/);
+    assert.match(doc, /AAII_Bull_Percentile \* 0\.5/);
+    assert.match(doc, /100 - AAII_Bear_Percentile\) \* 0\.5/);
     assert.match(doc, /aaiBull\/aaiBear as null, not 0/);
     assert.match(doc, /crypto F&G from Redis as secondary signal/);
     assert.match(doc, /neutral 50 if both are absent/);
@@ -171,6 +175,7 @@ describe('Fear & Greed docs match seed-fear-greed source', () => {
     assert.match(redisKeyBlock, /seed-meta:market:fear-greed/);
     assert.match(redisKeyBlock, /seed-lock:market:fear-greed/);
     assert.doesNotMatch(redisKeyBlock, /market:fear-greed:history:v1/);
-    assert.match(doc, /market:fear-greed:history:v1` is planned for historical sparklines in Phase 4/);
+    assert.match(doc, /`market:fear-greed:history:v1` is a planned sorted set/);
+    assert.match(doc, /does not write or read it yet/);
   });
 });

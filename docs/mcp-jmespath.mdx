@@ -74,7 +74,7 @@ Omit `limit: 0` for ordinary use: cache tools default-cap list- and map-shaped f
 
 ### 2. Slim each item to a few fields (multiselect-hash)
 
-**Intent.** From `get_market_data`, get a compact table of the default-capped equity quotes: symbol, price, percent change.
+**Intent.** From `get_market_data`, get a compact three-row table of the default-capped equity quotes: symbol, price, percent change.
 
 **Tool call:**
 
@@ -82,7 +82,7 @@ Omit `limit: 0` for ordinary use: cache tools default-cap list- and map-shaped f
 {
   "name": "get_market_data",
   "arguments": {
-    "jmespath": "data.\"stocks-bootstrap\".quotes[*].{s:symbol,p:price,chg:change}"
+    "jmespath": "data.\"stocks-bootstrap\".quotes[0:3].{s:symbol,p:price,chg:change}"
   }
 }
 ```
@@ -163,10 +163,18 @@ Omit `limit: 0` for ordinary use: cache tools default-cap list- and map-shaped f
 [
   {
     "id": "568494",
+    "dateStart": 1735603200000,
+    "dateEnd": 1735603200000,
+    "location": {
+      "latitude": 34.820728,
+      "longitude": 44.361441
+    },
     "country": "Iraq",
     "sideA": "Government of Iraq",
     "sideB": "IS",
     "deathsBest": 7,
+    "deathsLow": 7,
+    "deathsHigh": 7,
     "violenceType": "UCDP_VIOLENCE_TYPE_STATE_BASED",
     "sourceOriginal": "the Iraqi Security Information Cell"
   }
@@ -285,9 +293,9 @@ Because this call omits `limit`, the tool-level default cap is applied before JM
 
 ```json
 [
-  { "c": "DR Congo (Zaire)", "d": 17 },
-  { "c": "Iraq",             "d": 7  },
-  { "c": "Mexico",           "d": 3  }
+  { "c": "Ukraine",          "d": 30 },
+  { "c": "Somalia",          "d": 27 },
+  { "c": "DR Congo (Zaire)", "d": 17 }
 ]
 ```
 
@@ -303,7 +311,7 @@ This is the workhorse shape for "give me the top-N by some metric". The same sha
 
 ### 9. Filter on enum-string field
 
-**Intent.** From `get_conflict_events`, return only UCDP events classified as state-based violence — the highest-severity tier.
+**Intent.** From `get_conflict_events`, return the first five UCDP events classified as state-based violence — the highest-severity tier.
 
 **Tool call:**
 
@@ -311,17 +319,20 @@ This is the workhorse shape for "give me the top-N by some metric". The same sha
 {
   "name": "get_conflict_events",
   "arguments": {
-    "jmespath": "data.\"ucdp-events\".events[?violenceType == 'UCDP_VIOLENCE_TYPE_STATE_BASED'].{c:country, a:sideA, b:sideB, d:deathsBest}"
+    "jmespath": "data.\"ucdp-events\".events[?violenceType == 'UCDP_VIOLENCE_TYPE_STATE_BASED'].{c:country, a:sideA, b:sideB, d:deathsBest} | [0:5]"
   }
 }
 ```
 
-**Projected response:**
+**Projected response:** five of 14 state-based rows in the default-capped fixture:
 
 ```json
 [
   { "c": "Iraq", "a": "Government of Iraq", "b": "IS", "d": 7 },
-  { "c": "Yemen (North Yemen)", "a": "Government of United Kingdom, Government of United States of America", "b": "Government of Yemen (North Yemen)", "d": 0 }
+  { "c": "Yemen (North Yemen)", "a": "Government of United Kingdom, Government of United States of America", "b": "Government of Yemen (North Yemen)", "d": 0 },
+  { "c": "Pakistan", "a": "Government of Pakistan", "b": "TTP", "d": 2 },
+  { "c": "Somalia", "a": "Government of Somalia", "b": "Al-Shabaab", "d": 10 },
+  { "c": "Ukraine", "a": "Government of Russia (Soviet Union)", "b": "Government of Ukraine", "d": 7 }
 ]
 ```
 
@@ -420,11 +431,11 @@ The flatten drops the original map keys (the chokepoint names). If you need the 
 
 ```json
 [
+  { "c": "Ukraine",          "d": 30, "t": "UCDP_VIOLENCE_TYPE_STATE_BASED" },
+  { "c": "Somalia",          "d": 27, "t": "UCDP_VIOLENCE_TYPE_STATE_BASED" },
   { "c": "DR Congo (Zaire)", "d": 17, "t": "UCDP_VIOLENCE_TYPE_ONE_SIDED" },
-  { "c": "Iraq",             "d": 7,  "t": "UCDP_VIOLENCE_TYPE_STATE_BASED" },
-  { "c": "Mexico",           "d": 3,  "t": "UCDP_VIOLENCE_TYPE_NON_STATE" },
-  { "c": "Ecuador",          "d": 2,  "t": "UCDP_VIOLENCE_TYPE_NON_STATE" },
-  { "c": "Brazil",           "d": 1,  "t": "UCDP_VIOLENCE_TYPE_NON_STATE" }
+  { "c": "Somalia",          "d": 10, "t": "UCDP_VIOLENCE_TYPE_STATE_BASED" },
+  { "c": "Ukraine",          "d": 7,  "t": "UCDP_VIOLENCE_TYPE_STATE_BASED" }
 ]
 ```
 

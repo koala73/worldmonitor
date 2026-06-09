@@ -31,8 +31,14 @@ message FlowEstimate {
   // True when each of the latest 3 daily ratios is below 85% of the same
   // rolling baseline window. Separate from the green/yellow/red status badge.
   bool disrupted = 4;
+  // Flow source: "portwatch-dwt" when DWT-majority coverage is used,
+  // otherwise "portwatch-counts" for vessel-count coverage.
   string source = 5;
+  // Nearest active GDACS hazard alert level within the configured radius:
+  // "RED", "ORANGE", or empty string when no nearby alert applies.
   string hazard_alert_level = 6;
+  // Name of the nearest active GDACS hazard event within the configured
+  // radius, or empty string when no nearby alert applies.
   string hazard_alert_name = 7;
 }
 

@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import jmespath from 'jmespath';
 
 const root = resolve(import.meta.dirname, '..');
 
@@ -22,6 +23,57 @@ function section(doc, heading) {
 
 describe('docs/mcp-jmespath.mdx fixture-backed examples', () => {
   const doc = readText('docs/mcp-jmespath.mdx');
+  const fixturesByTool = new Map([
+    ['get_market_data', readJson('tests/fixtures/jmespath-samples/fat-get-market-data.response.json')],
+    ['get_conflict_events', readJson('tests/fixtures/jmespath-samples/medium-get-conflict-events.response.json')],
+    ['get_chokepoint_status', readJson('tests/fixtures/jmespath-samples/thin-get-chokepoint-status.response.json')],
+  ]);
+
+  function codeBlocks(text) {
+    return [...text.matchAll(/```json\n([\s\S]*?)\n```/g)].map((m) => m[1]);
+  }
+
+  function projectedJsonBlock(example) {
+    const marker = '**Projected response';
+    const projectedStart = example.indexOf(marker);
+    assert.notEqual(projectedStart, -1, 'missing projected response marker');
+    const match = /```json\n([\s\S]*?)\n```/.exec(example.slice(projectedStart));
+    assert.ok(match, 'missing projected response JSON block');
+    return JSON.parse(match[1]);
+  }
+
+  function assertExampleMatchesFixture(number, heading) {
+    const example = section(doc, `### ${number}. ${heading}`);
+    const [toolCallBlock] = codeBlocks(example);
+    assert.ok(toolCallBlock, `example ${number} must have a tool-call JSON block`);
+    const toolCall = JSON.parse(toolCallBlock);
+    const fixture = fixturesByTool.get(toolCall.name);
+    assert.ok(fixture, `example ${number} uses unknown fixture tool ${toolCall.name}`);
+    const expression = toolCall.arguments?.jmespath;
+    assert.equal(typeof expression, 'string', `example ${number} must define arguments.jmespath`);
+    const actual = jmespath.search(fixture, expression);
+    const expected = projectedJsonBlock(example);
+    assert.deepEqual(actual, expected, `example ${number} projected response must match fixture`);
+  }
+
+  it('every fixture-backed example with JSON projected output is executable', () => {
+    const cases = [
+      [1, 'Drill into a single nested object'],
+      [2, 'Slim each item to a few fields (multiselect-hash)'],
+      [4, 'Filter on string equality'],
+      [5, 'Array projection — flat list of one field'],
+      [7, '`length()` for counting'],
+      [8, '`sort_by` + reverse + slice — Top-N'],
+      [9, 'Filter on enum-string field'],
+      [10, 'Object-as-map navigation'],
+      [11, 'Object-as-map projection — `*` and `keys()`'],
+      [12, 'Pipe combinator — multi-stage projection'],
+    ];
+
+    for (const [number, heading] of cases) {
+      assertExampleMatchesFixture(number, heading);
+    }
+  });
 
   it('example 7 count matches the default-capped conflict-events fixture', () => {
     const fixture = readJson('tests/fixtures/jmespath-samples/medium-get-conflict-events.response.json');

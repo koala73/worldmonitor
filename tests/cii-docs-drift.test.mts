@@ -42,6 +42,38 @@ function markdownSection(text: string, heading: string): string {
     : text.slice(sectionStart, sectionStart + nextHeading);
 }
 
+function titleCase(value: string): string {
+  return value.slice(0, 1).toUpperCase() + value.slice(1);
+}
+
+function parseStrategicRiskDisplayBands(source: string): Array<{ min: number; label: string }> {
+  const match = source.match(/const STRATEGIC_RISK_BANDS:[\s\S]*?=\s*\[([\s\S]*?)\]\s*as const;/);
+  assert.ok(match, 'StrategicRiskPanel STRATEGIC_RISK_BANDS declaration not found');
+  return [...match[1]!.matchAll(/\{\s*min:\s*(\d+),\s*levelKey:\s*'([^']+)'/g)]
+    .map(([, min, label]) => ({ min: Number(min), label: titleCase(label!) }));
+}
+
+function displayBandRows(bands: Array<{ min: number; label: string }>): Array<{ range: string; label: string }> {
+  return bands.map((band, index) => {
+    const upper = index === 0 ? 100 : bands[index - 1]!.min - 1;
+    return { range: `${band.min}-${upper}`, label: band.label };
+  });
+}
+
+function parseStrategicRiskServerBands(source: string): Array<{ range: string; enumValue: string }> {
+  const high = source.match(/overallScore\s*>=\s*(\d+)\s*\n\s*\?\s*'SEVERITY_LEVEL_HIGH'/);
+  const medium = source.match(/overallScore\s*>=\s*(\d+)\s*\n\s*\?\s*'SEVERITY_LEVEL_MEDIUM'/);
+  assert.ok(high, 'server StrategicRisk HIGH threshold not found');
+  assert.ok(medium, 'server StrategicRisk MEDIUM threshold not found');
+  const highMin = Number(high[1]);
+  const mediumMin = Number(medium[1]);
+  return [
+    { range: `${highMin}-100`, enumValue: 'SEVERITY_LEVEL_HIGH' },
+    { range: `${mediumMin}-${highMin - 1}`, enumValue: 'SEVERITY_LEVEL_MEDIUM' },
+    { range: `0-${mediumMin - 1}`, enumValue: 'SEVERITY_LEVEL_LOW' },
+  ];
+}
+
 describe('CII docs drift guards', () => {
   it('internal review docs do not retain stale CII country-count or source-of-truth claims', () => {
     const internalDocPaths = [
@@ -105,6 +137,8 @@ describe('CII docs drift guards', () => {
 
   it('strategic risk doc publishes current server severity bands and roll-up', () => {
     const doc = readFileSync(resolve(root, 'docs', 'strategic-risk.mdx'), 'utf8');
+    const panelSource = readFileSync(resolve(root, 'src/components/StrategicRiskPanel.ts'), 'utf8');
+    const serverSource = readFileSync(resolve(root, 'server/worldmonitor/intelligence/v1/get-risk-scores.ts'), 'utf8');
     const scoreSection = markdownSection(doc, '### Server Score and Browser Fallback (0-100)');
     const riskLevels = markdownSection(doc, '### Risk Levels');
     const trendSection = markdownSection(doc, '### Trend Detection');
@@ -122,9 +156,22 @@ describe('CII docs drift guards', () => {
       /local\s+fallback/i,
       'strategic-risk doc must label the additive overview as browser/local fallback',
     );
-    assert.match(riskLevels, /\|\s*70-100\s*\|\s*\*\*High\*\*/);
-    assert.match(riskLevels, /\|\s*40-69\s*\|\s*\*\*Medium\*\*/);
-    assert.match(riskLevels, /\|\s*0-39\s*\|\s*\*\*Low\*\*/);
+    assert.match(riskLevels, /panel-visible headline label/i);
+    assert.match(riskLevels, /server `StrategicRisk\.level` enum/i);
+    for (const { range, label } of displayBandRows(parseStrategicRiskDisplayBands(panelSource))) {
+      assert.match(
+        riskLevels,
+        new RegExp(`\\|\\s*${range}\\s*\\|\\s*\\*\\*${label}\\*\\*\\s*\\|`),
+        `strategic-risk doc must publish panel display band ${range} ${label}`,
+      );
+    }
+    for (const { range, enumValue } of parseStrategicRiskServerBands(serverSource)) {
+      assert.match(
+        riskLevels,
+        new RegExp(`\\|\\s*${range}\\s*\\|\\s*\`${enumValue}\`\\s*\\|`),
+        `strategic-risk doc must publish server API band ${range} ${enumValue}`,
+      );
+    }
     assert.doesNotMatch(
       riskLevels,
       /Trend Icon|Escalating|De-escalating/,
@@ -183,8 +230,8 @@ describe('CII docs drift guards', () => {
     );
     assert.doesNotMatch(
       riskLevels,
-      /\*\*(?:Critical|Elevated|Moderate)\*\*|50-69|30-49/,
-      'strategic-risk risk-level table must not retain old Critical/Elevated/Moderate 70/50/30 semantics',
+      /\*\*Moderate\*\*|50-69|30-49/,
+      'strategic-risk risk-level table must not retain old Moderate 70/50/30 semantics',
     );
   });
 
