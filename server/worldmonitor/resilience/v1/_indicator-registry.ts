@@ -396,7 +396,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'cyberThreats',
     dimension: 'cyberDigital',
-    description: 'Severity-weighted cyber threat count (critical=3x, high=2x, medium=1x, low=0.5x)',
+    description: 'Discovery-day decayed severity-weighted cyber threat count (critical=3x, high=2x, medium=1x, low=0.5x)',
     direction: 'lowerBetter',
     goalposts: { worst: 25, best: 0 },
     weight: 0.45,

@@ -302,12 +302,12 @@
   direction: lower-better
   scoringTier: core
   source: Cyber threat feeds (mixed Western-origin)
-  seriesId: severity-weighted count (critical 3×, high 2×, medium 1×, low 0.5×)
+  seriesId: discovery-day decayed severity-weighted count (critical 3×, high 2×, medium 1×, low 0.5×)
   seriesUrl: Internal seed
   coveragePct: 0.70
   lastObservedYear: 2026
   license: Proprietary feeds (aggregated)
-  mechanismTestRationale: Severity-weighted cyber threat count directly measures ongoing cyber-attack pressure on national digital infrastructure.
+  mechanismTestRationale: Discovery-day decayed severity-weighted cyber threat count measures ongoing cyber-attack pressure while dampening isolated stale bursts.
   constructStatus: observed-mechanism
   reviewNotes: Western-feed bias; non-English cyber activity under-represented. PR 4 §4.8 tracks this.
 

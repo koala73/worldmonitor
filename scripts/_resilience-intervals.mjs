@@ -1,4 +1,4 @@
-export const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v8:';
+export const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v9:';
 export const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
 export const DRAWS = 100;
 

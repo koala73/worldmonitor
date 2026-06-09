@@ -167,7 +167,7 @@ describe('resilience scorer contracts', () => {
     // Issue #3971: infrastructure 79 -> 79.67 after capping the cyberDigital
     // per-snapshot cyber severity weight (fixture threats are undated, so the
     // whole snapshot is one capped bucket — same value pre/post the day-bucket
-    // rework). This is a per-snapshot cap, not multi-day smoothing.
+    // rework). Undated rows intentionally fall back to the current bucket.
     assert.deepEqual(domainAverages, {
       economic: 56.5,
       infrastructure: 79.67,

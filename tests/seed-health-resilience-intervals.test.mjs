@@ -19,9 +19,9 @@ process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
 const { default: handler } = await import('../api/seed-health.js');
 
 const META_KEY = 'seed-meta:resilience:intervals';
-const PROBE_KEY = 'resilience:intervals:v8:US';
+const PROBE_KEY = 'resilience:intervals:v9:US';
 const METHODOLOGY = 'weight-perturbation-sensitivity-v3';
-const SOURCE_VERSION = `resilience-intervals:resilience:intervals:v8:${METHODOLOGY}`;
+const SOURCE_VERSION = `resilience-intervals:resilience:intervals:v9:${METHODOLOGY}`;
 
 function intervalMeta(overrides = {}) {
   return {
@@ -86,7 +86,7 @@ async function readSeedHealth() {
   return { res, body };
 }
 
-test('seed-health flags fresh resilience interval meta when the current v8 data probe is absent', async () => {
+test('seed-health flags fresh resilience interval meta when the current v9 data probe is absent', async () => {
   installPipelineMock(new Map([
     [META_KEY, intervalMeta()],
   ]));

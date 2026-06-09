@@ -35,9 +35,12 @@ import {
   roundScore,
   sqrtCount,
   summarizeCyber,
+  CYBER_DISCOVERY_HALF_LIFE_DAYS,
   CYBER_SNAPSHOT_WEIGHT_CAP,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
 import { RESILIENCE_FIXTURES, fixtureReader } from './helpers/resilience-fixtures.mts';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 async function scoreTriple(
   scorer: (countryCode: string, reader?: (key: string) => Promise<unknown | null>) => Promise<{ score: number; coverage: number; observedWeight: number; imputedWeight: number; imputationClass: ImputationClass | null; freshness: { lastObservedAtMs: number; staleness: '' | 'fresh' | 'aging' | 'stale' } }>,
@@ -697,11 +700,8 @@ describe('resilience dimension scorers', () => {
   });
 
   it('summarizeCyber: caps total per-snapshot severity weight', () => {
-    // The cyber:threats:v2 feed carries no usable cross-day spread
-    // (lastSeenAt is stamped at ~fetch time, firstSeenAt is unpopulated), so
-    // the cap bounds the whole snapshot's severity weight rather than a
-    // per-day bucket. 10 critical (30) + 10 high (20) = 50 raw, capped to
-    // CYBER_SNAPSHOT_WEIGHT_CAP (8).
+    // Missing firstSeenAt preserves the legacy point-in-time path. 10 critical
+    // (30) + 10 high (20) = 50 raw, capped to CYBER_SNAPSHOT_WEIGHT_CAP (8).
     const burst = [
       ...Array.from({ length: 10 }, () => ({ country: 'Finland', severity: 'CRITICALITY_LEVEL_CRITICAL' })),
       ...Array.from({ length: 10 }, () => ({ country: 'Finland', severity: 'CRITICALITY_LEVEL_HIGH' })),
@@ -711,6 +711,58 @@ describe('resilience dimension scorers', () => {
       summarizeCyber({ threats: burst }, 'FI').weightedCount,
       CYBER_SNAPSHOT_WEIGHT_CAP,
       'a single snapshot burst is capped at the per-snapshot weight cap',
+    );
+  });
+
+  it('summarizeCyber: decays a single discovered burst by firstSeenAt age', () => {
+    assert.equal(CYBER_DISCOVERY_HALF_LIFE_DAYS, 1, 'test fixture assumes a 1-day half-life');
+    const nowMs = Date.UTC(2026, 0, 10);
+    const oneDayOldBurst = Array.from({ length: 50 }, () => ({
+      country: 'Finland',
+      severity: 'CRITICALITY_LEVEL_CRITICAL',
+      firstSeenAt: nowMs - DAY_MS,
+    }));
+    const twoDayOldBurst = oneDayOldBurst.map((threat) => ({
+      ...threat,
+      firstSeenAt: nowMs - 2 * DAY_MS,
+    }));
+
+    assert.equal(
+      summarizeCyber({ threats: oneDayOldBurst }, 'FI', { nowMs }).weightedCount,
+      CYBER_SNAPSHOT_WEIGHT_CAP / 2,
+      'one discovered burst decays by half after one day',
+    );
+    assert.equal(
+      summarizeCyber({ threats: twoDayOldBurst }, 'FI', { nowMs }).weightedCount,
+      CYBER_SNAPSHOT_WEIGHT_CAP / 4,
+      'one discovered burst keeps decaying during the quiet period',
+    );
+  });
+
+  it('summarizeCyber: sustained multi-day pressure reaches the capped penalty', () => {
+    const nowMs = Date.UTC(2026, 0, 10);
+    const sustained = [0, 1, 2, 3].flatMap((ageDays) => (
+      Array.from({ length: 50 }, () => ({
+        country: 'Finland',
+        severity: 'CRITICALITY_LEVEL_CRITICAL',
+        firstSeenAt: nowMs - ageDays * DAY_MS,
+      }))
+    ));
+    const oldSingleBurst = Array.from({ length: 50 }, () => ({
+      country: 'Finland',
+      severity: 'CRITICALITY_LEVEL_CRITICAL',
+      firstSeenAt: nowMs - 3 * DAY_MS,
+    }));
+
+    assert.equal(
+      summarizeCyber({ threats: sustained }, 'FI', { nowMs }).weightedCount,
+      CYBER_SNAPSHOT_WEIGHT_CAP,
+      'multiple elevated discovery days still reach the cap',
+    );
+    assert.ok(
+      summarizeCyber({ threats: sustained }, 'FI', { nowMs }).weightedCount >
+        summarizeCyber({ threats: oldSingleBurst }, 'FI', { nowMs }).weightedCount,
+      'sustained pressure must score worse than a lone burst after several quiet days',
     );
   });
 
@@ -749,10 +801,8 @@ describe('resilience dimension scorers', () => {
   });
 
   it('scoreCyberDigital: burst score floors at the per-snapshot cap regardless of volume', async () => {
-    // No cross-day smoothing exists for this feed: 50 vs 500 same-snapshot
-    // threats produce the same capped weight (8) and therefore the same
-    // bounded score. Genuine burst-vs-sustained discrimination would require
-    // cross-snapshot state and is intentionally NOT claimed here.
+    // Same-discovery-day volume above the cap remains bounded: 50 vs 500
+    // threats with no discovery spread produce the same capped weight (8).
     const fifty = await scoreCyberDigital('FI', cyberOnlyReader(
       Array.from({ length: 50 }, () => ({ country: 'Finland', severity: 'CRITICALITY_LEVEL_CRITICAL' })),
     ));
@@ -762,6 +812,26 @@ describe('resilience dimension scorers', () => {
 
     assert.equal(fifty.score, fiveHundred.score, 'volume above the cap must not change the score');
     assert.ok(fifty.score > 0, `capped burst must stay above zero, got ${fifty.score}`);
+  });
+
+  it('scoreCyberDigital: discovery-day smoothing improves a stale lone burst', async () => {
+    const currentBurst = await scoreCyberDigital('FI', cyberOnlyReader(
+      Array.from({ length: 50 }, () => ({ country: 'Finland', severity: 'CRITICALITY_LEVEL_CRITICAL' })),
+    ));
+    const twoDayOldBurst = await scoreCyberDigital('FI', cyberOnlyReader(
+      Array.from({ length: 50 }, () => ({
+        country: 'Finland',
+        severity: 'CRITICALITY_LEVEL_CRITICAL',
+        firstSeenAt: Date.now() - 2 * DAY_MS,
+      })),
+    ));
+
+    assert.ok(
+      twoDayOldBurst.score > currentBurst.score,
+      `stale lone burst should be less punitive than current burst: stale=${twoDayOldBurst.score}, current=${currentBurst.score}`,
+    );
+    assert.equal(currentBurst.coverage, 0.45, 'current burst keeps the cyber subcomponent observed');
+    assert.equal(twoDayOldBurst.coverage, 0.45, 'decayed burst keeps the cyber subcomponent observed');
   });
 
   it('scoreCyberDigital: feed outage (null source) returns score=0 and zero coverage', async () => {

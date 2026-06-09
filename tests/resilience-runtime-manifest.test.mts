@@ -66,7 +66,7 @@ describe('resilience runtime manifest', () => {
       [modules.RESILIENCE_INTERVALS_META_KEY]: {
         fetchedAt: Date.parse('2026-05-29T11:45:00.000Z'),
       },
-      'resilience:intervals:v8:US': {
+      'resilience:intervals:v9:US': {
         p05: 65.2,
         p95: 72.8,
         _formula: 'pc',
@@ -140,7 +140,7 @@ describe('resilience runtime manifest', () => {
       [modules.RESILIENCE_INTERVALS_META_KEY]: {
         fetchedAt: Date.parse('2026-05-30T10:00:00.000Z'),
       },
-      'resilience:intervals:v8:US': {
+      'resilience:intervals:v9:US': {
         p05: 65.2,
         p95: 72.8,
         _formula: 'd6',
@@ -168,7 +168,7 @@ describe('resilience runtime manifest', () => {
       [modules.RESILIENCE_INTERVALS_META_KEY]: {
         fetchedAt: Date.parse('2026-05-30T10:00:00.000Z'),
       },
-      'resilience:intervals:v8:US': {
+      'resilience:intervals:v9:US': {
         p05: 65.2,
         p95: 72.8,
         _formula: 'pc',
