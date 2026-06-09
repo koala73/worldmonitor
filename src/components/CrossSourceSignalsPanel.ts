@@ -1,5 +1,6 @@
 import { Panel } from './Panel';
 import { escapeHtml } from '@/utils/sanitize';
+import { getCurrentLanguage } from '@/services/i18n';
 
 interface CrossSourceSignal {
   id: string;
@@ -88,9 +89,10 @@ export class CrossSourceSignalsPanel extends Panel {
   private compositeCount = 0;
 
   constructor() {
+    const ja = getCurrentLanguage() === 'ja';
     super({
       id: 'cross-source-signals',
-      title: 'Cross-Source Signal Aggregator',
+      title: getCurrentLanguage() === 'ja' ? '横断シグナル集約' : 'Cross-Source Signal Aggregator',
       showCount: true,
       trackActivity: true,
       infoTooltip: 'Aggregates 15+ real-time data streams every 15 minutes. Ranks cross-domain signals by severity and detects composite escalation when 3 or more signal categories co-fire in the same theater.',
@@ -99,7 +101,7 @@ export class CrossSourceSignalsPanel extends Panel {
     const style = document.createElement('style');
     style.textContent = '@keyframes cross-source-pulse-dot{0%,100%{opacity:1}50%{opacity:.15}}';
     document.head.appendChild(style);
-    this.showLoading('Loading signal data...');
+    this.showLoading(ja ? 'シグナルデータを読み込み中...' : 'Loading signal data...');
   }
 
   public setData(data: CrossSourceSignalsData): void {
@@ -112,15 +114,17 @@ export class CrossSourceSignalsPanel extends Panel {
   }
 
   public showFetchError(): void {
-    this.showError('Signal data unavailable — upstream feeds unreachable.', () => {/* refreshed by scheduler */});
+    const ja = getCurrentLanguage() === 'ja';
+    this.showError(ja ? 'シグナルデータは現在利用できません。外部フィードに接続できません。' : 'Signal data unavailable — upstream feeds unreachable.', () => {/* refreshed by scheduler */});
   }
 
   private ageSuffix(ts: number): string {
+    const ja = getCurrentLanguage() === 'ja';
     const diffMs = Date.now() - ts;
     const mins = Math.floor(diffMs / 60000);
-    if (mins < 2) return 'just now';
-    if (mins < 60) return `${mins}m ago`;
-    return `${Math.floor(mins / 60)}h ago`;
+    if (mins < 2) return ja ? 'たった今' : 'just now';
+    if (mins < 60) return ja ? `${mins}分前` : `${mins}m ago`;
+    return ja ? `${Math.floor(mins / 60)}時間前` : `${Math.floor(mins / 60)}h ago`;
   }
 
   private renderSignal(sig: CrossSourceSignal, index: number): string {
@@ -163,21 +167,24 @@ export class CrossSourceSignalsPanel extends Panel {
   }
 
   private render(): void {
+    const ja = getCurrentLanguage() === 'ja';
     if (this.signals.length === 0) {
       if (!this.evaluatedAt) {
-        this.showError('Signal aggregator is initializing. First evaluation runs within 15 minutes.', () => {/* refreshed by scheduler */});
+        this.showError(ja ? '横断シグナル集約は初期化中です。最初の評価は15分以内に実行されます。' : 'Signal aggregator is initializing. First evaluation runs within 15 minutes.', () => {/* refreshed by scheduler */});
       } else {
-        this.setContent('<div style="padding:16px 0;text-align:center;font-size:12px;color:var(--text-dim)">No cross-source signals detected.</div>');
+        this.setContent(`<div style="padding:16px 0;text-align:center;font-size:12px;color:var(--text-dim)">${ja ? '横断シグナルは検出されていません。' : 'No cross-source signals detected.'}</div>`);
       }
       return;
     }
 
     const evalTime = this.evaluatedAt
-      ? `Evaluated ${this.evaluatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+      ? ja
+        ? `評価時刻 ${this.evaluatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+        : `Evaluated ${this.evaluatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
       : '';
 
     const compositeNote = this.compositeCount > 0
-      ? `<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--semantic-critical);padding:7px 10px;border:1px solid rgba(255,80,80,0.3);background:rgba(255,80,80,0.06);margin-bottom:8px"><div style="width:7px;height:7px;border-radius:50%;background:var(--semantic-critical);flex-shrink:0;animation:cross-source-pulse-dot 2s ease-in-out infinite"></div>${this.compositeCount} composite escalation zone${this.compositeCount > 1 ? 's' : ''} detected</div>`
+      ? `<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--semantic-critical);padding:7px 10px;border:1px solid rgba(255,80,80,0.3);background:rgba(255,80,80,0.06);margin-bottom:8px"><div style="width:7px;height:7px;border-radius:50%;background:var(--semantic-critical);flex-shrink:0;animation:cross-source-pulse-dot 2s ease-in-out infinite"></div>${ja ? `複合エスカレーション領域を ${this.compositeCount} 件検出` : `${this.compositeCount} composite escalation zone${this.compositeCount > 1 ? 's' : ''} detected`}</div>`
       : '';
 
     const signalRows = this.signals.map((s, i) => this.renderSignal(s, i)).join('');

@@ -204,7 +204,7 @@ function miniRateSparkline(obs: RateObs[], color: string, w = 80, h = 22): strin
 
 function renderRatesTab(rows: RateRow[]): string {
   const hasAny = rows.some(r => r.obs.length > 0);
-  if (!hasAny) return '<div style="padding:16px;color:var(--text-dim);font-size:12px">ECB rate data unavailable</div>';
+  if (!hasAny) return '<div style="padding:16px;color:var(--text-dim);font-size:12px">ECB金利データは現在利用できません</div>';
 
   const items = rows.map(row => {
     const latest = row.obs[row.obs.length - 1];
@@ -223,7 +223,7 @@ function renderRatesTab(rows: RateRow[]): string {
   }).join('');
 
   return `<div style="padding:4px 0">${items}</div>
-    <div style="margin-top:8px;font-size:9px;color:var(--text-dim)">Source: ECB</div>`;
+    <div style="margin-top:8px;font-size:9px;color:var(--text-dim)">ソース: ECB</div>`;
 }
 
 export class YieldCurvePanel extends Panel {
@@ -235,7 +235,7 @@ export class YieldCurvePanel extends Panel {
   private _rateRows: RateRow[] = [];
 
   constructor() {
-    super({ id: 'yield-curve', title: 'Yield Curve & Rates', showCount: false, infoTooltip: t('components.yieldCurve.infoTooltip') });
+    super({ id: 'yield-curve', title: 'イールドカーブ・金利', showCount: false, infoTooltip: t('components.yieldCurve.infoTooltip') });
 
     this.content.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]');
@@ -243,6 +243,13 @@ export class YieldCurvePanel extends Panel {
         this._tab = btn.dataset.tab as Tab;
         this._render();
       }
+    });
+  }
+
+  private renderUnavailableState(message: string): void {
+    this.renderExternalUnavailableState({
+      message,
+      source: 'FRED / ECB',
     });
   }
 
@@ -282,7 +289,7 @@ export class YieldCurvePanel extends Panel {
 
       const validCount = this._current.filter(p => p.value !== null).length;
       if (validCount === 0) {
-        if (!this._hasData) this.showError('No yield data available', () => void this.fetchData());
+        if (!this._hasData) this.renderUnavailableState('イールドカーブデータは現在利用できません。');
         return false;
       }
 
@@ -290,15 +297,15 @@ export class YieldCurvePanel extends Panel {
       this._render();
       return true;
     } catch (e) {
-      if (!this._hasData) this.showError(e instanceof Error ? e.message : 'Failed to load yield curve', () => void this.fetchData());
+      if (!this._hasData) this.renderUnavailableState(e instanceof Error ? e.message : 'イールドカーブデータは現在利用できません。');
       return false;
     }
   }
 
   private _render(): void {
     const tabBar = `<div style="display:flex;gap:4px;margin-bottom:6px">
-      <button class="panel-tab${this._tab === 'curve' ? ' active' : ''}" data-tab="curve" style="font-size:11px;padding:3px 10px">US Curve</button>
-      <button class="panel-tab${this._tab === 'rates' ? ' active' : ''}" data-tab="rates" style="font-size:11px;padding:3px 10px">ECB Rates</button>
+      <button class="panel-tab${this._tab === 'curve' ? ' active' : ''}" data-tab="curve" style="font-size:11px;padding:3px 10px">米国カーブ</button>
+      <button class="panel-tab${this._tab === 'rates' ? ' active' : ''}" data-tab="rates" style="font-size:11px;padding:3px 10px">ECB金利</button>
     </div>`;
 
     if (this._tab === 'rates') {
@@ -313,15 +320,15 @@ export class YieldCurvePanel extends Panel {
     const spreadSign = spreadBps !== null ? (Number(spreadBps) >= 0 ? '+' : '') : '';
 
     const statusBadge = isInverted
-      ? `<span style="background:#e74c3c;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:0.08em">INVERTED</span>`
-      : `<span style="background:#2ecc71;color:#000;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:0.08em">NORMAL</span>`;
+      ? `<span style="background:#e74c3c;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:0.08em">逆イールド</span>`
+      : `<span style="background:#2ecc71;color:#000;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:0.08em">通常</span>`;
 
     const spreadHtml = spreadBps !== null
-      ? `<span style="font-size:11px;color:var(--text-dim);margin-left:10px">2Y-10Y Spread: <span style="color:${isInverted ? '#e74c3c' : '#2ecc71'}">${escapeHtml(spreadSign + spreadBps)}bps</span></span>`
+      ? `<span style="font-size:11px;color:var(--text-dim);margin-left:10px">2年-10年スプレッド: <span style="color:${isInverted ? '#e74c3c' : '#2ecc71'}">${escapeHtml(spreadSign + spreadBps)}bps</span></span>`
       : '';
 
     const ecbLegend = this._ecbRates
-      ? `<span><svg width="20" height="4" style="vertical-align:middle"><line x1="0" y1="2" x2="20" y2="2" stroke="#2ecc71" stroke-width="1.5" stroke-dasharray="5,3"/></svg> EU (ECB AAA)</span>`
+      ? `<span><svg width="20" height="4" style="vertical-align:middle"><line x1="0" y1="2" x2="20" y2="2" stroke="#2ecc71" stroke-width="1.5" stroke-dasharray="5,3"/></svg> 欧州 (ECB AAA)</span>`
       : '';
 
     this.setContent(`
@@ -333,10 +340,10 @@ export class YieldCurvePanel extends Panel {
         <div style="margin:0 -4px">${renderChart(this._current, this._prior, this._ecbRates)}</div>
         ${renderTable(this._current)}
         <div style="margin-top:8px;font-size:9px;color:var(--text-dim);display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-          <span><svg width="20" height="4" style="vertical-align:middle"><line x1="0" y1="2" x2="20" y2="2" stroke="#3498db" stroke-width="2"/></svg> US (Current)</span>
-          <span><svg width="20" height="4" style="vertical-align:middle"><line x1="0" y1="2" x2="20" y2="2" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" stroke-dasharray="4,3"/></svg> US (Prior)</span>
+          <span><svg width="20" height="4" style="vertical-align:middle"><line x1="0" y1="2" x2="20" y2="2" stroke="#3498db" stroke-width="2"/></svg> 米国 (最新)</span>
+          <span><svg width="20" height="4" style="vertical-align:middle"><line x1="0" y1="2" x2="20" y2="2" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" stroke-dasharray="4,3"/></svg> 米国 (前回)</span>
           ${ecbLegend}
-          <span style="margin-left:auto">Source: FRED / ECB</span>
+          <span style="margin-left:auto">ソース: FRED / ECB</span>
         </div>
       </div>`);
   }

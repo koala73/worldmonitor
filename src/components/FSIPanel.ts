@@ -76,6 +76,13 @@ export class FSIPanel extends Panel {
     super({ id: 'fsi', title: t('components.fsi.title'), showCount: false, infoTooltip: t('components.fsi.infoTooltip') });
   }
 
+  private renderUnavailableState(message: string): void {
+    this.renderExternalUnavailableState({
+      message,
+      source: 'FRED / ECB',
+    });
+  }
+
   public async fetchData(): Promise<boolean> {
     this.showLoading();
     try {
@@ -109,7 +116,7 @@ export class FSIPanel extends Panel {
       }
 
       if (fsiValue <= 0) {
-        if (!this._hasData) this.showError(t('components.fsi.errors.unavailable'), () => void this.fetchData());
+        if (!this._hasData) this.renderUnavailableState('External financial stress snapshot is temporarily unavailable.');
         return false;
       }
 
@@ -132,7 +139,7 @@ export class FSIPanel extends Panel {
       this.render({ fsiValue, fsiLabel, hygPrice, tltPrice, vix, hySpread }, euFsi);
       return true;
     } catch (e) {
-      if (!this._hasData) this.showError(e instanceof Error ? e.message : t('components.fsi.errors.failedToLoad'), () => void this.fetchData());
+      if (!this._hasData) this.renderUnavailableState('External financial stress snapshot is temporarily unavailable.');
       return false;
     }
   }

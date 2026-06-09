@@ -46,6 +46,7 @@ async function loadChatAnalystPanel() {
       // (gated by \`if (options.infoTooltip)\`) which would otherwise crash the
       // MiniDocument template-element shim.
       export function t() { return ''; }
+      export function getCurrentLanguage() { return 'en'; }
     `],
     ['runtime-stub', `
       export function isDesktopRuntime() { return false; }

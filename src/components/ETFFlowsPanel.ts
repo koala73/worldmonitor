@@ -31,6 +31,14 @@ export class ETFFlowsPanel extends Panel {
   private data: ETFFlowsResult | null = null;
   private loading = true;
   private error: string | null = null;
+
+  private renderUnavailableState(message: string): void {
+    this.renderExternalUnavailableState({
+      message,
+      source: 'ETF flow and market quote feeds',
+    });
+  }
+
   constructor() {
     super({ id: 'etf-flows', title: t('panels.etfFlows'), showCount: false, infoTooltip: t('components.etfFlows.infoTooltip') });
   }
@@ -78,14 +86,14 @@ export class ETFFlowsPanel extends Panel {
     }
 
     if (this.error || !this.data) {
-      this.showError(this.error || t('common.noDataShort'), () => void this.fetchData());
+      this.renderUnavailableState(this.error || t('common.noDataShort'));
       return;
     }
 
     const d = this.data;
     if (!d.etfs?.length) {
       const msg = d.rateLimited ? t('components.etfFlows.rateLimited') : t('components.etfFlows.unavailable');
-      this.setContent(`<div class="panel-loading-text">${msg}</div>`);
+      this.renderUnavailableState(msg);
       return;
     }
 

@@ -35,6 +35,13 @@ export class StablecoinPanel extends Panel {
     super({ id: 'stablecoins', title: t('panels.stablecoins'), showCount: false, infoTooltip: t('components.stablecoins.infoTooltip') });
   }
 
+  private renderUnavailableState(message: string): void {
+    this.renderExternalUnavailableState({
+      message,
+      source: 'Stablecoin market and on-chain liquidity feeds',
+    });
+  }
+
   public async fetchData(): Promise<void> {
     const hydrated = getHydratedData('stablecoinMarkets') as StablecoinResult | undefined;
     if (hydrated?.stablecoins?.length) {
@@ -78,13 +85,13 @@ export class StablecoinPanel extends Panel {
     }
 
     if (this.error || !this.data) {
-      this.showError(this.error || t('common.noDataShort'), () => void this.fetchData());
+      this.renderUnavailableState(this.error || t('common.noDataShort'));
       return;
     }
 
     const d = this.data;
     if (!d.stablecoins?.length) {
-      this.setContent(`<div class="panel-empty">${t('common.noDataShort')}</div>`);
+      this.renderUnavailableState('Stablecoin market data is temporarily unavailable.');
       return;
     }
 

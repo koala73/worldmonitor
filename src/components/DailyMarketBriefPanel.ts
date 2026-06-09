@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { t } from '@/services/i18n';
+import { t, getCurrentLanguage } from '@/services/i18n';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { FrameworkSelector } from './FrameworkSelector';
 import type { DailyMarketBrief } from '@/services/daily-market-brief';
@@ -11,8 +11,9 @@ import { createWatchlistButton } from './watchlist-modal';
 type BriefSource = 'live' | 'cached';
 
 function formatGeneratedTime(isoTimestamp: string, timezone: string): string {
+  const ja = getCurrentLanguage() === 'ja';
   try {
-    return new Intl.DateTimeFormat('en-US', {
+    return new Intl.DateTimeFormat(ja ? 'ja-JP' : 'en-US', {
       timeZone: timezone,
       hour: 'numeric',
       minute: '2-digit',
@@ -25,18 +26,19 @@ function formatGeneratedTime(isoTimestamp: string, timezone: string): string {
 }
 
 function stanceLabel(stance: DailyMarketBrief['items'][number]['stance']): string {
-  if (stance === 'bullish') return 'Bullish';
-  if (stance === 'defensive') return 'Defensive';
-  return 'Neutral';
+  const ja = getCurrentLanguage() === 'ja';
+  if (stance === 'bullish') return ja ? '強気' : 'Bullish';
+  if (stance === 'defensive') return ja ? '守り重視' : 'Defensive';
+  return ja ? '中立' : 'Neutral';
 }
 
 function formatPrice(price: number | null): string {
-  if (typeof price !== 'number' || !Number.isFinite(price)) return 'N/A';
+  if (typeof price !== 'number' || !Number.isFinite(price)) return getCurrentLanguage() === 'ja' ? 'データなし' : 'N/A';
   return price.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
 function formatChange(change: number | null): string {
-  if (typeof change !== 'number' || !Number.isFinite(change)) return 'Flat';
+  if (typeof change !== 'number' || !Number.isFinite(change)) return getCurrentLanguage() === 'ja' ? '横ばい' : 'Flat';
   const sign = change > 0 ? '+' : '';
   return `${sign}${change.toFixed(2)}%`;
 }
@@ -45,10 +47,11 @@ export class DailyMarketBriefPanel extends Panel {
   private fwSelector: FrameworkSelector;
 
   constructor() {
-    super({ id: 'daily-market-brief', title: 'Daily Market Brief', infoTooltip: t('components.dailyMarketBrief.infoTooltip'), premium: 'locked' });
+    const ja = getCurrentLanguage() === 'ja';
+    super({ id: 'daily-market-brief', title: ja ? '日次マーケットブリーフ' : 'Daily Market Brief', infoTooltip: t('components.dailyMarketBrief.infoTooltip'), premium: 'locked' });
     this.fwSelector = new FrameworkSelector({ panelId: 'daily-market-brief', isPremium: hasPremiumAccess(), panel: this, note: 'Applies to client-generated analysis only' });
     this.header.appendChild(this.fwSelector.el);
-    this.header.appendChild(createWatchlistButton('Edit Watchlist'));
+    this.header.appendChild(createWatchlistButton(ja ? '監視銘柄を編集' : 'Edit Watchlist'));
   }
 
   public override destroy(): void {
@@ -57,6 +60,7 @@ export class DailyMarketBriefPanel extends Panel {
   }
 
   public renderBrief(brief: DailyMarketBrief, source: BriefSource = 'live'): void {
+    const ja = getCurrentLanguage() === 'ja';
     const freshness = describeFreshness(new Date(brief.generatedAt).getTime());
     this.setDataBadge(source, freshness);
     this.resetRetryBackoff();
@@ -73,11 +77,11 @@ export class DailyMarketBriefPanel extends Panel {
 
         <div style="display:grid;gap:10px">
           <div style="padding:10px 12px;border:1px solid var(--border);border-radius:4px;background:rgba(255,255,255,0.02)">
-            <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">Action Plan</div>
+            <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">${ja ? '行動計画' : 'Action Plan'}</div>
             <div style="font-size:12px;line-height:1.5">${escapeHtml(brief.actionPlan)}</div>
           </div>
           <div style="padding:10px 12px;border:1px solid var(--border);border-radius:4px;background:rgba(255,255,255,0.02)">
-            <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">Risk Watch</div>
+            <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">${ja ? '注意リスク' : 'Risk Watch'}</div>
             <div style="font-size:12px;line-height:1.5">${escapeHtml(brief.riskWatch)}</div>
           </div>
         </div>
@@ -97,7 +101,7 @@ export class DailyMarketBriefPanel extends Panel {
               </div>
               <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
                 <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim)">${escapeHtml(stanceLabel(item.stance))}</div>
-                ${item.relatedHeadline ? `<div style="font-size:11px;color:var(--text-dim);text-align:right;max-width:55%">Linked headline</div>` : ''}
+                ${item.relatedHeadline ? `<div style="font-size:11px;color:var(--text-dim);text-align:right;max-width:55%">${ja ? '関連見出し' : 'Linked headline'}</div>` : ''}
               </div>
               <div style="font-size:12px;line-height:1.45">${escapeHtml(item.note)}</div>
             </div>
@@ -110,7 +114,7 @@ export class DailyMarketBriefPanel extends Panel {
     this.setContent(html);
   }
 
-  public showUnavailable(message = 'The daily brief needs live market data before it can be generated.'): void {
+  public showUnavailable(message = getCurrentLanguage() === 'ja' ? '日次ブリーフの生成に必要な市場データが一時的に利用できません。' : 'The daily brief needs live market data before it can be generated.'): void {
     this.showError(message);
   }
 }

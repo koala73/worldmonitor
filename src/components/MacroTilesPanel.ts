@@ -1,6 +1,6 @@
 import type { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { Panel } from './Panel';
-import { t } from '@/services/i18n';
+import { t, getCurrentLanguage } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { getEurostatCountryData } from '@/services/economic';
 import type { GetEurostatCountryDataResponse } from '@/services/economic';
@@ -125,7 +125,8 @@ export class MacroTilesPanel extends Panel {
   private _estrObs: { date: string; value: number }[] = [];
 
   constructor() {
-    super({ id: 'macro-tiles', title: 'Macro Indicators', showCount: false, infoTooltip: t('components.macroTiles.infoTooltip') });
+    const ja = getCurrentLanguage() === 'ja';
+    super({ id: 'macro-tiles', title: ja ? 'マクロ指標' : 'Macro Indicators', showCount: false, infoTooltip: t('components.macroTiles.infoTooltip') });
 
     this.content.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]');
@@ -133,6 +134,13 @@ export class MacroTilesPanel extends Panel {
         this._tab = btn.dataset.tab as Tab;
         this._render();
       }
+    });
+  }
+
+  private renderUnavailableState(message: string): void {
+    this.renderExternalUnavailableState({
+      message,
+      source: 'FRED / Eurostat / ECB',
     });
   }
 
@@ -168,7 +176,7 @@ export class MacroTilesPanel extends Panel {
       ];
 
       if (!this._usTiles.some(t => t.value !== null)) {
-        if (!this._hasData) this.showError('Macro data unavailable', () => void this.fetchData());
+        if (!this._hasData) this.renderUnavailableState('External macro indicator snapshot is temporarily unavailable.');
         return false;
       }
 
@@ -176,7 +184,7 @@ export class MacroTilesPanel extends Panel {
       this._render();
       return true;
     } catch (e) {
-      if (!this._hasData) this.showError(e instanceof Error ? e.message : 'Failed to load', () => void this.fetchData());
+      if (!this._hasData) this.renderUnavailableState('External macro indicator snapshot is temporarily unavailable.');
       return false;
     }
   }
@@ -199,7 +207,7 @@ export class MacroTilesPanel extends Panel {
 
   private _buildEuBody(): string {
     if (!this._eurostat) {
-      return '<div style="padding:8px;color:var(--text-dim);font-size:12px">Euro Area data unavailable</div>';
+      return '<div style="padding:8px;color:var(--text-dim);font-size:12px">External Euro Area macro data is temporarily unavailable.</div>';
     }
     const cpiAvg = euAvg(this._eurostat, 'cpi');
     const unAvg = euAvg(this._eurostat, 'unemployment');

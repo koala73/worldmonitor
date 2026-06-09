@@ -17,6 +17,7 @@ import {
   setCachedStorageFacilityRegistry,
   type RawStorageFacilityRegistry,
 } from '@/shared/storage-facility-registry-store';
+import { getCurrentLanguage } from '@/services/i18n';
 
 const client = new SupplyChainServiceClient(getRpcBaseUrl(), {
   fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
@@ -174,9 +175,10 @@ export class StorageFacilityMapPanel extends Panel {
   };
 
   constructor() {
+    const ja = getCurrentLanguage() === 'ja';
     super({
       id: 'storage-facility-map',
-      title: 'Strategic Storage Atlas',
+      title: ja ? '戦略備蓄アトラス' : 'Strategic Storage Atlas',
       defaultRowSpan: 2,
       infoTooltip:
         'Curated registry of strategic storage assets — underground gas storage, strategic ' +
@@ -230,7 +232,11 @@ export class StorageFacilityMapPanel extends Panel {
       const live = await client.listStorageFacilities({ facilityType: '' });
       if (!this.element?.isConnected) return;
       if (live.upstreamUnavailable || !live.facilities?.length) {
-        this.showError('Storage registry unavailable', () => void this.fetchData());
+        this.renderExternalUnavailableState({
+          message: 'Storage registry is temporarily unavailable.',
+          source: 'Storage registry and operator evidence feeds',
+          detail: 'The panel will resume automatically when the upstream registry refreshes.',
+        });
         return;
       }
       this.data = live;
@@ -245,7 +251,11 @@ export class StorageFacilityMapPanel extends Panel {
     } catch (err) {
       if (this.isAbortError(err)) return;
       if (!this.element?.isConnected) return;
-      this.showError('Storage registry error', () => void this.fetchData());
+      this.renderExternalUnavailableState({
+        message: 'Storage registry is temporarily unavailable.',
+        source: 'Storage registry and operator evidence feeds',
+        detail: err instanceof Error ? err.message : 'Storage registry request failed.',
+      });
     }
   }
 

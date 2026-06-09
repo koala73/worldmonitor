@@ -12,12 +12,14 @@ import {
   resetMarketWatchlist,
   setMarketWatchlistEntries,
 } from '@/services/market-watchlist';
+import { getCurrentLanguage } from '@/services/i18n';
 import { WatchlistEditor } from './WatchlistEditor';
 
 let activeOverlay: HTMLElement | null = null;
 
 export function openWatchlistModal(): void {
   if (activeOverlay) return;
+  const ja = getCurrentLanguage() === 'ja';
 
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay active';
@@ -41,21 +43,20 @@ export function openWatchlistModal(): void {
 
   modal.innerHTML = `
     <div class="modal-header">
-      <span class="modal-title">Market watchlist</span>
-      <button class="modal-close" aria-label="Close">×</button>
+      <span class="modal-title">${ja ? '市場ウォッチリスト' : 'Market watchlist'}</span>
+      <button class="modal-close" aria-label="${ja ? '閉じる' : 'Close'}">×</button>
     </div>
     <div style="padding:14px 16px 16px 16px">
       <div style="color:var(--text-dim);font-size:12px;line-height:1.5;margin-bottom:12px">
-        Search a ticker or company name and pick from the list — every entry is a
-        real, tracked symbol. Your picks are <strong>added</strong> to the Markets
-        panel and lead the Premium Stock Analysis, Backtesting and Daily Market
-        Brief panels. PRO members get every ticker in the list reported (up to 50).
+        ${ja
+          ? 'ティッカーまたは会社名で検索し、候補から選んでください。追加した銘柄は <strong>市場</strong> パネルに反映され、プレミアム株式分析・バックテスト・デイリーマーケットブリーフの優先対象になります。PRO では最大 50 銘柄まで反映されます。'
+          : 'Search a ticker or company name and pick from the list — every entry is a real, tracked symbol. Your picks are <strong>added</strong> to the Markets panel and lead the Premium Stock Analysis, Backtesting and Daily Market Brief panels. PRO members get every ticker in the list reported (up to 50).'}
       </div>
       <div id="wmWatchlistEditorMount"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
-        <button type="button" class="panels-reset-layout" id="wmMarketResetBtn">Reset</button>
-        <button type="button" class="panels-reset-layout" id="wmMarketCancelBtn">Cancel</button>
-        <button type="button" class="panels-reset-layout" id="wmMarketSaveBtn" style="border-color:var(--text-dim);color:var(--text)">Save</button>
+        <button type="button" class="panels-reset-layout" id="wmMarketResetBtn">${ja ? 'リセット' : 'Reset'}</button>
+        <button type="button" class="panels-reset-layout" id="wmMarketCancelBtn">${ja ? 'キャンセル' : 'Cancel'}</button>
+        <button type="button" class="panels-reset-layout" id="wmMarketSaveBtn" style="border-color:var(--text-dim);color:var(--text)">${ja ? '保存' : 'Save'}</button>
       </div>
     </div>
   `;
@@ -88,11 +89,12 @@ export function openWatchlistModal(): void {
  * existing `live-news-settings-btn` styling so it matches the other panel
  * header affordances.
  */
-export function createWatchlistButton(label = 'Watchlist'): HTMLButtonElement {
+export function createWatchlistButton(label?: string): HTMLButtonElement {
+  const ja = getCurrentLanguage() === 'ja';
   const btn = document.createElement('button');
   btn.className = 'live-news-settings-btn';
-  btn.title = 'Customize market watchlist';
-  btn.textContent = label;
+  btn.title = ja ? '市場ウォッチリストを編集' : 'Customize market watchlist';
+  btn.textContent = label ?? (ja ? '監視銘柄' : 'Watchlist');
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     openWatchlistModal();

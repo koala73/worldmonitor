@@ -128,10 +128,6 @@ export class TradePolicyPanel extends Panel {
       : this.activeTab === 'barriers' ? this.barriersData
       : this.activeTab === 'comtrade' ? this.comtradeData
       : this.revenueData;
-    const unavailableBanner = !activeHasData && activeData?.upstreamUnavailable
-      ? `<div class="economic-warning">${this.activeTab === 'revenue' ? t('components.tradePolicy.treasuryUnavailable') : this.activeTab === 'comtrade' ? t('components.tradePolicy.comtradeUnavailable') : t('components.tradePolicy.upstreamUnavailable')}</div>`
-      : '';
-
     let contentHtml = '';
     switch (this.activeTab) {
       case 'restrictions': contentHtml = this.renderRestrictions(); break;
@@ -142,15 +138,15 @@ export class TradePolicyPanel extends Panel {
       case 'comtrade': contentHtml = this.renderComtradeFlows(); break;
     }
 
-    const source = this.activeTab === 'comtrade' ? t('components.tradePolicy.sourceComtrade')
-      : this.activeTab === 'revenue' ? t('components.tradePolicy.sourceTreasury')
-      : (this.activeTab === 'tariffs' || this.activeTab === 'restrictions') && this.tariffsData?.effectiveTariffRate?.sourceName
-      ? `${t('components.tradePolicy.sourceWto')} / ${this.tariffsData.effectiveTariffRate.sourceName}`
-      : t('components.tradePolicy.sourceWto');
+    const source = this.getActiveSourceLabel();
+    if (!activeHasData && activeData?.upstreamUnavailable) {
+      this.setDataBadge('unavailable', 'external');
+    } else {
+      this.clearDataBadge();
+    }
 
     this.setContent(`
       ${tabsHtml}
-      ${unavailableBanner}
       <div class="economic-content">${contentHtml}</div>
       <div class="economic-footer">
         <span class="economic-source">${escapeHtml(source)}</span>
@@ -160,6 +156,13 @@ export class TradePolicyPanel extends Panel {
   }
 
   private renderRestrictions(): string {
+    if (this.restrictionsData?.upstreamUnavailable && !this.restrictionsData.restrictions?.length) {
+      return this.renderExternalEmptyMarkup(
+        'External trade restriction data is temporarily unavailable.',
+        this.getActiveSourceLabel(),
+        t('components.tradePolicy.upstreamUnavailable'),
+      );
+    }
     if (!this.restrictionsData || !this.restrictionsData.restrictions?.length) {
       return `<div class="economic-empty">${t('components.tradePolicy.noOverviewData')}</div>`;
     }
@@ -209,6 +212,13 @@ export class TradePolicyPanel extends Panel {
   }
 
   private renderTariffs(): string {
+    if (this.tariffsData?.upstreamUnavailable && !this.tariffsData.datapoints?.length) {
+      return this.renderExternalEmptyMarkup(
+        'External tariff data is temporarily unavailable.',
+        this.getActiveSourceLabel(),
+        t('components.tradePolicy.upstreamUnavailable'),
+      );
+    }
     if (!this.tariffsData || !this.tariffsData.datapoints?.length) {
       return `<div class="economic-empty">${t('components.tradePolicy.noTariffData')}</div>`;
     }
@@ -321,6 +331,13 @@ export class TradePolicyPanel extends Panel {
   }
 
   private renderFlows(): string {
+    if (this.flowsData?.upstreamUnavailable && !this.flowsData.flows?.length) {
+      return this.renderExternalEmptyMarkup(
+        'External trade flow data is temporarily unavailable.',
+        this.getActiveSourceLabel(),
+        t('components.tradePolicy.upstreamUnavailable'),
+      );
+    }
     if (!this.flowsData || !this.flowsData.flows?.length) {
       return `<div class="economic-empty">${t('components.tradePolicy.noFlowData')}</div>`;
     }
@@ -351,6 +368,13 @@ export class TradePolicyPanel extends Panel {
   }
 
   private renderBarriers(): string {
+    if (this.barriersData?.upstreamUnavailable && !this.barriersData.barriers?.length) {
+      return this.renderExternalEmptyMarkup(
+        'External trade barrier data is temporarily unavailable.',
+        this.getActiveSourceLabel(),
+        t('components.tradePolicy.upstreamUnavailable'),
+      );
+    }
     if (!this.barriersData || !this.barriersData.barriers?.length) {
       return `<div class="economic-empty">${t('components.tradePolicy.noBarriers')}</div>`;
     }
@@ -378,6 +402,13 @@ export class TradePolicyPanel extends Panel {
   }
 
   private renderRevenue(): string {
+    if (this.revenueData?.upstreamUnavailable && !this.revenueData.months?.length) {
+      return this.renderExternalEmptyMarkup(
+        'External customs revenue data is temporarily unavailable.',
+        this.getActiveSourceLabel(),
+        t('components.tradePolicy.treasuryUnavailable'),
+      );
+    }
     if (!this.revenueData || !this.revenueData.months?.length) {
       return `<div class="economic-empty">${t('components.tradePolicy.noRevenueData')}</div>`;
     }
@@ -452,6 +483,13 @@ export class TradePolicyPanel extends Panel {
 
   private renderComtradeFlows(): string {
     const flows = this.comtradeData?.flows;
+    if (this.comtradeData?.upstreamUnavailable && !flows?.length) {
+      return this.renderExternalEmptyMarkup(
+        'External strategic trade flow data is temporarily unavailable.',
+        this.getActiveSourceLabel(),
+        t('components.tradePolicy.comtradeUnavailable'),
+      );
+    }
     if (!flows?.length) {
       return `<div class="economic-empty">${t('components.tradePolicy.noComtradeData')}</div>`;
     }
@@ -522,5 +560,24 @@ export class TradePolicyPanel extends Panel {
       }
     } catch { /* invalid URL */ }
     return '';
+  }
+
+  private getActiveSourceLabel(): string {
+    if (this.activeTab === 'comtrade') return t('components.tradePolicy.sourceComtrade');
+    if (this.activeTab === 'revenue') return t('components.tradePolicy.sourceTreasury');
+    if ((this.activeTab === 'tariffs' || this.activeTab === 'restrictions') && this.tariffsData?.effectiveTariffRate?.sourceName) {
+      return `${t('components.tradePolicy.sourceWto')} / ${this.tariffsData.effectiveTariffRate.sourceName}`;
+    }
+    return t('components.tradePolicy.sourceWto');
+  }
+
+  private renderExternalEmptyMarkup(message: string, source: string, detail?: string): string {
+    return `
+      <div class="panel-external-state">
+        <div class="economic-empty">${escapeHtml(message)}</div>
+        <div class="economic-empty-detail">Source: ${escapeHtml(source)}</div>
+        ${detail ? `<div class="economic-empty-detail">${escapeHtml(detail)}</div>` : ''}
+      </div>
+    `;
   }
 }

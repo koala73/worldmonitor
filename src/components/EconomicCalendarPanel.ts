@@ -1,6 +1,6 @@
 import type { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { Panel } from './Panel';
-import { t } from '@/services/i18n';
+import { t, getCurrentLanguage } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 
 let _client: EconomicServiceClient | null = null;
@@ -89,8 +89,16 @@ export class EconomicCalendarPanel extends Panel {
   private _events: EconomicEvent[] = [];
   private _region: RegionFilter = 'all';
 
+  private renderUnavailableState(message: string): void {
+    this.renderExternalUnavailableState({
+      message,
+      source: 'Economic calendar aggregator',
+    });
+  }
+
   constructor() {
-    super({ id: 'economic-calendar', title: 'Economic Calendar', showCount: false, infoTooltip: t('components.economicCalendar.infoTooltip') });
+    const ja = getCurrentLanguage() === 'ja';
+    super({ id: 'economic-calendar', title: ja ? '経済カレンダー' : 'Economic Calendar', showCount: false, infoTooltip: t('components.economicCalendar.infoTooltip') });
     this.content.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-region]');
       if (!btn) return;
@@ -112,7 +120,7 @@ export class EconomicCalendarPanel extends Panel {
       const resp = await client.getEconomicCalendar({ fromDate, toDate });
 
       if (resp.unavailable || !resp.events || resp.events.length === 0) {
-        if (!this._hasData) this.showError('Economic calendar data unavailable.', () => void this.fetchData());
+        if (!this._hasData) this.renderUnavailableState('External economic calendar is temporarily unavailable.');
         return false;
       }
 
@@ -122,7 +130,7 @@ export class EconomicCalendarPanel extends Panel {
       return true;
     } catch (err) {
       if (this.isAbortError(err)) return false;
-      if (!this._hasData) this.showError('Failed to load economic calendar.', () => void this.fetchData());
+      if (!this._hasData) this.renderUnavailableState('External economic calendar is temporarily unavailable.');
       return false;
     }
   }
@@ -154,7 +162,7 @@ export class EconomicCalendarPanel extends Panel {
 
   private _render(): void {
     if (!this._hasData) {
-      this.showError('No upcoming economic events.', () => void this.fetchData());
+      this.renderUnavailableState('No upcoming economic events were returned by the external calendar feed.');
       return;
     }
 

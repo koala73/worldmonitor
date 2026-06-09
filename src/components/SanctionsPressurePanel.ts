@@ -26,7 +26,11 @@ export class SanctionsPressurePanel extends Panel {
 
   private render(): void {
     if (!this.data || this.data.totalCount === 0) {
-      this.setContent(`<div class="economic-empty">${escapeHtml(t('components.sanctionsPressure.unavailable'))}</div>`);
+      this.renderExternalUnavailableState({
+        message: 'External sanctions designation data is temporarily unavailable.',
+        source: 'OFAC sanctions feed',
+        detail: t('components.sanctionsPressure.unavailable'),
+      });
       return;
     }
 
@@ -42,15 +46,15 @@ export class SanctionsPressurePanel extends Panel {
 
     const countriesHtml = data.countries.length > 0
       ? data.countries.slice(0, 8).map((country) => this.renderCountryRow(country)).join('')
-      : `<div class="economic-empty">${escapeHtml(t('components.sanctionsPressure.empty.countries'))}</div>`;
+      : `<div class="economic-empty">${escapeHtml('No country-level sanctions pressure rows are currently available.')}</div>`;
 
     const entriesHtml = data.entries.length > 0
       ? data.entries.slice(0, 10).map((entry) => this.renderEntryRow(entry)).join('')
-      : `<div class="economic-empty">${escapeHtml(t('components.sanctionsPressure.empty.entries'))}</div>`;
+      : `<div class="economic-empty">${escapeHtml('No recent sanctions entries are currently available.')}</div>`;
 
     const programsHtml = data.programs.length > 0
       ? data.programs.slice(0, 6).map((program) => this.renderProgramRow(program)).join('')
-      : `<div class="economic-empty">${escapeHtml(t('components.sanctionsPressure.empty.programs'))}</div>`;
+      : `<div class="economic-empty">${escapeHtml('No sanctions program summaries are currently available.')}</div>`;
 
     const footer = [
       t('components.sanctionsPressure.footer.updated', { time: data.fetchedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }),

@@ -12,6 +12,7 @@ import type {
   StrategicProduct,
 } from '@/generated/server/worldmonitor/supply_chain/v1/service_server';
 import { escapeHtml } from './route-utils';
+import { getCurrentLanguage } from '@/services/i18n';
 
 export interface CountryImpactTabOptions {
   onDrillSideways?: (hs2: string) => void;
@@ -56,32 +57,35 @@ export class CountryImpactTab {
   }
 
   private renderPlaceholder(): void {
+    const ja = getCurrentLanguage() === 'ja';
     this.element.innerHTML =
-      '<div class="re-tab__placeholder">Pick a country pair and product to see the impact analysis.</div>';
+      `<div class="re-tab__placeholder">${ja ? '国の組み合わせと製品を選ぶと、影響分析が表示されます。' : 'Pick a country pair and product to see the impact analysis.'}</div>`;
   }
 
   private renderMissing(): void {
+    const ja = getCurrentLanguage() === 'ja';
     this.element.innerHTML =
       '<div class="re-tab__empty">' +
-      '<h3>No trade data available</h3>' +
-      '<p>WorldMonitor does not have bilateral trade data for this destination country yet.</p>' +
+      `<h3>${ja ? '貿易データがありません' : 'No trade data available'}</h3>` +
+      `<p>${ja ? 'この到着国の二国間貿易データはまだ利用できません。' : 'WorldMonitor does not have bilateral trade data for this destination country yet.'}</p>` +
       '</div>';
   }
 
   private renderEmpty(): void {
+    const ja = getCurrentLanguage() === 'ja';
     this.element.innerHTML =
       '<div class="re-tab__empty">' +
-      '<h3>No strategic products found</h3>' +
-      '<p>The bilateral trade store returned empty data for this destination.</p>' +
+      `<h3>${ja ? '主要製品が見つかりません' : 'No strategic products found'}</h3>` +
+      `<p>${ja ? 'この到着国では二国間貿易データが空でした。' : 'The bilateral trade store returned empty data for this destination.'}</p>` +
       '</div>';
   }
 
   private renderLazy(): void {
+    const ja = getCurrentLanguage() === 'ja';
     this.element.innerHTML =
       '<div class="re-tab__empty">' +
-      '<h3>Loading trade data</h3>' +
-      '<p>WorldMonitor is fetching trade data for this destination for the first time. ' +
-      'Try again in a few seconds.</p>' +
+      `<h3>${ja ? '貿易データを読み込み中' : 'Loading trade data'}</h3>` +
+      `<p>${ja ? 'この到着国の貿易データを初回取得しています。数秒後に再度お試しください。' : 'WorldMonitor is fetching trade data for this destination for the first time. Try again in a few seconds.'}</p>` +
       '</div>';
   }
 

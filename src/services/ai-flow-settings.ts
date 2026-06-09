@@ -14,6 +14,7 @@ const STORAGE_KEY_MAP_NEWS_FLASH = 'wm-map-news-flash';
 const STORAGE_KEY_HEADLINE_MEMORY = 'wm-headline-memory';
 const STORAGE_KEY_BADGE_ANIMATION = 'wm-badge-animation';
 const STORAGE_KEY_STREAM_QUALITY = 'wm-stream-quality';
+const STORAGE_KEY_CLOUD_TRANSLATION = 'wm-ai-flow-cloud-translation';
 const EVENT_NAME = 'ai-flow-changed';
 const STREAM_QUALITY_EVENT = 'stream-quality-changed';
 
@@ -23,6 +24,10 @@ export interface AiFlowSettings {
   mapNewsFlash: boolean;
   headlineMemory: boolean;
   badgeAnimation: boolean;
+  /** Allow sending article text to the Google unofficial translation endpoint
+   *  (translate.googleapis.com). Set to false to disable cloud egress for
+   *  translation; the local browser-model fallback will be used instead. */
+  cloudTranslation: boolean;
 }
 
 function readBool(key: string, defaultValue: boolean): boolean {
@@ -49,6 +54,7 @@ const STORAGE_KEY_MAP: Record<keyof AiFlowSettings, string> = {
   mapNewsFlash: STORAGE_KEY_MAP_NEWS_FLASH,
   headlineMemory: STORAGE_KEY_HEADLINE_MEMORY,
   badgeAnimation: STORAGE_KEY_BADGE_ANIMATION,
+  cloudTranslation: STORAGE_KEY_CLOUD_TRANSLATION,
 };
 
 const DEFAULTS: AiFlowSettings = {
@@ -57,6 +63,7 @@ const DEFAULTS: AiFlowSettings = {
   mapNewsFlash: true,
   headlineMemory: false,
   badgeAnimation: false,
+  cloudTranslation: true,
 };
 
 export function getAiFlowSettings(): AiFlowSettings {
@@ -66,6 +73,7 @@ export function getAiFlowSettings(): AiFlowSettings {
     mapNewsFlash: readBool(STORAGE_KEY_MAP_NEWS_FLASH, DEFAULTS.mapNewsFlash),
     headlineMemory: readBool(STORAGE_KEY_HEADLINE_MEMORY, DEFAULTS.headlineMemory),
     badgeAnimation: readBool(STORAGE_KEY_BADGE_ANIMATION, DEFAULTS.badgeAnimation),
+    cloudTranslation: readBool(STORAGE_KEY_CLOUD_TRANSLATION, DEFAULTS.cloudTranslation),
   };
 }
 

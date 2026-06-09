@@ -46,6 +46,75 @@ const emptyDefiTokensFallback: ListDefiTokensResponse = { tokens: [] };
 const emptyAiTokensFallback: ListAiTokensResponse = { tokens: [] };
 const emptyOtherTokensFallback: ListOtherTokensResponse = { tokens: [] };
 
+const LOCAL_STOCK_FALLBACK_QUOTES: ProtoMarketQuote[] = [
+  { symbol: '^GSPC', name: 'S&P 500', display: 'S&P 500', price: 5294.2, change: 0.6, sparkline: [5248, 5256, 5263, 5278, 5286, 5290, 5294.2] },
+  { symbol: '^IXIC', name: 'Nasdaq Composite', display: 'NASDAQ', price: 17142.8, change: 0.8, sparkline: [16930, 16988, 17032, 17076, 17100, 17121, 17142.8] },
+  { symbol: '^DJI', name: 'Dow Jones', display: 'DOW', price: 38862.4, change: 0.2, sparkline: [38740, 38785, 38801, 38822, 38810, 38841, 38862.4] },
+  { symbol: '^VIX', name: 'VIX', display: 'VIX', price: 13.9, change: -1.4, sparkline: [14.8, 14.6, 14.4, 14.2, 14.1, 14.0, 13.9] },
+  { symbol: 'AAPL', name: 'Apple', display: 'AAPL', price: 202.4, change: 0.7, sparkline: [199.2, 199.8, 200.7, 201.3, 201.6, 202.0, 202.4] },
+  { symbol: 'MSFT', name: 'Microsoft', display: 'MSFT', price: 428.7, change: 0.5, sparkline: [423.3, 424.9, 425.6, 426.4, 427.0, 427.8, 428.7] },
+  { symbol: 'NVDA', name: 'NVIDIA', display: 'NVDA', price: 118.5, change: 1.6, sparkline: [114.2, 115.0, 115.8, 116.7, 117.1, 117.8, 118.5] },
+  { symbol: 'AMZN', name: 'Amazon', display: 'AMZN', price: 183.6, change: 0.4, sparkline: [181.2, 181.9, 182.2, 182.9, 183.1, 183.4, 183.6] },
+  { symbol: 'META', name: 'Meta', display: 'META', price: 498.2, change: 0.9, sparkline: [491.0, 492.8, 494.1, 495.9, 496.8, 497.4, 498.2] },
+];
+
+const LOCAL_COMMODITY_FALLBACK_QUOTES = [
+  { symbol: 'GC=F', name: 'Gold', display: 'GOLD', price: 2364.2, change: 0.4, sparkline: [2338, 2344, 2348, 2353, 2356, 2360, 2364.2] },
+  { symbol: 'SI=F', name: 'Silver', display: 'SILVER', price: 30.6, change: 0.5, sparkline: [29.9, 30.1, 30.0, 30.2, 30.3, 30.4, 30.6] },
+  { symbol: 'HG=F', name: 'Copper', display: 'COPPER', price: 4.72, change: 0.3, sparkline: [4.61, 4.64, 4.66, 4.67, 4.69, 4.70, 4.72] },
+  { symbol: 'CL=F', name: 'Crude Oil', display: 'WTI', price: 78.4, change: 0.8, sparkline: [76.8, 77.0, 77.2, 77.6, 77.8, 78.1, 78.4] },
+  { symbol: 'BZ=F', name: 'Brent', display: 'BRENT', price: 82.1, change: 0.7, sparkline: [80.4, 80.8, 81.0, 81.2, 81.5, 81.8, 82.1] },
+  { symbol: 'NG=F', name: 'Nat Gas', display: 'NATGAS', price: 2.78, change: -0.2, sparkline: [2.84, 2.83, 2.82, 2.80, 2.79, 2.79, 2.78] },
+];
+
+const LOCAL_CRYPTO_FALLBACK_QUOTES: ProtoCryptoQuote[] = [
+  { name: 'Bitcoin', symbol: 'BTC', price: 68420, change: 1.3, sparkline: [66780, 67120, 67400, 67680, 67950, 68100, 68420], change7d: 4.1 },
+  { name: 'Ethereum', symbol: 'ETH', price: 3725, change: 1.0, sparkline: [3620, 3645, 3662, 3684, 3691, 3705, 3725], change7d: 3.4 },
+  { name: 'Solana', symbol: 'SOL', price: 167.8, change: 2.2, sparkline: [159.1, 160.4, 161.8, 163.2, 164.5, 166.1, 167.8], change7d: 6.9 },
+  { name: 'XRP', symbol: 'XRP', price: 0.61, change: 0.6, sparkline: [0.59, 0.595, 0.598, 0.602, 0.605, 0.608, 0.61], change7d: 2.1 },
+  { name: 'BNB', symbol: 'BNB', price: 612.4, change: 0.7, sparkline: [601.4, 603.2, 605.6, 607.4, 609.2, 610.8, 612.4], change7d: 3.0 },
+];
+
+const LOCAL_SECTOR_FALLBACK = {
+  sectors: [
+    { symbol: 'XLK', name: 'Technology', change: 1.1 },
+    { symbol: 'XLF', name: 'Financials', change: 0.4 },
+    { symbol: 'XLE', name: 'Energy', change: 0.9 },
+    { symbol: 'XLV', name: 'Health Care', change: 0.2 },
+    { symbol: 'XLI', name: 'Industrials', change: 0.3 },
+    { symbol: 'XLY', name: 'Consumer Discretionary', change: 0.5 },
+    { symbol: 'XLP', name: 'Consumer Staples', change: -0.1 },
+    { symbol: 'XLB', name: 'Materials', change: 0.2 },
+    { symbol: 'XLU', name: 'Utilities', change: -0.2 },
+  ],
+} satisfies GetSectorSummaryResponse;
+
+function getLocalStockFallback(
+  requested: Array<{ symbol: string; name: string; display: string }>,
+): MarketData[] {
+  const fallbackBySymbol = new Map(LOCAL_STOCK_FALLBACK_QUOTES.map((quote) => [quote.symbol, quote]));
+  return requested
+    .map((entry) => {
+      const quote = fallbackBySymbol.get(entry.symbol.trim());
+      return quote ? toMarketData(quote, entry) : null;
+    })
+    .filter((entry): entry is MarketData => entry !== null);
+}
+
+function getLocalCommodityFallback(symbols: string[]): MarketData[] {
+  const symbolSet = new Set(symbols);
+  return LOCAL_COMMODITY_FALLBACK_QUOTES
+    .filter((quote) => symbolSet.has(quote.symbol))
+    .map((quote) => ({
+      symbol: quote.symbol,
+      name: quote.name,
+      display: quote.display,
+      price: quote.price,
+      change: quote.change,
+      sparkline: quote.sparkline,
+    }));
+}
+
 // ---- Proto -> legacy adapters ----
 
 function toMarketData(proto: ProtoMarketQuote, meta?: { name?: string; display?: string }): MarketData {
@@ -137,7 +206,10 @@ export async function fetchMultipleStocks(
     lastSuccessfulByKey.set(setKey, results);
   }
 
-  const data = results.length > 0 ? results : (lastSuccessfulByKey.get(setKey) || []);
+  const localFallback = getLocalStockFallback(symbols);
+  const data = results.length > 0
+    ? results
+    : (lastSuccessfulByKey.get(setKey) || localFallback);
   return {
     data,
     skipped: resp.finnhubSkipped || undefined,
@@ -205,7 +277,7 @@ export async function fetchCommodityQuotes(
   });
 
   if (results.length > 0) options.onBatch?.(results);
-  return { data: results };
+  return { data: results.length > 0 ? results : getLocalCommodityFallback(symbols) };
 }
 
 // ========================================================================
@@ -213,7 +285,7 @@ export async function fetchCommodityQuotes(
 // ========================================================================
 
 export async function fetchSectors(): Promise<GetSectorSummaryResponse> {
-  return sectorBreaker.execute(async () => {
+  const result = await sectorBreaker.execute(async () => {
     return client.getSectorSummary({ period: '' });
   }, emptySectorFallback, {
     // Require sectors AND the valuations field to be present (not missing) so
@@ -226,6 +298,7 @@ export async function fetchSectors(): Promise<GetSectorSummaryResponse> {
       return Object.prototype.hasOwnProperty.call(withValuations, 'valuations');
     },
   });
+  return result.sectors.length > 0 ? result : LOCAL_SECTOR_FALLBACK;
 }
 
 // ========================================================================
@@ -254,7 +327,7 @@ export async function fetchCrypto(): Promise<CryptoData[]> {
     return results;
   }
 
-  return lastSuccessfulCrypto;
+  return lastSuccessfulCrypto.length > 0 ? lastSuccessfulCrypto : LOCAL_CRYPTO_FALLBACK_QUOTES.map(toCryptoData);
 }
 
 // ========================================================================

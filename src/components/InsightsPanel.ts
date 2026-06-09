@@ -40,6 +40,13 @@ export class InsightsPanel extends Panel {
   private static readonly BRIEF_COOLDOWN_MS = 120000; // 2 min cooldown (API has limits)
   private static readonly BRIEF_CACHE_KEY = 'summary:world-brief';
 
+  private renderUnavailableState(message: string): void {
+    this.renderExternalUnavailableState({
+      message,
+      source: 'AI inference and market context feeds',
+    });
+  }
+
   constructor() {
     super({
       id: 'insights',
@@ -448,7 +455,7 @@ export class InsightsPanel extends Panel {
       this.renderInsights(importantItems, sentiments, worldBrief);
     } catch (error) {
       console.error('[InsightsPanel] Error:', error);
-      this.showError();
+      this.renderUnavailableState('AI market insights are temporarily unavailable. Core finance panels continue loading.');
     }
   }
 

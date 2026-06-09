@@ -182,12 +182,18 @@ export class MacroSignalsPanel extends Panel {
     }
 
     if (this.error || !this.data) {
-      this.showError(this.error || t('common.noDataShort'), () => void this.fetchData());
+      this.renderExternalUnavailableState({
+        message: 'External macro signal inputs are temporarily unavailable.',
+        source: 'FRED / market quote / sentiment feeds',
+      });
       return;
     }
 
     if (this.data.unavailable) {
-      this.showError(t('common.upstreamUnavailable'), () => void this.fetchData());
+      this.renderExternalUnavailableState({
+        message: 'External macro signal inputs are temporarily unavailable.',
+        source: 'FRED / market quote / sentiment feeds',
+      });
       return;
     }
 

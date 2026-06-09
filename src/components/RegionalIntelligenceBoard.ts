@@ -4,6 +4,7 @@ import { premiumFetch } from '@/services/premium-fetch';
 import { IS_EMBEDDED_PREVIEW } from '@/utils/embedded-preview';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { subscribeAuthState } from '@/services/auth-state';
+import { getCurrentLanguage } from '@/services/i18n';
 import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import type { RegionalSnapshot, RegimeTransition, RegionalBrief } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { h, replaceChildren } from '@/utils/dom-utils';
@@ -72,15 +73,17 @@ export class RegionalIntelligenceBoard extends Panel {
   constructor() {
     super({
       id: 'regional-intelligence',
-      title: 'Regional Intelligence',
+      title: getCurrentLanguage() === 'ja' ? '地域インテリジェンス' : 'Regional Intelligence',
       infoTooltip:
-        'Canonical regional intelligence brief: regime label, 7-axis balance vector, top actors, scenario lanes, transmission paths, and watchlist. One snapshot per region, refreshed every 6 hours.',
+        getCurrentLanguage() === 'ja'
+          ? '地域ごとの正規化インテリジェンスブリーフです。レジーム判定、7軸バランス、主要アクター、シナリオ経路、波及経路、監視項目をまとめ、各地域ごとに約6時間単位で更新します。'
+          : 'Canonical regional intelligence brief: regime label, 7-axis balance vector, top actors, scenario lanes, transmission paths, and watchlist. One snapshot per region, refreshed every 6 hours.',
       premium: 'locked',
     });
 
     this.selector = h('select', {
       className: 'rib-region-selector',
-      'aria-label': 'Region',
+      'aria-label': getCurrentLanguage() === 'ja' ? '地域' : 'Region',
     }) as HTMLSelectElement;
     for (const r of BOARD_REGIONS) {
       const opt = document.createElement('option');
@@ -285,7 +288,7 @@ export class RegionalIntelligenceBoard extends Panel {
 
   private renderLoading(): void {
     this.body.innerHTML =
-      '<div class="rib-status" style="padding:16px;color:var(--text-dim);font-size:12px">Loading regional intelligence…</div>';
+      `<div class="rib-status" style="padding:16px;color:var(--text-dim);font-size:12px">${getCurrentLanguage() === 'ja' ? '地域インテリジェンスを読み込み中…' : 'Loading regional intelligence…'}</div>`;
   }
 
   private renderEmpty(): void {

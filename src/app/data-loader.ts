@@ -2204,6 +2204,8 @@ export class DataLoaderManager implements AppModule {
         if (!result.success) {
           // listUcdpEvents is a pure Redis-read (gold standard). Retrying returns
           // the same empty result until the Railway seed refreshes the key.
+          (this.ctx.panels['ucdp-events'] as UcdpEventsPanel | undefined)
+            ?.showExternalUnavailable('Conflict event registry did not return a usable snapshot.');
           dataFreshness.recordError('ucdp_events', 'UCDP events unavailable (retaining prior event state)');
           return;
         }
@@ -2218,6 +2220,8 @@ export class DataLoaderManager implements AppModule {
         if (events.length > 0) dataFreshness.recordUpdate('ucdp_events', events.length);
       } catch (error) {
         console.error('[Intelligence] UCDP events fetch failed:', error);
+        (this.ctx.panels['ucdp-events'] as UcdpEventsPanel | undefined)
+          ?.showExternalUnavailable(error instanceof Error ? error.message : 'Conflict event registry request failed.');
         dataFreshness.recordError('ucdp_events', String(error));
       }
     })());
@@ -3004,26 +3008,32 @@ export class DataLoaderManager implements AppModule {
   async loadDiseaseOutbreaks(): Promise<void> {
     try {
       const data = await fetchDiseaseOutbreaks();
+      const panel = this.ctx.panels['disease-outbreaks'] as DiseaseOutbreaksPanel | undefined;
+      panel?.updateData(data.outbreaks ?? []);
       if (data.outbreaks?.length) {
-        const panel = this.ctx.panels['disease-outbreaks'] as DiseaseOutbreaksPanel | undefined;
         panel?.updateData(data.outbreaks);
         this.ctx.map?.setDiseaseOutbreaks(data.outbreaks);
         this.ctx.map?.setLayerReady('diseaseOutbreaks', true);
       }
     } catch (e) {
       console.error('[App] Disease outbreaks load failed:', e);
+      const panel = this.ctx.panels['disease-outbreaks'] as DiseaseOutbreaksPanel | undefined;
+      panel?.showExternalUnavailable(e instanceof Error ? e.message : 'Disease outbreak feed request failed.');
     }
   }
 
   async loadSocialVelocity(): Promise<void> {
     try {
       const data = await fetchSocialVelocity();
+      const panel = this.ctx.panels['social-velocity'] as SocialVelocityPanel | undefined;
+      panel?.updateData(data.posts ?? []);
       if (data.posts?.length) {
-        const panel = this.ctx.panels['social-velocity'] as SocialVelocityPanel | undefined;
         panel?.updateData(data.posts);
       }
     } catch (e) {
       console.error('[App] Social velocity load failed:', e);
+      const panel = this.ctx.panels['social-velocity'] as SocialVelocityPanel | undefined;
+      panel?.showExternalUnavailable(e instanceof Error ? e.message : 'Social velocity feed request failed.');
     }
   }
 
@@ -3109,7 +3119,7 @@ export class DataLoaderManager implements AppModule {
     try {
       const fireResult = await fetchAllFires(1);
       if (fireResult.skipped) {
-        this.ctx.panels['satellite-fires']?.showConfigError(t('panels.satelliteFires.noData'));
+        this.ctx.panels['satellite-fires']?.showConfigError(t('common.noDataAvailable'));
         this.ctx.statusPanel?.updateApi('FIRMS', { status: 'error' });
         return;
       }

@@ -113,7 +113,12 @@ export class SecurityAdvisoriesPanel extends Panel {
 
   private render(): void {
     if (this.advisories.length === 0) {
-      this.setContent(`<div class="panel-empty">${t('common.noDataAvailable')}</div>`);
+      this.setContent(`
+        <div class="panel-external-state">
+          <div class="economic-empty">現在、注視すべき渡航・保健アドバイザリーはありません。</div>
+          <div class="economic-empty-detail">ソース: 渡航勧告・公衆衛生ブリテン</div>
+        </div>
+      `);
       return;
     }
 

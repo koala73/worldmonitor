@@ -39,6 +39,8 @@ import {
   InternetDisruptionsPanel,
   RuntimeConfigPanel,
   InsightsPanel,
+  PortfolioImpactPanel,
+  IdeaRadarPanel,
   MacroSignalsPanel,
   FearGreedPanel,
   MarketBreadthPanel,
@@ -535,9 +537,9 @@ export class PanelLayoutManager implements AppModule {
                class="variant-option ${SITE_VARIANT === 'happy' ? 'active' : ''}"
                data-variant="happy"
                ${vTarget('happy')}
-               title="Good News${SITE_VARIANT === 'happy' ? ` ${t('common.currentVariant')}` : ''}">
+               title="${t('header.panelCatHappyNews')}${SITE_VARIANT === 'happy' ? ` ${t('common.currentVariant')}` : ''}">
               <span class="variant-icon">☀️</span>
-              <span class="variant-label">Good News</span>
+              <span class="variant-label">${t('header.panelCatHappyNews')}</span>
             </a>`;
       })()}</div>
           <span class="logo">MONITOR</span><span class="logo-mobile">World Monitor</span><span class="version">v${__APP_VERSION__}</span>${BETA_MODE ? '<span class="beta-badge">BETA</span>' : ''}
@@ -576,7 +578,7 @@ export class PanelLayoutManager implements AppModule {
           <button class="search-btn" id="searchBtn"><kbd>⌘K</kbd> ${t('header.search')}</button>
           ${this.ctx.isDesktopApp ? '' : `<button class="copy-link-btn" id="copyLinkBtn">${t('header.copyLink')}</button>`}
           ${this.ctx.isDesktopApp ? '' : `<button class="fullscreen-btn" id="fullscreenBtn" title="${t('header.fullscreen')}">⛶</button>`}
-          ${SITE_VARIANT === 'happy' ? `<button class="tv-mode-btn" id="tvModeBtn" title="TV Mode (Shift+T)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>` : ''}
+          ${SITE_VARIANT === 'happy' ? `<button class="tv-mode-btn" id="tvModeBtn" title="テレビモード (Shift+T)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>` : ''}
           <span id="unifiedSettingsMount"></span>
           <span id="authWidgetMount"></span>
         </div>
@@ -585,7 +587,7 @@ export class PanelLayoutManager implements AppModule {
       <nav class="mobile-menu" id="mobileMenu">
         <div class="mobile-menu-header">
           <span class="mobile-menu-title">WORLD MONITOR</span>
-          <button class="mobile-menu-close" id="mobileMenuClose" aria-label="Close menu">
+          <button class="mobile-menu-close" id="mobileMenuClose" aria-label="メニューを閉じる">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
@@ -597,7 +599,7 @@ export class PanelLayoutManager implements AppModule {
           { key: 'finance', icon: '📈', label: t('header.finance') },
           { key: 'commodity', icon: '⛏️', label: t('header.commodity') },
           { key: 'energy', icon: '⚡', label: t('header.energy') },
-          { key: 'happy', icon: '☀️', label: 'Good News' },
+          { key: 'happy', icon: '☀️', label: t('header.panelCatHappyNews') },
         ];
         return variants.map(v =>
           `<button class="mobile-menu-item mobile-menu-variant ${v.key === SITE_VARIANT ? 'active' : ''}" data-variant="${v.key}">
@@ -620,7 +622,7 @@ export class PanelLayoutManager implements AppModule {
         </button>
         <button class="mobile-menu-item" id="mobileMenuTheme">
           <span class="mobile-menu-item-icon">${getCurrentTheme() === 'dark' ? '☀️' : '🌙'}</span>
-          <span class="mobile-menu-item-label">${getCurrentTheme() === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
+          <span class="mobile-menu-item-label">${getCurrentTheme() === 'dark' ? 'ライトモード' : 'ダークモード'}</span>
         </button>
         <a class="mobile-menu-item" href="https://x.com/eliehabib" target="_blank" rel="noopener">
           <span class="mobile-menu-item-icon"><svg class="x-logo" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg></span>
@@ -629,9 +631,9 @@ export class PanelLayoutManager implements AppModule {
         <div class="mobile-menu-divider"></div>
         <div class="mobile-menu-footer-links">
           <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/pro' : 'https://www.worldmonitor.app/pro'}" target="_blank" rel="noopener">Pro</a>
-          <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/blog/' : 'https://www.worldmonitor.app/blog/'}" target="_blank" rel="noopener">Blog</a>
-          <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/docs' : 'https://www.worldmonitor.app/docs'}" target="_blank" rel="noopener">Docs</a>
-          <a href="https://status.worldmonitor.app/" target="_blank" rel="noopener">Status</a>
+          <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/blog/' : 'https://www.worldmonitor.app/blog/'}" target="_blank" rel="noopener">ブログ</a>
+          <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/docs' : 'https://www.worldmonitor.app/docs'}" target="_blank" rel="noopener">ドキュメント</a>
+          <a href="https://status.worldmonitor.app/" target="_blank" rel="noopener">稼働状況</a>
         </div>
         <div class="mobile-menu-version">v${__APP_VERSION__}</div>
       </nav>
@@ -659,15 +661,15 @@ export class PanelLayoutManager implements AppModule {
         <div class="map-section" id="mapSection">
           <div class="panel-header">
             <div class="panel-header-left">
-              <span class="panel-title">${SITE_VARIANT === 'tech' ? t('panels.techMap') : SITE_VARIANT === 'happy' ? 'Good News Map' : t('panels.map')}</span>
+              <span class="panel-title">${SITE_VARIANT === 'tech' ? t('panels.techMap') : SITE_VARIANT === 'happy' ? 'グッドニュースマップ' : t('panels.map')}</span>
             </div>
             <span class="header-clock" id="headerClock" translate="no"></span>
             <div class="map-header-actions">
               <div class="map-dimension-toggle" id="mapDimensionToggle">
-                <button class="map-dim-btn${loadFromStorage<string>(STORAGE_KEYS.mapMode, 'flat') === 'globe' ? '' : ' active'}" data-mode="flat" title="2D Map">2D</button>
-                <button class="map-dim-btn${loadFromStorage<string>(STORAGE_KEYS.mapMode, 'flat') === 'globe' ? ' active' : ''}" data-mode="globe" title="3D Globe">3D</button>
+                <button class="map-dim-btn${loadFromStorage<string>(STORAGE_KEYS.mapMode, 'flat') === 'globe' ? '' : ' active'}" data-mode="flat" title="2Dマップ">2D</button>
+                <button class="map-dim-btn${loadFromStorage<string>(STORAGE_KEYS.mapMode, 'flat') === 'globe' ? ' active' : ''}" data-mode="globe" title="3D地球儀">3D</button>
               </div>
-              <button class="map-pin-btn" id="mapFullscreenBtn" title="Fullscreen">
+              <button class="map-pin-btn" id="mapFullscreenBtn" title="全画面表示">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
               </button>
               <button class="map-pin-btn" id="mapPinBtn" title="${t('header.pinMap')}">
@@ -678,13 +680,13 @@ export class PanelLayoutManager implements AppModule {
             </div>
           </div>
           <div class="map-container" id="mapContainer"></div>
-          ${SITE_VARIANT === 'happy' ? '<button class="tv-exit-btn" id="tvExitBtn">Exit TV Mode</button>' : ''}
+          ${SITE_VARIANT === 'happy' ? '<button class="tv-exit-btn" id="tvExitBtn">テレビモードを終了</button>' : ''}
           <div class="map-resize-handle" id="mapResizeHandle"></div>
           <div class="map-bottom-grid" id="mapBottomGrid"></div>
         </div>
         <div class="map-width-resize-handle" id="mapWidthResizeHandle"></div>
         <div class="panels-grid" id="panelsGrid"></div>
-        <button class="search-mobile-fab" id="searchMobileFab" aria-label="Search">\u{1F50D}</button>
+        <button class="search-mobile-fab" id="searchMobileFab" aria-label="検索">\u{1F50D}</button>
       </div>
       <footer class="site-footer">
         <div class="site-footer-brand">
@@ -696,9 +698,9 @@ export class PanelLayoutManager implements AppModule {
         </div>
         <nav>
           <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/pro' : 'https://www.worldmonitor.app/pro'}" target="_blank" rel="noopener">Pro</a>
-          <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/blog/' : 'https://www.worldmonitor.app/blog/'}" target="_blank" rel="noopener">Blog</a>
-          <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/docs' : 'https://www.worldmonitor.app/docs'}" target="_blank" rel="noopener">Docs</a>
-          <a href="https://status.worldmonitor.app/" target="_blank" rel="noopener">Status</a>
+          <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/blog/' : 'https://www.worldmonitor.app/blog/'}" target="_blank" rel="noopener">ブログ</a>
+          <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/docs' : 'https://www.worldmonitor.app/docs'}" target="_blank" rel="noopener">ドキュメント</a>
+          <a href="https://status.worldmonitor.app/" target="_blank" rel="noopener">稼働状況</a>
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener">GitHub</a>
           <a href="https://discord.gg/re63kWKxaz" target="_blank" rel="noopener">Discord</a>
           <a href="https://x.com/worldmonitorai" target="_blank" rel="noopener">X</a>
@@ -721,8 +723,13 @@ export class PanelLayoutManager implements AppModule {
     if (!mapSection || !headerLeft) return;
 
     const stored = localStorage.getItem('mobile-map-collapsed');
-    const collapsed = stored === 'true';
+    const hasStoredPreference = stored === 'true' || stored === 'false';
+    const defaultCollapsedVariants = new Set(['full', 'finance', 'tech', 'energy', 'commodity']);
+    const collapsed = hasStoredPreference ? stored === 'true' : defaultCollapsedVariants.has(SITE_VARIANT);
     if (collapsed) mapSection.classList.add('collapsed');
+    if (!hasStoredPreference && defaultCollapsedVariants.has(SITE_VARIANT)) {
+      localStorage.setItem('mobile-map-collapsed', 'true');
+    }
 
     const updateBtn = (btn: HTMLButtonElement, isCollapsed: boolean) => {
       btn.textContent = isCollapsed ? `▶ ${t('components.map.showMap')}` : `▼ ${t('components.map.hideMap')}`;
@@ -853,6 +860,39 @@ export class PanelLayoutManager implements AppModule {
 
   private shouldCreatePanel(key: string): boolean {
     return Object.prototype.hasOwnProperty.call(this.ctx.panelSettings, key);
+  }
+
+  private ensureFinanceGuidePanelsVisible(): void {
+    if (SITE_VARIANT !== 'finance') return;
+
+    const guideKeys = ['portfolio-impact', 'idea-radar'] as const;
+    const grid = document.getElementById('panelsGrid');
+    if (!grid) return;
+
+    let mutated = false;
+
+    guideKeys.forEach((key) => {
+      const panel = this.ctx.panels[key];
+      if (!panel) return;
+
+      const config = this.ctx.panelSettings[key];
+      if (config && config.enabled === false) {
+        this.ctx.panelSettings[key] = { ...config, enabled: true };
+        mutated = true;
+      }
+
+      const el = panel.getElement();
+      if (!el.parentElement) {
+        this.makeDraggable(el, key);
+        this.insertByOrder(grid, el, key);
+      }
+
+      panel.show();
+    });
+
+    if (mutated) {
+      saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
+    }
   }
 
   private static readonly NEWS_PANEL_TOOLTIPS: Record<string, string> = {
@@ -1027,7 +1067,8 @@ export class PanelLayoutManager implements AppModule {
       // enabled. When there's no collision, panelKey === key so this is unchanged.
       const panelConfig = this.ctx.panelSettings[panelKey];
       if (!panelConfig) continue;
-      const label = panelConfig.name ?? key.charAt(0).toUpperCase() + key.slice(1);
+      const fallbackLabel = panelConfig.name ?? key.charAt(0).toUpperCase() + key.slice(1);
+      const label = this.getLocalizedPanelName(panelKey, fallbackLabel);
       const tooltip = PanelLayoutManager.NEWS_PANEL_TOOLTIPS[panelKey] ?? PanelLayoutManager.NEWS_PANEL_TOOLTIPS[key];
       const panel = new NewsPanel(panelKey, label, tooltip);
       this.attachRelatedAssetHandlers(panel);
@@ -1332,6 +1373,16 @@ export class PanelLayoutManager implements AppModule {
       import('@/components/RegulationPanel').then(m => new m.RegulationPanel('ai-regulation')),
     );
 
+    if (isPanelInVariantDefaults('portfolio-impact')) {
+      this.createPanel('portfolio-impact', () => new PortfolioImpactPanel());
+    }
+    if (isPanelInVariantDefaults('idea-radar')) {
+      this.createPanel('idea-radar', () => new IdeaRadarPanel({
+        getMarkets: () => this.ctx.latestMarkets,
+        getPredictions: () => this.ctx.latestPredictions,
+        getNews: () => this.ctx.allNews,
+      }));
+    }
     this.createPanel('macro-signals', () => new MacroSignalsPanel());
     this.createPanel('fear-greed', () => new FearGreedPanel());
     this.createPanel('aaii-sentiment', () => new AAIISentimentPanel());
@@ -1487,11 +1538,15 @@ export class PanelLayoutManager implements AppModule {
       const monitorsIdx = valid.indexOf('monitors');
       if (monitorsIdx !== -1) valid.splice(monitorsIdx, 1);
       if (SITE_VARIANT !== 'happy') valid.push('monitors');
-      allOrder = valid;
+      allOrder = this.prioritizePanelsForVariant(valid);
     } else {
       allOrder = [...defaultOrder];
 
-      if (SITE_VARIANT !== 'happy') {
+      const hasCustomPriorityVariant = ['finance', 'full', 'tech', 'energy', 'commodity'].includes(SITE_VARIANT);
+
+      if (hasCustomPriorityVariant) {
+        allOrder = this.prioritizePanelsForVariant(allOrder);
+      } else if (SITE_VARIANT !== 'happy') {
         const liveNewsIdx = allOrder.indexOf('live-news');
         if (liveNewsIdx > 0) {
           allOrder.splice(liveNewsIdx, 1);
@@ -1534,6 +1589,8 @@ export class PanelLayoutManager implements AppModule {
         panelsGrid.appendChild(el);
       }
     });
+
+    this.ensureFinanceGuidePanelsVisible();
 
     // "+" Add Panel block at the end of the grid
     const addPanelBlock = document.createElement('button');
@@ -1783,6 +1840,21 @@ export class PanelLayoutManager implements AppModule {
     } catch {
       return [];
     }
+  }
+
+  private prioritizePanelsForVariant(order: string[]): string[] {
+    const priorityPanelsByVariant: Partial<Record<typeof SITE_VARIANT, string[]>> = {
+      finance: ['portfolio-impact', 'idea-radar', 'markets', 'macro-signals', 'live-news'],
+      full: ['live-news', 'insights', 'strategic-posture', 'forecast', 'strategic-risk', 'markets'],
+      tech: ['live-news', 'insights', 'tech-readiness', 'security', 'service-status', 'markets'],
+      energy: ['energy-risk-overview', 'chokepoint-strip', 'pipeline-status', 'energy-complex', 'live-news', 'insights'],
+      commodity: ['live-news', 'insights', 'markets', 'commodities', 'macro-signals', 'supply-chain'],
+    };
+    const priorityPanels = priorityPanelsByVariant[SITE_VARIANT];
+    if (!priorityPanels?.length) return order;
+    const promoted = priorityPanels.filter((key) => order.includes(key));
+    promoted.push(...order.filter((key) => !priorityPanels.includes(key)));
+    return promoted;
   }
 
   savePanelOrder(): void {

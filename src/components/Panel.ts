@@ -1,7 +1,8 @@
 import { isDesktopRuntime } from '../services/runtime';
 import { invokeTauri } from '../services/tauri-bridge';
-import { t } from '../services/i18n';
+import { getCurrentLanguage, t } from '../services/i18n';
 import { h, replaceChildren, safeHtml } from '../utils/dom-utils';
+import { escapeHtml } from '../utils/sanitize';
 import { trackPanelResized } from '@/services/analytics';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { getSecretState } from '@/services/runtime-config';
@@ -700,6 +701,66 @@ export class Panel {
   protected clearDataBadge(): void {
     if (!this.statusBadgeEl) return;
     this.statusBadgeEl.style.display = 'none';
+  }
+
+  protected renderExternalUnavailableState(options: {
+    source: unknown;
+    message?: unknown;
+    detail?: unknown;
+  }): void {
+    const translateUiText = (value: string): string => {
+      if (getCurrentLanguage() !== 'ja') return value;
+      const dictionary: Record<string, string> = {
+        'External data is temporarily unavailable.': '外部データは一時的に利用できません。',
+        'External macro signal inputs are temporarily unavailable.': '外部マクロシグナル入力は一時的に利用できません。',
+        'AI market insights are temporarily unavailable. Core finance panels continue loading.': 'AI市場インサイトは一時的に利用できません。主要な金融パネルの読み込みは継続しています。',
+        'External stress index data is temporarily unavailable.': '外部ストレス指数データは一時的に利用できません。',
+        'External trade restriction data is temporarily unavailable.': '外部の貿易制限データは一時的に利用できません。',
+        'External customs revenue data is temporarily unavailable.': '外部の関税収入データは一時的に利用できません。',
+        'External strategic trade flow data is temporarily unavailable.': '外部の戦略的貿易フローデータは一時的に利用できません。',
+        'External sanctions designation data is temporarily unavailable.': '外部の制裁指定データは一時的に利用できません。',
+        'Pipeline registry is temporarily unavailable.': 'パイプライン台帳は一時的に利用できません。',
+        'Storage registry is temporarily unavailable.': '備蓄施設台帳は一時的に利用できません。',
+        'Fuel shortage registry is temporarily unavailable.': '燃料不足台帳は一時的に利用できません。',
+        'Energy disruptions log is temporarily unavailable.': 'エネルギー障害ログは一時的に利用できません。',
+        'Conflict event registry is temporarily unavailable.': '紛争イベント台帳は一時的に利用できません。',
+        'Disease outbreak feed is temporarily unavailable.': '感染症発生フィードは一時的に利用できません。',
+        'Social velocity feed is temporarily unavailable.': 'ソーシャル動向フィードは一時的に利用できません。',
+        'Gold intelligence is temporarily unavailable.': 'ゴールド・インテリジェンスは一時的に利用できません。',
+        'External sentiment snapshot is temporarily unavailable.': '外部センチメントスナップショットは一時的に利用できません。',
+        'External financial stress snapshot is temporarily unavailable.': '外部金融ストレス指標は一時的に利用できません。',
+        'Consumer price snapshot is temporarily unavailable.': '消費者物価スナップショットは一時的に利用できません。',
+        'Category price data is temporarily unavailable.': 'カテゴリ別価格データは一時的に利用できません。',
+        'Price movement data is temporarily unavailable.': '価格変動データは一時的に利用できません。',
+        'Retailer comparison is temporarily unavailable.': '小売比較データは一時的に利用できません。',
+        'Retail freshness data is temporarily unavailable.': '店頭鮮度データは一時的に利用できません。',
+        'No active travel or health advisories are currently flagged.': '現在、注視すべき渡航・保健アドバイザリーはありません。',
+        'No population exposure events are currently above the monitoring threshold.': '現在、監視閾値を超える人口曝露イベントはありません。',
+      };
+      return dictionary[value] ?? value;
+    };
+    const normalizeText = (value: unknown): string => {
+      if (value && typeof value === 'object' && 'textContent' in value) {
+        const textContent = (value as { textContent?: string | null }).textContent;
+        return typeof textContent === 'string' ? textContent : '';
+      }
+      return typeof value === 'string' ? value : String(value ?? '');
+    };
+    const source = normalizeText(options.source);
+    const message = translateUiText(normalizeText(options.message ?? 'External data is temporarily unavailable.'));
+    const detail = options.detail == null ? '' : translateUiText(normalizeText(options.detail));
+    const sourceLabel = getCurrentLanguage() === 'ja' ? 'ソース' : 'Source';
+    this.setDataBadge('unavailable', getCurrentLanguage() === 'ja' ? '外部' : 'external');
+    const detailHtml = detail
+      ? `<div class="economic-empty-detail">${escapeHtml(detail)}</div>`
+      : '';
+    this.setContent(`
+      <div class="panel-external-state">
+        <div class="economic-empty">${escapeHtml(message)}</div>
+        <div class="economic-empty-detail">${escapeHtml(sourceLabel)}: ${escapeHtml(source)}</div>
+        ${detailHtml}
+      </div>
+    `);
   }
 
   protected insertLiveCountBadge(count: number): void {

@@ -27,13 +27,16 @@ import {
 } from './url-state';
 import type { GetRouteExplorerLaneResponse, GetRouteImpactResponse, BypassCorridorOption } from '@/generated/server/worldmonitor/supply_chain/v1/service_server';
 import { fetchRouteExplorerLane, fetchRouteImpact } from '@/services/supply-chain';
+import { getCurrentLanguage } from '@/services/i18n';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { getAuthState } from '@/services/auth-state';
 import { trackGateHit, track, type UmamiEvent } from '@/services/analytics';
 
 import { TRADE_ROUTES } from '@/config/trade-routes';
 
-const TAB_LABELS: Record<ExplorerTab, string> = { 1: 'Current', 2: 'Alternatives', 3: 'Land', 4: 'Impact' };
+const TAB_LABELS: Record<ExplorerTab, string> = getCurrentLanguage() === 'ja'
+  ? { 1: '現在ルート', 2: '代替案', 3: '陸路', 4: '影響' }
+  : { 1: 'Current', 2: 'Alternatives', 3: 'Land', 4: 'Impact' };
 const FETCH_DEBOUNCE_MS = 250;
 
 const CARGO_TO_ROUTE_CATEGORY: Record<string, string> = {
@@ -400,10 +403,11 @@ export class RouteExplorer {
   // ─── DOM construction ──────────────────────────────────────────────────
 
   private buildRoot(): HTMLDivElement {
+    const ja = getCurrentLanguage() === 'ja';
     const root = document.createElement('div');
     root.className = 're-modal';
     root.setAttribute('role', 'complementary');
-    root.setAttribute('aria-label', 'Route Explorer \u2014 plan a shipment');
+    root.setAttribute('aria-label', ja ? 'ルート探索 - 輸送計画' : 'Route Explorer \u2014 plan a shipment');
 
     const surface = document.createElement('div');
     surface.className = 're-modal__surface';
@@ -414,18 +418,19 @@ export class RouteExplorer {
   }
 
   private buildQueryBar(): HTMLDivElement {
+    const ja = getCurrentLanguage() === 'ja';
     const bar = document.createElement('div');
     bar.className = 're-querybar';
 
     const back = document.createElement('button');
     back.type = 'button';
     back.className = 're-querybar__back';
-    back.textContent = '\u2190 Back';
-    back.setAttribute('aria-label', 'Close Route Explorer');
+    back.textContent = ja ? '\u2190 戻る' : '\u2190 Back';
+    back.setAttribute('aria-label', ja ? 'ルート探索を閉じる' : 'Close Route Explorer');
     back.addEventListener('click', () => this.close());
 
     this.fromPicker = new CountryPicker({
-      placeholder: 'From country',
+      placeholder: ja ? '出発国' : 'From country',
       initialIso2: this.state.fromIso2,
       onCommit: (iso2) => this.handleFromCommit(iso2),
       onCancel: () => this.blurActiveInput(),
@@ -437,14 +442,14 @@ export class RouteExplorer {
     arrow.setAttribute('aria-hidden', 'true');
 
     this.toPicker = new CountryPicker({
-      placeholder: 'To country',
+      placeholder: ja ? '到着国' : 'To country',
       initialIso2: this.state.toIso2,
       onCommit: (iso2) => this.handleToCommit(iso2),
       onCancel: () => this.blurActiveInput(),
     });
 
     this.hs2Picker = new Hs2Picker({
-      placeholder: 'Pick a product',
+      placeholder: ja ? '製品を選択' : 'Pick a product',
       initialHs2: this.state.hs2,
       onCommit: (hs2) => this.handleHs2Commit(hs2),
       onCancel: () => this.blurActiveInput(),

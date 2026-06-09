@@ -189,6 +189,13 @@ export class MarketBreadthPanel extends Panel {
     super({ id: 'market-breadth', title: t('panels.marketBreadth'), showCount: false, infoTooltip: 'Percentage of S&P 500 stocks trading above their 20, 50, and 200-day simple moving averages. A measure of market participation and internal strength.' });
   }
 
+  private renderUnavailableState(message: string): void {
+    this.renderExternalUnavailableState({
+      message,
+      source: 'Market breadth and exchange statistics feeds',
+    });
+  }
+
   public async fetchData(): Promise<boolean> {
     const hydrated = getHydratedData('breadthHistory') as RawSeedPayload | undefined;
     if (hydrated && !hydrated.unavailable && hydrated.history?.length) {
@@ -209,7 +216,7 @@ export class MarketBreadthPanel extends Panel {
       const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
       const resp = await client.getMarketBreadthHistory({});
       if (resp.unavailable) {
-        if (!this.data) this.showError(t('common.noDataShort'), () => void this.fetchData());
+        if (!this.data) this.renderUnavailableState('Market breadth is temporarily unavailable.');
         return false;
       }
       // The RPC interface types these as `number` but the JSON wire preserves
@@ -219,14 +226,14 @@ export class MarketBreadthPanel extends Panel {
       this.renderPanel();
       return true;
     } catch (e) {
-      if (!this.data) this.showError(e instanceof Error ? e.message : t('common.failedToLoad'), () => void this.fetchData());
+      if (!this.data) this.renderUnavailableState(e instanceof Error ? e.message : 'Market breadth is temporarily unavailable.');
       return false;
     }
   }
 
   private renderPanel(): void {
     if (!this.data?.history?.length) {
-      this.showError(t('common.noDataShort'), () => void this.fetchData());
+      this.renderUnavailableState('Market breadth data is not available yet.');
       return;
     }
 

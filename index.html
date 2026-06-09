@@ -1,14 +1,15 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" translate="no" class="notranslate">
   <head>
+    <meta name="google" content="notranslate" />
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https: http://localhost:5173 ws: wss: blob: data: https://abacus.worldmonitor.app https://*.ingest.sentry.io https://*.ingest.us.sentry.io; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'sha256-LnMFPWZxTgVOr2VYwIh9mhQ3l/l3+a3SfNOLERnuHfY=' 'sha256-4Z2xtr1B9QQugoojE/nbpOViG+8l2B7CZVlKgC78AeQ=' 'sha256-903UI9my1I7mqHoiVeZSc56yd50YoRJTB2269QqL76w=' 'sha256-EytE6o1N8rwzpVFMrF+WvBZr2y5UhFLw79o1/4VqS0s=' 'wasm-unsafe-eval' https://www.youtube.com https://static.cloudflareinsights.com https://vercel.live https://challenges.cloudflare.com https://abacus.worldmonitor.app https://*.clerk.accounts.dev https://*.dodopayments.com https://js.stripe.com; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https: http://127.0.0.1:* http://localhost:*; frame-src 'self' http://127.0.0.1:* http://localhost:* https://worldmonitor.app https://tech.worldmonitor.app https://finance.worldmonitor.app https://commodity.worldmonitor.app https://happy.worldmonitor.app https://www.youtube.com https://www.youtube-nocookie.com https://www.google.com https://webcams.windy.com https://challenges.cloudflare.com https://vercel.live https://*.vercel.app https://*.clerk.accounts.dev https://*.dodopayments.com https://pay.google.com https://hooks.stripe.com https://js.stripe.com;" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
 
     <!-- Primary Meta Tags -->
-    <title>World Monitor - Real-Time Global Intelligence Dashboard</title>
-    <meta name="title" content="World Monitor - Real-Time Global Intelligence Dashboard" />
+    <title>World Monitor - リアルタイム グローバル情勢ダッシュボード</title>
+    <meta name="title" content="World Monitor - リアルタイム グローバル情勢ダッシュボード" />
     <meta name="description" content="Real-time global intelligence platform. Featured in WIRED. Used by 2M+ people across 190 countries. Conflicts, markets, military, OSINT in one view." />
     <meta name="keywords" content="AI intelligence, AI-powered dashboard, global intelligence, geopolitical dashboard, world news, market data, military bases, nuclear facilities, undersea cables, conflict zones, real-time monitoring, situation awareness, OSINT, flight tracking, AIS ships, earthquake monitor, protest tracker, power outages, oil prices, government spending, polymarket predictions" />
     <meta name="author" content="Elie Habib" />
@@ -49,7 +50,7 @@
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://www.worldmonitor.app/" />
-    <meta property="og:title" content="World Monitor - Real-Time Global Intelligence Dashboard" />
+    <meta property="og:title" content="World Monitor - リアルタイム グローバル情勢ダッシュボード" />
     <meta property="og:description" content="Real-time global intelligence platform. Featured in WIRED. Used by 2M+ people across 190 countries. Conflicts, markets, military, OSINT in one view." />
     <meta property="og:image" content="https://www.worldmonitor.app/favico/og-image.png" />
     <meta property="og:image:width" content="1200" />
@@ -61,7 +62,7 @@
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:url" content="https://www.worldmonitor.app/" />
-    <meta name="twitter:title" content="World Monitor - Real-Time Global Intelligence Dashboard" />
+    <meta name="twitter:title" content="World Monitor - リアルタイム グローバル情勢ダッシュボード" />
     <meta name="twitter:description" content="Real-time global intelligence platform. Featured in WIRED. Used by 2M+ people across 190 countries. Conflicts, markets, military, OSINT in one view." />
     <meta name="twitter:image" content="https://www.worldmonitor.app/favico/og-image.png" />
     <meta name="twitter:site" content="@worldmonitorai" />
@@ -200,6 +201,75 @@
       [data-variant="happy"][data-theme="dark"] .skeleton-panel{background:#222E3E;border-color:#344050}
       [data-variant="happy"][data-theme="dark"] .skeleton-panel-header{border-bottom-color:#283545}
       [data-variant="happy"][data-theme="dark"] .skeleton-line{background:linear-gradient(90deg,rgba(139,175,122,.05) 25%,rgba(139,175,122,.10) 50%,rgba(139,175,122,.05) 75%);background-size:200% 100%;animation:skel-shimmer 1.5s infinite}
+
+      /* ---------- finance desktop skeleton: reduce map dominance, foreground core panels ---------- */
+      @media (min-width: 861px) {
+        [data-variant="finance"] .skeleton-map{
+          height:40vh;
+          min-height:240px;
+          max-height:420px;
+        }
+        [data-variant="finance"] .skeleton-panel{
+          height:260px;
+        }
+        [data-variant="finance"] .skeleton-grid .skeleton-panel:nth-child(1) .skeleton-panel-header::after{
+          content:'ポートフォリオ影響';
+        }
+        [data-variant="finance"] .skeleton-grid .skeleton-panel:nth-child(2) .skeleton-panel-header::after{
+          content:'アイデアレーダー';
+        }
+        [data-variant="finance"] .skeleton-grid .skeleton-panel:nth-child(3) .skeleton-panel-header::after{
+          content:'市場';
+        }
+        [data-variant="finance"] .skeleton-grid .skeleton-panel:nth-child(4) .skeleton-panel-header::after{
+          content:'マクロ指標';
+        }
+        [data-variant="finance"] .skeleton-grid .skeleton-panel:nth-child(5) .skeleton-panel-header::after{
+          content:'ライブニュース';
+        }
+        [data-variant="finance"] .skeleton-grid .skeleton-panel .skeleton-panel-header::after{
+          font-size:11px;
+          font-weight:700;
+          letter-spacing:.04em;
+          color:rgba(255,255,255,.72);
+        }
+      }
+
+      /* ---------- finance mobile skeleton: prioritize panels over full-height map ---------- */
+      @media (max-width: 860px) {
+        [data-variant="finance"] .skeleton-map{
+          height:72px;
+          min-height:72px;
+        }
+        [data-variant="finance"] .skeleton-map-body{
+          display:none;
+        }
+        [data-variant="finance"] .skeleton-grid{
+          gap:8px;
+          padding:8px;
+        }
+        [data-variant="finance"] .skeleton-panel{
+          height:188px;
+        }
+        [data-variant="finance"] .skeleton-grid .skeleton-panel:nth-child(n+4){
+          display:none;
+        }
+        [data-variant="finance"] .skeleton-grid .skeleton-panel:nth-child(1) .skeleton-panel-header::after{
+          content:'ポートフォリオ影響';
+        }
+        [data-variant="finance"] .skeleton-grid .skeleton-panel:nth-child(2) .skeleton-panel-header::after{
+          content:'アイデアレーダー';
+        }
+        [data-variant="finance"] .skeleton-grid .skeleton-panel:nth-child(3) .skeleton-panel-header::after{
+          content:'市場';
+        }
+        [data-variant="finance"] .skeleton-grid .skeleton-panel .skeleton-panel-header::after{
+          font-size:11px;
+          font-weight:700;
+          letter-spacing:.04em;
+          color:rgba(255,255,255,.72);
+        }
+      }
     </style>
 
     <!-- Preconnect: map tiles + assets -->
@@ -212,7 +282,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,300;0,400;0,600;0,700;1,400&family=Tajawal:wght@200;300;400;500;700;800;900&display=swap" rel="stylesheet">
   </head>
   <body>
-    <h1 style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap">World Monitor - Real-Time Global Intelligence Dashboard</h1>
+    <h1 style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap">World Monitor - リアルタイム グローバル情勢ダッシュボード</h1>
     <div id="app">
       <!-- Pre-render skeleton: visible instantly, replaced when JS calls renderLayout() -->
       <div class="skeleton-shell" aria-hidden="true">
@@ -246,23 +316,23 @@
         </div>
       </div>
     </div>
-    <aside id="country-deep-dive-panel" class="country-deep-dive" aria-label="Country Intelligence" aria-hidden="true">
+    <aside id="country-deep-dive-panel" class="country-deep-dive" aria-label="国別インテリジェンス" aria-hidden="true">
       <div class="country-deep-dive-shell">
-        <button id="deep-dive-close" class="panel-close" aria-label="Close">×</button>
+        <button id="deep-dive-close" class="panel-close" aria-label="閉じる">×</button>
         <div id="deep-dive-content" class="panel-content"></div>
       </div>
     </aside>
     <noscript>
       <div style="max-width:800px;margin:0 auto;padding:40px 20px;font-family:system-ui,sans-serif;color:#e5e5e5;background:#0a0a0a;">
-        <h1>World Monitor — Real-Time Global Intelligence Dashboard</h1>
-        <p>AI-powered real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data. Used by 2M+ people across 190+ countries.</p>
-        <h2>Features</h2>
+        <h1>World Monitor — リアルタイム グローバル情勢ダッシュボード</h1>
+        <p>ライブニュース、市場、軍事追跡、インフラ監視、地政学データを統合した AI 駆動のリアルタイム情勢ダッシュボードです。</p>
+        <h2>機能</h2>
         <ul>
-          <li>Real-time conflict tracking (ACLED, UCDP)</li>
-          <li>Military ADS-B flight monitoring</li>
-          <li>Maritime AIS ship tracking and dark vessel detection</li>
-          <li>Stock market, commodity, and crypto tracking</li>
-          <li>AI-powered intelligence synthesis and daily briefs</li>
+          <li>リアルタイム紛争追跡（ACLED、UCDP）</li>
+          <li>軍用 ADS-B 航空機の監視</li>
+          <li>海上 AIS 船舶追跡とダークシップ検知</li>
+          <li>株式、コモディティ、暗号資産の追跡</li>
+          <li>AI によるインテリジェンス要約と日次ブリーフ</li>
           <li>Country Instability Index (CII) scoring</li>
           <li>500+ curated RSS news feeds, 65+ external data sources, 50+ map layers</li>
           <li>21 language support</li>

@@ -161,7 +161,16 @@ export const RESILIENCE_VISUAL_LEVEL_COLORS: Record<ResilienceVisualLevel, strin
   unknown: 'var(--text-faint)',
 };
 
-const DOMAIN_LABELS: Record<string, string> = {
+const DOMAIN_LABELS_JA: Record<string, string> = {
+  economic: '経済',
+  infrastructure: 'インフラ・供給',
+  energy: 'エネルギー',
+  'social-governance': '社会・統治',
+  'health-food': '保健・食料',
+  recovery: '回復力',
+};
+
+const DOMAIN_LABELS_EN: Record<string, string> = {
   economic: 'Economic',
   infrastructure: 'Infra & Supply',
   energy: 'Energy',
@@ -186,7 +195,9 @@ export function getResilienceTrendArrow(trend: string): string {
 }
 
 export function getResilienceDomainLabel(domainId: string): string {
-  return DOMAIN_LABELS[domainId] ?? domainId;
+  const ja = typeof document !== 'undefined' && document?.documentElement?.lang === 'ja';
+  const labels = ja ? DOMAIN_LABELS_JA : DOMAIN_LABELS_EN;
+  return labels[domainId] ?? domainId;
 }
 
 export function formatResilienceConfidence(data: ResilienceScoreResponse): string {
@@ -201,8 +212,9 @@ export function formatResilienceConfidence(data: ResilienceScoreResponse): strin
   // low-confidence; the lowConfidence label is more specific
   // (sparse-data) and more actionable (will fix when more data
   // arrives) so it wins the badge.
-  if (data.lowConfidence) return 'Low confidence — sparse data';
-  if (data.headlineEligible === false) return 'Outside headline ranking';
+  const ja = typeof document !== 'undefined' && document?.documentElement?.lang === 'ja';
+  if (data.lowConfidence) return ja ? '信頼度低め - データ不足' : 'Low confidence — sparse data';
+  if (data.headlineEligible === false) return ja ? '見出しランキング対象外' : 'Outside headline ranking';
   // Exclude RETIRED dimensions (fuelStockDays, post-PR-3) AND
   // not-applicable-when-zero-coverage dimensions (sovereignFiscalBuffer
   // for non-SWF countries, plan 2026-04-26-001 §U3) from the displayed
@@ -404,11 +416,18 @@ function normalizeLastObservedAtMs(value: string | number | undefined): number |
   return n;
 }
 
-const IMPUTATION_CLASS_LABELS: Record<Exclude<DimensionImputationClass, null>, string> = {
-  'stable-absence': 'Stable absence: country is not in source because the phenomenon is not happening',
-  unmonitored: 'Unmonitored: source is curated and absence is ambiguous',
-  'source-failure': 'Source down: upstream seeder failed',
-  'not-applicable': 'Not applicable: structurally N/A for this country',
+const IMPUTATION_CLASS_LABELS_JA: Record<Exclude<DimensionImputationClass, null>, string> = {
+  'stable-absence': '安定的な非該当: その現象が起きていないためソースに載っていません',
+  unmonitored: '未監視: キュレーション型ソースのため不在の意味が曖昧です',
+  'source-failure': 'ソース障害: 上流シーダーが失敗しました',
+  'not-applicable': '対象外: この国には構造的に該当しません',
+};
+
+const IMPUTATION_CLASS_LABELS_EN: Record<Exclude<DimensionImputationClass, null>, string> = {
+  'stable-absence': 'Stable absence: not in sources because the phenomenon is not occurring',
+  unmonitored: 'Unmonitored: absence is ambiguous for curation-based sources',
+  'source-failure': 'Source failure: the upstream seeder failed',
+  'not-applicable': 'Not applicable: structurally not relevant for this country',
 };
 
 const IMPUTATION_CLASS_ICONS: Record<Exclude<DimensionImputationClass, null>, string> = {
@@ -418,15 +437,22 @@ const IMPUTATION_CLASS_ICONS: Record<Exclude<DimensionImputationClass, null>, st
   'not-applicable': '\u2014',
 };
 
-const STALENESS_LABELS: Record<Exclude<DimensionStaleness, null>, string> = {
-  fresh: 'Fresh (within 1.5x cadence)',
-  aging: 'Aging (1.5 to 3x cadence)',
-  stale: 'Stale (beyond 3x cadence)',
+const STALENESS_LABELS_JA: Record<Exclude<DimensionStaleness, null>, string> = {
+  fresh: '新しい (通常更新間隔の1.5倍以内)',
+  aging: 'やや古い (通常更新間隔の1.5倍から3倍)',
+  stale: '古い (通常更新間隔の3倍超)',
+};
+
+const STALENESS_LABELS_EN: Record<Exclude<DimensionStaleness, null>, string> = {
+  fresh: 'Fresh (within 1.5x the usual update interval)',
+  aging: 'Aging (1.5x to 3x the usual update interval)',
+  stale: 'Stale (over 3x the usual update interval)',
 };
 
 export function getImputationClassLabel(c: DimensionImputationClass): string {
-  if (!c) return 'Unknown imputation class';
-  return IMPUTATION_CLASS_LABELS[c];
+  const ja = typeof document !== 'undefined' && document?.documentElement?.lang === 'ja';
+  if (!c) return ja ? '補完種別は不明です' : 'Imputation class unknown';
+  return (ja ? IMPUTATION_CLASS_LABELS_JA : IMPUTATION_CLASS_LABELS_EN)[c];
 }
 
 export function getImputationClassIcon(c: DimensionImputationClass): string {
@@ -435,8 +461,9 @@ export function getImputationClassIcon(c: DimensionImputationClass): string {
 }
 
 export function getStalenessLabel(s: DimensionStaleness): string {
-  if (!s) return 'Unknown freshness';
-  return STALENESS_LABELS[s];
+  const ja = typeof document !== 'undefined' && document?.documentElement?.lang === 'ja';
+  if (!s) return ja ? '鮮度は不明です' : 'Freshness unknown';
+  return (ja ? STALENESS_LABELS_JA : STALENESS_LABELS_EN)[s];
 }
 
 /**

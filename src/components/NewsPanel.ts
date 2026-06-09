@@ -17,6 +17,8 @@ const VIRTUAL_SCROLL_THRESHOLD = 15;
 
 /** Summary cache TTL in milliseconds (10 minutes) */
 const SUMMARY_CACHE_TTL = 10 * 60 * 1000;
+const TRANSLATION_CACHE_TTL = 12 * 60 * 60 * 1000;
+const AUTO_TRANSLATE_LIMIT = 4;
 
 /** Prepared cluster data for rendering */
 interface PreparedCluster {
@@ -56,6 +58,7 @@ export class NewsPanel extends Panel {
   private currentBodies: string[] = [];
   private lastHeadlineSignature = '';
   private isSummarizing = false;
+  private autoTranslationQueued = false;
 
   // Optional risk score getter: computes 0-100 score per cluster for badge display
   private riskScoreGetter: ((cluster: ClusteredEvent) => number | null) | null = null;
@@ -283,36 +286,114 @@ export class NewsPanel extends Panel {
     const currentLang = getCurrentLanguage();
     if (currentLang === 'en') return; // Assume news is mostly English, no need to translate if UI is English (or add detection later)
 
-    const titleEl = element.closest('.item')?.querySelector('.item-title') as HTMLElement;
+    const itemEl = element.closest('.item') as HTMLElement | null;
+    const titleEl = itemEl?.querySelector('.item-title') as HTMLElement | null;
     if (!titleEl) return;
+    const snippetEl = itemEl?.querySelector('.item-snippet') as HTMLElement | null;
 
     const originalText = titleEl.textContent || '';
+    const originalSnippet = snippetEl?.textContent || '';
 
     // Visual feedback
     element.innerHTML = '...';
     element.style.pointerEvents = 'none';
 
     try {
-      const translated = await translateText(text, currentLang);
+      const translated = await this.translateWithCache(text, currentLang);
       if (!this.element?.isConnected) return;
       if (translated) {
         titleEl.textContent = translated;
         titleEl.dataset.original = originalText;
+        if (snippetEl && originalSnippet) {
+          const translatedSnippet = await this.translateWithCache(originalSnippet, currentLang);
+          if (!this.element?.isConnected) return;
+          if (translatedSnippet) {
+            snippetEl.textContent = translatedSnippet;
+            snippetEl.dataset.original = originalSnippet;
+          }
+        }
         element.innerHTML = '✓';
-        element.title = 'Original: ' + originalText;
+        element.title = `原文: ${originalText}`;
         element.classList.add('translated');
       } else {
-        element.innerHTML = '文';
+        element.innerHTML = '訳';
         // Shake animation or error state could be added here
       }
     } catch (e) {
       if (!this.element?.isConnected) return;
       console.error('Translation failed', e);
-      element.innerHTML = '文';
+      element.innerHTML = '訳';
     } finally {
       if (element.isConnected) {
         element.style.pointerEvents = 'auto';
       }
+    }
+  }
+
+  private getTranslationCacheKey(text: string, lang: string): string {
+    let hash = 0;
+    for (let index = 0; index < text.length; index += 1) {
+      hash = ((hash << 5) - hash + text.charCodeAt(index)) | 0;
+    }
+    return `wm_translation_v1_${lang}_${Math.abs(hash)}`;
+  }
+
+  private getCachedTranslation(text: string, lang: string): string | null {
+    try {
+      const cached = localStorage.getItem(this.getTranslationCacheKey(text, lang));
+      if (!cached) return null;
+      const parsed = JSON.parse(cached) as { value?: string; timestamp?: number };
+      if (!parsed.value || !parsed.timestamp) return null;
+      if (Date.now() - parsed.timestamp > TRANSLATION_CACHE_TTL) {
+        localStorage.removeItem(this.getTranslationCacheKey(text, lang));
+        return null;
+      }
+      return parsed.value;
+    } catch {
+      return null;
+    }
+  }
+
+  private setCachedTranslation(text: string, lang: string, value: string): void {
+    try {
+      localStorage.setItem(this.getTranslationCacheKey(text, lang), JSON.stringify({
+        value,
+        timestamp: Date.now(),
+      }));
+    } catch {
+      // ignore storage errors
+    }
+  }
+
+  private async translateWithCache(text: string, lang: string): Promise<string | null> {
+    const normalized = text.trim();
+    if (!normalized) return null;
+    const cached = this.getCachedTranslation(normalized, lang);
+    if (cached) return cached;
+    const translated = await translateText(normalized, lang);
+    if (translated) this.setCachedTranslation(normalized, lang, translated);
+    return translated;
+  }
+
+  private queueAutoTranslation(): void {
+    if (this.autoTranslationQueued || getCurrentLanguage() === 'en') return;
+    this.autoTranslationQueued = true;
+    queueMicrotask(() => {
+      this.autoTranslationQueued = false;
+      void this.autoTranslateVisibleItems();
+    });
+  }
+
+  private async autoTranslateVisibleItems(): Promise<void> {
+    if (!this.element?.isConnected || getCurrentLanguage() === 'en') return;
+    const buttons = Array.from(this.content.querySelectorAll<HTMLElement>('.item-translate-btn:not(.translated)'))
+      .slice(0, AUTO_TRANSLATE_LIMIT);
+    for (const button of buttons) {
+      const titleEl = button.closest('.item')?.querySelector('.item-title') as HTMLElement | null;
+      if (!titleEl) continue;
+      const currentTitle = (titleEl.textContent || '').trim();
+      if (!currentTitle) continue;
+      await this.handleTranslate(button, currentTitle);
     }
   }
 
@@ -487,7 +568,7 @@ export class NewsPanel extends Panel {
         ${item.snippet ? `<div class="item-snippet">${escapeHtml(item.snippet.length > 200 ? item.snippet.slice(0, 200).replace(/\s+\S*$/, '') + '…' : item.snippet)}</div>` : ''}
         <div class="item-time">
           ${formatTime(item.pubDate)}
-          ${getCurrentLanguage() !== 'en' ? `<button class="item-translate-btn" title="Translate" data-text="${escapeHtml(item.title)}">文</button>` : ''}
+          ${getCurrentLanguage() !== 'en' ? `<button class="item-translate-btn" title="翻訳" data-text="${escapeHtml(item.title)}">訳</button>` : ''}
         </div>
       </div>
     `
@@ -495,6 +576,7 @@ export class NewsPanel extends Panel {
       .join('');
 
     this.setContent(html);
+    this.queueAutoTranslation();
   }
 
   private renderClusters(clusters: ClusteredEvent[]): void {
@@ -560,12 +642,14 @@ export class NewsPanel extends Panel {
     // Use windowed rendering for large lists, direct render for small
     if (this.useVirtualScroll && sorted.length > VIRTUAL_SCROLL_THRESHOLD && this.windowedList) {
       this.windowedList.setItems(prepared);
+      this.queueAutoTranslation();
     } else {
       // Direct render for small lists
       const html = prepared
         .map(p => this.renderClusterHtmlSafely(p.cluster, p.isNew, p.shouldHighlight, p.showNewTag))
         .join('');
       this.setContent(html);
+      this.queueAutoTranslation();
     }
   }
 
@@ -672,7 +756,14 @@ export class NewsPanel extends Panel {
 
     // Category tag from threat classification
     const cat = cluster.threat?.category;
-    const catLabel = cat && cat !== 'general' ? cat.charAt(0).toUpperCase() + cat.slice(1) : '';
+    const JA_CAT_LABELS: Record<string, string> = {
+      military: '軍事', conflict: '紛争', disaster: '災害', diplomatic: '外交',
+      protest: '抗議', economic: '経済', cyber: 'サイバー', political: '政治',
+      humanitarian: '人道', terror: 'テロ', health: '保健', energy: 'エネルギー',
+    };
+    const catLabel = cat && cat !== 'general'
+      ? (getCurrentLanguage() === 'ja' && JA_CAT_LABELS[cat]) ? JA_CAT_LABELS[cat] : cat.charAt(0).toUpperCase() + cat.slice(1)
+      : '';
     const threatVarMap: Record<string, string> = { critical: '--threat-critical', high: '--threat-high', medium: '--threat-medium', low: '--threat-low', info: '--threat-info' };
     const catColor = cluster.threat ? getCSSColor(threatVarMap[cluster.threat.level] || '--text-dim') : '';
     const categoryBadge = catLabel
@@ -720,7 +811,7 @@ export class NewsPanel extends Panel {
         <div class="cluster-meta">
           <span class="top-sources">${topSourcesHtml}</span>
           <span class="item-time">${formatTime(cluster.lastUpdated)}</span>
-          ${getCurrentLanguage() !== 'en' ? `<button class="item-translate-btn" title="Translate" data-text="${escapeHtml(cluster.primaryTitle)}">文</button>` : ''}
+          ${getCurrentLanguage() !== 'en' ? `<button class="item-translate-btn" title="翻訳" data-text="${escapeHtml(cluster.primaryTitle)}">訳</button>` : ''}
         </div>
         ${relatedAssetsHtml}
       </div>

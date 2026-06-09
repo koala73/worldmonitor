@@ -62,7 +62,7 @@ export class SearchManager implements AppModule {
     const searchOptions = SITE_VARIANT === 'tech'
       ? { placeholder: t('modals.search.placeholderTech') }
       : SITE_VARIANT === 'happy'
-        ? { placeholder: 'Search or type a command...' }
+        ? { placeholder: '検索、またはコマンドを入力...' }
         : SITE_VARIANT === 'finance'
           ? { placeholder: t('modals.search.placeholderFinance') }
           : { placeholder: t('modals.search.placeholder') };
@@ -714,7 +714,7 @@ export class SearchManager implements AppModule {
       return {
         id: code,
         title: `${CountryIntelManager.toFlagEmoji(code)} ${name}`,
-        subtitle: score ? `CII: ${score.score}/100 • ${score.level}` : 'Country Brief',
+        subtitle: score ? `CII: ${score.score}/100 • ${score.level}` : '国別ブリーフ',
         data: { code, name },
       };
     });

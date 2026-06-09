@@ -7,15 +7,15 @@ export * from './base';
 
 // Panel configuration for happy/positive news dashboard
 export const DEFAULT_PANELS: Record<string, PanelConfig> = {
-  map: { name: 'World Map', enabled: true, priority: 1 },
-  'positive-feed': { name: 'Good News Feed', enabled: true, priority: 1 },
-  progress: { name: 'Human Progress', enabled: true, priority: 1 },
-  counters: { name: 'Live Counters', enabled: true, priority: 1 },
-  spotlight: { name: "Today's Hero", enabled: true, priority: 1 },
-  breakthroughs: { name: 'Breakthroughs', enabled: true, priority: 1 },
-  digest: { name: '5 Good Things', enabled: true, priority: 1 },
-  species: { name: 'Conservation Wins', enabled: true, priority: 1 },
-  renewable: { name: 'Renewable Energy', enabled: true, priority: 1 },
+  map: { name: 'グローバル情勢', enabled: true, priority: 1 },
+  'positive-feed': { name: 'グッドニュース', enabled: true, priority: 1 },
+  progress: { name: '人類の進歩', enabled: true, priority: 1 },
+  counters: { name: 'ライブ指標', enabled: true, priority: 1 },
+  spotlight: { name: '今日のヒーロー', enabled: true, priority: 1 },
+  breakthroughs: { name: 'ブレークスルー', enabled: true, priority: 1 },
+  digest: { name: '今日の良いこと5選', enabled: true, priority: 1 },
+  species: { name: '保全の成果', enabled: true, priority: 1 },
+  renewable: { name: '再生可能エネルギー', enabled: true, priority: 1 },
 };
 
 // Map layers — all geopolitical overlays disabled; natural events only

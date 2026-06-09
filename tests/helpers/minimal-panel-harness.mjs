@@ -80,7 +80,7 @@ async function loadMinimalPanel() {
   `;
 
   const stubModules = new Map([
-    ['i18n-stub', `export function t() { return ''; }`],
+    ['i18n-stub', `export function t() { return ''; } export function getCurrentLanguage() { return 'en'; }`],
     ['runtime-stub', `export function isDesktopRuntime() { return false; }`],
     ['tauri-bridge-stub', `export function invokeTauri() { return Promise.reject(new Error('not wired in test')); }`],
     ['analytics-stub', `export function trackPanelResized() {}`],

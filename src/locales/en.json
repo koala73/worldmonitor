@@ -289,7 +289,11 @@
   },
   "panels": {
     "liveNews": "Live News",
+    "portfolioImpact": "Portfolio Impact",
+    "ideaRadar": "Idea Radar",
     "markets": "Markets",
+    "forex": "Forex & Currencies",
+    "bonds": "Fixed Income",
     "marketImplications": "AI Market Implications",
     "map": "Global Situation",
     "techMap": "Global Tech",
@@ -330,6 +334,10 @@
     "monitors": "My Monitors",
     "satelliteFires": "Fires",
     "macroSignals": "BTC Regime",
+    "cryptoHeatmap": "Crypto Sectors",
+    "breakthroughs": "Breakthroughs",
+    "species": "Conservation Wins",
+    "macroTiles": "Macro Indicators",
     "etfFlows": "BTC ETF Tracker",
     "stablecoins": "Stablecoins",
     "deduction": "Deduct Situation",
@@ -969,7 +977,8 @@
       "topProducers": "Top Producers",
       "risk": "Risk",
       "sources": "IMF PortWatch / AISStream / CorridorRisk / NGA / USGS",
-      "infoTooltip": "<strong>Supply Chain Monitor</strong> Global logistics and resource tracking:<ul><li><strong>Chokepoints</strong>: Maritime transit status, disruption scores, and vessel counts</li><li><strong>Shipping</strong>: Baltic Dry Index and freight rate trends</li><li><strong>Minerals</strong>: Critical mineral concentration risk (HHI) and top producers</li></ul>Click a chokepoint card to expand transit history chart."
+      "infoTooltip": "<strong>Supply Chain Monitor</strong> Global logistics and resource tracking:<ul><li><strong>Chokepoints</strong>: Maritime transit status, disruption scores, and vessel counts</li><li><strong>Shipping</strong>: Baltic Dry Index and freight rate trends</li><li><strong>Minerals</strong>: Critical mineral concentration risk (HHI) and top producers</li></ul>Click a chokepoint card to expand transit history chart.",
+      "stress": "Stress"
     },
     "tradePolicy": {
       "restrictions": "Restrictions",
@@ -1549,7 +1558,9 @@
       "tonePositive": "Positive",
       "overall": "Overall: {{tone}}",
       "signalTypesEvents": "{{types}} signal types • {{events}} events",
-      "newsSignals": "{{news}} news • {{signals}} signals"
+      "newsSignals": "{{news}} news • {{signals}} signals",
+      "cloudTranslationLabel": "Cloud translation",
+      "cloudTranslationDesc": "Send article text to the Google translation endpoint to translate it. Turn off to stop external egress and use local translation instead."
     },
     "settings": {
       "dataManagementLabel": "Data Management",

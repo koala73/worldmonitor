@@ -21,6 +21,7 @@ import {
   setCachedPipelineRegistries,
   type RawPipelineRegistry,
 } from '@/shared/pipeline-registry-store';
+import { getCurrentLanguage } from '@/services/i18n';
 
 const client = new SupplyChainServiceClient(getRpcBaseUrl(), {
   fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
@@ -183,9 +184,10 @@ export class PipelineStatusPanel extends Panel {
   };
 
   constructor() {
+    const ja = getCurrentLanguage() === 'ja';
     super({
       id: 'pipeline-status',
-      title: 'Oil & Gas Pipeline Status',
+      title: ja ? '石油・ガス パイプライン状況' : 'Oil & Gas Pipeline Status',
       defaultRowSpan: 2,
       infoTooltip:
         'Curated registry of critical oil and gas pipelines. Public badge is derived from ' +
@@ -245,7 +247,11 @@ export class PipelineStatusPanel extends Panel {
       const live = await client.listPipelines({ commodityType: '' });
       if (!this.element?.isConnected) return;
       if (live.upstreamUnavailable || !live.pipelines?.length) {
-        this.showError('Pipeline registry unavailable', () => void this.fetchData());
+        this.renderExternalUnavailableState({
+          message: 'Pipeline registry is temporarily unavailable.',
+          source: 'Pipeline registry and operator evidence feeds',
+          detail: 'The panel will resume automatically when the upstream registry refreshes.',
+        });
         return;
       }
       this.data = live;
@@ -261,7 +267,11 @@ export class PipelineStatusPanel extends Panel {
     } catch (err) {
       if (this.isAbortError(err)) return;
       if (!this.element?.isConnected) return;
-      this.showError('Pipeline registry error', () => void this.fetchData());
+      this.renderExternalUnavailableState({
+        message: 'Pipeline registry is temporarily unavailable.',
+        source: 'Pipeline registry and operator evidence feeds',
+        detail: err instanceof Error ? err.message : 'Pipeline registry request failed.',
+      });
     }
   }
 

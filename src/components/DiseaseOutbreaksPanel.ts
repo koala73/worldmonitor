@@ -86,7 +86,15 @@ export class DiseaseOutbreaksPanel extends Panel {
       return (b.publishedAt ?? 0) - (a.publishedAt ?? 0);
     });
     this._hasData = this._outbreaks.length > 0;
-    if (this._hasData) this._render();
+    this._render();
+  }
+
+  public showExternalUnavailable(detail?: string): void {
+    this.renderExternalUnavailableState({
+      message: 'Disease outbreak feed is temporarily unavailable.',
+      source: 'WHO / CDC / outbreak monitoring feeds',
+      detail,
+    });
   }
 
   private _render(): void {

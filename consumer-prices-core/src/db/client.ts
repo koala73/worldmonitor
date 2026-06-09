@@ -4,6 +4,15 @@ const { Pool } = pg;
 
 let _pool: pg.Pool | null = null;
 
+function isLocalhost(url: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1';
+  } catch {
+    return url.includes('localhost');
+  }
+}
+
 export function getPool(): pg.Pool {
   if (!_pool) {
     const databaseUrl = process.env.DATABASE_URL;
@@ -14,7 +23,7 @@ export function getPool(): pg.Pool {
       max: 10,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
-      ssl: databaseUrl.includes('localhost') ? false : { rejectUnauthorized: false },
+      ssl: isLocalhost(databaseUrl) ? false : { rejectUnauthorized: true },
     });
 
     _pool.on('error', (err) => {

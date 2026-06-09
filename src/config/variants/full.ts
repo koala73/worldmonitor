@@ -17,14 +17,14 @@ export * from '../entities';
 
 // Panel configuration for geopolitical analysis
 export const DEFAULT_PANELS: Record<string, PanelConfig> = {
-  map: { name: 'Global Map', enabled: true, priority: 1 },
-  'live-news': { name: 'Live News', enabled: true, priority: 1 },
-  intel: { name: 'Intel Feed', enabled: true, priority: 1 },
-  'gdelt-intel': { name: 'Live Intelligence', enabled: true, priority: 1 },
-  cii: { name: 'Country Instability', enabled: true, priority: 1 },
-  cascade: { name: 'Infrastructure Cascade', enabled: true, priority: 1 },
-  'strategic-risk': { name: 'Strategic Risk Overview', enabled: true, priority: 1 },
-  politics: { name: 'World News', enabled: true, priority: 1 },
+  map: { name: 'グローバル情勢', enabled: true, priority: 1 },
+  'live-news': { name: 'ライブニュース', enabled: true, priority: 1 },
+  intel: { name: 'インテルフィード', enabled: true, priority: 1 },
+  'gdelt-intel': { name: 'ライブインテリジェンス', enabled: true, priority: 1 },
+  cii: { name: '国家不安定性', enabled: true, priority: 1 },
+  cascade: { name: 'インフラカスケード', enabled: true, priority: 1 },
+  'strategic-risk': { name: '戦略リスク概観', enabled: true, priority: 1 },
+  politics: { name: '世界ニュース', enabled: true, priority: 1 },
   us: { name: 'United States', enabled: true, priority: 1 },
   europe: { name: 'Europe', enabled: true, priority: 1 },
   middleeast: { name: 'Middle East', enabled: true, priority: 1 },

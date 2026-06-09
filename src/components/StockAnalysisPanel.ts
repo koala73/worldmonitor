@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { t } from '@/services/i18n';
+import { t, getCurrentLanguage } from '@/services/i18n';
 import type { StockAnalysisResult } from '@/services/stock-analysis';
 import { isAnalyzableSymbol } from '@/services/stock-analysis';
 import { getMarketWatchlistEntries } from '@/services/market-watchlist';
@@ -17,7 +17,7 @@ function formatChange(change: number): string {
 }
 
 function formatPrice(price: number, currency: string): string {
-  if (!Number.isFinite(price)) return 'N/A';
+  if (!Number.isFinite(price)) return getCurrentLanguage() === 'ja' ? 'データなし' : 'N/A';
   return `${currency === 'USD' ? '$' : ''}${price.toFixed(2)}${currency && currency !== 'USD' ? ` ${currency}` : ''}`;
 }
 
@@ -33,6 +33,17 @@ function list(items: string[], cssClass: string): string {
   return `<ul class="${cssClass}" style="margin:8px 0 0;padding-left:18px;font-size:12px;line-height:1.5">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
 }
 
+function localizeDividendFrequency(value: string): string {
+  const ja = getCurrentLanguage() === 'ja';
+  if (!ja) return value;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'quarterly') return '四半期';
+  if (normalized === 'monthly') return '毎月';
+  if (normalized === 'semi-annual' || normalized === 'semiannual') return '半年';
+  if (normalized === 'annual' || normalized === 'yearly') return '年次';
+  return value;
+}
+
 function formatDollarCompact(value: number): string {
   const abs = Math.abs(value);
   if (abs >= 1e9) return `$${(value / 1e9).toFixed(1)}B`;
@@ -42,12 +53,13 @@ function formatDollarCompact(value: number): string {
 }
 
 function txCodeLabel(code: string): string {
-  if (code === 'P') return 'Buy';
-  if (code === 'S') return 'Sell';
-  if (code === 'M') return 'Exercise';
-  if (code === 'A') return 'Award';
-  if (code === 'D') return 'Disposition';
-  if (code === 'F') return 'Tax/Fee';
+  const ja = getCurrentLanguage() === 'ja';
+  if (code === 'P') return ja ? '買い' : 'Buy';
+  if (code === 'S') return ja ? '売り' : 'Sell';
+  if (code === 'M') return ja ? '権利行使' : 'Exercise';
+  if (code === 'A') return ja ? '付与' : 'Award';
+  if (code === 'D') return ja ? '処分' : 'Disposition';
+  if (code === 'F') return ja ? '税・手数料' : 'Tax/Fee';
   return code;
 }
 
@@ -63,8 +75,9 @@ export class StockAnalysisPanel extends Panel {
   private lastHistory: StockAnalysisHistory = {};
 
   constructor() {
-    super({ id: 'stock-analysis', title: 'Premium Stock Analysis', infoTooltip: t('components.stockAnalysis.infoTooltip'), premium: 'locked' });
-    this.header.appendChild(createWatchlistButton('Edit Watchlist'));
+    const ja = getCurrentLanguage() === 'ja';
+    super({ id: 'stock-analysis', title: ja ? 'プレミアム株式分析' : 'Premium Stock Analysis', infoTooltip: t('components.stockAnalysis.infoTooltip'), premium: 'locked' });
+    this.header.appendChild(createWatchlistButton(ja ? '監視銘柄を編集' : 'Edit Watchlist'));
   }
 
   public setInsiderData(symbol: string, data: InsiderTransactionsResult): void {
@@ -72,9 +85,10 @@ export class StockAnalysisPanel extends Panel {
   }
 
   public renderAnalyses(items: StockAnalysisResult[], historyBySymbol: StockAnalysisHistory = {}, source: 'live' | 'cached' = 'live'): void {
+    const ja = getCurrentLanguage() === 'ja';
     if (items.length === 0) {
       this.setDataBadge('unavailable');
-      this.showRetrying('No premium stock analyses available yet.');
+      this.showRetrying(ja ? 'プレミアム株式分析データはまだありません。' : 'No premium stock analyses available yet.');
       return;
     }
 
@@ -88,44 +102,44 @@ export class StockAnalysisPanel extends Panel {
         intro: this.buildIntro(items.length),
         columns: [
           {
-            key: 'symbol', label: 'Symbol', sortable: true, sortOptionKey: 'symbol-asc',
+            key: 'symbol', label: ja ? '銘柄' : 'Symbol', sortable: true, sortOptionKey: 'symbol-asc',
             cell: (i) => `<strong>${escapeHtml(i.display || i.symbol)}</strong>`,
           },
           {
-            key: 'price', label: 'Price', align: 'right',
+            key: 'price', label: ja ? '価格' : 'Price', align: 'right',
             cell: (i) => escapeHtml(formatPrice(i.currentPrice, i.currency)),
           },
           {
-            key: 'signal', label: 'Signal',
+            key: 'signal', label: ja ? '判断' : 'Signal',
             cell: (i) => `<span class="signal-badge ${stockSignalClass(i.signal)}">${escapeHtml(i.signal)}</span>`,
           },
           {
-            key: 'score', label: 'Score', align: 'right', sortable: true, sortOptionKey: 'score-desc',
+            key: 'score', label: ja ? 'スコア' : 'Score', align: 'right', sortable: true, sortOptionKey: 'score-desc',
             cell: (i) => escapeHtml(String(i.signalScore)),
           },
           {
-            key: 'change', label: '1d %', align: 'right', sortable: true, sortOptionKey: 'change-desc',
+            key: 'change', label: ja ? '1日%' : '1d %', align: 'right', sortable: true, sortOptionKey: 'change-desc',
             cell: (i) => `<span style="color:${i.changePercent >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical)'}">${escapeHtml(formatChange(i.changePercent))}</span>`,
           },
         ],
         filters: [
-          { key: 'all', label: 'All', match: () => true },
-          { key: 'strong-buy', label: 'Strong Buy', match: (i) => i.signal.toLowerCase().includes('strong buy') },
-          { key: 'buy', label: 'Buy+', match: (i) => i.signal.toLowerCase().includes('buy') },
-          { key: 'hold', label: 'Hold', match: (i) => i.signal.toLowerCase().includes('hold') || i.signal.toLowerCase().includes('watch') },
-          { key: 'sell', label: 'Sell', match: (i) => i.signal.toLowerCase().includes('sell') },
+          { key: 'all', label: ja ? 'すべて' : 'All', match: () => true },
+          { key: 'strong-buy', label: ja ? '強い買い' : 'Strong Buy', match: (i) => i.signal.toLowerCase().includes('strong buy') },
+          { key: 'buy', label: ja ? '買い+' : 'Buy+', match: (i) => i.signal.toLowerCase().includes('buy') },
+          { key: 'hold', label: ja ? '中立' : 'Hold', match: (i) => i.signal.toLowerCase().includes('hold') || i.signal.toLowerCase().includes('watch') },
+          { key: 'sell', label: ja ? '売り' : 'Sell', match: (i) => i.signal.toLowerCase().includes('sell') },
         ],
         sortOptions: [
-          { key: 'score-desc', label: 'Score ↓', cmp: (a, b) => b.signalScore - a.signalScore },
-          { key: 'change-desc', label: '1d % ↓', cmp: (a, b) => b.changePercent - a.changePercent },
-          { key: 'symbol-asc', label: 'Symbol A-Z', cmp: (a, b) => (a.display || a.symbol).localeCompare(b.display || b.symbol) },
+          { key: 'score-desc', label: ja ? 'スコア↓' : 'Score ↓', cmp: (a, b) => b.signalScore - a.signalScore },
+          { key: 'change-desc', label: ja ? '1日%↓' : '1d % ↓', cmp: (a, b) => b.changePercent - a.changePercent },
+          { key: 'symbol-asc', label: ja ? '銘柄A-Z' : 'Symbol A-Z', cmp: (a, b) => (a.display || a.symbol).localeCompare(b.display || b.symbol) },
         ],
         defaultSort: 'score-desc',
         defaultFilter: 'all',
         getKey: (i) => i.symbol,
         getSearchText: (i) => `${i.symbol} ${i.display || ''} ${i.name || ''}`,
         renderDetail: (i) => this.renderCard(i, this.lastHistory[i.symbol] || []),
-        searchPlaceholder: 'Search ticker or name...',
+        searchPlaceholder: ja ? '銘柄コードや名称を検索...' : 'Search ticker or name...',
       });
     } else {
       // Refresh closures that capture the latest data each render —
@@ -149,13 +163,18 @@ export class StockAnalysisPanel extends Panel {
   }
 
   private buildIntro(itemCount: number): string {
+    const ja = getCurrentLanguage() === 'ja';
     const skippedCount = getMarketWatchlistEntries()
       .filter((entry) => !isAnalyzableSymbol(entry.symbol)).length;
-    const tickerWord = itemCount === 1 ? 'ticker' : 'tickers';
+    const tickerWord = ja ? '銘柄' : itemCount === 1 ? 'ticker' : 'tickers';
     const skippedNote = skippedCount > 0
-      ? ` <span style="color:var(--text-dim)">${skippedCount} watchlist ${skippedCount === 1 ? 'symbol is an index/FX rate' : 'symbols are indices/FX rates'} and don't get an equity report.</span>`
+      ? ja
+        ? ` <span style="color:var(--text-dim)">監視銘柄のうち ${skippedCount} 件は指数または為替レートのため、株式分析の対象外です。</span>`
+        : ` <span style="color:var(--text-dim)">${skippedCount} watchlist ${skippedCount === 1 ? 'symbol is an index/FX rate' : 'symbols are indices/FX rates'} and don't get an equity report.</span>`
       : '';
-    return `Analyst-grade equity reports for the ${itemCount} ${tickerWord} in your watchlist — your picks lead, popular names fill the rest. Use <strong>Edit Watchlist</strong> to add your own.${skippedNote}`;
+    return ja
+      ? `監視銘柄の ${itemCount} ${tickerWord} について、優先度の高い順に株式分析を表示します。自分の銘柄を追加するには <strong>監視銘柄を編集</strong> を使ってください。${skippedNote}`
+      : `Analyst-grade equity reports for the ${itemCount} ${tickerWord} in your watchlist — your picks lead, popular names fill the rest. Use <strong>Edit Watchlist</strong> to add your own.${skippedNote}`;
   }
 
   private formatDividendRate(rate: number, currency: string): string {
@@ -171,6 +190,7 @@ export class StockAnalysisPanel extends Panel {
   }
 
   private renderDividendProfile(item: StockAnalysisResult): string {
+    const ja = getCurrentLanguage() === 'ja';
     if (!item.dividendYield || item.dividendYield <= 0) return '';
 
     const yieldStr = `${item.dividendYield.toFixed(1)}%`;
@@ -179,35 +199,36 @@ export class StockAnalysisPanel extends Panel {
       : '';
     const cagrStr = item.dividendCagr !== 0
       ? `${item.dividendCagr > 0 ? '+' : ''}${item.dividendCagr.toFixed(1)}%`
-      : 'N/A';
+      : ja ? 'データなし' : 'N/A';
     const freqBadge = item.dividendFrequency
-      ? `<span class="badge-neutral" style="font-size:10px;padding:2px 6px;border-radius:3px">${escapeHtml(item.dividendFrequency)}</span>`
+      ? `<span class="badge-neutral" style="font-size:10px;padding:2px 6px;border-radius:3px">${escapeHtml(localizeDividendFrequency(item.dividendFrequency))}</span>`
       : '';
     const exDateStr = item.exDividendDate > 0
-      ? new Date(item.exDividendDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-      : 'N/A';
+      ? new Date(item.exDividendDate).toLocaleDateString(ja ? 'ja-JP' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      : ja ? 'データなし' : 'N/A';
 
     const hasPayoutRatio = typeof item.payoutRatio === 'number' && item.payoutRatio > 0;
     const payoutPctStr = hasPayoutRatio ? `${(item.payoutRatio! * 100).toFixed(1)}%` : '';
     const payoutCell = hasPayoutRatio
-      ? `<div><div style="color:var(--text-dim)">Payout Ratio</div><div style="margin-top:3px">${escapeHtml(payoutPctStr)}</div></div>`
+      ? `<div><div style="color:var(--text-dim)">${ja ? '配当性向' : 'Payout Ratio'}</div><div style="margin-top:3px">${escapeHtml(payoutPctStr)}</div></div>`
       : '';
 
     return `
       <div style="border:1px solid var(--border);padding:10px 12px">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-bottom:8px">Dividend Profile</div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-bottom:8px">${ja ? '配当プロファイル' : 'Dividend Profile'}</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;font-size:11px">
-          <div><div style="color:var(--text-dim)">Yield</div><div style="margin-top:3px">${escapeHtml(yieldStr)}${escapeHtml(rateStr)}</div></div>
-          <div><div style="color:var(--text-dim)">5Y CAGR</div><div style="margin-top:3px">${escapeHtml(cagrStr)}</div></div>
-          <div><div style="color:var(--text-dim)">Frequency</div><div style="margin-top:3px">${freqBadge || 'N/A'}</div></div>
+          <div><div style="color:var(--text-dim)">${ja ? '利回り' : 'Yield'}</div><div style="margin-top:3px">${escapeHtml(yieldStr)}${escapeHtml(rateStr)}</div></div>
+          <div><div style="color:var(--text-dim)">${ja ? '5年CAGR' : '5Y CAGR'}</div><div style="margin-top:3px">${escapeHtml(cagrStr)}</div></div>
+          <div><div style="color:var(--text-dim)">${ja ? '頻度' : 'Frequency'}</div><div style="margin-top:3px">${freqBadge || (ja ? 'データなし' : 'N/A')}</div></div>
           ${payoutCell}
-          <div><div style="color:var(--text-dim)">Ex-Dividend</div><div style="margin-top:3px">${escapeHtml(exDateStr)}</div></div>
+          <div><div style="color:var(--text-dim)">${ja ? '権利落ち日' : 'Ex-Dividend'}</div><div style="margin-top:3px">${escapeHtml(exDateStr)}</div></div>
         </div>
       </div>
     `;
   }
 
   private renderCard(item: StockAnalysisResult, history: StockAnalysisResult[]): string {
+    const ja = getCurrentLanguage() === 'ja';
     const tone = stockSignalClass(item.signal);
     const priorRuns = history.filter((entry) => entry.generatedAt !== item.generatedAt).slice(0, 3);
     const previous = priorRuns[0];
@@ -215,7 +236,7 @@ export class StockAnalysisPanel extends Panel {
     const headlines = item.headlines.slice(0, 2).map((headline) => {
       const href = sanitizeUrl(headline.link);
       const title = escapeHtml(headline.title);
-      const source = escapeHtml(headline.source || 'Source');
+      const source = escapeHtml(headline.source || (ja ? 'ソース' : 'Source'));
       return `<a href="${href}" target="_blank" rel="noreferrer" style="display:block;color:var(--text);text-decoration:none;padding:8px 10px;border:1px solid var(--border);background:rgba(255,255,255,0.02)"><div style="font-size:12px;line-height:1.45">${title}</div><div style="margin-top:4px;font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">${source}</div></a>`;
     }).join('');
 
@@ -233,7 +254,7 @@ export class StockAnalysisPanel extends Panel {
           <div style="text-align:right;min-width:110px">
             <div style="font-size:18px;font-weight:700">${escapeHtml(formatPrice(item.currentPrice, item.currency))}</div>
             <div style="font-size:12px;color:${item.changePercent >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical)'}">${escapeHtml(formatChange(item.changePercent))}</div>
-            <div style="margin-top:6px;font-size:11px;color:var(--text-dim)">Score ${escapeHtml(String(item.signalScore))} · ${escapeHtml(item.confidence)}</div>
+            <div style="margin-top:6px;font-size:11px;color:var(--text-dim)">${ja ? 'スコア' : 'Score'} ${escapeHtml(String(item.signalScore))} · ${escapeHtml(item.confidence)}</div>
           </div>
           ${history.length >= 2 ? (() => {
             const scores = history.slice(0, 6).reverse().map(e => e.signalScore);
@@ -243,39 +264,40 @@ export class StockAnalysisPanel extends Panel {
           })() : ''}
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;font-size:11px">
-          <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Trend</div><div style="margin-top:4px">${escapeHtml(item.trendStatus)}</div></div>
-          <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">MA5 Bias</div><div style="margin-top:4px">${escapeHtml(formatChange(item.biasMa5))}</div></div>
+          <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">${ja ? 'トレンド' : 'Trend'}</div><div style="margin-top:4px">${escapeHtml(item.trendStatus)}</div></div>
+          <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">${ja ? 'MA5乖離' : 'MA5 Bias'}</div><div style="margin-top:4px">${escapeHtml(formatChange(item.biasMa5))}</div></div>
           <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">RSI 12</div><div style="margin-top:4px">${escapeHtml(item.rsi12.toFixed(1))}</div></div>
-          <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Volume</div><div style="margin-top:4px">${escapeHtml(item.volumeStatus)}</div></div>
+          <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">${ja ? '出来高' : 'Volume'}</div><div style="margin-top:4px">${escapeHtml(item.volumeStatus)}</div></div>
         </div>
         ${this.renderDividendProfile(item)}
-        <div style="font-size:12px;line-height:1.55;color:var(--text)"><strong style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Action</strong><div style="margin-top:4px">${escapeHtml(item.action)}</div></div>
+        <div style="font-size:12px;line-height:1.55;color:var(--text)"><strong style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">${ja ? '行動' : 'Action'}</strong><div style="margin-top:4px">${escapeHtml(item.action)}</div></div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
           <div>
-            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Bullish Factors</div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">${ja ? '強気材料' : 'Bullish Factors'}</div>
             ${list(item.bullishFactors.slice(0, 3), 'badge-bullish')}
           </div>
           <div>
-            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Risk Factors</div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">${ja ? 'リスク要因' : 'Risk Factors'}</div>
             ${list(item.riskFactors.slice(0, 3), 'badge-bearish')}
           </div>
         </div>
         <div style="font-size:12px;line-height:1.55;color:var(--text-dim)">
-          <strong style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Why Now</strong>
+          <strong style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">${ja ? '今見る理由' : 'Why Now'}</strong>
           <div style="margin-top:4px">${escapeHtml(item.whyNow)}</div>
         </div>
         ${previous ? `
           <div style="font-size:12px;line-height:1.55;color:var(--text-dim)">
-            <strong style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Signal Drift</strong>
+            <strong style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">${ja ? 'シグナル変化' : 'Signal Drift'}</strong>
             <div style="margin-top:4px">
-              Previous run was ${escapeHtml(previous.signal)} at score ${escapeHtml(String(previous.signalScore))}.
-              Current drift is ${escapeHtml(`${signalDelta && signalDelta > 0 ? '+' : ''}${(signalDelta || 0).toFixed(1)}`)}.
+              ${ja
+                ? `前回は ${escapeHtml(previous.signal)}（スコア ${escapeHtml(String(previous.signalScore))}）でした。現在の変化量は ${escapeHtml(`${signalDelta && signalDelta > 0 ? '+' : ''}${(signalDelta || 0).toFixed(1)}`)} です。`
+                : `Previous run was ${escapeHtml(previous.signal)} at score ${escapeHtml(String(previous.signalScore))}. Current drift is ${escapeHtml(`${signalDelta && signalDelta > 0 ? '+' : ''}${(signalDelta || 0).toFixed(1)}`)}.`}
             </div>
           </div>
         ` : ''}
         ${priorRuns.length > 0 ? `
           <div style="display:grid;gap:6px">
-            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Recent History</div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">${ja ? '最近の履歴' : 'Recent History'}</div>
             ${priorRuns.map((entry) => `
               <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 10px;border:1px solid var(--border);background:rgba(255,255,255,0.02);font-size:11px">
                 <span>${escapeHtml(entry.signal)} · score ${escapeHtml(String(entry.signalScore))}</span>

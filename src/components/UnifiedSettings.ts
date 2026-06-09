@@ -43,6 +43,7 @@ export interface UnifiedSettingsConfig {
 }
 
 type TabId = 'settings' | 'panels' | 'sources' | 'notifications' | 'api-keys' | 'mcp-clients';
+type PanelTierScope = 'all' | 'core' | 'optional' | 'external';
 
 export class UnifiedSettings {
   private overlay: HTMLElement;
@@ -51,6 +52,7 @@ export class UnifiedSettings {
   private activeSourceRegion = 'all';
   private sourceFilter = '';
   private activePanelCategory = 'all';
+  private activePanelScope: PanelTierScope = ['finance', 'full', 'tech', 'energy', 'commodity'].includes(SITE_VARIANT) ? 'core' : 'all';
   private panelFilter = '';
   private escapeHandler: (e: KeyboardEvent) => void;
   private prefsCleanup: (() => void) | null = null;
@@ -146,6 +148,14 @@ export class UnifiedSettings {
         const searchInput = this.overlay.querySelector<HTMLInputElement>('.panels-search input');
         if (searchInput) searchInput.value = '';
         this.renderPanelCategoryPills();
+        this.renderPanelsTab();
+        return;
+      }
+
+      const panelScopePill = target.closest<HTMLElement>('[data-panel-scope]');
+      if (panelScopePill?.dataset.panelScope) {
+        this.activePanelScope = panelScopePill.dataset.panelScope as PanelTierScope;
+        this.renderPanelScopePills();
         this.renderPanelsTab();
         return;
       }
@@ -433,6 +443,8 @@ export class UnifiedSettings {
           <div class="unified-settings-region-wrapper">
             <div class="unified-settings-region-bar" id="usPanelCatBar"></div>
           </div>
+          ${this.renderPanelScopeBar()}
+          ${this.renderPanelTierGuide()}
           <div class="panels-search">
             <input type="text" placeholder="${t('header.filterPanels')}" value="${escapeHtml(this.panelFilter)}" />
           </div>
@@ -493,6 +505,7 @@ export class UnifiedSettings {
     }
 
     this.renderPanelCategoryPills();
+    this.renderPanelScopePills();
     this.renderPanelsTab();
     this.renderRegionPills();
     this.renderSourcesGrid();
@@ -674,17 +687,95 @@ export class UnifiedSettings {
     return !catDef.variants || catDef.variants.includes(SITE_VARIANT);
   }
 
-  private getAvailablePanelCategories(): Array<{ key: string; label: string }> {
-    const settings = this.config.getPanelSettings();
-    const categories: Array<{ key: string; label: string }> = [
-      { key: 'all', label: t('header.sourceRegionAll') }
+  private getVariantCorePanelKeys(): Set<string> {
+    return new Set(VARIANT_DEFAULTS[SITE_VARIANT] ?? []);
+  }
+
+  private getExternalPanelKeys(): Set<string> {
+    return new Set([
+      'insights',
+      'analysis',
+      'economic',
+      'supply-chain',
+      'sanctions-pressure',
+      'economic-news',
+      'fear-greed',
+      'macro-tiles',
+      'fsi',
+      'yield-curve',
+      'economic-calendar',
+      'cot-positioning',
+      'gulf-economies',
+      'consumer-prices',
+      'grocery-basket',
+      'bigmac',
+      'fuel-prices',
+      'fao-food-price-index',
+      'etf-flows',
+      'stablecoins',
+      'aaii-sentiment',
+      'market-breadth',
+      'liquidity-shifts',
+      'gold-intelligence',
+      'macro-signals',
+    ]);
+  }
+
+  private getPanelTier(key: string): 'Core' | 'Optional' | 'External' {
+    if (this.getVariantCorePanelKeys().has(key)) return 'Core';
+    if (this.getExternalPanelKeys().has(key)) return 'External';
+    return 'Optional';
+  }
+
+  private renderPanelTierGuide(): string {
+    return `
+      <div class="panels-guide-brief" aria-label="Panel tier guide">
+        <div class="panels-guide-line"><strong>Core</strong> opens on first load and is tuned for daily use.</div>
+        <div class="panels-guide-line"><strong>Optional</strong> stays available in settings for satellite data and unstable upstream feeds.</div>
+        <div class="panels-guide-line"><strong>External</strong> relies on third-party providers and may temporarily degrade without breaking the rest of the dashboard.</div>
+        <div class="panels-guide-line"><strong>Tip</strong> combine a category and panel tier to isolate external panels inside one workflow.</div>
+      </div>
+    `;
+  }
+
+  private renderPanelScopeBar(): string {
+    return `
+      <div class="unified-settings-region-wrapper">
+        <div class="unified-settings-region-bar" id="usPanelScopeBar"></div>
+      </div>
+    `;
+  }
+
+  private getPanelScopeCounts(): Record<PanelTierScope, number> {
+    const counts: Record<PanelTierScope, number> = { all: 0, core: 0, optional: 0, external: 0 };
+    let entries = Object.entries(this.draftPanelSettings)
+      .filter(([key]) => key !== 'runtime-config' || this.config.isDesktopApp)
+      .filter(([key]) => !key.startsWith('cw-'));
+    if (this.activePanelCategory !== 'all') {
+      const catDef = PANEL_CATEGORY_MAP[this.activePanelCategory];
+      if (!catDef || !this.categoryMatchesVariant(catDef)) return counts;
+      const allowed = new Set(catDef.panelKeys);
+      entries = entries.filter(([key]) => allowed.has(key));
+    }
+    for (const [key] of entries) {
+      if (key === 'runtime-config' || key.startsWith('cw-')) continue;
+      counts.all += 1;
+      counts[this.getPanelTier(key).toLowerCase() as 'core' | 'optional' | 'external'] += 1;
+    }
+    return counts;
+  }
+
+  private getAvailablePanelCategories(): Array<{ key: string; label: string; count: number }> {
+    const settings = this.draftPanelSettings;
+    const categories: Array<{ key: string; label: string; count: number }> = [
+      { key: 'all', label: t('header.sourceRegionAll'), count: Object.keys(settings).filter((key) => key !== 'runtime-config' && !key.startsWith('cw-')).length }
     ];
 
     for (const [catKey, catDef] of Object.entries(PANEL_CATEGORY_MAP)) {
       if (!this.categoryMatchesVariant(catDef)) continue;
-      const hasEnabledPanel = catDef.panelKeys.some(pk => settings[pk]?.enabled);
-      if (hasEnabledPanel) {
-        categories.push({ key: catKey, label: t(catDef.labelKey) });
+      const count = catDef.panelKeys.filter(pk => settings[pk]).length;
+      if (count > 0) {
+        categories.push({ key: catKey, label: t(catDef.labelKey), count });
       }
     }
 
@@ -708,6 +799,10 @@ export class UnifiedSettings {
       }
     }
 
+    if (this.activePanelScope !== 'all') {
+      entries = entries.filter(([key]) => this.getPanelTier(key).toLowerCase() === this.activePanelScope);
+    }
+
     if (this.panelFilter) {
       const lower = this.panelFilter.toLowerCase();
       entries = entries.filter(([key, panel]) =>
@@ -716,6 +811,21 @@ export class UnifiedSettings {
         this.config.getLocalizedPanelName(key, panel.name).toLowerCase().includes(lower)
       );
     }
+
+    entries.sort(([aKey, aPanel], [bKey, bPanel]) => {
+      const aTier = this.getPanelTier(aKey);
+      const bTier = this.getPanelTier(bKey);
+      const tierRank: Record<'Core' | 'Optional' | 'External', number> = {
+        Core: 0,
+        Optional: 1,
+        External: 2,
+      };
+      if (aTier !== bTier) return tierRank[aTier] - tierRank[bTier];
+      if (aPanel.enabled !== bPanel.enabled) return aPanel.enabled ? -1 : 1;
+      return this.config
+        .getLocalizedPanelName(aKey, aPanel.name)
+        .localeCompare(this.config.getLocalizedPanelName(bKey, bPanel.name));
+    });
 
     return entries;
   }
@@ -726,7 +836,22 @@ export class UnifiedSettings {
 
     const categories = this.getAvailablePanelCategories();
     bar.innerHTML = categories.map(c =>
-      `<button class="unified-settings-region-pill${this.activePanelCategory === c.key ? ' active' : ''}" data-panel-cat="${c.key}">${escapeHtml(c.label)}</button>`
+      `<button class="unified-settings-region-pill${this.activePanelCategory === c.key ? ' active' : ''}" data-panel-cat="${c.key}">${escapeHtml(`${c.label} (${c.count})`)}</button>`
+    ).join('');
+  }
+
+  private renderPanelScopePills(): void {
+    const bar = this.overlay.querySelector('#usPanelScopeBar');
+    if (!bar) return;
+    const counts = this.getPanelScopeCounts();
+    const scopes: Array<{ key: PanelTierScope; label: string }> = [
+      { key: 'all', label: `All (${counts.all})` },
+      { key: 'core', label: `Core only (${counts.core})` },
+      { key: 'optional', label: `Optional (${counts.optional})` },
+      { key: 'external', label: `External (${counts.external})` },
+    ];
+    bar.innerHTML = scopes.map(scope =>
+      `<button class="unified-settings-region-pill${this.activePanelScope === scope.key ? ' active' : ''}" data-panel-scope="${scope.key}">${escapeHtml(scope.label)}</button>`
     ).join('');
   }
 
@@ -737,15 +862,33 @@ export class UnifiedSettings {
     const savedSettings = this.config.getPanelSettings();
     const pro = isProUser();
     const entries = this.getVisiblePanelEntries();
+    if (entries.length === 0) {
+      const emptyMessage = this.activePanelCategory !== 'all' && this.activePanelScope !== 'all'
+        ? 'No panels match this category and panel tier filter.'
+        : this.activePanelScope !== 'all'
+        ? 'No panels match this panel tier filter.'
+        : this.activePanelCategory !== 'all'
+        ? 'No panels match this category filter.'
+        : 'No panels match this filter.';
+      container.innerHTML = `
+        <div class="panel-toggle-empty">
+          ${emptyMessage}
+        </div>
+      `;
+      this.updatePanelsFooter();
+      return;
+    }
     container.innerHTML = entries.map(([key, panel]) => {
       const entitled = isPanelEntitled(key, ALL_PANELS[key] ?? panel, pro);
       const locked = !entitled;
       const changed = !locked && savedSettings[key]?.enabled !== panel.enabled;
       const displayName = this.config.getLocalizedPanelName(key, getEffectivePanelConfig(key, SITE_VARIANT).name ?? panel.name);
+      const panelTier = this.getPanelTier(key);
       return `
         <div class="panel-toggle-item ${panel.enabled && !locked ? 'active' : ''}${changed ? ' changed' : ''}${locked ? ' pro-locked' : ''}" data-panel="${escapeHtml(key)}" aria-pressed="${panel.enabled && !locked}" ${locked ? 'data-pro-locked="1"' : ''}>
           <div class="panel-toggle-checkbox">${panel.enabled && !locked ? '\u2713' : ''}${locked ? '\uD83D\uDD12' : ''}</div>
           <span class="panel-toggle-label">${escapeHtml(displayName)}</span>
+          <span class="panel-toggle-tier-badge panel-toggle-tier-${panelTier.toLowerCase()}">${panelTier}</span>
           ${(locked || (ALL_PANELS[key] ?? panel).premium) ? '<span class="panel-toggle-pro-badge">PRO</span>' : ''}
         </div>
       `;

@@ -69,17 +69,17 @@ function pctBadge(val: number | null | undefined, invertColor = false): string {
 }
 
 function pricePressureBadge(wowPct: number): string {
-  if (Math.abs(wowPct) < 0.5) return '<span class="cp-pressure cp-pressure--steady">Stable</span>';
-  if (wowPct >= 2) return '<span class="cp-pressure cp-pressure--stress">Rising</span>';
-  if (wowPct > 0.5) return '<span class="cp-pressure cp-pressure--watch">Mild Rise</span>';
-  return '<span class="cp-pressure cp-pressure--green">Easing</span>';
+  if (Math.abs(wowPct) < 0.5) return '<span class="cp-pressure cp-pressure--steady">安定</span>';
+  if (wowPct >= 2) return '<span class="cp-pressure cp-pressure--stress">上昇中</span>';
+  if (wowPct > 0.5) return '<span class="cp-pressure cp-pressure--watch">やや上昇</span>';
+  return '<span class="cp-pressure cp-pressure--green">落ち着き</span>';
 }
 
 function freshnessLabel(min: number | null): string {
-  if (min == null || min === 0) return 'Unknown';
-  if (min < 60) return `${min}m ago`;
-  if (min < 1440) return `${Math.round(min / 60)}h ago`;
-  return `${Math.round(min / 1440)}d ago`;
+  if (min == null || min === 0) return '不明';
+  if (min < 60) return `${min}分前`;
+  if (min < 1440) return `${Math.round(min / 60)}時間前`;
+  return `${Math.round(min / 1440)}日前`;
 }
 
 function freshnessClass(min: number | null): string {
@@ -251,8 +251,8 @@ export class ConsumerPricesPanel extends Panel {
           ${tabsHtml}
           <div class="cp-body cp-seeding-state">
             <div class="cp-seeding-icon">📊</div>
-            <div class="cp-seeding-title">Data collection in progress</div>
-            <div class="cp-seeding-sub">Retail prices are being aggregated — check back in a few hours.</div>
+            <div class="cp-seeding-title">消費者価格スナップショットは現在利用できません</div>
+            <div class="cp-seeding-sub">小売価格の収集をまだ整備中です。後でもう一度確認してください。</div>
           </div>
         </div>
       `);
@@ -269,7 +269,7 @@ export class ConsumerPricesPanel extends Panel {
         break;
       case 'movers':
         bodyHtml = rangeHtml + (categoryFilter
-          ? `<div class="cp-filter-bar">Filtered: <strong>${escapeHtml(categoryFilter)}</strong> <button data-clear-filter>✕</button></div>`
+          ? `<div class="cp-filter-bar">絞り込み中: <strong>${escapeHtml(categoryFilter)}</strong> <button data-clear-filter>✕</button></div>`
           : '') + this.renderMovers();
         break;
       case 'spread':
@@ -291,7 +291,7 @@ export class ConsumerPricesPanel extends Panel {
 
   private renderGlobalOverview(): string {
     if (this.allMarkets.length === 0) {
-      return `<div class="cp-empty-state">Loading global data…</div>`;
+      return `<div class="cp-empty-state">グローバルデータを読み込み中…</div>`;
     }
     const rows = SINGLE_MARKETS.map((m) => {
       const d = this.allMarkets.find((r) => r.marketCode === m.code);
@@ -300,7 +300,7 @@ export class ConsumerPricesPanel extends Panel {
         return `
           <tr class="cp-global-row" data-market="${m.code}">
             <td class="cp-global-flag">${m.label}</td>
-            <td colspan="4" class="cp-global-pending">Pending data</td>
+            <td colspan="4" class="cp-global-pending">データ準備中</td>
           </tr>`;
       }
       const wowBadge = pctBadge(d.wowPct, true);
@@ -318,47 +318,47 @@ export class ConsumerPricesPanel extends Panel {
       <table class="cp-global-table">
         <thead>
           <tr>
-            <th>Market</th><th>Index</th><th>WoW</th><th>Spread</th><th>Updated</th>
+            <th>市場</th><th>指数</th><th>前週比</th><th>価格差</th><th>更新</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
-      <div class="cp-global-hint">Tap a market row to drill in</div>
+      <div class="cp-global-hint">市場行をタップすると詳細を表示します</div>
     `;
   }
 
   private renderOverview(): string {
     const d = this.overview;
-    if (!d || !d.asOf || d.asOf === '0') return this.renderEmptyState('No price data available yet');
+    if (!d || !d.asOf || d.asOf === '0') return this.renderEmptyState('消費者価格スナップショットは現在利用できません');
 
     return `
       <div class="cp-overview-grid">
         <div class="cp-stat-card">
-          <div class="cp-stat-label">Essentials Basket</div>
+          <div class="cp-stat-label">生活必需品バスケット</div>
           <div class="cp-stat-value">${d.essentialsIndex > 0 ? d.essentialsIndex.toFixed(1) : '—'}</div>
-          <div class="cp-stat-sub">Index (base 100)</div>
+          <div class="cp-stat-sub">指数 (基準値100)</div>
         </div>
         <div class="cp-stat-card">
-          <div class="cp-stat-label">Value Basket</div>
+          <div class="cp-stat-label">節約型バスケット</div>
           <div class="cp-stat-value">${d.valueBasketIndex > 0 ? d.valueBasketIndex.toFixed(1) : '—'}</div>
-          <div class="cp-stat-sub">Index (base 100)</div>
+          <div class="cp-stat-sub">指数 (基準値100)</div>
         </div>
         <div class="cp-stat-card">
-          <div class="cp-stat-label">Week-over-Week</div>
+          <div class="cp-stat-label">前週比</div>
           <div class="cp-stat-value">${pctBadge(d.wowPct, true)}</div>
           <div class="cp-stat-sub">${pricePressureBadge(d.wowPct)}</div>
         </div>
         <div class="cp-stat-card">
-          <div class="cp-stat-label">Month-over-Month</div>
+          <div class="cp-stat-label">前月比</div>
           <div class="cp-stat-value">${pctBadge(d.momPct, true)}</div>
         </div>
         <div class="cp-stat-card">
-          <div class="cp-stat-label">Retailer Spread</div>
+          <div class="cp-stat-label">小売価格差</div>
           <div class="cp-stat-value">${d.retailerSpreadPct > 0 ? `${d.retailerSpreadPct.toFixed(1)}%` : '—'}</div>
-          <div class="cp-stat-sub">Cheapest vs most exp.</div>
+          <div class="cp-stat-sub">最安値と最高値の差</div>
         </div>
         <div class="cp-stat-card">
-          <div class="cp-stat-label">Coverage</div>
+          <div class="cp-stat-label">カバー率</div>
           <div class="cp-stat-value">${d.coveragePct > 0 ? `${d.coveragePct.toFixed(0)}%` : '—'}</div>
           <div class="cp-stat-sub ${freshnessClass(d.freshnessLagMin)}">
             ${freshnessLabel(d.freshnessLagMin)}
@@ -366,7 +366,7 @@ export class ConsumerPricesPanel extends Panel {
         </div>
       </div>
       ${d.topCategories?.length ? `
-        <div class="cp-section-label">Top Category Movers</div>
+        <div class="cp-section-label">主要カテゴリの変動</div>
         <div class="cp-category-mini">
           ${d.topCategories.slice(0, 5).map((c) => this.renderCategoryMini(c)).join('')}
         </div>
@@ -387,17 +387,17 @@ export class ConsumerPricesPanel extends Panel {
 
   private renderCategories(): string {
     const cats = this.categories?.categories;
-    if (!cats?.length) return this.renderEmptyState('No category data yet');
+    if (!cats?.length) return this.renderEmptyState('カテゴリ別価格データは現在利用できません');
 
     return `
       <table class="cp-table">
         <thead>
           <tr>
-            <th>Category</th>
-            <th>WoW</th>
-            <th>MoM</th>
-            <th>Trend</th>
-            <th>Coverage</th>
+            <th>カテゴリ</th>
+            <th>前週比</th>
+            <th>前月比</th>
+            <th>推移</th>
+            <th>カバー率</th>
           </tr>
         </thead>
         <tbody>
@@ -417,7 +417,7 @@ export class ConsumerPricesPanel extends Panel {
 
   private renderMovers(): string {
     const d = this.movers;
-    if (!d) return this.renderEmptyState('No price movement data yet');
+    if (!d) return this.renderEmptyState('価格変動データは現在利用できません');
 
     const { categoryFilter } = this.settings;
     const filterFn = (m: PriceMover) => !categoryFilter || m.category === categoryFilter;
@@ -425,17 +425,17 @@ export class ConsumerPricesPanel extends Panel {
     const risers = (d.risers ?? []).filter(filterFn).slice(0, 8);
     const fallers = (d.fallers ?? []).filter(filterFn).slice(0, 8);
 
-    if (!risers.length && !fallers.length) return this.renderEmptyState('No movers for this selection');
+    if (!risers.length && !fallers.length) return this.renderEmptyState('この条件で動きのある項目はありません');
 
     return `
       <div class="cp-movers-grid">
         <div class="cp-movers-col">
-          <div class="cp-col-header cp-col-header--up">Rising</div>
-          ${risers.map((m) => this.renderMoverRow(m, 'up')).join('') || '<div class="cp-empty-col">None</div>'}
+          <div class="cp-col-header cp-col-header--up">上昇</div>
+          ${risers.map((m) => this.renderMoverRow(m, 'up')).join('') || '<div class="cp-empty-col">なし</div>'}
         </div>
         <div class="cp-movers-col">
-          <div class="cp-col-header cp-col-header--down">Falling</div>
-          ${fallers.map((m) => this.renderMoverRow(m, 'down')).join('') || '<div class="cp-empty-col">None</div>'}
+          <div class="cp-col-header cp-col-header--down">下落</div>
+          ${fallers.map((m) => this.renderMoverRow(m, 'down')).join('') || '<div class="cp-empty-col">なし</div>'}
         </div>
       </div>
     `;
@@ -457,11 +457,11 @@ export class ConsumerPricesPanel extends Panel {
 
   private renderSpread(): string {
     const d = this.spread;
-    if (!d?.retailers?.length) return this.renderEmptyState('Retailer comparison starts once data is collected');
+    if (!d?.retailers?.length) return this.renderEmptyState('小売比較データは現在利用できません');
 
     return `
       <div class="cp-spread-header">
-        <span>Spread: <strong>${d.spreadPct.toFixed(1)}%</strong></span>
+        <span>価格差: <strong>${d.spreadPct.toFixed(1)}%</strong></span>
         <span class="cp-spread-basket">${escapeHtml(d.basketSlug)} · ${escapeHtml(d.currencyCode)}</span>
       </div>
       <div class="cp-spread-list">
@@ -477,8 +477,8 @@ export class ConsumerPricesPanel extends Panel {
         <div class="cp-spread-rank">#${rank + 1}</div>
         <div class="cp-spread-name">${escapeHtml(r.name)}</div>
         <div class="cp-spread-total">${currency} ${r.basketTotal.toFixed(2)}</div>
-        <div class="cp-spread-delta">${isChepeast ? '<span class="cp-badge cp-badge--green">Cheapest</span>' : pctBadge(r.deltaVsCheapestPct, true)}</div>
-        <div class="cp-spread-items">${r.itemCount} items</div>
+        <div class="cp-spread-delta">${isChepeast ? '<span class="cp-badge cp-badge--green">最安</span>' : pctBadge(r.deltaVsCheapestPct, true)}</div>
+        <div class="cp-spread-items">${r.itemCount}件</div>
         <div class="cp-spread-fresh ${freshnessClass(r.freshnessMin)}">${freshnessLabel(r.freshnessMin)}</div>
       </div>
     `;
@@ -486,19 +486,19 @@ export class ConsumerPricesPanel extends Panel {
 
   private renderHealth(): string {
     const d = this.freshness;
-    if (!d?.retailers?.length) return this.renderEmptyState('Health data not yet available');
+    if (!d?.retailers?.length) return this.renderEmptyState('小売更新データは現在利用できません');
 
     return `
       <div class="cp-health-summary">
-        <span>Overall freshness: <strong class="${freshnessClass(d.overallFreshnessMin)}">${freshnessLabel(d.overallFreshnessMin)}</strong></span>
-        ${d.stalledCount > 0 ? `<span class="cp-stalled-badge">${d.stalledCount} stalled</span>` : ''}
+        <span>全体の更新度: <strong class="${freshnessClass(d.overallFreshnessMin)}">${freshnessLabel(d.overallFreshnessMin)}</strong></span>
+        ${d.stalledCount > 0 ? `<span class="cp-stalled-badge">${d.stalledCount}件停滞</span>` : ''}
       </div>
       <div class="cp-health-list">
         ${d.retailers.map((r) => `
           <div class="cp-health-row">
             <span class="cp-health-name">${escapeHtml(r.name)}</span>
             <span class="cp-health-status cp-health-status--${r.status}">${r.status}</span>
-            <span class="cp-health-rate">${r.parseSuccessRate > 0 ? `${r.parseSuccessRate.toFixed(0)}% parse` : '—'}</span>
+            <span class="cp-health-rate">${r.parseSuccessRate > 0 ? `解析成功率 ${r.parseSuccessRate.toFixed(0)}%` : '—'}</span>
             <span class="cp-health-fresh ${freshnessClass(r.freshnessMin)}">${freshnessLabel(r.freshnessMin)}</span>
           </div>
         `).join('')}

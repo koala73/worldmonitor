@@ -20,6 +20,7 @@ export class Hs2Picker {
   private opts: Hs2PickerOptions;
 
   constructor(opts: Hs2PickerOptions) {
+    const ja = typeof navigator !== 'undefined' && navigator.language.toLowerCase().startsWith('ja');
     this.opts = opts;
     this.element = document.createElement('div');
     this.element.className = 're-picker re-picker--hs2';
@@ -27,10 +28,10 @@ export class Hs2Picker {
     this.input = document.createElement('input');
     this.input.type = 'text';
     this.input.className = 're-picker__input';
-    this.input.placeholder = opts.placeholder ?? 'Search products (HS code)';
+    this.input.placeholder = opts.placeholder ?? (ja ? '製品を検索 (HSコード)' : 'Search products (HS code)');
     this.input.autocomplete = 'off';
     this.input.spellcheck = false;
-    this.input.setAttribute('aria-label', opts.placeholder ?? 'Search products');
+    this.input.setAttribute('aria-label', opts.placeholder ?? (ja ? '製品を検索' : 'Search products'));
 
     this.list = document.createElement('ul');
     this.list.className = 're-picker__list';
@@ -83,7 +84,7 @@ export class Hs2Picker {
     if (this.results.length === 0) {
       const empty = document.createElement('li');
       empty.className = 're-picker__empty';
-      empty.textContent = 'No matching products';
+      empty.textContent = (typeof navigator !== 'undefined' && navigator.language.toLowerCase().startsWith('ja')) ? '一致する製品がありません' : 'No matching products';
       this.list.append(empty);
       return;
     }

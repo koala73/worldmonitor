@@ -24,6 +24,7 @@ import { getRpcBaseUrl } from '@/services/rpc-client';
 import { fetchHormuzTracker, type HormuzTrackerData } from '@/services/hormuz-tracker';
 import { getEuGasStorageData } from '@/services/economic';
 import { fetchCommodityQuotes } from '@/services/market';
+import { getCurrentLanguage } from '@/services/i18n';
 import { SupplyChainServiceClient } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import { buildOverviewState, type OverviewState } from './_energy-risk-overview-state';
 
@@ -79,9 +80,10 @@ export class EnergyRiskOverviewPanel extends Panel {
   private freshnessTickHandle: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
+    const ja = getCurrentLanguage() === 'ja';
     super({
       id: 'energy-risk-overview',
-      title: 'Global Energy Risk Overview',
+      title: ja ? 'グローバルエネルギーリスク概観' : 'Global Energy Risk Overview',
       defaultRowSpan: 1,
       infoTooltip:
         'Consolidated executive view: Strait of Hormuz vessel status, EU gas ' +

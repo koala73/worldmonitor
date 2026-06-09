@@ -17,6 +17,7 @@ import { getCurrentLanguage } from './i18n';
 import { NewsServiceClient, type SummarizeArticleResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { buildSummaryCacheKey } from '@/utils/summary-cache-key';
+import { getAiFlowSettings } from '@/services/ai-flow-settings';
 
 export type SummarizationProvider = 'ollama' | 'groq' | 'openrouter' | 'browser' | 'cache';
 
@@ -161,6 +162,54 @@ async function tryBrowserT5(
     };
   } catch (error) {
     console.warn('[Summarization] Browser T5 failed:', error);
+    return null;
+  }
+}
+
+async function tryBrowserTranslate(
+  text: string,
+  targetLang: string,
+): Promise<string | null> {
+  try {
+    if (!mlWorker.isAvailable) return null;
+    const prompt = targetLang === 'ja'
+      ? `次の英文を自然な日本語に翻訳してください。訳文だけを返してください。\n${text}`
+      : `Translate the following text into ${targetLang}. Return only the translated text.\n${text}`;
+    const [translated] = await mlWorker.summarize([prompt], undefined);
+    if (!translated) return null;
+    const normalized = translated.trim();
+    if (!normalized) return null;
+    return normalized.replace(/^["'「]|["'」]$/g, '').trim();
+  } catch (error) {
+    console.warn('[Summarization] Browser translation fallback failed:', error);
+    return null;
+  }
+}
+
+async function tryPublicTranslate(
+  text: string,
+  targetLang: string,
+): Promise<string | null> {
+  try {
+    // ニュース本文を Google 非公式翻訳エンドポイントへ送信する（データ egress）。
+    // AiFlowSettings.cloudTranslation が false のとき送信をスキップし、
+    // ローカルモデルフォールバック（tryBrowserTranslate）へ処理を委ねる。
+    // ユーザーは設定 UI の cloudTranslation トグルで無効化可能。
+    if (!getAiFlowSettings().cloudTranslation) return null;
+
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(targetLang)}&dt=t&q=${encodeURIComponent(text)}`;
+    const response = await fetch(url, { method: 'GET' });
+    if (!response.ok) return null;
+    const payload = await response.json() as unknown;
+    if (!Array.isArray(payload) || !Array.isArray(payload[0])) return null;
+    const translated = (payload[0] as unknown[])
+      .filter((entry): entry is unknown[] => Array.isArray(entry))
+      .map((entry) => typeof entry[0] === 'string' ? entry[0] : '')
+      .join('')
+      .trim();
+    return translated || null;
+  } catch (error) {
+    console.warn('[Summarization] Public translation fallback failed:', error);
     return null;
   }
 }
@@ -361,5 +410,10 @@ export async function translateText(
     }
   }
 
-  return null;
+  onProgress?.(totalSteps + 1, totalSteps + 2, 'Translating with public translator...');
+  const publicResult = await tryPublicTranslate(text, targetLang);
+  if (publicResult) return publicResult;
+
+  onProgress?.(totalSteps + 2, totalSteps + 2, 'Translating with local model...');
+  return tryBrowserTranslate(text, targetLang);
 }

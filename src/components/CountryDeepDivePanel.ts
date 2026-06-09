@@ -2335,7 +2335,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const flag = this.el('span', 'cdp-flag', CountryDeepDivePanel.toFlagEmoji(code));
     const titleWrap = this.el('div', 'cdp-title-wrap');
     const name = this.el('h2', 'cdp-country-name', country);
-    const subtitle = this.el('div', 'cdp-country-subtitle', `${code.toUpperCase()} • Country Intelligence`);
+    const subtitle = this.el('div', 'cdp-country-subtitle', `${code.toUpperCase()} • 国別インテリジェンス`);
     titleWrap.append(name, subtitle);
     left.append(flag, titleWrap);
 
@@ -2426,48 +2426,48 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const factsExpanded = this.el('div', 'cdp-expanded-only');
     factsExpanded.append(factsCard);
 
-    const [energyCard, energyBody] = this.sectionCard('Energy Profile', 'Oil import dependency, chokepoint exposure, and energy shock data from JODI, IEA, and PortWatch.');
+    const [energyCard, energyBody] = this.sectionCard('エネルギープロファイル', '石油輸入依存度、チョークポイント露出、エネルギーショック情報を JODI・IEA・PortWatch から表示します。');
     this.energyBody = energyBody;
-    energyBody.append(this.makeLoading('Loading energy data\u2026'));
+    energyBody.append(this.makeLoading('エネルギーデータを読み込み中\u2026'));
 
-    const [maritimeCard, maritimeBody] = this.sectionCard('Maritime Activity', 'Port-level tanker call volume and import/export cargo weight over 30 days. ⚠ badge = port running below 50% of its 30-day baseline. Source: IMF PortWatch.');
+    const [maritimeCard, maritimeBody] = this.sectionCard('海運活動', '港ごとのタンカー寄港数と、30日間の輸出入貨物量を表示します。⚠ は30日平均の50%未満を示します。ソース: IMF PortWatch。');
     this.maritimeBody = maritimeBody;
-    maritimeBody.append(this.makeLoading('Loading port activity\u2026'));
+    maritimeBody.append(this.makeLoading('港湾活動を読み込み中\u2026'));
 
-    const [tradeCard, tradeBody] = this.sectionCard('Trade Exposure', 'Chokepoints most critical to this country\'s imports by sector');
+    const [tradeCard, tradeBody] = this.sectionCard('貿易露出', 'この国の輸入に対して、部門別に最重要なチョークポイントを表示します');
     this.tradeExposureBody = tradeBody;
-    tradeBody.append(this.makeLoading('Loading trade exposure\u2026'));
+    tradeBody.append(this.makeLoading('貿易露出を読み込み中\u2026'));
 
     const isPro = hasPremiumAccess(getAuthState());
 
     const [costShockCalcCard, costShockCalcBody] = this.sectionCard(
-      'Cost Shock Calculator',
-      'Model the per-sector added cost of a prolonged chokepoint closure. Drag the slider to change closure duration (1-90 days). Uses war risk premium + best bypass freight uplift × annual import value.',
+      'コストショック計算機',
+      'チョークポイント長期閉鎖時の追加コストを部門別に試算します。期間は1〜90日で変更できます。',
     );
     this.costShockCalcBody = costShockCalcBody;
     costShockCalcBody.append(
-      isPro ? this.makeLoading('Loading cost shock calculator\u2026') : this.makeProLocked('Upgrade to PRO for multi-sector cost shock modelling'),
+      isPro ? this.makeLoading('コストショック計算機を読み込み中\u2026') : this.makeProLocked('部門別コストショック試算は PRO で利用できます'),
     );
 
-    const [productImportsCard, productImportsCardBody] = this.sectionCard('Product Imports', 'Top imported products by HS4 code with supplier breakdown and concentration risk.');
+    const [productImportsCard, productImportsCardBody] = this.sectionCard('製品輸入', 'HS4コード別の主要輸入製品と、供給先内訳・集中リスクを表示します。');
     this.productImportsBody = productImportsCardBody;
-    productImportsCardBody.append(isPro ? this.makeLoading('Loading product data\u2026') : this.makeProLocked('Upgrade to PRO for product import data'));
+    productImportsCardBody.append(isPro ? this.makeLoading('製品データを読み込み中\u2026') : this.makeProLocked('製品輸入データは PRO で利用できます'));
 
-    const [debtCard, debtBody] = this.sectionCard('National Debt', 'Government debt-to-GDP ratio, total debt, and year-over-year growth.');
+    const [debtCard, debtBody] = this.sectionCard('国家債務', '政府債務の対GDP比、総債務、前年比成長を表示します。');
     this.debtBody = debtBody;
-    debtBody.append(isPro ? this.makeLoading('Loading debt data\u2026') : this.makeProLocked('Upgrade to PRO for national debt data'));
+    debtBody.append(isPro ? this.makeLoading('債務データを読み込み中\u2026') : this.makeProLocked('国家債務データは PRO で利用できます'));
 
-    const [sanctionsCard, sanctionsBody] = this.sectionCard('Sanctions Pressure', 'Sanctioned entities, vessels, and aircraft linked to this country.');
+    const [sanctionsCard, sanctionsBody] = this.sectionCard('制裁圧力', 'この国に関連する制裁対象の企業・船舶・航空機を表示します。');
     this.sanctionsBody = sanctionsBody;
-    sanctionsBody.append(isPro ? this.makeLoading('Loading sanctions data\u2026') : this.makeProLocked('Upgrade to PRO for sanctions data'));
+    sanctionsBody.append(isPro ? this.makeLoading('制裁データを読み込み中\u2026') : this.makeProLocked('制裁データは PRO で利用できます'));
 
-    const [comtradeCard, comtradeBody] = this.sectionCard('Trade Flows', 'Top Comtrade trade flows sorted by value, with partner and commodity.');
+    const [comtradeCard, comtradeBody] = this.sectionCard('貿易フロー', 'Comtrade の主要貿易フローを、相手国と品目付きで金額順に表示します。');
     this.comtradeBody = comtradeBody;
-    comtradeBody.append(isPro ? this.makeLoading('Loading trade flows\u2026') : this.makeProLocked('Upgrade to PRO for trade flow data'));
+    comtradeBody.append(isPro ? this.makeLoading('貿易フローを読み込み中\u2026') : this.makeProLocked('貿易フローデータは PRO で利用できます'));
 
-    const [tariffCard, tariffBody] = this.sectionCard('Tariff Trends', 'Effective tariff rate and historical trend direction.');
+    const [tariffCard, tariffBody] = this.sectionCard('関税トレンド', '実効関税率と、その推移方向を表示します。');
     this.tariffBody = tariffBody;
-    tariffBody.append(isPro ? this.makeLoading('Loading tariff data\u2026') : this.makeProLocked('Upgrade to PRO for tariff trend data'));
+    tariffBody.append(isPro ? this.makeLoading('関税データを読み込み中\u2026') : this.makeProLocked('関税トレンドは PRO で利用できます'));
 
 
     this.signalsBody = signalBody;
@@ -2482,11 +2482,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.briefBody = briefBody;
 
     this.renderInitialSignals(signals);
-    newsBody.append(this.makeLoading('Loading country headlines…'));
-    militaryBody.append(this.makeLoading('Loading flights, vessels, and nearby bases…'));
-    infraBody.append(this.makeLoading('Computing nearby critical infrastructure…'));
-    economicBody.append(this.makeLoading('Loading available indicators…'));
-    housingBody.append(this.makeLoading('Loading housing cycle data…'));
+    newsBody.append(this.makeLoading('国別ニュースを読み込み中…'));
+    militaryBody.append(this.makeLoading('航空機・船舶・周辺基地を読み込み中…'));
+    infraBody.append(this.makeLoading('周辺の重要インフラを計算中…'));
+    economicBody.append(this.makeLoading('利用可能な指標を読み込み中…'));
+    housingBody.append(this.makeLoading('住宅サイクルデータを読み込み中…'));
     marketsBody.append(this.makeLoading(t('countryBrief.loadingMarkets')));
     briefBody.append(this.makeLoading(t('countryBrief.generatingBrief')));
 
@@ -2724,7 +2724,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     const panel = this.el('aside', 'country-deep-dive');
     panel.id = 'country-deep-dive-panel';
-    panel.setAttribute('aria-label', 'Country Intelligence');
+    panel.setAttribute('aria-label', '国別インテリジェンス');
     panel.setAttribute('aria-hidden', 'true');
 
     const shell = this.el('div', 'country-deep-dive-shell');

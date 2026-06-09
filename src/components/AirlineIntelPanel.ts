@@ -18,7 +18,7 @@ import {
 } from '@/services/aviation';
 import { aviationWatchlist } from '@/services/aviation/watchlist';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
-import { t } from '@/services/i18n';
+import { t, getCurrentLanguage } from '@/services/i18n';
 import { Panel } from './Panel';
 
 // ---- Helpers ----
@@ -57,10 +57,17 @@ function localDateStr(): string {
 const TABS = ['ops', 'flights', 'airlines', 'tracking', 'news', 'prices'] as const;
 type Tab = typeof TABS[number];
 
-const TAB_LABELS: Record<Tab, string> = {
-    ops: 'Ops', flights: 'Flights', airlines: 'Airlines',
-    tracking: 'Track', news: 'News', prices: 'Prices',
-};
+function getTabLabels(): Record<Tab, string> {
+    const ja = getCurrentLanguage() === 'ja';
+    return {
+        ops: ja ? '運航' : 'Ops',
+        flights: ja ? 'フライト' : 'Flights',
+        airlines: ja ? '航空会社' : 'Airlines',
+        tracking: ja ? '追跡' : 'Track',
+        news: ja ? 'ニュース' : 'News',
+        prices: ja ? '価格' : 'Prices',
+    };
+}
 
 // ---- Panel class ----
 
@@ -129,7 +136,7 @@ export class AirlineIntelPanel extends Panel {
         TABS.forEach(tab => {
             const btn = document.createElement('button');
             btn.className = `panel-tab${tab === this.activeTab ? ' active' : ''}`;
-            btn.textContent = TAB_LABELS[tab];
+            btn.textContent = getTabLabels()[tab];
             btn.dataset.tab = tab;
             btn.addEventListener('click', () => this.switchTab(tab as Tab));
             this.tabBar.appendChild(btn);
@@ -201,6 +208,7 @@ export class AirlineIntelPanel extends Panel {
     }
 
     private handleFlightSearch(): void {
+        const jaErr = getCurrentLanguage() === 'ja';
         const origin = ((this.content.querySelector('#priceFromInput') as HTMLInputElement)?.value || '').toUpperCase().trim();
         const dest = ((this.content.querySelector('#priceToInput') as HTMLInputElement)?.value || '').toUpperCase().trim();
         const dep = (this.content.querySelector('#priceDepInput') as HTMLInputElement)?.value || '';
@@ -208,12 +216,12 @@ export class AirlineIntelPanel extends Panel {
         const errEl = this.content.querySelector('#priceInlineErr') as HTMLElement | null;
         const iataRe = /^[A-Z]{3}$/;
         if (!iataRe.test(origin) || !iataRe.test(dest)) {
-            if (errEl) errEl.textContent = 'Enter valid 3-letter IATA codes';
+            if (errEl) errEl.textContent = jaErr ? '3文字のIATAコードを入力してください' : 'Enter valid 3-letter IATA codes';
             return;
         }
         const today = localDateStr();
         if (dep && dep < today) {
-            if (errEl) errEl.textContent = 'Departure date must be today or future';
+            if (errEl) errEl.textContent = jaErr ? '出発日は今日以降を指定してください' : 'Departure date must be today or future';
             return;
         }
         if (errEl) errEl.textContent = '';
@@ -225,6 +233,7 @@ export class AirlineIntelPanel extends Panel {
     }
 
     private handleDatesSearch(): void {
+        const jaErr = getCurrentLanguage() === 'ja';
         const origin = ((this.content.querySelector('#datesFromInput') as HTMLInputElement)?.value || '').toUpperCase().trim();
         const dest = ((this.content.querySelector('#datesToInput') as HTMLInputElement)?.value || '').toUpperCase().trim();
         const start = (this.content.querySelector('#datesStartInput') as HTMLInputElement)?.value || '';
@@ -235,27 +244,27 @@ export class AirlineIntelPanel extends Panel {
         const errEl = this.content.querySelector('#datesInlineErr') as HTMLElement | null;
         const iataRe = /^[A-Z]{3}$/;
         if (!iataRe.test(origin) || !iataRe.test(dest)) {
-            if (errEl) errEl.textContent = 'Enter valid 3-letter IATA codes';
+            if (errEl) errEl.textContent = jaErr ? '3文字のIATAコードを入力してください' : 'Enter valid 3-letter IATA codes';
             return;
         }
         if (!start || !end) {
-            if (errEl) errEl.textContent = 'Enter start and end dates';
+            if (errEl) errEl.textContent = jaErr ? '開始日と終了日を入力してください' : 'Enter start and end dates';
             return;
         }
         if (start < localDateStr()) {
-            if (errEl) errEl.textContent = 'Start date must be today or future';
+            if (errEl) errEl.textContent = jaErr ? '開始日は今日以降を指定してください' : 'Start date must be today or future';
             return;
         }
         if (start >= end) {
-            if (errEl) errEl.textContent = 'Start date must be before end date';
+            if (errEl) errEl.textContent = jaErr ? '開始日は終了日より前にしてください' : 'Start date must be before end date';
             return;
         }
         if (rt && (Number.isNaN(dur) || dur < 1)) {
-            if (errEl) errEl.textContent = 'Trip duration must be at least 1 day';
+            if (errEl) errEl.textContent = jaErr ? '旅行日数は1日以上を指定してください' : 'Trip duration must be at least 1 day';
             return;
         }
         const daysDiff = (new Date(end).getTime() - new Date(start).getTime()) / 86400000;
-        if (errEl) errEl.textContent = daysDiff > 90 ? 'Range exceeds 90 days — results may be incomplete' : '';
+        if (errEl) errEl.textContent = daysDiff > 90 ? (jaErr ? '期間が90日を超えています — 結果が不完全な場合があります' : 'Range exceeds 90 days — results may be incomplete') : '';
         this.pricesOrigin = origin;
         this.pricesDest = dest;
         this.datesStart = start;
@@ -434,13 +443,14 @@ export class AirlineIntelPanel extends Panel {
 
     // ---- Tracking tab ----
     private renderTracking(): void {
+        const ja = getCurrentLanguage() === 'ja';
         const clearBtn = this.trackingQuery
-            ? `<button id="trackClearBtn" class="icon-btn" style="padding:4px 8px;color:#9ca3af" title="Back to live feed">×</button>`
+            ? `<button id="trackClearBtn" class="icon-btn" style="padding:4px 8px;color:#9ca3af" title="${ja ? 'ライブ表示に戻る' : 'Back to live feed'}">×</button>`
             : '';
         const searchBar = `
       <div class="track-search" style="display:flex;gap:6px;padding:8px 0 6px">
-        <input id="trackQueryInput" class="price-input" placeholder="Flight (EK3) or callsign (UAE3)" value="${escapeHtml(this.trackingQuery)}" style="flex:1;min-width:0">
-        ${clearBtn}<button id="trackSearchBtn" class="icon-btn" style="padding:4px 10px">Track</button>
+        <input id="trackQueryInput" class="price-input" placeholder="${ja ? 'フライト番号(EK3)またはコールサイン(UAE3)' : 'Flight (EK3) or callsign (UAE3)'}" value="${escapeHtml(this.trackingQuery)}" style="flex:1;min-width:0">
+        ${clearBtn}<button id="trackSearchBtn" class="icon-btn" style="padding:4px 10px">${ja ? '追跡' : 'Track'}</button>
       </div>`;
 
         if (this.loading) {
@@ -452,10 +462,10 @@ export class AirlineIntelPanel extends Panel {
         if (this.trackingFlightData.length) {
             const rows = this.trackingFlightData.map(f => {
                 const depStr = f.estimatedDeparture
-                    ? `Dep ${fmtTime(f.estimatedDeparture)}`
+                    ? `${ja ? '出発' : 'Dep'} ${fmtTime(f.estimatedDeparture)}`
                     : '';
                 const arrStr = f.estimatedArrival
-                    ? ` · Arr ${fmtTime(f.estimatedArrival)}`
+                    ? ` · ${ja ? '到着' : 'Arr'} ${fmtTime(f.estimatedArrival)}`
                     : '';
                 const color = STATUS_BADGE[f.status] ?? '#6b7280';
                 return `
@@ -467,8 +477,8 @@ export class AirlineIntelPanel extends Panel {
             </div>
             <div style="font-size:12px;color:var(--text-dim)">${escapeHtml(f.origin.iata)} → ${escapeHtml(f.destination.iata)}${depStr ? ` · ${depStr}` : ''}${arrStr}</div>
             ${f.aircraftType ? `<div style="font-size:11px;color:#6b7280">${escapeHtml(f.aircraftType)}</div>` : ''}
-            ${(f.gate || f.terminal) ? `<div style="font-size:11px;color:#6b7280">${f.gate ? `Gate ${escapeHtml(f.gate)}` : ''}${f.terminal ? `${f.gate ? ' · ' : ''}T${escapeHtml(f.terminal)}` : ''}</div>` : ''}
-            ${f.delayMinutes > 0 ? `<div style="color:#f97316;font-size:12px">+${f.delayMinutes}m delay</div>` : ''}
+            ${(f.gate || f.terminal) ? `<div style="font-size:11px;color:#6b7280">${f.gate ? `${ja ? 'ゲート' : 'Gate'} ${escapeHtml(f.gate)}` : ''}${f.terminal ? `${f.gate ? ' · ' : ''}T${escapeHtml(f.terminal)}` : ''}</div>` : ''}
+            ${f.delayMinutes > 0 ? `<div style="color:#f97316;font-size:12px">+${f.delayMinutes}m ${ja ? '遅延' : 'delay'}</div>` : ''}
           </div>`;
             }).join('');
             this.content.innerHTML = `${searchBar}<div>${rows}</div>`;
@@ -489,7 +499,7 @@ export class AirlineIntelPanel extends Panel {
         }
 
         const emptyMsg = this.trackingQuery
-            ? `<div class="no-data">No results for <strong>${escapeHtml(this.trackingQuery)}</strong>.</div>`
+            ? `<div class="no-data">${ja ? `<strong>${escapeHtml(this.trackingQuery)}</strong> の結果はありません。` : `No results for <strong>${escapeHtml(this.trackingQuery)}</strong>.`}</div>`
             : `<div class="no-data">${t('components.airlineIntel.noTrackingData')}</div>`;
         this.content.innerHTML = `${searchBar}${emptyMsg}`;
     }
@@ -510,6 +520,7 @@ export class AirlineIntelPanel extends Panel {
 
     // ---- Prices tab ----
     private renderPrices(): void {
+        const ja = getCurrentLanguage() === 'ja';
         const isSearch = this.pricesMode === 'search';
         const toggle = `
       <div class="price-mode-toggle">
@@ -525,15 +536,15 @@ export class AirlineIntelPanel extends Panel {
             const dep = this.pricesDep || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
             const form = `
         <div class="price-controls">
-          <input id="priceFromInput" class="price-input" placeholder="From" maxlength="3" value="${escapeHtml(this.pricesOrigin)}" style="width:54px">
+          <input id="priceFromInput" class="price-input" placeholder="${ja ? '\u51fa\u767a\u5730' : 'From'}" maxlength="3" value="${escapeHtml(this.pricesOrigin)}" style="width:54px">
           <span style="color:#6b7280">\u2192</span>
-          <input id="priceToInput" class="price-input" placeholder="To" maxlength="3" value="${escapeHtml(this.pricesDest)}" style="width:54px">
+          <input id="priceToInput" class="price-input" placeholder="${ja ? '\u5230\u7740\u5730' : 'To'}" maxlength="3" value="${escapeHtml(this.pricesDest)}" style="width:54px">
           <input id="priceDepInput" class="price-input" type="date" value="${escapeHtml(dep)}" style="width:128px">
           <select id="priceCabinSelect" class="price-input" style="width:110px">
-            <option value="ECONOMY"${this.pricesCabin === 'ECONOMY' ? ' selected' : ''}>Economy</option>
-            <option value="PREMIUM_ECONOMY"${this.pricesCabin === 'PREMIUM_ECONOMY' ? ' selected' : ''}>Premium Economy</option>
-            <option value="BUSINESS"${this.pricesCabin === 'BUSINESS' ? ' selected' : ''}>Business</option>
-            <option value="FIRST"${this.pricesCabin === 'FIRST' ? ' selected' : ''}>First</option>
+            <option value="ECONOMY"${this.pricesCabin === 'ECONOMY' ? ' selected' : ''}>${ja ? '\u30a8\u30b3\u30ce\u30df\u30fc' : 'Economy'}</option>
+            <option value="PREMIUM_ECONOMY"${this.pricesCabin === 'PREMIUM_ECONOMY' ? ' selected' : ''}>${ja ? '\u30d7\u30ec\u30df\u30a2\u30e0\u30a8\u30b3\u30ce\u30df\u30fc' : 'Premium Economy'}</option>
+            <option value="BUSINESS"${this.pricesCabin === 'BUSINESS' ? ' selected' : ''}>${ja ? '\u30d3\u30b8\u30cd\u30b9' : 'Business'}</option>
+            <option value="FIRST"${this.pricesCabin === 'FIRST' ? ' selected' : ''}>${ja ? '\u30d5\u30a1\u30fc\u30b9\u30c8' : 'First'}</option>
           </select>
           <button id="priceSearchBtn" class="icon-btn" style="padding:4px 10px">${t('header.search')}</button>
         </div>
@@ -544,7 +555,7 @@ export class AirlineIntelPanel extends Panel {
                 const cards = this.googleFlightsData.map(it => {
                     const stops = it.stops === 0
                         ? t('components.airlineIntel.nonstop')
-                        : `${it.stops} stop`;
+                        : `${it.stops} ${ja ? '乗継' : 'stop'}`;
                     const legs = it.legs.map(leg => `
               <div class="gf-leg">
                 <span class="gf-airline">${escapeHtml(leg.airlineCode)} ${escapeHtml(leg.flightNumber)}</span>
@@ -573,9 +584,9 @@ export class AirlineIntelPanel extends Panel {
         } else {
             const form = `
         <div class="price-controls">
-          <input id="datesFromInput" class="price-input" placeholder="From" maxlength="3" value="${escapeHtml(this.pricesOrigin)}" style="width:54px">
+          <input id="datesFromInput" class="price-input" placeholder="${ja ? '\u51fa\u767a\u5730' : 'From'}" maxlength="3" value="${escapeHtml(this.pricesOrigin)}" style="width:54px">
           <span style="color:#6b7280">\u2192</span>
-          <input id="datesToInput" class="price-input" placeholder="To" maxlength="3" value="${escapeHtml(this.pricesDest)}" style="width:54px">
+          <input id="datesToInput" class="price-input" placeholder="${ja ? '\u5230\u7740\u5730' : 'To'}" maxlength="3" value="${escapeHtml(this.pricesDest)}" style="width:54px">
           <input id="datesStartInput" class="price-input" type="date" value="${escapeHtml(this.datesStart || localDateStr())}" style="width:128px">
           <input id="datesEndInput" class="price-input" type="date" value="${escapeHtml(this.datesEnd)}" style="width:128px">
           <label style="display:flex;align-items:center;gap:4px;font-size:12px">
@@ -586,10 +597,10 @@ export class AirlineIntelPanel extends Panel {
             <input id="datesTripDurInput" class="price-input" type="number" min="1" value="${this.datesTripDuration}" style="width:44px">
           </label>
           <select id="datesCabinSelect" class="price-input" style="width:110px">
-            <option value="ECONOMY"${this.pricesCabin === 'ECONOMY' ? ' selected' : ''}>Economy</option>
-            <option value="PREMIUM_ECONOMY"${this.pricesCabin === 'PREMIUM_ECONOMY' ? ' selected' : ''}>Premium Economy</option>
-            <option value="BUSINESS"${this.pricesCabin === 'BUSINESS' ? ' selected' : ''}>Business</option>
-            <option value="FIRST"${this.pricesCabin === 'FIRST' ? ' selected' : ''}>First</option>
+            <option value="ECONOMY"${this.pricesCabin === 'ECONOMY' ? ' selected' : ''}>${ja ? '\u30a8\u30b3\u30ce\u30df\u30fc' : 'Economy'}</option>
+            <option value="PREMIUM_ECONOMY"${this.pricesCabin === 'PREMIUM_ECONOMY' ? ' selected' : ''}>${ja ? '\u30d7\u30ec\u30df\u30a2\u30e0\u30a8\u30b3\u30ce\u30df\u30fc' : 'Premium Economy'}</option>
+            <option value="BUSINESS"${this.pricesCabin === 'BUSINESS' ? ' selected' : ''}>${ja ? '\u30d3\u30b8\u30cd\u30b9' : 'Business'}</option>
+            <option value="FIRST"${this.pricesCabin === 'FIRST' ? ' selected' : ''}>${ja ? '\u30d5\u30a1\u30fc\u30b9\u30c8' : 'First'}</option>
           </select>
           <button id="datesSearchBtn" class="icon-btn" style="padding:4px 10px">${t('header.search')}</button>
         </div>

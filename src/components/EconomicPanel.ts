@@ -1,7 +1,7 @@
 import { Panel } from './Panel';
 import type { FredSeries, BisData } from '@/services/economic';
 import { BLS_METRO_IDS } from '@/services/economic';
-import { t } from '@/services/i18n';
+import { t, getCurrentLanguage } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { isDesktopRuntime } from '@/services/runtime';
 import { isFeatureAvailable } from '@/services/runtime-config';
@@ -53,7 +53,7 @@ function stressComponentCard(c: EconomicStressComponent): string {
         <span style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em">${escapeHtml(c.label)}</span>
         <span style="font-size:10px;color:#888">N/A</span>
       </div>
-      <div style="font-size:9px;color:#666;font-style:italic">Data unavailable</div>
+      <div style="font-size:9px;color:#666;font-style:italic">${getCurrentLanguage() === 'ja' ? 'データなし' : 'Data unavailable'}</div>
     </div>`;
   }
   const color = stressScoreColor(c.score);
@@ -80,7 +80,7 @@ function formatSeriesValue(series: FredSeries): string {
 }
 
 function formatSeriesChange(series: FredSeries): string {
-  if (series.change === null) return 'No change';
+  if (series.change === null) return getCurrentLanguage() === 'ja' ? '変化なし' : 'No change';
   const sign = series.change > 0 ? '+' : '';
   if (series.unit === '$B') {
     const prefix = series.change < 0 ? '-$' : `${sign}$`;
@@ -237,7 +237,7 @@ export class EconomicPanel extends Panel {
           </button>
         ` : ''}
         <button class="panel-tab ${this.activeTab === 'stress' ? 'active' : ''}" data-tab="stress">
-          Stress Index
+          ${getCurrentLanguage() === 'ja' ? 'ストレス指数' : 'Stress Index'}
         </button>
       </div>
     `;
@@ -286,6 +286,20 @@ export class EconomicPanel extends Panel {
     }
   }
 
+  private renderExternalEmptyMarkup(message: string, source: string, detail?: string): string {
+    const detailLine = detail
+      ? `<div class="economic-empty-detail">${escapeHtml(detail)}</div>`
+      : '';
+    const sourceLabel = document?.documentElement?.lang === 'ja' ? 'ソース' : 'Source';
+    return `
+      <div class="panel-external-state">
+        <div class="economic-empty">${escapeHtml(message)}</div>
+        <div class="economic-empty-detail">${escapeHtml(sourceLabel)}: ${escapeHtml(source)}</div>
+        ${detailLine}
+      </div>
+    `;
+  }
+
   private renderIndicators(): string {
     if (this.fredData.length === 0) {
       if (isDesktopRuntime() && !isFeatureAvailable('economicFred')) {
@@ -295,19 +309,14 @@ export class EconomicPanel extends Panel {
         const isRetrying = this.fredState === 'retrying';
         const raw = isRetrying ? t('common.upstreamUnavailable') : this.fredErrorMsg;
         const mainMsg = raw.includes('\u2014') ? raw.slice(0, raw.indexOf('\u2014')).trimEnd() : raw;
-        const countdownLine = isRetrying ? `<div class="panel-error-countdown">${escapeHtml(this.fredErrorMsg)}</div>` : '';
-        return `
-          <div class="panel-error-state">
-            <div class="panel-loading-radar panel-error-radar">
-              <div class="panel-radar-sweep"></div>
-              <div class="panel-radar-dot error"></div>
-            </div>
-            <div class="panel-error-msg">${escapeHtml(mainMsg)}</div>
-            ${countdownLine}
-          </div>
-        `;
+        const ja = getCurrentLanguage() === 'ja';
+        return this.renderExternalEmptyMarkup(
+          mainMsg || (ja ? '外部マクロ指標データは一時的に利用できません。' : 'External macro indicator data is temporarily unavailable.'),
+          'FRED',
+          isRetrying ? this.fredErrorMsg : undefined,
+        );
       }
-      return `<div class="economic-empty">${t('components.economic.noIndicatorData')}</div>`;
+      return this.renderExternalEmptyMarkup(getCurrentLanguage() === 'ja' ? '現在、マクロ指標データはありません。' : 'No macro indicator data is currently available.', 'FRED');
     }
 
     const pressure = getMacroPressure(this.fredData);
@@ -523,19 +532,19 @@ export class EconomicPanel extends Panel {
   private renderStress(): string {
     const d = this.stressData;
     if (!d || d.unavailable || !Number.isFinite(d.compositeScore)) {
-      return `<div class="economic-empty">Stress index data unavailable</div>`;
+      return this.renderExternalEmptyMarkup(getCurrentLanguage() === 'ja' ? '外部ストレス指数データは一時的に利用できません。' : 'External stress index data is temporarily unavailable.', 'FRED');
     }
 
     const color = stressScoreColor(d.compositeScore);
     const needlePct = Math.min(100, Math.max(0, d.compositeScore)).toFixed(1);
     const cards = d.components.map((c) => stressComponentCard(c)).join('');
     const updatedNote = d.seededAt
-      ? `<div style="font-size:9px;color:var(--text-dim);text-align:right;margin-top:8px">Updated ${new Date(d.seededAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>`
+      ? `<div style="font-size:9px;color:var(--text-dim);text-align:right;margin-top:8px">${getCurrentLanguage() === 'ja' ? '更新' : 'Updated'} ${new Date(d.seededAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>`
       : '';
 
     return `<div style="padding:12px 14px">
       <div style="text-align:center;margin-bottom:12px">
-        <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Composite Score</div>
+        <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">${getCurrentLanguage() === 'ja' ? '総合スコア' : 'Composite Score'}</div>
         <div style="font-size:38px;font-weight:700;color:${color};line-height:1">${d.compositeScore.toFixed(1)}</div>
         <div style="display:inline-block;margin-top:6px;padding:3px 10px;border-radius:12px;background:${color}22;border:1px solid ${color}66;font-size:12px;font-weight:600;color:${color}">${escapeHtml(d.label)}</div>
       </div>
@@ -544,7 +553,9 @@ export class EconomicPanel extends Panel {
           <div style="position:absolute;top:-4px;left:calc(${needlePct}% - 2px);width:4px;height:20px;background:#fff;border-radius:2px;box-shadow:0 0 4px rgba(0,0,0,0.6)"></div>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-dim)">
-          <span>Low</span><span>Moderate</span><span>Elevated</span><span>Severe</span><span>Critical</span>
+          ${getCurrentLanguage() === 'ja'
+            ? '<span>低</span><span>中程度</span><span>高め</span><span>重大</span><span>危機的</span>'
+            : '<span>Low</span><span>Moderate</span><span>Elevated</span><span>Severe</span><span>Critical</span>'}
         </div>
       </div>
       ${cards ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">${cards}</div>` : ''}

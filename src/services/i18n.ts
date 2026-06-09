@@ -3,6 +3,7 @@ import LanguageDetector from 'i18next-browser-languagedetector';
 
 // English is always needed as fallback — bundle it eagerly.
 import enTranslation from '../locales/en.json';
+import jaTranslation from '../locales/ja.json';
 
 // Explicit-choice localStorage key. Written ONLY when the user manually picks
 // a language via Settings → Language. The default detector's `i18nextLng`
@@ -17,7 +18,7 @@ type SupportedLanguage = typeof SUPPORTED_LANGUAGES[number];
 type TranslationDictionary = Record<string, unknown>;
 
 const SUPPORTED_LANGUAGE_SET = new Set<SupportedLanguage>(SUPPORTED_LANGUAGES);
-const loadedLanguages = new Set<SupportedLanguage>();
+const loadedLanguages = new Set<SupportedLanguage>(['ja']);
 
 // Lazy-load only the locale that's actually needed — all others stay out of the bundle.
 const localeModules = import.meta.glob<TranslationDictionary>(
@@ -28,11 +29,11 @@ const localeModules = import.meta.glob<TranslationDictionary>(
 const RTL_LANGUAGES = new Set(['ar']);
 
 function normalizeLanguage(lng: string): SupportedLanguage {
-  const base = (lng || 'en').split('-')[0]?.toLowerCase() || 'en';
+  const base = (lng || 'ja').split('-')[0]?.toLowerCase() || 'ja';
   if (SUPPORTED_LANGUAGE_SET.has(base as SupportedLanguage)) {
     return base as SupportedLanguage;
   }
-  return 'en';
+  return 'ja';
 }
 
 function applyDocumentDirection(lang: string): void {
@@ -54,11 +55,13 @@ async function ensureLanguageLoaded(lng: string): Promise<SupportedLanguage> {
   let translation: TranslationDictionary;
   if (normalized === 'en') {
     translation = enTranslation as TranslationDictionary;
+  } else if (normalized === 'ja') {
+    translation = jaTranslation as TranslationDictionary;
   } else {
     const loader = localeModules[`../locales/${normalized}.json`];
     if (!loader) {
       console.warn(`No locale file for "${normalized}", falling back to English`);
-      translation = enTranslation as TranslationDictionary;
+      translation = jaTranslation as TranslationDictionary;
     } else {
       translation = await loader();
     }
@@ -79,6 +82,7 @@ export async function initI18n(): Promise<void> {
   }
 
   loadedLanguages.add('en');
+  loadedLanguages.add('ja');
 
   // One-time migration: i18next-browser-languagedetector previously cached
   // every detection result here, so users whose browser is now French but
@@ -101,22 +105,28 @@ export async function initI18n(): Promise<void> {
     },
     cacheUserLanguage: () => { /* writes go through explicit changeLanguage() */ },
   });
+  detector.addDetector({
+    name: 'wmPreferred',
+    lookup: () => 'ja',
+    cacheUserLanguage: () => { /* explicit changes only */ },
+  });
 
   await i18next
     .use(detector)
     .init({
       resources: {
         en: { translation: enTranslation as TranslationDictionary },
+        ja: { translation: jaTranslation as TranslationDictionary },
       },
       supportedLngs: [...SUPPORTED_LANGUAGES],
       nonExplicitSupportedLngs: true,
-      fallbackLng: 'en',
+      fallbackLng: ['ja', 'en'],
       debug: import.meta.env.DEV,
       interpolation: {
         escapeValue: false, // not needed for these simple strings
       },
       detection: {
-        order: ['wmExplicit', 'navigator'],
+        order: ['wmExplicit', 'wmPreferred', 'navigator'],
         caches: [], // never auto-write — only changeLanguage() persists
       },
     });

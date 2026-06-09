@@ -62,6 +62,7 @@ async function loadCountryDeepDivePanel() {
         }
         return key;
       }
+      export function getCurrentLanguage() { return 'en'; }
     `],
     ['related-assets-stub', `
       export function getNearbyInfrastructure() {

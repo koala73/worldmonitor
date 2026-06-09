@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { t, getLocale } from '@/services/i18n';
+import { t, getLocale, getCurrentLanguage } from '@/services/i18n';
 
 interface CityEntry {
   id: string;
@@ -143,14 +143,19 @@ export class WorldClockPanel extends Panel {
   private dragStartY = 0;
 
   constructor() {
-    super({ id: 'world-clock', title: 'World Clock', trackActivity: false, infoTooltip: t('components.worldClock.infoTooltip') });
+    super({
+      id: 'world-clock',
+      title: getCurrentLanguage() === 'ja' ? '世界時計' : 'World Clock',
+      trackActivity: false,
+      infoTooltip: t('components.worldClock.infoTooltip'),
+    });
     this.homeCityId = detectHomeCity();
     this.selectedCities = loadSelectedCities();
 
     this.settingsBtn = document.createElement('button');
     this.settingsBtn.className = 'wc-settings-btn';
     this.settingsBtn.textContent = '\u2699';
-    this.settingsBtn.title = 'Select cities';
+    this.settingsBtn.title = getCurrentLanguage() === 'ja' ? '都市を選択' : 'Select cities';
     this.settingsBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this.toggleSettings();
@@ -178,24 +183,26 @@ export class WorldClockPanel extends Panel {
   }
 
   private toggleSettings(): void {
+    const ja = getCurrentLanguage() === 'ja';
     this.showingSettings = !this.showingSettings;
     if (this.showingSettings) {
       this.settingsBtn.textContent = '\u2713';
-      this.settingsBtn.title = 'Done';
+      this.settingsBtn.title = ja ? '完了' : 'Done';
       this.settingsBtn.classList.add('wc-active');
       this.renderSettings();
     } else {
       this.settingsBtn.textContent = '\u2699';
-      this.settingsBtn.title = 'Select cities';
+      this.settingsBtn.title = ja ? '都市を選択' : 'Select cities';
       this.settingsBtn.classList.remove('wc-active');
       this.renderClocks();
     }
   }
 
   private renderSettings(): void {
+    const ja = getCurrentLanguage() === 'ja';
     let html = '<div class="wc-settings-view">';
     for (const region of CITY_REGIONS) {
-      html += `<div class="wc-region-header">${region.name}</div><div class="wc-region-grid">`;
+      html += `<div class="wc-region-header">${ja ? this.translateRegion(region.name) : region.name}</div><div class="wc-region-grid">`;
       for (const id of region.ids) {
         const city = WORLD_CITIES.find(c => c.id === id);
         if (!city) continue;
@@ -279,12 +286,13 @@ export class WorldClockPanel extends Panel {
   }
 
   private renderClocks(): void {
+    const ja = getCurrentLanguage() === 'ja';
     const sorted = this.selectedCities
       .map(id => WORLD_CITIES.find(c => c.id === id))
       .filter((c): c is CityEntry => !!c);
 
     if (sorted.length === 0) {
-      this.setContent('<div class="wc-empty">No cities selected. Click \u2699 to add cities.</div>');
+      this.setContent(`<div class="wc-empty">${ja ? '都市が選択されていません。⚙ から追加してください。' : 'No cities selected. Click ⚙ to add cities.'}</div>`);
       return;
     }
 
@@ -301,18 +309,33 @@ export class WorldClockPanel extends Panel {
       if (city.marketOpen !== undefined && city.marketClose !== undefined) {
         const isOpen = isWeekday && h >= city.marketOpen && h < city.marketClose;
         statusHtml = isOpen
-          ? '<span class="wc-status open"><span class="wc-dot open"></span>OPEN</span>'
-          : '<span class="wc-status closed"><span class="wc-dot closed"></span>CLSD</span>';
+          ? `<span class="wc-status open"><span class="wc-dot open"></span>${ja ? '取引中' : 'OPEN'}</span>`
+          : `<span class="wc-status closed"><span class="wc-dot closed"></span>${ja ? '終了' : 'CLSD'}</span>`;
       }
 
       const rowCls = ['wc-row'];
       if (isHome) rowCls.push('wc-home');
       if (!isDay) rowCls.push('wc-night');
 
-      html += `<div class="${rowCls.join(' ')}" data-city-id="${city.id}"><div class="wc-drag-handle" title="Drag to reorder">\u22EE</div><div class="wc-info"><div class="wc-name">${city.city}${isHome ? '<span class="wc-home-tag">\u2302</span>' : ''}</div><div class="wc-detail"><span class="wc-exchange">${city.label}</span>${statusHtml}</div></div><div class="wc-clock"><div class="wc-time">${pad2(h)}:${pad2(m)}:${pad2(s)}</div><div class="wc-tz"><div class="wc-bar-wrap"><div class="wc-bar ${isDay ? 'day' : 'night'}" style="width:${pct.toFixed(1)}%"></div></div><span>${dayOfWeek} ${abbr}</span></div></div></div>`;
+      html += `<div class="${rowCls.join(' ')}" data-city-id="${city.id}"><div class="wc-drag-handle" title="${ja ? 'ドラッグで並べ替え' : 'Drag to reorder'}">\u22EE</div><div class="wc-info"><div class="wc-name">${city.city}${isHome ? '<span class="wc-home-tag">\u2302</span>' : ''}</div><div class="wc-detail"><span class="wc-exchange">${city.label}</span>${statusHtml}</div></div><div class="wc-clock"><div class="wc-time">${pad2(h)}:${pad2(m)}:${pad2(s)}</div><div class="wc-tz"><div class="wc-bar-wrap"><div class="wc-bar ${isDay ? 'day' : 'night'}" style="width:${pct.toFixed(1)}%"></div></div><span>${dayOfWeek} ${abbr}</span></div></div></div>`;
     }
     html += '</div>';
     this.setContent(html);
+  }
+
+  private translateRegion(name: string): string {
+    switch (name) {
+      case 'Americas':
+        return '南北アメリカ';
+      case 'Europe':
+        return '欧州';
+      case 'Middle East & Africa':
+        return '中東・アフリカ';
+      case 'Asia-Pacific':
+        return 'アジア太平洋';
+      default:
+        return name;
+    }
   }
 
   destroy(): void {

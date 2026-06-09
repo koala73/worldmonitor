@@ -153,6 +153,13 @@ export class GoldIntelligencePanel extends Panel {
     super({ id: 'gold-intelligence', title: t('panels.goldIntelligence'), infoTooltip: t('components.goldIntelligence.infoTooltip') });
   }
 
+  private renderUnavailableState(message: string): void {
+    this.renderExternalUnavailableState({
+      message,
+      source: 'Gold price, ETF flow, and central bank reserve feeds',
+    });
+  }
+
   public async fetchData(): Promise<boolean> {
     this.showLoading();
     try {
@@ -162,7 +169,7 @@ export class GoldIntelligencePanel extends Panel {
       const data: GoldIntelligenceData = await resp.json();
 
       if (data.unavailable) {
-        if (!this._hasData) this.showError('Gold data unavailable', () => void this.fetchData());
+        if (!this._hasData) this.renderUnavailableState('Gold intelligence is temporarily unavailable.');
         return false;
       }
 
@@ -173,7 +180,7 @@ export class GoldIntelligencePanel extends Panel {
     } catch (e) {
       if (this.isAbortError(e)) return false;
       if (!this.element?.isConnected) return false;
-      if (!this._hasData) this.showError(e instanceof Error ? e.message : 'Failed to load', () => void this.fetchData());
+      if (!this._hasData) this.renderUnavailableState(e instanceof Error ? e.message : 'Gold intelligence is temporarily unavailable.');
       return false;
     }
   }

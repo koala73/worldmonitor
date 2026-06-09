@@ -103,6 +103,15 @@ export class SupplyChainPanel extends Panel {
     this.render();
   }
 
+  private renderUnavailableState(message: string): string {
+    return `
+      <div class="panel-external-state">
+        <div class="economic-empty">${escapeHtml(message)}</div>
+        <div class="economic-empty-detail">ソース: チョークポイント・海運・ストレス・鉱物フィード</div>
+      </div>
+    `;
+  }
+
   private render(): void {
     this.clearTransitChart();
 
@@ -121,7 +130,7 @@ export class SupplyChainPanel extends Panel {
           ${t('components.supplyChain.minerals')}
         </button>
         <button class="panel-tab ${this.activeTab === 'stress' ? 'active' : ''}" data-tab="stress">
-          Stress
+          ${t('components.supplyChain.stress')}
         </button>
       </div>
     `;
@@ -325,7 +334,9 @@ export class SupplyChainPanel extends Panel {
 
   private renderChokepoints(): string {
     if (!this.chokepointData || !this.chokepointData.chokepoints?.length) {
-      return `<div class="economic-empty">${t('components.supplyChain.noChokepoints')}</div>`;
+      return this.chokepointData?.upstreamUnavailable
+        ? this.renderUnavailableState(t('components.supplyChain.upstreamUnavailable'))
+        : this.renderUnavailableState(t('components.supplyChain.noChokepoints'));
     }
 
     // Scenario projection overlay: when a scenario is active, show the
@@ -590,13 +601,17 @@ export class SupplyChainPanel extends Panel {
   private renderIndicators(): string {
     if (isDesktopRuntime() && !isFeatureAvailable('supplyChain')) return '';
     if (!this.shippingData?.indices?.length) {
-      return `<div class="economic-empty">${t('components.supplyChain.noShipping')}</div>`;
+      return this.shippingData?.upstreamUnavailable
+        ? this.renderUnavailableState(t('components.supplyChain.upstreamUnavailable'))
+        : this.renderUnavailableState(t('components.supplyChain.noShipping'));
     }
     const container = new Set(['SCFI', 'CCFI']);
     const bulk = new Set(['BDI', 'BCI', 'BPI', 'BSI', 'BHSI']);
     const econIndices = this.shippingData.indices.filter(i => !container.has(i.indexId) && !bulk.has(i.indexId));
     if (!econIndices.length) {
-      return `<div class="economic-empty">${t('components.supplyChain.noShipping')}</div>`;
+      return this.shippingData?.upstreamUnavailable
+        ? this.renderUnavailableState(t('components.supplyChain.upstreamUnavailable'))
+        : this.renderUnavailableState(t('components.supplyChain.noShipping'));
     }
     const cards = econIndices.map(idx => {
       const changeClass = idx.changePct >= 0 ? 'change-positive' : 'change-negative';
@@ -622,7 +637,9 @@ export class SupplyChainPanel extends Panel {
 
   private renderStress(): string {
     if (!this.stressData || !this.stressData.carriers?.length) {
-      return `<div class="economic-empty">Shipping stress data unavailable</div>`;
+      return this.stressData?.upstreamUnavailable
+        ? this.renderUnavailableState(t('components.supplyChain.upstreamUnavailable'))
+        : this.renderUnavailableState('Shipping stress data unavailable');
     }
 
     const { stressScore, stressLevel, carriers } = this.stressData;
@@ -694,7 +711,9 @@ export class SupplyChainPanel extends Panel {
 
   private renderMinerals(): string {
     if (!this.mineralsData || !this.mineralsData.minerals?.length) {
-      return `<div class="economic-empty">${t('components.supplyChain.noMinerals')}</div>`;
+      return this.mineralsData?.upstreamUnavailable
+        ? this.renderUnavailableState(t('components.supplyChain.upstreamUnavailable'))
+        : this.renderUnavailableState(t('components.supplyChain.noMinerals'));
     }
 
     const rows = this.mineralsData.minerals.map(m => {

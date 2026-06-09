@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+// Activate the Japanese (ja) branch in getResilienceDomainLabel and
+// formatResilienceConfidence so the existing JP assertions pass in a plain
+// Node test environment where `document` is undefined by default.
+globalThis.document = { documentElement: { lang: 'ja' } } as unknown as Document;
+
 import {
   LOCKED_PREVIEW,
   collectDimensionConfidences,
@@ -56,15 +61,15 @@ test('getResilienceTrendArrow renders the expected glyphs', () => {
 });
 
 test('getResilienceDomainLabel keeps the deep-dive shorthand labels stable', () => {
-  assert.equal(getResilienceDomainLabel('economic'), 'Economic');
-  assert.equal(getResilienceDomainLabel('infrastructure'), 'Infra & Supply');
-  assert.equal(getResilienceDomainLabel('energy'), 'Energy');
-  assert.equal(getResilienceDomainLabel('social-governance'), 'Social & Gov');
-  assert.equal(getResilienceDomainLabel('health-food'), 'Health & Food');
+  assert.equal(getResilienceDomainLabel('economic'), '経済');
+  assert.equal(getResilienceDomainLabel('infrastructure'), 'インフラ・供給');
+  assert.equal(getResilienceDomainLabel('energy'), 'エネルギー');
+  assert.equal(getResilienceDomainLabel('social-governance'), '社会・統治');
+  assert.equal(getResilienceDomainLabel('health-food'), '保健・食料');
   // Regression for the missing sixth-domain label. Before this pin, the
   // recovery row rendered as the raw id "recovery" because DOMAIN_LABELS
   // was a 5-entry map from the pre-recovery-domain era.
-  assert.equal(getResilienceDomainLabel('recovery'), 'Recovery');
+  assert.equal(getResilienceDomainLabel('recovery'), '回復力');
   assert.equal(getResilienceDomainLabel('custom-domain'), 'custom-domain');
 });
 
@@ -72,7 +77,7 @@ test('formatResilienceConfidence shows sparse-data copy when low confidence is s
   assert.equal(formatResilienceConfidence(baseResponse), 'Coverage 90% ✓');
   assert.equal(
     formatResilienceConfidence({ ...baseResponse, lowConfidence: true }),
-    'Low confidence — sparse data',
+    '信頼度低め - データ不足',
   );
 });
 
@@ -89,14 +94,14 @@ test('formatResilienceConfidence shows sparse-data copy when low confidence is s
 test('formatResilienceConfidence: headlineEligible=false renders the outside-ranking badge', () => {
   assert.equal(
     formatResilienceConfidence({ ...baseResponse, headlineEligible: false }),
-    'Outside headline ranking',
+    '見出しランキング対象外',
   );
 });
 
 test('formatResilienceConfidence: lowConfidence wins when both flags fire (specificity precedence)', () => {
   assert.equal(
     formatResilienceConfidence({ ...baseResponse, lowConfidence: true, headlineEligible: false }),
-    'Low confidence — sparse data',
+    '信頼度低め - データ不足',
   );
 });
 

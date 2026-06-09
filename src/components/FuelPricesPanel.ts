@@ -13,6 +13,11 @@ export class FuelPricesPanel extends Panel {
     super({ id: 'fuel-prices', title: t('panels.fuelPrices'), infoTooltip: t('components.fuelPrices.infoTooltip') });
   }
 
+  private renderUnavailableState(message: string): void {
+    this.setDataBadge('unavailable');
+    this.setContent(`<div class="economic-empty">${escapeHtml(message)}</div>`);
+  }
+
   public async fetchData(): Promise<void> {
     try {
       const hydrated = getHydratedData('fuelPrices') as ListFuelPricesResponse | undefined;
@@ -31,13 +36,13 @@ export class FuelPricesPanel extends Panel {
     } catch (err) {
       if (this.isAbortError(err)) return;
       if (!this.element?.isConnected) return;
-      this.showError(t('common.failedMarketData'), () => void this.fetchData());
+      this.renderUnavailableState('Fuel price data is temporarily unavailable.');
     }
   }
 
   private renderIndex(data: ListFuelPricesResponse): void {
     if (!data.countries?.length) {
-      this.showError(t('common.failedMarketData'), () => void this.fetchData());
+      this.renderUnavailableState('Fuel price data is temporarily unavailable.');
       return;
     }
 

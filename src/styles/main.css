@@ -973,9 +973,9 @@ canvas,
 }
 
 .map-section {
-  height: 50vh;
-  min-height: 350px;
-  max-height: 90vh;
+  height: 46vh;
+  min-height: 300px;
+  max-height: 78vh;
   /* Allow resize up to 90% of viewport */
   border: 1px solid var(--border);
   background: var(--surface);
@@ -983,6 +983,12 @@ canvas,
   flex-direction: column;
   flex-shrink: 0;
   position: relative;
+}
+
+[data-variant="finance"] .map-section {
+  height: 42vh;
+  min-height: 260px;
+  max-height: 520px;
 }
 
 .map-section.hidden {
@@ -1119,9 +1125,9 @@ canvas,
 
 .panels-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   grid-auto-flow: row dense;
-  grid-auto-rows: minmax(200px, 380px);
+  grid-auto-rows: minmax(190px, 340px);
   gap: 4px;
   padding: 4px;
   align-content: start;
@@ -1130,6 +1136,10 @@ canvas,
   position: relative;
   z-index: 1;
   /* This ensures panels scroll UNDER the pinned map (z-index: 100) */
+}
+
+[data-variant="finance"] .panels-grid {
+  grid-auto-rows: minmax(180px, 320px);
 }
 
 .site-footer {
@@ -1202,6 +1212,25 @@ canvas,
     flex-wrap: wrap;
     justify-content: center;
     gap: 12px;
+  }
+}
+
+[data-variant="finance"] .community-widget {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  [data-variant="finance"] .site-footer {
+    gap: 6px;
+    padding: 8px 12px;
+  }
+
+  [data-variant="finance"] .site-footer nav {
+    gap: 8px;
+  }
+
+  [data-variant="finance"] .site-footer-copy {
+    font-size: 9px;
   }
 }
 
@@ -6848,6 +6877,39 @@ a.prediction-link:hover {
   gap: 8px;
 }
 
+.panel-toggle-empty {
+  grid-column: 1 / -1;
+  padding: 16px;
+  border: 1px dashed var(--border);
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.economic-empty-detail {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.panels-guide-brief {
+  margin: 0 16px 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(88, 166, 255, 0.18);
+  background: rgba(88, 166, 255, 0.06);
+  display: grid;
+  gap: 4px;
+}
+
+.panels-guide-line {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.panels-guide-line strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .panel-toggle-item {
   display: flex;
   align-items: center;
@@ -6917,6 +6979,34 @@ a.prediction-link:hover {
   color: var(--green);
   opacity: 0.7;
   flex-shrink: 0;
+}
+
+.panel-toggle-tier-badge {
+  margin-left: auto;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 1px 4px;
+  border: 1px solid transparent;
+  flex-shrink: 0;
+}
+
+.panel-toggle-tier-core {
+  color: var(--green);
+  border-color: rgba(68, 255, 136, 0.32);
+  background: rgba(68, 255, 136, 0.08);
+}
+
+.panel-toggle-tier-optional {
+  color: #7dd3fc;
+  border-color: rgba(125, 211, 252, 0.28);
+  background: rgba(125, 211, 252, 0.08);
+}
+
+.panel-toggle-tier-external {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.3);
+  background: rgba(251, 191, 36, 0.08);
 }
 
 /* Sources Modal */
@@ -9529,6 +9619,20 @@ a.prediction-link:hover {
   text-align: center;
   color: var(--text-dim);
   font-size: 11px;
+}
+
+.panel-external-state {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.panel-external-state .economic-empty {
+  padding-bottom: 6px;
+}
+
+.panel-external-state .economic-empty-detail {
+  text-align: center;
 }
 
 /* Government Spending */
@@ -12346,8 +12450,8 @@ a.prediction-link:hover {
 
   .panel {
     width: 100% !important;
-    min-height: 250px;
-    max-height: min(70vh, 500px);
+    min-height: 230px;
+    max-height: min(64vh, 460px);
   }
 
   .panel-content {
@@ -12355,19 +12459,27 @@ a.prediction-link:hover {
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Full-viewport map on mobile (Google Maps-like experience) */
+  /* Mobile default: keep the map visible, but leave room for core finance panels.
+     The previous full-viewport height pushed the panel grid below the fold and,
+     combined with the app-shell overflow model, made the dashboard look empty. */
   .map-section {
-    height: calc(100vh - 48px) !important;
-    height: calc(100dvh - 48px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
-    min-height: 60vh !important;
-    max-height: 100dvh !important;
+    height: min(32vh, 260px) !important;
+    height: min(calc(32dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)), 260px) !important;
+    min-height: 160px !important;
+    max-height: 260px !important;
   }
 
   /* Collapsed map on mobile — higher specificity overrides .map-section above */
   .main-content .map-section.collapsed {
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    max-height: 40px !important;
+    overflow: hidden !important;
+  }
+
+  [data-variant="finance"] .panel {
+    min-height: 210px;
+    max-height: min(54vh, 390px);
   }
 
   .main-content .map-section.collapsed .map-container,
@@ -15854,6 +15966,24 @@ a.prediction-link:hover {
     white-space: normal;
     flex: 1 1 0;
     min-width: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  [data-variant="finance"] .pro-banner {
+    font-size: 10px;
+    gap: 6px;
+    padding: 4px 28px 4px 8px;
+  }
+
+  [data-variant="finance"] .pro-banner-badge {
+    padding: 1px 6px;
+    font-size: 9px;
+  }
+
+  [data-variant="finance"] .pro-banner-cta {
+    padding: 3px 10px;
+    font-size: 10px;
   }
 }
 
@@ -20283,8 +20413,8 @@ body.map-width-resizing {
     grid-column: 3;
     grid-row: 1;
     min-height: 0;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    grid-auto-rows: minmax(200px, 380px);
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    grid-auto-rows: minmax(190px, 340px);
     align-content: start;
     overflow-y: auto;
   }
@@ -20333,8 +20463,8 @@ body.map-width-resizing {
   grid-column: 3;
   grid-row: 1;
   min-height: 0;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  grid-auto-rows: minmax(200px, 380px);
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-auto-rows: minmax(190px, 340px);
   align-content: start;
   overflow-y: auto;
 }

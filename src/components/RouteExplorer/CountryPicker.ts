@@ -30,10 +30,10 @@ export class CountryPicker {
     this.input = document.createElement('input');
     this.input.type = 'text';
     this.input.className = 're-picker__input';
-    this.input.placeholder = opts.placeholder ?? 'Search countries';
+    this.input.placeholder = opts.placeholder ?? '国名を検索';
     this.input.autocomplete = 'off';
     this.input.spellcheck = false;
-    this.input.setAttribute('aria-label', opts.placeholder ?? 'Search countries');
+    this.input.setAttribute('aria-label', opts.placeholder ?? '国名を検索');
 
     this.list = document.createElement('ul');
     this.list.className = 're-picker__list';
@@ -86,7 +86,7 @@ export class CountryPicker {
     if (this.results.length === 0) {
       const empty = document.createElement('li');
       empty.className = 're-picker__empty';
-      empty.textContent = 'No matching countries';
+      empty.textContent = '一致する国がありません';
       this.list.append(empty);
       return;
     }

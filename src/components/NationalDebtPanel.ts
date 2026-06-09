@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import { getNationalDebtData, type NationalDebtEntry } from '@/services/economic';
 import { escapeHtml } from '@/utils/sanitize';
+import { getCurrentLanguage } from '@/services/i18n';
 
 type SortMode = 'total' | 'gdp-ratio' | 'growth';
 
@@ -75,6 +76,11 @@ function getCountryName(iso3: string): string {
   return COUNTRY_NAMES[iso3] ?? iso3;
 }
 
+function formatUpdatedDate(timestamp: number): string {
+  const ja = getCurrentLanguage() === 'ja';
+  return new Date(timestamp).toLocaleDateString(ja ? 'ja-JP' : undefined);
+}
+
 function formatDebt(usd: number): string {
   if (!Number.isFinite(usd) || usd <= 0) return '$0';
   if (usd >= 1e12) return `$${(usd / 1e12).toFixed(1)}T`;
@@ -117,11 +123,12 @@ export class NationalDebtPanel extends Panel {
   private readonly REFRESH_INTERVAL = 6 * 60 * 60 * 1000;
 
   constructor() {
+    const ja = getCurrentLanguage() === 'ja';
     super({
       id: 'national-debt',
-      title: 'National Debt Clock',
+      title: ja ? '国家債務クロック' : 'National Debt Clock',
       showCount: true,
-      infoTooltip: 'Live national debt estimates for 150+ countries. Data anchored at 2024-01-01 and accruing using IMF deficit projections.',
+      infoTooltip: ja ? '150以上の国の国家債務推計を表示します。データは2024-01-01時点を起点に、IMFの財政赤字見通しを用いて積み上げます。' : 'Live national debt estimates for 150+ countries. Data anchored at 2024-01-01 and accruing using IMF deficit projections.',
     });
 
     this.content.addEventListener('click', (e) => {
@@ -179,16 +186,17 @@ export class NationalDebtPanel extends Panel {
     } catch (err) {
       if (!this.element?.isConnected) return;
       console.error('[NationalDebtPanel] Error fetching data:', err);
-      this.showError('Failed to load national debt data');
+      this.showError(getCurrentLanguage() === 'ja' ? '国家債務データの読み込みに失敗しました。' : 'Failed to load national debt data');
     } finally {
       this.loading = false;
     }
   }
 
   private showLoadingState(): void {
+    const ja = getCurrentLanguage() === 'ja';
     this.setContent(`
       <div style="display:flex;align-items:center;justify-content:center;height:80px;color:var(--text-dim);font-size:13px;">
-        Loading debt data from IMF...
+        ${ja ? 'IMFから債務データを読み込み中...' : 'Loading debt data from IMF...'}
       </div>
     `);
   }
@@ -229,8 +237,9 @@ export class NationalDebtPanel extends Panel {
   }
 
   private render(): void {
+    const ja = getCurrentLanguage() === 'ja';
     if (this.entries.length === 0) {
-      this.showError('No data available');
+      this.showError(ja ? '利用できるデータがありません。' : 'No data available');
       return;
     }
 
@@ -238,37 +247,37 @@ export class NationalDebtPanel extends Panel {
       <div class="debt-panel-container">
         <div class="debt-summary">
           <div class="debt-summary-card debt-summary-card-deficit debt-summary-card-world">
-            <span class="debt-summary-label">World Debt</span>
+            <span class="debt-summary-label">${ja ? '世界全体の債務' : 'World Debt'}</span>
             <span class="debt-summary-value debt-global-ticker">${escapeHtml(formatDebt(this.getGlobalDebt()))}</span>
           </div>
           <div class="debt-summary-card debt-summary-card-warning">
-            <span class="debt-summary-label">In Deficit</span>
+            <span class="debt-summary-label">${ja ? '赤字国' : 'In Deficit'}</span>
             <span class="debt-summary-value">${this.deficitCount}</span>
           </div>
           <div class="debt-summary-card debt-summary-card-surplus">
-            <span class="debt-summary-label">Running Surplus</span>
+            <span class="debt-summary-label">${ja ? '黒字国' : 'Running Surplus'}</span>
             <span class="debt-summary-value">${this.surplusCount}</span>
           </div>
         </div>
         <div class="debt-controls">
           <div class="debt-sort-tabs">
-            <button class="debt-tab${this.sortMode === 'total' ? ' active' : ''}" data-sort="total">Total Debt</button>
-            <button class="debt-tab${this.sortMode === 'gdp-ratio' ? ' active' : ''}" data-sort="gdp-ratio">Debt/GDP</button>
-            <button class="debt-tab${this.sortMode === 'growth' ? ' active' : ''}" data-sort="growth">1Y Growth</button>
+            <button class="debt-tab${this.sortMode === 'total' ? ' active' : ''}" data-sort="total">${ja ? '総債務' : 'Total Debt'}</button>
+            <button class="debt-tab${this.sortMode === 'gdp-ratio' ? ' active' : ''}" data-sort="gdp-ratio">${ja ? '対GDP比' : 'Debt/GDP'}</button>
+            <button class="debt-tab${this.sortMode === 'growth' ? ' active' : ''}" data-sort="growth">${ja ? '1年成長率' : '1Y Growth'}</button>
           </div>
-          <input class="debt-search" type="text" placeholder="Search country..." value="${escapeHtml(this.searchQuery)}">
+          <input class="debt-search" type="text" placeholder="${ja ? '国名を検索...' : 'Search country...'}" value="${escapeHtml(this.searchQuery)}">
         </div>
         <div class="debt-list">
           ${this.filteredEntries.slice(0, this.visibleCount).map((entry, idx) => this.renderRow(entry, idx + 1)).join('')}
         </div>
         ${this.visibleCount < this.filteredEntries.length ? `
         <button class="debt-load-more">
-          Load ${Math.min(PAGE_SIZE, this.filteredEntries.length - this.visibleCount)} more
-          <span class="debt-load-more-count">(${this.filteredEntries.length - this.visibleCount} remaining)</span>
+          ${ja ? `さらに ${Math.min(PAGE_SIZE, this.filteredEntries.length - this.visibleCount)} 件表示` : `Load ${Math.min(PAGE_SIZE, this.filteredEntries.length - this.visibleCount)} more`}
+          <span class="debt-load-more-count">${ja ? `（残り ${this.filteredEntries.length - this.visibleCount} 件）` : `(${this.filteredEntries.length - this.visibleCount} remaining)`}</span>
         </button>` : ''}
         <div class="debt-footer">
-          <span class="debt-source">Source: ${escapeHtml(this.getSourceLabel())}</span>
-          <span class="debt-updated">Updated: ${new Date(this.lastFetch).toLocaleDateString()}</span>
+          <span class="debt-source">${ja ? 'ソース' : 'Source'}: ${escapeHtml(this.getSourceLabel())}</span>
+          <span class="debt-updated">${ja ? '更新日' : 'Updated'}: ${escapeHtml(formatUpdatedDate(this.lastFetch))}</span>
         </div>
       </div>
     `;
@@ -277,6 +286,7 @@ export class NationalDebtPanel extends Panel {
   }
 
   private renderRow(entry: NationalDebtEntry, rank: number): string {
+    const ja = getCurrentLanguage() === 'ja';
     const currentDebt = getCurrentDebt(entry);
     const name = escapeHtml(getCountryName(entry.iso3));
     const flag = getFlag(entry.iso3);
@@ -296,8 +306,8 @@ export class NationalDebtPanel extends Panel {
         <div class="debt-info">
           <div class="debt-name">${name}</div>
           <div class="debt-meta">
-            <span class="debt-ratio">${ratioStr} of GDP</span>
-            <span class="debt-growth ${growthClass}">${growthStr} YoY</span>
+            <span class="debt-ratio">${ja ? `GDP比 ${ratioStr}` : `${ratioStr} of GDP`}</span>
+            <span class="debt-growth ${growthClass}">${ja ? `前年比 ${growthStr}` : `${growthStr} YoY`}</span>
           </div>
         </div>
         <div class="debt-ticker" data-iso3="${escapeHtml(entry.iso3)}">${escapeHtml(debtStr)}</div>

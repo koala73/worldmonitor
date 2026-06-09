@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { escapeHtml } from '@/utils/sanitize';
-import { t } from '@/services/i18n';
+import { t, getCurrentLanguage } from '@/services/i18n';
 import { fetchOrefHistory } from '@/services/oref-alerts';
 import type { OrefAlertsResponse, OrefAlert, OrefHistoryEntry } from '@/services/oref-alerts';
 
@@ -110,11 +110,12 @@ export class OrefSirensPanel extends Panel {
     const rows = sorted.map(({ wave, ts }) => {
       const isRecent = now - ts < ONE_HOUR_MS;
       const rowClass = isRecent ? 'oref-wave-row oref-wave-recent' : 'oref-wave-row';
-      const badge = isRecent ? '<span class="oref-recent-badge">RECENT</span>' : '';
+      const ja = getCurrentLanguage() === 'ja';
+      const badge = isRecent ? `<span class="oref-recent-badge">${ja ? '最近' : 'RECENT'}</span>` : '';
       const types = wave.alerts.map(a => escapeHtml(a.title || a.cat));
       const uniqueTypes = [...new Set(types)];
       const totalAreas = wave.alerts.reduce((sum, a) => sum + (a.data?.length || 0), 0);
-      const summary = uniqueTypes.join(', ') + (totalAreas > 0 ? ` — ${totalAreas} areas` : '');
+      const summary = uniqueTypes.join(', ') + (totalAreas > 0 ? ` — ${totalAreas} ${ja ? 'エリア' : 'areas'}` : '');
 
       return `<div class="${rowClass}">
         <div class="oref-wave-header">

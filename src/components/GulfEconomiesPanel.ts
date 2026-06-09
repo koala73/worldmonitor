@@ -29,6 +29,13 @@ function renderSection(title: string, quotes: GulfQuote[]): string {
 }
 
 export class GulfEconomiesPanel extends Panel {
+  private renderUnavailableState(message: string): void {
+    this.renderExternalUnavailableState({
+      message,
+      source: 'Gulf exchange and FX market feeds',
+    });
+  }
+
   constructor() {
     super({ id: 'gulf-economies', title: t('panels.gulfEconomies'), infoTooltip: t('components.gulfEconomies.infoTooltip') });
   }
@@ -51,14 +58,14 @@ export class GulfEconomiesPanel extends Panel {
     } catch (err) {
       if (this.isAbortError(err)) return;
       if (!this.element?.isConnected) return;
-      this.showError(t('common.failedMarketData'), () => void this.fetchData());
+      this.renderUnavailableState(t('common.failedMarketData'));
     }
   }
 
   private renderGulf(data: ListGulfQuotesResponse): void {
     if (!data.quotes?.length) {
       const msg = data.rateLimited ? t('common.rateLimitedMarket') : t('common.failedMarketData');
-      this.showError(msg, () => void this.fetchData());
+      this.renderUnavailableState(msg);
       return;
     }
 

@@ -419,7 +419,7 @@ describe('CountryDeepDivePanel product imports section', () => {
 
   it('sectionCard is used for the product imports card', () => {
     assert.ok(
-      src.includes("this.sectionCard('Product Imports'"),
+      src.includes("this.sectionCard('製品輸入'"),
       'CountryDeepDivePanel: product imports must use sectionCard for consistent card structure',
     );
   });

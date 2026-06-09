@@ -13,6 +13,7 @@ import {
   statusForEvent,
   type DisruptionStatus,
 } from '@/shared/disruption-timeline';
+import { getCurrentLanguage } from '@/services/i18n';
 
 const client = new SupplyChainServiceClient(getRpcBaseUrl(), {
   fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
@@ -73,9 +74,10 @@ export class EnergyDisruptionsPanel extends Panel {
   private ongoingOnly = false;
 
   constructor() {
+    const ja = getCurrentLanguage() === 'ja';
     super({
       id: 'energy-disruptions',
-      title: 'Energy Disruptions Log',
+      title: ja ? 'エネルギー障害ログ' : 'Energy Disruptions Log',
       defaultRowSpan: 2,
       infoTooltip:
         'Curated log of disruption events affecting oil & gas pipelines and ' +
@@ -141,7 +143,11 @@ export class EnergyDisruptionsPanel extends Panel {
       // match" rather than as an error. Conflating the two previously
       // showed a retry button on what was a legitimate empty state.
       if (live.upstreamUnavailable) {
-        this.showError('Energy disruptions log unavailable', () => void this.fetchData());
+        this.renderExternalUnavailableState({
+          message: 'Energy disruptions log is temporarily unavailable.',
+          source: 'Energy disruption registry and operator evidence feeds',
+          detail: 'The panel will resume automatically when the upstream registry refreshes.',
+        });
         return;
       }
       this.data = live;
@@ -149,7 +155,11 @@ export class EnergyDisruptionsPanel extends Panel {
     } catch (err) {
       if (this.isAbortError(err)) return;
       if (!this.element?.isConnected) return;
-      this.showError('Energy disruptions log error', () => void this.fetchData());
+      this.renderExternalUnavailableState({
+        message: 'Energy disruptions log is temporarily unavailable.',
+        source: 'Energy disruption registry and operator evidence feeds',
+        detail: err instanceof Error ? err.message : 'Energy disruptions registry request failed.',
+      });
     }
   }
 

@@ -3146,3 +3146,244 @@ a.hub-top-story {
   color: var(--text-dim);
   font-size: 11px;
 }
+
+/* ----------------------------------------------------------
+   Idea Radar finish
+   ---------------------------------------------------------- */
+.idea-radar-priority-line {
+  padding: 7px 9px;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  border: 1px solid transparent;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+.idea-radar-priority-line-main {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 26%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.idea-radar-priority-line-tactical {
+  background: color-mix(in srgb, #60a5fa 8%, transparent);
+  border-color: color-mix(in srgb, #60a5fa 24%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #60a5fa 14%, transparent);
+}
+
+.idea-radar-priority-line-avoid {
+  background: color-mix(in srgb, var(--threat-critical) 7%, transparent);
+  border-color: color-mix(in srgb, var(--threat-critical) 24%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--threat-critical) 14%, transparent);
+}
+
+.idea-radar-candidate {
+  border-left: 3px solid transparent;
+  border-radius: 6px;
+  padding-left: 8px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.025);
+  transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.idea-radar-candidate-main {
+  border-left-color: color-mix(in srgb, var(--accent) 75%, white 25%);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.idea-radar-candidate-tactical {
+  border-left-color: color-mix(in srgb, #60a5fa 72%, white 28%);
+  background: color-mix(in srgb, #60a5fa 5%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #60a5fa 16%, transparent);
+}
+
+.idea-radar-candidate-avoid {
+  border-left-color: color-mix(in srgb, var(--threat-critical) 72%, white 28%);
+  background: color-mix(in srgb, var(--threat-critical) 5%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--threat-critical) 16%, transparent);
+}
+
+.idea-radar-candidate-main .portfolio-impact-item-title {
+  color: color-mix(in srgb, var(--accent) 78%, var(--text) 22%);
+}
+
+.idea-radar-candidate-tactical .portfolio-impact-item-title {
+  color: color-mix(in srgb, #60a5fa 78%, var(--text) 22%);
+}
+
+.idea-radar-candidate-avoid .portfolio-impact-item-title {
+  color: color-mix(in srgb, var(--threat-critical) 78%, var(--text) 22%);
+}
+
+.idea-radar-chip {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.idea-radar-chip-main {
+  color: color-mix(in srgb, var(--accent) 88%, white 12%);
+  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.idea-radar-chip-tactical {
+  color: color-mix(in srgb, #60a5fa 88%, white 12%);
+  border-color: color-mix(in srgb, #60a5fa 32%, transparent);
+  background: color-mix(in srgb, #60a5fa 10%, transparent);
+}
+
+.idea-radar-chip-avoid {
+  color: color-mix(in srgb, var(--threat-critical) 88%, white 12%);
+  border-color: color-mix(in srgb, var(--threat-critical) 32%, transparent);
+  background: color-mix(in srgb, var(--threat-critical) 10%, transparent);
+}
+
+.idea-radar-asset-chip {
+  opacity: 0.88;
+}
+
+.idea-radar-asset-chip-main {
+  border-color: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.idea-radar-asset-chip-tactical {
+  border-color: color-mix(in srgb, #60a5fa 18%, transparent);
+}
+
+.idea-radar-asset-chip-avoid {
+  border-color: color-mix(in srgb, var(--threat-critical) 18%, transparent);
+}
+
+.idea-radar-regime-headline {
+  font-weight: 600;
+  color: var(--text);
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--overlay-medium, rgba(255,255,255,0.06)) 65%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-strong, rgba(255,255,255,0.14)) 70%, transparent);
+  margin-bottom: 6px;
+  letter-spacing: 0.02em;
+}
+
+.finance-guide-brief {
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
+  padding: 8px 10px;
+}
+
+.finance-guide-brief-line {
+  padding: 4px 6px;
+  border-radius: 6px;
+  margin-bottom: 3px;
+  background: color-mix(in srgb, var(--overlay-medium, rgba(255,255,255,0.06)) 58%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-subtle, rgba(255,255,255,0.1)) 60%, transparent);
+}
+
+.finance-guide-brief-line:last-child {
+  margin-bottom: 0;
+}
+
+.portfolio-impact-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.portfolio-impact-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
+.portfolio-impact-section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.portfolio-impact-item {
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--overlay-medium, rgba(255,255,255,0.06)) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-subtle, rgba(255,255,255,0.1)) 60%, transparent);
+}
+
+.portfolio-impact-item-header,
+.portfolio-impact-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.portfolio-impact-item-title,
+.portfolio-impact-ticker {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.portfolio-impact-item-body,
+.portfolio-impact-name,
+.portfolio-impact-currency,
+.portfolio-impact-weight {
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--text-dim);
+}
+
+.portfolio-impact-row-main,
+.portfolio-impact-row-side {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.idea-radar-playbook-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--overlay-light) 55%, transparent);
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.idea-radar-playbook-toggle:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.portfolio-impact-chip,
+.portfolio-impact-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  border: 1px solid color-mix(in srgb, var(--border-strong, rgba(255,255,255,0.14)) 65%, transparent);
+  background: color-mix(in srgb, var(--overlay-medium, rgba(255,255,255,0.06)) 55%, transparent);
+  color: var(--text);
+}
+
+.portfolio-impact-currency-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.portfolio-impact-footnote,
+.portfolio-impact-empty {
+  font-size: 10px;
+  color: var(--text-dim);
+}

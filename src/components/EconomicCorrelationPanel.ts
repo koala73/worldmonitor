@@ -3,6 +3,6 @@ import { t } from '@/services/i18n';
 
 export class EconomicCorrelationPanel extends CorrelationPanel {
   constructor() {
-    super('economic-correlation', 'Economic Warfare', 'economic', t('components.economicCorrelation.infoTooltip'));
+    super('economic-correlation', t('panels.economicCorrelation'), 'economic', t('components.economicCorrelation.infoTooltip'));
   }
 }

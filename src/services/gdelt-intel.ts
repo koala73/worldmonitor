@@ -43,14 +43,14 @@ export interface TopicTimeline {
 export const INTEL_TOPICS: IntelTopic[] = [
   {
     id: 'military',
-    name: 'Military Activity',
+    name: '軍事活動',
     query: '(military exercise OR troop deployment OR airstrike OR "naval exercise") sourcelang:eng',
     icon: '⚔️',
     description: 'Military exercises, deployments, and operations',
   },
   {
     id: 'cyber',
-    name: 'Cyber Threats',
+    name: 'サイバー脅威',
     query: '(cyberattack OR ransomware OR hacking OR "data breach" OR APT) sourcelang:eng',
     icon: '🔓',
     description: 'Cyber attacks, ransomware, and digital threats',

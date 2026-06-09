@@ -8,6 +8,7 @@
  */
 
 import { Panel } from './Panel';
+import { getCurrentLanguage } from '@/services/i18n';
 import * as d3 from 'd3';
 import {
   type ProgressDataSet,
@@ -32,7 +33,7 @@ export class ProgressChartsPanel extends Panel {
   private tooltip: HTMLDivElement | null = null;
 
   constructor() {
-    super({ id: 'progress', title: 'Human Progress', trackActivity: false });
+    super({ id: 'progress', title: getCurrentLanguage() === 'ja' ? '人類の進歩' : 'Human Progress', trackActivity: false });
     this.setupResizeObserver();
   }
 

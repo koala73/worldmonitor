@@ -13,6 +13,11 @@ export class GroceryBasketPanel extends Panel {
     super({ id: 'grocery-basket', title: t('panels.groceryBasket'), infoTooltip: t('components.groceryBasket.infoTooltip') });
   }
 
+  private renderUnavailableState(message: string): void {
+    this.setDataBadge('unavailable');
+    this.setContent(`<div class="economic-empty">${escapeHtml(message)}</div>`);
+  }
+
   public async fetchData(): Promise<void> {
     try {
       const hydrated = getHydratedData('groceryBasket') as ListGroceryBasketPricesResponse | undefined;
@@ -31,13 +36,13 @@ export class GroceryBasketPanel extends Panel {
     } catch (err) {
       if (this.isAbortError(err)) return;
       if (!this.element?.isConnected) return;
-      this.showError(t('common.failedMarketData'), () => void this.fetchData());
+      this.renderUnavailableState('Grocery basket data is temporarily unavailable.');
     }
   }
 
   private renderBasket(data: ListGroceryBasketPricesResponse): void {
     if (!data.countries?.length) {
-      this.showError(t('common.failedMarketData'), () => void this.fetchData());
+      this.renderUnavailableState('Grocery basket data is temporarily unavailable.');
       return;
     }
 

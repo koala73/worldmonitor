@@ -1030,6 +1030,11 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/yahoo/, ''),
         },
+        '/api/ai-system': {
+          target: 'http://127.0.0.1:8080',
+          changeOrigin: false,
+          rewrite: (path) => path.replace(/^\/api\/ai-system/, ''),
+        },
         // Polymarket handled by polymarketPlugin() — no prod proxy needed
         // USGS Earthquake API
         '/api/earthquake': {

@@ -68,8 +68,8 @@ export class WatchlistEditor {
     this.input.type = 'text';
     this.input.autocomplete = 'off';
     this.input.spellcheck = false;
-    this.input.placeholder = 'Search ticker or company — e.g. NVDA or Nvidia';
-    this.input.setAttribute('aria-label', 'Search ticker or company');
+    this.input.placeholder = '銘柄コードや企業名を検索 — 例: NVDA / Nvidia';
+    this.input.setAttribute('aria-label', '銘柄コードや企業名を検索');
     this.input.style.cssText =
       'width:100%;box-sizing:border-box;background:rgba(255,255,255,0.04);border:1px solid var(--border);' +
       'color:var(--text);border-radius:10px;padding:10px 12px;font-family:inherit;font-size:13px;outline:none';
@@ -213,11 +213,11 @@ export class WatchlistEditor {
     this.dropdown.innerHTML = '';
 
     if (this.loading) {
-      this.dropdown.append(this.messageRow('Searching…'));
+      this.dropdown.append(this.messageRow('検索中…'));
       return;
     }
     if (this.results.length === 0) {
-      this.dropdown.append(this.messageRow('No matching stocks'));
+      this.dropdown.append(this.messageRow('一致する銘柄がありません'));
       return;
     }
 

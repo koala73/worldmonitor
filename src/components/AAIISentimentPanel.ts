@@ -1,8 +1,8 @@
 import { Panel } from './Panel';
-import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
 import { toApiUrl } from '@/services/runtime';
+import { getCurrentLanguage } from '@/services/i18n';
 
 interface WeekData {
   date: string;
@@ -123,11 +123,19 @@ export class AAIISentimentPanel extends Panel {
   private data: AAIIData | null = null;
 
   constructor() {
+    const ja = getCurrentLanguage() === 'ja';
     super({
       id: 'aaii-sentiment',
-      title: 'AAII Investor Sentiment',
+      title: ja ? 'AAII 投資家センチメント' : 'AAII Investor Sentiment',
       showCount: false,
       infoTooltip: 'Weekly AAII survey: individual investors report 6-month market outlook as bullish, neutral, or bearish. Spread below -20 is a historical contrarian buy signal.',
+    });
+  }
+
+  private renderUnavailableState(message: string): void {
+    this.renderExternalUnavailableState({
+      message,
+      source: 'AAII weekly sentiment survey',
     });
   }
 
@@ -158,13 +166,13 @@ export class AAIISentimentPanel extends Panel {
     } catch { /* fallback below */ }
     // Retry after ~5 minutes so the panel recovers on its own if the seed
     // arrives late (AAII cadence is weekly but the cron can be delayed).
-    this.showError('AAII sentiment data unavailable', () => { void this.fetchData(); }, 300);
+    this.renderUnavailableState('AAII weekly sentiment is temporarily unavailable.');
     return false;
   }
 
   private renderPanel(): void {
     if (!this.data?.latest) {
-      this.showError(t('common.noDataShort'), () => void this.fetchData());
+      this.renderUnavailableState('AAII weekly sentiment is temporarily unavailable.');
       return;
     }
 

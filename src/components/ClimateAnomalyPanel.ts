@@ -30,7 +30,12 @@ export class ClimateAnomalyPanel extends Panel {
 
   private renderContent(): void {
     if (this.anomalies.length === 0) {
-      this.setContent(`<div class="panel-empty">${t('components.climate.noAnomalies')}</div>`);
+      this.setContent(`
+        <div class="panel-external-state">
+          <div class="economic-empty">${t('components.climate.noAnomalies')}</div>
+          <div class="economic-empty-detail">ソース: 気候異常・気象影響フィード</div>
+        </div>
+      `);
       return;
     }
 

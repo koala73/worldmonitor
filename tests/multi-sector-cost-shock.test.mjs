@@ -371,7 +371,7 @@ describe('CountryDeepDivePanel Cost Shock Calculator', () => {
   });
 
   it('gates the card as PRO when the user is not premium', () => {
-    assert.match(src, /makeProLocked\('Upgrade to PRO for multi-sector cost shock modelling'\)/);
+    assert.match(src, /makeProLocked\('部門別コストショック試算は PRO で利用できます'\)/);
   });
 
   it('resetPanelContent clears all cost shock calculator state', () => {

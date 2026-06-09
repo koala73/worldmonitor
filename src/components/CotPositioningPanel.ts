@@ -1,6 +1,6 @@
 import type { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { Panel } from './Panel';
-import { t } from '@/services/i18n';
+import { t, getCurrentLanguage } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 
 let _client: MarketServiceClient | null = null;
@@ -69,8 +69,16 @@ function renderInstrument(item: CotInstrumentData): string {
 export class CotPositioningPanel extends Panel {
   private _hasData = false;
 
+  private renderUnavailableState(message: string): void {
+    this.renderExternalUnavailableState({
+      message,
+      source: 'CFTC Commitments of Traders',
+    });
+  }
+
   constructor() {
-    super({ id: 'cot-positioning', title: 'CFTC COT Positioning', showCount: false, infoTooltip: t('components.cotPositioning.infoTooltip') });
+    const ja = getCurrentLanguage() === 'ja';
+    super({ id: 'cot-positioning', title: ja ? 'CFTC 建玉ポジション' : 'CFTC COT Positioning', showCount: false, infoTooltip: t('components.cotPositioning.infoTooltip') });
   }
 
   public async fetchData(): Promise<boolean> {
@@ -79,14 +87,14 @@ export class CotPositioningPanel extends Panel {
       const client = await getMarketClient();
       const resp = await client.getCotPositioning({});
       if (resp.unavailable || !resp.instruments || resp.instruments.length === 0) {
-        if (!this._hasData) this.showError('COT data unavailable', () => void this.fetchData());
+        if (!this._hasData) this.renderUnavailableState('CFTC positioning data is temporarily unavailable.');
         return false;
       }
       this._hasData = true;
       this.render(resp.instruments as CotInstrumentData[], resp.reportDate ?? '');
       return true;
     } catch (e) {
-      if (!this._hasData) this.showError(e instanceof Error ? e.message : 'Failed to load', () => void this.fetchData());
+      if (!this._hasData) this.renderUnavailableState('CFTC positioning data is temporarily unavailable.');
       return false;
     }
   }

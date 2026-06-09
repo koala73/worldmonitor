@@ -26,7 +26,12 @@ export class PopulationExposurePanel extends Panel {
 
   private renderContent(): void {
     if (this.exposures.length === 0) {
-      this.setContent(`<div class="panel-empty">${t('common.noDataAvailable')}</div>`);
+      this.setContent(`
+        <div class="panel-external-state">
+          <div class="economic-empty">現在、監視閾値を超える人口露出イベントはありません。</div>
+          <div class="economic-empty-detail">ソース: 紛争・気候・災害の露出レイヤー</div>
+        </div>
+      `);
       return;
     }
 

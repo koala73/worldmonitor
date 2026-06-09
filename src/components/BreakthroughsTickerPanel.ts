@@ -1,7 +1,7 @@
 import { Panel } from './Panel';
 import type { NewsItem } from '@/types';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
-import { t } from '@/services/i18n';
+import { t, getCurrentLanguage } from '@/services/i18n';
 
 /**
  * BreakthroughsTickerPanel -- Horizontally scrolling ticker of science breakthroughs.
@@ -15,7 +15,8 @@ export class BreakthroughsTickerPanel extends Panel {
   private tickerTrack: HTMLElement | null = null;
 
   constructor() {
-    super({ id: 'breakthroughs', title: 'Breakthroughs', trackActivity: false });
+    const ja = getCurrentLanguage() === 'ja';
+    super({ id: 'breakthroughs', title: ja ? 'ブレークスルー' : 'Breakthroughs', trackActivity: false });
     this.createTickerDOM();
   }
 

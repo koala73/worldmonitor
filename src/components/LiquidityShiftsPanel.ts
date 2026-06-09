@@ -59,6 +59,13 @@ export class LiquidityShiftsPanel extends Panel {
     });
   }
 
+  private renderUnavailableState(message: string): void {
+    this.renderExternalUnavailableState({
+      message,
+      source: 'Central bank and market liquidity feeds',
+    });
+  }
+
   public async fetchData(): Promise<boolean> {
     this.showLoading();
     try {
@@ -73,7 +80,7 @@ export class LiquidityShiftsPanel extends Panel {
         .sort((a, b) => COT_PRIORITY.indexOf(a.code ?? '') - COT_PRIORITY.indexOf(b.code ?? ''));
 
       if (cotRows.length === 0 && (stocksResp.quotes?.length ?? 0) === 0) {
-        if (!this._hasData) this.showError(t('components.liquidityShifts.unavailable'), () => void this.fetchData());
+        if (!this._hasData) this.renderUnavailableState(t('components.liquidityShifts.unavailable'));
         return false;
       }
 
@@ -145,7 +152,7 @@ export class LiquidityShiftsPanel extends Panel {
       `);
       return true;
     } catch (e) {
-      if (!this._hasData) this.showError(e instanceof Error ? e.message : t('components.liquidityShifts.failed'), () => void this.fetchData());
+      if (!this._hasData) this.renderUnavailableState(e instanceof Error ? e.message : t('components.liquidityShifts.failed'));
       return false;
     }
   }

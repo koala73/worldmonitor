@@ -100,6 +100,11 @@ export class FaoFoodPriceIndexPanel extends Panel {
     super({ id: 'fao-food-price-index', title: t('panels.faoFoodPriceIndex'), infoTooltip: t('components.faoFoodPriceIndex.infoTooltip') });
   }
 
+  private renderUnavailableState(message: string): void {
+    this.setDataBadge('unavailable');
+    this.setContent(`<div class="economic-empty">${escapeHtml(message)}</div>`);
+  }
+
   public async fetchData(): Promise<void> {
     try {
       const hydrated = getHydratedData('faoFoodPriceIndex') as GetFaoFoodPriceIndexResponse | undefined;
@@ -118,13 +123,13 @@ export class FaoFoodPriceIndexPanel extends Panel {
     } catch (err) {
       if (this.isAbortError(err)) return;
       if (!this.element?.isConnected) return;
-      this.showError(t('common.failedMarketData'), () => void this.fetchData());
+      this.renderUnavailableState('FAO food price data is temporarily unavailable.');
     }
   }
 
   private renderChart(data: GetFaoFoodPriceIndexResponse): void {
     if (!data.points?.length) {
-      this.showError(t('common.failedMarketData'), () => void this.fetchData());
+      this.renderUnavailableState('FAO food price data is temporarily unavailable.');
       return;
     }
 

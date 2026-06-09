@@ -13,6 +13,11 @@ export class BigMacPanel extends Panel {
     super({ id: 'bigmac', title: t('panels.bigmac'), infoTooltip: t('components.bigmac.infoTooltip') });
   }
 
+  private renderUnavailableState(message: string): void {
+    this.setDataBadge('unavailable');
+    this.setContent(`<div class="economic-empty">${escapeHtml(message)}</div>`);
+  }
+
   public async fetchData(): Promise<void> {
     try {
       const hydrated = getHydratedData('bigmac') as ListBigMacPricesResponse | undefined;
@@ -31,13 +36,13 @@ export class BigMacPanel extends Panel {
     } catch (err) {
       if (this.isAbortError(err)) return;
       if (!this.element?.isConnected) return;
-      this.showError(t('common.failedMarketData'), () => void this.fetchData());
+      this.renderUnavailableState('Big Mac index is temporarily unavailable.');
     }
   }
 
   private renderIndex(data: ListBigMacPricesResponse): void {
     if (!data.countries?.length) {
-      this.showError(t('common.failedMarketData'), () => void this.fetchData());
+      this.renderUnavailableState('Big Mac index is temporarily unavailable.');
       return;
     }
 

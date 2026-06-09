@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { t } from '@/services/i18n';
+import { t, getCurrentLanguage } from '@/services/i18n';
 import {
   COUNTER_METRICS,
   getCounterValue,
@@ -27,7 +27,8 @@ export class CountersPanel extends Panel {
   private readonly desktopUpdateIntervalMs = 250;
 
   constructor() {
-    super({ id: 'counters', title: 'Live Counters', trackActivity: false, infoTooltip: t('components.counters.infoTooltip') });
+    const ja = getCurrentLanguage() === 'ja';
+    super({ id: 'counters', title: ja ? 'ライブ指標' : 'Live Counters', trackActivity: false, infoTooltip: t('components.counters.infoTooltip') });
     this.createCounterGrid();
     if (this.desktopMode) {
       this.visibilityHandler = () => {

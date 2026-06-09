@@ -4,22 +4,29 @@ import { getHydratedData } from '@/services/bootstrap';
 import { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import type { GetEnergyCrisisPoliciesResponse, EnergyCrisisPolicy } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { escapeHtml } from '@/utils/sanitize';
+import { getCurrentLanguage } from '@/services/i18n';
 
 type PolicyData = GetEnergyCrisisPoliciesResponse;
 
-const CATEGORY_LABELS: Record<string, string> = {
-  conservation: 'Energy Conservation',
-  consumer_support: 'Consumer Support',
-};
+function getCategoryLabels(): Record<string, string> {
+  const ja = getCurrentLanguage() === 'ja';
+  return {
+    conservation: ja ? 'エネルギー節約' : 'Energy Conservation',
+    consumer_support: ja ? '消費者支援' : 'Consumer Support',
+  };
+}
 
-const SECTOR_LABELS: Record<string, string> = {
-  transport: 'Transport',
-  buildings: 'Buildings',
-  industry: 'Industry',
-  electricity: 'Electricity',
-  agriculture: 'Agriculture',
-  general: 'General',
-};
+function getSectorLabels(): Record<string, string> {
+  const ja = getCurrentLanguage() === 'ja';
+  return {
+    transport: ja ? '交通' : 'Transport',
+    buildings: ja ? '建築' : 'Buildings',
+    industry: ja ? '産業' : 'Industry',
+    electricity: ja ? '電力' : 'Electricity',
+    agriculture: ja ? '農業' : 'Agriculture',
+    general: ja ? '一般' : 'General',
+  };
+}
 
 const STATUS_CLASS: Record<string, string> = {
   active: 'ecp-status-active',
@@ -34,15 +41,16 @@ export class EnergyCrisisPanel extends Panel {
   private activeFilter: string = 'all';
 
   constructor() {
+    const ja = getCurrentLanguage() === 'ja';
     super({
       id: 'energy-crisis',
-      title: 'Energy Crisis Tracker',
+      title: ja ? 'エネルギー危機トラッカー' : 'Energy Crisis Tracker',
       showCount: true,
       trackActivity: true,
       defaultRowSpan: 2,
       infoTooltip: 'IEA 2026 Energy Crisis Policy Response Tracker. Tracks government measures to conserve energy and support consumers in response to Middle East conflict and Strait of Hormuz supply disruptions.',
     });
-    this.showLoading('Loading energy crisis policies...');
+    this.showLoading(getCurrentLanguage() === 'ja' ? 'エネルギー危機政策を読み込み中...' : 'Loading energy crisis policies...');
   }
 
   public async fetchData(): Promise<void> {
@@ -76,7 +84,7 @@ export class EnergyCrisisPanel extends Panel {
       if (!this.element?.isConnected) return;
       if (!this.data) {
         console.warn('[EnergyCrisis] Fetch error:', err);
-        this.error = 'Energy crisis data unavailable';
+        this.error = getCurrentLanguage() === 'ja' ? 'エネルギー危機データを取得できません' : 'Energy crisis data unavailable';
         this.loading = false;
         this.render();
       }
@@ -99,51 +107,52 @@ export class EnergyCrisisPanel extends Panel {
 
   private render(): void {
     if (this.loading) {
-      this.showLoading('Loading energy crisis policies...');
+      this.showLoading(getCurrentLanguage() === 'ja' ? 'エネルギー危機政策を読み込み中...' : 'Loading energy crisis policies...');
       return;
     }
 
     if (this.error || !this.data) {
-      this.showError(this.error || 'No data available', () => void this.fetchData());
+      this.showError(this.error || (getCurrentLanguage() === 'ja' ? 'データなし' : 'No data available'), () => void this.fetchData());
       return;
     }
 
     if (!this.data.policies?.length) {
-      this.setContent('<div class="panel-empty">No energy crisis policies tracked.</div>');
+      this.setContent(`<div class="panel-empty">${getCurrentLanguage() === 'ja' ? '追跡中のエネルギー危機政策はありません。' : 'No energy crisis policies tracked.'}</div>`);
       return;
     }
 
     const summary = this.buildSummary();
     const filtered = this.getFilteredPolicies();
 
+    const ja = getCurrentLanguage() === 'ja';
     const summaryHtml = `
       <div class="ecp-summary">
         <div class="ecp-summary-card">
           <span class="ecp-summary-value">${summary.countryCount}</span>
-          <span class="ecp-summary-label">Countries</span>
+          <span class="ecp-summary-label">${ja ? '国' : 'Countries'}</span>
         </div>
         <div class="ecp-summary-card ecp-summary-conservation">
           <span class="ecp-summary-value">${summary.conservationCount}</span>
-          <span class="ecp-summary-label">Conservation</span>
+          <span class="ecp-summary-label">${ja ? '節約' : 'Conservation'}</span>
         </div>
         <div class="ecp-summary-card ecp-summary-support">
           <span class="ecp-summary-value">${summary.supportCount}</span>
-          <span class="ecp-summary-label">Consumer Support</span>
+          <span class="ecp-summary-label">${ja ? '消費者支援' : 'Consumer Support'}</span>
         </div>
       </div>
     `;
 
     const filterHtml = `
       <div class="ecp-filters">
-        <button class="ecp-filter-btn ${this.activeFilter === 'all' ? 'ecp-filter-active' : ''}" data-filter="all">All</button>
-        <button class="ecp-filter-btn ${this.activeFilter === 'conservation' ? 'ecp-filter-active' : ''}" data-filter="conservation">Conservation</button>
-        <button class="ecp-filter-btn ${this.activeFilter === 'consumer_support' ? 'ecp-filter-active' : ''}" data-filter="consumer_support">Consumer Support</button>
+        <button class="ecp-filter-btn ${this.activeFilter === 'all' ? 'ecp-filter-active' : ''}" data-filter="all">${ja ? 'すべて' : 'All'}</button>
+        <button class="ecp-filter-btn ${this.activeFilter === 'conservation' ? 'ecp-filter-active' : ''}" data-filter="conservation">${ja ? '節約' : 'Conservation'}</button>
+        <button class="ecp-filter-btn ${this.activeFilter === 'consumer_support' ? 'ecp-filter-active' : ''}" data-filter="consumer_support">${ja ? '消費者支援' : 'Consumer Support'}</button>
       </div>
     `;
 
     const policyRows = filtered.map(p => {
-      const categoryLabel = CATEGORY_LABELS[p.category] || p.category;
-      const sectorLabel = SECTOR_LABELS[p.sector] || p.sector;
+      const categoryLabel = getCategoryLabels()[p.category] || p.category;
+      const sectorLabel = getSectorLabels()[p.sector] || p.sector;
       const statusClass = STATUS_CLASS[p.status] || '';
       const categoryClass = p.category === 'conservation' ? 'ecp-cat-conservation' : 'ecp-cat-support';
 
@@ -163,8 +172,8 @@ export class EnergyCrisisPanel extends Panel {
 
     const sourceUrl = this.data.sourceUrl || 'https://www.iea.org/data-and-statistics/data-tools/2026-energy-crisis-policy-response-tracker';
     const footer = [
-      this.data.updatedAt ? `Updated ${new Date(this.data.updatedAt).toLocaleDateString()}` : '',
-      'Source: IEA',
+      this.data.updatedAt ? `${ja ? '更新' : 'Updated'} ${new Date(this.data.updatedAt).toLocaleDateString()}` : '',
+      `${ja ? 'ソース' : 'Source'}: IEA`,
     ].filter(Boolean).join(' · ');
 
     this.setContent(`

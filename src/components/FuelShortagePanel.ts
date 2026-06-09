@@ -18,6 +18,7 @@ import {
   setCachedFuelShortageRegistry,
   type RawFuelShortageRegistry,
 } from '@/shared/fuel-shortage-registry-store';
+import { getCurrentLanguage } from '@/services/i18n';
 
 const client = new SupplyChainServiceClient(getRpcBaseUrl(), {
   fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
@@ -132,9 +133,10 @@ export class FuelShortagePanel extends Panel {
   };
 
   constructor() {
+    const ja = getCurrentLanguage() === 'ja';
     super({
       id: 'fuel-shortages',
-      title: 'Global Fuel Shortage Registry',
+      title: ja ? '世界燃料不足レジストリ' : 'Global Fuel Shortage Registry',
       defaultRowSpan: 2,
       infoTooltip:
         'Global fuel-shortage alert registry (petrol, diesel, jet, heating oil). Severity ' +
@@ -179,7 +181,11 @@ export class FuelShortagePanel extends Panel {
       const live = await client.listFuelShortages({ country: '', product: '', severity: '' });
       if (!this.element?.isConnected) return;
       if (live.upstreamUnavailable || !live.shortages?.length) {
-        this.showError('Fuel shortage registry unavailable', () => void this.fetchData());
+        this.renderExternalUnavailableState({
+          message: 'Fuel shortage registry is temporarily unavailable.',
+          source: 'Fuel shortage registry and market availability feeds',
+          detail: 'The panel will resume automatically when the upstream registry refreshes.',
+        });
         return;
       }
       this.data = live;
@@ -194,7 +200,11 @@ export class FuelShortagePanel extends Panel {
     } catch (err) {
       if (this.isAbortError(err)) return;
       if (!this.element?.isConnected) return;
-      this.showError('Fuel shortage registry error', () => void this.fetchData());
+      this.renderExternalUnavailableState({
+        message: 'Fuel shortage registry is temporarily unavailable.',
+        source: 'Fuel shortage registry and market availability feeds',
+        detail: err instanceof Error ? err.message : 'Fuel shortage registry request failed.',
+      });
     }
   }
 

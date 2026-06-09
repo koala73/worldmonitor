@@ -20,6 +20,7 @@
  */
 
 import { Panel } from './Panel';
+import { getCurrentLanguage } from '@/services/i18n';
 import { getClerkToken, clearClerkTokenCache } from '@/services/clerk';
 import { PanelGateReason, hasPremiumAccess } from '@/services/panel-gating';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
@@ -98,7 +99,7 @@ export class LatestBriefPanel extends Panel {
   constructor() {
     super({
       id: 'latest-brief',
-      title: 'Latest Brief',
+      title: getCurrentLanguage() === 'ja' ? '最新ブリーフ' : 'Latest Brief',
       infoTooltip:
         "Your personalised daily editorial magazine. One brief per day, assembled from the news-intelligence layer and delivered via email, Telegram, Slack, and here.",
       // premium: 'locked' marks this as PRO-gated. The base Panel
@@ -233,7 +234,7 @@ export class LatestBriefPanel extends Panel {
         else this.renderUpgradeRequired();
         return;
       }
-      const message = err instanceof Error ? err.message : 'Brief unavailable — try again shortly.';
+      const message = err instanceof Error ? err.message : 'ブリーフは現在利用できません。しばらくしてから再度お試しください。';
       this.showError(message, () => { void this.refresh(); });
     } finally {
       this.refreshing = false;
@@ -285,7 +286,7 @@ export class LatestBriefPanel extends Panel {
     if (!token) {
       // Clerk token evicted between the pre-check and now (logout,
       // cache expiry + Clerk session gone). Surface as sign-in.
-      throw new Error('Sign in to view your brief.');
+      throw new Error('ブリーフを表示するにはサインインが必要です。');
     }
     const res = await fetch(LATEST_BRIEF_ENDPOINT, {
       signal,
@@ -303,11 +304,11 @@ export class LatestBriefPanel extends Panel {
       throw new BriefAccessError('upgrade_required');
     }
     if (!res.ok) {
-      throw new Error(`Brief service unavailable (${res.status})`);
+      throw new Error(`ブリーフサービスは現在利用できません (${res.status})`);
     }
     const body = (await res.json()) as LatestBriefResponse;
     if (!body || (body.status !== 'ready' && body.status !== 'composing')) {
-      throw new Error('Unexpected response from brief service');
+      throw new Error('ブリーフサービスから予期しない応答が返されました。');
     }
     return body;
   }
@@ -316,7 +317,7 @@ export class LatestBriefPanel extends Panel {
     clearChildren(this.content);
     this.content.appendChild(
       h('div', { className: 'latest-brief-empty' },
-        h('div', { className: 'latest-brief-empty-title' }, 'Loading your brief…'),
+        h('div', { className: 'latest-brief-empty-title' }, 'ブリーフを読み込み中…'),
       ),
     );
   }
@@ -334,9 +335,9 @@ export class LatestBriefPanel extends Panel {
     this.content.appendChild(
       h('div', { className: 'latest-brief-card latest-brief-card--composing' },
         logo,
-        h('div', { className: 'latest-brief-empty-title' }, 'Sign in to view your brief.'),
+        h('div', { className: 'latest-brief-empty-title' }, 'ブリーフを表示するにはサインインが必要です。'),
         h('div', { className: 'latest-brief-empty-body' },
-          'Your personalised brief is tied to your WorldMonitor account. Sign in to see today\u2019s issue.',
+          'このブリーフは WorldMonitor アカウントに紐づいています。今日の号を見るにはサインインしてください。',
         ),
       ),
     );
@@ -354,9 +355,9 @@ export class LatestBriefPanel extends Panel {
     this.content.appendChild(
       h('div', { className: 'latest-brief-card latest-brief-card--composing' },
         logo,
-        h('div', { className: 'latest-brief-empty-title' }, 'Pro required.'),
+        h('div', { className: 'latest-brief-empty-title' }, 'Pro プランが必要です。'),
         h('div', { className: 'latest-brief-empty-body' },
-          'The WorldMonitor Brief is included with the Pro plan. Upgrade to unlock today\u2019s issue.',
+          'WorldMonitor Brief は Pro プランに含まれています。今日の号を開くにはアップグレードしてください。',
         ),
       ),
     );
@@ -392,16 +393,16 @@ export class LatestBriefPanel extends Panel {
     this.content.appendChild(
       h('div', { className: 'latest-brief-card latest-brief-card--composing' },
         logoDiv,
-        h('div', { className: 'latest-brief-empty-title' }, 'Your brief is composing.'),
+        h('div', { className: 'latest-brief-empty-title' }, 'ブリーフを編集中です。'),
         h('div', { className: 'latest-brief-empty-body' },
-          `The editorial team at WorldMonitor is writing your ${data.issueDate} brief. Check back in a moment.`,
+          `WorldMonitor の編集チームが ${data.issueDate} のブリーフを作成中です。少し待ってから再度確認してください。`,
         ),
       ),
     );
   }
 
   private renderReady(data: LatestBriefReady): void {
-    const threadLabel = data.threadCount === 1 ? '1 thread' : `${data.threadCount} threads`;
+    const threadLabel = data.threadCount === 1 ? '1件の要点' : `${data.threadCount}件の要点`;
 
     const coverLogo = h('div', { className: 'latest-brief-cover-logo' });
     coverLogo.appendChild(rawHtml(WM_LOGO_SVG));
@@ -411,7 +412,7 @@ export class LatestBriefPanel extends Panel {
       href: data.magazineUrl,
       target: '_blank',
       rel: 'noopener noreferrer',
-      'aria-label': `Open today's brief — ${threadLabel}`,
+      'aria-label': `今日のブリーフを開く - ${threadLabel}`,
     },
       h('div', { className: 'latest-brief-cover' },
         coverLogo,
@@ -422,7 +423,7 @@ export class LatestBriefPanel extends Panel {
       ),
       h('div', { className: 'latest-brief-meta' },
         h('div', { className: 'latest-brief-greeting' }, data.greeting),
-        h('div', { className: 'latest-brief-cta' }, 'Read brief →'),
+        h('div', { className: 'latest-brief-cta' }, 'ブリーフを読む →'),
       ),
     );
 
@@ -432,9 +433,9 @@ export class LatestBriefPanel extends Panel {
     const shareBtn = h('button', {
       type: 'button',
       className: 'latest-brief-share',
-      'aria-label': 'Share WorldMonitor — copies a referral link',
+      'aria-label': 'WorldMonitor を共有 - 紹介リンクをコピー',
       disabled: true,
-    }, 'Share ↗');
+    }, '共有 ↗');
     const shareStatus = h('span', {
       className: 'latest-brief-share-status',
       'aria-live': 'polite',
@@ -464,16 +465,16 @@ export class LatestBriefPanel extends Panel {
         // today, so counting from one store would mislead. Metrics
         // will reappear once the two paths are unified.
         shareBtn.addEventListener('click', async () => {
-          const originalLabel = shareBtn.textContent ?? 'Share ↗';
+          const originalLabel = shareBtn.textContent ?? '共有 ↗';
           (shareBtn as HTMLButtonElement).disabled = true;
           try {
             const result = await mod.shareReferral(profile);
             if (result === 'shared') {
-              shareStatus.textContent = 'Thanks for sharing';
+              shareStatus.textContent = '共有ありがとうございます';
             } else if (result === 'copied') {
-              shareStatus.textContent = 'Link copied';
+              shareStatus.textContent = 'リンクをコピーしました';
             } else if (result === 'error') {
-              shareStatus.textContent = 'Share unavailable';
+              shareStatus.textContent = '共有できませんでした';
             }
           } finally {
             (shareBtn as HTMLButtonElement).disabled = false;

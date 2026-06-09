@@ -193,13 +193,13 @@ export class OilInventoriesPanel extends Panel {
   public async fetchData(): Promise<void> {
     try {
       const resp = await fetch(toApiUrl('/api/economic/v1/get-oil-inventories'));
-      if (!resp.ok) { this.showError('Oil inventory data unavailable', () => void this.fetchData(), 300); return; }
+      if (!resp.ok) { this.showError('石油在庫データは一時的に利用できません', () => void this.fetchData(), 300); return; }
       const data = (await resp.json()) as OilInventoriesData;
       if (!this.element?.isConnected) return;
       this.render(data);
     } catch {
       if (!this.element?.isConnected) return;
-      this.showError('Oil inventory data unavailable', () => void this.fetchData(), 300);
+      this.showError('石油在庫データは一時的に利用できません', () => void this.fetchData(), 300);
     }
   }
 
@@ -223,7 +223,7 @@ export class OilInventoriesPanel extends Panel {
       }
       if (latestCrude) meta.push(`Commercial: ${escapeHtml(fmtNum(latestCrude.stocksMb))} ${changeBadge(latestCrude.weeklyChangeMb, 'WoW')}`);
       if (latestSpr) meta.push(`SPR: ${escapeHtml(fmtNum(latestSpr.latestStocksMb))} ${changeBadge(latestSpr.changeWow, 'WoW')}`);
-      parts.push(section('US Total Oil Stocks', chart, meta.join(' | ')));
+      parts.push(section('米国総石油在庫', chart, meta.join(' | ')));
     }
 
     // Section 2: Nat Gas
@@ -233,9 +233,9 @@ export class OilInventoriesPanel extends Panel {
       const chart = buildLineChart(chartData, '#22c55e', '', 120);
       const latest = d.natGasWeeks[0];
       const meta = latest
-        ? `Storage: ${escapeHtml(fmtNum(latest.storBcf, 0))} Bcf ${changeBadge(latest.weeklyChangeBcf, 'WoW')}`
+        ? `在庫: ${escapeHtml(fmtNum(latest.storBcf, 0))} Bcf ${changeBadge(latest.weeklyChangeBcf, '前週比')}`
         : '';
-      parts.push(section('US Nat Gas Working Storage', chart, meta));
+      parts.push(section('米国天然ガス在庫', chart, meta));
     }
 
     // Section 3: EU Gas
@@ -244,40 +244,40 @@ export class OilInventoriesPanel extends Panel {
       const chartData = reversed.map(h => ({ x: h.date, y: h.fillPct }));
       const chart = buildLineChart(chartData, '#14b8a6', '%', 100);
       const sign = d.euGas.fillPctChange1d >= 0 ? '+' : '';
-      const meta = `Fill: ${escapeHtml(fmtNum(d.euGas.fillPct))}% | Trend: ${escapeHtml(d.euGas.trend)} | ${escapeHtml(sign + fmtNum(d.euGas.fillPctChange1d, 2))}%/d`;
-      parts.push(section('EU Gas Storage Fill', chart, meta));
+      const meta = `充填率: ${escapeHtml(fmtNum(d.euGas.fillPct))}% | トレンド: ${escapeHtml(d.euGas.trend)} | ${escapeHtml(sign + fmtNum(d.euGas.fillPctChange1d, 2))}%/日`;
+      parts.push(section('EUガス備蓄充填率', chart, meta));
     }
 
     // Section 4: IEA OECD
     if (d.ieaStocks?.members?.length) {
       const chart = buildIeaBarChart(d.ieaStocks.members);
       const reg = [
-        d.ieaStocks.europe?.avgDays != null ? `Europe avg ${d.ieaStocks.europe.avgDays.toFixed(0)}d` : '',
-        d.ieaStocks.asiaPacific?.avgDays != null ? `AsiaPac avg ${d.ieaStocks.asiaPacific.avgDays.toFixed(0)}d` : '',
+        d.ieaStocks.europe?.avgDays != null ? `欧州平均 ${d.ieaStocks.europe.avgDays.toFixed(0)}日` : '',
+        d.ieaStocks.asiaPacific?.avgDays != null ? `アジア太平洋平均 ${d.ieaStocks.asiaPacific.avgDays.toFixed(0)}日` : '',
       ].filter(Boolean).join(' | ');
       const below = d.ieaStocks.members.filter(m => m.belowObligation).length;
-      const meta = `${reg}${below > 0 ? ` | <span style="color:#ef4444">${below} below 90d</span>` : ''} | Data: ${escapeHtml(d.ieaStocks.dataMonth)}`;
-      parts.push(section('IEA OECD Oil Stocks (Days of Cover)', chart, meta));
+      const meta = `${reg}${below > 0 ? ` | <span style="color:#ef4444">90日未満 ${below}件</span>` : ''} | データ: ${escapeHtml(d.ieaStocks.dataMonth)}`;
+      parts.push(section('IEA加盟国の石油在庫（日数換算）', chart, meta));
     }
 
     // Section 5: Refinery
     if (d.refinery) {
-      const meta = `US Refinery Crude Inputs: <span class="commodity-price">${escapeHtml(fmtNum(d.refinery.inputsMbpd))} Mb/d</span> (${escapeHtml(d.refinery.period)})`;
-      parts.push(section('Refinery Throughput', `<div style="padding:4px 8px;font-size:12px">${meta}</div>`, ''));
+      const meta = `米国製油所原油投入: <span class="commodity-price">${escapeHtml(fmtNum(d.refinery.inputsMbpd))} Mb/d</span> (${escapeHtml(d.refinery.period)})`;
+      parts.push(section('製油所スループット', `<div style="padding:4px 8px;font-size:12px">${meta}</div>`, ''));
     }
 
     if (parts.length === 0) {
-      this.showError('Oil inventory data unavailable', () => void this.fetchData(), 300);
+      this.showError('石油在庫データは一時的に利用できません', () => void this.fetchData(), 300);
       return;
     }
 
     const legend = `<div style="display:flex;gap:12px;font-size:9px;color:var(--text-dim);margin-top:2px">
-      <span><svg width="14" height="4" style="vertical-align:middle"><line x1="0" y1="2" x2="14" y2="2" stroke="#3b82f6" stroke-width="2"/></svg> Commercial</span>
+      <span><svg width="14" height="4" style="vertical-align:middle"><line x1="0" y1="2" x2="14" y2="2" stroke="#3b82f6" stroke-width="2"/></svg> 民間在庫</span>
       <span><svg width="14" height="4" style="vertical-align:middle"><line x1="0" y1="2" x2="14" y2="2" stroke="#f59e0b" stroke-width="2"/></svg> SPR</span>
     </div>`;
 
     this.setContent(`<div class="energy-complex-content">${parts[0]}${legend}${parts.slice(1).join('')}
-      <div class="indicator-date" style="margin-top:6px">Source: EIA, IEA, GIE AGSI+</div>
+      <div class="indicator-date" style="margin-top:6px">ソース: EIA, IEA, GIE AGSI+</div>
     </div>`);
   }
 }

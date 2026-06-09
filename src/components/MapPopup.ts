@@ -401,9 +401,9 @@ export class MapPopup {
     const sectors = primaryCpId ? (CHOKEPOINT_HS2_SECTORS[primaryCpId] ?? []) : [];
 
     const tierLabel: Record<string, string> = {
-      WAR_RISK_TIER_WAR_ZONE: 'War Zone', WAR_RISK_TIER_CRITICAL: 'Critical',
-      WAR_RISK_TIER_HIGH: 'High', WAR_RISK_TIER_ELEVATED: 'Elevated',
-      WAR_RISK_TIER_NORMAL: 'Normal',
+      WAR_RISK_TIER_WAR_ZONE: '戦域', WAR_RISK_TIER_CRITICAL: '危機',
+      WAR_RISK_TIER_HIGH: '高い', WAR_RISK_TIER_ELEVATED: '上昇',
+      WAR_RISK_TIER_NORMAL: '通常',
     };
     const tierColor: Record<string, string> = {
       WAR_RISK_TIER_WAR_ZONE: '#ef4444', WAR_RISK_TIER_CRITICAL: '#ef4444',
@@ -427,7 +427,7 @@ export class MapPopup {
     const html = `
       <div class="popup-header">
         <span class="popup-title" style="font-size:12px">${escapeHtml(segment.routeName)}</span>
-        <button class="popup-close" aria-label="Close">×</button>
+        <button class="popup-close" aria-label="閉じる">×</button>
       </div>
       <div class="popup-body" style="padding:8px 12px;min-width:200px">
         ${cp ? `<div style="font-size:11px;font-weight:600;margin-bottom:6px">${escapeHtml(cp.name)}</div>` : ''}
@@ -1321,9 +1321,9 @@ export class MapPopup {
             <span class="stat-label">${t('popups.type')}</span>
             <span class="stat-value">${escapeHtml(typeLabels[base.type] || base.type)}</span>
           </div>
-          ${base.arm ? `<div class="popup-stat"><span class="stat-label">Branch</span><span class="stat-value">${escapeHtml(base.arm)}</span></div>` : ''}
-          ${base.country ? `<div class="popup-stat"><span class="stat-label">Country</span><span class="stat-value">${escapeHtml(base.country)}</span></div>` : ''}
-          ${categories.length > 0 ? `<div class="popup-stat"><span class="stat-label">Categories</span><span class="stat-value">${escapeHtml(categories.join(', '))}</span></div>` : ''}
+          ${base.arm ? `<div class="popup-stat"><span class="stat-label">軍種</span><span class="stat-value">${escapeHtml(base.arm)}</span></div>` : ''}
+          ${base.country ? `<div class="popup-stat"><span class="stat-label">国</span><span class="stat-value">${escapeHtml(base.country)}</span></div>` : ''}
+          ${categories.length > 0 ? `<div class="popup-stat"><span class="stat-label">カテゴリ</span><span class="stat-value">${escapeHtml(categories.join(', '))}</span></div>` : ''}
           <div class="popup-stat">
             <span class="stat-label">${t('popups.coordinates')}</span>
             <span class="stat-value">${base.lat.toFixed(2)}°, ${base.lon.toFixed(2)}°</span>
@@ -1347,7 +1347,7 @@ export class MapPopup {
 
     // Sector mix: only show the compact SVG ring for free users (PRO users get the full HS2RingChart below)
     const sectorSection = (sectors && !isPro)
-      ? `<div class="popup-section-title" style="margin-top:10px;font-size:10px;text-transform:uppercase;opacity:.6;letter-spacing:.06em">Trade Sector Mix</div>
+      ? `<div class="popup-section-title" style="margin-top:10px;font-size:10px;text-transform:uppercase;opacity:.6;letter-spacing:.06em">貿易セクター構成</div>
          ${renderSectorRing(sectors)}`
       : '';
 
@@ -1355,14 +1355,14 @@ export class MapPopup {
     let chartSection = '';
     if (hasChart) {
       if (isPro) {
-        chartSection = `<div data-transit-chart="${escapeHtml(waterway.name)}" data-transit-chart-id="${escapeHtml(cp?.id ?? '')}" style="margin-top:10px;min-height:200px;display:flex;align-items:center;justify-content:center;color:var(--text-dim,#888);font-size:12px">${t('components.supplyChain.loadingHistory') || 'Loading transit history\u2026'}</div>`;
+        chartSection = `<div data-transit-chart="${escapeHtml(waterway.name)}" data-transit-chart-id="${escapeHtml(cp?.id ?? '')}" style="margin-top:10px;min-height:200px;display:flex;align-items:center;justify-content:center;color:var(--text-dim,#888);font-size:12px">${t('components.supplyChain.loadingHistory') || '通航履歴を読み込み中…'}</div>`;
       } else {
         chartSection = `
           <div class="sector-pro-gate" data-gate="chokepoint-transit-chart" style="position:relative;overflow:hidden;border-radius:6px;margin-top:10px;min-height:120px;background:var(--surface-elevated, #111)">
             <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px">
               <span style="font-size:16px">🔒</span>
               <span style="font-size:10px;font-weight:600;opacity:.8">PRO</span>
-              <span style="font-size:9px;opacity:.5">Transit History</span>
+              <span style="font-size:9px;opacity:.5">通航履歴</span>
             </div>
           </div>`;
       }
@@ -1373,7 +1373,7 @@ export class MapPopup {
     if (sectors) {
       if (isPro) {
         ringSection = `
-          <div class="popup-section-title" style="margin-top:10px;font-size:10px;text-transform:uppercase;opacity:.6;letter-spacing:.06em">Sector Exposure</div>
+          <div class="popup-section-title" style="margin-top:10px;font-size:10px;text-transform:uppercase;opacity:.6;letter-spacing:.06em">セクター露出</div>
           <div data-hs2-ring="${escapeHtml(waterway.chokepointId)}" class="popup-hs2-ring-container"></div>`;
       } else {
         ringSection = `
@@ -1381,7 +1381,7 @@ export class MapPopup {
             <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px">
               <span style="font-size:16px">🔒</span>
               <span style="font-size:10px;font-weight:600;opacity:.8">PRO</span>
-              <span style="font-size:9px;opacity:.5">Sector Breakdown</span>
+              <span style="font-size:9px;opacity:.5">セクター内訳</span>
             </div>
           </div>`;
       }
@@ -1677,7 +1677,7 @@ export class MapPopup {
             <span class="stat-value">${pos.observedAt.toLocaleTimeString()}</span>
           </div>
         </div>
-${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"><div class="wingbits-live-loading" style="font-size:11px;opacity:0.5;padding:4px 0">Loading Wingbits live data…</div></div>' : ''}
+${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"><div class="wingbits-live-loading" style="font-size:11px;opacity:0.5;padding:4px 0">Wingbits のライブデータを読み込み中…</div></div>' : ''}
       </div>
     `;
   }
@@ -2654,7 +2654,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
           ${enrichedStats}
         </div>
         ${flight.note ? `<p class="popup-description">${note}</p>` : ''}
-${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"><div class="wingbits-live-loading" style="font-size:11px;opacity:0.5;padding:4px 0">Loading Wingbits live data…</div></div>' : ''}
+${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"><div class="wingbits-live-loading" style="font-size:11px;opacity:0.5;padding:4px 0">Wingbits のライブデータを読み込み中…</div></div>' : ''}
         <div class="popup-attribution">${t('popups.militaryFlight.attribution')}</div>
       </div>
     `;
@@ -2761,7 +2761,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
     const flagEmoji = countryCode ? this.getFlagEmoji(countryCode) : '';
 
     const lastSeenStr = vessel.lastAisUpdate
-      ? `${new Date(vessel.lastAisUpdate).toLocaleString()}${vessel.aisGapMinutes ? ` (${vessel.aisGapMinutes}m ago)` : ''}`
+      ? `${new Date(vessel.lastAisUpdate).toLocaleString()}${vessel.aisGapMinutes ? ` (${vessel.aisGapMinutes}分前)` : ''}`
       : t('popups.unknown');
 
     const recentTrack = vessel.track && vessel.track.length > 0

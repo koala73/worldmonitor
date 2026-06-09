@@ -713,6 +713,190 @@ export class App {
       }
     }
 
+    // Finance guide panels are foundational to the finance experience.
+    // Older stored layouts can leave them disabled, which prevents them from
+    // mounting into the live grid even though they still appear in settings.
+    if (currentVariant === 'finance') {
+      const financeGuideKeys = ['portfolio-impact', 'idea-radar'] as const;
+      let financeGuideMutated = false;
+      financeGuideKeys.forEach((key) => {
+        const config = panelSettings[key];
+        if (config && config.enabled === false) {
+          panelSettings[key] = { ...config, enabled: true };
+          financeGuideMutated = true;
+        }
+      });
+      if (financeGuideMutated) {
+        saveToStorage(STORAGE_KEYS.panels, panelSettings);
+      }
+
+      // Finance startup should foreground stable core panels. A subset of
+      // data-heavy analytics and sector sub-panels regularly boot into
+      // permanent retry/error states on desktop sessions where upstream
+      // seeds are absent. Keep them available in settings, but normalize
+      // existing saved layouts once so the default finance dashboard is usable.
+const FINANCE_NOISY_PANELS_FIX_KEY = 'worldmonitor-finance-noisy-panels-v5';
+      if (!localStorage.getItem(FINANCE_NOISY_PANELS_FIX_KEY)) {
+        const noisyFinanceKeys = [
+          'crypto-heatmap',
+          'defi-tokens',
+          'ai-tokens',
+          'other-tokens',
+          'macro-tiles',
+          'fear-greed',
+          'aaii-sentiment',
+          'market-breadth',
+          'fsi',
+          'yield-curve',
+          'earnings-calendar',
+          'economic-calendar',
+          'cot-positioning',
+          'liquidity-shifts',
+          'positioning-247',
+          'gold-intelligence',
+          'gulf-economies',
+          'consumer-prices',
+          'polymarket',
+          'centralbanks',
+          'pipeline-status',
+          'insights',
+          'economic',
+          'sanctions-pressure',
+          'supply-chain',
+          'economic-news',
+          'live-webcams',
+          'markets-news',
+          'commodities-news',
+          'crypto-news',
+          'ipo',
+          'derivatives',
+          'fintech',
+        'fin-regulation',
+        'institutional',
+        'analysis',
+        'etf-flows',
+        'stablecoins',
+        'gcc-investments',
+          'gccNews',
+          'airline-intel',
+          'monitors',
+        ] as const;
+        let noisyPanelsMutated = false;
+        noisyFinanceKeys.forEach((key) => {
+          const config = panelSettings[key];
+          if (config?.enabled) {
+            panelSettings[key] = { ...config, enabled: false };
+            noisyPanelsMutated = true;
+          }
+        });
+        if (noisyPanelsMutated) {
+          saveToStorage(STORAGE_KEYS.panels, panelSettings);
+        }
+        localStorage.setItem(FINANCE_NOISY_PANELS_FIX_KEY, 'done');
+      }
+
+      const FINANCE_PANEL_ORDER_FIX_KEY = 'worldmonitor-finance-panel-order-v6';
+      if (!localStorage.getItem(FINANCE_PANEL_ORDER_FIX_KEY)) {
+        const savedOrder = localStorage.getItem(PANEL_ORDER_KEY);
+        if (savedOrder) {
+          try {
+            const order: string[] = JSON.parse(savedOrder);
+            const priorityFinancePanels = ['portfolio-impact', 'idea-radar', 'markets', 'macro-signals', 'live-news'];
+            const nextOrder = priorityFinancePanels.filter((key) => order.includes(key));
+            nextOrder.push(...order.filter((key) => !priorityFinancePanels.includes(key)));
+            localStorage.setItem(PANEL_ORDER_KEY, JSON.stringify(nextOrder));
+          } catch {
+            // Invalid saved order, keep default fallbacks
+          }
+        }
+        localStorage.setItem(FINANCE_PANEL_ORDER_FIX_KEY, 'done');
+      }
+    }
+
+    if (currentVariant === 'full') {
+      const FULL_NOISY_PANELS_FIX_KEY = 'worldmonitor-full-noisy-panels-v1';
+      if (!localStorage.getItem(FULL_NOISY_PANELS_FIX_KEY)) {
+        const noisyFullKeys = [
+          'satellite-fires',
+          'fear-greed',
+          'market-breadth',
+          'liquidity-shifts',
+          'positioning-247',
+          'gold-intelligence',
+          'pipeline-status',
+          'storage-facility-map',
+          'fuel-shortages',
+          'energy-disruptions',
+          'etf-flows',
+          'stablecoins',
+          'ucdp-events',
+          'disease-outbreaks',
+          'social-velocity',
+          'sanctions-pressure',
+        ] as const;
+        let noisyPanelsMutated = false;
+        noisyFullKeys.forEach((key) => {
+          const config = panelSettings[key];
+          if (config?.enabled) {
+            panelSettings[key] = { ...config, enabled: false };
+            noisyPanelsMutated = true;
+          }
+        });
+        if (noisyPanelsMutated) {
+          saveToStorage(STORAGE_KEYS.panels, panelSettings);
+        }
+        localStorage.setItem(FULL_NOISY_PANELS_FIX_KEY, 'done');
+      }
+
+      const FULL_PANEL_ORDER_FIX_KEY = 'worldmonitor-full-panel-order-v1';
+      if (!localStorage.getItem(FULL_PANEL_ORDER_FIX_KEY)) {
+        const savedOrder = localStorage.getItem(PANEL_ORDER_KEY);
+        if (savedOrder) {
+          try {
+            const order: string[] = JSON.parse(savedOrder);
+            const priorityFullPanels = ['live-news', 'insights', 'strategic-posture', 'forecast', 'strategic-risk', 'markets'];
+            const nextOrder = priorityFullPanels.filter((key) => order.includes(key));
+            nextOrder.push(...order.filter((key) => !priorityFullPanels.includes(key)));
+            localStorage.setItem(PANEL_ORDER_KEY, JSON.stringify(nextOrder));
+          } catch {
+            // Invalid saved order, keep default fallbacks
+          }
+        }
+        localStorage.setItem(FULL_PANEL_ORDER_FIX_KEY, 'done');
+      }
+    }
+
+    const variantPriorityMigrations: Partial<Record<typeof currentVariant, { key: string; panels: string[] }>> = {
+      tech: {
+        key: 'worldmonitor-tech-panel-order-v1',
+        panels: ['live-news', 'insights', 'tech-readiness', 'security', 'service-status', 'markets'],
+      },
+      energy: {
+        key: 'worldmonitor-energy-panel-order-v1',
+        panels: ['energy-risk-overview', 'chokepoint-strip', 'pipeline-status', 'energy-complex', 'live-news', 'insights'],
+      },
+      commodity: {
+        key: 'worldmonitor-commodity-panel-order-v1',
+        panels: ['live-news', 'insights', 'markets', 'commodities', 'macro-signals', 'supply-chain'],
+      },
+    };
+
+    const variantPriorityMigration = variantPriorityMigrations[currentVariant];
+    if (variantPriorityMigration && !localStorage.getItem(variantPriorityMigration.key)) {
+      const savedOrder = localStorage.getItem(PANEL_ORDER_KEY);
+      if (savedOrder) {
+        try {
+          const order: string[] = JSON.parse(savedOrder);
+          const nextOrder = variantPriorityMigration.panels.filter((key) => order.includes(key));
+          nextOrder.push(...order.filter((key) => !variantPriorityMigration.panels.includes(key)));
+          localStorage.setItem(PANEL_ORDER_KEY, JSON.stringify(nextOrder));
+        } catch {
+          // Invalid saved order, keep default fallbacks
+        }
+      }
+      localStorage.setItem(variantPriorityMigration.key, 'done');
+    }
+
     const initialUrlState: ParsedMapUrlState | null = parseMapUrlState(window.location.search, mapLayers);
     if (initialUrlState.layers) {
       mapLayers = normalizeExclusiveChoropleths(

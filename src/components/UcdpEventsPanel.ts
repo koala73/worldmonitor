@@ -45,6 +45,14 @@ export class UcdpEventsPanel extends Panel {
     this.renderContent();
   }
 
+  public showExternalUnavailable(detail?: string): void {
+    this.renderExternalUnavailableState({
+      message: 'Conflict event registry is temporarily unavailable.',
+      source: 'UCDP / ACLED conflict event feeds',
+      detail,
+    });
+  }
+
   public getEvents(): UcdpGeoEvent[] {
     return this.events;
   }

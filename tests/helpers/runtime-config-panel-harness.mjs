@@ -601,7 +601,7 @@ async function loadRuntimeConfigPanel() {
     `],
     ['runtime-stub', `export function isDesktopRuntime() { return true; }`],
     ['tauri-bridge-stub', `export async function invokeTauri() {}`],
-    ['i18n-stub', `export function t(key) { return key; }`],
+    ['i18n-stub', `export function t(key) { return key; } export function getCurrentLanguage() { return 'en'; }`],
     ['dom-utils-stub', `
       function append(parent, child) {
         if (child == null || child === false) return;

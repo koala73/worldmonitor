@@ -242,7 +242,7 @@ export const COMMANDS: Command[] = [
   { id: 'panel:commodity-regulation', keywords: ['commodity regulation', 'mining regulation', 'resource policy'], label: 'Regulation & Policy', icon: '\u{1F4DC}', category: 'panels' },
 
   // Positive / happy panels
-  { id: 'panel:positive-feed', keywords: ['good news', 'positive news', 'optimistic', 'uplifting'], label: 'Panel: Good News Feed', icon: '\u{1F33F}', category: 'panels' },
+  { id: 'panel:positive-feed', keywords: ['good news', 'positive news', 'optimistic', 'uplifting', 'グッドニュース', 'ポジティブニュース'], label: 'パネル: グッドニュース', icon: '\u{1F33F}', category: 'panels' },
   { id: 'panel:breakthroughs', keywords: ['breakthroughs', 'science breakthroughs', 'discoveries'], label: 'Panel: Breakthroughs', icon: '\u{1F9EC}', category: 'panels' },
   { id: 'panel:progress', keywords: ['human progress', 'progress', 'global progress'], label: 'Panel: Human Progress', icon: '\u{1F4C8}', category: 'panels' },
   { id: 'panel:counters', keywords: ['live counters', 'counters', 'real time counters'], label: 'Panel: Live Counters', icon: '\u{1F522}', category: 'panels' },

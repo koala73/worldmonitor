@@ -1,7 +1,7 @@
 import { Panel } from './Panel';
 import { escapeHtml } from '@/services/forecast';
 import type { Forecast } from '@/services/forecast';
-import { t } from '@/services/i18n';
+import { t, getCurrentLanguage } from '@/services/i18n';
 import { getForecastMacroRegion } from '../../shared/forecast-macro-regions.js';
 
 const DOMAINS = ['all', 'conflict', 'market', 'supply_chain', 'political', 'military', 'cyber', 'infrastructure'] as const;
@@ -16,25 +16,25 @@ const PANEL_MIN_PROBABILITY = 0.1;
 // "All Regions" — no filter applied. Forecasts whose region does not
 // classify (unknown or 'global') only appear under "All Regions".
 const FORECAST_REGIONS = [
-  { id: '', label: 'All Regions' },
-  { id: 'mena', label: 'MENA' },
-  { id: 'east-asia', label: 'East Asia' },
-  { id: 'europe', label: 'Europe' },
-  { id: 'south-asia', label: 'South Asia' },
-  { id: 'sub-saharan-africa', label: 'Africa' },
-  { id: 'latam', label: 'LatAm' },
-  { id: 'north-america', label: 'N. America' },
+  { id: '', label: getCurrentLanguage() === 'ja' ? '全地域' : 'All Regions' },
+  { id: 'mena', label: getCurrentLanguage() === 'ja' ? '中東・北アフリカ' : 'MENA' },
+  { id: 'east-asia', label: getCurrentLanguage() === 'ja' ? '東アジア' : 'East Asia' },
+  { id: 'europe', label: getCurrentLanguage() === 'ja' ? 'ヨーロッパ' : 'Europe' },
+  { id: 'south-asia', label: getCurrentLanguage() === 'ja' ? '南アジア' : 'South Asia' },
+  { id: 'sub-saharan-africa', label: getCurrentLanguage() === 'ja' ? 'アフリカ' : 'Africa' },
+  { id: 'latam', label: getCurrentLanguage() === 'ja' ? '中南米' : 'LatAm' },
+  { id: 'north-america', label: getCurrentLanguage() === 'ja' ? '北米' : 'N. America' },
 ] as const;
 
 const DOMAIN_LABELS: Record<string, string> = {
-  all: 'All',
-  conflict: 'Conflict',
-  market: 'Market',
-  supply_chain: 'Supply Chain',
-  political: 'Political',
-  military: 'Military',
-  cyber: 'Cyber',
-  infrastructure: 'Infra',
+  all: getCurrentLanguage() === 'ja' ? '全体' : 'All',
+  conflict: getCurrentLanguage() === 'ja' ? '紛争' : 'Conflict',
+  market: getCurrentLanguage() === 'ja' ? '市場' : 'Market',
+  supply_chain: getCurrentLanguage() === 'ja' ? 'サプライチェーン' : 'Supply Chain',
+  political: getCurrentLanguage() === 'ja' ? '政治' : 'Political',
+  military: getCurrentLanguage() === 'ja' ? '軍事' : 'Military',
+  cyber: getCurrentLanguage() === 'ja' ? 'サイバー' : 'Cyber',
+  infrastructure: getCurrentLanguage() === 'ja' ? 'インフラ' : 'Infra',
 };
 
 const DOMAIN_COLORS: Record<string, string> = {
@@ -256,7 +256,8 @@ export class ForecastPanel extends Panel {
   private expandedTheaterId: string | null = null;
 
   constructor() {
-    super({ id: 'forecast', title: 'AI Forecasts', showCount: true, infoTooltip: t('components.forecast.infoTooltip') });
+    const ja = getCurrentLanguage() === 'ja';
+    super({ id: 'forecast', title: ja ? 'AI 予測' : 'AI Forecasts', showCount: true, infoTooltip: t('components.forecast.infoTooltip') });
     injectStyles();
     this.content.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;

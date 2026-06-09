@@ -144,7 +144,7 @@ export class WatchlistTableView<T> {
   }
 
   private renderControls(): string {
-    const placeholder = this.config.searchPlaceholder || 'Search symbol or name...';
+    const placeholder = this.config.searchPlaceholder || '銘柄コードまたは名称を検索...';
     const pills = this.config.filters.map((f) => {
       const active = f.key === this.state.filter ? ' watchlist-pill-active' : '';
       return `<button class="watchlist-pill${active}" data-filterkey="${escapeHtml(f.key)}" type="button">${escapeHtml(f.label)}</button>`;

@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { t } from '@/services/i18n';
+import { t, getCurrentLanguage } from '@/services/i18n';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { fetchSocialVelocity, type SocialVelocityPost } from '@/services/social-velocity';
 
@@ -30,7 +30,8 @@ export class SocialVelocityPanel extends Panel {
   private _hasData = false;
 
   constructor() {
-    super({ id: 'social-velocity', title: 'Social Velocity', showCount: false, infoTooltip: t('components.socialVelocity.infoTooltip') });
+    const ja = getCurrentLanguage() === 'ja';
+    super({ id: 'social-velocity', title: ja ? 'ソーシャルベロシティ' : 'Social Velocity', showCount: false, infoTooltip: t('components.socialVelocity.infoTooltip') });
   }
 
   public async fetchData(): Promise<boolean> {
@@ -54,7 +55,15 @@ export class SocialVelocityPanel extends Panel {
   public updateData(posts: SocialVelocityPost[]): void {
     this._posts = [...posts].sort((a, b) => b.velocityScore - a.velocityScore);
     this._hasData = this._posts.length > 0;
-    if (this._hasData) this._render();
+    this._render();
+  }
+
+  public showExternalUnavailable(detail?: string): void {
+    this.renderExternalUnavailableState({
+      message: 'Social velocity feed is temporarily unavailable.',
+      source: 'Reddit social momentum feeds',
+      detail,
+    });
   }
 
   private _render(): void {

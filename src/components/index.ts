@@ -45,6 +45,8 @@ export * from './SatelliteFiresPanel';
 export * from './MacroSignalsPanel';
 export * from './ETFFlowsPanel';
 export * from './StablecoinPanel';
+export * from './PortfolioImpactPanel';
+export * from './IdeaRadarPanel';
 export * from './UcdpEventsPanel';
 export * from './DailyMarketBriefPanel';
 export * from './MarketImplicationsPanel';

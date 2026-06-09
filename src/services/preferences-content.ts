@@ -185,6 +185,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   html += `</select>`;
 
   html += toggleRowHtml('us-map-flash', t('components.insights.mapFlashLabel'), t('components.insights.mapFlashDesc'), settings.mapNewsFlash);
+  html += toggleRowHtml('us-cloud-translation', t('components.insights.cloudTranslationLabel'), t('components.insights.cloudTranslationDesc'), settings.cloudTranslation);
 
   // 3D Globe Visual Preset
   const currentPreset = getGlobeVisualPreset();
@@ -485,6 +486,8 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           setAiFlowSetting('headlineMemory', target.checked);
         } else if (target.id === 'us-badge-anim') {
           setAiFlowSetting('badgeAnimation', target.checked);
+        } else if (target.id === 'us-cloud-translation') {
+          setAiFlowSetting('cloudTranslation', target.checked);
         }
       }, { signal });
 

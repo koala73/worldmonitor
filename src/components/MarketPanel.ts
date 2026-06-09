@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { t } from '@/services/i18n';
+import { getCurrentLanguage, t } from '@/services/i18n';
 import type { MarketData, CryptoData, TokenData } from '@/types';
 import { formatPrice, formatChange, getChangeClass, getHeatmapClass } from '@/utils';
 import { escapeHtml } from '@/utils/sanitize';
@@ -95,11 +95,12 @@ export class HeatmapPanel extends Panel {
   }
 
   private _buildTabBar(): string {
+    const ja = getCurrentLanguage() === 'ja';
     const hasValuations = Object.keys(this._valuations).length > 0;
     if (!hasValuations) return '';
     return `<div style="display:flex;gap:4px;margin-bottom:8px">
-      <button class="panel-tab${this._tab === 'performance' ? ' active' : ''}" data-tab="performance" style="font-size:11px;padding:3px 10px">Performance</button>
-      <button class="panel-tab${this._tab === 'valuations' ? ' active' : ''}" data-tab="valuations" style="font-size:11px;padding:3px 10px">Valuations</button>
+      <button class="panel-tab${this._tab === 'performance' ? ' active' : ''}" data-tab="performance" style="font-size:11px;padding:3px 10px">${ja ? 'パフォーマンス' : 'Performance'}</button>
+      <button class="panel-tab${this._tab === 'valuations' ? ' active' : ''}" data-tab="valuations" style="font-size:11px;padding:3px 10px">${ja ? 'バリュエーション' : 'Valuations'}</button>
     </div>`;
   }
 
@@ -169,12 +170,13 @@ export class HeatmapPanel extends Panel {
   }
 
   private _renderValuations(): string {
+    const ja = getCurrentLanguage() === 'ja';
     const entries = Object.entries(this._valuations)
       .map(([symbol, v]) => ({ symbol, ...v }))
       .filter((e) => e.forwardPE !== null || e.trailingPE !== null);
 
     if (entries.length === 0) {
-      return '<div style="padding:8px;color:var(--text-dim);font-size:12px">No valuation data available</div>';
+      return `<div style="padding:8px;color:var(--text-dim);font-size:12px">${ja ? 'バリュエーションデータはまだありません' : 'No valuation data available'}</div>`;
     }
 
     const sorted = [...entries].sort((a, b) => (a.forwardPE ?? a.trailingPE ?? 999) - (b.forwardPE ?? b.trailingPE ?? 999));
@@ -231,11 +233,11 @@ export class HeatmapPanel extends Panel {
     const table = `<div style="overflow-x:auto">
 <table style="width:100%;border-collapse:collapse;font-size:11px">
   <thead><tr style="color:var(--text-dim);border-bottom:1px solid var(--border)">
-    <th style="padding:3px 6px;text-align:left;font-weight:500">Sector</th>
-    <th style="padding:3px 6px;text-align:right;font-weight:500">Trail P/E</th>
-    <th style="padding:3px 6px;text-align:right;font-weight:500">Fwd P/E</th>
+    <th style="padding:3px 6px;text-align:left;font-weight:500">${ja ? 'セクター' : 'Sector'}</th>
+    <th style="padding:3px 6px;text-align:right;font-weight:500">${ja ? '実績P/E' : 'Trail P/E'}</th>
+    <th style="padding:3px 6px;text-align:right;font-weight:500">${ja ? '予想P/E' : 'Fwd P/E'}</th>
     <th style="padding:3px 6px;text-align:right;font-weight:500">Beta</th>
-    <th style="padding:3px 6px;text-align:right;font-weight:500">YTD</th>
+    <th style="padding:3px 6px;text-align:right;font-weight:500">${ja ? '年初来' : 'YTD'}</th>
   </tr></thead>
   <tbody>${tableRows}</tbody>
 </table></div>`;
@@ -409,18 +411,20 @@ export class CommoditiesPanel extends Panel {
   }
 
   private _buildTabBar(hasFx: boolean, hasXau: boolean): string {
-    const firstTabLabel = 'Commodities';
+    const ja = getCurrentLanguage() === 'ja';
+    const firstTabLabel = ja ? 'コモディティ' : 'Commodities';
     const tabs: string[] = [
       `<button class="panel-tab${this._tab === 'commodities' ? ' active' : ''}" data-tab="commodities" style="font-size:11px;padding:3px 10px">${firstTabLabel}</button>`,
     ];
-    if (hasFx) tabs.push(`<button class="panel-tab${this._tab === 'fx' ? ' active' : ''}" data-tab="fx" style="font-size:11px;padding:3px 10px">EUR FX</button>`);
-    if (hasXau) tabs.push(`<button class="panel-tab${this._tab === 'xau' ? ' active' : ''}" data-tab="xau" style="font-size:11px;padding:3px 10px">XAU/FX</button>`);
+    if (hasFx) tabs.push(`<button class="panel-tab${this._tab === 'fx' ? ' active' : ''}" data-tab="fx" style="font-size:11px;padding:3px 10px">${ja ? 'ユーロ為替' : 'EUR FX'}</button>`);
+    if (hasXau) tabs.push(`<button class="panel-tab${this._tab === 'xau' ? ' active' : ''}" data-tab="xau" style="font-size:11px;padding:3px 10px">${ja ? '金/為替' : 'XAU/FX'}</button>`);
     return tabs.length > 1 ? `<div style="display:flex;gap:4px;margin-bottom:8px">${tabs.join('')}</div>` : '';
   }
 
   private _renderXau(): string {
+    const ja = getCurrentLanguage() === 'ja';
     const gcf = this._commodityData.find(d => d.symbol === 'GC=F' && d.price !== null);
-    if (!gcf?.price) return `<div style="padding:8px;color:var(--text-dim);font-size:12px">Gold price unavailable</div>`;
+    if (!gcf?.price) return `<div style="padding:8px;color:var(--text-dim);font-size:12px">${ja ? '金価格データは一時的に利用できません' : 'Gold price unavailable'}</div>`;
 
     const goldUsd = gcf.price;
     const fxMap = new Map(this._commodityData.filter(d => d.symbol?.endsWith('=X')).map(d => [d.symbol!, d]));
@@ -444,9 +448,9 @@ export class CommoditiesPanel extends Panel {
           <div class="commodity-price" style="font-size:11px">--</div>
         </div>`
       ).join('');
-      return `<div class="commodities-grid">${placeholders}</div><div style="margin-top:6px;font-size:9px;color:var(--text-dim)">FX rates unavailable</div>`;
+      return `<div class="commodities-grid">${placeholders}</div><div style="margin-top:6px;font-size:9px;color:var(--text-dim)">${ja ? '為替レートは一時的に利用できません' : 'FX rates unavailable'}</div>`;
     }
-    return `<div class="commodities-grid">${rows.join('')}</div><div style="margin-top:6px;font-size:9px;color:var(--text-dim)">Computed from GC=F + Yahoo FX</div>`;
+    return `<div class="commodities-grid">${rows.join('')}</div><div style="margin-top:6px;font-size:9px;color:var(--text-dim)">${ja ? 'GC=F と Yahoo 為替から算出' : 'Computed from GC=F + Yahoo FX'}</div>`;
   }
 
   private _render(): void {
@@ -456,6 +460,7 @@ export class CommoditiesPanel extends Panel {
     const tabBar = this._buildTabBar(hasFx, hasXau);
 
     if (this._tab === 'fx' && hasFx) {
+      const ja = getCurrentLanguage() === 'ja';
       const items = this._fxRates.map(r => {
         const change = r.change1d ?? null;
         const changeStr = change !== null ? `${change >= 0 ? '+' : ''}${change.toFixed(4)}` : '';
@@ -466,7 +471,7 @@ export class CommoditiesPanel extends Panel {
           ${changeStr ? `<div class="commodity-change ${escapeHtml(changeClass)}">${escapeHtml(changeStr)}</div>` : ''}
         </div>`;
       }).join('');
-      this.setContent(tabBar + `<div class="commodities-grid">${items}</div><div style="margin-top:6px;font-size:9px;color:var(--text-dim)">Source: ECB</div>`);
+      this.setContent(tabBar + `<div class="commodities-grid">${items}</div><div style="margin-top:6px;font-size:9px;color:var(--text-dim)">${ja ? 'ソース' : 'Source'}: ECB</div>`);
       return;
     }
 
@@ -537,7 +542,8 @@ export class CryptoPanel extends Panel {
 
 export class CryptoHeatmapPanel extends Panel {
   constructor() {
-    super({ id: 'crypto-heatmap', title: 'Crypto Sectors' });
+    const ja = getCurrentLanguage() === 'ja';
+    super({ id: 'crypto-heatmap', title: ja ? '暗号資産セクター' : 'Crypto Sectors' });
   }
 
   public renderSectors(data: Array<{ id: string; name: string; change: number }>): void {
@@ -596,18 +602,21 @@ export class TokenListPanel extends Panel {
 
 export class DefiTokensPanel extends TokenListPanel {
   constructor() {
-    super({ id: 'defi-tokens', title: 'DeFi Tokens', infoTooltip: t('components.defiTokens.infoTooltip') });
+    const ja = getCurrentLanguage() === 'ja';
+    super({ id: 'defi-tokens', title: ja ? 'DeFiトークン' : 'DeFi Tokens', infoTooltip: t('components.defiTokens.infoTooltip') });
   }
 }
 
 export class AiTokensPanel extends TokenListPanel {
   constructor() {
-    super({ id: 'ai-tokens', title: 'AI Tokens', infoTooltip: t('components.aiTokens.infoTooltip') });
+    const ja = getCurrentLanguage() === 'ja';
+    super({ id: 'ai-tokens', title: ja ? 'AIトークン' : 'AI Tokens', infoTooltip: t('components.aiTokens.infoTooltip') });
   }
 }
 
 export class OtherTokensPanel extends TokenListPanel {
   constructor() {
-    super({ id: 'other-tokens', title: 'Alt Tokens', infoTooltip: t('components.altTokens.infoTooltip') });
+    const ja = getCurrentLanguage() === 'ja';
+    super({ id: 'other-tokens', title: ja ? 'アルトトークン' : 'Alt Tokens', infoTooltip: t('components.altTokens.infoTooltip') });
   }
 }

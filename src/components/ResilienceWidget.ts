@@ -23,6 +23,7 @@ import {
   getStalenessLabel,
 } from './resilience-widget-utils';
 import type { CountryEnergyProfileData } from './CountryBriefPanel';
+import { getCurrentLanguage } from '@/services/i18n';
 
 // LOCKED_PREVIEW lives in resilience-widget-utils.ts so tests and
 // other non-Vite consumers can import it without dragging in the
@@ -138,6 +139,7 @@ export class ResilienceWidget {
   }
 
   private render(): void {
+    const ja = getCurrentLanguage() === 'ja';
     const gateReason = this.getGateReason();
     const body = this.renderBody(gateReason);
 
@@ -146,13 +148,15 @@ export class ResilienceWidget {
       h(
         'div',
         { className: 'resilience-widget__header' },
-        h('h3', { className: 'cdp-card-title resilience-widget__title' }, 'Resilience Score'),
+        h('h3', { className: 'cdp-card-title resilience-widget__title' }, ja ? '耐性スコア' : 'Resilience Score'),
         h(
           'span',
           {
             className: 'resilience-widget__help',
-            title: 'Composite resilience score from 20 dimensions across 6 domains (economic, infrastructure, energy, social & governance, health & food, recovery), grouped into 3 pillars (structural readiness, live shock exposure, recovery capacity). Weights sum to 1.00; recovery carries the largest single-domain weight (0.25).',
-            'aria-label': 'Resilience score methodology',
+            title: ja
+              ? '経済・インフラ・エネルギー・社会統治・保健食料・回復力の6領域、20指標を統合した耐性スコアです。'
+              : 'Composite resilience score from 20 dimensions across 6 domains (economic, infrastructure, energy, social & governance, health & food, recovery), grouped into 3 pillars (structural readiness, live shock exposure, recovery capacity). Weights sum to 1.00; recovery carries the largest single-domain weight (0.25).',
+            'aria-label': ja ? '耐性スコアの算出方法' : 'Resilience score methodology',
           },
           '?',
         ),
@@ -162,12 +166,13 @@ export class ResilienceWidget {
   }
 
   private renderBody(gateReason: PanelGateReason): HTMLElement {
+    const ja = getCurrentLanguage() === 'ja';
     if (!this.currentCountryCode) {
-      return h('div', { className: 'cdp-card-body' }, this.makeEmpty('Resilience data loads when a country is selected.'));
+      return h('div', { className: 'cdp-card-body' }, this.makeEmpty(ja ? '国を選択すると耐性データを表示します。' : 'Resilience data loads when a country is selected.'));
     }
 
     if (this.authState.isPending) {
-      return h('div', { className: 'cdp-card-body' }, this.makeLoading('Checking access…'));
+      return h('div', { className: 'cdp-card-body' }, this.makeLoading(ja ? 'アクセス権を確認中…' : 'Checking access…'));
     }
 
     if (gateReason !== PanelGateReason.NONE) {
@@ -175,7 +180,7 @@ export class ResilienceWidget {
     }
 
     if (this.loading) {
-      return h('div', { className: 'cdp-card-body' }, this.makeLoading('Loading resilience score…'));
+      return h('div', { className: 'cdp-card-body' }, this.makeLoading(ja ? '耐性スコアを読み込み中…' : 'Loading resilience score…'));
     }
 
     if (this.errorMessage) {
@@ -183,17 +188,18 @@ export class ResilienceWidget {
     }
 
     if (!this.currentData) {
-      return h('div', { className: 'cdp-card-body' }, this.makeEmpty('Resilience score unavailable.'));
+      return h('div', { className: 'cdp-card-body' }, this.makeEmpty(ja ? '耐性スコアは現在利用できません。' : 'Resilience score unavailable.'));
     }
 
     return this.renderScoreCard(this.currentData);
   }
 
   private renderLocked(gateReason: PanelGateReason): HTMLElement {
+    const ja = getCurrentLanguage() === 'ja';
     const description = gateReason === PanelGateReason.ANONYMOUS
-      ? 'Sign in to unlock premium resilience scores.'
-      : 'Upgrade to Pro to unlock resilience scores.';
-    const cta = gateReason === PanelGateReason.ANONYMOUS ? 'Sign In' : 'Upgrade to Pro';
+      ? (ja ? 'プレミアム耐性スコアを表示するにはサインインしてください。' : 'Sign in to unlock premium resilience scores.')
+      : (ja ? '耐性スコアを表示するには Pro にアップグレードしてください。' : 'Upgrade to Pro to unlock resilience scores.');
+    const cta = gateReason === PanelGateReason.ANONYMOUS ? (ja ? 'サインイン' : 'Sign In') : (ja ? 'Proにアップグレード' : 'Upgrade to Pro');
 
     const preview = this.renderScoreCard(LOCKED_PREVIEW, true);
     preview.classList.add('resilience-widget__preview');
@@ -231,7 +237,7 @@ export class ResilienceWidget {
           className: 'cdp-action-btn resilience-widget__retry',
           onclick: () => void this.refresh(),
         },
-        'Retry',
+        getCurrentLanguage() === 'ja' ? '再試行' : 'Retry',
       ),
     );
   }

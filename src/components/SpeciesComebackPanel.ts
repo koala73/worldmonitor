@@ -39,7 +39,8 @@ const FALLBACK_IMAGE_SVG = 'data:image/svg+xml,' + encodeURIComponent(
 
 export class SpeciesComebackPanel extends Panel {
   constructor() {
-    super({ id: 'species', title: 'Conservation Wins', trackActivity: false, infoTooltip: t('components.conservationWins.infoTooltip') });
+    const ja = getLocale().startsWith('ja');
+    super({ id: 'species', title: ja ? '保全の成果' : 'Conservation Wins', trackActivity: false, infoTooltip: t('components.conservationWins.infoTooltip') });
   }
 
   /**
@@ -53,7 +54,7 @@ export class SpeciesComebackPanel extends Panel {
     if (species.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'species-empty';
-      empty.textContent = 'No conservation data available';
+      empty.textContent = getLocale().startsWith('ja') ? '保全データはまだありません' : 'No conservation data available';
       this.content.appendChild(empty);
       return;
     }

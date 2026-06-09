@@ -5,7 +5,7 @@ import { HAPPY_CATEGORY_ALL, HAPPY_CATEGORY_LABELS } from '@/services/positive-c
 import { shareHappyCard } from '@/services/happy-share-renderer';
 import { formatTime } from '@/utils';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
-import { t } from '@/services/i18n';
+import { t, getCurrentLanguage } from '@/services/i18n';
 
 /**
  * PositiveNewsFeedPanel -- scrolling positive news feed with category filter bar
@@ -19,7 +19,8 @@ export class PositiveNewsFeedPanel extends Panel {
   private filterClickHandlers: Map<HTMLButtonElement, () => void> = new Map();
 
   constructor() {
-    super({ id: 'positive-feed', title: 'Good News Feed', showCount: true, trackActivity: true });
+    const ja = getCurrentLanguage() === 'ja';
+    super({ id: 'positive-feed', title: ja ? 'グッドニュース' : 'Good News Feed', showCount: true, trackActivity: true });
     this.createFilterBar();
   }
 
