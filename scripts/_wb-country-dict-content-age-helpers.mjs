@@ -1,24 +1,21 @@
-// Sprint 4 cohort follow-up — shared content-age helper for WB seeders that
-// produce a per-country dict with each country carrying its own annual year.
+// Sprint 4 cohort follow-up - shared content-age helper for annual seeders that
+// produce a per-country dict with each country carrying its own source year.
 //
 // Shape contract:
 //
 //   { countries: { [ISO2]: { value: number, year: number } }, seededAt: string }
 //
-// Three production seeders match this shape (all WB indicators on annual
-// cadence, all using mrv=5 + per-country latest-year selection):
+// Production seeders matching this shape include:
 //
 //   - seed-power-reliability.mjs     (EG.ELC.LOSS.ZS)              — Sprint 4 PR #3602
-//   - seed-low-carbon-generation.mjs (EG.ELC.NUCL.ZS + RNEW + HYRO,
-//                                     summed at latest common component year)
 //   - seed-fossil-electricity-share.mjs (EG.ELC.FOSL.ZS)
+//   - seed-low-carbon-generation.mjs (OWID/Ember low-carbon electricity share)
 //
 // Why a shared helper instead of one per seeder: the contentMeta math is
-// identical across all three (find max year across countries, convert to
+// identical across all of them (find max year across countries, convert to
 // end-of-year UTC ms, apply 1h skew-limit). Only the BUDGET differs per
-// indicator (publication lag varies — see the PR description for live-WB
-// verification numbers). Each seeder imports this `wbCountryDictContentMeta`
-// + brings its own `MAX_CONTENT_AGE_MIN` constant inline.
+// indicator (publication lag varies by source). Each seeder imports this helper
+// and brings its own `MAX_CONTENT_AGE_MIN` constant inline.
 //
 // Power-reliability still has its own `_power-reliability-helpers.mjs` for
 // now (its PR #3602 is already in review; backporting can come as a
@@ -28,7 +25,7 @@
 /**
  * Convert a year (number or numeric string like "2024") to end-of-year UTC ms.
  *
- * The WB indicator value labelled `"2024"` represents observations DURING
+ * An annual source value labelled `"2024"` represents observations DURING
  * that calendar year, so the latest possible observation date is Dec 31.
  * End-of-year is the most defensible "newestItemAt".
  *
@@ -60,7 +57,7 @@ export function yearToEndOfYearMs(year) {
  * @param {{countries: Record<string, {year: number}>}} data
  * @param {number} nowMs - injectable "now" for deterministic tests
  */
-export function wbCountryDictContentMeta(data, nowMs = Date.now()) {
+export function countryDictYearContentMeta(data, nowMs = Date.now()) {
   const countries = data?.countries;
   if (!countries || typeof countries !== 'object') return null;
   const skewLimit = nowMs + 60 * 60 * 1000;
@@ -76,3 +73,5 @@ export function wbCountryDictContentMeta(data, nowMs = Date.now()) {
   if (validCount === 0) return null;
   return { newestItemAt: newest, oldestItemAt: oldest };
 }
+
+export const wbCountryDictContentMeta = countryDictYearContentMeta;

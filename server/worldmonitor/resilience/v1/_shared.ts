@@ -89,7 +89,7 @@ export function isPillarCombineEnabled(): boolean {
 // When on: `scoreEnergy` uses the v2 inputs under the Option B
 // (power-system security) framing:
 //   - importedFossilDependence = EG.ELC.FOSL.ZS × max(EG.IMP.CONS.ZS, 0) / 100   (weight 0.35)
-//   - lowCarbonGenerationShare = EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS                 (weight 0.20)
+//   - lowCarbonGenerationShare = OWID Grapher share-electricity-low-carbon      (weight 0.20)
 //   - powerLossesPct           = EG.ELC.LOSS.ZS                                  (weight 0.20)
 //   - euGasStorageStress       = legacy gasStorageStress scoped to EU            (weight 0.10)
 //   - energyPriceStress        = legacy energyPriceStress                        (weight 0.15)

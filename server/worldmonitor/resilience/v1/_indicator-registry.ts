@@ -687,7 +687,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'lowCarbonGenerationShare',
     dimension: 'energy',
-    description: 'Low-carbon share of electricity generation: nuclear + renewables-ex-hydro + hydroelectric (World Bank EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS + EG.ELC.HYRO.ZS). Hydro is summed separately because WB RNEW explicitly excludes hydroelectric — omitting HYRO would collapse this indicator to ~0 for Norway (~95% hydro), Paraguay (~99%), Brazil (~65%), Canada (~60%). Absorbs the legacy renewShare and adds nuclear + hydro credit.',
+    description: 'Low-carbon share of electricity generation from OWID Grapher share-electricity-low-carbon: renewables plus nuclear as a percent of electricity produced. OWID renewables already include hydropower, so the seeder uses the pre-aggregated low-carbon field to preserve nuclear credit without double-counting hydro-heavy grids such as Norway, Paraguay, Brazil, and Canada. Absorbs the legacy renewShare and adds firm low-carbon credit.',
     direction: 'higherBetter',
     goalposts: { worst: 0, best: 80 },
     weight: 0.2,
@@ -697,7 +697,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     imputation: { type: 'conservative', score: 30, certainty: 0.3 },
     tier: 'core',
     coverage: 190,
-    license: 'open-data',
+    license: 'open-attribution',
     comprehensive: true,
   },
   {

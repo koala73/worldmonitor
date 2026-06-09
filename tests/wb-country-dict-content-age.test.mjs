@@ -1,4 +1,4 @@
-// Sprint 4 cohort follow-up — shared WB per-country-dict content-age helper.
+// Sprint 4 cohort follow-up - shared annual per-country-dict content-age helper.
 //
 // Tests cover the shared `wbCountryDictContentMeta` shape contract.
 // Per-seeder budget assertions live in this file too — they're the
@@ -14,7 +14,7 @@ import {
   wbCountryDictContentMeta,
 } from '../scripts/_wb-country-dict-content-age-helpers.mjs';
 
-const FIXED_NOW = Date.UTC(2026, 4, 5, 12);     // 2026-05-05T12:00 UTC — matches the live-WB-data verification date.
+const FIXED_NOW = Date.UTC(2026, 4, 5, 12);     // 2026-05-05T12:00 UTC - matches the live data verification date.
 
 // ── yearToEndOfYearMs ────────────────────────────────────────────────────
 
@@ -102,48 +102,41 @@ test('contentMeta excludes future-dated years beyond 1h clock-skew tolerance', (
 // run), (b) steady-state under budget (no false-positive mid-cycle when
 // next year publishes late but legitimately).
 
-// INTERIM 60mo — the live min-common-year composite is frozen at 2021 (one of
-// NUCL/HYRO stalled in WB WDI), so the real content age is ~53mo, more than the
-// fossil-share lag. Durable fix tracked in issue #4219 (migrate to Ember/OWID).
-const LOW_CARBON_BUDGET = 60 * 30 * 24 * 60;     // see seed-low-carbon-generation.mjs
+// Low-carbon uses OWID Grapher share-electricity-low-carbon after issue #4219. The budget is
+// back to a tight annual-source threshold; a stalled source should alarm instead
+// of preserving the temporary 60mo World Bank workaround.
+const LOW_CARBON_BUDGET = 18 * 30 * 24 * 60;     // see seed-low-carbon-generation.mjs
 const FOSSIL_BUDGET = 48 * 30 * 24 * 60;          // see seed-fossil-electricity-share.mjs
 
-test('low-carbon: fresh-arrival regression guard — max year 2024 (~17mo) within 60mo budget', () => {
-  // Payload year is the seeder's aligned per-country composite year. When
-  // a country has common NUCL/RNEW/HYRO year 2024, that should remain within
-  // the low-carbon content-age budget.
+test('low-carbon: fresh OWID arrival — max year 2024 (~16mo) within 18mo budget', () => {
+  // Payload year is the latest OWID Grapher share-electricity-low-carbon year. A current
+  // annual source should stay inside the restored tight budget.
   const data = { countries: { US: { value: 60.5, year: 2024 } } };
   const cm = wbCountryDictContentMeta(data, FIXED_NOW);
   const ageMin = (FIXED_NOW - cm.newestItemAt) / 60000;
   assert.ok(
     ageMin < LOW_CARBON_BUDGET,
-    `${Math.round(ageMin / 60 / 24 / 30)}mo < 60mo budget — fresh arrival within tolerance`,
+    `${Math.round(ageMin / 60 / 24 / 30)}mo < 18mo budget - fresh arrival within tolerance`,
   );
 });
 
-test('low-carbon: live-reality regression guard — frozen at 2021 (~53mo) stays within 60mo budget', () => {
-  // The bug the 60mo bump fixes: WB WDI's hydro/nuclear component is stuck at
-  // 2021, so the min-common-year composite is ~53mo old. Under the old 36mo
-  // budget this false-positived STALE_CONTENT every cron run even though 2021
-  // IS the latest WB publishes. Durable fix = issue #4219.
-  const data = { countries: { US: { value: 60.5, year: 2021 } } };
+test('low-carbon: stale OWID source year — max year 2023 trips restored 18mo budget', () => {
+  const data = { countries: { US: { value: 60.5, year: 2023 } } };
   const cm = wbCountryDictContentMeta(data, FIXED_NOW);
   const ageMin = (FIXED_NOW - cm.newestItemAt) / 60000;
   assert.ok(
-    ageMin < LOW_CARBON_BUDGET,
-    `${Math.round(ageMin / 60 / 24 / 30)}mo < 60mo budget — the frozen-2021 live state must not false-positive`,
+    ageMin > LOW_CARBON_BUDGET,
+    `${Math.round(ageMin / 60 / 24 / 30)}mo > 18mo budget - stale source content alarms`,
   );
 });
 
-test('low-carbon: catastrophic stall — max year 2020 (~65mo) trips STALE_CONTENT', () => {
-  // A regression below the known-frozen 2021 floor (e.g. the seeder picking an
-  // even older common year) must still alarm: 2020 is ~65mo > 60mo budget.
+test('low-carbon: catastrophic stall — max year 2020 trips STALE_CONTENT', () => {
   const data = { countries: { US: { value: 60.5, year: 2020 } } };
   const cm = wbCountryDictContentMeta(data, FIXED_NOW);
   const ageMin = (FIXED_NOW - cm.newestItemAt) / 60000;
   assert.ok(
     ageMin > LOW_CARBON_BUDGET,
-    `${Math.round(ageMin / 60 / 24 / 30)}mo > 60mo budget — STALE_CONTENT correctly fires`,
+    `${Math.round(ageMin / 60 / 24 / 30)}mo > 18mo budget - STALE_CONTENT correctly fires`,
   );
 });
 
@@ -185,14 +178,11 @@ test('fossil-share: catastrophic stall — max year 2018 (~89mo) trips STALE_CON
   );
 });
 
-test('per-seeder budget separation: a 52mo cache trips fossil-share (48mo) but NOT low-carbon (60mo)', () => {
-  // Per-seeder budgets matter — and the ordering is the REVERSE of the original
-  // assumption. Low-carbon's binding min-common-year composite is frozen at 2021
-  // (one of NUCL/HYRO stalled in WB WDI), so it lags MORE than fossil-share
-  // (FOSL ~2023) and now carries the LARGER (interim) budget. A 52mo cache is a
-  // real stall for fossil-share but within low-carbon's tolerance. Same age,
-  // different verdicts. (Durable fix to shrink low-carbon's budget: issue #4219.)
-  const ageMs52 = 52 * 30 * 24 * 60 * 60 * 1000;
-  assert.ok(ageMs52 / 60000 > FOSSIL_BUDGET, '52mo > fossil-share 48mo budget — trips');
-  assert.ok(ageMs52 / 60000 < LOW_CARBON_BUDGET, '52mo < low-carbon 60mo budget — does NOT trip');
+test('per-seeder budget separation: a 24mo cache trips low-carbon but not fossil-share', () => {
+  // Per-seeder budgets matter. Low-carbon now uses a fresher OWID annual source
+  // and should page on a multi-year stall; fossil-share remains on slower WB
+  // FOSL and retains its wider 48mo tolerance.
+  const ageMs24 = 24 * 30 * 24 * 60 * 60 * 1000;
+  assert.ok(ageMs24 / 60000 > LOW_CARBON_BUDGET, '24mo > low-carbon 18mo budget - trips');
+  assert.ok(ageMs24 / 60000 < FOSSIL_BUDGET, '24mo < fossil-share 48mo budget - does NOT trip');
 });

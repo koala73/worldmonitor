@@ -546,7 +546,7 @@
   license: CC-BY-4.0
   mechanismTestRationale: Share of electricity from renewables, proxies low-carbon-firm-generation capacity (for hydro/geothermal) and diversity-of-supply (for wind/solar).
   constructStatus: observed-mechanism
-  reviewNotes: PR 1 §3.3 collapses with nuclearShare (currently missing) into one lowCarbonGenerationShare indicator.
+  reviewNotes: PR 1 §3.3 collapses this legacy input into lowCarbonGenerationShare; the active replacement now uses OWID's pre-aggregated low-carbon electricity share.
 
 - indicator: storageStress
   dimension: energy
@@ -617,15 +617,15 @@
   weight: 0.20
   direction: higher-better
   scoringTier: core
-  source: World Bank
-  seriesId: EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS + EG.ELC.HYRO.ZS
-  seriesUrl: https://data.worldbank.org/indicator/EG.ELC.NUCL.ZS
+  source: OWID / Ember / Energy Institute
+  seriesId: share-electricity-low-carbon
+  seriesUrl: https://ourworldindata.org/grapher/share-electricity-low-carbon
   coveragePct: 0.97
-  lastObservedYear: 2024
+  lastObservedYear: 2025
   license: CC-BY-4.0
-  mechanismTestRationale: Credits firm and low-carbon electricity generation across nuclear, renewables excluding hydro, and hydroelectric output.
+  mechanismTestRationale: Credits low-carbon electricity generation from renewables plus nuclear; OWID renewables already include hydropower, avoiding hydro omission or double-counting.
   constructStatus: observed-mechanism
-  reviewNotes: Active energy-v2 Core scorer input. Absorbs legacy renewShare and adds nuclear + hydro credit.
+  reviewNotes: Active energy-v2 Core scorer input. Absorbs legacy renewShare and adds nuclear credit through the pre-aggregated OWID low-carbon electricity share.
 
 - indicator: powerLossesPct
   dimension: energy
