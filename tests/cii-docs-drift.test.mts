@@ -271,6 +271,21 @@ describe('CII docs drift guards', () => {
       /ACLED returns zero events[\s\S]{0,80}comparison[\s\S]{0,20}windows/i,
       'methodology changelog must document the ACLED zero-event warning added with the v8 amendment',
     );
+    assert.match(
+      countryDoc,
+      /conflict realtime\s+family is covered when either ACLED or an in-window UCDP feed is present/i,
+      'country-instability-index doc must publish ACLED-or-UCDP health coverage semantics',
+    );
+    assert.match(
+      countryDoc,
+      /`COVERAGE_PARTIAL` only when ACLED is dark and UCDP is also absent, stale, or\s+outside the 2-year scoring window/i,
+      'country-instability-index doc must not imply ACLED auth missing alone causes COVERAGE_PARTIAL',
+    );
+    assert.match(
+      methodologyDoc,
+      /Country Instability Index[\s\S]{0,120}ACLED-or-UCDP health coverage semantics/i,
+      'methodology changelog must cross-link the current ACLED-or-UCDP health coverage semantics',
+    );
     for (const surface of [
       { label: 'country-instability-index doc', text: countryFloors },
       { label: 'algorithms doc', text: algorithmsDoc },

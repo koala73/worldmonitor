@@ -1,8 +1,62 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { discoverVersion as discoverStandaloneUcdpVersion } from '../scripts/seed-ucdp-events.mjs';
 
 const src = readFileSync('scripts/ais-relay.cjs', 'utf8');
+const standaloneSrc = readFileSync('scripts/seed-ucdp-events.mjs', 'utf8');
+const UCDP_REDIS_KEY = 'conflict:ucdp-events:v1';
+const EXPECTED_UCDP_WRITER_PATHS = [
+  'scripts/ais-relay.cjs',
+  'scripts/seed-ucdp-events.mjs',
+];
+
+function sourceFilesContaining(rootDir, needle) {
+  const matches = [];
+  const stack = [rootDir];
+  while (stack.length > 0) {
+    const dir = stack.pop();
+    for (const entry of readdirSync(dir)) {
+      const path = join(dir, entry);
+      const stat = statSync(path);
+      if (stat.isDirectory()) {
+        stack.push(path);
+        continue;
+      }
+      if (!/\.(?:cjs|mjs|js|mts|ts)$/.test(path)) continue;
+      if (readFileSync(path, 'utf8').includes(needle)) matches.push(path);
+    }
+  }
+  return matches.sort();
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function ucdpRedisWriterPaths() {
+  return sourceFilesContaining('scripts', UCDP_REDIS_KEY)
+    .filter((path) => !path.endsWith('.test.mjs') && !path.endsWith('.test.mts'))
+    .filter((path) => {
+      const text = readFileSync(path, 'utf8');
+      if (new RegExp(`(?:envelopeWrite|upstashSet)\\(\\s*['"]${escapeRegExp(UCDP_REDIS_KEY)}['"]`).test(text)) {
+        return true;
+      }
+      if (new RegExp(`\\[\\s*['"]SET['"]\\s*,\\s*['"]${escapeRegExp(UCDP_REDIS_KEY)}['"]`).test(text)) {
+        return true;
+      }
+      const keyVars = Array.from(
+        text.matchAll(new RegExp(`(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*['"]${escapeRegExp(UCDP_REDIS_KEY)}['"]`, 'g')),
+        (match) => match[1],
+      );
+      return keyVars.some((keyVar) => (
+        new RegExp(`(?:envelopeWrite|upstashSet)\\(\\s*${keyVar}\\b`).test(text)
+          || new RegExp(`\\[\\s*['"]SET['"]\\s*,\\s*${keyVar}\\b`).test(text)
+      ));
+    })
+    .sort();
+}
 
 // Extract just the seedUcdpEvents function body for targeted assertions
 const fnStart = src.indexOf('async function seedUcdpEvents()');
@@ -124,6 +178,40 @@ describe('UCDP version selection prefers the newest release', () => {
       src.indexOf('async function ucdpFetchAllEvents()'),
     );
     assert.match(relayDiscover, /Array\.isArray\(page0\?\.Result\) && page0\.Result\.length > 0/);
+  });
+
+  it('all UCDP Redis writers are covered by this guard', () => {
+    assert.deepEqual(ucdpRedisWriterPaths(), EXPECTED_UCDP_WRITER_PATHS);
+  });
+
+  it('standalone cron discovery requires a non-empty Result (no empty newer wins)', async () => {
+    const standaloneDiscover = standaloneSrc.slice(
+      standaloneSrc.indexOf('async function discoverVersion('),
+      standaloneSrc.indexOf('function parseDateMs('),
+    );
+    assert.match(
+      standaloneDiscover,
+      /!Array\.isArray\(page0\?\.Result\) \|\| page0\.Result\.length === 0/,
+      'standalone discovery must reject empty Result arrays',
+    );
+
+    const pages = new Map([
+      ['26.1', { Result: [], TotalPages: 1 }],
+      ['25.1', { Result: [{ id: 'older-populated' }], TotalPages: 1 }],
+    ]);
+    const originalLog = console.log;
+    console.log = () => {};
+    try {
+      const selected = await discoverStandaloneUcdpVersion(
+        '',
+        async (version) => pages.get(version),
+        ['26.1', '25.1'],
+      );
+      assert.equal(selected.version, '25.1');
+      assert.deepEqual(selected.page0.Result, [{ id: 'older-populated' }]);
+    } finally {
+      console.log = originalLog;
+    }
   });
 
   it('ucdpVersionNewer ranks GED versions newest-first (behavioral)', () => {

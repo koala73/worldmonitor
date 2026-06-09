@@ -97,9 +97,11 @@ count is greater than 100, and as UCDP **minor conflict** when event count is
 greater than 10 but the war thresholds are not met. Because UCDP GED ships as
 annual releases that lag real time, recent kinetic conflict is carried by
 **ACLED** (real-time) and the cross-source signal feed; UCDP supplies the
-historical baseline floor. If ACLED auth is unconfigured the conflict realtime
-signal degrades to UCDP-only, which `/api/health.riskScores` surfaces as
-`COVERAGE_PARTIAL` (see [Data Sources](/data-sources#dual-source-protest-tracking)).
+historical baseline floor. For `/api/health.riskScores`, the conflict realtime
+family is covered when either ACLED or an in-window UCDP feed is present. ACLED
+auth being unconfigured degrades the conflict signal to UCDP-only; it becomes
+`COVERAGE_PARTIAL` only when ACLED is dark and UCDP is also absent, stale, or
+outside the 2-year scoring window (see [Data Sources](/data-sources#dual-source-protest-tracking)).
 
 ## Instability Levels
 
