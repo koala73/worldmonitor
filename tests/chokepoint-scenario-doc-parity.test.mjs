@@ -52,6 +52,28 @@ function containsSeededReporters(text, seededReporters) {
   return normalized.includes(seededReporters.join(', '));
 }
 
+function extractBetween(source, startNeedle, endNeedle, label) {
+  const start = source.indexOf(startNeedle);
+  assert.notEqual(start, -1, `${label} start not found`);
+  const end = source.indexOf(endNeedle, start + startNeedle.length);
+  assert.notEqual(end, -1, `${label} end not found`);
+  return source.slice(start, end);
+}
+
+function extractProtoMessage(source, messageName) {
+  return extractBetween(source, `message ${messageName} {`, '\n}', `${messageName} proto message`);
+}
+
+function extractYamlSchema(source, schemaName) {
+  const startNeedle = `        ${schemaName}:\n`;
+  const start = source.indexOf(startNeedle);
+  assert.notEqual(start, -1, `${schemaName} schema not found`);
+  const afterStart = start + startNeedle.length;
+  const nextSchema = source.slice(afterStart).match(/\n        [A-Za-z0-9_]+:\n/);
+  const end = nextSchema ? afterStart + nextSchema.index : source.length;
+  return source.slice(start, end);
+}
+
 function warRiskEnumForThreat(threatLevel) {
   if (threatLevel === 'war_zone') return 'WAR_RISK_TIER_WAR_ZONE';
   return `WAR_RISK_TIER_${threatLevel.toUpperCase()}`;
@@ -201,15 +223,18 @@ describe('scenario docs match worker scope and impact math', () => {
       'scenario worker must keep deriving result.template.name from affected chokepoint ids',
     );
 
-    for (const [label, text] of [
-      ['scenario engine doc', scenarioDoc],
-      ['API scenario doc', apiDoc],
-      ['GetScenarioStatus proto', statusProto],
-      ['ScenarioService OpenAPI', scenarioOpenApi],
-      ['bundled OpenAPI', bundledOpenApi],
+    for (const [label, section] of [
+      ['scenario engine doc Template echo section', extractBetween(scenarioDoc, '- **Template echo**', '- **A summary card**', 'scenario engine template echo section')],
+      ['API scenario doc template.name note', extractBetween(apiDoc, 'In the status payload, `template.name` is the worker-derived key', '`totalImpact` is a relative', 'API scenario template.name note')],
+      ['GetScenarioStatus proto ScenarioResultTemplate message', extractProtoMessage(statusProto, 'ScenarioResultTemplate')],
+      ['ScenarioService OpenAPI ScenarioResultTemplate schema', extractYamlSchema(scenarioOpenApi, 'ScenarioResultTemplate')],
+      ['bundled OpenAPI ScenarioResultTemplate schema', extractYamlSchema(bundledOpenApi, 'worldmonitor_scenario_v1_ScenarioResultTemplate')],
     ]) {
-      assert.match(text, /affectedChokepointIds\.join\('\+'\)|affected_chokepoint_ids with `\+`|hormuz_strait|tariff_shock/, `${label} must describe template.name as a derived key`);
-      assert.doesNotMatch(text, /selected template'?s display name|Display name \(worker derives this from affected_chokepoint_ids/i, `${label} must not describe result.template.name as a display name`);
+      assert.match(section, /worker-derived template key|worker-derived key/i, `${label} must call template.name worker-derived`);
+      assert.match(section, /affectedChokepointIds|affected_chokepoint_ids|affected chokepoint ids/i, `${label} must tie template.name to affected chokepoint ids`);
+      assert.match(section, /\+/, `${label} must document plus-joining for physical scenarios`);
+      assert.match(section, /tariff_shock/, `${label} must document the non-physical tariff fallback`);
+      assert.doesNotMatch(section, /selected template'?s display name|Display name \(worker derives this from affected_chokepoint_ids/i, `${label} must not describe result.template.name as a display name`);
     }
   });
 });
