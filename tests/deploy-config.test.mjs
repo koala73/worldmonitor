@@ -25,6 +25,13 @@ const getCspDirectiveTokens = (csp, directive) => {
   return [...new Set(tokens)].sort();
 };
 
+const getVariantHosts = () => {
+  const variantMetaSource = readFileSync(resolve(__dirname, '../src/config/variant-meta.ts'), 'utf-8');
+  return [...variantMetaSource.matchAll(/url:\s*'https:\/\/([^/']+)\//g)]
+    .map((match) => match[1])
+    .sort();
+};
+
 describe('deploy/cache configuration guardrails', () => {
   it('requires revalidation for HTML entry routes on Vercel without disabling bfcache', () => {
     // /mcp-grant added to the negative-lookahead by plan 2026-05-10-001 U3 — apex
@@ -395,6 +402,33 @@ describe('security header guardrails', () => {
       frameSrc.includes('clerk.accounts.dev') || frameSrc.includes('clerk.worldmonitor.app'),
       'docker/nginx CSP frame-src must include Clerk origin for the self-hosted sign-in modal'
     );
+  });
+
+  it('CSP frame directives include every variant hostname', () => {
+    const variantHosts = getVariantHosts();
+    const headerCsp = getHeaderValue('Content-Security-Policy');
+    const indexHtml = readFileSync(resolve(__dirname, '../index.html'), 'utf-8');
+    const metaMatch = indexHtml.match(/http-equiv="Content-Security-Policy"\s+content="([^"]*)"/i);
+    assert.ok(metaMatch, 'index.html must have a CSP meta tag');
+    const nginxCsp = getNginxHeaderValue('Content-Security-Policy');
+    assert.ok(nginxCsp, 'nginx-security-headers.conf must have a Content-Security-Policy header');
+
+    const surfaces = [
+      ['vercel frame-src', getCspDirectiveTokens(headerCsp, 'frame-src')],
+      ['vercel frame-ancestors', getCspDirectiveTokens(headerCsp, 'frame-ancestors')],
+      ['index.html frame-src', getCspDirectiveTokens(metaMatch[1], 'frame-src')],
+      ['nginx frame-src', getCspDirectiveTokens(nginxCsp, 'frame-src')],
+      ['nginx frame-ancestors', getCspDirectiveTokens(nginxCsp, 'frame-ancestors')],
+    ];
+
+    for (const [label, tokens] of surfaces) {
+      const missing = variantHosts.filter((host) => !tokens.includes(`https://${host}`));
+      assert.deepEqual(
+        missing,
+        [],
+        `${label} is missing variant host(s): ${missing.join(', ')}`
+      );
+    }
   });
 
   it('CSP script-src is in sync between vercel.json header and index.html meta tag', () => {
