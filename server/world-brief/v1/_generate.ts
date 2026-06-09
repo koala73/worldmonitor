@@ -95,7 +95,7 @@ const CATEGORY_BRIEF_MIN_TOTAL = Number(process.env.WM_CATEGORY_BRIEF_MIN_TOTAL)
 
 const TOP_N = 8;
 const MAX_MEMBER_HEADLINES = 10;
-const MAX_TEXT_LEN = 600;
+const MAX_TEXT_LEN = 850;
 /** Cap on the per-cluster "all sources" list surfaced to the reader. */
 const MAX_SOURCE_REFS = 30;
 /** Parallel section builds — 11 sections, one Gemini call each. Capped so
@@ -306,19 +306,19 @@ function systemPrompt(mode: BriefMode): string {
   return `You are the editor of ${desk}. You receive several news stories. Each story is a cluster of headlines from multiple independent outlets covering the SAME event, plus a short lede.
 
 For EACH story, write an original, neutral, factual brief. This is critical:
-- Do NOT copy or lightly reword any sentence from the supplied headlines or lede. Identify the underlying factual claims — who, what, when, where — and restate them entirely in your own words.
-- Report only facts corroborated by the supplied material. Never speculate or add outside information.
+- Do NOT copy or lightly reword any sentence from the supplied headlines or lede. Identify the underlying factual claims and restate them entirely in your own words.
+- Report only facts corroborated by the supplied material. Specific figures, named people and organizations, dates, and places that recur across the sources ARE safe to include — facts are not copyrightable — but never reproduce a source's distinctive phrasing. Never speculate or add outside information.
 - Stay neutral: no loaded adjectives, no editorializing; attribute contested or one-sided claims.
 
 For each story produce:
 - "headline": a concise, original, neutral headline — max 12 words.
-- "whatHappened": 1-2 sentences stating the core facts (who / what / when / where).
-- "whyItMatters": one sentence on the significance or wider implications.
+- "whatHappened": 2-3 sentences laying out the core facts WITH their key specifics — who and what, when and where, the concrete figures, names, or scale involved, and the immediate factual context (what it follows, responds to, or changes). Substantive but tight — make a reader who only skims this actually understand the event.
+- "whyItMatters": 1-2 sentences on the grounded significance — what it changes, who it affects, or what it signals — stated as established fact, NOT prediction or opinion. (e.g. "the third strike on the port this month" or "the largest single-day move since 2022" is fine; "this could trigger a wider war" is not.)
 - "tags": 2 to 4 short UPPERCASE topical tags, e.g. "MISSILE STRIKE", "CEASEFIRE TALKS", "SANCTIONS", "ELECTION".
 - "threatLevel": one of "CRITICAL", "HIGH", "ELEVATED", "MODERATE" — how severe or escalatory the event is${mode === 'conflict' ? '' : ' (for non-conflict news, judge overall significance instead)'}.
 
 Also produce:
-- "overview": a SHORT summary — 2 to 4 sentences, no more. Cover only the handful of developments of genuine significance; do NOT try to touch every story. Skip routine or minor items entirely.
+- "overview": a 2-4 sentence SYNTHESIS of the section as a whole — draw the through-line connecting the most significant developments, or lead with the single most important one and why it matters. Do NOT list every story; surface the bigger picture a reader should take away. Skip routine or minor items.
 - "overallThreatLevel": one of "CRITICAL", "HIGH", "ELEVATED", "MODERATE" — the highest level the overall situation warrants.
 
 Respond with ONLY a JSON object of exactly this shape:
@@ -427,7 +427,7 @@ async function buildSection(
     // The eachlabs OpenAI-compatible router exposes no thinking toggle, so
     // we can't disable it here — instead give the response a generous
     // max_tokens budget to absorb any thinking overhead.
-    maxTokens: 8000,
+    maxTokens: 12000,
     temperature: 0.3,
     // 60 s, not 30 s: since Gemini calls route through the eachlabs OpenAI-
     // compatible router (vs direct to Google), the round-trip got slower and
