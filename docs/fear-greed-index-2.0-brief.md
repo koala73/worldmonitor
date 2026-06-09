@@ -140,6 +140,9 @@ score = (CNN_FG * 0.4) + (AAII_Bull_Percentile * 0.3) + ((100 - AAII_Bear_Percen
 // Degraded path (AAII unavailable — store aaiBull/aaiBear as null, not 0):
 score = CNN_FG  // 100% weight on CNN F&G; crypto F&G from Redis as secondary signal if CNN also fails; neutral 50 if both are absent
 // aaiBull and aaiBear fields: null (not 0 — zero skews score toward Extreme Fear)
+
+// CNN unavailable, AAII available:
+score = (AAII_Bull_Percentile * 0.5) + ((100 - AAII_Bear_Percentile) * 0.5)
 ```
 
 AAII survey inputs are anchored to deliberately conservative historical stress
@@ -289,10 +292,13 @@ Follows the existing pattern: Railway cron → fetch external APIs → compute s
 
 ```
 market:fear-greed:v1              # Composite index + all category scores
-market:fear-greed:history:v1      # Sorted set — daily snapshots for sparklines (score UNIX score, member ISO date string)
 seed-meta:market:fear-greed       # Metadata (fetchedAt, recordCount, sourceVersion)
 seed-lock:market:fear-greed       # Concurrency lock
 ```
+
+`market:fear-greed:history:v1` is a planned sorted set for daily sparkline
+snapshots. The current seeder does not write or read it yet, so operators should
+not treat it as a live key.
 
 **TTL**: 64800s (18h) — 3× the 6h cron interval. Required to survive 2 missed cron cycles (Railway downtime, deploy gaps). `runSeed()` extends this same TTL on both fetch-failure and empty-data paths.
 **Cron**: `0 0,6,12,18 * * *` (every 6h)
@@ -328,11 +334,11 @@ seed-lock:market:fear-greed       # Concurrency lock
   "categories": {
     "sentiment": { "score": 19, "weight": 0.10, "contribution": 1.9, "inputs": { "cnnFearGreed": 16, "cnnLabel": "Extreme Fear", "aaiBull": 30.4, "aaiBear": 52.0 }, "degraded": false },
     // degraded: true when AAII unavailable; aaiBull/aaiBear: null (not 0) when AAII fetch fails
-    "volatility": { "score": 47, "weight": 0.10, "contribution": 4.7, "inputs": { "vix": 26.78, "vixChange": 11.31, "vix9d": 28.1, "vix3m": 24.5, "termStructure": "backwardation" } },
-    "positioning": { "score": 34, "weight": 0.15, "contribution": 5.1, "inputs": { "putCallRatio": 1.01, "putCallAvg": 0.87, "skew": 135 } },
+    "volatility": { "score": 47, "weight": 0.10, "contribution": 4.7, "inputs": { "vix": 26.78, "vix9d": 28.1, "vix3m": 24.5, "termStructure": "backwardation" } },
+    "positioning": { "score": 34, "weight": 0.15, "contribution": 5.1, "inputs": { "putCallRatio": 1.01, "skew": 135 } },
     "trend": { "score": 52, "weight": 0.10, "contribution": 5.2, "inputs": { "spxPrice": 5667, "sma20": 5580, "sma50": 5520, "sma200": 5200, "aboveMaCount": 3 } },
-    "breadth": { "score": 40, "weight": 0.10, "contribution": 4.0, "inputs": { "pctAbove200d": 43.93, "rspSpyRatio": -2.1, "advDecRatio": 0.85 } },
-    "momentum": { "score": 13, "weight": 0.10, "contribution": 1.3, "inputs": { "spxRoc20d": -3.2, "sectorRsiAvg": 38, "leadersVsLaggards": -12.5 } },
+    "breadth": { "score": 40, "weight": 0.10, "contribution": 4.0, "inputs": { "pctAbove200d": 43.93, "rspSpyRatio": -2.1, "advDecRatio": null } },
+    "momentum": { "score": 13, "weight": 0.10, "contribution": 1.3, "inputs": { "spxRoc20d": -3.2, "sectorRsiAvg": 38 } },
     "liquidity": { "score": 26, "weight": 0.15, "contribution": 3.9, "inputs": { "m2Yoy": 1.2, "fedBsMom": -0.8, "sofr": 5.31 } },
     "credit": { "score": 68, "weight": 0.10, "contribution": 6.8, "inputs": { "hySpread": 3.27, "igSpread": 1.15, "hyTrend30d": "narrowing" } },
     "macro": { "score": 44, "weight": 0.05, "contribution": 2.2, "inputs": { "fedRate": 3.625, "t10y2y": 0.15, "unrate": 4.1 } },

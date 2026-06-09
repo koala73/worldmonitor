@@ -62,6 +62,13 @@ function parseAaiiTimeoutMs(source) {
   return Number(match[1].replace(/_/g, ''));
 }
 
+function markdownSection(text, heading) {
+  const start = text.indexOf(heading);
+  assert.notEqual(start, -1, `missing section ${heading}`);
+  const next = text.indexOf('\n### ', start + heading.length);
+  return text.slice(start, next === -1 ? undefined : next);
+}
+
 describe('Fear & Greed docs match seed-fear-greed source', () => {
   const source = readRepo('scripts/seed-fear-greed.mjs');
   const doc = readRepo('docs/fear-greed-index-2.0-brief.md');
@@ -85,11 +92,15 @@ describe('Fear & Greed docs match seed-fear-greed source', () => {
     assert.match(doc, new RegExp(`AAII_Bull_Percentile \\* ${weights.bull}`));
     assert.match(doc, new RegExp(`AAII_Bear_Percentile\\) \\* ${weights.bear}`));
     assert.match(source, /aaiBull == null \|\| aaiBear == null/);
+    assert.match(source, /score = \(bullPercentile \* 0\.5\) \+ \(\(100 - bearPercentile\) \* 0\.5\);/);
     assert.match(source, /score = cnnFg;/);
     assert.match(source, /score = cryptoFg;/);
     assert.match(source, /score = 50;/);
     assert.match(source, /aaiBull: aaiBull \?\? null, aaiBear: aaiBear \?\? null/);
     assert.match(doc, /AAII unavailable/);
+    assert.match(doc, /CNN unavailable, AAII available/);
+    assert.match(doc, /AAII_Bull_Percentile \* 0\.5/);
+    assert.match(doc, /100 - AAII_Bear_Percentile\) \* 0\.5/);
     assert.match(doc, /aaiBull\/aaiBear as null, not 0/);
     assert.match(doc, /crypto F&G from Redis as secondary signal/);
     assert.match(doc, /neutral 50 if both are absent/);
@@ -103,5 +114,23 @@ describe('Fear & Greed docs match seed-fear-greed source', () => {
     assert.match(doc, /Advance\/decline ratio is currently `null`/);
     assert.match(doc, new RegExp(`breadth_score \\* ${normal[0]} \\+ ad_score \\* ${normal[1]} \\+ rsp_score \\* ${normal[2]}`));
     assert.match(doc, new RegExp(`breadth_score \\* ${degraded[0]} \\+ rsp_score \\* ${degraded[2]}`));
+  });
+
+  it('keeps the Redis output schema example aligned with emitted category input keys', () => {
+    const outputSchema = markdownSection(doc, '### Output Schema (stored in Redis)');
+
+    assert.match(outputSchema, /"volatility": .*"inputs": \{ "vix": .*"vix9d": .*"vix3m": .*"termStructure"/);
+    assert.doesNotMatch(outputSchema, /"vixChange"/);
+    assert.match(outputSchema, /"positioning": .*"inputs": \{ "putCallRatio": .*"skew"/);
+    assert.doesNotMatch(outputSchema, /"putCallAvg"/);
+    assert.match(outputSchema, /"breadth": .*"advDecRatio": null/);
+    assert.match(outputSchema, /"momentum": .*"inputs": \{ "spxRoc20d": .*"sectorRsiAvg"/);
+    assert.doesNotMatch(outputSchema, /"leadersVsLaggards"/);
+  });
+
+  it('does not document the unimplemented history Redis key as current state', () => {
+    assert.doesNotMatch(source, /market:fear-greed:history:v1/);
+    assert.match(doc, /`market:fear-greed:history:v1` is a planned sorted set/);
+    assert.match(doc, /does not write or read it yet/);
   });
 });

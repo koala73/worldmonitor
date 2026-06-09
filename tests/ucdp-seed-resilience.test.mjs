@@ -198,7 +198,8 @@ describe('UCDP version selection prefers the newest release', () => {
     assert.deepEqual(ucdpRedisWriterPaths(), EXPECTED_UCDP_WRITER_PATHS);
   });
 
-  it('standalone cron discovery requires a non-empty Result (no empty newer wins)', async () => {
+  it('standalone cron discovery also requires non-empty Result for the same Redis key', async () => {
+    assert.match(standaloneSrc, /const REDIS_KEY = 'conflict:ucdp-events:v1'/);
     const standaloneDiscover = standaloneSrc.slice(
       standaloneSrc.indexOf('async function discoverVersion('),
       standaloneSrc.indexOf('function parseDateMs('),
@@ -206,7 +207,7 @@ describe('UCDP version selection prefers the newest release', () => {
     assert.match(
       standaloneDiscover,
       /!Array\.isArray\(page0\?\.Result\) \|\| page0\.Result\.length === 0/,
-      'standalone discovery must reject empty Result arrays',
+      'standalone UCDP seeder must not let an empty newer GED release win',
     );
 
     const pages = new Map([

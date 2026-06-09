@@ -50,11 +50,24 @@ observations.
 
 ### Risk Levels
 
-| Score | Level | Meaning |
-|-------|-------|---------|
-| 70-100 | **High** | Multiple converging crises |
-| 40-69 | **Medium** | Heightened global tension |
-| 0-39 | **Low** | Lower global strategic pressure |
+The panel-visible headline label uses the same five display bands as the
+Country Instability Index:
+
+| Score | Panel label | Meaning |
+|-------|-------------|---------|
+| 81-100 | **Critical** | Extreme global strategic pressure |
+| 66-80 | **High** | Multiple converging crises |
+| 51-65 | **Elevated** | Heightened global tension |
+| 31-50 | **Normal** | Watchful but below elevated pressure |
+| 0-30 | **Low** | Lower global strategic pressure |
+
+The server `StrategicRisk.level` enum remains a coarser API severity field:
+
+| Score | Server enum | Meaning |
+|-------|-------------|---------|
+| 70-100 | `SEVERITY_LEVEL_HIGH` | High API severity |
+| 40-69 | `SEVERITY_LEVEL_MEDIUM` | Medium API severity |
+| 0-39 | `SEVERITY_LEVEL_LOW` | Low API severity |
 
 ### Unified Alert System
 
