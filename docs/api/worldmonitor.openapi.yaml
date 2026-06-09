@@ -19670,10 +19670,19 @@ components:
                          rolling baseline window. Separate from the green/yellow/red status badge.
                 source:
                     type: string
+                    description: |-
+                        Flow source: "portwatch-dwt" when DWT-majority coverage is used,
+                         otherwise "portwatch-counts" for vessel-count coverage.
                 hazardAlertLevel:
                     type: string
+                    description: |-
+                        Nearest active GDACS hazard alert level within the configured radius:
+                         "RED", "ORANGE", or empty string when no nearby alert applies.
                 hazardAlertName:
                     type: string
+                    description: |-
+                        Name of the nearest active GDACS hazard event within the configured
+                         radius, or empty string when no nearby alert applies.
         worldmonitor_supply_chain_v1_GetChokepointHistoryRequest:
             type: object
             properties:

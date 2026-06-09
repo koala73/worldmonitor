@@ -138,6 +138,17 @@ describe('chokepoint methodology docs match scoring code', () => {
     }
 
     for (const [label, text] of [
+      ['supply-chain proto', supplyChainProto],
+      ['SupplyChainService OpenAPI', supplyChainOpenApi],
+      ['bundled OpenAPI', bundledOpenApi],
+    ]) {
+      assert.match(text, /portwatch-dwt/i, `${label} must describe FlowEstimate.source values`);
+      assert.match(text, /portwatch-counts/i, `${label} must describe FlowEstimate.source values`);
+      assert.match(text, /RED.*ORANGE|ORANGE.*RED/s, `${label} must describe hazard alert levels`);
+      assert.match(text, /nearest active GDACS hazard/i, `${label} must describe hazard alert name semantics`);
+    }
+
+    for (const [label, text] of [
       ['methodology', methodology],
       ['exposure proto', exposureProto],
       ['SupplyChainService OpenAPI', supplyChainOpenApi],

@@ -75,7 +75,7 @@ async function discoverVersion(token) {
     try {
       console.log(`  Trying v${version}...`);
       const page0 = await fetchGedPage(version, 0, token);
-      if (!Array.isArray(page0?.Result)) continue;
+      if (!Array.isArray(page0?.Result) || page0.Result.length === 0) continue;
       console.log(`  Found v${version} with ${page0.Result.length} events on page 0`);
       return { version, page0 };
     } catch (err) {
