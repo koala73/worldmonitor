@@ -58,6 +58,25 @@ describe('worktree bootstrap helper', () => {
     assert.deepEqual(result.missing, ['.env']);
   });
 
+  it('reports dry-run env links without creating files', () => {
+    const root = makeTempDir();
+    const source = makeTempDir('wm-worktree-env-source-');
+    writeFileSync(join(source, '.env.local'), 'LOCAL_ONLY=1\n');
+    writeFileSync(join(source, '.env'), 'BASE_ONLY=1\n');
+
+    const result = linkEnvFiles({
+      dryRun: true,
+      log: quiet,
+      rootDir: root,
+      sourceDir: source,
+    });
+
+    assert.deepEqual(result.linked, []);
+    assert.deepEqual(result.wouldLink, ['.env.local', '.env']);
+    assert.equal(existsSync(join(root, '.env.local')), false);
+    assert.equal(existsSync(join(root, '.env')), false);
+  });
+
   it('rejects forbidden local Vercel env dumps even when they are symlinks', (t) => {
     const root = makeTempDir();
 

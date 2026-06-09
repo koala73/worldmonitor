@@ -161,12 +161,12 @@ export function linkEnvFiles({
 } = {}) {
   if (!sourceDir) {
     log('[worktree] no env source found; set WM_ENV_SOURCE or pass --env-source to link local env files');
-    return { linked: [], missing: LOCAL_ENV_FILES, skipped: [] };
+    return { linked: [], missing: LOCAL_ENV_FILES, skipped: [], wouldLink: [] };
   }
 
   const resolvedRoot = resolve(rootDir);
   const resolvedSource = resolve(sourceDir);
-  const result = { linked: [], missing: [], skipped: [] };
+  const result = { linked: [], missing: [], skipped: [], wouldLink: [] };
 
   for (const fileName of LOCAL_ENV_FILES) {
     const sourcePath = resolve(resolvedSource, fileName);
@@ -187,11 +187,12 @@ export function linkEnvFiles({
 
     if (dryRun) {
       log(`[worktree] would link ${fileName} -> ${sourcePath}`);
+      result.wouldLink.push(fileName);
     } else {
       symlinkSync(sourcePath, targetPath);
       log(`[worktree] linked ${fileName} -> ${sourcePath}`);
+      result.linked.push(fileName);
     }
-    result.linked.push(fileName);
   }
 
   return result;
