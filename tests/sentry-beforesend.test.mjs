@@ -875,6 +875,15 @@ describe('SyntaxError via deck.gl/maplibre init path (WORLDMONITOR-SP)', () => {
     assert.equal(beforeSend(makeEvent('Unexpected EOF', 'SyntaxError', mapInitStack)), null);
   });
 
+  it('suppresses the type-prefixed value variant ("SyntaxError: Invalid or unexpected token")', () => {
+    // Some engines embed the exception type in the value field — the gate must
+    // tolerate the `SyntaxError: ` prefix like the sibling EOF/token gates do.
+    assert.equal(
+      beforeSend(makeEvent('SyntaxError: Invalid or unexpected token', 'SyntaxError', mapInitStack)),
+      null,
+    );
+  });
+
   it('does NOT suppress the same SyntaxError when no deck/maplibre frame is present', () => {
     // A genuine first-party parse failure (no map vendor frame) must still surface.
     const event = makeEvent('Invalid or unexpected token', 'SyntaxError', [

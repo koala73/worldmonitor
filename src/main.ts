@@ -615,8 +615,13 @@ Sentry.init({
     // stack as the CALLER, not the source. Gate on the presence of a deck-stack /
     // maplibre vendor frame so a genuine first-party SyntaxError elsewhere still
     // surfaces (WORLDMONITOR-SP).
+    // `(?:SyntaxError: )?` mirrors the EOF/token gates above (lines 588, 601):
+    // some engines embed the exception type in the `value` field, so `msg` can be
+    // either `Invalid or unexpected token` or `SyntaxError: Invalid or unexpected
+    // token`. Anchoring without the optional prefix would let the prefixed variant
+    // slip through here despite the first-party `MapContainer` frame (Greptile P2).
     if (excType === 'SyntaxError'
-        && /^(?:Invalid or unexpected token|Unexpected (?:token|keyword|identifier|EOF|end of script))/.test(msg)
+        && /^(?:SyntaxError: )?(?:Invalid or unexpected token|Unexpected (?:token|keyword|identifier|EOF|end of script))/.test(msg)
         && frames.some(f => /\/(?:maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     return event;
   },
