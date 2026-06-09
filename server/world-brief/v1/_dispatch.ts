@@ -32,10 +32,20 @@ export const REGION_SCHEDULE: Record<RegionId, number[]> = {
   canada: [16, 1],
 };
 
-/** Regions whose schedule includes this UTC hour (0–23). */
-export function regionsDueAt(utcHour: number): RegionId[] {
-  return REGION_IDS.filter((r) => REGION_SCHEDULE[r].includes(utcHour));
+/**
+ * Hourly-all dispatch: every region regenerates every hour, so each delivery
+ * hour maps to a fresh snapshot (see the hourly-snapshot system in _generate).
+ * The per-region `REGION_SCHEDULE` above is retained for reference but no
+ * longer gates dispatch.
+ */
+export function regionsDueAt(_utcHour: number): RegionId[] {
+  return [...REGION_IDS];
 }
+
+/** Max regions generated concurrently. 14 regions × ~11 Gemini section calls
+ *  each must finish inside the route's 300s budget; a small pool keeps us well
+ *  under it (≈3 waves × ~60s) while staying clear of Gemini rate limits. */
+const REGION_CONCURRENCY = 5;
 
 export interface DispatchResult {
   utcHour: number;
@@ -44,24 +54,30 @@ export interface DispatchResult {
 }
 
 /**
- * Generate the briefs for whichever regions are due at `utcHour`. Processed
- * SEQUENTIALLY — the schedule guarantees ≤3 regions per hour, and each region
- * runs ~11 Gemini section calls, so sequential keeps us clear of both the
- * Gemini rate limit and the 300s function budget (3 × ~60s = ~180s). A region
- * that throws is logged and skipped; the others still run.
+ * Generate every region's brief for this hour, with bounded concurrency. A
+ * region that throws is logged and skipped; the others still run.
  */
 export async function refreshDueRegions(utcHour: number): Promise<DispatchResult> {
   const due = regionsDueAt(utcHour);
-  console.log(`[world-brief:dispatch] utcHour=${utcHour} due=[${due.join(',')}]`);
+  console.log(`[world-brief:dispatch] utcHour=${utcHour} regions=${due.length} (hourly-all, conc=${REGION_CONCURRENCY})`);
   const results: DispatchResult['results'] = {};
-  for (const region of due) {
-    try {
-      results[region] = await refreshRegionalBrief(region);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      results[region] = { error: msg };
-      console.error(`[world-brief:dispatch] region=${region} FAILED: ${msg}`);
+
+  let cursor = 0;
+  async function worker(): Promise<void> {
+    while (cursor < due.length) {
+      const region = due[cursor++];
+      try {
+        results[region] = await refreshRegionalBrief(region);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        results[region] = { error: msg };
+        console.error(`[world-brief:dispatch] region=${region} FAILED: ${msg}`);
+      }
     }
   }
+  await Promise.all(
+    Array.from({ length: Math.min(REGION_CONCURRENCY, due.length) }, () => worker()),
+  );
+
   return { utcHour, due, results };
 }

@@ -37,6 +37,51 @@ export const regionBriefKey = (regionId: RegionId): string =>
  *  is surfaced to the user via `generatedAt` on the card. */
 const WORLD_BRIEF_TTL_S = 25 * 60 * 60;
 
+// ── Hourly snapshots ─────────────────────────────────────────────────────────
+// Each generation also writes a time-stamped snapshot so the app can fetch the
+// brief for a user's specific daily delivery hour (briefs are immutable per
+// slot). An index (JSON array of available hour buckets) lets the reader
+// resolve nearest-before without scanning. Both retained ~7 days.
+
+/** 7-day retention for hourly snapshots + their index. */
+const REGION_SNAPSHOT_TTL_S = 7 * 24 * 60 * 60;
+
+/** UTC hour bucket "YYYYMMDDHH" — the snapshot granularity. */
+export function regionBriefHourBucket(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}${p(d.getUTCHours())}`;
+}
+
+/** Parse "YYYYMMDDHH" (UTC) → epoch ms. */
+export function hourBucketToMs(bucket: string): number {
+  return Date.UTC(
+    Number(bucket.slice(0, 4)),
+    Number(bucket.slice(4, 6)) - 1,
+    Number(bucket.slice(6, 8)),
+    Number(bucket.slice(8, 10)),
+  );
+}
+
+/** Snapshot key for a region at a specific hour bucket. */
+export const regionBriefSnapshotKey = (regionId: RegionId, bucket: string): string =>
+  `news:world-brief:region:${regionId}:hour:${bucket}`;
+
+/** Index key — JSON array of a region's available hour buckets (pruned to the
+ *  retention window) so the reader can resolve nearest-before in one GET. */
+export const regionBriefIndexKey = (regionId: RegionId): string =>
+  `news:world-brief:region:${regionId}:index`;
+
+/** Add `bucket` to a region's snapshot index and prune anything past retention. */
+async function updateRegionSnapshotIndex(regionId: RegionId, bucket: string): Promise<void> {
+  const existing = (await getCachedJson(regionBriefIndexKey(regionId))) as string[] | null;
+  const buckets = new Set(Array.isArray(existing) ? existing : []);
+  buckets.add(bucket);
+  const cutoff = Date.now() - REGION_SNAPSHOT_TTL_S * 1000;
+  const pruned = [...buckets].filter((b) => hourBucketToMs(b) >= cutoff).sort();
+  // Index lives slightly longer than the snapshots it points at.
+  await setCachedJson(regionBriefIndexKey(regionId), pruned, REGION_SNAPSHOT_TTL_S + 3600);
+}
+
 /** Distinct-RSS-publisher gate for the live-news section — unchanged (≥3). */
 const MIN_RSS_SOURCES = Number(process.env.WM_V6_MIN_SOURCES) || 3;
 
@@ -594,6 +639,12 @@ export async function refreshRegionalBrief(regionId: RegionId): Promise<RefreshW
   const startedAt = Date.now();
   const payload = await generateRegionalBrief(regionId);
   await setCachedJson(regionBriefKey(regionId), payload, WORLD_BRIEF_TTL_S);
+
+  // Time-stamped snapshot (+ index) so the app can fetch the brief for a
+  // user's specific delivery hour — briefs are immutable per slot.
+  const bucket = regionBriefHourBucket(new Date());
+  await setCachedJson(regionBriefSnapshotKey(regionId, bucket), payload, REGION_SNAPSHOT_TTL_S);
+  await updateRegionSnapshotIndex(regionId, bucket);
 
   const conflictClusters = payload.conflict?.clusters.length ?? 0;
   const liveNewsClusters = payload.liveNews?.clusters.length ?? 0;

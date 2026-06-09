@@ -19,7 +19,7 @@ import { getCorsHeaders, isDisallowedOrigin } from '../../_cors.js';
 import { validateApiKey } from '../../_api-key.js';
 // @ts-expect-error
 import { checkRateLimit } from '../../_rate-limit.js';
-import { getRegionBrief, isRegionId } from '../../../server/world-brief/v1/get-region';
+import { getRegionBrief, getRegionBriefAt, isRegionId } from '../../../server/world-brief/v1/get-region';
 
 export const config = { runtime: 'edge' };
 
@@ -55,8 +55,15 @@ export default async function handler(req: Request): Promise<Response> {
     );
   }
 
+  // Optional `at=<unix seconds>` — fetch the snapshot for that delivery time
+  // (nearest-before, else closest available). Absent/invalid → latest brief.
+  const atRaw = new URL(req.url).searchParams.get('at');
+  const atSeconds = atRaw != null ? Number(atRaw) : NaN;
+
   try {
-    const result = await getRegionBrief(regionId);
+    const result = Number.isFinite(atSeconds)
+      ? await getRegionBriefAt(regionId, atSeconds * 1000)
+      : await getRegionBrief(regionId);
     switch (result.status) {
       case 'ok':
         return new Response(JSON.stringify(result.payload), {
