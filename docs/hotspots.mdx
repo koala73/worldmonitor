@@ -108,9 +108,9 @@ explicit `escalationScore` inherit the default `3/5` baseline.
 The system maintains 48-point history (24 hours at 30-minute intervals) per hotspot:
 
 - **Linear regression** calculates slope of recent scores
-- **Rising**: Slope > +0.1 points per interval
-- **Falling**: Slope &lt; -0.1 points per interval
-- **Stable**: Slope within ±0.1
+- **`escalating`**: Slope > +0.1 points per interval
+- **`de-escalating`**: Slope &lt; -0.1 points per interval
+- **`stable`**: Slope within ±0.1, fewer than 3 valid history points, or a zero regression denominator
 
 **Signal Generation**
 

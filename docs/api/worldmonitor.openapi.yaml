@@ -19107,8 +19107,9 @@ components:
                 name:
                     type: string
                     description: |-
-                        Display name (worker derives this from affected_chokepoint_ids; may be
-                         `tariff_shock` for tariff-type scenarios).
+                        Worker-derived template key, not a display name. Physical scenarios join
+                         affected_chokepoint_ids with `+`; tariff-type scenarios may use
+                         `tariff_shock` when no physical chokepoint is affected.
                 disruptionPct:
                     type: integer
                     format: int32
