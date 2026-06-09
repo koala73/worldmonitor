@@ -128,7 +128,9 @@
       "languages": "Języki",
       "currencies": "Waluty",
       "area": "Powierzchnia"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "ŚWIAT",
@@ -456,7 +458,8 @@
       "flightMilitary": "Wojskowy · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Wojskowy · {{type}} · na ziemi",
       "flightSearchHint": "Naciśnij Enter lub kliknij, aby wyszukać bieżącą pozycję",
-      "flightNotFound": "Nie znaleziono bieżącej pozycji dla {{callsign}}"
+      "flightNotFound": "Nie znaleziono bieżącej pozycji dla {{callsign}}",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "WYKONANIE INTELIGENCJI",
@@ -1337,7 +1340,13 @@
       "noSignals": "Nie wykryto sygnałów niestabilności",
       "infoTooltip": "<strong>Metodologia</strong><ul><li><strong>U</strong>nrest: zamieszki społeczne i protesty</li><li><strong>C</strong>konflikt: intensywność konfliktu zbrojnego</li><li><strong>S</strong>bezpieczeństwo: loty/statki wojskowe terytorium</li><li><strong>I</strong>informacje: prędkość wiadomości i korelacja punktów ogniskowych</li><li>Wzmocnienie bliskości hotspotów (lokalizacje strategiczne)</li></ul><em>U:C:S:I wartości pokazują wyniki komponentów.</em> Funkcja wykrywania punktów ogniskowych koreluje jednostki wiadomości z sygnałami mapy w celu uzyskania dokładnej punktacji.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "Obejmuje krajową linię bazową i mnożnik zdarzeń — zobacz /docs/methodology/cii-risk-scores w celu uzyskania opublikowanej tabeli"
+      "methodologyLink": "Obejmuje krajową linię bazową i mnożnik zdarzeń — zobacz /docs/methodology/cii-risk-scores w celu uzyskania opublikowanej tabeli",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>News Intelligence</strong> Monitorowanie wiadomości z całego świata w czasie rzeczywistym:<ul><li>Wybrane kategorie tematyczne (konflikty, cyberbezpieczeństwo itp.)</li><li>Przetłumaczone artykuły z ponad 100 języków</li><li>Aktualizacje co 15 minut</li><li>14-day media tone &amp; volume trend per topic</li></ul>Źródło: Projekt GDELT (gdeltproject.org)"
@@ -1444,7 +1453,14 @@
         "justNow": "just now",
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
-      }
+      },
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "insights": {
       "noStories": "Brak pilnych lub wieloźródłowych wiadomości",
@@ -2003,9 +2019,23 @@
         "categories": "Kategorie",
         "movers": "Zmiany",
         "spread": "Rozpiętość detaliczna",
-        "health": "Jakość danych"
+        "health": "Jakość danych",
+        "world": "World"
       },
-      "infoTooltip": "<strong>Ceny konsumenckie</strong> Śledzenie cen koszyka w czasie rzeczywistym:<ul><li><strong>Przegląd</strong>: Indeks artykułów podstawowych, koszyk wartościowy i zmiana tygodniowa</li><li><strong>Kategorie</strong>: Trendy cen dla każdej kategorii z zakresem 30-dniowym</li><li><strong>Zmiany</strong>: Największe wzrosty i spadki cen w tym tygodniu</li><li><strong>Rozpiętość</strong>: Wariancja cen między sprzedawcami dla tego samego koszyka</li></ul>Dane pochodzą ze scrapingu cen sprzedawców w czasie rzeczywistym."
+      "infoTooltip": "<strong>Ceny konsumenckie</strong> Śledzenie cen koszyka w czasie rzeczywistym:<ul><li><strong>Przegląd</strong>: Indeks artykułów podstawowych, koszyk wartościowy i zmiana tygodniowa</li><li><strong>Kategorie</strong>: Trendy cen dla każdej kategorii z zakresem 30-dniowym</li><li><strong>Zmiany</strong>: Największe wzrosty i spadki cen w tym tygodniu</li><li><strong>Rozpiętość</strong>: Wariancja cen między sprzedawcami dla tego samego koszyka</li></ul>Dane pochodzą ze scrapingu cen sprzedawców w czasie rzeczywistym.",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "marketImplications": {
       "infoTooltip": "<strong>Implikacje rynkowe AI</strong> Sygnały handlowe generowane przez LLM pochodzące ze stanu geopolitycznego, towarowego i makroekonomicznego w czasie rzeczywistym po każdym cyklu prognozy.<ul><li><strong>Kierunek</strong>: LONG / SHORT / HEDGE z oceną pewności</li><li><strong>Horyzont czasowy</strong>: 1W, 2W, 1M lub 3M</li><li><strong>Katalizator</strong>: Kluczowy czynnik napędzający sygnał</li><li><strong>Ryzyko</strong>: Zastrzeżenie lub warunek unieważnienia</li></ul><em>Wyłącznie do celów informacyjnych. Nie stanowi porady inwestycyjnej.</em>",

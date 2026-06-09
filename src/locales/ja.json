@@ -128,7 +128,9 @@
       "languages": "言語",
       "currencies": "通貨",
       "area": "面積"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "世界",
@@ -456,7 +458,8 @@
       "flightMilitary": "軍用機 · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "軍用機 · {{type}} · 地上",
       "flightSearchHint": "Enterキーを押すか、クリックしてライブ位置を検索",
-      "flightNotFound": "{{callsign}} のライブ位置が見つかりません"
+      "flightNotFound": "{{callsign}} のライブ位置が見つかりません",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "インテリジェンス所見",
@@ -1215,7 +1218,13 @@
       "noSignals": "不安定性シグナル未検出",
       "infoTooltip": "<strong>方法論</strong><ul><li><strong>U</strong>nrest: 市民の騒乱・抗議活動</li><li><strong>C</strong>onflict: 武力紛争の強度</li><li><strong>S</strong>ecurity: 領土上の軍事飛行/艦艇</li><li><strong>I</strong>nformation: ニュース速度と焦点相関</li><li>ホットスポット近接ブースト（戦略的拠点）</li></ul><em>U:C:S:I値はコンポーネントスコアを表示。</em> 焦点検出はニュースエンティティとマップシグナルを相関させ正確なスコアリングを実現。",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "国別ベースライン + イベント乗数を含む — 公開表は /docs/methodology/cii-risk-scores を参照してください"
+      "methodologyLink": "国別ベースライン + イベント乗数を含む — 公開表は /docs/methodology/cii-risk-scores を参照してください",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "insights": {
       "noStories": "速報またはマルチソースストーリーはまだなし",
@@ -1367,7 +1376,14 @@
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
       },
-      "infoTooltip": "<strong>方法論</strong> 複合スコア（0-100）の構成:<ul><li>50% 国家不安定性（上位5カ国加重）</li><li>30% 地理的収束地帯</li><li>20% インフラインシデント</li></ul>5分ごとに自動更新。"
+      "infoTooltip": "<strong>方法論</strong> 複合スコア（0-100）の構成:<ul><li>50% 国家不安定性（上位5カ国加重）</li><li>30% 地理的収束地帯</li><li>20% インフラインシデント</li></ul>5分ごとに自動更新。",
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "techEvents": {
       "loading": "テックイベントを読み込み中...",
@@ -1991,9 +2007,23 @@
         "categories": "カテゴリ",
         "movers": "値動き",
         "spread": "小売業者のスプレッド",
-        "health": "データヘルス"
+        "health": "データヘルス",
+        "world": "World"
       },
-      "infoTooltip": "<strong>消費者価格</strong> リアルタイムバスケット価格追跡:<ul><li><strong>概要</strong>: エッセンシャルズインデックス、バリューバスケット、前週比の変化</li><li><strong>カテゴリ</strong>: カテゴリ別価格トレンド(30日間レンジ付き)</li><li><strong>値動き</strong>: 今週の最大上昇・下降商品</li><li><strong>スプレッド</strong>: 同じバスケットにおける小売業者間の価格差</li></ul>データはライブ小売価格スクレイピングから取得しています。"
+      "infoTooltip": "<strong>消費者価格</strong> リアルタイムバスケット価格追跡:<ul><li><strong>概要</strong>: エッセンシャルズインデックス、バリューバスケット、前週比の変化</li><li><strong>カテゴリ</strong>: カテゴリ別価格トレンド(30日間レンジ付き)</li><li><strong>値動き</strong>: 今週の最大上昇・下降商品</li><li><strong>スプレッド</strong>: 同じバスケットにおける小売業者間の価格差</li></ul>データはライブ小売価格スクレイピングから取得しています。",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "marketImplications": {
       "infoTooltip": "<strong>AI市場インプリケーション</strong> 各フォアキャストサイクル後のライブ地政学、商品、マクロ状態から導出されるLLM生成トレードシグナル。<ul><li><strong>方向性</strong>: LONG / SHORT / HEDGE(信頼度レーティング付き)</li><li><strong>時間軸</strong>: 1W、2W、1M、または3M</li><li><strong>ドライバー</strong>: シグナルの主要な触媒</li><li><strong>リスク</strong>: 注意事項または無効化条件</li></ul><em>情報提供のみを目的としています。投資アドバイスではありません。</em>",

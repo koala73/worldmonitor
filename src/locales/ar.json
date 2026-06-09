@@ -128,7 +128,9 @@
       "languages": "اللغات",
       "currencies": "العملات",
       "area": "المساحة"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "العالم",
@@ -456,7 +458,8 @@
       "flightMilitary": "عسكرية · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "عسكرية · {{type}} · على الأرض",
       "flightSearchHint": "اضغط Enter أو انقر للبحث عن الموقع الحالي",
-      "flightNotFound": "لم يتم العثور على موقع حالي لـ {{callsign}}"
+      "flightNotFound": "لم يتم العثور على موقع حالي لـ {{callsign}}",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "نتيجة استخباراتية",
@@ -1172,7 +1175,13 @@
       "noSignals": "لم يتم رصد إشارات عدم استقرار",
       "infoTooltip": "<strong>المنهجية</strong><ul><li><strong>U</strong> - الاضطرابات: الفوضى المدنية والاحتجاجات</li><li><strong>C</strong> - النزاع: شدة النزاع المسلح</li><li><strong>S</strong> - الأمن: الرحلات/السفن العسكرية فوق الإقليم</li><li><strong>I</strong> - المعلومات: سرعة الأخبار وارتباط النقاط المحورية</li><li>تعزيز قرب البؤر الساخنة (المواقع الاستراتيجية)</li></ul><em>قيم U:C:S:I تُظهر درجات المكونات.</em> كشف النقاط المحورية يربط كيانات الأخبار بإشارات الخريطة للتقييم الدقيق.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "يتضمن خط الأساس حسب الدولة + مضاعف الحدث — انظر /docs/methodology/cii-risk-scores للجدول المنشور"
+      "methodologyLink": "يتضمن خط الأساس حسب الدولة + مضاعف الحدث — انظر /docs/methodology/cii-risk-scores للجدول المنشور",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "insights": {
       "noStories": "لا توجد قصص عاجلة أو متعددة المصادر بعد",
@@ -1319,7 +1328,14 @@
         "justNow": "just now",
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
-      }
+      },
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "techEvents": {
       "loading": "جارٍ تحميل الفعاليات التقنية...",
@@ -2015,9 +2031,23 @@
         "categories": "الفئات",
         "movers": "الحركات",
         "spread": "فرق تجزئة البيع",
-        "health": "صحة البيانات"
+        "health": "صحة البيانات",
+        "world": "World"
       },
-      "infoTooltip": "<strong>أسعار المستهلك</strong> تتبع أسعار السلة في الوقت الفعلي:<ul><li><strong>النظرة العامة</strong>: مؤشر الضروريات وسلة القيمة والتغيير من أسبوع لآخر</li><li><strong>الفئات</strong>: اتجاهات الأسعار حسب الفئة مع النطاق لمدة 30 يوماً</li><li><strong>محركات الأسعار</strong>: أكبر العناصر الصاعدة والهابطة هذا الأسبوع</li><li><strong>الفرق</strong>: تباين الأسعار بين بائعي التجزئة للسلة نفسها</li></ul>البيانات مستمدة من كشط أسعار بائعي التجزئة الحية."
+      "infoTooltip": "<strong>أسعار المستهلك</strong> تتبع أسعار السلة في الوقت الفعلي:<ul><li><strong>النظرة العامة</strong>: مؤشر الضروريات وسلة القيمة والتغيير من أسبوع لآخر</li><li><strong>الفئات</strong>: اتجاهات الأسعار حسب الفئة مع النطاق لمدة 30 يوماً</li><li><strong>محركات الأسعار</strong>: أكبر العناصر الصاعدة والهابطة هذا الأسبوع</li><li><strong>الفرق</strong>: تباين الأسعار بين بائعي التجزئة للسلة نفسها</li></ul>البيانات مستمدة من كشط أسعار بائعي التجزئة الحية.",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "marketImplications": {
       "infoTooltip": "<strong>آثار السوق بالذكاء الاصطناعي</strong> إشارات تداول يولدها النموذج اللغوي الكبير مشتقة من الحالة الجيوسياسية والسلع والاقتصادية الحية بعد كل دورة توقع.<ul><li><strong>الاتجاه</strong>: شراء / بيع / تحوط مع درجة ثقة</li><li><strong>الأفق الزمني</strong>: أسبوع أو أسبوعان أو شهر أو 3 أشهر</li><li><strong>المحرك</strong>: العامل الرئيسي وراء الإشارة</li><li><strong>المخاطرة</strong>: تحذير أو شرط إلغاء</li></ul><em>لأغراض إعلامية فقط. ليست نصيحة استثمارية.</em>",

@@ -128,7 +128,9 @@
       "languages": "Ngôn ngữ",
       "currencies": "Tiền tệ",
       "area": "Diện tích"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "THẾ GIỚI",
@@ -456,7 +458,8 @@
       "flightMilitary": "Quân sự · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Quân sự · {{type}} · đang đỗ tại sân bay",
       "flightSearchHint": "Nhấn Enter hoặc nhấp để tra cứu vị trí trực tiếp",
-      "flightNotFound": "Không tìm thấy vị trí trực tiếp cho {{callsign}}"
+      "flightNotFound": "Không tìm thấy vị trí trực tiếp cho {{callsign}}",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "PHÁT HIỆN TÌNH BÁO",
@@ -1215,7 +1218,13 @@
       "noSignals": "Không phát hiện tín hiệu bất ổn",
       "infoTooltip": "<strong>Phương pháp luận</strong><ul><li><strong>U</strong> - Bất ổn: rối loạn dân sự & biểu tình</li><li><strong>C</strong> - Xung đột: cường độ xung đột vũ trang</li><li><strong>S</strong> - An ninh: chuyến bay/tàu quân sự trên lãnh thổ</li><li><strong>I</strong> - Thông tin: tốc độ tin tức và tương quan điểm hội tụ</li><li>Tăng cường theo điểm nóng gần (vị trí chiến lược)</li></ul><em>Giá trị U:C:S:I hiển thị điểm thành phần.</em> Phát hiện Điểm Hội tụ tương quan các thực thể tin tức với tín hiệu bản đồ để chấm điểm chính xác.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "Bao gồm đường cơ sở từng quốc gia + bộ nhân sự kiện — xem /docs/methodology/cii-risk-scores để xem bảng được công bố"
+      "methodologyLink": "Bao gồm đường cơ sở từng quốc gia + bộ nhân sự kiện — xem /docs/methodology/cii-risk-scores để xem bảng được công bố",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "insights": {
       "noStories": "Chưa có tin nóng hoặc tin đa nguồn",
@@ -1367,7 +1376,14 @@
         "minutesAgo": "{{count}}ph trước",
         "hoursAgo": "{{count}}g trước"
       },
-      "infoTooltip": "<strong>Phương pháp luận</strong> Điểm tổng hợp (0-100) kết hợp:<ul><li>50% Bất ổn Quốc gia (5 nước cao nhất có trọng số)</li><li>30% Vùng hội tụ địa lý</li><li>20% Sự cố hạ tầng</li></ul>Tự động làm mới mỗi 5 phút."
+      "infoTooltip": "<strong>Phương pháp luận</strong> Điểm tổng hợp (0-100) kết hợp:<ul><li>50% Bất ổn Quốc gia (5 nước cao nhất có trọng số)</li><li>30% Vùng hội tụ địa lý</li><li>20% Sự cố hạ tầng</li></ul>Tự động làm mới mỗi 5 phút.",
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "techEvents": {
       "loading": "Đang tải sự kiện công nghệ...",
@@ -1991,9 +2007,23 @@
         "categories": "Danh mục",
         "movers": "Những mặt hàng thay đổi giá",
         "spread": "Chênh lệch giá bán lẻ",
-        "health": "Tình trạng dữ liệu"
+        "health": "Tình trạng dữ liệu",
+        "world": "World"
       },
-      "infoTooltip": "<strong>Giá tiêu dùng</strong> Theo dõi giỏ hàng theo thời gian thực:<ul><li><strong>Tổng quan</strong>: Chỉ số hàng thiết yếu, giỏ hàng giá trị và thay đổi tuần trên tuần</li><li><strong>Danh mục</strong>: Xu hướng giá theo từng danh mục với phạm vi 30 ngày</li><li><strong>Những mặt hàng thay đổi giá</strong>: Mặt hàng tăng và giảm giá lớn nhất tuần này</li><li><strong>Chênh lệch</strong>: Sự chênh lệch giá giữa các nhà bán lẻ cho cùng một giỏ hàng</li></ul>Dữ liệu từ việc quét giá nhà bán lẻ trực tiếp."
+      "infoTooltip": "<strong>Giá tiêu dùng</strong> Theo dõi giỏ hàng theo thời gian thực:<ul><li><strong>Tổng quan</strong>: Chỉ số hàng thiết yếu, giỏ hàng giá trị và thay đổi tuần trên tuần</li><li><strong>Danh mục</strong>: Xu hướng giá theo từng danh mục với phạm vi 30 ngày</li><li><strong>Những mặt hàng thay đổi giá</strong>: Mặt hàng tăng và giảm giá lớn nhất tuần này</li><li><strong>Chênh lệch</strong>: Sự chênh lệch giá giữa các nhà bán lẻ cho cùng một giỏ hàng</li></ul>Dữ liệu từ việc quét giá nhà bán lẻ trực tiếp.",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "marketImplications": {
       "infoTooltip": "<strong>Hàm ý thị trường AI</strong> Tín hiệu giao dịch được tạo bởi LLM từ tình trạng địa chính trị, hàng hóa và vĩ mô trực tiếp sau mỗi chu kỳ dự báo.<ul><li><strong>Hướng</strong>: LONG / SHORT / HEDGE với mức độ tin tưởng</li><li><strong>Khung thời gian</strong>: Horizon 1W, 2W, 1M, hoặc 3M</li><li><strong>Yếu tố thúc đẩy</strong>: Xúc tác chính đằng sau tín hiệu</li><li><strong>Rủi ro</strong>: Cảnh báo hoặc điều kiện làm mất hiệu lực</li></ul><em>Chỉ cho mục đích thông tin. Không phải lời khuyên đầu tư.</em>",

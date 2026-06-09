@@ -203,7 +203,9 @@
       "languages": "Jezici",
       "currencies": "Valute",
       "area": "Površina"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "SVIJET",
@@ -537,7 +539,8 @@
       "flightMilitary": "Vojni · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Vojni · {{type}} · na zemlji",
       "flightSearchHint": "Pritisnite Enter ili kliknite za pronalaženje pozicije",
-      "flightNotFound": "Nijedna aktivna pozicija pronađena za {{callsign}}"
+      "flightNotFound": "Nijedna aktivna pozicija pronađena za {{callsign}}",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "OBAVJEŠTAJNI NALAZ",
@@ -1031,7 +1034,8 @@
         "categories": "Kategorije",
         "movers": "Pokretači",
         "spread": "Marža maloprodajnog trgovca",
-        "health": "Zdravlje podataka"
+        "health": "Zdravlje podataka",
+        "world": "World"
       },
       "essentialsIndex": "Indeks nužnih dobara",
       "valueBasketIndex": "Vrijednosna košarica",
@@ -1057,7 +1061,20 @@
       "lastUpdated": "Zadnja ažuriranja",
       "retailers": "maloprodajci",
       "items": "stavke",
-      "infoTooltip": "<strong>Cijene za kupce</strong> Praćenje cijena košarice u stvarnom vremenu:<ul><li><strong>Pregled</strong>: Indeks esencijala, vrijednosna košarica i promjena tjedan-na-tjedan</li><li><strong>Kategorije</strong>: Trendovi cijena po kategoriji s rasponom od 30 dana</li><li><strong>Pomicači</strong>: Stavke koje se najviše podižu i padaju ovog tjedna</li><li><strong>Raspon</strong>: Razlike u cijenama između maloprodajaca za istu košaricu</li></ul>Podaci prikupljeni iz živog praćenja cijena maloprodajaca."
+      "infoTooltip": "<strong>Cijene za kupce</strong> Praćenje cijena košarice u stvarnom vremenu:<ul><li><strong>Pregled</strong>: Indeks esencijala, vrijednosna košarica i promjena tjedan-na-tjedan</li><li><strong>Kategorije</strong>: Trendovi cijena po kategoriji s rasponom od 30 dana</li><li><strong>Pomicači</strong>: Stavke koje se najviše podižu i padaju ovog tjedna</li><li><strong>Raspon</strong>: Razlike u cijenama između maloprodajaca za istu košaricu</li></ul>Podaci prikupljeni iz živog praćenja cijena maloprodajaca.",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "gdelt": {
       "empty": "Nema nedavnih članaka na ovu temu"
@@ -1466,7 +1483,13 @@
       "noSignals": "Nisu otkriveni signali nestabilnosti",
       "infoTooltip": "<strong>Metodologija</strong><ul><li><strong>U</strong>nrest: građanski nemiri i prosvjedi</li><li><strong>C</strong>onflict: intenzitet oružanog sukoba</li><li><strong>S</strong>ecurity: vojni letovi/brodovi preko područja</li><li><strong>I</strong>nformation: brzina vijesti i korelacija žarišne točke</li><li>Pojačanje blizine žarišne točke (strateške lokacije)</li></ul><em>Vrijednosti U:C:S:I pokazuju rezultate komponenti.</em> Detekcija Žarišne Točke povezuje vijesti sa signalima na karti za točnije bodovanje.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "Uključuje referencu po zemlji + množitelj događaja — vidi /docs/methodology/cii-risk-scores za objavljenu tablicu"
+      "methodologyLink": "Uključuje referencu po zemlji + množitelj događaja — vidi /docs/methodology/cii-risk-scores za objavljenu tablicu",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "insights": {
       "noStories": "Još nema važnih ili multi-izvornih vijesti",
@@ -1630,7 +1653,14 @@
         "minutesAgo": "prije {{count}}m",
         "hoursAgo": "prije {{count}}h"
       },
-      "infoTooltip": "<strong>Metodologija</strong> Kombinirana ocjena (0-100) koja uključuje:<ul><li>50% Nestabilnost zemlje (top 5 ponderirano)</li><li>30% Zone geografske konvergencije</li><li>20% Incidenti infrastrukture</li></ul>Automatski osvježava se svakih 5 minuta."
+      "infoTooltip": "<strong>Metodologija</strong> Kombinirana ocjena (0-100) koja uključuje:<ul><li>50% Nestabilnost zemlje (top 5 ponderirano)</li><li>30% Zone geografske konvergencije</li><li>20% Incidenti infrastrukture</li></ul>Automatski osvježava se svakih 5 minuta.",
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "techEvents": {
       "infoTooltip": "<strong>Tehnološki eventi</strong> Nadolazeći i nedavni tehnološki eventi: konferencije, lansiranja proizvoda, regulatorna saslušanja i earnings callovi. Agregirani iz službenih kalenda događaja i industrijskih izvora.",

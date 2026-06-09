@@ -128,7 +128,9 @@
       "languages": "Езици",
       "currencies": "Валути",
       "area": "Площ"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "СВЯТ",
@@ -456,7 +458,8 @@
       "flightMilitary": "Военен · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Военен · {{type}} · на земята",
       "flightSearchHint": "Натиснете Enter или щракнете, за да проверите живата позиция",
-      "flightNotFound": "Живата позиция не е намерена за {{callsign}}"
+      "flightNotFound": "Живата позиция не е намерена за {{callsign}}",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "РАЗУЗНАВАТЕЛНА НАХОДКА",
@@ -1215,7 +1218,13 @@
       "noSignals": "Няма открити сигнали на нестабилност",
       "infoTooltip": "<strong>Методология</strong><ul><li><strong>U</strong>nrest: граждански безред & протести</li><li><strong>C</strong>onflict: интензивност на въоръжен конфликт</li><li><strong>S</strong>ecurity: военни полети/кораби над територия</li><li><strong>I</strong>nformation: скорост на новини и корелация на фокусни точки</li><li>Близост на гореща точка повишение (стратегически местоположения)</li></ul><em>U:C:S:I стойностите показват компонентни резултати.</em> Откритие на фокусни точки коерелира новинни субекти със сигнали на карта за точно оценяване.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "Включва базова стойност на страна + множител на събитието — вижте /docs/methodology/cii-risk-scores за публикуваната таблица"
+      "methodologyLink": "Включва базова стойност на страна + множител на събитието — вижте /docs/methodology/cii-risk-scores за публикуваната таблица",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "insights": {
       "noStories": "Няма други или многоточни истории все още",
@@ -1367,7 +1376,14 @@
         "minutesAgo": "{{count}}m преди",
         "hoursAgo": "{{count}}h преди"
       },
-      "infoTooltip": "<strong>Методология</strong> Композитен резултат (0-100), смесване:<ul><li>50% нестабилност на държави (топ 5 претегляни)</li><li>30% географска конвергенция зони</li><li>20% инцидентите на инфраструктура</li></ul>Авто-обновлява всеки 5 минути."
+      "infoTooltip": "<strong>Методология</strong> Композитен резултат (0-100), смесване:<ul><li>50% нестабилност на държави (топ 5 претегляни)</li><li>30% географска конвергенция зони</li><li>20% инцидентите на инфраструктура</li></ul>Авто-обновлява всеки 5 минути.",
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "techEvents": {
       "loading": "Зареждане на технологични събития...",
@@ -1991,9 +2007,23 @@
         "categories": "Категории",
         "movers": "Движения",
         "spread": "Разлика в цените",
-        "health": "Здравина на данните"
+        "health": "Здравина на данните",
+        "world": "World"
       },
-      "infoTooltip": "<strong>Потребителски цени</strong> Проследяване на цени в реално време:<ul><li><strong>Преглед</strong>: Индекс на основни стоки, индекс на икономичната кошница и промяна от седмица на седмица</li><li><strong>Категории</strong>: Тенденции на цените по категории с 30-дневен диапазон</li><li><strong>Движения</strong>: Най-големите растящи и падащи артикули тази седмица</li><li><strong>Разлика</strong>: Разлика в цените между търговците на дребно за същата кошница</li></ul>Данни от преки цени от търговци на дребно."
+      "infoTooltip": "<strong>Потребителски цени</strong> Проследяване на цени в реално време:<ul><li><strong>Преглед</strong>: Индекс на основни стоки, индекс на икономичната кошница и промяна от седмица на седмица</li><li><strong>Категории</strong>: Тенденции на цените по категории с 30-дневен диапазон</li><li><strong>Движения</strong>: Най-големите растящи и падащи артикули тази седмица</li><li><strong>Разлика</strong>: Разлика в цените между търговците на дребно за същата кошница</li></ul>Данни от преки цени от търговци на дребно.",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "marketImplications": {
       "infoTooltip": "<strong>AI пазарни последици</strong> LLM-генерирани търговски сигнали, произлизащи от живи геополитически, суровинни и макроикономически данни след всеки цикъл на прогноза.<ul><li><strong>Направление</strong>: ДЪЛГА / КЪСА / ЗАСТРАХОВКА с оценка на доверието</li><li><strong>Период</strong>: 1W, 2W, 1M или 3M хоризонт</li><li><strong>Драйвер</strong>: Ключов катализатор зад сигнала</li><li><strong>Риск</strong>: Предупреждение или условие за невалидиране</li></ul><em>За информационни цели. Не е инвестиционен съвет.</em>",

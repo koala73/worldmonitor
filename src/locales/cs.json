@@ -128,7 +128,9 @@
       "languages": "Jazyky",
       "currencies": "Měny",
       "area": "Rozloha"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "SVĚT",
@@ -456,7 +458,8 @@
       "flightMilitary": "Vojenský · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Vojenský · {{type}} · na zemi",
       "flightSearchHint": "Stiskněte Enter nebo klikněte pro vyhledání živé polohy",
-      "flightNotFound": "Pro {{callsign}} nebyla nalezena žádná živá poloha"
+      "flightNotFound": "Pro {{callsign}} nebyla nalezena žádná živá poloha",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "ZPRAVODAJSKÉ ZJIŠTĚNÍ",
@@ -1203,7 +1206,13 @@
       "noSignals": "Nebyly zjištěny žádné signály nestability",
       "infoTooltip": "<strong>Metodika</strong><ul><li><strong>N</strong>epokoje (Unrest): občanské nepokoje a protesty</li><li><strong>K</strong>onflikt (Conflict): intenzita ozbrojeného konfliktu</li><li><strong>B</strong>ezpečnost (Security): vojenské lety/plavidla nad územím</li><li><strong>I</strong>nformace (Information): rychlost zpráv a korelace oblastí zájmu</li><li>Zvýšení díky blízkosti hotspotu (strategické lokace)</li></ul><em>Hodnoty U:C:S:I ukazují skóre komponent.</em> Detekce oblastí zájmu (Focal Point Detection) koreluje subjekty ze zpráv se signály na mapě pro přesné skórování.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "Obsahuje základní hodnoty jednotlivých zemí + násobitel událostí — viz /docs/methodology/cii-risk-scores pro zveřejněnou tabulku"
+      "methodologyLink": "Obsahuje základní hodnoty jednotlivých zemí + násobitel událostí — viz /docs/methodology/cii-risk-scores pro zveřejněnou tabulku",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "insights": {
       "noStories": "Zatím žádné bleskové nebo vícezdrojové zprávy",
@@ -1348,7 +1357,14 @@
         "minutesAgo": "před {{count}} min",
         "hoursAgo": "před {{count}} h"
       },
-      "infoTooltip": "<strong>Metodika</strong> Kompozitní skóre (0-100) slučující:<ul><li>50 % Nestabilita zemí (váženo top 5)</li><li>30 % Geografické konvergenční zóny</li><li>20 % Incidenty infrastruktury</li></ul>Automaticky se obnovuje každých 5 minut."
+      "infoTooltip": "<strong>Metodika</strong> Kompozitní skóre (0-100) slučující:<ul><li>50 % Nestabilita zemí (váženo top 5)</li><li>30 % Geografické konvergenční zóny</li><li>20 % Incidenty infrastruktury</li></ul>Automaticky se obnovuje každých 5 minut.",
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "techEvents": {
       "loading": "Načítání tech událostí...",
@@ -2003,9 +2019,23 @@
         "categories": "Kategorie",
         "movers": "Pohyby",
         "spread": "Rozdíl mezi prodejci",
-        "health": "Zdraví dat"
+        "health": "Zdraví dat",
+        "world": "World"
       },
-      "infoTooltip": "<strong>Ceny pro spotřebitele</strong> Sledování cen košu v reálném čase:<ul><li><strong>Přehled</strong>: Index základních potřeb, koš hodnoty a změna v průběhu týdne</li><li><strong>Kategorie</strong>: Trendy cen podle kategorie s 30denním rozsahem</li><li><strong>Pohyby</strong>: Největší rostoucí a klesající položky v tomto týdnu</li><li><strong>Rozdíl</strong>: Variance cen mezi prodejci pro stejný koš</li></ul>Data pocházejí z live scrapingu cen prodejců."
+      "infoTooltip": "<strong>Ceny pro spotřebitele</strong> Sledování cen košu v reálném čase:<ul><li><strong>Přehled</strong>: Index základních potřeb, koš hodnoty a změna v průběhu týdne</li><li><strong>Kategorie</strong>: Trendy cen podle kategorie s 30denním rozsahem</li><li><strong>Pohyby</strong>: Největší rostoucí a klesající položky v tomto týdnu</li><li><strong>Rozdíl</strong>: Variance cen mezi prodejci pro stejný koš</li></ul>Data pocházejí z live scrapingu cen prodejců.",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "marketImplications": {
       "infoTooltip": "<strong>AI tržní důsledky</strong> Obchodní signály generované LLM odvozené z live geopolitických, komoditních a makroekonomických stavů po každém cyklu prognózy.<ul><li><strong>Směr</strong>: LONG / SHORT / HEDGE s hodnocením důvěry</li><li><strong>Časový horizont</strong>: 1W, 2W, 1M nebo 3M horizont</li><li><strong>Katalyzátor</strong>: Klíčový katalyzátor signálu</li><li><strong>Riziko</strong>: Výhrada nebo podmínka zneplatnění</li></ul><em>Pouze pro informační účely. Není investičním poradenstvím.</em>",

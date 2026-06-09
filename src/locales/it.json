@@ -128,7 +128,9 @@
       "languages": "Lingue",
       "currencies": "Valute",
       "area": "Superficie"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "MONDO",
@@ -456,7 +458,8 @@
       "flightMilitary": "Militare · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Militare · {{type}} · a terra",
       "flightSearchHint": "Premi Invio o clicca per cercare la posizione live",
-      "flightNotFound": "Nessuna posizione live trovata per {{callsign}}"
+      "flightNotFound": "Nessuna posizione live trovata per {{callsign}}",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "RICERCA DI INTELLIGENZA",
@@ -1401,7 +1404,13 @@
       "noSignals": "Nessun segnale di instabilità rilevato",
       "infoTooltip": "<strong>Metodologia</strong><ul><li><strong>U</strong>nrest: disordini civili e proteste</li><li><strong>C</strong>conflitto: intensità del conflitto armato</li><li><strong>S</strong>sicurezza: voli militari/navi in volo territorio</li><li><strong>I</strong>nformation: velocità delle notizie e correlazione del punto focale</li><li>Aumento della prossimità dell'hotspot (posizioni strategiche)</li></ul><em>I valori U:C:S:I mostrano i punteggi dei componenti.</em> Focal Point Detection mette in relazione le entità delle notizie con i segnali della mappa per un punteggio accurato.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "Include baseline per paese + moltiplicatore di evento — vedi /docs/methodology/cii-risk-scores per la tabella pubblicata"
+      "methodologyLink": "Include baseline per paese + moltiplicatore di evento — vedi /docs/methodology/cii-risk-scores per la tabella pubblicata",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>News Intelligence</strong> Monitoraggio delle notizie globali in tempo reale:<ul><li>Categorie di argomenti selezionate (conflitti, cyber, ecc.)</li><li>Articoli da oltre 100 lingue tradotte</li><li>Aggiornamenti ogni 15 minuti</li><li>14-day media tone &amp; volume trend per topic</li></ul>Fonte: Progetto GDELT (gdeltproject.org)"
@@ -1508,7 +1517,14 @@
         "justNow": "just now",
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
-      }
+      },
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "insights": {
       "noStories": "Nessuna notizia urgente o multi-fonte al momento",
@@ -1997,9 +2013,23 @@
         "categories": "Categorie",
         "movers": "Movimenti",
         "spread": "Differenziale Rivenditore",
-        "health": "Integrità Dati"
+        "health": "Integrità Dati",
+        "world": "World"
       },
-      "infoTooltip": "<strong>Prezzi al Consumo</strong> Tracciamento in tempo reale dei prezzi del paniere:<ul><li><strong>Panoramica</strong>: Indice essenziali, paniere convenienza e variazione settimanale</li><li><strong>Categorie</strong>: Trend di prezzo per categoria con range 30 giorni</li><li><strong>Movimenti</strong>: Articoli in maggior aumento e calo questa settimana</li><li><strong>Differenziale</strong>: Varianza di prezzo tra rivenditori per lo stesso paniere</li></ul>Dati provenienti da scraping live dei prezzi dei rivenditori."
+      "infoTooltip": "<strong>Prezzi al Consumo</strong> Tracciamento in tempo reale dei prezzi del paniere:<ul><li><strong>Panoramica</strong>: Indice essenziali, paniere convenienza e variazione settimanale</li><li><strong>Categorie</strong>: Trend di prezzo per categoria con range 30 giorni</li><li><strong>Movimenti</strong>: Articoli in maggior aumento e calo questa settimana</li><li><strong>Differenziale</strong>: Varianza di prezzo tra rivenditori per lo stesso paniere</li></ul>Dati provenienti da scraping live dei prezzi dei rivenditori.",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "marketImplications": {
       "infoTooltip": "<strong>Implicazioni di Mercato AI</strong> Segnali di trading generati da LLM derivati da stato geopolitico, commodity e macro live dopo ogni ciclo di previsione.<ul><li><strong>Direzione</strong>: LONG / SHORT / HEDGE con rating di confidenza</li><li><strong>Orizzonte temporale</strong>: 1S, 2S, 1M, o 3M</li><li><strong>Driver</strong>: Catalizzatore chiave dietro il segnale</li><li><strong>Rischio</strong>: Avvertenza o condizione di invalidazione</li></ul><em>Solo a scopo informativo. Non è un consiglio di investimento.</em>",

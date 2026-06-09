@@ -128,7 +128,9 @@
       "languages": "ภาษา",
       "currencies": "สกุลเงิน",
       "area": "พื้นที่"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "โลก",
@@ -456,7 +458,8 @@
       "flightMilitary": "ทหาร · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "ทหาร · {{type}} · บนพื้นดิน",
       "flightSearchHint": "กด Enter หรือคลิกเพื่อค้นหาตำแหน่งสด",
-      "flightNotFound": "ไม่พบตำแหน่งสดสำหรับ {{callsign}}"
+      "flightNotFound": "ไม่พบตำแหน่งสดสำหรับ {{callsign}}",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "ผลการตรวจสอบข่าวกรอง",
@@ -1215,7 +1218,13 @@
       "noSignals": "ไม่พบสัญญาณความไม่มั่นคง",
       "infoTooltip": "<strong>วิธีการ</strong><ul><li><strong>U</strong>nrest: ความไม่สงบและการประท้วง</li><li><strong>C</strong>onflict: ความรุนแรงของความขัดแย้ง</li><li><strong>S</strong>ecurity: เที่ยวบินทหาร/เรือรบเหนือดินแดน</li><li><strong>I</strong>nformation: ความเร็วข่าวและความสัมพันธ์ของจุดโฟกัส</li><li>การเพิ่มคะแนนจากจุดร้อนใกล้เคียง (สถานที่ยุทธศาสตร์)</li></ul><em>ค่า U:C:S:I แสดงคะแนนองค์ประกอบ</em> การตรวจจับจุดโฟกัสเชื่อมโยงเอนทิตีข่าวกับสัญญาณแผนที่เพื่อการให้คะแนนที่แม่นยำ",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "รวมค่าฐานแต่ละประเทศ + ตัวคูณเหตุการณ์ — ดู /docs/methodology/cii-risk-scores สำหรับตารางที่เผยแพร่แล้ว"
+      "methodologyLink": "รวมค่าฐานแต่ละประเทศ + ตัวคูณเหตุการณ์ — ดู /docs/methodology/cii-risk-scores สำหรับตารางที่เผยแพร่แล้ว",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "insights": {
       "noStories": "ยังไม่มีเรื่องราวด่วนหรือจากหลายแหล่ง",
@@ -1367,7 +1376,14 @@
         "minutesAgo": "{{count}}น. ที่แล้ว",
         "hoursAgo": "{{count}}ชม. ที่แล้ว"
       },
-      "infoTooltip": "<strong>วิธีการ</strong> คะแนนรวม (0-100) ผสมผสาน:<ul><li>50% ความไม่มั่นคงของประเทศ (5 อันดับแรกถ่วงน้ำหนัก)</li><li>30% เขตการบรรจบทางภูมิศาสตร์</li><li>20% เหตุการณ์โครงสร้างพื้นฐาน</li></ul>รีเฟรชอัตโนมัติทุก 5 นาที"
+      "infoTooltip": "<strong>วิธีการ</strong> คะแนนรวม (0-100) ผสมผสาน:<ul><li>50% ความไม่มั่นคงของประเทศ (5 อันดับแรกถ่วงน้ำหนัก)</li><li>30% เขตการบรรจบทางภูมิศาสตร์</li><li>20% เหตุการณ์โครงสร้างพื้นฐาน</li></ul>รีเฟรชอัตโนมัติทุก 5 นาที",
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "techEvents": {
       "loading": "กำลังโหลดงานเทคโนโลยี...",
@@ -1991,9 +2007,23 @@
         "categories": "หมวดหมู่",
         "movers": "การเปลี่ยนแปลงราคา",
         "spread": "ส่วนต่างราคาของผู้ค้าปลีก",
-        "health": "สุขภาพของข้อมูล"
+        "health": "สุขภาพของข้อมูล",
+        "world": "World"
       },
-      "infoTooltip": "<strong>ราคาผู้บริโภค</strong> การติดตามราคาตะกร้าสินค้าแบบเรียลไทม์:<ul><li><strong>ภาพรวม</strong>: ดัชนีสินค้าจำเป็น ตะกร้าสินค้าราคาประหยัด และการเปลี่ยนแปลงสัปดาห์ต่อสัปดาห์</li><li><strong>หมวดหมู่</strong>: แนวโน้มราคาตามหมวดหมู่พร้อมช่วง 30 วัน</li><li><strong>การเปลี่ยนแปลงราคา</strong>: รายการที่ขึ้นและลงมากที่สุดในสัปดาห์นี้</li><li><strong>ส่วนต่าง</strong>: ความแตกต่างของราคาระหว่างผู้ค้าปลีกสำหรับตะกร้าสินค้าเดียวกัน</li></ul>ข้อมูลมาจากการสกัดราคาจากผู้ค้าปลีกแบบเรียลไทม์"
+      "infoTooltip": "<strong>ราคาผู้บริโภค</strong> การติดตามราคาตะกร้าสินค้าแบบเรียลไทม์:<ul><li><strong>ภาพรวม</strong>: ดัชนีสินค้าจำเป็น ตะกร้าสินค้าราคาประหยัด และการเปลี่ยนแปลงสัปดาห์ต่อสัปดาห์</li><li><strong>หมวดหมู่</strong>: แนวโน้มราคาตามหมวดหมู่พร้อมช่วง 30 วัน</li><li><strong>การเปลี่ยนแปลงราคา</strong>: รายการที่ขึ้นและลงมากที่สุดในสัปดาห์นี้</li><li><strong>ส่วนต่าง</strong>: ความแตกต่างของราคาระหว่างผู้ค้าปลีกสำหรับตะกร้าสินค้าเดียวกัน</li></ul>ข้อมูลมาจากการสกัดราคาจากผู้ค้าปลีกแบบเรียลไทม์",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "marketImplications": {
       "infoTooltip": "<strong>ผลกระทบต่อตลาด AI</strong> สัญญาณการค้าที่สร้างโดย LLM มาจากสภาวะทางภูมิศาสตร์การเมือง สินค้าโภคนำ และแมโครแบบเรียลไทม์หลังจากแต่ละรอบการพยากรณ์<ul><li><strong>ทิศทาง</strong>: LONG / SHORT / HEDGE พร้อมอัตราความเชื่อมั่น</li><li><strong>ระยะเวลา</strong>: ขอบเขตเวลา 1W, 2W, 1M หรือ 3M</li><li><strong>ตัวขับเคลื่อน</strong>: ตัวเร่งหลักที่อยู่เบื้องหลังสัญญาณ</li><li><strong>ความเสี่ยง</strong>: คำเตือนหรือเงื่อนไขการเพิกถอน</li></ul><em>สำหรับวัตถุประสงค์ข้อมูลเท่านั้น ไม่ใช่คำแนะนำการลงทุน</em>",

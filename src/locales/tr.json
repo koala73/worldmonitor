@@ -128,7 +128,9 @@
       "languages": "Diller",
       "currencies": "Para birimleri",
       "area": "Yüz ölçümü"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "DUNYA",
@@ -456,7 +458,8 @@
       "flightMilitary": "Askeri · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Askeri · {{type}} · yerdeki",
       "flightSearchHint": "Canlı konumu sorgulamak için Enter tuşuna basın veya tıklayın",
-      "flightNotFound": "{{callsign}} için canlı konum bulunamadı"
+      "flightNotFound": "{{callsign}} için canlı konum bulunamadı",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "ISTIHBARAT BULGULARI",
@@ -1215,7 +1218,13 @@
       "noSignals": "Istikrarsizlik sinyali tespit edilmedi",
       "infoTooltip": "<strong>Metodoloji</strong><ul><li><strong>H</strong>uzursuzluk: sivil duzensizlik ve protestolar</li><li><strong>C</strong>atisma: silahli catisma yogunlugu</li><li><strong>G</strong>uvenlik: toprak uzerindeki askeri ucuslar/gemiler</li><li><strong>B</strong>ilgi: haber hizi ve odak noktasi korelasyonu</li><li>Sicak nokta yakinligi artisi (stratejik konumlar)</li></ul><em>H:C:G:B degerleri bilesen puanlarini gosterir.</em> Odak Noktasi Tespiti, dogru puanlama icin haber varliklarini harita sinyalleriyle iliskilendirir.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "Ülke başına temel + olay çarpanını içerir — yayımlanmış tablo için /docs/methodology/cii-risk-scores bölümüne bakın"
+      "methodologyLink": "Ülke başına temel + olay çarpanını içerir — yayımlanmış tablo için /docs/methodology/cii-risk-scores bölümüne bakın",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "insights": {
       "noStories": "Henuz son dakika veya coklu kaynak haberi yok",
@@ -1367,7 +1376,14 @@
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
       },
-      "infoTooltip": "<strong>Metodoloji</strong> Bilesik puan (0-100) harmanlama:<ul><li>%50 Ulke Istikrarsizligi (ilk 5 agirlikli)</li><li>%30 Cografi yakinlasma bolgeleri</li><li>%20 Altyapi olaylari</li></ul>Her 5 dakikada otomatik yenilenir."
+      "infoTooltip": "<strong>Metodoloji</strong> Bilesik puan (0-100) harmanlama:<ul><li>%50 Ulke Istikrarsizligi (ilk 5 agirlikli)</li><li>%30 Cografi yakinlasma bolgeleri</li><li>%20 Altyapi olaylari</li></ul>Her 5 dakikada otomatik yenilenir.",
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "techEvents": {
       "loading": "Teknoloji etkinlikleri yukleniyor...",
@@ -1991,9 +2007,23 @@
         "categories": "Kategoriler",
         "movers": "Hareket Edenler",
         "spread": "Perakendeci Farkı",
-        "health": "Veri Sağlığı"
+        "health": "Veri Sağlığı",
+        "world": "World"
       },
-      "infoTooltip": "<strong>Tüketici Fiyatları</strong> Gerçek zamanlı sepet fiyat takibi:<ul><li><strong>Genel Bakış</strong>: Temel ihtiyaçlar endeksi, değer sepeti ve haftalık değişim</li><li><strong>Kategoriler</strong>: Kategori bazında fiyat eğilimleri ve 30 günlük aralık</li><li><strong>Hareket Edenler</strong>: Bu hafta en çok yükselen ve düşen ürünler</li><li><strong>Fark</strong>: Aynı sepet için perakendeciler arasındaki fiyat farkı</li></ul>Veriler canlı perakendeci fiyat kazıma kaynağından gelir."
+      "infoTooltip": "<strong>Tüketici Fiyatları</strong> Gerçek zamanlı sepet fiyat takibi:<ul><li><strong>Genel Bakış</strong>: Temel ihtiyaçlar endeksi, değer sepeti ve haftalık değişim</li><li><strong>Kategoriler</strong>: Kategori bazında fiyat eğilimleri ve 30 günlük aralık</li><li><strong>Hareket Edenler</strong>: Bu hafta en çok yükselen ve düşen ürünler</li><li><strong>Fark</strong>: Aynı sepet için perakendeciler arasındaki fiyat farkı</li></ul>Veriler canlı perakendeci fiyat kazıma kaynağından gelir.",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "marketImplications": {
       "infoTooltip": "<strong>AI Pazar Etkileri</strong> Her tahmin döngüsünün ardından canlı jeopolitik, emtia ve makro durumundan türetilen LLM tarafından oluşturulan ticaret sinyalleri.<ul><li><strong>Yön</strong>: LONG / SHORT / KORUMA güven derecesiyle</li><li><strong>Zaman Ufku</strong>: 1H, 2H, 1A veya 3A süresi</li><li><strong>Tetikleyici</strong>: Sinyalin arkasındaki ana katalizör</li><li><strong>Risk</strong>: Uyarı veya geçersizleştirme koşulu</li></ul><em>Yalnızca bilgilendirme amaçlıdır. Yatırım tavsiyesi değildir.</em>",

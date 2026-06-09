@@ -196,7 +196,9 @@
       "languages": "Nyelvek",
       "currencies": "Valuták",
       "area": "Terület"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "VILÁG",
@@ -524,7 +526,8 @@
       "flightMilitary": "Katonai · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Katonai · {{type}} · földön",
       "flightSearchHint": "Nyomj Enter-t vagy kattints az élő pozíció megjelenítéséhez",
-      "flightNotFound": "Nincs elérhető élő pozíció a {{callsign}} járathoz"
+      "flightNotFound": "Nincs elérhető élő pozíció a {{callsign}} járathoz",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "INTELLIGENCIA TALÁLAT",
@@ -954,9 +957,23 @@
         "categories": "Kategóriák",
         "movers": "Mozgások",
         "spread": "Kereskedői terjedés",
-        "health": "Adatminőség"
+        "health": "Adatminőség",
+        "world": "World"
       },
-      "infoTooltip": "<strong>Fogyasztói árak</strong> Valós idejű kosár árkövetés:<ul><li><strong>Áttekintés</strong>: Alapvető árindex, értékkosár és heti változás</li><li><strong>Kategóriák</strong>: Kategóriánkénti ártrend 30 napos tartománnyal</li><li><strong>Mozgások</strong>: Az ezen a héten legnagyobb áremelkedések és -csökkenések</li><li><strong>Szórás</strong>: Áreltérések a kiskereskedők között azonos kosárra</li></ul>Az adatok élő kiskereskedői ár-scraping-ből származnak."
+      "infoTooltip": "<strong>Fogyasztói árak</strong> Valós idejű kosár árkövetés:<ul><li><strong>Áttekintés</strong>: Alapvető árindex, értékkosár és heti változás</li><li><strong>Kategóriák</strong>: Kategóriánkénti ártrend 30 napos tartománnyal</li><li><strong>Mozgások</strong>: Az ezen a héten legnagyobb áremelkedések és -csökkenések</li><li><strong>Szórás</strong>: Áreltérések a kiskereskedők között azonos kosárra</li></ul>Az adatok élő kiskereskedői ár-scraping-ből származnak.",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "gdelt": {
       "empty": "Nincs legutóbbi cikk erről a témáról"
@@ -1341,7 +1358,13 @@
       "noSignals": "Nincs instabilitási jelzés észlelve",
       "infoTooltip": "<strong>Módszertan</strong><ul><li><strong>U</strong> (Unrest): polgári rendzavarások és tüntetések</li><li><strong>C</strong> (Conflict): fegyveres konfliktus intenzitása</li><li><strong>S</strong> (Security): katonai járművek/hajók a terület felett</li><li><strong>I</strong> (Information): hírek sebessége és fókuszpont korrelációja</li><li>Fókuszpont közelségi növelés (stratégiai helyek)</li></ul><em>Az U:C:S:I értékek az összetevő pontszámait mutatják.</em> A Fókuszpont-detektálás korrelál a hírjellegzetességeket a térképi jelekkel a pontos pontozáshoz.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "Tartalmazza az országonkénti alapértéket + eseményszorzót — lásd /docs/methodology/cii-risk-scores a közzétett táblázathoz"
+      "methodologyLink": "Tartalmazza az országonkénti alapértéket + eseményszorzót — lásd /docs/methodology/cii-risk-scores a közzétett táblázathoz",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "insights": {
       "noStories": "Még nincsenek breaking vagy multi-forrásos történetek",
@@ -1493,7 +1516,14 @@
         "minutesAgo": "{{count}}p ezzel ezelőtt",
         "hoursAgo": "{{count}}ó ezzel ezelőtt"
       },
-      "infoTooltip": "<strong>Módszertan</strong> Összetett pontszám (0–100) összevetítve:<ul><li>50% Országinstabilitás (top 5 súlyozva)</li><li>30% Földrajzi konvergencia zónák</li><li>20% Infrastruktúra incidensek</li></ul>Automatikus frissítés 5 percenként."
+      "infoTooltip": "<strong>Módszertan</strong> Összetett pontszám (0–100) összevetítve:<ul><li>50% Országinstabilitás (top 5 súlyozva)</li><li>30% Földrajzi konvergencia zónák</li><li>20% Infrastruktúra incidensek</li></ul>Automatikus frissítés 5 percenként.",
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "techEvents": {
       "infoTooltip": "<strong>Technológiai események</strong> Közelgő és közelmúltbeli technológiaesemények: konferenciák, termékbemutatók, szabályozási meghallgatások és eredményhirdetések. Az oficális eseménynaptárakból és az iparág forrásaiból összegyűjtve.",

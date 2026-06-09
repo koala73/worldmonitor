@@ -196,7 +196,9 @@
       "languages": "भाषाएं",
       "currencies": "मुद्राएं",
       "area": "क्षेत्रफल"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "दुनिया",
@@ -1358,7 +1360,11 @@
       "sectionAll": "सभी",
       "infoTooltip": "<strong>प्रणाली</strong><ul><li><strong>U</strong>nrest: नागरिक अशांति और प्रदर्शन</li><li><strong>C</strong>onflict: सशस्त्र संघर्ष की तीव्रता</li><li><strong>S</strong>ecurity: सैन्य उड़ान/जहाज गतिविधि क्षेत्र पर</li><li><strong>I</strong>nformation: समाचार गति और फोकल पॉइंट सम्बन्ध</li><li>हॉटस्पॉट नजदीकी बूस्ट (रणनीतिक स्थान)</li></ul><em>U:C:S:I मान घटक स्कोर दिखाते हैं।</em> फोकल पॉइंट डिटेक्शन खबरों को मानचित्र संकेतों से जोड़ता है।",
       "_methodologyLink_translatorNote": "अनुवाद की आवश्यकता (#3725): methodologyLink स्थानीयकरण करें। अंग्रेजी मान सभी भाषाओं में भेजा जाता है ताकि methodology लिंक मौजूद रहे। स्वतंत्र रूप से अनुवादित करें।",
-      "methodologyLink": "प्रति-देश आधार + घटना गुणक शामिल — /docs/methodology/cii-risk-scores देखें"
+      "methodologyLink": "प्रति-देश आधार + घटना गुणक शामिल — /docs/methodology/cii-risk-scores देखें",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "insights": {
       "noStories": "कोई ब्रेकिंग या मल्टी-स्रोत कहानियाँ अभी तक नहीं",
@@ -1512,7 +1518,12 @@
         "minutesAgo": "{{count}} मिनट पहले",
         "hoursAgo": "{{count}} घंटे पहले"
       },
-      "infoTooltip": "<strong>विधि</strong> मिश्रित स्कोर (0-100) इन संकेतों को मिलाता है:<ul><li>50% देश अस्थिरता (शीर्ष 5 भारित)</li><li>30% भौगोलिक संगम क्षेत्र</li><li>20% इन्फ्रास्ट्रक्चर घटनाएं</li></ul>हर 5 मिनट में स्वचालित रिफ्रेश।"
+      "infoTooltip": "<strong>विधि</strong> मिश्रित स्कोर (0-100) इन संकेतों को मिलाता है:<ul><li>50% देश अस्थिरता (शीर्ष 5 भारित)</li><li>30% भौगोलिक संगम क्षेत्र</li><li>20% इन्फ्रास्ट्रक्चर घटनाएं</li></ul>हर 5 मिनट में स्वचालित रिफ्रेश।",
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "techEvents": {
       "infoTooltip": "<strong>टेक ईवेंट्स</strong> आने वाले और हाल के तकनीकी आयोजन: कॉन्फ्रेंस, उत्पाद लॉन्च, नियामक सुनवाई, और आय कॉल। आधिकारिक कार्यक्रम कैलेंडर और उद्योग स्रोतों से संकलित।",

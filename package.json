@@ -19,6 +19,8 @@
     "lint:md": "markdownlint-cli2 '**/*.md' '!**/node_modules/**' '!.agent/**' '!.agents/**' '!.claude/**' '!.factory/**' '!.windsurf/**' '!skills/**' '!docs/internal/**' '!docs/Docs_To_Review/**' '!todos/**' '!docs/plans/**' '!docs/brainstorms/**' '!docs/ideation/**'",
     "version:sync": "node scripts/sync-desktop-version.mjs",
     "version:check": "node scripts/sync-desktop-version.mjs --check",
+    "sync:locales": "node scripts/sync-locale-keys.mjs",
+    "sync:locales:check": "node scripts/sync-locale-keys.mjs --check",
     "docs:stats": "node scripts/docs-stats.mjs",
     "docs:check": "node scripts/docs-stats.mjs --check",
     "dev": "vite",

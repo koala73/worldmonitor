@@ -128,7 +128,9 @@
       "languages": "Limbi",
       "currencies": "Monede",
       "area": "Suprafață"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "LUME",
@@ -456,7 +458,8 @@
       "flightMilitary": "Militar · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Militar · {{type}} · pe sol",
       "flightSearchHint": "Apăsați Enter sau faceți clic pentru a căuta poziția live",
-      "flightNotFound": "Nu s-a găsit poziție live pentru {{callsign}}"
+      "flightNotFound": "Nu s-a găsit poziție live pentru {{callsign}}",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "DESCOPERIRE INFORMAȚII",
@@ -1215,7 +1218,13 @@
       "noSignals": "Nu au fost detectate semnale de instabilitate",
       "infoTooltip": "<strong>Metodologie</strong><ul><li><strong>U</strong>nrest: dezordine civilă și proteste</li><li><strong>C</strong>conflict: intensitatea conflictului armat</li><li><strong>S</strong>siguranță: zboruri/nave militare peste teritoriu</li><li><strong>I</strong>nformație: știri și proximitate punct focal știri și viteză de corelație (locații strategice)</li></ul><em>Valorile U:C:S:I arată scorurile componente.</em> Focal Point Detection corelează entitățile de știri cu semnalele hărții pentru scoruri precise.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "Include bază per-țară + multiplicator de evenimente — consultați /docs/methodology/cii-risk-scores pentru tabelul publicat"
+      "methodologyLink": "Include bază per-țară + multiplicator de evenimente — consultați /docs/methodology/cii-risk-scores pentru tabelul publicat",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "insights": {
       "noStories": "Încă nu există știri de ultimă oră sau din surse multiple",
@@ -1368,7 +1377,14 @@
         "minutesAgo": "acum {{count}}m",
         "hoursAgo": "acum {{count}}h"
       },
-      "infoTooltip": "<strong>Metodologie</strong> Combinație scor compus (0-100):<ul><li>50% Instabilitatea țării (top 5 ponderat)</li><li>30% Zone de convergență geografică</li><li>20% Incidente de infrastructură</li></ul>Se actualizează automat la fiecare 5 minute."
+      "infoTooltip": "<strong>Metodologie</strong> Combinație scor compus (0-100):<ul><li>50% Instabilitatea țării (top 5 ponderat)</li><li>30% Zone de convergență geografică</li><li>20% Incidente de infrastructură</li></ul>Se actualizează automat la fiecare 5 minute.",
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "techEvents": {
       "loading": "Se încarcă evenimentele tehnice...",
@@ -1997,9 +2013,23 @@
         "categories": "Categorii",
         "movers": "Modificări",
         "spread": "Diferență Retail",
-        "health": "Starea Datelor"
+        "health": "Starea Datelor",
+        "world": "World"
       },
-      "infoTooltip": "<strong>Prețuri pentru Consumatori</strong> Urmărire în timp real a prețurilor coșului:<ul><li><strong>Prezentare generală</strong>: Index produse esențiale, coș valoare și modificare săptămână la săptămână</li><li><strong>Categorii</strong>: Tendințe de preț per categorie cu interval de 30 de zile</li><li><strong>Modificări</strong>: Cele mai mari articole în creștere și scădere acestă săptămână</li><li><strong>Diferență</strong>: Variație de preț între retaileri pentru același coș</li></ul>Date provenind din extragerea directă a prețurilor de la retaileri."
+      "infoTooltip": "<strong>Prețuri pentru Consumatori</strong> Urmărire în timp real a prețurilor coșului:<ul><li><strong>Prezentare generală</strong>: Index produse esențiale, coș valoare și modificare săptămână la săptămână</li><li><strong>Categorii</strong>: Tendințe de preț per categorie cu interval de 30 de zile</li><li><strong>Modificări</strong>: Cele mai mari articole în creștere și scădere acestă săptămână</li><li><strong>Diferență</strong>: Variație de preț între retaileri pentru același coș</li></ul>Date provenind din extragerea directă a prețurilor de la retaileri.",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "marketImplications": {
       "infoTooltip": "<strong>Implicații AI pe Piață</strong> Semnale de tranzacționare generate de LLM derivate din starea geopoiitică, a mărfurilor și macro în timp real după fiecare ciclu de prognoză.<ul><li><strong>Direcție</strong>: LONG / SHORT / HEDGE cu rating de încredere</li><li><strong>Interval de timp</strong>: orizont de 1S, 2S, 1L sau 3L</li><li><strong>Catalizator</strong>: Catalizatorul cheie din spatele semnalului</li><li><strong>Risc</strong>: Avertisment sau condiție de invalidare</li></ul><em>Doar în scopuri informative. Nu constituie sfat de investiții.</em>",

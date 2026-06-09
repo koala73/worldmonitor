@@ -128,7 +128,9 @@
       "languages": "Sprachen",
       "currencies": "Währungen",
       "area": "Fläche"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "WELT",
@@ -456,7 +458,8 @@
       "flightMilitary": "Militär · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Militär · {{type}} · am Boden",
       "flightSearchHint": "Drücken Sie die Eingabetaste oder klicken Sie, um die aktuelle Position nachzuschlagen",
-      "flightNotFound": "Keine aktuelle Position für {{callsign}} gefunden"
+      "flightNotFound": "Keine aktuelle Position für {{callsign}} gefunden",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "INTELLIGENZFINDEN",
@@ -1401,7 +1404,13 @@
       "noSignals": "Keine Instabilitätssignale erkannt",
       "infoTooltip": "<strong>Methodik</strong><ul><li><strong>U</strong>nrest: zivile Unruhen und Proteste</li><li><strong>C</strong>Konflikt: bewaffnete Konfliktintensität</li><li><strong>S</strong>Sicherheit: Militärflüge/-schiffe über Gebiet</li><li><strong>I</strong>Informationen: Nachrichtengeschwindigkeit und Fokuspunktkorrelation</li><li>Hotspot-Näherungsschub (strategische Standorte)</li></ul><em>U:C:S:I-Werte zeigen Komponentenbewertungen.</em> Die Fokuspunkterkennung korreliert Nachrichtenentitäten mit Kartensignalen für eine genaue Bewertung.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "Umfasst länderspezifische Baseline + Ereignismultiplikator – siehe /docs/methodology/cii-risk-scores für die veröffentlichte Tabelle"
+      "methodologyLink": "Umfasst länderspezifische Baseline + Ereignismultiplikator – siehe /docs/methodology/cii-risk-scores für die veröffentlichte Tabelle",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>News Intelligence</strong> Globale Nachrichtenüberwachung in Echtzeit:<ul><li>Kuratierte Themenkategorien (Konflikte, Cyber ​​usw.)</li><li>Artikel aus über 100 Sprachen übersetzt</li><li>Aktualisierungen alle 15 Minuten</li><li>14-day media tone &amp; volume trend per topic</li></ul>Quelle: GDELT-Projekt (gdeltproject.org)"
@@ -1508,7 +1517,14 @@
         "justNow": "just now",
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
-      }
+      },
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "insights": {
       "noStories": "Noch keine aktuellen oder quellenübergreifenden Meldungen",
@@ -1991,9 +2007,23 @@
         "categories": "Kategorien",
         "movers": "Gewinner",
         "spread": "Einzelhandelsspanne",
-        "health": "Datenqualität"
+        "health": "Datenqualität",
+        "world": "World"
       },
-      "infoTooltip": "<strong>Verbraucherpreise</strong> Echtzeit-Warenkorbverfolgung:<ul><li><strong>Übersicht</strong>: Bedarfsartikel-Index, Wertkorb und Woche-zu-Woche-Änderung</li><li><strong>Kategorien</strong>: Preistrendtrends pro Kategorie mit 30-Tage-Spanne</li><li><strong>Gewinner</strong>: Größte steigende und fallende Artikel diese Woche</li><li><strong>Spanne</strong>: Preisunterschiede zwischen Einzelhandelsketten für denselben Warenkorb</li></ul>Daten stammen aus Live-Scraping von Einzelhandelsketten."
+      "infoTooltip": "<strong>Verbraucherpreise</strong> Echtzeit-Warenkorbverfolgung:<ul><li><strong>Übersicht</strong>: Bedarfsartikel-Index, Wertkorb und Woche-zu-Woche-Änderung</li><li><strong>Kategorien</strong>: Preistrendtrends pro Kategorie mit 30-Tage-Spanne</li><li><strong>Gewinner</strong>: Größte steigende und fallende Artikel diese Woche</li><li><strong>Spanne</strong>: Preisunterschiede zwischen Einzelhandelsketten für denselben Warenkorb</li></ul>Daten stammen aus Live-Scraping von Einzelhandelsketten.",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "marketImplications": {
       "infoTooltip": "<strong>AI-Marktauswirkungen</strong> LLM-generierte Handelssignale aus Live-Geopolitik, Rohstoffen und Makrozustand nach jedem Prognosezyklus.<ul><li><strong>Richtung</strong>: LONG / SHORT / HEDGE mit Konfidenzwert</li><li><strong>Zeitrahmen</strong>: 1W, 2W, 1M oder 3M Horizont</li><li><strong>Katalysator</strong>: Wichtiger Auslöser hinter dem Signal</li><li><strong>Risiko</strong>: Warnung oder Ungültigkeitsbedingung</li></ul><em>Nur zu Informationszwecken. Keine Anlageberatung.</em>",

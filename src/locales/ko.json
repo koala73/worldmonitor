@@ -128,7 +128,9 @@
       "languages": "언어",
       "currencies": "통화",
       "area": "면적"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "세계",
@@ -456,7 +458,8 @@
       "flightMilitary": "군용기 · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "군용기 · {{type}} · 지상",
       "flightSearchHint": "Enter를 누르거나 클릭하여 실시간 위치 조회",
-      "flightNotFound": "{{callsign}}의 실시간 위치를 찾을 수 없음"
+      "flightNotFound": "{{callsign}}의 실시간 위치를 찾을 수 없음",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "정보 발견",
@@ -1215,7 +1218,13 @@
       "noSignals": "불안정 신호 감지되지 않음",
       "infoTooltip": "<strong>방법론</strong><ul><li><strong>U</strong>nrest: 시민 소요 및 시위</li><li><strong>C</strong>onflict: 무력 분쟁 강도</li><li><strong>S</strong>ecurity: 영토 상공 군용기/함정</li><li><strong>I</strong>nformation: 뉴스 속도 및 핵심 지점 상관관계</li><li>핫스팟 근접 가산점 (전략적 위치)</li></ul><em>U:C:S:I 값은 구성 요소 점수를 표시합니다.</em> 핵심 지점 감지는 뉴스 개체와 지도 신호를 상관 분석하여 정확한 점수를 산출합니다.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "국가별 기준선 + 이벤트 승수 포함 — 공개된 표는 /docs/methodology/cii-risk-scores 참조"
+      "methodologyLink": "국가별 기준선 + 이벤트 승수 포함 — 공개된 표는 /docs/methodology/cii-risk-scores 참조",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "insights": {
       "noStories": "아직 속보 또는 다중 출처 기사 없음",
@@ -1367,7 +1376,14 @@
         "minutesAgo": "{{count}}m 전",
         "hoursAgo": "{{count}}h 전"
       },
-      "infoTooltip": "<strong>방법론</strong> 종합 점수 (0-100) 가중 혼합:<ul><li>50% 국가 불안정성 (상위 5개국 가중)</li><li>30% 지리적 수렴 지역</li><li>20% 인프라 사고</li></ul>5분마다 자동 갱신."
+      "infoTooltip": "<strong>방법론</strong> 종합 점수 (0-100) 가중 혼합:<ul><li>50% 국가 불안정성 (상위 5개국 가중)</li><li>30% 지리적 수렴 지역</li><li>20% 인프라 사고</li></ul>5분마다 자동 갱신.",
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "techEvents": {
       "loading": "테크 이벤트 불러오는 중...",
@@ -1991,9 +2007,23 @@
         "categories": "범주",
         "movers": "변동 상품",
         "spread": "소매점 가격 편차",
-        "health": "데이터 상태"
+        "health": "데이터 상태",
+        "world": "World"
       },
-      "infoTooltip": "<strong>소비자 가격</strong> 실시간 바구니 가격 추적:<ul><li><strong>개요</strong>: 필수품 지수, 가치 바구니 및 주간 변동</li><li><strong>카테고리</strong>: 카테고리별 가격 추세 및 30일 범위</li><li><strong>변동 상품</strong>: 이번 주 가장 큰 상승 및 하락 상품</li><li><strong>편차</strong>: 동일 바구니에 대한 소매점 간 가격 변동</li></ul>라이브 소매점 가격 스크래핑에서 소싱된 데이터."
+      "infoTooltip": "<strong>소비자 가격</strong> 실시간 바구니 가격 추적:<ul><li><strong>개요</strong>: 필수품 지수, 가치 바구니 및 주간 변동</li><li><strong>카테고리</strong>: 카테고리별 가격 추세 및 30일 범위</li><li><strong>변동 상품</strong>: 이번 주 가장 큰 상승 및 하락 상품</li><li><strong>편차</strong>: 동일 바구니에 대한 소매점 간 가격 변동</li></ul>라이브 소매점 가격 스크래핑에서 소싱된 데이터.",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "marketImplications": {
       "infoTooltip": "<strong>AI 시장 영향</strong> 각 예측 사이클 후 라이브 지정학, 상품 및 거시 상태에서 파생된 LLM 생성 거래 신호.<ul><li><strong>방향</strong>: LONG / SHORT / HEDGE (신뢰도 등급 포함)</li><li><strong>기간</strong>: 1W, 2W, 1M 또는 3M 시간대</li><li><strong>동인</strong>: 신호 뒤의 핵심 촉발 요인</li><li><strong>위험</strong>: 주의 또는 무효화 조건</li></ul><em>정보 제공 목적으로만 제공됩니다. 투자 조언이 아닙니다.</em>",

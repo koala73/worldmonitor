@@ -128,7 +128,9 @@
       "languages": "Idiomas",
       "currencies": "Monedas",
       "area": "Superficie"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "MUNDO",
@@ -456,7 +458,8 @@
       "flightMilitary": "Militar · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Militar · {{type}} · en tierra",
       "flightSearchHint": "Presiona Enter o haz clic para buscar la posición en vivo",
-      "flightNotFound": "No se encontró posición en vivo para {{callsign}}"
+      "flightNotFound": "No se encontró posición en vivo para {{callsign}}",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "ENCUENTRO DE INTELIGENCIA",
@@ -1401,7 +1404,13 @@
       "noSignals": "No se detectaron señales de inestabilidad",
       "infoTooltip": "<strong>Metodología</strong><ul><li><strong>U</strong>nrest: desorden civil y protestas</li><li><strong>C</strong>onflicto: intensidad del conflicto armado</li><li><strong>S</strong>seguridad: vuelos/buques militares sobre territorio</li><li><strong>I</strong>nformación: velocidad de las noticias y correlación del punto focal</li><li>Aumento de proximidad del punto de acceso (ubicaciones estratégicas)</li></ul><em>Los valores U:C:S:I muestran puntuaciones de los componentes.</em> La detección de puntos focales correlaciona entidades de noticias con señales de mapa para una puntuación precisa.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "Incluye línea base por país + multiplicador de evento — véase /docs/methodology/cii-risk-scores para la tabla publicada"
+      "methodologyLink": "Incluye línea base por país + multiplicador de evento — véase /docs/methodology/cii-risk-scores para la tabla publicada",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>News Intelligence</strong> Monitoreo de noticias globales en tiempo real:<ul><li>Categorías de temas seleccionados (conflictos, cibernética, etc.)</li><li>Artículos de más de 100 idiomas traducidos</li><li>Actualizaciones cada 15 minutos</li><li>14-day media tone &amp; volume trend per topic</li></ul>Fuente: Proyecto GDELT (gdeltproject.org)"
@@ -1508,7 +1517,14 @@
         "justNow": "just now",
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
-      }
+      },
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "insights": {
       "noStories": "Aún no hay noticias de última hora o de múltiples fuentes",
@@ -1997,9 +2013,23 @@
         "categories": "Categorías",
         "movers": "Variaciones",
         "spread": "Margen minorista",
-        "health": "Salud de datos"
+        "health": "Salud de datos",
+        "world": "World"
       },
-      "infoTooltip": "<strong>Precios al consumo</strong> Seguimiento en tiempo real de precios de cesta:<ul><li><strong>Descripción general</strong>: Índice de productos esenciales, cesta de valor y cambio semana a semana</li><li><strong>Categorías</strong>: Tendencias de precios por categoría con rango de 30 días</li><li><strong>Movimientos</strong>: Artículos más subidos y bajados esta semana</li><li><strong>Margen</strong>: Variación de precios entre minoristas para la misma cesta</li></ul>Datos obtenidos de raspado de precios de minoristas en vivo."
+      "infoTooltip": "<strong>Precios al consumo</strong> Seguimiento en tiempo real de precios de cesta:<ul><li><strong>Descripción general</strong>: Índice de productos esenciales, cesta de valor y cambio semana a semana</li><li><strong>Categorías</strong>: Tendencias de precios por categoría con rango de 30 días</li><li><strong>Movimientos</strong>: Artículos más subidos y bajados esta semana</li><li><strong>Margen</strong>: Variación de precios entre minoristas para la misma cesta</li></ul>Datos obtenidos de raspado de precios de minoristas en vivo.",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "marketImplications": {
       "infoTooltip": "<strong>Implicaciones de mercado de IA</strong> Señales comerciales generadas por LLM derivadas del estado geopolítico, de materias primas y macroeconómico en vivo después de cada ciclo de pronóstico.<ul><li><strong>Dirección</strong>: LARGO / CORTO / COBERTURA con calificación de confianza</li><li><strong>Plazo</strong>: Horizonte de 1S, 2S, 1M o 3M</li><li><strong>Catalizador</strong>: Catalizador clave detrás de la señal</li><li><strong>Riesgo</strong>: Advertencia o condición de invalidación</li></ul><em>Solo para fines informativos. No es asesoramiento de inversión.</em>",

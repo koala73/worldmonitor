@@ -246,7 +246,8 @@
       "flightMilitary": "Militär · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Militär · {{type}} · på marken",
       "flightSearchHint": "Tryck Enter eller klicka för att slå upp live-position",
-      "flightNotFound": "Ingen live-position hittad för {{callsign}}"
+      "flightNotFound": "Ingen live-position hittad för {{callsign}}",
+      "addPanel": "Add"
     },
     "signal": {
       "source": "Source",
@@ -1076,7 +1077,13 @@
       "infoTooltip": "<strong>Metodik</strong><ul><li><strong>U</strong>nrest: civila störningar och protester</li><li><strong>C</strong>konflikt: väpnad konfliktintensitet</li><li><strong>S</strong>kurv: militärflyg territorium</li><li><strong>I</strong>information: nyhetshastighet och brännpunktskorrelation</li><li>Hotspot-närhetsförstärkning (strategiska platser)</li></ul><em>U:C:S:I-värden visar komponentpoäng för komponentavkänningar för 7__punkter.__PH korrekt poängsättning.",
       "noSignals": "Inga instabilitetssignaler upptäckta",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "Inkluderar per-land-baseline + händelsemultiplikator — se /docs/methodology/cii-risk-scores för den publicerade tabellen"
+      "methodologyLink": "Inkluderar per-land-baseline + händelsemultiplikator — se /docs/methodology/cii-risk-scores för den publicerade tabellen",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>News Intelligence</strong> Global nyhetsövervakning i realtid:<ul><li>Utvalda ämneskategorier (konflikter, cyber, etc.)</li><li>Artiklar från 100+ språk översatta</li><li>Uppdateringar var 15:e minut</li><li>14-day media tone &amp; volume trend per topic</li></ul>Källa: GDELT Project (gdeltproject.org)"
@@ -1183,7 +1190,14 @@
         "justNow": "just now",
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
-      }
+      },
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "insights": {
       "infoTooltip": "<strong>AI-driven analys</strong><br>• <strong>World Brief</strong>: AI-sammanfattning (Groq/OpenRouter)<br>• <strong>Sentiment</strong>: Nyhetstonanalys<br>• <strong>__2__hastighet: snabbrörlig PH______2__position: <strong>Fokalpunkter</strong>: Korrelerar nyhetsenheter med kartsignaler (militär, protester, avbrott)<br><em>Endast skrivbord • Drivs av Llama 3.3 + Focal Point Detection</em>",
@@ -1781,9 +1795,23 @@
         "categories": "Kategorier",
         "movers": "Prisförändringar",
         "spread": "Återförsäljaravvikelse",
-        "health": "Datahälsa"
+        "health": "Datahälsa",
+        "world": "World"
       },
-      "infoTooltip": "<strong>Konsumentpriser</strong> Realtids-prisövervakning för varukorgar:<ul><li><strong>Översikt</strong>: Nödvändighetsvara-index, värdekorg och vecka-över-vecka-förändringar</li><li><strong>Kategorier</strong>: Pristrend per kategori med 30-dagars intervall</li><li><strong>Prisförändringar</strong>: Största stigande och fallande artiklar denna vecka</li><li><strong>Avvikelse</strong>: Prisvariancer mellan återförsäljare för samma korg</li></ul>Data från direktprisövervakning från återförsäljare."
+      "infoTooltip": "<strong>Konsumentpriser</strong> Realtids-prisövervakning för varukorgar:<ul><li><strong>Översikt</strong>: Nödvändighetsvara-index, värdekorg och vecka-över-vecka-förändringar</li><li><strong>Kategorier</strong>: Pristrend per kategori med 30-dagars intervall</li><li><strong>Prisförändringar</strong>: Största stigande och fallande artiklar denna vecka</li><li><strong>Avvikelse</strong>: Prisvariancer mellan återförsäljare för samma korg</li></ul>Data från direktprisövervakning från återförsäljare.",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "marketImplications": {
       "infoTooltip": "<strong>AI-marknadsbetydelse</strong> LLM-genererade handelssignaler härledda från levande geopolitiska, råvaru- och makroläge efter varje prognosecykel.<ul><li><strong>Riktning</strong>: LÅNGSIKTIGT / KORTSIKTIGT / SÄKRING med konfidensbedömning</li><li><strong>Tidsram</strong>: 1V, 2V, 1M eller 3M horisont</li><li><strong>Drivkraft</strong>: Nyckelkatalysator bakom signalen</li><li><strong>Risk</strong>: Reservation eller ogiltighetsvillkor</li></ul><em>Endast för informationsändamål. Inte investeringsråd.</em>",
@@ -2917,7 +2945,9 @@
     },
     "geocodeFailed": "Kunde inte identifiera ett land på denna plats",
     "retryBtn": "Försök igen",
-    "closeBtn": "Stäng"
+    "closeBtn": "Stäng",
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "preferences": {
     "display": "Visning",

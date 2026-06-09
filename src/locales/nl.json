@@ -246,7 +246,8 @@
       "flightMilitary": "Militair · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Militair · {{type}} · op de grond",
       "flightSearchHint": "Druk op Enter of klik om live positie op te zoeken",
-      "flightNotFound": "Geen live positie gevonden voor {{callsign}}"
+      "flightNotFound": "Geen live positie gevonden voor {{callsign}}",
+      "addPanel": "Add"
     },
     "signal": {
       "source": "Source",
@@ -1076,7 +1077,13 @@
       "infoTooltip": "<strong>Methodologie</strong><ul><li><strong>U</strong>nrest: burgerlijke onrust en protesten</li><li><strong>C</strong>aanval: intensiteit van gewapende conflicten</li><li><strong>S</strong>veiligheid: militaire vluchten/schepen voorbij territorium</li><li><strong>I</strong>nformatie: nieuwssnelheid en correlatie van focuspunten</li><li>Hotspot-nabijheidsboost (strategische locaties)</li></ul><em>U:C:S:I-waarden tonen componentscores.</em> Focal Point Detection correleert nieuwsentiteiten met kaartsignalen voor nauwkeurige scores.",
       "noSignals": "Geen instabiliteitssignalen gedetecteerd",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "Inclusief per-land baseline + event multiplier — zie /docs/methodology/cii-risk-scores voor de gepubliceerde tabel"
+      "methodologyLink": "Inclusief per-land baseline + event multiplier — zie /docs/methodology/cii-risk-scores voor de gepubliceerde tabel",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>News Intelligence</strong> Realtime monitoring van mondiaal nieuws:<ul><li>Samengestelde onderwerpcategorieën (conflicten, cyber, etc.)</li><li>Artikelen uit meer dan 100 talen vertaald</li><li>Updates elke 15 minuten</li><li>14-day media tone &amp; volume trend per topic</li></ul>Bron: GDELT Project (gdeltproject.org)"
@@ -1183,7 +1190,14 @@
         "justNow": "just now",
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
-      }
+      },
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "insights": {
       "infoTooltip": "<strong>AI-aangedreven analyse</strong><br>• <strong>World Brief</strong>: AI-samenvatting (Groq/OpenRouter)<br>• <strong>Sentiment</strong>: analyse van nieuwstoon<br>• <strong>Velocity</strong>: snel bewegende verhalen<br>• <strong>Focal Punten</strong>: correleert nieuwsentiteiten met kaartsignalen (militair, protesten, storingen)<br><em>Alleen desktop • Mogelijk gemaakt door Llama 3.3 + Focal Point-detectie</em>",
@@ -1781,9 +1795,23 @@
         "categories": "Categorieën",
         "movers": "Bewegingen",
         "spread": "Retailerspread",
-        "health": "Gegevenskwaliteit"
+        "health": "Gegevenskwaliteit",
+        "world": "World"
       },
-      "infoTooltip": "<strong>Consumentenprijzen</strong> Realtime-prijsvolging van manden:<ul><li><strong>Overzicht</strong>: Essentiëlenindex, waardenmand en week-op-week-wijziging</li><li><strong>Categorieën</strong>: Prijsontwikkelingen per categorie met 30-dagenbereik</li><li><strong>Bewegingen</strong>: Grootste stijgende en dalende items deze week</li><li><strong>Spread</strong>: Prijsverschillen tussen retailers voor dezelfde mand</li></ul>Gegevens afkomstig van live retailerprijsscraping."
+      "infoTooltip": "<strong>Consumentenprijzen</strong> Realtime-prijsvolging van manden:<ul><li><strong>Overzicht</strong>: Essentiëlenindex, waardenmand en week-op-week-wijziging</li><li><strong>Categorieën</strong>: Prijsontwikkelingen per categorie met 30-dagenbereik</li><li><strong>Bewegingen</strong>: Grootste stijgende en dalende items deze week</li><li><strong>Spread</strong>: Prijsverschillen tussen retailers voor dezelfde mand</li></ul>Gegevens afkomstig van live retailerprijsscraping.",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "marketImplications": {
       "infoTooltip": "<strong>AI-marktimplicaties</strong> Door LLM gegenereerde handelssignalen afgeleid van live geopolitieke, grondstof- en macrothema's na elke voorspellingscyclus.<ul><li><strong>Richting</strong>: LONG / SHORT / HEDGE met betrouwbaarheidsrating</li><li><strong>Periode</strong>: 1W, 2W, 1M of 3M horizon</li><li><strong>Driver</strong>: Belangrijkste katalysator achter het signaal</li><li><strong>Risico</strong>: Voorbehoud of ongeldigheidsvoorwaarde</li></ul><em>Uitsluitend voor informatiedoeleinden. Geen beleggingsadvies.</em>",
@@ -2917,7 +2945,9 @@
     },
     "geocodeFailed": "Kon geen land op deze locatie identificeren",
     "retryBtn": "Opnieuw proberen",
-    "closeBtn": "Sluiten"
+    "closeBtn": "Sluiten",
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "preferences": {
     "display": "Weergave",

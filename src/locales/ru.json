@@ -128,7 +128,9 @@
       "languages": "Языки",
       "currencies": "Валюты",
       "area": "Площадь"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "МИР",
@@ -456,7 +458,8 @@
       "flightMilitary": "Военный · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Военный · {{type}} · на земле",
       "flightSearchHint": "Нажмите Enter или кликните для поиска текущей позиции",
-      "flightNotFound": "Текущая позиция не найдена для {{callsign}}"
+      "flightNotFound": "Текущая позиция не найдена для {{callsign}}",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "РАЗВЕДЫВАТЕЛЬНОЕ ОБНАРУЖЕНИЕ",
@@ -1215,7 +1218,13 @@
       "noSignals": "Сигналы нестабильности не обнаружены",
       "infoTooltip": "<strong>Методология</strong><ul><li><strong>Б</strong>еспорядки: гражданские волнения и протесты</li><li><strong>К</strong>онфликт: интенсивность вооружённого конфликта</li><li><strong>Б</strong>езопасность: военные рейсы/суда над территорией</li><li><strong>И</strong>нформация: скорость новостей и корреляция фокусных точек</li><li>Усиление при близости к горячим точкам (стратегические объекты)</li></ul><em>Б:К:Б:И показывают оценки компонентов.</em> Обнаружение фокусных точек коррелирует сущности новостей с сигналами на карте для точной оценки.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "Включает базовое значение по стране + множитель события — см. /docs/methodology/cii-risk-scores для опубликованной таблицы"
+      "methodologyLink": "Включает базовое значение по стране + множитель события — см. /docs/methodology/cii-risk-scores для опубликованной таблицы",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "insights": {
       "noStories": "Пока нет экстренных или мультиисточниковых сюжетов",
@@ -1369,7 +1378,14 @@
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
       },
-      "infoTooltip": "<strong>Методология</strong> Составная оценка (0-100) на основе:<ul><li>50% Нестабильность стран (топ-5, взвешенные)</li><li>30% Географические зоны конвергенции</li><li>20% Инфраструктурные инциденты</li></ul>Автообновление каждые 5 минут."
+      "infoTooltip": "<strong>Методология</strong> Составная оценка (0-100) на основе:<ul><li>50% Нестабильность стран (топ-5, взвешенные)</li><li>30% Географические зоны конвергенции</li><li>20% Инфраструктурные инциденты</li></ul>Автообновление каждые 5 минут.",
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "techEvents": {
       "loading": "Загрузка технологических мероприятий...",
@@ -2003,9 +2019,23 @@
         "categories": "Категории",
         "movers": "Изменения цен",
         "spread": "Разброс розницы",
-        "health": "Качество данных"
+        "health": "Качество данных",
+        "world": "World"
       },
-      "infoTooltip": "<strong>Цены потребителей</strong> Отслеживание цен корзины товаров в реальном времени:<ul><li><strong>Обзор</strong>: индекс товаров первой необходимости, корзина экономных товаров и изменение неделя к неделе</li><li><strong>Категории</strong>: тренды цен по категориям с диапазоном за 30 дней</li><li><strong>Изменения</strong>: товары с наибольшим ростом и падением цен на этой неделе</li><li><strong>Разброс</strong>: разница цен у разных розничных продавцов для одной корзины</li></ul>Данные получены из прямого скрепинга цен у розничных продавцов."
+      "infoTooltip": "<strong>Цены потребителей</strong> Отслеживание цен корзины товаров в реальном времени:<ul><li><strong>Обзор</strong>: индекс товаров первой необходимости, корзина экономных товаров и изменение неделя к неделе</li><li><strong>Категории</strong>: тренды цен по категориям с диапазоном за 30 дней</li><li><strong>Изменения</strong>: товары с наибольшим ростом и падением цен на этой неделе</li><li><strong>Разброс</strong>: разница цен у разных розничных продавцов для одной корзины</li></ul>Данные получены из прямого скрепинга цен у розничных продавцов.",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "marketImplications": {
       "infoTooltip": "<strong>Рыночные последствия AI</strong> Торговые сигналы, созданные LLM на основе текущих геополитических, сырьевых и макроэкономических данных после каждого цикла прогноза.<ul><li><strong>Направление</strong>: LONG / SHORT / HEDGE с рейтингом уверенности</li><li><strong>Период</strong>: горизонт 1W, 2W, 1M или 3M</li><li><strong>Драйвер</strong>: ключевой катализатор сигнала</li><li><strong>Риск</strong>: оговорка или условие инвалидации</li></ul><em>Только в информационных целях. Не является инвестиционным советом.</em>",

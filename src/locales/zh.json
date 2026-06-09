@@ -128,7 +128,9 @@
       "languages": "语言",
       "currencies": "货币",
       "area": "面积"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "世界",
@@ -456,7 +458,8 @@
       "flightMilitary": "军用 · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "军用 · {{type}} · 地面停靠",
       "flightSearchHint": "按 Enter 或点击查看实时位置",
-      "flightNotFound": "未找到 {{callsign}} 的实时位置"
+      "flightNotFound": "未找到 {{callsign}} 的实时位置",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "情报发现",
@@ -1215,7 +1218,13 @@
       "noSignals": "未检测到不稳定信号",
       "infoTooltip": "<strong>方法论</strong><ul><li><strong>动</strong>荡：社会骚乱与抗议</li><li><strong>冲</strong>突：武装冲突强度</li><li><strong>安</strong>全：领土上空军用飞机/舰艇</li><li><strong>信</strong>息：新闻速度和焦点关联</li><li>热点邻近度提升（战略位置）</li></ul><em>U:C:S:I值显示各分项评分。</em>焦点检测将新闻实体与地图信号关联以实现精确评分。",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "包含各国基准线 + 事件乘数 — 请参阅 /docs/methodology/cii-risk-scores 了解已发布的表格"
+      "methodologyLink": "包含各国基准线 + 事件乘数 — 请参阅 /docs/methodology/cii-risk-scores 了解已发布的表格",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "insights": {
       "noStories": "暂无突发或多源报道",
@@ -1367,7 +1376,14 @@
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
       },
-      "infoTooltip": "<strong>方法论</strong>综合评分（0-100）混合：<ul><li>50% 国家不稳定性（前5名加权）</li><li>30% 地理趋同区域</li><li>20% 基础设施事故</li></ul>每5分钟自动刷新。"
+      "infoTooltip": "<strong>方法论</strong>综合评分（0-100）混合：<ul><li>50% 国家不稳定性（前5名加权）</li><li>30% 地理趋同区域</li><li>20% 基础设施事故</li></ul>每5分钟自动刷新。",
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "techEvents": {
       "loading": "正在加载科技活动...",
@@ -1991,9 +2007,23 @@
         "categories": "分类",
         "movers": "涨跌",
         "spread": "零售商价差",
-        "health": "数据健康度"
+        "health": "数据健康度",
+        "world": "World"
       },
-      "infoTooltip": "<strong>消费者价格</strong> 实时购物篮价格跟踪：<ul><li><strong>概览</strong>：生活必需品指数、价值篮子及周环比变化</li><li><strong>品类</strong>：各品类价格趋势及30天价格区间</li><li><strong>变动</strong>：本周价格涨跌最快的商品</li><li><strong>价差</strong>：同一购物篮在不同零售商之间的价格差异</li></ul>数据来自实时零售商价格爬取。"
+      "infoTooltip": "<strong>消费者价格</strong> 实时购物篮价格跟踪：<ul><li><strong>概览</strong>：生活必需品指数、价值篮子及周环比变化</li><li><strong>品类</strong>：各品类价格趋势及30天价格区间</li><li><strong>变动</strong>：本周价格涨跌最快的商品</li><li><strong>价差</strong>：同一购物篮在不同零售商之间的价格差异</li></ul>数据来自实时零售商价格爬取。",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "marketImplications": {
       "infoTooltip": "<strong>AI市场影响分析</strong> LLM生成的交易信号，基于每个预测周期后的实时地缘政治、商品和宏观状态。<ul><li><strong>方向</strong>：看多/看空/对冲，附带信心评分</li><li><strong>时间框架</strong>：1周、2周、1月或3月</li><li><strong>驱动因素</strong>：信号背后的关键催化剂</li><li><strong>风险</strong>：预警或失效条件</li></ul><em>仅供参考，不构成投资建议。</em>",
