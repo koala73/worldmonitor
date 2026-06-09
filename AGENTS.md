@@ -49,7 +49,7 @@ Real-time global intelligence dashboard. TypeScript SPA (Vite + Preact) with 86 
 ## How to Run
 
 ```bash
-npm install              # Install deps (also runs blog-site postinstall)
+npm ci                   # Deterministic install (also runs blog-site postinstall)
 npm run dev              # Start Vite dev server (full variant)
 npm run dev:tech         # Start tech-only variant
 npm run typecheck        # tsc --noEmit (strict mode)
@@ -58,7 +58,31 @@ npm run test:data        # Run unit/integration tests
 npm run test:sidecar     # Run sidecar + API handler tests
 npm run test:e2e         # Run all Playwright E2E tests
 make generate            # Regenerate proto stubs + per-service & unified OpenAPI specs (requires buf + sebuf v0.11.0 plugins)
+npm run worktree:bootstrap          # Fresh worktree: link local env files + npm ci with tmp cache
+npm run worktree:bootstrap:test-only # Fresh docs/test worktree: same, but npm ci --ignore-scripts
+npm run worktree:env                # Link ignored local env files only
 ```
+
+## Fresh Worktree Bootstrap
+
+Worktrees usually start without ignored local state. When creating or entering one:
+
+1. Start from `origin/main` or the requested base, not a dirty local branch.
+2. Run `npm run worktree:bootstrap` before typecheck/tests. The helper links ignored `.env.local` / `.env` from the main worktree when Git can infer it, and installs deps with `npm ci --cache /tmp/worldmonitor-npm-cache`.
+3. If only docs/test tooling is needed and native postinstall work is unnecessary, use `npm run worktree:bootstrap:test-only`.
+4. If live credentials are unavailable, do not fabricate secrets. Run the non-credentialed checks you can and report the credential gate explicitly.
+
+Env rules:
+
+- Link only `.env.local` and `.env`. Never copy or link `.env.vercel-backup` or `.env.vercel-export`; the pre-push guard blocks those files even as symlinks.
+- Override env source discovery with `WM_ENV_SOURCE=/path/to/worldmonitor npm run worktree:env` when the main worktree cannot be inferred.
+- `.env*` files are ignored local state. Do not add, print, or summarize secret values.
+
+Validation hygiene:
+
+- Prefer `npm ci` over `npm install` in fresh worktrees. Use `npm_config_cache=/tmp/worldmonitor-npm-cache` for `npx` or install commands if cache ownership errors appear.
+- After bootstrap or pre-push, run `git status --short`. If dependency bootstrap changed lockfiles you did not intend to edit, remove those incidental changes before finalizing.
+- After install, prefer local tools such as `./node_modules/.bin/tsx --test ...` for focused TypeScript tests when `npx` is flaky.
 
 ## Architecture Rules
 

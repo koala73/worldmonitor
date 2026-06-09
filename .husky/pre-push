@@ -2,10 +2,12 @@
 echo "Checking for local Vercel env dumps..."
 node scripts/check-local-secret-dumps.mjs || exit 1
 
+export npm_config_cache="${npm_config_cache:-/tmp/worldmonitor-npm-cache}"
+
 # Ensure dependencies are installed (worktrees start with no node_modules)
 if [ ! -d node_modules ]; then
-  echo "node_modules missing, running npm install..."
-  npm install --prefer-offline || exit 1
+  echo "node_modules missing, running npm ci..."
+  npm ci --cache "$npm_config_cache" || exit 1
 fi
 
 echo "Checking PR status for current branch..."
@@ -299,7 +301,7 @@ echo "Running pro-test bundle freshness check..."
 if [ "$RUN_ALL" = true ] || echo "$CHANGED_FILES" | grep -qE "^(pro-test|public/pro)/"; then
   if [ ! -d pro-test/node_modules ]; then
     echo "  Installing pro-test deps..."
-    (cd pro-test && npm install --prefer-offline) || exit 1
+    (cd pro-test && npm ci --prefer-offline) || exit 1
   fi
   (cd pro-test && npm run build >/dev/null) || {
     echo "ERROR: pro-test build failed"
