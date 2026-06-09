@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   LOW_CARBON_MAX_CONTENT_AGE_MIN,
   buildLowCarbonCountriesFromOwidRows,
+  getLowCarbonMinNewestYear,
   parseOwidLowCarbonCsv,
   validateLowCarbonGeneration,
 } from '../scripts/seed-low-carbon-generation.mjs';
@@ -59,6 +60,8 @@ test('low-carbon generation ignores unmapped, undated, and non-numeric rows', ()
     row('United States', 'USA', 2025, 43.2),
     row('Unmapped Example', 'ZZZ', 2025, 100),
     row('No Year', 'CAN', 'bad', 80),
+    row('Empty Year', 'NOR', '', 80),
+    row('Out-of-range Year', 'FRA', 1899, 80),
     row('No Value', 'NOR', 2025, ''),
   ]);
 
@@ -78,17 +81,23 @@ test('low-carbon generation fails closed if OWID column schema drifts', () => {
 });
 
 test('low-carbon generation validates near-current coverage and newest year', () => {
+  const minNewestYear = getLowCarbonMinNewestYear(FIXED_NOW);
+
   const countries = {};
   for (let idx = 0; idx < 199; idx += 1) {
     countries[`X${idx}`] = { value: 50, year: 2025 };
   }
-  assert.equal(validateLowCarbonGeneration({ countries }), false, '199 countries is below the coverage floor');
+  assert.equal(validateLowCarbonGeneration({ countries }, FIXED_NOW), false, '199 countries is below the coverage floor');
 
-  countries.X199 = { value: 50, year: 2022 };
-  assert.equal(validateLowCarbonGeneration({ countries }), true, '200 countries with newest year >= 2023 passes');
+  countries.X199 = { value: 50, year: minNewestYear };
+  assert.equal(
+    validateLowCarbonGeneration({ countries }, FIXED_NOW),
+    true,
+    '200 countries with newest year inside the rolling floor passes',
+  );
 
-  for (const entry of Object.values(countries)) entry.year = 2022;
-  assert.equal(validateLowCarbonGeneration({ countries }), false, 'stale newest year fails validation');
+  for (const entry of Object.values(countries)) entry.year = minNewestYear - 1;
+  assert.equal(validateLowCarbonGeneration({ countries }, FIXED_NOW), false, 'stale newest year fails validation');
 });
 
 test('low-carbon content-age budget is restored to 18 months for OWID/Ember annual cadence', () => {

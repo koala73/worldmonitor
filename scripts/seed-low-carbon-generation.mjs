@@ -36,7 +36,11 @@ const OWID_VALUE_COLUMN = 'low_carbon_share_of_electricity__pct';
 const CANONICAL_KEY = 'resilience:low-carbon-generation:v1';
 const CACHE_TTL = 35 * 24 * 3600;
 const MIN_COUNTRIES = 200;
-const MIN_NEWEST_YEAR = 2023;
+const MAX_NEWEST_YEAR_LAG = 2;
+
+export function getLowCarbonMinNewestYear(nowMs = Date.now()) {
+  return new Date(nowMs).getUTCFullYear() - MAX_NEWEST_YEAR_LAG;
+}
 
 function parseDelimitedRow(line, delimiter = ',') {
   const cells = [];
@@ -96,7 +100,7 @@ export function buildLowCarbonCountriesFromOwidRows(rows) {
     if (!iso2) continue;
 
     const year = Number(row?.year);
-    if (!Number.isInteger(year)) continue;
+    if (!Number.isInteger(year) || year < 1900) continue;
 
     const valueCell = row?.[OWID_VALUE_COLUMN];
     if (valueCell == null || String(valueCell).trim() === '') continue;
@@ -156,7 +160,7 @@ async function fetchLowCarbonGeneration() {
   return { countries, seededAt: new Date().toISOString() };
 }
 
-export function validateLowCarbonGeneration(data) {
+export function validateLowCarbonGeneration(data, nowMs = Date.now()) {
   if (!data?.countries || typeof data.countries !== 'object') return false;
 
   const entries = Object.values(data.countries);
@@ -165,7 +169,7 @@ export function validateLowCarbonGeneration(data) {
     .filter((year) => Number.isInteger(year));
 
   if (entries.length < MIN_COUNTRIES) return false;
-  if (years.length === 0 || Math.max(...years) < MIN_NEWEST_YEAR) return false;
+  if (years.length === 0 || Math.max(...years) < getLowCarbonMinNewestYear(nowMs)) return false;
   return true;
 }
 
