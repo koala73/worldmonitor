@@ -37,14 +37,16 @@ import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 // Per-seeder budget lives below — same shape, different publication lags.
 import { wbCountryDictContentMeta } from './_wb-country-dict-content-age-helpers.mjs';
 
-// 36mo budget — verified against live WB API on 2026-05-05. This seeder now
-// publishes the latest common component year per country, not the max of
-// independently latest component years, so content-age is conservative for
-// the actual composite being scored. Steady-state ceiling for annual WB
-// indicators = max_publication_lag (~18mo) + cycle_length (12mo) = 30mo.
-// 36mo = 30mo ceiling + 6mo slack. Same math as power-reliability (#3602
-// review); see `_power-reliability-helpers.mjs` JSDoc for full derivation.
-const MAX_CONTENT_AGE_MIN = 36 * 30 * 24 * 60;
+// 60mo budget (INTERIM). The binding constraint is the latest COMMON component
+// year (min across NUCL/RNEW/HYRO), and one component (hydro/nuclear) is frozen
+// at 2021 in WB WDI — so the live composite is ~53mo old (verified 2026-06),
+// well past the original 36mo estimate. That 36mo assumed an ~18mo per-component
+// publication lag, which does NOT hold for the min-common-year composite when
+// one WB series stalls. 60mo clears the genuine WB lag while still tripping a
+// real regression (a 2020 freeze is ~64mo > 60mo). This is a STOPGAP: the
+// durable fix is migrating low-carbon generation to a fresher source (Ember/OWID,
+// which publish 2023+ electricity mix) and restoring a tight budget — issue #4219.
+const MAX_CONTENT_AGE_MIN = 60 * 30 * 24 * 60;
 
 loadEnvFile(import.meta.url);
 
