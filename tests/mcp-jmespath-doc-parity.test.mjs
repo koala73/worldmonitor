@@ -21,6 +21,23 @@ function section(doc, heading) {
   return doc.slice(start, next === -1 ? undefined : next);
 }
 
+function codeBlock(example, label) {
+  const match = example.match(new RegExp(`\\*\\*${label}:\\*\\*\\n\\n\`\`\`json\\n([\\s\\S]*?)\\n\`\`\``));
+  assert.ok(match, `missing ${label} JSON code block`);
+  return JSON.parse(match[1]);
+}
+
+function docJmespath(example) {
+  const toolCall = codeBlock(example, 'Tool call');
+  const expr = toolCall.arguments?.jmespath;
+  assert.equal(typeof expr, 'string', 'tool call must include a JMESPath expression');
+  return expr;
+}
+
+function projectedResponse(example) {
+  return codeBlock(example, 'Projected response');
+}
+
 describe('docs/mcp-jmespath.mdx fixture-backed examples', () => {
   const doc = readText('docs/mcp-jmespath.mdx');
   const fixturesByTool = new Map([
@@ -84,6 +101,20 @@ describe('docs/mcp-jmespath.mdx fixture-backed examples', () => {
     assert.match(example, /```json\n30\n```/, 'example 7 projected response must match fixture count');
     assert.match(example, /default cap is applied before JMESPath/, 'example 7 must disclose the pre-projection default cap');
   });
+
+  for (const [number, title] of [
+    [8, '`sort_by` + reverse + slice — Top-N'],
+    [9, 'Filter on enum-string field'],
+    [12, 'Pipe combinator — multi-stage projection'],
+  ]) {
+    it(`example ${number} projected response matches the conflict-events fixture`, () => {
+      const fixture = readJson('tests/fixtures/jmespath-samples/medium-get-conflict-events.response.json');
+      const example = section(doc, `### ${number}. ${title}`);
+      const actual = jmespath.search(fixture, docJmespath(example));
+
+      assert.deepEqual(projectedResponse(example), actual);
+    });
+  }
 
   it('example 11 critical chokepoint counts match the thin chokepoint fixture', () => {
     const fixture = readJson('tests/fixtures/jmespath-samples/thin-get-chokepoint-status.response.json');
