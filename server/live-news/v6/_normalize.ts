@@ -256,8 +256,17 @@ function parseDate(s: string): number {
 }
 
 async function parseFeed(xml: string, src: NewsSource): Promise<RawRssItem[]> {
-  // Match either RSS <item> or Atom <entry>
-  const itemRe = /<(item|entry)[^>]*>([\s\S]*?)<\/(?:item|entry)>/gi;
+  // Match either RSS <item> or Atom <entry>. The tag name must be followed by
+  // whitespace or '>' — NOT another letter — so the RSS 1.0 / RDF channel
+  // container `<items>` (the rdf:Seq link list) is never mistaken for an item.
+  // Without this guard, `<item` + `[^>]*` greedily matched `<items>`; the lazy
+  // body then ran past `</items></channel>` and the feed's `<image>` masthead
+  // block to the first real `</item>`, so extractTag pulled the IMAGE's
+  // title/link/description (e.g. DW → "DW" / homepage / "News, Analysis and
+  // Service…") and emitted a junk item — while silently swallowing the feed's
+  // first real article. The `(?:\s[^>]*)?` requires a space (attributes) or an
+  // immediate '>' after the tag name.
+  const itemRe = /<(item|entry)(?:\s[^>]*)?>([\s\S]*?)<\/(?:item|entry)>/gi;
   const out: RawRssItem[] = [];
   let m: RegExpExecArray | null;
   let count = 0;
