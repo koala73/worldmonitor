@@ -180,6 +180,22 @@ describe('chokepoint methodology docs match scoring code', () => {
       assert.match(text, /top1 \* 0\.5 \+ top2 \* 0\.3 \+ top3 \* 0\.2/, `${label} must document the vulnerability formula`);
     }
   });
+
+  it('documents flow-estimate source and hazard fields on contract surfaces', () => {
+    for (const [label, text] of [
+      ['supply-chain proto', supplyChainProto],
+      ['SupplyChainService OpenAPI', supplyChainOpenApi],
+      ['bundled OpenAPI', bundledOpenApi],
+    ]) {
+      assert.match(text, /portwatch-dwt/i, `${label} must document the DWT-backed flow source`);
+      assert.match(text, /portwatch-counts/i, `${label} must document the count-backed flow source`);
+      assert.match(text, /GDACS/i, `${label} must document GDACS hazard enrichment`);
+      assert.match(text, /500 km/i, `${label} must document the hazard matching radius`);
+      assert.match(text, /RED/i, `${label} must document RED hazard alerts`);
+      assert.match(text, /ORANGE/i, `${label} must document ORANGE hazard alerts`);
+      assert.match(text, /empty string/i, `${label} must document the absent-hazard wire value`);
+    }
+  });
 });
 
 describe('scenario docs match worker scope and impact math', () => {
