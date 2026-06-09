@@ -176,7 +176,10 @@ async function loadCategoryCandidates(): Promise<RawRssItem[]> {
 }
 
 const DIGEST_TTL_S = 3 * 24 * 60 * 60; // 3-day project max
-const ROLLING_WINDOW_MS = 24 * 60 * 60 * 1000;
+// 36h (testing): widened from 24h to give the AI briefs a larger pool —
+// mainly helps sparse regions, since older stories rank low for dense ones.
+// Tune via the literal; feed is unaffected (it shows newest-N regardless).
+const ROLLING_WINDOW_MS = 36 * 60 * 60 * 1000;
 /** High safety bound (not a product cap): the AI briefs want the full 24h
  *  window, so this is set well above real volume (a few hundred–~1.5k clusters)
  *  purely to guard against a pathological blob. The pre-cap log below reports
