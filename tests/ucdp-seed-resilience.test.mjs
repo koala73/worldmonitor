@@ -11,6 +11,19 @@ const EXPECTED_UCDP_WRITER_PATHS = [
   'scripts/ais-relay.cjs',
   'scripts/seed-ucdp-events.mjs',
 ];
+const SOURCE_SCAN_IGNORED_DIRS = new Set([
+  '.git',
+  '.vercel',
+  'blog-site/node_modules',
+  'coverage',
+  'dist',
+  'node_modules',
+  'src/generated',
+]);
+
+function shouldScanSourceDir(path) {
+  return !SOURCE_SCAN_IGNORED_DIRS.has(path);
+}
 
 function sourceFilesContaining(rootDir, needle) {
   const matches = [];
@@ -21,6 +34,7 @@ function sourceFilesContaining(rootDir, needle) {
       const path = join(dir, entry);
       const stat = statSync(path);
       if (stat.isDirectory()) {
+        if (!shouldScanSourceDir(path)) continue;
         stack.push(path);
         continue;
       }
@@ -36,7 +50,7 @@ function escapeRegExp(value) {
 }
 
 function ucdpRedisWriterPaths() {
-  return sourceFilesContaining('scripts', UCDP_REDIS_KEY)
+  return sourceFilesContaining('.', UCDP_REDIS_KEY)
     .filter((path) => !path.endsWith('.test.mjs') && !path.endsWith('.test.mts'))
     .filter((path) => {
       const text = readFileSync(path, 'utf8');
