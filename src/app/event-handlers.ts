@@ -131,6 +131,7 @@ export class EventHandlerManager implements AppModule {
   private boundUndoHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundNotifyForCountryHandler: ((e: Event) => void) | null = null;
   private boundMissionOutsideHandler: ((e: MouseEvent) => void) | null = null;
+  private boundMissionKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private missionPresetPopover: HTMLElement | null = null;
   private missionDataRefreshTimer: number | null = null;
   private proGateUnsubscribers: Array<() => void> = [];
@@ -750,6 +751,7 @@ export class EventHandlerManager implements AppModule {
     popover.className = `mission-preset-popover${mobile ? ' mission-preset-popover--mobile' : ''}`;
     popover.setAttribute('role', 'dialog');
     popover.setAttribute('aria-label', 'Mission presets');
+    popover.tabIndex = -1;
 
     const cards = MISSION_PRESETS.map((preset) => {
       const selected = active?.id === preset.id;
@@ -809,6 +811,14 @@ export class EventHandlerManager implements AppModule {
     popover.querySelector('[data-mission-reset]')?.addEventListener('click', () => {
       this.resetMissionPreset();
     });
+    this.boundMissionKeydownHandler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      dismissMissionPresetPrompt();
+      this.renderMissionPresetControl();
+      this.closeMissionPresetPopover();
+    };
+    popover.addEventListener('keydown', this.boundMissionKeydownHandler);
     popover.querySelectorAll<HTMLButtonElement>('[data-mission-id]').forEach((button) => {
       button.addEventListener('click', () => {
         const presetId = button.dataset.missionId as MissionPresetId | undefined;
@@ -825,6 +835,9 @@ export class EventHandlerManager implements AppModule {
       this.closeMissionPresetPopover();
     };
     window.setTimeout(() => {
+      if (this.missionPresetPopover === popover) {
+        popover.focus({ preventScroll: true });
+      }
       if (this.boundMissionOutsideHandler) {
         document.addEventListener('click', this.boundMissionOutsideHandler);
       }
@@ -835,6 +848,10 @@ export class EventHandlerManager implements AppModule {
     if (this.boundMissionOutsideHandler) {
       document.removeEventListener('click', this.boundMissionOutsideHandler);
       this.boundMissionOutsideHandler = null;
+    }
+    if (this.boundMissionKeydownHandler && this.missionPresetPopover) {
+      this.missionPresetPopover.removeEventListener('keydown', this.boundMissionKeydownHandler);
+      this.boundMissionKeydownHandler = null;
     }
     this.missionPresetPopover?.remove();
     this.missionPresetPopover = null;

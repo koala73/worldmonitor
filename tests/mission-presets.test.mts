@@ -336,4 +336,13 @@ describe('mission preset shell integration', () => {
     assert.match(eventHandlersSource, /window\.innerHeight - height - 12/);
     assert.match(eventHandlersSource, /popover\.style\.top = `\$\{top\}px`;/);
   });
+
+  it('supports keyboard dismissal and focus for the mission dialog', () => {
+    assert.match(eventHandlersSource, /private boundMissionKeydownHandler: \(\(e: KeyboardEvent\) => void\) \| null = null;/);
+    assert.match(eventHandlersSource, /popover\.tabIndex = -1;/);
+    assert.match(eventHandlersSource, /if \(e\.key !== 'Escape'\) return;/);
+    assert.match(eventHandlersSource, /this\.closeMissionPresetPopover\(\);/);
+    assert.match(eventHandlersSource, /popover\.focus\(\{ preventScroll: true \}\);/);
+    assert.match(eventHandlersSource, /removeEventListener\('keydown', this\.boundMissionKeydownHandler\)/);
+  });
 });
