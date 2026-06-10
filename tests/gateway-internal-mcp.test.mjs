@@ -212,6 +212,9 @@ describe('gateway internal-MCP HMAC config — cold start', () => {
 
     process.env.MCP_PRO_GRANT_HMAC_SECRET = '';
     assert.doesNotThrow(() => makeGateway());
+
+    process.env.MCP_PRO_GRANT_HMAC_SECRET = '   ';
+    assert.doesNotThrow(() => makeGateway());
   });
 
   it('allows gateway construction when both Pro grant signing and internal HMAC are configured', () => {
