@@ -1,6 +1,6 @@
 # CII Phase 3a — reconciliation decision table
 
-Companion to `plans/unify-cii-single-source.md`. Phase 3b implements whatever this table
+Companion to `docs/archive/plans/unify-cii-single-source.md`. Phase 3b implements whatever this table
 decides; per the plan, Phase 3b makes **no** decisions of its own.
 
 Every row is a real divergence between the two engines, verified line-by-line:

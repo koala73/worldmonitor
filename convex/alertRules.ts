@@ -411,7 +411,7 @@ export const setQuietHours = mutation({
     // generic 500s ('set-quiet-hours' HTTP action has no INCOMPATIBLE_DELIVERY
     // passthrough). The relay coerce-at-read protects delivery for in-flight forbidden
     // rows; the migration drains them.
-    // See plans/forbid-realtime-all-events.md + PR #3461 Greptile P1.
+    // See docs/archive/plans/forbid-realtime-all-events.md + PR #3461 Greptile P1.
     const pair = resolveEffectivePair({ existing: existing ?? undefined });
 
     const now = Date.now();
@@ -556,7 +556,7 @@ export const setQuietHoursForUser = internalMutation({
  * All fields optional — caller passes only what changed. Patch logic preserves
  * existing.sensitivity when caller omits it (no silent narrowing of digest users).
  *
- * See plans/forbid-realtime-all-events.md §1d.
+ * See docs/archive/plans/forbid-realtime-all-events.md §1d.
  */
 export const setNotificationConfigForUser = internalMutation({
   args: {

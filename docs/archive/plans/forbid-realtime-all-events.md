@@ -389,7 +389,7 @@ function shouldNotify(rule, event) {
   // Coerce (effective realtime + 'all') → 'high' for both legacy match and importance threshold.
   // Defense in depth — the schema-mutation validators (convex/alertRules.ts) and the migration
   // make this state unreachable for new traffic; this catches in-flight rows during migration
-  // and any tooling that bypasses the validators. See plans/forbid-realtime-all-events.md §3.
+  // and any tooling that bypasses the validators. See docs/archive/plans/forbid-realtime-all-events.md §3.
   const effectiveDigestMode = rule.digestMode ?? 'realtime';
   const effectiveSensitivity =
     effectiveDigestMode === 'realtime' && rule.sensitivity === 'all' ? 'high' : rule.sensitivity;

@@ -543,7 +543,7 @@ interface CountrySignals {
   // High-severity unrest event count (Phase 3b / C1) — a "high-severity" unrest event is
   // one that killed someone OR is a riot, matching seed-unrest-events.mjs classifySeverity.
   highSeverityUnrest: number;
-  // Phase 1 (CII unification, plans/unify-cii-single-source.md) — gathered, not yet scored.
+  // Phase 1 (CII unification, docs/archive/plans/unify-cii-single-source.md) — gathered, not yet scored.
   aviationClosureCount: number;
   aviationSevereCount: number;
   aviationMajorCount: number;

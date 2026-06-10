@@ -12,7 +12,7 @@
  * shouldNotify is only callable in-process via the queue loop. This test
  * encodes the contract by reading the source.
  *
- * See plans/forbid-realtime-all-events.md §3.
+ * See docs/archive/plans/forbid-realtime-all-events.md §3.
  *
  * Run: node --test tests/notification-relay-effective-sensitivity.test.mjs
  */

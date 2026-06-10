@@ -44,7 +44,7 @@ async function seedProEntitlement(
 // ---------------------------------------------------------------------------
 // Cross-field invariant: realtime is for `critical`-tier events only.
 // Both `(realtime, all)` and `(realtime, high)` are forbidden.
-// See plans/forbid-realtime-all-events.md.
+// See docs/archive/plans/forbid-realtime-all-events.md.
 // ---------------------------------------------------------------------------
 
 describe("alertRules — realtime+non-critical cross-field invariant", () => {
