@@ -40,6 +40,7 @@ import {
   InternetDisruptionsPanel,
   RuntimeConfigPanel,
   InsightsPanel,
+  ThreatTimelinePanel,
   MacroSignalsPanel,
   FearGreedPanel,
   MarketBreadthPanel,
@@ -1346,6 +1347,9 @@ export class PanelLayoutManager implements AppModule {
     }
 
     this.createPanel('insights', () => new InsightsPanel());
+    if (isPanelInVariantDefaults('threat-timeline')) {
+      this.createPanel('threat-timeline', () => new ThreatTimelinePanel());
+    }
 
     // Global Giving panel (all variants)
     this.lazyPanel('giving', () =>

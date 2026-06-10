@@ -155,6 +155,7 @@ import {
   PredictionPanel,
   MonitorPanel,
   InsightsPanel,
+  ThreatTimelinePanel,
   CIIPanel,
   InternetDisruptionsPanel,
   StrategicPosturePanel,
@@ -1254,6 +1255,10 @@ export class DataLoaderManager implements AppModule {
 
       const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
       insightsPanel?.updateInsights(this.ctx.latestClusters);
+      if (isPanelInVariantDefaults('threat-timeline')) {
+        const threatTimelinePanel = this.ctx.panels['threat-timeline'] as ThreatTimelinePanel | undefined;
+        void threatTimelinePanel?.refresh(this.ctx.latestClusters);
+      }
 
       (this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined)
         ?.setActivities(getTopActiveGeoHubs(this.ctx.latestClusters));
@@ -1276,6 +1281,10 @@ export class DataLoaderManager implements AppModule {
       console.error('[App] Clustering failed, clusters unchanged:', error);
       const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
       insightsPanel?.updateInsights([]);
+      if (isPanelInVariantDefaults('threat-timeline')) {
+        const threatTimelinePanel = this.ctx.panels['threat-timeline'] as ThreatTimelinePanel | undefined;
+        void threatTimelinePanel?.refresh([]);
+      }
     }
 
     // Happy variant: run multi-stage positive news pipeline + map layers

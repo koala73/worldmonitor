@@ -141,6 +141,7 @@
               "panels/daily-market-brief",
               "panels/regional-intelligence",
               "panels/strategic-posture",
+              "panels/threat-timeline",
               "panels/stock-analysis",
               "panels/stock-backtest",
               "panels/wsb-ticker-scanner"
