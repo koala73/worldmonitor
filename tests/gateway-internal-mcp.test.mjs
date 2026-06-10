@@ -172,6 +172,60 @@ async function buildSignedRequest({
 }
 
 // ===========================================================================
+// COLD-START CONFIG ASSERTIONS
+// ===========================================================================
+describe('gateway internal-MCP HMAC config — cold start', () => {
+  it('throws during gateway construction when Pro grant signing is configured without MCP_INTERNAL_HMAC_SECRET', () => {
+    process.env.MCP_PRO_GRANT_HMAC_SECRET = 'test-pro-grant-secret-32bytes-padding';
+    delete process.env.MCP_INTERNAL_HMAC_SECRET;
+
+    assert.throws(
+      () => makeGateway(),
+      /MCP_INTERNAL_HMAC_SECRET must be configured when MCP_PRO_GRANT_HMAC_SECRET is set/,
+    );
+  });
+
+  it('treats an empty MCP_INTERNAL_HMAC_SECRET as missing when Pro grant signing is configured', () => {
+    process.env.MCP_PRO_GRANT_HMAC_SECRET = 'test-pro-grant-secret-32bytes-padding';
+    process.env.MCP_INTERNAL_HMAC_SECRET = '';
+
+    assert.throws(
+      () => makeGateway(),
+      /MCP_INTERNAL_HMAC_SECRET must be configured when MCP_PRO_GRANT_HMAC_SECRET is set/,
+    );
+  });
+
+  it('treats a whitespace-only MCP_INTERNAL_HMAC_SECRET as missing when Pro grant signing is configured', () => {
+    process.env.MCP_PRO_GRANT_HMAC_SECRET = 'test-pro-grant-secret-32bytes-padding';
+    process.env.MCP_INTERNAL_HMAC_SECRET = '   ';
+
+    assert.throws(
+      () => makeGateway(),
+      /MCP_INTERNAL_HMAC_SECRET must be configured when MCP_PRO_GRANT_HMAC_SECRET is set/,
+    );
+  });
+
+  it('does not require either HMAC secret when Pro grant signing is not configured', () => {
+    delete process.env.MCP_PRO_GRANT_HMAC_SECRET;
+    delete process.env.MCP_INTERNAL_HMAC_SECRET;
+    assert.doesNotThrow(() => makeGateway());
+
+    process.env.MCP_PRO_GRANT_HMAC_SECRET = '';
+    assert.doesNotThrow(() => makeGateway());
+
+    process.env.MCP_PRO_GRANT_HMAC_SECRET = '   ';
+    assert.doesNotThrow(() => makeGateway());
+  });
+
+  it('allows gateway construction when both Pro grant signing and internal HMAC are configured', () => {
+    process.env.MCP_PRO_GRANT_HMAC_SECRET = 'test-pro-grant-secret-32bytes-padding';
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+
+    assert.doesNotThrow(() => makeGateway());
+  });
+});
+
+// ===========================================================================
 // HAPPY PATHS
 // ===========================================================================
 describe('gateway internal-MCP HMAC verify — happy paths', () => {
@@ -449,6 +503,7 @@ describe('gateway internal-MCP HMAC verify — error paths', () => {
   });
 
   it('MCP_INTERNAL_HMAC_SECRET unset → 500 CONFIGURATION on the HMAC-attempt path', async () => {
+    delete process.env.MCP_PRO_GRANT_HMAC_SECRET;
     delete process.env.MCP_INTERNAL_HMAC_SECRET;
     const handler = makeGateway();
     const req = new Request('https://api.worldmonitor.app/api/news/v1/summarize-article', {
@@ -467,6 +522,7 @@ describe('gateway internal-MCP HMAC verify — error paths', () => {
   });
 
   it('legacy wm_ caller (no internal-MCP headers) → unaffected by missing MCP_INTERNAL_HMAC_SECRET', async () => {
+    delete process.env.MCP_PRO_GRANT_HMAC_SECRET;
     delete process.env.MCP_INTERNAL_HMAC_SECRET;
     const handler = makeGateway();
     // wm_-key flow: send a valid WORLDMONITOR_VALID_KEYS key on a non-tier-gated route.

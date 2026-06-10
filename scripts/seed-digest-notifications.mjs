@@ -114,6 +114,10 @@ const RESEND_FROM =
     process.env.RESEND_FROM_BRIEF ?? process.env.RESEND_FROM_EMAIL,
     'WorldMonitor Brief',
   ) ?? 'WorldMonitor Brief <brief@worldmonitor.app>';
+const DIGEST_LAST_RUN_KEY = 'digest:last-run';
+const DIGEST_LAST_RUN_META_KEY = 'seed-meta:digest:last-run';
+const DIGEST_LAST_RUN_TTL_SECONDS = 7 * 24 * 60 * 60;
+let digestRunStartedAtMs = null;
 
 if (process.env.DIGEST_CRON_ENABLED === '0') {
   console.log('[digest] DIGEST_CRON_ENABLED=0 — skipping run');
@@ -345,6 +349,45 @@ async function upstashPipeline(commands) {
     return [];
   }
   return res.json();
+}
+
+function compactDigestLastRunReason(reason) {
+  return String(reason ?? 'unknown').replace(/\s+/g, ' ').trim().slice(0, 240);
+}
+
+async function writeDigestLastRunMeta({
+  startedAtMs,
+  finishedAtMs = Date.now(),
+  status = 'ok',
+  sentCount = 0,
+  errorReason = null,
+}) {
+  const run = {
+    fetchedAt: finishedAtMs,
+    recordCount: 1,
+    status,
+    sentCount,
+    startedAt: startedAtMs,
+    durationMs: Math.max(0, finishedAtMs - startedAtMs),
+  };
+  if (errorReason) run.errorReason = compactDigestLastRunReason(errorReason);
+
+  try {
+    const result = await upstashPipeline([
+      ['SET', DIGEST_LAST_RUN_KEY, JSON.stringify(run), 'EX', String(DIGEST_LAST_RUN_TTL_SECONDS)],
+      ['SET', DIGEST_LAST_RUN_META_KEY, JSON.stringify(run), 'EX', String(DIGEST_LAST_RUN_TTL_SECONDS)],
+    ]);
+    const ok = Array.isArray(result)
+      && result.length === 2
+      && result.every((cell) => cell && typeof cell === 'object' && !('error' in cell));
+    if (!ok) {
+      console.warn('[digest] last-run health write did not confirm both keys');
+    }
+    return ok;
+  } catch (err) {
+    console.warn(`[digest] last-run health write failed: ${err?.message ?? err}`);
+    return false;
+  }
 }
 
 // ── Schedule helpers ──────────────────────────────────────────────────────────
@@ -2099,6 +2142,7 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
 
 async function main() {
   const nowMs = Date.now();
+  digestRunStartedAtMs = nowMs;
   console.log('[digest] Cron run start:', new Date(nowMs).toISOString());
 
   let rules;
@@ -2113,16 +2157,27 @@ async function main() {
     });
     if (!res.ok) {
       console.error('[digest] Failed to fetch rules:', res.status);
+      await writeDigestLastRunMeta({
+        startedAtMs: nowMs,
+        status: 'error',
+        errorReason: `fetch_rules_http_${res.status}`,
+      });
       return;
     }
     rules = await res.json();
   } catch (err) {
     console.error('[digest] Fetch rules failed:', err.message);
+    await writeDigestLastRunMeta({
+      startedAtMs: nowMs,
+      status: 'error',
+      errorReason: `fetch_rules_failed:${err.message}`,
+    });
     return;
   }
 
   if (!Array.isArray(rules) || rules.length === 0) {
     console.log('[digest] No digest rules found — nothing to do');
+    await writeDigestLastRunMeta({ startedAtMs: nowMs, sentCount: 0 });
     return;
   }
 
@@ -2160,6 +2215,7 @@ async function main() {
       console.warn(
         `[digest] No rules matched userId=${onlyUserFilter.userId} — nothing to do (exiting green).`,
       );
+      await writeDigestLastRunMeta({ startedAtMs: nowMs, sentCount: 0 });
       return;
     }
   } else if (onlyUserFilter.kind === 'reject') {
@@ -2933,11 +2989,26 @@ async function main() {
     console.warn(
       `[digest] brief: exiting non-zero — compose_failed=${composeFailed} compose_success=${composeSuccess} crossed the threshold`,
     );
+    await writeDigestLastRunMeta({
+      startedAtMs: nowMs,
+      status: 'error',
+      sentCount,
+      errorReason: `brief_compose_failed:${composeFailed}:success:${composeSuccess}`,
+    });
     process.exit(1);
   }
+
+  await writeDigestLastRunMeta({ startedAtMs: nowMs, sentCount });
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
+  const finishedAtMs = Date.now();
   console.error('[digest] Fatal:', err);
+  await writeDigestLastRunMeta({
+    startedAtMs: digestRunStartedAtMs ?? finishedAtMs,
+    finishedAtMs,
+    status: 'error',
+    errorReason: `fatal:${err?.message ?? err}`,
+  });
   process.exit(1);
 });

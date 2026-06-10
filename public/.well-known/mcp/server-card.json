@@ -73,8 +73,8 @@
   ],
   "metadata": {
     "supportsToolAnnotations": true,
-    "supportsStreamingResponses": false,
-    "toolListNote": "Issue a `tools/list` JSON-RPC call against the transport endpoint for the current authoritative tool inventory with input schemas and descriptions."
+    "supportsStreamingResponses": true,
+    "toolListNote": "Issue a `tools/list` JSON-RPC call against the transport endpoint for the current authoritative tool inventory with input schemas and descriptions. Clients that advertise `text/event-stream` can receive Streamable HTTP SSE responses and resume a dropped stream with `Mcp-Session-Id` plus `Last-Event-ID`."
   },
   "features": {
     "responseProjection": "jmespath",

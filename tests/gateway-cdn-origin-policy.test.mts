@@ -65,7 +65,7 @@ describe('gateway CDN origin policy', () => {
   });
 
   it('enables CDN caching for preview origins', async () => {
-    const origin = 'https://worldmonitor-feature-elie-abc123.vercel.app';
+    const origin = 'https://worldmonitor-git-feature-eliewm.vercel.app';
     const res = await requestPublicRoute(origin);
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('Access-Control-Allow-Origin'), origin);

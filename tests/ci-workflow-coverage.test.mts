@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
@@ -11,6 +12,8 @@ const packageJson = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8
 };
 const packageScripts = packageJson.scripts ?? {};
 const deployGateWorkflow = readFileSync(resolve(workflowsDir, 'deploy-gate.yml'), 'utf8');
+const securityAuditWorkflow = readFileSync(resolve(workflowsDir, 'security-audit.yml'), 'utf8');
+const securityAuditScript = readFileSync(resolve(root, '.github/scripts/audit-production-dependencies.mjs'), 'utf8');
 const testWorkflow = readFileSync(resolve(workflowsDir, 'test.yml'), 'utf8');
 const workflowText = readdirSync(workflowsDir)
   .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
@@ -40,13 +43,12 @@ const TIMEOUT_CAPPED_TEST_JOBS = [
   'resilience-validation-smoke',
 ] as const;
 
-const REQUIRED_GATE_CHECKS = [
-  'unit',
+const REQUIRED_GATE_WORKFLOWS = ['Test', 'Typecheck', 'Lint Code', 'Security Audit'] as const;
+
+const REQUIRED_NON_TEST_GATE_CHECKS = [
   'typecheck',
-  'sidecar',
-  'convex-tests',
-  'variant-smoke-full',
-  'resilience-validation-smoke',
+  'biome',
+  'security-audit',
 ] as const;
 
 const REQUIRED_RESILIENCE_VALIDATION_INPUTS = [
@@ -73,6 +75,38 @@ function testJobBlock(job: string): string {
   return match[0];
 }
 
+function parseJsonArrayLiteral(source: string, regex: RegExp, label: string): string[] {
+  const match = source.match(regex);
+  assert.ok(match?.[1], `deploy-gate.yml must define ${label}`);
+  const parsed = JSON.parse(match[1]);
+  assert.ok(Array.isArray(parsed), `${label} must be a JSON array`);
+  for (const value of parsed) {
+    assert.equal(typeof value, 'string', `${label} entries must be strings`);
+  }
+  return parsed;
+}
+
+function deployGateRequiredChecks(): string[] {
+  return parseJsonArrayLiteral(deployGateWorkflow, /\n\s*required='(\[[^\n]+])'/, 'required checks');
+}
+
+function deployGateWorkflowRunNames(): string[] {
+  return parseJsonArrayLiteral(deployGateWorkflow, /workflows:\s*(\[[^\n]+])/, 'workflow_run workflows');
+}
+
+function collectPackageLockfiles(): string[] {
+  return execFileSync('git', ['ls-files', '*package-lock.json'], { cwd: root, encoding: 'utf8' })
+    .split('\n')
+    .filter(Boolean)
+    .sort();
+}
+
+function securityAuditMatrixLockfiles(): string[] {
+  return Array.from(securityAuditWorkflow.matchAll(/^\s+lockfile:\s+(.+)$/gm), ([, value]) =>
+    value.trim().replace(/^['"]|['"]$/g, ''),
+  ).sort();
+}
+
 describe('CI workflow coverage', () => {
   it('keeps required PR smoke scripts defined and wired into workflows', () => {
     for (const script of REQUIRED_PR_SCRIPTS) {
@@ -93,22 +127,25 @@ describe('CI workflow coverage', () => {
 
   it('keeps required smoke jobs capped with explicit timeouts', () => {
     for (const job of TIMEOUT_CAPPED_TEST_JOBS) {
-      assert.match(testJobBlock(job), /\n    timeout-minutes: \d+\n/, `${job} must set timeout-minutes`);
+      assert.match(testJobBlock(job), /\n {4}timeout-minutes: \d+\n/, `${job} must set timeout-minutes`);
     }
   });
 
   it('keeps the deploy gate wired to every required PR smoke gate', () => {
-    assert.match(
-      deployGateWorkflow,
-      /workflows:\s*\["Test",\s*"Typecheck"\]/,
-      'deploy-gate.yml must run after both Test and Typecheck workflows',
-    );
-    for (const check of REQUIRED_GATE_CHECKS) {
-      assert.match(
-        deployGateWorkflow,
-        new RegExp(`["']${escapeRegExp(check)}["']`),
-        `deploy-gate.yml must require ${check}`,
+    const workflowRunNames = deployGateWorkflowRunNames();
+    const requiredChecks = deployGateRequiredChecks();
+
+    for (const workflowName of REQUIRED_GATE_WORKFLOWS) {
+      assert.ok(
+        workflowRunNames.includes(workflowName),
+        `deploy-gate.yml must run after ${workflowName} completes`,
       );
+    }
+    for (const job of REQUIRED_TEST_JOBS) {
+      assert.ok(requiredChecks.includes(job), `deploy-gate.yml must require the test.yml job ${job}`);
+    }
+    for (const check of REQUIRED_NON_TEST_GATE_CHECKS) {
+      assert.ok(requiredChecks.includes(check), `deploy-gate.yml must require ${check}`);
     }
     assert.match(
       deployGateWorkflow,
@@ -136,6 +173,59 @@ describe('CI workflow coverage', () => {
     );
     for (const input of REQUIRED_RESILIENCE_VALIDATION_INPUTS) {
       assert.ok(testWorkflow.includes(workflowRegexNeedle(input)), `test.yml must cover ${input}`);
+    }
+  });
+
+  it('runs scheduled and per-PR production dependency audits for every package lockfile', () => {
+    const packageLockfiles = collectPackageLockfiles();
+
+    assert.match(securityAuditWorkflow, /\n {2}pull_request:\n/, 'security-audit.yml must run on PRs');
+    assert.match(securityAuditWorkflow, /\n {2}push:\n {4}branches: \[main\]\n/, 'security-audit.yml must run on main pushes');
+    assert.match(securityAuditWorkflow, /\n {2}schedule:\n/, 'security-audit.yml must run on a schedule');
+    assert.match(securityAuditWorkflow, /\n {2}security-audit:\n/, 'security-audit.yml must define the aggregate security-audit check');
+    assert.match(securityAuditWorkflow, /\n {4}name: security-audit\n/, 'security-audit.yml must publish a security-audit check run');
+    assert.match(
+      securityAuditWorkflow,
+      /if:\s*\$\{\{\s*always\(\)\s*\}\}/,
+      'security-audit.yml must always publish the aggregate check',
+    );
+    assert.match(
+      securityAuditWorkflow,
+      /AUDIT_RESULT"\s*=\s*"cancelled"/,
+      'security-audit.yml must publish a failing aggregate check when the audit matrix is cancelled',
+    );
+    assert.match(
+      securityAuditWorkflow,
+      /--package-json "\$\{\{ matrix\.package_json \}\}"/,
+      'security-audit.yml must pass nonstandard package manifests to the audit gate',
+    );
+    assert.match(
+      securityAuditWorkflow,
+      /node \.github\/scripts\/audit-production-dependencies\.mjs/,
+      'security-audit.yml must run the production dependency audit gate',
+    );
+    assert.match(
+      securityAuditScript,
+      /npm['"],\s*\[\s*['"]audit['"],\s*['"]--omit=dev['"],\s*['"]--json['"]/,
+      'the production dependency audit gate must run npm audit --omit=dev --json',
+    );
+    assert.match(
+      securityAuditScript,
+      /collectUnbaselinedFindings/,
+      'the production dependency audit gate must fail on unbaselined high-severity production advisories',
+    );
+    assert.deepEqual(
+      securityAuditMatrixLockfiles(),
+      packageLockfiles,
+      'security-audit.yml must cover exactly the repo package-lock.json files',
+    );
+
+    for (const lockfile of packageLockfiles) {
+      assert.match(
+        securityAuditWorkflow,
+        new RegExp(`\\n\\s+lockfile:\\s+${escapeRegExp(lockfile)}\\n`),
+        `security-audit.yml must cover ${lockfile}`,
+      );
     }
   });
 });

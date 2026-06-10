@@ -240,13 +240,13 @@ export async function runProPreChecks(
 /** Per-minute rate limit. Both paths fail-OPEN on Upstash error (graceful);
  *  the daily quota is the hard-cap fail-CLOSED gate. Returns null on success
  *  or pass-through, a Response on a real 60/min limit hit. */
-export async function applyPerMinuteLimit(context: McpAuthContext): Promise<Response | null> {
+export async function applyPerMinuteLimit(context: McpAuthContext, headers: Record<string, string> = {}): Promise<Response | null> {
   if (context.kind === 'env_key') {
     const rl = getMcpRatelimit();
     if (!rl) return null;
     try {
       const { success } = await rl.limit(`key:${context.apiKey}`);
-      if (!success) return rpcError(null, -32029, 'Rate limit exceeded. Max 60 requests per minute per API key.');
+      if (!success) return rpcError(null, -32029, 'Rate limit exceeded. Max 60 requests per minute per API key.', headers);
     } catch { /* graceful degradation */ }
     return null;
   }
@@ -254,7 +254,7 @@ export async function applyPerMinuteLimit(context: McpAuthContext): Promise<Resp
   if (!rl) return null;
   try {
     const { success } = await rl.limit(`pro-user:${context.userId}`);
-    if (!success) return rpcError(null, -32029, 'Rate limit exceeded. Max 60 requests per minute per Pro user.');
+    if (!success) return rpcError(null, -32029, 'Rate limit exceeded. Max 60 requests per minute per Pro user.', headers);
   } catch { /* graceful degradation */ }
   return null;
 }

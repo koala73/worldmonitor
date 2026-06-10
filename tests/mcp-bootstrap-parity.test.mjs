@@ -158,6 +158,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred to a future region-aware intelligence tool.'],
   ['intelligence:market-implications:v1',
     'deferred: LLM-generated narrative composite; underlying inputs already exposed via existing data tools. A future LLM-narrative tool would bundle this.'],
+  ['webcam:cameras:active',
+    'deferred: Windy webcam active-version pointer for app map markers. A future webcam MCP tool would expose decoded camera entries, not the raw Redis pointer.'],
   ['supply_chain:hormuz_tracker:v1',
     'deferred: specialized Strait-of-Hormuz tracker; broader chokepoint coverage via get_chokepoint_status. Hormuz-specific tool deferred.'],
   ['thermal:escalation:v1',
@@ -292,6 +294,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'operational: relay loop heartbeat — covered by /api/health, not a user-facing data slice for MCP.'],
   ['relay:heartbeat:climate-news',
     'operational: relay loop heartbeat — covered by /api/health, not a user-facing data slice for MCP.'],
+  ['digest:last-run',
+    'operational: digest-notifications cron heartbeat — covered by /api/health, not a user-facing data slice for MCP.'],
 ]);
 
 // -----------------------------------------------------------------------------

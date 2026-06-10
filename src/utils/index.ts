@@ -127,7 +127,6 @@ export function loadFromStorage<T>(key: string, defaultValue: T): T {
 }
 
 export function saveToStorage<T>(key: string, value: T): void {
-  if (isStorageQuotaExceeded()) return;
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch (e) {
@@ -194,5 +193,5 @@ export { toFlagEmoji } from './country-flag';
 export { showToast } from './toast';
 
 import { getCurrentLanguage } from '../services/i18n';
-import { isStorageQuotaExceeded, isQuotaError, markStorageQuotaExceeded } from './storage-quota';
-export { isStorageQuotaExceeded, isQuotaError, markStorageQuotaExceeded };
+import { isQuotaError, markStorageQuotaExceeded } from './storage-quota';
+export { isStorageQuotaExceeded, isQuotaError, markStorageQuotaExceeded } from './storage-quota';

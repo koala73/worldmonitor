@@ -27,11 +27,12 @@
     "lint.yml",
     "pro-bundle-freshness.yml",
     "proto-check.yml",
+    "security-audit.yml",
     "test-linux-app.yml",
     "test.yml",
     "typecheck.yml"
   ],
-  "workflowCount": 14,
+  "workflowCount": 15,
   "freshnessSources": 35,
   "freshnessRequiredForRisk": 2,
   "feedDefinitions": 567,

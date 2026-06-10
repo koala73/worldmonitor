@@ -88,8 +88,13 @@ Both implementations allow these request headers:
 - `X-Pro-Key`
 - `X-WorldMonitor-Desktop-Timestamp`
 - `X-WorldMonitor-Desktop-Signature`
+- `Mcp-Session-Id`
+- `MCP-Protocol-Version`
+- `Last-Event-ID`
 
 To allow additional headers, update `Access-Control-Allow-Headers` in both files.
+
+Browser-visible response headers include `Mcp-Session-Id`, `WWW-Authenticate`, and `Retry-After` via `Access-Control-Expose-Headers` so MCP clients can continue sessions, re-authenticate, and respect backoff hints.
 
 ## Railway Relay CORS
 
