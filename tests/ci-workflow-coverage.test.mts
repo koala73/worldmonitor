@@ -12,6 +12,7 @@ const packageJson = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8
 const packageScripts = packageJson.scripts ?? {};
 const deployGateWorkflow = readFileSync(resolve(workflowsDir, 'deploy-gate.yml'), 'utf8');
 const securityAuditWorkflow = readFileSync(resolve(workflowsDir, 'security-audit.yml'), 'utf8');
+const securityAuditScript = readFileSync(resolve(root, 'scripts/audit-production-dependencies.mjs'), 'utf8');
 const testWorkflow = readFileSync(resolve(workflowsDir, 'test.yml'), 'utf8');
 const workflowText = readdirSync(workflowsDir)
   .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
@@ -178,8 +179,18 @@ describe('CI workflow coverage', () => {
     assert.match(securityAuditWorkflow, /\n    name: security-audit\n/, 'security-audit.yml must publish a security-audit check run');
     assert.match(
       securityAuditWorkflow,
-      /npm audit --omit=dev --audit-level=high/,
-      'security-audit.yml must block high-severity production dependency vulnerabilities',
+      /node scripts\/audit-production-dependencies\.mjs/,
+      'security-audit.yml must run the production dependency audit gate',
+    );
+    assert.match(
+      securityAuditScript,
+      /npm['"],\s*\[\s*['"]audit['"],\s*['"]--omit=dev['"],\s*['"]--json['"]/,
+      'the production dependency audit gate must run npm audit --omit=dev --json',
+    );
+    assert.match(
+      securityAuditScript,
+      /collectUnbaselinedFindings/,
+      'the production dependency audit gate must fail on unbaselined high-severity production advisories',
     );
     assert.deepEqual(
       securityAuditMatrixLockfiles(),

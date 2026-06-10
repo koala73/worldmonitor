@@ -41,8 +41,7 @@ jobs:
         with:
           node-version: '22'
       - name: Audit ${{ matrix.lockfile }}
-        working-directory: ${{ matrix.path }}
-        run: npm audit --omit=dev --audit-level=high
+        run: node scripts/audit-production-dependencies.mjs --workspace "${{ matrix.path }}" --lockfile "${{ matrix.lockfile }}"
 
   security-audit:
     name: security-audit
