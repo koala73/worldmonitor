@@ -113,7 +113,15 @@ import {
 import type { GulfInvestment } from '@/types';
 import { resolveTradeRouteSegments, TRADE_ROUTES as TRADE_ROUTES_LIST, type TradeRouteSegment, type TradeRouteStatus } from '@/config/trade-routes';
 import type { ScenarioVisualState } from '@/config/scenario-templates';
-import { getLayersForVariant, resolveLayerLabel, bindLayerSearch, type MapVariant } from '@/config/map-layer-definitions';
+import {
+  getLayersForVariant,
+  resolveLayerLabel,
+  bindLayerSearch,
+  getLayerExplanation,
+  hasCuratedLayerExplanation,
+  type LayerExplanation,
+  type MapVariant,
+} from '@/config/map-layer-definitions';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { onEntitlementChange } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
@@ -5076,6 +5084,8 @@ export class DeckGLMap {
       label: resolveLayerLabel(def, t),
       icon: def.icon,
       premium: def.premium,
+      explainLabel: escapeHtml(`Explain ${resolveLayerLabel(def, t)} layer`),
+      hasExplanation: hasCuratedLayerExplanation(def.key),
     }));
 
     setTrustedHtml(toggles, trustedHtml(`
@@ -5086,15 +5096,18 @@ export class DeckGLMap {
       </div>
       <input type="text" class="layer-search" placeholder="${t('components.deckgl.layerSearch')}" autocomplete="off" spellcheck="false" />
       <div class="toggle-list" style="max-height: 32vh; overflow-y: auto; scrollbar-width: thin;">
-        ${layerConfig.map(({ key, label, icon, premium }) => {
+        ${layerConfig.map(({ key, label, icon, premium, explainLabel, hasExplanation }) => {
           const isLocked = premium === 'locked' && !premiumUnlocked;
           const isEnhanced = premium === 'enhanced' && !premiumUnlocked;
           return `
-          <label class="layer-toggle${isLocked ? ' layer-toggle-locked' : ''}" data-layer="${key}">
-            <input type="checkbox" ${this.state.layers[key as keyof MapLayers] ? 'checked' : ''}${isLocked ? ' disabled' : ''}>
-            <span class="toggle-icon">${icon}</span>
-            <span class="toggle-label">${label}${isLocked ? ' \uD83D\uDD12' : ''}${isEnhanced ? ' <span class="layer-pro-badge">PRO</span>' : ''}</span>
-          </label>`;
+          <div class="layer-toggle-row" data-layer="${key}">
+            <label class="layer-toggle${isLocked ? ' layer-toggle-locked' : ''}" data-layer="${key}">
+              <input type="checkbox" ${this.state.layers[key as keyof MapLayers] ? 'checked' : ''}${isLocked ? ' disabled' : ''}>
+              <span class="toggle-icon">${icon}</span>
+              <span class="toggle-label">${label}${isLocked ? ' \uD83D\uDD12' : ''}${isEnhanced ? ' <span class="layer-pro-badge">PRO</span>' : ''}</span>
+            </label>
+            <button type="button" class="layer-explain-btn${hasExplanation ? ' has-layer-explanation' : ''}" data-layer="${key}" aria-label="${explainLabel}" title="${explainLabel}">i</button>
+          </div>`;
         }).join('')}
       </div>
     `, "legacy direct innerHTML migration"));
@@ -5171,6 +5184,15 @@ export class DeckGLMap {
     });
     this.enforceLayerLimit();
 
+    toggles.querySelectorAll('.layer-explain-btn').forEach(button => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const layer = (button as HTMLElement).getAttribute('data-layer') as keyof MapLayers | null;
+        if (layer) this.showLayerExplanation(layer);
+      });
+    });
+
     // Help button
     const helpBtn = toggles.querySelector('.layer-help-btn');
     helpBtn?.addEventListener('click', () => this.showLayerHelp());
@@ -5196,6 +5218,85 @@ export class DeckGLMap {
       if (searchEl) searchEl.style.display = toggleList?.classList.contains('collapsed') ? 'none' : '';
       if (collapseBtn) setTrustedHtml(collapseBtn, trustedHtml(toggleList?.classList.contains('collapsed') ? '&#9654;' : '&#9660;', "legacy direct innerHTML migration"));
     });
+  }
+
+  private renderLayerExplanationCard(layerLabel: string, explanation: LayerExplanation): string {
+    const list = (items: string[]): string => items.map(item => `<li>${escapeHtml(item)}</li>`).join('');
+    const related = explanation.related.length > 0
+      ? explanation.related.map(item => `<span>${escapeHtml(item)}</span>`).join('')
+      : '<span>Layer guide</span>';
+    const evidence = explanation.evidence.length > 0
+      ? `<div class="layer-explanation-grounding"><span>Grounded in</span>${explanation.evidence.map(item => `<code>${escapeHtml(item)}</code>`).join('')}</div>`
+      : '';
+    const coverageLabel = explanation.coverage === 'curated' ? 'Curated v1' : 'Fallback';
+
+    return `
+      <div class="layer-explanation-header">
+        <div>
+          <span class="layer-explanation-kicker">${escapeHtml(explanation.category)}</span>
+          <strong>${escapeHtml(layerLabel)}</strong>
+        </div>
+        <button class="layer-explanation-close" aria-label="Close">×</button>
+      </div>
+      <div class="layer-explanation-content">
+        <div class="layer-explanation-status ${explanation.coverage}">${coverageLabel}</div>
+        <p class="layer-explanation-purpose">${escapeHtml(explanation.purpose)}</p>
+        <div class="layer-explanation-grid">
+          <section>
+            <span>Source</span>
+            <p>${escapeHtml(explanation.source)}</p>
+          </section>
+          <section>
+            <span>Freshness</span>
+            <p>${escapeHtml(explanation.freshness)}</p>
+          </section>
+          <section>
+            <span>Confidence</span>
+            <p>${escapeHtml(explanation.confidence)}</p>
+          </section>
+        </div>
+        <div class="layer-explanation-section">
+          <span>Limitations</span>
+          <ul>${list(explanation.limitations)}</ul>
+        </div>
+        <div class="layer-explanation-section">
+          <span>Related</span>
+          <div class="layer-explanation-related">${related}</div>
+        </div>
+        ${evidence}
+      </div>
+    `;
+  }
+
+  private showLayerExplanation(layer: keyof MapLayers): void {
+    const existing = this.container.querySelector('.layer-explanation-popup') as HTMLElement | null;
+    if (existing?.dataset.layer === layer) {
+      existing.remove();
+      this.container.querySelector(`.layer-explain-btn[data-layer="${layer}"]`)?.classList.remove('active');
+      return;
+    }
+    existing?.remove();
+    this.container.querySelectorAll('.layer-explain-btn.active').forEach(btn => btn.classList.remove('active'));
+
+    const def = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'flat').find(item => item.key === layer);
+    const layerLabel = def ? resolveLayerLabel(def, t) : String(layer);
+    const explanation = getLayerExplanation(layer);
+    const popup = document.createElement('div');
+    popup.className = 'layer-explanation-popup';
+    popup.dataset.layer = layer;
+    setTrustedHtml(popup, trustedHtml(
+      this.renderLayerExplanationCard(layerLabel, explanation),
+      "static layer explanation metadata",
+    ));
+
+    const closePopup = (): void => {
+      popup.remove();
+      this.container.querySelector(`.layer-explain-btn[data-layer="${layer}"]`)?.classList.remove('active');
+    };
+
+    popup.querySelector('.layer-explanation-close')?.addEventListener('click', closePopup);
+    this.container.appendChild(popup);
+    this.container.querySelector(`.layer-explain-btn[data-layer="${layer}"]`)?.classList.add('active');
   }
 
   /** Show layer help popup explaining each layer */
@@ -6632,7 +6733,11 @@ export class DeckGLMap {
     const togglesEl = this.container.querySelector('.deckgl-layer-toggles');
     if (!togglesEl) return;
     const activeCount = Array.from(togglesEl.querySelectorAll<HTMLInputElement>('.layer-toggle input'))
-      .filter(i => (i.closest('.layer-toggle') as HTMLElement)?.style.display !== 'none')
+      .filter(i => {
+        const toggle = i.closest('.layer-toggle') as HTMLElement | null;
+        const row = i.closest('.layer-toggle-row') as HTMLElement | null;
+        return toggle?.style.display !== 'none' && row?.style.display !== 'none';
+      })
       .filter(i => i.checked).length;
     const increasing = activeCount > this.lastActiveLayerCount;
     this.lastActiveLayerCount = activeCount;
@@ -6648,7 +6753,9 @@ export class DeckGLMap {
   public hideLayerToggle(layer: keyof MapLayers): void {
     const toggle = this.container.querySelector(`.layer-toggle[data-layer="${layer}"]`);
     if (toggle) {
-      (toggle as HTMLElement).style.display = 'none';
+      const row = toggle.closest('.layer-toggle-row') as HTMLElement | null;
+      const target = (row ?? toggle) as HTMLElement;
+      target.style.display = 'none';
       toggle.setAttribute('data-layer-hidden', '');
     }
   }

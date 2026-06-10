@@ -392,6 +392,8 @@ All 56 map layer toggle definitions — icon, localization key, fallback display
 
 A `def()` factory function reduces per-entry boilerplate. Variant-specific layer ordering (`VARIANT_LAYER_ORDER`) defines the display sequence for each of the six dashboard variants without duplicating the definitions themselves. Adding a new map layer requires a single registry entry — both the flat map and 3D globe derive their toggle panels from this catalog automatically.
 
+The same registry also carries the v1 layer-explanation catalog for high-adoption layers. Each curated explanation records purpose, provider/source, freshness expectations, confidence notes, limitations, related panels/actions, and grounding paths; unsupported layers intentionally fall back to a generic card so the UI never implies a fabricated freshness or confidence value.
+
 ---
 
 ## Bandwidth & Caching

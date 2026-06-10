@@ -4407,6 +4407,13 @@ body.playback-mode .status-dot {
   max-width: 300px;
 }
 
+.layer-toggles:not(.deckgl-layer-toggles) .layer-toggle-row {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+}
+
 .layer-toggles:not(.deckgl-layer-toggles) .layer-toggle {
   padding: 3px 8px;
   background: var(--bg);
@@ -4418,6 +4425,11 @@ body.playback-mode .status-dot {
   text-transform: uppercase;
   position: relative;
   transition: color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
+}
+
+.layer-toggles:not(.deckgl-layer-toggles) .layer-toggle-row .layer-toggle {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .layer-toggles:not(.deckgl-layer-toggles) .layer-toggle.active {
@@ -4445,6 +4457,35 @@ body.playback-mode .status-dot {
   animation: layer-loading 0.8s ease-in-out infinite;
   border-color: var(--yellow);
   color: var(--yellow);
+}
+
+.layer-toggles:not(.deckgl-layer-toggles) .layer-explain-btn {
+  width: 18px;
+  min-width: 18px;
+  padding: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.layer-toggles:not(.deckgl-layer-toggles) .layer-explain-btn.has-layer-explanation {
+  color: var(--accent);
+  border-color: rgba(0, 212, 255, 0.45);
+}
+
+.layer-toggles:not(.deckgl-layer-toggles) .layer-explain-btn:hover,
+.layer-toggles:not(.deckgl-layer-toggles) .layer-explain-btn:focus-visible,
+.layer-toggles:not(.deckgl-layer-toggles) .layer-explain-btn.active {
+  color: var(--green);
+  border-color: var(--green);
+  background: var(--overlay-subtle);
+  outline: none;
 }
 
 @keyframes layer-loading {
@@ -15669,6 +15710,13 @@ a.prediction-link:hover {
   display: none;
 }
 
+.deckgl-layer-toggles .layer-toggle-row {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+}
+
 .deckgl-layer-toggles .layer-search {
   width: calc(100% - 16px);
   margin: 4px 8px;
@@ -15693,6 +15741,8 @@ a.prediction-link:hover {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
   padding: 5px 8px;
   cursor: pointer;
   border-radius: 3px;
@@ -15797,6 +15847,212 @@ a.prediction-link:hover {
 
 .deckgl-layer-toggles .layer-toggle.has-data {
   border-color: rgba(68, 255, 136, 0.2);
+}
+
+.deckgl-layer-toggles .layer-explain-btn {
+  width: 22px;
+  min-width: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.deckgl-layer-toggles .layer-explain-btn.has-layer-explanation {
+  color: var(--accent);
+  border-color: rgba(0, 212, 255, 0.45);
+}
+
+.deckgl-layer-toggles .layer-explain-btn:hover,
+.deckgl-layer-toggles .layer-explain-btn:focus-visible,
+.deckgl-layer-toggles .layer-explain-btn.active {
+  color: var(--green);
+  border-color: var(--green);
+  background: var(--overlay-subtle);
+  outline: none;
+}
+
+.layer-explanation-popup {
+  position: absolute;
+  bottom: 10px;
+  left: 282px;
+  width: min(380px, calc(100vw - 310px));
+  max-height: min(70vh, 640px);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  z-index: 210;
+  overflow: hidden;
+  box-shadow: 0 8px 32px var(--shadow-color);
+}
+
+.layer-explanation-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.layer-explanation-header strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.layer-explanation-kicker {
+  display: block;
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.layer-explanation-close {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.layer-explanation-close:hover,
+.layer-explanation-close:focus-visible {
+  color: var(--accent);
+  outline: none;
+}
+
+.layer-explanation-content {
+  max-height: calc(min(70vh, 640px) - 48px);
+  overflow-y: auto;
+  padding: 10px 12px 12px;
+}
+
+.layer-explanation-status {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-bottom: 8px;
+  padding: 2px 6px;
+  border: 1px solid rgba(68, 255, 136, 0.35);
+  border-radius: 3px;
+  color: var(--green);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.layer-explanation-status.fallback {
+  border-color: rgba(255, 193, 7, 0.35);
+  color: var(--yellow);
+}
+
+.layer-explanation-purpose {
+  margin: 0 0 10px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.layer-explanation-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.layer-explanation-grid section,
+.layer-explanation-section {
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.layer-explanation-grid span,
+.layer-explanation-section > span,
+.layer-explanation-grounding > span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.layer-explanation-grid p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.layer-explanation-section {
+  margin-top: 8px;
+}
+
+.layer-explanation-section ul {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.layer-explanation-section li {
+  margin: 3px 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.layer-explanation-related {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.layer-explanation-related span {
+  padding: 2px 6px;
+  border: 1px solid rgba(0, 212, 255, 0.28);
+  border-radius: 3px;
+  color: var(--text);
+  font-size: 10px;
+}
+
+.layer-explanation-grounding {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+  color: var(--text-dim);
+}
+
+.layer-explanation-grounding > span {
+  flex-basis: 100%;
+  margin-bottom: 0;
+}
+
+.layer-explanation-grounding code {
+  padding: 2px 5px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-dim);
+  font-size: 9px;
 }
 
 /* Pro early-access banner */
@@ -16246,6 +16502,11 @@ a.prediction-link:hover {
     max-width: 180px;
   }
 
+  .layer-explanation-popup {
+    left: 202px;
+    width: min(360px, calc(100vw - 230px));
+  }
+
   .deckgl-legend {
     padding: 4px 10px;
     gap: 8px;
@@ -16259,6 +16520,14 @@ a.prediction-link:hover {
 
 /* Mobile: prevent horizontal overflow from deck.gl legend */
 @media (max-width: 520px) {
+  .layer-explanation-popup {
+    right: 10px;
+    bottom: 96px;
+    left: 10px;
+    width: auto;
+    max-height: 60vh;
+  }
+
   .deckgl-legend {
     left: 8px;
     right: 8px;

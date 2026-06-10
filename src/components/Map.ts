@@ -64,6 +64,14 @@ import type { CountryClickPayload } from './DeckGLMap';
 import { t } from '@/services/i18n';
 import type { ScenarioVisualState } from '@/config/scenario-templates';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import {
+  getLayerExplanation,
+  getLayersForVariant,
+  hasCuratedLayerExplanation,
+  resolveLayerLabel,
+  type LayerExplanation,
+  type MapVariant,
+} from '@/config/map-layer-definitions';
 
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
@@ -375,6 +383,11 @@ export class MapComponent {
 
 
 
+  private getLayerControlLabel(layer: keyof MapLayers): string {
+    const def = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'flat').find(item => item.key === layer);
+    return def ? resolveLayerLabel(def, t) : String(layer);
+  }
+
   private createLayerToggles(): HTMLElement {
     const toggles = document.createElement('div');
     toggles.className = 'layer-toggles';
@@ -434,43 +447,6 @@ export class MapComponent {
                  : SITE_VARIANT === 'happy' ? happyLayers
                  : SITE_VARIANT === 'energy' ? energyLayers
                  : fullLayers;
-    const layerLabelKeys: Partial<Record<keyof MapLayers, string>> = {
-      hotspots: 'components.deckgl.layers.intelHotspots',
-      conflicts: 'components.deckgl.layers.conflictZones',
-      bases: 'components.deckgl.layers.militaryBases',
-      nuclear: 'components.deckgl.layers.nuclearSites',
-      irradiators: 'components.deckgl.layers.gammaIrradiators',
-      military: 'components.deckgl.layers.militaryActivity',
-      cables: 'components.deckgl.layers.underseaCables',
-      pipelines: 'components.deckgl.layers.pipelines',
-      outages: 'components.deckgl.layers.internetOutages',
-      datacenters: 'components.deckgl.layers.aiDataCenters',
-      ais: 'components.deckgl.layers.shipTraffic',
-      flights: 'components.deckgl.layers.flightDelays',
-      natural: 'components.deckgl.layers.naturalEvents',
-      weather: 'components.deckgl.layers.weatherAlerts',
-      economic: 'components.deckgl.layers.economicCenters',
-      waterways: 'components.deckgl.layers.strategicWaterways',
-      startupHubs: 'components.deckgl.layers.startupHubs',
-      cloudRegions: 'components.deckgl.layers.cloudRegions',
-      accelerators: 'components.deckgl.layers.accelerators',
-      techHQs: 'components.deckgl.layers.techHQs',
-      techEvents: 'components.deckgl.layers.techEvents',
-      stockExchanges: 'components.deckgl.layers.stockExchanges',
-      financialCenters: 'components.deckgl.layers.financialCenters',
-      centralBanks: 'components.deckgl.layers.centralBanks',
-      commodityHubs: 'components.deckgl.layers.commodityHubs',
-      gulfInvestments: 'components.deckgl.layers.gulfInvestments',
-      iranAttacks: 'components.deckgl.layers.iranAttacks',
-      gpsJamming: 'components.deckgl.layers.gpsJamming',
-      ciiChoropleth: 'components.deckgl.layers.ciiChoropleth',
-    };
-    const getLayerLabel = (layer: keyof MapLayers): string => {
-      if (layer === 'sanctions') return t('components.deckgl.layerHelp.labels.sanctions');
-      const key = layerLabelKeys[layer];
-      return key ? t(key) : layer;
-    };
-
     const MAX_SVG_LAYERS = 9;
     const enforceLayerLimit = () => {
       const allBtns = Array.from(toggles.querySelectorAll<HTMLButtonElement>('.layer-toggle'));
@@ -496,15 +472,37 @@ export class MapComponent {
     };
 
     layers.forEach((layer) => {
+      const layerLabel = this.getLayerControlLabel(layer);
+      const explainLabel = `Explain ${layerLabel} layer`;
+      const row = document.createElement('div');
+      row.className = 'layer-toggle-row';
+      row.dataset.layer = layer;
+
       const btn = document.createElement('button');
       btn.className = `layer-toggle ${this.state.layers[layer] ? 'active' : ''}`;
       btn.dataset.layer = layer;
-      btn.textContent = getLayerLabel(layer);
+      btn.textContent = layerLabel;
       btn.addEventListener('click', () => {
         this.toggleLayer(layer);
         enforceLayerLimit();
       });
-      toggles.appendChild(btn);
+      row.appendChild(btn);
+
+      const explainBtn = document.createElement('button');
+      explainBtn.type = 'button';
+      explainBtn.className = `layer-explain-btn ${hasCuratedLayerExplanation(layer) ? 'has-layer-explanation' : ''}`;
+      explainBtn.dataset.layer = layer;
+      explainBtn.textContent = 'i';
+      explainBtn.title = explainLabel;
+      explainBtn.setAttribute('aria-label', explainLabel);
+      explainBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.showLayerExplanation(layer);
+      });
+      row.appendChild(explainBtn);
+
+      toggles.appendChild(row);
     });
 
     // Add help button
@@ -520,12 +518,105 @@ export class MapComponent {
     return toggles;
   }
 
+  private renderLayerExplanationCard(layerLabel: string, explanation: LayerExplanation): string {
+    const list = (items: string[]): string => items.map(item => `<li>${escapeHtml(item)}</li>`).join('');
+    const related = explanation.related.length > 0
+      ? explanation.related.map(item => `<span>${escapeHtml(item)}</span>`).join('')
+      : '<span>Layer guide</span>';
+    const evidence = explanation.evidence.length > 0
+      ? `<div class="layer-explanation-grounding"><span>Grounded in</span>${explanation.evidence.map(item => `<code>${escapeHtml(item)}</code>`).join('')}</div>`
+      : '';
+    const coverageLabel = explanation.coverage === 'curated' ? 'Curated v1' : 'Fallback';
+
+    return `
+      <div class="layer-explanation-header">
+        <div>
+          <span class="layer-explanation-kicker">${escapeHtml(explanation.category)}</span>
+          <strong>${escapeHtml(layerLabel)}</strong>
+        </div>
+        <button class="layer-explanation-close" aria-label="Close">×</button>
+      </div>
+      <div class="layer-explanation-content">
+        <div class="layer-explanation-status ${explanation.coverage}">${coverageLabel}</div>
+        <p class="layer-explanation-purpose">${escapeHtml(explanation.purpose)}</p>
+        <div class="layer-explanation-grid">
+          <section>
+            <span>Source</span>
+            <p>${escapeHtml(explanation.source)}</p>
+          </section>
+          <section>
+            <span>Freshness</span>
+            <p>${escapeHtml(explanation.freshness)}</p>
+          </section>
+          <section>
+            <span>Confidence</span>
+            <p>${escapeHtml(explanation.confidence)}</p>
+          </section>
+        </div>
+        <div class="layer-explanation-section">
+          <span>Limitations</span>
+          <ul>${list(explanation.limitations)}</ul>
+        </div>
+        <div class="layer-explanation-section">
+          <span>Related</span>
+          <div class="layer-explanation-related">${related}</div>
+        </div>
+        ${evidence}
+      </div>
+    `;
+  }
+
+  private showLayerExplanation(layer: keyof MapLayers): void {
+    const existing = this.container.querySelector('.layer-explanation-popup') as HTMLElement | null;
+    if (existing?.dataset.layer === layer) {
+      existing.remove();
+      this.container.querySelector(`.layer-explain-btn[data-layer="${layer}"]`)?.classList.remove('active');
+      return;
+    }
+    existing?.remove();
+    this.container.querySelector('.layer-help-popup')?.remove();
+    this.container.querySelectorAll('.layer-explain-btn.active').forEach(btn => btn.classList.remove('active'));
+
+    const popup = document.createElement('div');
+    popup.className = 'layer-explanation-popup';
+    popup.dataset.layer = layer;
+    setTrustedHtml(popup, trustedHtml(
+      this.renderLayerExplanationCard(this.getLayerControlLabel(layer), getLayerExplanation(layer)),
+      "static layer explanation metadata",
+    ));
+
+    const closePopup = (): void => {
+      popup.remove();
+      this.container.querySelector(`.layer-explain-btn[data-layer="${layer}"]`)?.classList.remove('active');
+    };
+
+    popup.querySelector('.layer-explanation-close')?.addEventListener('click', closePopup);
+    const content = popup.querySelector('.layer-explanation-content');
+    content?.addEventListener('wheel', (e) => e.stopPropagation(), { passive: false });
+    content?.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: false });
+
+    setTimeout(() => {
+      const closeHandler = (e: MouseEvent) => {
+        if (!popup.contains(e.target as Node)) {
+          closePopup();
+          document.removeEventListener('click', closeHandler);
+        }
+      };
+      document.addEventListener('click', closeHandler);
+    }, 100);
+
+    this.container.appendChild(popup);
+    this.container.querySelector(`.layer-explain-btn[data-layer="${layer}"]`)?.classList.add('active');
+  }
+
   private showLayerHelp(): void {
     const existing = this.container.querySelector('.layer-help-popup');
     if (existing) {
       existing.remove();
       return;
     }
+    this.container.querySelector('.layer-explanation-popup')?.remove();
+    this.container.querySelectorAll('.layer-explain-btn.active').forEach(btn => btn.classList.remove('active'));
 
     const popup = document.createElement('div');
     popup.className = 'layer-help-popup';
