@@ -26,6 +26,11 @@ const POST_DATES = {
   'https://www.worldmonitor.app/blog/posts/country-risk-monitoring-workflow-for-analysts/': '2026-06-06',
   'https://www.worldmonitor.app/blog/posts/build-supply-chain-early-warning-system-api/': '2026-06-08',
   'https://www.worldmonitor.app/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/': '2026-06-10',
+  'https://www.worldmonitor.app/blog/posts/build-geopolitical-risk-agent-worldmonitor-mcp/': '2026-06-10',
+  'https://www.worldmonitor.app/blog/posts/supply-chain-early-warning-dashboard-worldmonitor-api/': '2026-06-10',
+  'https://www.worldmonitor.app/blog/posts/country-risk-monitoring-due-diligence-worldmonitor/': '2026-06-10',
+  'https://www.worldmonitor.app/blog/posts/energy-shock-monitoring-chokepoints-worldmonitor/': '2026-06-10',
+  'https://www.worldmonitor.app/blog/posts/geopolitical-risk-alerts-slack-teams-worldmonitor-api/': '2026-06-10',
   'https://www.worldmonitor.app/blog/': '2026-06-10',
 };
 
