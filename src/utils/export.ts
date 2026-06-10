@@ -291,6 +291,316 @@ export interface CountryBriefExport {
   generatedAt: string;
 }
 
+export interface CountryEvidenceSourceInput {
+  title?: string | null;
+  source?: string | null;
+  link?: string | null;
+  pubDate?: string | Date | null;
+}
+
+export interface CountryEvidenceBundleInput {
+  country: string;
+  code: string;
+  context?: string;
+  score?: number;
+  level?: string;
+  trend?: string;
+  components?: CountryBriefExport['components'];
+  signals?: Record<string, unknown>;
+  brief?: string;
+  headlines?: CountryEvidenceSourceInput[];
+  generatedAt?: string;
+  exportedAt?: string;
+  briefGeneratedAt?: string;
+  briefCached?: boolean;
+}
+
+export interface CountryEvidenceSignal {
+  label: string;
+  value: string;
+}
+
+export interface CountryEvidenceSource {
+  title: string;
+  publisher?: string;
+  url?: string;
+  publishedAt?: string;
+  freshness: string;
+  note?: string;
+}
+
+export interface CountryEvidenceBundle {
+  country: string;
+  code: string;
+  context: string;
+  exportedAt: string;
+  generatedAt?: string;
+  briefGeneratedAt?: string;
+  briefCacheStatus?: 'cached' | 'fresh';
+  score?: number;
+  level?: string;
+  trend?: string;
+  components?: CountryBriefExport['components'];
+  signals: CountryEvidenceSignal[];
+  brief?: string;
+  sources: CountryEvidenceSource[];
+  freshnessNotes: string[];
+  provenanceDisclaimer: string;
+}
+
+export const COUNTRY_EVIDENCE_PROVENANCE_DISCLAIMER =
+  'This WorldMonitor evidence bundle packages user-visible context and source metadata for analyst handoff. It is not a legal evidentiary record; verify source availability, timestamps, and claims before reuse.';
+
+const SIGNAL_LABELS: Record<string, string> = {
+  criticalNews: 'Critical news',
+  protests: 'Protests',
+  militaryFlights: 'Military flights nearby',
+  militaryVessels: 'Military vessels nearby',
+  militaryFlightsInCountry: 'Military flights inside borders',
+  militaryVesselsInCountry: 'Military vessels inside borders',
+  outages: 'Internet outages',
+  aisDisruptions: 'AIS disruptions',
+  satelliteFires: 'Satellite fires',
+  radiationAnomalies: 'Radiation anomalies',
+  temporalAnomalies: 'Temporal anomalies',
+  cyberThreats: 'Cyber threats',
+  earthquakes: 'Earthquakes',
+  displacementOutflow: 'Displacement outflow',
+  climateStress: 'Climate stress',
+  conflictEvents: 'Conflict events',
+  activeStrikes: 'Active strikes',
+  orefSirens: 'Active OREF sirens',
+  orefHistory24h: 'OREF sirens in 24h',
+  aviationDisruptions: 'Aviation disruptions',
+  travelAdvisories: 'Travel advisories',
+  travelAdvisoryMaxLevel: 'Maximum travel advisory',
+  gpsJammingHexes: 'GPS jamming zones',
+  thermalEscalations: 'Thermal escalations',
+  sanctionsDesignations: 'Sanctions designations',
+  sanctionsNewDesignations: 'New sanctions designations',
+};
+
+const SECRET_ASSIGNMENT_RE = /\b(api[_-]?key|token|secret|password|authorization|cookie|session)\b\s*[:=]\s*["']?[^"'\s,;]{6,}["']?/gi;
+const BEARER_RE = /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/g;
+const COMMON_SECRET_RE = /\b(?:sk|wm|ghp|github_pat)_[A-Za-z0-9_=-]{12,}\b/g;
+const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
+const USER_ID_RE = /\buser_[A-Za-z0-9_-]{6,}\b/g;
+
+function sanitizeEvidenceText(value: unknown): string {
+  return String(value ?? '')
+    .replace(SECRET_ASSIGNMENT_RE, (_match, key) => `${key}=[redacted-secret]`)
+    .replace(BEARER_RE, 'Bearer [redacted-secret]')
+    .replace(COMMON_SECRET_RE, '[redacted-secret]')
+    .replace(EMAIL_RE, '[redacted-email]')
+    .replace(USER_ID_RE, '[redacted-user-id]')
+    .trim();
+}
+
+function normalizeEvidenceUrl(value: unknown): string | undefined {
+  const raw = String(value ?? '').trim();
+  if (!raw) return undefined;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined;
+    return parsed.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeIsoTimestamp(value: unknown): string | undefined {
+  if (!value) return undefined;
+  const date = value instanceof Date ? value : new Date(String(value));
+  const time = date.getTime();
+  return Number.isFinite(time) ? date.toISOString() : undefined;
+}
+
+function signalLabel(key: string): string {
+  return SIGNAL_LABELS[key] ?? key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function buildEvidenceSignals(signals: Record<string, unknown> | undefined): CountryEvidenceSignal[] {
+  if (!signals) return [];
+  return Object.entries(signals)
+    .filter(([, value]) => {
+      if (typeof value === 'number') return value > 0;
+      if (typeof value === 'string') return value.trim().length > 0;
+      return value != null && value !== false;
+    })
+    .map(([key, value]) => ({
+      label: signalLabel(key),
+      value: sanitizeEvidenceText(value),
+    }));
+}
+
+function freshnessForSource(publishedAt: string | undefined, exportedAt: string): string {
+  if (!publishedAt) return 'Published timestamp unavailable; freshness could not be computed.';
+  const published = new Date(publishedAt).getTime();
+  const exported = new Date(exportedAt).getTime();
+  if (!Number.isFinite(published) || !Number.isFinite(exported)) {
+    return 'Published timestamp unavailable; freshness could not be computed.';
+  }
+  const ageMs = Math.max(0, exported - published);
+  const ageHours = Math.floor(ageMs / 3_600_000);
+  if (ageHours < 48) return `${ageHours}h old at export.`;
+  return `${Math.floor(ageHours / 24)}d old at export.`;
+}
+
+function buildEvidenceSources(
+  headlines: CountryEvidenceSourceInput[] | undefined,
+  exportedAt: string,
+): CountryEvidenceSource[] {
+  return (headlines ?? [])
+    .map((headline, index) => {
+      const title = sanitizeEvidenceText(headline.title) || `Source ${index + 1} (title unavailable)`;
+      const publisher = sanitizeEvidenceText(headline.source) || undefined;
+      const url = normalizeEvidenceUrl(headline.link);
+      const publishedAt = normalizeIsoTimestamp(headline.pubDate);
+      const hadUnsafeOrMissingUrl = Boolean(headline.link) && !url;
+      return {
+        title,
+        publisher,
+        url,
+        publishedAt,
+        freshness: freshnessForSource(publishedAt, exportedAt),
+        note: url
+          ? undefined
+          : hadUnsafeOrMissingUrl
+            ? 'URL omitted because it was missing or unsafe.'
+            : 'URL unavailable; citation link was not provided.',
+      };
+    })
+    .filter((source) => source.title || source.publisher || source.url || source.publishedAt);
+}
+
+function buildFreshnessNotes(input: CountryEvidenceBundleInput, exportedAt: string): string[] {
+  const notes: string[] = [`Exported at ${exportedAt}.`];
+  const briefGeneratedAt = normalizeIsoTimestamp(input.briefGeneratedAt ?? input.generatedAt);
+  if (briefGeneratedAt) {
+    notes.push(`Brief generated at ${briefGeneratedAt}${input.briefCached === true ? ' from cache' : ''}.`);
+  } else {
+    notes.push('Brief generation timestamp unavailable.');
+  }
+  if (!input.headlines || input.headlines.length === 0) {
+    notes.push('No headline source list was available for this export.');
+  }
+  return notes;
+}
+
+function markdownListValue(value: string | number | undefined): string {
+  const clean = sanitizeEvidenceText(value);
+  return clean || 'Unavailable';
+}
+
+function escapeMarkdownLinkText(value: string): string {
+  return value.replace(/[[\]\\]/g, '\\$&');
+}
+
+export function buildCountryEvidenceBundle(input: CountryEvidenceBundleInput): CountryEvidenceBundle {
+  const exportedAt = normalizeIsoTimestamp(input.exportedAt) ?? new Date().toISOString();
+  const generatedAt = normalizeIsoTimestamp(input.generatedAt);
+  const briefGeneratedAt = normalizeIsoTimestamp(input.briefGeneratedAt ?? input.generatedAt);
+  const brief = sanitizeEvidenceText(input.brief);
+  return {
+    country: sanitizeEvidenceText(input.country),
+    code: sanitizeEvidenceText(input.code).toUpperCase(),
+    context: sanitizeEvidenceText(input.context) || 'Country dossier',
+    exportedAt,
+    generatedAt,
+    briefGeneratedAt,
+    briefCacheStatus: input.briefCached === true ? 'cached' : input.briefCached === false ? 'fresh' : undefined,
+    score: input.score,
+    level: sanitizeEvidenceText(input.level) || undefined,
+    trend: sanitizeEvidenceText(input.trend) || undefined,
+    components: input.components,
+    signals: buildEvidenceSignals(input.signals),
+    brief: brief || undefined,
+    sources: buildEvidenceSources(input.headlines, exportedAt),
+    freshnessNotes: buildFreshnessNotes(input, exportedAt),
+    provenanceDisclaimer: COUNTRY_EVIDENCE_PROVENANCE_DISCLAIMER,
+  };
+}
+
+export function renderCountryEvidenceMarkdown(bundle: CountryEvidenceBundle): string {
+  const lines: string[] = [];
+  lines.push(`# WorldMonitor Evidence Bundle: ${bundle.country} (${bundle.code})`);
+  lines.push('');
+  lines.push(`- Context: ${markdownListValue(bundle.context)}`);
+  lines.push(`- Exported at: ${markdownListValue(bundle.exportedAt)}`);
+  if (bundle.generatedAt) lines.push(`- Bundle generated at: ${markdownListValue(bundle.generatedAt)}`);
+  if (bundle.briefGeneratedAt) {
+    const cacheSuffix = bundle.briefCacheStatus ? ` (${bundle.briefCacheStatus})` : '';
+    lines.push(`- Brief generated at: ${markdownListValue(bundle.briefGeneratedAt)}${cacheSuffix}`);
+  }
+  lines.push('');
+
+  lines.push('## Risk Context');
+  if (bundle.score != null) {
+    lines.push(`- Instability score: ${bundle.score}/100`);
+    lines.push(`- Level: ${markdownListValue(bundle.level)}`);
+    lines.push(`- Trend: ${markdownListValue(bundle.trend)}`);
+  } else {
+    lines.push('- Instability score: unavailable in this dossier.');
+  }
+  if (bundle.components) {
+    lines.push(`- Components: unrest ${bundle.components.unrest}, conflict ${bundle.components.conflict}, security ${bundle.components.security}, information ${bundle.components.information}`);
+  }
+  lines.push('');
+
+  lines.push('## Selected Signals');
+  if (bundle.signals.length > 0) {
+    bundle.signals.forEach((signal) => {
+      lines.push(`- ${signal.label}: ${signal.value}`);
+    });
+  } else {
+    lines.push('- No active signal counts were available in this dossier.');
+  }
+  lines.push('');
+
+  if (bundle.brief) {
+    lines.push('## Intelligence Brief');
+    lines.push(bundle.brief);
+    lines.push('');
+  }
+
+  lines.push('## Sources');
+  if (bundle.sources.length > 0) {
+    bundle.sources.forEach((source, index) => {
+      const label = `${index + 1}. ${source.url ? `[${escapeMarkdownLinkText(source.title)}](${source.url})` : source.title}`;
+      lines.push(label);
+      lines.push(`   - Publisher: ${markdownListValue(source.publisher)}`);
+      lines.push(`   - Published at: ${markdownListValue(source.publishedAt)}`);
+      lines.push(`   - Freshness: ${source.freshness}`);
+      if (source.note) lines.push(`   - Note: ${source.note}`);
+    });
+  } else {
+    lines.push('- No source links were available for this export.');
+  }
+  lines.push('');
+
+  lines.push('## Freshness Notes');
+  bundle.freshnessNotes.forEach((note) => lines.push(`- ${note}`));
+  lines.push('');
+
+  lines.push('## Provenance Disclaimer');
+  lines.push(bundle.provenanceDisclaimer);
+  lines.push('');
+  return lines.join('\n');
+}
+
+export function exportCountryEvidenceMarkdown(data: CountryEvidenceBundleInput): void {
+  const bundle = buildCountryEvidenceBundle(data);
+  const timestamp = bundle.exportedAt.replace(/[:.]/g, '-');
+  downloadFile(
+    renderCountryEvidenceMarkdown(bundle),
+    `country-evidence-${bundle.code}-${timestamp}.md`,
+    'text/markdown;charset=utf-8',
+  );
+}
+
 export function exportCountryBriefJSON(data: CountryBriefExport): void {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   downloadFile(JSON.stringify(data, null, 2), `country-brief-${data.code}-${timestamp}.json`, 'application/json');

@@ -139,6 +139,12 @@ async function loadCountryDeepDivePanel(options = {}) {
       export function safeHtmlToString(value) { return String(value ?? ''); }
     `],
     ['intel-brief-stub', `export function formatIntelBrief(value) { return value; }`],
+    ['export-stub', `
+      const state = globalThis.__wmCountryDeepDiveTestState;
+      export function exportCountryEvidenceMarkdown(data) {
+        state.evidenceExports.push(data);
+      }
+    `],
     ['utils-stub', `
       export function getCSSColor() { return '#44ff88'; }
       export function createCircuitBreaker() { return { execute: (fn) => fn() }; }
@@ -206,6 +212,7 @@ async function loadCountryDeepDivePanel(options = {}) {
     ['@/services/related-assets', 'related-assets-stub'],
     ['@/utils/sanitize', 'sanitize-stub'],
     ['@/utils/format-intel-brief', 'intel-brief-stub'],
+    ['@/utils/export', 'export-stub'],
     ['@/utils', 'utils-stub'],
     ['@/utils/country-flag', 'country-flag-stub'],
     ['@/config/ports', 'ports-stub'],
@@ -272,7 +279,14 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     HTMLButtonElement: snapshotGlobal('HTMLButtonElement'),
   };
   const browserEnvironment = createBrowserEnvironment();
-  const state = { widgets: [], sentryBreadcrumbs: [], sentryExceptions: [], sentryMessages: [], sentryUser: undefined };
+  const state = {
+    widgets: [],
+    sentryBreadcrumbs: [],
+    sentryExceptions: [],
+    sentryMessages: [],
+    sentryUser: undefined,
+    evidenceExports: [],
+  };
 
   defineGlobal('document', browserEnvironment.document);
   defineGlobal('window', browserEnvironment.window);
@@ -334,6 +348,9 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     },
     getSentryExceptions() {
       return state.sentryExceptions;
+    },
+    getEvidenceExports() {
+      return state.evidenceExports;
     },
     cleanup,
   };
