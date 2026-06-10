@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const SEVERITY_RANK = new Map([
@@ -17,6 +19,7 @@ export const BASELINE_ADVISORIES_BY_LOCKFILE = {
   'blog-site/package-lock.json': [],
   'pro-test/package-lock.json': ['GHSA-qjx8-664m-686j', 'GHSA-w24r-5266-9c3c', 'GHSA-w7jw-789q-3m8p'],
   'scripts/package-lock.json': [],
+  'docker/runtime-package-lock.json': [],
 };
 
 function severityRank(severity) {
@@ -65,6 +68,7 @@ function parseArgs(argv) {
   const args = {
     auditLevel: 'high',
     workspace: '.',
+    packageJson: '',
     lockfile: '',
   };
 
@@ -72,41 +76,72 @@ function parseArgs(argv) {
     const arg = argv[i];
     if (arg === '--audit-level') args.auditLevel = argv[++i] ?? args.auditLevel;
     else if (arg === '--workspace') args.workspace = argv[++i] ?? args.workspace;
+    else if (arg === '--package-json') args.packageJson = argv[++i] ?? args.packageJson;
     else if (arg === '--lockfile') args.lockfile = argv[++i] ?? args.lockfile;
   }
 
   if (!args.lockfile) {
-    throw new Error('Usage: audit-production-dependencies.mjs --workspace <path> --lockfile <package-lock.json>');
+    throw new Error(
+      'Usage: audit-production-dependencies.mjs --workspace <path> [--package-json <package.json>] --lockfile <package-lock.json>',
+    );
   }
+  args.packageJson ||= `${args.workspace.replace(/\/$/, '')}/package.json`;
 
   return args;
 }
 
-function readAuditReport(workspace) {
+function resolveAuditWorkspace({ workspace, packageJson, lockfile }) {
+  const workspacePackageJson = resolve(workspace, 'package.json');
+  const workspaceLockfile = resolve(workspace, 'package-lock.json');
+
+  if (packageJson === workspacePackageJson && lockfile === workspaceLockfile) {
+    return {
+      cwd: workspace,
+      cleanup: () => {},
+    };
+  }
+
+  const auditDir = mkdtempSync(join(tmpdir(), 'worldmonitor-security-audit-'));
+  copyFileSync(packageJson, join(auditDir, 'package.json'));
+  copyFileSync(lockfile, join(auditDir, 'package-lock.json'));
+
+  return {
+    cwd: auditDir,
+    cleanup: () => rmSync(auditDir, { recursive: true, force: true }),
+  };
+}
+
+function readAuditReport({ workspace, packageJson, lockfile }) {
+  const auditWorkspace = resolveAuditWorkspace({ workspace, packageJson, lockfile });
   const result = spawnSync('npm', ['audit', '--omit=dev', '--json'], {
-    cwd: workspace,
+    cwd: auditWorkspace.cwd,
     encoding: 'utf8',
   });
-  const json = result.stdout.trim();
 
-  if (!json) {
-    process.stderr.write(result.stderr);
-    throw new Error(`npm audit did not return JSON for ${workspace}`);
-  }
-
-  let report;
   try {
-    report = JSON.parse(json);
-  } catch (error) {
-    process.stderr.write(result.stderr);
-    throw new Error(`Could not parse npm audit JSON for ${workspace}: ${error.message}`);
-  }
+    const json = result.stdout.trim();
 
-  if (report.error) {
-    throw new Error(report.error.summary ?? report.error.detail ?? `npm audit failed for ${workspace}`);
-  }
+    if (!json) {
+      process.stderr.write(result.stderr);
+      throw new Error(`npm audit did not return JSON for ${workspace}`);
+    }
 
-  return report;
+    let report;
+    try {
+      report = JSON.parse(json);
+    } catch (error) {
+      process.stderr.write(result.stderr);
+      throw new Error(`Could not parse npm audit JSON for ${workspace}: ${error.message}`);
+    }
+
+    if (report.error) {
+      throw new Error(report.error.summary ?? report.error.detail ?? `npm audit failed for ${workspace}`);
+    }
+
+    return report;
+  } finally {
+    auditWorkspace.cleanup();
+  }
 }
 
 function printFinding(prefix, finding) {
@@ -117,7 +152,9 @@ function printFinding(prefix, finding) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const workspace = resolve(process.cwd(), args.workspace);
-  const report = readAuditReport(workspace);
+  const packageJson = resolve(process.cwd(), args.packageJson);
+  const lockfile = resolve(process.cwd(), args.lockfile);
+  const report = readAuditReport({ workspace, packageJson, lockfile });
   const allFindings = collectAuditFindings(report, args.auditLevel);
   const unbaselined = collectUnbaselinedFindings(report, args.lockfile, args.auditLevel);
   const unbaselinedKeys = new Set(unbaselined.map((finding) => `${finding.id}:${finding.name}`));

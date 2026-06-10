@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
@@ -62,16 +63,6 @@ const REQUIRED_RESILIENCE_VALIDATION_INPUTS = [
   'scripts/_bundle-runner.mjs',
 ] as const;
 
-const PACKAGE_LOCKFILE_IGNORED_DIRS = new Set([
-  '.git',
-  '.worktrees',
-  'node_modules',
-  'dist',
-  'build',
-  'coverage',
-  '.vercel',
-]);
-
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -86,24 +77,11 @@ function testJobBlock(job: string): string {
   return match[0];
 }
 
-function collectPackageLockfiles(relativeDir = ''): string[] {
-  const dir = resolve(root, relativeDir);
-  const lockfiles: string[] = [];
-
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.isDirectory()) {
-      if (!PACKAGE_LOCKFILE_IGNORED_DIRS.has(entry.name)) {
-        lockfiles.push(...collectPackageLockfiles(relativeDir ? `${relativeDir}/${entry.name}` : entry.name));
-      }
-      continue;
-    }
-
-    if (entry.isFile() && entry.name === 'package-lock.json') {
-      lockfiles.push(relativeDir ? `${relativeDir}/package-lock.json` : 'package-lock.json');
-    }
-  }
-
-  return lockfiles.sort();
+function collectPackageLockfiles(): string[] {
+  return execFileSync('git', ['ls-files', '*package-lock.json'], { cwd: root, encoding: 'utf8' })
+    .split('\n')
+    .filter(Boolean)
+    .sort();
 }
 
 function securityAuditMatrixLockfiles(): string[] {
@@ -188,8 +166,18 @@ describe('CI workflow coverage', () => {
     assert.match(securityAuditWorkflow, /\n    name: security-audit\n/, 'security-audit.yml must publish a security-audit check run');
     assert.match(
       securityAuditWorkflow,
-      /if:\s*\$\{\{\s*always\(\)\s*&&\s*needs\.audit-lockfile\.result\s*!=\s*'cancelled'\s*\}\}/,
-      'security-audit.yml must avoid turning cancelled audit workflows into hard failures',
+      /if:\s*\$\{\{\s*always\(\)\s*\}\}/,
+      'security-audit.yml must always publish the aggregate check',
+    );
+    assert.match(
+      securityAuditWorkflow,
+      /AUDIT_RESULT"\s*=\s*"cancelled"/,
+      'security-audit.yml must publish a failing aggregate check when the audit matrix is cancelled',
+    );
+    assert.match(
+      securityAuditWorkflow,
+      /--package-json "\$\{\{ matrix\.package_json \}\}"/,
+      'security-audit.yml must pass nonstandard package manifests to the audit gate',
     );
     assert.match(
       securityAuditWorkflow,
