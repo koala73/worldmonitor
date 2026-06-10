@@ -26,6 +26,11 @@ import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
 
 const ENABLED = import.meta.env.VITE_CLOUD_PREFS_ENABLED === 'true';
+export const CLOUD_PREFS_APPLIED_EVENT = 'wm:cloud-prefs-applied';
+
+export interface CloudPrefsAppliedDetail {
+  keys: CloudSyncKey[];
+}
 
 // localStorage state keys — never uploaded to cloud
 const KEY_SYNC_VERSION = 'wm-cloud-sync-version';
@@ -157,20 +162,31 @@ function buildCloudBlob(): Record<string, string> {
   return blob;
 }
 
+function dispatchCloudPrefsApplied(keys: CloudSyncKey[]): void {
+  if (keys.length === 0 || typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent<CloudPrefsAppliedDetail>(CLOUD_PREFS_APPLIED_EVENT, {
+    detail: { keys },
+  }));
+}
+
 function applyCloudBlob(data: Record<string, unknown>): void {
+  const changedKeys: CloudSyncKey[] = [];
   _suppressPatch = true;
   try {
     for (const key of CLOUD_SYNC_KEYS) {
       const val = data[key];
       if (typeof val === 'string') {
+        if (localStorage.getItem(key) !== val) changedKeys.push(key);
         localStorage.setItem(key, val);
       } else if (!(key in data)) {
+        if (localStorage.getItem(key) !== null) changedKeys.push(key);
         localStorage.removeItem(key);
       }
     }
   } finally {
     _suppressPatch = false;
   }
+  dispatchCloudPrefsApplied(changedKeys);
 }
 
 function applyMigrations(
@@ -235,14 +251,19 @@ function showUndoToast(prevBlobJson: string): void {
     const action = (e.target as HTMLElement).closest('[data-action]')?.getAttribute('data-action');
     if (action === 'undo') {
       const prev = JSON.parse(prevBlobJson) as Record<string, string>;
+      const restoredKeys: CloudSyncKey[] = [];
       _suppressPatch = true;
       try {
         for (const [k, v] of Object.entries(prev)) {
-          if (CLOUD_SYNC_KEYS.includes(k as CloudSyncKey)) localStorage.setItem(k, v);
+          if (!CLOUD_SYNC_KEYS.includes(k as CloudSyncKey)) continue;
+          const key = k as CloudSyncKey;
+          if (localStorage.getItem(key) !== v) restoredKeys.push(key);
+          localStorage.setItem(key, v);
         }
       } finally {
         _suppressPatch = false;
       }
+      dispatchCloudPrefsApplied(restoredKeys);
       toast.remove();
       clearTimeout(autoTimer);
     } else if (action === 'dismiss') {

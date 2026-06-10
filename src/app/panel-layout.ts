@@ -1810,6 +1810,52 @@ export class PanelLayoutManager implements AppModule {
     }
   }
 
+  public applySavedPanelOrder(): void {
+    const grid = document.getElementById('panelsGrid');
+    const bottomGrid = document.getElementById('mapBottomGrid');
+    if (!grid || !bottomGrid) return;
+
+    const activePanelKeys = Object.keys(this.ctx.panelSettings).filter(k => k !== 'map');
+    const savedOrder = this.getSavedPanelOrder().filter(k => activePanelKeys.includes(k));
+    if (savedOrder.length === 0) return;
+
+    const seen = new Set<string>();
+    const allOrder: string[] = [];
+    const appendUnique = (key: string) => {
+      if (seen.has(key) || !activePanelKeys.includes(key)) return;
+      seen.add(key);
+      allOrder.push(key);
+    };
+    savedOrder.forEach(appendUnique);
+    this.resolvedPanelOrder.forEach(appendUnique);
+    activePanelKeys.forEach(appendUnique);
+
+    this.bottomSetMemory = this.getSavedBottomSet();
+    this.resolvedPanelOrder = allOrder;
+
+    const effectiveUltraWide = this.getEffectiveUltraWide();
+    this.wasUltraWide = effectiveUltraWide;
+    const sidebarOrder = effectiveUltraWide
+      ? allOrder.filter(k => !this.bottomSetMemory.has(k))
+      : allOrder;
+    const bottomOrder = effectiveUltraWide
+      ? allOrder.filter(k => this.bottomSetMemory.has(k))
+      : [];
+
+    const firstAddBlock = grid.querySelector('.add-panel-block');
+    sidebarOrder.forEach((key) => {
+      const el = this.ctx.panels[key]?.getElement();
+      if (!el) return;
+      if (firstAddBlock) grid.insertBefore(el, firstAddBlock);
+      else grid.appendChild(el);
+    });
+
+    bottomOrder.forEach((key) => {
+      const el = this.ctx.panels[key]?.getElement();
+      if (el) bottomGrid.appendChild(el);
+    });
+  }
+
   savePanelOrder(): void {
     const grid = document.getElementById('panelsGrid');
     const bottomGrid = document.getElementById('mapBottomGrid');
