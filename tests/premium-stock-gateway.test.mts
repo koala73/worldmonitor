@@ -81,6 +81,11 @@ describe('premium gateway API key enforcement', () => {
         path: '/api/market/v1/list-market-quotes',
         handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
       },
+      {
+        method: 'GET',
+        path: '/api/market/v1/get-insider-transactions',
+        handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      },
     ]);
 
     process.env.WORLDMONITOR_VALID_KEYS = 'real-key-123';
@@ -133,12 +138,17 @@ describe('premium gateway API key enforcement', () => {
     }));
     assert.equal(unknownNoKey.status, 403);
 
-    // Public endpoint — anonymous browsers authenticate via the wms_ session token
+    // Public endpoints — anonymous browsers authenticate via the wms_ session token
     // (issue #3541; previously this was a trusted-origin bypass).
     const publicAllowed = await handler(new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
       headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
     }));
     assert.equal(publicAllowed.status, 200);
+
+    const insiderTransactionsAllowed = await handler(new Request('https://worldmonitor.app/api/market/v1/get-insider-transactions?symbol=AAPL', {
+      headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
+    }));
+    assert.equal(insiderTransactionsAllowed.status, 200);
   });
 
   it('PR #3557 review: anonymous wms_ session token does NOT unlock premium endpoints', async () => {
