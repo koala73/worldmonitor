@@ -16,7 +16,16 @@ import {
 } from '@/config';
 import { sanitizeLayersForVariant } from '@/config/map-layer-definitions';
 import type { MapVariant } from '@/config/map-layer-definitions';
-import { initDB, cleanOldSnapshots, isAisConfigured, initAisStream, isOutagesConfigured, disconnectAisStream } from '@/services';
+import {
+  initDB,
+  cleanOldSnapshots,
+  isAisConfigured,
+  initAisStream,
+  isOutagesConfigured,
+  disconnectAisStream,
+  stopFlightHistoryCleanup,
+  stopVesselHistoryCleanup,
+} from '@/services';
 import { isProUser } from '@/services/widget-store';
 import { mlWorker } from '@/services/ml-worker';
 import { getAiFlowSettings, subscribeAiFlowChange, isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
@@ -1454,6 +1463,8 @@ export class App {
     }
     this.state.map?.destroy();
     disconnectAisStream();
+    stopFlightHistoryCleanup();
+    stopVesselHistoryCleanup();
     // Unregister every WebMCP tool so a same-document re-init (tests,
     // HMR, SPA harness) doesn't leave the browser with stale bindings
     // pointing at a disposed App.
