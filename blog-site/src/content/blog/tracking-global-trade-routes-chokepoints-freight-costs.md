@@ -118,7 +118,7 @@ Consider the current Hormuz crisis through all four dimensions:
 3. **Trade Policy**: Gulf oil exports affected by the conflict, alternative suppliers face their own trade barriers
 4. **Critical Minerals**: Qatar LNG exports transit Hormuz. Disruption affects downstream petrochemical inputs for battery manufacturing
 
-No single data source shows this full picture. World Monitor puts chokepoint status, freight indices, trade policy, and mineral supply risk in one panel, updated in real time. Combined with [AI-powered forecasting](/blog/posts/prediction-markets-ai-forecasting-geopolitics/), you can see not just what is happening, but where the situation is heading.
+No single data source shows this full picture. World Monitor puts chokepoint status, freight indices, trade policy, and mineral supply risk in one panel, updated in real time. Combined with [AI-powered forecasting](/blog/posts/prediction-markets-ai-forecasting-geopolitics/), you can see not just what is happening, but where the situation is heading. And if you want these signals in your own systems rather than a dashboard, the API exposes the same data — here is [how to build a supply-chain early-warning system](/blog/posts/build-supply-chain-early-warning-system-api/) with route scoring and disruption webhooks.
 
 ## The Data Sources
 

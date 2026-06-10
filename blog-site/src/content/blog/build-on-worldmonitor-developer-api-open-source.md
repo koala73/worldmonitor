@@ -196,6 +196,8 @@ World Monitor's open, typed, proto-first architecture is the alternative:
 
 The intelligence platform of the future isn't a product. It's an ecosystem. World Monitor is building the foundation.
 
+Building an AI agent instead of an app? The same platform is exposed as a Model Context Protocol server with 39 live tools — see [how to connect Claude and other agents to World Monitor's MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/).
+
 ## Frequently Asked Questions
 
 **Is the World Monitor API free to use?**
