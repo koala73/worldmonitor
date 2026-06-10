@@ -16,8 +16,8 @@
 // ais-relay.cjs calls server.listen() at top level and has no module.exports, so
 // it cannot be imported. These tests (1) extract the real guard/scheduler bodies
 // and exercise them against mocked Redis/timers, and (2) assert the source wires
-// every fixed-schedule external seeder through the scheduler while leaving
-// real-time pollers / internal warm-pings untouched.
+// every fixed-schedule external seeder AND internal warm-ping through the
+// scheduler while leaving real-time pollers (Telegram/OREF) untouched.
 
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -184,7 +184,15 @@ const SEEDERS = [
   ['Market', "'seed-meta:market:stocks'", 'MARKET_SEED_INTERVAL_MS', 'seedAllMarketData'],
   ['PositiveEvents', "'seed-meta:positive-events:geo'", 'POSITIVE_EVENTS_INTERVAL_MS', 'seedPositiveEvents'],
   ['Classify', "'seed-meta:classify'", 'CLASSIFY_SEED_INTERVAL_MS', 'seedClassify'],
+  // Internal warm-pings — gated on the seed-meta key their own RPC handler writes,
+  // so frequent relay recycling no longer re-pings these endpoints on every boot.
+  // (Previously excluded; the endpoints self-limit, so gating is risk-free here —
+  // a missing key fails open to an immediate ping — and also dedupes the boot ping
+  // against organic traffic that already kept the cache warm.)
   ['ServiceStatuses', "'seed-meta:infra:service-statuses'", 'SERVICE_STATUSES_SEED_INTERVAL_MS', 'seedServiceStatuses'],
+  ['CII', "'seed-meta:intelligence:risk-scores'", 'CII_WARM_PING_INTERVAL_MS', 'seedCiiWarmPing'],
+  ['Chokepoints', "'seed-meta:supply_chain:chokepoints'", 'CHOKEPOINT_WARM_PING_INTERVAL_MS', 'seedChokepointWarmPing'],
+  ['CableHealth', "'seed-meta:cable-health'", 'CABLE_HEALTH_WARM_PING_INTERVAL_MS', 'seedCableHealthWarmPing'],
   ['TheaterPosture', "'seed-meta:theater-posture'", 'THEATER_POSTURE_SEED_INTERVAL_MS', 'seedTheaterPosture'],
   ['Weather', "'seed-meta:weather:alerts'", 'WEATHER_SEED_INTERVAL_MS', 'seedWeatherAlerts'],
   ['Spending', "'seed-meta:economic:spending'", 'SPENDING_SEED_INTERVAL_MS', 'seedUsaSpending'],
@@ -217,12 +225,12 @@ test('exactly the expected number of boot seeds are scheduled (no drift)', () =>
   assert.equal(count, SEEDERS.length, `expected ${SEEDERS.length} gated boot seeds, found ${count}`);
 });
 
-test('every relay seed loop is routed through startBootSeedLoop instead of raw setInterval', () => {
-  const seedLoopNames = [...relaySource.matchAll(/(?:async\s+)?function\s+(start[A-Za-z0-9]+SeedLoop)\s*\(/g)]
+test('every relay seed loop and warm-ping loop is routed through startBootSeedLoop instead of raw setInterval', () => {
+  const seedLoopNames = [...relaySource.matchAll(/(?:async\s+)?function\s+(start[A-Za-z0-9]+(?:SeedLoop|WarmPingLoop))\s*\(/g)]
     .map(([, name]) => name)
     .filter((name) => name !== 'startBootSeedLoop');
 
-  assert.ok(seedLoopNames.length > 0, 'expected to find relay seed loop functions');
+  assert.ok(seedLoopNames.length > 0, 'expected to find relay seed/warm-ping loop functions');
 
   const rawIntervalSeedLoops = [];
   const ungatedSeedLoops = [];
@@ -235,24 +243,28 @@ test('every relay seed loop is routed through startBootSeedLoop instead of raw s
   assert.deepEqual(
     rawIntervalSeedLoops,
     [],
-    `seed loops must not schedule raw setInterval; use startBootSeedLoop: ${rawIntervalSeedLoops.join(', ')}`,
+    `seed/warm-ping loops must not schedule raw setInterval; use startBootSeedLoop: ${rawIntervalSeedLoops.join(', ')}`,
   );
   assert.deepEqual(
     ungatedSeedLoops,
     [],
-    `seed loops must call startBootSeedLoop: ${ungatedSeedLoops.join(', ')}`,
+    `seed/warm-ping loops must call startBootSeedLoop: ${ungatedSeedLoops.join(', ')}`,
   );
 });
 
-// ── Exclusions: internal warm-pings short-circuit at their own endpoint when the
-// data is fresh (cheap), so gating them adds risk for no benefit; real-time
-// pollers must run continuously. None of these may be wrapped. ───────────────
-test('internal warm-pings are NOT gated (self-limiting at the endpoint)', () => {
-  for (const label of ['CII', 'Chokepoints', 'CableHealth']) {
-    assert.ok(!relaySource.includes(`startBootSeedLoop('${label}'`), `warm-ping ${label} must not be gated`);
+// ── Internal warm-pings (ServiceStatuses, CII, Chokepoints, CableHealth) are
+// gated like every other fixed-schedule seeder — each routes through
+// startBootSeedLoop on the seed-meta key its RPC handler writes (asserted in the
+// SEEDERS table above). They must NOT fire an unconditional immediate boot ping,
+// so a relay reboot storm can't re-ping these endpoints on every recycle. ────────
+test('internal warm-pings no longer fire an unconditional immediate boot ping', () => {
+  for (const fn of ['seedServiceStatuses', 'seedCiiWarmPing', 'seedChokepointWarmPing', 'seedCableHealthWarmPing']) {
+    assert.doesNotMatch(
+      relaySource,
+      new RegExp(`${fn}\\(\\)\\.catch`),
+      `${fn} must be scheduled via startBootSeedLoop, not an ungated boot ping`,
+    );
   }
-  // and the warm-pings still fire their immediate boot ping
-  assert.match(relaySource, /seedCiiWarmPing\(\)\.catch/);
 });
 
 test('real-time pollers are NOT gated (must run continuously on every boot)', () => {

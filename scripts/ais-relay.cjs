@@ -4518,10 +4518,7 @@ async function seedCiiWarmPing() {
 
 function startCiiWarmPingLoop() {
   console.log(`[CII] Warm-ping loop starting (interval ${CII_WARM_PING_INTERVAL_MS / 1000 / 60}min)`);
-  seedCiiWarmPing().catch((e) => console.warn('[CII] Initial warm-ping error:', e?.message || e));
-  setInterval(() => {
-    seedCiiWarmPing().catch((e) => console.warn('[CII] Warm-ping error:', e?.message || e));
-  }, CII_WARM_PING_INTERVAL_MS).unref?.();
+  startBootSeedLoop('CII', 'seed-meta:intelligence:risk-scores', CII_WARM_PING_INTERVAL_MS, seedCiiWarmPing, (e) => console.warn('[CII] Initial warm-ping error:', e?.message || e), (e) => console.warn('[CII] Warm-ping error:', e?.message || e));
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -4557,10 +4554,7 @@ async function seedChokepointWarmPing() {
 
 function startChokepointWarmPingLoop() {
   console.log(`[Chokepoints] Warm-ping loop starting (interval ${CHOKEPOINT_WARM_PING_INTERVAL_MS / 1000 / 60}min)`);
-  seedChokepointWarmPing().catch((e) => console.warn('[Chokepoints] Initial warm-ping error:', e?.message || e));
-  setInterval(() => {
-    seedChokepointWarmPing().catch((e) => console.warn('[Chokepoints] Warm-ping error:', e?.message || e));
-  }, CHOKEPOINT_WARM_PING_INTERVAL_MS).unref?.();
+  startBootSeedLoop('Chokepoints', 'seed-meta:supply_chain:chokepoints', CHOKEPOINT_WARM_PING_INTERVAL_MS, seedChokepointWarmPing, (e) => console.warn('[Chokepoints] Initial warm-ping error:', e?.message || e), (e) => console.warn('[Chokepoints] Warm-ping error:', e?.message || e));
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -4595,10 +4589,7 @@ async function seedCableHealthWarmPing() {
 
 function startCableHealthWarmPingLoop() {
   console.log(`[CableHealth] Warm-ping loop starting (interval ${CABLE_HEALTH_WARM_PING_INTERVAL_MS / 1000 / 60}min)`);
-  seedCableHealthWarmPing().catch((e) => console.warn('[CableHealth] Initial warm-ping error:', e?.message || e));
-  setInterval(() => {
-    seedCableHealthWarmPing().catch((e) => console.warn('[CableHealth] Warm-ping error:', e?.message || e));
-  }, CABLE_HEALTH_WARM_PING_INTERVAL_MS).unref?.();
+  startBootSeedLoop('CableHealth', 'seed-meta:cable-health', CABLE_HEALTH_WARM_PING_INTERVAL_MS, seedCableHealthWarmPing, (e) => console.warn('[CableHealth] Initial warm-ping error:', e?.message || e), (e) => console.warn('[CableHealth] Warm-ping error:', e?.message || e));
 }
 
 // ─────────────────────────────────────────────────────────────
