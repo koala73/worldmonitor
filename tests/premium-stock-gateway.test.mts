@@ -59,7 +59,7 @@ afterEach(() => {
 });
 
 describe('premium gateway API key enforcement', () => {
-  it('requires credentials for premium endpoints regardless of origin', async () => {
+  it('enforces premium credentials while allowing public market session auth', async () => {
     const handler = createDomainGateway([
       {
         method: 'GET',
