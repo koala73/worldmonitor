@@ -216,6 +216,7 @@ function claims(s) {
     { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /typed APIs \(\d+\s+proto files, (\d+)\s+services\)/, value: s.protoServices },
     { file: 'blog-site/src/content/blog/ai-powered-intelligence-without-the-cloud.md', re: /architecture \((\d+)\s+proto files, \d+\s+typed services\)/, value: s.protoFiles },
     { file: 'blog-site/src/content/blog/ai-powered-intelligence-without-the-cloud.md', re: /architecture \(\d+\s+proto files, (\d+)\s+typed services\)/, value: s.protoServices },
+    { file: 'blog-site/src/content/blog/worldmonitor-vs-traditional-intelligence-tools.md', re: /using the (\d+)\s+typed API services/, value: s.protoServices },
   ];
 }
 
