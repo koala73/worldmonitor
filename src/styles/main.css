@@ -23743,10 +23743,27 @@ body.map-width-resizing {
     display: none;
   }
 
-  /* Critical posture banner — compact mobile variant (was desktop-only). */
+  /* Critical posture banner — compact mobile variant (was desktop-only).
+   * In-flow (not fixed): a persistent fixed banner at top:50px sits over
+   * the sticky chip nav band (z 999 vs 60) and the map header buttons.
+   * The element is inserted right after .header in the flex column, so
+   * static positioning pushes content down naturally... */
   .critical-posture-banner {
+    position: static;
+    flex-shrink: 0; /* flex-column item — same crush risk as the chip nav */
     padding: 8px 10px;
     gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  /* ...which also makes the desktop grid compensations dead gaps — the
+   * grid sits below the map + chip nav on mobile, not below the banner. */
+  body.has-critical-banner .panels-grid {
+    padding-top: 4px;
+  }
+
+  body.has-breaking-alert .panels-grid {
+    margin-top: 0;
   }
 
   .critical-posture-banner .banner-content {

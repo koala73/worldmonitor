@@ -177,6 +177,9 @@ export class BreakingNewsBanner {
   }
 
   private scrollToPanel(panelId: string): void {
+    // Synchronous: lets the mobile category nav clear a filter that would
+    // leave the target display:none (scrollIntoView would silently no-op).
+    window.dispatchEvent(new CustomEvent('wm:reveal-panel', { detail: { panelId } }));
     const panel = document.querySelector(`[data-panel="${panelId}"]`);
     if (!panel) return;
     panel.scrollIntoView({ behavior: 'smooth', block: 'center' });

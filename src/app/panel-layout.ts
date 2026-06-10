@@ -752,6 +752,9 @@ export class PanelLayoutManager implements AppModule {
   private revealMobileMap(): void {
     const mapSection = document.getElementById('mapSection');
     if (!mapSection) return;
+    // Map panel disabled in settings — nothing to reveal; scrolling to an
+    // empty top would read as the tap doing nothing.
+    if (mapSection.classList.contains('hidden')) return;
     if (mapSection.classList.contains('collapsed')) {
       mapSection.classList.remove('collapsed');
       localStorage.setItem('mobile-map-collapsed', 'false');
@@ -2142,6 +2145,9 @@ export class PanelLayoutManager implements AppModule {
       if (savedConfig && !savedConfig.enabled) {
         this.ctx.panels[key]?.hide();
       }
+      // Same late-mount problem for the mobile category filter: the user may
+      // have picked a chip while this import was in flight.
+      this.mobilePanelNav?.applyToNewPanel(el);
     }).catch((err) => {
       console.error(`[panel] failed to lazy-load "${key}"`, err);
     });

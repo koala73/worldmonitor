@@ -22,6 +22,14 @@ export class MobilePanelNav {
   private activeCategory = 'all';
   private proPanelKeys: Set<string> = new Set();
   private getPanelSettings: () => Record<string, PanelConfig>;
+  // Consumers that navigate to a panel (e.g. breaking-alert tap) dispatch
+  // this so an active filter can't swallow their scrollIntoView.
+  private boundRevealPanel = (e: Event): void => {
+    const key = (e as CustomEvent<{ panelId?: string }>).detail?.panelId;
+    if (!key) return;
+    const allowed = this.allowedKeysForActiveCategory();
+    if (allowed && !allowed.has(key)) this.select('all');
+  };
 
   constructor(getPanelSettings: () => Record<string, PanelConfig>) {
     this.getPanelSettings = getPanelSettings;
@@ -31,6 +39,7 @@ export class MobilePanelNav {
       const chip = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-category]');
       if (chip?.dataset.category) this.select(chip.dataset.category);
     });
+    window.addEventListener('wm:reveal-panel', this.boundRevealPanel);
   }
 
   public getElement(): HTMLElement {
@@ -68,7 +77,17 @@ export class MobilePanelNav {
   }
 
   public destroy(): void {
+    window.removeEventListener('wm:reveal-panel', this.boundRevealPanel);
     this.element.remove();
+  }
+
+  /** Stamp the active filter onto a panel mounted AFTER refresh() ran —
+   *  lazy-loaded panels would otherwise leak into a filtered view. No
+   *  resize dispatch: a freshly mounted panel renders at correct width. */
+  public applyToNewPanel(el: HTMLElement): void {
+    const allowed = this.allowedKeysForActiveCategory();
+    const key = el.dataset.panel ?? '';
+    el.classList.toggle('mobile-cat-hidden', !!allowed && !allowed.has(key));
   }
 
   private setChipState(chip: HTMLElement, active: boolean): void {
