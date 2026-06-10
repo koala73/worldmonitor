@@ -3080,6 +3080,7 @@
     "failedCII": "فشل حساب CII",
     "failedDependencyGraph": "فشل بناء رسم التبعيات",
     "failedIntelFeed": "فشل تحميل التغذية الاستخباراتية",
+    "fallbackMarketData": "Showing offline reference prices — live data temporarily unavailable",
     "failedMarketData": "فشل تحميل بيانات السوق",
     "failedSectorData": "فشل تحميل بيانات القطاعات",
     "failedCommodities": "فشل تحميل بيانات السلع",

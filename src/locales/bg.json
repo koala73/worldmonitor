@@ -3081,6 +3081,7 @@
     "failedCII": "Неуспешно изчисляване на CII",
     "failedDependencyGraph": "Неуспешно построяване на график на зависимост",
     "failedIntelFeed": "Неуспешно зареждане на разузнаване хранилка",
+    "fallbackMarketData": "Showing offline reference prices — live data temporarily unavailable",
     "failedMarketData": "Неуспешно зареждане на пазара данни",
     "failedSectorData": "Неуспешно зареждане на сектор данни",
     "failedCommodities": "Неуспешно зареждане на стоки",

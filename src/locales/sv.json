@@ -2865,6 +2865,7 @@
     "failedCII": "Kunde inte beräkna CII",
     "failedDependencyGraph": "Kunde inte bygga beroendegrafen",
     "failedIntelFeed": "Kunde inte ladda underrättelseflöde",
+    "fallbackMarketData": "Showing offline reference prices — live data temporarily unavailable",
     "failedMarketData": "Kunde inte ladda marknadsdata",
     "failedSectorData": "Kunde inte ladda sektorsdata",
     "failedCommodities": "Kunde inte ladda råvaror",

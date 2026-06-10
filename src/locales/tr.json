@@ -3081,6 +3081,7 @@
     "failedCII": "CII hesaplanamadi",
     "failedDependencyGraph": "Bagimlilik grafigi olusturulamadi",
     "failedIntelFeed": "Istihbarat akisi yuklenemedi",
+    "fallbackMarketData": "Showing offline reference prices — live data temporarily unavailable",
     "failedMarketData": "Piyasa verileri yuklenemedi",
     "failedSectorData": "Sektor verileri yuklenemedi",
     "failedCommodities": "Emtia verileri yuklenemedi",

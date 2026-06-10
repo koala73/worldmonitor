@@ -3081,6 +3081,7 @@
     "failedCII": "Nepodařilo se vypočítat CII",
     "failedDependencyGraph": "Nepodařilo se sestavit graf závislostí",
     "failedIntelFeed": "Nepodařilo se načíst zpravodajský kanál",
+    "fallbackMarketData": "Showing offline reference prices — live data temporarily unavailable",
     "failedMarketData": "Nepodařilo se načíst tržní data",
     "failedSectorData": "Nepodařilo se načíst sektorová data",
     "failedCommodities": "Nepodařilo se načíst komodity",

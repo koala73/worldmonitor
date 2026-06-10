@@ -3081,6 +3081,7 @@
     "failedCII": "Errore nel calcolo del CII",
     "failedDependencyGraph": "Errore nella costruzione del grafo delle dipendenze",
     "failedIntelFeed": "Errore nel caricamento del feed di intelligence",
+    "fallbackMarketData": "Showing offline reference prices — live data temporarily unavailable",
     "failedMarketData": "Errore nel caricamento dei dati di mercato",
     "failedSectorData": "Errore nel caricamento dei dati settoriali",
     "failedCommodities": "Errore nel caricamento delle materie prime",

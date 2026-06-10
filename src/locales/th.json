@@ -3081,6 +3081,7 @@
     "failedCII": "คำนวณ CII ไม่สำเร็จ",
     "failedDependencyGraph": "สร้างกราฟการพึ่งพาไม่สำเร็จ",
     "failedIntelFeed": "โหลดฟีดข่าวกรองไม่สำเร็จ",
+    "fallbackMarketData": "Showing offline reference prices — live data temporarily unavailable",
     "failedMarketData": "โหลดข้อมูลตลาดไม่สำเร็จ",
     "failedSectorData": "โหลดข้อมูลภาคส่วนไม่สำเร็จ",
     "failedCommodities": "โหลดข้อมูลสินค้าโภคภัณฑ์ไม่สำเร็จ",

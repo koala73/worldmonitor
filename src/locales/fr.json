@@ -3079,6 +3079,7 @@
     "failedCII": "Échec du calcul du CII",
     "failedDependencyGraph": "Échec de la construction du graphe de dépendances",
     "failedIntelFeed": "Échec du chargement du flux de renseignement",
+    "fallbackMarketData": "Showing offline reference prices — live data temporarily unavailable",
     "failedMarketData": "Échec du chargement des données de marché",
     "failedSectorData": "Échec du chargement des données sectorielles",
     "failedCommodities": "Échec du chargement des matières premières",

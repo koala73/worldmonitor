@@ -6083,6 +6083,17 @@ body.playback-mode .status-dot {
   border-bottom: none;
 }
 
+.market-fallback-notice {
+  background: rgba(255, 170, 0, 0.12);
+  border: 1px solid rgba(255, 170, 0, 0.3);
+  border-radius: 4px;
+  padding: 5px 10px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: var(--semantic-elevated);
+  text-align: center;
+}
+
 .market-info {
   display: flex;
   flex-direction: column;

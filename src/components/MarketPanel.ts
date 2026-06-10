@@ -523,7 +523,12 @@ export class CryptoPanel extends Panel {
       return;
     }
 
-    const html = data
+    const hasFallback = data.some(d => d.isFallback);
+    const fallbackBanner = hasFallback
+      ? `<div class="market-fallback-notice" role="alert">${escapeHtml(t('common.fallbackMarketData'))}</div>`
+      : '';
+
+    const html = fallbackBanner + data
       .map(
         (coin) => `
       <div class="market-item">

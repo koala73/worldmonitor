@@ -3081,6 +3081,7 @@
     "failedCII": "Nu s-a putut calcula CII",
     "failedDependencyGraph": "Nu s-a putut construi graficul de dependență",
     "failedIntelFeed": "Nu s-a încărcat feedul de informații",
+    "fallbackMarketData": "Showing offline reference prices — live data temporarily unavailable",
     "failedMarketData": "Nu s-au încărcat datele de piață",
     "failedSectorData": "Nu s-au încărcat datele sectorului",
     "failedCommodities": "Nu s-a putut încărca mărfurile",
