@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { describe, it } from 'node:test';
 
-import { getCorsHeaders } from '../server/cors.ts';
+import { getCorsHeaders, isAllowedOrigin } from '../server/cors.ts';
+import { isDisallowedOrigin as isDisallowedOriginJs } from '../api/_cors.js';
 
 // Regression coverage for issue #3705: CORS-header generation errors must
 // fail closed rather than fall back to a wildcard ACAO.
@@ -41,6 +42,67 @@ describe('cors helper', () => {
     } as unknown as Request;
     assert.throws(() => getCorsHeaders(throwingReq), /simulated header failure/);
   });
+});
+
+// The Vercel project moved from the personal scope (worldmonitor-*-elie-<hash>)
+// to the "eliewm" team scope. Browsers send Origin on the POST to
+// /api/wm-session, so a stale allowlist 403s every preview deployment and the
+// anonymous session can never be minted (dashboard + /welcome teasers stay dark).
+describe('isAllowedOrigin — Vercel preview allowlist (eliewm team scope)', () => {
+  // Origin for the JS twin (api/_cors.js exports isDisallowedOrigin, not the
+  // bare predicate) — same allow/deny outcome proves both files stay in sync.
+  const allowedByJsTwin = (origin: string) =>
+    !isDisallowedOriginJs(new Request('https://worldmonitor.app/x', { headers: { Origin: origin } }));
+
+  const ALLOWED = [
+    ['git-branch alias URL', 'https://worldmonitor-git-feature-eliewm.vercel.app'],
+    ['hash deployment URL', 'https://worldmonitor-abc123def456-eliewm.vercel.app'],
+    ['apex production origin', 'https://worldmonitor.app'],
+    ['production subdomain', 'https://tech.worldmonitor.app'],
+  ];
+
+  const REJECTED = [
+    ['non-worldmonitor vercel.app origin', 'https://some-other-app-eliewm.vercel.app'],
+    ['foreign team scope', 'https://worldmonitor-git-feature-attacker.vercel.app'],
+    ['bare worldmonitor vercel.app (no scope segment)', 'https://worldmonitor.vercel.app'],
+    ['suffix-spoofed eliewm origin', 'https://worldmonitor-git-feature-eliewm.vercel.app.evil.com'],
+    ['dead personal-scope preview (post-migration)', 'https://worldmonitor-feature-elie-abc123.vercel.app'],
+  ];
+
+  for (const [label, origin] of ALLOWED) {
+    it(`allows ${label}`, () => {
+      assert.equal(isAllowedOrigin(origin), true, `server/cors.ts must allow ${origin}`);
+      assert.equal(allowedByJsTwin(origin), true, `api/_cors.js must allow ${origin}`);
+    });
+  }
+
+  for (const [label, origin] of REJECTED) {
+    it(`rejects ${label}`, () => {
+      assert.equal(isAllowedOrigin(origin), false, `server/cors.ts must reject ${origin}`);
+      assert.equal(allowedByJsTwin(origin), false, `api/_cors.js must reject ${origin}`);
+    });
+  }
+});
+
+describe('CORS twin parity — eliewm preview pattern stays tight in both files', () => {
+  // Root cause of the original 403s was the two twins drifting. Guard both:
+  // (1) the eliewm-scoped preview pattern is present, and
+  // (2) no bare *.vercel.app wildcard sneaks in as a "fix".
+  const TWINS = ['../server/cors.ts', '../api/_cors.js'];
+
+  for (const rel of TWINS) {
+    it(`${rel} scopes Vercel previews to the eliewm team`, async () => {
+      const source = await readFile(new URL(rel, import.meta.url), 'utf8');
+      assert.ok(
+        source.includes('-eliewm\\.vercel\\.app'),
+        `${rel} must allow worldmonitor-*-eliewm.vercel.app previews`,
+      );
+      assert.ok(
+        !source.includes('worldmonitor-[a-z0-9-]+\\.vercel\\.app'),
+        `${rel} must not widen to a bare *.vercel.app wildcard (security allowlist)`,
+      );
+    });
+  }
 });
 
 describe('gateway CORS error path (issue #3705)', () => {

@@ -1,6 +1,10 @@
 const ALLOWED_ORIGIN_PATTERNS = [
   /^https:\/\/(.*\.)?worldmonitor\.app$/,
-  /^https:\/\/worldmonitor-[a-z0-9-]+-elie-[a-z0-9]+\.vercel\.app$/,
+  // Vercel preview deployments under the "eliewm" team scope, e.g.
+  //   worldmonitor-git-<branch>-eliewm.vercel.app  (git-branch alias)
+  //   worldmonitor-<hash>-eliewm.vercel.app        (deployment URL)
+  // Tight on purpose: never a bare *.vercel.app (this is a security allowlist).
+  /^https:\/\/worldmonitor-[a-z0-9-]+-eliewm\.vercel\.app$/,
   /^https?:\/\/tauri\.localhost(:\d+)?$/,
   /^https?:\/\/[a-z0-9-]+\.tauri\.localhost(:\d+)?$/i,
   /^tauri:\/\/localhost$/,
