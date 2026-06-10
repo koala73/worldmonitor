@@ -38,6 +38,8 @@ The canonical MCP endpoint is:
 https://worldmonitor.app/mcp
 ```
 
+Use the apex host exactly as shown. The dashboard and docs commonly live at `www.worldmonitor.app`, but the MCP connector endpoint is intentionally published at `worldmonitor.app/mcp`.
+
 For Claude web, open Settings, go to Connectors, add a custom connector named `WorldMonitor`, and paste that URL.
 
 For Claude Desktop, add this entry to `claude_desktop_config.json`:

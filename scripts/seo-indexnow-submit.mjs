@@ -61,7 +61,10 @@ async function submit(endpoint, host, urlList) {
   const keyLocation = `https://${host}/${KEY}.txt`;
   const res = await fetch(endpoint, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'User-Agent': 'WorldMonitor-IndexNow/1.0 (+https://www.worldmonitor.app)',
+    },
     body: JSON.stringify({ host, key: KEY, keyLocation, urlList }),
   });
   return { endpoint, host, status: res.status, ok: res.ok };
