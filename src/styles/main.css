@@ -22557,6 +22557,67 @@ body.map-width-resizing {
   border-color: var(--accent);
   color: var(--bg);
 }
+.chat-analyst-control-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 24px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--panel-inner-bg, rgba(255,255,255,0.03)) 80%, transparent);
+}
+.chat-control-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.chat-control-toggle {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.chat-control-status {
+  min-width: 42px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.chat-control-status[data-state="active"] {
+  color: var(--green, #22c55e);
+}
+.chat-control-status[data-state="paused"] {
+  color: var(--yellow, #eab308);
+}
+.chat-control-pause {
+  margin-left: auto;
+  min-width: 50px;
+  height: 22px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 10px;
+  cursor: pointer;
+}
+.chat-control-pause:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.chat-control-pause:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 .chat-analyst-messages {
   flex: 1;
   overflow-y: auto;
@@ -22748,6 +22809,24 @@ body.map-width-resizing {
 }
 .chat-action-chip:hover {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.chat-action-chip--control {
+  cursor: default;
+}
+.chat-action-chip--control:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.chat-action-chip--applied {
+  color: var(--green, #22c55e);
+  border-color: color-mix(in srgb, var(--green, #22c55e) 35%, transparent);
+  background: color-mix(in srgb, var(--green, #22c55e) 10%, transparent);
+}
+.chat-action-chip--denied,
+.chat-action-chip--invalid,
+.chat-action-chip--skipped {
+  color: var(--yellow, #eab308);
+  border-color: color-mix(in srgb, var(--yellow, #eab308) 35%, transparent);
+  background: color-mix(in srgb, var(--yellow, #eab308) 10%, transparent);
 }
 
 /* ── Payment / Upgrade UI ── */

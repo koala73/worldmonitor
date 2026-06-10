@@ -6,7 +6,7 @@
  *
  * Returns text/event-stream SSE:
  *   data: {"meta":{"sources":["Brief","Risk",...],"degraded":false}}  — always first event
- *   data: {"action":{"type":"suggest-widget","label":"...","prefill":"..."}}  — optional, visual queries only
+ *   data: {"action":{"type":"open_panel"|"set_view"|"...","label":"..."}}  — optional, schema-validated in-app actions
  *   data: {"delta":"..."}    — one per content token
  *   data: {"done":true}      — terminal event
  *   data: {"error":"..."}    — on auth/llm failure

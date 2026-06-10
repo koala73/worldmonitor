@@ -286,6 +286,24 @@ describe('buildActionEvents — visual intent detection', () => {
     assert.deepEqual(buildActionEvents("What is happening in Ukraine?"), []);
   });
 
+  it('returns open_panel action for explicit panel focus query', () => {
+    const events = buildActionEvents('Open the Strategic Risk panel');
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.type, 'open_panel');
+    if (events[0]?.type === 'open_panel') {
+      assert.equal(events[0].panelId, 'strategic-risk');
+    }
+  });
+
+  it('returns set_view action for explicit map view query', () => {
+    const events = buildActionEvents('Zoom the map to the Middle East');
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.type, 'set_view');
+    if (events[0]?.type === 'set_view') {
+      assert.equal(events[0].view, 'mena');
+    }
+  });
+
   it('returns empty for non-visual market summary query', () => {
     assert.deepEqual(buildActionEvents('Key market moves, macro signals, and commodity moves today'), []);
   });

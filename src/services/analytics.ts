@@ -46,6 +46,8 @@ const EVENTS = {
   'widget-ai-open': true,
   'widget-ai-generate': true,
   'widget-ai-success': true,
+  // WM Analyst dashboard control
+  'analyst-control-action': true,
   // MCP
   'mcp-connect-attempt': true,
   'mcp-connect-success': true,
@@ -194,6 +196,14 @@ export function trackSignIn(method: string): void {
 
 export function trackSignUp(method: string): void {
   track('sign-up', { method });
+}
+
+export function trackAnalystControlAction(actionType: string, status: string, reason?: string): void {
+  track('analyst-control-action', {
+    actionType,
+    status,
+    ...(reason ? { reason } : {}),
+  });
 }
 
 /**

@@ -55,6 +55,9 @@ async function loadChatAnalystPanel() {
     `],
     ['analytics-stub', `
       export function trackPanelResized() {}
+      export function trackAnalystControlAction(actionType, status) {
+        globalThis.__wmAnalystControlTelemetry?.push({ actionType, status });
+      }
     `],
     ['ai-flow-settings-stub', `
       export function getAiFlowSettings() { return { badgeAnimation: false }; }
