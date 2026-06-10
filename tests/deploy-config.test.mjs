@@ -120,6 +120,42 @@ describe('deploy/cache configuration guardrails', () => {
   });
 });
 
+// /welcome marketing landing page — a second HTML entry in the pro-test
+// bundle (vite rollupOptions.input), served from public/pro/welcome.html.
+// It must opt out of the SPA catch-all rewrite (plain alternation, no
+// `(?:...)` groups — Vercel's source-pattern parser rejects them) and
+// carry the same bfcache-friendly no-cache header as /pro.
+describe('welcome landing page routing', () => {
+  it('rewrites /welcome to the pro-test bundle welcome.html', () => {
+    const rewrite = vercelConfig.rewrites.find((r) => r.source === '/welcome');
+    assert.ok(rewrite, 'expected a rewrite for /welcome');
+    assert.equal(rewrite.destination, '/pro/welcome.html');
+  });
+
+  it('excludes welcome from the SPA catch-all rewrite', () => {
+    const catchAll = vercelConfig.rewrites.find((r) => r.destination === '/index.html');
+    assert.ok(catchAll, 'expected the SPA catch-all rewrite');
+    assert.ok(
+      catchAll.source.includes('|welcome|'),
+      'SPA catch-all negative lookahead must contain |welcome| or /welcome falls through to the dashboard'
+    );
+  });
+
+  it('requires revalidation for /welcome HTML without disabling bfcache', () => {
+    const welcomeCache = getCacheHeaderValue('/welcome');
+    assert.equal(welcomeCache, 'private, no-cache, must-revalidate');
+    assert.ok(!welcomeCache.includes('no-store'), 'HTML must not set no-store — it disables bfcache');
+  });
+
+  it('sitemap lists the /welcome page', () => {
+    const sitemap = readFileSync(resolve(__dirname, '../public/sitemap.xml'), 'utf-8');
+    assert.ok(
+      sitemap.includes('<loc>https://www.worldmonitor.app/welcome</loc>'),
+      'public/sitemap.xml must list https://www.worldmonitor.app/welcome'
+    );
+  });
+});
+
 describe('deploy/API CORS guardrails', () => {
   it('does not define static CORS headers for /api routes in vercel.json', () => {
     const corsHeaderKeys = new Set([

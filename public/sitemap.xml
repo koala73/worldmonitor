@@ -13,6 +13,12 @@
     <priority>0.9</priority>
   </url>
   <url>
+    <loc>https://www.worldmonitor.app/welcome</loc>
+    <lastmod>2026-06-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
     <loc>https://tech.worldmonitor.app/</loc>
     <lastmod>2026-03-19</lastmod>
     <changefreq>daily</changefreq>
