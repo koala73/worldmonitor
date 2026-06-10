@@ -161,6 +161,15 @@ import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import { fetchWebcamImage } from '@/services/webcams';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import {
+  createCountryClickGestureTracker,
+  finishCountryClickGesture,
+  markCountryClickDrag,
+  shouldSuppressCountryClick,
+  startCountryClickGesture,
+  updateCountryClickGestureDrag,
+  type CountryClickGestureTracker,
+} from './map-interaction-guard';
 
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
@@ -584,6 +593,22 @@ export class DeckGLMap {
   private onTimeRangeChange?: (range: TimeRange) => void;
   private onCountryClick?: (country: CountryClickPayload) => void;
   private onMapContextMenu?: (payload: { lat: number; lon: number; screenX: number; screenY: number; countryCode?: string; countryName?: string }) => void;
+  private readonly countryClickGesture: CountryClickGestureTracker = createCountryClickGestureTracker();
+  private readonly handleCountryClickPointerDown = (e: PointerEvent): void => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (e.isPrimary === false) return;
+    startCountryClickGesture(this.countryClickGesture, { x: e.clientX, y: e.clientY });
+  };
+  private readonly handleCountryClickPointerMove = (e: PointerEvent): void => {
+    if (e.isPrimary === false) return;
+    updateCountryClickGestureDrag(this.countryClickGesture, { x: e.clientX, y: e.clientY });
+  };
+  private readonly handleCountryClickPointerEnd = (): void => {
+    finishCountryClickGesture(this.countryClickGesture);
+  };
+  private readonly markCountryDragGesture = (): void => {
+    markCountryClickDrag(this.countryClickGesture);
+  };
   private readonly handleContextMenu = (e: MouseEvent): void => {
     e.preventDefault();
     if (!this.onMapContextMenu || !this.maplibreMap) return;
@@ -1008,6 +1033,12 @@ export class DeckGLMap {
     });
 
     this.maplibreMap.getCanvas().addEventListener('contextmenu', this.handleContextMenu);
+    this.maplibreMap.getCanvas().addEventListener('pointerdown', this.handleCountryClickPointerDown);
+    this.maplibreMap.getCanvas().addEventListener('pointermove', this.handleCountryClickPointerMove);
+    this.maplibreMap.getCanvas().addEventListener('pointerup', this.handleCountryClickPointerEnd);
+    this.maplibreMap.getCanvas().addEventListener('pointercancel', this.handleCountryClickPointerEnd);
+    this.maplibreMap.on('dragstart', this.markCountryDragGesture);
+    this.maplibreMap.on('dragend', this.markCountryDragGesture);
   }
 
   private initDeck(): void {
@@ -4623,6 +4654,7 @@ export class DeckGLMap {
     const isChoropleth = info.layer?.id ? DeckGLMap.CHOROPLETH_LAYER_IDS.has(info.layer.id) : false;
     if (!info.object || isChoropleth) {
       if (info.coordinate && this.onCountryClick) {
+        if (this.shouldSuppressCountryClickAfterDrag()) return;
         const [lon, lat] = info.coordinate as [number, number];
         let country: { code: string; name: string } | null = null;
         if (isChoropleth && info.object?.properties) {
@@ -6959,6 +6991,10 @@ export class DeckGLMap {
 
   // --- Country click + highlight ---
 
+  private shouldSuppressCountryClickAfterDrag(): boolean {
+    return shouldSuppressCountryClick(this.countryClickGesture);
+  }
+
   public setOnCountryClick(cb: (country: CountryClickPayload) => void): void {
     this.onCountryClick = cb;
   }
@@ -7328,7 +7364,13 @@ export class DeckGLMap {
 
     this.deckOverlay?.finalize();
     this.deckOverlay = null;
+    this.maplibreMap?.off('dragstart', this.markCountryDragGesture);
+    this.maplibreMap?.off('dragend', this.markCountryDragGesture);
     this.maplibreMap?.getCanvas().removeEventListener('contextmenu', this.handleContextMenu);
+    this.maplibreMap?.getCanvas().removeEventListener('pointerdown', this.handleCountryClickPointerDown);
+    this.maplibreMap?.getCanvas().removeEventListener('pointermove', this.handleCountryClickPointerMove);
+    this.maplibreMap?.getCanvas().removeEventListener('pointerup', this.handleCountryClickPointerEnd);
+    this.maplibreMap?.getCanvas().removeEventListener('pointercancel', this.handleCountryClickPointerEnd);
     this.maplibreMap?.remove();
     this.maplibreMap = null;
     setTrustedHtml(this.container, trustedHtml('', "legacy direct innerHTML migration"));
