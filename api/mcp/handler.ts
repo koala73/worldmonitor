@@ -85,10 +85,10 @@ function sessionStreamsForWrite(sessionId: string): Map<string, StoredSseEvent[]
   if (!streams) {
     streams = new Map();
     mcpSseStreamsBySession.set(sessionId, streams);
-  }
-  if (mcpSseStreamsBySession.size > MAX_SSE_SESSIONS) {
-    const oldestSessionId = mcpSseStreamsBySession.keys().next().value;
-    if (oldestSessionId) mcpSseStreamsBySession.delete(oldestSessionId);
+    if (mcpSseStreamsBySession.size > MAX_SSE_SESSIONS) {
+      const oldestSessionId = mcpSseStreamsBySession.keys().next().value;
+      if (oldestSessionId) mcpSseStreamsBySession.delete(oldestSessionId);
+    }
   }
   return streams;
 }
@@ -149,8 +149,17 @@ async function maybeStreamJsonRpcResponse(req: Request, response: Response): Pro
 
 function handleSseReplay(req: Request, corsHeaders: Record<string, string>): Response {
   const lastEventId = req.headers.get('last-event-id');
-  if (!clientAcceptsSse(req) || !lastEventId) {
-    return new Response(null, { status: 405, headers: { Allow: 'POST, GET, HEAD, OPTIONS', ...corsHeaders } });
+  if (!clientAcceptsSse(req)) {
+    return new Response(
+      JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'SSE replay requires Accept: text/event-stream' } }),
+      { status: 406, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
+    );
+  }
+  if (!lastEventId) {
+    return new Response(
+      JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Missing Last-Event-ID for SSE replay' } }),
+      { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
+    );
   }
 
   const sessionId = req.headers.get('mcp-session-id');
@@ -164,7 +173,14 @@ function handleSseReplay(req: Request, corsHeaders: Record<string, string>): Res
   const events = replayEventsAfter(sessionId, lastEventId);
   if (!events) {
     return new Response(
-      JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32004, message: 'SSE replay cursor not found for this session' } }),
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: null,
+        error: {
+          code: -32004,
+          message: 'SSE replay cursor not found for this session; the stream may have expired or the reconnect may have reached a different server instance',
+        },
+      }),
       { status: 404, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
     );
   }

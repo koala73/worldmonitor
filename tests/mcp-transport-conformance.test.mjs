@@ -222,6 +222,11 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
       },
     });
     assert.equal(wrongSession.status, 404, 'a different session must not replay this stream');
+    assert.match(
+      (await wrongSession.json()).error?.message ?? '',
+      /different server instance/,
+      '404 replay miss must hint at cross-instance in-memory buffer misses',
+    );
 
     deps.validateProMcpToken = async () => null;
     const revoked = await fetch(server.url, {
@@ -235,6 +240,34 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     });
     assert.equal(revoked.status, 401, 'GET replay must revalidate the Pro token before serving buffered events');
     assert.equal((await revoked.json()).error?.code, -32001);
+  });
+
+  it('uses replay-specific status codes for malformed GET replay requests', async () => {
+    const missingAccept = await fetch(server.url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${PRO_BEARER}`,
+        'Mcp-Session-Id': crypto.randomUUID(),
+        'Last-Event-ID': 'stream:0',
+      },
+    });
+
+    assert.equal(missingAccept.status, 406);
+    assert.equal(missingAccept.headers.get('allow'), null, 'GET replay header errors must not advertise Allow');
+    assert.match((await missingAccept.json()).error?.message ?? '', /Accept: text\/event-stream/);
+
+    const missingLastEventId = await fetch(server.url, {
+      method: 'GET',
+      headers: {
+        Accept: 'text/event-stream',
+        Authorization: `Bearer ${PRO_BEARER}`,
+        'Mcp-Session-Id': crypto.randomUUID(),
+      },
+    });
+
+    assert.equal(missingLastEventId.status, 400);
+    assert.equal(missingLastEventId.headers.get('allow'), null, 'GET replay header errors must not advertise Allow');
+    assert.match((await missingLastEventId.json()).error?.message ?? '', /Missing Last-Event-ID/);
   });
 
   it('accepts the initialized Mcp-Session-Id on a follow-up POST stream', async () => {
