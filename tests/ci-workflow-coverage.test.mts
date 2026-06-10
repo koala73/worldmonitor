@@ -40,13 +40,11 @@ const TIMEOUT_CAPPED_TEST_JOBS = [
   'resilience-validation-smoke',
 ] as const;
 
-const REQUIRED_GATE_CHECKS = [
-  'unit',
+const REQUIRED_GATE_WORKFLOWS = ['Test', 'Typecheck', 'Lint Code'] as const;
+
+const REQUIRED_NON_TEST_GATE_CHECKS = [
   'typecheck',
-  'sidecar',
-  'convex-tests',
-  'variant-smoke-full',
-  'resilience-validation-smoke',
+  'biome',
 ] as const;
 
 const REQUIRED_RESILIENCE_VALIDATION_INPUTS = [
@@ -73,6 +71,25 @@ function testJobBlock(job: string): string {
   return match[0];
 }
 
+function parseJsonArrayLiteral(source: string, regex: RegExp, label: string): string[] {
+  const match = source.match(regex);
+  assert.ok(match?.[1], `deploy-gate.yml must define ${label}`);
+  const parsed = JSON.parse(match[1]);
+  assert.ok(Array.isArray(parsed), `${label} must be a JSON array`);
+  for (const value of parsed) {
+    assert.equal(typeof value, 'string', `${label} entries must be strings`);
+  }
+  return parsed;
+}
+
+function deployGateRequiredChecks(): string[] {
+  return parseJsonArrayLiteral(deployGateWorkflow, /\n\s*required='(\[[^\n]+])'/, 'required checks');
+}
+
+function deployGateWorkflowRunNames(): string[] {
+  return parseJsonArrayLiteral(deployGateWorkflow, /workflows:\s*(\[[^\n]+])/, 'workflow_run workflows');
+}
+
 describe('CI workflow coverage', () => {
   it('keeps required PR smoke scripts defined and wired into workflows', () => {
     for (const script of REQUIRED_PR_SCRIPTS) {
@@ -93,22 +110,25 @@ describe('CI workflow coverage', () => {
 
   it('keeps required smoke jobs capped with explicit timeouts', () => {
     for (const job of TIMEOUT_CAPPED_TEST_JOBS) {
-      assert.match(testJobBlock(job), /\n    timeout-minutes: \d+\n/, `${job} must set timeout-minutes`);
+      assert.match(testJobBlock(job), /\n {4}timeout-minutes: \d+\n/, `${job} must set timeout-minutes`);
     }
   });
 
   it('keeps the deploy gate wired to every required PR smoke gate', () => {
-    assert.match(
-      deployGateWorkflow,
-      /workflows:\s*\["Test",\s*"Typecheck"\]/,
-      'deploy-gate.yml must run after both Test and Typecheck workflows',
-    );
-    for (const check of REQUIRED_GATE_CHECKS) {
-      assert.match(
-        deployGateWorkflow,
-        new RegExp(`["']${escapeRegExp(check)}["']`),
-        `deploy-gate.yml must require ${check}`,
+    const workflowRunNames = deployGateWorkflowRunNames();
+    const requiredChecks = deployGateRequiredChecks();
+
+    for (const workflowName of REQUIRED_GATE_WORKFLOWS) {
+      assert.ok(
+        workflowRunNames.includes(workflowName),
+        `deploy-gate.yml must run after ${workflowName} completes`,
       );
+    }
+    for (const job of REQUIRED_TEST_JOBS) {
+      assert.ok(requiredChecks.includes(job), `deploy-gate.yml must require the test.yml job ${job}`);
+    }
+    for (const check of REQUIRED_NON_TEST_GATE_CHECKS) {
+      assert.ok(requiredChecks.includes(check), `deploy-gate.yml must require ${check}`);
     }
     assert.match(
       deployGateWorkflow,
