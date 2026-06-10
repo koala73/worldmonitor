@@ -131,4 +131,31 @@ describe('forecast integrity and provenance surfaces', () => {
       `forecast panel doc must derive cyber ceiling from CYBER_PROB_MAX=${cyberProbMax}`,
     );
   });
+
+  it('keeps forecast extra keys from clobbering last-good snapshots on empty transformed payloads', async () => {
+    const { FORECAST_EXTRA_KEYS, PRIOR_KEY, declareRecords } = await import('../scripts/seed-forecasts.mjs');
+    const { shouldSkipEmptyExtraKey } = await import('../scripts/_seed-utils.mjs');
+
+    assert.ok(FORECAST_EXTRA_KEYS.length > 0, 'forecast seeder must expose extraKeys through FORECAST_EXTRA_KEYS');
+    for (const ek of FORECAST_EXTRA_KEYS) {
+      assert.equal(
+        ek.skipWhenEmpty,
+        true,
+        `${ek.key} must opt into skipWhenEmpty so future forecast extraKeys do not overwrite last-good data with empty transforms`,
+      );
+    }
+
+    const priorExtraKey = FORECAST_EXTRA_KEYS.find((ek) => ek.key === PRIOR_KEY);
+    assert.ok(priorExtraKey, `FORECAST_EXTRA_KEYS must include ${PRIOR_KEY}`);
+
+    const emptyPriorPayload = priorExtraKey.transform({ predictions: [] });
+    const recordCount = declareRecords(emptyPriorPayload);
+
+    assert.equal(recordCount, 0, 'empty prior snapshot transforms must resolve to recordCount=0');
+    assert.equal(
+      shouldSkipEmptyExtraKey(priorExtraKey, recordCount),
+      true,
+      `${PRIOR_KEY} must skip empty writes instead of clobbering the last-good prior snapshot`,
+    );
+  });
 });

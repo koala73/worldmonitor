@@ -16093,6 +16093,18 @@ export function declareRecords(data) {
   return Array.isArray(data?.predictions) ? data.predictions.length : 0;
 }
 
+export const FORECAST_EXTRA_KEYS = [
+  {
+    key: PRIOR_KEY,
+    transform: (data) => ({
+      predictions: data.predictions.map(buildPriorForecastSnapshot),
+    }),
+    ttl: 7200,
+    declareRecords,
+    skipWhenEmpty: true,
+  },
+];
+
 if (_isDirectRun) {
   const refreshRequest = await readForecastRefreshRequest();
   const triggerContext = buildForecastTriggerContext(refreshRequest);
@@ -16206,16 +16218,7 @@ if (_isDirectRun) {
         console.warn(`  [MarketImplications] Stage failed: ${err.message}`);
       }
     },
-    extraKeys: [
-      {
-        key: PRIOR_KEY,
-        transform: (data) => ({
-          predictions: data.predictions.map(buildPriorForecastSnapshot),
-        }),
-        ttl: 7200,
-        declareRecords,
-      },
-    ],
+    extraKeys: FORECAST_EXTRA_KEYS,
   });
 }
 
