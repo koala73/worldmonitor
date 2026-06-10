@@ -31,6 +31,8 @@ const POST_DATES = {
   'https://www.worldmonitor.app/blog/posts/country-risk-monitoring-due-diligence-worldmonitor/': '2026-06-10',
   'https://www.worldmonitor.app/blog/posts/energy-shock-monitoring-chokepoints-worldmonitor/': '2026-06-10',
   'https://www.worldmonitor.app/blog/posts/geopolitical-risk-alerts-slack-teams-worldmonitor-api/': '2026-06-10',
+  'https://www.worldmonitor.app/blog/posts/ask-claude-whats-happening-worldmonitor-mcp/': '2026-06-10',
+  'https://www.worldmonitor.app/blog/posts/free-geopolitical-data-apis-2026/': '2026-06-10',
   'https://www.worldmonitor.app/blog/': '2026-06-10',
 };
 
