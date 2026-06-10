@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const deckGlMapSrc = readFileSync(resolve(__dirname, '../src/components/DeckGLMap.ts'), 'utf-8');
 
-function extractRegexConst(name) {
-  const match = deckGlMapSrc.match(new RegExp(`const ${name} = (/[^;]+/);`));
+function extractRegexConst(name, source = deckGlMapSrc) {
+  const match = source.match(new RegExp(`const ${name} = (/[^;]+/[dgimsuvy]*);`));
   assert.ok(match, `${name} must remain a regex literal`);
   // eslint-disable-next-line no-new-func
   return new Function(`return ${match[1]}`)();
@@ -66,5 +66,11 @@ describe('DeckGLMap interleaved render race console filter', () => {
   it('uses ev.error.stack in the installed error listener', () => {
     assert.match(deckGlMapSrc, /ev\.error\?\.stack/);
     assert.match(deckGlMapSrc, /DECK_INTERLEAVED_RACE_SOURCE_RE\.test\(source\)/);
+  });
+
+  it('preserves regex flags when extracting literals from source', () => {
+    const re = extractRegexConst('EXAMPLE_RE', 'const EXAMPLE_RE = /^deck-stack-.+\\.js$/m;');
+    assert.equal(re.flags, 'm');
+    assert.equal(re.test('first line\ndeck-stack-Dq2qX5Bt.js'), true);
   });
 });
