@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, getRedisCredentials, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, getRedisCredentials, runSeed, withRetry, httpRetryError, createLlmBudgetError, isLlmBudgetError } from './_seed-utils.mjs';
 import {
   clusterItems,
   computeEntityCorroboration,
@@ -28,7 +28,12 @@ import { validateNoHallucinatedProperNouns } from './shared/brief-llm-core.js';
 const BRIEF_VALIDATOR_MODE =
   process.env.BRIEF_VALIDATOR_MODE === 'enforce' ? 'enforce' : 'shadow';
 
-loadEnvFile(import.meta.url);
+// True only when run directly as a cron entry (node seed-insights.mjs), false
+// when imported by tests — so importing the module doesn't load .env or fire a
+// live seed. Mirrors seed-forecasts.mjs.
+const _isDirectRun = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'));
+
+if (_isDirectRun) loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'news:insights:v1';
 const DIGEST_KEY = 'news:digest:v1:full:en';
@@ -141,9 +146,34 @@ const LLM_PROVIDERS = [
   },
 ];
 
-async function callLLM(headline) {
+// Bounded retry for the brief LLM call. seed-insights holds a 120s seed lock
+// and makes one callLLM per run, so cap total LLM time well under it: honor a
+// provider's Retry-After (429/503) instead of dropping straight to the next
+// provider, but never sleep/fetch past the remaining call budget.
+const INSIGHTS_LLM_MAX_RETRIES = 2;
+const INSIGHTS_LLM_RETRY_BASE_MS = 1_000;
+const INSIGHTS_LLM_RETRY_AFTER_MAX_MS = 10_000;
+const INSIGHTS_LLM_CALL_BUDGET_MS = 60_000;
+const INSIGHTS_LLM_CALL_BUDGET_GUARD_MS = 5_000;
+
+let insightsLlmFetchForTests = null;
+function __setInsightsLlmTransportForTests(overrides = null) {
+  insightsLlmFetchForTests = typeof overrides?.fetch === 'function' ? overrides.fetch : null;
+}
+
+async function callLLM(headline, options = {}) {
   const systemPrompt = briefSystemPrompt(new Date().toISOString().split('T')[0]);
   const userPrompt = briefUserPrompt(headline);
+
+  const insightsFetch = insightsLlmFetchForTests || ((...args) => globalThis.fetch(...args));
+  const callBudgetMs = Number.isFinite(options.callBudgetMs)
+    ? Math.max(0, Math.floor(options.callBudgetMs))
+    : INSIGHTS_LLM_CALL_BUDGET_MS;
+  const retryDelayMs = Number.isFinite(options.retryDelayMs)
+    ? Math.max(0, Math.floor(options.retryDelayMs))
+    : INSIGHTS_LLM_RETRY_BASE_MS;
+  const budgetStartedAtMs = Date.now();
+  const usableBudgetMs = () => Math.max(0, budgetStartedAtMs + callBudgetMs - Date.now() - INSIGHTS_LLM_CALL_BUDGET_GUARD_MS);
 
   for (const provider of LLM_PROVIDERS) {
     const envVal = process.env[provider.envKey];
@@ -153,26 +183,29 @@ async function callLLM(headline) {
     const model = typeof provider.model === 'function' ? provider.model() : provider.model;
 
     try {
-      const resp = await fetch(apiUrl, {
-        method: 'POST',
-        headers: provider.headers(envVal),
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-          ],
-          max_tokens: 300,
-          temperature: 0.1,
-          ...provider.extraBody,
-        }),
-        signal: AbortSignal.timeout(provider.timeout),
-      });
-
-      if (!resp.ok) {
-        console.warn(`  ${provider.name} API error: ${resp.status}`);
-        continue;
-      }
+      const resp = await withRetry(async () => {
+        const usable = usableBudgetMs();
+        if (usable <= 0) throw createLlmBudgetError('insights llm budget exhausted');
+        const response = await insightsFetch(apiUrl, {
+          method: 'POST',
+          headers: provider.headers(envVal),
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            max_tokens: 300,
+            temperature: 0.1,
+            ...provider.extraBody,
+          }),
+          signal: AbortSignal.timeout(Math.max(1, Math.min(provider.timeout, usable))),
+        });
+        if (!response.ok) {
+          throw httpRetryError(response, { maxRetryAfterMs: INSIGHTS_LLM_RETRY_AFTER_MAX_MS, capMs: usableBudgetMs() });
+        }
+        return response;
+      }, INSIGHTS_LLM_MAX_RETRIES, retryDelayMs);
 
       const json = await resp.json();
       const rawText = json.choices?.[0]?.message?.content?.trim();
@@ -195,6 +228,8 @@ async function callLLM(headline) {
       return { text, model: json.model || model, provider: provider.name };
     } catch (err) {
       console.warn(`  ${provider.name} failed: ${err.message}`);
+      // Budget spent — give up rather than burning the next provider's timeout.
+      if (isLlmBudgetError(err)) return null;
     }
   }
 
@@ -474,16 +509,20 @@ export function declareRecords(data) {
   return Array.isArray(data?.topStories) ? data.topStories.length : 0;
 }
 
-runSeed('news', 'insights', CANONICAL_KEY, fetchInsights, {
-  validateFn: validate,
-  ttlSeconds: CACHE_TTL,
-  sourceVersion: 'digest-clustering-v2-importance-diversity',
+export { callLLM, __setInsightsLlmTransportForTests };
 
-  declareRecords,
-  schemaVersion: 1,
-  maxStaleMin: 30,
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
-  // Exit gracefully for cron — health endpoint flags stale data via seed-meta.
-  process.exit(0);
-});
+if (_isDirectRun) {
+  runSeed('news', 'insights', CANONICAL_KEY, fetchInsights, {
+    validateFn: validate,
+    ttlSeconds: CACHE_TTL,
+    sourceVersion: 'digest-clustering-v2-importance-diversity',
+
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 30,
+  }).catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
+    // Exit gracefully for cron — health endpoint flags stale data via seed-meta.
+    process.exit(0);
+  });
+}

@@ -4,7 +4,7 @@
 
 import crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { loadEnvFile, runSeed, CHROME_UA, withRetry, parseRetryAfterMs } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, CHROME_UA, withRetry, parseRetryAfterMs, getResponseHeader, isRetryableHttpStatus } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
@@ -14039,6 +14039,27 @@ const FORECAST_LLM_RETRY_AFTER_MAX_MS = 10_000;
 // The forecast seed lock is 180s; leave headroom for non-LLM work and cleanup.
 const FORECAST_LLM_STAGE_BUDGET_MS = 120_000;
 const FORECAST_LLM_STAGE_BUDGET_GUARD_MS = 5_000;
+// Cumulative LLM ceiling for one seed run. The per-stage budget bounds a single
+// call, but a run makes ~10 LLM calls (scenario/combined/critique/impact +
+// market-implications in afterPublish) — all under the same 180s lock with no
+// lock renewal. Without a run-level cap, several degraded stages still serialize
+// past 180s and the lock expires mid-run, letting the next cron tick start a
+// duplicate. 150s leaves ~30s for input reads, publish, and cleanup.
+const FORECAST_LLM_RUN_BUDGET_MS = 150_000;
+// Anchored at the start of the direct seed run; null in tests and the deep-forecast
+// worker (separate entry/lock) so only the per-stage budget applies there.
+let forecastLlmRunDeadlineMs = null;
+
+function beginForecastLlmRunBudget(runBudgetMs = FORECAST_LLM_RUN_BUDGET_MS) {
+  forecastLlmRunDeadlineMs = Number.isFinite(runBudgetMs) && runBudgetMs > 0
+    ? Date.now() + Math.floor(runBudgetMs)
+    : null;
+  return forecastLlmRunDeadlineMs;
+}
+
+function __setForecastLlmRunDeadlineForTests(deadlineMs = null) {
+  forecastLlmRunDeadlineMs = Number.isFinite(deadlineMs) ? deadlineMs : null;
+}
 
 function parseForecastProviderOrder(raw) {
   if (typeof raw !== 'string' || !raw.trim()) return null;
@@ -14340,20 +14361,6 @@ async function __callForecastLlmForTests(systemPrompt, userPrompt, options = {})
   return await callForecastLLM(systemPrompt, userPrompt, options);
 }
 
-function isForecastLlmRetryableStatus(status) {
-  return status === 408 || status === 429 || (status >= 500 && status <= 599);
-}
-
-function getResponseHeader(headers, name) {
-  if (!headers) return null;
-  if (typeof headers.get === 'function') {
-    return headers.get(name);
-  }
-  const lowerName = name.toLowerCase();
-  const foundKey = Object.keys(headers).find((key) => key.toLowerCase() === lowerName);
-  return foundKey ? headers[foundKey] : null;
-}
-
 function getForecastLlmRetryAfterMs(resp) {
   const retryAfterMs = parseRetryAfterMs(getResponseHeader(resp?.headers, 'Retry-After'));
   return retryAfterMs == null ? null : Math.min(retryAfterMs, FORECAST_LLM_RETRY_AFTER_MAX_MS);
@@ -14361,7 +14368,7 @@ function getForecastLlmRetryAfterMs(resp) {
 
 function createForecastLlmBudgetError(stage, budgetStartedAtMs, stageBudgetMs) {
   const elapsedMs = Math.max(0, Date.now() - budgetStartedAtMs);
-  const err = new Error(`stage budget exhausted after ${elapsedMs}ms (budget ${stageBudgetMs}ms)`);
+  const err = new Error(`llm budget exhausted after ${elapsedMs}ms (stage budget ${stageBudgetMs}ms)`);
   err.nonRetryable = true;
   err.forecastLlmBudgetExhausted = true;
   err.stage = stage;
@@ -14375,7 +14382,13 @@ function getForecastLlmStageBudgetMs(options = {}) {
 }
 
 function getRemainingForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs) {
-  return Math.max(0, budgetStartedAtMs + stageBudgetMs - Date.now());
+  const stageRemaining = budgetStartedAtMs + stageBudgetMs - Date.now();
+  // The run deadline (when set) caps cumulative LLM time across all stages so
+  // the seed can't outlive its 180s lock; whichever budget is tighter wins.
+  const runRemaining = forecastLlmRunDeadlineMs == null
+    ? Infinity
+    : forecastLlmRunDeadlineMs - Date.now();
+  return Math.max(0, Math.min(stageRemaining, runRemaining));
 }
 
 function getUsableForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs) {
@@ -14389,7 +14402,7 @@ function isForecastLlmBudgetError(err) {
 function createForecastLlmHttpError(resp, usableBudgetMs = Infinity) {
   const err = new Error(`HTTP ${resp.status}`);
   err.status = resp.status;
-  err.nonRetryable = !isForecastLlmRetryableStatus(resp.status);
+  err.nonRetryable = !isRetryableHttpStatus(resp.status);
   const retryAfterMs = getForecastLlmRetryAfterMs(resp);
   if (retryAfterMs != null) {
     const cappedRetryAfterMs = Number.isFinite(usableBudgetMs)
@@ -16198,6 +16211,10 @@ if (_isDirectRun) {
   const triggerContext = buildForecastTriggerContext(refreshRequest);
   console.log(`  [Trigger] source=${triggerContext.triggerSource}${triggerContext.triggerRequest?.requester ? ` requester=${triggerContext.triggerRequest.requester}` : ''}`);
 
+  // Bound cumulative LLM time across every stage of this run (fetchForecasts +
+  // afterPublish market-implications) so the seed can't outlive its 180s lock.
+  beginForecastLlmRunBudget();
+
   await runSeed('forecast', 'predictions', CANONICAL_KEY, async () => {
     const data = await fetchForecasts();
     return {
@@ -17610,5 +17627,6 @@ export {
   __callForecastLlmForTests,
   __setForecastLlmCallOverrideForTests,
   __setForecastLlmTransportForTests,
+  __setForecastLlmRunDeadlineForTests,
   __setRedisStoreForTests,
 };

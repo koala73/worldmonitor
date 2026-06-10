@@ -79,6 +79,7 @@ import {
   PROJECTION_CURVES,
   __setForecastLlmCallOverrideForTests,
   __setForecastLlmTransportForTests,
+  __setForecastLlmRunDeadlineForTests,
 } from '../scripts/seed-forecasts.mjs';
 
 const originalForecastEnv = {
@@ -95,6 +96,7 @@ const originalForecastEnv = {
 afterEach(() => {
   __setForecastLlmCallOverrideForTests(null);
   __setForecastLlmTransportForTests(null);
+  __setForecastLlmRunDeadlineForTests(null);
   for (const [key, value] of Object.entries(originalForecastEnv)) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
@@ -1351,6 +1353,55 @@ describe('forecast llm overrides', () => {
       assert.equal(result, null);
       assert.equal(calls, 2);
       assert.deepEqual(waits, [10000, 2000]);
+    } finally {
+      Date.now = originalDateNow;
+      globalThis.setTimeout = originalSetTimeout;
+    }
+  });
+
+  it('caps cumulative LLM time by the run budget even when the stage budget is generous', async () => {
+    process.env.GROQ_API_KEY = 'groq-test-key';
+    process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
+    const originalDateNow = Date.now;
+    const originalSetTimeout = globalThis.setTimeout;
+    const waits = [];
+    let now = 1_000;
+    let calls = 0;
+    Date.now = () => now;
+    globalThis.setTimeout = (fn, ms, ...args) => {
+      waits.push(ms);
+      now += ms;
+      fn(...args);
+      return 0;
+    };
+
+    try {
+      // Run deadline 12s out; a single 7s usable window remains after the 5s
+      // guard, so exactly one attempt fires and its Retry-After sleep is capped
+      // to the remaining RUN budget — not the (generous) per-stage budget.
+      __setForecastLlmRunDeadlineForTests(now + 12_000);
+      __setForecastLlmTransportForTests({
+        fetch: async (url) => {
+          calls += 1;
+          assert.ok(String(url).includes('api.groq.com'), 'run-budget stop should not fall through to the next provider');
+          return {
+            ok: false,
+            status: 429,
+            headers: { get: (name) => (name.toLowerCase() === 'retry-after' ? '30' : null) },
+          };
+        },
+      });
+
+      const result = await __callForecastLlmForTests('system', 'user', {
+        stage: 'scenario',
+        providerOrder: ['groq', 'openrouter'],
+        retryDelayMs: 0,
+        stageBudgetMs: 120_000,
+      });
+
+      assert.equal(result, null);
+      assert.equal(calls, 1);
+      assert.deepEqual(waits, [7000]);
     } finally {
       Date.now = originalDateNow;
       globalThis.setTimeout = originalSetTimeout;
