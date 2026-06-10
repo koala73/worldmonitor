@@ -43,13 +43,10 @@ const TIMEOUT_CAPPED_TEST_JOBS = [
   'resilience-validation-smoke',
 ] as const;
 
-const REQUIRED_GATE_CHECKS = [
-  'unit',
+const REQUIRED_GATE_WORKFLOWS = ['Test', 'Typecheck', 'Security Audit'] as const;
+
+const REQUIRED_NON_TEST_GATE_CHECKS = [
   'typecheck',
-  'sidecar',
-  'convex-tests',
-  'variant-smoke-full',
-  'resilience-validation-smoke',
   'security-audit',
 ] as const;
 
@@ -75,6 +72,25 @@ function testJobBlock(job: string): string {
   const match = testWorkflow.match(new RegExp(`\\n  ${escapeRegExp(job)}:\\n[\\s\\S]*?(?=\\n  [\\w-]+:\\n|\\n$)`));
   assert.ok(match, `test.yml must define ${job}`);
   return match[0];
+}
+
+function parseJsonArrayLiteral(source: string, regex: RegExp, label: string): string[] {
+  const match = source.match(regex);
+  assert.ok(match?.[1], `deploy-gate.yml must define ${label}`);
+  const parsed = JSON.parse(match[1]);
+  assert.ok(Array.isArray(parsed), `${label} must be a JSON array`);
+  for (const value of parsed) {
+    assert.equal(typeof value, 'string', `${label} entries must be strings`);
+  }
+  return parsed;
+}
+
+function deployGateRequiredChecks(): string[] {
+  return parseJsonArrayLiteral(deployGateWorkflow, /\n\s*required='(\[[^\n]+])'/, 'required checks');
+}
+
+function deployGateWorkflowRunNames(): string[] {
+  return parseJsonArrayLiteral(deployGateWorkflow, /workflows:\s*(\[[^\n]+])/, 'workflow_run workflows');
 }
 
 function collectPackageLockfiles(): string[] {
@@ -110,22 +126,25 @@ describe('CI workflow coverage', () => {
 
   it('keeps required smoke jobs capped with explicit timeouts', () => {
     for (const job of TIMEOUT_CAPPED_TEST_JOBS) {
-      assert.match(testJobBlock(job), /\n    timeout-minutes: \d+\n/, `${job} must set timeout-minutes`);
+      assert.match(testJobBlock(job), /\n {4}timeout-minutes: \d+\n/, `${job} must set timeout-minutes`);
     }
   });
 
   it('keeps the deploy gate wired to every required PR smoke gate', () => {
-    assert.match(
-      deployGateWorkflow,
-      /workflows:\s*\["Test",\s*"Typecheck",\s*"Security Audit"\]/,
-      'deploy-gate.yml must run after Test, Typecheck, and Security Audit workflows',
-    );
-    for (const check of REQUIRED_GATE_CHECKS) {
-      assert.match(
-        deployGateWorkflow,
-        new RegExp(`["']${escapeRegExp(check)}["']`),
-        `deploy-gate.yml must require ${check}`,
+    const workflowRunNames = deployGateWorkflowRunNames();
+    const requiredChecks = deployGateRequiredChecks();
+
+    for (const workflowName of REQUIRED_GATE_WORKFLOWS) {
+      assert.ok(
+        workflowRunNames.includes(workflowName),
+        `deploy-gate.yml must run after ${workflowName} completes`,
       );
+    }
+    for (const job of REQUIRED_TEST_JOBS) {
+      assert.ok(requiredChecks.includes(job), `deploy-gate.yml must require the test.yml job ${job}`);
+    }
+    for (const check of REQUIRED_NON_TEST_GATE_CHECKS) {
+      assert.ok(requiredChecks.includes(check), `deploy-gate.yml must require ${check}`);
     }
     assert.match(
       deployGateWorkflow,
@@ -159,11 +178,11 @@ describe('CI workflow coverage', () => {
   it('runs scheduled and per-PR production dependency audits for every package lockfile', () => {
     const packageLockfiles = collectPackageLockfiles();
 
-    assert.match(securityAuditWorkflow, /\n  pull_request:\n/, 'security-audit.yml must run on PRs');
-    assert.match(securityAuditWorkflow, /\n  push:\n    branches: \[main\]\n/, 'security-audit.yml must run on main pushes');
-    assert.match(securityAuditWorkflow, /\n  schedule:\n/, 'security-audit.yml must run on a schedule');
-    assert.match(securityAuditWorkflow, /\n  security-audit:\n/, 'security-audit.yml must define the aggregate security-audit check');
-    assert.match(securityAuditWorkflow, /\n    name: security-audit\n/, 'security-audit.yml must publish a security-audit check run');
+    assert.match(securityAuditWorkflow, /\n {2}pull_request:\n/, 'security-audit.yml must run on PRs');
+    assert.match(securityAuditWorkflow, /\n {2}push:\n {4}branches: \[main\]\n/, 'security-audit.yml must run on main pushes');
+    assert.match(securityAuditWorkflow, /\n {2}schedule:\n/, 'security-audit.yml must run on a schedule');
+    assert.match(securityAuditWorkflow, /\n {2}security-audit:\n/, 'security-audit.yml must define the aggregate security-audit check');
+    assert.match(securityAuditWorkflow, /\n {4}name: security-audit\n/, 'security-audit.yml must publish a security-audit check run');
     assert.match(
       securityAuditWorkflow,
       /if:\s*\$\{\{\s*always\(\)\s*\}\}/,
