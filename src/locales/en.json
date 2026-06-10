@@ -3158,6 +3158,7 @@
     "failedCII": "CII data temporarily unavailable",
     "failedDependencyGraph": "Dependency graph temporarily unavailable",
     "failedIntelFeed": "Intelligence feed temporarily unavailable",
+    "fallbackMarketData": "Showing offline reference prices — live data temporarily unavailable",
     "failedMarketData": "Market data temporarily unavailable",
     "failedSectorData": "Sector data temporarily unavailable",
     "failedCommodities": "Commodities data temporarily unavailable",

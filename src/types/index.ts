@@ -197,6 +197,7 @@ export interface MarketData {
   price: number | null;
   change: number | null;
   sparkline?: number[];
+  isFallback?: boolean;
 }
 
 export interface CryptoData {
@@ -205,6 +206,7 @@ export interface CryptoData {
   price: number;
   change: number;
   sparkline?: number[];
+  isFallback?: boolean;
 }
 
 export interface TokenData {

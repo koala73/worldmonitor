@@ -94,9 +94,9 @@ function getLocalStockFallback(
 ): MarketData[] {
   const fallbackBySymbol = new Map(LOCAL_STOCK_FALLBACK_QUOTES.map((quote) => [quote.symbol, quote]));
   return requested
-    .map((entry) => {
+    .map((entry): MarketData | null => {
       const quote = fallbackBySymbol.get(entry.symbol.trim());
-      return quote ? toMarketData(quote, entry) : null;
+      return quote ? { ...toMarketData(quote, entry), isFallback: true } : null;
     })
     .filter((entry): entry is MarketData => entry !== null);
 }
@@ -112,6 +112,7 @@ function getLocalCommodityFallback(symbols: string[]): MarketData[] {
       price: quote.price,
       change: quote.change,
       sparkline: quote.sparkline,
+      isFallback: true,
     }));
 }
 
@@ -327,7 +328,7 @@ export async function fetchCrypto(): Promise<CryptoData[]> {
     return results;
   }
 
-  return lastSuccessfulCrypto.length > 0 ? lastSuccessfulCrypto : LOCAL_CRYPTO_FALLBACK_QUOTES.map(toCryptoData);
+  return lastSuccessfulCrypto.length > 0 ? lastSuccessfulCrypto : LOCAL_CRYPTO_FALLBACK_QUOTES.map(q => ({ ...toCryptoData(q), isFallback: true }));
 }
 
 // ========================================================================

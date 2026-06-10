@@ -3154,6 +3154,7 @@
     "failedCII": "CIIの計算に失敗",
     "failedDependencyGraph": "依存関係グラフの構築に失敗",
     "failedIntelFeed": "インテリジェンスフィードの読み込みに失敗",
+    "fallbackMarketData": "表示価格はオフライン時の参照値です（ライブデータが一時的に利用不可）",
     "failedMarketData": "市場データの読み込みに失敗",
     "failedSectorData": "セクターデータの読み込みに失敗",
     "failedCommodities": "コモディティの読み込みに失敗",
