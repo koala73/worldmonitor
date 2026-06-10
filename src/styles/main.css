@@ -23718,6 +23718,20 @@ body.map-width-resizing {
     display: none;
   }
 
+  /* The mobile .map-section height (100dvh - 48px) outranks the generic
+   * .live-news-fullscreen height:auto by file order — restate it here so
+   * fullscreen truly reaches bottom:0 instead of leaving a 48px strip. */
+  .map-section.live-news-fullscreen {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+  }
+
+  /* Search FAB floats above the z-10000 fullscreen overlay — hide it. */
+  body.live-news-fullscreen-active .search-mobile-fab {
+    display: none;
+  }
+
   /* Category filter: composes with Panel.toggle()'s `.hidden` — a panel
    * renders only when both settings AND the active category allow it. */
   .panels-grid .mobile-cat-hidden {
