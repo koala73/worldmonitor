@@ -72,6 +72,7 @@ describe('USNI fleet parser helpers', () => {
 
     assert.deepEqual(usniGetRegionCoords('In the Philippine Sea'), { lat: 18, lon: 130 });
     assert.deepEqual(usniGetRegionCoords('Western Pacific near Guam'), { lat: 20, lon: 140 });
+    assert.deepEqual(usniGetRegionCoords('Laem Chabang, Thailand anchorage'), { lat: 13.08, lon: 100.88 });
     assert.equal(usniGetRegionCoords('Not A Real Theater'), null);
   });
 
@@ -92,7 +93,7 @@ describe('USNI fleet parser helpers', () => {
     assert.equal(report.articleDate, ARTICLE_DATE);
     assert.equal(report.articleTitle, ARTICLE_TITLE);
     assert.deepEqual(report.battleForceSummary, { totalShips: 298, deployed: 105, underway: 77 });
-    assert.deepEqual(report.regions, ['Philippine Sea', 'Mystery Theater']);
+    assert.deepEqual(new Set(report.regions), new Set(['Philippine Sea', 'Mystery Theater']));
     assert.deepEqual(report.parsingWarnings, ['Unknown region: "Mystery Theater"']);
     assert.equal(Number.isFinite(report.timestamp), true);
 

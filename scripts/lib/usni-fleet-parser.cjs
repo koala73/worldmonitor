@@ -64,10 +64,15 @@ function usniGetRegionCoords(regionText) {
   const norm = regionText.replace(/^(In the|In|The)\s+/i, '').trim();
   if (USNI_REGION_COORDS[norm]) return USNI_REGION_COORDS[norm];
   const lower = norm.toLowerCase();
+  let bestMatch = null;
   for (const [key, coords] of Object.entries(USNI_REGION_COORDS)) {
-    if (key.toLowerCase() === lower || lower.includes(key.toLowerCase())) return coords;
+    const normalizedKey = key.toLowerCase();
+    if (normalizedKey === lower) return coords;
+    if (lower.includes(normalizedKey) && (!bestMatch || key.length > bestMatch.key.length)) {
+      bestMatch = { key, coords };
+    }
   }
-  return null;
+  return bestMatch?.coords ?? null;
 }
 
 function usniParseLeadingInt(text) {
