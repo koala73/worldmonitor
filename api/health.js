@@ -233,6 +233,8 @@ const STANDALONE_KEYS = {
   chokepointFlowsRelayHeartbeat: 'relay:heartbeat:chokepoint-flows',
   climateNewsRelayHeartbeat:     'relay:heartbeat:climate-news',
   telegramFeed:                  'intelligence:telegram-feed:v1',
+  digestNotifications:           'digest:last-run',
+  webcams:                       'webcam:cameras:active',
 };
 
 const SEED_META = {
@@ -314,6 +316,7 @@ const SEED_META = {
   techEvents:       { key: 'seed-meta:research:tech-events',       maxStaleMin: 480 },
   gdeltIntel:       { key: 'seed-meta:intelligence:gdelt-intel',   maxStaleMin: 720 }, // 6h cron; 12h staleness = 2× cadence = 1 missed tick + cron jitter, alerts at 2 missed ticks. Bumped from 420 (1.16× cadence, virtually zero margin) on 2026-05-12 after the same Railway-deploy-preempted-tick pattern that hit resilienceIntervals on 2026-05-10 (PR #3652): seedAgeMin=467 vs maxStale=420 → ~1min UptimeRobot WARNING flip when a deploy preempted the 15:00 UTC tick. CACHE_TTL is 24h so per-topic merge always has a prior snapshot even at the upper end of the new budget.
   telegramFeed:     { key: 'seed-meta:intelligence:telegram-feed:v1', maxStaleMin: 10 }, // 60s poll interval; 10min grace catches poll failures before they go stale in the panel
+  digestNotifications: { key: 'seed-meta:digest:last-run',          maxStaleMin: 90 }, // Railway digest-notifications cron runs every 30min; 90 = 3x cadence and detects a dead cron before daily digests are missed.
   forecasts:        { key: 'seed-meta:forecast:predictions',       maxStaleMin: 90 },
   sectors:          { key: 'seed-meta:market:sectors',             maxStaleMin: 30 },
   techReadiness:    { key: 'seed-meta:economic:worldbank-techreadiness:v1', maxStaleMin: 10080 },
@@ -446,6 +449,7 @@ const SEED_META = {
   lowCarbonGeneration:     { key: 'seed-meta:resilience:low-carbon-generation',     maxStaleMin: 11520 },
   fossilElectricityShare:  { key: 'seed-meta:resilience:fossil-electricity-share',  maxStaleMin: 11520 },
   powerLosses:             { key: 'seed-meta:resilience:power-losses',              maxStaleMin: 11520 },
+  webcams:                 { key: 'seed-meta:webcam:cameras:geo',                   maxStaleMin: 1440 }, // seed-webcams writes 24h geo/meta keys plus a 30h active pointer; stale at 24h before the layer goes blank.
 };
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).
@@ -512,6 +516,11 @@ const ON_DEMAND_KEYS = new Set([
   'climateNewsRelayHeartbeat',     // TRANSITIONAL (PR #3133): same deploy-order rationale.
                                    // 30min initial loop, so window is shorter but still present.
                                    // Remove after ~7 days alongside the chokepoint-flows entry.
+  'digestNotifications',           // TRANSITIONAL (PR #4253): seed-digest-notifications.mjs writes
+                                   // `digest:last-run` on the first cron run after deploy. Vercel
+                                   // can publish this health registry before Railway's 30min cron
+                                   // ticks, so gate only the first absent-key window as WARN. Remove
+                                   // after ~7 days of clean `seed-meta:digest:last-run` writes.
   'eiaPetroleum',                  // TRANSITIONAL: gold-standard migration of /api/eia/petroleum
                                    // from live Vercel fetch to Redis-reader (seed-bundle-energy-sources
                                    // daily cron). SEED_META entry above enforces 72h staleness — this

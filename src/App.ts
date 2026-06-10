@@ -81,7 +81,13 @@ import { EventHandlerManager } from '@/app/event-handlers';
 import { resolveUserRegion, resolvePreciseUserCoordinates, type PreciseCoordinates } from '@/utils/user-location';
 import { showProBanner } from '@/components/ProBanner';
 import { initAuthState, subscribeAuthState } from '@/services/auth-state';
-import { install as installCloudPrefsSync, onSignIn as cloudPrefsSignIn, onSignOut as cloudPrefsSignOut } from '@/utils/cloud-prefs-sync';
+import {
+  CLOUD_PREFS_APPLIED_EVENT,
+  install as installCloudPrefsSync,
+  onSignIn as cloudPrefsSignIn,
+  onSignOut as cloudPrefsSignOut,
+  type CloudPrefsAppliedDetail,
+} from '@/utils/cloud-prefs-sync';
 import { getConvexClient, getConvexApi, waitForConvexAuth } from '@/services/convex-client';
 import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState, onEntitlementChange } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
@@ -168,6 +174,59 @@ export class App {
     if (dropped <= 0) return;
     this.showFollowedCountriesCapDropToast(kept, dropped);
   };
+  private readonly handleCloudPrefsApplied = (ev: Event): void => {
+    const keys = (ev as CustomEvent<CloudPrefsAppliedDetail>).detail?.keys ?? [];
+    this.applyCloudSyncedPrefsToRuntime(keys);
+  };
+
+  private applyCloudSyncedPrefsToRuntime(keys: readonly string[]): void {
+    if (keys.length === 0) return;
+
+    const keySet = new Set(keys);
+
+    if (keySet.has(STORAGE_KEYS.panels)) {
+      this.state.panelSettings = loadFromStorage<Record<string, PanelConfig>>(
+        STORAGE_KEYS.panels,
+        this.state.panelSettings,
+      );
+      this.panelLayout.applyPanelSettings();
+      this.state.unifiedSettings?.refreshPanelToggles();
+    }
+
+    const panelOrderKey = this.state.PANEL_ORDER_KEY;
+    if (keySet.has(panelOrderKey) || keySet.has(`${panelOrderKey}-bottom-set`)) {
+      this.panelLayout.applySavedPanelOrder();
+    }
+
+    if (keySet.has(STORAGE_KEYS.mapLayers) && !this.state.initialUrlState?.layers) {
+      const nextLayers = normalizeExclusiveChoropleths(
+        sanitizeLayersForVariant(
+          loadFromStorage<MapLayers>(STORAGE_KEYS.mapLayers, this.state.mapLayers),
+          SITE_VARIANT as MapVariant,
+        ),
+        this.state.mapLayers,
+      );
+      if (!CYBER_LAYER_ENABLED) nextLayers.cyberThreats = false;
+      this.state.mapLayers = nextLayers;
+      this.state.map?.setLayers(nextLayers);
+      this.dataLoader.syncDataFreshnessWithLayers();
+    }
+
+    if (keySet.has(STORAGE_KEYS.mapMode)) {
+      const mode = loadFromStorage<string>(STORAGE_KEYS.mapMode, 'flat');
+      if (mode === 'globe') this.state.map?.switchToGlobe();
+      else this.state.map?.switchToFlat();
+    }
+
+    if (keySet.has(STORAGE_KEYS.disabledFeeds)) {
+      this.state.disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
+    }
+
+    if (keySet.has(STORAGE_KEYS.monitors)) {
+      this.state.monitors = loadFromStorage<Monitor[]>(STORAGE_KEYS.monitors, []);
+      this.dataLoader.updateMonitorResults();
+    }
+  }
 
   private isPanelNearViewport(panelId: string, marginPx = 400): boolean {
     const panel = this.state.panels[panelId] as { isNearViewport?: (marginPx?: number) => boolean } | undefined;
@@ -1030,6 +1089,7 @@ export class App {
     await initAuthState();
     initAuthAnalytics();
     installCloudPrefsSync(SITE_VARIANT);
+    window.addEventListener(CLOUD_PREFS_APPLIED_EVENT, this.handleCloudPrefsApplied);
     // Install the followed-countries auth listener once. Drives the
     // anon→signed-in handoff (mergeAnonymousLocal mutation) and sign-out
     // cleanup. Idempotent.
@@ -1430,6 +1490,7 @@ export class App {
     window.removeEventListener('online', this.handleConnectivityChange);
     window.removeEventListener('offline', this.handleConnectivityChange);
     window.removeEventListener(WM_FOLLOWED_COUNTRIES_CAP_DROP, this.handleFollowedCountriesCapDrop);
+    window.removeEventListener(CLOUD_PREFS_APPLIED_EVENT, this.handleCloudPrefsApplied);
     if (this.visiblePanelPrimeRaf !== null) {
       window.cancelAnimationFrame(this.visiblePanelPrimeRaf);
       this.visiblePanelPrimeRaf = null;

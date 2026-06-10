@@ -20,7 +20,7 @@
 //   4. Cap length to a reasonable bound so a single upstream record cannot
 //      dominate the snapshot size.
 //
-// Tracked by todos/177 (closed by PR for issue #3730).
+// Closed by the PR for issue #3730.
 
 const DEFAULT_MAX_LEN = 500;
 

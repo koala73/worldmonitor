@@ -43,10 +43,11 @@ const TIMEOUT_CAPPED_TEST_JOBS = [
   'resilience-validation-smoke',
 ] as const;
 
-const REQUIRED_GATE_WORKFLOWS = ['Test', 'Typecheck', 'Security Audit'] as const;
+const REQUIRED_GATE_WORKFLOWS = ['Test', 'Typecheck', 'Lint Code', 'Security Audit'] as const;
 
 const REQUIRED_NON_TEST_GATE_CHECKS = [
   'typecheck',
+  'biome',
   'security-audit',
 ] as const;
 

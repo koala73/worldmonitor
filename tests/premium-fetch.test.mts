@@ -39,6 +39,8 @@ const TARGET = 'https://api.worldmonitor.app/api/sanctions/v1/list-sanctions-pre
 // A real PUBLIC path used to verify the path-gating bypass: hits below
 // fetch the same way but should NOT see Bearer attached.
 const PUBLIC_TARGET = 'https://api.worldmonitor.app/api/economic/v1/get-fred-series-batch';
+const PUBLIC_INSIDER_TRANSACTIONS_TARGET =
+  'https://api.worldmonitor.app/api/market/v1/get-insider-transactions?symbol=AAPL';
 
 // ---------------------------------------------------------------------------
 // Suite
@@ -200,6 +202,12 @@ describe('premiumFetch', () => {
     assert.equal(sentHeaders().get('X-WorldMonitor-Key'), null);
   });
 
+  it('public insider transactions path: Clerk JWT NOT attached', async () => {
+    setup({ testerKey: '', clerkToken: 'clerk-token-should-be-skipped' });
+    await premiumFetch(PUBLIC_INSIDER_TRANSACTIONS_TARGET);
+    assert.equal(sentHeaders().get('Authorization'), null);
+  });
+
   it('non-premium path: tester key still attached (works on any path)', async () => {
     setup({ testerKey: 'valid-key', clerkToken: 'clerk-token' });
     await premiumFetch(PUBLIC_TARGET);
@@ -221,4 +229,3 @@ describe('premiumFetch', () => {
     assert.equal(sentHeaders().get('Authorization'), 'Bearer caller-supplied');
   });
 });
-
