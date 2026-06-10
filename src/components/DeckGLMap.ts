@@ -418,6 +418,9 @@ const CHOKEPOINT_PULSE_AMP = 0.3;
 // or recreateWithFallback rebuilds the map.
 let __deckInterleavedRaceFilterInstalled = false;
 
+const DECK_INTERLEAVED_RACE_MESSAGE_RE = /Cannot read properties of null \(reading 'id'\)|null is not an object \(evaluating '[\w.]+\.id'\)/;
+const DECK_INTERLEAVED_RACE_SOURCE_RE = /(?:^|[/(])deck-stack-[A-Za-z0-9_-]+\.js/;
+
 /**
  * Swallow the well-known deck.gl 9.x + maplibre-gl 5.x interleaved-mode race:
  *
@@ -438,11 +441,13 @@ let __deckInterleavedRaceFilterInstalled = false;
  * artifact, so swallowing here is safe.
  *
  * Sentry's beforeSend in main.ts already filters this exact pattern for
- * telemetry (lines 313-315), but the browser still logs "Uncaught TypeError"
- * to the console — this listener suppresses that.
+ * telemetry, but the browser still logs "Uncaught TypeError" to the console
+ * — this listener suppresses that.
  *
- * Narrow on BOTH the message shape AND the deck-stack chunk filename so an
- * unrelated null-id crash in first-party code still surfaces.
+ * Narrow on BOTH the message shape AND deck-stack chunk evidence so an
+ * unrelated null-id crash in first-party code still surfaces. Some browsers
+ * surface the exception through Sentry's rAF wrapper, so ev.filename can point
+ * at sentry-*.js while ev.error.stack still contains deck-stack-*.js.
  */
 function installDeckInterleavedRaceFilter(): void {
   if (__deckInterleavedRaceFilterInstalled) return;
@@ -450,9 +455,11 @@ function installDeckInterleavedRaceFilter(): void {
   window.addEventListener('error', (ev) => {
     const msg = ev.error?.message ?? ev.message ?? '';
     const file = ev.filename ?? '';
+    const stack = typeof ev.error?.stack === 'string' ? ev.error.stack : '';
+    const source = `${file}\n${stack}`;
     if (
-      /Cannot read properties of null \(reading 'id'\)|null is not an object \(evaluating '[\w.]+\.id'\)/.test(msg)
-      && /\/deck-stack-[A-Za-z0-9_-]+\.js/.test(file)
+      DECK_INTERLEAVED_RACE_MESSAGE_RE.test(msg)
+      && DECK_INTERLEAVED_RACE_SOURCE_RE.test(source)
     ) {
       ev.preventDefault();
       ev.stopImmediatePropagation();
