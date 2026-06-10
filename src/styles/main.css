@@ -12370,11 +12370,13 @@ a.prediction-link:hover {
     max-height: none !important;
   }
 
-  .main-content .map-section.collapsed .map-container,
-  .main-content .map-section.collapsed .map-resize-handle,
-  .main-content .map-section.collapsed .map-controls,
-  .main-content .map-section.collapsed .time-slider,
-  .main-content .map-section.collapsed .tv-exit-btn {
+  /* :not(.live-news-fullscreen): entering fullscreen from a collapsed map
+     must still show the map — fullscreen wins over collapse. */
+  .main-content .map-section.collapsed:not(.live-news-fullscreen) .map-container,
+  .main-content .map-section.collapsed:not(.live-news-fullscreen) .map-resize-handle,
+  .main-content .map-section.collapsed:not(.live-news-fullscreen) .map-controls,
+  .main-content .map-section.collapsed:not(.live-news-fullscreen) .time-slider,
+  .main-content .map-section.collapsed:not(.live-news-fullscreen) .tv-exit-btn {
     display: none;
   }
 
@@ -23699,6 +23701,21 @@ body.map-width-resizing {
 
   .panel-locked-desc {
     font-size: 12px;
+  }
+
+  /* Map fullscreen on mobile: the button shares .map-pin-btn with the
+   * desktop-only pin button, whose blanket display:none !important (see
+   * the collapsed-map block) hid fullscreen too. The CSS-class fullscreen
+   * (live-news-fullscreen, not the Fullscreen API) works on iOS Safari. */
+  .map-pin-btn#mapFullscreenBtn {
+    display: flex !important;
+    min-width: 44px;
+    min-height: 30px;
+  }
+
+  /* While fullscreen, collapsing would blank the screen — hide the toggle. */
+  .map-section.live-news-fullscreen .map-collapse-btn {
+    display: none;
   }
 
   /* Category filter: composes with Panel.toggle()'s `.hidden` — a panel
