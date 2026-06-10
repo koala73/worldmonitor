@@ -3903,10 +3903,7 @@ async function seedServiceStatuses() {
 
 function startServiceStatusesSeedLoop() {
   console.log(`[ServiceStatuses] Seed loop starting (interval ${SERVICE_STATUSES_SEED_INTERVAL_MS / 1000 / 60}min)`);
-  seedServiceStatuses().catch((e) => console.warn('[ServiceStatuses] Initial seed error:', e?.message || e));
-  setInterval(() => {
-    seedServiceStatuses().catch((e) => console.warn('[ServiceStatuses] Seed error:', e?.message || e));
-  }, SERVICE_STATUSES_SEED_INTERVAL_MS).unref?.();
+  startBootSeedLoop('ServiceStatuses', 'seed-meta:infra:service-statuses', SERVICE_STATUSES_SEED_INTERVAL_MS, seedServiceStatuses, (e) => console.warn('[ServiceStatuses] Initial seed error:', e?.message || e), (e) => console.warn('[ServiceStatuses] Seed error:', e?.message || e));
 }
 
 
@@ -7784,7 +7781,7 @@ setInterval(() => {
   if (upstreamSocket?.readyState === WebSocket.OPEN || vessels.size > 0) {
     buildSnapshot();
   }
-}, SNAPSHOT_INTERVAL_MS);
+}, SNAPSHOT_INTERVAL_MS).unref?.();
 
 async function seedChokepointTransits() {
   const now = Date.now();
@@ -9134,7 +9131,7 @@ setInterval(() => {
   for (const [key, ts] of logThrottleState) {
     if (now - ts > RELAY_LOG_THROTTLE_MS * 6) logThrottleState.delete(key);
   }
-}, 60 * 1000);
+}, 60 * 1000).unref?.();
 
 // ── Yahoo Finance Chart Proxy ──────────────────────────────────────
 const YAHOO_CHART_CACHE_TTL_MS = 300_000; // 5 min
@@ -9448,7 +9445,7 @@ setInterval(() => {
     const ttl = key.startsWith('vid:') ? 3600000 : YT_CACHE_TTL;
     if (now - val.ts > ttl * 2) ytLiveCache.delete(key);
   }
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000).unref?.();
 
 // ─────────────────────────────────────────────────────────────
 // NOTAM proxy — ICAO API times out from Vercel edge, relay proxies
@@ -11660,7 +11657,7 @@ setInterval(() => {
     yahooChartCache.clear();
     if (global.gc) global.gc();
   }
-}, 60 * 1000);
+}, 60 * 1000).unref?.();
 
 // Graceful shutdown — disconnect Telegram BEFORE container dies.
 // Railway sends SIGTERM during deploys; without this, the old container keeps

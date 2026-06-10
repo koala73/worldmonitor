@@ -45,6 +45,12 @@ function extractFunction(src, signature) {
   throw new Error(`unbalanced braces for ${signature}`);
 }
 
+function extractNamedFunction(src, name) {
+  const match = new RegExp(`(?:async\\s+)?function\\s+${name}\\s*\\([^)]*\\)`).exec(src);
+  assert.ok(match, `missing function: ${name}`);
+  return extractFunction(src, match[0]);
+}
+
 const delayFnText = extractFunction(relaySource, 'async function bootSeedDelayMs(label, metaKey, intervalMs)');
 const loopFnText = extractFunction(relaySource, 'function startBootSeedLoop(label, metaKey, intervalMs, seedFn, onInitialError, onSeedError = onInitialError)');
 
@@ -178,6 +184,7 @@ const SEEDERS = [
   ['Market', "'seed-meta:market:stocks'", 'MARKET_SEED_INTERVAL_MS', 'seedAllMarketData'],
   ['PositiveEvents', "'seed-meta:positive-events:geo'", 'POSITIVE_EVENTS_INTERVAL_MS', 'seedPositiveEvents'],
   ['Classify', "'seed-meta:classify'", 'CLASSIFY_SEED_INTERVAL_MS', 'seedClassify'],
+  ['ServiceStatuses', "'seed-meta:infra:service-statuses'", 'SERVICE_STATUSES_SEED_INTERVAL_MS', 'seedServiceStatuses'],
   ['TheaterPosture', "'seed-meta:theater-posture'", 'THEATER_POSTURE_SEED_INTERVAL_MS', 'seedTheaterPosture'],
   ['Weather', "'seed-meta:weather:alerts'", 'WEATHER_SEED_INTERVAL_MS', 'seedWeatherAlerts'],
   ['Spending', "'seed-meta:economic:spending'", 'SPENDING_SEED_INTERVAL_MS', 'seedUsaSpending'],
@@ -210,15 +217,41 @@ test('exactly the expected number of boot seeds are scheduled (no drift)', () =>
   assert.equal(count, SEEDERS.length, `expected ${SEEDERS.length} gated boot seeds, found ${count}`);
 });
 
+test('every relay seed loop is routed through startBootSeedLoop instead of raw setInterval', () => {
+  const seedLoopNames = [...relaySource.matchAll(/(?:async\s+)?function\s+(start[A-Za-z0-9]+SeedLoop)\s*\(/g)]
+    .map(([, name]) => name)
+    .filter((name) => name !== 'startBootSeedLoop');
+
+  assert.ok(seedLoopNames.length > 0, 'expected to find relay seed loop functions');
+
+  const rawIntervalSeedLoops = [];
+  const ungatedSeedLoops = [];
+  for (const name of seedLoopNames) {
+    const fnText = extractNamedFunction(relaySource, name);
+    if (/setInterval\s*\(/.test(fnText)) rawIntervalSeedLoops.push(name);
+    if (!/startBootSeedLoop\(/.test(fnText)) ungatedSeedLoops.push(name);
+  }
+
+  assert.deepEqual(
+    rawIntervalSeedLoops,
+    [],
+    `seed loops must not schedule raw setInterval; use startBootSeedLoop: ${rawIntervalSeedLoops.join(', ')}`,
+  );
+  assert.deepEqual(
+    ungatedSeedLoops,
+    [],
+    `seed loops must call startBootSeedLoop: ${ungatedSeedLoops.join(', ')}`,
+  );
+});
+
 // ── Exclusions: internal warm-pings short-circuit at their own endpoint when the
 // data is fresh (cheap), so gating them adds risk for no benefit; real-time
 // pollers must run continuously. None of these may be wrapped. ───────────────
 test('internal warm-pings are NOT gated (self-limiting at the endpoint)', () => {
-  for (const label of ['ServiceStatuses', 'CII', 'Chokepoints', 'CableHealth']) {
+  for (const label of ['CII', 'Chokepoints', 'CableHealth']) {
     assert.ok(!relaySource.includes(`startBootSeedLoop('${label}'`), `warm-ping ${label} must not be gated`);
   }
   // and the warm-pings still fire their immediate boot ping
-  assert.match(relaySource, /seedServiceStatuses\(\)\.catch/);
   assert.match(relaySource, /seedCiiWarmPing\(\)\.catch/);
 });
 
