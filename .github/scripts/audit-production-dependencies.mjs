@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SEVERITY_RANK = new Map([
   ['info', 0],
@@ -62,6 +62,22 @@ export function collectAuditFindings(report, auditLevel = 'high') {
 export function collectUnbaselinedFindings(report, lockfile, auditLevel = 'high') {
   const baseline = new Set(BASELINE_ADVISORIES_BY_LOCKFILE[lockfile] ?? []);
   return collectAuditFindings(report, auditLevel).filter((finding) => !baseline.has(finding.id));
+}
+
+export function collectAdvisoryIds(report) {
+  const ids = new Set();
+  for (const vulnerability of Object.values(report?.vulnerabilities ?? {})) {
+    for (const via of vulnerability?.via ?? []) {
+      if (!via || typeof via !== 'object') continue;
+      ids.add(advisoryId(via));
+    }
+  }
+  return ids;
+}
+
+export function collectStaleBaselineEntries(report, lockfile) {
+  const present = collectAdvisoryIds(report);
+  return (BASELINE_ADVISORIES_BY_LOCKFILE[lockfile] ?? []).filter((id) => !present.has(id));
 }
 
 function parseArgs(argv) {
@@ -163,6 +179,12 @@ function main() {
     printFinding('::warning title=Baselined production advisory::', finding);
   }
 
+  for (const staleId of collectStaleBaselineEntries(report, args.lockfile)) {
+    console.log(
+      `::warning title=Stale baseline entry::${staleId} is baselined for ${args.lockfile} but matched no current advisory; remove it from BASELINE_ADVISORIES_BY_LOCKFILE.`,
+    );
+  }
+
   if (unbaselined.length > 0) {
     console.error(`Found ${unbaselined.length} unbaselined ${args.auditLevel}+ production advisories in ${args.lockfile}:`);
     for (const finding of unbaselined) {
@@ -175,7 +197,21 @@ function main() {
   console.log(`Production audit OK for ${args.lockfile}: ${allFindings.length} ${args.auditLevel}+ advisories are baselined or absent.`);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+export function isInvokedAsScript(entryPath, moduleUrl) {
+  if (!entryPath) return false;
+  try {
+    // Resolve symlinks on both sides: Node sets import.meta.url to the realpath, but
+    // process.argv[1] keeps the symlinked path (e.g. macOS /tmp -> /private/tmp), so a
+    // raw href comparison silently no-ops — the dangerous fail-open for a security gate.
+    const entry = pathToFileURL(realpathSync(entryPath)).href;
+    const self = pathToFileURL(realpathSync(fileURLToPath(moduleUrl))).href;
+    return entry === self;
+  } catch {
+    return moduleUrl === pathToFileURL(entryPath).href;
+  }
+}
+
+if (isInvokedAsScript(process.argv[1], import.meta.url)) {
   try {
     main();
   } catch (error) {
