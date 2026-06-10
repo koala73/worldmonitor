@@ -61,4 +61,33 @@ describe('cloud prefs flush version guardrails', () => {
       'flushOnUnload must never regress the version past a newer upload',
     );
   });
+
+  it('only claims synced when nothing newer is pending or in flight', () => {
+    // The debounce callback nulls _debounceTimer synchronously BEFORE
+    // uploadNow starts awaiting, so the timer alone cannot distinguish
+    // "idle" from "upload mid-flight" — a late flush response would flash
+    // 'synced' during an active upload (Greptile P2 on PR #4267).
+    assert.match(
+      flushBody,
+      /if \(_debounceTimer === null && _uploadsInFlight === 0\) setState\('synced'\);/,
+      'flushOnUnload must not claim synced while a debounce is armed or an upload is in flight',
+    );
+    const uploadNowBody = (() => {
+      const start = cloudSyncSrc.indexOf('async function uploadNow');
+      assert.notEqual(start, -1, 'uploadNow must exist in cloud-prefs-sync.ts');
+      const end = cloudSyncSrc.indexOf('function schedulePrefUpload', start);
+      assert.notEqual(end, -1, 'uploadNow must precede schedulePrefUpload');
+      return cloudSyncSrc.slice(start, end);
+    })();
+    assert.match(
+      uploadNowBody,
+      /_uploadsInFlight \+= 1;/,
+      'uploadNow must mark itself in flight before any async work',
+    );
+    assert.match(
+      uploadNowBody,
+      /\} finally \{\s*_uploadsInFlight -= 1;\s*\}/,
+      'uploadNow must balance the in-flight counter on every exit path',
+    );
+  });
 });

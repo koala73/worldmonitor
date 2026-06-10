@@ -119,6 +119,15 @@ function clearSettledDirtyKeys(postedBlob: Record<string, string>): void {
 let _retryTimer: ReturnType<typeof setTimeout> | null = null;
 let _authGeneration = 0;
 
+// Count of uploadNow calls currently in their async phase. `_debounceTimer`
+// alone can't tell "no upload of any kind in progress" — the debounce
+// callback nulls the timer synchronously BEFORE uploadNow starts awaiting,
+// so a late flush response checking only the timer would claim 'synced'
+// mid-upload (and observers would see a synced → conflict/error regression
+// if that upload then fails). onSignIn doesn't need this: it bumps
+// _authGeneration on entry, which already makes stale flush handlers bail.
+let _uploadsInFlight = 0;
+
 function clearRetryTimer(): void {
   if (_retryTimer !== null) {
     clearTimeout(_retryTimer);
@@ -558,14 +567,15 @@ async function uploadNow(variant: string): Promise<void> {
   // called by the debounced upload path), so we want to inherit the current
   // generation, not start a new one.
   const myGeneration = _authGeneration;
-
-  const token = await getClerkToken();
-  if (!token) return;
-  _cachedToken = token;
-
-  setState('syncing');
+  _uploadsInFlight += 1;
 
   try {
+    const token = await getClerkToken();
+    if (!token) return;
+    _cachedToken = token;
+
+    setState('syncing');
+
     const postedBlob = migrateLocalBlobIfNeeded();
     const result = await postCloudPrefs(token, variant, postedBlob, getSyncVersion());
 
@@ -605,6 +615,8 @@ async function uploadNow(variant: string): Promise<void> {
     }
     console.warn('[cloud-prefs] uploadNow failed:', err);
     setState(!navigator.onLine || (err instanceof TypeError && err.message.includes('fetch')) ? 'offline' : 'error');
+  } finally {
+    _uploadsInFlight -= 1;
   }
 }
 
@@ -728,9 +740,11 @@ export function install(variant: string): void {
       setSyncVersion(body.syncVersion);
       clearSettledDirtyKeys(blob);
       Storage.prototype.setItem.call(localStorage, KEY_LAST_SYNC_AT, String(Date.now()));
-      // Only claim 'synced' when no newer edit re-armed the debounce while
-      // the flush was in flight.
-      if (_debounceTimer === null) setState('synced');
+      // Only claim 'synced' when no newer edit re-armed the debounce AND no
+      // uploadNow is mid-flight (the debounce callback nulls the timer
+      // synchronously before uploadNow's async work, so the timer alone
+      // can't distinguish "idle" from "upload in progress").
+      if (_debounceTimer === null && _uploadsInFlight === 0) setState('synced');
     }).catch(() => { /* best-effort on unload */ });
   };
 
