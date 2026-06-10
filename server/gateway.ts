@@ -423,9 +423,18 @@ export async function isRelayWarmPingRequest(request: Request, pathname: string)
   return timingSafeEqual(candidate, expected);
 }
 
+function assertProMcpGatewayHmacConfig(): void {
+  const proGrantSecret = process.env.MCP_PRO_GRANT_HMAC_SECRET?.trim() ?? '';
+  const internalSecret = process.env.MCP_INTERNAL_HMAC_SECRET?.trim() ?? '';
+  if (proGrantSecret && !internalSecret) {
+    throw new Error('MCP_INTERNAL_HMAC_SECRET must be configured when MCP_PRO_GRANT_HMAC_SECRET is set');
+  }
+}
+
 export function createDomainGateway(
   routes: RouteDescriptor[],
 ): (req: Request, ctx?: GatewayCtx) => Promise<Response> {
+  assertProMcpGatewayHmacConfig();
   const router = createRouter(routes);
 
   return async function handler(originalRequest: Request, ctx?: GatewayCtx): Promise<Response> {
