@@ -24,6 +24,7 @@ export * from './EnergyComplexPanel';
 export * from './OilInventoriesPanel';
 export * from './SearchModal';
 export * from './MobileWarningModal';
+export * from './MobilePanelNav';
 export * from './PizzIntIndicator';
 export * from './LlmStatusIndicator';
 export * from './GdeltIntelPanel';

@@ -23619,3 +23619,116 @@ body.map-width-resizing {
   align-items: center;
   margin-left: 6px;
 }
+
+/* ============ Mobile Category Nav + Mobile Banner Parity ============ */
+
+/* Sticky chip bar above the panels grid — mobile only. Mounted by
+ * PanelLayoutManager.setupMobilePanelNav(); hidden entirely on desktop
+ * so a resized-up viewport never shows it. Sticks to the top of the
+ * .main-content scrollport while the user scrolls panels. */
+.mobile-panel-nav {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-panel-nav {
+    display: flex;
+    flex-shrink: 0; /* .main-content is a column flexbox — don't get crushed */
+    gap: 6px;
+    position: sticky;
+    top: 0;
+    z-index: 60;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    padding: 8px max(8px, env(safe-area-inset-right, 0px)) 8px max(8px, env(safe-area-inset-left, 0px));
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    touch-action: pan-x;
+  }
+
+  .mobile-panel-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-panel-nav-chip {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 4px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .mobile-panel-nav-chip.active {
+    /* --accent is #fff on dark / #111 on light — pair with --bg for contrast */
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--bg);
+    font-weight: 600;
+  }
+
+  /* Category filter: composes with Panel.toggle()'s `.hidden` — a panel
+   * renders only when both settings AND the active category allow it. */
+  .panels-grid .mobile-cat-hidden {
+    display: none !important;
+  }
+
+  /* Add-panel / Pro-widget CTAs only make sense in the unfiltered view. */
+  .panels-grid.mobile-cat-filtered .add-panel-block {
+    display: none;
+  }
+
+  /* Critical posture banner — compact mobile variant (was desktop-only). */
+  .critical-posture-banner {
+    padding: 8px 10px;
+    gap: 8px;
+  }
+
+  .critical-posture-banner .banner-content {
+    gap: 8px;
+  }
+
+  .critical-posture-banner .banner-headline {
+    font-size: 12px;
+  }
+
+  .critical-posture-banner .banner-stats {
+    display: none;
+  }
+
+  .critical-posture-banner .banner-view {
+    padding: 6px 10px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  /* Breaking news alerts — let headlines wrap instead of ellipsizing into
+   * uselessness on narrow screens; source/time drops to its own line. */
+  .breaking-alert {
+    padding: 8px 10px;
+    gap: 8px;
+    font-size: 12px;
+  }
+
+  .breaking-alert-content {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .breaking-alert-headline {
+    white-space: normal;
+  }
+
+  .breaking-alert-meta {
+    flex-basis: 100%;
+  }
+}
