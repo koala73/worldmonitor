@@ -12,6 +12,26 @@ const ALLOWED_ORIGIN_PATTERNS = [
   ]),
 ];
 
+const ALLOWED_HEADERS = [
+  'Content-Type',
+  'Authorization',
+  'X-WorldMonitor-Key',
+  'X-Api-Key',
+  'X-Widget-Key',
+  'X-Pro-Key',
+  'X-WorldMonitor-Desktop-Timestamp',
+  'X-WorldMonitor-Desktop-Signature',
+  'Mcp-Session-Id',
+  'MCP-Protocol-Version',
+  'Last-Event-ID',
+].join(', ');
+
+const EXPOSED_HEADERS = [
+  'Mcp-Session-Id',
+  'WWW-Authenticate',
+  'Retry-After',
+].join(', ');
+
 function isAllowedOrigin(origin) {
   return Boolean(origin) && ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(origin));
 }
@@ -23,7 +43,8 @@ export function getCorsHeaders(req, methods = 'GET, OPTIONS') {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Methods': methods,
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, X-WorldMonitor-Desktop-Timestamp, X-WorldMonitor-Desktop-Signature',
+    'Access-Control-Allow-Headers': ALLOWED_HEADERS,
+    'Access-Control-Expose-Headers': EXPOSED_HEADERS,
     'Access-Control-Max-Age': '3600',
     'Vary': 'Origin',
   };
@@ -41,7 +62,8 @@ export function getPublicCorsHeaders(methods = 'GET, OPTIONS') {
   return {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': methods,
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, X-WorldMonitor-Desktop-Timestamp, X-WorldMonitor-Desktop-Signature',
+    'Access-Control-Allow-Headers': ALLOWED_HEADERS,
+    'Access-Control-Expose-Headers': EXPOSED_HEADERS,
     'Access-Control-Max-Age': '3600',
   };
 }

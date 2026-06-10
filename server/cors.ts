@@ -24,6 +24,26 @@ const ALLOWED_ORIGIN_PATTERNS: RegExp[] =
     ? PRODUCTION_PATTERNS
     : [...PRODUCTION_PATTERNS, ...DEV_PATTERNS];
 
+const ALLOWED_HEADERS = [
+  'Content-Type',
+  'Authorization',
+  'X-WorldMonitor-Key',
+  'X-Api-Key',
+  'X-Widget-Key',
+  'X-Pro-Key',
+  'X-WorldMonitor-Desktop-Timestamp',
+  'X-WorldMonitor-Desktop-Signature',
+  'Mcp-Session-Id',
+  'MCP-Protocol-Version',
+  'Last-Event-ID',
+].join(', ');
+
+const EXPOSED_HEADERS = [
+  'Mcp-Session-Id',
+  'WWW-Authenticate',
+  'Retry-After',
+].join(', ');
+
 export function isAllowedOrigin(origin: string): boolean {
   return Boolean(origin) && ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(origin));
 }
@@ -35,7 +55,8 @@ export function getCorsHeaders(req: Request): Record<string, string> {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, X-WorldMonitor-Desktop-Timestamp, X-WorldMonitor-Desktop-Signature',
+    'Access-Control-Allow-Headers': ALLOWED_HEADERS,
+    'Access-Control-Expose-Headers': EXPOSED_HEADERS,
     'Access-Control-Max-Age': '3600',
     'Vary': 'Origin',
   };

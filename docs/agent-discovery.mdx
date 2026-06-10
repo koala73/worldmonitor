@@ -38,7 +38,7 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
 |---|---|---|
 | [`/.well-known/api-catalog`](https://worldmonitor.app/.well-known/api-catalog) | [RFC 9727](https://datatracker.ietf.org/doc/html/rfc9727) | JSON linkset bundling every other discovery URL — start here if you want one fetch and a map |
 | [`/openapi.yaml`](https://www.worldmonitor.app/openapi.yaml) | OpenAPI 3.1 | Single bundled spec covering **every** REST service (Conflict, Resilience, Market, Economic, Maritime, Aviation, Climate, …) — feed it to any code-generator |
-| [`/.well-known/mcp/server-card.json`](https://worldmonitor.app/.well-known/mcp/server-card.json) | MCP | Transport (`streamableHttp`), endpoint, OAuth resource, scopes, capability flags |
+| [`/.well-known/mcp/server-card.json`](https://worldmonitor.app/.well-known/mcp/server-card.json) | MCP | Transport (`streamableHttp`), endpoint, OAuth resource, scopes, streaming, capability flags |
 | [`/.well-known/oauth-authorization-server`](https://api.worldmonitor.app/.well-known/oauth-authorization-server) | [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) | OAuth 2.1 authorization-server metadata (PKCE, DCR, token endpoints) |
 | [`/.well-known/oauth-protected-resource`](https://worldmonitor.app/.well-known/oauth-protected-resource) | [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) | Resource metadata for `https://worldmonitor.app/mcp` |
 | [`/.well-known/agent-skills/index.json`](https://worldmonitor.app/.well-known/agent-skills/index.json) | (custom) | Index of pre-packaged agent skills (`fetch-country-brief`, `fetch-resilience-score`, …) — each skill is a self-contained recipe |
@@ -72,7 +72,7 @@ The bundled spec covers all 34 services in a single document, so one codegen pas
 # 1. Read the server card — this is the canonical descriptor for MCP
 curl -s https://worldmonitor.app/.well-known/mcp/server-card.json
 # → endpoint (https://worldmonitor.app/mcp), transport, OAuth scopes,
-#   and authorization_servers: ["https://api.worldmonitor.app"]
+#   streaming support, and authorization_servers: ["https://api.worldmonitor.app"]
 
 # 2. Fetch authorization-server metadata from that host
 curl -s https://api.worldmonitor.app/.well-known/oauth-authorization-server

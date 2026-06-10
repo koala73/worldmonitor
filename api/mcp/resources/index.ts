@@ -197,7 +197,7 @@ export async function buildResourceResponse(
   const outerId = body.id ?? null;
   const params = body.params as { uri?: unknown } | null;
   if (!params || typeof params.uri !== 'string') {
-    return rpcError(outerId, -32602, 'Invalid params: missing resource uri');
+    return rpcError(outerId, -32602, 'Invalid params: missing resource uri', corsHeaders);
   }
   const uri = params.uri;
 
@@ -222,7 +222,7 @@ export async function buildResourceResponse(
   if (!matched) {
     const msg = lastReason
       ?? `Unknown resource uri "${uri}". Issue resources/list to discover the four supported URI shapes.`;
-    return rpcError(outerId, -32602, msg);
+    return rpcError(outerId, -32602, msg, corsHeaders);
   }
 
   // Synthesize a tools/call body. The inner id is internal — never reaches
@@ -269,7 +269,7 @@ export async function buildResourceResponse(
 
   const innerText = innerBodyParsed.result?.content?.[0]?.text;
   if (typeof innerText !== 'string') {
-    return rpcError(outerId, -32603, 'Internal error: resource dispatcher returned no text payload');
+    return rpcError(outerId, -32603, 'Internal error: resource dispatcher returned no text payload', corsHeaders);
   }
 
   // Freshness wrap. Cache-tool-backed resources already carry
@@ -285,7 +285,7 @@ export async function buildResourceResponse(
       // A parse failure means the underlying RPC returned non-JSON,
       // which should already have been a -32603 inside the dispatcher —
       // defensive fallback: surface as -32603.
-      return rpcError(outerId, -32603, 'Internal error: resource payload was not valid JSON');
+      return rpcError(outerId, -32603, 'Internal error: resource payload was not valid JSON', corsHeaders);
     }
     // Soft-error envelopes (PR 4 _budget_exceeded, PR 1.4 _jmespath_error)
     // come back as 200 with the sentinel inside content[0].text — NOT as
