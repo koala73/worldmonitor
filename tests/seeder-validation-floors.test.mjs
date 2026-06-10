@@ -30,6 +30,8 @@ describe('seeder validation floors', () => {
   it('seed-thermal-escalation requires a non-empty cluster array', () => {
     assert.equal(validateThermalEscalation(null), false);
     assert.equal(validateThermalEscalation({}), false);
+    assert.equal(validateThermalEscalation({ clusters: 'not-an-array' }), false);
+    assert.equal(declareThermalEscalationRecords({ clusters: 'not-an-array' }), 0);
     assert.equal(validateThermalEscalation({ clusters: [] }), false);
     assert.equal(declareThermalEscalationRecords({ clusters: [] }), 0);
     assert.equal(validateThermalEscalation({ clusters: [{ id: 'ua:50-5-30-5:20260610' }] }), true);

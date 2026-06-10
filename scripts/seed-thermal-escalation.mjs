@@ -53,7 +53,7 @@ async function main() {
     ttlSeconds: CACHE_TTL,
     lockTtlMs: 180_000,
     sourceVersion: SOURCE_VERSION,
-    recordCount: (data) => data?.clusters?.length ?? 0,
+    recordCount: declareRecords,
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 360,
