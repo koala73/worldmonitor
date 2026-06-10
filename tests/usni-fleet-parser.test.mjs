@@ -73,6 +73,8 @@ describe('USNI fleet parser helpers', () => {
     assert.deepEqual(usniGetRegionCoords('In the Philippine Sea'), { lat: 18, lon: 130 });
     assert.deepEqual(usniGetRegionCoords('Western Pacific near Guam'), { lat: 20, lon: 140 });
     assert.deepEqual(usniGetRegionCoords('Laem Chabang, Thailand anchorage'), { lat: 13.08, lon: 100.88 });
+    assert.deepEqual(usniGetRegionCoords('Eastern Mediterranean Sea'), { lat: 34.5, lon: 33 });
+    assert.deepEqual(usniGetRegionCoords('Gulf of Oman / Arabian Sea'), { lat: 24.5, lon: 58.5 });
     assert.equal(usniGetRegionCoords('Not A Real Theater'), null);
   });
 
@@ -166,6 +168,44 @@ describe('USNI fleet parser helpers', () => {
         ['Philippine Sea', 'deployed'],
         ['South China Sea', 'underway'],
       ],
+    );
+  });
+
+  it('persists the most-specific coordinates for overlapping USNI region labels', () => {
+    const html = `
+      <h2>Eastern Mediterranean Sea</h2>
+      <p>USS Arleigh Burke (DDG-51) is deployed.</p>
+      <h2>Gulf of Oman / Arabian Sea</h2>
+      <p>USS Fitzgerald (DDG-62) is underway.</p>
+    `;
+
+    const report = usniParseArticle(html, ARTICLE_URL, ARTICLE_DATE, ARTICLE_TITLE);
+    const burke = report.vessels.find((v) => v.hullNumber === 'DDG-51');
+    const fitzgerald = report.vessels.find((v) => v.hullNumber === 'DDG-62');
+
+    assert.deepEqual(
+      {
+        region: burke.region,
+        regionLat: burke.regionLat,
+        regionLon: burke.regionLon,
+      },
+      {
+        region: 'Eastern Mediterranean Sea',
+        regionLat: 34.5,
+        regionLon: 33,
+      },
+    );
+    assert.deepEqual(
+      {
+        region: fitzgerald.region,
+        regionLat: fitzgerald.regionLat,
+        regionLon: fitzgerald.regionLon,
+      },
+      {
+        region: 'Gulf of Oman / Arabian Sea',
+        regionLat: 24.5,
+        regionLon: 58.5,
+      },
     );
   });
 });
