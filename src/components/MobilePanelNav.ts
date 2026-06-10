@@ -1,7 +1,10 @@
-import { PANEL_CATEGORY_MAP, getVariantPanelCategories } from '@/config/panels';
+import { PANEL_CATEGORY_MAP, getVariantPanelCategories, getProPanelKeys } from '@/config/panels';
 import { SITE_VARIANT } from '@/config';
 import { t } from '@/services/i18n';
 import type { PanelConfig } from '@/types';
+
+// Synthetic chip key — must not collide with PANEL_CATEGORY_MAP keys.
+const PRO_CATEGORY = '__pro__';
 
 /**
  * Mobile-only sticky category chip bar mounted above the panels grid.
@@ -17,6 +20,7 @@ import type { PanelConfig } from '@/types';
 export class MobilePanelNav {
   private element: HTMLElement;
   private activeCategory = 'all';
+  private proPanelKeys: Set<string> = new Set();
   private getPanelSettings: () => Record<string, PanelConfig>;
 
   constructor(getPanelSettings: () => Record<string, PanelConfig>) {
@@ -35,9 +39,16 @@ export class MobilePanelNav {
 
   /** Rebuild chips from current panel settings, then re-apply the filter. */
   public refresh(): void {
+    const settings = this.getPanelSettings();
+    this.proPanelKeys = new Set(getProPanelKeys(settings, SITE_VARIANT));
     const categories = [
       { key: 'all', label: t('header.sourceRegionAll') },
-      ...getVariantPanelCategories(this.getPanelSettings(), SITE_VARIANT)
+      // PRO right after All: one tap surfaces the whole premium suite —
+      // each panel renders its own unlock CTA (the mobile conversion path).
+      ...(this.proPanelKeys.size > 0
+        ? [{ key: PRO_CATEGORY, label: `⚡ ${t('widgets.proBadge')}` }]
+        : []),
+      ...getVariantPanelCategories(settings, SITE_VARIANT)
         .map(({ key, labelKey }) => ({ key, label: t(labelKey) })),
     ];
     if (!categories.some((c) => c.key === this.activeCategory)) {
@@ -45,7 +56,9 @@ export class MobilePanelNav {
     }
     this.element.replaceChildren(...categories.map(({ key, label }) => {
       const chip = document.createElement('button');
-      chip.className = 'mobile-panel-nav-chip';
+      chip.className = key === PRO_CATEGORY
+        ? 'mobile-panel-nav-chip mobile-panel-nav-chip-pro'
+        : 'mobile-panel-nav-chip';
       chip.dataset.category = key;
       chip.textContent = label;
       this.setChipState(chip, key === this.activeCategory);
@@ -73,11 +86,17 @@ export class MobilePanelNav {
     this.scrollToPanels();
   }
 
+  private allowedKeysForActiveCategory(): Set<string> | null {
+    if (this.activeCategory === 'all') return null;
+    if (this.activeCategory === PRO_CATEGORY) return this.proPanelKeys;
+    const def = PANEL_CATEGORY_MAP[this.activeCategory];
+    return def ? new Set(def.panelKeys) : null;
+  }
+
   private applyFilter(): void {
     const grid = document.getElementById('panelsGrid');
     if (!grid) return;
-    const def = this.activeCategory === 'all' ? undefined : PANEL_CATEGORY_MAP[this.activeCategory];
-    const allowed = def ? new Set(def.panelKeys) : null;
+    const allowed = this.allowedKeysForActiveCategory();
     grid.classList.toggle('mobile-cat-filtered', !!allowed);
     grid.querySelectorAll<HTMLElement>('[data-panel]').forEach((el) => {
       const panelKey = el.dataset.panel ?? '';

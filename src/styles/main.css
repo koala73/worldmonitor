@@ -23676,6 +23676,31 @@ body.map-width-resizing {
     font-weight: 600;
   }
 
+  /* PRO chip — gold treatment matching the .panel-locked-cta aesthetic. */
+  .mobile-panel-nav-chip-pro {
+    border-color: #d4a843;
+    color: #d4a843;
+    font-weight: 600;
+  }
+
+  .mobile-panel-nav-chip-pro.active {
+    background: linear-gradient(135deg, #d4a843 0%, #b8902e 100%);
+    border-color: #d4a843;
+    color: #111;
+  }
+
+  /* Lock CTAs get touch-sized and prominent — in the single-column scroll
+   * the desktop-sized 6px button reads as decoration, not an action. */
+  .panel-locked-cta {
+    min-height: 44px;
+    padding: 10px 28px;
+    font-size: 12px;
+  }
+
+  .panel-locked-desc {
+    font-size: 12px;
+  }
+
   /* Category filter: composes with Panel.toggle()'s `.hidden` — a panel
    * renders only when both settings AND the active category allow it. */
   .panels-grid .mobile-cat-hidden {

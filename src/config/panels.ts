@@ -1404,6 +1404,19 @@ export function getVariantPanelCategories(
     .map(([key, def]) => ({ key, labelKey: def.labelKey, panelKeys: def.panelKeys }));
 }
 
+// Enabled panels that carry a premium gate on the current surface — drives
+// the mobile nav's PRO chip. getEffectivePanelConfig folds in per-variant
+// premium overrides; unknown keys (custom widgets, MCP panels) resolve to a
+// premium-less stub and drop out.
+export function getProPanelKeys(
+  panelSettings: Record<string, PanelConfig>,
+  variant: string,
+): string[] {
+  return Object.keys(panelSettings).filter((key) =>
+    panelSettings[key]?.enabled && Boolean(getEffectivePanelConfig(key, variant).premium),
+  );
+}
+
 // Monitor palette — fixed category colors persisted to localStorage (not theme-dependent)
 export const MONITOR_COLORS = [
   '#44ff88',
