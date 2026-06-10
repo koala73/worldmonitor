@@ -14036,6 +14036,9 @@ const FORECAST_LLM_PROVIDER_NAMES = new Set(FORECAST_LLM_PROVIDERS.map(provider 
 const FORECAST_LLM_PROVIDER_MAX_RETRIES = 2;
 const FORECAST_LLM_RETRY_BASE_MS = 1_000;
 const FORECAST_LLM_RETRY_AFTER_MAX_MS = 10_000;
+// The forecast seed lock is 180s; leave headroom for non-LLM work and cleanup.
+const FORECAST_LLM_STAGE_BUDGET_MS = 120_000;
+const FORECAST_LLM_STAGE_BUDGET_GUARD_MS = 5_000;
 
 function parseForecastProviderOrder(raw) {
   if (typeof raw !== 'string' || !raw.trim()) return null;
@@ -14356,12 +14359,48 @@ function getForecastLlmRetryAfterMs(resp) {
   return retryAfterMs == null ? null : Math.min(retryAfterMs, FORECAST_LLM_RETRY_AFTER_MAX_MS);
 }
 
-function createForecastLlmHttpError(resp) {
+function createForecastLlmBudgetError(stage, budgetStartedAtMs, stageBudgetMs) {
+  const elapsedMs = Math.max(0, Date.now() - budgetStartedAtMs);
+  const err = new Error(`stage budget exhausted after ${elapsedMs}ms (budget ${stageBudgetMs}ms)`);
+  err.nonRetryable = true;
+  err.forecastLlmBudgetExhausted = true;
+  err.stage = stage;
+  return err;
+}
+
+function getForecastLlmStageBudgetMs(options = {}) {
+  return Number.isFinite(options.stageBudgetMs)
+    ? Math.max(0, Math.floor(options.stageBudgetMs))
+    : FORECAST_LLM_STAGE_BUDGET_MS;
+}
+
+function getRemainingForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs) {
+  return Math.max(0, budgetStartedAtMs + stageBudgetMs - Date.now());
+}
+
+function getUsableForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs) {
+  return Math.max(0, getRemainingForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs) - FORECAST_LLM_STAGE_BUDGET_GUARD_MS);
+}
+
+function isForecastLlmBudgetError(err) {
+  return Boolean(err?.forecastLlmBudgetExhausted);
+}
+
+function createForecastLlmHttpError(resp, usableBudgetMs = Infinity) {
   const err = new Error(`HTTP ${resp.status}`);
   err.status = resp.status;
   err.nonRetryable = !isForecastLlmRetryableStatus(resp.status);
   const retryAfterMs = getForecastLlmRetryAfterMs(resp);
-  if (retryAfterMs != null) err.retryAfterMs = retryAfterMs;
+  if (retryAfterMs != null) {
+    const cappedRetryAfterMs = Number.isFinite(usableBudgetMs)
+      ? Math.min(retryAfterMs, Math.max(0, usableBudgetMs))
+      : retryAfterMs;
+    if (cappedRetryAfterMs > 0) {
+      err.retryAfterMs = cappedRetryAfterMs;
+    } else {
+      err.nonRetryable = true;
+    }
+  }
   return err;
 }
 
@@ -14371,6 +14410,8 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
   }
   const stage = options.stage || 'default';
   const providers = resolveForecastLlmProviders(options);
+  const stageBudgetMs = getForecastLlmStageBudgetMs(options);
+  const budgetStartedAtMs = Date.now();
   const requestedOrder = Array.isArray(options.providerOrder) && options.providerOrder.length > 0
     ? options.providerOrder.join(',')
     : providers.map(provider => provider.name).join(',');
@@ -14385,6 +14426,8 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
         ? Math.max(0, Math.floor(options.retryDelayMs))
         : FORECAST_LLM_RETRY_BASE_MS;
       const resp = await withRetry(async () => {
+        const usableBudgetMs = getUsableForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs);
+        if (usableBudgetMs <= 0) throw createForecastLlmBudgetError(stage, budgetStartedAtMs, stageBudgetMs);
         const response = await forecastFetch(provider.apiUrl, {
           method: 'POST',
           headers: {
@@ -14402,9 +14445,14 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
             max_tokens: options.maxTokens || 1500,
             temperature: options.temperature ?? 0.3,
           }),
-          signal: AbortSignal.timeout(provider.timeout),
+          signal: AbortSignal.timeout(Math.max(1, Math.min(provider.timeout, usableBudgetMs))),
         });
-        if (!response.ok) throw createForecastLlmHttpError(response);
+        if (!response.ok) {
+          throw createForecastLlmHttpError(
+            response,
+            getUsableForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs),
+          );
+        }
         return response;
       }, FORECAST_LLM_PROVIDER_MAX_RETRIES, retryDelayMs);
 
@@ -14422,6 +14470,7 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
       return { text, model, provider: provider.name };
     } catch (err) {
       console.warn(`  [LLM:${stage}] ${provider.name} ${err.message}`);
+      if (isForecastLlmBudgetError(err)) return null;
     }
   }
   return null;

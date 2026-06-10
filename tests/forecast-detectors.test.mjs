@@ -1312,6 +1312,51 @@ describe('forecast llm overrides', () => {
     }
   });
 
+  it('bounds Retry-After sleeps by the forecast LLM stage budget', async () => {
+    process.env.GROQ_API_KEY = 'groq-test-key';
+    process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
+    const originalDateNow = Date.now;
+    const originalSetTimeout = globalThis.setTimeout;
+    const waits = [];
+    let now = 1_000;
+    let calls = 0;
+    Date.now = () => now;
+    globalThis.setTimeout = (fn, ms, ...args) => {
+      waits.push(ms);
+      now += ms;
+      fn(...args);
+      return 0;
+    };
+
+    try {
+      __setForecastLlmTransportForTests({
+        fetch: async (url) => {
+          calls += 1;
+          assert.ok(String(url).includes('api.groq.com'), 'budget exhaustion should not fall through to the next provider');
+          return {
+            ok: false,
+            status: 429,
+            headers: { get: (name) => (name.toLowerCase() === 'retry-after' ? '30' : null) },
+          };
+        },
+      });
+
+      const result = await __callForecastLlmForTests('system', 'user', {
+        stage: 'scenario',
+        providerOrder: ['groq', 'openrouter'],
+        retryDelayMs: 0,
+        stageBudgetMs: 17_000,
+      });
+
+      assert.equal(result, null);
+      assert.equal(calls, 2);
+      assert.deepEqual(waits, [10000, 2000]);
+    } finally {
+      Date.now = originalDateNow;
+      globalThis.setTimeout = originalSetTimeout;
+    }
+  });
+
   it('falls back to openrouter after exhausting groq retries and preserves provider/model', async () => {
     process.env.GROQ_API_KEY = 'groq-test-key';
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
