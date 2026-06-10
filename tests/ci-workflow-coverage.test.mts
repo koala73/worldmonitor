@@ -75,6 +75,28 @@ function testJobBlock(job: string): string {
   return match[0];
 }
 
+function testWorkflowJobNames(): string[] {
+  const jobs: string[] = [];
+  let inJobs = false;
+
+  for (const line of testWorkflow.split('\n')) {
+    if (/^jobs:\s*$/.test(line)) {
+      inJobs = true;
+      continue;
+    }
+    if (inJobs && /^\S[^:]*:\s*$/.test(line)) {
+      break;
+    }
+    const match = inJobs ? line.match(/^ {2}([A-Za-z0-9_-]+):(?:\s|$)/) : null;
+    if (match?.[1]) {
+      jobs.push(match[1]);
+    }
+  }
+
+  assert.ok(jobs.length > 0, 'test.yml must define at least one job under jobs:');
+  return jobs;
+}
+
 function parseJsonArrayLiteral(source: string, regex: RegExp, label: string): string[] {
   const match = source.match(regex);
   assert.ok(match?.[1], `deploy-gate.yml must define ${label}`);
@@ -131,7 +153,7 @@ describe('CI workflow coverage', () => {
     }
   });
 
-  it('keeps the deploy gate wired to every required PR smoke gate', () => {
+  it('keeps the deploy gate wired to every Test workflow check job', () => {
     const workflowRunNames = deployGateWorkflowRunNames();
     const requiredChecks = deployGateRequiredChecks();
 
@@ -141,8 +163,11 @@ describe('CI workflow coverage', () => {
         `deploy-gate.yml must run after ${workflowName} completes`,
       );
     }
-    for (const job of REQUIRED_TEST_JOBS) {
-      assert.ok(requiredChecks.includes(job), `deploy-gate.yml must require the test.yml job ${job}`);
+    for (const job of testWorkflowJobNames()) {
+      assert.ok(
+        requiredChecks.includes(job),
+        `deploy-gate.yml must require every test.yml job; missing ${job}`,
+      );
     }
     for (const check of REQUIRED_NON_TEST_GATE_CHECKS) {
       assert.ok(requiredChecks.includes(check), `deploy-gate.yml must require ${check}`);
