@@ -185,6 +185,37 @@ test('classifyKey: empty on-demand standalone key → EMPTY_ON_DEMAND (warn)', (
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 
+test('classifyKey: webcams active pointer is registered with seed-meta freshness', () => {
+  const entry = classifyKey('webcams', STANDALONE_KEYS.webcams, { allowOnDemand: true },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.webcams]: 13 },
+      metaValues: { 'seed-meta:webcam:cameras:geo': seedMeta({ recordCount: 65000 }) },
+    }));
+
+  assert.equal(STANDALONE_KEYS.webcams, 'webcam:cameras:active');
+  assert.equal(entry.status, 'OK');
+  assert.equal(entry.records, 65000);
+  assert.equal(entry.maxStaleMin, 1440);
+});
+
+test('classifyKey: digestNotifications heartbeat goes stale when the cron stops', () => {
+  const entry = classifyKey('digestNotifications', STANDALONE_KEYS.digestNotifications, { allowOnDemand: true },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.digestNotifications]: 256 },
+      metaValues: {
+        'seed-meta:digest:last-run': seedMeta({
+          fetchedAt: NOW - 120 * ONE_MIN_MS,
+          sentCount: 0,
+        }),
+      },
+    }));
+
+  assert.equal(STANDALONE_KEYS.digestNotifications, 'digest:last-run');
+  assert.equal(entry.status, 'STALE_SEED');
+  assert.equal(entry.maxStaleMin, 90);
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
 test('classifyKey: suppressed retailer-spread (present key, 0 records) while fresh → OK, not EMPTY_DATA', () => {
   // The consumer-prices aggregate job writes retailer_spread_pct: 0 ("spread
   // suppressed (N/4 common items)") when a market's retailers share < 4 common
