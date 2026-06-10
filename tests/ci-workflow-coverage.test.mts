@@ -62,6 +62,16 @@ const REQUIRED_RESILIENCE_VALIDATION_INPUTS = [
   'scripts/_bundle-runner.mjs',
 ] as const;
 
+const PACKAGE_LOCKFILE_IGNORED_DIRS = new Set([
+  '.git',
+  '.worktrees',
+  'node_modules',
+  'dist',
+  'build',
+  'coverage',
+  '.vercel',
+]);
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -77,13 +87,12 @@ function testJobBlock(job: string): string {
 }
 
 function collectPackageLockfiles(relativeDir = ''): string[] {
-  const ignoredDirs = new Set(['.git', '.worktrees', 'node_modules', 'dist', 'build', 'coverage', '.vercel']);
   const dir = resolve(root, relativeDir);
   const lockfiles: string[] = [];
 
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.isDirectory()) {
-      if (!ignoredDirs.has(entry.name)) {
+      if (!PACKAGE_LOCKFILE_IGNORED_DIRS.has(entry.name)) {
         lockfiles.push(...collectPackageLockfiles(relativeDir ? `${relativeDir}/${entry.name}` : entry.name));
       }
       continue;
@@ -177,6 +186,11 @@ describe('CI workflow coverage', () => {
     assert.match(securityAuditWorkflow, /\n  schedule:\n/, 'security-audit.yml must run on a schedule');
     assert.match(securityAuditWorkflow, /\n  security-audit:\n/, 'security-audit.yml must define the aggregate security-audit check');
     assert.match(securityAuditWorkflow, /\n    name: security-audit\n/, 'security-audit.yml must publish a security-audit check run');
+    assert.match(
+      securityAuditWorkflow,
+      /if:\s*\$\{\{\s*always\(\)\s*&&\s*needs\.audit-lockfile\.result\s*!=\s*'cancelled'\s*\}\}/,
+      'security-audit.yml must avoid turning cancelled audit workflows into hard failures',
+    );
     assert.match(
       securityAuditWorkflow,
       /node \.github\/scripts\/audit-production-dependencies\.mjs/,

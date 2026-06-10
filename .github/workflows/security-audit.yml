@@ -47,7 +47,7 @@ jobs:
     name: security-audit
     runs-on: ubuntu-latest
     needs: audit-lockfile
-    if: ${{ always() }}
+    if: ${{ always() && needs.audit-lockfile.result != 'cancelled' }}
     steps:
       - name: Verify lockfile audits passed
         env:
