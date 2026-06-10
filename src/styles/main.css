@@ -398,6 +398,216 @@ canvas,
   opacity: 1;
 }
 
+.mission-preset-mount {
+  display: inline-flex;
+  align-items: center;
+}
+
+.mission-preset-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--overlay-subtle);
+  color: var(--text-dim);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+
+.mission-preset-button:hover,
+.mission-preset-button[aria-expanded="true"] {
+  color: var(--text);
+  border-color: var(--accent);
+  background: rgba(68, 255, 136, 0.08);
+}
+
+.mission-preset-button--active {
+  color: var(--green);
+}
+
+.mission-preset-button--suggested {
+  border-color: rgba(68, 255, 136, 0.45);
+}
+
+.mission-preset-button__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(68, 255, 136, 0.12);
+  color: var(--green);
+  font-size: 9px;
+}
+
+.mission-preset-popover {
+  position: fixed;
+  z-index: 5000;
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(620px, calc(100vh - 64px));
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.36);
+}
+
+.mission-preset-popover--mobile {
+  top: 56px;
+  left: 12px;
+  right: 12px;
+  width: auto;
+}
+
+.mission-preset-popover__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 2px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.mission-preset-popover__header span {
+  display: block;
+  color: var(--text-dim);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.mission-preset-popover__header strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.mission-preset-popover__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mission-preset-reset,
+.mission-preset-close {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--overlay-subtle);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.mission-preset-reset {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.mission-preset-close {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 20px;
+}
+
+.mission-preset-reset:hover,
+.mission-preset-close:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.mission-preset-popover__list {
+  display: grid;
+  gap: 6px;
+  padding-top: 10px;
+}
+
+.mission-preset-card {
+  display: grid;
+  grid-template-columns: 26px 1fr 18px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 58px;
+  padding: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.mission-preset-card:hover,
+.mission-preset-card.selected {
+  border-color: var(--accent);
+  background: rgba(68, 255, 136, 0.06);
+}
+
+.mission-preset-card:hover {
+  transform: translateY(-1px);
+}
+
+.mission-preset-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(68, 255, 136, 0.12);
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.mission-preset-card__body {
+  min-width: 0;
+}
+
+.mission-preset-card__body strong,
+.mission-preset-card__body small {
+  display: block;
+  letter-spacing: 0;
+}
+
+.mission-preset-card__body strong {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.mission-preset-card__body small {
+  margin-top: 2px;
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.mission-preset-card__check {
+  color: var(--green);
+  font-size: 14px;
+  font-weight: 800;
+  text-align: center;
+}
+
 .logo {
   font-weight: bold;
   font-size: 14px;
@@ -12257,6 +12467,7 @@ a.prediction-link:hover {
   }
 
   .variant-switcher,
+  .mission-preset-mount,
   .version,
   .beta-badge,
   .credit-link,
