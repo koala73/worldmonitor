@@ -35,7 +35,16 @@ const OWID_LOW_CARBON_CSV_URL =
 const OWID_VALUE_COLUMN = 'low_carbon_share_of_electricity__pct';
 const CANONICAL_KEY = 'resilience:low-carbon-generation:v1';
 const CACHE_TTL = 35 * 24 * 3600;
-const MIN_COUNTRIES = 200;
+// Coverage floor — a sanity guard against a truncated/partial CSV fetch, NOT a
+// tight coverage assertion. Live OWID `share-electricity-low-carbon` maps to
+// ~209 ISO2 countries (verified 2026-06-10), but it is NOT a strict superset of
+// the retired WB feed: 5 micro-states present in WB (AD, FM, MH, PW, TV) are
+// absent from OWID. A 200 floor leaves only a ~9-country margin, so ordinary
+// year-to-year OWID churn or a few ISO-resolution misses could false-trip
+// validation → no publish → false STALE_SEED. 180 still catches a real
+// collapse (a truncated fetch yields far fewer rows) while absorbing normal
+// drift; the newest-year check below is the primary freshness guard.
+const MIN_COUNTRIES = 180;
 const MAX_NEWEST_YEAR_LAG = 2;
 
 export function getLowCarbonMinNewestYear(nowMs = Date.now()) {

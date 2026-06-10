@@ -84,16 +84,16 @@ test('low-carbon generation validates near-current coverage and newest year', ()
   const minNewestYear = getLowCarbonMinNewestYear(FIXED_NOW);
 
   const countries = {};
-  for (let idx = 0; idx < 199; idx += 1) {
+  for (let idx = 0; idx < 179; idx += 1) {
     countries[`X${idx}`] = { value: 50, year: 2025 };
   }
-  assert.equal(validateLowCarbonGeneration({ countries }, FIXED_NOW), false, '199 countries is below the coverage floor');
+  assert.equal(validateLowCarbonGeneration({ countries }, FIXED_NOW), false, '179 countries is below the coverage floor');
 
-  countries.X199 = { value: 50, year: minNewestYear };
+  countries.X179 = { value: 50, year: minNewestYear };
   assert.equal(
     validateLowCarbonGeneration({ countries }, FIXED_NOW),
     true,
-    '200 countries with newest year inside the rolling floor passes',
+    '180 countries with newest year inside the rolling floor passes',
   );
 
   for (const entry of Object.values(countries)) entry.year = minNewestYear - 1;
