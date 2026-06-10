@@ -63,13 +63,30 @@ describe('seed-recovery-import-hhi', () => {
 
   it('validate rejects catastrophic partial import-HHI snapshots below the publish floor', () => {
     const partial = Object.fromEntries(
-      Array.from({ length: 134 }, (_, i) => [`T${i}`, { hhi: 0.1 }]),
+      Array.from({ length: 130 }, (_, i) => [`T${i}`, { hhi: 0.1 }]),
     );
     const sufficient = Object.fromEntries(
-      Array.from({ length: 135 }, (_, i) => [`T${i}`, { hhi: 0.1 }]),
+      Array.from({ length: 131 }, (_, i) => [`T${i}`, { hhi: 0.1 }]),
     );
+    for (const iso2 of ['AE', 'RU', 'NO', 'CH']) {
+      partial[iso2] = { hhi: 0.1 };
+      sufficient[iso2] = { hhi: 0.1 };
+    }
     assert.equal(validate({ countries: partial }), false);
     assert.equal(validate({ countries: sufficient }), true);
+  });
+
+  it('validate rejects otherwise sufficient snapshots that still strand watched reporters', () => {
+    const countries = Object.fromEntries(
+      Array.from({ length: 170 }, (_, i) => [`T${i}`, { hhi: 0.1 }]),
+    );
+    countries.AE = { hhi: 0.1 };
+    countries.RU = { hhi: 0.1 };
+    countries.NO = { hhi: 0.1 };
+
+    assert.equal(validate({ countries }), false);
+    countries.CH = { hhi: 0.1 };
+    assert.equal(validate({ countries }), true);
   });
 
   it('treats validation rejects as seed failures so partial runs do not refresh seed-meta', () => {

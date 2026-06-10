@@ -528,8 +528,10 @@ async function fetchImportHhi() {
 // shifts until empty; no coordination needed because Array.shift is atomic
 // in single-threaded Node.js.
 export function validate(data) {
-  return typeof data?.countries === 'object'
-    && Object.keys(data.countries).length >= MIN_IMPORT_HHI_PUBLISH_COUNTRY_COUNT;
+  const countries = data?.countries;
+  if (!countries || typeof countries !== 'object') return false;
+  return Object.keys(countries).length >= MIN_IMPORT_HHI_PUBLISH_COUNTRY_COUNT
+    && WATCH_REPORTERS.every(iso2 => Boolean(countries[iso2]));
 }
 
 export function declareRecords(data) {
