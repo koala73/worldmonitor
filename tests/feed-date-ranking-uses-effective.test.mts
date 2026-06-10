@@ -62,22 +62,22 @@ const ALLOW_LIST: AllowEntry[] = [
   },
   {
     file: 'src/services/analysis-core.ts',
-    line: 207,
+    line: 208,
     reason: 'generateClusterId sort produces a stable identity string from earliest pubDate; not a freshness comparator.',
   },
   {
     file: 'src/services/analysis-core.ts',
-    line: 209,
+    line: 210,
     reason: 'generateClusterId uses earliest pubDate.getTime() in the identity string prefix.',
   },
   {
     file: 'src/services/analysis-core.ts',
-    line: 297,
+    line: 309,
     reason: 'cluster date aggregation for firstSeen/lastUpdated metadata; not a per-item ranking comparator.',
   },
   {
     file: 'src/services/clustering.ts',
-    line: 116,
+    line: 138,
     reason: 'allDates aggregation for cluster firstSeen/lastUpdated metadata; not a per-item ranking comparator.',
   },
   {
