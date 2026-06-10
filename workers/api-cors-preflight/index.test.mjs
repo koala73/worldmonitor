@@ -46,22 +46,20 @@ test('isAllowedOrigin accepts apex worldmonitor.app and subdomains', () => {
   assert.equal(isAllowedOrigin('https://commodity.worldmonitor.app'), true);
 });
 
-test('isAllowedOrigin accepts Vercel preview deploys (mirroring api/_cors.js shape)', () => {
-  // The Worker mirrors api/_cors.js's preview regex EXACTLY. That regex
-  // requires [a-z0-9]+ (no hyphens) after `-elie-`, so `*-elie-habib.vercel.app`
-  // matches and `*-elie-habib-projects.vercel.app` does NOT. That looks like
-  // a latent bug in api/_cors.js for teams named `elie-habib-projects`, but
-  // tightening it is out of scope for this PR — the Worker must stay in lock-
-  // step with the function, not silently widen.
-  assert.equal(isAllowedOrigin('https://worldmonitor-r6q9o-elie-habib.vercel.app'), true);
-  assert.equal(isAllowedOrigin('https://worldmonitor-git-feat-x-elie-habib.vercel.app'), true);
-  // NOTE: assertion below documents the latent narrowness — flip to `true`
-  // ONLY after updating both the Worker AND api/_cors.js together.
-  assert.equal(
-    isAllowedOrigin('https://worldmonitor-abc-elie-habib-projects.vercel.app'),
-    false,
-    'Worker preview regex mirrors api/_cors.js; widen BOTH together if needed',
-  );
+test('isAllowedOrigin accepts Vercel preview deploys under the eliewm team scope (mirrors api/_cors.js)', () => {
+  // The project deploys previews under the "eliewm" Vercel team scope, so URLs
+  // end in `-eliewm.vercel.app` (git-branch alias AND hash deployment forms).
+  // The Worker MUST mirror api/_cors.js exactly — if it stays narrower, eliewm
+  // preview preflights echo the canonical worldmonitor.app fallback and the
+  // browser blocks them before the request ever reaches Vercel.
+  assert.equal(isAllowedOrigin('https://worldmonitor-git-feat-x-eliewm.vercel.app'), true);
+  assert.equal(isAllowedOrigin('https://worldmonitor-r6q9o-eliewm.vercel.app'), true);
+  // Tight allowlist: a foreign team scope, a non-worldmonitor app, and the
+  // retired personal scope (worldmonitor-*-elie-<hash>, migration complete)
+  // must all stay rejected. Never a bare *.vercel.app.
+  assert.equal(isAllowedOrigin('https://worldmonitor-feat-x-attacker.vercel.app'), false);
+  assert.equal(isAllowedOrigin('https://some-other-app-eliewm.vercel.app'), false);
+  assert.equal(isAllowedOrigin('https://worldmonitor-abc-elie-habib.vercel.app'), false);
 });
 
 test('isAllowedOrigin accepts Tauri desktop runtime origins', () => {

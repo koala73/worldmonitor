@@ -510,6 +510,64 @@ export async function withRetry(fn, maxRetries = 3, delayMs = 1000) {
   throw lastErr;
 }
 
+/**
+ * Read a header from either a fetch `Headers` instance or a plain object
+ * (test transports commonly pass `{ 'retry-after': '2' }`). Case-insensitive.
+ */
+export function getResponseHeader(headers, name) {
+  if (!headers) return null;
+  if (typeof headers.get === 'function') return headers.get(name);
+  const lowerName = name.toLowerCase();
+  const foundKey = Object.keys(headers).find((key) => key.toLowerCase() === lowerName);
+  return foundKey ? headers[foundKey] : null;
+}
+
+/** 408 / 429 / 5xx are transient; every other status is a permanent client error. */
+export function isRetryableHttpStatus(status) {
+  return status === 408 || status === 429 || (typeof status === 'number' && status >= 500 && status <= 599);
+}
+
+/**
+ * Build an Error from a non-ok provider response for use with `withRetry`.
+ * Tags `nonRetryable` for permanent statuses and attaches a capped
+ * `retryAfterMs` hint when the server sent one:
+ *   - `maxRetryAfterMs` caps a generous server hint (e.g. a 10s ceiling).
+ *   - `capMs` (the caller's remaining wall-clock budget) caps it further and,
+ *     when <= 0, marks the error non-retryable so the loop stops instead of
+ *     sleeping past its deadline.
+ */
+export function httpRetryError(resp, { maxRetryAfterMs, capMs } = {}) {
+  const status = resp?.status;
+  const err = new Error(`HTTP ${status}`);
+  err.status = status;
+  err.nonRetryable = !isRetryableHttpStatus(status);
+  let retryAfterMs = parseRetryAfterMs(getResponseHeader(resp?.headers, 'Retry-After'));
+  if (retryAfterMs != null) {
+    if (Number.isFinite(maxRetryAfterMs)) retryAfterMs = Math.min(retryAfterMs, maxRetryAfterMs);
+    if (Number.isFinite(capMs)) retryAfterMs = Math.min(retryAfterMs, Math.max(0, capMs));
+    if (retryAfterMs > 0) err.retryAfterMs = retryAfterMs;
+    else err.nonRetryable = true;
+  }
+  return err;
+}
+
+/**
+ * Sentinel error for "the LLM call's time budget is spent". `nonRetryable`
+ * stops `withRetry` immediately; `llmBudgetExhausted` lets the provider loop
+ * distinguish a budget stop (give up, ship degraded) from a provider error
+ * (fall through to the next provider).
+ */
+export function createLlmBudgetError(message = 'llm time budget exhausted') {
+  const err = new Error(message);
+  err.nonRetryable = true;
+  err.llmBudgetExhausted = true;
+  return err;
+}
+
+export function isLlmBudgetError(err) {
+  return Boolean(err?.llmBudgetExhausted);
+}
+
 export function logSeedResult(domain, count, durationMs, extra = {}) {
   console.log(JSON.stringify({
     event: 'seed_complete',

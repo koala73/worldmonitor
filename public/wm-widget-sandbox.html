@@ -11,20 +11,22 @@
   var handled = false;
 
   // Vercel preview hostnames have the shape
-  //   {project-slug}-{branch-slug}-{team-slug}-{hash}.vercel.app
-  // The team-slug segment is the URL-safe Vercel team identifier and is the
+  //   worldmonitor-git-{branch-slug}-{team-slug}.vercel.app   (git-branch alias)
+  //   worldmonitor-{hash}-{team-slug}.vercel.app              (deployment URL)
+  // The team-slug is the LAST segment before .vercel.app and is the
   // load-bearing security invariant: an attacker who registers a Vercel
   // project named `worldmonitor-...` under their OWN team account would get
   // a different team-slug, so gating on this list rejects look-alike previews.
-  // Add a teammate's Vercel team slug here when they need to mount PRO
-  // widgets in preview deployments; never widen this to a wildcard.
-  var ALLOWED_VERCEL_TEAM_SLUGS = ['elie'];
+  // The project deploys under the "eliewm" team scope. Add a teammate's Vercel
+  // team slug here when they need to mount PRO widgets in preview deployments;
+  // never widen this to a wildcard.
+  var ALLOWED_VERCEL_TEAM_SLUGS = ['eliewm'];
 
   function isAllowedVercelPreview(hostname) {
     for (var i = 0; i < ALLOWED_VERCEL_TEAM_SLUGS.length; i++) {
       var team = ALLOWED_VERCEL_TEAM_SLUGS[i];
       if (!/^[a-z0-9-]+$/.test(team)) continue;
-      var re = new RegExp('^worldmonitor-[a-z0-9-]+-' + team + '-[a-z0-9]+\\.vercel\\.app$');
+      var re = new RegExp('^worldmonitor-[a-z0-9-]+-' + team + '\\.vercel\\.app$');
       if (re.test(hostname)) return true;
     }
     return false;

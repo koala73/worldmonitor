@@ -26,7 +26,7 @@ export async function GET(context: { site: URL }) {
           enclosure: {
             url: `https://www.worldmonitor.app${post.data.heroImage}`,
             length: 0,
-            type: 'image/jpeg',
+            type: post.data.heroImage.endsWith('.png') ? 'image/png' : 'image/jpeg',
           },
         } : {}),
       })),

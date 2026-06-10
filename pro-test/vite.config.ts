@@ -9,6 +9,12 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, '../public/pro'),
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        index: path.resolve(__dirname, 'index.html'),
+        welcome: path.resolve(__dirname, 'welcome.html'),
+      },
+    },
   },
   resolve: {
     alias: {

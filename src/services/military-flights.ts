@@ -484,8 +484,9 @@ function cleanupFlightHistory(): void {
   }
 }
 
-// Set up periodic cleanup
-if (typeof window !== 'undefined') {
+/** Start the periodic flight-history cleanup if it is not already running. */
+export function startFlightHistoryCleanup(): void {
+  if (typeof window === 'undefined' || historyCleanupIntervalId) return;
   historyCleanupIntervalId = setInterval(cleanupFlightHistory, HISTORY_CLEANUP_INTERVAL);
 }
 
@@ -496,6 +497,8 @@ export function stopFlightHistoryCleanup(): void {
     historyCleanupIntervalId = null;
   }
 }
+
+startFlightHistoryCleanup();
 
 /**
  * Main function to fetch military flights
