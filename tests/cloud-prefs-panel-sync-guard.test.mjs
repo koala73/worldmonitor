@@ -65,5 +65,20 @@ describe('cloud prefs panel sync guardrails', () => {
       /this\.panelLayout\.applySavedPanelOrder\(\)/,
       'App must reapply synced panel order without waiting for a reload',
     );
+    assert.match(
+      appSrc,
+      /const panelOrderKey = this\.state\.PANEL_ORDER_KEY;/,
+      'App must derive the panel order key from PANEL_ORDER_KEY',
+    );
+    assert.match(
+      appSrc,
+      /keySet\.has\(panelOrderKey\) \|\| keySet\.has\(`\$\{panelOrderKey\}-bottom-set`\)/,
+      'App must derive the bottom-set key from PANEL_ORDER_KEY',
+    );
+    assert.doesNotMatch(
+      appSrc,
+      /keySet\.has\('panel-order'\)/,
+      'App must not hard-code the panel-order key in the cloud apply path',
+    );
   });
 });

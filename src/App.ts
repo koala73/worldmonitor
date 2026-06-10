@@ -193,7 +193,8 @@ export class App {
       this.state.unifiedSettings?.refreshPanelToggles();
     }
 
-    if (keySet.has('panel-order') || keySet.has('panel-order-bottom-set')) {
+    const panelOrderKey = this.state.PANEL_ORDER_KEY;
+    if (keySet.has(panelOrderKey) || keySet.has(`${panelOrderKey}-bottom-set`)) {
       this.panelLayout.applySavedPanelOrder();
     }
 
