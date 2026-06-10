@@ -4,7 +4,7 @@
  * Mirrors the edge-runtime `extractConvexErrorKind` helper in
  * `api/_convex-error.js`, scoped to the data shapes this Convex action
  * produces: `{ kind: 'NO_CUSTOMER' | 'DODO_API_KEY_MISSING' |
- * 'USER_ID_REQUIRED' }`.
+ * 'USER_ID_REQUIRED' | 'DODO_PORTAL_ERROR' }`.
  *
  * Zero deps so it can be unit-tested from `node --test` without pulling
  * the rest of `src/services/billing.ts`' browser-only import graph
