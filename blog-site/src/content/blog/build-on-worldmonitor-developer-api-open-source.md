@@ -1,6 +1,6 @@
 ---
 title: "Build on World Monitor: Open APIs, Proto-First Architecture, and the Developer Platform"
-description: "Build intelligence apps on World Monitor's typed API: 22 services, 92 proto files, 60+ edge functions, and auto-generated TypeScript clients. AGPL-3.0."
+description: "Build intelligence apps on World Monitor's typed API: 34 services, 276 proto files, 60+ edge functions, and auto-generated TypeScript clients. AGPL-3.0."
 metaTitle: "Developer API & Open Source Platform | World Monitor"
 keywords: "open source intelligence API, OSINT API free, geopolitical data API, intelligence platform developer, proto-first API architecture"
 audience: "Developers, data engineers, startup builders, academic researchers, open-source contributors"
@@ -16,8 +16,8 @@ World Monitor is designed differently. The entire intelligence platform, every d
 
 World Monitor uses **Protocol Buffers (protobuf)** as the single source of truth for all API contracts. The codebase contains:
 
-- **92 proto files** defining every data structure and service
-- **22 typed service domains** covering all intelligence verticals
+- **276 proto files** defining every data structure and service
+- **34 typed service domains** covering all intelligence verticals
 - **Auto-generated TypeScript** clients for type-safe API consumption
 - **Auto-generated OpenAPI** documentation for REST compatibility
 
@@ -39,34 +39,46 @@ Protocol Buffers enforce a contract between client and server that can't drift:
 
 For developers building on World Monitor, this means you can trust the API contracts completely. If the proto says a field is `int64`, it's `int64`. If it says `repeated string`, it's an array of strings.
 
-## 22 Service Domains
+## 34 Service Domains
 
 World Monitor's API is organized into domain-specific services:
 
 | Domain | What It Covers |
 |--------|---------------|
-| **Conflict** | [ACLED](https://acleddata.com/) events, [UCDP](https://ucdp.uu.se/) data, hotspot scoring |
-| **Military** | Bases, ADS-B flights, AIS vessels, [USNI](https://news.usni.org/) reports |
-| **Market** | Stock quotes, forex, commodities, sector performance |
-| **Crypto** | BTC signals, stablecoin pegs, ETF flows, Fear & Greed |
 | **Aviation** | Airport delays, flight tracking, airspace data |
-| **Maritime** | Vessel positions, port status, dark vessel detection |
 | **Climate** | Temperature anomalies, precipitation, sea level |
-| **Imagery** | Satellite data via STAC API |
-| **News** | Aggregated RSS feeds, trending keywords |
-| **Intelligence** | CII scores, theater posture, convergence events |
-| **Infrastructure** | Cables, pipelines, nuclear facilities, datacenters |
-| **Prediction** | [Polymarket](https://polymarket.com/) data, forecast probabilities |
+| **Conflict** | [ACLED](https://acleddata.com/) events, [UCDP](https://ucdp.uu.se/) data, hotspot scoring |
+| **Consumer Prices** | CPI and consumer-price intelligence |
 | **Cyber** | Threat feeds, C2 servers, malware URLs |
-| **Disaster** | Earthquakes, fires, volcanic events |
 | **Displacement** | UNHCR refugee and IDP data |
-| **Travel** | Government advisories, risk levels |
-| **Central Bank** | Policy rates, [BIS](https://www.bis.org/) data, REER |
-| **Tech** | AI labs, startups, accelerators, tech hubs |
-| **Commodity** | Mining sites, exchange hubs, energy infrastructure |
-| **Regulation** | AI policy tracking, regulatory changes |
+| **Economic** | Macro data from FRED, World Bank, EIA; central-bank rates |
+| **Forecast** | AI probabilistic forecasts and scenario simulations |
+| **Giving** | Global philanthropy and personal-giving tracking |
 | **Health** | System health, data freshness, circuit breaker status |
-| **Bootstrap** | Hydration data for initial app load |
+| **Imagery** | Satellite data via STAC API |
+| **Infrastructure** | Cables, pipelines, nuclear facilities, datacenters |
+| **Intelligence** | CII scores, theater posture, convergence events |
+| **Leads** | Enterprise contact and Pro-waitlist capture |
+| **Maritime** | Vessel positions, port status, dark vessel detection |
+| **Market** | Stock quotes, forex, commodities, crypto, sector performance |
+| **Military** | Bases, ADS-B flights, AIS vessels, [USNI](https://news.usni.org/) reports |
+| **Natural** | Aggregated natural-disaster events |
+| **News** | Aggregated RSS feeds, trending keywords |
+| **Positive Events** | Geocoded positive and constructive news events |
+| **Prediction** | [Polymarket](https://polymarket.com/) data, forecast probabilities |
+| **Radiation** | Normalized environmental radiation readings |
+| **Research** | Academic papers, trending repos, tech news |
+| **Resilience** | Country Resilience Index (CRI) scores and rankings |
+| **Sanctions** | Sanctions lists and designations |
+| **Scenario** | Scenario engine: jobs, status, and template catalog |
+| **Seismology** | [USGS](https://earthquake.usgs.gov/) earthquake monitoring |
+| **Shipping** | Partner chokepoint route intelligence and disruption webhooks |
+| **Supply Chain** | Chokepoints, critical minerals, route impact, pipelines |
+| **Thermal** | Thermal escalation and fire-hotspot detection |
+| **Trade** | WTO and US Treasury trade-policy intelligence |
+| **Unrest** | Social unrest from ACLED and GDELT |
+| **Webcam** | Live public webcam feeds |
+| **Wildfire** | Wildfire tracking and perimeters |
 
 Each domain has its own edge function, proto definitions, and TypeScript client.
 
@@ -173,7 +185,7 @@ For reference, World Monitor is built with:
 | 3D Globe | globe.gl, Three.js |
 | Flat Map | deck.gl, MapLibre |
 | API | Vercel Edge Functions |
-| Contracts | Protocol Buffers (92 files) |
+| Contracts | Protocol Buffers (276 files) |
 | Desktop | Tauri (Rust) |
 | Sidecar | Node.js |
 | Caching | Redis |
@@ -209,4 +221,4 @@ Define your data structures in a proto file, implement a handler function, wire 
 
 ---
 
-**Start building at [github.com/koala73/worldmonitor](https://github.com/koala73/worldmonitor). 22 services, 92 proto files, and a global intelligence dataset waiting for your application.**
+**Start building at [github.com/koala73/worldmonitor](https://github.com/koala73/worldmonitor). 34 services, 276 proto files, and a global intelligence dataset waiting for your application.**
