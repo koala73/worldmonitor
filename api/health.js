@@ -516,6 +516,11 @@ const ON_DEMAND_KEYS = new Set([
   'climateNewsRelayHeartbeat',     // TRANSITIONAL (PR #3133): same deploy-order rationale.
                                    // 30min initial loop, so window is shorter but still present.
                                    // Remove after ~7 days alongside the chokepoint-flows entry.
+  'digestNotifications',           // TRANSITIONAL (PR #4253): seed-digest-notifications.mjs writes
+                                   // `digest:last-run` on the first cron run after deploy. Vercel
+                                   // can publish this health registry before Railway's 30min cron
+                                   // ticks, so gate only the first absent-key window as WARN. Remove
+                                   // after ~7 days of clean `seed-meta:digest:last-run` writes.
   'eiaPetroleum',                  // TRANSITIONAL: gold-standard migration of /api/eia/petroleum
                                    // from live Vercel fetch to Redis-reader (seed-bundle-energy-sources
                                    // daily cron). SEED_META entry above enforces 72h staleness — this

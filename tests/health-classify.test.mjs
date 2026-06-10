@@ -216,6 +216,16 @@ test('classifyKey: digestNotifications heartbeat goes stale when the cron stops'
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 
+test('classifyKey: digestNotifications missing before first cron run is transitional warn', () => {
+  const entry = classifyKey('digestNotifications', STANDALONE_KEYS.digestNotifications, { allowOnDemand: true },
+    makeCtx({}));
+
+  assert.equal(entry.status, 'EMPTY_ON_DEMAND');
+  assert.equal(entry.records, 0);
+  assert.equal(entry.maxStaleMin, 90);
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
 test('classifyKey: suppressed retailer-spread (present key, 0 records) while fresh → OK, not EMPTY_DATA', () => {
   // The consumer-prices aggregate job writes retailer_spread_pct: 0 ("spread
   // suppressed (N/4 common items)") when a market's retailers share < 4 common

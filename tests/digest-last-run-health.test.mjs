@@ -75,4 +75,17 @@ describe('digest-notifications last-run health heartbeat', () => {
       /main\(\)\.catch\(async \(err\) => \{[\s\S]*?await writeDigestLastRunMeta\(\{[\s\S]*?status: 'error'[\s\S]*?errorReason: `fatal:\$\{err\?\.message \?\? err\}`,[\s\S]*?\}\);[\s\S]*?process\.exit\(1\);/,
     );
   });
+
+  it('uses the main start time for fatal-crash duration metadata', () => {
+    assert.match(src, /let digestRunStartedAtMs = null;/);
+    assert.match(src, /const nowMs = Date\.now\(\);\s+digestRunStartedAtMs = nowMs;/);
+    assert.match(
+      src,
+      /main\(\)\.catch\(async \(err\) => \{[\s\S]*?const finishedAtMs = Date\.now\(\);[\s\S]*?startedAtMs: digestRunStartedAtMs \?\? finishedAtMs,[\s\S]*?finishedAtMs,[\s\S]*?process\.exit\(1\);/,
+    );
+    assert.doesNotMatch(
+      src,
+      /main\(\)\.catch\(async \(err\) => \{[\s\S]*?startedAtMs: Date\.now\(\)/,
+    );
+  });
 });

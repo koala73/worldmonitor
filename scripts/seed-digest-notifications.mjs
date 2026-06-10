@@ -117,6 +117,7 @@ const RESEND_FROM =
 const DIGEST_LAST_RUN_KEY = 'digest:last-run';
 const DIGEST_LAST_RUN_META_KEY = 'seed-meta:digest:last-run';
 const DIGEST_LAST_RUN_TTL_SECONDS = 7 * 24 * 60 * 60;
+let digestRunStartedAtMs = null;
 
 if (process.env.DIGEST_CRON_ENABLED === '0') {
   console.log('[digest] DIGEST_CRON_ENABLED=0 — skipping run');
@@ -2141,6 +2142,7 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
 
 async function main() {
   const nowMs = Date.now();
+  digestRunStartedAtMs = nowMs;
   console.log('[digest] Cron run start:', new Date(nowMs).toISOString());
 
   let rules;
@@ -3000,9 +3002,11 @@ async function main() {
 }
 
 main().catch(async (err) => {
+  const finishedAtMs = Date.now();
   console.error('[digest] Fatal:', err);
   await writeDigestLastRunMeta({
-    startedAtMs: Date.now(),
+    startedAtMs: digestRunStartedAtMs ?? finishedAtMs,
+    finishedAtMs,
     status: 'error',
     errorReason: `fatal:${err?.message ?? err}`,
   });
