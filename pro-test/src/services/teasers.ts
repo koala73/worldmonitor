@@ -44,7 +44,7 @@ export interface TeaserQuote {
 export interface TeaserState {
   headlines: { items: TeaserHeadline[]; live: boolean };
   cii: { items: TeaserCiiScore[]; live: boolean };
-  chokepoints: { items: TeaserChokepoint[]; total: number; live: boolean };
+  chokepoints: { items: TeaserChokepoint[]; total: number; disrupted: number; live: boolean };
   quotes: { items: TeaserQuote[]; live: boolean };
 }
 
@@ -60,11 +60,18 @@ interface FallbackShape {
 
 const fallback = fallbackJson as unknown as FallbackShape;
 
+const isDisrupted = (c: { status: string }) => c.status !== 'green';
+
 export function getFallbackTeasers(): TeaserState {
   return {
     headlines: { items: fallback.headlines, live: false },
     cii: { items: fallback.cii, live: false },
-    chokepoints: { items: fallback.chokepoints, total: fallback.chokepointTotal, live: false },
+    chokepoints: {
+      items: fallback.chokepoints,
+      total: fallback.chokepointTotal,
+      disrupted: fallback.chokepoints.filter(isDisrupted).length,
+      live: false,
+    },
     quotes: { items: fallback.quotes, live: false },
   };
 }
@@ -73,13 +80,16 @@ let sessionMinted = false;
 
 async function mintSession(): Promise<void> {
   try {
-    await fetch('/api/wm-session', {
+    const resp = await fetch('/api/wm-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
-    sessionMinted = true;
+    // fetch() resolves on 4xx/5xx too (e.g. CORS-blocked preview domains) —
+    // only an OK response means the cookie actually exists, otherwise the
+    // 401-retry path in fetchJson would re-mint and re-fire every request.
+    if (resp.ok) sessionMinted = true;
   } catch { /* fall back to static teasers */ }
 }
 
@@ -128,7 +138,7 @@ interface ChokepointStatusResponse {
   upstreamUnavailable?: boolean;
 }
 
-async function fetchChokepoints(): Promise<{ items: TeaserChokepoint[]; total: number; live: boolean } | null> {
+async function fetchChokepoints(): Promise<{ items: TeaserChokepoint[]; total: number; disrupted: number; live: boolean } | null> {
   const resp = await fetchJson<ChokepointStatusResponse>('/api/supply-chain/v1/get-chokepoint-status');
   if (!resp || !Array.isArray(resp.chokepoints)) return null;
   const all = resp.chokepoints
@@ -136,7 +146,8 @@ async function fetchChokepoints(): Promise<{ items: TeaserChokepoint[]; total: n
     .map(c => ({ name: c.name as string, status: c.status as string, disruptionScore: c.disruptionScore ?? 0 }));
   if (!all.length) return null;
   const items = [...all].sort((a, b) => b.disruptionScore - a.disruptionScore).slice(0, 5);
-  return { items, total: all.length, live: !resp.upstreamUnavailable };
+  // "N of M disrupted" must count across ALL chokepoints, not the top-5 slice.
+  return { items, total: all.length, disrupted: all.filter(isDisrupted).length, live: !resp.upstreamUnavailable };
 }
 
 interface MarketQuotesResponse {
@@ -165,7 +176,10 @@ async function fetchQuotes(): Promise<{ items: TeaserQuote[]; live: boolean } | 
 
 interface FeedDigestResponse {
   categories?: Record<string, { items?: Array<{ title?: string; source?: string; publishedAt?: number; importanceScore?: number }> }>;
+  generatedAt?: string;
 }
+
+const DIGEST_FRESH_MS = 30 * 60 * 1000;
 
 async function fetchHeadlines(): Promise<{ items: TeaserHeadline[]; live: boolean } | null> {
   const resp = await fetchJson<FeedDigestResponse>('/api/news/v1/list-feed-digest?variant=full&lang=en');
@@ -178,7 +192,13 @@ async function fetchHeadlines(): Promise<{ items: TeaserHeadline[]; live: boolea
     .sort((a, b) => (b.importanceScore ?? 0) - (a.importanceScore ?? 0))
     .slice(0, 4)
     .map(i => ({ title: i.title as string, source: i.source ?? '', publishedAt: i.publishedAt ?? 0 }));
-  return { items, live: true };
+  // The digest response carries no degraded/stale booleans — its freshness
+  // signal is generatedAt. Only claim LIVE when the digest is recent; an
+  // unparseable/missing timestamp keeps the badge (matches the other
+  // fetchers, which only demote on explicit signals).
+  const generated = resp.generatedAt ? Date.parse(resp.generatedAt) : Number.NaN;
+  const live = Number.isNaN(generated) || Date.now() - generated < DIGEST_FRESH_MS;
+  return { items, live };
 }
 
 /**

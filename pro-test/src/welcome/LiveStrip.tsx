@@ -102,8 +102,6 @@ export const LiveStrip = () => {
     return () => { cancelled = true; };
   }, []);
 
-  const disrupted = teasers.chokepoints.items.filter(c => c.status !== 'green').length;
-
   return (
     <section className="py-16 px-6 border-y border-wm-border bg-wm-bg relative">
       <div className="max-w-7xl mx-auto">
@@ -156,7 +154,7 @@ export const LiveStrip = () => {
 
           <Card icon={<Anchor className="w-4 h-4" aria-hidden="true" />} title={t('welcome.live.cardChokepoints')} live={teasers.chokepoints.live}>
             <p className="font-mono text-xs text-wm-muted mb-3">
-              {t('welcome.live.chokeSummary', { disrupted, total: teasers.chokepoints.total })}
+              {t('welcome.live.chokeSummary', { disrupted: teasers.chokepoints.disrupted, total: teasers.chokepoints.total })}
             </p>
             <ul className="space-y-2.5">
               {teasers.chokepoints.items.map(c => (
