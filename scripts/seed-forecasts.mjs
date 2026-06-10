@@ -14035,7 +14035,7 @@ const FORECAST_LLM_PROVIDERS = [
 const FORECAST_LLM_PROVIDER_NAMES = new Set(FORECAST_LLM_PROVIDERS.map(provider => provider.name));
 const FORECAST_LLM_PROVIDER_MAX_RETRIES = 2;
 const FORECAST_LLM_RETRY_BASE_MS = 1_000;
-const FORECAST_LLM_RETRY_AFTER_MAX_MS = 2_000;
+const FORECAST_LLM_RETRY_AFTER_MAX_MS = 10_000;
 
 function parseForecastProviderOrder(raw) {
   if (typeof raw !== 'string' || !raw.trim()) return null;
@@ -14344,7 +14344,7 @@ function isForecastLlmRetryableStatus(status) {
 function getResponseHeader(headers, name) {
   if (!headers) return null;
   if (typeof headers.get === 'function') {
-    return headers.get(name) || headers.get(name.toLowerCase()) || headers.get(name.toUpperCase());
+    return headers.get(name);
   }
   const lowerName = name.toLowerCase();
   const foundKey = Object.keys(headers).find((key) => key.toLowerCase() === lowerName);

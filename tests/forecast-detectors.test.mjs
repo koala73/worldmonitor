@@ -1267,6 +1267,51 @@ describe('forecast llm overrides', () => {
     }
   });
 
+  it('caps oversized Retry-After hints before retrying a forecast LLM provider', async () => {
+    process.env.GROQ_API_KEY = 'groq-test-key';
+    process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
+    const originalSetTimeout = globalThis.setTimeout;
+    const waits = [];
+    let calls = 0;
+    globalThis.setTimeout = (fn, ms, ...args) => {
+      waits.push(ms);
+      fn(...args);
+      return 0;
+    };
+
+    try {
+      __setForecastLlmTransportForTests({
+        fetch: async () => {
+          calls += 1;
+          if (calls === 1) {
+            return {
+              ok: false,
+              status: 429,
+              headers: { get: (name) => (name.toLowerCase() === 'retry-after' ? '30' : null) },
+            };
+          }
+          return {
+            ok: true,
+            status: 200,
+            headers: { get: () => null },
+            json: async () => ({
+              model: 'llama-3.1-8b-instant',
+              choices: [{ message: { content: 'Groq capped retry succeeded with enough narrative content.' } }],
+            }),
+          };
+        },
+      });
+
+      const result = await __callForecastLlmForTests('system', 'user', { stage: 'scenario', retryDelayMs: 0 });
+
+      assert.deepEqual(waits, [10000]);
+      assert.equal(calls, 2);
+      assert.equal(result?.provider, 'groq');
+    } finally {
+      globalThis.setTimeout = originalSetTimeout;
+    }
+  });
+
   it('falls back to openrouter after exhausting groq retries and preserves provider/model', async () => {
     process.env.GROQ_API_KEY = 'groq-test-key';
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
