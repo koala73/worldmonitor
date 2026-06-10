@@ -60,6 +60,7 @@ import {
   parseForecastProviderOrder,
   getForecastLlmCallOptions,
   resolveForecastLlmProviders,
+  __callForecastLlmForTests,
   buildFallbackScenario,
   buildFallbackBaseCase,
   buildFallbackEscalatoryCase,
@@ -77,6 +78,7 @@ import {
   DEFAULT_CASCADE_RULES,
   PROJECTION_CURVES,
   __setForecastLlmCallOverrideForTests,
+  __setForecastLlmTransportForTests,
 } from '../scripts/seed-forecasts.mjs';
 
 const originalForecastEnv = {
@@ -84,12 +86,15 @@ const originalForecastEnv = {
   FORECAST_LLM_COMBINED_PROVIDER_ORDER: process.env.FORECAST_LLM_COMBINED_PROVIDER_ORDER,
   FORECAST_LLM_MODEL_OPENROUTER: process.env.FORECAST_LLM_MODEL_OPENROUTER,
   FORECAST_LLM_COMBINED_MODEL_OPENROUTER: process.env.FORECAST_LLM_COMBINED_MODEL_OPENROUTER,
+  GROQ_API_KEY: process.env.GROQ_API_KEY,
+  OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
   UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
   UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
 };
 
 afterEach(() => {
   __setForecastLlmCallOverrideForTests(null);
+  __setForecastLlmTransportForTests(null);
   for (const [key, value] of Object.entries(originalForecastEnv)) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
@@ -1210,6 +1215,132 @@ describe('forecast llm overrides', () => {
     assert.equal(providers.length, 1);
     assert.equal(providers[0]?.name, 'openrouter');
     assert.equal(providers[0]?.model, 'google/gemini-2.5-flash-lite-preview');
+  });
+
+  it('retries a 429 Retry-After response on the same provider and returns groq', async () => {
+    process.env.GROQ_API_KEY = 'groq-test-key';
+    process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
+    const originalSetTimeout = globalThis.setTimeout;
+    const calls = [];
+    const waits = [];
+    globalThis.setTimeout = (fn, ms, ...args) => {
+      waits.push(ms);
+      fn(...args);
+      return 0;
+    };
+
+    try {
+      __setForecastLlmTransportForTests({
+        fetch: async (url) => {
+          calls.push(String(url));
+          if (calls.length <= 2) {
+            return {
+              ok: false,
+              status: 429,
+              headers: { get: (name) => (name.toLowerCase() === 'retry-after' ? '2' : null) },
+            };
+          }
+          return {
+            ok: true,
+            status: 200,
+            headers: { get: () => null },
+            json: async () => ({
+              model: 'llama-3.1-8b-instant',
+              choices: [{ message: { content: 'Groq retry succeeded with enough narrative content.' } }],
+            }),
+          };
+        },
+      });
+
+      const result = await __callForecastLlmForTests('system', 'user', { stage: 'scenario', retryDelayMs: 0 });
+
+      assert.deepEqual(waits, [2000, 2000]);
+      assert.equal(calls.length, 3);
+      assert.ok(calls.every((url) => url.includes('api.groq.com')));
+      assert.deepEqual(result, {
+        text: 'Groq retry succeeded with enough narrative content.',
+        model: 'llama-3.1-8b-instant',
+        provider: 'groq',
+      });
+    } finally {
+      globalThis.setTimeout = originalSetTimeout;
+    }
+  });
+
+  it('falls back to openrouter after exhausting groq retries and preserves provider/model', async () => {
+    process.env.GROQ_API_KEY = 'groq-test-key';
+    process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
+    const providers = [];
+
+    __setForecastLlmTransportForTests({
+      fetch: async (url) => {
+        const href = String(url);
+        providers.push(href.includes('api.groq.com') ? 'groq' : 'openrouter');
+        if (href.includes('api.groq.com')) {
+          return {
+            ok: false,
+            status: 503,
+            headers: { get: () => null },
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => null },
+          json: async () => ({
+            model: 'openrouter/gemini-test',
+            choices: [{ message: { content: 'OpenRouter fallback succeeded with enough narrative content.' } }],
+          }),
+        };
+      },
+    });
+
+    const result = await __callForecastLlmForTests('system', 'user', { stage: 'scenario', retryDelayMs: 0 });
+
+    assert.deepEqual(providers, ['groq', 'groq', 'groq', 'openrouter']);
+    assert.deepEqual(result, {
+      text: 'OpenRouter fallback succeeded with enough narrative content.',
+      model: 'openrouter/gemini-test',
+      provider: 'openrouter',
+    });
+  });
+
+  it('does not retry non-retryable 402 before falling back', async () => {
+    process.env.GROQ_API_KEY = 'groq-test-key';
+    process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
+    const providers = [];
+
+    __setForecastLlmTransportForTests({
+      fetch: async (url) => {
+        const href = String(url);
+        providers.push(href.includes('api.groq.com') ? 'groq' : 'openrouter');
+        if (href.includes('api.groq.com')) {
+          return {
+            ok: false,
+            status: 402,
+            headers: { get: () => null },
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => null },
+          json: async () => ({
+            model: 'openrouter/no-retry-test',
+            choices: [{ message: { content: 'OpenRouter fallback after non retryable status has enough content.' } }],
+          }),
+        };
+      },
+    });
+
+    const result = await __callForecastLlmForTests('system', 'user', { stage: 'scenario', retryDelayMs: 0 });
+
+    assert.deepEqual(providers, ['groq', 'openrouter']);
+    assert.deepEqual(result, {
+      text: 'OpenRouter fallback after non retryable status has enough content.',
+      model: 'openrouter/no-retry-test',
+      provider: 'openrouter',
+    });
   });
 
   it('recovers impact expansion output after an initial invalid parse', async () => {

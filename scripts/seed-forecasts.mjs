@@ -4,7 +4,7 @@
 
 import crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { loadEnvFile, runSeed, CHROME_UA, withRetry } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, CHROME_UA, withRetry, parseRetryAfterMs } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
@@ -14033,6 +14033,9 @@ const FORECAST_LLM_PROVIDERS = [
   { name: 'openrouter', envKey: 'OPENROUTER_API_KEY', apiUrl: 'https://openrouter.ai/api/v1/chat/completions', model: 'google/gemini-2.5-flash', timeout: 25_000 },
 ];
 const FORECAST_LLM_PROVIDER_NAMES = new Set(FORECAST_LLM_PROVIDERS.map(provider => provider.name));
+const FORECAST_LLM_PROVIDER_MAX_RETRIES = 2;
+const FORECAST_LLM_RETRY_BASE_MS = 1_000;
+const FORECAST_LLM_RETRY_AFTER_MAX_MS = 2_000;
 
 function parseForecastProviderOrder(raw) {
   if (typeof raw !== 'string' || !raw.trim()) return null;
@@ -14320,9 +14323,46 @@ function getEnrichmentFailureReason({ result, raw, scenarios = 0, perspectives =
 }
 
 let forecastLlmCallOverrideForTests = null;
+let forecastLlmFetchForTests = null;
 
 function __setForecastLlmCallOverrideForTests(override = null) {
   forecastLlmCallOverrideForTests = typeof override === 'function' ? override : null;
+}
+
+function __setForecastLlmTransportForTests(overrides = null) {
+  forecastLlmFetchForTests = typeof overrides?.fetch === 'function' ? overrides.fetch : null;
+}
+
+async function __callForecastLlmForTests(systemPrompt, userPrompt, options = {}) {
+  return await callForecastLLM(systemPrompt, userPrompt, options);
+}
+
+function isForecastLlmRetryableStatus(status) {
+  return status === 408 || status === 429 || (status >= 500 && status <= 599);
+}
+
+function getResponseHeader(headers, name) {
+  if (!headers) return null;
+  if (typeof headers.get === 'function') {
+    return headers.get(name) || headers.get(name.toLowerCase()) || headers.get(name.toUpperCase());
+  }
+  const lowerName = name.toLowerCase();
+  const foundKey = Object.keys(headers).find((key) => key.toLowerCase() === lowerName);
+  return foundKey ? headers[foundKey] : null;
+}
+
+function getForecastLlmRetryAfterMs(resp) {
+  const retryAfterMs = parseRetryAfterMs(getResponseHeader(resp?.headers, 'Retry-After'));
+  return retryAfterMs == null ? null : Math.min(retryAfterMs, FORECAST_LLM_RETRY_AFTER_MAX_MS);
+}
+
+function createForecastLlmHttpError(resp) {
+  const err = new Error(`HTTP ${resp.status}`);
+  err.status = resp.status;
+  err.nonRetryable = !isForecastLlmRetryableStatus(resp.status);
+  const retryAfterMs = getForecastLlmRetryAfterMs(resp);
+  if (retryAfterMs != null) err.retryAfterMs = retryAfterMs;
+  return err;
 }
 
 async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
@@ -14340,30 +14380,41 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
     const apiKey = process.env[provider.envKey];
     if (!apiKey) continue;
     try {
-      const resp = await fetch(provider.apiUrl, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'User-Agent': CHROME_UA,
-          ...(provider.name === 'openrouter' ? { 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor' } : {}),
-        },
-        body: JSON.stringify({
-          model: provider.model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-          ],
-          max_tokens: options.maxTokens || 1500,
-          temperature: options.temperature ?? 0.3,
-        }),
-        signal: AbortSignal.timeout(provider.timeout),
-      });
-      if (!resp.ok) {
-        console.warn(`  [LLM:${stage}] ${provider.name} HTTP ${resp.status}`);
+      const forecastFetch = forecastLlmFetchForTests || ((...args) => globalThis.fetch(...args));
+      const retryDelayMs = Number.isFinite(options.retryDelayMs)
+        ? Math.max(0, Math.floor(options.retryDelayMs))
+        : FORECAST_LLM_RETRY_BASE_MS;
+      const resp = await withRetry(async () => {
+        const response = await forecastFetch(provider.apiUrl, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            'User-Agent': CHROME_UA,
+            ...(provider.name === 'openrouter' ? { 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor' } : {}),
+          },
+          body: JSON.stringify({
+            model: provider.model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            max_tokens: options.maxTokens || 1500,
+            temperature: options.temperature ?? 0.3,
+          }),
+          signal: AbortSignal.timeout(provider.timeout),
+        });
+        if (!response.ok) throw createForecastLlmHttpError(response);
+        return response;
+      }, FORECAST_LLM_PROVIDER_MAX_RETRIES, retryDelayMs);
+
+      let json;
+      try {
+        json = await resp.json();
+      } catch (err) {
+        console.warn(`  [LLM:${stage}] ${provider.name} invalid response: ${err.message}`);
         continue;
       }
-      const json = await resp.json();
       const text = json.choices?.[0]?.message?.content?.trim();
       if (!text || text.length < 20) continue;
       const model = json.model || provider.model;
@@ -17507,6 +17558,8 @@ export {
   PROMPT_LAST_ATTEMPT_KEY,
   readImpactPromptLearnedSection,
   clearImpactPromptLearnedSection,
+  __callForecastLlmForTests,
   __setForecastLlmCallOverrideForTests,
+  __setForecastLlmTransportForTests,
   __setRedisStoreForTests,
 };
