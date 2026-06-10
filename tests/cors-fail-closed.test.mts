@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 
 import { getCorsHeaders, isAllowedOrigin } from '../server/cors.ts';
 import { isDisallowedOrigin as isDisallowedOriginJs } from '../api/_cors.js';
+import { isAllowedOrigin as isAllowedOriginWorker } from '../workers/api-cors-preflight/src/index.js';
 
 // Regression coverage for issue #3705: CORS-header generation errors must
 // fail closed rather than fall back to a wildcard ACAO.
@@ -84,11 +85,19 @@ describe('isAllowedOrigin — Vercel preview allowlist (eliewm team scope)', () 
   }
 });
 
-describe('CORS twin parity — eliewm preview pattern stays tight in both files', () => {
-  // Root cause of the original 403s was the two twins drifting. Guard both:
+describe('CORS triplet parity — eliewm preview pattern stays tight in all three twins', () => {
+  // Root cause of the original 403s was twins drifting. THREE surfaces gate
+  // Vercel-preview CORS and must move together; guard each for:
   // (1) the eliewm-scoped preview pattern is present, and
   // (2) no bare *.vercel.app wildcard sneaks in as a "fix".
-  const TWINS = ['../server/cors.ts', '../api/_cors.js'];
+  // The Cloudflare Worker is the load-bearing one: it short-circuits OPTIONS at
+  // the edge, so if it drifts narrower the browser blocks the preflight before
+  // Vercel is ever consulted.
+  const TWINS = [
+    '../server/cors.ts',
+    '../api/_cors.js',
+    '../workers/api-cors-preflight/src/index.js',
+  ];
 
   for (const rel of TWINS) {
     it(`${rel} scopes Vercel previews to the eliewm team`, async () => {
@@ -101,6 +110,53 @@ describe('CORS twin parity — eliewm preview pattern stays tight in both files'
         !source.includes('worldmonitor-[a-z0-9-]+\\.vercel\\.app'),
         `${rel} must not widen to a bare *.vercel.app wildcard (security allowlist)`,
       );
+    });
+  }
+});
+
+describe('CORS Worker superset invariant — edge allowlist ⊇ function allowlist', () => {
+  // The api-cors-preflight Worker (workers/api-cors-preflight) short-circuits
+  // OPTIONS preflights at the edge, so its allowlist MUST be a superset of
+  // api/_cors.js. If the Worker rejects an origin the function would accept,
+  // the preflight echoes the canonical worldmonitor.app fallback and the
+  // browser blocks the request before it reaches Vercel.
+  //
+  // The Worker's own test (workers/api-cors-preflight/index.test.mjs) lives
+  // OUTSIDE the test:data glob and only runs in deploy-worker.yml on
+  // workers/** changes — so a function-only change can silently leave the
+  // Worker narrower. THIS gate-resident check is what actually catches
+  // function↔Worker drift (the bug that left eliewm previews dark).
+  //
+  // Localhost/127 are intentionally omitted: they are DEV-only on the function
+  // side (NODE_ENV-gated) and never reach the prod-only Worker.
+  const fnAllows = (origin: string) =>
+    !isDisallowedOriginJs(new Request('https://worldmonitor.app/x', { headers: { Origin: origin } }));
+
+  const PROD_ORIGINS = [
+    'https://worldmonitor.app',
+    'https://www.worldmonitor.app',
+    'https://tech.worldmonitor.app',
+    'https://worldmonitor-git-feature-eliewm.vercel.app',
+    'https://worldmonitor-abc123def456-eliewm.vercel.app',
+    'tauri://localhost',
+    'asset://localhost',
+    // Negatives — the function rejects these, so the superset assertion is a
+    // no-op for them; included to document the boundary.
+    'https://some-other-app-eliewm.vercel.app',
+    'https://worldmonitor-git-feature-attacker.vercel.app',
+    'https://worldmonitor-feature-elie-abc123.vercel.app',
+    'https://evil.com',
+  ];
+
+  for (const origin of PROD_ORIGINS) {
+    it(`Worker allows everything the function allows: ${origin}`, () => {
+      if (fnAllows(origin)) {
+        assert.equal(
+          isAllowedOriginWorker(origin),
+          true,
+          `Worker rejects ${origin} that api/_cors.js accepts — its OPTIONS preflight will echo the worldmonitor.app fallback and the browser will block it`,
+        );
+      }
     });
   }
 });
