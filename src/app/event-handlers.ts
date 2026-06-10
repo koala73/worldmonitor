@@ -792,8 +792,13 @@ export class EventHandlerManager implements AppModule {
       const rect = anchor.getBoundingClientRect();
       const width = 360;
       const left = Math.min(Math.max(12, rect.left), Math.max(12, window.innerWidth - width - 12));
+      const height = Math.min(popover.offsetHeight || 620, Math.max(120, window.innerHeight - 24));
+      const top = Math.min(
+        Math.max(12, rect.bottom + 8),
+        Math.max(12, window.innerHeight - height - 12),
+      );
       popover.style.left = `${left}px`;
-      popover.style.top = `${rect.bottom + 8}px`;
+      popover.style.top = `${top}px`;
     }
 
     popover.querySelector('[data-mission-close]')?.addEventListener('click', () => {

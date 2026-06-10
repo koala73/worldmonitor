@@ -411,11 +411,16 @@ export function filterMissionLayersForRenderer(
   isDeckGLActive: boolean,
   fallbackLayers: MapLayers = DEFAULT_MAP_LAYERS,
 ): MapLayers {
-  const next = { ...layers };
-  for (const key of Object.keys(next) as Array<keyof MapLayers>) {
-    if (next[key] && !isLayerExecutable(key, renderer, isDeckGLActive)) {
-      next[key] = false;
+  const filter = (candidateLayers: MapLayers): MapLayers => {
+    const next = { ...candidateLayers };
+    for (const key of Object.keys(next) as Array<keyof MapLayers>) {
+      if (next[key] && !isLayerExecutable(key, renderer, isDeckGLActive)) {
+        next[key] = false;
+      }
     }
-  }
-  return hasAnyActiveLayer(next) ? next : { ...fallbackLayers };
+    return next;
+  };
+
+  const next = filter(layers);
+  return hasAnyActiveLayer(next) ? next : filter(fallbackLayers);
 }

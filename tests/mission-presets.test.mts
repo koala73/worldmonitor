@@ -240,6 +240,20 @@ describe('mission preset renderer filtering', () => {
     assert.equal(filtered.liveTankers, false);
     assert.ok(Object.values(filtered).some(Boolean), 'renderer filtering should keep executable context layers');
   });
+
+  it('also filters fallback layers when every preset layer is renderer-incompatible', () => {
+    const presetLayers = { ...DEFAULT_MAP_LAYERS };
+    for (const key of Object.keys(presetLayers) as Array<keyof typeof presetLayers>) {
+      presetLayers[key] = false;
+    }
+    presetLayers.storageFacilities = true;
+
+    const fallbackLayers = { ...DEFAULT_MAP_LAYERS, storageFacilities: true };
+    const filtered = filterMissionLayersForRenderer(presetLayers, 'flat', false, fallbackLayers);
+
+    assert.equal(filtered.storageFacilities, false);
+    assert.ok(Object.values(filtered).some(Boolean), 'filtered fallback should keep executable default layers');
+  });
 });
 
 describe('mission preset persistence', () => {
@@ -315,5 +329,11 @@ describe('mission preset shell integration', () => {
       panelLayoutSource,
       /this\.bottomSetMemory = panelOrder \? new Set<string>\(\) : this\.getSavedBottomSet\(\);/,
     );
+  });
+
+  it('clamps desktop mission popover positioning to the viewport', () => {
+    assert.match(eventHandlersSource, /const height = Math\.min\(popover\.offsetHeight \|\| 620/);
+    assert.match(eventHandlersSource, /window\.innerHeight - height - 12/);
+    assert.match(eventHandlersSource, /popover\.style\.top = `\$\{top\}px`;/);
   });
 });
