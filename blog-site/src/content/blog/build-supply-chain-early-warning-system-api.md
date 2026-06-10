@@ -99,20 +99,36 @@ X-WM-Event: chokepoint.disruption
 Never trust an unverified webhook. The signature is a standard HMAC over the raw body:
 
 ```js
+import express from 'express';
 import { createHmac, timingSafeEqual } from 'node:crypto';
+
+const app = express();
+
+// Express does not expose the raw body by default, but HMAC must be
+// computed over the exact bytes that were signed. Capture them here.
+app.use(express.json({
+  verify: (req, _res, buf) => { req.rawBody = buf; },
+}));
 
 function verify(rawBody, signatureHeader, secret) {
   const expected = createHmac('sha256', secret).update(rawBody).digest('hex');
-  const received = signatureHeader.replace('sha256=', '');
+  const received = (signatureHeader || '').replace('sha256=', '');
   return received.length === expected.length &&
     timingSafeEqual(Buffer.from(received), Buffer.from(expected));
 }
+
+// Remembers delivery IDs we have already processed. Use a TTL cache or a
+// shared store (Redis) in production — an unbounded Set leaks memory.
+const seenDeliveries = new Set();
 
 app.post('/wm-shipping', (req, res) => {
   if (!verify(req.rawBody, req.headers['x-wm-signature'], SECRET)) {
     return res.status(401).end();
   }
-  if (seenDeliveries.has(req.headers['x-wm-delivery-id'])) return res.status(200).end();
+
+  const deliveryId = req.headers['x-wm-delivery-id'];
+  if (seenDeliveries.has(deliveryId)) return res.status(200).end();
+  seenDeliveries.add(deliveryId);
 
   const { chokepointId, score, reason } = req.body;
   postToSlack(`:rotating_light: ${chokepointId} disruption at ${score}/100 (${reason}). ` +
@@ -121,7 +137,7 @@ app.post('/wm-shipping', (req, res) => {
 });
 ```
 
-Two production notes from the delivery contract: delivery is **at-least-once**, so deduplicate on `X-WM-Delivery-Id`; and repeated delivery failures deactivate the subscription, so wire up the `reactivate` endpoint in your runbook.
+Three production notes from the delivery contract: the HMAC must be computed over the **raw request bytes**, which is why the `express.json` `verify` hook stashes `req.rawBody` — recomputing it from the parsed object will not match; delivery is **at-least-once**, so deduplicate on `X-WM-Delivery-Id` (back the Set with a TTL cache or Redis so it does not grow forever); and repeated delivery failures deactivate the subscription, so wire up the `reactivate` endpoint in your runbook.
 
 The `lanesExposedTo()` lookup is your exposure matrix from Step 1 — that is what turns a generic "Hormuz is disrupted" alert into "your AE→NL tanker lane just lost its primary route; the Cape bypass costs 1.35× and 12 extra days."
 
