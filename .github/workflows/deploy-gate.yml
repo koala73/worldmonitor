@@ -1,12 +1,12 @@
 name: Deploy Gate
 
-# Runs whenever Test or Typecheck completes on a PR/push.
+# Runs whenever Test, Typecheck, or Security Audit completes on a PR/push.
 # Checks whether all required PR smoke gates have passed for the same commit SHA.
 # Posts a commit status on the PR's head SHA so branch protection can see it.
 
 on:
   workflow_run:
-    workflows: ["Test", "Typecheck"]
+    workflows: ["Test", "Typecheck", "Security Audit"]
     types: [completed]
 
 permissions:
@@ -22,7 +22,7 @@ jobs:
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          required='["unit","typecheck","sidecar","convex-tests","variant-smoke-full","resilience-validation-smoke"]'
+          required='["unit","typecheck","sidecar","convex-tests","variant-smoke-full","resilience-validation-smoke","security-audit"]'
 
           # Poll check-runs for this SHA and find the latest result for each required job.
           runs=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" \
