@@ -8,7 +8,7 @@ export const Footer = () => (
           <span className="text-[9px] uppercase tracking-[2px] opacity-60 mt-0.5">by Someone.ceo</span>
         </div>
       </div>
-      <div className="flex items-center gap-6">
+      <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
         <a href="/" className="hover:text-wm-text transition-colors">Dashboard</a>
         <a href="https://www.worldmonitor.app/blog/" className="hover:text-wm-text transition-colors">Blog</a>
         <a href="https://www.worldmonitor.app/docs" className="hover:text-wm-text transition-colors">Docs</a>

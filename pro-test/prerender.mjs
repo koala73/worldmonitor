@@ -129,65 +129,57 @@ const w = en.welcome;
 const welcomeContent = `
 <div id="seo-prerender" lang="en">
   <h1>${w.hero.headline1} ${w.hero.headline2}</h1>
-  <p>${w.hero.sub}</p>
-  <p>${w.hero.trustUsers} · ${w.hero.trustCountries} · ${w.hero.trustOpenSource}. <a href="https://www.worldmonitor.app/">${w.hero.ctaPrimary}</a> — ${w.hero.ctaFree}.</p>
+  <p>${w.hero.eyebrow}. ${w.hero.sub}</p>
+  <p>${w.hero.trustUsers} · ${w.hero.trustOpenSource}. <a href="https://www.worldmonitor.app/">${w.hero.ctaPrimary}</a> — ${w.hero.ctaFree}.</p>
 
   <h2>${w.live.title}</h2>
   <p>${w.live.subtitle}</p>
   <p>${w.live.cardHeadlines} · ${w.live.cardCii} · ${w.live.cardChokepoints} · ${w.live.cardMarkets}</p>
 
-  <h2>${w.pillars.title}</h2>
-  <h3>${w.pillars.seeTitle}</h3><p>${w.pillars.seeDesc}</p>
-  <p>${w.pillars.seeF1} · ${w.pillars.seeF2} · ${w.pillars.seeF3} · ${w.pillars.seeF4}</p>
-  <h3>${w.pillars.understandTitle}</h3><p>${w.pillars.understandDesc}</p>
-  <p>${w.pillars.understandF1} · ${w.pillars.understandF2} · ${w.pillars.understandF3} · ${w.pillars.understandF4}</p>
-  <h3>${w.pillars.actTitle}</h3><p>${w.pillars.actDesc}</p>
-  <p>${w.pillars.actF1} · ${w.pillars.actF2} · ${w.pillars.actF3} · ${w.pillars.actF4}</p>
+  <h2>${w.moments.title}</h2>
+  <p>${w.moments.sub}</p>
+  <h3>${w.moments.m1.title}</h3><p>${w.moments.m1.kicker}.</p>
+  <p>${w.moments.m1.s1} ${w.moments.m1.s2} ${w.moments.m1.s3} ${w.moments.m1.s4}</p>
+  <h3>${w.moments.m2.title1} ${w.moments.m2.title2}</h3><p>${w.moments.m2.kicker}.</p>
+  <p>${w.moments.m2.s1} ${w.moments.m2.s2} ${w.moments.m2.s3} ${w.moments.m2.s4}</p>
+  <h3>${w.moments.m3.title}</h3><p>${w.moments.m3.kicker}.</p>
+  <p>${w.moments.m3.s1} ${w.moments.m3.s2} ${w.moments.m3.s3} ${w.moments.m3.s4}</p>
+  <h3>${w.moments.m4.title1} ${w.moments.m4.title2}</h3><p>${w.moments.m4.kicker}.</p>
+  <p>${w.moments.m4.s1} ${w.moments.m4.s2} ${w.moments.m4.s3} ${w.moments.m4.s4}</p>
+  <p>${w.moments.bridge1} ${w.moments.bridge2}</p>
 
-  <h2>${w.useCases.title}</h2>
-  <h3>${w.useCases.analystTitle}</h3><p>${w.useCases.analystDesc}</p>
-  <p>${w.useCases.analystF1} · ${w.useCases.analystF2} · ${w.useCases.analystF3} · ${w.useCases.analystF4}</p>
-  <h3>${w.useCases.traderTitle}</h3><p>${w.useCases.traderDesc}</p>
-  <p>${w.useCases.traderF1} · ${w.useCases.traderF2} · ${w.useCases.traderF3} · ${w.useCases.traderF4}</p>
-  <h3>${w.useCases.opsTitle}</h3><p>${w.useCases.opsDesc}</p>
-  <p>${w.useCases.opsF1} · ${w.useCases.opsF2} · ${w.useCases.opsF3} · ${w.useCases.opsF4}</p>
-  <h3>${w.useCases.builderTitle}</h3><p>${w.useCases.builderDesc}</p>
-  <p>${w.useCases.builderF1} · ${w.useCases.builderF2} · ${w.useCases.builderF3} · ${w.useCases.builderF4}</p>
-
-  <h2>${w.nuggets.title}</h2>
-  <p>${w.nuggets.subtitle}</p>
+  <h2>${w.firstFive.title}</h2>
+  <p>${w.firstFive.sub}</p>
   <dl>
-    <dt>${w.nuggets.n1Title}</dt><dd>${w.nuggets.n1Desc}</dd>
-    <dt>${w.nuggets.n2Title}</dt><dd>${w.nuggets.n2Desc}</dd>
-    <dt>${w.nuggets.n3Title}</dt><dd>${w.nuggets.n3Desc}</dd>
-    <dt>${w.nuggets.n4Title}</dt><dd>${w.nuggets.n4Desc}</dd>
-    <dt>${w.nuggets.n5Title}</dt><dd>${w.nuggets.n5Desc}</dd>
-    <dt>${w.nuggets.n6Title}</dt><dd>${w.nuggets.n6Desc}</dd>
-    <dt>${w.nuggets.n7Title}</dt><dd>${w.nuggets.n7Desc}</dd>
-    <dt>${w.nuggets.n8Title}</dt><dd>${w.nuggets.n8Desc}</dd>
-    <dt>${w.nuggets.n9Title}</dt><dd>${w.nuggets.n9Desc}</dd>
-    <dt>${w.nuggets.n10Title}</dt><dd>${w.nuggets.n10Desc}</dd>
-    <dt>${w.nuggets.n11Title}</dt><dd>${w.nuggets.n11Desc}</dd>
-    <dt>${w.nuggets.n12Title}</dt><dd>${w.nuggets.n12Desc}</dd>
+    <dt>${w.firstFive.f1Title}</dt><dd>${w.firstFive.f1Desc}</dd>
+    <dt>${w.firstFive.f2Title}</dt><dd>${w.firstFive.f2Desc}</dd>
+    <dt>${w.firstFive.f3Title}</dt><dd>${w.firstFive.f3Desc}</dd>
+    <dt>${w.firstFive.f4Title}</dt><dd>${w.firstFive.f4Desc}</dd>
+    <dt>${w.firstFive.f5Title}</dt><dd>${w.firstFive.f5Desc}</dd>
   </dl>
 
-  <h2>${w.stats.eyebrow}</h2>
-  <p>${w.stats.feedsValue} ${w.stats.feeds} · ${w.stats.layersValue} ${w.stats.layers} · ${w.stats.countriesValue} ${w.stats.countries} · ${w.stats.providersValue} ${w.stats.providers} · ${w.stats.mcpToolsValue} ${w.stats.mcpTools} · ${w.stats.languagesValue} ${w.stats.languages}</p>
+  <h2>${w.depth.title}</h2>
+  <p>${w.depth.sub}</p>
+  <p>${w.depth.s1v} ${w.depth.s1l} · ${w.depth.s2v} ${w.depth.s2l} · ${w.depth.s3v} ${w.depth.s3l} · ${w.depth.s4v} ${w.depth.s4l} · ${w.depth.s5v} ${w.depth.s5l} · ${w.depth.s6v} ${w.depth.s6l} · ${w.depth.s7v} ${w.depth.s7l} · ${w.depth.s8v} ${w.depth.s8l} · ${w.depth.s9v} ${w.depth.s9l} · ${w.depth.s10v} ${w.depth.s10l} · ${w.depth.s11v} ${w.depth.s11l} · ${w.depth.s12v} ${w.depth.s12l} · ${w.depth.s13v} ${w.depth.s13l} · ${w.depth.s14v} ${w.depth.s14l} · ${w.depth.s15v} ${w.depth.s15l}</p>
+  <dl>
+    <dt>${w.depth.n1Title}</dt><dd>${w.depth.n1Desc}</dd>
+    <dt>${w.depth.n2Title}</dt><dd>${w.depth.n2Desc}</dd>
+    <dt>${w.depth.n3Title}</dt><dd>${w.depth.n3Desc}</dd>
+    <dt>${w.depth.n4Title}</dt><dd>${w.depth.n4Desc}</dd>
+    <dt>${w.depth.n5Title}</dt><dd>${w.depth.n5Desc}</dd>
+    <dt>${w.depth.n6Title}</dt><dd>${w.depth.n6Desc}</dd>
+  </dl>
 
-  <h2>${w.variants.title}</h2>
-  <ul>
-    <li><a href="https://www.worldmonitor.app/">World Monitor</a> — ${w.variants.world}</li>
-    <li><a href="https://tech.worldmonitor.app/">Tech Monitor</a> — ${w.variants.tech}</li>
-    <li><a href="https://finance.worldmonitor.app/">Finance Monitor</a> — ${w.variants.finance}</li>
-    <li><a href="https://commodity.worldmonitor.app/">Commodity Monitor</a> — ${w.variants.commodity}</li>
-    <li><a href="https://energy.worldmonitor.app/">Energy Monitor</a> — ${w.variants.energy}</li>
-    <li><a href="https://happy.worldmonitor.app/">Happy Monitor</a> — ${w.variants.happy}</li>
-  </ul>
+  <h2>${w.agents.title}</h2>
+  <p>${w.agents.sub}</p>
+  <p>${w.agents.b1} · ${w.agents.b2} · ${w.agents.b3} · ${w.agents.b4}</p>
 
-  <h2>${w.pricing.title}</h2>
+  <h2>${w.pricing.title1} ${w.pricing.title2}</h2>
+  <p>${w.pricing.sub}</p>
   <h3>${w.pricing.freeTitle}</h3><p>${w.pricing.freeDesc}</p>
+  <p>${w.pricing.freeF1} · ${w.pricing.freeF2} · ${w.pricing.freeF3} · ${w.pricing.freeF4}</p>
   <h3>${w.pricing.proTitle}</h3><p>${w.pricing.proDesc}</p>
-  <p>${w.pricing.proF1} · ${w.pricing.proF2} · ${w.pricing.proF3}</p>
+  <p>${w.pricing.proF1} · ${w.pricing.proF2} · ${w.pricing.proF3} · ${w.pricing.proF4} · ${w.pricing.proF5}</p>
   <p>${w.pricing.note} — <a href="https://www.worldmonitor.app/pro">${w.pricing.cta}</a></p>
 
   <h2>${w.faq.title}</h2>
@@ -200,6 +192,7 @@ const welcomeContent = `
     <dt>${w.faq.q6}</dt><dd>${w.faq.a6}</dd>
     <dt>${w.faq.q7}</dt><dd>${w.faq.a7}</dd>
     <dt>${w.faq.q8}</dt><dd>${w.faq.a8}</dd>
+    <dt>${w.faq.q9}</dt><dd>${w.faq.a9}</dd>
   </dl>
 
   <h2>${w.cta.title}</h2>

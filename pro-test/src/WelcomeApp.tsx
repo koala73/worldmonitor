@@ -1,11 +1,10 @@
 import { Nav } from './welcome/Nav';
 import { Hero } from './welcome/Hero';
 import { LiveStrip } from './welcome/LiveStrip';
-import { Pillars } from './welcome/Pillars';
-import { UseCases } from './welcome/UseCases';
-import { Nuggets } from './welcome/Nuggets';
-import { Stats } from './welcome/Stats';
-import { Variants } from './welcome/Variants';
+import { Moments } from './welcome/Moments';
+import { FirstFive } from './welcome/FirstFive';
+import { Depth } from './welcome/Depth';
+import { Agents } from './welcome/Agents';
 import { PricingTeaser } from './welcome/PricingTeaser';
 import { FAQ } from './welcome/FAQ';
 import { FinalCta } from './welcome/FinalCta';
@@ -18,11 +17,10 @@ export default function WelcomeApp() {
       <main>
         <Hero />
         <LiveStrip />
-        <Pillars />
-        <UseCases />
-        <Nuggets />
-        <Stats />
-        <Variants />
+        <Moments />
+        <FirstFive />
+        <Depth />
+        <Agents />
         <PricingTeaser />
         <FAQ />
         <FinalCta />

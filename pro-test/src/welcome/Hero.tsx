@@ -12,7 +12,10 @@ const ConsoleFrame = () => (
     className="relative max-w-5xl mx-auto mt-14"
   >
     <div className="absolute -inset-8 bg-wm-green/5 blur-[60px] rounded-full pointer-events-none" aria-hidden="true" />
-    <div className="relative border border-wm-border rounded-md overflow-hidden border-glow bg-wm-card">
+    <a
+      href="/?ref=welcome-plate"
+      className="relative block border border-wm-border rounded-md overflow-hidden border-glow bg-wm-card hover:border-wm-green/40 transition-colors"
+    >
       <div className="flex items-center justify-between px-4 h-9 border-b border-wm-border bg-wm-bg/80 font-mono text-[10px] uppercase tracking-widest text-wm-muted">
         <div className="flex items-center gap-1.5" aria-hidden="true">
           <span className="w-2.5 h-2.5 rounded-full bg-[#ff5f57]" />
@@ -25,7 +28,7 @@ const ConsoleFrame = () => (
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-wm-green opacity-60" />
             <span className="relative inline-flex rounded-full h-2 w-2 bg-wm-green" />
           </span>
-          {t('welcome.live.liveBadge')}
+          {t('welcome.hero.plateNote')}
         </span>
       </div>
       <img
@@ -36,7 +39,7 @@ const ConsoleFrame = () => (
         height="1538"
         fetchPriority="high"
       />
-    </div>
+    </a>
   </motion.div>
 );
 
@@ -45,7 +48,13 @@ export const Hero = () => (
     <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(74,222,128,0.10)_0%,transparent_55%)] pointer-events-none" aria-hidden="true" />
     <div className="max-w-5xl mx-auto text-center relative z-10">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-        <div className="font-mono text-[11px] uppercase tracking-[4px] text-wm-green mb-5">{t('welcome.hero.eyebrow')}</div>
+        <div className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[4px] text-wm-green mb-5 px-3 py-1.5 rounded-full border border-wm-green/30 bg-wm-green/10">
+          <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-wm-green opacity-60" />
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-wm-green" />
+          </span>
+          {t('welcome.hero.eyebrow')}
+        </div>
         <h1 className="text-4xl md:text-7xl font-display font-bold tracking-tight leading-[1.05]">
           {t('welcome.hero.headline1')}
           <br />
@@ -63,13 +72,13 @@ export const Hero = () => (
         className="mt-9 flex flex-col sm:flex-row items-center justify-center gap-4"
       >
         <a
-          href="/"
+          href="/?ref=welcome-hero"
           className="bg-wm-green text-wm-bg px-8 py-3.5 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-2"
         >
           {t('welcome.hero.ctaPrimary')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
         </a>
         <a
-          href="/pro"
+          href="#moments"
           className="border border-wm-border text-wm-text px-8 py-3.5 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:border-wm-green/50 transition-colors"
         >
           {t('welcome.hero.ctaSecondary')}
@@ -92,8 +101,6 @@ export const Hero = () => (
       >
         <WiredBadge />
         <span>{t('welcome.hero.trustUsers')}</span>
-        <span aria-hidden="true" className="text-wm-border">|</span>
-        <span>{t('welcome.hero.trustCountries')}</span>
         <span aria-hidden="true" className="text-wm-border">|</span>
         <a
           href="https://github.com/koala73/worldmonitor"
