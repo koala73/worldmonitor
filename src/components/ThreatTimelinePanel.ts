@@ -50,10 +50,14 @@ export class ThreatTimelinePanel extends Panel {
       this.lastClusters = fallbackClusters;
     }
 
-    const serverInsights = getServerInsights() ?? await fetchServerInsights();
-    if (serverInsights) {
-      this.updateFromServerInsights(serverInsights);
-      return;
+    try {
+      const serverInsights = getServerInsights() ?? await fetchServerInsights();
+      if (serverInsights) {
+        this.updateFromServerInsights(serverInsights);
+        return;
+      }
+    } catch (err) {
+      console.warn('[ThreatTimeline] insight refresh failed, falling back to clusters:', err);
     }
 
     this.updateFromClusters(this.lastClusters, 'degraded', 'Server insight snapshot unavailable');
@@ -197,7 +201,12 @@ export class ThreatTimelinePanel extends Panel {
     const labels = days.map(day => {
       const xPos = x(day.key);
       if (xPos === undefined) return '';
-      return `<text x="${(xPos + x.bandwidth() / 2).toFixed(1)}" y="${height - 8}" text-anchor="middle">${escapeHtml(day.label.replace(' ', '\n'))}</text>`;
+      const centerX = (xPos + x.bandwidth() / 2).toFixed(1);
+      const [month = '', dayNumber = ''] = day.label.split(' ');
+      return `<text x="${centerX}" y="${height - 16}" text-anchor="middle">
+        <tspan x="${centerX}" dy="0">${escapeHtml(month)}</tspan>
+        <tspan x="${centerX}" dy="10">${escapeHtml(dayNumber)}</tspan>
+      </text>`;
     }).join('');
 
     return `

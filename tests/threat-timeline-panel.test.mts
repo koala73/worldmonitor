@@ -134,3 +134,28 @@ describe('ThreatTimelinePanel registration', () => {
     assert.match(commandsSrc, /id:\s*'panel:threat-timeline'[\s\S]*keywords:\s*\[[^\]]*'threat trend'/);
   });
 });
+
+describe('ThreatTimelinePanel rendering guardrails', () => {
+  it('falls back to degraded cluster content when insight refresh throws', () => {
+    const panelSrc = readFileSync(resolve(root, 'src/components/ThreatTimelinePanel.ts'), 'utf-8');
+
+    assert.match(
+      panelSrc,
+      /try\s*\{[\s\S]*getServerInsights\(\)\s*\?\?\s*await fetchServerInsights\(\)[\s\S]*\}\s*catch\s*\(err\)/,
+      'refresh should catch insight fetch failures before fire-and-forget callers can drop the fallback',
+    );
+    assert.match(
+      panelSrc,
+      /catch\s*\(err\)\s*\{[\s\S]*console\.warn\('\[ThreatTimeline\] insight refresh failed[\s\S]*\}[\s\S]*this\.updateFromClusters\(this\.lastClusters,\s*'degraded',\s*'Server insight snapshot unavailable'\)/,
+      'refresh should surface the existing degraded fallback after a failed insight fetch',
+    );
+  });
+
+  it('renders SVG day labels with tspans instead of collapsed newline text', () => {
+    const panelSrc = readFileSync(resolve(root, 'src/components/ThreatTimelinePanel.ts'), 'utf-8');
+
+    assert.match(panelSrc, /<tspan x="\$\{centerX\}" dy="0">/);
+    assert.match(panelSrc, /<tspan x="\$\{centerX\}" dy="10">/);
+    assert.doesNotMatch(panelSrc, /label\.replace\(' ', '\\n'\)/);
+  });
+});
