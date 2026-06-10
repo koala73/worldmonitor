@@ -66,7 +66,7 @@ export async function listUsHeadlinesV6(av?: string | null): Promise<ListUsHeadl
   // (s-maxage=30, stale-if-error=300) and serves a BLANK feed to an entire
   // edge region. On a throw the handler returns 503 so stale-if-error keeps
   // serving the last good feed instead.
-  const stored = ((await getCachedJson(DIGEST_KEY, false, undefined, true)) as ClusteredItem[] | null) ?? [];
+  const stored = ((await getCachedJson(DIGEST_KEY, false, 8_000, true)) as ClusteredItem[] | null) ?? [];
 
   const min = minSources();
   const filtered = min <= 1

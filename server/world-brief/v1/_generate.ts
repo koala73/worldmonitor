@@ -510,7 +510,7 @@ async function mapWithConcurrency<T, R>(
 
 /** Read the current v6 digest (empty array on miss/bad shape). */
 async function readDigest(): Promise<ClusteredItem[]> {
-  const digest = (await getCachedJson(DIGEST_KEY, false, 5_000)) as ClusteredItem[] | null;
+  const digest = (await getCachedJson(DIGEST_KEY, false, 8_000)) as ClusteredItem[] | null;
   return Array.isArray(digest) ? digest : [];
 }
 

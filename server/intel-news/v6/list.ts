@@ -75,7 +75,7 @@ function toItem(c: ClusteredItem): IntelNewsV6Item {
  *                   `?av=` query — selects the per-version per-topic cap.
  */
 export async function listIntelNewsV6(category: string | null, av?: string | null): Promise<ListIntelNewsV6Response> {
-  const digest = (await getCachedJson(DIGEST_KEY, false, 3_000)) as ClusteredItem[] | null;
+  const digest = (await getCachedJson(DIGEST_KEY, false, 8_000)) as ClusteredItem[] | null;
   const all = Array.isArray(digest) ? digest : [];
 
   const filtered = all
