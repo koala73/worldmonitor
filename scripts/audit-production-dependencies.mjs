@@ -13,7 +13,7 @@ const SEVERITY_RANK = new Map([
 
 export const BASELINE_ADVISORIES_BY_LOCKFILE = {
   'package-lock.json': ['GHSA-w7jw-789q-3m8p'],
-  'consumer-prices-core/package-lock.json': ['GHSA-q3j6-qgpj-74h6', 'GHSA-v39h-62p7-jpjc'],
+  'consumer-prices-core/package-lock.json': ['GHSA-jx2c-rxcm-jvmq', 'GHSA-q3j6-qgpj-74h6', 'GHSA-v39h-62p7-jpjc'],
   'blog-site/package-lock.json': [],
   'pro-test/package-lock.json': ['GHSA-qjx8-664m-686j', 'GHSA-w24r-5266-9c3c', 'GHSA-w7jw-789q-3m8p'],
   'scripts/package-lock.json': [],
