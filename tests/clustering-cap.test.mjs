@@ -31,12 +31,22 @@ describe('news clustering caps unbounded input work', () => {
     );
     assert.match(
       clusteringSrc,
-      /const semanticCandidates = jaccardClusters\.slice\(0, MAX_SEMANTIC_CLUSTER_INPUT\);/,
-      'clusterNewsHybrid must cap the clusters sent to semantic refinement',
+      /function compareClustersForSemanticCandidate\(a: ClusteredEvent, b: ClusteredEvent\): number \{[\s\S]*?b\.sourceCount - a\.sourceCount[\s\S]*?getSourceTier\(a\.primarySource\) - getSourceTier\(b\.primarySource\)[\s\S]*?b\.lastUpdated\.getTime\(\) - a\.lastUpdated\.getTime\(\)/,
+      'clusterNewsHybrid must rank semantic candidates by signal strength before capping',
     );
     assert.match(
       clusteringSrc,
-      /const overflowClusters = jaccardClusters\.slice\(MAX_SEMANTIC_CLUSTER_INPUT\);/,
+      /const rankedSemanticInput = \[\.\.\.jaccardClusters\]\.sort\(compareClustersForSemanticCandidate\);/,
+      'clusterNewsHybrid must sort the semantic candidate pool before slicing',
+    );
+    assert.match(
+      clusteringSrc,
+      /const semanticCandidates = rankedSemanticInput\.slice\(0, MAX_SEMANTIC_CLUSTER_INPUT\);/,
+      'clusterNewsHybrid must cap the ranked clusters sent to semantic refinement',
+    );
+    assert.match(
+      clusteringSrc,
+      /const overflowClusters = rankedSemanticInput\.slice\(MAX_SEMANTIC_CLUSTER_INPUT\);/,
       'clusterNewsHybrid must retain clusters beyond the semantic cap',
     );
     assert.match(

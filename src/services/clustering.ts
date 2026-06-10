@@ -16,6 +16,20 @@ export function clusterNews(items: NewsItem[]): ClusteredEvent[] {
   return clusterNewsCore(items, getSourceTier) as ClusteredEvent[];
 }
 
+function compareClustersForSemanticCandidate(a: ClusteredEvent, b: ClusteredEvent): number {
+  const alertDelta = Number(b.isAlert) - Number(a.isAlert);
+  if (alertDelta !== 0) return alertDelta;
+
+  const sourceDelta = b.sourceCount - a.sourceCount;
+  if (sourceDelta !== 0) return sourceDelta;
+
+  const tierDelta = getSourceTier(a.primarySource) - getSourceTier(b.primarySource);
+  if (tierDelta !== 0) return tierDelta;
+
+  return b.lastUpdated.getTime() - a.lastUpdated.getTime()
+    || a.id.localeCompare(b.id);
+}
+
 /**
  * Hybrid clustering: Jaccard first, then semantic refinement if ML available
  */
@@ -29,8 +43,9 @@ export async function clusterNewsHybrid(items: NewsItem[]): Promise<ClusteredEve
   }
 
   try {
-    const semanticCandidates = jaccardClusters.slice(0, MAX_SEMANTIC_CLUSTER_INPUT);
-    const overflowClusters = jaccardClusters.slice(MAX_SEMANTIC_CLUSTER_INPUT);
+    const rankedSemanticInput = [...jaccardClusters].sort(compareClustersForSemanticCandidate);
+    const semanticCandidates = rankedSemanticInput.slice(0, MAX_SEMANTIC_CLUSTER_INPUT);
+    const overflowClusters = rankedSemanticInput.slice(MAX_SEMANTIC_CLUSTER_INPUT);
 
     // Get cluster primary titles for embedding
     const clusterTexts = semanticCandidates.map(c => ({

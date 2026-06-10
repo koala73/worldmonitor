@@ -8,12 +8,28 @@ const appSrc = readFileSync(resolve(root, 'src/App.ts'), 'utf8');
 const militaryFlightsSrc = readFileSync(resolve(root, 'src/services/military-flights.ts'), 'utf8');
 const militaryVesselsSrc = readFileSync(resolve(root, 'src/services/military-vessels.ts'), 'utf8');
 
+function methodBody(source, signature) {
+  const signatureIndex = source.indexOf(signature);
+  assert.notEqual(signatureIndex, -1, `could not locate ${signature}`);
+
+  const openBraceIndex = source.indexOf('{', signatureIndex);
+  assert.notEqual(openBraceIndex, -1, `could not locate ${signature} opening brace`);
+
+  let depth = 0;
+  for (let index = openBraceIndex; index < source.length; index++) {
+    const char = source[index];
+    if (char === '{') depth++;
+    if (char === '}') depth--;
+    if (depth === 0) {
+      return source.slice(openBraceIndex + 1, index);
+    }
+  }
+
+  assert.fail(`could not locate ${signature} closing brace`);
+}
+
 function appDestroyBody() {
-  const match = appSrc.match(
-    /public destroy\(\): void \{([\s\S]*?)\n {2}\}(?=\n\n {2}(?:public|private) )/,
-  );
-  assert.ok(match, 'could not locate App.destroy() body');
-  return match[1];
+  return methodBody(appSrc, 'public destroy(): void');
 }
 
 describe('App.destroy lifecycle cleanup contract', () => {
