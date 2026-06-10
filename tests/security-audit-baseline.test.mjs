@@ -5,7 +5,7 @@ import {
   BASELINE_ADVISORIES_BY_LOCKFILE,
   collectAuditFindings,
   collectUnbaselinedFindings,
-} from '../scripts/audit-production-dependencies.mjs';
+} from '../.github/scripts/audit-production-dependencies.mjs';
 
 function auditReportWith(via) {
   return {

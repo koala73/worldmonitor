@@ -12,7 +12,7 @@ const packageJson = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8
 const packageScripts = packageJson.scripts ?? {};
 const deployGateWorkflow = readFileSync(resolve(workflowsDir, 'deploy-gate.yml'), 'utf8');
 const securityAuditWorkflow = readFileSync(resolve(workflowsDir, 'security-audit.yml'), 'utf8');
-const securityAuditScript = readFileSync(resolve(root, 'scripts/audit-production-dependencies.mjs'), 'utf8');
+const securityAuditScript = readFileSync(resolve(root, '.github/scripts/audit-production-dependencies.mjs'), 'utf8');
 const testWorkflow = readFileSync(resolve(workflowsDir, 'test.yml'), 'utf8');
 const workflowText = readdirSync(workflowsDir)
   .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
@@ -179,7 +179,7 @@ describe('CI workflow coverage', () => {
     assert.match(securityAuditWorkflow, /\n    name: security-audit\n/, 'security-audit.yml must publish a security-audit check run');
     assert.match(
       securityAuditWorkflow,
-      /node scripts\/audit-production-dependencies\.mjs/,
+      /node \.github\/scripts\/audit-production-dependencies\.mjs/,
       'security-audit.yml must run the production dependency audit gate',
     );
     assert.match(
