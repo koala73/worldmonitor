@@ -496,8 +496,9 @@ function clusterVessels(vessels: MilitaryVessel[]): MilitaryVesselCluster[] {
   return clusters;
 }
 
-// Initialize cleanup interval
-if (typeof window !== 'undefined') {
+/** Start the periodic vessel-history cleanup if it is not already running. */
+export function startVesselHistoryCleanup(): void {
+  if (typeof window === 'undefined' || historyCleanupIntervalId) return;
   historyCleanupIntervalId = setInterval(cleanup, HISTORY_CLEANUP_INTERVAL);
 }
 
@@ -508,6 +509,8 @@ export function stopVesselHistoryCleanup(): void {
     historyCleanupIntervalId = null;
   }
 }
+
+startVesselHistoryCleanup();
 
 /**
  * Initialize military vessel tracking

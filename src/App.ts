@@ -23,6 +23,8 @@ import {
   initAisStream,
   isOutagesConfigured,
   disconnectAisStream,
+  startFlightHistoryCleanup,
+  startVesselHistoryCleanup,
   stopFlightHistoryCleanup,
   stopVesselHistoryCleanup,
 } from '@/services';
@@ -933,6 +935,8 @@ export class App {
     });
 
     await initDB();
+    startFlightHistoryCleanup();
+    startVesselHistoryCleanup();
     await initI18n();
     // Localize the static index.html shell — <title>, meta description, and
     // sr-only <h1> are baked in English so search crawlers see something

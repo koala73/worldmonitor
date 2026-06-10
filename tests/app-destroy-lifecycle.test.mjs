@@ -5,6 +5,8 @@ import { resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
 const appSrc = readFileSync(resolve(root, 'src/App.ts'), 'utf8');
+const militaryFlightsSrc = readFileSync(resolve(root, 'src/services/military-flights.ts'), 'utf8');
+const militaryVesselsSrc = readFileSync(resolve(root, 'src/services/military-vessels.ts'), 'utf8');
 
 function appDestroyBody() {
   const match = appSrc.match(
@@ -25,6 +27,15 @@ describe('App.destroy lifecycle cleanup contract', () => {
     }
   });
 
+  it('restarts flight and vessel history cleanup on same-document re-init', () => {
+    assert.match(appSrc, /startFlightHistoryCleanup,\n\s+startVesselHistoryCleanup,/);
+    assert.match(appSrc, /await initDB\(\);\n\s+startFlightHistoryCleanup\(\);\n\s+startVesselHistoryCleanup\(\);/);
+    assert.match(militaryFlightsSrc, /export function startFlightHistoryCleanup\(\): void \{[\s\S]*?historyCleanupIntervalId = setInterval\(cleanupFlightHistory, HISTORY_CLEANUP_INTERVAL\);[\s\S]*?\}/);
+    assert.match(militaryFlightsSrc, /startFlightHistoryCleanup\(\);/);
+    assert.match(militaryVesselsSrc, /export function startVesselHistoryCleanup\(\): void \{[\s\S]*?historyCleanupIntervalId = setInterval\(cleanup, HISTORY_CLEANUP_INTERVAL\);[\s\S]*?\}/);
+    assert.match(militaryVesselsSrc, /startVesselHistoryCleanup\(\);/);
+  });
+
   it('preserves existing map/AIS/WebMCP teardown', () => {
     const body = appDestroyBody();
     for (const expected of [
@@ -35,4 +46,5 @@ describe('App.destroy lifecycle cleanup contract', () => {
       assert.ok(body.includes(expected), `App.destroy() must keep ${expected}`);
     }
   });
+
 });
