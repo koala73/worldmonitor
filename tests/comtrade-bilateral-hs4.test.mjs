@@ -298,14 +298,31 @@ describe('Comtrade reporter-code source-of-truth guard', () => {
     ...collectRuntimeSources(join(root, 'server')),
     ...collectRuntimeSources(join(root, 'src')),
   ];
-  const staleInlineMap = /\b(?:ISO2_TO_COMTRADE(?:_OVERRIDES)?|COMTRADE_REPORTER_OVERRIDES)\b\s*(?::[^=]+)?=\s*\{[\s\S]*?\bIN:\s*['"]699['"][\s\S]*?\bTW:\s*['"]490['"][\s\S]*?\}/;
+  const inlineReporterMapDeclaration =
+    /\b(?:ISO2_TO_COMTRADE(?:_OVERRIDES)?|COMTRADE_REPORTER_OVERRIDES)\b\s*(?::[^=]+)?=\s*\{([\s\S]*?)\}/g;
+  const staleInlineReporterOverride = /\b(?:IN:\s*['"]699['"]|TW:\s*['"]490['"])/;
+
+  function hasStaleInlineReporterMap(src) {
+    for (const match of src.matchAll(inlineReporterMapDeclaration)) {
+      if (staleInlineReporterOverride.test(match[1] ?? '')) return true;
+    }
+    return false;
+  }
+
+  it('catches stale inline maps regardless of key ordering or partial entries', () => {
+    assert.equal(hasStaleInlineReporterMap("const ISO2_TO_COMTRADE = { IN: '699', TW: '490' };"), true);
+    assert.equal(hasStaleInlineReporterMap("const ISO2_TO_COMTRADE = { TW: '490', IN: '699' };"), true);
+    assert.equal(hasStaleInlineReporterMap("const ISO2_TO_COMTRADE_OVERRIDES = { IN: '699' };"), true);
+    assert.equal(hasStaleInlineReporterMap("const COMTRADE_REPORTER_OVERRIDES = { TW: '490' };"), true);
+    assert.equal(hasStaleInlineReporterMap("const OTHER_MAP = { IN: '699', TW: '490' };"), false);
+  });
 
   it('does not reintroduce stale inline IN/TW-only reporter maps in runtime sources', () => {
     for (const filePath of checkedFiles) {
       const src = readFileSync(filePath, 'utf-8');
-      assert.doesNotMatch(
-        src,
-        staleInlineMap,
+      assert.equal(
+        hasStaleInlineReporterMap(src),
+        false,
         `${filePath}: Comtrade reporter overrides must come from scripts/shared/comtrade-reporter-overrides.json`,
       );
     }
