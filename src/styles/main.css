@@ -23786,6 +23786,15 @@ body.map-width-resizing {
     white-space: nowrap;
   }
 
+  /* Breaking news alerts — in-flow on mobile (BreakingNewsBanner mounts
+   * the container into the app flex column below the header), mirroring
+   * the critical posture banner: alerts push content down instead of
+   * covering the sticky chip nav / map header for their 30-60s lifetime. */
+  .breaking-news-container {
+    position: static;
+    flex-shrink: 0;
+  }
+
   /* Breaking news alerts — let headlines wrap instead of ellipsizing into
    * uselessness on narrow screens; source/time drops to its own line. */
   .breaking-alert {
