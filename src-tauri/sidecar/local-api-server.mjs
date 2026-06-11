@@ -1819,14 +1819,23 @@ export async function createLocalApiServer(options = {}) {
       const boundPort = typeof address === 'object' && address?.port ? address.port : context.port;
       context.port = boundPort;
       const extraAllowedPrivateOrigins = [];
-      // Self-hosted docker: UPSTASH_REDIS_REST_URL is an operator-configured
-      // internal endpoint (e.g. http://redis-rest:80 on a private RFC1918 docker
-      // network). Trust it the same way OLLAMA_API_URL / LLM_API_URL are trusted
-      // for fetch below — otherwise the SSRF guard blocks every Redis call and
-      // all /api/* responses return 503 REDIS_DOWN. No-op on desktop where the
-      // value is a public Upstash https origin (already passes the SSRF check).
-      if (process.env.UPSTASH_REDIS_REST_URL) {
-        try { extraAllowedPrivateOrigins.push(new URL(process.env.UPSTASH_REDIS_REST_URL).origin); } catch {}
+      // Docker self-host ONLY: the Redis REST proxy (UPSTASH_REDIS_REST_URL)
+      // points at an internal private host (e.g. http://redis-rest:80 on a
+      // docker network). Without trusting it the SSRF guard blocks every Redis
+      // call and all /api/* return 503 REDIS_DOWN. Gated on mode === 'docker'
+      // so desktop/production startup never widens the SSRF boundary via env
+      // — the same containment as the cloudFallback=false docker policy above,
+      // and the programmatic allowPrivateFetchOrigins escape hatch stays
+      // env-free. On desktop UPSTASH_REDIS_REST_URL is a public Upstash https
+      // origin that already passes the SSRF check, so this path is docker-only.
+      if (context.mode === 'docker' && process.env.UPSTASH_REDIS_REST_URL) {
+        try {
+          extraAllowedPrivateOrigins.push(new URL(process.env.UPSTASH_REDIS_REST_URL).origin);
+        } catch (err) {
+          context.logger.warn(
+            `[local-api] UPSTASH_REDIS_REST_URL is not a valid URL; not added to the private-fetch allowlist (Redis calls will be SSRF-blocked): ${err.message}`,
+          );
+        }
       }
       if (context.allowPrivateRemoteBase) {
         try { extraAllowedPrivateOrigins.push(new URL(context.remoteBase).origin); } catch {}
