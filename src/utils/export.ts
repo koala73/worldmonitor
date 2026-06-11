@@ -388,6 +388,7 @@ const COMMON_SECRET_RE = /\b(?:sk[-_][A-Za-z0-9_-]{12,}|wm_[A-Za-z0-9_=-]{12,}|g
 const JWT_RE = /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g;
 const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
 const USER_ID_RE = /\buser_[A-Za-z0-9_-]{6,}\b/g;
+const SECRET_URL_PARAM_NAME_RE = /(?:^|[_\-.])(?:api[_\-.]?key|access[_\-.]?key(?:[_\-.]?id)?|awsaccess[_\-.]?key(?:[_\-.]?id)?|secret(?:[_\-.]?access[_\-.]?key)?|client[_\-.]?secret|token|id[_\-.]?token|auth(?:orization)?|password|passwd|pwd|cookie|session|jwt|signature|sig|credential|key)(?:$|[_\-.])/i;
 
 function sanitizeEvidenceText(value: unknown): string {
   return String(value ?? '')
@@ -402,12 +403,43 @@ function sanitizeEvidenceText(value: unknown): string {
     .trim();
 }
 
+function isSensitiveUrlParamName(name: string): boolean {
+  const normalized = name
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .toLowerCase();
+  return SECRET_URL_PARAM_NAME_RE.test(normalized);
+}
+
+function sanitizeEvidenceUrlSearchParams(parsed: URL): void {
+  if (!parsed.search) return;
+  const sanitized = new URLSearchParams();
+  let changed = false;
+  parsed.searchParams.forEach((value, key) => {
+    const sensitiveKey = isSensitiveUrlParamName(key);
+    const sanitizedValue = sensitiveKey ? '[redacted-secret]' : sanitizeEvidenceText(value);
+    if (sensitiveKey || sanitizedValue !== value) changed = true;
+    sanitized.append(key, sanitizedValue);
+  });
+  if (changed) parsed.search = sanitized.toString() ? `?${sanitized.toString()}` : '';
+}
+
+function sanitizeEvidenceUrlFragment(parsed: URL): void {
+  if (!parsed.hash) return;
+  const fragment = parsed.hash.slice(1);
+  const sanitized = sanitizeEvidenceText(fragment);
+  if (sanitized !== fragment) parsed.hash = sanitized;
+}
+
 function normalizeEvidenceUrl(value: unknown): string | undefined {
   const raw = String(value ?? '').trim();
   if (!raw) return undefined;
   try {
     const parsed = new URL(raw);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined;
+    if (parsed.username) parsed.username = '[redacted-user-id]';
+    if (parsed.password) parsed.password = '[redacted-secret]';
+    sanitizeEvidenceUrlSearchParams(parsed);
+    sanitizeEvidenceUrlFragment(parsed);
     return parsed.toString().replace(/[()]/g, (char) => char === '(' ? '%28' : '%29');
   } catch {
     return undefined;

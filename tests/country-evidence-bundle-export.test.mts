@@ -99,6 +99,44 @@ describe('country evidence bundle export', () => {
     assert.equal(bundle.provenanceDisclaimer, COUNTRY_EVIDENCE_PROVENANCE_DISCLAIMER);
   });
 
+  it('redacts secret-like URL credentials and query params while preserving benign citation params', async () => {
+    const { buildCountryEvidenceBundle, renderCountryEvidenceMarkdown } = await loadExportUtils();
+    const openAiProjectKey = ['sk', 'proj', 'urlredactionfixture1234567890', 'abcdef123456'].join('-');
+    const awsAccessKey = ['AK', 'IA', 'URLREDACTEXAMPLE'].join('');
+    const jwt = [
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9',
+      'eyJ1cmwiOiJyZWRhY3Rpb24tZml4dHVyZSJ9',
+      'SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c',
+    ].join('.');
+
+    const bundle = buildCountryEvidenceBundle({
+      country: 'Testland',
+      code: 'TL',
+      exportedAt: '2026-06-10T12:00:00.000Z',
+      headlines: [{
+        title: 'Credentialed source URL',
+        source: 'Wire',
+        link: `https://analyst:${openAiProjectKey}@example.com/story(2026)?x=1&api_key=${openAiProjectKey}&token=plain-secret-value&ref=${awsAccessKey}#id_token=${jwt}`,
+        pubDate: '2026-06-10T11:00:00.000Z',
+      }],
+    });
+    const url = bundle.sources[0]?.url ?? '';
+    const markdown = renderCountryEvidenceMarkdown(bundle);
+
+    assert.match(url, /^https:\/\/%5Bredacted-user-id%5D:%5Bredacted-secret%5D@example\.com\/story%282026%29\?/);
+    assert.match(url, /[?&]x=1(?:&|#|$)/);
+    assert.match(url, /[?&]api_key=%5Bredacted-secret%5D(?:&|#|$)/);
+    assert.match(url, /[?&]token=%5Bredacted-secret%5D(?:&|#|$)/);
+    assert.match(url, /[?&]ref=%5Bredacted-secret%5D(?:&|#|$)/);
+    assert.match(url, /id_token=.*redacted-secret/);
+    assert.doesNotMatch(url, new RegExp(openAiProjectKey));
+    assert.doesNotMatch(url, new RegExp(awsAccessKey));
+    assert.doesNotMatch(url, /eyJhbGci/);
+    assert.doesNotMatch(markdown, new RegExp(openAiProjectKey));
+    assert.doesNotMatch(markdown, new RegExp(awsAccessKey));
+    assert.doesNotMatch(markdown, /eyJhbGci/);
+  });
+
   it('omits unsafe or missing citations without fabricating source metadata', async () => {
     const { buildCountryEvidenceBundle, renderCountryEvidenceMarkdown } = await loadExportUtils();
 
