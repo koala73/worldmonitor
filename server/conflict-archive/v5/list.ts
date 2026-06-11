@@ -97,9 +97,17 @@ export async function listConflictArchiveV5(av?: string | null): Promise<ListCon
       // feed. A genuine key-miss still returns null (handled as empty below).
       const rse = (await getCachedJson(RSE_KEY, false, 5_000, true)) as ConflictArchiveItem[] | null;
 
+      // A missing or zero-item archive is never legitimate — conflict news is
+      // never empty, so this only happens when the enrich cron lost the key.
+      // Throw so the handler 503s (CDN serves last-known-good) AND so
+      // cachedFetchJson does not cache an `{items: []}` blob for 30 s.
+      if (!Array.isArray(rse) || rse.length === 0) {
+        throw new Error('[conflict-archive:v5] RSE archive missing or empty (read succeeded) — refusing to serve a blank archive');
+      }
+
       const merged = new Map<string, ConflictArchiveItem>();
       // Dedup by article link — the stable cross-refresh identifier.
-      for (const it of rse ?? []) {
+      for (const it of rse) {
         if (!it?.link) continue;
         merged.set(it.link, it);
       }

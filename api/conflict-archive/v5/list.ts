@@ -12,6 +12,8 @@ import { getCorsHeaders, isDisallowedOrigin } from '../../_cors.js';
 import { validateApiKey } from '../../_api-key.js';
 // @ts-expect-error
 import { checkRateLimit } from '../../_rate-limit.js';
+// @ts-expect-error
+import { notifySlack } from '../../_slack.js';
 import { listConflictArchiveV5 } from '../../../server/conflict-archive/v5/list';
 
 export const config = { runtime: 'edge' };
@@ -50,6 +52,17 @@ export default async function handler(req: Request): Promise<Response> {
     // Truthful log line — Vercel tags each log with its region, so filtering
     // by region shows what US users were actually served (not just a 200).
     console.log(`[conflict-archive:v5] served items=${count}${count === 0 ? ' (EMPTY — not caching)' : ''}`);
+    if (count === 0) {
+      // RSE archive populated but the visibility gate passed nothing —
+      // suspicious, and the no-store response stops CDN refresh.
+      await notifySlack(
+        'conflict-archive-empty',
+        '🟠 *conflict-archive/v5 → EMPTY 200 (no-store)*\n' +
+        '*What:* RSE archive is populated but zero items pass the visibility gate\n' +
+        '*Users:* blank conflict feed served live; CDN good copy stops refreshing while this persists\n' +
+        '*Check:* `WM_CONFLICT_MIN_*_SOURCES` envs · enrich cron isConflict flagging',
+      );
+    }
     return new Response(JSON.stringify(body), {
       status: 200,
       headers: {
@@ -66,7 +79,15 @@ export default async function handler(req: Request): Promise<Response> {
     // A failed RSE read (strict mode throws) lands here. Return 503 + no-store
     // so we never cache an empty archive: stale-if-error=300 then serves the
     // last good cached response instead of a blank feed for the whole region.
-    console.error('[conflict-archive:v5] handler failed:', err instanceof Error ? err.message : err);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[conflict-archive:v5] handler failed:', msg);
+    await notifySlack(
+      'conflict-archive-503',
+      '🔴 *conflict-archive/v5 → 503*\n' +
+      `*What:* ${msg.slice(0, 200)}\n` +
+      '*Users:* CDN serving last known-good archive (stale-if-error, up to 24h)\n' +
+      '*Check:* `conflict:archive:rse:v1` size/latency (4+ MB uncompressed — known risk) · enrich cron',
+    );
     return new Response(JSON.stringify({ error: 'Upstream unavailable' }), {
       status: 503,
       headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...corsHeaders },

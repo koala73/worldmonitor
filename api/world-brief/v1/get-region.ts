@@ -19,6 +19,8 @@ import { getCorsHeaders, isDisallowedOrigin } from '../../_cors.js';
 import { validateApiKey } from '../../_api-key.js';
 // @ts-expect-error
 import { checkRateLimit } from '../../_rate-limit.js';
+// @ts-expect-error
+import { notifySlack } from '../../_slack.js';
 import { getRegionBrief, getRegionBriefAt, isRegionId } from '../../../server/world-brief/v1/get-region';
 
 export const config = { runtime: 'edge' };
@@ -82,6 +84,13 @@ export default async function handler(req: Request): Promise<Response> {
           { status: 404, headers: noStore },
         );
       case 'unavailable':
+        await notifySlack(
+          'world-brief-503',
+          '🔴 *world-brief/get-region → 503*\n' +
+          `*What:* Redis read failed for regionId=${regionId}\n` +
+          '*Users:* CDN serving last known-good brief for primed regions (stale-if-error, up to 24h); cold regions see retry state\n' +
+          '*Check:* Upstash latency · region-brief cron (hourly :20)',
+        );
         return new Response(
           JSON.stringify({ error: 'Brief temporarily unavailable', regionId }),
           { status: 503, headers: noStore },

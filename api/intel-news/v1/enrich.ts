@@ -70,7 +70,7 @@ const CONFLICT_ARCHIVE_GDELT_KEY = 'conflict:archive:v1:gdelt';
 // fills summary/region/country/locationName/lat/lng so iOS can pin
 // these on the map alongside the GDELT-sourced conflict items.
 const CONFLICT_ARCHIVE_WN_KEY = 'conflict:archive:wn:v1';
-const CONFLICT_ARCHIVE_TTL_S = 3 * 24 * 60 * 60; // Redis key TTL — 3-day safety net
+const CONFLICT_ARCHIVE_TTL_S = 7 * 24 * 60 * 60; // Redis key TTL — 7-day safety net (60h window trims content; long TTL only matters when this cron is broken)
 // Visibility/retention window: only conflict items newer than this are kept
 // in the written archive blob. Decoupled from the key TTL (and from the 24h
 // live-news digest the items originate in) so the conflict feed can run

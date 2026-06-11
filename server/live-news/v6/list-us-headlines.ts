@@ -66,7 +66,16 @@ export async function listUsHeadlinesV6(av?: string | null): Promise<ListUsHeadl
   // (s-maxage=30, stale-if-error=300) and serves a BLANK feed to an entire
   // edge region. On a throw the handler returns 503 so stale-if-error keeps
   // serving the last good feed instead.
-  const stored = ((await getCachedJson(DIGEST_KEY, false, 8_000, true)) as ClusteredItem[] | null) ?? [];
+  const stored = (await getCachedJson(DIGEST_KEY, false, 8_000, true)) as ClusteredItem[] | null;
+
+  // A missing or zero-item digest is never legitimate — world news is never
+  // empty, so this only happens when the pipeline lost the key (TTL lapse,
+  // deletion, corrupted write). Throw so the handler 503s and the CDN's
+  // stale-if-error serves the last-known-good feed, instead of returning an
+  // honest-but-blank 200 that no cache layer can rescue.
+  if (!Array.isArray(stored) || stored.length === 0) {
+    throw new Error('[live-news:v6] digest missing or empty (read succeeded) — refusing to serve a blank feed');
+  }
 
   const min = minSources();
   const filtered = min <= 1

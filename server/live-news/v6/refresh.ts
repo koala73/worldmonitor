@@ -175,7 +175,12 @@ async function loadCategoryCandidates(): Promise<RawRssItem[]> {
   }));
 }
 
-const DIGEST_TTL_S = 3 * 24 * 60 * 60; // 3-day project max
+// 7 days — pure survival headroom, not a freshness knob: every cron tick
+// rewrites the key, and the 36h rolling window trims content regardless, so a
+// long TTL only matters when the refresh cron is broken. 7d keeps the read
+// endpoints serving (aging) data through a multi-day cron outage instead of
+// the key vanishing and the feeds 503ing once the CDN's 24h stale window ends.
+const DIGEST_TTL_S = 7 * 24 * 60 * 60;
 // 36h (testing): widened from 24h to give the AI briefs a larger pool —
 // mainly helps sparse regions, since older stories rank low for dense ones.
 // Tune via the literal; feed is unaffected (it shows newest-N regardless).

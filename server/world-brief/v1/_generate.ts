@@ -33,9 +33,13 @@ export const WORLD_BRIEF_KEY = 'news:world-brief:v1';
 export const regionBriefKey = (regionId: RegionId): string =>
   `news:world-brief:region:${regionId}:v1`;
 
-/** 25 h — long enough to survive ~a day of missed hourly crons. Staleness
- *  is surfaced to the user via `generatedAt` on the card. */
-const WORLD_BRIEF_TTL_S = 25 * 60 * 60;
+/** 7 days — survival headroom, not freshness: the hourly cron overwrites the
+ *  key, so the TTL only matters when the cron is broken. The global brief is
+ *  bootstrap's CRITICAL key (missing → bootstrap hard-503s); a week-long TTL
+ *  means a multi-day cron outage serves an aging brief (graceful, staleness
+ *  surfaced via `generatedAt` on the card) instead of the key lapsing after
+ *  ~a day and hard-failing the whole fast tier. */
+const WORLD_BRIEF_TTL_S = 7 * 24 * 60 * 60;
 
 // ── Hourly snapshots ─────────────────────────────────────────────────────────
 // Each generation also writes a time-stamped snapshot so the app can fetch the

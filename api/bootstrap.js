@@ -1,5 +1,6 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
+import { notifySlack, announceOriginMonitorOnce } from './_slack.js';
 
 export const config = { runtime: 'edge' };
 
@@ -263,6 +264,10 @@ export default async function handler(req) {
       status: 401, headers: { ...cors, 'Content-Type': 'application/json' },
     });
 
+  // One-time Slack self-introduction on the first request after the deploy
+  // that ships the Origin Monitor (no-op forever after; see _slack.js).
+  await announceOriginMonitorOnce();
+
   const url = new URL(req.url);
   const tier = url.searchParams.get('tier');
   let registry;
@@ -345,15 +350,33 @@ export default async function handler(req) {
   // an entire edge region for the TTL — the conversion killer. So:
   //   • Broadly degraded (Redis effectively down, ≥half the keys missing) → 503,
   //     so the CDN's stale-if-error serves the last KNOWN-GOOD full bootstrap.
-  //   • Partially degraded (a section or two absent, e.g. world-brief) → 200 but
-  //     no-store, so we never overwrite the cached good copy with a partial one.
+  //   • CRITICAL key missing (worldBrief — the premium hook the paywall sells)
+  //     → also 503, even when everything else is present. A brief-less 200
+  //     no-store would be served to users indefinitely with no stale rescue
+  //     (stale-if-error only fires on 5xx); a 503 keeps the last full
+  //     bootstrap flowing for up to 24h instead.
+  //   • Partially degraded (a non-critical section absent) → 200 but no-store,
+  //     so we never overwrite the cached good copy with a partial one.
   //   • Healthy (nothing missing) → cache with the long stale-if-error window.
+  const CRITICAL_KEYS = ['worldBrief'];
   const isTier = tier === 'fast' || tier === 'slow';
-  const hardDown = isTier && missing.length >= Math.ceil(names.length / 2);
+  const criticalMissing = missing.filter((n) => CRITICAL_KEYS.includes(n));
+  const hardDown = isTier
+    && (missing.length >= Math.ceil(names.length / 2) || criticalMissing.length > 0);
   if (hardDown) {
     console.error(
-      `[bootstrap] DEGRADED hard — ${missing.length}/${names.length} keys missing; ` +
-      `returning 503 so the CDN serves last known-good [${missing.join(',')}]`,
+      `[bootstrap] DEGRADED hard — ${missing.length}/${names.length} keys missing` +
+      (criticalMissing.length ? ` (critical: ${criticalMissing.join(',')})` : '') +
+      `; returning 503 so the CDN serves last known-good [${missing.join(',')}]`,
+    );
+    await notifySlack(
+      `bootstrap-${tier}-hard`,
+      `🔴 *bootstrap/${tier} → HARD DOWN (503)*\n` +
+      `*What:* ${missing.length}/${names.length} keys missing` +
+      (criticalMissing.length ? ` — includes CRITICAL: \`${criticalMissing.join('`, `')}\`` : '') + '\n' +
+      `*Missing:* ${missing.join(', ')}\n` +
+      '*Users:* CDN serving last known-good full bootstrap (stale-if-error, up to 24h)\n' +
+      '*Check:* Upstash up? · seed workflows · upstream backfill (watch for 401s in logs)',
     );
     return new Response(JSON.stringify({ error: 'Bootstrap temporarily degraded', missing }), {
       status: 503,
@@ -370,6 +393,22 @@ export default async function handler(req) {
     : (tier && TIER_CDN_CACHE[tier]) || TIER_CDN_CACHE.fast;
   if (degraded) {
     console.warn(`[bootstrap] partial — ${missing.length} keys missing, no-store [${missing.join(',')}]`);
+    // Partial = served live but NOT cacheable, so the CDN's last-known-good
+    // copy stops refreshing while this persists. Slack only from 5+ missing
+    // keys — a seed lagging by 1-4 non-critical sections is routine flapping,
+    // not pageworthy (a missing CRITICAL key never lands here; it takes the
+    // hard-down 503 path above). The no-store behavior applies regardless.
+    // 30-min throttle: a stuck seed shouldn't page more than twice an hour.
+    if (missing.length >= 5) {
+      await notifySlack(
+        `bootstrap-${tier}-partial`,
+        `🟠 *bootstrap/${tier} → PARTIAL (200 no-store)*\n` +
+        `*Missing (${missing.length}):* ${missing.join(', ')}\n` +
+        '*Users:* get the response live minus those sections; the CDN good copy stops refreshing while this persists (safety net erodes after ~24h)\n' +
+        '*Check:* the seed/cron that writes the missing key(s) — see api/seed-health.js for expected cadences',
+        1800,
+      );
+    }
   }
 
   return new Response(JSON.stringify({ data, missing }), {

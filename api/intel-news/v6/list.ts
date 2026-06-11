@@ -12,6 +12,8 @@ import { getCorsHeaders, isDisallowedOrigin } from '../../_cors.js';
 import { validateApiKey } from '../../_api-key.js';
 // @ts-expect-error
 import { checkRateLimit } from '../../_rate-limit.js';
+// @ts-expect-error
+import { notifySlack } from '../../_slack.js';
 import { listIntelNewsV6 } from '../../../server/intel-news/v6/list';
 
 export const config = { runtime: 'edge' };
@@ -51,6 +53,18 @@ export default async function handler(req: Request): Promise<Response> {
     const body = await listIntelNewsV6(category, av);
     const count = body.items?.length ?? 0;
     console.log(`[intel-news:v6] served items=${count}${count === 0 ? ' (EMPTY — not caching)' : ''}`);
+    if (count === 0 && !category) {
+      // Zero items across ALL categories from a populated digest means the
+      // enrich cron stopped tagging topics — every category feed is blank.
+      // (A single ?category= coming back empty is legitimate and stays quiet.)
+      await notifySlack(
+        'intel-news-empty',
+        '🟠 *intel-news/v6 → EMPTY 200 for ALL categories (no-store)*\n' +
+        '*What:* digest is populated but no cluster carries any topic tag\n' +
+        '*Users:* every category feed blank; CDN good copy stops refreshing while this persists\n' +
+        '*Check:* enrich cron (:09/:24/:39/:54) — topic tagging likely broken',
+      );
+    }
     return new Response(JSON.stringify(body), {
       status: 200,
       headers: {
@@ -66,10 +80,19 @@ export default async function handler(req: Request): Promise<Response> {
       },
     });
   } catch (err) {
-    // A failed digest read (strict mode throws) lands here. Return 503 + no-store
-    // so we NEVER cache an empty response and the CDN's stale-if-error serves the
-    // last known-good feed instead of a blank one — matches live-news/conflict.
-    console.error('[intel-news:v6:list] handler failed:', err instanceof Error ? err.message : err);
+    // A failed digest read (strict mode throws) OR a missing/empty digest
+    // (never legitimate — also throws) lands here. Return 503 + no-store so we
+    // NEVER cache or serve an empty response; the CDN's stale-if-error serves
+    // the last known-good feed instead — matches live-news/conflict.
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[intel-news:v6:list] handler failed:', msg);
+    await notifySlack(
+      'intel-news-503',
+      '🔴 *intel-news/v6 → 503*\n' +
+      `*What:* ${msg.slice(0, 200)}\n` +
+      '*Users:* CDN serving last known-good feed (stale-if-error, up to 24h)\n' +
+      '*Check:* Upstash latency/size of `live-news:v6:digest` · refresh + enrich crons',
+    );
     return new Response(JSON.stringify({ error: 'Upstream unavailable' }), {
       status: 503, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...corsHeaders },
     });

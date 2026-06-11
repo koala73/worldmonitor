@@ -1,0 +1,66 @@
+# US edge health probe + daily Slack heartbeat.
+#
+# Two schedules, one script (scripts/probe-us-edge.mjs):
+#   • every 15 min — alert mode: Slack message ONLY if something is wrong
+#     (5xx / 401 / EMPTY items / no-store partial), job goes red.
+#   • 07:00 UTC (= 10:00 Europe/Istanbul) — summary mode: posts the full
+#     live-situation report to Slack even when everything is healthy.
+#
+# Required repo secrets:
+#   WM_PROBE_KEY             — the iOS-bundled API key (APIConfig.swift)
+#   WM_SLACK_ALERT_WEBHOOK   — Slack incoming-webhook URL
+# Optional:
+#   GLOBALPING_TOKEN         — raises Globalping rate limits (free account)
+#   UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN — already present for
+#     the seed workflows; used only for the one-time Slack self-introduction
+#     marker (SET NX) so the probe introduces itself exactly once.
+
+name: edge-probe
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'  # alert mode
+    - cron: '0 7 * * *'     # daily summary — 10:00 Istanbul
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Run mode'
+        type: choice
+        options: [alert, summary]
+        default: alert
+
+concurrency:
+  group: edge-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/probe-us-edge.mjs
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Decide mode
+        id: mode
+        run: |
+          if [ "${{ github.event.schedule }}" = "0 7 * * *" ] || [ "${{ inputs.mode }}" = "summary" ]; then
+            echo "flag=--summary" >> "$GITHUB_OUTPUT"
+          else
+            echo "flag=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Probe US edge
+        run: node scripts/probe-us-edge.mjs 2.2 ${{ steps.mode.outputs.flag }}
+        env:
+          WM_PROBE_KEY: ${{ secrets.WM_PROBE_KEY }}
+          WM_SLACK_ALERT_WEBHOOK: ${{ secrets.WM_SLACK_ALERT_WEBHOOK }}
+          GLOBALPING_TOKEN: ${{ secrets.GLOBALPING_TOKEN }}
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}

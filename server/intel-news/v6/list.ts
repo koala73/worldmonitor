@@ -80,7 +80,15 @@ export async function listIntelNewsV6(category: string | null, av?: string | nul
   // digest, which would serve a blank category feed. A genuine key-miss still
   // returns null → handled as a legitimately empty (no-store) response.
   const digest = (await getCachedJson(DIGEST_KEY, false, 8_000, true)) as ClusteredItem[] | null;
-  const all = Array.isArray(digest) ? digest : [];
+
+  // A missing or zero-item digest is never legitimate (world news is never
+  // empty) — throw so the handler 503s and the CDN serves last-known-good.
+  // A populated digest that yields zero items for a CATEGORY filter below is
+  // a different case: that can be genuinely empty and stays a 200 no-store.
+  if (!Array.isArray(digest) || digest.length === 0) {
+    throw new Error('[intel-news:v6] digest missing or empty (read succeeded) — refusing to serve a blank feed');
+  }
+  const all = digest;
 
   const filtered = all
     .filter(
