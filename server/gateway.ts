@@ -330,6 +330,17 @@ import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';
 
 export const PUBLIC_NO_AUTH_RPC_PATHS = new Set<string>([
   '/api/resilience/v1/get-runtime-manifest',
+  // Lead-capture RPCs serve ANONYMOUS prospects by definition: the /pro
+  // marketing page contact form and the waitlist/desktop signup both POST
+  // without a wms_ session or API key (see pro-test/src/App.tsx onSubmit and
+  // src/services/runtime.ts isKeyFreeApiTarget). A freely-mintable anonymous
+  // session token would add zero abuse protection here — the real gates live
+  // in the handlers: server-side Turnstile (fails closed in production),
+  // honeypot, free-email-domain rejection, per-IP endpoint rate limits
+  // (server/_shared/rate-limit.ts: 3/h and 5/h), and the Convex per-email
+  // throttle. Pinned by tests/leads-gateway-public.test.mts.
+  '/api/leads/v1/submit-contact',
+  '/api/leads/v1/register-interest',
 ]);
 
 // Cacheable, non-premium RPC endpoints the Railway relay periodically warm-pings
