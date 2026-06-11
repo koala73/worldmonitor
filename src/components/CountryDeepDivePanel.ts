@@ -9,7 +9,7 @@ import type { AssetType, NewsItem, RelatedAsset } from '@/types';
 import { sanitizeUrl, escapeHtml } from '@/utils/sanitize';
 import { computeAlternativeSuppliers, type ChokepointScoreMap, type EnrichedExporter } from '@/utils/supplier-route-risk';
 import { formatIntelBrief } from '@/utils/format-intel-brief';
-import { getCSSColor } from '@/utils';
+import { getCSSColor, showToast } from '@/utils';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { PORTS } from '@/config/ports';
 import { getChokepointRoutes } from '@/config/trade-routes';
@@ -2456,8 +2456,13 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     });
     const evidenceButton = this.el('button', 'cdp-action-btn cdp-evidence-export-btn', 'Evidence') as HTMLButtonElement;
     evidenceButton.setAttribute('type', 'button');
-    evidenceButton.setAttribute('title', 'Export evidence bundle as Markdown');
+    evidenceButton.setAttribute('title', 'Export evidence bundle as Markdown (PRO)');
     evidenceButton.addEventListener('click', () => {
+      if (!hasPremiumAccess(getAuthState())) {
+        trackGateHit('evidence-export');
+        showToast('Evidence export is available on Pro.');
+        return;
+      }
       this.exportEvidenceBundle();
     });
     right.append(shareBtn, maxBtn, storyButton, exportButton, evidenceButton);

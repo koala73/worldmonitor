@@ -38,6 +38,7 @@ function defineGlobal(name, value) {
 
 async function loadCountryDeepDivePanel(options = {}) {
   const resilienceWidgetMode = options.resilienceWidgetMode ?? 'success';
+  const premiumAccess = options.premiumAccess === true;
   const tempDir = mkdtempSync(join(tmpdir(), 'wm-country-deep-dive-'));
   const outfile = join(tempDir, 'CountryDeepDivePanel.bundle.mjs');
   const resilienceWidgetStub = resilienceWidgetMode === 'import-reject'
@@ -147,6 +148,7 @@ async function loadCountryDeepDivePanel(options = {}) {
     `],
     ['utils-stub', `
       export function getCSSColor() { return '#44ff88'; }
+      export function showToast(msg) { globalThis.__wmCountryDeepDiveTestState.toasts.push(msg); }
       export function createCircuitBreaker() { return { execute: (fn) => fn() }; }
       export function loadFromStorage() { return null; }
       export function saveToStorage() {}
@@ -155,7 +157,7 @@ async function loadCountryDeepDivePanel(options = {}) {
     ['ports-stub', `export const PORTS = [];`],
     ['trade-routes-stub', `export function getChokepointRoutes() { return []; } export const TRADE_ROUTES = [];`],
     ['geo-stub', `export const STRATEGIC_WATERWAYS = [];`],
-    ['analytics-stub', `export function trackGateHit() {}`],
+    ['analytics-stub', `export function trackGateHit(feature) { globalThis.__wmCountryDeepDiveTestState.gateHits.push(feature); }`],
     ['chokepoint-registry-stub', `export const CHOKEPOINT_REGISTRY = [];`],
     ['supplier-route-risk-stub', `
       export function computeAlternativeSuppliers(exporters) {
@@ -181,7 +183,7 @@ async function loadCountryDeepDivePanel(options = {}) {
       export class IntelligenceServiceClient {}
     `],
     ['panel-gating-stub', `
-      export function hasPremiumAccess() { return false; }
+      export function hasPremiumAccess() { return ${premiumAccess ? 'true' : 'false'}; }
       export function getPanelGateReason() { return 'none'; }
     `],
     ['auth-state-stub', `
@@ -286,6 +288,8 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     sentryMessages: [],
     sentryUser: undefined,
     evidenceExports: [],
+    gateHits: [],
+    toasts: [],
   };
 
   defineGlobal('document', browserEnvironment.document);
@@ -351,6 +355,12 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     },
     getEvidenceExports() {
       return state.evidenceExports;
+    },
+    getGateHits() {
+      return state.gateHits;
+    },
+    getToasts() {
+      return state.toasts;
     },
     cleanup,
   };
