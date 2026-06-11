@@ -23647,7 +23647,9 @@ body.map-width-resizing {
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
-    touch-action: pan-x;
+    /* pan-y too: the bar is sticky over the top of the scroller — a
+     * vertical swipe starting on it must still scroll .main-content. */
+    touch-action: pan-x pan-y;
   }
 
   .mobile-panel-nav::-webkit-scrollbar {

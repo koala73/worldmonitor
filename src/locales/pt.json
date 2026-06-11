@@ -2100,6 +2100,9 @@
         "sampleLabel": "Sinais de perturbação AIS",
         "creditName": "Pontos de Trânsito de Petróleo Mundial da EIA"
       }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
     }
   },
   "popups": {

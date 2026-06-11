@@ -2360,6 +2360,9 @@
         "sampleLabel": "إشارات انقطاع AIS",
         "creditName": "نقاط عبور النفط العالمية بوكالة معلومات الطاقة"
       }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
     }
   },
   "popups": {

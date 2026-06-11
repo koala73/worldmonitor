@@ -35,6 +35,7 @@ export class MobilePanelNav {
     this.getPanelSettings = getPanelSettings;
     this.element = document.createElement('nav');
     this.element.className = 'mobile-panel-nav';
+    this.element.setAttribute('aria-label', t('components.mobileNav.panelCategories'));
     this.element.addEventListener('click', (e) => {
       const chip = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-category]');
       if (chip?.dataset.category) this.select(chip.dataset.category);
@@ -126,11 +127,26 @@ export class MobilePanelNav {
     window.dispatchEvent(new Event('resize'));
   }
 
-  /** Scroll the bar to the top of the viewport so filtered panels are in view. */
+  /** Scroll so the filtered results are in view: bring the bar to the top
+   *  of the scrollport when it isn't there yet, and when it's already
+   *  stuck (user was deep in the list) bring the first visible panel up
+   *  underneath it — otherwise a chip tap can leave the viewport on
+   *  filtered-out empty space. */
   private scrollToPanels(): void {
     const scroller = this.element.parentElement;
     if (!scroller) return;
-    const delta = this.element.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-    if (delta > 0) scroller.scrollTo({ top: scroller.scrollTop + delta });
+    const navRect = this.element.getBoundingClientRect();
+    const scrollerRect = scroller.getBoundingClientRect();
+    const delta = navRect.top - scrollerRect.top;
+    if (delta > 0) {
+      scroller.scrollTo({ top: scroller.scrollTop + delta });
+      return;
+    }
+    const first = document.querySelector<HTMLElement>(
+      '#panelsGrid [data-panel]:not(.mobile-cat-hidden):not(.hidden)',
+    );
+    if (!first) return;
+    const target = scroller.scrollTop + first.getBoundingClientRect().top - scrollerRect.top - navRect.height;
+    if (scroller.scrollTop > target) scroller.scrollTo({ top: Math.max(0, target) });
   }
 }

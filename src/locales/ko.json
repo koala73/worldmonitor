@@ -2296,6 +2296,9 @@
         "sampleLabel": "AIS 중단 신호",
         "creditName": "EIA World Oil Transit Chokepoints"
       }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
     }
   },
   "popups": {

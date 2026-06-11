@@ -2312,6 +2312,9 @@
         "sampleLabel": "Semnale de întrerupere AIS",
         "creditName": "Puncte strâmte de tranzit petrolier mondial EIA"
       }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
     }
   },
   "popups": {

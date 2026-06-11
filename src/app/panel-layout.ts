@@ -720,6 +720,13 @@ export class PanelLayoutManager implements AppModule {
     this.mobilePanelNav.refresh();
   }
 
+  private updateMobileMapCollapseBtn(isCollapsed: boolean): void {
+    if (!this.mobileMapCollapseBtn) return;
+    this.mobileMapCollapseBtn.textContent = isCollapsed
+      ? `▶ ${t('components.map.showMap')}`
+      : `▼ ${t('components.map.hideMap')}`;
+  }
+
   private setupMobileMapToggle(): void {
     const mapSection = document.getElementById('mapSection');
     const headerLeft = mapSection?.querySelector('.panel-header-left');
@@ -729,19 +736,15 @@ export class PanelLayoutManager implements AppModule {
     const collapsed = stored === 'true';
     if (collapsed) mapSection.classList.add('collapsed');
 
-    const updateBtn = (btn: HTMLButtonElement, isCollapsed: boolean) => {
-      btn.textContent = isCollapsed ? `▶ ${t('components.map.showMap')}` : `▼ ${t('components.map.hideMap')}`;
-    };
-
     const btn = document.createElement('button');
     btn.className = 'map-collapse-btn';
-    updateBtn(btn, collapsed);
     headerLeft.after(btn);
     this.mobileMapCollapseBtn = btn;
+    this.updateMobileMapCollapseBtn(collapsed);
 
     btn.addEventListener('click', () => {
       const isCollapsed = mapSection.classList.toggle('collapsed');
-      updateBtn(btn, isCollapsed);
+      this.updateMobileMapCollapseBtn(isCollapsed);
       localStorage.setItem('mobile-map-collapsed', String(isCollapsed));
       if (!isCollapsed) window.dispatchEvent(new Event('resize'));
     });
@@ -758,9 +761,7 @@ export class PanelLayoutManager implements AppModule {
     if (mapSection.classList.contains('collapsed')) {
       mapSection.classList.remove('collapsed');
       localStorage.setItem('mobile-map-collapsed', 'false');
-      if (this.mobileMapCollapseBtn) {
-        this.mobileMapCollapseBtn.textContent = `▼ ${t('components.map.hideMap')}`;
-      }
+      this.updateMobileMapCollapseBtn(false);
       window.dispatchEvent(new Event('resize'));
     }
     document.querySelector('.main-content')?.scrollTo({ top: 0 });

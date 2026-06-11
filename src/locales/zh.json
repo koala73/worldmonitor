@@ -2296,6 +2296,9 @@
         "sampleLabel": "AIS 中断信号",
         "creditName": "EIA 世界石油运输瓶颈"
       }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
     }
   },
   "popups": {

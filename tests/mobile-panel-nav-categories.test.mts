@@ -139,5 +139,7 @@ describe('mobile nav i18n contract', () => {
     }
     // The "all" chip both consumers prepend:
     assert.equal(typeof lookup('header.sourceRegionAll'), 'string');
+    // The nav's accessible name:
+    assert.equal(typeof lookup('components.mobileNav.panelCategories'), 'string');
   });
 });

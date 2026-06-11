@@ -2296,6 +2296,9 @@
         "sampleLabel": "สัญญาณการหยุดชะงัก AIS",
         "creditName": "จุดคอขวดการขนส่งน้ำมันโลก EIA"
       }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
     }
   },
   "popups": {

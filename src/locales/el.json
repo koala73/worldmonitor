@@ -2296,6 +2296,9 @@
         "sampleLabel": "Σήματα διακοπής AIS",
         "creditName": "EIA World Oil Transit Chokepoints"
       }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
     }
   },
   "popups": {

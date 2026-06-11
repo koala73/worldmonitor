@@ -2312,6 +2312,9 @@
         "sampleLabel": "Signaux de perturbation AIS",
         "creditName": "Points de contrôle du transit pétrolier mondial de l'EIA"
       }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
     }
   },
   "popups": {

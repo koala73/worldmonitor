@@ -2312,6 +2312,9 @@
         "sampleLabel": "Señales de disrupción AIS",
         "creditName": "Puntos Críticos de Tránsito de Petróleo Mundial de la EIA"
       }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
     }
   },
   "popups": {
