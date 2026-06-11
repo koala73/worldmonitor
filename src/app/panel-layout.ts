@@ -4,7 +4,7 @@ import { normalizeExclusiveChoropleths } from '@/components/resilience-choroplet
 import { replayPendingCalls, clearAllPendingCalls } from '@/app/pending-panel-data';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
 import { effectivePubDateMs } from '@/services/feed-date';
-import type { ClusteredEvent } from '@/types';
+import type { ClusteredEvent, MapLayers } from '@/types';
 import type { RelatedAsset } from '@/types';
 import type { TheaterPostureSummary } from '@/services/military-surge';
 import {
@@ -182,6 +182,7 @@ export interface PanelLayoutManagerCallbacks {
   loadAllData: () => Promise<void>;
   updateMonitorResults: () => void;
   loadSecurityAdvisories?: () => Promise<void>;
+  applyMapLayerChange?: (layer: keyof MapLayers, enabled: boolean, source: 'programmatic') => void;
 }
 
 export class PanelLayoutManager implements AppModule {
@@ -1207,6 +1208,7 @@ export class PanelLayoutManager implements AppModule {
           getPanelConfig: (panelId) => getEffectivePanelConfig(panelId, SITE_VARIANT),
           isPanelAllowed: (panelId, config) => isPanelEntitled(panelId, config, hasPremiumAccess(getAuthState())),
           hasPremiumAccess: () => hasPremiumAccess(getAuthState()),
+          applyLayerChange: this.callbacks.applyMapLayerChange,
         }));
         return panel;
       }),

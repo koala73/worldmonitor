@@ -34,6 +34,7 @@ export interface AgentBusApplierOptions {
   isPanelAllowed?: (panelId: string, config: PanelConfig) => boolean;
   hasPremiumAccess?: () => boolean;
   getRenderer?: (ctx: AppContext) => MapRenderer;
+  applyLayerChange?: (layer: keyof MapLayers, enabled: boolean, source: 'programmatic') => void;
 }
 
 const DEFAULT_LAYER_RESULT: AgentBusApplyTargetResult[] = [];
@@ -198,8 +199,27 @@ function applySetLayers(ctx: AppContext, action: Extract<AgentBusAction, { type:
   }
 
   const normalized = normalizeExclusiveChoropleths(nextLayers, ctx.mapLayers);
+  const changedLayers = (Object.keys(normalized) as Array<keyof MapLayers>)
+    .filter((layer) => (normalized[layer] === true) !== (ctx.mapLayers[layer] === true));
+  if (changedLayers.length === 0) {
+    return applied(action, 'Map layers already match.', targets);
+  }
+  if (!options.applyLayerChange) {
+    return denied(
+      'Layer controls are unavailable.',
+      'layer_change_unavailable',
+      targets.map((target) => target.status === 'applied'
+        ? { ...target, status: 'denied', reason: 'layer_change_unavailable' }
+        : target),
+      action,
+    );
+  }
+
   ctx.mapLayers = normalized;
   ctx.map.setLayers(normalized);
+  for (const layer of changedLayers) {
+    options.applyLayerChange(layer, normalized[layer] === true, 'programmatic');
+  }
   return applied(action, 'Updated map layers.', targets);
 }
 

@@ -52,6 +52,7 @@ const entitled = {
   getPanelConfig: (panelId: string): PanelConfig => ({ name: panelId, enabled: true }),
   isPanelAllowed: () => true,
   hasPremiumAccess: () => false,
+  applyLayerChange: () => {},
 };
 
 describe('agent bus applier', () => {
@@ -144,6 +145,26 @@ describe('agent bus applier', () => {
     );
   });
 
+  it('denies layer updates when the normal layer-change side effects are unavailable', () => {
+    const ctx = makeCtx();
+    const result = applyAgentBusAction(ctx, {
+      type: 'set_layers',
+      layers: { conflicts: true },
+    }, {
+      getPanelConfig: entitled.getPanelConfig,
+      isPanelAllowed: entitled.isPanelAllowed,
+      hasPremiumAccess: entitled.hasPremiumAccess,
+    });
+    const mapCalls = (ctx.map as never as { _calls: { setLayersCalls: MapLayers[] } })._calls;
+
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'layer_change_unavailable');
+    assert.equal(result.targets[0]?.status, 'denied');
+    assert.equal(result.targets[0]?.reason, 'layer_change_unavailable');
+    assert.equal(ctx.mapLayers.conflicts, false);
+    assert.equal(mapCalls.setLayersCalls.length, 0);
+  });
+
   it('does not partially mutate when every requested layer is denied', () => {
     const ctx = makeCtx();
     const before = ctx.mapLayers;
@@ -176,6 +197,7 @@ describe('agent bus applier', () => {
   });
 
   it('normalizes mutually exclusive choropleth layers before applying', () => {
+    const layerChanges: Array<[keyof MapLayers, boolean, 'programmatic']> = [];
     const ctx = makeCtx({
       map: {
         setCenter: () => {},
@@ -190,10 +212,18 @@ describe('agent bus applier', () => {
     const result = applyAgentBusAction(ctx, {
       type: 'set_layers',
       layers: { resilienceScore: true },
-    }, { ...entitled, hasPremiumAccess: () => true });
+    }, {
+      ...entitled,
+      hasPremiumAccess: () => true,
+      applyLayerChange: (layer, enabled, source) => { layerChanges.push([layer, enabled, source]); },
+    });
 
     assert.equal(result.ok, true);
     assert.equal(ctx.mapLayers.resilienceScore, true);
     assert.equal(ctx.mapLayers.ciiChoropleth, false);
+    assert.deepEqual(layerChanges, [
+      ['ciiChoropleth', false, 'programmatic'],
+      ['resilienceScore', true, 'programmatic'],
+    ]);
   });
 });
