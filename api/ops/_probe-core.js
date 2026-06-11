@@ -156,12 +156,19 @@ export async function runEdgeProbe({ summary = false, av = '2.2' } = {}) {
           problems.push(`${t.label}: 200 but no-store (mobile-relevant data missing; CDN copy not refreshing)`);
         }
         // Last-known-good fallback active: users get populated-but-stale data
-        // (origin's live path is failing). Looks healthy in every other signal
-        // — the header is the only tell, so it must alert.
+        // (origin's live path is failing). Policy: a WORKING fallback on
+        // BOOTSTRAP is a success — users have full data, so it shows as 🟠
+        // in the report but does NOT alert (only a FAILED fallback — 503 /
+        // no-store / empty — pages). On FEEDS it still alerts: the live
+        // pipeline being broken behind a 200 needs a human even when the
+        // fallback is holding.
         const ds = resp.headers.get('x-wm-data-source');
         if (ds) {
           ok = false;
-          problems.push(`${t.label}: serving LAST-KNOWN-GOOD fallback (${ds}) — live data path is failing`);
+          detail += ` · fallback:${ds}`;
+          if (!t.label.startsWith('bootstrap')) {
+            problems.push(`${t.label}: serving LAST-KNOWN-GOOD fallback (${ds}) — live data path is failing`);
+          }
         }
       } else {
         problems.push(`${t.label}: HTTP ${resp.status}${resp.status === 401 ? ' — BUNDLED KEY INVALID?' : ''}`);
