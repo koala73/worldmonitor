@@ -32,6 +32,8 @@ export function startCountryClickGesture(
 ): void {
   tracker.pointerStart = point;
   tracker.dragged = false;
+  // Preserve suppressNextClick across rapid gesture restarts so a quick
+  // click immediately after a drag still consumes the prior drag window.
 }
 
 export function markCountryClickDrag(
@@ -39,6 +41,13 @@ export function markCountryClickDrag(
   nowMs = currentNowMs(),
 ): void {
   tracker.dragged = true;
+  refreshCountryClickDragSuppression(tracker, nowMs);
+}
+
+export function refreshCountryClickDragSuppression(
+  tracker: CountryClickGestureTracker,
+  nowMs = currentNowMs(),
+): void {
   tracker.suppressNextClick = true;
   tracker.lastDragAtMs = nowMs;
 }
@@ -72,6 +81,8 @@ export function shouldSuppressCountryClick(
   nowMs = currentNowMs(),
 ): boolean {
   if (!tracker.suppressNextClick) return false;
+  // This check is intentionally single-use: call once per click event so a
+  // drag can suppress at most the synthetic click that follows it.
   tracker.suppressNextClick = false;
   return nowMs - tracker.lastDragAtMs <= COUNTRY_CLICK_DRAG_SUPPRESSION_MS;
 }

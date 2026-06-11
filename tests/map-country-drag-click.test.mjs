@@ -6,6 +6,7 @@ import {
   createCountryClickGestureTracker,
   finishCountryClickGesture,
   markCountryClickDrag,
+  refreshCountryClickDragSuppression,
   shouldSuppressCountryClick,
   startCountryClickGesture,
   updateCountryClickGestureDrag,
@@ -47,5 +48,28 @@ describe('map country drag/click guard', () => {
       shouldSuppressCountryClick(tracker, 100 + COUNTRY_CLICK_DRAG_SUPPRESSION_MS + 1),
       false,
     );
+  });
+
+  it('preserves suppression across a rapid gesture restart after a drag', () => {
+    const tracker = createCountryClickGestureTracker();
+    markCountryClickDrag(tracker, 100);
+
+    startCountryClickGesture(tracker, { x: 25, y: 25 });
+    finishCountryClickGesture(tracker, 110);
+
+    assert.equal(shouldSuppressCountryClick(tracker, 111), true);
+  });
+
+  it('refreshes dragend suppression without leaving stale dragged state', () => {
+    const tracker = createCountryClickGestureTracker();
+    startCountryClickGesture(tracker, { x: 100, y: 100 });
+    updateCountryClickGestureDrag(tracker, { x: 100 + COUNTRY_CLICK_DRAG_THRESHOLD_PX + 1, y: 100 }, 10);
+    finishCountryClickGesture(tracker, 20);
+
+    refreshCountryClickDragSuppression(tracker, 25);
+
+    assert.equal(tracker.pointerStart, null);
+    assert.equal(tracker.dragged, false);
+    assert.equal(shouldSuppressCountryClick(tracker, 26), true);
   });
 });

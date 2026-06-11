@@ -165,6 +165,7 @@ import {
   createCountryClickGestureTracker,
   finishCountryClickGesture,
   markCountryClickDrag,
+  refreshCountryClickDragSuppression,
   shouldSuppressCountryClick,
   startCountryClickGesture,
   updateCountryClickGestureDrag,
@@ -609,6 +610,9 @@ export class DeckGLMap {
   private readonly markCountryDragGesture = (): void => {
     markCountryClickDrag(this.countryClickGesture);
   };
+  private readonly refreshCountryDragSuppression = (): void => {
+    refreshCountryClickDragSuppression(this.countryClickGesture);
+  };
   private readonly handleContextMenu = (e: MouseEvent): void => {
     e.preventDefault();
     if (!this.onMapContextMenu || !this.maplibreMap) return;
@@ -1038,7 +1042,7 @@ export class DeckGLMap {
     this.maplibreMap.getCanvas().addEventListener('pointerup', this.handleCountryClickPointerEnd);
     this.maplibreMap.getCanvas().addEventListener('pointercancel', this.handleCountryClickPointerEnd);
     this.maplibreMap.on('dragstart', this.markCountryDragGesture);
-    this.maplibreMap.on('dragend', this.markCountryDragGesture);
+    this.maplibreMap.on('dragend', this.refreshCountryDragSuppression);
   }
 
   private initDeck(): void {
@@ -7365,7 +7369,7 @@ export class DeckGLMap {
     this.deckOverlay?.finalize();
     this.deckOverlay = null;
     this.maplibreMap?.off('dragstart', this.markCountryDragGesture);
-    this.maplibreMap?.off('dragend', this.markCountryDragGesture);
+    this.maplibreMap?.off('dragend', this.refreshCountryDragSuppression);
     this.maplibreMap?.getCanvas().removeEventListener('contextmenu', this.handleContextMenu);
     this.maplibreMap?.getCanvas().removeEventListener('pointerdown', this.handleCountryClickPointerDown);
     this.maplibreMap?.getCanvas().removeEventListener('pointermove', this.handleCountryClickPointerMove);
