@@ -75,7 +75,11 @@ function toItem(c: ClusteredItem): IntelNewsV6Item {
  *                   `?av=` query — selects the per-version per-topic cap.
  */
 export async function listIntelNewsV6(category: string | null, av?: string | null): Promise<ListIntelNewsV6Response> {
-  const digest = (await getCachedJson(DIGEST_KEY, false, 8_000)) as ClusteredItem[] | null;
+  // strict=true: a Redis operational failure THROWS (→ handler 503 → CDN serves
+  // last known-good) instead of returning null and masquerading as an empty
+  // digest, which would serve a blank category feed. A genuine key-miss still
+  // returns null → handled as a legitimately empty (no-store) response.
+  const digest = (await getCachedJson(DIGEST_KEY, false, 8_000, true)) as ClusteredItem[] | null;
   const all = Array.isArray(digest) ? digest : [];
 
   const filtered = all
