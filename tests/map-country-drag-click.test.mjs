@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   COUNTRY_CLICK_DRAG_SUPPRESSION_MS,
   COUNTRY_CLICK_DRAG_THRESHOLD_PX,
@@ -11,6 +14,9 @@ import {
   startCountryClickGesture,
   updateCountryClickGestureDrag,
 } from '../src/components/map-interaction-guard.ts';
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const deckGLMapSrc = readFileSync(join(root, 'src', 'components', 'DeckGLMap.ts'), 'utf-8');
 
 describe('map country drag/click guard', () => {
   it('keeps sub-threshold pointer jitter as an intentional country click', () => {
@@ -71,5 +77,26 @@ describe('map country drag/click guard', () => {
     assert.equal(tracker.pointerStart, null);
     assert.equal(tracker.dragged, false);
     assert.equal(shouldSuppressCountryClick(tracker, 26), true);
+  });
+
+  it('reattaches DeckGL country click handlers after MapLibre fallback recreation', () => {
+    const attachMatch = deckGLMapSrc.match(
+      /private attachMapLibreInteractionHandlers\(\): void \{[\s\S]*?^\s{2}\}/m,
+    );
+    assert.ok(attachMatch, 'DeckGLMap should centralize MapLibre interaction listener attachment');
+    assert.match(attachMatch[0], /addEventListener\('pointerdown', this\.handleCountryClickPointerDown\)/);
+    assert.match(attachMatch[0], /addEventListener\('pointermove', this\.handleCountryClickPointerMove\)/);
+    assert.match(attachMatch[0], /on\('dragstart', this\.markCountryDragGesture\)/);
+    assert.match(attachMatch[0], /on\('dragend', this\.refreshCountryDragSuppression\)/);
+
+    const fallbackMatch = deckGLMapSrc.match(
+      /const recreateWithFallback = \(\) => \{[\s\S]*?this\.maplibreMap\.on\('load', \(\) => \{[\s\S]*?^\s{6}\}\);/m,
+    );
+    assert.ok(fallbackMatch, 'DeckGLMap should keep a MapLibre fallback recreation path');
+    assert.match(
+      fallbackMatch[0],
+      /this\.attachMapLibreInteractionHandlers\(\);[\s\S]*localizeMapLabels\(this\.maplibreMap\);/,
+      'fallback load handler must reattach country click handlers before continuing map initialization',
+    );
   });
 });
