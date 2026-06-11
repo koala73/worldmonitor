@@ -77,7 +77,7 @@ export async function resolveInitialNewsDigest<TDigest>(
   const first = await Promise.race([trackedDigest, timeout]);
 
   if (first.status === 'rejected') {
-    throw first.reason;
+    return { digest: null, pending: false };
   }
 
   if (first.status === 'fulfilled') {
@@ -122,7 +122,8 @@ export async function loadNewsCategoryBatches<TFeeds, TDigest, TItem>(
 export async function runNewsLoadPass<TFeeds, TDigest, TItem>(
   options: RunNewsLoadPassOptions<TFeeds, TDigest, TItem>,
 ): Promise<RunNewsLoadPassResult<TDigest, TItem>> {
-  const initialDigest = await resolveInitialNewsDigest(options.digestPromise, options.digestGraceMs);
+  const digestPromise = options.digestPromise.catch(() => null);
+  const initialDigest = await resolveInitialNewsDigest(digestPromise, options.digestGraceMs);
   const categoryResults = await loadNewsCategoryBatches(
     options.categories,
     options.categoryConcurrency,
@@ -148,7 +149,7 @@ export async function runNewsLoadPass<TFeeds, TDigest, TItem>(
   let finalDigest = initialDigest.digest;
 
   if (initialDigest.pending) {
-    finalDigest = await options.digestPromise;
+    finalDigest = await digestPromise;
     if (finalDigest) {
       const latestDigest = finalDigest;
       const digestCategories = options.categories.filter(

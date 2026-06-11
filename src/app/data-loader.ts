@@ -1194,28 +1194,27 @@ export class DataLoaderManager implements AppModule {
       console.warn(`[News] Intel digest missing, using limited per-feed fallback (${fallbackIntelFeeds.length}/${enabledIntelSources.length} feeds)`);
     }
 
-    const intelResult = await Promise.allSettled([
-      fetchCategoryFeeds(fallbackIntelFeeds, { batchSize: this.perFeedFallbackBatchSize }),
-    ]);
-    if (intelResult[0]?.status === 'fulfilled') {
-      const intel = intelResult[0].value;
-      checkBatchForBreakingAlerts(intel);
-      this.renderNewsForCategory('intel', intel);
-      if (intelPanel && options.recordBaselineSample) {
-        try {
-          const baseline = await updateBaseline('news:intel', intel.length);
-          const deviation = calculateDeviation(intel.length, baseline);
-          intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
-        } catch (e) { console.warn('[Baseline] news:intel write failed:', e); }
-      }
-      this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: intel.length });
-      this.flashMapForNews(intel);
-      return intel;
+    let intel: NewsItem[];
+    try {
+      intel = await fetchCategoryFeeds(fallbackIntelFeeds, { batchSize: this.perFeedFallbackBatchSize });
+    } catch (e) {
+      delete this.ctx.newsByCategory['intel'];
+      console.error('[App] Intel feed failed:', e);
+      return [];
     }
 
-    delete this.ctx.newsByCategory['intel'];
-    console.error('[App] Intel feed failed:', intelResult[0]?.reason);
-    return [];
+    checkBatchForBreakingAlerts(intel);
+    this.renderNewsForCategory('intel', intel);
+    if (intelPanel && options.recordBaselineSample) {
+      try {
+        const baseline = await updateBaseline('news:intel', intel.length);
+        const deviation = calculateDeviation(intel.length, baseline);
+        intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
+      } catch (e) { console.warn('[Baseline] news:intel write failed:', e); }
+    }
+    this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: intel.length });
+    this.flashMapForNews(intel);
+    return intel;
   }
 
   async loadNews(): Promise<void> {
