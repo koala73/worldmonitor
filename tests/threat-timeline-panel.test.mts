@@ -1,20 +1,97 @@
-import { describe, it } from 'node:test';
+import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { build } from 'esbuild';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { createBrowserEnvironment } from './helpers/runtime-config-panel-harness.mjs';
 import {
   buildThreatTimelineState,
   normalizeClusterStories,
   normalizeServerInsightStories,
   normalizeThreatLevel,
 } from '../src/components/threat-timeline-utils.ts';
+import type { ServerInsights } from '../src/services/insights-loader.ts';
+import type { ClusteredEvent } from '../src/types/index.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
 const NOW_MS = Date.UTC(2026, 5, 10, 12, 0, 0);
+
+function snapshotGlobal(name: string) {
+  return {
+    exists: Object.prototype.hasOwnProperty.call(globalThis, name),
+    value: (globalThis as Record<string, unknown>)[name],
+  };
+}
+
+function restoreGlobal(name: string, snapshot: { exists: boolean; value: unknown }) {
+  if (snapshot.exists) {
+    Object.defineProperty(globalThis, name, {
+      configurable: true,
+      writable: true,
+      value: snapshot.value,
+    });
+    return;
+  }
+  delete (globalThis as Record<string, unknown>)[name];
+}
+
+function defineGlobal(name: string, value: unknown) {
+  Object.defineProperty(globalThis, name, {
+    configurable: true,
+    writable: true,
+    value,
+  });
+}
+
+const originalGlobals = {
+  document: snapshotGlobal('document'),
+  window: snapshotGlobal('window'),
+  localStorage: snapshotGlobal('localStorage'),
+  requestAnimationFrame: snapshotGlobal('requestAnimationFrame'),
+  cancelAnimationFrame: snapshotGlobal('cancelAnimationFrame'),
+  location: snapshotGlobal('location'),
+  navigator: snapshotGlobal('navigator'),
+  HTMLElement: snapshotGlobal('HTMLElement'),
+  HTMLButtonElement: snapshotGlobal('HTMLButtonElement'),
+  Node: snapshotGlobal('Node'),
+  fetch: snapshotGlobal('fetch'),
+};
+
+const browserEnvironment = createBrowserEnvironment();
+const MiniNode = Object.getPrototypeOf(browserEnvironment.HTMLElement.prototype).constructor;
+
+defineGlobal('document', browserEnvironment.document);
+defineGlobal('window', browserEnvironment.window);
+defineGlobal('localStorage', browserEnvironment.localStorage);
+defineGlobal('requestAnimationFrame', browserEnvironment.requestAnimationFrame);
+defineGlobal('cancelAnimationFrame', browserEnvironment.cancelAnimationFrame);
+defineGlobal('location', {
+  ...browserEnvironment.window.location,
+  hostname: 'worldmonitor.test',
+});
+defineGlobal('navigator', browserEnvironment.window.navigator);
+defineGlobal('HTMLElement', browserEnvironment.HTMLElement);
+defineGlobal('HTMLButtonElement', browserEnvironment.HTMLButtonElement);
+defineGlobal('Node', MiniNode);
+
+after(() => {
+  restoreGlobal('document', originalGlobals.document);
+  restoreGlobal('window', originalGlobals.window);
+  restoreGlobal('localStorage', originalGlobals.localStorage);
+  restoreGlobal('requestAnimationFrame', originalGlobals.requestAnimationFrame);
+  restoreGlobal('cancelAnimationFrame', originalGlobals.cancelAnimationFrame);
+  restoreGlobal('location', originalGlobals.location);
+  restoreGlobal('navigator', originalGlobals.navigator);
+  restoreGlobal('HTMLElement', originalGlobals.HTMLElement);
+  restoreGlobal('HTMLButtonElement', originalGlobals.HTMLButtonElement);
+  restoreGlobal('Node', originalGlobals.Node);
+  restoreGlobal('fetch', originalGlobals.fetch);
+});
 
 function isoDaysAgo(days: number): string {
   return new Date(NOW_MS - days * 24 * 60 * 60 * 1000).toISOString();
@@ -35,6 +112,217 @@ function serverStory(overrides = {}) {
     countryCode: 'SD',
     ...overrides,
   };
+}
+
+function runtimeIsoDaysAgo(days: number): string {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function runtimeServerInsights(overrides: Partial<ServerInsights> = {}): ServerInsights {
+  return {
+    worldBrief: 'Threat timeline test brief',
+    briefProvider: 'groq',
+    status: 'ok' as const,
+    topStories: [
+      serverStory({
+        primaryTitle: 'Fresh server-backed escalation',
+        primarySource: 'ACLED',
+        pubDate: runtimeIsoDaysAgo(0),
+        threatLevel: 'critical',
+      }),
+    ],
+    generatedAt: new Date().toISOString(),
+    clusterCount: 1,
+    multiSourceCount: 1,
+    fastMovingCount: 0,
+    ...overrides,
+  };
+}
+
+function fallbackCluster(): ClusteredEvent {
+  return {
+    id: 'cluster-fallback-1',
+    primaryTitle: 'Fallback protests spread after outage',
+    primarySource: 'Regional RSS',
+    primaryLink: 'https://example.com/fallback',
+    sourceCount: 2,
+    topSources: [{ name: 'Regional RSS', tier: 2, url: 'https://example.com/source' }],
+    allItems: [],
+    firstSeen: new Date(runtimeIsoDaysAgo(1)),
+    lastUpdated: new Date(runtimeIsoDaysAgo(0)),
+    isAlert: true,
+    threat: { level: 'high', category: 'protest', confidence: 0.8, source: 'keyword' },
+  };
+}
+
+function waitForPanelRender(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 180));
+}
+
+async function loadThreatTimelinePanelHarness() {
+  const tempDir = mkdtempSync(join(tmpdir(), 'wm-threat-timeline-panel-'));
+  const outfile = join(tempDir, 'ThreatTimelinePanel.bundle.mjs');
+  const panelPath = resolve(root, 'src/components/ThreatTimelinePanel.ts').replace(/\\/g, '/');
+  const insightsLoaderPath = resolve(root, 'src/services/insights-loader.ts').replace(/\\/g, '/');
+
+  const virtualEntrySource = `
+    export { ThreatTimelinePanel } from '${panelPath}';
+    export { __resetServerInsightsCacheForTests } from '${insightsLoaderPath}';
+  `;
+  const stubModules = new Map<string, string>([
+    ['i18n-stub', `
+      export function t(key) {
+        if (key === 'common.live') return 'Live';
+        if (key === 'common.cached') return 'Cached';
+        if (key === 'common.unavailable') return 'Unavailable';
+        return key;
+      }
+    `],
+    ['runtime-stub', `
+      export function isDesktopRuntime() { return false; }
+      export function toApiUrl(path) { return path; }
+    `],
+    ['tauri-bridge-stub', `export function invokeTauri() { return Promise.reject(new Error('not wired in test')); }`],
+    ['analytics-stub', `export function trackPanelResized() {}`],
+    ['ai-flow-settings-stub', `export function getAiFlowSettings() { return { badgeAnimation: false }; }`],
+    ['runtime-config-stub', `export function getSecretState() { return { present: true }; }`],
+    ['bootstrap-stub', `export function getHydratedData() { return null; }`],
+    ['dom-utils-stub', `
+      function append(parent, child) {
+        if (child == null || child === false) return;
+        if (typeof child === 'string' || typeof child === 'number') {
+          parent.appendChild(document.createTextNode(String(child)));
+          return;
+        }
+        parent.appendChild(child);
+      }
+
+      export function h(tag, propsOrChild, ...children) {
+        const el = document.createElement(tag);
+        let allChildren = children;
+
+        if (
+          propsOrChild != null &&
+          typeof propsOrChild === 'object' &&
+          !('tagName' in propsOrChild) &&
+          !('textContent' in propsOrChild)
+        ) {
+          for (const [key, value] of Object.entries(propsOrChild)) {
+            if (value == null || value === false) continue;
+            if (key === 'className') {
+              el.className = value;
+            } else if (key === 'style' && typeof value === 'object') {
+              Object.assign(el.style, value);
+            } else if (key === 'dataset' && typeof value === 'object') {
+              Object.assign(el.dataset, value);
+            } else if (key.startsWith('on') && typeof value === 'function') {
+              el.addEventListener(key.slice(2).toLowerCase(), value);
+            } else if (value === true) {
+              el.setAttribute(key, '');
+            } else {
+              el.setAttribute(key, String(value));
+            }
+          }
+        } else {
+          allChildren = [propsOrChild, ...children];
+        }
+
+        allChildren.forEach((child) => append(el, child));
+        return el;
+      }
+
+      export function replaceChildren(el, ...children) {
+        el.innerHTML = '';
+        children.forEach((child) => append(el, child));
+      }
+
+      export function trustedHtml(html) {
+        return String(html ?? '');
+      }
+
+      export function setTrustedHtml(el, html) {
+        el.innerHTML = String(html ?? '');
+      }
+
+      export function safeHtml() {
+        return document.createDocumentFragment();
+      }
+    `],
+    ['panel-gating-stub', `
+      export const PanelGateReason = Object.freeze({
+        NONE: 'none',
+        ANONYMOUS: 'anonymous',
+        FREE_TIER: 'free_tier',
+      });
+    `],
+    ['checkout-stub', `export function startCheckout() {}`],
+    ['products-stub', `export const DEFAULT_UPGRADE_PRODUCT = 'pro';`],
+    ['virtual-entry', virtualEntrySource],
+  ]);
+  const aliasMap = new Map<string, string>([
+    ['@/services/i18n', 'i18n-stub'],
+    ['../services/i18n', 'i18n-stub'],
+    ['@/services/runtime', 'runtime-stub'],
+    ['../services/runtime', 'runtime-stub'],
+    ['@/services/tauri-bridge', 'tauri-bridge-stub'],
+    ['../services/tauri-bridge', 'tauri-bridge-stub'],
+    ['@/services/analytics', 'analytics-stub'],
+    ['@/services/ai-flow-settings', 'ai-flow-settings-stub'],
+    ['@/services/runtime-config', 'runtime-config-stub'],
+    ['@/services/bootstrap', 'bootstrap-stub'],
+    ['../utils/dom-utils', 'dom-utils-stub'],
+    ['@/utils/dom-utils', 'dom-utils-stub'],
+    ['@/services/panel-gating', 'panel-gating-stub'],
+    ['@/services/checkout', 'checkout-stub'],
+    ['@/config/products', 'products-stub'],
+    ['virtual:threat-timeline-entry', 'virtual-entry'],
+  ]);
+
+  const plugin = {
+    name: 'threat-timeline-panel-test-stubs',
+    setup(buildApi: import('esbuild').PluginBuild) {
+      buildApi.onResolve({ filter: /.*/ }, (args) => {
+        const target = aliasMap.get(args.path);
+        if (target) return { path: target, namespace: 'stub' };
+        if (args.path.startsWith('@/')) {
+          const absolutePath = resolve(root, 'src', args.path.slice(2));
+          return { path: existsSync(absolutePath) ? absolutePath : `${absolutePath}.ts` };
+        }
+        return null;
+      });
+
+      buildApi.onLoad({ filter: /.*/, namespace: 'stub' }, (args) => ({
+        contents: stubModules.get(args.path),
+        loader: 'ts' as const,
+        resolveDir: root,
+      }));
+    },
+  };
+
+  try {
+    const result = await build({
+      entryPoints: [{ in: 'virtual:threat-timeline-entry', out: 'ThreatTimelinePanel.bundle' }],
+      bundle: true,
+      format: 'esm',
+      platform: 'browser',
+      target: 'es2020',
+      write: false,
+      plugins: [plugin],
+    });
+
+    writeFileSync(outfile, result.outputFiles[0].text, 'utf8');
+    const mod = await import(`${pathToFileURL(outfile).href}?t=${Date.now()}`);
+    return {
+      ThreatTimelinePanel: mod.ThreatTimelinePanel as typeof import('../src/components/ThreatTimelinePanel.ts').ThreatTimelinePanel,
+      __resetServerInsightsCacheForTests: mod.__resetServerInsightsCacheForTests as () => void,
+      cleanup() {
+        rmSync(tempDir, { recursive: true, force: true });
+      },
+    };
+  } catch (error) {
+    rmSync(tempDir, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 describe('ThreatTimelinePanel utilities', () => {
@@ -135,22 +423,74 @@ describe('ThreatTimelinePanel registration', () => {
   });
 });
 
-describe('ThreatTimelinePanel rendering guardrails', () => {
-  it('falls back to degraded cluster content when insight refresh throws', () => {
-    const panelSrc = readFileSync(resolve(root, 'src/components/ThreatTimelinePanel.ts'), 'utf-8');
+describe('ThreatTimelinePanel refresh behavior', () => {
+  it('replaces stale live content with degraded cluster fallback after an insights refetch failure, then recovers', async () => {
+    const harness = await loadThreatTimelinePanelHarness();
+    const { ThreatTimelinePanel, __resetServerInsightsCacheForTests } = harness;
+    __resetServerInsightsCacheForTests();
+    const panel = new ThreatTimelinePanel();
+    try {
+      const rootEl = panel.getElement();
+      const contentEl = rootEl.querySelector('.panel-content');
+      const badgeEl = rootEl.querySelector('.panel-data-badge');
+      assert.ok(contentEl, 'panel content node should exist');
+      assert.ok(badgeEl, 'panel data badge should exist');
 
-    assert.match(
-      panelSrc,
-      /try\s*\{[\s\S]*getServerInsights\(\)\s*\?\?\s*await fetchServerInsights\(\)[\s\S]*\}\s*catch\s*\(err\)/,
-      'refresh should catch insight fetch failures before fire-and-forget callers can drop the fallback',
-    );
-    assert.match(
-      panelSrc,
-      /catch\s*\(err\)\s*\{[\s\S]*console\.warn\('\[ThreatTimeline\] insight refresh failed[\s\S]*\}[\s\S]*this\.updateFromClusters\(this\.lastClusters,\s*'degraded',\s*'Server insight snapshot unavailable'\)/,
-      'refresh should surface the existing degraded fallback after a failed insight fetch',
-    );
+      panel.updateFromServerInsights(runtimeServerInsights());
+      await waitForPanelRender();
+
+      assert.match(contentEl.innerHTML, /Fresh server-backed escalation/);
+      assert.ok(badgeEl.classList.contains('live'), 'precondition: live server snapshot is rendered');
+      assert.match(badgeEl.textContent ?? '', /Insights snapshot/);
+
+      __resetServerInsightsCacheForTests();
+      let fetchCalls = 0;
+      defineGlobal('fetch', async () => {
+        fetchCalls += 1;
+        throw new Error('bootstrap unavailable');
+      });
+
+      await assert.doesNotReject(() => panel.refresh([fallbackCluster()]));
+      await waitForPanelRender();
+
+      assert.equal(fetchCalls, 1, 'refresh attempted the on-demand insights fetch');
+      assert.match(contentEl.innerHTML, /Fallback protests spread after outage/);
+      assert.match(contentEl.innerHTML, /Keyword fallback/);
+      assert.match(contentEl.innerHTML, /Server insight snapshot unavailable/);
+      assert.doesNotMatch(contentEl.innerHTML, /Fresh server-backed escalation/, 'degraded fallback replaces stale server content');
+      assert.ok(badgeEl.classList.contains('cached'), 'degraded fallback is visibly badged as cached/degraded');
+      assert.match(badgeEl.textContent ?? '', /degraded/);
+
+      const recovered = runtimeServerInsights({
+        topStories: [
+          serverStory({
+            primaryTitle: 'Recovered server-backed escalation',
+            primarySource: 'ACLED',
+            pubDate: runtimeIsoDaysAgo(0),
+            threatLevel: 'critical',
+          }),
+        ],
+      });
+      defineGlobal('fetch', async () => new Response(JSON.stringify({ data: { insights: recovered } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+
+      await panel.refresh();
+      await waitForPanelRender();
+
+      assert.match(contentEl.innerHTML, /Recovered server-backed escalation/);
+      assert.doesNotMatch(contentEl.innerHTML, /Fallback protests spread after outage/);
+      assert.doesNotMatch(contentEl.innerHTML, /Server insight snapshot unavailable/);
+      assert.ok(badgeEl.classList.contains('live'), 'server recovery restores the live badge');
+    } finally {
+      panel.destroy();
+      harness.cleanup();
+    }
   });
 
+  // Supplemental source guard for the SVG label rendering bug; behavior above
+  // proves the refresh failure path without relying on source text shape.
   it('renders SVG day labels with tspans instead of collapsed newline text', () => {
     const panelSrc = readFileSync(resolve(root, 'src/components/ThreatTimelinePanel.ts'), 'utf-8');
 
