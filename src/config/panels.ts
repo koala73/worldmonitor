@@ -58,6 +58,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   crypto: { name: 'Crypto', enabled: true, priority: 2 },
   heatmap: { name: 'Sector Heatmap', enabled: true, priority: 2 },
   ai: { name: 'AI/ML', enabled: true, priority: 2 },
+  'my-ai-feed': { name: 'My AI Feed', enabled: true, priority: 2 },
   layoffs: { name: 'Layoffs Tracker', enabled: true, priority: 2 },
   monitors: { name: 'My Monitors', enabled: true, priority: 2 },
   'latest-brief': { name: 'Latest Brief', enabled: true, priority: 1, premium: 'locked' as const },
@@ -252,6 +253,7 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
 // TECH VARIANT (Tech/AI/Startups)
 // ============================================
 const TECH_PANELS: Record<string, PanelConfig> = {
+  'my-ai-feed': { name: 'My AI Feed', enabled: true, priority: 2 },
   map: { name: 'Global Tech Map', enabled: true, priority: 1 },
   'live-news': { name: 'Tech Headlines', enabled: true, priority: 1 },
   'live-webcams': { name: 'Live Webcams', enabled: true, priority: 2 },
@@ -422,6 +424,7 @@ const TECH_MOBILE_MAP_LAYERS: MapLayers = {
 // FINANCE VARIANT (Markets/Trading)
 // ============================================
 const FINANCE_PANELS: Record<string, PanelConfig> = {
+  'my-ai-feed': { name: 'My AI Feed', enabled: true, priority: 2 },
   map: { name: 'Global Markets Map', enabled: true, priority: 1 },
   'live-news': { name: 'Market Headlines', enabled: true, priority: 1 },
   'live-webcams': { name: 'Live Webcams', enabled: true, priority: 2 },
@@ -620,6 +623,7 @@ const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
 // HAPPY VARIANT (Good News & Progress)
 // ============================================
 const HAPPY_PANELS: Record<string, PanelConfig> = {
+  'my-ai-feed': { name: 'My AI Feed', enabled: true, priority: 2 },
   map: { name: 'World Map', enabled: true, priority: 1 },
   'positive-feed': { name: 'Good News Feed', enabled: true, priority: 1 },
   progress: { name: 'Human Progress', enabled: true, priority: 1 },
@@ -760,6 +764,7 @@ const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
 // COMMODITY VARIANT (Mining, Metals, Energy)
 // ============================================
 const COMMODITY_PANELS: Record<string, PanelConfig> = {
+  'my-ai-feed': { name: 'My AI Feed', enabled: true, priority: 2 },
   map: { name: 'Commodity Map', enabled: true, priority: 1 },
   'live-news': { name: 'Commodity Headlines', enabled: true, priority: 1 },
   insights: { name: 'AI Commodity Insights', enabled: true, priority: 1 },
@@ -929,6 +934,7 @@ const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
 // See docs/internal/global-energy-flow-parity-and-surpass.md (not committed).
 // ============================================
 const ENERGY_PANELS: Record<string, PanelConfig> = {
+  'my-ai-feed': { name: 'My AI Feed', enabled: true, priority: 2 },
   map: { name: 'Energy Atlas Map', enabled: true, priority: 1 },
   'energy-risk-overview': { name: 'Global Energy Risk Overview', enabled: true, priority: 1 },
   'chokepoint-strip': { name: 'Chokepoint Status', enabled: true, priority: 1 },
@@ -1282,7 +1288,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   topical: {
     labelKey: 'header.panelCatTopical',
-    panelKeys: ['energy', 'gov', 'thinktanks', 'tech', 'ai', 'layoffs'],
+    panelKeys: ['energy', 'gov', 'thinktanks', 'tech', 'ai', 'my-ai-feed', 'layoffs'],
   },
   dataTracking: {
     labelKey: 'header.panelCatDataTracking',
@@ -1292,7 +1298,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   // Tech variant
   techAi: {
     labelKey: 'header.panelCatTechAi',
-    panelKeys: ['ai', 'tech', 'hardware', 'cloud', 'dev', 'github', 'producthunt', 'events', 'service-status', 'tech-readiness', 'internet-disruptions', 'tech-hubs'],
+    panelKeys: ['ai', 'my-ai-feed', 'tech', 'hardware', 'cloud', 'dev', 'github', 'producthunt', 'events', 'service-status', 'tech-readiness', 'internet-disruptions', 'tech-hubs'],
   },
   startupsVc: {
     labelKey: 'header.panelCatStartupsVc',

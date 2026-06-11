@@ -23,8 +23,21 @@ const REDIS_URL = process.env.SRH_CONNECTION_STRING || process.env.REDIS_URL || 
 const TOKEN = process.env.SRH_TOKEN || '';
 const PORT = parseInt(process.env.PORT || '80', 10);
 
-const client = createClient({ url: REDIS_URL });
+const client = createClient({
+  url: REDIS_URL,
+  // Azure Cache for Redis closes idle connections (~10 min). Keep the socket
+  // alive and always reconnect so the proxy self-heals instead of getting
+  // stuck after the first idle close.
+  socket: {
+    keepAlive: 30000,
+    reconnectStrategy: (retries) => Math.min(retries * 200, 5000),
+  },
+  // Application-level PING prevents Azure from treating the connection as idle.
+  pingInterval: 60000,
+});
 client.on('error', (err) => console.error('Redis error:', err.message));
+client.on('reconnecting', () => console.log('Redis reconnecting...'));
+client.on('ready', () => console.log('Redis connection ready'));
 await client.connect();
 console.log(`Connected to Redis at ${REDIS_URL}`);
 

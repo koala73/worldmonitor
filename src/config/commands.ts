@@ -135,6 +135,7 @@ export const COMMANDS: Command[] = [
   { id: 'panel:market-implications', keywords: ['market implications', 'trade signals', 'ai signals', 'long short hedge', 'trade thesis'], label: 'Panel: AI Market Implications', icon: '\u{1F4CA}', category: 'panels' },
   { id: 'panel:heatmap', keywords: ['heatmap', 'sector heatmap', 'sector pe', 'pe ratio', 'valuations', 'forward pe', 'trailing pe', 'sector beta'], label: 'Panel: Sector Heatmap', icon: '\u{1F5FA}\uFE0F', category: 'panels' },
   { id: 'panel:ai', keywords: ['ai', 'ml', 'artificial intelligence'], label: 'Panel: AI/ML', icon: '\u{1F916}', category: 'panels' },
+  { id: 'panel:my-ai-feed', keywords: ['my ai feed', 'ai feed', 'openai', 'anthropic', 'deepmind', 'ai engineer', 'ai blogs'], label: 'Panel: My AI Feed', icon: '\u{1F916}', category: 'panels' },
   { id: 'panel:macro-signals', keywords: ['macro', 'macro signals', 'liquidity'], label: 'Panel: Market Radar', icon: '\u{1F4C9}', category: 'panels' },
   { id: 'panel:fear-greed', keywords: ['fear', 'greed', 'fear and greed', 'sentiment', 'fear greed index'], label: 'Panel: Fear & Greed', icon: '\u{1F4CA}', category: 'panels' },
   { id: 'panel:aaii-sentiment', keywords: ['aaii', 'investor sentiment', 'bull bear', 'sentiment survey', 'aaii survey', 'contrarian'], label: 'Panel: AAII Investor Sentiment', icon: '\u{1F4CA}', category: 'panels' },

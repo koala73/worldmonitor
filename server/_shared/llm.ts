@@ -1,12 +1,25 @@
 import { CHROME_UA } from './constants';
 import { isProviderAvailable } from './llm-health';
 import { sanitizeForPrompt } from './llm-sanitize.js';
+import { getAzureEntraCredentials, getAzureEntraToken } from './llm-azure-auth';
 
 export interface ProviderCredentials {
   apiUrl: string;
   model: string;
   headers: Record<string, string>;
   extraBody?: Record<string, unknown>;
+  /**
+   * Optional async resolver for auth headers that must be acquired at call
+   * time (e.g. an Entra ID bearer token for Azure OpenAI). When present, call
+   * sites await it and merge the result over `headers` immediately before fetch.
+   */
+  authHeaderProvider?: () => Promise<Record<string, string>>;
+  /**
+   * Body param name for the max output-token cap. Newer OpenAI / Azure OpenAI
+   * models (gpt-5.x, o-series) reject the legacy `max_tokens` and require
+   * `max_completion_tokens`. Defaults to `max_tokens` for back-compat.
+   */
+  maxTokensParam?: 'max_tokens' | 'max_completion_tokens';
 }
 
 export type LlmProviderName = 'ollama' | 'groq' | 'openrouter' | 'generic';
@@ -84,18 +97,65 @@ export function getProviderCredentials(
     };
   }
 
-  // Generic OpenAI-compatible endpoint via LLM_API_URL/LLM_API_KEY/LLM_MODEL
+  // Generic OpenAI-compatible endpoint via LLM_API_URL/LLM_API_KEY/LLM_MODEL.
+  // Azure OpenAI is OpenAI-compatible but supports two auth modes:
+  //   1. API key via the "api-key" header (Bearer is reserved for Entra/AAD).
+  //   2. Entra ID (managed identity / service principal) via a Bearer token —
+  //      required when key-based auth is disabled on the resource. When Entra
+  //      service-principal env vars are configured we acquire a token at call
+  //      time (cached) and send it as Authorization: Bearer.
   if (provider === 'generic') {
     const apiUrl = process.env.LLM_API_URL;
     const apiKey = process.env.LLM_API_KEY;
-    if (!apiUrl || !apiKey) return null;
+    if (!apiUrl) return null;
+
+    let isAzureOpenAi = false;
+    try {
+      isAzureOpenAi = new URL(apiUrl).hostname.toLowerCase().endsWith('.openai.azure.com');
+    } catch {
+      isAzureOpenAi = false;
+    }
+
+    const entraCreds = isAzureOpenAi ? getAzureEntraCredentials() : null;
+
+    // Newer OpenAI / Azure OpenAI models (gpt-5.x, o-series) reject `max_tokens`
+    // and require `max_completion_tokens`. Default Azure OpenAI to the new param;
+    // allow an explicit override via LLM_MAX_TOKENS_PARAM for older deployments
+    // or non-Azure OpenAI-compatible servers.
+    const maxTokensOverride = process.env.LLM_MAX_TOKENS_PARAM;
+    const maxTokensParam: 'max_tokens' | 'max_completion_tokens' =
+      maxTokensOverride === 'max_tokens' || maxTokensOverride === 'max_completion_tokens'
+        ? maxTokensOverride
+        : (isAzureOpenAi ? 'max_completion_tokens' : 'max_tokens');
+
+    // Entra ID auth takes precedence on Azure OpenAI: it's the mode used when
+    // key-based auth is disabled on the resource.
+    if (entraCreds) {
+      return {
+        apiUrl,
+        model: overrides.model || process.env.LLM_MODEL || 'gpt-3.5-turbo',
+        headers: { 'Content-Type': 'application/json' },
+        maxTokensParam,
+        authHeaderProvider: async () => ({
+          Authorization: `Bearer ${await getAzureEntraToken(entraCreds)}`,
+        }),
+      };
+    }
+
+    if (!apiKey) return null;
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (isAzureOpenAi) {
+      headers['api-key'] = apiKey;
+    } else {
+      headers.Authorization = `Bearer ${apiKey}`;
+    }
+
     return {
       apiUrl,
       model: overrides.model || process.env.LLM_MODEL || 'gpt-3.5-turbo',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers,
+      maxTokensParam,
     };
   }
 
@@ -276,15 +336,16 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
 
         let hasContent = false;
         try {
+          const dynamicAuth = creds.authHeaderProvider ? await creds.authHeaderProvider() : {};
           const resp = await fetch(creds.apiUrl, {
             method: 'POST',
-            headers: { ...creds.headers, 'User-Agent': CHROME_UA },
+            headers: { ...creds.headers, ...dynamicAuth, 'User-Agent': CHROME_UA },
             body: JSON.stringify({
               ...creds.extraBody,
               model: creds.model,
               messages,
               temperature,
-              max_tokens: maxTokens,
+              [creds.maxTokensParam ?? 'max_tokens']: maxTokens,
               stream: true,
             }),
             signal: activeController.signal,
@@ -402,15 +463,16 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
     }
 
     try {
+      const dynamicAuth = creds.authHeaderProvider ? await creds.authHeaderProvider() : {};
       const resp = await fetch(creds.apiUrl, {
         method: 'POST',
-        headers: { ...creds.headers, 'User-Agent': CHROME_UA },
+        headers: { ...creds.headers, ...dynamicAuth, 'User-Agent': CHROME_UA },
         body: JSON.stringify({
           ...creds.extraBody,
           model: creds.model,
           messages,
           temperature,
-          max_tokens: maxTokens,
+          [creds.maxTokensParam ?? 'max_tokens']: maxTokens,
         }),
         signal: AbortSignal.timeout(timeoutMs),
       });

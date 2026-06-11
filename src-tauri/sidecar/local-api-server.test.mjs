@@ -592,6 +592,112 @@ test('preserves Request body when handler uses fetch(Request)', async () => {
   }
 });
 
+test('docker mode allowlists UPSTASH_REDIS_REST_URL origin through the SSRF guard', async () => {
+  // In docker/self-host mode the operator points UPSTASH_REDIS_REST_URL at an
+  // internal redis-rest shim that resolves to a private IP. resolveConfig must
+  // auto-allow that operator-configured origin so the Upstash REST client can
+  // reach it. Regression for Azure Container Apps deploy (web -> redis-rest shim).
+  let upstreamHits = 0;
+  const upstream = createServer((_req, res) => {
+    upstreamHits += 1;
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ result: 'PONG' }));
+  });
+  const upstreamPort = await listen(upstream);
+  const upstreamOrigin = `http://127.0.0.1:${upstreamPort}`;
+  process.env.UPSTASH_REDIS_REST_URL = upstreamOrigin;
+  process.env.WM_TEST_UPSTREAM = `${upstreamOrigin}/pipeline`;
+
+  const localApi = await setupApiDir({
+    'redis-proxy.js': `
+      export default async function handler() {
+        const upstream = await fetch(process.env.WM_TEST_UPSTREAM, { method: 'POST', body: '[["PING"]]' });
+        const payload = await upstream.text();
+        return new Response(payload, {
+          status: upstream.status,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    mode: 'docker',
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await authFetch(`http://127.0.0.1:${port}/api/redis-proxy`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.result, 'PONG');
+    assert.equal(upstreamHits, 1);
+  } finally {
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.WM_TEST_UPSTREAM;
+    await app.close();
+    await localApi.cleanup();
+    await new Promise((resolve, reject) => {
+      upstream.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
+test('non-docker mode does NOT allowlist UPSTASH_REDIS_REST_URL (SSRF gating)', async () => {
+  // The docker-mode allowlist must stay gated: desktop/cloud startups keep
+  // private fetches blocked even if UPSTASH_REDIS_REST_URL is set, so an
+  // attacker-influenced env can't widen the SSRF boundary outside self-host.
+  let upstreamHits = 0;
+  const upstream = createServer((_req, res) => {
+    upstreamHits += 1;
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ result: 'PONG' }));
+  });
+  const upstreamPort = await listen(upstream);
+  const upstreamOrigin = `http://127.0.0.1:${upstreamPort}`;
+  process.env.UPSTASH_REDIS_REST_URL = upstreamOrigin;
+  process.env.WM_TEST_UPSTREAM = `${upstreamOrigin}/pipeline`;
+
+  const localApi = await setupApiDir({
+    'redis-proxy.js': `
+      export default async function handler() {
+        const upstream = await fetch(process.env.WM_TEST_UPSTREAM, { method: 'POST', body: '[["PING"]]' });
+        const payload = await upstream.text();
+        return new Response(payload, {
+          status: upstream.status,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await authFetch(`http://127.0.0.1:${port}/api/redis-proxy`);
+    assert.equal(response.status, 502);
+    const body = await response.json();
+    assert.match(body.reason, /SSRF blocked/);
+    assert.equal(upstreamHits, 0);
+  } finally {
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.WM_TEST_UPSTREAM;
+    await app.close();
+    await localApi.cleanup();
+    await new Promise((resolve, reject) => {
+      upstream.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
 test('returns local handler error when fetch(Request) uses a consumed body', async () => {
   let upstreamHits = 0;
   const upstream = createServer((_req, res) => {

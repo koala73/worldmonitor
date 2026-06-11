@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+name: worldmonitor
+metadata:
+  template: worldmonitor-azd@1.0.0
+
+# Two containerized services deployed to Azure Container Apps:
+#   app        — Vite SPA + Node API sidecar (nginx + supervisord), public ingress :8080
+#   redis-rest — Upstash-compatible REST shim in front of Azure Cache for Redis, internal :80
+services:
+  app:
+    project: .
+    host: containerapp
+    language: docker
+    docker:
+      path: ./Dockerfile
+      context: .
+  redis-rest:
+    project: .
+    host: containerapp
+    language: docker
+    docker:
+      path: ./docker/Dockerfile.redis-rest
+      context: ./docker

@@ -755,6 +755,20 @@ function resolveConfig(options = {}) {
   const allowPrivateFetchOrigins = Array.isArray(options.allowPrivateFetchOrigins)
     ? options.allowPrivateFetchOrigins.filter((o) => typeof o === 'string' && o.length > 0)
     : [];
+  // Docker/self-host mode only: the operator may point UPSTASH_REDIS_REST_URL at an
+  // internal service (e.g. a redis-rest shim) that resolves to a private/reserved IP.
+  // That origin is operator-configured (trusted infra), not attacker-controlled input,
+  // so allow it through the private-fetch SSRF guard. Gated to docker mode, matching the
+  // cloudFallback=false self-host posture — desktop/cloud startups keep private fetch blocked.
+  if (mode === 'docker') {
+    for (const raw of [process.env.UPSTASH_REDIS_REST_URL, process.env.KV_REST_API_URL]) {
+      if (!raw) continue;
+      try {
+        const origin = new URL(raw).origin;
+        if (!allowPrivateFetchOrigins.includes(origin)) allowPrivateFetchOrigins.push(origin);
+      } catch { /* ignore malformed URL */ }
+    }
+  }
   const logger = options.logger ?? console;
   if (mode === 'docker' && requestedFallback) {
     logger.warn('[local-api] Cloud fallback disabled in Docker mode (self-hosted instances must not proxy to api.worldmonitor.app)');
