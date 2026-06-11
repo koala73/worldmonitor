@@ -23,8 +23,9 @@ describe('resilience map layer contracts', () => {
   it('registers resilienceScore as a locked flat layer in every variant', () => {
     assert.equal(LAYER_REGISTRY.resilienceScore.renderers.join(','), 'flat');
     assert.equal(LAYER_REGISTRY.resilienceScore.premium, 'locked');
+    assert.equal(LAYER_REGISTRY.resilienceScore.deckGLOnly, true);
 
-    for (const variant of ['full', 'tech', 'finance', 'happy', 'commodity'] as const) {
+    for (const variant of ['full', 'tech', 'finance', 'happy', 'commodity', 'energy'] as const) {
       assert.ok(getAllowedLayerKeys(variant).has('resilienceScore'));
     }
   });

@@ -316,6 +316,23 @@ describe('mission preset renderer filtering', () => {
     assert.equal(filtered.storageFacilities, false);
     assert.ok(Object.values(filtered).some(Boolean), 'filtered fallback should keep executable default layers');
   });
+
+  it('removes supply-chain resilienceScore on the mobile/SVG fallback path', () => {
+    const applied = applyMissionPresetToState(
+      'supply-chain-risk',
+      makePanelSettings('full'),
+      DEFAULT_MAP_LAYERS,
+      'full',
+    );
+
+    assert.equal(applied.mapLayers.resilienceScore, true);
+
+    const filtered = filterMissionLayersForRenderer(applied.mapLayers, 'flat', false, DEFAULT_MAP_LAYERS);
+
+    assert.equal(filtered.resilienceScore, false);
+    assert.equal(filtered.tradeRoutes, true);
+    assert.ok(Object.values(filtered).some(Boolean), 'renderer filtering should keep executable supply-chain layers');
+  });
 });
 
 describe('mission preset persistence', () => {
