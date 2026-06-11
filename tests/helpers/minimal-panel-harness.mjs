@@ -67,8 +67,14 @@ async function loadMinimalPanel() {
       static MARKER_CLASS = 'minimal-test-wrapper';
       static INPUT_CLASS = 'minimal-test-input';
 
-      constructor() {
-        super({ id: 'minimal-test', title: 'Minimal Test' });
+      constructor(options = {}) {
+        super({
+          id: options.id ?? 'minimal-test',
+          title: options.title ?? 'Minimal Test',
+          collapsible: options.collapsible,
+          defaultRowSpan: options.defaultRowSpan,
+          className: options.className,
+        });
         constructorRunCount += 1;
         // Build UI ONCE — no buildUI() method, no override of unlockPanel.
         // This mirrors DeductionPanel's shape (src/components/DeductionPanel.ts:30-77).
@@ -204,7 +210,9 @@ export async function createMinimalPanelHarness() {
 
   return {
     document: browserEnvironment.document,
-    createPanel: () => new MinimalConstructorOnlyPanel(),
+    window: browserEnvironment.window,
+    localStorage: browserEnvironment.localStorage,
+    createPanel: (options) => new MinimalConstructorOnlyPanel(options),
     getConstructorRunCount,
     resetConstructorRunCount,
     cleanup() {

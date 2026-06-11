@@ -342,15 +342,15 @@ describe('widget-store — constants and logic', () => {
 
   it('deleteWidget cleans worldmonitor-panel-spans (aggregate map)', () => {
     assert.ok(
-      store.includes("'worldmonitor-panel-spans'"),
-      "deleteWidget must clean 'worldmonitor-panel-spans'",
+      store.includes('clearPanelSpanEntry(id)'),
+      'deleteWidget must clean row-span entries through the shared panel storage helper',
     );
   });
 
   it('deleteWidget cleans worldmonitor-panel-col-spans (aggregate map)', () => {
     assert.ok(
-      store.includes("'worldmonitor-panel-col-spans'"),
-      "deleteWidget must clean 'worldmonitor-panel-col-spans'",
+      store.includes('clearPanelColSpanEntry(id)'),
+      'deleteWidget must clean column-span entries through the shared panel storage helper',
     );
   });
 
