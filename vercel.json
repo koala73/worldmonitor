@@ -16,7 +16,8 @@
     { "source": "/oauth/authorize", "destination": "/api/oauth/authorize" },
     { "source": "/oauth/authorize-pro", "destination": "/api/oauth/authorize-pro" },
     { "source": "/.well-known/oauth-protected-resource", "destination": "/api/oauth-protected-resource" },
-    { "source": "/((?!api|mcp|oauth|assets|blog|docs|favico|map-styles|data|textures|pro|welcome|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)", "destination": "/index.html" }
+    { "source": "/embed", "destination": "/embed.html" },
+    { "source": "/((?!api|mcp|oauth|assets|blog|docs|embed|embed\\.html|favico|map-styles|data|textures|pro|welcome|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)", "destination": "/index.html" }
   ],
   "headers": [
     {
@@ -75,7 +76,7 @@
       ]
     },
     {
-      "source": "/((?!docs).*)",
+      "source": "/((?!docs|embed|embed\\.html).*)",
       "headers": [
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
@@ -86,6 +87,28 @@
         { "key": "Cross-Origin-Embedder-Policy-Report-Only", "value": "require-corp; report-to=\"wm-coop-coep\"" },
         { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(self), accelerometer=(), autoplay=(self \"https://www.youtube.com\" \"https://www.youtube-nocookie.com\"), bluetooth=(), display-capture=(), encrypted-media=(self \"https://www.youtube.com\" \"https://www.youtube-nocookie.com\"), gyroscope=(), hid=(), idle-detection=(), magnetometer=(), midi=(), payment=(self \"https://checkout.dodopayments.com\" \"https://test.checkout.dodopayments.com\" \"https://pay.google.com\" \"https://hooks.stripe.com\" \"https://js.stripe.com\"), picture-in-picture=(self \"https://www.youtube.com\" \"https://www.youtube-nocookie.com\" \"https://challenges.cloudflare.com\"), unload=(*), screen-wake-lock=(), serial=(), usb=(), xr-spatial-tracking=(\"https://challenges.cloudflare.com\")" },
         { "key": "Content-Security-Policy", "value": "default-src 'self'; connect-src 'self' https: wss: blob: data: https://*.ingest.sentry.io https://*.ingest.us.sentry.io; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'sha256-6/G1DIYD+8O8W74aigTCCcrDGW7+I/md1IgQnJ8ABXM=' 'sha256-heEt8b42haT2UBNN2eaA44XrfFhpYYgAxHZFPtrfdxM=' 'sha256-DrjY0lH4SfvhYZefrLUSxCtdmRIT6YhNzXnq1l4PhgM=' 'sha256-mO2I9DvaDKnHq03M4pcxeXtGTA1PstYFmSVpP6NIjoM=' 'sha256-S0akP766oDiFkywGZt78E7GfDooU6SDuyHQjnQEeWf8=' 'sha256-XsSfnJeoJYzlhuBF8lmmhxzSpSgSecVttS4CzI5UqnM=' 'sha256-LnMFPWZxTgVOr2VYwIh9mhQ3l/l3+a3SfNOLERnuHfY=' 'sha256-4Z2xtr1B9QQugoojE/nbpOViG+8l2B7CZVlKgC78AeQ=' 'sha256-903UI9my1I7mqHoiVeZSc56yd50YoRJTB2269QqL76w=' 'sha256-EytE6o1N8rwzpVFMrF+WvBZr2y5UhFLw79o1/4VqS0s=' 'sha256-5dhsIxOQ32HbA202NrKUeH7cqnDtIQ8752yC24wVHjU=' 'sha256-Du+OJKJSbdUgz5nrHeWWINvez6XKDDU/tyj/5c2uvwo=' 'wasm-unsafe-eval' https://www.youtube.com https://static.cloudflareinsights.com https://vercel.live https://challenges.cloudflare.com https://*.clerk.accounts.dev https://clerk.worldmonitor.app https://abacus.worldmonitor.app https://*.dodopayments.com https://js.stripe.com; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https:; frame-src 'self' https://www.worldmonitor.app https://worldmonitor.app https://tech.worldmonitor.app https://finance.worldmonitor.app https://commodity.worldmonitor.app https://happy.worldmonitor.app https://energy.worldmonitor.app https://www.youtube.com https://www.youtube-nocookie.com https://www.google.com https://webcams.windy.com https://challenges.cloudflare.com https://*.clerk.accounts.dev https://clerk.worldmonitor.app https://vercel.live https://*.vercel.app https://*.dodopayments.com https://pay.google.com https://hooks.stripe.com https://js.stripe.com; frame-ancestors 'self' https://www.worldmonitor.app https://tech.worldmonitor.app https://finance.worldmonitor.app https://commodity.worldmonitor.app https://happy.worldmonitor.app https://energy.worldmonitor.app https://worldmonitor.app https://vercel.live https://*.vercel.app; base-uri 'self'; object-src 'none'; form-action 'self' https://api.worldmonitor.app" }
+      ]
+    },
+    {
+      "source": "/embed",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Cache-Control", "value": "private, no-cache, must-revalidate" },
+        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(), accelerometer=(), autoplay=(), bluetooth=(), display-capture=(), encrypted-media=(), gyroscope=(), hid=(), idle-detection=(), magnetometer=(), midi=(), payment=(), picture-in-picture=(), screen-wake-lock=(), serial=(), usb=(), xr-spatial-tracking=()" },
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; connect-src 'self' https: wss: blob: data:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https:; frame-src 'none'; frame-ancestors *; base-uri 'self'; object-src 'none'; form-action 'none'" }
+      ]
+    },
+    {
+      "source": "/embed.html",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Cache-Control", "value": "private, no-cache, must-revalidate" },
+        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(), accelerometer=(), autoplay=(), bluetooth=(), display-capture=(), encrypted-media=(), gyroscope=(), hid=(), idle-detection=(), magnetometer=(), midi=(), payment=(), picture-in-picture=(), screen-wake-lock=(), serial=(), usb=(), xr-spatial-tracking=()" },
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; connect-src 'self' https: wss: blob: data:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https:; frame-src 'none'; frame-ancestors *; base-uri 'self'; object-src 'none'; form-action 'none'" }
       ]
     },
     {
@@ -133,7 +156,7 @@
       ]
     },
     {
-      "source": "/((?!api|mcp|oauth|assets|blog|docs|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)",
+      "source": "/((?!api|mcp|oauth|assets|blog|docs|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)",
       "headers": [
         { "key": "Cache-Control", "value": "private, no-cache, must-revalidate" }
       ]

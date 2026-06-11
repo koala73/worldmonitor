@@ -9,10 +9,22 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const vercelConfig = JSON.parse(readFileSync(resolve(__dirname, '../vercel.json'), 'utf-8'));
 const viteConfigSource = readFileSync(resolve(__dirname, '../vite.config.ts'), 'utf-8');
 const dockerfileSource = readFileSync(resolve(__dirname, '../Dockerfile'), 'utf-8');
+const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|oauth|assets|blog|docs|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
+const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html).*)';
 
 const getCacheHeaderValue = (sourcePath) => {
   const rule = vercelConfig.headers.find((entry) => entry.source === sourcePath);
   const header = rule?.headers?.find((item) => item.key.toLowerCase() === 'cache-control');
+  return header?.value ?? null;
+};
+
+const getHeadersForSource = (sourcePath) => {
+  return vercelConfig.headers.find((entry) => entry.source === sourcePath)?.headers ?? [];
+};
+
+const getHeaderValueForSource = (sourcePath, key) => {
+  const headers = getHeadersForSource(sourcePath);
+  const header = headers.find((h) => h.key.toLowerCase() === key.toLowerCase());
   return header?.value ?? null;
 };
 
@@ -50,7 +62,7 @@ describe('deploy/cache configuration guardrails', () => {
     // revalidates on every navigation but lets bfcache restore on back/forward.
     // `private` keeps shared caches (CDN, corporate proxies) from holding
     // personalized HTML.
-    const spaNoCache = getCacheHeaderValue('/((?!api|mcp|oauth|assets|blog|docs|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)');
+    const spaNoCache = getCacheHeaderValue(SPA_HTML_CACHE_SOURCE);
     assert.equal(spaNoCache, 'private, no-cache, must-revalidate');
     assert.ok(!spaNoCache.includes('no-store'), 'HTML must not set no-store — it disables bfcache');
   });
@@ -208,7 +220,7 @@ describe('docker runtime dependency guardrails', () => {
 });
 
 const getSecurityHeaders = () => {
-  const rule = vercelConfig.headers.find((entry) => entry.source === '/((?!docs).*)');
+  const rule = vercelConfig.headers.find((entry) => entry.source === GLOBAL_SECURITY_HEADER_SOURCE);
   return rule?.headers ?? [];
 };
 
@@ -515,6 +527,49 @@ describe('security header guardrails', () => {
     assert.match(secTxt, /^Contact:/m, 'security.txt must have a Contact field');
     assert.match(secTxt, /^Expires:/m, 'security.txt must have an Expires field');
   });
+});
+
+describe('embeddable map route guardrails', () => {
+  it('registers embed.html as a Vite HTML entry', () => {
+    assert.match(viteConfigSource, /embed:\s*resolve\(__dirname,\s*'embed\.html'\)/);
+  });
+
+  it('rewrites /embed to the dedicated embed.html entry before the SPA catch-all', () => {
+    const rewriteIndex = vercelConfig.rewrites.findIndex((r) => r.source === '/embed');
+    const catchAllIndex = vercelConfig.rewrites.findIndex((r) => r.destination === '/index.html');
+    assert.ok(rewriteIndex !== -1, 'expected /embed rewrite');
+    assert.ok(catchAllIndex !== -1, 'expected SPA catch-all rewrite');
+    assert.ok(rewriteIndex < catchAllIndex, '/embed rewrite must appear before the SPA catch-all');
+    assert.equal(vercelConfig.rewrites[rewriteIndex].destination, '/embed.html');
+  });
+
+  it('excludes /embed and /embed.html from the SPA catch-all rewrite and cache header', () => {
+    const catchAll = vercelConfig.rewrites.find((r) => r.destination === '/index.html');
+    assert.ok(catchAll.source.includes('|embed|embed\\.html|'), 'SPA catch-all must exclude the public embed entry');
+    assert.ok(SPA_HTML_CACHE_SOURCE.includes('|embed|embed\\.html|'), 'HTML cache catch-all must exclude the public embed entry');
+    assert.equal(getCacheHeaderValue(SPA_HTML_CACHE_SOURCE), 'private, no-cache, must-revalidate');
+  });
+
+  it('keeps the global security header anti-framing rule off the embed entry', () => {
+    assert.equal(GLOBAL_SECURITY_HEADER_SOURCE, '/((?!docs|embed|embed\\.html).*)');
+    const globalXfo = getHeaderValueForSource(GLOBAL_SECURITY_HEADER_SOURCE, 'X-Frame-Options');
+    assert.equal(globalXfo, 'SAMEORIGIN');
+  });
+
+  for (const source of ['/embed', '/embed.html']) {
+    it(`${source} allows cross-origin iframe embedding without inheriting app XFO`, () => {
+      const headers = getHeadersForSource(source);
+      assert.ok(headers.length > 0, `${source} must have an explicit header rule`);
+      assert.equal(getHeaderValueForSource(source, 'X-Frame-Options'), null);
+      assert.equal(getHeaderValueForSource(source, 'Cache-Control'), 'private, no-cache, must-revalidate');
+      const csp = getHeaderValueForSource(source, 'Content-Security-Policy');
+      assert.ok(csp, `${source} must have a CSP`);
+      assert.match(csp, /frame-ancestors \*/);
+      assert.match(csp, /script-src 'self'(?:;|$)/);
+      assert.doesNotMatch(csp, /clerk|dodopayments|stripe/);
+      assert.ok(!getCspDirectiveTokens(csp, 'script-src').includes("'unsafe-inline'"));
+    });
+  }
 });
 
 // Per-route CSP override for the hosted brief magazine. The renderer

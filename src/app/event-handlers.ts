@@ -87,6 +87,7 @@ import { TvModeController } from '@/services/tv-mode';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { escapeHtml } from '@/utils/sanitize';
+import { buildEmbedIframeSnippet, buildEmbedMapUrl, type EmbedVariant } from '@/embed/embed-url';
 
 
 export interface EventHandlerCallbacks {
@@ -133,6 +134,7 @@ export class EventHandlerManager implements AppModule {
   private boundNotifyForCountryHandler: ((e: Event) => void) | null = null;
   private boundMissionOutsideHandler: ((e: MouseEvent) => void) | null = null;
   private boundMissionKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
+  private boundEmbedModalKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private missionPresetPopover: HTMLElement | null = null;
   private missionDataRefreshTimer: number | null = null;
   private proGateUnsubscribers: Array<() => void> = [];
@@ -248,6 +250,7 @@ export class EventHandlerManager implements AppModule {
   }
 
   destroy(): void {
+    this.closeEmbedDialog();
     this.debouncedUrlSync.cancel();
     this.debouncedWebcamReload.cancel();
     if (this.boundFullscreenHandler) {
@@ -403,6 +406,10 @@ export class EventHandlerManager implements AppModule {
         console.warn('Failed to copy share link:', error);
         this.setCopyLinkFeedback(button, 'Copy failed');
       }
+    });
+
+    document.getElementById('embedLinkBtn')?.addEventListener('click', () => {
+      this.openEmbedDialog();
     });
 
     this.initDownloadDropdown();
@@ -1168,6 +1175,106 @@ export class EventHandlerManager implements AppModule {
       country: isCountryVisible ? (briefPage?.getCode() ?? undefined) : undefined,
       expanded: isCountryVisible && briefPage?.getIsMaximized?.() ? true : undefined,
     });
+  }
+
+  private getEmbedUrl(): string | null {
+    if (!this.ctx.map) return null;
+    const state = this.ctx.map.getState();
+    return buildEmbedMapUrl(`${window.location.origin}/embed`, {
+      layers: state.layers,
+      center: this.ctx.map.getCenter(),
+      zoom: state.zoom,
+      theme: getCurrentTheme(),
+      variant: SITE_VARIANT as EmbedVariant,
+    });
+  }
+
+  private openEmbedDialog(): void {
+    const embedUrl = this.getEmbedUrl();
+    if (!embedUrl) return;
+    const snippet = buildEmbedIframeSnippet(embedUrl);
+    this.closeEmbedDialog();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'embed-modal-overlay active';
+    overlay.id = 'embedModalOverlay';
+    overlay.setAttribute('role', 'presentation');
+
+    const dialog = document.createElement('div');
+    dialog.className = 'embed-modal';
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-labelledby', 'embedModalTitle');
+
+    const header = document.createElement('div');
+    header.className = 'embed-modal-header';
+    const title = document.createElement('h2');
+    title.id = 'embedModalTitle';
+    title.textContent = 'Embed this map';
+    const closeButton = document.createElement('button');
+    closeButton.className = 'embed-modal-close';
+    closeButton.type = 'button';
+    closeButton.setAttribute('aria-label', 'Close embed dialog');
+    closeButton.textContent = 'x';
+    header.append(title, closeButton);
+
+    const preview = document.createElement('iframe');
+    preview.className = 'embed-preview-frame';
+    preview.title = 'World Monitor live map preview';
+    preview.loading = 'lazy';
+    preview.referrerPolicy = 'strict-origin-when-cross-origin';
+    preview.src = embedUrl;
+
+    const label = document.createElement('label');
+    label.className = 'embed-snippet-label';
+    label.htmlFor = 'embedSnippetTextarea';
+    label.textContent = 'Iframe snippet';
+
+    const textarea = document.createElement('textarea');
+    textarea.className = 'embed-snippet-textarea';
+    textarea.id = 'embedSnippetTextarea';
+    textarea.readOnly = true;
+    textarea.value = snippet;
+
+    const actions = document.createElement('div');
+    actions.className = 'embed-modal-actions';
+    const copyButton = document.createElement('button');
+    copyButton.className = 'embed-copy-btn';
+    copyButton.type = 'button';
+    copyButton.textContent = 'Copy snippet';
+    actions.append(copyButton);
+
+    dialog.append(header, preview, label, textarea, actions);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    closeButton.addEventListener('click', () => this.closeEmbedDialog());
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) this.closeEmbedDialog();
+    });
+    copyButton.addEventListener('click', async () => {
+      try {
+        await this.copyToClipboard(snippet);
+        copyButton.textContent = 'Copied!';
+      } catch (error) {
+        console.warn('Failed to copy embed snippet:', error);
+        copyButton.textContent = 'Copy failed';
+      }
+    });
+    this.boundEmbedModalKeydownHandler = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') this.closeEmbedDialog();
+    };
+    document.addEventListener('keydown', this.boundEmbedModalKeydownHandler);
+    textarea.focus();
+    textarea.select();
+  }
+
+  private closeEmbedDialog(): void {
+    document.getElementById('embedModalOverlay')?.remove();
+    if (this.boundEmbedModalKeydownHandler) {
+      document.removeEventListener('keydown', this.boundEmbedModalKeydownHandler);
+      this.boundEmbedModalKeydownHandler = null;
+    }
   }
 
   private async copyToClipboard(text: string): Promise<void> {

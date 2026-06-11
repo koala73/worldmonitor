@@ -105,6 +105,7 @@
           {
             "group": "Workflows",
             "pages": [
+              "embed-live-map",
               "route-explorer",
               "scenario-engine"
             ]

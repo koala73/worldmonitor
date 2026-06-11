@@ -1037,6 +1037,144 @@ canvas,
   border-color: var(--text);
 }
 
+.embed-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10020;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.62);
+}
+
+.embed-modal-overlay.active {
+  display: flex;
+}
+
+.embed-modal {
+  width: min(720px, 100%);
+  max-height: calc(100vh - 48px);
+  display: grid;
+  grid-template-rows: auto minmax(180px, 320px) auto minmax(96px, auto) auto;
+  gap: 14px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-bg);
+  box-shadow: 0 24px 80px var(--shadow-color);
+  padding: 18px;
+}
+
+.embed-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.embed-modal-header h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.embed-modal-close {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.embed-modal-close:hover,
+.embed-modal-close:focus-visible {
+  color: var(--text);
+  border-color: var(--accent);
+  outline: none;
+}
+
+.embed-preview-frame {
+  width: 100%;
+  height: 100%;
+  min-height: 180px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.embed-snippet-label {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.embed-snippet-textarea {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 10px;
+}
+
+.embed-snippet-textarea:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.embed-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.embed-copy-btn {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--bg);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.embed-copy-btn:hover,
+.embed-copy-btn:focus-visible {
+  filter: brightness(1.08);
+  outline: none;
+}
+
+@media (max-width: 720px) {
+  .embed-modal-overlay {
+    padding: 12px;
+    align-items: stretch;
+  }
+
+  .embed-modal {
+    max-height: calc(100vh - 24px);
+    grid-template-rows: auto minmax(160px, 260px) auto minmax(112px, auto) auto;
+    padding: 14px;
+  }
+}
+
 .download-wrapper {
   position: relative;
 }

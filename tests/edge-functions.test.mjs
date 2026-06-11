@@ -290,7 +290,7 @@ describe('vercel.json CSP: Slack OAuth callback has unsafe-inline override', () 
 
   it('/api/slack/oauth/callback CSP override appears after the global CSP rule (must override it)', () => {
     const headers = vercelJson.headers ?? [];
-    const globalIdx = headers.findIndex((r) => r.source === '/((?!docs).*)');
+    const globalIdx = headers.findIndex((r) => r.source === '/((?!docs|embed|embed\\.html).*)');
     const callbackIdx = headers.findIndex((r) => r.source === '/api/slack/oauth/callback');
     assert.ok(globalIdx !== -1, 'vercel.json: global CSP rule not found');
     assert.ok(callbackIdx !== -1, 'vercel.json: callback CSP override not found');

@@ -14,7 +14,7 @@ import { getNaturalEventIcon } from '@/services/eonet';
 import type { WeatherAlert } from '@/services/weather';
 import type { RadiationObservation } from '@/services/radiation';
 import { getSeverityColor } from '@/services/weather';
-import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime';
+import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/smart-poll-loop';
 import {
   MAP_URLS,
   INTEL_HOTSPOTS,
@@ -84,12 +84,16 @@ import {
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
 
-interface MapState {
+export interface MapState {
   zoom: number;
   pan: { x: number; y: number };
   view: MapView;
   layers: MapLayers;
   timeRange: TimeRange;
+}
+
+export interface MapComponentOptions {
+  chrome?: boolean;
 }
 
 interface HotspotWithBreaking extends Hotspot {
@@ -193,10 +197,11 @@ export class MapComponent {
   private readonly MIN_RENDER_INTERVAL_MS = 100;
   private healthCheckLoop: SmartPollLoopHandle | null = null;
 
-  constructor(container: HTMLElement, initialState: MapState) {
+  constructor(container: HTMLElement, initialState: MapState, options: MapComponentOptions = {}) {
     this.container = container;
     this.state = initialState;
     this.hotspots = [...INTEL_HOTSPOTS];
+    const chrome = options.chrome ?? true;
 
     this.wrapper = document.createElement('div');
     this.wrapper.className = 'map-wrapper';
@@ -218,17 +223,19 @@ export class MapComponent {
     this.wrapper.appendChild(this.overlays);
 
     container.appendChild(this.wrapper);
-    container.appendChild(this.createControls());
-    container.appendChild(this.createTimeSlider());
-    container.appendChild(this.createLayerToggles());
-    container.appendChild(this.createLegend());
-    this.healthCheckLoop = startSmartPollLoop(() => { this.runHealthCheck(); }, {
-      intervalMs: 30_000,
-      pauseWhenHidden: true,
-      refreshOnVisible: false,
-      runImmediately: false,
-      jitterFraction: 0,
-    });
+    if (chrome) {
+      container.appendChild(this.createControls());
+      container.appendChild(this.createTimeSlider());
+      container.appendChild(this.createLayerToggles());
+      container.appendChild(this.createLegend());
+      this.healthCheckLoop = startSmartPollLoop(() => { this.runHealthCheck(); }, {
+        intervalMs: 30_000,
+        pauseWhenHidden: true,
+        refreshOnVisible: false,
+        runImmediately: false,
+        jitterFraction: 0,
+      });
+    }
 
     this.svg = d3.select(svgElement);
     this.baseLayerGroup = this.svg.append('g').attr('class', 'map-base');

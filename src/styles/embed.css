@@ -1,0 +1,85 @@
+html,
+body,
+#embedRoot {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+body {
+  min-width: 0;
+}
+
+#embedRoot {
+  position: relative;
+}
+
+.wm-embed-map {
+  position: absolute;
+  inset: 0;
+}
+
+.wm-embed-map .map-wrapper {
+  width: 100%;
+  height: 100%;
+}
+
+.wm-embed-map .map-svg,
+.wm-embed-map .map-cluster-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.wm-embed-attribution {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 50;
+  display: inline-flex;
+  align-items: center;
+  max-width: calc(100% - 20px);
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel-bg) 88%, transparent);
+  color: var(--text);
+  box-shadow: 0 4px 18px var(--shadow-color);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.wm-embed-attribution:hover,
+.wm-embed-attribution:focus-visible {
+  color: var(--green);
+  border-color: var(--green);
+  outline: none;
+}
+
+.wm-embed-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 20px;
+  color: var(--text);
+  background: var(--bg);
+  font: 600 14px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-align: center;
+}
+
+@media (max-width: 420px) {
+  .wm-embed-attribution {
+    right: 8px;
+    bottom: 8px;
+    min-height: 24px;
+    padding: 4px 7px;
+    font-size: 10px;
+  }
+}
