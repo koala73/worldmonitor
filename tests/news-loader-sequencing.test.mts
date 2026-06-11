@@ -1,0 +1,186 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  loadNewsCategoryBatches,
+  resolveInitialNewsDigest,
+  runNewsLoadPass,
+  type NewsCategorySpec,
+} from '../src/app/news-loader-sequencing';
+
+interface TestDigest {
+  categories: Record<string, unknown>;
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+const neverDelay = () => new Promise<void>(() => {});
+
+describe('news loader digest sequencing', () => {
+  it('starts category work with pending-fallback permission before a slow digest settles', async () => {
+    const digest = deferred<TestDigest | null>();
+    let digestSettled = false;
+    const digestPromise = digest.promise.then(value => {
+      digestSettled = true;
+      return value;
+    });
+
+    const initialDigest = await resolveInitialNewsDigest(
+      digestPromise,
+      0,
+      async () => {},
+    );
+
+    assert.deepEqual(initialDigest, { digest: null, pending: true });
+
+    const categories: Array<NewsCategorySpec<string[]>> = [
+      { key: 'politics', feeds: ['Reuters'] },
+      { key: 'energy', feeds: ['Oil Monitor'] },
+    ];
+    const starts: string[] = [];
+    const results = await loadNewsCategoryBatches(
+      categories,
+      1,
+      initialDigest,
+      async (category, digestSnapshot, options) => {
+        starts.push(`${category.key}:${options.allowDigestPendingFallback}`);
+        assert.equal(digestSnapshot, null);
+        assert.equal(options.allowDigestPendingFallback, true);
+        assert.equal(options.recordBaselineSample, false);
+        assert.equal(digestSettled, false);
+        return [`${category.key}-item`];
+      },
+    );
+
+    assert.deepEqual(starts, ['politics:true', 'energy:true']);
+    assert.deepEqual(
+      results.map(result => result.status === 'fulfilled' ? result.value : result),
+      [
+        { key: 'politics', items: ['politics-item'] },
+        { key: 'energy', items: ['energy-item'] },
+      ],
+    );
+    assert.equal(digestSettled, false);
+
+    digest.resolve({ categories: {} });
+    await digestPromise;
+  });
+
+  it('preserves the fast digest path when the digest resolves within the first-paint grace', async () => {
+    const digest: TestDigest = { categories: { politics: {} } };
+    const initialDigest = await resolveInitialNewsDigest(
+      Promise.resolve(digest),
+      250,
+      neverDelay,
+    );
+
+    assert.equal(initialDigest.digest, digest);
+    assert.equal(initialDigest.pending, false);
+
+    const results = await loadNewsCategoryBatches(
+      [{ key: 'politics', feeds: ['Reuters'] }],
+      1,
+      initialDigest,
+      async (_category, digestSnapshot, options) => {
+        assert.equal(digestSnapshot, digest);
+        assert.equal(options.allowDigestPendingFallback, false);
+        assert.equal(options.recordBaselineSample, true);
+        return ['digest-item'];
+      },
+    );
+
+    assert.equal(results[0]?.status, 'fulfilled');
+    assert.deepEqual(
+      results[0]?.status === 'fulfilled' ? results[0].value : undefined,
+      { key: 'politics', items: ['digest-item'] },
+    );
+  });
+
+  it('treats a resolved null digest as unavailable rather than still pending', async () => {
+    const initialDigest = await resolveInitialNewsDigest<TestDigest>(
+      Promise.resolve(null),
+      250,
+      neverDelay,
+    );
+
+    assert.deepEqual(initialDigest, { digest: null, pending: false });
+
+    await loadNewsCategoryBatches(
+      [{ key: 'politics', feeds: ['Reuters'] }],
+      1,
+      initialDigest,
+      async (_category, digestSnapshot, options) => {
+        assert.equal(digestSnapshot, null);
+        assert.equal(options.allowDigestPendingFallback, false);
+        assert.equal(options.recordBaselineSample, true);
+        return [];
+      },
+    );
+  });
+
+  it('orchestrates slow-digest fallback, late digest refresh, and Intel refresh', async () => {
+    const digest = deferred<TestDigest | null>();
+    let digestSettled = false;
+    const digestPromise = digest.promise.then(value => {
+      digestSettled = true;
+      return value;
+    });
+    const categoryStarted = deferred<void>();
+    const releaseInitialCategory = deferred<void>();
+    const events: string[] = [];
+
+    const runPromise = runNewsLoadPass<string[], TestDigest, string>({
+      categories: [{ key: 'politics', feeds: ['Reuters'] }],
+      categoryConcurrency: 1,
+      digestPromise,
+      digestGraceMs: 0,
+      hasDigestCategory: (digestSnapshot, key) => key in digestSnapshot.categories,
+      loadCategory: async (category, digestSnapshot, options) => {
+        events.push(`${category.key}:${digestSnapshot ? 'digest' : 'fallback'}:${options.allowDigestPendingFallback}`);
+        if (!digestSnapshot) {
+          categoryStarted.resolve();
+          await releaseInitialCategory.promise;
+          assert.equal(options.allowDigestPendingFallback, true);
+          assert.equal(options.recordBaselineSample, false);
+          assert.equal(digestSettled, false);
+          return [`${category.key}-fallback`];
+        }
+        assert.equal(options.allowDigestPendingFallback, false);
+        assert.equal(options.recordBaselineSample, true);
+        return [`${category.key}-digest`];
+      },
+      loadIntel: async (digestSnapshot, allowDigestPendingFallback, options) => {
+        events.push(`intel:${digestSnapshot ? 'digest' : 'fallback'}:${allowDigestPendingFallback}`);
+        assert.equal(options.recordBaselineSample, Boolean(digestSnapshot));
+        return [digestSnapshot ? 'intel-digest' : 'intel-fallback'];
+      },
+    });
+
+    await categoryStarted.promise;
+    assert.equal(digestSettled, false);
+
+    releaseInitialCategory.resolve();
+    await Promise.resolve();
+    digest.resolve({ categories: { politics: {}, intel: {} } });
+
+    const result = await runPromise;
+
+    assert.deepEqual(events, [
+      'politics:fallback:true',
+      'intel:fallback:true',
+      'politics:digest:false',
+      'intel:digest:false',
+    ]);
+    assert.deepEqual(result.categoryItemsByKey.get('politics'), ['politics-digest']);
+    assert.deepEqual(result.intelItems, ['intel-digest']);
+    assert.equal(result.initialDigest.pending, true);
+    assert.deepEqual(result.finalDigest, { categories: { politics: {}, intel: {} } });
+  });
+});
