@@ -38,13 +38,14 @@ after(() => {
   }
 });
 
-function installSeedHealthPipelineMock(portwatchRecordCount) {
+function installSeedHealthPipelineMock(portwatchRecordCount, { missingPortwatchMeta = false } = {}) {
   globalThis.fetch = async (_url, init) => {
     const commands = JSON.parse(init.body);
     const results = commands.map((command) => {
       const [op, key] = command;
       assert.equal(op, 'GET');
       if (key === PORTWATCH_META_KEY) {
+        if (missingPortwatchMeta) return { result: null };
         return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: portwatchRecordCount }) };
       }
       if (key === RESILIENCE_INTERVAL_PROBE_KEY) {
@@ -99,6 +100,20 @@ test('seed-health treats missing PortWatch recordCount as coverage_partial', asy
   assert.equal(res.status, 200);
   assert.equal(body.overall, 'warning');
   assert.equal(entry.status, 'coverage_partial');
+  assert.equal(entry.stale, true);
+  assert.equal(entry.recordCount, null);
+  assert.equal(entry.minRecordCount, 174);
+});
+
+test('seed-health includes PortWatch minRecordCount when seed-meta is missing', async () => {
+  installSeedHealthPipelineMock(undefined, { missingPortwatchMeta: true });
+
+  const { res, body } = await readSeedHealth();
+  const entry = body.seeds['supply_chain:portwatch-ports'];
+
+  assert.equal(res.status, 503);
+  assert.equal(body.overall, 'degraded');
+  assert.equal(entry.status, 'missing');
   assert.equal(entry.stale, true);
   assert.equal(entry.recordCount, null);
   assert.equal(entry.minRecordCount, 174);

@@ -322,6 +322,7 @@ export default async function handler(req) {
 
     if (!meta) {
       seeds[domain] = { status: 'missing', fetchedAt: null, recordCount: null, stale: true };
+      if (cfg.minRecordCount != null) seeds[domain].minRecordCount = cfg.minRecordCount;
       missingCount++;
       continue;
     }
