@@ -14,6 +14,8 @@ import { validateApiKey } from '../../_api-key.js';
 import { checkRateLimit } from '../../_rate-limit.js';
 // @ts-expect-error
 import { notifySlack } from '../../_slack.js';
+// @ts-expect-error
+import { maybePutLkg, getLkg } from '../../_lkg.js';
 import { listConflictArchiveV5 } from '../../../server/conflict-archive/v5/list';
 
 export const config = { runtime: 'edge' };
@@ -49,6 +51,8 @@ export default async function handler(req: Request): Promise<Response> {
     const av = new URL(req.url).searchParams.get('av');
     const body = await listConflictArchiveV5(av);
     const count = body.items?.length ?? 0;
+    // Persist as last-known-good for the origin-level fallback below.
+    if (count > 0) await maybePutLkg('conflict-v5', body);
     // Truthful log line — Vercel tags each log with its region, so filtering
     // by region shows what US users were actually served (not just a 200).
     console.log(`[conflict-archive:v5] served items=${count}${count === 0 ? ' (EMPTY — not caching)' : ''}`);
@@ -81,12 +85,35 @@ export default async function handler(req: Request): Promise<Response> {
     // last good cached response instead of a blank feed for the whole region.
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[conflict-archive:v5] handler failed:', msg);
+
+    // Origin-level last-known-good (covers cold CDN variants).
+    const lkg = await getLkg('conflict-v5');
+    if (lkg) {
+      console.warn(`[conflict-archive:v5] serving LKG (${lkg.ageMinutes} min old)`);
+      await notifySlack(
+        'conflict-archive-lkg',
+        '🟡 *conflict-archive/v5 → serving last-known-good*\n' +
+        `*What:* live path failed (${msg.slice(0, 150)})\n` +
+        `*Users:* getting the LKG archive (${lkg.ageMinutes} min old) — populated, not blank\n` +
+        '*Check:* `conflict:archive:rse:v1` size/latency (4+ MB uncompressed — known risk) · enrich cron',
+      );
+      return new Response(JSON.stringify(lkg.payload), {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, s-maxage=60',
+          'X-WM-Data-Source': 'lkg',
+        },
+      });
+    }
+
     await notifySlack(
       'conflict-archive-503',
-      '🔴 *conflict-archive/v5 → 503*\n' +
+      '🔴 *conflict-archive/v5 → 503 (no LKG available)*\n' +
       `*What:* ${msg.slice(0, 200)}\n` +
-      '*Users:* CDN serving last known-good archive (stale-if-error, up to 24h)\n' +
-      '*Check:* `conflict:archive:rse:v1` size/latency (4+ MB uncompressed — known risk) · enrich cron',
+      '*Users:* CDN serving last known-good archive for primed variants (stale-if-error, up to 24h); cold variants see errors\n' +
+      '*Check:* `conflict:archive:rse:v1` size/latency (4+ MB uncompressed — known risk) · enrich cron · Blob store (LKG was missing/stale)',
     );
     return new Response(JSON.stringify({ error: 'Upstream unavailable' }), {
       status: 503,

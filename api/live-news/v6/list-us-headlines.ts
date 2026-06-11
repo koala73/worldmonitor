@@ -14,6 +14,8 @@ import { validateApiKey } from '../../_api-key.js';
 import { checkRateLimit } from '../../_rate-limit.js';
 // @ts-expect-error
 import { notifySlack } from '../../_slack.js';
+// @ts-expect-error
+import { maybePutLkg, getLkg } from '../../_lkg.js';
 import { listUsHeadlinesV6 } from '../../../server/live-news/v6/list-us-headlines';
 
 export const config = { runtime: 'edge' };
@@ -49,6 +51,9 @@ export default async function handler(req: Request): Promise<Response> {
     const av = new URL(req.url).searchParams.get('av');
     const body = await listUsHeadlinesV6(av);
     const count = body.items?.length ?? 0;
+    // Persist as last-known-good (throttled; the LKG is what we serve when
+    // the live path throws AND the CDN has no primed copy for this variant).
+    if (count > 0) await maybePutLkg('live-news-v6', body);
     // Truthful log line — Vercel tags each log with its region, so filtering
     // by region (e.g. iad1) shows exactly what US users were served. A bare
     // `status=200` could not distinguish a full feed from an empty one.
@@ -89,12 +94,38 @@ export default async function handler(req: Request): Promise<Response> {
     // serves the last good cached response instead of a blank one.
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[live-news:v6] handler failed:', msg);
+
+    // Origin-level last-known-good: serve the persisted copy so even COLD
+    // CDN variants (quiet hours, new ?av=, fresh deploy) get a populated
+    // feed. Short s-maxage so the CDN absorbs the fallback load but recovers
+    // within a minute once the live path returns.
+    const lkg = await getLkg('live-news-v6');
+    if (lkg) {
+      console.warn(`[live-news:v6] serving LKG (${lkg.ageMinutes} min old)`);
+      await notifySlack(
+        'live-news-lkg',
+        '🟡 *live-news/v6 → serving last-known-good*\n' +
+        `*What:* live path failed (${msg.slice(0, 150)})\n` +
+        `*Users:* getting the LKG feed (${lkg.ageMinutes} min old) — populated, not blank\n` +
+        '*Check:* Upstash latency/size of `live-news:v6:digest` · refresh cron (:03/:18/:33/:48)',
+      );
+      return new Response(JSON.stringify(lkg.payload), {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, s-maxage=60',
+          'X-WM-Data-Source': 'lkg',
+        },
+      });
+    }
+
     await notifySlack(
       'live-news-503',
-      '🔴 *live-news/v6 → 503*\n' +
+      '🔴 *live-news/v6 → 503 (no LKG available)*\n' +
       `*What:* ${msg.slice(0, 200)}\n` +
-      '*Users:* CDN serving last known-good feed (stale-if-error, up to 24h)\n' +
-      '*Check:* Upstash latency/size of `live-news:v6:digest` · refresh cron (:03/:18/:33/:48)',
+      '*Users:* CDN serving last known-good feed for primed variants (stale-if-error, up to 24h); cold variants see errors\n' +
+      '*Check:* Upstash latency/size of `live-news:v6:digest` · refresh cron (:03/:18/:33/:48) · Blob store (LKG was missing/stale)',
     );
     return new Response(JSON.stringify({ error: 'Upstream unavailable' }), {
       status: 503,

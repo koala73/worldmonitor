@@ -1,5 +1,6 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
+import { maybePutLkg, getLkg } from './_lkg.js';
 // Bootstrap anomalies are reported by the 🛰️ US Edge Probe (it sees the
 // no-store/503 from US vantage every 15 min) — the Origin Monitor stays
 // quiet for bootstrap and only sends its one-time introduction from here.
@@ -363,10 +364,40 @@ export default async function handler(req) {
     }
   }
 
+  // ④ Last-known-good fill — sections still missing after Redis + upstream
+  // are restored from the persisted healthy bootstrap (Vercel Blob — a
+  // different failure domain from Upstash, so it survives a Redis outage).
+  // This is what keeps worldBrief (the premium hook) effectively
+  // un-blankable: losing the key now means "serve the ≤48h-old copy",
+  // not "hard-down the fast tier".
+  const lkgFilled = [];
+  if (missing.length > 0 && (tier === 'fast' || tier === 'slow')) {
+    const lkg = await getLkg(`bootstrap-${tier}`);
+    if (lkg?.payload) {
+      for (const name of [...missing]) {
+        if (lkg.payload[name] !== undefined) {
+          data[name] = lkg.payload[name];
+          lkgFilled.push(name);
+        }
+      }
+      if (lkgFilled.length > 0) {
+        missing.length = 0;
+        for (const name of names) {
+          if (data[name] === undefined) missing.push(name);
+        }
+        console.warn(
+          `[bootstrap] LKG fill (${lkg.ageMinutes} min old): [${lkgFilled.join(',')}]` +
+          (missing.length ? ` — still missing: [${missing.join(',')}]` : ''),
+        );
+      }
+    }
+  }
+
   // ── Never-cache-empty / worst-case CDN safety ───────────────────────────────
   // A bootstrap degrades when Redis reads miss keys (e.g. the oversized digest /
   // world-brief blobs time out) AND the upstream backfill can't fill them (it has
-  // been returning 401). Caching such a response pins a blank/partial app across
+  // been returning 401) AND the LKG fill above couldn't restore them (Blob copy
+  // missing or >48h old). Caching such a response pins a blank/partial app across
   // an entire edge region for the TTL — the conversion killer. So:
   // All judged against MOBILE-relevant keys only (web-only keys never gate):
   //   • Broadly degraded (≥half the tier's MOBILE keys missing → the app's
@@ -401,15 +432,29 @@ export default async function handler(req) {
     });
   }
 
+  // Persist the healthy bootstrap as last-known-good — only when nothing
+  // mobile-relevant is missing AND nothing in it came from the LKG itself
+  // (never let stale data re-persist as "known good").
+  if (isTier && mobileMissing.length === 0 && lkgFilled.length === 0) {
+    await maybePutLkg(`bootstrap-${tier}`, data);
+  }
+
   // Only MOBILE-relevant gaps make a response uncacheable; web-only gaps
   // cache normally (still listed in the response's `missing` for clients).
+  // LKG-filled sections are stale data: serve them, but with a SHORT CDN
+  // window so old data never enters the long cache and recovery is fast.
   const degraded = mobileMissing.length > 0;
+  const lkgServed = lkgFilled.length > 0;
   const cacheControl = degraded
     ? 'no-store'
-    : (tier && TIER_CACHE[tier]) || 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=86400';
+    : lkgServed
+      ? 'public, s-maxage=60'
+      : (tier && TIER_CACHE[tier]) || 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=86400';
   const cdnCacheControl = degraded
     ? 'no-store'
-    : (tier && TIER_CDN_CACHE[tier]) || TIER_CDN_CACHE.fast;
+    : lkgServed
+      ? 'public, s-maxage=60'
+      : (tier && TIER_CDN_CACHE[tier]) || TIER_CDN_CACHE.fast;
   if (degraded) {
     console.warn(
       `[bootstrap] partial — ${mobileMissing.length} mobile keys missing, no-store ` +
@@ -422,13 +467,17 @@ export default async function handler(req) {
     console.log(`[bootstrap] web-only keys missing (cacheable, no alert): [${missing.join(',')}]`);
   }
 
-  return new Response(JSON.stringify({ data, missing }), {
+  // `stale` lists LKG-restored sections (iOS Codable ignores unknown keys;
+  // web can surface a "data may be delayed" hint from it later).
+  const body = lkgServed ? { data, missing, stale: lkgFilled } : { data, missing };
+  return new Response(JSON.stringify(body), {
     status: 200,
     headers: {
       ...cors,
       'Content-Type': 'application/json',
       'Cache-Control': cacheControl,
       'CDN-Cache-Control': cdnCacheControl,
+      ...(lkgServed ? { 'X-WM-Data-Source': 'lkg-fill' } : {}),
     },
   });
 }

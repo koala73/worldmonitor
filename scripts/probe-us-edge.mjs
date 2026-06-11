@@ -115,6 +115,14 @@ async function directCheck(t) {
         ok = false;
         problems.push(`${t.label}: 200 but no-store (mobile-relevant data missing; CDN copy not refreshing)`);
       }
+      // Last-known-good fallback active: users get populated-but-stale data
+      // (origin's live path is failing). Looks healthy in every other signal
+      // — the header is the only tell, so it must alert.
+      const ds = resp.headers.get('x-wm-data-source');
+      if (ds) {
+        ok = false;
+        problems.push(`${t.label}: serving LAST-KNOWN-GOOD fallback (${ds}) — live data path is failing`);
+      }
     } else {
       problems.push(`${t.label}: HTTP ${resp.status}${resp.status === 401 ? ' — BUNDLED KEY INVALID?' : ''}`);
     }
