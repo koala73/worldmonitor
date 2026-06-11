@@ -111,7 +111,7 @@ const SEED_DOMAINS = {
   'economic:fatf-listing':     { key: 'seed-meta:economic:fatf-listing',     intervalMin: 30240 }, // FATF plenary 3×/year; intervalMin = health.js maxStaleMin / 2 (60480 / 2)
   'product-catalog':          { key: 'seed-meta:product-catalog',          intervalMin: 360 }, // relay loop every 6h; intervalMin = health.js maxStaleMin / 3 (1080 / 3)
   'portwatch:chokepoints-ref': { key: 'seed-meta:portwatch:chokepoints-ref', intervalMin: 10080 }, // seed-bundle-portwatch runs this at WEEK cadence; intervalMin*2 = 14d matches api/health.js SEED_META.portwatchChokepointsRef
-  'supply_chain:portwatch-ports': { key: 'seed-meta:supply_chain:portwatch-ports', intervalMin: 720 }, // 12h cron (0 */12 * * *); intervalMin = maxStaleMin / 3 (2160 / 3)
+  'supply_chain:portwatch-ports': { key: 'seed-meta:supply_chain:portwatch-ports', intervalMin: 720, minRecordCount: 174 }, // 12h cron (0 */12 * * *); intervalMin = maxStaleMin / 3 (2160 / 3); #3613 requires 174-country coverage before OK.
   'energy:chokepoint-flows': { key: 'seed-meta:energy:chokepoint-flows', intervalMin: 360 }, // 6h relay loop; intervalMin = maxStaleMin / 2 (720 / 2)
   'energy:eia-petroleum':   { key: 'seed-meta:energy:eia-petroleum',   intervalMin: 1440 }, // daily bundle cron; intervalMin*3 = health.js maxStaleMin (4320)
   'energy:spine':                 { key: 'seed-meta:energy:spine',                 intervalMin: 1440 }, // daily cron (0 6 * * *); intervalMin = maxStaleMin / 2 (2880 / 2)
@@ -138,6 +138,15 @@ function parseJsonValue(raw) {
   } catch {
     return null;
   }
+}
+
+function parseFiniteRecordCount(raw) {
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
+  if (typeof raw === 'string' && raw.trim() !== '') {
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }
 
 function isEnabledEnv(name, defaultValue) {
@@ -318,6 +327,8 @@ export default async function handler(req) {
     }
 
     const ageMs = now - (meta.fetchedAt || 0);
+    const recordCount = parseFiniteRecordCount(meta.recordCount);
+    const coveragePartial = cfg.minRecordCount != null && (recordCount == null || recordCount < cfg.minRecordCount);
     const isError = meta.status === 'error';
     const probe = evaluateDataProbe(cfg.dataProbe, probeMap.get(domain));
     const sourceMismatch = Boolean(
@@ -326,7 +337,7 @@ export default async function handler(req) {
       meta.sourceVersion !== '' &&
       meta.sourceVersion !== cfg.dataProbe.sourceVersion
     );
-    const stale = ageMs > maxStalenessMs || isError || sourceMismatch || probe?.ok === false;
+    const stale = ageMs > maxStalenessMs || coveragePartial || isError || sourceMismatch || probe?.ok === false;
     if (stale) staleCount++;
 
     seeds[domain] = {
@@ -336,15 +347,18 @@ export default async function handler(req) {
           ? 'source_version_mismatch'
           : probe?.ok === false
             ? probe.status
-            : stale
+            : coveragePartial
+              ? 'coverage_partial'
+              : stale
               ? 'stale'
               : 'ok',
       fetchedAt: meta.fetchedAt,
-      recordCount: meta.recordCount ?? null,
+      recordCount: recordCount ?? meta.recordCount ?? null,
       sourceVersion: meta.sourceVersion || null,
       ageMinutes: Math.round(ageMs / 60000),
       stale,
     };
+    if (cfg.minRecordCount != null) seeds[domain].minRecordCount = cfg.minRecordCount;
     if (probe) seeds[domain].dataProbe = probe;
   }
 

@@ -99,6 +99,19 @@ test('classifyKey: riskScores partial realtime family coverage → COVERAGE_PART
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 
+test('classifyKey: portwatchPortActivity below 174 countries → COVERAGE_PARTIAL', () => {
+  const entry = classifyKey('portwatchPortActivity', STANDALONE_KEYS.portwatchPortActivity, { allowOnDemand: true },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.portwatchPortActivity]: 1234 },
+      metaValues: { 'seed-meta:supply_chain:portwatch-ports': seedMeta({ recordCount: 139 }) },
+    }));
+
+  assert.equal(entry.status, 'COVERAGE_PARTIAL');
+  assert.equal(entry.records, 139);
+  assert.equal(entry.minRecordCount, 174);
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
 test('classifyKey: socialVelocity error seed-meta → SEED_ERROR while data is preserved', () => {
   const entry = classifyKey('socialVelocity', BOOTSTRAP_KEYS.socialVelocity, { allowOnDemand: false },
     makeCtx({

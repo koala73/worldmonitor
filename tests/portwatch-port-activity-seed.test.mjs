@@ -185,9 +185,10 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     // but CANONICAL_KEY + META_KEY require a higher coverage floor before
     // they advance — protects consumers from a 5-country canonical
     // published as "healthy" during a recovery from full outage.
-    assert.match(src, /const MIN_CANONICAL_PUBLISH\s*=\s*50/);
+    assert.match(src, /export const PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES\s*=\s*174/);
+    assert.match(src, /const MIN_CANONICAL_PUBLISH\s*=\s*PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES/);
     // The gate is evaluated and used to conditionally write canonical/meta:
-    assert.match(src, /const canonicalAdvances = countryData\.size\s*>=\s*MIN_CANONICAL_PUBLISH/);
+    assert.match(src, /const canonicalAdvances = shouldAdvanceCanonical\(countryData\.size\)/);
     assert.match(src, /if\s*\(canonicalAdvances\)\s*\{[\s\S]{0,300}SET',\s*CANONICAL_KEY/);
     // Below the floor, extendExistingTtl preserves canonical + meta +
     // prior per-country keys, and a PARTIAL PERSIST log line surfaces
@@ -896,22 +897,38 @@ describe('proxyFetch signal propagation (runtime)', () => {
 });
 
 describe('validateFn', () => {
-  it('returns true when countries array has >= 50 entries', () => {
-    const data = { countries: Array.from({ length: 80 }, (_, i) => `C${i}`), fetchedAt: new Date().toISOString() };
-    const valid = data && Array.isArray(data.countries) && data.countries.length >= 50;
-    assert.equal(valid, true);
+  let validateFn;
+  let shouldAdvanceCanonical;
+  let PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES;
+
+  before(async () => {
+    ({
+      validateFn,
+      shouldAdvanceCanonical,
+      PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES,
+    } = await import('../scripts/seed-portwatch-port-activity.mjs'));
   });
 
-  it('returns false when countries array has < 50 entries', () => {
-    const data = { countries: ['US', 'SA'], fetchedAt: new Date().toISOString() };
-    const valid = data && Array.isArray(data.countries) && data.countries.length >= 50;
-    assert.equal(valid, false);
+  it('keeps the per-country write gate permissive so partial recovery can accumulate', () => {
+    const data = { countries: Array.from({ length: 5 }, (_, i) => `C${i}`), fetchedAt: new Date().toISOString() };
+    assert.equal(validateFn(data), true);
+  });
+
+  it('returns false below the per-country write gate', () => {
+    const data = { countries: ['US', 'SA', 'GB', 'JP'], fetchedAt: new Date().toISOString() };
+    assert.equal(validateFn(data), false);
   });
 
   it('returns false for null data', () => {
-    const data = null;
-    const valid = !!(data && Array.isArray(data.countries) && data.countries.length >= 50);
-    assert.equal(valid, false);
+    assert.equal(validateFn(null), false);
+  });
+
+  it('advances canonical and seed-meta only at the 174-country recovery target', () => {
+    assert.equal(PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES, 174);
+    assert.equal(shouldAdvanceCanonical(139), false);
+    assert.equal(shouldAdvanceCanonical(173), false);
+    assert.equal(shouldAdvanceCanonical(174), true);
+    assert.equal(shouldAdvanceCanonical(175), true);
   });
 });
 

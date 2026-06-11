@@ -267,6 +267,32 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(freshness.cached_at, new Date(now - 24 * 60 * 60_000).toISOString());
   });
 
+  it('evaluateFreshness marks below-floor recordCount stale even when fetchedAt is fresh', () => {
+    const now = Date.UTC(2026, 5, 11, 12, 0, 0);
+    const freshness = evaluateFreshness(
+      [
+        { key: 'seed-meta:supply_chain:portwatch-ports', maxStaleMin: 2160, minRecordCount: 174 },
+      ],
+      [
+        { fetchedAt: now - 12 * 60 * 60_000, recordCount: 139 },
+      ],
+      now,
+    );
+
+    assert.equal(freshness.stale, true);
+    assert.equal(freshness.cached_at, new Date(now - 12 * 60 * 60_000).toISOString());
+  });
+
+  it('get_chokepoint_status declares the PortWatch 174-country freshness floor', async () => {
+    const { CACHE_TOOLS } = await import(`../api/mcp/registry/cache-tools.ts?t=${Date.now()}`);
+    const tool = CACHE_TOOLS.find((candidate) => candidate.name === 'get_chokepoint_status');
+    const portwatchFreshness = tool?._freshnessChecks?.find(
+      (check) => check.key === 'seed-meta:supply_chain:portwatch-ports',
+    );
+
+    assert.equal(portwatchFreshness?.minRecordCount, 174);
+  });
+
   // --- Rate limiting ---
 
   it('returns JSON-RPC -32029 when rate limited', async () => {

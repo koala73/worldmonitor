@@ -23,6 +23,11 @@ const LOCK_DOMAIN = 'supply_chain:portwatch-ports';
 // 60 min — covers the widest realistic run of this standalone service.
 const LOCK_TTL_MS = 60 * 60 * 1000;
 const TTL = 259_200; // 3 days — 6× the 12h cron interval
+// PortWatch currently has 174 ISO2-mapped countries with port references.
+// This is the issue #3613 completion target: a run below this count can
+// contribute per-country cache rotation, but must not advance the canonical
+// list or seed-meta as if coverage had recovered.
+export const PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES = 174;
 // Coverage gate for per-country WRITES. Lowered to 5 on 2026-05-18 (was
 // 50 → 25 → 20) so partial-success runs (6-10/30) can persist their fresh
 // per-country payloads to Redis. Below this floor, NOTHING is written.
@@ -56,10 +61,11 @@ const MIN_VALID_COUNTRIES = 5;
 // 5-entry canonical list (3% coverage published as "healthy"). With
 // this gate, the canonical only advances when coverage is meaningful.
 //
-// 50 chosen as a hold-over target — matches the historical pre-incident
-// gate. Bump to 100 / 174 as cache-rotation accumulates and the
-// expected steady-state coverage grows.
-const MIN_CANONICAL_PUBLISH = 50;
+// 174 chosen as the explicit #3613 recovery target. Anything below this
+// remains a partial recovery run: per-country writes may rotate in, but the
+// public canonical list + operator seed-meta stay on the prior version so
+// /api/health cannot report partial coverage as OK.
+const MIN_CANONICAL_PUBLISH = PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES;
 
 const EP3_BASE =
   'https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/Daily_Ports_Data/FeatureServer/0/query';
@@ -1175,7 +1181,12 @@ export async function fetchAll(progress, { signal } = {}) {
 }
 
 export function validateFn(data) {
-  return data && Array.isArray(data.countries) && data.countries.length >= MIN_VALID_COUNTRIES;
+  return !!(data && Array.isArray(data.countries) && data.countries.length >= MIN_VALID_COUNTRIES);
+}
+
+export function shouldAdvanceCanonical(countryCount, floor = MIN_CANONICAL_PUBLISH) {
+  const count = Number(countryCount);
+  return Number.isFinite(count) && count >= floor;
 }
 
 async function main() {
@@ -1311,7 +1322,7 @@ async function main() {
     // accumulates), but CANONICAL + META only advance when total coverage
     // crosses MIN_CANONICAL_PUBLISH — protects consumers from seeing a
     // 5-country canonical published as "healthy" during recovery.
-    const canonicalAdvances = countryData.size >= MIN_CANONICAL_PUBLISH;
+    const canonicalAdvances = shouldAdvanceCanonical(countryData.size);
     const metaPayload = { fetchedAt: Date.now(), recordCount: countryData.size };
 
     const commands = [];
