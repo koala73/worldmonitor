@@ -246,8 +246,8 @@ export const RPC_TOOLS: ToolDef[] = [
           sources = collectMcpBriefSources(groundingItems, 6);
           const sourceLines = sources.length > 0 ? ['Brief source articles:', ...briefSourceContextLines(sources)] : [];
           const headlineLines = groundingItems.map(item => item.title ?? '').filter(Boolean);
-          const context = [...sourceLines, 'Headlines:', ...headlineLines].join('\n');
-          if (context.trim()) contextParam = encodeURIComponent(context.slice(0, 4000));
+          const contextLines = [...sourceLines, 'Headlines:', ...headlineLines].join('\n');
+          if (contextLines.trim()) contextParam = encodeURIComponent(contextLines.slice(0, 4000));
         }
       } catch { /* proceed without context — better than failing */ }
 

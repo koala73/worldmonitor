@@ -531,7 +531,7 @@ export class CountryIntelManager implements AppModule {
       }
 
       const groundingNews = filteredNews.slice(0, 15);
-      const briefSources = collectBriefSources(groundingNews, 6);
+      let briefSources = collectBriefSources(groundingNews, 6);
       const headlines = groundingNews.map((n) => n.title);
       if (headlines.length) context.headlines = headlines;
       if (briefSources.length) context.briefSources = briefSources;
@@ -565,7 +565,7 @@ export class CountryIntelManager implements AppModule {
         briefResult = await this.fetchCountryIntelBrief(code, contextSnapshot, countryFw?.systemPromptAppend ?? '');
         briefText = briefResult.brief;
         if (briefResult.sources.length > 0) {
-          briefSources.splice(0, briefSources.length, ...briefResult.sources);
+          briefSources = briefResult.sources;
         }
       } catch { /* server unreachable */ }
 

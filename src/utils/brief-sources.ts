@@ -79,6 +79,17 @@ export function collectBriefSources(
   return out;
 }
 
+export function normalizeCachedBriefSources(
+  cacheData: { sources?: BriefSourceCandidate[] } | undefined,
+  maxSources = DEFAULT_MAX_SOURCES,
+): { sources: BriefSource[]; legacySourceShape: boolean } {
+  const legacySourceShape = !cacheData || !Object.prototype.hasOwnProperty.call(cacheData, 'sources');
+  return {
+    sources: collectBriefSources(cacheData?.sources ?? [], maxSources),
+    legacySourceShape,
+  };
+}
+
 export function buildBriefSourceContextLines(sources: BriefSource[]): string[] {
   return sources.map((source, index) => {
     const parts = [`Source [${index + 1}]: ${source.title}`, source.source, source.url];

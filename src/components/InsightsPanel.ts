@@ -11,7 +11,7 @@ import { getTheaterPostureSummaries } from '@/services/military-surge';
 import { getCachedPosture } from '@/services/cached-theater-posture';
 import { isMobileDevice } from '@/utils';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
-import { collectBriefSources, renderBriefSourcesFooter, type BriefSource } from '@/utils/brief-sources';
+import { collectBriefSources, normalizeCachedBriefSources, renderBriefSourcesFooter, type BriefSource } from '@/utils/brief-sources';
 import { SITE_VARIANT } from '@/config';
 import { deletePersistentCache, getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
 import { t } from '@/services/i18n';
@@ -108,8 +108,8 @@ export class InsightsPanel extends Panel {
     if (this.cachedBrief) return false;
     const entry = await getPersistentCache<{ summary: string; sources?: BriefSource[] }>(InsightsPanel.BRIEF_CACHE_KEY);
     if (!entry?.data?.summary) return false;
-    const sources = collectBriefSources(entry.data.sources ?? [], 6);
-    if (sources.length === 0) {
+    const { sources, legacySourceShape } = normalizeCachedBriefSources(entry.data, 6);
+    if (legacySourceShape) {
       void deletePersistentCache(InsightsPanel.BRIEF_CACHE_KEY);
       return false;
     }

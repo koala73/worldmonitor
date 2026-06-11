@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   buildBriefSourceContextLines,
   collectBriefSources,
+  normalizeCachedBriefSources,
   normalizeBriefSourceUrl,
   renderBriefSourcesFooter,
 } from '../src/utils/brief-sources';
@@ -69,5 +70,27 @@ describe('brief source helpers', () => {
     assert.deepEqual(lines, [
       'Source [1]: Grounding story | Wire | https://example.com/grounding | published=2026-06-07T00:00:00.000Z',
     ]);
+  });
+
+  it('distinguishes legacy source-free cache from current empty source lists', () => {
+    assert.deepEqual(normalizeCachedBriefSources(undefined), {
+      legacySourceShape: true,
+      sources: [],
+    });
+
+    assert.deepEqual(normalizeCachedBriefSources({}), {
+      legacySourceShape: true,
+      sources: [],
+    });
+
+    assert.deepEqual(normalizeCachedBriefSources({ sources: [] }), {
+      legacySourceShape: false,
+      sources: [],
+    });
+
+    assert.deepEqual(normalizeCachedBriefSources({ sources: [{ title: 'Bad', source: 'Feed', url: 'javascript:alert(1)' }] }), {
+      legacySourceShape: false,
+      sources: [],
+    });
   });
 });
