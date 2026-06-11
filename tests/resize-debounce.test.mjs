@@ -2,14 +2,19 @@
 //
 // Verifies:
 // - debounce() collapses rapid-fire calls into one
-// - PanelLayoutManager wires the resize listener via _onResizeDebounced
-// - destroy() cancels the debounce timer
+// - PanelLayoutManager wires resize through the production helper
+// - destroy() cancels pending resize work
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  addDebouncedResizeListener,
+  removeDebouncedResizeListener,
+} from '../src/app/debounced-resize-listener.ts';
+import { debounce } from '../src/utils/debounce.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const panelLayoutSrc = readFileSync(
@@ -17,22 +22,7 @@ const panelLayoutSrc = readFileSync(
   'utf-8'
 );
 
-// ------------------------------------------------------------------
-// Inline debounce (mirrors src/utils/index.ts) to test behaviour
-// without pulling in import.meta.env-dependent modules
-// ------------------------------------------------------------------
-/** @returns {{ cancel: () => void }} */
-function debounce(fn, delay) {
-  let timeoutId;
-  const debounced = (..._args) => {
-    clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => fn(), delay);
-  };
-  debounced.cancel = () => { clearTimeout(timeoutId); };
-  return debounced;
-}
-
-describe('debounce utility (inline — mirrors src/utils/index.ts)', () => {
+describe('debounce utility', () => {
   it('does NOT call fn before delay elapses', () => {
     let called = false;
     const debounced = debounce(() => { called = true; }, 100);
@@ -66,6 +56,59 @@ describe('debounce utility (inline — mirrors src/utils/index.ts)', () => {
     await new Promise(r => setTimeout(r, 30)); // t=60ms — reset again
     await new Promise(r => setTimeout(r, 80)); // t=140ms past last call — fires
     assert.strictEqual(callCount, 1, 'fn must fire exactly once after all resets');
+  });
+});
+
+describe('debounced resize listener helper', () => {
+  it('collapses a real resize event burst into one delayed ensure call', async () => {
+    const target = new EventTarget();
+    let callCount = 0;
+    const listener = addDebouncedResizeListener(target, () => { callCount++; }, 40);
+
+    for (let i = 0; i < 8; i++) {
+      target.dispatchEvent(new Event('resize'));
+    }
+
+    assert.strictEqual(callCount, 0, 'resize burst must not call synchronously');
+
+    await new Promise(r => setTimeout(r, 20));
+    target.dispatchEvent(new Event('resize'));
+    assert.strictEqual(callCount, 0, 'mid-burst resize must reset the timer');
+
+    await new Promise(r => setTimeout(r, 70));
+    assert.strictEqual(callCount, 1, 'resize burst must collapse to one delayed call');
+
+    removeDebouncedResizeListener(target, listener);
+  });
+
+  it('re-init removal cancels the old pending listener before a new one is assigned', async () => {
+    const target = new EventTarget();
+    let callCount = 0;
+
+    const firstListener = addDebouncedResizeListener(target, () => { callCount++; }, 40);
+    target.dispatchEvent(new Event('resize'));
+
+    removeDebouncedResizeListener(target, firstListener);
+    const secondListener = addDebouncedResizeListener(target, () => { callCount++; }, 40);
+    target.dispatchEvent(new Event('resize'));
+
+    await new Promise(r => setTimeout(r, 70));
+    assert.strictEqual(callCount, 1, 'only the new listener timer should fire');
+
+    removeDebouncedResizeListener(target, secondListener);
+  });
+
+  it('destroy removal removes the listener and cancels pending resize work', async () => {
+    const target = new EventTarget();
+    let callCount = 0;
+    const listener = addDebouncedResizeListener(target, () => { callCount++; }, 40);
+
+    target.dispatchEvent(new Event('resize'));
+    removeDebouncedResizeListener(target, listener);
+    target.dispatchEvent(new Event('resize'));
+
+    await new Promise(r => setTimeout(r, 70));
+    assert.strictEqual(callCount, 0, 'destroy cleanup must cancel pending and future resize work');
   });
 });
 
@@ -154,50 +197,44 @@ describe('resize debounce lifecycle (live instance)', () => {
 describe('resize debounce wiring (panel-layout.ts)', () => {
   it('declares _onResizeDebounced nullable field', () => {
     assert.ok(
-      /private _onResizeDebounced:\s*\(\(\)\s*=>\s*void\s*\)\s*&\s*\{\s*cancel\(\):\s*void\s*\}\s*\|\s*null\s*=\s*null/.test(
+      /private _onResizeDebounced:\s*DebouncedResizeListener\s*\|\s*null\s*=\s*null/.test(
         panelLayoutSrc
       ),
       '_onResizeDebounced field not found with correct type signature'
     );
   });
 
-  it('init sets _onResizeDebounced = debounce(ensureCorrectZones, 100)', () => {
+  it('init installs resize through addDebouncedResizeListener', () => {
     assert.ok(
-      /this\._onResizeDebounced\s*=\s*debounce\(\(\)\s*=>\s*this\.ensureCorrectZones\(\),\s*100\)/.test(
+      /this\._onResizeDebounced\s*=\s*addDebouncedResizeListener\(\s*window,\s*\(\)\s*=>\s*this\.ensureCorrectZones\(\)\s*\)/.test(
         panelLayoutSrc
       ),
-      'debounce(ensureCorrectZones, 100) assignment not found'
+      'addDebouncedResizeListener(ensureCorrectZones) assignment not found'
     );
   });
 
-  it('addEventListener uses _onResizeDebounced (not bare ensureCorrectZones)', () => {
-    const addLine = panelLayoutSrc
-      .split('\n')
-      .find(l => l.includes("addEventListener") && l.includes("'resize'"));
-    assert.ok(addLine, "resize addEventListener line not found");
+  it('init removes the old resize helper before installing a replacement', () => {
     assert.ok(
-      /_onResizeDebounced/.test(addLine),
-      `resize listener must use _onResizeDebounced. Found: ${addLine.trim()}`
+      /removeDebouncedResizeListener\(\s*window,\s*this\._onResizeDebounced\s*\);\s*this\._onResizeDebounced\s*=\s*addDebouncedResizeListener/s.test(
+        panelLayoutSrc
+      ),
+      'init must remove/cancel the previous resize listener before replacement'
     );
+  });
+
+  it('does not keep the original bare resize arrow listener', () => {
     assert.ok(
-      !/\(\)\s*=>\s*this\.ensureCorrectZones\(\)/.test(addLine),
+      !/window\.addEventListener\s*\(\s*['"]resize['"]\s*,\s*\(\)\s*=>\s*this\.ensureCorrectZones\(\)\s*\)/.test(panelLayoutSrc),
       'resize listener must not use bare arrow fn (the original bug)'
     );
   });
 
-  it('destroy() calls _onResizeDebounced?.cancel()', () => {
+  it('destroy() removes the resize helper and nulls the field', () => {
     assert.ok(
-      /_onResizeDebounced\?\.cancel\(\)/.test(panelLayoutSrc),
-      'destroy() must call _onResizeDebounced?.cancel()'
-    );
-  });
-
-  it('destroy() removes listener via _onResizeDebounced reference', () => {
-    assert.ok(
-      /window\.removeEventListener\s*\(\s*['"]resize['"]\s*,\s*this\._onResizeDebounced/.test(
+      /removeDebouncedResizeListener\(\s*window,\s*this\._onResizeDebounced\s*\);\s*this\._onResizeDebounced\s*=\s*null/s.test(
         panelLayoutSrc
       ),
-      'destroy() must remove resize listener via _onResizeDebounced'
+      'destroy() must remove/cancel the resize listener and null the field'
     );
   });
 });

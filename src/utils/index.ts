@@ -50,18 +50,7 @@ export function getHeatmapClass(change: number): string {
   return `${direction}-1`;
 }
 
-export function debounce<T extends (...args: unknown[]) => void>(
-  fn: T,
-  delay: number
-): ((...args: Parameters<T>) => void) & { cancel(): void } {
-  let timeoutId: ReturnType<typeof setTimeout>;
-  const debounced = (...args: Parameters<T>) => {
-    clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => fn(...args), delay);
-  };
-  debounced.cancel = () => { clearTimeout(timeoutId); };
-  return debounced;
-}
+export { debounce } from './debounce';
 
 export function throttle<T extends (...args: unknown[]) => void>(
   fn: T,

@@ -1,4 +1,9 @@
 import type { AppContext, AppModule } from '@/app/app-context';
+import {
+  addDebouncedResizeListener,
+  removeDebouncedResizeListener,
+  type DebouncedResizeListener,
+} from '@/app/debounced-resize-listener';
 import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
 import { replayPendingCalls, clearAllPendingCalls } from '@/app/pending-panel-data';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
@@ -197,7 +202,7 @@ export class PanelLayoutManager implements AppModule {
   private unsubscribeEntitlementChange: (() => void) | null = null;
   private unsubscribePaymentFailureBanner: (() => void) | null = null;
   private scheduledLoadAllRaf: number | null = null;
-  private _onResizeDebounced: (() => void) & { cancel(): void } | null = null;
+  private _onResizeDebounced: DebouncedResizeListener | null = null;
 
   constructor(ctx: AppContext, callbacks: PanelLayoutManagerCallbacks) {
     this.ctx = ctx;
@@ -405,10 +410,7 @@ export class PanelLayoutManager implements AppModule {
     // Reset checkout overlay so next layout init can register its callback
     destroyCheckoutOverlay();
 
-    if (this._onResizeDebounced) {
-      window.removeEventListener('resize', this._onResizeDebounced);
-    }
-    this._onResizeDebounced?.cancel();
+    removeDebouncedResizeListener(window, this._onResizeDebounced);
     this._onResizeDebounced = null;
   }
 
@@ -1634,12 +1636,8 @@ export class PanelLayoutManager implements AppModule {
       });
     }
 
-    if (this._onResizeDebounced) {
-      window.removeEventListener('resize', this._onResizeDebounced);
-      this._onResizeDebounced.cancel();
-    }
-    this._onResizeDebounced = debounce(() => this.ensureCorrectZones(), 100);
-    window.addEventListener('resize', this._onResizeDebounced);
+    removeDebouncedResizeListener(window, this._onResizeDebounced);
+    this._onResizeDebounced = addDebouncedResizeListener(window, () => this.ensureCorrectZones());
 
     this.ctx.map.onTimeRangeChanged((range) => {
       this.ctx.currentTimeRange = range;
