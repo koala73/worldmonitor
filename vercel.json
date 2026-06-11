@@ -7,7 +7,9 @@
     { "path": "/api/world-brief/v1/refresh", "schedule": "12 * * * *" },
     { "path": "/api/world-brief/v1/refresh-regions", "schedule": "20 * * * *" },
     { "path": "/api/seismology/v1/refresh",  "schedule": "9,39 * * * *" },
-    { "path": "/api/wildfire/v1/refresh",    "schedule": "21 * * * *" }
+    { "path": "/api/wildfire/v1/refresh",    "schedule": "21 * * * *" },
+    { "path": "/api/ops/edge-probe",         "schedule": "4,19,34,49 * * * *" },
+    { "path": "/api/ops/edge-probe-summary", "schedule": "7 17 * * *" }
   ],
   "rewrites": [
     { "source": "/pro", "destination": "/pro/index.html" },

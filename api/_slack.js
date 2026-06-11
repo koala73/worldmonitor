@@ -99,6 +99,6 @@ export async function announceOriginMonitorOnce() {
     `• 🟠 \`200 no-store\` — an empty feed; users get it live, but the cached good copy stops refreshing while it persists\n` +
     `Watching: \`live-news/v6\` · \`intel-news/v6\` · \`conflict-archive/v5\` · \`world-brief/get-region\`\n` +
     `Throttle: max 1 message per condition per 15 min. No message = all responses cacheable and populated.\n` +
-    `My sibling 🛰️ *US Edge Probe* checks these endpoints AND bootstrap from US vantage points every 15 min — bootstrap anomalies (503s, mobile-relevant gaps) are ITS job — and posts a daily report at 13:00 ET / 10:00 PT (= 20:00 TRT).`,
+    `My sibling 🛰️ *US Edge Probe* (a Vercel cron) checks these endpoints AND bootstrap from US vantage points every 15 min — bootstrap anomalies (503s, mobile-relevant gaps) are ITS job — and posts a daily report at 13:07 ET / 10:07 PT (= 20:07 TRT).`,
   );
 }

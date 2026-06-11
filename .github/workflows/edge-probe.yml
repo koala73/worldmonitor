@@ -1,39 +1,29 @@
-# US edge health probe + daily Slack heartbeat.
+# US edge health probe — MANUAL runs only.
 #
-# Two schedules, one script (scripts/probe-us-edge.mjs):
-#   • every 15 min — alert mode: Slack message ONLY if something is wrong
-#     (5xx / 401 / EMPTY items / no-store partial), job goes red.
-#   • 17:00 UTC — summary mode: posts the full live-situation report even
-#     when everything is healthy. The US-evening prime (20:00-23:00 ET)
-#     falls at 03:00-06:00 TRT — unreadable hours — so this is the best
-#     joint slot: 13:00 ET / 10:00 PT (both coasts awake and active for a
-#     news app) = 20:00 TRT (comfortable evening read).
+# The scheduled probe moved to Vercel crons (vercel.json →
+# /api/ops/edge-probe every 15 min + /api/ops/edge-probe-summary daily at
+# 17:07 UTC) because GitHub's cron is best-effort and was dropping most
+# runs (*/15 fired ~2x in 8h). This workflow remains as an on-demand,
+# Vercel-independent check — useful exactly when you suspect Vercel
+# itself is misbehaving, since the cron probe runs inside Vercel.
 #
 # Required repo secrets:
 #   WM_PROBE_KEY             — the iOS-bundled API key (APIConfig.swift)
 #   WM_SLACK_ALERT_WEBHOOK   — Slack incoming-webhook URL
 # Optional:
 #   GLOBALPING_TOKEN         — raises Globalping rate limits (free account)
-#   UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN — already present for
-#     the seed workflows; used only for the one-time Slack self-introduction
-#     marker (SET NX) so the probe introduces itself exactly once.
+#   UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN — intro-once marker
 
 name: edge-probe
 
 on:
-  schedule:
-    # GitHub cron is best-effort: runs queue at low priority and get DROPPED
-    # under load, worst at popular minute marks (:00/:15/:30/:45). Off-peak
-    # minutes fire far more reliably — observed */15 firing ~2x in 8h.
-    - cron: '4,19,34,49 * * * *'  # alert mode
-    - cron: '7 17 * * *'          # daily summary — ~13:07 ET / 10:07 PT / 20:07 TRT
   workflow_dispatch:
     inputs:
       mode:
         description: 'Run mode'
         type: choice
         options: [alert, summary]
-        default: alert
+        default: summary
 
 concurrency:
   group: edge-probe
@@ -46,24 +36,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: scripts/probe-us-edge.mjs
+          sparse-checkout: |
+            scripts/probe-us-edge.mjs
+            api/ops/_probe-core.js
           sparse-checkout-cone-mode: false
 
       - uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Decide mode
-        id: mode
-        run: |
-          if [ "${{ github.event.schedule }}" = "7 17 * * *" ] || [ "${{ inputs.mode }}" = "summary" ]; then
-            echo "flag=--summary" >> "$GITHUB_OUTPUT"
-          else
-            echo "flag=" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Probe US edge
-        run: node scripts/probe-us-edge.mjs 2.2 ${{ steps.mode.outputs.flag }}
+        run: node scripts/probe-us-edge.mjs 2.2 ${{ inputs.mode == 'summary' && '--summary' || '' }}
         env:
           WM_PROBE_KEY: ${{ secrets.WM_PROBE_KEY }}
           WM_SLACK_ALERT_WEBHOOK: ${{ secrets.WM_SLACK_ALERT_WEBHOOK }}
