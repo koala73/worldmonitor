@@ -1819,6 +1819,15 @@ export async function createLocalApiServer(options = {}) {
       const boundPort = typeof address === 'object' && address?.port ? address.port : context.port;
       context.port = boundPort;
       const extraAllowedPrivateOrigins = [];
+      // Self-hosted docker: UPSTASH_REDIS_REST_URL is an operator-configured
+      // internal endpoint (e.g. http://redis-rest:80 on a private RFC1918 docker
+      // network). Trust it the same way OLLAMA_API_URL / LLM_API_URL are trusted
+      // for fetch below — otherwise the SSRF guard blocks every Redis call and
+      // all /api/* responses return 503 REDIS_DOWN. No-op on desktop where the
+      // value is a public Upstash https origin (already passes the SSRF check).
+      if (process.env.UPSTASH_REDIS_REST_URL) {
+        try { extraAllowedPrivateOrigins.push(new URL(process.env.UPSTASH_REDIS_REST_URL).origin); } catch {}
+      }
       if (context.allowPrivateRemoteBase) {
         try { extraAllowedPrivateOrigins.push(new URL(context.remoteBase).origin); } catch {}
       }
