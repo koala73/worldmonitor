@@ -37,6 +37,27 @@ export interface DataFreshnessSummary {
   newestUpdate: Date | null;
 }
 
+export interface PanelFreshnessSource {
+  id: DataSourceId;
+  name: string;
+  status: FreshnessStatus;
+  lastUpdate: Date | null;
+  itemCount: number;
+  healthStatus?: string;
+  lastError: string | null;
+  timeSince: string;
+}
+
+export interface PanelFreshnessSummary {
+  panelId: string;
+  status: FreshnessStatus;
+  label: string;
+  title: string;
+  ariaLabel: string;
+  lastUpdate: Date | null;
+  sources: PanelFreshnessSource[];
+}
+
 export interface SeedHealthUpdate {
   sourceId: DataSourceId;
   status: string;
@@ -95,6 +116,50 @@ const SOURCE_METADATA: Record<DataSourceId, { name: string; requiredForRisk: boo
   radiation: { name: 'Radiation Watch', requiredForRisk: false, panelId: 'radiation-watch' },
   gpsjam: { name: 'GPS/GNSS Interference', requiredForRisk: false, panelId: 'map' },
   treasury_revenue: { name: 'Treasury Customs Revenue', requiredForRisk: false, panelId: 'trade-policy' },
+};
+
+const PANEL_FRESHNESS_SOURCES: Record<string, readonly DataSourceId[]> = {
+  'strategic-risk': CORE_SOURCES,
+  cii: CORE_SOURCES,
+  'live-news': ['rss'],
+  intel: ['gdelt', 'pizzint'],
+  'gdelt-intel': ['gdelt'],
+  protests: ['acled', 'acled_conflict', 'gdelt_doc', 'ucdp', 'hapi'],
+  'ucdp-events': ['ucdp_events'],
+  polymarket: ['polymarket', 'predictions'],
+  economic: ['economic', 'oil', 'spending', 'bis', 'bls'],
+  'trade-policy': ['wto_trade', 'treasury_revenue'],
+  'supply-chain': ['supply_chain'],
+  'security-advisories': ['security_advisories'],
+  'sanctions-pressure': ['sanctions_pressure'],
+  'radiation-watch': ['radiation'],
+  displacement: ['unhcr'],
+  climate: ['climate'],
+  'population-exposure': ['worldpop'],
+  giving: ['giving'],
+  'internet-disruptions': ['outages'],
+  outages: ['outages'],
+  military: ['opensky', 'wingbits'],
+  shipping: ['ais'],
+  natural: ['usgs'],
+};
+
+const STATUS_SEVERITY: Record<FreshnessStatus, number> = {
+  fresh: 0,
+  disabled: 1,
+  stale: 2,
+  very_stale: 3,
+  no_data: 4,
+  error: 5,
+};
+
+const STATUS_LABELS: Record<FreshnessStatus, string> = {
+  fresh: 'Fresh',
+  stale: 'Stale',
+  very_stale: 'Very stale',
+  no_data: 'No data',
+  disabled: 'Disabled',
+  error: 'Error',
 };
 
 class DataFreshnessTracker {
@@ -299,6 +364,85 @@ class DataFreshnessTracker {
   }
 
   /**
+   * Get freshness sources that contribute to a panel header badge.
+   */
+  getSourcesForPanel(panelId: string): PanelFreshnessSource[] {
+    return this.getSourceIdsForPanel(panelId)
+      .map(sourceId => this.getSource(sourceId))
+      .filter((source): source is DataSourceState => Boolean(source))
+      .map(source => ({
+        id: source.id,
+        name: source.name,
+        status: source.status,
+        lastUpdate: source.lastUpdate,
+        itemCount: source.itemCount,
+        healthStatus: source.healthStatus,
+        lastError: source.lastError,
+        timeSince: this.formatTimeSince(source.lastUpdate),
+      }));
+  }
+
+  /**
+   * Aggregate a panel's mapped sources to the worst current status.
+   */
+  getPanelFreshness(panelId: string): PanelFreshnessSummary | null {
+    const sources = this.getSourcesForPanel(panelId);
+    if (sources.length === 0) return null;
+
+    const activeSources = sources.filter(source => source.status !== 'disabled');
+    const sourcesForStatus = activeSources.length > 0 ? activeSources : sources;
+    const worstStatus = sourcesForStatus.reduce<FreshnessStatus>((worst, source) => (
+      STATUS_SEVERITY[source.status] > STATUS_SEVERITY[worst] ? source.status : worst
+    ), 'fresh');
+
+    const updates = sources
+      .map(source => source.lastUpdate)
+      .filter((date): date is Date => date instanceof Date);
+    const newestUpdate = updates.length > 0
+      ? new Date(Math.max(...updates.map(date => date.getTime())))
+      : null;
+    const worstStatusUpdates = sourcesForStatus
+      .filter(source => source.status === worstStatus)
+      .map(source => source.lastUpdate)
+      .filter((date): date is Date => date instanceof Date);
+    const labelUpdate = worstStatusUpdates.length > 0
+      ? new Date(Math.min(...worstStatusUpdates.map(date => date.getTime())))
+      : newestUpdate;
+
+    const sourceDetails = sources.map(source => {
+      const updateText = source.lastUpdate
+        ? `last updated ${source.timeSince}`
+        : 'never updated';
+      const healthText = this.formatHealthDetail(source);
+      return `${source.name}: ${STATUS_LABELS[source.status]}, ${updateText}${healthText}`;
+    });
+
+    const label = this.formatPanelFreshnessLabel(worstStatus, labelUpdate);
+    const title = `Data freshness: ${STATUS_LABELS[worstStatus]}. ${sourceDetails.join('; ')}`;
+
+    return {
+      panelId,
+      status: worstStatus,
+      label,
+      title,
+      ariaLabel: title,
+      lastUpdate: newestUpdate,
+      sources,
+    };
+  }
+
+  private getSourceIdsForPanel(panelId: string): DataSourceId[] {
+    const explicitSources = PANEL_FRESHNESS_SOURCES[panelId];
+    const sourceIds = new Set<DataSourceId>(explicitSources ?? []);
+    for (const sourceId of Object.entries(SOURCE_METADATA)
+      .filter(([, meta]) => meta.panelId === panelId)
+      .map(([sourceId]) => sourceId as DataSourceId)) {
+      sourceIds.add(sourceId);
+    }
+    return [...sourceIds];
+  }
+
+  /**
    * Subscribe to changes
    */
   subscribe(listener: () => void): () => void {
@@ -348,13 +492,70 @@ class DataFreshnessTracker {
    */
   getTimeSince(sourceId: DataSourceId): string {
     const source = this.sources.get(sourceId);
-    if (!source?.lastUpdate) return 'never';
+    return this.formatTimeSince(source?.lastUpdate ?? null);
+  }
 
-    const ms = Date.now() - source.lastUpdate.getTime();
+  private formatTimeSince(date: Date | null): string {
+    if (!date) return 'never';
+
+    const ms = Math.max(0, Date.now() - date.getTime());
     if (ms < 60000) return 'just now';
     if (ms < 3600000) return `${Math.floor(ms / 60000)}m ago`;
     if (ms < 86400000) return `${Math.floor(ms / 3600000)}h ago`;
     return `${Math.floor(ms / 86400000)}d ago`;
+  }
+
+  private formatPanelFreshnessLabel(status: FreshnessStatus, lastUpdate: Date | null): string {
+    if (status === 'fresh' || status === 'stale' || status === 'very_stale') {
+      const age = this.formatCompactAge(lastUpdate);
+      return age ? `${STATUS_LABELS[status]} ${age}` : STATUS_LABELS[status];
+    }
+    return STATUS_LABELS[status];
+  }
+
+  private formatHealthDetail(source: PanelFreshnessSource): string {
+    if (source.lastError) {
+      return `, ${this.formatHealthStatus(source.lastError) ?? 'source error reported'}`;
+    }
+    if (source.healthStatus) {
+      const label = this.formatHealthStatus(source.healthStatus);
+      return label ? `, ${label}` : '';
+    }
+    return '';
+  }
+
+  private formatHealthStatus(status: string): string | null {
+    switch (status) {
+      case 'OK':
+        return null;
+      case 'COVERAGE_PARTIAL':
+        return 'partial coverage';
+      case 'STALE_CONTENT':
+        return 'content stale';
+      case 'STALE_SEED':
+        return 'seed stale';
+      case 'EMPTY':
+      case 'EMPTY_DATA':
+      case 'EMPTY_ON_DEMAND':
+        return 'no source data';
+      case 'SEED_ERROR':
+        return 'source error reported';
+      case 'REDIS_DOWN':
+        return 'freshness store unavailable';
+      case 'REDIS_PARTIAL':
+        return 'freshness store degraded';
+      default:
+        return null;
+    }
+  }
+
+  private formatCompactAge(date: Date | null): string {
+    if (!date) return '';
+    const ms = Math.max(0, Date.now() - date.getTime());
+    if (ms < 60000) return 'now';
+    if (ms < 3600000) return `${Math.floor(ms / 60000)}m`;
+    if (ms < 86400000) return `${Math.floor(ms / 3600000)}h`;
+    return `${Math.floor(ms / 86400000)}d`;
   }
 }
 

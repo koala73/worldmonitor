@@ -1695,6 +1695,46 @@ body.panel-resize-active iframe {
   animation: severity-pulse 2.5s ease-in-out infinite;
 }
 
+.panel-freshness-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  max-width: 92px;
+  min-height: 18px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--overlay-subtle);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.panel-freshness-fresh {
+  border-color: color-mix(in srgb, var(--semantic-normal) 40%, var(--border));
+  color: var(--semantic-normal);
+}
+
+.panel-freshness-stale,
+.panel-freshness-very_stale {
+  border-color: color-mix(in srgb, var(--semantic-elevated) 45%, var(--border));
+  color: var(--semantic-elevated);
+}
+
+.panel-freshness-no_data,
+.panel-freshness-disabled {
+  color: var(--text-dim);
+}
+
+.panel-freshness-error {
+  border-color: color-mix(in srgb, var(--semantic-critical) 45%, var(--border));
+  color: var(--semantic-critical);
+}
+
 @keyframes severity-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.3; transform: scale(0.7); }
@@ -11644,7 +11684,8 @@ a.prediction-link:hover {
 
 /* -- Locked panel: hide count badge + extra chrome -- */
 .panel-is-locked .panel-count,
-.panel-is-locked .panel-data-badge {
+.panel-is-locked .panel-data-badge,
+.panel-is-locked .panel-freshness-badge {
   display: none !important;
 }
 
