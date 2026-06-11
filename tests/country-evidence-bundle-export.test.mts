@@ -127,15 +127,31 @@ describe('country evidence bundle export', () => {
 
   it('redacts secret-like values and private identifiers from rendered evidence', async () => {
     const { buildCountryEvidenceBundle, renderCountryEvidenceMarkdown } = await loadExportUtils();
+    const legacyOpenAiKey = ['sk', 'live', 'abc1234567890'].join('_');
+    const awsAccessKey = ['AK', 'IA', 'IOSFODNN7EXAMPLE'].join('');
+    const awsSecret = ['wJalrXUtnFEMI', '/K7MDENG+bPxRfiCY', 'EXAMPLEKEY'].join('');
+    const slackToken = ['xox', 'b-redacted-fixture-token'].join('');
+    const googleKey = ['AI', 'za', 'SyA1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p'].join('');
+    const openAiProjectKey = ['sk', 'proj', 'abc1234567890abcdefABCDEF', 'xyz1234567890'].join('-');
+    const jwt = [
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9',
+      'eyJzdWIiOiIxMjM0NTY3ODkwIn0',
+      'SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c',
+    ].join('.');
 
     const bundle = buildCountryEvidenceBundle({
       country: 'Testland',
       code: 'TL',
       exportedAt: '2026-06-10T12:00:00.000Z',
-      brief: 'Contact analyst@example.com with token=sk_live_abc1234567890 and user_abcdef123456.',
+      brief: [
+        `Contact analyst@example.com with token=${legacyOpenAiKey} and user_abcdef123456.`,
+        `AWS ${awsAccessKey} aws_secret_access_key=${awsSecret}`,
+        `Slack ${slackToken} Google ${googleKey} OpenAI ${openAiProjectKey}`,
+        `Authorization: Bearer ${jwt}`,
+      ].join('\n'),
       headlines: [{
         title: 'Report includes wm_0123456789abcdef0123456789abcdef01234567',
-        source: 'Desk user_abc12345',
+        source: `Desk user_abc12345 ${slackToken}`,
         link: 'https://example.com/private',
         pubDate: '2026-06-10T11:00:00.000Z',
       }],
@@ -143,12 +159,38 @@ describe('country evidence bundle export', () => {
     const markdown = renderCountryEvidenceMarkdown(bundle);
 
     assert.doesNotMatch(markdown, /analyst@example\.com/);
-    assert.doesNotMatch(markdown, /sk_live_abc1234567890/);
+    assert.doesNotMatch(markdown, new RegExp(legacyOpenAiKey));
     assert.doesNotMatch(markdown, /wm_0123456789abcdef0123456789abcdef01234567/);
     assert.doesNotMatch(markdown, /user_abcdef123456/);
+    assert.doesNotMatch(markdown, new RegExp(awsAccessKey));
+    assert.doesNotMatch(markdown, new RegExp(awsSecret.replace(/[+/]/g, '\\$&')));
+    assert.doesNotMatch(markdown, new RegExp(slackToken));
+    assert.doesNotMatch(markdown, new RegExp(googleKey));
+    assert.doesNotMatch(markdown, new RegExp(openAiProjectKey));
+    assert.doesNotMatch(markdown, /eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9/);
     assert.match(markdown, /\[redacted-email\]/);
     assert.match(markdown, /\[redacted-secret\]/);
     assert.match(markdown, /\[redacted-user-id\]/);
+  });
+
+  it('escapes unlinked source titles and publisher markdown inline text', async () => {
+    const { buildCountryEvidenceBundle, renderCountryEvidenceMarkdown } = await loadExportUtils();
+
+    const markdown = renderCountryEvidenceMarkdown(buildCountryEvidenceBundle({
+      country: 'Linkland',
+      code: 'LL',
+      exportedAt: '2026-06-10T12:00:00.000Z',
+      headlines: [{
+        title: 'Unlinked ](http://evil.com) title',
+        source: 'Publisher [spoof](http://evil.com)',
+        link: '',
+        pubDate: '2026-06-10T11:00:00.000Z',
+      }],
+    }));
+
+    assert.doesNotMatch(markdown, /\]\(http:\/\/evil\.com\)/);
+    assert.match(markdown, /Unlinked \\\]\\\(http:\/\/evil\\\.com\\\) title/);
+    assert.match(markdown, /Publisher: Publisher \\\[spoof\\\]\\\(http:\/\/evil\\\.com\\\)/);
   });
 
   it('renders Markdown with the expected handoff sections', async () => {

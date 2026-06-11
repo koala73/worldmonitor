@@ -380,17 +380,23 @@ const SIGNAL_LABELS: Record<string, string> = {
   sanctionsNewDesignations: 'New sanctions designations',
 };
 
-const SECRET_ASSIGNMENT_RE = /\b(api[_-]?key|token|secret|password|authorization|cookie|session)\b\s*[:=]\s*["']?[^"'\s,;]{6,}["']?/gi;
+const SECRET_ASSIGNMENT_RE = /\b((?:[a-z0-9]+[_-])*(?:api[_-]?key|access[_-]?key(?:[_-]?id)?|secret(?:[_-]?access[_-]?key)?|client[_-]?secret|token|password|authorization|cookie|session))\b\s*[:=]\s*["']?[^"'\s,;]{6,}["']?/gi;
 const BEARER_RE = /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/g;
-const COMMON_SECRET_RE = /\b(?:sk|wm|ghp|github_pat)_[A-Za-z0-9_=-]{12,}\b/g;
+const AWS_ACCESS_KEY_ID_RE = /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g;
+const AWS_SECRET_ACCESS_KEY_RE = /\b(?=[A-Za-z0-9/+=]{40}\b)(?=[A-Za-z0-9/+=]{0,39}[A-Z])(?=[A-Za-z0-9/+=]{0,39}[a-z])(?=[A-Za-z0-9/+=]{0,39}\d)[A-Za-z0-9/+=]{40}\b/g;
+const COMMON_SECRET_RE = /\b(?:sk[-_][A-Za-z0-9_-]{12,}|wm_[A-Za-z0-9_=-]{12,}|ghp_[A-Za-z0-9_=-]{12,}|github_pat_[A-Za-z0-9_=-]{12,}|AIza[A-Za-z0-9_-]{20,}|xox[abprsc]-[A-Za-z0-9-]{10,})\b/g;
+const JWT_RE = /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g;
 const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
 const USER_ID_RE = /\buser_[A-Za-z0-9_-]{6,}\b/g;
 
 function sanitizeEvidenceText(value: unknown): string {
   return String(value ?? '')
-    .replace(SECRET_ASSIGNMENT_RE, (_match, key) => `${key}=[redacted-secret]`)
     .replace(BEARER_RE, 'Bearer [redacted-secret]')
+    .replace(SECRET_ASSIGNMENT_RE, (_match, key) => `${key}=[redacted-secret]`)
+    .replace(AWS_ACCESS_KEY_ID_RE, '[redacted-secret]')
+    .replace(AWS_SECRET_ACCESS_KEY_RE, '[redacted-secret]')
     .replace(COMMON_SECRET_RE, '[redacted-secret]')
+    .replace(JWT_RE, '[redacted-secret]')
     .replace(EMAIL_RE, '[redacted-email]')
     .replace(USER_ID_RE, '[redacted-user-id]')
     .trim();
@@ -504,6 +510,12 @@ function escapeMarkdownLinkText(value: string): string {
   return value.replace(/[[\]\\]/g, '\\$&');
 }
 
+function escapeMarkdownInline(value: string): string {
+  return sanitizeEvidenceText(value)
+    .replace(/\s+/g, ' ')
+    .replace(/([\\`*_{}\[\]()#+\-.!|<>])/g, '\\$1');
+}
+
 function renderQuotedEvidenceBlock(value: string): string[] {
   return value.split(/\r?\n/).map((line) => `> ${line}`);
 }
@@ -579,9 +591,12 @@ export function renderCountryEvidenceMarkdown(bundle: CountryEvidenceBundle): st
   lines.push('## Sources');
   if (bundle.sources.length > 0) {
     bundle.sources.forEach((source, index) => {
-      const label = `${index + 1}. ${source.url ? `[${escapeMarkdownLinkText(source.title)}](${source.url})` : source.title}`;
+      const title = source.url
+        ? `[${escapeMarkdownLinkText(source.title)}](${source.url})`
+        : escapeMarkdownInline(source.title);
+      const label = `${index + 1}. ${title}`;
       lines.push(label);
-      lines.push(`   - Publisher: ${markdownListValue(source.publisher)}`);
+      lines.push(`   - Publisher: ${escapeMarkdownInline(markdownListValue(source.publisher))}`);
       lines.push(`   - Published at: ${markdownListValue(source.publishedAt)}`);
       lines.push(`   - Freshness: ${source.freshness}`);
       if (source.note) lines.push(`   - Note: ${source.note}`);
