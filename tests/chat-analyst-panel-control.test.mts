@@ -97,14 +97,16 @@ describe('ChatAnalystPanel — dashboard control actions', () => {
     });
 
     assert.equal(globals.__wmAppliedAnalystActions.length, 0);
-    assert.equal(globals.__wmAnalystControlTelemetry.length, 0);
+    assert.deepEqual(globals.__wmAnalystControlTelemetry, [
+      { actionType: 'open_panel', status: 'skipped', reason: 'control_disabled' },
+    ]);
     assert.ok(bubble.querySelector('.chat-action-chip--skipped'), 'skipped chip rendered');
   });
 
-  it('applies and tracks streamed actions only while enabled and unpaused', async () => {
+  it('applies actions only while enabled and unpaused while tracking all outcomes', async () => {
     const globals = globalThis as typeof globalThis & {
       __wmAppliedAnalystActions?: Array<{ action: { type: string } }>;
-      __wmAnalystControlTelemetry?: Array<{ actionType: string; status: string }>;
+      __wmAnalystControlTelemetry?: Array<{ actionType: string; status: string; reason?: string }>;
     };
     globals.__wmAppliedAnalystActions = [];
     globals.__wmAnalystControlTelemetry = [];
@@ -144,7 +146,40 @@ describe('ChatAnalystPanel — dashboard control actions', () => {
     });
 
     assert.equal(globals.__wmAppliedAnalystActions.length, 1, 'paused action must not call applier');
-    assert.equal(globals.__wmAnalystControlTelemetry.length, 1, 'paused action must not emit adoption telemetry');
+    assert.deepEqual(globals.__wmAnalystControlTelemetry, [
+      { actionType: 'open_panel', status: 'applied' },
+      { actionType: 'set_view', status: 'skipped', reason: 'control_paused' },
+    ]);
     assert.ok(pausedBubble.querySelector('.chat-action-chip--skipped'), 'paused chip rendered');
+  });
+
+  it('tracks denied handler results with reason context', async () => {
+    const globals = globalThis as typeof globalThis & {
+      __wmAnalystControlTelemetry?: Array<{ actionType: string; status: string; reason?: string }>;
+    };
+    globals.__wmAnalystControlTelemetry = [];
+
+    const panel = harness.createPanel();
+    panel.setDashboardActionHandler((action: { type: string }) => ({
+      ok: false,
+      status: 'denied',
+      actionType: action.type,
+      label: 'Denied',
+      reason: 'panel_not_entitled',
+      message: 'denied by test handler',
+      targets: [{ target: action.type, status: 'denied', reason: 'panel_not_entitled' }],
+    }));
+    (panel as never as { setDashboardControlEnabled: (enabled: boolean) => void }).setDashboardControlEnabled(true);
+
+    const bubble = await feedAction(panel, {
+      type: 'open_panel',
+      label: 'Open Forecasts',
+      panelId: 'forecast',
+    });
+
+    assert.deepEqual(globals.__wmAnalystControlTelemetry, [
+      { actionType: 'open_panel', status: 'denied', reason: 'panel_not_entitled' },
+    ]);
+    assert.ok(bubble.querySelector('.chat-action-chip--denied'), 'denied chip rendered');
   });
 });

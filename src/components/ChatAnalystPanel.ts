@@ -415,8 +415,8 @@ export class ChatAnalystPanel extends Panel {
       result = this.dashboardActionHandler(action);
     }
 
-    if (result.ok && result.actionType) {
-      trackAnalystControlAction(result.actionType, result.status);
+    if (result.actionType) {
+      trackAnalystControlAction(result.actionType, result.status, result.reason);
     }
     this.renderDashboardControlStatus(bubble, result, action);
   }

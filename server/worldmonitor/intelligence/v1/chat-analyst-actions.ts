@@ -30,7 +30,7 @@ const PANEL_INTENTS: PanelIntent[] = [
 
 const VIEW_INTENTS = [
   { view: 'global', label: 'Show global map', pattern: /\b(global|world(?:wide)?)\b/i },
-  { view: 'america', label: 'Show Americas', pattern: /\b(america|americas|united\s+states|u\.s\.|us)\b/i },
+  { view: 'america', label: 'Show Americas', pattern: /\b[Aa]mericas?\b|\b[Uu]nited\s+[Ss]tates\b|\b[Uu][Ss][Aa]\b|\bUS\b|\b[Uu]\.[Ss]\.?(?![A-Za-z])/ },
   { view: 'mena', label: 'Show MENA', pattern: /\b(mena|middle\s+east|north\s+africa|gulf)\b/i },
   { view: 'eu', label: 'Show Europe', pattern: /\b(europe|european\s+union|eu)\b/i },
   { view: 'asia', label: 'Show Asia', pattern: /\b(asia|indo-?pacific|china|taiwan|korea|japan)\b/i },

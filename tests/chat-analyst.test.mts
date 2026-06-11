@@ -304,6 +304,31 @@ describe('buildActionEvents — visual intent detection', () => {
     }
   });
 
+  it('does not treat lowercase us as an Americas map intent', () => {
+    const events = buildActionEvents('Show us the Middle East on the map');
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.type, 'set_view');
+    if (events[0]?.type === 'set_view') {
+      assert.equal(events[0].view, 'mena');
+    }
+  });
+
+  it('still accepts unambiguous US map intents', () => {
+    const events = buildActionEvents('Zoom the map to US');
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.type, 'set_view');
+    if (events[0]?.type === 'set_view') {
+      assert.equal(events[0].view, 'america');
+    }
+
+    const dottedEvents = buildActionEvents('Center the U.S. map');
+    assert.equal(dottedEvents.length, 1);
+    assert.equal(dottedEvents[0]?.type, 'set_view');
+    if (dottedEvents[0]?.type === 'set_view') {
+      assert.equal(dottedEvents[0].view, 'america');
+    }
+  });
+
   it('returns empty for non-visual market summary query', () => {
     assert.deepEqual(buildActionEvents('Key market moves, macro signals, and commodity moves today'), []);
   });
