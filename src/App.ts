@@ -1315,6 +1315,9 @@ export class App {
     const earlyParams = new URLSearchParams(window.location.search);
     this.pendingDeepLinkStoryCode = earlyParams.get('c') ?? null;
     this.eventHandlers.setupUrlStateSync();
+    if (import.meta.env.VITE_E2E === '1') {
+      document.documentElement.dataset.wmEventHandlersReady = 'true';
+    }
 
     this.state.countryBriefPage?.onStateChange?.(() => {
       this.eventHandlers.syncUrlState();

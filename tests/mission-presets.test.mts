@@ -1,8 +1,12 @@
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, before, beforeEach, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { build } from 'esbuild';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
-import type { PanelConfig } from '../src/types/index.ts';
+import type { MapLayers, PanelConfig } from '../src/types/index.ts';
 import {
   ALL_PANELS,
   DEFAULT_MAP_LAYERS,
@@ -31,16 +35,22 @@ import {
 
 class MemoryStorage {
   private store = new Map<string, string>();
+  throwOnGet = false;
+  throwOnSet = false;
+  throwOnRemove = false;
 
   getItem(key: string): string | null {
+    if (this.throwOnGet) throw new Error('blocked');
     return this.store.has(key) ? this.store.get(key)! : null;
   }
 
   setItem(key: string, value: string): void {
+    if (this.throwOnSet) throw new Error('blocked');
     this.store.set(key, String(value));
   }
 
   removeItem(key: string): void {
+    if (this.throwOnRemove) throw new Error('blocked');
     this.store.delete(key);
   }
 
@@ -51,17 +61,407 @@ class MemoryStorage {
 
 const VARIANTS: MapVariant[] = ['full', 'tech', 'finance', 'commodity', 'energy', 'happy'];
 
-const eventHandlersSource = readFileSync(new URL('../src/app/event-handlers.ts', import.meta.url), 'utf8');
-const appSource = readFileSync(new URL('../src/App.ts', import.meta.url), 'utf8');
-const panelLayoutSource = readFileSync(new URL('../src/app/panel-layout.ts', import.meta.url), 'utf8');
-
 let originalLocalStorage: PropertyDescriptor | undefined;
+let originalWindow: PropertyDescriptor | undefined;
+let originalDocument: PropertyDescriptor | undefined;
+let originalHistory: PropertyDescriptor | undefined;
+let originalRequestAnimationFrame: PropertyDescriptor | undefined;
+let originalCancelAnimationFrame: PropertyDescriptor | undefined;
+
+type EventHandlerManagerCtor = new (ctx: unknown, callbacks: unknown) => {
+  destroy(): void;
+  syncUrlState(): void;
+};
+
+let EventHandlerManager: EventHandlerManagerCtor;
+let cleanupEventHandlerBundle: (() => void) | null = null;
 
 function defineLocalStorage(value: unknown): void {
   Object.defineProperty(globalThis, 'localStorage', {
     configurable: true,
     value,
   });
+}
+
+class MiniElement extends EventTarget {
+  id = '';
+  className = '';
+  dataset: Record<string, string> = {};
+  style: Record<string, string> = {};
+  textContent = '';
+  children: MiniElement[] = [];
+  parentElement: MiniElement | null = null;
+  classList = {
+    add: (...classes: string[]) => {
+      const current = new Set(this.className.split(/\s+/).filter(Boolean));
+      classes.forEach((name) => current.add(name));
+      this.className = Array.from(current).join(' ');
+    },
+    remove: (...classes: string[]) => {
+      const remove = new Set(classes);
+      this.className = this.className
+        .split(/\s+/)
+        .filter((name) => name && !remove.has(name))
+        .join(' ');
+    },
+    contains: (name: string) => this.className.split(/\s+/).includes(name),
+    toggle: (name: string, force?: boolean) => {
+      const has = this.classList.contains(name);
+      const shouldAdd = force ?? !has;
+      if (shouldAdd) this.classList.add(name);
+      else this.classList.remove(name);
+      return shouldAdd;
+    },
+  };
+  private attributes = new Map<string, string>();
+  private _innerHTML = '';
+
+  constructor(
+    readonly tagName: string,
+    private readonly owner: MiniDocument,
+  ) {
+    super();
+  }
+
+  set innerHTML(value: string) {
+    this._innerHTML = String(value);
+    this.owner.unregisterDescendants(this);
+    this.children = [];
+
+    const buttonId = this._innerHTML.match(/id="([^"]+)"/)?.[1];
+    if (buttonId) {
+      const button = this.owner.createElement('button') as MiniElement;
+      button.id = buttonId;
+      button.className = this._innerHTML.match(/class="([^"]+)"/)?.[1] ?? '';
+      button.textContent = this._innerHTML.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      this.appendChild(button);
+    }
+  }
+
+  get innerHTML(): string {
+    return this._innerHTML;
+  }
+
+  appendChild(child: MiniElement): MiniElement {
+    child.parentElement = this;
+    this.children.push(child);
+    this.owner.register(child);
+    return child;
+  }
+
+  remove(): void {
+    this.parentElement?.removeChild(this);
+  }
+
+  removeChild(child: MiniElement): MiniElement {
+    this.children = this.children.filter((candidate) => candidate !== child);
+    this.owner.unregister(child);
+    child.parentElement = null;
+    return child;
+  }
+
+  setAttribute(name: string, value: string): void {
+    this.attributes.set(name, String(value));
+    if (name === 'id') {
+      if (this.id) this.owner.unregisterId(this.id);
+      this.id = String(value);
+      this.owner.register(this);
+      return;
+    }
+    if (name === 'class') {
+      this.className = String(value);
+      return;
+    }
+    if (name.startsWith('data-')) {
+      const key = name
+        .slice(5)
+        .replace(/-([a-z])/g, (_match, char: string) => char.toUpperCase());
+      this.dataset[key] = String(value);
+    }
+  }
+
+  getAttribute(name: string): string | null {
+    if (name === 'id') return this.id || null;
+    if (name === 'class') return this.className || null;
+    return this.attributes.get(name) ?? null;
+  }
+
+  querySelector(selector: string): MiniElement | null {
+    return this.querySelectorAll(selector)[0] ?? null;
+  }
+
+  querySelectorAll(selector: string): MiniElement[] {
+    const matches: MiniElement[] = [];
+    const visit = (node: MiniElement) => {
+      for (const child of node.children) {
+        if (matchesSelector(child, selector)) matches.push(child);
+        visit(child);
+      }
+    };
+    visit(this);
+    return matches;
+  }
+
+  focus(): void {
+    this.owner.activeElement = this;
+  }
+
+  getBoundingClientRect(): { left: number; bottom: number } {
+    return { left: 24, bottom: 48 };
+  }
+
+  get offsetHeight(): number {
+    return 240;
+  }
+}
+
+class MiniDocument extends EventTarget {
+  body: MiniElement;
+  activeElement: MiniElement | null = null;
+  hidden = false;
+  private byId = new Map<string, MiniElement>();
+
+  constructor() {
+    super();
+    this.body = new MiniElement('body', this);
+  }
+
+  createElement(tagName: string): MiniElement {
+    return new MiniElement(tagName.toUpperCase(), this);
+  }
+
+  getElementById(id: string): MiniElement | null {
+    return this.byId.get(id) ?? null;
+  }
+
+  querySelector(selector: string): MiniElement | null {
+    if (matchesSelector(this.body, selector)) return this.body;
+    return this.body.querySelector(selector);
+  }
+
+  register(el: MiniElement): void {
+    if (el.id) this.byId.set(el.id, el);
+    el.children.forEach((child) => this.register(child));
+  }
+
+  unregister(el: MiniElement): void {
+    if (el.id && this.byId.get(el.id) === el) this.byId.delete(el.id);
+    el.children.forEach((child) => this.unregister(child));
+  }
+
+  unregisterId(id: string): void {
+    this.byId.delete(id);
+  }
+
+  unregisterDescendants(el: MiniElement): void {
+    el.children.forEach((child) => this.unregister(child));
+  }
+}
+
+function matchesSelector(el: MiniElement, selector: string): boolean {
+  if (selector.startsWith('#')) return el.id === selector.slice(1);
+  if (selector.startsWith('.')) return el.className.split(/\s+/).includes(selector.slice(1));
+  if (selector.startsWith('[') && selector.endsWith(']')) {
+    const attr = selector.slice(1, -1);
+    if (attr.startsWith('data-')) {
+      const key = attr
+        .slice(5)
+        .replace(/-([a-z])/g, (_match, char: string) => char.toUpperCase());
+      return Object.hasOwn(el.dataset, key);
+    }
+  }
+  return el.tagName.toLowerCase() === selector.toLowerCase();
+}
+
+function defineBrowserGlobals(): MiniDocument {
+  const document = new MiniDocument();
+  const windowTarget = new EventTarget() as EventTarget & {
+    document: MiniDocument;
+    location: { origin: string; pathname: string; search: string; href: string; hostname: string };
+    innerWidth: number;
+    innerHeight: number;
+    setTimeout: typeof setTimeout;
+    clearTimeout: typeof clearTimeout;
+    requestAnimationFrame: (cb: FrameRequestCallback) => number;
+  };
+  windowTarget.document = document;
+  windowTarget.location = {
+    origin: 'https://worldmonitor.test',
+    pathname: '/',
+    search: '',
+    href: 'https://worldmonitor.test/',
+    hostname: 'worldmonitor.test',
+  };
+  windowTarget.innerWidth = 1440;
+  windowTarget.innerHeight = 900;
+  windowTarget.setTimeout = setTimeout;
+  windowTarget.clearTimeout = clearTimeout;
+  windowTarget.requestAnimationFrame = (cb: FrameRequestCallback) => {
+    cb(0);
+    return 0;
+  };
+
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: windowTarget });
+  Object.defineProperty(globalThis, 'document', { configurable: true, value: document });
+  Object.defineProperty(globalThis, 'history', {
+    configurable: true,
+    value: {
+      latestUrl: '',
+      replaceState(_state: unknown, _unused: string, url?: string | URL | null) {
+        this.latestUrl = url == null ? '' : String(url);
+      },
+    },
+  });
+  Object.defineProperty(globalThis, 'requestAnimationFrame', {
+    configurable: true,
+    value: windowTarget.requestAnimationFrame,
+  });
+  Object.defineProperty(globalThis, 'cancelAnimationFrame', {
+    configurable: true,
+    value: () => undefined,
+  });
+  return document;
+}
+
+async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
+  const tempDir = mkdtempSync(join(tmpdir(), 'mission-handler-test-'));
+  const outfile = join(tempDir, 'event-handlers.mjs');
+  const stubs = new Map<string, string>([
+    ['@/utils', `
+      export function buildMapUrl(baseUrl, state) {
+        const url = new URL(baseUrl);
+        if (state.center) {
+          url.searchParams.set('lat', state.center.lat.toFixed(4));
+          url.searchParams.set('lon', state.center.lon.toFixed(4));
+        }
+        url.searchParams.set('zoom', state.zoom.toFixed(2));
+        url.searchParams.set('view', state.view);
+        url.searchParams.set('timeRange', state.timeRange);
+        const layers = Object.keys(state.layers).filter((key) => state.layers[key]);
+        url.searchParams.set('layers', layers.length ? layers.join(',') : 'none');
+        return url.toString();
+      }
+      export function debounce(fn, delay) {
+        let timer = null;
+        const wrapped = () => {
+          if (timer) clearTimeout(timer);
+          timer = setTimeout(fn, delay);
+        };
+        wrapped.cancel = () => {
+          if (timer) clearTimeout(timer);
+          timer = null;
+        };
+        return wrapped;
+      }
+      export function saveToStorage(key, value) {
+        try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+      }
+      export function rssProxyUrl(url) { return url; }
+      export function getCSSColor(_name, fallback) { return fallback || '#000000'; }
+      export class ExportPanel {}
+      export function getCurrentTheme() { return 'dark'; }
+      export function setTheme() {}
+      export function showToast(message) {
+        globalThis.__missionToastMessages = globalThis.__missionToastMessages || [];
+        globalThis.__missionToastMessages.push(message);
+      }
+    `],
+    ['@/utils/dom-utils', `
+      export function trustedHtml(html) { return String(html); }
+      export function setTrustedHtml(el, html) { el.innerHTML = String(html); }
+    `],
+    ['@/utils/sanitize', 'export function escapeHtml(value) { return String(value); }'],
+    ['@/services/analytics', `
+      const push = (name, args) => {
+        globalThis.__missionAnalytics = globalThis.__missionAnalytics || [];
+        globalThis.__missionAnalytics.push({ name, args });
+      };
+      export function track(...args) { push('track', args); }
+      export function trackPanelView(...args) { push('trackPanelView', args); }
+      export function trackVariantSwitch(...args) { push('trackVariantSwitch', args); }
+      export function trackThemeChanged(...args) { push('trackThemeChanged', args); }
+      export function trackMapViewChange(...args) { push('trackMapViewChange', args); }
+      export function trackMapLayerToggle(...args) { push('trackMapLayerToggle', args); }
+      export function trackPanelToggled(...args) { push('trackPanelToggled', args); }
+      export function trackDownloadClicked(...args) { push('trackDownloadClicked', args); }
+      export function trackGateHit(...args) { push('trackGateHit', args); }
+    `],
+    ['@/services', `
+      export async function saveSnapshot() {}
+      export function initAisStream() {
+        globalThis.__missionAis = globalThis.__missionAis || [];
+        globalThis.__missionAis.push('init');
+      }
+      export function disconnectAisStream() {
+        globalThis.__missionAis = globalThis.__missionAis || [];
+        globalThis.__missionAis.push('disconnect');
+      }
+    `],
+    ['@/services/data-freshness', `
+      export const dataFreshness = {
+        setEnabled(source, enabled) {
+          globalThis.__missionFreshness = globalThis.__missionFreshness || [];
+          globalThis.__missionFreshness.push([source, enabled]);
+        },
+      };
+    `],
+    ['@/services/i18n', 'export function t(key) { return key; }'],
+    ['@/services/widget-store', 'export function deleteWidget(){} export function getWidget(){ return null; } export function saveWidget(){} export function isProUser(){ return true; }'],
+    ['@/services/mcp-store', 'export function deleteMcpPanel(){} export function getMcpPanel(){ return null; } export function saveMcpPanel(){}'],
+    ['@/services/runtime', 'export function isDesktopRuntime(){ return false; }'],
+    ['@/services/tauri-bridge', 'export async function invokeTauri(){ return null; }'],
+    ['@/services/gps-interference', 'export function getCachedGpsInterference(){ return null; }'],
+    ['@/services/ml-worker', 'export const mlWorker = {};'],
+    ['@/services/auth-state', 'export function getAuthState(){ return { user: { role: "pro" } }; } export function subscribeAuthState(){ return () => {}; }'],
+    ['@/services/tv-mode', 'export class TvModeController { constructor(){} toggle(){} updatePanelKeys(){} get active(){ return false; } }'],
+    ['@/components', `
+      export class PlaybackControl { onSnapshot(){} getElement(){ return document.createElement('div'); } }
+      export class StatusPanel {}
+      export class PizzIntIndicator {}
+      export class LlmStatusIndicator {}
+      export class PredictionPanel { renderPredictions(){} }
+    `],
+    ['@/components/CustomWidgetPanel', 'export class CustomWidgetPanel { constructor(spec){ this.spec = spec; } getElement(){ return document.createElement("div"); } }'],
+    ['@/components/WidgetChatModal', 'export function openWidgetChatModal(){}'],
+    ['@/components/McpDataPanel', 'export class McpDataPanel { constructor(spec){ this.spec = spec; } getElement(){ return document.createElement("div"); } }'],
+    ['@/components/McpConnectModal', 'export function openMcpConnectModal(){}'],
+    ['@/components/DownloadBanner', 'export function detectPlatform(){ return "web"; } export const allButtons = []; export function buttonsForPlatform(){ return []; }'],
+    ['@/components/UnifiedSettings', 'export class UnifiedSettings { refreshPanelToggles(){} open(){} }'],
+    ['@/components/AuthLauncher', 'export class AuthLauncher { open(){} close(){} destroy(){} }'],
+    ['@/components/AuthHeaderWidget', 'export class AuthHeaderWidget { constructor(){} getElement(){ return document.createElement("div"); } }'],
+  ]);
+  const plugin = {
+    name: 'mission-event-handler-stubs',
+    setup(buildApi: import('esbuild').PluginBuild) {
+      buildApi.onResolve({ filter: /.*/ }, (args) => {
+        const target = stubs.get(args.path);
+        return target ? { path: args.path, namespace: 'mission-stub' } : null;
+      });
+      buildApi.onLoad({ filter: /.*/, namespace: 'mission-stub' }, (args) => ({
+        contents: stubs.get(args.path) ?? '',
+        loader: 'js' as const,
+      }));
+      buildApi.onLoad({ filter: /\.css$/ }, () => ({ contents: '', loader: 'css' as const }));
+    },
+  };
+
+  const result = await build({
+    entryPoints: [new URL('../src/app/event-handlers.ts', import.meta.url).pathname],
+    bundle: true,
+    format: 'esm',
+    platform: 'browser',
+    target: 'es2022',
+    write: false,
+    plugins: [plugin],
+    define: {
+      'import.meta.env.VITE_VARIANT': '"full"',
+      'import.meta.env.DEV': 'false',
+    },
+  });
+  writeFileSync(outfile, result.outputFiles[0].text, 'utf8');
+  cleanupEventHandlerBundle = () => rmSync(tempDir, { recursive: true, force: true });
+  const mod = await import(`${pathToFileURL(outfile).href}?t=${Date.now()}`);
+  return mod.EventHandlerManager as EventHandlerManagerCtor;
 }
 
 function makePanelSettings(variant: string): Record<string, PanelConfig> {
@@ -96,9 +496,31 @@ function defaultWorkspacePanelKeys(variant: string): string[] {
   return enabledWorkspacePanelKeys(reset.panelSettings);
 }
 
+before(async () => {
+  EventHandlerManager = await loadEventHandlerManager();
+});
+
+after(() => {
+  cleanupEventHandlerBundle?.();
+});
+
+function resetMissionGlobals(): void {
+  delete (globalThis as { __missionAnalytics?: unknown }).__missionAnalytics;
+  delete (globalThis as { __missionAis?: unknown }).__missionAis;
+  delete (globalThis as { __missionFreshness?: unknown }).__missionFreshness;
+  delete (globalThis as { __missionToastMessages?: unknown }).__missionToastMessages;
+}
+
 beforeEach(() => {
   originalLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  originalDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  originalHistory = Object.getOwnPropertyDescriptor(globalThis, 'history');
+  originalRequestAnimationFrame = Object.getOwnPropertyDescriptor(globalThis, 'requestAnimationFrame');
+  originalCancelAnimationFrame = Object.getOwnPropertyDescriptor(globalThis, 'cancelAnimationFrame');
   defineLocalStorage(new MemoryStorage());
+  defineBrowserGlobals();
+  resetMissionGlobals();
 });
 
 afterEach(() => {
@@ -107,6 +529,17 @@ afterEach(() => {
   } else {
     delete (globalThis as { localStorage?: unknown }).localStorage;
   }
+  if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow);
+  else delete (globalThis as { window?: unknown }).window;
+  if (originalDocument) Object.defineProperty(globalThis, 'document', originalDocument);
+  else delete (globalThis as { document?: unknown }).document;
+  if (originalHistory) Object.defineProperty(globalThis, 'history', originalHistory);
+  else delete (globalThis as { history?: unknown }).history;
+  if (originalRequestAnimationFrame) Object.defineProperty(globalThis, 'requestAnimationFrame', originalRequestAnimationFrame);
+  else delete (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame;
+  if (originalCancelAnimationFrame) Object.defineProperty(globalThis, 'cancelAnimationFrame', originalCancelAnimationFrame);
+  else delete (globalThis as { cancelAnimationFrame?: unknown }).cancelAnimationFrame;
+  resetMissionGlobals();
 });
 
 describe('mission preset definitions', () => {
@@ -375,53 +808,277 @@ describe('mission preset persistence', () => {
   });
 });
 
+type MissionTestCallbacks = {
+  appliedOrders: string[][];
+  loadDataForLayer: string[];
+  stopLayerActivity: string[];
+  loadAllDataCalls: number;
+  syncDataFreshnessCalls: number;
+  mountLiveNewsCalls: number;
+  waitForAisCalls: number;
+};
+
+type MissionHarness = {
+  ctx: {
+    panelSettings: Record<string, PanelConfig>;
+    mapLayers: MapLayers;
+    map: ReturnType<typeof makeMapSpy>;
+    unifiedSettings: { refreshes: number; refreshPanelToggles(): void };
+  };
+  callbacks: MissionTestCallbacks;
+  manager: EventHandlerManagerCtor extends new (...args: unknown[]) => infer Instance ? Instance & Record<string, (arg?: unknown) => void> : never;
+  storage: MemoryStorage;
+};
+
+function activeLayers(layers: MapLayers): string[] {
+  return Object.entries(layers)
+    .filter(([, enabled]) => enabled)
+    .map(([key]) => key)
+    .sort();
+}
+
+function readJsonStorage<T>(key: string): T {
+  const raw = localStorage.getItem(key);
+  assert.ok(raw, `${key} should be persisted`);
+  return JSON.parse(raw) as T;
+}
+
+function latestUrl(): URL {
+  const history = globalThis.history as unknown as { latestUrl: string };
+  assert.ok(history.latestUrl, 'URL state should have been synced');
+  return new URL(history.latestUrl);
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForMissionTimers(): Promise<void> {
+  await wait(320);
+}
+
+function makeMapSpy(options: { isGlobe?: boolean; isDeckGLActive?: boolean } = {}) {
+  const state = {
+    view: 'global',
+    zoom: 2.3,
+    timeRange: '7d',
+    layers: { ...DEFAULT_MAP_LAYERS },
+  };
+  const calls = {
+    setLayers: [] as MapLayers[],
+    setView: [] as Array<{ view: string; zoom?: number }>,
+    setTimeRange: [] as string[],
+    setLayerLoading: [] as Array<{ layer: string; loading: boolean }>,
+  };
+  return {
+    calls,
+    setLayers(layers: MapLayers) {
+      calls.setLayers.push({ ...layers });
+      state.layers = { ...layers };
+    },
+    setView(view: string, zoom?: number) {
+      calls.setView.push({ view, zoom });
+      state.view = view;
+      state.zoom = zoom ?? (view === 'global' ? 2.3 : state.zoom);
+    },
+    setTimeRange(timeRange: string) {
+      calls.setTimeRange.push(timeRange);
+      state.timeRange = timeRange;
+    },
+    getState() {
+      return { ...state };
+    },
+    getCenter() {
+      return { lat: 0, lon: 0 };
+    },
+    isGlobeMode() {
+      return options.isGlobe ?? false;
+    },
+    isDeckGLActive() {
+      return options.isDeckGLActive ?? true;
+    },
+    setLayerLoading(layer: string, loading: boolean) {
+      calls.setLayerLoading.push({ layer, loading });
+    },
+  };
+}
+
+function createMissionHarness(options: { mobile?: boolean; storage?: MemoryStorage; map?: ReturnType<typeof makeMapSpy> } = {}): MissionHarness {
+  const storage = options.storage ?? new MemoryStorage();
+  defineLocalStorage(storage);
+  const document = defineBrowserGlobals();
+  const mount = document.createElement('span');
+  mount.id = 'missionPresetMount';
+  document.body.appendChild(mount);
+
+  const callbacks: MissionTestCallbacks = {
+    appliedOrders: [],
+    loadDataForLayer: [],
+    stopLayerActivity: [],
+    loadAllDataCalls: 0,
+    syncDataFreshnessCalls: 0,
+    mountLiveNewsCalls: 0,
+    waitForAisCalls: 0,
+  };
+  const unifiedSettings = {
+    refreshes: 0,
+    refreshPanelToggles() {
+      this.refreshes += 1;
+    },
+  };
+  const ctx = {
+    map: options.map ?? makeMapSpy(),
+    isMobile: options.mobile ?? false,
+    isDesktopApp: false,
+    container: document.body,
+    panels: {},
+    newsPanels: {},
+    panelSettings: makePanelSettings('full'),
+    mapLayers: { ...DEFAULT_MAP_LAYERS },
+    allNews: [],
+    newsByCategory: {},
+    latestMarkets: [],
+    latestPredictions: [],
+    latestClusters: [],
+    intelligenceCache: {},
+    cyberThreatsCache: null,
+    disabledSources: new Set<string>(),
+    currentTimeRange: '7d',
+    inFlight: new Set<string>(),
+    seenGeoAlerts: new Set<string>(),
+    monitors: [],
+    signalModal: null,
+    statusPanel: null,
+    searchModal: null,
+    findingsBadge: null,
+    breakingBanner: null,
+    playbackControl: null,
+    exportPanel: null,
+    unifiedSettings,
+    pizzintIndicator: null,
+    correlationEngine: null,
+    llmStatusIndicator: null,
+    countryBriefPage: null,
+    countryTimeline: null,
+    positivePanel: null,
+    countersPanel: null,
+    progressPanel: null,
+    breakthroughsPanel: null,
+    heroPanel: null,
+    digestPanel: null,
+    speciesPanel: null,
+    renewablePanel: null,
+    authModal: null,
+    authHeaderWidget: null,
+    tvMode: null,
+    happyAllItems: [],
+    isDestroyed: false,
+    isPlaybackMode: false,
+    isIdle: false,
+    initialLoadComplete: true,
+    resolvedLocation: 'global',
+    initialUrlState: null,
+    PANEL_ORDER_KEY: 'panel-order',
+    PANEL_SPANS_KEY: 'panel-spans',
+  };
+
+  const manager = new EventHandlerManager(ctx, {
+    updateSearchIndex() {},
+    loadAllData: async () => { callbacks.loadAllDataCalls += 1; },
+    flushStaleRefreshes() {},
+    setHiddenSince() {},
+    loadDataForLayer: (layer: string) => callbacks.loadDataForLayer.push(layer),
+    waitForAisData: () => { callbacks.waitForAisCalls += 1; },
+    syncDataFreshnessWithLayers: () => { callbacks.syncDataFreshnessCalls += 1; },
+    ensureCorrectZones() {},
+    applySavedPanelOrder: (panelOrder?: string[]) => callbacks.appliedOrders.push([...(panelOrder ?? [])]),
+    refreshCiiAfterFocalPointsReady() {},
+    stopLayerActivity: (layer: keyof MapLayers) => callbacks.stopLayerActivity.push(String(layer)),
+    mountLiveNewsIfReady: () => { callbacks.mountLiveNewsCalls += 1; },
+  });
+
+  return { ctx, callbacks, manager: manager as MissionHarness['manager'], storage };
+}
+
 describe('mission preset shell integration', () => {
-  it('routes mission layer diffs through the normal AIS/load/stop side effects', () => {
-    assert.match(
-      eventHandlersSource,
-      /private runMapLayerSideEffects\(layer: keyof MapLayers, enabled: boolean\): void \{[\s\S]*if \(layer === 'ais'\)[\s\S]*initAisStream\(\);[\s\S]*disconnectAisStream\(\);[\s\S]*this\.callbacks\.loadDataForLayer\(layer\);[\s\S]*this\.callbacks\.stopLayerActivity\?\.\(layer as keyof MapLayers\);/,
+  it('applies a preset through the real manager path and resets state, storage, layers, map view, and URL to defaults', async () => {
+    const { ctx, callbacks, manager } = createMissionHarness();
+    const baselineWorkspace = defaultWorkspacePanelKeys('full');
+    const baselineLayers = activeLayers(DEFAULT_MAP_LAYERS);
+
+    manager.applyMissionPreset('supply-chain-risk');
+    await waitForMissionTimers();
+
+    assert.equal(ctx.panelSettings['supply-chain']?.enabled, true);
+    assert.equal(ctx.panelSettings.markets?.enabled, true);
+    assert.equal(ctx.panelSettings['live-news']?.enabled, false);
+    assert.deepEqual(callbacks.appliedOrders[0]?.slice(0, 3), ['supply-chain', 'hormuz-tracker', 'cascade']);
+    assert.equal(localStorage.getItem(MISSION_PRESET_STORAGE_KEY), 'supply-chain-risk');
+    assert.deepEqual(readJsonStorage<string[]>('panel-order'), callbacks.appliedOrders[0]);
+    assert.equal(readJsonStorage<MapLayers>('worldmonitor-layers').tradeRoutes, true);
+    assert.equal(readJsonStorage<MapLayers>('worldmonitor-layers').resilienceScore, true);
+    assert.deepEqual(ctx.map.calls.setView.at(-1), { view: 'global', zoom: 2.3 });
+    assert.equal(ctx.map.calls.setTimeRange.at(-1), '7d');
+    assert.equal(callbacks.waitForAisCalls, 1, 'AIS layer enable should initialize the AIS stream path');
+    assert.ok(callbacks.loadDataForLayer.includes('tradeRoutes'), 'newly enabled non-AIS layers should load data');
+    assert.ok(
+      ((globalThis as { __missionAnalytics?: Array<{ name: string; args: unknown[] }> }).__missionAnalytics ?? [])
+        .some((entry) => entry.name === 'trackMapLayerToggle' && entry.args[0] === 'tradeRoutes' && entry.args[1] === true),
+      'programmatic layer analytics should be emitted for apply transitions',
     );
-    assert.match(
-      eventHandlersSource,
-      /private applyMissionMapLayerTransitions\(previousLayers: MapLayers, nextLayers: MapLayers\): void \{[\s\S]*trackMapLayerToggle\(layer, enabled, 'programmatic'\);[\s\S]*this\.runMapLayerSideEffects\(layer, enabled\);/,
-    );
-    assert.equal(
-      eventHandlersSource.match(/this\.applyMissionMapLayerTransitions\(previousMapLayers, mapLayers\);/g)?.length,
-      2,
-      'apply and reset should both run layer transition side effects',
-    );
+    assert.equal(latestUrl().searchParams.get('layers')?.includes('tradeRoutes'), true);
+
+    manager.resetMissionPreset();
+    await waitForMissionTimers();
+
+    assert.equal(localStorage.getItem(MISSION_PRESET_STORAGE_KEY), null);
+    assert.deepEqual(enabledWorkspacePanelKeys(ctx.panelSettings), baselineWorkspace);
+    assert.deepEqual(activeLayers(ctx.mapLayers), baselineLayers);
+    assert.deepEqual(readJsonStorage<string[]>('panel-order'), VARIANT_DEFAULTS.full.filter((key) => key !== 'map'));
+    assert.deepEqual(activeLayers(readJsonStorage<MapLayers>('worldmonitor-layers')), baselineLayers);
+    assert.deepEqual(callbacks.appliedOrders.at(-1), VARIANT_DEFAULTS.full.filter((key) => key !== 'map'));
+    assert.deepEqual(ctx.map.calls.setView.at(-1), { view: 'global', zoom: undefined });
+    assert.equal(ctx.map.calls.setTimeRange.at(-1), '7d');
+    assert.ok(callbacks.stopLayerActivity.includes('tradeRoutes'), 'reset should stop layers the preset enabled');
+    assert.deepEqual((globalThis as { __missionAis?: string[] }).__missionAis, ['init', 'disconnect']);
+    assert.equal(latestUrl().searchParams.get('view'), 'global');
+    assert.equal(latestUrl().searchParams.get('timeRange'), '7d');
+    assert.deepEqual((latestUrl().searchParams.get('layers') ?? '').split(',').sort(), baselineLayers);
   });
 
-  it('applies mission panel order through an in-memory path when storage is unavailable', () => {
-    assert.match(eventHandlersSource, /saveToStorage\(this\.ctx\.PANEL_ORDER_KEY, panelOrder\);/);
-    assert.match(eventHandlersSource, /this\.callbacks\.applySavedPanelOrder\?\.\(applied\.panelOrder\);/);
-    assert.match(eventHandlersSource, /this\.callbacks\.applySavedPanelOrder\?\.\(reset\.panelOrder\);/);
-    assert.match(
-      appSource,
-      /applySavedPanelOrder: \(panelOrder\?: string\[\]\) => this\.panelLayout\.applySavedPanelOrder\(panelOrder\),/,
-    );
-    assert.match(
-      panelLayoutSource,
-      /public applySavedPanelOrder\(panelOrder\?: string\[\]\): void \{[\s\S]*const savedOrder = \(panelOrder \?\? this\.getSavedPanelOrder\(\)\)\.filter/,
-    );
-    assert.match(
-      panelLayoutSource,
-      /this\.bottomSetMemory = panelOrder \? new Set<string>\(\) : this\.getSavedBottomSet\(\);/,
-    );
+  it('filters renderer-incompatible preset layers before persisting or running side effects on the mobile fallback renderer', async () => {
+    const { ctx, callbacks, manager } = createMissionHarness({
+      mobile: true,
+      map: makeMapSpy({ isDeckGLActive: false }),
+    });
+
+    manager.applyMissionPreset('supply-chain-risk');
+    await waitForMissionTimers();
+
+    assert.equal(ctx.mapLayers.resilienceScore, false);
+    assert.equal(readJsonStorage<MapLayers>('worldmonitor-layers').resilienceScore, false);
+    assert.equal(ctx.mapLayers.tradeRoutes, true);
+    assert.ok(callbacks.loadDataForLayer.includes('tradeRoutes'));
+    assert.equal(callbacks.loadDataForLayer.includes('resilienceScore'), false);
+    assert.equal(callbacks.stopLayerActivity.includes('resilienceScore'), false);
   });
 
-  it('clamps desktop mission popover positioning to the viewport', () => {
-    assert.match(eventHandlersSource, /const height = Math\.min\(popover\.offsetHeight \|\| 620/);
-    assert.match(eventHandlersSource, /window\.innerHeight - height - 12/);
-    assert.match(eventHandlersSource, /popover\.style\.top = `\$\{top\}px`;/);
-  });
+  it('still applies in-memory panel order and reset order when storage writes fail', async () => {
+    const storage = new MemoryStorage();
+    storage.throwOnSet = true;
+    const { ctx, callbacks, manager } = createMissionHarness({ storage });
 
-  it('supports keyboard dismissal and focus for the mission dialog', () => {
-    assert.match(eventHandlersSource, /private boundMissionKeydownHandler: \(\(e: KeyboardEvent\) => void\) \| null = null;/);
-    assert.match(eventHandlersSource, /popover\.tabIndex = -1;/);
-    assert.match(eventHandlersSource, /if \(e\.key !== 'Escape'\) return;/);
-    assert.match(eventHandlersSource, /this\.closeMissionPresetPopover\(\);/);
-    assert.match(eventHandlersSource, /popover\.focus\(\{ preventScroll: true \}\);/);
-    assert.match(eventHandlersSource, /removeEventListener\('keydown', this\.boundMissionKeydownHandler\)/);
+    assert.doesNotThrow(() => manager.applyMissionPreset('macro-market-watch'));
+    await waitForMissionTimers();
+
+    assert.equal(ctx.panelSettings.markets?.enabled, true);
+    assert.deepEqual(callbacks.appliedOrders[0]?.slice(0, 3), ['markets', 'macro-signals', 'fear-greed']);
+    assert.equal(localStorage.getItem(MISSION_PRESET_STORAGE_KEY), null);
+
+    assert.doesNotThrow(() => manager.resetMissionPreset());
+    await waitForMissionTimers();
+
+    assert.deepEqual(enabledWorkspacePanelKeys(ctx.panelSettings), defaultWorkspacePanelKeys('full'));
+    assert.deepEqual(callbacks.appliedOrders.at(-1), VARIANT_DEFAULTS.full.filter((key) => key !== 'map'));
   });
 });
