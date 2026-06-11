@@ -70,7 +70,10 @@ export default async function handler(req: Request): Promise<Response> {
           status: 200,
           headers: {
             ...jsonHeaders,
-            'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=120, stale-if-error=600',
+            // Long stale-if-error (24h) so the CDN serves the last known-good
+            // brief through an extended origin/Redis outage instead of going
+            // empty — matches the feed + bootstrap endpoints (never-cache-empty).
+            'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=120, stale-if-error=86400',
           },
         });
       case 'empty':
