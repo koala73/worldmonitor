@@ -2,8 +2,9 @@ name: Seed World Bank Tech Readiness
 
 on:
   schedule:
-    # Every Sunday at 02:00 UTC — WB data is annual, weekly refresh is more than sufficient
-    - cron: '0 2 * * 0'
+    # Every Sunday ~02:43 UTC — WB data is annual, weekly refresh is more than
+    # sufficient. Off-peak minute: popular marks get dropped under load.
+    - cron: '43 2 * * 0'
   workflow_dispatch: {}
 
 jobs:

@@ -2,7 +2,10 @@ name: Seed Core Data (Every 30 min)
 
 on:
   schedule:
-    - cron: '*/30 * * * *'
+    # Off-peak minutes: GitHub drops scheduled runs queued at popular marks
+    # (:00/:15/:30/:45) under load — the cause of seeded keys (chokepoints,
+    # shippingRates) intermittently TTL-lapsing out of Redis.
+    - cron: '11,41 * * * *'
   workflow_dispatch: {}
 
 concurrency:

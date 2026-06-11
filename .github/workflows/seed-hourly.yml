@@ -13,7 +13,9 @@ name: Seed Hourly Data (Every hour)
 
 on:
   schedule:
-    - cron: '0 * * * *'
+    # :23 not :00 — top-of-hour is GitHub's most congested cron slot and
+    # scheduled runs get dropped there under load.
+    - cron: '23 * * * *'
   workflow_dispatch: {}
 
 concurrency:

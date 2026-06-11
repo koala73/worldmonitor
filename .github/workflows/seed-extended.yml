@@ -2,7 +2,8 @@ name: Seed Extended Data (Every 2 hours)
 
 on:
   schedule:
-    - cron: '15 */2 * * *'
+    # :37 not :15 — popular minute marks get dropped by GitHub under load.
+    - cron: '37 */2 * * *'
   workflow_dispatch: {}
 
 concurrency:
