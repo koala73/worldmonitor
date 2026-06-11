@@ -76,13 +76,18 @@ const FAST_KEYS = new Set([
   'iranEvents', 'temporalAnomalies', 'weatherAlerts', 'spending', 'theaterPosture',
 ]);
 
+// stale-if-error is the worst-case safety net: when the origin can't produce a
+// fresh bootstrap (Redis degraded), the CDN keeps serving the last KNOWN-GOOD
+// response for this long instead of a blank app. Freshness matters far less than
+// never going empty, so this is a full day — a sustained overnight Redis outage
+// no longer blanks the app (the cause of the 17%→9% conversion drop).
 const TIER_CACHE = {
-  slow: 'public, s-maxage=3600, stale-while-revalidate=600, stale-if-error=3600',
-  fast: 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900',
+  slow: 'public, s-maxage=3600, stale-while-revalidate=600, stale-if-error=86400',
+  fast: 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=86400',
 };
 const TIER_CDN_CACHE = {
-  slow: 'public, s-maxage=7200, stale-while-revalidate=1800, stale-if-error=7200',
-  fast: 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900',
+  slow: 'public, s-maxage=7200, stale-while-revalidate=1800, stale-if-error=86400',
+  fast: 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=86400',
 };
 
 const NEG_SENTINEL = '__WM_NEG__';
@@ -333,7 +338,39 @@ export default async function handler(req) {
     }
   }
 
-  const cacheControl = (tier && TIER_CACHE[tier]) || 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900';
+  // ── Never-cache-empty / worst-case CDN safety ───────────────────────────────
+  // A bootstrap degrades when Redis reads miss keys (e.g. the oversized digest /
+  // world-brief blobs time out) AND the upstream backfill can't fill them (it has
+  // been returning 401). Caching such a response pins a blank/partial app across
+  // an entire edge region for the TTL — the conversion killer. So:
+  //   • Broadly degraded (Redis effectively down, ≥half the keys missing) → 503,
+  //     so the CDN's stale-if-error serves the last KNOWN-GOOD full bootstrap.
+  //   • Partially degraded (a section or two absent, e.g. world-brief) → 200 but
+  //     no-store, so we never overwrite the cached good copy with a partial one.
+  //   • Healthy (nothing missing) → cache with the long stale-if-error window.
+  const isTier = tier === 'fast' || tier === 'slow';
+  const hardDown = isTier && missing.length >= Math.ceil(names.length / 2);
+  if (hardDown) {
+    console.error(
+      `[bootstrap] DEGRADED hard — ${missing.length}/${names.length} keys missing; ` +
+      `returning 503 so the CDN serves last known-good [${missing.join(',')}]`,
+    );
+    return new Response(JSON.stringify({ error: 'Bootstrap temporarily degraded', missing }), {
+      status: 503,
+      headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+    });
+  }
+
+  const degraded = missing.length > 0;
+  const cacheControl = degraded
+    ? 'no-store'
+    : (tier && TIER_CACHE[tier]) || 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=86400';
+  const cdnCacheControl = degraded
+    ? 'no-store'
+    : (tier && TIER_CDN_CACHE[tier]) || TIER_CDN_CACHE.fast;
+  if (degraded) {
+    console.warn(`[bootstrap] partial — ${missing.length} keys missing, no-store [${missing.join(',')}]`);
+  }
 
   return new Response(JSON.stringify({ data, missing }), {
     status: 200,
@@ -341,7 +378,7 @@ export default async function handler(req) {
       ...cors,
       'Content-Type': 'application/json',
       'Cache-Control': cacheControl,
-      'CDN-Cache-Control': (tier && TIER_CDN_CACHE[tier]) || TIER_CDN_CACHE.fast,
+      'CDN-Cache-Control': cdnCacheControl,
     },
   });
 }
