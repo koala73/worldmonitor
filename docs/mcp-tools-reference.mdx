@@ -169,8 +169,8 @@ Real-time equity quotes, commodity prices (including gold futures GC=F), crypto 
 
 | Name | Type | Description |
 |------|------|-------------|
-| `symbols` | array<string> | Tickers to keep, e.g. ["AAPL","GC=F","BTC"]. Case-insensitive; matches equity/commodity/crypto/gulf quotes, sector ETFs, and ETF-flow tickers. Omit for the full snapshot. |
-| `asset_class` | array<string: equity / commodity / crypto / sectors / etf / gulf / sentiment> | Restrict the response to one or more asset classes. Omit for all. |
+| `symbols` | `array<string>` | Tickers to keep, e.g. ["AAPL","GC=F","BTC"]. Case-insensitive; matches equity/commodity/crypto/gulf quotes, sector ETFs, and ETF-flow tickers. Omit for the full snapshot. |
+| `asset_class` | `array<string: equity / commodity / crypto / sectors / etf / gulf / sentiment>` | Restrict the response to one or more asset classes. Omit for all. |
 | `limit` | number | Cap each per-class quote list (stocks/commodities/crypto/gulf/sectors/ETF flows) to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/market/v1/get-fear-greed-index`, `GET /api/market/v1/get-sector-summary`, `GET /api/market/v1/list-commodity-quotes`, `GET /api/market/v1/list-crypto-quotes`, `GET /api/market/v1/list-etf-flows`, `GET /api/market/v1/list-gulf-quotes`, `GET /api/market/v1/list-market-quotes`
@@ -200,7 +200,7 @@ Macro economic indicators: Fed Funds rate (FRED), economic calendar events, fuel
 
 | Name | Type | Description |
 |------|------|-------------|
-| `dataset` | array<string: fedfunds / econ-calendar / fuel-prices / ecb-fx-rates / yield-curve-eu / spending / earnings-calendar / cot / dsr / property-residential / property-commercial> | Restrict the response to one or more sub-datasets. Omit for the full economic bundle. |
+| `dataset` | `array<string: fedfunds / econ-calendar / fuel-prices / ecb-fx-rates / yield-curve-eu / spending / earnings-calendar / cot / dsr / property-residential / property-commercial>` | Restrict the response to one or more sub-datasets. Omit for the full economic bundle. |
 | `country` | string | Filter the country-keyed datasets (fuel-prices, BIS DSR/property, economic calendar) to one ISO 3166-1 alpha-2 code. |
 | `limit` | number | Cap each list dataset (calendar, spending, earnings) to at most this many items (default 30, pass 0 for no cap). |
 
@@ -231,7 +231,7 @@ Per-country macroeconomic indicators from IMF WEO (~210 countries, monthly caden
 
 | Name | Type | Description |
 |------|------|-------------|
-| `countries` | array<string> | ISO 3166-1 alpha-2 country codes to keep across all four IMF datasets (e.g. ["US","DE","CN"]). Omit for all ~210 countries. |
+| `countries` | `array<string>` | ISO 3166-1 alpha-2 country codes to keep across all four IMF datasets (e.g. ["US","DE","CN"]). Omit for all ~210 countries. |
 | `limit` | integer | Cap each IMF dataset country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap). |
 
 - **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
@@ -261,7 +261,7 @@ Eurostat annual house price index (prc_hpi_a, base 2015=100) for all 27 EU membe
 
 | Name | Type | Description |
 |------|------|-------------|
-| `countries` | array<string> | Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all. |
+| `countries` | `array<string>` | Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all. |
 | `limit` | integer | Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap). |
 
 - **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
@@ -291,7 +291,7 @@ Eurostat quarterly general government gross debt (gov_10q_ggdebt, %GDP) for all 
 
 | Name | Type | Description |
 |------|------|-------------|
-| `countries` | array<string> | Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all. |
+| `countries` | `array<string>` | Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all. |
 | `limit` | integer | Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap). |
 
 - **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
@@ -321,7 +321,7 @@ Eurostat monthly industrial production index (sts_inpr_m, NACE B-D industry excl
 
 | Name | Type | Description |
 |------|------|-------------|
-| `countries` | array<string> | Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all. |
+| `countries` | `array<string>` | Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all. |
 | `limit` | integer | Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap). |
 
 - **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
@@ -351,7 +351,7 @@ Global trade and pricing indicators: US tariff trends (HTS-coded), BigMac index,
 
 | Name | Type | Description |
 |------|------|-------------|
-| `dataset` | array<string: tariffs / bigmac / fao-ffpi / national-debt> | Restrict the response to one or more sub-datasets. Omit for the full bundle. |
+| `dataset` | `array<string: tariffs / bigmac / fao-ffpi / national-debt>` | Restrict the response to one or more sub-datasets. Omit for the full bundle. |
 | `country` | string | Filter the per-country datasets to one ISO 3166-1 alpha-2 country code (e.g. "US"). It is translated to alpha-3 internally for the national-debt dataset; passing an alpha-3 code directly also works. |
 | `limit` | number | Cap each list dataset (tariff datapoints, BigMac countries, debt entries) to at most this many items (default 30, pass 0 for no cap). |
 
@@ -474,7 +474,7 @@ Energy supply, prices, storage, disruptions, and policy: EIA petroleum stocks, e
 
 | Name | Type | Description |
 |------|------|-------------|
-| `dataset` | array<string: eia-petroleum / electricity / ember / gas-storage / fuel-shortages / disruptions / crisis-policies / fossil-share / renewable> | Restrict the response to one or more energy sub-datasets. Omit for the full bundle. |
+| `dataset` | `array<string: eia-petroleum / electricity / ember / gas-storage / fuel-shortages / disruptions / crisis-policies / fossil-share / renewable>` | Restrict the response to one or more energy sub-datasets. Omit for the full bundle. |
 | `country` | string | Filter the country-keyed datasets (Ember electricity mix, gas storage, fuel shortages, energy disruptions, fossil-share) to one ISO 3166-1 alpha-2 code. |
 | `limit` | number | Cap each list-bearing energy slice (crisis-policies, electricity regions, gas-storage countries, World Bank renewable history/regions) to at most this many items (default 30, pass 0 for no cap). |
 
@@ -754,7 +754,7 @@ Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min ca
 | Name | Type | Description |
 |------|------|-------------|
 | `chokepoint` | string | Filter to one chokepoint — matches by case-insensitive substring across the differing identifiers used by each dataset (e.g. "hormuz" matches "hormuz_strait", "Strait of Hormuz"). |
-| `dataset` | array<string: transit-summaries / chokepoint_transits / _countries / chokepoint-baselines / ref / chokepoint-flows> | Restrict the response to one or more sub-datasets. Omit for the full bundle. |
+| `dataset` | `array<string: transit-summaries / chokepoint_transits / _countries / chokepoint-baselines / ref / chokepoint-flows>` | Restrict the response to one or more sub-datasets. Omit for the full bundle. |
 | `limit` | number | Cap the chokepoint-baselines list and the _countries ISO2 index to at most this many items (default 30, pass 0 for no cap). Keyed-object maps (transit-summaries, chokepoint_transits, ref, chokepoint-flows) are intentionally not capped — use the `chokepoint` filter instead. |
 
 - **API endpoints:** `GET /api/intelligence/v1/get-country-port-activity`, `GET /api/supply-chain/v1/get-chokepoint-status`
@@ -905,7 +905,7 @@ Dry bulk shipping stress index, customs revenue flows, and COMTRADE bilateral tr
 
 | Name | Type | Description |
 |------|------|-------------|
-| `dataset` | array<string: shipping_stress / customs-revenue / flows> | Restrict the response to one or more sub-datasets (dry-bulk shipping stress / customs revenue / COMTRADE flows). Omit for all. |
+| `dataset` | `array<string: shipping_stress / customs-revenue / flows>` | Restrict the response to one or more sub-datasets (dry-bulk shipping stress / customs revenue / COMTRADE flows). Omit for all. |
 | `commodity` | string | Filter COMTRADE flows to one commodity — matches the HS code exactly or the commodity description by substring (e.g. "2709" or "crude"). |
 | `limit` | number | Cap each list dataset (carriers, months, flows) to at most this many items (default 30, pass 0 for no cap). |
 
@@ -1040,7 +1040,7 @@ Climate intelligence: temperature/precipitation anomalies (vs 30-year WMO normal
 
 | Name | Type | Description |
 |------|------|-------------|
-| `dataset` | array<string: anomalies / disasters / co2-monitoring / air-quality / ocean-ice / news-intelligence / alerts> | Restrict the response to one or more climate sub-datasets. Omit for the full bundle. |
+| `dataset` | `array<string: anomalies / disasters / co2-monitoring / air-quality / ocean-ice / news-intelligence / alerts>` | Restrict the response to one or more climate sub-datasets. Omit for the full bundle. |
 | `country` | string | Filter the country-tagged datasets (climate disasters, air-quality stations) to one ISO 3166-1 alpha-2 code. |
 | `limit` | number | Cap each list dataset (anomalies, disasters, stations, news, alerts) to at most this many items (default 30, pass 0 for no cap). |
 
@@ -1071,7 +1071,7 @@ Recent earthquakes (USGS), active wildfires (NASA FIRMS), and natural hazard eve
 
 | Name | Type | Description |
 |------|------|-------------|
-| `dataset` | array<string: earthquakes / wildfires / other> | Restrict to one or more hazard datasets (earthquakes / wildfires / other natural events). Omit for all. |
+| `dataset` | `array<string: earthquakes / wildfires / other>` | Restrict to one or more hazard datasets (earthquakes / wildfires / other natural events). Omit for all. |
 | `min_magnitude` | number | Drop earthquakes and natural events below this magnitude. |
 | `active_only` | boolean | Keep only natural events that are still active (not closed). |
 | `limit` | number | Cap each hazard list to at most this many items (default 30, pass 0 for no cap). |
@@ -1167,7 +1167,7 @@ Active disease outbreaks (WHO/ECDC etc.) and global air-quality station readings
 
 | Name | Type | Description |
 |------|------|-------------|
-| `signal_type` | array<string: outbreaks / air-quality> | Restrict to disease outbreaks, air-quality stations, or both. Omit for both. |
+| `signal_type` | `array<string: outbreaks / air-quality>` | Restrict to disease outbreaks, air-quality stations, or both. Omit for both. |
 | `country` | string | Filter outbreaks and air-quality stations to one ISO 3166-1 alpha-2 country code. |
 | `disease` | string | Keep only outbreaks whose disease name contains this text (case-insensitive). |
 | `min_aqi` | number | Drop air-quality stations below this AQI value. |
@@ -1202,7 +1202,7 @@ Refugee and IDP counts by country (UNHCR annual data).
 
 | Name | Type | Description |
 |------|------|-------------|
-| `countries` | array<string> | ISO 3166-1 alpha-3 country codes to keep (e.g. ["SYR","UKR","AFG"]). Matches both per-country totals and origin/asylum flows. Omit for all. |
+| `countries` | `array<string>` | ISO 3166-1 alpha-3 country codes to keep (e.g. ["SYR","UKR","AFG"]). Matches both per-country totals and origin/asylum flows. Omit for all. |
 | `limit` | number | Cap the per-country and top-flow lists to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/displacement/v1/get-displacement-summary`

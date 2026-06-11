@@ -102,7 +102,7 @@ function stripCode(content) {
 function findBareAngleBrackets(lines) {
   const issues = [];
   for (let i = 0; i < lines.length; i++) {
-    const match = lines[i].match(/<[=\d-]/);
+    const match = lines[i].match(/<[=\d-]|\b[A-Za-z_$][\w$.-]*<(?!\/)[^>\n]+>/);
     if (match) {
       issues.push({ line: i + 1, text: lines[i].trim(), type: 'angle bracket' });
     }
