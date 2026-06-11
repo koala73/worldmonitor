@@ -11,8 +11,8 @@ import type { CountryBriefPanel, CountryIntelData, StockIndexData } from '@/comp
 import { getNearbyInfrastructure, haversineDistanceKm } from '@/services/related-assets';
 import { PORTS } from '@/config/ports';
 import type { Port } from '@/types';
-import { exportCountryBriefJSON, exportCountryBriefCSV } from '@/utils/export';
-import type { CountryBriefExport } from '@/utils/export';
+import { exportCountryBriefJSON, exportCountryBriefCSV, exportCountryEvidenceMarkdown } from '@/utils/export';
+import type { CountryBriefExport, CountryEvidenceBundleInput } from '@/utils/export';
 import { ME_STRIKE_BOUNDS } from '@/services/country-geometry';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
@@ -60,6 +60,8 @@ export class CountryBriefPage implements CountryBriefPanel {
   private currentScore: CountryScore | null = null;
   private currentSignals: CountryBriefSignals | null = null;
   private currentBrief: string | null = null;
+  private currentBriefGeneratedAt: string | null = null;
+  private currentBriefCached: boolean | null = null;
   private currentHeadlines: NewsItem[] = [];
   private onCloseCallback?: () => void;
   private onShareStory?: (code: string, name: string) => void;
@@ -133,7 +135,7 @@ export class CountryBriefPage implements CountryBriefPanel {
           }
         } else if (format === 'pdf') {
           this.exportPdf();
-        } else if (format === 'json' || format === 'csv') {
+        } else if (format === 'json' || format === 'csv' || format === 'evidence-md') {
           this.exportBrief(format);
         }
         const exportMenu = this.overlay.querySelector('.cb-export-menu');
@@ -375,6 +377,8 @@ export class CountryBriefPage implements CountryBriefPanel {
     this.currentScore = score;
     this.currentSignals = signals;
     this.currentBrief = null;
+    this.currentBriefGeneratedAt = null;
+    this.currentBriefCached = null;
     this.currentHeadlines = [];
     this.currentHeadlineCount = 0;
     const flag = this.countryFlag(code);
@@ -412,6 +416,7 @@ export class CountryBriefPage implements CountryBriefPanel {
                 <button class="cb-export-option" data-format="pdf">${t('common.exportPdf')}</button>
                 <button class="cb-export-option" data-format="json">${t('common.exportJson')}</button>
                 <button class="cb-export-option" data-format="csv">${t('common.exportCsv')}</button>
+                <button class="cb-export-option" data-format="evidence-md">Evidence Markdown</button>
               </div>
             </div>
             <button class="cb-close" aria-label="${t('components.newsPanel.close')}">×</button>
@@ -505,6 +510,8 @@ export class CountryBriefPage implements CountryBriefPanel {
     }
 
     this.currentBrief = data.brief;
+    this.currentBriefGeneratedAt = data.generatedAt ?? null;
+    this.currentBriefCached = data.cached === true;
     const formatted = this.formatBrief(data.brief, this.currentHeadlineCount);
     setTrustedHtml(section, trustedHtml(`
       <div class="cb-brief-text">${formatted}</div>
@@ -664,12 +671,15 @@ export class CountryBriefPage implements CountryBriefPanel {
     return formatIntelBrief(text, headlineCount > 0 ? { count: headlineCount, hrefPrefix: '#cb-news-' } : undefined);
   }
 
-  private exportBrief(format: 'json' | 'csv'): void {
+  private exportBrief(format: 'json' | 'csv' | 'evidence-md'): void {
     if (!this.currentCode || !this.currentName) return;
-    const data: CountryBriefExport = {
+    const exportedAt = new Date().toISOString();
+    const data: CountryBriefExport & CountryEvidenceBundleInput = {
       country: this.currentName,
       code: this.currentCode,
-      generatedAt: new Date().toISOString(),
+      context: 'Country dossier',
+      generatedAt: exportedAt,
+      exportedAt,
     };
     if (this.currentScore) {
       data.score = this.currentScore.score;
@@ -703,6 +713,8 @@ export class CountryBriefPage implements CountryBriefPanel {
       };
     }
     if (this.currentBrief) data.brief = this.currentBrief;
+    if (this.currentBriefGeneratedAt) data.briefGeneratedAt = this.currentBriefGeneratedAt;
+    if (this.currentBriefCached != null) data.briefCached = this.currentBriefCached;
     if (this.currentHeadlines.length > 0) {
       data.headlines = this.currentHeadlines.map(h => ({
         title: h.title,
@@ -711,7 +723,8 @@ export class CountryBriefPage implements CountryBriefPanel {
         pubDate: h.pubDate ? new Date(h.pubDate).toISOString() : undefined,
       }));
     }
-    if (format === 'json') exportCountryBriefJSON(data);
+    if (format === 'evidence-md') exportCountryEvidenceMarkdown(data);
+    else if (format === 'json') exportCountryBriefJSON(data);
     else exportCountryBriefCSV(data);
   }
 

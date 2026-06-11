@@ -2296,6 +2296,9 @@
         "sampleLabel": "AIS kesinti sinyalleri",
         "creditName": "EIA Dünya Petrol Transit Dar Boğazları"
       }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
     }
   },
   "popups": {

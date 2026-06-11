@@ -2328,7 +2328,7 @@ export async function scoreFiscalSpace(
   }
 
   // Weight rebalance + new indicator (debtSustainabilityGap) per
-  // plans/add-debt-sustainability-gap-indicator.md. The gap (pb − pb*)
+  // docs/archive/plans/add-debt-sustainability-gap-indicator.md. The gap (pb − pb*)
   // is the most informative single fiscal signal — it integrates pb, r,
   // g, and d with their interaction term — and earns the largest slice.
   // The other three are co-signals confirming the direction.

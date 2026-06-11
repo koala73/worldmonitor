@@ -113,7 +113,15 @@ import {
 import type { GulfInvestment } from '@/types';
 import { resolveTradeRouteSegments, TRADE_ROUTES as TRADE_ROUTES_LIST, type TradeRouteSegment, type TradeRouteStatus } from '@/config/trade-routes';
 import type { ScenarioVisualState } from '@/config/scenario-templates';
-import { getLayersForVariant, resolveLayerLabel, bindLayerSearch, type MapVariant } from '@/config/map-layer-definitions';
+import {
+  getLayersForVariant,
+  resolveLayerLabel,
+  bindLayerSearch,
+  getLayerExplanation,
+  hasCuratedLayerExplanation,
+  type MapVariant,
+} from '@/config/map-layer-definitions';
+import { renderLayerExplanationCard } from '@/utils/layer-explanation-card';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { onEntitlementChange } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
@@ -153,6 +161,16 @@ import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import { fetchWebcamImage } from '@/services/webcams';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import {
+  createCountryClickGestureTracker,
+  finishCountryClickGesture,
+  markCountryClickDrag,
+  refreshCountryClickDragSuppression,
+  shouldSuppressCountryClick,
+  startCountryClickGesture,
+  updateCountryClickGestureDrag,
+  type CountryClickGestureTracker,
+} from './map-interaction-guard';
 
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
@@ -576,6 +594,47 @@ export class DeckGLMap {
   private onTimeRangeChange?: (range: TimeRange) => void;
   private onCountryClick?: (country: CountryClickPayload) => void;
   private onMapContextMenu?: (payload: { lat: number; lon: number; screenX: number; screenY: number; countryCode?: string; countryName?: string }) => void;
+  private readonly countryClickGesture: CountryClickGestureTracker = createCountryClickGestureTracker();
+  private readonly handleCountryClickPointerDown = (e: PointerEvent): void => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (e.isPrimary === false) return;
+    startCountryClickGesture(this.countryClickGesture, { x: e.clientX, y: e.clientY });
+  };
+  private readonly handleCountryClickPointerMove = (e: PointerEvent): void => {
+    if (e.isPrimary === false) return;
+    updateCountryClickGestureDrag(this.countryClickGesture, { x: e.clientX, y: e.clientY });
+  };
+  private readonly handleCountryClickPointerEnd = (): void => {
+    finishCountryClickGesture(this.countryClickGesture);
+  };
+  private readonly markCountryDragGesture = (): void => {
+    markCountryClickDrag(this.countryClickGesture);
+  };
+  private readonly refreshCountryDragSuppression = (): void => {
+    refreshCountryClickDragSuppression(this.countryClickGesture);
+  };
+  private attachMapLibreInteractionHandlers(): void {
+    if (!this.maplibreMap) return;
+    const canvas = this.maplibreMap.getCanvas();
+    canvas.addEventListener('contextmenu', this.handleContextMenu);
+    canvas.addEventListener('pointerdown', this.handleCountryClickPointerDown);
+    canvas.addEventListener('pointermove', this.handleCountryClickPointerMove);
+    canvas.addEventListener('pointerup', this.handleCountryClickPointerEnd);
+    canvas.addEventListener('pointercancel', this.handleCountryClickPointerEnd);
+    this.maplibreMap.on('dragstart', this.markCountryDragGesture);
+    this.maplibreMap.on('dragend', this.refreshCountryDragSuppression);
+  }
+  private detachMapLibreInteractionHandlers(): void {
+    if (!this.maplibreMap) return;
+    const canvas = this.maplibreMap.getCanvas();
+    this.maplibreMap.off('dragstart', this.markCountryDragGesture);
+    this.maplibreMap.off('dragend', this.refreshCountryDragSuppression);
+    canvas.removeEventListener('contextmenu', this.handleContextMenu);
+    canvas.removeEventListener('pointerdown', this.handleCountryClickPointerDown);
+    canvas.removeEventListener('pointermove', this.handleCountryClickPointerMove);
+    canvas.removeEventListener('pointerup', this.handleCountryClickPointerEnd);
+    canvas.removeEventListener('pointercancel', this.handleCountryClickPointerEnd);
+  }
   private readonly handleContextMenu = (e: MouseEvent): void => {
     e.preventDefault();
     if (!this.onMapContextMenu || !this.maplibreMap) return;
@@ -906,6 +965,7 @@ export class DeckGLMap {
       console.warn(`[DeckGLMap] Primary basemap failed, recreating with fallback: ${fallback}`);
       const attr = this.container.querySelector('.map-attribution');
       if (attr) setTrustedHtml(attr, trustedHtml('© <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>', "legacy direct innerHTML migration"));
+      this.detachMapLibreInteractionHandlers();
       this.maplibreMap?.remove();
       const fallbackEl = document.getElementById('deckgl-basemap');
       if (!fallbackEl) return;
@@ -928,6 +988,7 @@ export class DeckGLMap {
           : {}),
       });
       this.maplibreMap.on('load', () => {
+        this.attachMapLibreInteractionHandlers();
         localizeMapLabels(this.maplibreMap);
         this.initDeck();
         this.loadCountryBoundaries();
@@ -999,7 +1060,7 @@ export class DeckGLMap {
       }
     });
 
-    this.maplibreMap.getCanvas().addEventListener('contextmenu', this.handleContextMenu);
+    this.attachMapLibreInteractionHandlers();
   }
 
   private initDeck(): void {
@@ -4615,6 +4676,7 @@ export class DeckGLMap {
     const isChoropleth = info.layer?.id ? DeckGLMap.CHOROPLETH_LAYER_IDS.has(info.layer.id) : false;
     if (!info.object || isChoropleth) {
       if (info.coordinate && this.onCountryClick) {
+        if (this.shouldSuppressCountryClickAfterDrag()) return;
         const [lon, lat] = info.coordinate as [number, number];
         let country: { code: string; name: string } | null = null;
         if (isChoropleth && info.object?.properties) {
@@ -5076,6 +5138,8 @@ export class DeckGLMap {
       label: resolveLayerLabel(def, t),
       icon: def.icon,
       premium: def.premium,
+      explainLabel: escapeHtml(`Explain ${resolveLayerLabel(def, t)} layer`),
+      hasExplanation: hasCuratedLayerExplanation(def.key),
     }));
 
     setTrustedHtml(toggles, trustedHtml(`
@@ -5086,15 +5150,18 @@ export class DeckGLMap {
       </div>
       <input type="text" class="layer-search" placeholder="${t('components.deckgl.layerSearch')}" autocomplete="off" spellcheck="false" />
       <div class="toggle-list" style="max-height: 32vh; overflow-y: auto; scrollbar-width: thin;">
-        ${layerConfig.map(({ key, label, icon, premium }) => {
+        ${layerConfig.map(({ key, label, icon, premium, explainLabel, hasExplanation }) => {
           const isLocked = premium === 'locked' && !premiumUnlocked;
           const isEnhanced = premium === 'enhanced' && !premiumUnlocked;
           return `
-          <label class="layer-toggle${isLocked ? ' layer-toggle-locked' : ''}" data-layer="${key}">
-            <input type="checkbox" ${this.state.layers[key as keyof MapLayers] ? 'checked' : ''}${isLocked ? ' disabled' : ''}>
-            <span class="toggle-icon">${icon}</span>
-            <span class="toggle-label">${label}${isLocked ? ' \uD83D\uDD12' : ''}${isEnhanced ? ' <span class="layer-pro-badge">PRO</span>' : ''}</span>
-          </label>`;
+          <div class="layer-toggle-row" data-layer="${key}">
+            <label class="layer-toggle${isLocked ? ' layer-toggle-locked' : ''}" data-layer="${key}">
+              <input type="checkbox" ${this.state.layers[key as keyof MapLayers] ? 'checked' : ''}${isLocked ? ' disabled' : ''}>
+              <span class="toggle-icon">${icon}</span>
+              <span class="toggle-label">${label}${isLocked ? ' \uD83D\uDD12' : ''}${isEnhanced ? ' <span class="layer-pro-badge">PRO</span>' : ''}</span>
+            </label>
+            <button type="button" class="layer-explain-btn${hasExplanation ? ' has-layer-explanation' : ''}" data-layer="${key}" aria-label="${explainLabel}" title="${explainLabel}">i</button>
+          </div>`;
         }).join('')}
       </div>
     `, "legacy direct innerHTML migration"));
@@ -5171,6 +5238,15 @@ export class DeckGLMap {
     });
     this.enforceLayerLimit();
 
+    toggles.querySelectorAll('.layer-explain-btn').forEach(button => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const layer = (button as HTMLElement).getAttribute('data-layer') as keyof MapLayers | null;
+        if (layer) this.showLayerExplanation(layer);
+      });
+    });
+
     // Help button
     const helpBtn = toggles.querySelector('.layer-help-btn');
     helpBtn?.addEventListener('click', () => this.showLayerHelp());
@@ -5198,6 +5274,38 @@ export class DeckGLMap {
     });
   }
 
+  private showLayerExplanation(layer: keyof MapLayers): void {
+    const existing = this.container.querySelector('.layer-explanation-popup') as HTMLElement | null;
+    if (existing?.dataset.layer === layer) {
+      existing.remove();
+      this.container.querySelector(`.layer-explain-btn[data-layer="${layer}"]`)?.classList.remove('active');
+      return;
+    }
+    existing?.remove();
+    this.container.querySelector('.layer-help-popup')?.remove();
+    this.container.querySelectorAll('.layer-explain-btn.active').forEach(btn => btn.classList.remove('active'));
+
+    const def = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'flat').find(item => item.key === layer);
+    const layerLabel = def ? resolveLayerLabel(def, t) : String(layer);
+    const explanation = getLayerExplanation(layer);
+    const popup = document.createElement('div');
+    popup.className = 'layer-explanation-popup';
+    popup.dataset.layer = layer;
+    setTrustedHtml(popup, trustedHtml(
+      renderLayerExplanationCard(layerLabel, explanation),
+      "static layer explanation metadata",
+    ));
+
+    const closePopup = (): void => {
+      popup.remove();
+      this.container.querySelector(`.layer-explain-btn[data-layer="${layer}"]`)?.classList.remove('active');
+    };
+
+    popup.querySelector('.layer-explanation-close')?.addEventListener('click', closePopup);
+    this.container.appendChild(popup);
+    this.container.querySelector(`.layer-explain-btn[data-layer="${layer}"]`)?.classList.add('active');
+  }
+
   /** Show layer help popup explaining each layer */
   private showLayerHelp(): void {
     const existing = this.container.querySelector('.layer-help-popup');
@@ -5205,6 +5313,8 @@ export class DeckGLMap {
       existing.remove();
       return;
     }
+    this.container.querySelector('.layer-explanation-popup')?.remove();
+    this.container.querySelectorAll('.layer-explain-btn.active').forEach(btn => btn.classList.remove('active'));
 
     const popup = document.createElement('div');
     popup.className = 'layer-help-popup';
@@ -6632,7 +6742,11 @@ export class DeckGLMap {
     const togglesEl = this.container.querySelector('.deckgl-layer-toggles');
     if (!togglesEl) return;
     const activeCount = Array.from(togglesEl.querySelectorAll<HTMLInputElement>('.layer-toggle input'))
-      .filter(i => (i.closest('.layer-toggle') as HTMLElement)?.style.display !== 'none')
+      .filter(i => {
+        const toggle = i.closest('.layer-toggle') as HTMLElement | null;
+        const row = i.closest('.layer-toggle-row') as HTMLElement | null;
+        return toggle?.style.display !== 'none' && row?.style.display !== 'none';
+      })
       .filter(i => i.checked).length;
     const increasing = activeCount > this.lastActiveLayerCount;
     this.lastActiveLayerCount = activeCount;
@@ -6648,7 +6762,9 @@ export class DeckGLMap {
   public hideLayerToggle(layer: keyof MapLayers): void {
     const toggle = this.container.querySelector(`.layer-toggle[data-layer="${layer}"]`);
     if (toggle) {
-      (toggle as HTMLElement).style.display = 'none';
+      const row = toggle.closest('.layer-toggle-row') as HTMLElement | null;
+      const target = (row ?? toggle) as HTMLElement;
+      target.style.display = 'none';
       toggle.setAttribute('data-layer-hidden', '');
     }
   }
@@ -6896,6 +7012,10 @@ export class DeckGLMap {
   }
 
   // --- Country click + highlight ---
+
+  private shouldSuppressCountryClickAfterDrag(): boolean {
+    return shouldSuppressCountryClick(this.countryClickGesture);
+  }
 
   public setOnCountryClick(cb: (country: CountryClickPayload) => void): void {
     this.onCountryClick = cb;
@@ -7266,7 +7386,7 @@ export class DeckGLMap {
 
     this.deckOverlay?.finalize();
     this.deckOverlay = null;
-    this.maplibreMap?.getCanvas().removeEventListener('contextmenu', this.handleContextMenu);
+    this.detachMapLibreInteractionHandlers();
     this.maplibreMap?.remove();
     this.maplibreMap = null;
     setTrustedHtml(this.container, trustedHtml('', "legacy direct innerHTML migration"));

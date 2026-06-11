@@ -6,7 +6,7 @@
  *
  * Returns text/event-stream SSE:
  *   data: {"meta":{"sources":["Brief","Risk",...],"degraded":false}}  — always first event
- *   data: {"action":{"type":"suggest-widget","label":"...","prefill":"..."}}  — optional, visual queries only
+ *   data: {"action":{"type":"open_panel"|"set_view"|"...","label":"..."}}  — optional, schema-validated in-app actions
  *   data: {"delta":"..."}    — one per content token
  *   data: {"done":true}      — terminal event
  *   data: {"error":"..."}    — on auth/llm failure
@@ -16,6 +16,8 @@ export const config = { runtime: 'edge', regions: ['iad1', 'lhr1', 'fra1', 'sfo1
 
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders } from './_cors.js';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from './_sentry-edge.js';
 import { isCallerPremium } from '../server/_shared/premium-check';
 import { checkRateLimit } from '../server/_shared/rate-limit';
 import { assembleAnalystContext } from '../server/worldmonitor/intelligence/v1/chat-analyst-context';
@@ -85,95 +87,112 @@ export default async function handler(req: Request): Promise<Response> {
     return json({ error: 'Method not allowed' }, 405, corsHeaders);
   }
 
-  const isPremium = await isCallerPremium(req);
-  if (!isPremium) {
-    return json({ error: 'Pro subscription required' }, 403, corsHeaders);
-  }
-
-  // Streaming LLM endpoint — the rate-limit IS the abuse defence (each
-  // call hits a frontier model). This route doesn't go through gateway
-  // checkEndpointRateLimit, so opt into fail-closed explicitly: a Redis
-  // outage must not silently lift the budget. (#3531)
-  const rateLimitResponse = await checkRateLimit(req, corsHeaders, { failClosed: true });
-  if (rateLimitResponse) return rateLimitResponse;
-
-  let body: ChatAnalystRequestBody;
+  // Top-level error boundary. An edge function must never let an exception
+  // escape: an uncaught throw becomes an opaque Vercel platform 500 that — for
+  // the cross-origin api.worldmonitor.app caller — also drops our CORS headers,
+  // so the browser sees an opaque failure rather than a readable status. The
+  // pre-stream auth/entitlement lookups (isCallerPremium) are network-backed
+  // and, while individually fail-soft today, this route had NO server-side
+  // capture, so any 5xx surfaced only as the browser's `API 500` message with
+  // no stack (WORLDMONITOR-SV). Mirror the sibling premium edge route
+  // (api/latest-brief.ts): capture server-side for a real trace, and return a
+  // CORS-correct transient 503 the panel can render. 503 (not 403) so a
+  // transient dependency blip never misclassifies a paying Pro user as
+  // unsubscribed.
   try {
-    body = (await req.json()) as ChatAnalystRequestBody;
-  } catch {
-    return json({ error: 'Invalid JSON body' }, 400, corsHeaders);
+    const isPremium = await isCallerPremium(req);
+    if (!isPremium) {
+      return json({ error: 'Pro subscription required' }, 403, corsHeaders);
+    }
+
+    // Streaming LLM endpoint — the rate-limit IS the abuse defence (each
+    // call hits a frontier model). This route doesn't go through gateway
+    // checkEndpointRateLimit, so opt into fail-closed explicitly: a Redis
+    // outage must not silently lift the budget. (#3531)
+    const rateLimitResponse = await checkRateLimit(req, corsHeaders, { failClosed: true });
+    if (rateLimitResponse) return rateLimitResponse;
+
+    let body: ChatAnalystRequestBody;
+    try {
+      body = (await req.json()) as ChatAnalystRequestBody;
+    } catch {
+      return json({ error: 'Invalid JSON body' }, 400, corsHeaders);
+    }
+
+    const rawQuery = typeof body.query === 'string' ? body.query.trim().slice(0, MAX_QUERY_LEN) : '';
+    if (!rawQuery) return json({ error: 'query is required' }, 400, corsHeaders);
+
+    const query = sanitizeForPrompt(rawQuery);
+    if (!query) return json({ error: 'query is required' }, 400, corsHeaders);
+
+    // Validate domainFocus against the fixed domain set to prevent prompt injection
+    const rawDomain = typeof body.domainFocus === 'string' ? body.domainFocus.trim() : '';
+    const domainFocus = VALID_DOMAINS.has(rawDomain) ? rawDomain : 'all';
+
+    const geoContext = typeof body.geoContext === 'string'
+      ? body.geoContext.trim().toUpperCase().slice(0, MAX_GEO_LEN)
+      : undefined;
+
+    const rawHistory = Array.isArray(body.history) ? body.history : [];
+    const history: ChatMessage[] = rawHistory
+      .filter((m): m is ChatMessage => {
+        if (!m || typeof m !== 'object') return false;
+        const msg = m as Record<string, unknown>;
+        return (msg.role === 'user' || msg.role === 'assistant') && typeof msg.content === 'string';
+      })
+      .slice(-MAX_HISTORY_MESSAGES)
+      .map((m) => {
+        const sanitized = sanitizeForPrompt(m.content.slice(0, MAX_MESSAGE_CHARS)) ?? '';
+        return { role: m.role, content: sanitized };
+      })
+      .filter((m) => m.content.length > 0);
+
+    // Build retrieval query with current turn FIRST so its keywords fill the
+    // extraction cap before prior-turn terms. This ensures pivot words like
+    // "Germany" in "What about Germany?" are never crowded out by a long
+    // previous question. Prior turn backfills remaining slots for topic continuity.
+    const prevUserTurn = history.filter((m) => m.role === 'user').slice(-1)[0]?.content ?? '';
+    const retrievalQuery = prevUserTurn ? `${query} ${prevUserTurn}` : query;
+
+    const context = await assembleAnalystContext(geoContext, domainFocus, retrievalQuery);
+    const systemPrompt = buildAnalystSystemPrompt(context, domainFocus);
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...history,
+      { role: 'user', content: query },
+    ];
+
+    const llmStream = callLlmReasoningStream({
+      messages,
+      maxTokens: 600,
+      temperature: 0.35,
+      timeoutMs: 25_000,
+      signal: req.signal,
+    });
+
+    // Always prepend a meta event so the client knows which sources are live
+    // and whether context is degraded — before the first token arrives.
+    // Optionally follows with an action event for visual/chart queries.
+    const stream = prependSseEvents(
+      [
+        { meta: { sources: context.activeSources, degraded: context.degraded } },
+        ...buildActionEvents(query).map((a) => ({ action: a })),
+      ],
+      llmStream,
+    );
+
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-store',
+        'X-Accel-Buffering': 'no',
+        ...corsHeaders,
+      },
+    });
+  } catch (err) {
+    captureSilentError(err, { tags: { route: 'api/chat-analyst', step: 'pre-stream' } });
+    return json({ error: 'service_unavailable' }, 503, corsHeaders);
   }
-
-  const rawQuery = typeof body.query === 'string' ? body.query.trim().slice(0, MAX_QUERY_LEN) : '';
-  if (!rawQuery) return json({ error: 'query is required' }, 400, corsHeaders);
-
-  const query = sanitizeForPrompt(rawQuery);
-  if (!query) return json({ error: 'query is required' }, 400, corsHeaders);
-
-  // Validate domainFocus against the fixed domain set to prevent prompt injection
-  const rawDomain = typeof body.domainFocus === 'string' ? body.domainFocus.trim() : '';
-  const domainFocus = VALID_DOMAINS.has(rawDomain) ? rawDomain : 'all';
-
-  const geoContext = typeof body.geoContext === 'string'
-    ? body.geoContext.trim().toUpperCase().slice(0, MAX_GEO_LEN)
-    : undefined;
-
-  const rawHistory = Array.isArray(body.history) ? body.history : [];
-  const history: ChatMessage[] = rawHistory
-    .filter((m): m is ChatMessage => {
-      if (!m || typeof m !== 'object') return false;
-      const msg = m as Record<string, unknown>;
-      return (msg.role === 'user' || msg.role === 'assistant') && typeof msg.content === 'string';
-    })
-    .slice(-MAX_HISTORY_MESSAGES)
-    .map((m) => {
-      const sanitized = sanitizeForPrompt(m.content.slice(0, MAX_MESSAGE_CHARS)) ?? '';
-      return { role: m.role, content: sanitized };
-    })
-    .filter((m) => m.content.length > 0);
-
-  // Build retrieval query with current turn FIRST so its keywords fill the
-  // extraction cap before prior-turn terms. This ensures pivot words like
-  // "Germany" in "What about Germany?" are never crowded out by a long
-  // previous question. Prior turn backfills remaining slots for topic continuity.
-  const prevUserTurn = history.filter((m) => m.role === 'user').slice(-1)[0]?.content ?? '';
-  const retrievalQuery = prevUserTurn ? `${query} ${prevUserTurn}` : query;
-
-  const context = await assembleAnalystContext(geoContext, domainFocus, retrievalQuery);
-  const systemPrompt = buildAnalystSystemPrompt(context, domainFocus);
-
-  const messages = [
-    { role: 'system', content: systemPrompt },
-    ...history,
-    { role: 'user', content: query },
-  ];
-
-  const llmStream = callLlmReasoningStream({
-    messages,
-    maxTokens: 600,
-    temperature: 0.35,
-    timeoutMs: 25_000,
-    signal: req.signal,
-  });
-
-  // Always prepend a meta event so the client knows which sources are live
-  // and whether context is degraded — before the first token arrives.
-  // Optionally follows with an action event for visual/chart queries.
-  const stream = prependSseEvents(
-    [
-      { meta: { sources: context.activeSources, degraded: context.degraded } },
-      ...buildActionEvents(query).map((a) => ({ action: a })),
-    ],
-    llmStream,
-  );
-
-  return new Response(stream, {
-    status: 200,
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache, no-store',
-      'X-Accel-Buffering': 'no',
-      ...corsHeaders,
-    },
-  });
 }

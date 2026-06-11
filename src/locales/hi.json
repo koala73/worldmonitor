@@ -2364,6 +2364,9 @@
         "sampleLabel": "AIS व्यवधान संकेत",
         "creditName": "EIA विश्व तेल पारगमन चोकपॉइंट"
       }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
     }
   },
   "popups": {

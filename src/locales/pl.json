@@ -2328,6 +2328,9 @@
         "sampleLabel": "Sygnały zakłóceń AIS",
         "creditName": "EIA Światowe Punkty Krytyczne Transportu Ropy Naftowej"
       }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
     }
   },
   "popups": {

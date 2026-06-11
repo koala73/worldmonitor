@@ -2296,6 +2296,9 @@
         "sampleLabel": "Tín hiệu gián đoạn AIS",
         "creditName": "Các điểm tắc nghẽn vận chuyển dầu toàn cầu của EIA"
       }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
     }
   },
   "popups": {

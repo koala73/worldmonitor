@@ -2084,6 +2084,9 @@
         "sampleLabel": "AIS-störningssignaler",
         "creditName": "EIA World Oil Transit Chokepoints"
       }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
     }
   },
   "popups": {

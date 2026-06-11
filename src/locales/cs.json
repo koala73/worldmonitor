@@ -2328,6 +2328,9 @@
         "sampleLabel": "Signály narušení AIS",
         "creditName": "EIA World Oil Transit Chokepoints"
       }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
     }
   },
   "popups": {

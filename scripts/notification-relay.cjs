@@ -60,7 +60,7 @@ async function checkDedup(userId, eventType, title, coalesceKey) {
   // collapses adjacent-zone NWS alerts (same storm system, different counties)
   // into one notification per user — the title-based dedup misses these
   // because each zone produces a slightly different title.
-  // See plans/forbid-realtime-all-events.md "Out of scope: Slot B".
+  // See docs/archive/plans/forbid-realtime-all-events.md "Out of scope: Slot B".
   const keyMaterial = coalesceKey ? `coalesce:${coalesceKey}` : `${eventType}:${title}`;
   const hash = sha256Hex(keyMaterial);
   const key = `wm:notif:dedup:${userId}:${hash}`;
@@ -752,7 +752,7 @@ function shouldNotify(rule, event) {
   // Both reads (legacy match below AND the importance threshold lookup) must
   // use the SAME effective value, otherwise the threshold path silently falls
   // through to the looser IMPORTANCE_SCORE_MIN floor.
-  // See plans/forbid-realtime-all-events.md §3.
+  // See docs/archive/plans/forbid-realtime-all-events.md §3.
   const effectiveDigestMode = rule.digestMode ?? 'realtime';
   const effectiveSensitivity =
     effectiveDigestMode === 'realtime' && (rule.sensitivity === 'all' || rule.sensitivity === 'high')

@@ -1691,6 +1691,9 @@
       "sortNewest": "Newest",
       "sortRelevance": "Relevance"
     },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
+    },
     "breakingNews": {
       "critical": "CRITICAL",
       "high": "HIGH",

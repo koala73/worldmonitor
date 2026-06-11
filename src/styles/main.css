@@ -4407,6 +4407,13 @@ body.playback-mode .status-dot {
   max-width: 300px;
 }
 
+.layer-toggles:not(.deckgl-layer-toggles) .layer-toggle-row {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+}
+
 .layer-toggles:not(.deckgl-layer-toggles) .layer-toggle {
   padding: 3px 8px;
   background: var(--bg);
@@ -4418,6 +4425,11 @@ body.playback-mode .status-dot {
   text-transform: uppercase;
   position: relative;
   transition: color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
+}
+
+.layer-toggles:not(.deckgl-layer-toggles) .layer-toggle-row .layer-toggle {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .layer-toggles:not(.deckgl-layer-toggles) .layer-toggle.active {
@@ -4445,6 +4457,35 @@ body.playback-mode .status-dot {
   animation: layer-loading 0.8s ease-in-out infinite;
   border-color: var(--yellow);
   color: var(--yellow);
+}
+
+.layer-toggles:not(.deckgl-layer-toggles) .layer-explain-btn {
+  width: 18px;
+  min-width: 18px;
+  padding: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.layer-toggles:not(.deckgl-layer-toggles) .layer-explain-btn.has-layer-explanation {
+  color: var(--accent);
+  border-color: rgba(0, 212, 255, 0.45);
+}
+
+.layer-toggles:not(.deckgl-layer-toggles) .layer-explain-btn:hover,
+.layer-toggles:not(.deckgl-layer-toggles) .layer-explain-btn:focus-visible,
+.layer-toggles:not(.deckgl-layer-toggles) .layer-explain-btn.active {
+  color: var(--green);
+  border-color: var(--green);
+  background: var(--overlay-subtle);
+  outline: none;
 }
 
 @keyframes layer-loading {
@@ -12370,11 +12411,13 @@ a.prediction-link:hover {
     max-height: none !important;
   }
 
-  .main-content .map-section.collapsed .map-container,
-  .main-content .map-section.collapsed .map-resize-handle,
-  .main-content .map-section.collapsed .map-controls,
-  .main-content .map-section.collapsed .time-slider,
-  .main-content .map-section.collapsed .tv-exit-btn {
+  /* :not(.live-news-fullscreen): entering fullscreen from a collapsed map
+     must still show the map — fullscreen wins over collapse. */
+  .main-content .map-section.collapsed:not(.live-news-fullscreen) .map-container,
+  .main-content .map-section.collapsed:not(.live-news-fullscreen) .map-resize-handle,
+  .main-content .map-section.collapsed:not(.live-news-fullscreen) .map-controls,
+  .main-content .map-section.collapsed:not(.live-news-fullscreen) .time-slider,
+  .main-content .map-section.collapsed:not(.live-news-fullscreen) .tv-exit-btn {
     display: none;
   }
 
@@ -15669,6 +15712,13 @@ a.prediction-link:hover {
   display: none;
 }
 
+.deckgl-layer-toggles .layer-toggle-row {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+}
+
 .deckgl-layer-toggles .layer-search {
   width: calc(100% - 16px);
   margin: 4px 8px;
@@ -15693,6 +15743,8 @@ a.prediction-link:hover {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
   padding: 5px 8px;
   cursor: pointer;
   border-radius: 3px;
@@ -15797,6 +15849,212 @@ a.prediction-link:hover {
 
 .deckgl-layer-toggles .layer-toggle.has-data {
   border-color: rgba(68, 255, 136, 0.2);
+}
+
+.deckgl-layer-toggles .layer-explain-btn {
+  width: 22px;
+  min-width: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.deckgl-layer-toggles .layer-explain-btn.has-layer-explanation {
+  color: var(--accent);
+  border-color: rgba(0, 212, 255, 0.45);
+}
+
+.deckgl-layer-toggles .layer-explain-btn:hover,
+.deckgl-layer-toggles .layer-explain-btn:focus-visible,
+.deckgl-layer-toggles .layer-explain-btn.active {
+  color: var(--green);
+  border-color: var(--green);
+  background: var(--overlay-subtle);
+  outline: none;
+}
+
+.layer-explanation-popup {
+  position: absolute;
+  bottom: 10px;
+  left: 282px;
+  width: min(380px, calc(100vw - 310px));
+  max-height: min(70vh, 640px);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  z-index: 210;
+  overflow: hidden;
+  box-shadow: 0 8px 32px var(--shadow-color);
+}
+
+.layer-explanation-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.layer-explanation-header strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.layer-explanation-kicker {
+  display: block;
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.layer-explanation-close {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.layer-explanation-close:hover,
+.layer-explanation-close:focus-visible {
+  color: var(--accent);
+  outline: none;
+}
+
+.layer-explanation-content {
+  max-height: calc(min(70vh, 640px) - 48px);
+  overflow-y: auto;
+  padding: 10px 12px 12px;
+}
+
+.layer-explanation-status {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-bottom: 8px;
+  padding: 2px 6px;
+  border: 1px solid rgba(68, 255, 136, 0.35);
+  border-radius: 3px;
+  color: var(--green);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.layer-explanation-status.fallback {
+  border-color: rgba(255, 193, 7, 0.35);
+  color: var(--yellow);
+}
+
+.layer-explanation-purpose {
+  margin: 0 0 10px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.layer-explanation-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.layer-explanation-grid section,
+.layer-explanation-section {
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.layer-explanation-grid span,
+.layer-explanation-section > span,
+.layer-explanation-grounding > span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.layer-explanation-grid p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.layer-explanation-section {
+  margin-top: 8px;
+}
+
+.layer-explanation-section ul {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.layer-explanation-section li {
+  margin: 3px 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.layer-explanation-related {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.layer-explanation-related span {
+  padding: 2px 6px;
+  border: 1px solid rgba(0, 212, 255, 0.28);
+  border-radius: 3px;
+  color: var(--text);
+  font-size: 10px;
+}
+
+.layer-explanation-grounding {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+  color: var(--text-dim);
+}
+
+.layer-explanation-grounding > span {
+  flex-basis: 100%;
+  margin-bottom: 0;
+}
+
+.layer-explanation-grounding code {
+  padding: 2px 5px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-dim);
+  font-size: 9px;
 }
 
 /* Pro early-access banner */
@@ -16246,6 +16504,11 @@ a.prediction-link:hover {
     max-width: 180px;
   }
 
+  .layer-explanation-popup {
+    left: 202px;
+    width: min(360px, calc(100vw - 230px));
+  }
+
   .deckgl-legend {
     padding: 4px 10px;
     gap: 8px;
@@ -16259,6 +16522,14 @@ a.prediction-link:hover {
 
 /* Mobile: prevent horizontal overflow from deck.gl legend */
 @media (max-width: 520px) {
+  .layer-explanation-popup {
+    right: 10px;
+    bottom: 96px;
+    left: 10px;
+    width: auto;
+    max-height: 60vh;
+  }
+
   .deckgl-legend {
     left: 8px;
     right: 8px;
@@ -22557,6 +22828,67 @@ body.map-width-resizing {
   border-color: var(--accent);
   color: var(--bg);
 }
+.chat-analyst-control-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 24px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--panel-inner-bg, rgba(255,255,255,0.03)) 80%, transparent);
+}
+.chat-control-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.chat-control-toggle {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.chat-control-status {
+  min-width: 42px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.chat-control-status[data-state="active"] {
+  color: var(--green, #22c55e);
+}
+.chat-control-status[data-state="paused"] {
+  color: var(--yellow, #eab308);
+}
+.chat-control-pause {
+  margin-left: auto;
+  min-width: 50px;
+  height: 22px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 10px;
+  cursor: pointer;
+}
+.chat-control-pause:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.chat-control-pause:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 .chat-analyst-messages {
   flex: 1;
   overflow-y: auto;
@@ -22748,6 +23080,24 @@ body.map-width-resizing {
 }
 .chat-action-chip:hover {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.chat-action-chip--control {
+  cursor: default;
+}
+.chat-action-chip--control:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.chat-action-chip--applied {
+  color: var(--green, #22c55e);
+  border-color: color-mix(in srgb, var(--green, #22c55e) 35%, transparent);
+  background: color-mix(in srgb, var(--green, #22c55e) 10%, transparent);
+}
+.chat-action-chip--denied,
+.chat-action-chip--invalid,
+.chat-action-chip--skipped {
+  color: var(--yellow, #eab308);
+  border-color: color-mix(in srgb, var(--yellow, #eab308) 35%, transparent);
+  background: color-mix(in srgb, var(--yellow, #eab308) 10%, transparent);
 }
 
 /* ── Payment / Upgrade UI ── */
@@ -23618,4 +23968,199 @@ body.map-width-resizing {
   display: inline-flex;
   align-items: center;
   margin-left: 6px;
+}
+
+/* ============ Mobile Category Nav + Mobile Banner Parity ============ */
+
+/* Sticky chip bar above the panels grid — mobile only. Mounted by
+ * PanelLayoutManager.setupMobilePanelNav(); hidden entirely on desktop
+ * so a resized-up viewport never shows it. Sticks to the top of the
+ * .main-content scrollport while the user scrolls panels. */
+.mobile-panel-nav {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-panel-nav {
+    display: flex;
+    flex-shrink: 0; /* .main-content is a column flexbox — don't get crushed */
+    gap: 6px;
+    position: sticky;
+    top: 0;
+    z-index: 60;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    padding: 8px max(8px, env(safe-area-inset-right, 0px)) 8px max(8px, env(safe-area-inset-left, 0px));
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    /* pan-y too: the bar is sticky over the top of the scroller — a
+     * vertical swipe starting on it must still scroll .main-content. */
+    touch-action: pan-x pan-y;
+  }
+
+  .mobile-panel-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-panel-nav-chip {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 4px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .mobile-panel-nav-chip.active {
+    /* --accent is #fff on dark / #111 on light — pair with --bg for contrast */
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--bg);
+    font-weight: 600;
+  }
+
+  /* PRO chip — gold treatment matching the .panel-locked-cta aesthetic. */
+  .mobile-panel-nav-chip-pro {
+    border-color: #d4a843;
+    color: #d4a843;
+    font-weight: 600;
+  }
+
+  .mobile-panel-nav-chip-pro.active {
+    background: linear-gradient(135deg, #d4a843 0%, #b8902e 100%);
+    border-color: #d4a843;
+    color: #111;
+  }
+
+  /* Lock CTAs get touch-sized and prominent — in the single-column scroll
+   * the desktop-sized 6px button reads as decoration, not an action. */
+  .panel-locked-cta {
+    min-height: 44px;
+    padding: 10px 28px;
+    font-size: 12px;
+  }
+
+  .panel-locked-desc {
+    font-size: 12px;
+  }
+
+  /* Map fullscreen on mobile: the button shares .map-pin-btn with the
+   * desktop-only pin button, whose blanket display:none !important (see
+   * the collapsed-map block) hid fullscreen too. The CSS-class fullscreen
+   * (live-news-fullscreen, not the Fullscreen API) works on iOS Safari. */
+  .map-pin-btn#mapFullscreenBtn {
+    display: flex !important;
+    min-width: 44px;
+    min-height: 30px;
+  }
+
+  /* While fullscreen, collapsing would blank the screen — hide the toggle. */
+  .map-section.live-news-fullscreen .map-collapse-btn {
+    display: none;
+  }
+
+  /* The mobile .map-section height (100dvh - 48px) outranks the generic
+   * .live-news-fullscreen height:auto by file order — restate it here so
+   * fullscreen truly reaches bottom:0 instead of leaving a 48px strip. */
+  .map-section.live-news-fullscreen {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+  }
+
+  /* Search FAB floats above the z-10000 fullscreen overlay — hide it. */
+  body.live-news-fullscreen-active .search-mobile-fab {
+    display: none;
+  }
+
+  /* Category filter: composes with Panel.toggle()'s `.hidden` — a panel
+   * renders only when both settings AND the active category allow it. */
+  .panels-grid .mobile-cat-hidden {
+    display: none !important;
+  }
+
+  /* Add-panel / Pro-widget CTAs only make sense in the unfiltered view. */
+  .panels-grid.mobile-cat-filtered .add-panel-block {
+    display: none;
+  }
+
+  /* Critical posture banner — compact mobile variant (was desktop-only).
+   * In-flow (not fixed): a persistent fixed banner at top:50px sits over
+   * the sticky chip nav band (z 999 vs 60) and the map header buttons.
+   * The element is inserted right after .header in the flex column, so
+   * static positioning pushes content down naturally... */
+  .critical-posture-banner {
+    position: static;
+    flex-shrink: 0; /* flex-column item — same crush risk as the chip nav */
+    padding: 8px 10px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  /* ...which also makes the desktop grid compensations dead gaps — the
+   * grid sits below the map + chip nav on mobile, not below the banner. */
+  body.has-critical-banner .panels-grid {
+    padding-top: 4px;
+  }
+
+  body.has-breaking-alert .panels-grid {
+    margin-top: 0;
+  }
+
+  .critical-posture-banner .banner-content {
+    gap: 8px;
+  }
+
+  .critical-posture-banner .banner-headline {
+    font-size: 12px;
+  }
+
+  .critical-posture-banner .banner-stats {
+    display: none;
+  }
+
+  .critical-posture-banner .banner-view {
+    padding: 6px 10px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  /* Breaking news alerts — in-flow on mobile (BreakingNewsBanner mounts
+   * the container into the app flex column below the header), mirroring
+   * the critical posture banner: alerts push content down instead of
+   * covering the sticky chip nav / map header for their 30-60s lifetime. */
+  .breaking-news-container {
+    position: static;
+    flex-shrink: 0;
+  }
+
+  /* Breaking news alerts — let headlines wrap instead of ellipsizing into
+   * uselessness on narrow screens; source/time drops to its own line. */
+  .breaking-alert {
+    padding: 8px 10px;
+    gap: 8px;
+    font-size: 12px;
+  }
+
+  .breaking-alert-content {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .breaking-alert-headline {
+    white-space: normal;
+  }
+
+  .breaking-alert-meta {
+    flex-basis: 100%;
+  }
 }

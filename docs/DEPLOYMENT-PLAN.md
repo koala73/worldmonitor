@@ -24,10 +24,7 @@ All values from **Clerk Dashboard → API Keys** ([dashboard.clerk.com](https://
 
 #### Clerk Dashboard Setup
 
-1. **JWT Template**: Create a template named **`convex`** with custom claim:
-   ```json
-   { "plan": "{{user.public_metadata.plan}}" }
-   ```
+1. **JWT Template**: Create a template named **`convex`** with custom claim: `{ "plan": "{{user.public_metadata.plan}}" }`
 2. **Pro users**: Set `public_metadata.plan` to `"pro"` on test users to verify premium access
 3. **Sign-in methods**: Configure email OTP (or whichever methods you want) under User & Authentication
 

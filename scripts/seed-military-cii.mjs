@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 //
-// seed-military-cii.mjs — Phase 2 of the CII unification (plans/unify-cii-single-source.md).
+// seed-military-cii.mjs — Phase 2 of the CII unification (docs/archive/plans/unify-cii-single-source.md).
 //
 // Aggregates military activity per country into a single Redis key the CII engine
 // (server/worldmonitor/intelligence/v1/get-risk-scores.ts) reads as one auxiliary source:

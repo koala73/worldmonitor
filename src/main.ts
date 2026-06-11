@@ -586,6 +586,20 @@ Sentry.init({
         // safety as the `Failed to fetch` / `signal timed out` blocks above
         // (WORLDMONITOR-RF).
         || /^(?:SyntaxError: )?Unexpected EOF$/.test(msg)
+        // Firefox's wording for a failed `fetch()` — the engine-emitted
+        // equivalent of Chrome's bare `Failed to fetch` (above) and Safari's
+        // `Load failed`. Surfaces via `onunhandledrejection` with zero captured
+        // frames. Same provenance reasoning as the `Failed to fetch` gate
+        // (WORLDMONITOR-KM): a genuine first-party fetch failure keeps a
+        // source-mapped .ts frame on the awaiting site (hasFirstParty → NOT
+        // suppressed, preserved by the first-party-stack test), so a zero-frame
+        // rejection is a background / service-worker / extension / stale-pre-
+        // deploy-bundle fetch. The literal phrase is engine-emitted only — our
+        // shipped code never synthesizes it. This aligns the Firefox phrasing
+        // with the bare `Failed to fetch` handling; the earlier blanket
+        // "let NetworkError through" caution predated the KM provenance
+        // refinement (WORLDMONITOR-RK).
+        || /^(?:TypeError: )?NetworkError when attempting to fetch resource\.?$/.test(msg)
       )
     ) return null;
     if (hasAnyStack && !hasFirstParty && (

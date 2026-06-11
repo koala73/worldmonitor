@@ -2312,6 +2312,9 @@
         "sampleLabel": "Segnali di interruzione AIS",
         "creditName": "EIA Punti Critici del Transito Petrolifero Mondiale"
       }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
     }
   },
   "popups": {

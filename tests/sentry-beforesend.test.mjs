@@ -157,8 +157,14 @@ describe('empty-stack network/timeout errors are NOT suppressed', () => {
   // stacks — that exact phrase is emitted only by the runtime on stale-chunk-after-
   // deploy, which the chunk-reload guard already auto-recovers. See the dedicated
   // suite below for that case (WORLDMONITOR-Q / WORLDMONITOR-15).
+  // Note: Firefox's `NetworkError when attempting to fetch resource.` USED to
+  // live here (preserved with empty stacks on a "could be our code" caution),
+  // but that predated the `Failed to fetch` provenance refinement. It now lives
+  // in the zero-frame suppression suite below — it is the engine-equivalent of
+  // Chrome's bare `Failed to fetch` and is suppressed the same way (zero frames
+  // → background/SW/extension; a real first-party failure keeps a .ts frame).
+  // WORLDMONITOR-RK / WORLDMONITOR-KM.
   const networkErrors = [
-    'TypeError: NetworkError when attempting to fetch resource.',
     'Could not connect to the server',
     'Operation timed out',
     'Invalid or unexpected token',
@@ -297,6 +303,15 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
     // is engine-emitted only.
     ['Unexpected EOF', 'SyntaxError'],
     ['SyntaxError: Unexpected EOF', 'SyntaxError'],
+    // Firefox's wording for a failed `fetch()` (WORLDMONITOR-RK) — the
+    // engine-equivalent of Chrome's bare `Failed to fetch` above. Zero frames
+    // via `onunhandledrejection` = background / service-worker / extension /
+    // stale-pre-deploy-bundle fetch. A genuine first-party fetch failure keeps
+    // a source-mapped .ts frame on the awaiting site (asserted "lets through"
+    // by the first-party-stack loop below). Both the bare and type-prefixed
+    // value shapes are matched.
+    ['NetworkError when attempting to fetch resource.', 'TypeError'],
+    ['TypeError: NetworkError when attempting to fetch resource.', 'TypeError'],
   ];
 
   for (const [msg, type] of zeroFrameErrors) {
