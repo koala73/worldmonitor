@@ -69,9 +69,9 @@ import {
   getLayersForVariant,
   hasCuratedLayerExplanation,
   resolveLayerLabel,
-  type LayerExplanation,
   type MapVariant,
 } from '@/config/map-layer-definitions';
+import { renderLayerExplanationCard } from '@/utils/layer-explanation-card';
 
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
@@ -126,6 +126,7 @@ export class MapComponent {
   private clusterCanvas: HTMLCanvasElement;
   private clusterGl: WebGLRenderingContext | null = null;
   private state: MapState;
+  private layerExplanationOutsideClickHandler: ((event: MouseEvent) => void) | null = null;
   private worldData: WorldTopology | null = null;
   private countryFeatures: Feature<Geometry>[] | null = null;
   private isResizing = false;
@@ -518,56 +519,15 @@ export class MapComponent {
     return toggles;
   }
 
-  private renderLayerExplanationCard(layerLabel: string, explanation: LayerExplanation): string {
-    const list = (items: string[]): string => items.map(item => `<li>${escapeHtml(item)}</li>`).join('');
-    const related = explanation.related.length > 0
-      ? explanation.related.map(item => `<span>${escapeHtml(item)}</span>`).join('')
-      : '<span>Layer guide</span>';
-    const evidence = explanation.evidence.length > 0
-      ? `<div class="layer-explanation-grounding"><span>Grounded in</span>${explanation.evidence.map(item => `<code>${escapeHtml(item)}</code>`).join('')}</div>`
-      : '';
-    const coverageLabel = explanation.coverage === 'curated' ? 'Curated v1' : 'Fallback';
-
-    return `
-      <div class="layer-explanation-header">
-        <div>
-          <span class="layer-explanation-kicker">${escapeHtml(explanation.category)}</span>
-          <strong>${escapeHtml(layerLabel)}</strong>
-        </div>
-        <button class="layer-explanation-close" aria-label="Close">×</button>
-      </div>
-      <div class="layer-explanation-content">
-        <div class="layer-explanation-status ${explanation.coverage}">${coverageLabel}</div>
-        <p class="layer-explanation-purpose">${escapeHtml(explanation.purpose)}</p>
-        <div class="layer-explanation-grid">
-          <section>
-            <span>Source</span>
-            <p>${escapeHtml(explanation.source)}</p>
-          </section>
-          <section>
-            <span>Freshness</span>
-            <p>${escapeHtml(explanation.freshness)}</p>
-          </section>
-          <section>
-            <span>Confidence</span>
-            <p>${escapeHtml(explanation.confidence)}</p>
-          </section>
-        </div>
-        <div class="layer-explanation-section">
-          <span>Limitations</span>
-          <ul>${list(explanation.limitations)}</ul>
-        </div>
-        <div class="layer-explanation-section">
-          <span>Related</span>
-          <div class="layer-explanation-related">${related}</div>
-        </div>
-        ${evidence}
-      </div>
-    `;
+  private clearLayerExplanationOutsideClickHandler(): void {
+    if (!this.layerExplanationOutsideClickHandler) return;
+    document.removeEventListener('click', this.layerExplanationOutsideClickHandler);
+    this.layerExplanationOutsideClickHandler = null;
   }
 
   private showLayerExplanation(layer: keyof MapLayers): void {
     const existing = this.container.querySelector('.layer-explanation-popup') as HTMLElement | null;
+    this.clearLayerExplanationOutsideClickHandler();
     if (existing?.dataset.layer === layer) {
       existing.remove();
       this.container.querySelector(`.layer-explain-btn[data-layer="${layer}"]`)?.classList.remove('active');
@@ -581,11 +541,12 @@ export class MapComponent {
     popup.className = 'layer-explanation-popup';
     popup.dataset.layer = layer;
     setTrustedHtml(popup, trustedHtml(
-      this.renderLayerExplanationCard(this.getLayerControlLabel(layer), getLayerExplanation(layer)),
+      renderLayerExplanationCard(this.getLayerControlLabel(layer), getLayerExplanation(layer)),
       "static layer explanation metadata",
     ));
 
     const closePopup = (): void => {
+      this.clearLayerExplanationOutsideClickHandler();
       popup.remove();
       this.container.querySelector(`.layer-explain-btn[data-layer="${layer}"]`)?.classList.remove('active');
     };
@@ -599,9 +560,9 @@ export class MapComponent {
       const closeHandler = (e: MouseEvent) => {
         if (!popup.contains(e.target as Node)) {
           closePopup();
-          document.removeEventListener('click', closeHandler);
         }
       };
+      this.layerExplanationOutsideClickHandler = closeHandler;
       document.addEventListener('click', closeHandler);
     }, 100);
 
@@ -616,6 +577,7 @@ export class MapComponent {
       return;
     }
     this.container.querySelector('.layer-explanation-popup')?.remove();
+    this.clearLayerExplanationOutsideClickHandler();
     this.container.querySelectorAll('.layer-explain-btn.active').forEach(btn => btn.classList.remove('active'));
 
     const popup = document.createElement('div');

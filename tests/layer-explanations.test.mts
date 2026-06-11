@@ -83,6 +83,7 @@ describe('map layer explanation control wiring', () => {
     ['DeckGL map', readFileSync(resolve(root, 'src/components/DeckGLMap.ts'), 'utf8')],
     ['Globe map', readFileSync(resolve(root, 'src/components/GlobeMap.ts'), 'utf8')],
   ]);
+  const rendererSource = readFileSync(resolve(root, 'src/utils/layer-explanation-card.ts'), 'utf8');
 
   test('layer pickers render an explanation button for each layer row', () => {
     for (const [name, source] of componentSources) {
@@ -99,14 +100,28 @@ describe('map layer explanation control wiring', () => {
       assert.match(source, /event\.stopPropagation\(\)/, `${name} must not toggle the layer when opening help`);
       assert.match(source, /this\.showLayerExplanation\(layer\)/, `${name} must open the explanation card`);
       assert.match(source, /getLayerExplanation\(layer\)/, `${name} must use the shared explanation catalog`);
+      assert.match(source, /renderLayerExplanationCard/, `${name} must use the shared explanation renderer`);
     }
   });
 
   test('explanation card exposes source, freshness, confidence, limitations, and related sections', () => {
-    for (const [name, source] of componentSources) {
-      for (const label of ['Source', 'Freshness', 'Confidence', 'Limitations', 'Related']) {
-        assert.match(source, new RegExp(`>${label}<`), `${name} missing card section: ${label}`);
-      }
+    for (const label of ['Source', 'Freshness', 'Confidence', 'Limitations', 'Related']) {
+      assert.match(rendererSource, new RegExp(`>${label}<`), `missing shared card section: ${label}`);
     }
+  });
+
+  test('DeckGL help and explanation popups dismiss each other', () => {
+    const source = componentSources.get('DeckGL map');
+    assert.ok(source);
+    assert.match(source, /querySelector\('\.layer-help-popup'\)\?\.remove\(\)/);
+    assert.match(source, /querySelector\('\.layer-explanation-popup'\)\?\.remove\(\)/);
+  });
+
+  test('SVG map clears stale outside-click listeners when explanation popups close or switch', () => {
+    const source = componentSources.get('SVG map');
+    assert.ok(source);
+    assert.match(source, /layerExplanationOutsideClickHandler/);
+    assert.match(source, /clearLayerExplanationOutsideClickHandler\(\)/);
+    assert.match(source, /document\.removeEventListener\('click', this\.layerExplanationOutsideClickHandler\)/);
   });
 });
