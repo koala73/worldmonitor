@@ -385,6 +385,8 @@ export class MapComponent {
 
 
   private getLayerControlLabel(layer: keyof MapLayers): string {
+    if (layer === 'sanctions') return t('components.deckgl.layerHelp.labels.sanctions');
+
     const def = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'flat').find(item => item.key === layer);
     return def ? resolveLayerLabel(def, t) : String(layer);
   }

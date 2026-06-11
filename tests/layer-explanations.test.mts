@@ -67,6 +67,28 @@ describe('layer explanation metadata', () => {
     assert.deepEqual(explanation.evidence, []);
   });
 
+  test('curated freshness text uses seed cadence rather than gateway cache TTLs', () => {
+    const natural = getLayerExplanation('natural');
+    const flights = getLayerExplanation('flights');
+    const cyberThreats = getLayerExplanation('cyberThreats');
+
+    assert.match(natural.freshness, /seeded every 2 hours/i);
+    assert.doesNotMatch(natural.freshness, /10 minutes/i);
+
+    assert.match(flights.freshness, /30-minute cadence/i);
+    assert.doesNotMatch(flights.freshness, /10-minute cadence/i);
+
+    assert.match(cyberThreats.freshness, /every 2 hours/i);
+    assert.doesNotMatch(cyberThreats.freshness, /every 10 minutes/i);
+  });
+
+  test('cyber source text distinguishes ransomware.live news from geo-enriched IOCs', () => {
+    const cyberThreats = getLayerExplanation('cyberThreats');
+
+    assert.match(cyberThreats.source, /ransomware\.live RSS\/news feed/i);
+    assert.match(cyberThreats.source, /IP geolocation enrichment/i);
+  });
+
   test('curated explanations are not accidentally added outside the declared v1 set', () => {
     const declared = new Set<string>(V1_LAYER_EXPLANATION_KEYS);
     const curated = Object.entries(LAYER_EXPLANATIONS)
@@ -123,5 +145,12 @@ describe('map layer explanation control wiring', () => {
     assert.match(source, /layerExplanationOutsideClickHandler/);
     assert.match(source, /clearLayerExplanationOutsideClickHandler\(\)/);
     assert.match(source, /document\.removeEventListener\('click', this\.layerExplanationOutsideClickHandler\)/);
+  });
+
+  test('SVG map preserves the localized sanctions label path', () => {
+    const source = componentSources.get('SVG map');
+    assert.ok(source);
+    assert.match(source, /layer === 'sanctions'/);
+    assert.match(source, /components\.deckgl\.layerHelp\.labels\.sanctions/);
   });
 });

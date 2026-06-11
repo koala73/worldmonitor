@@ -186,7 +186,7 @@ export const LAYER_EXPLANATIONS: Partial<Record<keyof MapLayers, LayerExplanatio
     category: 'Natural Disasters',
     purpose: 'Shows earthquakes, severe disaster alerts, and active Earth-observation events for situational awareness.',
     source: 'USGS earthquakes, GDACS alerts, and NASA EONET events merged into the natural events service.',
-    freshness: 'Natural events are seeded every 10 minutes; USGS earthquake expectations are documented at roughly 5-minute source cadence.',
+    freshness: 'Natural events are seeded every 2 hours; USGS earthquake expectations are documented at roughly 5-minute source cadence.',
     confidence: 'Strong for detected public disaster signals; confidence varies by hazard type and upstream reporting latency.',
     limitations: [
       'Low-severity GDACS alerts are filtered out to keep the map readable.',
@@ -201,7 +201,7 @@ export const LAYER_EXPLANATIONS: Partial<Record<keyof MapLayers, LayerExplanatio
     category: 'Aviation',
     purpose: 'Highlights airport disruption, closures, NOTAM-derived airspace issues, and live aircraft positions when tracking is available.',
     source: 'FAA ASWS, AviationStack, ICAO NOTAMs, OpenSky/Wingbits aircraft tracking, and the aviation service.',
-    freshness: 'Airport disruption seeds run on a 10-minute cadence; the aviation panel also refreshes operational views on a 5-minute polling cycle.',
+    freshness: 'Airport disruption seeds run on a 30-minute cadence; the aviation panel also refreshes operational views on a 5-minute polling cycle.',
     confidence: 'Best for disruption triage; individual live aircraft coverage depends on ADS-B availability and configured providers.',
     limitations: [
       'AviationStack-backed simulated demo data can appear when an API key is absent.',
@@ -260,8 +260,8 @@ export const LAYER_EXPLANATIONS: Partial<Record<keyof MapLayers, LayerExplanatio
     coverage: 'curated',
     category: 'Cyber',
     purpose: 'Maps geo-enriched indicators of compromise such as C2 servers, malware hosts, phishing, malicious URLs, and ransomware infrastructure.',
-    source: 'abuse.ch Feodo Tracker and URLhaus, C2IntelFeeds, AlienVault OTX, AbuseIPDB, ransomware.live, and IP geolocation enrichment.',
-    freshness: 'Cyber threat seeds run every 10 minutes; displayed IOCs use a 14-day rolling window and are capped for map performance.',
+    source: 'abuse.ch Feodo Tracker and URLhaus, C2IntelFeeds, AlienVault OTX, AbuseIPDB, ransomware.live RSS/news feed, and IP geolocation enrichment.',
+    freshness: 'Cyber threat seeds run every 2 hours; displayed IOCs use a 14-day rolling window and are capped for map performance.',
     confidence: 'Good for infrastructure visibility, but attribution and IP geolocation can be noisy.',
     limitations: [
       'IP geolocation can point to hosting infrastructure rather than an operator or victim.',
