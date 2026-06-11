@@ -84,4 +84,30 @@ describe('leads gateway public access', () => {
     const body = await res.json() as { status?: string };
     assert.equal(body.status, 'sent');
   });
+
+  it('accepts an anonymous register-interest POST (no API key, no session token)', async () => {
+    const { gateway } = await loadLeadsGateway();
+
+    // Same honeypot short-circuit as submit-contact: registerInterest returns
+    // a silent success before Turnstile/desktop-HMAC/Convex, isolating the
+    // gateway auth layer for the waitlist path too.
+    const res = await gateway(new Request('https://api.worldmonitor.app/api/leads/v1/register-interest', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Origin: 'https://worldmonitor.app',
+      },
+      body: JSON.stringify({
+        email: 'lead@example-corp.com',
+        source: 'pro-waitlist',
+        website: 'http://honeypot-filled.example',
+        turnstileToken: '',
+      }),
+    }));
+
+    assert.notEqual(res.status, 401, 'gateway must not 401 anonymous waitlist signups');
+    assert.equal(res.status, 200);
+    const body = await res.json() as { status?: string };
+    assert.equal(body.status, 'registered');
+  });
 });
