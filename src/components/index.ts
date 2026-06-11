@@ -40,6 +40,7 @@ export * from './ServiceStatusPanel';
 export * from './InternetDisruptionsPanel';
 export * from './RuntimeConfigPanel';
 export * from './InsightsPanel';
+export * from './AriaPanel';
 export * from './TechReadinessPanel';
 export * from './SatelliteFiresPanel';
 export * from './MacroSignalsPanel';

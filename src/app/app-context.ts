@@ -65,6 +65,10 @@ export interface AppContext {
   llmStatusIndicator: import('@/components').LlmStatusIndicator | null;
   countryBriefPage: import('@/components/CountryBriefPanel').CountryBriefPanel | null;
   countryTimeline: import('@/components/CountryTimeline').CountryTimeline | null;
+  
+  // ARIA Intelligence System
+  ariaAwareness?: import('@/services/aria').AwarenessState;
+  enableAria?: boolean;
 
   positivePanel: import('@/components/PositiveNewsFeedPanel').PositiveNewsFeedPanel | null;
   countersPanel: import('@/components/CountersPanel').CountersPanel | null;
