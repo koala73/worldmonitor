@@ -388,6 +388,9 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
     `],
     ['@/services', `
       export async function saveSnapshot() {}
+      export function isAisConfigured() {
+        return globalThis.__missionAisConfigured !== false;
+      }
       export function initAisStream() {
         globalThis.__missionAis = globalThis.__missionAis || [];
         globalThis.__missionAis.push('init');
@@ -507,6 +510,7 @@ after(() => {
 function resetMissionGlobals(): void {
   delete (globalThis as { __missionAnalytics?: unknown }).__missionAnalytics;
   delete (globalThis as { __missionAis?: unknown }).__missionAis;
+  delete (globalThis as { __missionAisConfigured?: unknown }).__missionAisConfigured;
   delete (globalThis as { __missionFreshness?: unknown }).__missionFreshness;
   delete (globalThis as { __missionToastMessages?: unknown }).__missionToastMessages;
 }
@@ -1061,6 +1065,21 @@ describe('mission preset shell integration', () => {
     assert.ok(callbacks.loadDataForLayer.includes('tradeRoutes'));
     assert.equal(callbacks.loadDataForLayer.includes('resilienceScore'), false);
     assert.equal(callbacks.stopLayerActivity.includes('resilienceScore'), false);
+  });
+
+  it('filters AIS before persisting a mission preset when AIS is not configured', async () => {
+    (globalThis as { __missionAisConfigured?: boolean }).__missionAisConfigured = false;
+    const { ctx, callbacks, manager } = createMissionHarness();
+
+    manager.applyMissionPreset('supply-chain-risk');
+    await waitForMissionTimers();
+
+    assert.equal(ctx.mapLayers.ais, false);
+    assert.equal(readJsonStorage<MapLayers>('worldmonitor-layers').ais, false);
+    assert.equal(callbacks.waitForAisCalls, 0);
+    assert.deepEqual((globalThis as { __missionAis?: string[] }).__missionAis, undefined);
+    assert.equal((latestUrl().searchParams.get('layers') ?? '').split(',').includes('ais'), false);
+    assert.equal(ctx.mapLayers.tradeRoutes, true);
   });
 
   it('still applies in-memory panel order and reset order when storage writes fail', async () => {

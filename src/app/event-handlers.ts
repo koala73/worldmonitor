@@ -59,6 +59,7 @@ import {
   saveSnapshot,
   initAisStream,
   disconnectAisStream,
+  isAisConfigured,
 } from '@/services';
 import {
   track,
@@ -865,7 +866,16 @@ export class EventHandlerManager implements AppModule {
   private filterMissionLayersForCurrentRenderer(layers: MapLayers): MapLayers {
     const renderer = this.ctx.map?.isGlobeMode?.() ? 'globe' : 'flat';
     const isDeckGLActive = this.ctx.map?.isDeckGLActive?.() ?? !this.ctx.isMobile;
-    return filterMissionLayersForRenderer(layers, renderer, isDeckGLActive, this.getMissionDefaultLayers());
+    return this.filterMissionLayersForAvailableServices(
+      filterMissionLayersForRenderer(layers, renderer, isDeckGLActive, this.getMissionDefaultLayers()),
+    );
+  }
+
+  private filterMissionLayersForAvailableServices(layers: MapLayers): MapLayers {
+    if (layers.ais && !isAisConfigured()) {
+      return { ...layers, ais: false };
+    }
+    return layers;
   }
 
   private persistMissionPanelOrder(panelOrder: string[]): void {
