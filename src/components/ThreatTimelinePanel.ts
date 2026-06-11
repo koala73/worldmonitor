@@ -9,6 +9,7 @@ import {
   THREAT_LEVEL_LABELS,
   buildThreatTimelineState,
   countHighSeverityDays,
+  describeThreatTimelineTrend,
   normalizeClusterStories,
   normalizeServerInsightStories,
   type ThreatTimelineDay,
@@ -95,7 +96,7 @@ export class ThreatTimelinePanel extends Panel {
 
     const highSeverityCount = state.totals.critical + state.totals.high;
     const highSeverityDays = countHighSeverityDays(state);
-    const trend = this.describeTrend(state.days);
+    const trend = describeThreatTimelineTrend(state.days);
     const total = state.items.length;
     const chart = this.renderChart(state.days);
     const groups = this.renderGroups(state.groups);
@@ -237,7 +238,8 @@ export class ThreatTimelinePanel extends Panel {
   }
 
   private renderItem(item: ThreatTimelineItem): string {
-    const title = escapeHtml(item.title.length > 94 ? `${item.title.slice(0, 91)}...` : item.title);
+    const titleCodePoints = Array.from(item.title);
+    const title = escapeHtml(titleCodePoints.length > 94 ? `${titleCodePoints.slice(0, 91).join('')}...` : item.title);
     const href = sanitizeUrl(item.sourceUrl);
     const titleHtml = href
       ? `<a href="${href}" target="_blank" rel="noopener" class="threat-timeline-item-title">${title}</a>`
@@ -255,21 +257,6 @@ export class ThreatTimelinePanel extends Panel {
         </div>
       </article>
     `;
-  }
-
-  private describeTrend(days: ThreatTimelineDay[]): { label: string; copy: string; className: string } {
-    const firstThree = days.slice(0, 3).reduce((sum, day) => sum + day.counts.critical + day.counts.high, 0);
-    const lastThree = days.slice(-3).reduce((sum, day) => sum + day.counts.critical + day.counts.high, 0);
-    if (lastThree === 0 && firstThree === 0) {
-      return { label: 'Quiet', copy: 'No critical/high days', className: 'quiet' };
-    }
-    if (lastThree >= firstThree + 2) {
-      return { label: 'Worsening', copy: `${lastThree} recent vs ${firstThree} earlier`, className: 'worsening' };
-    }
-    if (firstThree >= lastThree + 2) {
-      return { label: 'Easing', copy: `${lastThree} recent vs ${firstThree} earlier`, className: 'easing' };
-    }
-    return { label: 'Noisy', copy: `${lastThree} recent vs ${firstThree} earlier`, className: 'noisy' };
   }
 
   private formatAge(timestampMs: number): string {

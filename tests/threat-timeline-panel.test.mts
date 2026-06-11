@@ -9,6 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createBrowserEnvironment } from './helpers/runtime-config-panel-harness.mjs';
 import {
   buildThreatTimelineState,
+  describeThreatTimelineTrend,
   normalizeClusterStories,
   normalizeServerInsightStories,
   normalizeThreatLevel,
@@ -112,6 +113,15 @@ function serverStory(overrides = {}) {
     countryCode: 'SD',
     ...overrides,
   };
+}
+
+function trendForStories(stories: ReturnType<typeof serverStory>[]) {
+  const items = normalizeServerInsightStories({
+    generatedAt: new Date(NOW_MS).toISOString(),
+    topStories: stories,
+  });
+  const state = buildThreatTimelineState(items, { nowMs: NOW_MS });
+  return describeThreatTimelineTrend(state.days);
 }
 
 function runtimeIsoDaysAgo(days: number): string {
@@ -406,6 +416,37 @@ describe('ThreatTimelinePanel utilities', () => {
     assert.equal(items[0]?.provenance, 'Keyword fallback');
     assert.equal(items[0]?.threatLevel, 'high');
   });
+
+  it('describes quiet, worsening, easing, and noisy threat trends', () => {
+    assert.deepEqual(
+      trendForStories([serverStory({ threatLevel: 'info', pubDate: isoDaysAgo(0) })]),
+      { label: 'Quiet', copy: 'No critical/high days', className: 'quiet' },
+    );
+
+    assert.deepEqual(
+      trendForStories([
+        serverStory({ threatLevel: 'high', pubDate: isoDaysAgo(0), primaryTitle: 'Recent high' }),
+        serverStory({ threatLevel: 'critical', pubDate: isoDaysAgo(1), primaryTitle: 'Recent critical' }),
+      ]),
+      { label: 'Worsening', copy: '2 recent vs 0 earlier', className: 'worsening' },
+    );
+
+    assert.deepEqual(
+      trendForStories([
+        serverStory({ threatLevel: 'high', pubDate: isoDaysAgo(6), primaryTitle: 'Earlier high' }),
+        serverStory({ threatLevel: 'critical', pubDate: isoDaysAgo(5), primaryTitle: 'Earlier critical' }),
+      ]),
+      { label: 'Easing', copy: '0 recent vs 2 earlier', className: 'easing' },
+    );
+
+    assert.deepEqual(
+      trendForStories([
+        serverStory({ threatLevel: 'high', pubDate: isoDaysAgo(6), primaryTitle: 'Earlier high' }),
+        serverStory({ threatLevel: 'high', pubDate: isoDaysAgo(0), primaryTitle: 'Recent high' }),
+      ]),
+      { label: 'Noisy', copy: '1 recent vs 1 earlier', className: 'noisy' },
+    );
+  });
 });
 
 describe('ThreatTimelinePanel registration', () => {
@@ -483,6 +524,36 @@ describe('ThreatTimelinePanel refresh behavior', () => {
       assert.doesNotMatch(contentEl.innerHTML, /Fallback protests spread after outage/);
       assert.doesNotMatch(contentEl.innerHTML, /Server insight snapshot unavailable/);
       assert.ok(badgeEl.classList.contains('live'), 'server recovery restores the live badge');
+    } finally {
+      panel.destroy();
+      harness.cleanup();
+    }
+  });
+
+  it('truncates long item titles without splitting emoji surrogate pairs', async () => {
+    const harness = await loadThreatTimelinePanelHarness();
+    const { ThreatTimelinePanel } = harness;
+    const panel = new ThreatTimelinePanel();
+    try {
+      const contentEl = panel.getElement().querySelector('.panel-content');
+      assert.ok(contentEl, 'panel content node should exist');
+
+      const longTitle = `${'a'.repeat(90)}🙂${'b'.repeat(20)}`;
+      panel.updateFromServerInsights(runtimeServerInsights({
+        topStories: [
+          serverStory({
+            primaryTitle: longTitle,
+            primarySource: 'ACLED',
+            pubDate: runtimeIsoDaysAgo(0),
+            threatLevel: 'high',
+          }),
+        ],
+      }));
+      await waitForPanelRender();
+
+      assert.ok(contentEl.innerHTML.includes(`${'a'.repeat(90)}🙂...`));
+      assert.doesNotMatch(contentEl.innerHTML, /\uFFFD/);
+      assert.doesNotMatch(contentEl.innerHTML, /bbbbbbbbbbbbbbbbbbbb/);
     } finally {
       panel.destroy();
       harness.cleanup();

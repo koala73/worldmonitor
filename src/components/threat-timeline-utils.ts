@@ -71,6 +71,12 @@ export interface ThreatTimelineState {
   hasData: boolean;
 }
 
+export interface ThreatTimelineTrend {
+  label: string;
+  copy: string;
+  className: string;
+}
+
 export function normalizeThreatLevel(value: unknown): TimelineThreatLevel {
   const normalized = String(value ?? '').trim().toLowerCase();
   if (normalized === 'critical' || normalized === 'high' || normalized === 'medium' || normalized === 'low' || normalized === 'info') {
@@ -169,6 +175,21 @@ export function buildThreatTimelineState(
 
 export function countHighSeverityDays(state: ThreatTimelineState): number {
   return state.days.filter((day) => day.counts.critical + day.counts.high > 0).length;
+}
+
+export function describeThreatTimelineTrend(days: ThreatTimelineDay[]): ThreatTimelineTrend {
+  const firstThree = days.slice(0, 3).reduce((sum, day) => sum + day.counts.critical + day.counts.high, 0);
+  const lastThree = days.slice(-3).reduce((sum, day) => sum + day.counts.critical + day.counts.high, 0);
+  if (lastThree === 0 && firstThree === 0) {
+    return { label: 'Quiet', copy: 'No critical/high days', className: 'quiet' };
+  }
+  if (lastThree >= firstThree + 2) {
+    return { label: 'Worsening', copy: `${lastThree} recent vs ${firstThree} earlier`, className: 'worsening' };
+  }
+  if (firstThree >= lastThree + 2) {
+    return { label: 'Easing', copy: `${lastThree} recent vs ${firstThree} earlier`, className: 'easing' };
+  }
+  return { label: 'Noisy', copy: `${lastThree} recent vs ${firstThree} earlier`, className: 'noisy' };
 }
 
 export function compareThreatTimelineItems(a: ThreatTimelineItem, b: ThreatTimelineItem): number {
