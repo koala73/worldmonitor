@@ -171,6 +171,7 @@ describe('country evidence bundle export', () => {
     const slackToken = ['xox', 'b-redacted-fixture-token'].join('');
     const googleKey = ['AI', 'za', 'SyA1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p'].join('');
     const openAiProjectKey = ['sk', 'proj', 'abc1234567890abcdefABCDEF', 'xyz1234567890'].join('-');
+    const colonOpenAiKey = ['sk', 'proj', 'colonredactionfixture1234567890', 'abcdef123456'].join('-');
     const jwt = [
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9',
       'eyJzdWIiOiIxMjM0NTY3ODkwIn0',
@@ -182,6 +183,8 @@ describe('country evidence bundle export', () => {
       code: 'TL',
       exportedAt: '2026-06-10T12:00:00.000Z',
       brief: [
+        'The session: closed-door talks remain underway.',
+        `api_key: ${colonOpenAiKey}`,
         `Contact analyst@example.com with token=${legacyOpenAiKey} and user_abcdef123456.`,
         `AWS ${awsAccessKey} aws_secret_access_key=${awsSecret}`,
         `Slack ${slackToken} Google ${googleKey} OpenAI ${openAiProjectKey}`,
@@ -196,8 +199,12 @@ describe('country evidence bundle export', () => {
     });
     const markdown = renderCountryEvidenceMarkdown(bundle);
 
+    assert.match(markdown, /The session: closed-door talks remain underway\./);
+    assert.match(markdown, /api_key: \[redacted-secret\]/);
+    assert.doesNotMatch(markdown, /session[:=]\s*\[redacted-secret\]/);
     assert.doesNotMatch(markdown, /analyst@example\.com/);
     assert.doesNotMatch(markdown, new RegExp(legacyOpenAiKey));
+    assert.doesNotMatch(markdown, new RegExp(colonOpenAiKey));
     assert.doesNotMatch(markdown, /wm_0123456789abcdef0123456789abcdef01234567/);
     assert.doesNotMatch(markdown, /user_abcdef123456/);
     assert.doesNotMatch(markdown, new RegExp(awsAccessKey));

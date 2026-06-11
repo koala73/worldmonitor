@@ -380,7 +380,7 @@ const SIGNAL_LABELS: Record<string, string> = {
   sanctionsNewDesignations: 'New sanctions designations',
 };
 
-const SECRET_ASSIGNMENT_RE = /\b((?:[a-z0-9]+[_-])*(?:api[_-]?key|access[_-]?key(?:[_-]?id)?|secret(?:[_-]?access[_-]?key)?|client[_-]?secret|token|password|authorization|cookie|session))\b\s*[:=]\s*["']?[^"'\s,;]{6,}["']?/gi;
+const SECRET_ASSIGNMENT_RE = /\b((?:[a-z0-9]+[_-])*(?:api[_-]?key|access[_-]?key(?:[_-]?id)?|secret(?:[_-]?access[_-]?key)?|client[_-]?secret|token|password|authorization|cookie|session))\b(\s*)([:=])(\s*)(["']?)([^"'\s,;]{6,})(["']?)/gi;
 const BEARER_RE = /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/g;
 const AWS_ACCESS_KEY_ID_RE = /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g;
 const AWS_SECRET_ACCESS_KEY_RE = /\b(?=[A-Za-z0-9/+=]{40}\b)(?=[A-Za-z0-9/+=]{0,39}[A-Z])(?=[A-Za-z0-9/+=]{0,39}[a-z])(?=[A-Za-z0-9/+=]{0,39}\d)[A-Za-z0-9/+=]{40}\b/g;
@@ -390,10 +390,41 @@ const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
 const USER_ID_RE = /\buser_[A-Za-z0-9_-]{6,}\b/g;
 const SECRET_URL_PARAM_NAME_RE = /(?:^|[_\-.])(?:api[_\-.]?key|access[_\-.]?key(?:[_\-.]?id)?|awsaccess[_\-.]?key(?:[_\-.]?id)?|secret(?:[_\-.]?access[_\-.]?key)?|client[_\-.]?secret|token|id[_\-.]?token|auth(?:orization)?|password|passwd|pwd|cookie|session|jwt|signature|sig|credential|key)(?:$|[_\-.])/i;
 
+function regexMatches(pattern: RegExp, value: string): boolean {
+  pattern.lastIndex = 0;
+  const matches = pattern.test(value);
+  pattern.lastIndex = 0;
+  return matches;
+}
+
+function isSecretishAssignmentValue(value: string): boolean {
+  const clean = value.trim();
+  if (
+    regexMatches(AWS_ACCESS_KEY_ID_RE, clean)
+    || regexMatches(AWS_SECRET_ACCESS_KEY_RE, clean)
+    || regexMatches(COMMON_SECRET_RE, clean)
+    || regexMatches(JWT_RE, clean)
+  ) {
+    return true;
+  }
+
+  if (clean.length < 16 || !/[A-Za-z]/.test(clean) || !/\d/.test(clean)) return false;
+  const classes = [
+    /[a-z]/.test(clean),
+    /[A-Z]/.test(clean),
+    /\d/.test(clean),
+    /[-_=+/]/.test(clean),
+  ].filter(Boolean).length;
+  return classes >= 3 || clean.length >= 24;
+}
+
 function sanitizeEvidenceText(value: unknown): string {
   return String(value ?? '')
     .replace(BEARER_RE, 'Bearer [redacted-secret]')
-    .replace(SECRET_ASSIGNMENT_RE, (_match, key) => `${key}=[redacted-secret]`)
+    .replace(SECRET_ASSIGNMENT_RE, (match, key, beforeOperator, operator, afterOperator, openingQuote, secretValue, closingQuote) => {
+      if (operator === ':' && !isSecretishAssignmentValue(secretValue)) return match;
+      return `${key}${beforeOperator}${operator}${afterOperator}${openingQuote}[redacted-secret]${closingQuote}`;
+    })
     .replace(AWS_ACCESS_KEY_ID_RE, '[redacted-secret]')
     .replace(AWS_SECRET_ACCESS_KEY_RE, '[redacted-secret]')
     .replace(COMMON_SECRET_RE, '[redacted-secret]')
