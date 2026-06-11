@@ -402,7 +402,7 @@ function normalizeEvidenceUrl(value: unknown): string | undefined {
   try {
     const parsed = new URL(raw);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined;
-    return parsed.toString();
+    return parsed.toString().replace(/[()]/g, (char) => char === '(' ? '%28' : '%29');
   } catch {
     return undefined;
   }
@@ -454,6 +454,12 @@ function buildEvidenceSources(
   exportedAt: string,
 ): CountryEvidenceSource[] {
   return (headlines ?? [])
+    .filter((headline) => Boolean(
+      sanitizeEvidenceText(headline.title)
+      || sanitizeEvidenceText(headline.source)
+      || normalizeEvidenceUrl(headline.link)
+      || normalizeIsoTimestamp(headline.pubDate),
+    ))
     .map((headline, index) => {
       const title = sanitizeEvidenceText(headline.title) || `Source ${index + 1} (title unavailable)`;
       const publisher = sanitizeEvidenceText(headline.source) || undefined;
@@ -472,8 +478,7 @@ function buildEvidenceSources(
             ? 'URL omitted because it was missing or unsafe.'
             : 'URL unavailable; citation link was not provided.',
       };
-    })
-    .filter((source) => source.title || source.publisher || source.url || source.publishedAt);
+    });
 }
 
 function buildFreshnessNotes(input: CountryEvidenceBundleInput, exportedAt: string): string[] {
@@ -497,6 +502,10 @@ function markdownListValue(value: string | number | undefined): string {
 
 function escapeMarkdownLinkText(value: string): string {
   return value.replace(/[[\]\\]/g, '\\$&');
+}
+
+function renderQuotedEvidenceBlock(value: string): string[] {
+  return value.split(/\r?\n/).map((line) => `> ${line}`);
 }
 
 export function buildCountryEvidenceBundle(input: CountryEvidenceBundleInput): CountryEvidenceBundle {
@@ -562,7 +571,8 @@ export function renderCountryEvidenceMarkdown(bundle: CountryEvidenceBundle): st
 
   if (bundle.brief) {
     lines.push('## Intelligence Brief');
-    lines.push(bundle.brief);
+    lines.push('');
+    lines.push(...renderQuotedEvidenceBlock(bundle.brief));
     lines.push('');
   }
 

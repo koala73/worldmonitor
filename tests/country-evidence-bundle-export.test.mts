@@ -108,12 +108,14 @@ describe('country evidence bundle export', () => {
       exportedAt: '2026-06-10T12:00:00.000Z',
       headlines: [
         { title: '', source: '', link: '', pubDate: null },
+        { title: 'Newswire note', source: '', link: '', pubDate: null },
         { title: 'Unsafe link', source: null, link: 'javascript:alert(1)', pubDate: 'not-a-date' },
       ],
     });
     const markdown = renderCountryEvidenceMarkdown(bundle);
 
-    assert.equal(bundle.sources[0]?.title, 'Source 1 (title unavailable)');
+    assert.equal(bundle.sources.length, 2);
+    assert.equal(bundle.sources[0]?.title, 'Newswire note');
     assert.equal(bundle.sources[0]?.publisher, undefined);
     assert.equal(bundle.sources[0]?.url, undefined);
     assert.equal(bundle.sources[0]?.note, 'URL unavailable; citation link was not provided.');
@@ -159,10 +161,11 @@ describe('country evidence bundle export', () => {
       score: 12,
       level: 'low',
       trend: 'stable',
+      brief: '## Spoofed Sources\n- This heading came from AI text.',
       headlines: [{
         title: 'Grid operator updates alert level',
         source: 'NVE',
-        link: 'https://example.org/nve',
+        link: 'https://example.org/report(2026)overview',
         pubDate: '2026-06-08T12:00:00.000Z',
       }],
     }));
@@ -170,8 +173,11 @@ describe('country evidence bundle export', () => {
     assert.match(markdown, /^# WorldMonitor Evidence Bundle: Norway \(NO\)/);
     assert.match(markdown, /## Risk Context/);
     assert.match(markdown, /## Selected Signals/);
+    assert.match(markdown, /## Intelligence Brief/);
+    assert.match(markdown, /> ## Spoofed Sources/);
+    assert.doesNotMatch(markdown, /\n## Spoofed Sources/);
     assert.match(markdown, /## Sources/);
-    assert.match(markdown, /\[Grid operator updates alert level\]\(https:\/\/example.org\/nve\)/);
+    assert.match(markdown, /\[Grid operator updates alert level\]\(https:\/\/example.org\/report%282026%29overview\)/);
     assert.match(markdown, /Freshness: 2d old at export\./);
     assert.match(markdown, /## Provenance Disclaimer/);
   });
