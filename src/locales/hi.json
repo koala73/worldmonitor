@@ -277,7 +277,8 @@
     "panelCatMining": "खनन और सप्लाई चेन",
     "panelCatCommodityEcon": "अर्थव्यवस्था और व्यापार",
     "panelCatHappyNews": "अच्छी खबरें",
-    "panelCatHappyPlanet": "प्लैनेट और दान"
+    "panelCatHappyPlanet": "प्लैनेट और दान",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "ताजा खबरें",

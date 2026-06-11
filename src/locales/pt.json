@@ -2833,7 +2833,8 @@
     "panelCatMining": "Mineração & Cadeia de Suprimentos",
     "panelCatCommodityEcon": "Economia & Comércio",
     "panelCatHappyNews": "Boas Notícias",
-    "panelCatHappyPlanet": "Planeta & Doações"
+    "panelCatHappyPlanet": "Planeta & Doações",
+    "embed": "Embed"
   },
   "countryBrief": {
     "identifying": "Identificando país...",

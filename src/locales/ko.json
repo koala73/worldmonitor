@@ -209,7 +209,8 @@
     "panelCatMining": "채굴 & 공급망",
     "panelCatCommodityEcon": "경제 & 무역",
     "panelCatHappyNews": "좋은 소식",
-    "panelCatHappyPlanet": "지구 & 기부"
+    "panelCatHappyPlanet": "지구 & 기부",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "실시간 뉴스",

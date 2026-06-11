@@ -287,7 +287,8 @@
     "panelCatMining": "Rudarstvo i opskrbni lanac",
     "panelCatCommodityEcon": "Ekonomija i trgovina",
     "panelCatHappyNews": "Dobre vijesti",
-    "panelCatHappyPlanet": "Planet i pomoć"
+    "panelCatHappyPlanet": "Planet i pomoć",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "Vijesti uživo",

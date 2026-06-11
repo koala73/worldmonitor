@@ -209,7 +209,8 @@
     "panelCatMining": "التعدين وسلسلة الإمداد",
     "panelCatCommodityEcon": "الاقتصاد والتجارة",
     "panelCatHappyNews": "أخبار إيجابية",
-    "panelCatHappyPlanet": "الكوكب والعطاء"
+    "panelCatHappyPlanet": "الكوكب والعطاء",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "أخبار مباشرة",

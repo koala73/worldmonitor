@@ -4,9 +4,11 @@ import { fetchEarthquakes } from '@/services/earthquakes';
 import { fetchNaturalEvents } from '@/services/eonet';
 import { fetchProtestEvents } from '@/services/unrest';
 import { fetchWeatherAlerts } from '@/services/weather';
+import { ConflictServiceClient } from '@/generated/client/worldmonitor/conflict/v1/service_client';
 import type { EmbedLayerId } from './embed-url';
 
 const REFRESH_MS = 10 * 60 * 1000;
+const conflictClient = new ConflictServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
 
 export class EmbedDataLoader {
   private refreshTimer: number | null = null;
@@ -37,7 +39,7 @@ export class EmbedDataLoader {
   private async loadLayer(id: EmbedLayerId): Promise<void> {
     switch (id) {
       case 'conflicts':
-        this.map.setLayerReady('conflicts', true);
+        await this.loadConflicts();
         return;
       case 'earthquakes':
         await this.loadEarthquakes();
@@ -49,6 +51,14 @@ export class EmbedDataLoader {
         await this.loadWeather();
         return;
     }
+  }
+
+  private async loadConflicts(): Promise<void> {
+    await this.withLayerState('conflicts', async () => {
+      const data = await conflictClient.listAcledEvents({ country: '', start: 0, end: 0, pageSize: 0, cursor: '' });
+      this.map.setConflictEvents(data.events);
+      return data.events.length > 0;
+    });
   }
 
   private async loadEarthquakes(): Promise<void> {

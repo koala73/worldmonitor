@@ -209,7 +209,8 @@
     "panelCatMining": "Добыча и цепь поставок",
     "panelCatCommodityEcon": "Экономика и торговля",
     "panelCatHappyNews": "Хорошие новости",
-    "panelCatHappyPlanet": "Планета и благотворительность"
+    "panelCatHappyPlanet": "Планета и благотворительность",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "Новости в реальном времени",

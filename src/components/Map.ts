@@ -49,6 +49,7 @@ import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor
 import { tokenizeForMatch, matchKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { MapPopup } from './MapPopup';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
+import type { AcledConflictEvent } from '@/generated/client/worldmonitor/conflict/v1/service_client';
 import {
   updateHotspotEscalation,
   getHotspotEscalation,
@@ -156,6 +157,7 @@ export class MapComponent {
   private cableAdvisories: CableAdvisory[] = [];
   private repairShips: RepairShip[] = [];
   private healthByCableId: Record<string, CableHealthRecord> = {};
+  private conflictEvents: AcledConflictEvent[] = [];
   private protests: SocialUnrestEvent[] = [];
   private flightDelays: AirportDelayAlert[] = [];
   private aircraftPositions: PositionSample[] = [];
@@ -1596,6 +1598,7 @@ export class MapComponent {
 
         this.overlays.appendChild(clickArea);
       });
+      this.renderConflictEventMarkers(projection);
     }
 
     // Iran events (severity-colored circles matching DeckGL layer)
@@ -2977,6 +2980,47 @@ export class MapComponent {
     }
   }
 
+  private renderConflictEventMarkers(projection: d3.GeoProjection): void {
+    const visibleEvents = this.state.timeRange === 'all'
+      ? this.conflictEvents
+      : this.conflictEvents.filter((event) => event.occurredAt >= Date.now() - this.getTimeRangeMs());
+    const clusters = this.clusterMarkers(
+      visibleEvents
+        .map((event) => ({
+          event,
+          lat: event.location?.latitude ?? Number.NaN,
+          lon: event.location?.longitude ?? Number.NaN,
+        }))
+        .filter((item) => Number.isFinite(item.lat) && Number.isFinite(item.lon)),
+      projection,
+      this.state.zoom >= 4 ? 10 : this.state.zoom >= 3 ? 16 : 28,
+      (item) => item.event.country,
+    );
+
+    clusters.forEach((cluster) => {
+      if (cluster.items.length === 0) return;
+      const primary = cluster.items[0]!.event;
+      const fatalities = cluster.items.reduce((sum, item) => sum + (item.event.fatalities || 0), 0);
+      const isCluster = cluster.items.length > 1;
+      const div = document.createElement('div');
+      div.className = `conflict-event-marker${fatalities > 0 ? ' fatal' : ''}${isCluster ? ' cluster' : ''}`;
+      div.style.left = `${cluster.pos[0]}px`;
+      div.style.top = `${cluster.pos[1]}px`;
+      div.title = isCluster
+        ? `${primary.country}: ${cluster.items.length} conflict events${fatalities > 0 ? `, ${fatalities} fatalities` : ''}`
+        : `${primary.country}${primary.admin1 ? `, ${primary.admin1}` : ''}: ${primary.eventType}${primary.fatalities > 0 ? `, ${primary.fatalities} fatalities` : ''}`;
+
+      if (isCluster) {
+        const badge = document.createElement('span');
+        badge.className = 'conflict-event-count';
+        badge.textContent = String(cluster.items.length);
+        div.appendChild(badge);
+      }
+
+      this.overlays.appendChild(div);
+    });
+  }
+
   private makeWebcamTooltipShell(): { tooltip: HTMLDivElement; closeBtn: HTMLButtonElement } {
     this.container.querySelector('.webcam-tooltip')?.remove();
     const tooltip = document.createElement('div');
@@ -4038,6 +4082,11 @@ export class MapComponent {
 
   public setCableHealth(healthMap: Record<string, CableHealthRecord>): void {
     this.healthByCableId = healthMap;
+    this.render();
+  }
+
+  public setConflictEvents(events: AcledConflictEvent[]): void {
+    this.conflictEvents = events;
     this.render();
   }
 

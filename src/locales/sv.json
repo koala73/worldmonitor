@@ -2817,7 +2817,8 @@
     "panelCatMining": "Gruvdrift & Försörjningskedja",
     "panelCatCommodityEcon": "Ekonomi & Handel",
     "panelCatHappyNews": "Goda Nyheter",
-    "panelCatHappyPlanet": "Planet & Välgörenhet"
+    "panelCatHappyPlanet": "Planet & Välgörenhet",
+    "embed": "Embed"
   },
   "countryBrief": {
     "identifying": "Identifierar land...",

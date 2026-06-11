@@ -5598,6 +5598,40 @@ body.playback-mode .status-dot {
   transition: opacity 0.2s ease;
 }
 
+.conflict-event-marker {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  transform: translate(-50%, -50%) scale(var(--marker-scale, 1));
+  transform-origin: center;
+  border-radius: 50%;
+  background: rgba(255, 68, 68, 0.78);
+  border: 1px solid rgba(255, 210, 210, 0.9);
+  box-shadow: 0 0 9px rgba(255, 68, 68, 0.75);
+  pointer-events: auto;
+  z-index: 55;
+}
+
+.conflict-event-marker.fatal {
+  background: rgba(255, 20, 20, 0.9);
+  width: 11px;
+  height: 11px;
+}
+
+.conflict-event-marker.cluster {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.conflict-event-count {
+  transform: scale(calc(1 / var(--marker-scale, 1)));
+}
+
 .conflict-label {
   fill: var(--red);
   font-size: 9px;

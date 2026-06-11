@@ -209,7 +209,8 @@
     "panelCatMining": "Khai thác & Chuỗi cung ứng",
     "panelCatCommodityEcon": "Kinh tế & Thương mại",
     "panelCatHappyNews": "Tin tốt",
-    "panelCatHappyPlanet": "Hành tinh & Trao tặng"
+    "panelCatHappyPlanet": "Hành tinh & Trao tặng",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "Tin tức Trực tiếp",

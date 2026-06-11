@@ -209,7 +209,8 @@
     "panelCatMining": "採掘・サプライチェーン",
     "panelCatCommodityEcon": "経済・貿易",
     "panelCatHappyNews": "ニュース",
-    "panelCatHappyPlanet": "地球・社会貢献"
+    "panelCatHappyPlanet": "地球・社会貢献",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "ライブニュース",

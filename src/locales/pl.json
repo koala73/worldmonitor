@@ -209,7 +209,8 @@
     "panelCatMining": "Górnictwo i Łańcuch Dostaw",
     "panelCatCommodityEcon": "Gospodarka i Handel",
     "panelCatHappyNews": "Dobre Wiadomości",
-    "panelCatHappyPlanet": "Planeta i Filantropia"
+    "panelCatHappyPlanet": "Planeta i Filantropia",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "Wiadomości na żywo",

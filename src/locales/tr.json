@@ -209,7 +209,8 @@
     "panelCatMining": "Madencilik & Tedarik Zinciri",
     "panelCatCommodityEcon": "Ekonomi & Ticaret",
     "panelCatHappyNews": "İyi Haberler",
-    "panelCatHappyPlanet": "Gezegen & Hayırseverlik"
+    "panelCatHappyPlanet": "Gezegen & Hayırseverlik",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "Canli Haberler",

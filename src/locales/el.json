@@ -209,7 +209,8 @@
     "panelCatMining": "Εξόρυξη & Αλυσίδα Εφοδιασμού",
     "panelCatCommodityEcon": "Οικονομία & Εμπόριο",
     "panelCatHappyNews": "Καλές Ειδήσεις",
-    "panelCatHappyPlanet": "Πλανήτης & Δωρεές"
+    "panelCatHappyPlanet": "Πλανήτης & Δωρεές",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "Ζωντανές Ειδήσεις",

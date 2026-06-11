@@ -209,7 +209,8 @@
     "panelCatMining": "Bergbau & Lieferkette",
     "panelCatCommodityEcon": "Wirtschaft & Handel",
     "panelCatHappyNews": "Gute Nachrichten",
-    "panelCatHappyPlanet": "Planet & Spenden"
+    "panelCatHappyPlanet": "Planet & Spenden",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "Live-Nachrichten",

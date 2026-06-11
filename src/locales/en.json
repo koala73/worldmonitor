@@ -210,6 +210,7 @@
     "settings": "SETTINGS",
     "sources": "SOURCES",
     "copyLink": "Link",
+    "embed": "Embed",
     "downloadApp": "Download App",
     "fullscreen": "Fullscreen",
     "pinMap": "Pin map to top",

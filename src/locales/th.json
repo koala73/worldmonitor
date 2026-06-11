@@ -209,7 +209,8 @@
     "panelCatMining": "การขุดและห่วงโซ่อุปทาน",
     "panelCatCommodityEcon": "เศรษฐกิจและการค้า",
     "panelCatHappyNews": "ข่าวดี",
-    "panelCatHappyPlanet": "โลกและการให้กำลังใจ"
+    "panelCatHappyPlanet": "โลกและการให้กำลังใจ",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "ข่าวสด",

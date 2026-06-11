@@ -209,7 +209,8 @@
     "panelCatMining": "Рударство & Снабдување",
     "panelCatCommodityEcon": "Економија & Трговија",
     "panelCatHappyNews": "Добри Вести",
-    "panelCatHappyPlanet": "Планета & Давање"
+    "panelCatHappyPlanet": "Планета & Давање",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "Живи новини",

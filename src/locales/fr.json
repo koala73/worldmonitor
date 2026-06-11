@@ -209,7 +209,8 @@
     "panelCatMining": "Exploitation & Chaîne d'approvisionnement",
     "panelCatCommodityEcon": "Économie & Commerce",
     "panelCatHappyNews": "Bonnes Nouvelles",
-    "panelCatHappyPlanet": "Planète & Solidarité"
+    "panelCatHappyPlanet": "Planète & Solidarité",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "Actualités en direct",

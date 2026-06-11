@@ -2817,7 +2817,8 @@
     "panelCatMining": "Mijnbouw & Supply Chain",
     "panelCatCommodityEcon": "Economie & Handel",
     "panelCatHappyNews": "Goed Nieuws",
-    "panelCatHappyPlanet": "Planeet & Geven"
+    "panelCatHappyPlanet": "Planeet & Geven",
+    "embed": "Embed"
   },
   "countryBrief": {
     "identifying": "Land identificeren...",

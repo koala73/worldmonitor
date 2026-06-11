@@ -277,7 +277,8 @@
     "panelCatMining": "Bányászat & Ellátási Lánc",
     "panelCatCommodityEcon": "Gazdaság & Kereskedelem",
     "panelCatHappyNews": "Jó Hírek",
-    "panelCatHappyPlanet": "Bolygó & Adományozás"
+    "panelCatHappyPlanet": "Bolygó & Adományozás",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "Élő Hírek",

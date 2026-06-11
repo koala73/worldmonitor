@@ -209,7 +209,8 @@
     "panelCatMining": "Minerit și lanț de aprovizionare",
     "panelCatCommodityEcon": "Economie și comerț",
     "panelCatHappyNews": "Știri bune",
-    "panelCatHappyPlanet": "Planetă și donații"
+    "panelCatHappyPlanet": "Planetă și donații",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "Știri Live",

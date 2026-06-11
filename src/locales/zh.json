@@ -209,7 +209,8 @@
     "panelCatMining": "采矿与供应链",
     "panelCatCommodityEcon": "经济与贸易",
     "panelCatHappyNews": "好消息",
-    "panelCatHappyPlanet": "地球与慈善"
+    "panelCatHappyPlanet": "地球与慈善",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "实时新闻",

@@ -209,7 +209,8 @@
     "panelCatMining": "Těžba a dodavatelský řetězec",
     "panelCatCommodityEcon": "Ekonomika a obchod",
     "panelCatHappyNews": "Dobré zprávy",
-    "panelCatHappyPlanet": "Planeta a dárcovství"
+    "panelCatHappyPlanet": "Planeta a dárcovství",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "Živé zprávy",

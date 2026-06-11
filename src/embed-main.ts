@@ -60,7 +60,7 @@ async function bootEmbed(): Promise<void> {
     attribution.className = 'wm-embed-attribution';
     attribution.href = buildWorldMonitorAttributionUrl(new URL('/', window.location.origin).toString(), getReferrerHost());
     attribution.target = '_blank';
-    attribution.rel = 'noopener';
+    attribution.rel = 'noopener noreferrer';
     attribution.textContent = 'Live map by World Monitor';
     root.appendChild(attribution);
 
