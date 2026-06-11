@@ -53,6 +53,9 @@ async function openMissionPopover(page: Page): Promise<void> {
   if (!(await popover.isVisible().catch(() => false))) {
     await page.locator('#missionPresetBtn').click({ force: true });
   }
+  await expect(popover).toBeVisible({ timeout: 1_500 }).catch(async () => {
+    await page.locator('#missionPresetBtn').click({ force: true });
+  });
   await expect(popover).toBeVisible();
 }
 
@@ -67,6 +70,13 @@ async function setupMissionPage(page: Page, viewport: { width: number; height: n
 
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await waitForEventHandlers(page);
+}
+
+async function waitForMobileMenuSettled(page: Page): Promise<void> {
+  await page.waitForFunction(() => {
+    const menu = document.getElementById('mobileMenu');
+    return !!menu && menu.classList.contains('open') && Math.round(menu.getBoundingClientRect().left) >= 0;
+  });
 }
 
 async function applyMission(page: Page, missionId: string, label: string): Promise<void> {
@@ -113,7 +123,7 @@ test.describe('mission presets', () => {
     await setupMissionPage(page, { width: 1440, height: 900 });
 
     await expect(page.locator('#missionPresetBtn')).toBeVisible({ timeout: 30_000 });
-    await applyMission(page, 'macro-market-watch', 'Macro');
+    await applyMission(page, 'macro-market-watch', 'Stocks');
     await expect(page.locator('.panel[data-panel="markets"]:not(.hidden)')).toBeVisible({ timeout: 30_000 });
     await expect(page.locator('#regionSelect')).toHaveValue('america');
     await expect
@@ -141,6 +151,7 @@ test.describe('mission presets', () => {
     await expect(page.locator('#hamburgerBtn')).toBeVisible({ timeout: 30_000 });
     await page.locator('#hamburgerBtn').click();
     await expect(page.locator('#mobileMenu')).toHaveClass(/open/);
+    await waitForMobileMenuSettled(page);
     const mobileMission = page.locator('#mobileMenuMission');
     await expect(mobileMission).toBeVisible();
     const missionBox = await mobileMission.boundingBox();

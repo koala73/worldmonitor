@@ -554,6 +554,13 @@ describe('mission preset definitions', () => {
     );
   });
 
+  it('uses approachable first-run labels for broad audience personas', () => {
+    assert.equal(getMissionPreset('osint-newsroom')?.label, 'News Seeker');
+    assert.equal(getMissionPreset('osint-newsroom')?.shortLabel, 'News');
+    assert.equal(getMissionPreset('macro-market-watch')?.label, 'Stock Geek');
+    assert.equal(getMissionPreset('macro-market-watch')?.shortLabel, 'Stocks');
+  });
+
   it('uses known panel and layer keys without duplicate ids', () => {
     const ids = new Set<string>();
     for (const preset of MISSION_PRESETS) {
@@ -1091,7 +1098,7 @@ describe('mission preset shell integration', () => {
     await waitForMissionTimers();
 
     assert.equal(ctx.panelSettings.markets?.enabled, true);
-    assert.deepEqual(callbacks.appliedOrders[0]?.slice(0, 3), ['markets', 'macro-signals', 'fear-greed']);
+    assert.deepEqual(callbacks.appliedOrders[0]?.slice(0, 4), ['markets', 'heatmap', 'market-breadth', 'earnings-calendar']);
     assert.equal(localStorage.getItem(MISSION_PRESET_STORAGE_KEY), null);
 
     assert.doesNotThrow(() => manager.resetMissionPreset());
