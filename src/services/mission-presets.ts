@@ -252,15 +252,21 @@ export const MISSION_PRESETS: readonly MissionPreset[] = [
 ];
 
 const DYNAMIC_PANEL_PREFIXES = ['cw-', 'mcp-'];
+const MIN_PRESET_PANEL_MATCHES = 2;
 
 const isDynamicPanel = (key: string): boolean =>
   key === 'runtime-config' || DYNAMIC_PANEL_PREFIXES.some((prefix) => key.startsWith(prefix));
 
-const getVariantPanelSet = (variant: string): Set<string> =>
-  new Set(VARIANT_DEFAULTS[variant] ?? VARIANT_DEFAULTS.full ?? []);
+const getVariantDefaultPanels = (variant: string): string[] =>
+  VARIANT_DEFAULTS[variant] ?? VARIANT_DEFAULTS.full ?? [];
 
 const hasAnyActiveLayer = (layers: MapLayers): boolean =>
   Object.values(layers).some(Boolean);
+
+const withMapPanel = (panels: string[]): string[] => {
+  const ordered = ['map', ...panels.filter((key) => key !== 'map')];
+  return Array.from(new Set(ordered));
+};
 
 export function getMissionPreset(id: string | null | undefined): MissionPreset | null {
   if (!id) return null;
@@ -318,8 +324,13 @@ export function applyMissionPresetToState(
   const preset = getMissionPreset(presetId);
   if (!preset) throw new Error(`Unknown mission preset: ${presetId}`);
 
-  const variantPanelSet = getVariantPanelSet(variant);
-  const selectedPanels = preset.panels.filter((key) => key === 'map' || variantPanelSet.has(key));
+  const variantPanels = getVariantDefaultPanels(variant);
+  const variantPanelSet = new Set(variantPanels);
+  const matchingPresetPanels = preset.panels.filter((key) => key !== 'map' && variantPanelSet.has(key));
+  const useVariantDefaultPanels = matchingPresetPanels.length < MIN_PRESET_PANEL_MATCHES;
+  const selectedPanels = useVariantDefaultPanels
+    ? withMapPanel(variantPanels)
+    : preset.panels.filter((key) => key === 'map' || variantPanelSet.has(key));
   const selectedPanelSet = new Set(selectedPanels);
   const nextPanelSettings: Record<string, PanelConfig> = {};
   const allKeys = new Set([
@@ -343,9 +354,16 @@ export function applyMissionPresetToState(
     if (!isKnownPanel) continue;
 
     const shouldEnable = selectedPanelSet.has(key);
+    let enabled = shouldEnable;
+    if (key === 'map') {
+      enabled = true;
+    } else if (useVariantDefaultPanels) {
+      enabled = shouldEnable && resolved.enabled !== false;
+    }
+
     nextPanelSettings[key] = {
       ...resolved,
-      enabled: key === 'map' ? true : shouldEnable,
+      enabled,
     };
   }
 

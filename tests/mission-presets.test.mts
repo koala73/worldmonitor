@@ -85,6 +85,17 @@ function enabledPanelKeys(settings: Record<string, PanelConfig>): string[] {
     .sort();
 }
 
+function enabledWorkspacePanelKeys(settings: Record<string, PanelConfig>): string[] {
+  return enabledPanelKeys(settings).filter(
+    (key) => key !== 'map' && key !== 'runtime-config' && !key.startsWith('cw-') && !key.startsWith('mcp-'),
+  );
+}
+
+function defaultWorkspacePanelKeys(variant: string): string[] {
+  const reset = resetMissionPresetState(makePanelSettings(variant), DEFAULT_MAP_LAYERS, variant);
+  return enabledWorkspacePanelKeys(reset.panelSettings);
+}
+
 beforeEach(() => {
   originalLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
   defineLocalStorage(new MemoryStorage());
@@ -176,6 +187,57 @@ describe('applyMissionPresetToState', () => {
             `${preset.id} enabled ${panelId} outside ${variant} variant defaults`,
           );
         }
+      }
+    }
+  });
+
+  it('falls back to variant defaults when a preset has too few matching panels', () => {
+    for (const preset of MISSION_PRESETS) {
+      const applied = applyMissionPresetToState(
+        preset.id,
+        makePanelSettings('happy'),
+        DEFAULT_MAP_LAYERS,
+        'happy',
+      );
+      assert.deepEqual(
+        enabledWorkspacePanelKeys(applied.panelSettings),
+        defaultWorkspacePanelKeys('happy'),
+        `happy/${preset.id} should fall back to happy defaults`,
+      );
+    }
+
+    for (const [variant, presetId] of [
+      ['tech', 'energy-security'],
+      ['commodity', 'osint-newsroom'],
+      ['energy', 'osint-newsroom'],
+    ] as const) {
+      const applied = applyMissionPresetToState(
+        presetId,
+        makePanelSettings(variant),
+        DEFAULT_MAP_LAYERS,
+        variant,
+      );
+      assert.deepEqual(
+        enabledWorkspacePanelKeys(applied.panelSettings),
+        defaultWorkspacePanelKeys(variant),
+        `${variant}/${presetId} should fall back to ${variant} defaults`,
+      );
+    }
+  });
+
+  it('never applies a preset as an empty or single-panel workspace across variants', () => {
+    for (const variant of VARIANTS) {
+      for (const preset of MISSION_PRESETS) {
+        const applied = applyMissionPresetToState(
+          preset.id,
+          makePanelSettings(variant),
+          DEFAULT_MAP_LAYERS,
+          variant,
+        );
+        assert.ok(
+          enabledWorkspacePanelKeys(applied.panelSettings).length >= 2,
+          `${variant}/${preset.id} should keep a useful workspace`,
+        );
       }
     }
   });
