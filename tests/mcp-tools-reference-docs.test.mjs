@@ -39,6 +39,10 @@ function splitMarkdownRow(line) {
   return cells;
 }
 
+function unwrapInlineCode(value) {
+  return value.replace(/^`([^`]+)`$/, '$1');
+}
+
 function sectionForTool(toolName) {
   const heading = `### \`${toolName}\``;
   const start = DOC.indexOf(heading);
@@ -63,8 +67,8 @@ function documentedToolSpecificParams(toolName) {
     if (!line.startsWith('|')) break;
     const [nameCell, type, description] = splitMarkdownRow(line);
     rows.push({
-      name: nameCell.replace(/^`|`$/g, ''),
-      type,
+      name: unwrapInlineCode(nameCell),
+      type: unwrapInlineCode(type),
       description,
     });
   }
