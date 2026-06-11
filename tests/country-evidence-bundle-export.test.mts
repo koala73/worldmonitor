@@ -6,8 +6,10 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 import { createCountryDeepDivePanelHarness } from './helpers/country-deep-dive-panel-harness.mjs';
+import { createBrowserEnvironment } from './helpers/runtime-config-panel-harness.mjs';
 
 type ExportUtils = typeof import('../src/utils/export.ts');
+type GlobalSnapshot = { exists: boolean; value: unknown };
 
 async function loadExportUtils(): Promise<ExportUtils> {
   const tempDir = mkdtempSync(join(tmpdir(), 'wm-country-evidence-export-'));
@@ -55,6 +57,283 @@ async function loadExportUtils(): Promise<ExportUtils> {
   const mod = await import(`${pathToFileURL(outfile).href}?t=${Date.now()}`);
   rmSync(tempDir, { recursive: true, force: true });
   return mod as ExportUtils;
+}
+
+function snapshotGlobal(name: string): GlobalSnapshot {
+  return {
+    exists: Object.prototype.hasOwnProperty.call(globalThis, name),
+    value: (globalThis as Record<string, unknown>)[name],
+  };
+}
+
+function restoreGlobal(name: string, snapshot: GlobalSnapshot): void {
+  if (snapshot.exists) {
+    Object.defineProperty(globalThis, name, {
+      configurable: true,
+      writable: true,
+      value: snapshot.value,
+    });
+    return;
+  }
+  delete (globalThis as Record<string, unknown>)[name];
+}
+
+function defineGlobal(name: string, value: unknown): void {
+  Object.defineProperty(globalThis, name, {
+    configurable: true,
+    writable: true,
+    value,
+  });
+}
+
+function zeroCountryBriefSignals() {
+  return {
+    criticalNews: 0,
+    protests: 0,
+    militaryFlights: 0,
+    militaryVessels: 0,
+    militaryFlightsInCountry: 0,
+    militaryVesselsInCountry: 0,
+    outages: 0,
+    aisDisruptions: 0,
+    satelliteFires: 0,
+    radiationAnomalies: 0,
+    temporalAnomalies: 0,
+    cyberThreats: 0,
+    earthquakes: 0,
+    displacementOutflow: 0,
+    climateStress: 0,
+    conflictEvents: 0,
+    activeStrikes: 0,
+    orefSirens: 0,
+    orefHistory24h: 0,
+    aviationDisruptions: 0,
+    travelAdvisories: 0,
+    travelAdvisoryMaxLevel: null,
+    gpsJammingHexes: 0,
+    isTier1: true,
+    thermalEscalations: 0,
+    sanctionsDesignations: 0,
+    sanctionsNewDesignations: 0,
+  };
+}
+
+async function loadCountryBriefPage(options: { premiumAccess?: boolean } = {}) {
+  const premiumAccess = options.premiumAccess === true;
+  const tempDir = mkdtempSync(join(tmpdir(), 'wm-country-brief-page-'));
+  const outfile = join(tempDir, 'CountryBriefPage.bundle.mjs');
+  const entry = resolve(process.cwd(), 'src/components/CountryBriefPage.ts');
+
+  const stubModules = new Map([
+    ['sanitize-stub', `
+      export function escapeHtml(value) { return String(value ?? ''); }
+      export function sanitizeUrl(value) { return value ?? ''; }
+    `],
+    ['intel-brief-stub', `export function formatIntelBrief(value) { return value; }`],
+    ['i18n-stub', `
+      export function t(key, params) {
+        if (params && typeof params.count === 'number') return key + ':' + params.count;
+        return key;
+      }
+    `],
+    ['utils-stub', `
+      export function getCSSColor() { return '#44ff88'; }
+      export function showToast(message) {
+        globalThis.__wmCountryBriefPageTestState.toasts.push(message);
+      }
+    `],
+    ['related-assets-stub', `
+      export function getNearbyInfrastructure() { return []; }
+      export function haversineDistanceKm() { return 0; }
+    `],
+    ['ports-stub', `export const PORTS = [];`],
+    ['export-stub', `
+      const state = globalThis.__wmCountryBriefPageTestState;
+      export function exportCountryBriefJSON(data) { state.jsonExports.push(data); }
+      export function exportCountryBriefCSV(data) { state.csvExports.push(data); }
+      export function exportCountryEvidenceMarkdown(data) { state.evidenceExports.push(data); }
+    `],
+    ['country-geometry-stub', `export const ME_STRIKE_BOUNDS = {};`],
+    ['country-flag-stub', `export function toFlagEmoji(code, fallback = ':world:') { return code ? ':' + code + ':' : fallback; }`],
+    ['dom-utils-stub', `
+      function setAttributes(el, attrText) {
+        for (const match of attrText.matchAll(/([A-Za-z0-9_-]+)="([^"]*)"/g)) {
+          el.setAttribute(match[1], match[2]);
+        }
+      }
+
+      function textFromHtml(html) {
+        return String(html ?? '').replace(/<[^>]+>/g, '').trim();
+      }
+
+      function materializeCountryBriefExportControls(root, html) {
+        if (!String(html).includes('cb-export-option')) return;
+        const page = document.createElement('div');
+        page.className = 'country-brief-page';
+        const menu = document.createElement('div');
+        menu.className = 'cb-export-menu hidden';
+        for (const match of String(html).matchAll(/<button\\s+([^>]*class="[^"]*cb-export-option[^"]*"[^>]*)>([\\s\\S]*?)<\\/button>/g)) {
+          const button = document.createElement('button');
+          setAttributes(button, match[1]);
+          button.textContent = textFromHtml(match[2]);
+          menu.appendChild(button);
+        }
+        page.appendChild(menu);
+        root.appendChild(page);
+      }
+
+      export function trustedHtml(value) { return String(value ?? ''); }
+
+      export function setTrustedHtml(el, value) {
+        const html = String(value ?? '');
+        el.innerHTML = html;
+        materializeCountryBriefExportControls(el, html);
+      }
+    `],
+    ['auth-state-stub', `export function getAuthState() { return { user: null }; }`],
+    ['panel-gating-stub', `export function hasPremiumAccess() { return ${premiumAccess ? 'true' : 'false'}; }`],
+    ['analytics-stub', `
+      export function trackGateHit(feature) {
+        globalThis.__wmCountryBriefPageTestState.gateHits.push(feature);
+      }
+    `],
+  ]);
+
+  const aliasMap = new Map([
+    ['@/utils/sanitize', 'sanitize-stub'],
+    ['@/utils/format-intel-brief', 'intel-brief-stub'],
+    ['@/services/i18n', 'i18n-stub'],
+    ['@/utils', 'utils-stub'],
+    ['@/services/related-assets', 'related-assets-stub'],
+    ['@/config/ports', 'ports-stub'],
+    ['@/utils/export', 'export-stub'],
+    ['@/services/country-geometry', 'country-geometry-stub'],
+    ['@/utils/country-flag', 'country-flag-stub'],
+    ['@/utils/dom-utils', 'dom-utils-stub'],
+    ['@/services/auth-state', 'auth-state-stub'],
+    ['@/services/panel-gating', 'panel-gating-stub'],
+    ['@/services/analytics', 'analytics-stub'],
+  ]);
+
+  const plugin = {
+    name: 'country-brief-page-test-stubs',
+    setup(buildApi: any) {
+      buildApi.onResolve({ filter: /.*/ }, (args: any) => {
+        const target = aliasMap.get(args.path);
+        return target ? { path: target, namespace: 'stub' } : null;
+      });
+      buildApi.onLoad({ filter: /.*/, namespace: 'stub' }, (args: any) => ({
+        contents: stubModules.get(args.path),
+        loader: 'js',
+      }));
+    },
+  };
+
+  const result = await build({
+    entryPoints: [entry],
+    bundle: true,
+    format: 'esm',
+    platform: 'browser',
+    target: 'es2020',
+    write: false,
+    plugins: [plugin],
+  });
+
+  writeFileSync(outfile, result.outputFiles[0].text, 'utf8');
+  const mod = await import(`${pathToFileURL(outfile).href}?t=${Date.now()}`);
+  return {
+    CountryBriefPage: mod.CountryBriefPage,
+    cleanupBundle() {
+      rmSync(tempDir, { recursive: true, force: true });
+    },
+  };
+}
+
+async function createCountryBriefPageHarness(options: { premiumAccess?: boolean } = {}) {
+  const originalGlobals = {
+    document: snapshotGlobal('document'),
+    window: snapshotGlobal('window'),
+    localStorage: snapshotGlobal('localStorage'),
+    requestAnimationFrame: snapshotGlobal('requestAnimationFrame'),
+    cancelAnimationFrame: snapshotGlobal('cancelAnimationFrame'),
+    navigator: snapshotGlobal('navigator'),
+    HTMLElement: snapshotGlobal('HTMLElement'),
+    HTMLButtonElement: snapshotGlobal('HTMLButtonElement'),
+  };
+  const browserEnvironment = createBrowserEnvironment();
+  const state = {
+    evidenceExports: [] as Array<Record<string, unknown>>,
+    jsonExports: [] as Array<Record<string, unknown>>,
+    csvExports: [] as Array<Record<string, unknown>>,
+    gateHits: [] as string[],
+    toasts: [] as string[],
+  };
+
+  defineGlobal('document', browserEnvironment.document);
+  defineGlobal('window', browserEnvironment.window);
+  defineGlobal('localStorage', browserEnvironment.localStorage);
+  defineGlobal('requestAnimationFrame', browserEnvironment.requestAnimationFrame);
+  defineGlobal('cancelAnimationFrame', browserEnvironment.cancelAnimationFrame);
+  defineGlobal('navigator', browserEnvironment.window.navigator);
+  defineGlobal('HTMLElement', browserEnvironment.HTMLElement);
+  defineGlobal('HTMLButtonElement', browserEnvironment.HTMLButtonElement);
+  defineGlobal('__wmCountryBriefPageTestState', state);
+
+  let CountryBriefPage;
+  let cleanupBundle: (() => void) | undefined;
+  try {
+    ({ CountryBriefPage, cleanupBundle } = await loadCountryBriefPage(options));
+  } catch (error) {
+    delete (globalThis as Record<string, unknown>).__wmCountryBriefPageTestState;
+    restoreGlobal('document', originalGlobals.document);
+    restoreGlobal('window', originalGlobals.window);
+    restoreGlobal('localStorage', originalGlobals.localStorage);
+    restoreGlobal('requestAnimationFrame', originalGlobals.requestAnimationFrame);
+    restoreGlobal('cancelAnimationFrame', originalGlobals.cancelAnimationFrame);
+    restoreGlobal('navigator', originalGlobals.navigator);
+    restoreGlobal('HTMLElement', originalGlobals.HTMLElement);
+    restoreGlobal('HTMLButtonElement', originalGlobals.HTMLButtonElement);
+    throw error;
+  }
+
+  function cleanup() {
+    cleanupBundle?.();
+    delete (globalThis as Record<string, unknown>).__wmCountryBriefPageTestState;
+    restoreGlobal('document', originalGlobals.document);
+    restoreGlobal('window', originalGlobals.window);
+    restoreGlobal('localStorage', originalGlobals.localStorage);
+    restoreGlobal('requestAnimationFrame', originalGlobals.requestAnimationFrame);
+    restoreGlobal('cancelAnimationFrame', originalGlobals.cancelAnimationFrame);
+    restoreGlobal('navigator', originalGlobals.navigator);
+    restoreGlobal('HTMLElement', originalGlobals.HTMLElement);
+    restoreGlobal('HTMLButtonElement', originalGlobals.HTMLButtonElement);
+  }
+
+  return {
+    createPage() {
+      return new CountryBriefPage();
+    },
+    document: browserEnvironment.document,
+    getOverlay() {
+      return browserEnvironment.document.querySelector('.country-brief-overlay') as HTMLElement | null;
+    },
+    getEvidenceExports() {
+      return state.evidenceExports;
+    },
+    getGateHits() {
+      return state.gateHits;
+    },
+    getToasts() {
+      return state.toasts;
+    },
+    cleanup,
+  };
+}
+
+function dispatchDelegatedClick(delegateRoot: HTMLElement, target: HTMLElement): void {
+  const event = new Event('click', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'target', { value: target });
+  delegateRoot.dispatchEvent(event);
 }
 
 describe('country evidence bundle export', () => {
@@ -288,6 +567,27 @@ describe('country evidence bundle export', () => {
     assert.match(dossierSource, /trackGateHit\('evidence-export'\)/);
     assert.match(dossierSource, /this\.exportEvidenceBundle\(\)/);
     assert.match(dossierSource, /exportCountryEvidenceMarkdown\(data\)/);
+  });
+
+  it('blocks country brief evidence export for free users', async () => {
+    const harness = await createCountryBriefPageHarness({ premiumAccess: false });
+    try {
+      const page = harness.createPage();
+      page.show('France', 'FR', null, zeroCountryBriefSignals());
+
+      const overlay = harness.getOverlay();
+      assert.ok(overlay, 'expected country brief overlay');
+      const button = overlay.querySelector('[data-format="evidence-md"]') as HTMLElement | null;
+      assert.ok(button, 'expected evidence export option');
+
+      dispatchDelegatedClick(overlay, button);
+
+      assert.equal(harness.getEvidenceExports().length, 0);
+      assert.deepEqual(harness.getGateHits(), ['evidence-export']);
+      assert.deepEqual(harness.getToasts(), ['Evidence export is available on Pro.']);
+    } finally {
+      harness.cleanup();
+    }
   });
 
   it('passes the active dossier context to the evidence exporter for Pro users when clicked', async () => {
