@@ -9,6 +9,81 @@ import { evaluateFreshness } from '../freshness';
 import type { FreshnessCheck, ToolDef } from '../types';
 import { buildPublicTool, TOOL_REGISTRY } from './index';
 
+type McpBriefSource = {
+  title: string;
+  source: string;
+  url: string;
+  publishedAt?: string;
+};
+
+type DigestItemForBrief = {
+  title?: string;
+  snippet?: string;
+  source?: string;
+  link?: string;
+  url?: string;
+  publishedAt?: string | number;
+  pubDate?: string | number;
+  date?: string | number;
+};
+
+function clipBriefText(value: unknown, maxLen: number): string {
+  if (typeof value !== 'string') return '';
+  const text = value.replace(/\s+/g, ' ').trim();
+  return text.length > maxLen ? `${text.slice(0, maxLen - 1).trim()}...` : text;
+}
+
+function normalizeBriefUrl(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  try {
+    const parsed = new URL(value.trim());
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.toString() : '';
+  } catch {
+    return '';
+  }
+}
+
+function normalizeBriefDate(value: unknown): string | undefined {
+  if (typeof value !== 'string' && typeof value !== 'number') return undefined;
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : undefined;
+}
+
+function collectMcpBriefSources(items: DigestItemForBrief[], maxSources = 6): McpBriefSource[] {
+  const out: McpBriefSource[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    const url = normalizeBriefUrl(item.link ?? item.url);
+    const title = clipBriefText(item.title, 160);
+    const source = clipBriefText(item.source, 80);
+    if (!url || !title || !source || seen.has(url)) continue;
+    const publishedAt = normalizeBriefDate(item.publishedAt ?? item.pubDate ?? item.date);
+    out.push(publishedAt ? { title, source, url, publishedAt } : { title, source, url });
+    seen.add(url);
+    if (out.length >= maxSources) break;
+  }
+  return out;
+}
+
+function briefSourceContextLines(sources: McpBriefSource[]): string[] {
+  return sources.map((source, index) => {
+    const parts = [`Source [${index + 1}]: ${source.title}`, source.source, source.url];
+    if (source.publishedAt) parts.push(`published=${source.publishedAt}`);
+    return parts.join(' | ');
+  });
+}
+
+function countryBriefSearchTerms(countryCode: string): string[] {
+  const terms = [countryCode.toLowerCase()];
+  try {
+    const name = new Intl.DisplayNames(['en'], { type: 'region' }).of(countryCode);
+    if (name) terms.push(name.toLowerCase());
+  } catch {
+    /* Intl.DisplayNames can be missing in constrained runtimes. */
+  }
+  return [...new Set(terms.filter(Boolean))];
+}
+
 export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_world_brief',
@@ -31,6 +106,19 @@ export const RPC_TOOLS: ToolDef[] = [
         provider: { type: 'string' },
         model: { type: 'string' },
         generatedAt: { type: ['string', 'number', 'null'] },
+        sources: {
+          type: 'array',
+          description: 'Original feed articles used as grounding inputs for this brief.',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string' },
+              url: { type: 'string' },
+              source: { type: 'string' },
+              publishedAt: { type: 'string' },
+            },
+          },
+        },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -45,17 +133,24 @@ export const RPC_TOOLS: ToolDef[] = [
         signal: AbortSignal.timeout(6_000),
       });
       if (!digestRes.ok) throw new Error(`feed-digest HTTP ${digestRes.status}`);
-      type DigestPayload = { categories?: Record<string, { items?: { title?: string; snippet?: string }[] }> };
+      type DigestPayload = { categories?: Record<string, { items?: DigestItemForBrief[] }> };
       const digest = await digestRes.json() as DigestPayload;
       // Pair headlines with their RSS snippets so the LLM grounds per-story
       // on article bodies instead of hallucinating across unrelated titles.
       const pairs = Object.values(digest.categories ?? {})
         .flatMap(cat => cat.items ?? [])
-        .map(item => ({ title: item.title ?? '', snippet: item.snippet ?? '' }))
+        .map(item => ({
+          title: item.title ?? '',
+          snippet: item.snippet ?? '',
+          source: item.source ?? '',
+          link: item.link ?? item.url ?? '',
+          publishedAt: item.publishedAt ?? item.pubDate ?? item.date,
+        }))
         .filter(p => p.title.length > 0)
         .slice(0, 10);
       const headlines = pairs.map(p => p.title);
       const bodies = pairs.map(p => p.snippet);
+      const sources = collectMcpBriefSources(pairs, 6);
       // Step 2: summarize with LLM (budget: 18 s — combined 24 s, well under 30 s edge ceiling)
       const briefUrl = `${base}/api/news/v1/summarize-article`;
       const briefBody = JSON.stringify({
@@ -75,7 +170,8 @@ export const RPC_TOOLS: ToolDef[] = [
         signal: AbortSignal.timeout(18_000),
       });
       if (!briefRes.ok) throw new Error(`summarize-article HTTP ${briefRes.status}`);
-      return briefRes.json();
+      const result = await briefRes.json() as Record<string, unknown>;
+      return { ...result, headlines, sources };
     },
     _apiPaths: [
       "GET /api/news/v1/list-feed-digest",
@@ -103,6 +199,19 @@ export const RPC_TOOLS: ToolDef[] = [
         generatedAt: { type: ['string', 'number', 'null'] },
         provider: { type: 'string' },
         model: { type: 'string' },
+        sources: {
+          type: 'array',
+          description: 'Original feed articles used as grounding inputs for this brief.',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string' },
+              url: { type: 'string' },
+              source: { type: 'string' },
+              publishedAt: { type: 'string' },
+            },
+          },
+        },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -114,6 +223,7 @@ export const RPC_TOOLS: ToolDef[] = [
       // Without context the model hallucinates events — real headlines anchor it.
       // 2 s + 22 s brief = 24 s worst-case; 6 s margin before the 30 s Edge kill.
       let contextParam = '';
+      let sources: McpBriefSource[] = [];
       try {
         const digestUrl = `${base}/api/news/v1/list-feed-digest?variant=full&lang=en`;
         const digestAuth = await buildAuthHeaders(context, 'GET', digestUrl, null);
@@ -122,15 +232,22 @@ export const RPC_TOOLS: ToolDef[] = [
           signal: AbortSignal.timeout(2_000),
         });
         if (digestRes.ok) {
-          type DigestPayload = { categories?: Record<string, { items?: { title?: string }[] }> };
+          type DigestPayload = { categories?: Record<string, { items?: DigestItemForBrief[] }> };
           const digest = await digestRes.json() as DigestPayload;
-          const headlines = Object.values(digest.categories ?? {})
+          const allItems = Object.values(digest.categories ?? {})
             .flatMap(cat => cat.items ?? [])
-            .map(item => item.title ?? '')
-            .filter(Boolean)
-            .slice(0, 15)
-            .join('\n');
-          if (headlines) contextParam = encodeURIComponent(headlines.slice(0, 4000));
+            .filter(item => typeof item.title === 'string' && item.title.length > 0);
+          const terms = countryBriefSearchTerms(countryCode);
+          const countryItems = allItems.filter((item) => {
+            const text = `${item.title ?? ''} ${item.snippet ?? ''}`.toLowerCase();
+            return terms.some(term => text.includes(term));
+          });
+          const groundingItems = (countryItems.length > 0 ? countryItems : allItems).slice(0, 15);
+          sources = collectMcpBriefSources(groundingItems, 6);
+          const sourceLines = sources.length > 0 ? ['Brief source articles:', ...briefSourceContextLines(sources)] : [];
+          const headlineLines = groundingItems.map(item => item.title ?? '').filter(Boolean);
+          const context = [...sourceLines, 'Headlines:', ...headlineLines].join('\n');
+          if (context.trim()) contextParam = encodeURIComponent(context.slice(0, 4000));
         }
       } catch { /* proceed without context — better than failing */ }
 
@@ -147,7 +264,9 @@ export const RPC_TOOLS: ToolDef[] = [
         signal: AbortSignal.timeout(22_000),
       });
       if (!res.ok) throw new Error(`get-country-intel-brief HTTP ${res.status}`);
-      return res.json();
+      const result = await res.json() as Record<string, unknown>;
+      const resultSources = collectMcpBriefSources(Array.isArray(result.sources) ? result.sources as DigestItemForBrief[] : [], 6);
+      return { ...result, sources: resultSources.length > 0 ? resultSources : sources };
     },
     // METHOD DRIFT: _execute POSTs above but OpenAPI declares only GET on this
     // path (verified against docs/api/IntelligenceService.openapi.json). The

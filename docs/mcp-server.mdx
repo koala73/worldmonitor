@@ -266,8 +266,8 @@ For per-tool parameters, freshness budgets, timeouts, and concrete `curl` exampl
 
 | Tool | Description | Cost |
 |------|-------------|------|
-| `get_world_brief` | AI-summarized world intel brief. Optional `geo_context` param. | LLM |
-| `get_country_brief` | Per-country geopolitical + economic assessment. Supports analytical frameworks. | LLM |
+| `get_world_brief` | AI-summarized world intel brief with structured source links. Optional `geo_context` param. | LLM |
+| `get_country_brief` | Per-country geopolitical + economic assessment with structured source links. Supports analytical frameworks. | LLM |
 | `analyze_situation` | Ad-hoc geopolitical deduction from a query + context. Returns confidence + supporting signals. | LLM |
 | `generate_forecasts` | Fresh probability estimates (bypasses cache). | LLM |
 | `get_forecast_predictions` | Pre-computed cached forecasts. Fast. | Cache |

@@ -1,5 +1,6 @@
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { formatIntelBrief } from '@/utils/format-intel-brief';
+import { renderBriefSourcesFooter } from '@/utils/brief-sources';
 import { t } from '@/services/i18n';
 import { getCSSColor, showToast } from '@/utils';
 import type { CountryScore } from '@/services/country-instability';
@@ -63,7 +64,7 @@ export class CountryBriefPage implements CountryBriefPanel {
   private currentScore: CountryScore | null = null;
   private currentSignals: CountryBriefSignals | null = null;
   private currentBrief: string | null = null;
-  private currentBriefGeneratedAt: string | null = null;
+  private currentBriefGeneratedAt: string | number | null = null;
   private currentBriefCached: boolean | null = null;
   private currentHeadlines: NewsItem[] = [];
   private onCloseCallback?: () => void;
@@ -516,8 +517,10 @@ export class CountryBriefPage implements CountryBriefPanel {
     this.currentBriefGeneratedAt = data.generatedAt ?? null;
     this.currentBriefCached = data.cached === true;
     const formatted = this.formatBrief(data.brief, this.currentHeadlineCount);
+    const sourcesFooter = renderBriefSourcesFooter(data.sources, { className: 'cb-brief-sources' });
     setTrustedHtml(section, trustedHtml(`
       <div class="cb-brief-text">${formatted}</div>
+      ${sourcesFooter}
       <div class="cb-brief-footer">
         ${data.cached ? `<span class="intel-cached">📋 ${t('modals.countryBrief.cached')}</span>` : `<span class="intel-fresh">✨ ${t('modals.countryBrief.fresh')}</span>`}
         <span class="intel-timestamp">${data.generatedAt ? new Date(data.generatedAt).toLocaleTimeString() : ''}</span>
@@ -717,7 +720,7 @@ export class CountryBriefPage implements CountryBriefPanel {
       };
     }
     if (this.currentBrief) data.brief = this.currentBrief;
-    if (this.currentBriefGeneratedAt) data.briefGeneratedAt = this.currentBriefGeneratedAt;
+    if (this.currentBriefGeneratedAt) data.briefGeneratedAt = new Date(this.currentBriefGeneratedAt).toISOString();
     if (this.currentBriefCached != null) data.briefCached = this.currentBriefCached;
     if (this.currentHeadlines.length > 0) {
       data.headlines = this.currentHeadlines.map(h => ({

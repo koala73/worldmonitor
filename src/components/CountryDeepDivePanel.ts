@@ -9,6 +9,7 @@ import type { AssetType, NewsItem, RelatedAsset } from '@/types';
 import { sanitizeUrl, escapeHtml } from '@/utils/sanitize';
 import { computeAlternativeSuppliers, type ChokepointScoreMap, type EnrichedExporter } from '@/utils/supplier-route-risk';
 import { formatIntelBrief } from '@/utils/format-intel-brief';
+import { renderBriefSourcesFooter } from '@/utils/brief-sources';
 import { getCSSColor, showToast } from '@/utils';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { PORTS } from '@/config/ports';
@@ -101,7 +102,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private currentScore: CountryScore | null = null;
   private currentSignals: CountryBriefSignals | null = null;
   private currentBrief: string | null = null;
-  private currentBriefGeneratedAt: string | null = null;
+  private currentBriefGeneratedAt: string | number | null = null;
   private currentBriefCached: boolean | null = null;
   private currentHeadlines: NewsItem[] = [];
   private isMaximizedState = false;
@@ -2353,11 +2354,22 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (data.generatedAt) metaTokens.push(`Updated ${new Date(data.generatedAt).toLocaleTimeString()}`);
     const meta = this.el('div', 'cdp-assessment-meta', metaTokens.join(' • '));
     this.briefBody.append(text, meta);
+    const sourcesFooter = renderBriefSourcesFooter(data.sources, { className: 'cdp-brief-sources' });
+    if (sourcesFooter) {
+      const summarySources = this.el('div', 'cdp-summary-only');
+      setTrustedHtml(summarySources, trustedHtml(sourcesFooter, "legacy direct innerHTML migration"));
+      this.briefBody.append(summarySources);
+    }
 
     const expandedBrief = this.el('div', 'cdp-expanded-only');
     const fullText = this.el('div', 'cdp-assessment-text');
     setTrustedHtml(fullText, trustedHtml(this.formatBrief(data.brief, this.currentHeadlineCount), "legacy direct innerHTML migration"));
     expandedBrief.append(fullText);
+    if (sourcesFooter) {
+      const sources = this.el('div', 'cdp-expanded-only');
+      setTrustedHtml(sources, trustedHtml(sourcesFooter, "legacy direct innerHTML migration"));
+      expandedBrief.append(sources);
+    }
     this.briefBody.append(expandedBrief);
   }
 
@@ -3007,7 +3019,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       };
     }
     if (this.currentBrief) data.brief = this.currentBrief;
-    if (this.currentBriefGeneratedAt) data.briefGeneratedAt = this.currentBriefGeneratedAt;
+    if (this.currentBriefGeneratedAt) data.briefGeneratedAt = new Date(this.currentBriefGeneratedAt).toISOString();
     if (this.currentBriefCached != null) data.briefCached = this.currentBriefCached;
     if (this.currentHeadlines.length > 0) {
       data.headlines = this.currentHeadlines.map((headline) => ({

@@ -328,6 +328,20 @@ calls to action, and generic editorial filler. The product language should
 describe what changed and why it may matter, not tell the reader what to buy,
 sell, do, or believe.
 
+## How Brief Sources Are Shown
+
+AI brief source lists are derived from the feed items selected as grounding
+inputs. The model is never asked to create URLs, publishers, or publication
+times. Web brief surfaces and MCP brief tools attach a bounded `sources` array
+from the same selected digest or country-news items used for context. Unsafe or
+missing article URLs are dropped instead of rendered.
+
+The source footer is a provenance aid, not sentence-level citation alignment.
+Bracket markers such as `[1]` may link into the local source list when the model
+uses them, but the authoritative article links still come from the structured
+feed data. Cached briefs preserve their structured sources with the cached
+summary; older source-free cache entries are discarded before reuse.
+
 The canonical digest prose and direct fallback `whyMatters` paths pin the
 provider chain to OpenRouter by skipping Ollama and Groq, so the live brief
 uses Gemini 2.5 Flash (`google/gemini-2.5-flash`) for those surfaces when the
