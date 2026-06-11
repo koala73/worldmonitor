@@ -5,6 +5,20 @@ export const PANEL_COLLAPSED_KEY = 'worldmonitor-panel-collapsed';
 let panelSpansCache: Record<string, number> | null = null;
 let panelColSpansCache: Record<string, number> | null = null;
 let panelCollapsedCache: Record<string, boolean> | null = null;
+let storageInvalidationListenerInstalled = false;
+
+function ensurePanelStorageCacheInvalidationListener(): void {
+  if (storageInvalidationListenerInstalled) return;
+  if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
+  window.addEventListener('storage', (event: StorageEvent) => {
+    if (event.key === null) {
+      invalidatePanelStorageCacheForKeys([PANEL_SPANS_KEY, PANEL_COL_SPANS_KEY, PANEL_COLLAPSED_KEY]);
+      return;
+    }
+    invalidatePanelStorageCacheForKeys([event.key]);
+  });
+  storageInvalidationListenerInstalled = true;
+}
 
 function readStorageMap<T>(key: string): Record<string, T> {
   try {
@@ -28,17 +42,22 @@ function removeStorageMap(key: string): void {
 }
 
 export function loadPanelSpans(): Readonly<Record<string, number>> {
+  ensurePanelStorageCacheInvalidationListener();
   panelSpansCache ??= readStorageMap<number>(PANEL_SPANS_KEY);
   return panelSpansCache;
 }
 
 export function savePanelSpan(panelId: string, span: number): void {
+  ensurePanelStorageCacheInvalidationListener();
   const next = { ...loadPanelSpans(), [panelId]: span };
   writeStorageMap(PANEL_SPANS_KEY, next);
   panelSpansCache = next;
 }
 
+// resetHeight historically persisted an empty aggregate map instead of removing
+// the row-span key, so the default keeps that exact behavior for callers.
 export function clearPanelSpan(panelId: string, options: { removeWhenEmpty?: boolean } = {}): void {
+  ensurePanelStorageCacheInvalidationListener();
   const spans = loadPanelSpans();
   if (!(panelId in spans)) return;
   const next = { ...spans };
@@ -53,22 +72,28 @@ export function clearPanelSpan(panelId: string, options: { removeWhenEmpty?: boo
 }
 
 export function clearPanelSpans(): void {
+  ensurePanelStorageCacheInvalidationListener();
   removeStorageMap(PANEL_SPANS_KEY);
   panelSpansCache = {};
 }
 
 export function loadPanelColSpans(): Readonly<Record<string, number>> {
+  ensurePanelStorageCacheInvalidationListener();
   panelColSpansCache ??= readStorageMap<number>(PANEL_COL_SPANS_KEY);
   return panelColSpansCache;
 }
 
 export function savePanelColSpan(panelId: string, span: number): void {
+  ensurePanelStorageCacheInvalidationListener();
   const next = { ...loadPanelColSpans(), [panelId]: span };
   writeStorageMap(PANEL_COL_SPANS_KEY, next);
   panelColSpansCache = next;
 }
 
+// Column-span cleanup historically removed the aggregate key when the last
+// entry disappeared, unlike row-span reset. Keep that legacy default explicit.
 export function clearPanelColSpan(panelId: string, options: { removeWhenEmpty?: boolean } = { removeWhenEmpty: true }): void {
+  ensurePanelStorageCacheInvalidationListener();
   const spans = loadPanelColSpans();
   if (!(panelId in spans)) return;
   const next = { ...spans };
@@ -83,16 +108,19 @@ export function clearPanelColSpan(panelId: string, options: { removeWhenEmpty?: 
 }
 
 export function clearPanelColSpans(): void {
+  ensurePanelStorageCacheInvalidationListener();
   removeStorageMap(PANEL_COL_SPANS_KEY);
   panelColSpansCache = {};
 }
 
 export function loadPanelCollapsed(): Readonly<Record<string, boolean>> {
+  ensurePanelStorageCacheInvalidationListener();
   panelCollapsedCache ??= readStorageMap<boolean>(PANEL_COLLAPSED_KEY);
   return panelCollapsedCache;
 }
 
 export function savePanelCollapsed(panelId: string, collapsed: boolean): void {
+  ensurePanelStorageCacheInvalidationListener();
   const next = { ...loadPanelCollapsed() };
   if (collapsed) {
     next[panelId] = true;

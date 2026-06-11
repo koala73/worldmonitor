@@ -156,6 +156,60 @@ describe('Panel storage cache', () => {
     });
   });
 
+  it('invalidates warmed maps when another tab changes panel storage', () => {
+    const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+    const originalLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    const values = new Map<string, string>();
+    let storageListener: ((event: Event & { key: string | null }) => void) | null = null;
+
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      writable: true,
+      value: {
+        addEventListener(type: string, listener: EventListener) {
+          if (type === 'storage') {
+            storageListener = listener as (event: Event & { key: string | null }) => void;
+          }
+        },
+      },
+    });
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      writable: true,
+      value: {
+        getItem(key: string) {
+          return values.get(key) ?? null;
+        },
+        setItem(key: string, value: string) {
+          values.set(key, String(value));
+        },
+        removeItem(key: string) {
+          values.delete(key);
+        },
+      },
+    });
+
+    try {
+      values.set(PANEL_SPANS_KEY, JSON.stringify({ crossTab: 1 }));
+      assert.equal(loadPanelSpans().crossTab, 1);
+      assert.ok(storageListener, 'panel storage installs a storage-event invalidation listener');
+
+      values.set(PANEL_SPANS_KEY, JSON.stringify({ crossTab: 3 }));
+      assert.equal(loadPanelSpans().crossTab, 1, 'cache remains warm before the cross-tab event');
+
+      const event = new Event('storage') as Event & { key: string | null };
+      Object.defineProperty(event, 'key', { value: PANEL_SPANS_KEY });
+      storageListener(event);
+
+      assert.equal(loadPanelSpans().crossTab, 3, 'storage event invalidates the warmed map');
+    } finally {
+      if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow);
+      else delete (globalThis as { window?: unknown }).window;
+      if (originalLocalStorage) Object.defineProperty(globalThis, 'localStorage', originalLocalStorage);
+      else delete (globalThis as { localStorage?: unknown }).localStorage;
+    }
+  });
+
   it('invalidates cached panel maps after direct storage replacement', async () => {
     await withHarness((harness) => {
       invalidatePanelStorageCacheForKeys([PANEL_SPANS_KEY, PANEL_COL_SPANS_KEY, PANEL_COLLAPSED_KEY]);
