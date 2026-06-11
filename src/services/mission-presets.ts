@@ -18,7 +18,9 @@ export type MissionPresetId =
   | 'supply-chain-risk'
   | 'energy-security'
   | 'osint-newsroom'
-  | 'macro-market-watch';
+  | 'macro-market-watch'
+  | 'tech-ai-watch'
+  | 'good-news-explorer';
 
 export type MissionMapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
 export type MissionTimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
@@ -250,6 +252,77 @@ export const MISSION_PRESETS: readonly MissionPreset[] = [
       'outages',
       'weather',
       'natural',
+    ],
+  },
+  {
+    id: 'tech-ai-watch',
+    label: 'Tech / AI Watcher',
+    shortLabel: 'Tech',
+    description: 'AI labs, startups, chips, cloud, cyber, and regulation signals.',
+    icon: 'T',
+    view: 'global',
+    zoom: 2.4,
+    timeRange: '7d',
+    panels: [
+      'map',
+      'live-news',
+      'insights',
+      'ai',
+      'tech',
+      'startups',
+      'security',
+      'policy',
+      'hardware',
+      'cloud',
+      'github',
+      'tech-readiness',
+      'funding',
+      'unicorns',
+      'accelerators',
+      'events',
+      'markets',
+      'internet-disruptions',
+      'service-status',
+      'monitors',
+    ],
+    layers: [
+      'datacenters',
+      'startupHubs',
+      'techHQs',
+      'techEvents',
+      'cloudRegions',
+      'cables',
+      'outages',
+      'cyberThreats',
+      'natural',
+    ],
+  },
+  {
+    id: 'good-news-explorer',
+    label: 'Good News Explorer',
+    shortLabel: 'Good',
+    description: 'Progress, breakthroughs, conservation wins, and clean-energy momentum.',
+    icon: '+',
+    view: 'global',
+    zoom: 2.2,
+    timeRange: '7d',
+    panels: [
+      'map',
+      'positive-feed',
+      'progress',
+      'counters',
+      'spotlight',
+      'breakthroughs',
+      'digest',
+      'species',
+      'renewable',
+    ],
+    layers: [
+      'positiveEvents',
+      'kindness',
+      'happiness',
+      'speciesRecovery',
+      'renewableInstallations',
     ],
   },
 ];
