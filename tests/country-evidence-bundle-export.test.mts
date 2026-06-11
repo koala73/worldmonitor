@@ -276,18 +276,22 @@ describe('country evidence bundle export', () => {
     assert.match(legacySource, /exportCountryEvidenceMarkdown/);
     assert.match(legacySource, /data-format="evidence-md"/);
     assert.match(legacySource, /format === 'json' \|\| format === 'csv' \|\| format === 'evidence-md'/);
+    assert.match(legacySource, /if \(format === 'evidence-md' && !this\.canExportEvidenceBundle\(\)\) return;/);
     assert.match(legacySource, /if \(format === 'evidence-md'\) exportCountryEvidenceMarkdown\(data\)/);
     assert.match(legacySource, /data-format="json"/);
     assert.match(legacySource, /data-format="csv"/);
+    assert.match(legacySource, /trackGateHit\('evidence-export'\)/);
 
     assert.match(dossierSource, /exportCountryEvidenceMarkdown/);
     assert.match(dossierSource, /cdp-evidence-export-btn/);
+    assert.match(dossierSource, /if \(!hasPremiumAccess\(getAuthState\(\)\)\)/);
+    assert.match(dossierSource, /trackGateHit\('evidence-export'\)/);
     assert.match(dossierSource, /this\.exportEvidenceBundle\(\)/);
     assert.match(dossierSource, /exportCountryEvidenceMarkdown\(data\)/);
   });
 
-  it('passes the active dossier context to the evidence exporter when clicked', async () => {
-    const harness = await createCountryDeepDivePanelHarness();
+  it('passes the active dossier context to the evidence exporter for Pro users when clicked', async () => {
+    const harness = await createCountryDeepDivePanelHarness({ premiumAccess: true });
     try {
       const panel = harness.createPanel();
       panel.show('France', 'FR', {
@@ -363,6 +367,55 @@ describe('country evidence bundle export', () => {
       assert.equal(exports[0].headlines[0].title, 'Transport unions announce strikes');
       assert.equal(exports[0].headlines[0].source, 'Reuters');
       assert.equal(exports[0].headlines[0].link, 'https://example.com/story');
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('blocks active dossier evidence export for free users', async () => {
+    const harness = await createCountryDeepDivePanelHarness({ premiumAccess: false });
+    try {
+      const panel = harness.createPanel();
+      panel.show('France', 'FR', null, {
+        criticalNews: 0,
+        protests: 0,
+        militaryFlights: 0,
+        militaryVessels: 0,
+        militaryFlightsInCountry: 0,
+        militaryVesselsInCountry: 0,
+        outages: 0,
+        aisDisruptions: 0,
+        satelliteFires: 0,
+        radiationAnomalies: 0,
+        temporalAnomalies: 0,
+        cyberThreats: 0,
+        earthquakes: 0,
+        displacementOutflow: 0,
+        climateStress: 0,
+        conflictEvents: 0,
+        activeStrikes: 0,
+        orefSirens: 0,
+        orefHistory24h: 0,
+        aviationDisruptions: 0,
+        travelAdvisories: 0,
+        travelAdvisoryMaxLevel: null,
+        gpsJammingHexes: 0,
+        isTier1: true,
+        thermalEscalations: 0,
+        sanctionsDesignations: 0,
+        sanctionsNewDesignations: 0,
+      });
+      for (let attempt = 0; attempt < 25 && harness.getWidgets().length === 0; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      const button = harness.getPanelRoot()?.querySelector('.cdp-evidence-export-btn') as HTMLButtonElement | null;
+      assert.ok(button, 'expected evidence export button');
+      button.dispatchEvent(new Event('click'));
+
+      assert.equal(harness.getEvidenceExports().length, 0);
+      assert.deepEqual(harness.getGateHits(), ['evidence-export']);
+      assert.deepEqual(harness.getToasts(), ['Evidence export is available on Pro.']);
     } finally {
       harness.cleanup();
     }
