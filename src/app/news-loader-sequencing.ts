@@ -27,7 +27,9 @@ export interface RunNewsLoadPassOptions<TFeeds, TDigest, TItem> {
   categories: readonly NewsCategorySpec<TFeeds>[];
   categoryConcurrency: number;
   digestPromise: Promise<TDigest | null>;
+  fallbackDigest?: TDigest | null;
   digestGraceMs: number;
+  allowPendingPerFeedFallback?: boolean;
   hasDigestCategory: (digest: TDigest, key: string) => boolean;
   loadCategory: (
     category: NewsCategorySpec<TFeeds>,
@@ -60,31 +62,25 @@ export async function resolveInitialNewsDigest<TDigest>(
   digestPromise: Promise<TDigest | null>,
   graceMs: number,
   delay: Delay = defaultDelay,
+  fallbackDigest: TDigest | null = null,
 ): Promise<NewsDigestSnapshot<TDigest>> {
-  let settled = false;
   const trackedDigest = digestPromise.then(
-    value => {
-      settled = true;
-      return { status: 'fulfilled' as const, value };
-    },
-    reason => {
-      settled = true;
-      return { status: 'rejected' as const, reason };
-    },
+    value => ({ status: 'fulfilled' as const, value }),
+    reason => ({ status: 'rejected' as const, reason }),
   );
 
   const timeout = delay(graceMs).then(() => ({ status: 'timeout' as const }));
   const first = await Promise.race([trackedDigest, timeout]);
 
   if (first.status === 'rejected') {
-    return { digest: null, pending: false };
+    return { digest: fallbackDigest, pending: false };
   }
 
   if (first.status === 'fulfilled') {
-    return { digest: first.value, pending: false };
+    return { digest: first.value ?? fallbackDigest, pending: false };
   }
 
-  return { digest: null, pending: !settled };
+  return { digest: fallbackDigest, pending: true };
 }
 
 export async function loadNewsCategoryBatches<TFeeds, TDigest, TItem>(
@@ -96,11 +92,12 @@ export async function loadNewsCategoryBatches<TFeeds, TDigest, TItem>(
     digest: TDigest | null,
     options: NewsCategoryLoadOptions,
   ) => Promise<TItem[]>,
+  allowPendingPerFeedFallback = true,
 ): Promise<Array<PromiseSettledResult<NewsCategoryLoadResult<TItem>>>> {
   const concurrency = Math.max(1, Math.min(categoryConcurrency, Math.max(1, categories.length)));
   const results: Array<PromiseSettledResult<NewsCategoryLoadResult<TItem>>> = [];
-  const allowDigestPendingFallback = digestSnapshot.pending && digestSnapshot.digest === null;
-  const recordBaselineSample = !allowDigestPendingFallback;
+  const allowDigestPendingFallback = allowPendingPerFeedFallback && digestSnapshot.pending && digestSnapshot.digest === null;
+  const recordBaselineSample = !digestSnapshot.pending;
 
   for (let i = 0; i < categories.length; i += concurrency) {
     const chunk = categories.slice(i, i + concurrency);
@@ -123,12 +120,19 @@ export async function runNewsLoadPass<TFeeds, TDigest, TItem>(
   options: RunNewsLoadPassOptions<TFeeds, TDigest, TItem>,
 ): Promise<RunNewsLoadPassResult<TDigest, TItem>> {
   const digestPromise = options.digestPromise.catch(() => null);
-  const initialDigest = await resolveInitialNewsDigest(digestPromise, options.digestGraceMs);
+  const allowPendingPerFeedFallback = options.allowPendingPerFeedFallback ?? true;
+  const initialDigest = await resolveInitialNewsDigest(
+    digestPromise,
+    options.digestGraceMs,
+    undefined,
+    options.fallbackDigest ?? null,
+  );
   const categoryResults = await loadNewsCategoryBatches(
     options.categories,
     options.categoryConcurrency,
     initialDigest,
     options.loadCategory,
+    allowPendingPerFeedFallback,
   );
   const categoryItemsByKey = new Map<string, TItem[]>();
   categoryResults.forEach((result, idx) => {
@@ -142,8 +146,8 @@ export async function runNewsLoadPass<TFeeds, TDigest, TItem>(
   let intelItems = options.loadIntel
     ? await options.loadIntel(
       initialDigest.digest,
-      initialDigest.pending && initialDigest.digest === null,
-      { recordBaselineSample: !(initialDigest.pending && initialDigest.digest === null) },
+      allowPendingPerFeedFallback && initialDigest.pending && initialDigest.digest === null,
+      { recordBaselineSample: !initialDigest.pending },
     )
     : [];
   let finalDigest = initialDigest.digest;
@@ -160,6 +164,7 @@ export async function runNewsLoadPass<TFeeds, TDigest, TItem>(
         options.categoryConcurrency,
         { digest: latestDigest, pending: false },
         options.loadCategory,
+        allowPendingPerFeedFallback,
       );
       digestResults.forEach((result, idx) => {
         if (result.status === 'fulfilled') {

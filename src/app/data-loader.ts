@@ -304,7 +304,7 @@ export class DataLoaderManager implements AppModule {
 
   private digestBreaker = { state: 'closed' as 'closed' | 'open' | 'half-open', failures: 0, cooldownUntil: 0 };
   private readonly digestRequestTimeoutMs = 8000;
-  private readonly digestFirstPaintGraceMs = 250;
+  private readonly digestFirstPaintGraceMs = 1500;
   private readonly digestBreakerCooldownMs = 5 * 60 * 1000;
   private readonly persistedDigestMaxAgeMs = 6 * 60 * 60 * 1000;
   private readonly perFeedFallbackCategoryFeedLimit = 3;
@@ -1229,6 +1229,7 @@ export class DataLoaderManager implements AppModule {
       console.warn('[News] Digest fetch failed before category load:', error);
       return null;
     });
+    const fallbackDigest = this.lastGoodDigest ?? await this.loadPersistedDigest();
 
     // Panel-driven, not variant-driven: load the active variant's preset
     // categories PLUS any extra categories required by enabled news panels the
@@ -1248,7 +1249,9 @@ export class DataLoaderManager implements AppModule {
         categories,
         categoryConcurrency,
         digestPromise,
+        fallbackDigest,
         digestGraceMs: this.digestFirstPaintGraceMs,
+        allowPendingPerFeedFallback: this.isPerFeedFallbackEnabled(),
         hasDigestCategory: (digest, key) => Boolean(digest.categories && key in digest.categories),
         loadCategory: ({ key, feeds, isCustom }, digest, options) => this.loadNewsCategory(key, feeds, digest, isCustom, options),
         loadIntel: SITE_VARIANT === 'full'
