@@ -34,13 +34,9 @@ export const Moments = () => (
       />
       <div className="grid md:grid-cols-2 gap-6">
         {MOMENTS.map(({ key, twoLineTitle, signals, chips, href }, mi) => {
-          const stepTiers: ChipTier[] = signals.map((_, si) => {
-            if (key === 'm2' && si === 2) return 'pro';
-            if (key === 'm4' && si === 2) return 'pro';
-            return 'free';
-          });
           const signalRows = signals.slice(0, -1);
           const correlationCode = signals[signals.length - 1] ?? 'SYNC';
+          const correlationTier = chips[chips.length - 1] ?? 'free';
           return (
             <motion.article
               key={key}
@@ -69,7 +65,7 @@ export const Moments = () => (
                 <div className="space-y-3">
                   {signalRows.map((signal, si) => (
                     <div key={signal} className="grid grid-cols-[4.75rem_1fr] gap-3 items-start">
-                      <span className={`mt-0.5 inline-flex items-center justify-center rounded-sm border px-2 py-1 font-mono text-[10px] ${CHIP_CLASS[stepTiers[si] ?? 'free']}`}>
+                      <span className={`mt-0.5 inline-flex items-center justify-center rounded-sm border px-2 py-1 font-mono text-[10px] ${CHIP_CLASS[chips[si] ?? 'free']}`}>
                         {signal}
                       </span>
                       <p className="text-sm text-wm-muted leading-relaxed">
@@ -80,7 +76,7 @@ export const Moments = () => (
                 </div>
                 <div className="mt-5 border-t border-wm-border pt-5">
                   <div className="grid grid-cols-[4.75rem_1fr] gap-3 items-start">
-                    <span className={`mt-0.5 inline-flex items-center justify-center rounded-sm border px-2 py-1 font-mono text-[10px] ${CHIP_CLASS[stepTiers[signals.length - 1] ?? 'free']}`}>
+                    <span className={`mt-0.5 inline-flex items-center justify-center rounded-sm border px-2 py-1 font-mono text-[10px] ${CHIP_CLASS[correlationTier]}`}>
                       {correlationCode}
                     </span>
                     <div>
