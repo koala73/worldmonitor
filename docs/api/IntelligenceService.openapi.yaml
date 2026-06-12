@@ -1399,7 +1399,27 @@ components:
                     type: integer
                     format: int64
                     description: 'Brief generation time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                sources:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BriefSource'
             description: GetCountryIntelBriefResponse contains an AI-generated intelligence brief for a country.
+        BriefSource:
+            type: object
+            properties:
+                title:
+                    type: string
+                    description: Source article headline.
+                source:
+                    type: string
+                    description: Source outlet or feed label.
+                url:
+                    type: string
+                    description: Absolute http(s) source article URL.
+                publishedAt:
+                    type: string
+                    description: Article publication time, when available.
+            description: BriefSource describes one article used to ground an AI-generated brief.
         SearchGdeltDocumentsRequest:
             type: object
             properties:

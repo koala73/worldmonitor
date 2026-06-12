@@ -89,6 +89,36 @@ function sanitizeTitle(title) {
     .trim();
 }
 
+function clipText(value, maxLen) {
+  const text = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+  return text.length > maxLen ? `${text.slice(0, maxLen - 1).trim()}...` : text;
+}
+
+function normalizeBriefSourceUrl(value) {
+  if (typeof value !== 'string') return '';
+  try {
+    const parsed = new URL(value.trim());
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.toString() : '';
+  } catch {
+    return '';
+  }
+}
+
+function normalizePublishedAt(value) {
+  if (!value) return undefined;
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : undefined;
+}
+
+function briefSourceFromStory(story) {
+  const url = normalizeBriefSourceUrl(story?.primaryLink);
+  const title = clipText(story?.primaryTitle, 160);
+  const source = clipText(story?.primarySource, 80);
+  if (!url || !title || !source) return null;
+  const publishedAt = normalizePublishedAt(story?.pubDate);
+  return publishedAt ? { title, source, url, publishedAt } : { title, source, url };
+}
+
 async function readDigestFromRedis() {
   const { url, token } = getRedisCredentials();
   const resp = await fetch(`${url}/get/${encodeURIComponent(DIGEST_KEY)}`, {
@@ -389,6 +419,7 @@ async function fetchInsights() {
   // matters; the list is already visually marked with per-story sourceCount.
   const briefCluster = pickBriefCluster(topStories);
   const topHeadline = briefCluster ? sanitizeTitle(briefCluster.primaryTitle) : '';
+  const worldBriefSources = briefCluster ? [briefSourceFromStory(briefCluster)].filter(Boolean) : [];
 
   let worldBrief = '';
   let briefProvider = '';
@@ -478,6 +509,7 @@ async function fetchInsights() {
 
   const payload = {
     worldBrief,
+    worldBriefSources,
     briefProvider,
     briefModel,
     status,

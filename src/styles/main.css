@@ -13034,6 +13034,24 @@ a.prediction-link:hover {
   padding: 8px;
 }
 
+.cii-methodology-footer {
+  margin: 0 8px 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.cii-methodology-footer a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.cii-methodology-footer a:hover {
+  text-decoration: underline;
+}
+
 .cii-country {
   background: var(--darken-medium);
   border-radius: 4px;
@@ -16923,6 +16941,71 @@ a.prediction-link:hover {
   font-size: 12px;
   line-height: 1.5;
   color: var(--text);
+}
+
+.brief-sources,
+.insights-brief-sources,
+.cb-brief-sources,
+.cdp-brief-sources {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.brief-sources summary,
+.insights-brief-sources summary,
+.cb-brief-sources summary,
+.cdp-brief-sources summary {
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.brief-sources-note {
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
+.brief-sources-note a,
+.brief-sources a,
+.insights-brief-sources a,
+.cb-brief-sources a,
+.cdp-brief-sources a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.brief-sources-note a:hover,
+.brief-sources a:hover,
+.insights-brief-sources a:hover,
+.cb-brief-sources a:hover,
+.cdp-brief-sources a:hover {
+  text-decoration: underline;
+}
+
+.brief-sources ol,
+.insights-brief-sources ol,
+.cb-brief-sources ol,
+.cdp-brief-sources ol {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.brief-sources li,
+.insights-brief-sources li,
+.cb-brief-sources li,
+.cdp-brief-sources li {
+  margin: 6px 0;
+  line-height: 1.35;
+}
+
+.brief-source-meta {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-faint);
+  font-size: 10px;
 }
 
 .insights-unavailable,

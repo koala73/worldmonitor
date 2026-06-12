@@ -33,6 +33,7 @@ import { mlWorker } from '@/services/ml-worker';
 import { getAiFlowSettings, subscribeAiFlowChange, isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { startLearning } from '@/services/country-instability';
 import { loadFromStorage, parseMapUrlState, saveToStorage, isMobileDevice } from '@/utils';
+import { clearPanelSpans, invalidatePanelStorageCacheForKeys } from '@/utils/panel-storage';
 import type { ParsedMapUrlState } from '@/utils';
 import { SignalModal, IntelligenceGapBadge, BreakingNewsBanner } from '@/components';
 import { initBreakingNewsAlerts, destroyBreakingNewsAlerts } from '@/services/breaking-news-alerts';
@@ -195,6 +196,7 @@ export class App {
     if (keys.length === 0) return;
 
     const keySet = new Set(keys);
+    invalidatePanelStorageCacheForKeys(keys);
 
     if (keySet.has(STORAGE_KEYS.panels)) {
       this.state.panelSettings = loadFromStorage<Record<string, PanelConfig>>(
@@ -785,7 +787,7 @@ export class App {
         localStorage.removeItem(PANEL_ORDER_KEY);
         localStorage.removeItem(PANEL_ORDER_KEY + '-bottom');
         localStorage.removeItem(PANEL_ORDER_KEY + '-bottom-set');
-        localStorage.removeItem(PANEL_SPANS_KEY);
+        clearPanelSpans();
         console.log('[App] Applied layout reset migration (v2.5): cleared panel order/spans');
       }
       localStorage.setItem(LAYOUT_RESET_MIGRATION_KEY, 'done');

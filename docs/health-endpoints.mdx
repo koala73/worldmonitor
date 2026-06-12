@@ -76,7 +76,7 @@ Keys are grouped into three tiers that determine alert severity:
 | `OK_CASCADE` | Green | Key empty but a sibling in the cascade group has data (e.g., theater posture fallback chain) |
 | `STALE_SEED` | Warn | Data present but `seed-meta` age exceeds `maxStaleMin` |
 | `STALE_CONTENT` | Warn | Seeder is fresh but the upstream content stopped advancing (frozen feed); counted in `summary.staleContent` |
-| `COVERAGE_PARTIAL` | Warn | Record count is below the key's declared `minRecordCount` (e.g. 10/13 chokepoints) |
+| `COVERAGE_PARTIAL` | Warn | Record count is below the key's declared `minRecordCount` (e.g. 10/13 chokepoints or 139/174 PortWatch port-activity countries) |
 | `SEED_ERROR` | Warn | `seed-meta` reports `status: "error"` from the last seed run |
 | `REDIS_PARTIAL` | Warn | A single per-command Redis error on this key's STRLEN/GET (not a full outage) |
 | `EMPTY_ON_DEMAND` | Warn | On-demand key has no data yet (expected until first request); counted in `summary.onDemandWarn` |
@@ -99,6 +99,12 @@ feed, matching the CII v8 scorer. When those feeds are reachable but quiet,
 `riskScores` can still report
 `COVERAGE_PARTIAL`; underlying feed freshness is tracked by the source-specific
 health entries where those feeds publish seed metadata.
+
+`portwatchPortActivity` also uses `minRecordCount`. A fresh
+`seed-meta:supply_chain:portwatch-ports` record below 174 countries reports
+`COVERAGE_PARTIAL` instead of `OK`; partial runs may still refresh per-country
+PortWatch cache entries, but the canonical country list and healthy seed-meta
+signal do not advance until full 174-country coverage returns.
 
 ### Staleness Thresholds (maxStaleMin)
 
@@ -145,7 +151,7 @@ Focused endpoint for seed loop freshness. Checks only `seed-meta:*` keys without
 | HTTP Status | Overall Status | Meaning |
 |-------------|---------------|---------|
 | `200` | `healthy` | All seed loops reporting on time |
-| `200` | `warning` | Some seeds stale (age > 2x interval) |
+| `200` | `warning` | Some seeds stale (age > 2x interval) or below a declared coverage floor |
 | `200` | `degraded` | Some seeds missing entirely |
 | `401` | - | Invalid or missing API key |
 | `503` | - | Redis unavailable |
@@ -172,6 +178,15 @@ Focused endpoint for seed loop freshness. Checks only `seed-meta:*` keys without
       "sourceVersion": null,
       "ageMinutes": 140,
       "stale": true
+    },
+    "supply_chain:portwatch-ports": {
+      "status": "coverage_partial",
+      "fetchedAt": 1710158100000,
+      "recordCount": 139,
+      "minRecordCount": 174,
+      "sourceVersion": null,
+      "ageMinutes": 5,
+      "stale": true
     }
   }
 }
@@ -179,7 +194,7 @@ Focused endpoint for seed loop freshness. Checks only `seed-meta:*` keys without
 
 ### Staleness Logic
 
-A seed is considered stale when its age exceeds **2x the configured interval**. This accounts for normal jitter in cron/relay timing.
+A seed is considered stale when its age exceeds **2x the configured interval**. This accounts for normal jitter in cron/relay timing. Seeds with an explicit `minRecordCount` also report `coverage_partial` and `stale: true` until their coverage floor is met.
 
 | Domain | Interval (min) | Stale After (min) |
 |--------|---------------|-------------------|

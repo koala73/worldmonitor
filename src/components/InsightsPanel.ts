@@ -11,6 +11,7 @@ import { getTheaterPostureSummaries } from '@/services/military-surge';
 import { getCachedPosture } from '@/services/cached-theater-posture';
 import { isMobileDevice } from '@/utils';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
+import { collectBriefSources, normalizeCachedBriefSources, renderBriefSourcesFooter, type BriefSource } from '@/utils/brief-sources';
 import { SITE_VARIANT } from '@/config';
 import { deletePersistentCache, getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
 import { t } from '@/services/i18n';
@@ -33,6 +34,7 @@ function getAuthoritativeCountryScore(code: string): number | null {
 export class InsightsPanel extends Panel {
   private lastBriefUpdate = 0;
   private cachedBrief: string | null = null;
+  private cachedBriefSources: BriefSource[] = [];
   private lastMissedStories: AnalyzedHeadline[] = [];
   private lastConvergenceZones: RegionalConvergence[] = [];
   private lastFocalPoints: FocalPoint[] = [];
@@ -104,9 +106,15 @@ export class InsightsPanel extends Panel {
 
   private async loadBriefFromCache(): Promise<boolean> {
     if (this.cachedBrief) return false;
-    const entry = await getPersistentCache<{ summary: string }>(InsightsPanel.BRIEF_CACHE_KEY);
+    const entry = await getPersistentCache<{ summary: string; sources?: BriefSource[] }>(InsightsPanel.BRIEF_CACHE_KEY);
     if (!entry?.data?.summary) return false;
+    const { sources, legacySourceShape } = normalizeCachedBriefSources(entry.data, 6);
+    if (legacySourceShape) {
+      void deletePersistentCache(InsightsPanel.BRIEF_CACHE_KEY);
+      return false;
+    }
     this.cachedBrief = entry.data.summary;
+    this.cachedBriefSources = sources;
     this.lastBriefUpdate = entry.updatedAt;
     return true;
   }
@@ -389,6 +397,15 @@ export class InsightsPanel extends Panel {
       // Cap titles sent to AI at 5 to reduce entity conflation in small models
       // Strip OREF translation labels (ALERT[id]:, AREAS[id]:) that may leak into cluster titles
       const titles = importantClusters.slice(0, 5).map(c => stripOrefLabels(c.primaryTitle));
+      const currentBriefSources = collectBriefSources(
+        importantClusters.slice(0, 5).map((cluster) => ({
+          primaryTitle: stripOrefLabels(cluster.primaryTitle),
+          primarySource: cluster.primarySource,
+          primaryLink: cluster.primaryLink,
+          pubDate: cluster.lastUpdated,
+        })),
+        6,
+      );
 
       // Step 2: Analyze sentiment (browser-based, fast)
       this.setProgress(2, totalSteps, t('components.insights.analyzingSentiment'));
@@ -435,8 +452,9 @@ export class InsightsPanel extends Panel {
         if (result) {
           worldBrief = result.summary;
           this.cachedBrief = worldBrief;
+          this.cachedBriefSources = currentBriefSources;
           this.lastBriefUpdate = now;
-          void setPersistentCache(InsightsPanel.BRIEF_CACHE_KEY, { summary: worldBrief });
+          void setPersistentCache(InsightsPanel.BRIEF_CACHE_KEY, { summary: worldBrief, sources: currentBriefSources });
         }
       } else {
         this.setProgress(3, totalSteps, t('components.insights.usingCachedBrief'));
@@ -450,7 +468,12 @@ export class InsightsPanel extends Panel {
 
       if (this.updateGeneration !== thisGeneration) return;
 
-      this.renderInsights(importantItems, sentiments, worldBrief);
+      this.renderInsights(
+        importantItems,
+        sentiments,
+        worldBrief,
+        this.cachedBriefSources.length > 0 ? this.cachedBriefSources : currentBriefSources,
+      );
     } catch (error) {
       console.error('[InsightsPanel] Error:', error);
       this.showError();
@@ -460,10 +483,11 @@ export class InsightsPanel extends Panel {
   private renderInsights(
     items: Array<{ cluster: ClusteredEvent; isq: SignalQuality }>,
     sentiments: Array<{ label: string; score: number }> | null,
-    worldBrief: string | null
+    worldBrief: string | null,
+    worldBriefSources: BriefSource[] = [],
   ): void {
     const clusters = items.map(({ cluster }) => cluster);
-    const briefHtml = worldBrief ? this.renderWorldBrief(worldBrief) : '';
+    const briefHtml = worldBrief ? this.renderWorldBrief(worldBrief, worldBriefSources) : '';
     const focalPointsHtml = this.renderFocalPoints();
     const convergenceHtml = this.renderConvergenceZones();
     const sentimentOverview = this.renderSentimentOverview(sentiments);
@@ -489,7 +513,11 @@ export class InsightsPanel extends Panel {
     insights: ServerInsights,
     sentiments: Array<{ label: string; score: number }> | null,
   ): void {
-    const briefHtml = insights.worldBrief ? this.renderWorldBrief(insights.worldBrief) : '';
+    const worldBriefSources = collectBriefSources(
+      insights.worldBriefSources ?? [],
+      6,
+    );
+    const briefHtml = insights.worldBrief ? this.renderWorldBrief(insights.worldBrief, worldBriefSources) : '';
     const focalPointsHtml = this.renderFocalPoints();
     const convergenceHtml = this.renderConvergenceZones();
     const sentimentOverview = this.renderSentimentOverview(sentiments);
@@ -569,7 +597,7 @@ export class InsightsPanel extends Panel {
     `;
   }
 
-  private renderWorldBrief(brief: string): string {
+  private renderWorldBrief(brief: string, sources: BriefSource[] = []): string {
     const heading =
       SITE_VARIANT === 'tech'      ? `🚀 ${t('components.insights.briefTech')}`
     : SITE_VARIANT === 'commodity' ? `⛏️ ${t('components.insights.briefCommodity')}`
@@ -579,6 +607,7 @@ export class InsightsPanel extends Panel {
       <div class="insights-brief">
         <div class="insights-section-title">${heading}</div>
         <div class="insights-brief-text">${escapeHtml(brief)}</div>
+        ${renderBriefSourcesFooter(sources, { className: 'insights-brief-sources' })}
       </div>
     `;
   }

@@ -1,5 +1,6 @@
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { formatIntelBrief } from '@/utils/format-intel-brief';
+import { collectBriefSources, renderBriefSourcesFooter, type BriefSource } from '@/utils/brief-sources';
 import { t } from '@/services/i18n';
 import { getCSSColor, showToast } from '@/utils';
 import type { CountryScore } from '@/services/country-instability';
@@ -63,7 +64,7 @@ export class CountryBriefPage implements CountryBriefPanel {
   private currentScore: CountryScore | null = null;
   private currentSignals: CountryBriefSignals | null = null;
   private currentBrief: string | null = null;
-  private currentBriefGeneratedAt: string | null = null;
+  private currentBriefGeneratedAt: string | number | null = null;
   private currentBriefCached: boolean | null = null;
   private currentHeadlines: NewsItem[] = [];
   private onCloseCallback?: () => void;
@@ -148,9 +149,9 @@ export class CountryBriefPage implements CountryBriefPanel {
 
       // Citation links
       if (target.classList.contains('cb-citation')) {
-        e.preventDefault();
         const href = target.getAttribute('href');
-        if (href) {
+        if (href?.startsWith('#')) {
+          e.preventDefault();
           const el = this.overlay.querySelector(href);
           el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
           el?.classList.add('cb-news-highlight');
@@ -515,9 +516,12 @@ export class CountryBriefPage implements CountryBriefPanel {
     this.currentBrief = data.brief;
     this.currentBriefGeneratedAt = data.generatedAt ?? null;
     this.currentBriefCached = data.cached === true;
-    const formatted = this.formatBrief(data.brief, this.currentHeadlineCount);
+    const briefSources = collectBriefSources(data.sources ?? [], 6);
+    const formatted = this.formatBrief(data.brief, briefSources, this.currentHeadlineCount);
+    const sourcesFooter = renderBriefSourcesFooter(briefSources, { className: 'cb-brief-sources' });
     setTrustedHtml(section, trustedHtml(`
       <div class="cb-brief-text">${formatted}</div>
+      ${sourcesFooter}
       <div class="cb-brief-footer">
         ${data.cached ? `<span class="intel-cached">📋 ${t('modals.countryBrief.cached')}</span>` : `<span class="intel-fresh">✨ ${t('modals.countryBrief.fresh')}</span>`}
         <span class="intel-timestamp">${data.generatedAt ? new Date(data.generatedAt).toLocaleTimeString() : ''}</span>
@@ -670,8 +674,15 @@ export class CountryBriefPage implements CountryBriefPanel {
     return t('modals.countryBrief.timeAgo.d', { count: Math.floor(hours / 24) });
   }
 
-  private formatBrief(text: string, headlineCount = 0): string {
-    return formatIntelBrief(text, headlineCount > 0 ? { count: headlineCount, hrefPrefix: '#cb-news-' } : undefined);
+  private formatBrief(text: string, sources: BriefSource[] = [], headlineCount = 0): string {
+    return formatIntelBrief(
+      text,
+      sources.length > 0
+        ? { sources }
+        : headlineCount > 0
+          ? { count: headlineCount, hrefPrefix: '#cb-news-' }
+          : undefined,
+    );
   }
 
   private exportBrief(format: 'json' | 'csv' | 'evidence-md'): void {
@@ -717,7 +728,7 @@ export class CountryBriefPage implements CountryBriefPanel {
       };
     }
     if (this.currentBrief) data.brief = this.currentBrief;
-    if (this.currentBriefGeneratedAt) data.briefGeneratedAt = this.currentBriefGeneratedAt;
+    if (this.currentBriefGeneratedAt) data.briefGeneratedAt = new Date(this.currentBriefGeneratedAt).toISOString();
     if (this.currentBriefCached != null) data.briefCached = this.currentBriefCached;
     if (this.currentHeadlines.length > 0) {
       data.headlines = this.currentHeadlines.map(h => ({

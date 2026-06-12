@@ -298,11 +298,20 @@ export function getClerk(): ClerkInstance | null {
   return clerkInstance;
 }
 
+// Chinese in-app browsers (WeChat/Weibo/QQ/UC/Baidu) routinely block or
+// time out script loads from Cloudflare-fronted third-party hosts like
+// clerk.worldmonitor.app — a `clerk-load-failed` there is environmental
+// (Great-Firewall-class), not actionable, and not a Clerk-CDN-outage
+// signal (WORLDMONITOR-T7). A real CDN outage still alarms via every
+// other browser, so the load-failure capture keeps its value.
+const CN_INAPP_BROWSER_RE = /MicroMessenger|Weibo|QQBrowser|UCBrowser|baiduboxapp/i;
+
 // Report a Clerk UI-open failure as a single handled Sentry event. Lazy
 // import keeps @sentry/browser off this module's static graph (clerk.ts is
 // imported by Node test files where the browser SDK is unwanted) and makes
 // telemetry strictly best-effort — it must never throw into a click handler.
 function captureClerkSurfaceFailure(action: string, err: unknown, reason: string): void {
+  if (reason === 'clerk-load-failed' && typeof navigator !== 'undefined' && CN_INAPP_BROWSER_RE.test(navigator.userAgent)) return;
   void import('@sentry/browser')
     .then((Sentry) => {
       Sentry.captureException(err instanceof Error ? err : new Error(String(err)), {

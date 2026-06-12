@@ -9,6 +9,97 @@ import { evaluateFreshness } from '../freshness';
 import type { FreshnessCheck, ToolDef } from '../types';
 import { buildPublicTool, TOOL_REGISTRY } from './index';
 
+type McpBriefSource = {
+  title: string;
+  source: string;
+  url: string;
+  publishedAt?: string;
+};
+
+type DigestItemForBrief = {
+  title?: string;
+  snippet?: string;
+  source?: string;
+  link?: string;
+  url?: string;
+  publishedAt?: string | number;
+  pubDate?: string | number;
+  date?: string | number;
+};
+
+function clipBriefText(value: unknown, maxLen: number): string {
+  if (typeof value !== 'string') return '';
+  const text = value.replace(/\s+/g, ' ').trim();
+  return text.length > maxLen ? `${text.slice(0, maxLen - 1).trim()}...` : text;
+}
+
+function normalizeBriefUrl(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  try {
+    const parsed = new URL(value.trim());
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.toString() : '';
+  } catch {
+    return '';
+  }
+}
+
+function normalizeBriefDate(value: unknown): string | undefined {
+  if (typeof value !== 'string' && typeof value !== 'number') return undefined;
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : undefined;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function countryTermIndex(text: string, term: string): number {
+  const normalizedTerm = term.trim().toLowerCase();
+  if (!normalizedTerm) return -1;
+  const match = new RegExp(`(^|[^a-z0-9])${escapeRegExp(normalizedTerm)}(?=$|[^a-z0-9])`, 'i').exec(text);
+  return match ? match.index + (match[1] ?? '').length : -1;
+}
+
+function includesCountryTerm(text: string, term: string): boolean {
+  return countryTermIndex(text, term) !== -1;
+}
+
+function collectMcpBriefSources(items: DigestItemForBrief[], maxSources = 6): McpBriefSource[] {
+  const out: McpBriefSource[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    const url = normalizeBriefUrl(item.link ?? item.url);
+    const title = clipBriefText(item.title, 160);
+    const source = clipBriefText(item.source, 80);
+    if (!url || !title || !source || seen.has(url)) continue;
+    const publishedAt = normalizeBriefDate(item.publishedAt ?? item.pubDate ?? item.date);
+    out.push(publishedAt ? { title, source, url, publishedAt } : { title, source, url });
+    seen.add(url);
+    if (out.length >= maxSources) break;
+  }
+  return out;
+}
+
+function briefSourceContextLines(sources: McpBriefSource[]): string[] {
+  return sources.map((source, index) => {
+    const payload = source.publishedAt
+      ? { title: source.title, source: source.source, url: source.url, publishedAt: source.publishedAt }
+      : { title: source.title, source: source.source, url: source.url };
+    return `Source [${index + 1}]: ${JSON.stringify(payload)}`;
+  });
+}
+
+function countryBriefSearchTerms(countryCode: string): string[] {
+  const terms = [countryCode.toLowerCase()];
+  try {
+    const name = new Intl.DisplayNames(['en'], { type: 'region' }).of(countryCode);
+    if (name) terms.push(name.toLowerCase());
+  } catch {
+    /* Intl.DisplayNames can be missing in constrained runtimes. */
+  }
+  return [...new Set(terms.filter(Boolean))];
+}
+
 export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_world_brief',
@@ -31,6 +122,19 @@ export const RPC_TOOLS: ToolDef[] = [
         provider: { type: 'string' },
         model: { type: 'string' },
         generatedAt: { type: ['string', 'number', 'null'] },
+        sources: {
+          type: 'array',
+          description: 'Original feed articles used as grounding inputs for this brief.',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string' },
+              url: { type: 'string' },
+              source: { type: 'string' },
+              publishedAt: { type: 'string' },
+            },
+          },
+        },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -45,17 +149,24 @@ export const RPC_TOOLS: ToolDef[] = [
         signal: AbortSignal.timeout(6_000),
       });
       if (!digestRes.ok) throw new Error(`feed-digest HTTP ${digestRes.status}`);
-      type DigestPayload = { categories?: Record<string, { items?: { title?: string; snippet?: string }[] }> };
+      type DigestPayload = { categories?: Record<string, { items?: DigestItemForBrief[] }> };
       const digest = await digestRes.json() as DigestPayload;
       // Pair headlines with their RSS snippets so the LLM grounds per-story
       // on article bodies instead of hallucinating across unrelated titles.
       const pairs = Object.values(digest.categories ?? {})
         .flatMap(cat => cat.items ?? [])
-        .map(item => ({ title: item.title ?? '', snippet: item.snippet ?? '' }))
+        .map(item => ({
+          title: item.title ?? '',
+          snippet: item.snippet ?? '',
+          source: item.source ?? '',
+          link: item.link ?? item.url ?? '',
+          publishedAt: item.publishedAt ?? item.pubDate ?? item.date,
+        }))
         .filter(p => p.title.length > 0)
         .slice(0, 10);
       const headlines = pairs.map(p => p.title);
       const bodies = pairs.map(p => p.snippet);
+      const sources = collectMcpBriefSources(pairs, 6);
       // Step 2: summarize with LLM (budget: 18 s — combined 24 s, well under 30 s edge ceiling)
       const briefUrl = `${base}/api/news/v1/summarize-article`;
       const briefBody = JSON.stringify({
@@ -75,7 +186,8 @@ export const RPC_TOOLS: ToolDef[] = [
         signal: AbortSignal.timeout(18_000),
       });
       if (!briefRes.ok) throw new Error(`summarize-article HTTP ${briefRes.status}`);
-      return briefRes.json();
+      const result = await briefRes.json() as Record<string, unknown>;
+      return { ...result, headlines, sources };
     },
     _apiPaths: [
       "GET /api/news/v1/list-feed-digest",
@@ -103,6 +215,19 @@ export const RPC_TOOLS: ToolDef[] = [
         generatedAt: { type: ['string', 'number', 'null'] },
         provider: { type: 'string' },
         model: { type: 'string' },
+        sources: {
+          type: 'array',
+          description: 'Original feed articles used as grounding inputs for this brief.',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string' },
+              url: { type: 'string' },
+              source: { type: 'string' },
+              publishedAt: { type: 'string' },
+            },
+          },
+        },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -114,6 +239,7 @@ export const RPC_TOOLS: ToolDef[] = [
       // Without context the model hallucinates events — real headlines anchor it.
       // 2 s + 22 s brief = 24 s worst-case; 6 s margin before the 30 s Edge kill.
       let contextParam = '';
+      let sources: McpBriefSource[] = [];
       try {
         const digestUrl = `${base}/api/news/v1/list-feed-digest?variant=full&lang=en`;
         const digestAuth = await buildAuthHeaders(context, 'GET', digestUrl, null);
@@ -122,15 +248,22 @@ export const RPC_TOOLS: ToolDef[] = [
           signal: AbortSignal.timeout(2_000),
         });
         if (digestRes.ok) {
-          type DigestPayload = { categories?: Record<string, { items?: { title?: string }[] }> };
+          type DigestPayload = { categories?: Record<string, { items?: DigestItemForBrief[] }> };
           const digest = await digestRes.json() as DigestPayload;
-          const headlines = Object.values(digest.categories ?? {})
+          const allItems = Object.values(digest.categories ?? {})
             .flatMap(cat => cat.items ?? [])
-            .map(item => item.title ?? '')
-            .filter(Boolean)
-            .slice(0, 15)
-            .join('\n');
-          if (headlines) contextParam = encodeURIComponent(headlines.slice(0, 4000));
+            .filter(item => typeof item.title === 'string' && item.title.length > 0);
+          const terms = countryBriefSearchTerms(countryCode);
+          const countryItems = allItems.filter((item) => {
+            const text = `${item.title ?? ''} ${item.snippet ?? ''}`.toLowerCase();
+            return terms.some(term => includesCountryTerm(text, term));
+          });
+          const groundingItems = (countryItems.length > 0 ? countryItems : allItems).slice(0, 15);
+          sources = collectMcpBriefSources(groundingItems, 6);
+          const sourceLines = sources.length > 0 ? ['Brief source articles:', ...briefSourceContextLines(sources)] : [];
+          const headlineLines = groundingItems.map(item => item.title ?? '').filter(Boolean);
+          const contextLines = [...sourceLines, 'Headlines:', ...headlineLines].join('\n');
+          if (contextLines.trim()) contextParam = encodeURIComponent(contextLines.slice(0, 4000));
         }
       } catch { /* proceed without context — better than failing */ }
 
@@ -147,7 +280,9 @@ export const RPC_TOOLS: ToolDef[] = [
         signal: AbortSignal.timeout(22_000),
       });
       if (!res.ok) throw new Error(`get-country-intel-brief HTTP ${res.status}`);
-      return res.json();
+      const result = await res.json() as Record<string, unknown>;
+      const resultSources = collectMcpBriefSources(Array.isArray(result.sources) ? result.sources as DigestItemForBrief[] : [], 6);
+      return { ...result, sources: resultSources.length > 0 ? resultSources : sources };
     },
     // METHOD DRIFT: _execute POSTs above but OpenAPI declares only GET on this
     // path (verified against docs/api/IntelligenceService.openapi.json). The
@@ -513,15 +648,25 @@ export const RPC_TOOLS: ToolDef[] = [
       const bbox = COUNTRY_BBOXES[code];
       if (!bbox) return { error: `Unknown country code: ${code}. Use ISO 3166-1 alpha-2 (e.g. "AE", "SA", "JP").` };
       const [sw_lat, sw_lon, ne_lat, ne_lon] = bbox;
-      const bboxQ = `sw_lat=${sw_lat}&sw_lon=${sw_lon}&ne_lat=${ne_lat}&ne_lon=${ne_lon}`;
-      const url = `${base}/api/maritime/v1/get-vessel-snapshot?${bboxQ}`;
+      // Deliberately NO bbox on the inner fetch: the handler rejects any bbox
+      // dimension >10° (BboxValidationError → HTTP 400), and 67 of the 167
+      // COUNTRY_BBOXES exceed that (US, JP, AU, BR, …) — WORLDMONITOR-T8.
+      // The relay's density/disruption sets are global regardless of bbox
+      // (bbox only scopes tanker/candidate reports, which this tool never
+      // requests), so we take the cached global snapshot and filter to the
+      // country bbox here using each item's coordinates.
+      const url = `${base}/api/maritime/v1/get-vessel-snapshot`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
 
+      // Wire shape is the generated sebuf JSON — camelCase field names with
+      // nested `location` (the previous snake_case reads matched nothing, so
+      // density_zones was permanently empty).
+      type VesselLoc = { latitude?: number; longitude?: number };
       type VesselResp = {
         snapshot?: {
-          snapshot_at?: number;
-          density_zones?: { name: string; intensity: number; ships_per_day: number; delta_pct: number; note: string }[];
-          disruptions?: { name: string; type: string; severity: string; dark_ships: number; vessel_count: number; region: string; description: string }[];
+          snapshotAt?: number;
+          densityZones?: { name?: string; location?: VesselLoc; intensity?: number; shipsPerDay?: number; deltaPct?: number; note?: string }[];
+          disruptions?: { name?: string; type?: string; severity?: string; location?: VesselLoc; darkShips?: number; vesselCount?: number; region?: string; description?: string }[];
         };
       };
 
@@ -529,23 +674,55 @@ export const RPC_TOOLS: ToolDef[] = [
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(8_000),
       });
-      if (!res.ok) throw new Error(`get-vessel-snapshot HTTP ${res.status}`);
+      if (!res.ok) {
+        const detail = (await res.text().catch(() => '')).slice(0, 200);
+        throw new Error(`get-vessel-snapshot HTTP ${res.status}${detail ? ` — ${detail}` : ''}`);
+      }
       const data = await res.json() as VesselResp;
       const snap = data.snapshot ?? {};
+
+      // 3° pad: maritime zones sit offshore, outside land bboxes (e.g. the
+      // Strait of Hormuz at 26.6N/56.3E vs AE's ne corner at 26.06/56.38).
+      // (0,0) is the handler's default for missing coordinates → exclude.
+      const PAD_DEG = 3;
+      const inCountryBbox = (loc?: VesselLoc): boolean => {
+        const lat = loc?.latitude ?? 0;
+        const lon = loc?.longitude ?? 0;
+        if (lat === 0 && lon === 0) return false;
+        if (lat < sw_lat - PAD_DEG || lat > ne_lat + PAD_DEG) return false;
+        const lo = sw_lon - PAD_DEG;
+        // Source boxes stored wrapped (sw_lon > ne_lon) span the dateline;
+        // unwrap to a monotonic interval before reasoning about the pad.
+        const hi = (sw_lon > ne_lon ? ne_lon + 360 : ne_lon) + PAD_DEG;
+        // Pad widened the interval to the full circle — AQ and RU are stored
+        // as -180..180 spans, so every longitude matches.
+        if (hi - lo >= 360) return true;
+        // The pad itself can push a ±180-adjacent box past the dateline
+        // (FJ ne_lon=180 → hi=183; NZ 178.29 → 181.29): points just across
+        // it (e.g. -179) must still match, so renormalize the overflowing
+        // end into [-180,180] and compare on the wrapped complement.
+        const wraps = lo < -180 || hi > 180;
+        const loN = lo < -180 ? lo + 360 : lo;
+        const hiN = hi > 180 ? hi - 360 : hi;
+        return wraps ? lon >= loN || lon <= hiN : lon >= loN && lon <= hiN;
+      };
+
+      const zones = (snap.densityZones ?? []).filter(z => inCountryBbox(z.location));
+      const disruptions = (snap.disruptions ?? []).filter(d => inCountryBbox(d.location));
 
       return {
         country_code: code,
         bounding_box: { sw_lat, sw_lon, ne_lat, ne_lon },
-        snapshot_at: snap.snapshot_at ? new Date(snap.snapshot_at).toISOString() : new Date().toISOString(),
-        total_zones: (snap.density_zones ?? []).length,
-        total_disruptions: (snap.disruptions ?? []).length,
-        density_zones: (snap.density_zones ?? []).map(z => ({
-          name: z.name, intensity: z.intensity, ships_per_day: z.ships_per_day,
-          delta_pct: z.delta_pct, ...(z.note ? { note: z.note } : {}),
+        snapshot_at: snap.snapshotAt ? new Date(snap.snapshotAt).toISOString() : new Date().toISOString(),
+        total_zones: zones.length,
+        total_disruptions: disruptions.length,
+        density_zones: zones.map(z => ({
+          name: z.name, intensity: z.intensity, ships_per_day: z.shipsPerDay,
+          delta_pct: z.deltaPct, ...(z.note ? { note: z.note } : {}),
         })),
-        disruptions: (snap.disruptions ?? []).map(d => ({
+        disruptions: disruptions.map(d => ({
           name: d.name, type: d.type, severity: d.severity,
-          dark_ships: d.dark_ships, vessel_count: d.vessel_count,
+          dark_ships: d.darkShips, vessel_count: d.vesselCount,
           region: d.region, description: d.description,
         })),
       };

@@ -16,6 +16,11 @@ import {
   isPanelInVariantDefaults,
 } from '@/config';
 import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-resolution';
+import {
+  runNewsLoadPass,
+  type NewsCategoryLoadOptions,
+  type NewsIntelLoadOptions,
+} from '@/app/news-loader-sequencing';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
 import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
 import { withTimeout } from '@/utils/with-timeout';
@@ -299,6 +304,7 @@ export class DataLoaderManager implements AppModule {
 
   private digestBreaker = { state: 'closed' as 'closed' | 'open' | 'half-open', failures: 0, cooldownUntil: 0 };
   private readonly digestRequestTimeoutMs = 8000;
+  private readonly digestFirstPaintGraceMs = 1500;
   private readonly digestBreakerCooldownMs = 5 * 60 * 1000;
   private readonly persistedDigestMaxAgeMs = 6 * 60 * 60 * 1000;
   private readonly perFeedFallbackCategoryFeedLimit = 3;
@@ -936,7 +942,13 @@ export class DataLoaderManager implements AppModule {
   // active variant's preset. The per-variant server digest never carries it,
   // so it skips the digest-availability gate and fetches its full feed set
   // directly client-side (the cost is borne only by users who customize).
-  private async loadNewsCategory(category: string, feeds: typeof FEEDS.politics, digest?: ListFeedDigestResponse | null, isCustom = false): Promise<NewsItem[]> {
+  private async loadNewsCategory(
+    category: string,
+    feeds: typeof FEEDS.politics,
+    digest?: ListFeedDigestResponse | null,
+    isCustom = false,
+    options: NewsCategoryLoadOptions = { allowDigestPendingFallback: false, recordBaselineSample: true },
+  ): Promise<NewsItem[]> {
     try {
       const panel = this.ctx.newsPanels[category];
 
@@ -974,7 +986,7 @@ export class DataLoaderManager implements AppModule {
           itemCount: items.length,
         });
 
-        if (panel) {
+        if (panel && options.recordBaselineSample) {
           try {
             const baseline = await updateBaseline(`news:${category}`, items.length);
             const deviation = calculateDeviation(items.length, baseline);
@@ -1041,7 +1053,7 @@ export class DataLoaderManager implements AppModule {
       // (every preset category fetching at once). It does NOT apply to custom
       // categories: those are NEVER in the digest by design — direct fetch is
       // their only path, and there are only a handful of them per user.
-      if (!isCustom && !this.isPerFeedFallbackEnabled()) {
+      if (!isCustom && !this.isPerFeedFallbackEnabled() && !options.allowDigestPendingFallback) {
         console.warn(`[News] Digest missing for "${category}", limited per-feed fallback disabled`);
         this.renderNewsForCategory(category, []);
         this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
@@ -1058,6 +1070,8 @@ export class DataLoaderManager implements AppModule {
         : this.selectLimitedFeeds(enabledFeeds, this.perFeedFallbackCategoryFeedLimit);
       if (isCustom) {
         console.warn(`[News] Custom category "${category}" (not in variant preset), fetching ${fallbackFeeds.length} feeds directly`);
+      } else if (options.allowDigestPendingFallback) {
+        console.warn(`[News] Digest still pending for "${category}", using limited per-feed fallback (${fallbackFeeds.length}/${enabledFeeds.length} feeds)`);
       } else if (fallbackFeeds.length < enabledFeeds.length) {
         console.warn(`[News] Digest missing for "${category}", using limited per-feed fallback (${fallbackFeeds.length}/${enabledFeeds.length} feeds)`);
       } else {
@@ -1090,11 +1104,13 @@ export class DataLoaderManager implements AppModule {
           }
         }
 
-        try {
-          const baseline = await updateBaseline(`news:${category}`, items.length);
-          const deviation = calculateDeviation(items.length, baseline);
-          panel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
-        } catch (e) { console.warn(`[Baseline] news:${category} write failed:`, e); }
+        if (options.recordBaselineSample) {
+          try {
+            const baseline = await updateBaseline(`news:${category}`, items.length);
+            const deviation = calculateDeviation(items.length, baseline);
+            panel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
+          } catch (e) { console.warn(`[Baseline] news:${category} write failed:`, e); }
+        }
       }
 
       this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
@@ -1115,14 +1131,105 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
+  private async loadIntelNews(
+    digest: ListFeedDigestResponse | null,
+    allowDigestPendingFallback: boolean,
+    options: NewsIntelLoadOptions = { recordBaselineSample: true },
+  ): Promise<NewsItem[]> {
+    const enabledIntelSources = INTEL_SOURCES.filter(f => !this.ctx.disabledSources.has(f.name));
+    const enabledIntelNames = new Set(enabledIntelSources.map(f => f.name));
+    const intelPanel = this.ctx.newsPanels['intel'];
+    if (enabledIntelSources.length === 0) {
+      delete this.ctx.newsByCategory['intel'];
+      if (intelPanel) intelPanel.showError(t('common.allIntelSourcesDisabled'));
+      this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: 0 });
+      return [];
+    }
+
+    if (digest?.categories && 'intel' in digest.categories) {
+      // Digest branch for intel
+      const intel = (digest.categories['intel']?.items ?? [])
+        .map(protoItemToNewsItem)
+        .filter(i => enabledIntelNames.has(i.source));
+      checkBatchForBreakingAlerts(intel);
+      this.renderNewsForCategory('intel', intel);
+      if (intelPanel && options.recordBaselineSample) {
+        try {
+          const baseline = await updateBaseline('news:intel', intel.length);
+          const deviation = calculateDeviation(intel.length, baseline);
+          intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
+        } catch (e) { console.warn('[Baseline] news:intel write failed:', e); }
+      }
+      this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: intel.length });
+      this.flashMapForNews(intel);
+      return intel;
+    }
+
+    const staleIntel = this.getStaleNewsItems('intel').filter(i => enabledIntelNames.has(i.source));
+    if (staleIntel.length > 0) {
+      console.warn(`[News] Intel digest missing, serving stale headlines (${staleIntel.length})`);
+      this.renderNewsForCategory('intel', staleIntel);
+      if (intelPanel && options.recordBaselineSample) {
+        try {
+          const baseline = await updateBaseline('news:intel', staleIntel.length);
+          const deviation = calculateDeviation(staleIntel.length, baseline);
+          intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
+        } catch (e) { console.warn('[Baseline] news:intel write failed:', e); }
+      }
+      this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: staleIntel.length });
+      return staleIntel;
+    }
+
+    if (!this.isPerFeedFallbackEnabled() && !allowDigestPendingFallback) {
+      console.warn('[News] Intel digest missing, limited per-feed fallback disabled');
+      delete this.ctx.newsByCategory['intel'];
+      this.ctx.statusPanel?.updateFeed('Intel', { status: 'error', errorMessage: 'Digest unavailable' });
+      return [];
+    }
+
+    const fallbackIntelFeeds = this.selectLimitedFeeds(enabledIntelSources, this.perFeedFallbackIntelFeedLimit);
+    if (allowDigestPendingFallback) {
+      console.warn(`[News] Intel digest still pending, using limited per-feed fallback (${fallbackIntelFeeds.length}/${enabledIntelSources.length} feeds)`);
+    } else if (fallbackIntelFeeds.length < enabledIntelSources.length) {
+      console.warn(`[News] Intel digest missing, using limited per-feed fallback (${fallbackIntelFeeds.length}/${enabledIntelSources.length} feeds)`);
+    }
+
+    let intel: NewsItem[];
+    try {
+      intel = await fetchCategoryFeeds(fallbackIntelFeeds, { batchSize: this.perFeedFallbackBatchSize });
+    } catch (e) {
+      delete this.ctx.newsByCategory['intel'];
+      console.error('[App] Intel feed failed:', e);
+      return [];
+    }
+
+    checkBatchForBreakingAlerts(intel);
+    this.renderNewsForCategory('intel', intel);
+    if (intelPanel && options.recordBaselineSample) {
+      try {
+        const baseline = await updateBaseline('news:intel', intel.length);
+        const deviation = calculateDeviation(intel.length, baseline);
+        intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
+      } catch (e) { console.warn('[Baseline] news:intel write failed:', e); }
+    }
+    this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: intel.length });
+    this.flashMapForNews(intel);
+    return intel;
+  }
+
   async loadNews(): Promise<void> {
     // Reset happy variant accumulator for fresh pipeline run
     if (SITE_VARIANT === 'happy') {
       this.ctx.happyAllItems = [];
     }
 
-    // Fire digest fetch early (non-blocking) — await before category loop
-    const digestPromise = this.tryFetchDigest();
+    // Fire digest fetch early, but do not let a slow digest stall the category
+    // first paint. Fast digests still take the optimized digest-backed path.
+    const digestPromise = this.tryFetchDigest().catch((error) => {
+      console.warn('[News] Digest fetch failed before category load:', error);
+      return null;
+    });
+    const fallbackDigest = this.lastGoodDigest ?? await this.loadPersistedDigest();
 
     // Panel-driven, not variant-driven: load the active variant's preset
     // categories PLUS any extra categories required by enabled news panels the
@@ -1135,109 +1242,47 @@ export class DataLoaderManager implements AppModule {
       enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings),
     );
 
-    const digest = await digestPromise;
-
     const maxCategoryConcurrency = SITE_VARIANT === 'tech' ? 4 : 5;
     const categoryConcurrency = Math.max(1, Math.min(maxCategoryConcurrency, categories.length));
-    const categoryResults: PromiseSettledResult<NewsItem[]>[] = [];
-    for (let i = 0; i < categories.length; i += categoryConcurrency) {
-      const chunk = categories.slice(i, i + categoryConcurrency);
-      const chunkResults = await Promise.allSettled(
-        chunk.map(({ key, feeds, isCustom }) => this.loadNewsCategory(key, feeds, digest, isCustom))
-      );
-      categoryResults.push(...chunkResults);
-    }
+    const newsPass = await runNewsLoadPass(
+      {
+        categories,
+        categoryConcurrency,
+        digestPromise,
+        fallbackDigest,
+        digestGraceMs: this.digestFirstPaintGraceMs,
+        allowPendingPerFeedFallback: this.isPerFeedFallbackEnabled(),
+        hasDigestCategory: (digest, key) => Boolean(digest.categories && key in digest.categories),
+        loadCategory: ({ key, feeds, isCustom }, digest, options) => this.loadNewsCategory(key, feeds, digest, isCustom, options),
+        loadIntel: SITE_VARIANT === 'full'
+          ? (digest, allowDigestPendingFallback, options) => this.loadIntelNews(digest, allowDigestPendingFallback, options)
+          : undefined,
+        onCategoryError: (key, reason) => {
+          console.error(`[App] News category ${key ?? 'unknown'} failed:`, reason);
+        },
+        onDigestRefreshError: (key, reason) => {
+          console.error(`[App] Digest refresh for news category ${key ?? 'unknown'} failed:`, reason);
+        },
+      },
+    );
+    const { categoryItemsByKey, intelItems } = newsPass;
 
     const collectedNews: NewsItem[] = [];
-    categoryResults.forEach((result, idx) => {
-      if (result.status === 'fulfilled') {
-        const items = result.value;
-        // Tag items with content categories for happy variant
-        if (SITE_VARIANT === 'happy') {
-          for (const item of items) {
-            item.happyCategory = classifyNewsItem(item.source, item.title);
-          }
-          // Accumulate curated items for the positive news pipeline
-          this.ctx.happyAllItems = this.ctx.happyAllItems.concat(items);
+    for (const { key } of categories) {
+      const items = categoryItemsByKey.get(key) ?? [];
+      // Tag items with content categories for happy variant
+      if (SITE_VARIANT === 'happy') {
+        for (const item of items) {
+          item.happyCategory = classifyNewsItem(item.source, item.title);
         }
-        collectedNews.push(...items);
-      } else {
-        console.error(`[App] News category ${categories[idx]?.key} failed:`, result.reason);
+        // Accumulate curated items for the positive news pipeline
+        this.ctx.happyAllItems = this.ctx.happyAllItems.concat(items);
       }
-    });
+      collectedNews.push(...items);
+    }
 
     if (SITE_VARIANT === 'full') {
-      const enabledIntelSources = INTEL_SOURCES.filter(f => !this.ctx.disabledSources.has(f.name));
-      const enabledIntelNames = new Set(enabledIntelSources.map(f => f.name));
-      const intelPanel = this.ctx.newsPanels['intel'];
-      if (enabledIntelSources.length === 0) {
-        delete this.ctx.newsByCategory['intel'];
-        if (intelPanel) intelPanel.showError(t('common.allIntelSourcesDisabled'));
-        this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: 0 });
-      } else if (digest?.categories && 'intel' in digest.categories) {
-        // Digest branch for intel
-        const intel = (digest.categories['intel']?.items ?? [])
-          .map(protoItemToNewsItem)
-          .filter(i => enabledIntelNames.has(i.source));
-        checkBatchForBreakingAlerts(intel);
-        this.renderNewsForCategory('intel', intel);
-        if (intelPanel) {
-          try {
-            const baseline = await updateBaseline('news:intel', intel.length);
-            const deviation = calculateDeviation(intel.length, baseline);
-            intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
-          } catch (e) { console.warn('[Baseline] news:intel write failed:', e); }
-        }
-        this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: intel.length });
-        collectedNews.push(...intel);
-        this.flashMapForNews(intel);
-      } else {
-        const staleIntel = this.getStaleNewsItems('intel').filter(i => enabledIntelNames.has(i.source));
-        if (staleIntel.length > 0) {
-          console.warn(`[News] Intel digest missing, serving stale headlines (${staleIntel.length})`);
-          this.renderNewsForCategory('intel', staleIntel);
-          if (intelPanel) {
-            try {
-              const baseline = await updateBaseline('news:intel', staleIntel.length);
-              const deviation = calculateDeviation(staleIntel.length, baseline);
-              intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
-            } catch (e) { console.warn('[Baseline] news:intel write failed:', e); }
-          }
-          this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: staleIntel.length });
-          collectedNews.push(...staleIntel);
-        } else if (!this.isPerFeedFallbackEnabled()) {
-          console.warn('[News] Intel digest missing, limited per-feed fallback disabled');
-          delete this.ctx.newsByCategory['intel'];
-          this.ctx.statusPanel?.updateFeed('Intel', { status: 'error', errorMessage: 'Digest unavailable' });
-        } else {
-          const fallbackIntelFeeds = this.selectLimitedFeeds(enabledIntelSources, this.perFeedFallbackIntelFeedLimit);
-          if (fallbackIntelFeeds.length < enabledIntelSources.length) {
-            console.warn(`[News] Intel digest missing, using limited per-feed fallback (${fallbackIntelFeeds.length}/${enabledIntelSources.length} feeds)`);
-          }
-
-          const intelResult = await Promise.allSettled([
-            fetchCategoryFeeds(fallbackIntelFeeds, { batchSize: this.perFeedFallbackBatchSize }),
-          ]);
-          if (intelResult[0]?.status === 'fulfilled') {
-            const intel = intelResult[0].value;
-            checkBatchForBreakingAlerts(intel);
-            this.renderNewsForCategory('intel', intel);
-            if (intelPanel) {
-              try {
-                const baseline = await updateBaseline('news:intel', intel.length);
-                const deviation = calculateDeviation(intel.length, baseline);
-                intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
-              } catch (e) { console.warn('[Baseline] news:intel write failed:', e); }
-            }
-            this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: intel.length });
-            collectedNews.push(...intel);
-            this.flashMapForNews(intel);
-          } else {
-            delete this.ctx.newsByCategory['intel'];
-            console.error('[App] Intel feed failed:', intelResult[0]?.reason);
-          }
-        }
-      }
+      collectedNews.push(...intelItems);
     }
 
     this.ctx.allNews = collectedNews;

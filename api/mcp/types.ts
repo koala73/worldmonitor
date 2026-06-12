@@ -97,6 +97,7 @@ export interface BaseToolDef {
 export interface FreshnessCheck {
   key: string;
   maxStaleMin: number;
+  minRecordCount?: number;
 }
 
 // Cache-read tool: reads one or more Redis keys and returns them with staleness info.

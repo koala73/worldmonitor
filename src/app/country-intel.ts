@@ -45,6 +45,11 @@ import { trackCountrySelected, trackCountryBriefOpened } from '@/services/analyt
 import { toApiUrl } from '@/services/runtime';
 import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
 import type { NewsItem } from '@/types';
+import {
+  buildBriefSourceContextLines,
+  collectBriefSources,
+  type BriefSource,
+} from '@/utils/brief-sources';
 import { getNearbyInfrastructure } from '@/services/related-assets';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { iso2ToIso3, iso2ToComtradeReporterCode } from '@/utils/country-codes';
@@ -66,6 +71,13 @@ type CountryStockSnapshot = {
   price: string;
   weekChangePercent: string;
   currency: string;
+};
+
+type CountryIntelBriefResult = {
+  brief: string;
+  sources: BriefSource[];
+  generatedAt?: string | number;
+  cached?: boolean;
 };
 
 export class CountryIntelManager implements AppModule {
@@ -280,7 +292,7 @@ export class CountryIntelManager implements AppModule {
     const otherCountryTerms = CountryIntelManager.getOtherCountryTerms(code);
     const matchingNews = this.ctx.allNews.filter((n) => {
       const t = n.title.toLowerCase();
-      return searchTerms.some((term) => t.includes(term));
+      return CountryIntelManager.firstMentionPosition(t, searchTerms) !== Infinity;
     });
     const filteredNews = matchingNews.filter((n) => {
       const t = n.title.toLowerCase();
@@ -518,8 +530,11 @@ export class CountryIntelManager implements AppModule {
         }
       }
 
-      const headlines = filteredNews.slice(0, 15).map((n) => n.title);
+      const groundingNews = filteredNews.slice(0, 15);
+      let briefSources = collectBriefSources(groundingNews, 6);
+      const headlines = groundingNews.map((n) => n.title);
       if (headlines.length) context.headlines = headlines;
+      if (briefSources.length) context.briefSources = briefSources;
       const briefHeadlines = (context.headlines as string[] | undefined) || [];
 
       const stockData = await stockPromise;
@@ -529,6 +544,7 @@ export class CountryIntelManager implements AppModule {
       }
 
       let briefText = '';
+      let briefResult: CountryIntelBriefResult | null = null;
       try {
         let contextSnapshot = this.buildBriefContextSnapshot(country, code, score, signals, context);
 
@@ -546,11 +562,22 @@ export class CountryIntelManager implements AppModule {
         }
 
         const countryFw = getActiveFrameworkForPanel('country-brief');
-        briefText = await this.fetchCountryIntelBrief(code, contextSnapshot, countryFw?.systemPromptAppend ?? '');
+        briefResult = await this.fetchCountryIntelBrief(code, contextSnapshot, countryFw?.systemPromptAppend ?? '');
+        briefText = briefResult.brief;
+        if (briefResult.sources.length > 0) {
+          briefSources = briefResult.sources;
+        }
       } catch { /* server unreachable */ }
 
       if (briefText) {
-        this.ctx.countryBriefPage?.updateBrief({ brief: briefText, country, code });
+        this.ctx.countryBriefPage?.updateBrief({
+          brief: briefText,
+          country,
+          code,
+          sources: briefSources,
+          generatedAt: briefResult?.generatedAt,
+          cached: briefResult?.cached,
+        });
       } else {
         let fallbackBrief = '';
         const sumModelId = BETA_MODE ? 'summarization-beta' : 'summarization';
@@ -567,7 +594,7 @@ export class CountryIntelManager implements AppModule {
         }
 
         if (fallbackBrief) {
-          this.ctx.countryBriefPage?.updateBrief({ brief: fallbackBrief, country, code, fallback: true });
+          this.ctx.countryBriefPage?.updateBrief({ brief: fallbackBrief, country, code, fallback: true, sources: briefSources });
         } else {
           const lines: string[] = [];
           if (score) lines.push(t('countryBrief.fallback.instabilityIndex', { score: String(score.score), level: t(`countryBrief.levels.${score.level}`), trend: t(`countryBrief.trends.${score.trend}`) }));
@@ -739,7 +766,7 @@ export class CountryIntelManager implements AppModule {
     page.updateScore?.(score, signals);
   }
 
-  private async fetchCountryIntelBrief(code: string, contextSnapshot: string, framework = ''): Promise<string> {
+  private async fetchCountryIntelBrief(code: string, contextSnapshot: string, framework = ''): Promise<CountryIntelBriefResult> {
     const lang = getCurrentLanguage();
     const params = new URLSearchParams({ country_code: code, lang });
     const trimmed = contextSnapshot.trim();
@@ -756,10 +783,20 @@ export class CountryIntelManager implements AppModule {
       headers: { Accept: 'application/json' },
       signal: this.ctx.countryBriefPage?.signal,
     });
-    if (!resp.ok) return '';
+    if (!resp.ok) return { brief: '', sources: [] };
 
-    const body = (await resp.json()) as { brief?: string };
-    return typeof body.brief === 'string' ? body.brief.trim() : '';
+    const body = (await resp.json()) as {
+      brief?: string;
+      sources?: BriefSource[];
+      generatedAt?: string | number;
+      cached?: boolean;
+    };
+    return {
+      brief: typeof body.brief === 'string' ? body.brief.trim() : '',
+      sources: collectBriefSources(body.sources ?? [], 6),
+      generatedAt: body.generatedAt,
+      cached: body.cached,
+    };
   }
 
   private buildBriefContextSnapshot(
@@ -775,6 +812,15 @@ export class CountryIntelManager implements AppModule {
     // Infrastructure grounding must appear early so it survives the context char limit
     const infraContext = this.buildInfrastructureContext(code);
     if (infraContext) lines.push(infraContext);
+
+    const briefSources = collectBriefSources(
+      Array.isArray(context.briefSources) ? context.briefSources as BriefSource[] : [],
+      6,
+    );
+    if (briefSources.length > 0) {
+      lines.push('Brief source articles:');
+      lines.push(...buildBriefSourceContextLines(briefSources));
+    }
 
     if (score) {
       lines.push(`CII: ${score.score}/100 (${score.level}), trend=${score.trend}, 24h_change=${score.change24h}`);
@@ -1297,7 +1343,7 @@ export class CountryIntelManager implements AppModule {
 
     const countryLower = country.toLowerCase();
     const rawLower = normalized.toLowerCase();
-    return rawLower === countryLower || rawLower.includes(countryLower);
+    return rawLower === countryLower || CountryIntelManager.countryTermIndex(rawLower, countryLower) !== -1;
   }
 
   private mapSignalType(type: string): CountryDeepDiveSignalDetails['recentHigh'][number]['type'] {
@@ -1426,10 +1472,21 @@ export class CountryIntelManager implements AppModule {
 
   private static otherCountryTermsCache: Map<string, string[]> = new Map();
 
+  static escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  static countryTermIndex(text: string, term: string): number {
+    const normalizedTerm = term.trim().toLowerCase();
+    if (!normalizedTerm) return -1;
+    const match = new RegExp(`(^|[^a-z0-9])${CountryIntelManager.escapeRegExp(normalizedTerm)}(?=$|[^a-z0-9])`, 'i').exec(text);
+    return match ? match.index + (match[1] ?? '').length : -1;
+  }
+
   static firstMentionPosition(text: string, terms: string[]): number {
     let earliest = Infinity;
     for (const term of terms) {
-      const idx = text.indexOf(term);
+      const idx = CountryIntelManager.countryTermIndex(text, term);
       if (idx !== -1 && idx < earliest) earliest = idx;
     }
     return earliest;
