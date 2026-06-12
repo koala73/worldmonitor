@@ -126,6 +126,7 @@ ${HIDE_SCRIPT}`;
 
 // /welcome landing page — reads ONLY en.welcome.* keys.
 const w = en.welcome;
+const momentTitle = (moment) => moment.title ?? `${moment.title1} ${moment.title2}`;
 const welcomeContent = `
 <div id="seo-prerender" lang="en">
   <h1>${w.hero.headline1} ${w.hero.headline2}</h1>
@@ -138,13 +139,13 @@ const welcomeContent = `
 
   <h2>${w.moments.title}</h2>
   <p>${w.moments.sub}</p>
-  <h3>${w.moments.m1.title}</h3><p>${w.moments.m1.kicker}.</p>
+  <h3>${momentTitle(w.moments.m1)}</h3><p>${w.moments.m1.kicker}.</p>
   <p>${w.moments.m1.s1} ${w.moments.m1.s2} ${w.moments.m1.s3} ${w.moments.m1.s4}</p>
-  <h3>${w.moments.m2.title1} ${w.moments.m2.title2}</h3><p>${w.moments.m2.kicker}.</p>
+  <h3>${momentTitle(w.moments.m2)}</h3><p>${w.moments.m2.kicker}.</p>
   <p>${w.moments.m2.s1} ${w.moments.m2.s2} ${w.moments.m2.s3} ${w.moments.m2.s4}</p>
-  <h3>${w.moments.m3.title}</h3><p>${w.moments.m3.kicker}.</p>
+  <h3>${momentTitle(w.moments.m3)}</h3><p>${w.moments.m3.kicker}.</p>
   <p>${w.moments.m3.s1} ${w.moments.m3.s2} ${w.moments.m3.s3} ${w.moments.m3.s4}</p>
-  <h3>${w.moments.m4.title1} ${w.moments.m4.title2}</h3><p>${w.moments.m4.kicker}.</p>
+  <h3>${momentTitle(w.moments.m4)}</h3><p>${w.moments.m4.kicker}.</p>
   <p>${w.moments.m4.s1} ${w.moments.m4.s2} ${w.moments.m4.s3} ${w.moments.m4.s4}</p>
   <p>${w.moments.bridge1} ${w.moments.bridge2}</p>
 
