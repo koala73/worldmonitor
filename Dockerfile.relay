@@ -15,10 +15,12 @@ RUN apk add --no-cache curl
 WORKDIR /app
 
 # Install scripts/ runtime dependencies (telegram, ws, fast-xml-parser, etc.)
-# --omit=optional --ignore-scripts: skip native optional deps (bufferutil /
-# utf-8-validate) so node-gyp doesn't need Python/build tools in the Alpine
-# build stage. ws/telegram run fine on the pure-JS fallback. Mirrors the
-# main Dockerfile's stage-2 pattern.
+# --ignore-scripts is the critical part: native helper packages such as
+# bufferutil/utf-8-validate can still resolve through websocket, but their
+# node-gyp-build install scripts won't run, so Alpine doesn't need Python/build
+# tools. --omit=optional also skips packages that are only optional in this
+# tree. ws/telegram fall back to pure JS when native helpers are unavailable.
+# Mirrors the main Dockerfile's stage-2 pattern.
 COPY scripts/package.json scripts/package-lock.json ./scripts/
 RUN npm ci --prefix scripts --omit=dev --omit=optional --ignore-scripts
 
