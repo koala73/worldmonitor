@@ -381,15 +381,13 @@ describe('gateway internal-MCP HMAC verify — happy paths', () => {
     assert.deepEqual(await res.json(), { error: 'invalid_internal_mcp_signature' });
   });
 
-  it('signer that legitimately included rpc=<last-segment> in the signed URL still verifies', async () => {
+  it('rpc=<last-segment> in the SIGNED URL fails verification — rpc is a reserved routing param', async () => {
     // Both sides carry the param: verifier strips it from the inbound hash,
-    // and the signer's canonical string included it — they would diverge if
-    // the signer-side URL ever grows a real rpc param. Pin the SAFE direction:
-    // the inbound request carries the same single echo entry the router would
-    // inject, so stripping reproduces the signed (param-less) string only when
-    // the signer ALSO omitted it. Here the signer included it, so verification
-    // must fail — documenting that `rpc` is a RESERVED routing param that
-    // outbound tool URLs must never use.
+    // but the signer's canonical string included it, so the hashes diverge
+    // and verification MUST fail (401). This pins the contract that `rpc`
+    // is a RESERVED routing param outbound tool URLs must never use — if a
+    // future endpoint legitimately needs a query param named rpc, the
+    // signer and verifier have to agree on new handling first.
     const handler = makeGateway();
     const url = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest?rpc=list-feed-digest';
     const signed = await signInternalMcpRequest({ method: 'GET', url, body: null, userId: PRO_USER_ID, secret: HMAC_SECRET });
