@@ -15,8 +15,14 @@ RUN apk add --no-cache curl
 WORKDIR /app
 
 # Install scripts/ runtime dependencies (telegram, ws, fast-xml-parser, etc.)
+# --ignore-scripts is the critical part: native helper packages such as
+# bufferutil/utf-8-validate can still resolve through websocket, but their
+# node-gyp-build install scripts won't run, so Alpine doesn't need Python/build
+# tools. --omit=optional also skips packages that are only optional in this
+# tree. ws/telegram fall back to pure JS when native helpers are unavailable.
+# Mirrors the main Dockerfile's stage-2 pattern.
 COPY scripts/package.json scripts/package-lock.json ./scripts/
-RUN npm ci --prefix scripts --omit=dev
+RUN npm ci --prefix scripts --omit=dev --omit=optional --ignore-scripts
 
 # Relay script and shared helpers
 COPY scripts/ais-relay.cjs ./scripts/ais-relay.cjs
