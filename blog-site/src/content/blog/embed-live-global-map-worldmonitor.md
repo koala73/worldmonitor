@@ -4,6 +4,7 @@ description: "World Monitor now supports a public iframe map for conflicts, eart
 metaTitle: "Embed a Live Global Intelligence Map"
 keywords: "embeddable map, live conflict map, earthquake map embed, geopolitical map iframe, World Monitor embed"
 audience: "Journalists, publishers, researchers, analysts"
+heroImage: "/blog/og/embed-live-global-map-worldmonitor.png"
 pubDate: "2026-06-11"
 ---
 

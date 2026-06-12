@@ -248,7 +248,16 @@ describe('resilience runtime manifest gateway auth', () => {
     delete process.env.WORLDMONITOR_VALID_KEYS;
     process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'true';
 
-    assert.deepEqual([...PUBLIC_NO_AUTH_RPC_PATHS], ['/api/resilience/v1/get-runtime-manifest']);
+    assert.deepEqual(
+      [...PUBLIC_NO_AUTH_RPC_PATHS],
+      [
+        '/api/conflict/v1/list-acled-events',
+        '/api/natural/v1/list-natural-events',
+        '/api/resilience/v1/get-runtime-manifest',
+        '/api/seismology/v1/list-earthquakes',
+        '/api/unrest/v1/list-unrest-events',
+      ],
+    );
     assert.equal(PREMIUM_RPC_PATHS.has('/api/resilience/v1/get-runtime-manifest'), false);
 
     const gateway = createDomainGateway(generated.createResilienceServiceRoutes(resilienceHandler, serverOptions));

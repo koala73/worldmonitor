@@ -329,7 +329,11 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';
 
 export const PUBLIC_NO_AUTH_RPC_PATHS = new Set<string>([
+  '/api/conflict/v1/list-acled-events',
+  '/api/natural/v1/list-natural-events',
   '/api/resilience/v1/get-runtime-manifest',
+  '/api/seismology/v1/list-earthquakes',
+  '/api/unrest/v1/list-unrest-events',
 ]);
 
 // Cacheable, non-premium RPC endpoints the Railway relay periodically warm-pings

@@ -1,3 +1,4 @@
+import { createServer, type Server } from 'node:http';
 import { expect, test, type Page } from '@playwright/test';
 
 const WORLD_TOPOLOGY = {
@@ -40,8 +41,43 @@ async function stubWorldAtlas(page: Page): Promise<void> {
   });
 }
 
+async function serveThirdPartyHostPage(html: string): Promise<{ url: string; close: () => Promise<void> }> {
+  const server: Server = createServer((_req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(html);
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+
+  const address = server.address();
+  if (!address || typeof address === 'string') {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    throw new Error('third-party host server did not bind to a TCP port');
+  }
+
+  return {
+    url: `http://127.0.0.1:${address.port}/worldmonitor-host`,
+    close: () => new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    }),
+  };
+}
+
 test.describe('public map embed', () => {
-  const embedPath = '/embed?layers=conflicts&center=0,0&zoom=1&theme=dark&variant=full';
+  const embedPath = '/embed?layers=conflicts,earthquakes,protests,weather&center=0,0&zoom=1&theme=dark&variant=full';
+  const publicEmbedApiPaths = [
+    '/api/bootstrap?keys=weatherAlerts',
+    '/api/conflict/v1/list-acled-events',
+    '/api/natural/v1/list-natural-events',
+    '/api/seismology/v1/list-earthquakes',
+    '/api/unrest/v1/list-unrest-events',
+  ];
 
   test('renders the map-only embed route with attribution', async ({ page }, testInfo) => {
     await stubWorldAtlas(page);
@@ -60,8 +96,44 @@ test.describe('public map embed', () => {
 
   test('loads inside a third-party iframe host page', async ({ page, baseURL }, testInfo) => {
     await stubWorldAtlas(page);
-    const embedUrl = new URL(embedPath, baseURL ?? 'http://127.0.0.1:4173').toString();
-    await page.setContent(`
+    const localBaseUrl = baseURL ?? 'http://127.0.0.1:4173';
+    const embedUrl = new URL(embedPath, localBaseUrl).toString();
+    const embedOrigin = new URL(embedUrl).origin;
+    const statuses = new Map<string, number[]>();
+    page.on('response', (response) => {
+      const url = new URL(response.url());
+      const key = url.pathname === '/api/bootstrap'
+        ? `${url.pathname}?${url.searchParams.toString()}`
+        : url.pathname;
+      if (!publicEmbedApiPaths.includes(key)) return;
+      statuses.set(key, [...(statuses.get(key) ?? []), response.status()]);
+    });
+    await page.route('https://api.worldmonitor.app/api/**', async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const localUrl = new URL(`${url.pathname}${url.search}`, localBaseUrl).toString();
+      const response = await fetch(localUrl, {
+        method: request.method(),
+        headers: {
+          Accept: request.headers()['accept'] ?? '*/*',
+          'Content-Type': request.headers()['content-type'] ?? 'application/json',
+          Origin: embedOrigin,
+        },
+      });
+      const body = await response.text();
+      await route.fulfill({
+        status: response.status,
+        headers: {
+          'Access-Control-Allow-Credentials': 'true',
+          'Access-Control-Allow-Origin': embedOrigin,
+          'Content-Type': response.headers.get('Content-Type') ?? 'application/json',
+          Vary: 'Origin',
+        },
+        body,
+      });
+    });
+
+    const host = await serveThirdPartyHostPage(`
       <!doctype html>
       <html>
         <body style="margin:0;background:#f7f7f7">
@@ -73,14 +145,25 @@ test.describe('public map embed', () => {
       </html>
     `);
 
-    const frame = page.frameLocator('#wm');
-    await expect(frame.locator('.wm-embed-attribution')).toHaveText('Live map by World Monitor');
-    await expect(frame.locator('.map-svg')).toBeVisible();
-    await expect.poll(async () => frame.locator('.country').count()).toBeGreaterThan(0);
-    await expect(frame.locator('.map-controls, .time-slider, .layer-toggles, .map-legend')).toHaveCount(0);
+    try {
+      await page.goto(host.url);
 
-    const screenshotPath = testInfo.outputPath('embed-iframe.png');
-    await page.screenshot({ path: screenshotPath, fullPage: true });
-    await testInfo.attach('embed-iframe', { path: screenshotPath, contentType: 'image/png' });
+      const frame = page.frameLocator('#wm');
+      await expect(frame.locator('.wm-embed-attribution')).toHaveText('Live map by World Monitor');
+      await expect(frame.locator('.map-svg')).toBeVisible();
+      await expect.poll(async () => frame.locator('.country').count()).toBeGreaterThan(0);
+      await expect(frame.locator('.map-controls, .time-slider, .layer-toggles, .map-legend')).toHaveCount(0);
+      await expect(frame.locator('body')).toHaveAttribute('data-embed-ready', 'true');
+      await expect.poll(() => publicEmbedApiPaths.filter((path) => statuses.has(path)).sort()).toEqual([...publicEmbedApiPaths].sort());
+      for (const [path, seenStatuses] of statuses) {
+        expect(seenStatuses, `${path} must not 401 for anonymous embed viewers`).not.toContain(401);
+      }
+
+      const screenshotPath = testInfo.outputPath('embed-iframe.png');
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      await testInfo.attach('embed-iframe', { path: screenshotPath, contentType: 'image/png' });
+    } finally {
+      await host.close();
+    }
   });
 });

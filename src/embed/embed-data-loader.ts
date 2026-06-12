@@ -5,13 +5,14 @@ import { fetchNaturalEvents } from '@/services/eonet';
 import { fetchProtestEvents } from '@/services/unrest';
 import { fetchWeatherAlerts } from '@/services/weather';
 import { ConflictServiceClient } from '@/generated/client/worldmonitor/conflict/v1/service_client';
+import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/smart-poll-loop';
 import type { EmbedLayerId } from './embed-url';
 
 const REFRESH_MS = 10 * 60 * 1000;
 const conflictClient = new ConflictServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
 
 export class EmbedDataLoader {
-  private refreshTimer: number | null = null;
+  private refreshLoop: SmartPollLoopHandle | null = null;
 
   constructor(
     private readonly map: MapComponent,
@@ -20,15 +21,18 @@ export class EmbedDataLoader {
 
   async start(): Promise<void> {
     await this.loadOnce();
-    this.refreshTimer = window.setInterval(() => {
-      void this.loadOnce();
-    }, REFRESH_MS);
+    this.refreshLoop = startSmartPollLoop(() => this.loadOnce(), {
+      intervalMs: REFRESH_MS,
+      pauseWhenHidden: true,
+      refreshOnVisible: true,
+      runImmediately: false,
+    });
   }
 
   destroy(): void {
-    if (this.refreshTimer !== null) {
-      window.clearInterval(this.refreshTimer);
-      this.refreshTimer = null;
+    if (this.refreshLoop !== null) {
+      this.refreshLoop.stop();
+      this.refreshLoop = null;
     }
   }
 

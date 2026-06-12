@@ -33,6 +33,7 @@ const POST_DATES = {
   'https://www.worldmonitor.app/blog/posts/geopolitical-risk-alerts-slack-teams-worldmonitor-api/': '2026-06-10',
   'https://www.worldmonitor.app/blog/posts/ask-claude-whats-happening-worldmonitor-mcp/': '2026-06-10',
   'https://www.worldmonitor.app/blog/posts/free-geopolitical-data-apis-2026/': '2026-06-10',
+  'https://www.worldmonitor.app/blog/posts/embed-live-global-map-worldmonitor/': '2026-06-11',
   'https://www.worldmonitor.app/blog/': '2026-06-10',
 };
 

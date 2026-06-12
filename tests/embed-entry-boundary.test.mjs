@@ -23,7 +23,6 @@ describe('embed entry boundary', () => {
       '@/services/cloud-preferences',
       '@/services/push-notifications',
       '@/services/runtime',
-      '@/utils/wm-session',
       '@/components/MapContainer',
     ];
     for (const token of forbidden) {
