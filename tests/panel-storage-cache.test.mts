@@ -3,7 +3,9 @@ import { describe, it } from 'node:test';
 
 import { createMinimalPanelHarness } from './helpers/minimal-panel-harness.mjs';
 import {
+  clearPanelColSpan,
   invalidatePanelStorageCacheForKeys,
+  loadPanelColSpans,
   loadPanelSpans,
   PANEL_COL_SPANS_KEY,
   PANEL_COLLAPSED_KEY,
@@ -11,6 +13,10 @@ import {
 } from '../src/utils/panel-storage';
 
 const PANEL_COUNT = 86;
+
+function invalidateAllPanelStorageCaches(): void {
+  invalidatePanelStorageCacheForKeys([PANEL_SPANS_KEY, PANEL_COL_SPANS_KEY, PANEL_COLLAPSED_KEY]);
+}
 
 function wrapGetItemCounter(storage: Storage) {
   const originalGetItem = storage.getItem.bind(storage);
@@ -157,6 +163,7 @@ describe('Panel storage cache', () => {
   });
 
   it('invalidates warmed maps when another tab changes panel storage', () => {
+    invalidateAllPanelStorageCaches();
     const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
     const originalLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
     const values = new Map<string, string>();
@@ -210,9 +217,38 @@ describe('Panel storage cache', () => {
     }
   });
 
+  it('returns frozen cached maps so callers cannot mutate tab-wide storage state', async () => {
+    await withHarness((harness) => {
+      invalidateAllPanelStorageCaches();
+      harness.localStorage.setItem(PANEL_SPANS_KEY, JSON.stringify({ immutable: 2 }));
+
+      const spans = loadPanelSpans();
+      assert.equal(Object.isFrozen(spans), true);
+      assert.throws(() => {
+        (spans as Record<string, number>).poisoned = 5;
+      }, TypeError);
+
+      assert.equal(loadPanelSpans().poisoned, undefined);
+      assert.equal(loadPanelSpans().immutable, 2);
+    });
+  });
+
+  it('keeps column-span removeWhenEmpty default when options object is empty', async () => {
+    await withHarness((harness) => {
+      invalidateAllPanelStorageCaches();
+      harness.localStorage.setItem(PANEL_COL_SPANS_KEY, JSON.stringify({ compact: 2 }));
+
+      assert.equal(loadPanelColSpans().compact, 2);
+      clearPanelColSpan('compact', {});
+
+      assert.equal(harness.localStorage.getItem(PANEL_COL_SPANS_KEY), null);
+      assert.equal(Object.keys(loadPanelColSpans()).length, 0);
+    });
+  });
+
   it('invalidates cached panel maps after direct storage replacement', async () => {
     await withHarness((harness) => {
-      invalidatePanelStorageCacheForKeys([PANEL_SPANS_KEY, PANEL_COL_SPANS_KEY, PANEL_COLLAPSED_KEY]);
+      invalidateAllPanelStorageCaches();
       harness.localStorage.setItem(PANEL_SPANS_KEY, JSON.stringify({ imported: 1 }));
       assert.equal(loadPanelSpans().imported, 1);
 

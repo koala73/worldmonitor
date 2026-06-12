@@ -2,9 +2,9 @@ export const PANEL_SPANS_KEY = 'worldmonitor-panel-spans';
 export const PANEL_COL_SPANS_KEY = 'worldmonitor-panel-col-spans';
 export const PANEL_COLLAPSED_KEY = 'worldmonitor-panel-collapsed';
 
-let panelSpansCache: Record<string, number> | null = null;
-let panelColSpansCache: Record<string, number> | null = null;
-let panelCollapsedCache: Record<string, boolean> | null = null;
+let panelSpansCache: Readonly<Record<string, number>> | null = null;
+let panelColSpansCache: Readonly<Record<string, number>> | null = null;
+let panelCollapsedCache: Readonly<Record<string, boolean>> | null = null;
 let storageInvalidationListenerInstalled = false;
 
 function ensurePanelStorageCacheInvalidationListener(): void {
@@ -33,6 +33,10 @@ function readStorageMap<T>(key: string): Record<string, T> {
   }
 }
 
+function freezeStorageMap<T>(map: Record<string, T>): Readonly<Record<string, T>> {
+  return Object.freeze(map);
+}
+
 function writeStorageMap<T>(key: string, map: Record<string, T>): void {
   localStorage.setItem(key, JSON.stringify(map));
 }
@@ -43,7 +47,7 @@ function removeStorageMap(key: string): void {
 
 export function loadPanelSpans(): Readonly<Record<string, number>> {
   ensurePanelStorageCacheInvalidationListener();
-  panelSpansCache ??= readStorageMap<number>(PANEL_SPANS_KEY);
+  panelSpansCache ??= freezeStorageMap(readStorageMap<number>(PANEL_SPANS_KEY));
   return panelSpansCache;
 }
 
@@ -51,7 +55,7 @@ export function savePanelSpan(panelId: string, span: number): void {
   ensurePanelStorageCacheInvalidationListener();
   const next = { ...loadPanelSpans(), [panelId]: span };
   writeStorageMap(PANEL_SPANS_KEY, next);
-  panelSpansCache = next;
+  panelSpansCache = freezeStorageMap(next);
 }
 
 // resetHeight historically persisted an empty aggregate map instead of removing
@@ -64,22 +68,22 @@ export function clearPanelSpan(panelId: string, options: { removeWhenEmpty?: boo
   delete next[panelId];
   if (options.removeWhenEmpty && Object.keys(next).length === 0) {
     removeStorageMap(PANEL_SPANS_KEY);
-    panelSpansCache = next;
+    panelSpansCache = freezeStorageMap(next);
     return;
   }
   writeStorageMap(PANEL_SPANS_KEY, next);
-  panelSpansCache = next;
+  panelSpansCache = freezeStorageMap(next);
 }
 
 export function clearPanelSpans(): void {
   ensurePanelStorageCacheInvalidationListener();
   removeStorageMap(PANEL_SPANS_KEY);
-  panelSpansCache = {};
+  panelSpansCache = freezeStorageMap({});
 }
 
 export function loadPanelColSpans(): Readonly<Record<string, number>> {
   ensurePanelStorageCacheInvalidationListener();
-  panelColSpansCache ??= readStorageMap<number>(PANEL_COL_SPANS_KEY);
+  panelColSpansCache ??= freezeStorageMap(readStorageMap<number>(PANEL_COL_SPANS_KEY));
   return panelColSpansCache;
 }
 
@@ -87,35 +91,35 @@ export function savePanelColSpan(panelId: string, span: number): void {
   ensurePanelStorageCacheInvalidationListener();
   const next = { ...loadPanelColSpans(), [panelId]: span };
   writeStorageMap(PANEL_COL_SPANS_KEY, next);
-  panelColSpansCache = next;
+  panelColSpansCache = freezeStorageMap(next);
 }
 
 // Column-span cleanup historically removed the aggregate key when the last
 // entry disappeared, unlike row-span reset. Keep that legacy default explicit.
-export function clearPanelColSpan(panelId: string, options: { removeWhenEmpty?: boolean } = { removeWhenEmpty: true }): void {
+export function clearPanelColSpan(panelId: string, { removeWhenEmpty = true }: { removeWhenEmpty?: boolean } = {}): void {
   ensurePanelStorageCacheInvalidationListener();
   const spans = loadPanelColSpans();
   if (!(panelId in spans)) return;
   const next = { ...spans };
   delete next[panelId];
-  if (options.removeWhenEmpty && Object.keys(next).length === 0) {
+  if (removeWhenEmpty && Object.keys(next).length === 0) {
     removeStorageMap(PANEL_COL_SPANS_KEY);
-    panelColSpansCache = next;
+    panelColSpansCache = freezeStorageMap(next);
     return;
   }
   writeStorageMap(PANEL_COL_SPANS_KEY, next);
-  panelColSpansCache = next;
+  panelColSpansCache = freezeStorageMap(next);
 }
 
 export function clearPanelColSpans(): void {
   ensurePanelStorageCacheInvalidationListener();
   removeStorageMap(PANEL_COL_SPANS_KEY);
-  panelColSpansCache = {};
+  panelColSpansCache = freezeStorageMap({});
 }
 
 export function loadPanelCollapsed(): Readonly<Record<string, boolean>> {
   ensurePanelStorageCacheInvalidationListener();
-  panelCollapsedCache ??= readStorageMap<boolean>(PANEL_COLLAPSED_KEY);
+  panelCollapsedCache ??= freezeStorageMap(readStorageMap<boolean>(PANEL_COLLAPSED_KEY));
   return panelCollapsedCache;
 }
 
@@ -132,7 +136,7 @@ export function savePanelCollapsed(panelId: string, collapsed: boolean): void {
   } else {
     writeStorageMap(PANEL_COLLAPSED_KEY, next);
   }
-  panelCollapsedCache = next;
+  panelCollapsedCache = freezeStorageMap(next);
 }
 
 export function clearPanelSpanEntry(panelId: string): void {
