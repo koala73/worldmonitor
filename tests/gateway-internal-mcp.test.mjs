@@ -320,6 +320,89 @@ describe('gateway internal-MCP HMAC verify — happy paths', () => {
     const res = await handler(req);
     assert.equal(res.status, 200, 'GET with empty body verified ok');
   });
+
+  // -------------------------------------------------------------------------
+  // Vercel dynamic-route query injection (WORLDMONITOR-R1 / WORLDMONITOR-T8).
+  //
+  // In production every gateway domain is served by api/<domain>/v1/[rpc].ts;
+  // Vercel's filesystem router injects the matched segment into the function's
+  // request URL as ?rpc=<segment>. The signer never sees that param, so the
+  // verifier must strip the exact router echo before hashing — confirmed live:
+  // signing WITHOUT the param 401'd (invalid_internal_mcp_signature) while
+  // signing WITH it passed signature verify. These tests feed the verifier the
+  // REAL production request shape, which the original suite never did.
+  // -------------------------------------------------------------------------
+  it('Vercel-injected ?rpc=<last-segment> on the inbound URL still verifies (signer never saw it)', async () => {
+    const handler = makeGateway();
+    const signedUrl = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest?lang=en';
+    const inboundUrl = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest?lang=en&rpc=list-feed-digest';
+    const signed = await signInternalMcpRequest({ method: 'GET', url: signedUrl, body: null, userId: PRO_USER_ID, secret: HMAC_SECRET });
+    const req = new Request(inboundUrl, {
+      method: 'GET',
+      headers: {
+        [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+        [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+      },
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'router-injected rpc param MUST be stripped before hashing');
+  });
+
+  it('Vercel-injected ?rpc=<last-segment> with NO other query params still verifies', async () => {
+    const handler = makeGateway();
+    const signedUrl = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest';
+    const inboundUrl = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest?rpc=list-feed-digest';
+    const signed = await signInternalMcpRequest({ method: 'GET', url: signedUrl, body: null, userId: PRO_USER_ID, secret: HMAC_SECRET });
+    const req = new Request(inboundUrl, {
+      method: 'GET',
+      headers: {
+        [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+        [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+      },
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'router-injected rpc as the only param MUST be stripped');
+  });
+
+  it('caller-appended ?rpc with a value ≠ last path segment still breaks the signature → 401', async () => {
+    const handler = makeGateway();
+    const signedUrl = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest';
+    const inboundUrl = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest?rpc=evil-other-route';
+    const signed = await signInternalMcpRequest({ method: 'GET', url: signedUrl, body: null, userId: PRO_USER_ID, secret: HMAC_SECRET });
+    const req = new Request(inboundUrl, {
+      method: 'GET',
+      headers: {
+        [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+        [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+      },
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 401, 'non-echo rpc values MUST stay in the hash');
+    assert.deepEqual(await res.json(), { error: 'invalid_internal_mcp_signature' });
+  });
+
+  it('signer that legitimately included rpc=<last-segment> in the signed URL still verifies', async () => {
+    // Both sides carry the param: verifier strips it from the inbound hash,
+    // and the signer's canonical string included it — they would diverge if
+    // the signer-side URL ever grows a real rpc param. Pin the SAFE direction:
+    // the inbound request carries the same single echo entry the router would
+    // inject, so stripping reproduces the signed (param-less) string only when
+    // the signer ALSO omitted it. Here the signer included it, so verification
+    // must fail — documenting that `rpc` is a RESERVED routing param that
+    // outbound tool URLs must never use.
+    const handler = makeGateway();
+    const url = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest?rpc=list-feed-digest';
+    const signed = await signInternalMcpRequest({ method: 'GET', url, body: null, userId: PRO_USER_ID, secret: HMAC_SECRET });
+    const req = new Request(url, {
+      method: 'GET',
+      headers: {
+        [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+        [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+      },
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 401, 'rpc is reserved for the router; signer URLs must not carry it');
+  });
 });
 
 // ===========================================================================
