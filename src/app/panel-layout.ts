@@ -4,7 +4,7 @@ import { normalizeExclusiveChoropleths } from '@/components/resilience-choroplet
 import { replayPendingCalls, clearAllPendingCalls } from '@/app/pending-panel-data';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
 import { effectivePubDateMs } from '@/services/feed-date';
-import type { ClusteredEvent, MapLayers } from '@/types';
+import type { ClusteredEvent, MapLayers, PanelConfig } from '@/types';
 import type { RelatedAsset } from '@/types';
 import type { TheaterPostureSummary } from '@/services/military-surge';
 import {
@@ -122,6 +122,15 @@ import { initCheckoutOverlay, destroyCheckoutOverlay, showCheckoutSuccess, consu
 import { showCheckoutFailureBanner } from '@/components/checkout-failure-banner';
 import { McpDataPanel } from '@/components/McpDataPanel';
 import { openMcpConnectModal } from '@/components/McpConnectModal';
+import { PanelTabBar } from '@/components/PanelTabBar';
+import {
+  loadTabsState,
+  saveTabsState,
+  generateTabId,
+  buildDefaultTabPanels,
+} from '@/services/tab-store';
+import type { PanelTab, TabsState } from '@/services/tab-store';
+import { showToast } from '@/utils';
 import { loadMcpPanels, saveMcpPanel } from '@/services/mcp-store';
 import type { McpPanelSpec } from '@/services/mcp-store';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
@@ -196,6 +205,8 @@ export class PanelLayoutManager implements AppModule {
   private criticalBannerEl: HTMLElement | null = null;
   private mobilePanelNav: MobilePanelNav | null = null;
   private mobileMapCollapseBtn: HTMLButtonElement | null = null;
+  private panelTabBar: PanelTabBar | null = null;
+  private tabsState: TabsState | null = null;
   private aviationCommandBar: AviationCommandBar | null = null;
   private readonly applyTimeRangeFilterDebounced: (() => void) & { cancel(): void };
   private unsubscribeAuth: (() => void) | null = null;
@@ -384,6 +395,8 @@ export class PanelLayoutManager implements AppModule {
     this.mobilePanelNav?.destroy();
     this.mobilePanelNav = null;
     this.mobileMapCollapseBtn = null;
+    this.panelTabBar?.destroy();
+    this.panelTabBar = null;
     // Clean up happy variant panels
     this.ctx.tvMode?.destroy();
     this.ctx.tvMode = null;
@@ -663,6 +676,7 @@ export class PanelLayoutManager implements AppModule {
         </button>`
       ).join('')}
       </div>
+      <div class="dashboard-tabs-mount" id="panelTabsMount"></div>
       <div class="main-content${this.ctx.isDesktopApp ? ' desktop-grid' : ''}">
         <div class="map-section" id="mapSection">
           <div class="panel-header">
@@ -718,10 +732,168 @@ export class PanelLayoutManager implements AppModule {
 
     await this.createPanels();
 
+    this.initPanelTabs();
+
     if (this.ctx.isMobile) {
       this.setupMobileMapToggle();
       this.setupMobilePanelNav();
     }
+  }
+
+  // ============================================
+  // Dashboard tabs — named, persistent panel workspaces
+  // ============================================
+
+  private initPanelTabs(): void {
+    const mount = document.getElementById('panelTabsMount');
+    if (!mount) return;
+
+    let state = loadTabsState();
+    if (!state) {
+      // First run — wrap the user's current layout in an initial tab so
+      // nothing changes visually until they create a second tab.
+      const initial: PanelTab = {
+        id: generateTabId(),
+        name: 'Main',
+        ...this.captureCurrentTabState(),
+      };
+      state = { activeTabId: initial.id, tabs: [initial] };
+      saveTabsState(state);
+    }
+    this.tabsState = state;
+
+    this.panelTabBar = new PanelTabBar(() => this.tabsState!, {
+      onSelect: (id) => this.switchToTab(id),
+      onAdd: () => this.addTab(),
+      onRename: (id, name) => this.renameTab(id, name),
+      onDelete: (id) => this.deleteTab(id),
+    });
+    mount.appendChild(this.panelTabBar.getElement());
+  }
+
+  /** Capture the live panel state (settings + order) for a tab snapshot. */
+  private captureCurrentTabState(): Pick<PanelTab, 'panelSettings' | 'panelOrder' | 'bottomSet'> {
+    // Persist the live DOM order first so the snapshot reflects any drags.
+    this.savePanelOrder();
+    return {
+      panelSettings: JSON.parse(JSON.stringify(this.ctx.panelSettings)) as Record<string, PanelConfig>,
+      panelOrder: [...this.resolvedPanelOrder],
+      bottomSet: Array.from(this.bottomSetMemory),
+    };
+  }
+
+  /** Refresh the active tab's snapshot from live state (called on switch-away). */
+  private snapshotActiveTab(): void {
+    if (!this.tabsState) return;
+    const active = this.tabsState.tabs.find((t) => t.id === this.tabsState!.activeTabId);
+    if (!active) return;
+    Object.assign(active, this.captureCurrentTabState());
+  }
+
+  private switchToTab(tabId: string): void {
+    if (!this.tabsState || tabId === this.tabsState.activeTabId) return;
+    const target = this.tabsState.tabs.find((t) => t.id === tabId);
+    if (!target) return;
+
+    this.snapshotActiveTab();
+    this.tabsState.activeTabId = tabId;
+    saveTabsState(this.tabsState);
+
+    this.applyTabPanelState(target.panelSettings, target.panelOrder, target.bottomSet);
+    this.panelTabBar?.refresh();
+  }
+
+  private addTab(): void {
+    if (!this.tabsState) return;
+    this.snapshotActiveTab();
+
+    const defaults = buildDefaultTabPanels(this.ctx.panelSettings);
+    const tab: PanelTab = {
+      id: generateTabId(),
+      name: 'New Tab',
+      panelSettings: defaults.panelSettings,
+      panelOrder: defaults.panelOrder,
+      bottomSet: [],
+    };
+    this.tabsState.tabs.push(tab);
+    this.tabsState.activeTabId = tab.id;
+    saveTabsState(this.tabsState);
+
+    this.applyTabPanelState(tab.panelSettings, tab.panelOrder, tab.bottomSet);
+    this.panelTabBar?.refresh();
+    showToast('New tab created');
+  }
+
+  private renameTab(tabId: string, name: string): void {
+    if (!this.tabsState) return;
+    const tab = this.tabsState.tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    tab.name = name;
+    saveTabsState(this.tabsState);
+    this.panelTabBar?.refresh();
+  }
+
+  private deleteTab(tabId: string): void {
+    if (!this.tabsState || this.tabsState.tabs.length <= 1) return;
+    const idx = this.tabsState.tabs.findIndex((t) => t.id === tabId);
+    if (idx === -1) return;
+    const wasActive = this.tabsState.activeTabId === tabId;
+    const [removed] = this.tabsState.tabs.splice(idx, 1);
+
+    if (wasActive) {
+      const fallback = this.tabsState.tabs[Math.max(0, idx - 1)]!;
+      this.tabsState.activeTabId = fallback.id;
+      saveTabsState(this.tabsState);
+      this.applyTabPanelState(fallback.panelSettings, fallback.panelOrder, fallback.bottomSet);
+    } else {
+      saveTabsState(this.tabsState);
+    }
+    this.panelTabBar?.refresh();
+    showToast(`Tab "${removed!.name}" deleted`);
+  }
+
+  /**
+   * Load a tab's panel snapshot into the live global state and re-apply
+   * the layout. Mirrors the mission-preset apply pipeline (panels only —
+   * map layers, view, and time range stay global across tabs).
+   */
+  private applyTabPanelState(
+    panelSettings: Record<string, PanelConfig>,
+    panelOrder: string[],
+    bottomSet: string[],
+  ): void {
+    const isDynamicPanel = (k: string) =>
+      !ALL_PANELS[k] && (k === 'runtime-config' || k.startsWith('cw-') || k.startsWith('mcp-'));
+
+    const next: Record<string, PanelConfig> = {};
+    for (const [key, config] of Object.entries(panelSettings)) {
+      next[key] = { ...config };
+    }
+    // Carry over panels missing from the snapshot: dynamic panels (custom
+    // widgets / MCP / desktop config created after the snapshot) keep their
+    // current config so they don't get orphaned visible-but-untracked;
+    // panels added to the app since the snapshot seed from variant defaults
+    // (same formula as the App.ts settings merge).
+    for (const [key, config] of Object.entries(this.ctx.panelSettings)) {
+      if (next[key]) continue;
+      if (isDynamicPanel(key)) {
+        next[key] = { ...config };
+      } else {
+        const effective = getEffectivePanelConfig(key, SITE_VARIANT);
+        next[key] = { ...effective, enabled: isPanelInVariantDefaults(key) && effective.enabled };
+      }
+    }
+
+    this.ctx.panelSettings = next;
+    saveToStorage(STORAGE_KEYS.panels, next);
+    saveToStorage(this.ctx.PANEL_ORDER_KEY, panelOrder);
+    saveToStorage(this.ctx.PANEL_ORDER_KEY + '-bottom-set', bottomSet);
+
+    this.applyPanelSettings();
+    this.applySavedPanelOrder();
+    this.ctx.unifiedSettings?.refreshPanelToggles();
+    this.mountLiveNewsIfReady();
+    this.scheduleLoadAllData();
   }
 
   private setupMobilePanelNav(): void {
