@@ -33,6 +33,7 @@
 
 type SentryNs = typeof import('@sentry/browser');
 type SentryCall = (s: SentryNs) => void;
+type SentryEvent = Parameters<SentryNs['captureEvent']>[0];
 
 let sentryNs: SentryNs | null = null;
 let initPromise: Promise<void> | null = null;
@@ -51,6 +52,9 @@ const pendingRejections: PromiseRejectionEvent[] = [];
 // adversarial extension shouldn't be able to grow these arrays without bound
 // during the (typically sub-4 s) defer window.
 const MAX_QUEUE = 50;
+const SENTRY_ONERROR_MECHANISM = 'auto.browser.global_handlers.onerror';
+const SENTRY_ONUNHANDLEDREJECTION_MECHANISM = 'auto.browser.global_handlers.onunhandledrejection';
+const UNKNOWN_FUNCTION = '?';
 
 function onError(e: ErrorEvent): void {
   if (pendingErrors.length >= MAX_QUEUE) return;
@@ -60,6 +64,126 @@ function onError(e: ErrorEvent): void {
 function onUnhandledRejection(e: PromiseRejectionEvent): void {
   if (pendingRejections.length >= MAX_QUEUE) return;
   pendingRejections.push(e);
+}
+
+function isErrorLike(value: unknown): value is Error {
+  switch (Object.prototype.toString.call(value)) {
+    case '[object Error]':
+    case '[object Exception]':
+    case '[object DOMException]':
+    case '[object WebAssembly.Exception]':
+      return true;
+    default:
+      return value instanceof Error;
+  }
+}
+
+function isPrimitive(value: unknown): boolean {
+  return value === null || (typeof value !== 'object' && typeof value !== 'function');
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Object.prototype.toString.call(value) === '[object Object]';
+}
+
+function isEventObject(value: unknown): value is Event {
+  return typeof Event !== 'undefined' && value instanceof Event;
+}
+
+function getObjectClassName(value: object): string | undefined {
+  try {
+    return Object.getPrototypeOf(value)?.constructor?.name;
+  } catch {
+    return undefined;
+  }
+}
+
+function extractExceptionKeysForMessage(exception: Record<string, unknown>): string {
+  const keys = Object.keys(exception);
+  keys.sort();
+  return !keys[0] ? '[object has no keys]' : keys.join(', ');
+}
+
+function getCurrentHref(): string {
+  try {
+    return typeof location !== 'undefined' ? location.href : '';
+  } catch {
+    return '';
+  }
+}
+
+type ErrorEventSnapshot = Pick<ErrorEvent, 'message' | 'filename' | 'lineno' | 'colno' | 'error'>;
+
+function buildQueuedErrorEvent(ev: ErrorEventSnapshot): SentryEvent {
+  const message = ev.message || 'Unknown error';
+  return {
+    message,
+    level: 'error',
+    exception: {
+      values: [{
+        type: 'Error',
+        value: message,
+        stacktrace: {
+          frames: [{
+            colno: ev.colno || undefined,
+            filename: ev.filename || getCurrentHref(),
+            function: UNKNOWN_FUNCTION,
+            in_app: true,
+            lineno: ev.lineno || undefined,
+          }],
+        },
+      }],
+    },
+  };
+}
+
+function buildQueuedUnhandledRejectionEvent(reason: unknown): SentryEvent | null {
+  if (isErrorLike(reason)) return null;
+
+  if (isPrimitive(reason)) {
+    return {
+      level: 'error',
+      exception: {
+        values: [{
+          type: 'UnhandledRejection',
+          value: `Non-Error promise rejection captured with value: ${String(reason)}`,
+        }],
+      },
+    };
+  }
+
+  if (isEventObject(reason)) {
+    const className = getObjectClassName(reason) ?? 'Event';
+    return {
+      level: 'error',
+      exception: {
+        values: [{
+          type: className,
+          value: `Event \`${className}\` (type=${reason.type}) captured as promise rejection`,
+        }],
+      },
+      extra: {
+        __serialized__: { type: reason.type },
+      },
+    };
+  }
+
+  if (isPlainObject(reason)) {
+    return {
+      level: 'error',
+      exception: {
+        values: [{
+          type: 'UnhandledRejection',
+          value: `Object captured as promise rejection with keys: ${extractExceptionKeysForMessage(reason)}`,
+        }],
+      },
+      extra: {
+        __serialized__: reason,
+      },
+    };
+  }
+
+  return null;
 }
 
 /**
@@ -690,32 +814,39 @@ async function loadAndInit(): Promise<void> {
     try { fn(ns); } catch { /* user-supplied closure */ }
   }
 
-  // Drain buffered `error` events. `e.error` is null when the engine fires a
-  // cross-origin error; fall back to a synthesized Error so the SDK still
-  // gets a usable message. Pass `mechanism: { type: 'onerror', handled: false }`
-  // so the replayed events line up with what Sentry's own globalHandlers
-  // integration would have produced — otherwise these events show up as
-  // `handled: true` in the Issues list and alert rules that filter on
-  // `handled: false` silently miss every unhandled error from the pre-init
-  // window (and crash-rate / ANR metrics are understated for it).
+  // Drain buffered `error` events. When `e.error` is missing (cross-origin
+  // script/resource errors), capture an event with the original URL/line/column
+  // initial frame, matching the browser globalHandler path closely enough for
+  // filters and triage. The mechanism keeps unhandled-error alert rules intact.
   const errs = pendingErrors.splice(0, pendingErrors.length);
   for (const ev of errs) {
-    const err = ev.error instanceof Error
-      ? ev.error
-      : new Error(ev.message || 'Unknown error');
-    ns.captureException(err, { mechanism: { type: 'onerror', handled: false } });
+    const hint = {
+      originalException: ev.error ?? ev.message,
+      mechanism: { type: SENTRY_ONERROR_MECHANISM, handled: false },
+    };
+    if (isErrorLike(ev.error)) {
+      ns.captureException(ev.error, hint);
+    } else {
+      ns.captureEvent(buildQueuedErrorEvent(ev), hint);
+    }
   }
 
-  // Drain buffered unhandled-rejection events. `e.reason` is whatever the
-  // promise rejected with — pass through unchanged so Sentry's normalizers
-  // see the original value (string, Error, object). Same `handled: false`
-  // mechanism hint as above so alert rules behave identically.
+  // Drain buffered unhandled-rejection events. Primitive/object/Event reasons
+  // need the same event shape Sentry's globalHandlers integration builds;
+  // routing those values through captureException() would classify them as
+  // generic exceptions and bypass existing promise-rejection suppressors.
   const rejs = pendingRejections.splice(0, pendingRejections.length);
   for (const ev of rejs) {
-    ns.captureException(
-      ev.reason ?? new Error('Unhandled promise rejection'),
-      { mechanism: { type: 'onunhandledrejection', handled: false } },
-    );
+    const hint = {
+      originalException: ev.reason,
+      mechanism: { type: SENTRY_ONUNHANDLEDREJECTION_MECHANISM, handled: false },
+    };
+    const event = buildQueuedUnhandledRejectionEvent(ev.reason);
+    if (event) {
+      ns.captureEvent(event, hint);
+    } else {
+      ns.captureException(ev.reason, hint);
+    }
   }
 
   // Sentry's globalHandlers integration owns window error/unhandledrejection
@@ -768,6 +899,16 @@ export function scheduleSentryInit(): Promise<void> {
     }
   });
   return initPromise;
+}
+
+/** Test-only: expose pre-init error event shaping without loading Sentry. */
+export function _buildQueuedErrorEventForTests(ev: ErrorEventSnapshot): SentryEvent {
+  return buildQueuedErrorEvent(ev);
+}
+
+/** Test-only: expose pre-init rejection event shaping without loading Sentry. */
+export function _buildQueuedUnhandledRejectionEventForTests(reason: unknown): SentryEvent | null {
+  return buildQueuedUnhandledRejectionEvent(reason);
 }
 
 /** Test-only: reset module state between unit tests. */
