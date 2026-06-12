@@ -9,6 +9,7 @@ import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/smart-p
 import type { EmbedLayerId } from './embed-url';
 
 const REFRESH_MS = 10 * 60 * 1000;
+const CONFLICT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const conflictClient = new ConflictServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
 
 export class EmbedDataLoader {
@@ -59,7 +60,9 @@ export class EmbedDataLoader {
 
   private async loadConflicts(): Promise<void> {
     await this.withLayerState('conflicts', async () => {
-      const data = await conflictClient.listAcledEvents({ country: '', start: 0, end: 0, pageSize: 0, cursor: '' });
+      const end = Date.now();
+      const start = end - CONFLICT_WINDOW_MS;
+      const data = await conflictClient.listAcledEvents({ country: '', start, end, pageSize: 0, cursor: '' });
       this.map.setConflictEvents(data.events);
       return data.events.length > 0;
     });

@@ -71,6 +71,7 @@ async function serveThirdPartyHostPage(html: string): Promise<{ url: string; clo
 
 test.describe('public map embed', () => {
   const embedPath = '/embed?layers=conflicts,earthquakes,protests,weather&center=0,0&zoom=1&theme=dark&variant=full';
+  const conflictWindowMs = 30 * 24 * 60 * 60 * 1000;
   const publicEmbedApiPaths = [
     '/api/bootstrap?keys=weatherAlerts',
     '/api/conflict/v1/list-acled-events',
@@ -100,6 +101,13 @@ test.describe('public map embed', () => {
     const embedUrl = new URL(embedPath, localBaseUrl).toString();
     const embedOrigin = new URL(embedUrl).origin;
     const statuses = new Map<string, number[]>();
+    const conflictRequests: URL[] = [];
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (url.pathname === '/api/conflict/v1/list-acled-events') {
+        conflictRequests.push(url);
+      }
+    });
     page.on('response', (response) => {
       const url = new URL(response.url());
       const key = url.pathname === '/api/bootstrap'
@@ -155,6 +163,13 @@ test.describe('public map embed', () => {
       await expect(frame.locator('.map-controls, .time-slider, .layer-toggles, .map-legend')).toHaveCount(0);
       await expect(frame.locator('body')).toHaveAttribute('data-embed-ready', 'true');
       await expect.poll(() => publicEmbedApiPaths.filter((path) => statuses.has(path)).sort()).toEqual([...publicEmbedApiPaths].sort());
+      await expect.poll(() => conflictRequests.length).toBeGreaterThan(0);
+      const conflictRequest = conflictRequests[0]!;
+      const start = Number(conflictRequest.searchParams.get('start'));
+      const end = Number(conflictRequest.searchParams.get('end'));
+      expect(start, 'embed conflict layer must not request the generated zero/epoch start').toBeGreaterThan(0);
+      expect(end, 'embed conflict layer must not request the generated zero/epoch end').toBeGreaterThan(0);
+      expect(end - start, 'embed conflict layer should request the recent 30-day ACLED window').toBe(conflictWindowMs);
       for (const [path, seenStatuses] of statuses) {
         expect(seenStatuses, `${path} must not 401 for anonymous embed viewers`).not.toContain(401);
       }
