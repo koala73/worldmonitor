@@ -4,31 +4,57 @@ import { WiredBadge } from '../components/WiredBadge';
 import { t } from '../i18n';
 import dashboardScreenshot from '../assets/worldmonitor-7-mar-2026.jpg';
 
+const HERO_PROOF_STATS = [
+  { valueKey: 'welcome.depth.s1v', labelKey: 'welcome.depth.s1l' },
+  { valueKey: 'welcome.depth.s2v', labelKey: 'welcome.depth.s2l' },
+  { valueKey: 'welcome.depth.s3v', labelKey: 'welcome.depth.s3l' },
+  { valueKey: 'welcome.depth.s15v', labelKey: 'welcome.depth.s15l' },
+] as const;
+
+const HeroProofRail = () => (
+  <motion.div
+    initial={{ opacity: 0, y: 16 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.6, delay: 0.28 }}
+    className="mt-8 mx-auto grid w-full max-w-[22rem] sm:max-w-3xl grid-cols-2 sm:grid-cols-4 overflow-hidden rounded-sm border border-wm-border bg-wm-card/70 text-left backdrop-blur-sm"
+  >
+    {HERO_PROOF_STATS.map(({ valueKey, labelKey }, i) => (
+      <div
+        key={valueKey}
+        className={`px-4 py-3 ${i % 2 === 1 ? 'border-l border-wm-border' : ''} ${i > 1 ? 'border-t border-wm-border sm:border-t-0' : ''} ${i > 0 ? 'sm:border-l sm:border-wm-border' : ''}`}
+      >
+        <div className="font-display text-2xl font-bold text-wm-text">{t(valueKey)}</div>
+        <div className="mt-1 font-mono text-[10px] uppercase tracking-[1px] leading-relaxed break-words text-wm-muted">{t(labelKey)}</div>
+      </div>
+    ))}
+  </motion.div>
+);
+
 const ConsoleFrame = () => (
   <motion.div
     initial={{ opacity: 0, y: 32 }}
     animate={{ opacity: 1, y: 0 }}
     transition={{ duration: 0.7, delay: 0.35 }}
-    className="relative max-w-5xl mx-auto mt-14"
+    className="relative max-w-5xl mx-auto mt-10 sm:mt-14"
   >
     <div className="absolute -inset-8 bg-wm-green/5 blur-[60px] rounded-full pointer-events-none" aria-hidden="true" />
     <a
       href="/?ref=welcome-plate"
       className="relative block border border-wm-border rounded-md overflow-hidden border-glow bg-wm-card hover:border-wm-green/40 transition-colors"
     >
-      <div className="flex items-center justify-between px-4 h-9 border-b border-wm-border bg-wm-bg/80 font-mono text-[10px] uppercase tracking-widest text-wm-muted">
+      <div className="flex items-center justify-between gap-3 px-3 sm:px-4 h-9 border-b border-wm-border bg-wm-bg/80 font-mono text-[10px] uppercase tracking-widest text-wm-muted">
         <div className="flex items-center gap-1.5" aria-hidden="true">
           <span className="w-2.5 h-2.5 rounded-full bg-[#ff5f57]" />
           <span className="w-2.5 h-2.5 rounded-full bg-[#febc2e]" />
           <span className="w-2.5 h-2.5 rounded-full bg-[#28c840]" />
         </div>
         <span className="hidden sm:block">worldmonitor.app — global operations</span>
-        <span className="inline-flex items-center gap-1.5 text-wm-green">
+        <span className="inline-flex min-w-0 items-center gap-1.5 text-wm-green">
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-wm-green opacity-60" />
             <span className="relative inline-flex rounded-full h-2 w-2 bg-wm-green" />
           </span>
-          {t('welcome.hero.plateNote')}
+          <span>{t('welcome.hero.plateNote')}</span>
         </span>
       </div>
       <img
@@ -44,18 +70,18 @@ const ConsoleFrame = () => (
 );
 
 export const Hero = () => (
-  <section className="pt-32 pb-16 px-6 relative overflow-hidden">
+  <section className="pt-28 sm:pt-32 pb-16 px-4 sm:px-6 relative overflow-hidden">
     <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(74,222,128,0.10)_0%,transparent_55%)] pointer-events-none" aria-hidden="true" />
     <div className="max-w-5xl mx-auto text-center relative z-10">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-        <div className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[4px] text-wm-green mb-5 px-3 py-1.5 rounded-full border border-wm-green/30 bg-wm-green/10">
+        <div className="inline-flex max-w-full flex-wrap items-center justify-center gap-2 font-mono text-[11px] uppercase tracking-[4px] text-wm-green mb-5 px-3 py-1.5 rounded-full border border-wm-green/30 bg-wm-green/10 leading-relaxed">
           <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-wm-green opacity-60" />
             <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-wm-green" />
           </span>
           {t('welcome.hero.eyebrow')}
         </div>
-        <h1 className="text-4xl md:text-7xl font-display font-bold tracking-tight leading-[1.05]">
+        <h1 className="text-4xl sm:text-5xl md:text-7xl font-display font-bold tracking-tight leading-[1.08] sm:leading-[1.05]">
           {t('welcome.hero.headline1')}
           <br />
           <span className="text-wm-green text-glow">{t('welcome.hero.headline2')}</span>
@@ -69,17 +95,17 @@ export const Hero = () => (
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.15 }}
-        className="mt-9 flex flex-col sm:flex-row items-center justify-center gap-4"
+        className="mt-9 mx-auto flex max-w-[22rem] sm:max-w-none flex-col sm:flex-row items-stretch sm:items-center justify-center gap-4"
       >
         <a
           href="/?ref=welcome-hero"
-          className="bg-wm-green text-wm-bg px-8 py-3.5 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-2"
+          className="w-full sm:w-auto justify-center bg-wm-green text-wm-bg px-5 sm:px-8 py-3.5 rounded-sm font-mono text-sm uppercase tracking-wide sm:tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-2"
         >
           {t('welcome.hero.ctaPrimary')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
         </a>
         <a
           href="#moments"
-          className="border border-wm-border text-wm-text px-8 py-3.5 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:border-wm-green/50 transition-colors"
+          className="w-full sm:w-auto justify-center border border-wm-border text-wm-text px-5 sm:px-8 py-3.5 rounded-sm font-mono text-sm uppercase tracking-wide sm:tracking-wider font-bold hover:border-wm-green/50 transition-colors inline-flex items-center"
         >
           {t('welcome.hero.ctaSecondary')}
         </a>
@@ -92,6 +118,7 @@ export const Hero = () => (
       >
         {t('welcome.hero.ctaFree')}
       </motion.div>
+      <HeroProofRail />
 
       <motion.div
         initial={{ opacity: 0 }}
