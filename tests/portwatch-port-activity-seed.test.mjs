@@ -180,13 +180,13 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /ArcGIS degraded — \$\{_invalidParamsErrorCount\}/);
   });
 
-  it('canonical/seed-meta advance only when coverage >= MIN_CANONICAL_PUBLISH (Greptile PR #3760 P1)', () => {
+  it('canonical/seed-meta advance at the recovery publish floor, below the 174 health target', () => {
     // Gate=5 lets per-country writes through (cache rotation accumulates)
     // but CANONICAL_KEY + META_KEY require a higher coverage floor before
     // they advance — protects consumers from a 5-country canonical
-    // published as "healthy" during a recovery from full outage.
+    // published as fresh during a recovery from full outage.
     assert.match(src, /export const PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES\s*=\s*174/);
-    assert.match(src, /const MIN_CANONICAL_PUBLISH\s*=\s*PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES/);
+    assert.match(src, /const MIN_CANONICAL_PUBLISH\s*=\s*50/);
     // The gate is evaluated and used to conditionally write canonical/meta:
     assert.match(src, /const canonicalAdvances = shouldAdvanceCanonical\(countryData\.size\)/);
     assert.match(src, /if\s*\(canonicalAdvances\)\s*\{[\s\S]{0,300}SET',\s*CANONICAL_KEY/);
@@ -923,10 +923,12 @@ describe('validateFn', () => {
     assert.equal(validateFn(null), false);
   });
 
-  it('advances canonical and seed-meta only at the 174-country recovery target', () => {
+  it('keeps the 174-country target as a health floor, not the publish cursor', () => {
     assert.equal(PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES, 174);
-    assert.equal(shouldAdvanceCanonical(139), false);
-    assert.equal(shouldAdvanceCanonical(173), false);
+    assert.equal(shouldAdvanceCanonical(49), false);
+    assert.equal(shouldAdvanceCanonical(50), true);
+    assert.equal(shouldAdvanceCanonical(139), true);
+    assert.equal(shouldAdvanceCanonical(173), true);
     assert.equal(shouldAdvanceCanonical(174), true);
     assert.equal(shouldAdvanceCanonical(175), true);
   });
