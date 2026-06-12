@@ -2211,6 +2211,65 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.ok(data.bounding_box?.sw_lat !== undefined, 'bounding_box must be present');
   });
 
+  it('get_maritime_activity keeps dateline-adjacent results when the pad crosses ±180 (FJ)', async () => {
+    // FJ bbox is [-18.25, 177.34, -16.15, 180]: the +3° pad pushes the east
+    // edge to 183, so a point at -179 sits just across the dateline and MUST
+    // match (it is 1-4° away), while a genuinely distant Pacific point must
+    // not. The original filter only treated sw_lon > ne_lon as wrapped and
+    // silently dropped the -179 point.
+    globalThis.fetch = async (url) => {
+      if (url.toString().includes('/api/maritime/v1/get-vessel-snapshot')) {
+        return new Response(JSON.stringify({
+          snapshot: {
+            snapshotAt: 1711620000000,
+            densityZones: [
+              { name: 'Across the dateline', location: { latitude: -17.5, longitude: -179 }, intensity: 10, shipsPerDay: 20, deltaPct: 0, note: '' },
+              { name: 'West of Fiji in-box', location: { latitude: -17.0, longitude: 178.0 }, intensity: 5, shipsPerDay: 10, deltaPct: 0, note: '' },
+              { name: 'Far Pacific', location: { latitude: -17.5, longitude: -150 }, intensity: 3, shipsPerDay: 5, deltaPct: 0, note: '' },
+            ],
+            disruptions: [],
+          },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return originalFetch(url);
+    };
+
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 23, method: 'tools/call',
+      params: { name: 'get_maritime_activity', arguments: { country_code: 'FJ' } },
+    }));
+    const body = await res.json();
+    const data = JSON.parse(body.result.content[0].text);
+    const names = data.density_zones.map((z) => z.name).sort();
+    assert.deepEqual(names, ['Across the dateline', 'West of Fiji in-box'], 'dateline-adjacent point must match; far-Pacific point must not');
+  });
+
+  it('get_maritime_activity matches every longitude for full-span bboxes (AQ stored as -180..180)', async () => {
+    globalThis.fetch = async (url) => {
+      if (url.toString().includes('/api/maritime/v1/get-vessel-snapshot')) {
+        return new Response(JSON.stringify({
+          snapshot: {
+            snapshotAt: 1711620000000,
+            densityZones: [
+              { name: 'Drake Passage', location: { latitude: -65, longitude: -62 }, intensity: 4, shipsPerDay: 8, deltaPct: 0, note: '' },
+              { name: 'Ross Sea', location: { latitude: -75, longitude: 175 }, intensity: 1, shipsPerDay: 1, deltaPct: 0, note: '' },
+            ],
+            disruptions: [],
+          },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return originalFetch(url);
+    };
+
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 24, method: 'tools/call',
+      params: { name: 'get_maritime_activity', arguments: { country_code: 'AQ' } },
+    }));
+    const body = await res.json();
+    const data = JSON.parse(body.result.content[0].text);
+    assert.equal(data.total_zones, 2, 'a full-circle longitude span must not collapse under pad normalization');
+  });
+
   it('get_maritime_activity works for countries whose bbox exceeds the 10° handler cap (e.g. JP)', async () => {
     globalThis.fetch = async (url) => {
       if (url.toString().includes('/api/maritime/v1/get-vessel-snapshot')) {

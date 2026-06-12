@@ -556,9 +556,20 @@ export const RPC_TOOLS: ToolDef[] = [
         if (lat === 0 && lon === 0) return false;
         if (lat < sw_lat - PAD_DEG || lat > ne_lat + PAD_DEG) return false;
         const lo = sw_lon - PAD_DEG;
-        const hi = ne_lon + PAD_DEG;
-        // Antimeridian-wrapped boxes (sw_lon > ne_lon) match the complement range.
-        return sw_lon <= ne_lon ? lon >= lo && lon <= hi : lon >= lo || lon <= hi;
+        // Source boxes stored wrapped (sw_lon > ne_lon) span the dateline;
+        // unwrap to a monotonic interval before reasoning about the pad.
+        const hi = (sw_lon > ne_lon ? ne_lon + 360 : ne_lon) + PAD_DEG;
+        // Pad widened the interval to the full circle — AQ and RU are stored
+        // as -180..180 spans, so every longitude matches.
+        if (hi - lo >= 360) return true;
+        // The pad itself can push a ±180-adjacent box past the dateline
+        // (FJ ne_lon=180 → hi=183; NZ 178.29 → 181.29): points just across
+        // it (e.g. -179) must still match, so renormalize the overflowing
+        // end into [-180,180] and compare on the wrapped complement.
+        const wraps = lo < -180 || hi > 180;
+        const loN = lo < -180 ? lo + 360 : lo;
+        const hiN = hi > 180 ? hi - 360 : hi;
+        return wraps ? lon >= loN || lon <= hiN : lon >= loN && lon <= hiN;
       };
 
       const zones = (snap.densityZones ?? []).filter(z => inCountryBbox(z.location));
