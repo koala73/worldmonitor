@@ -60,15 +60,15 @@ describe('brief source helpers', () => {
   it('builds numbered source context lines for LLM grounding', () => {
     const lines = buildBriefSourceContextLines([
       {
-        title: 'Grounding story',
-        source: 'Wire',
+        title: 'Grounding story | with delimiter',
+        source: 'Wire | Desk',
         url: 'https://example.com/grounding',
         publishedAt: '2026-06-07T00:00:00.000Z',
       },
     ]);
 
     assert.deepEqual(lines, [
-      'Source [1]: Grounding story | Wire | https://example.com/grounding | published=2026-06-07T00:00:00.000Z',
+      'Source [1]: {"title":"Grounding story | with delimiter","source":"Wire | Desk","url":"https://example.com/grounding","publishedAt":"2026-06-07T00:00:00.000Z"}',
     ]);
   });
 

@@ -134,6 +134,14 @@ export interface GetCountryIntelBriefResponse {
   brief: string;
   model: string;
   generatedAt: number;
+  sources: BriefSource[];
+}
+
+export interface BriefSource {
+  title: string;
+  source: string;
+  url: string;
+  publishedAt: string;
 }
 
 export interface SearchGdeltDocumentsRequest {

@@ -1,5 +1,6 @@
 import type {
   ServerContext,
+  BriefSource as CountryIntelBriefSource,
   GetCountryIntelBriefRequest,
   GetCountryIntelBriefResponse,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
@@ -12,17 +13,6 @@ import { sanitizeForPrompt } from '../../../_shared/llm-sanitize.js';
 import { ENERGY_SPINE_KEY_PREFIX } from '../../../_shared/cache-keys';
 
 const INTEL_CACHE_TTL = 21600;
-
-type CountryIntelBriefSource = {
-  title: string;
-  source: string;
-  url: string;
-  publishedAt?: string;
-};
-
-type CountryIntelBriefResponseWithSources = GetCountryIntelBriefResponse & {
-  sources: CountryIntelBriefSource[];
-};
 
 function cleanSourceText(value: unknown, maxLen: number): string {
   if (typeof value !== 'string') return '';
@@ -49,15 +39,39 @@ function normalizePublishedAt(value: unknown): string | undefined {
 export function parseCountryBriefSources(contextSnapshot: string): CountryIntelBriefSource[] {
   const out: CountryIntelBriefSource[] = [];
   const seen = new Set<string>();
-  const sourceLine = /^Source \[(\d{1,2})\]:\s*([^|\n]+)\s*\|\s*([^|\n]+)\s*\|\s*(https?:\/\/\S+)(?:\s*\|\s*published=([^\n|]+))?/gm;
+  const sourceLine = /^Source \[(\d{1,2})\]:\s*(.+)$/gm;
   let match: RegExpExecArray | null;
   while ((match = sourceLine.exec(contextSnapshot)) && out.length < 6) {
-    const title = cleanSourceText(match[2], 160);
-    const source = cleanSourceText(match[3], 80);
-    const url = normalizeSourceUrl(match[4]);
+    const rawPayload = match[2]?.trim() ?? '';
+    let candidate: { title?: unknown; source?: unknown; url?: unknown; publishedAt?: unknown } | null = null;
+
+    if (rawPayload.startsWith('{')) {
+      try {
+        candidate = JSON.parse(rawPayload) as { title?: unknown; source?: unknown; url?: unknown; publishedAt?: unknown };
+      } catch {
+        candidate = null;
+      }
+    }
+
+    if (!candidate) {
+      const legacy = rawPayload.match(/^(.+?)\s*\|\s*(.+?)\s*\|\s*(https?:\/\/\S+)(?:\s*\|\s*published=([^\n|]+))?$/);
+      if (legacy) {
+        candidate = {
+          title: legacy[1],
+          source: legacy[2],
+          url: legacy[3],
+          publishedAt: legacy[4],
+        };
+      }
+    }
+
+    if (!candidate) continue;
+    const title = cleanSourceText(candidate.title, 160);
+    const source = cleanSourceText(candidate.source, 80);
+    const url = normalizeSourceUrl(candidate.url);
     if (!title || !source || !url || seen.has(url)) continue;
-    const publishedAt = normalizePublishedAt(match[5]);
-    out.push(publishedAt ? { title, source, url, publishedAt } : { title, source, url });
+    const publishedAt = normalizePublishedAt(candidate.publishedAt);
+    out.push({ title, source, url, publishedAt: publishedAt ?? '' });
     seen.add(url);
   }
   return out;
@@ -66,9 +80,9 @@ export function parseCountryBriefSources(contextSnapshot: string): CountryIntelB
 export async function getCountryIntelBrief(
   ctx: ServerContext,
   req: GetCountryIntelBriefRequest,
-): Promise<CountryIntelBriefResponseWithSources> {
+): Promise<GetCountryIntelBriefResponse> {
   let sources: CountryIntelBriefSource[] = [];
-  const empty: CountryIntelBriefResponseWithSources = {
+  const empty: GetCountryIntelBriefResponse = {
     countryCode: req.countryCode,
     countryName: '',
     brief: '',
@@ -176,9 +190,9 @@ Rules:
     userPromptParts.push(`Context snapshot:\n${contextSnapshot}`);
   }
 
-  let result: CountryIntelBriefResponseWithSources | null = null;
+  let result: GetCountryIntelBriefResponse | null = null;
   try {
-    result = await cachedFetchJson<CountryIntelBriefResponseWithSources>(cacheKey, INTEL_CACHE_TTL, async () => {
+    result = await cachedFetchJson<GetCountryIntelBriefResponse>(cacheKey, INTEL_CACHE_TTL, async () => {
       const llmResult = await callLlm({
         messages: [
           { role: 'system', content: systemPrompt },

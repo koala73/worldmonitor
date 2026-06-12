@@ -49,6 +49,21 @@ function normalizeBriefDate(value: unknown): string | undefined {
   return Number.isFinite(ms) ? new Date(ms).toISOString() : undefined;
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function countryTermIndex(text: string, term: string): number {
+  const normalizedTerm = term.trim().toLowerCase();
+  if (!normalizedTerm) return -1;
+  const match = new RegExp(`(^|[^a-z0-9])${escapeRegExp(normalizedTerm)}(?=$|[^a-z0-9])`, 'i').exec(text);
+  return match ? match.index + (match[1] ?? '').length : -1;
+}
+
+function includesCountryTerm(text: string, term: string): boolean {
+  return countryTermIndex(text, term) !== -1;
+}
+
 function collectMcpBriefSources(items: DigestItemForBrief[], maxSources = 6): McpBriefSource[] {
   const out: McpBriefSource[] = [];
   const seen = new Set<string>();
@@ -67,9 +82,10 @@ function collectMcpBriefSources(items: DigestItemForBrief[], maxSources = 6): Mc
 
 function briefSourceContextLines(sources: McpBriefSource[]): string[] {
   return sources.map((source, index) => {
-    const parts = [`Source [${index + 1}]: ${source.title}`, source.source, source.url];
-    if (source.publishedAt) parts.push(`published=${source.publishedAt}`);
-    return parts.join(' | ');
+    const payload = source.publishedAt
+      ? { title: source.title, source: source.source, url: source.url, publishedAt: source.publishedAt }
+      : { title: source.title, source: source.source, url: source.url };
+    return `Source [${index + 1}]: ${JSON.stringify(payload)}`;
   });
 }
 
@@ -240,7 +256,7 @@ export const RPC_TOOLS: ToolDef[] = [
           const terms = countryBriefSearchTerms(countryCode);
           const countryItems = allItems.filter((item) => {
             const text = `${item.title ?? ''} ${item.snippet ?? ''}`.toLowerCase();
-            return terms.some(term => text.includes(term));
+            return terms.some(term => includesCountryTerm(text, term));
           });
           const groundingItems = (countryItems.length > 0 ? countryItems : allItems).slice(0, 15);
           sources = collectMcpBriefSources(groundingItems, 6);

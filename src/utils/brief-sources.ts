@@ -92,9 +92,10 @@ export function normalizeCachedBriefSources(
 
 export function buildBriefSourceContextLines(sources: BriefSource[]): string[] {
   return sources.map((source, index) => {
-    const parts = [`Source [${index + 1}]: ${source.title}`, source.source, source.url];
-    if (source.publishedAt) parts.push(`published=${source.publishedAt}`);
-    return parts.join(' | ');
+    const payload = source.publishedAt
+      ? { title: source.title, source: source.source, url: source.url, publishedAt: source.publishedAt }
+      : { title: source.title, source: source.source, url: source.url };
+    return `Source [${index + 1}]: ${JSON.stringify(payload)}`;
   });
 }
 

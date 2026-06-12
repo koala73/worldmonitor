@@ -48,6 +48,13 @@ async function captureRpcFetches(toolName, params) {
                 link: 'javascript:alert(1)',
                 snippet: 'This item has an unsafe URL.',
               },
+              ...(toolName === 'get_country_brief' ? [{
+                title: 'Russia housing vote should not match the country code',
+                source: 'Substring Wire',
+                link: 'https://example.com/russia-house',
+                publishedAt: '2026-06-07T00:00:00.000Z',
+                snippet: 'A Moscow story whose text contains incidental substrings.',
+              }] : []),
             ],
           },
         },
@@ -116,7 +123,8 @@ describe('MCP news/auth public contract', () => {
     const countryBriefCall = countryCalls.find((call) => new URL(call.url).pathname === '/api/intelligence/v1/get-country-intel-brief');
     assert.ok(countryBriefCall, 'get_country_brief should call country brief endpoint');
     const context = new URL(countryBriefCall.url).searchParams.get('context') || '';
-    assert.match(decodeURIComponent(context), /Source \[1\]: United States headline used for MCP grounding \| Example Wire \| https:\/\/example\.com\/world-grounding/);
+    assert.match(decodeURIComponent(context), /Source \[1\]: \{"title":"United States headline used for MCP grounding","source":"Example Wire","url":"https:\/\/example\.com\/world-grounding","publishedAt":"2026-06-07T00:00:00.000Z"\}/);
+    assert.doesNotMatch(decodeURIComponent(context), /russia-house/);
   });
 
   it('RPC brief output schemas expose structured sources', () => {

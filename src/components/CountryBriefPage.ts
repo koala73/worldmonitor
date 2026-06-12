@@ -1,6 +1,6 @@
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { formatIntelBrief } from '@/utils/format-intel-brief';
-import { renderBriefSourcesFooter } from '@/utils/brief-sources';
+import { collectBriefSources, renderBriefSourcesFooter, type BriefSource } from '@/utils/brief-sources';
 import { t } from '@/services/i18n';
 import { getCSSColor, showToast } from '@/utils';
 import type { CountryScore } from '@/services/country-instability';
@@ -516,8 +516,9 @@ export class CountryBriefPage implements CountryBriefPanel {
     this.currentBrief = data.brief;
     this.currentBriefGeneratedAt = data.generatedAt ?? null;
     this.currentBriefCached = data.cached === true;
-    const formatted = this.formatBrief(data.brief, this.currentHeadlineCount);
-    const sourcesFooter = renderBriefSourcesFooter(data.sources, { className: 'cb-brief-sources' });
+    const briefSources = collectBriefSources(data.sources ?? [], 6);
+    const formatted = this.formatBrief(data.brief, briefSources, this.currentHeadlineCount);
+    const sourcesFooter = renderBriefSourcesFooter(briefSources, { className: 'cb-brief-sources' });
     setTrustedHtml(section, trustedHtml(`
       <div class="cb-brief-text">${formatted}</div>
       ${sourcesFooter}
@@ -673,8 +674,15 @@ export class CountryBriefPage implements CountryBriefPanel {
     return t('modals.countryBrief.timeAgo.d', { count: Math.floor(hours / 24) });
   }
 
-  private formatBrief(text: string, headlineCount = 0): string {
-    return formatIntelBrief(text, headlineCount > 0 ? { count: headlineCount, hrefPrefix: '#cb-news-' } : undefined);
+  private formatBrief(text: string, sources: BriefSource[] = [], headlineCount = 0): string {
+    return formatIntelBrief(
+      text,
+      sources.length > 0
+        ? { sources }
+        : headlineCount > 0
+          ? { count: headlineCount, hrefPrefix: '#cb-news-' }
+          : undefined,
+    );
   }
 
   private exportBrief(format: 'json' | 'csv' | 'evidence-md'): void {

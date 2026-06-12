@@ -514,14 +514,7 @@ export class InsightsPanel extends Panel {
     sentiments: Array<{ label: string; score: number }> | null,
   ): void {
     const worldBriefSources = collectBriefSources(
-      insights.worldBriefSources?.length
-        ? insights.worldBriefSources
-        : insights.topStories.slice(0, 1).map((story) => ({
-            primaryTitle: story.primaryTitle,
-            primarySource: story.primarySource,
-            primaryLink: story.primaryLink,
-            pubDate: story.pubDate,
-          })),
+      insights.worldBriefSources ?? [],
       6,
     );
     const briefHtml = insights.worldBrief ? this.renderWorldBrief(insights.worldBrief, worldBriefSources) : '';

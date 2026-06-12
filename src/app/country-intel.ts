@@ -292,7 +292,7 @@ export class CountryIntelManager implements AppModule {
     const otherCountryTerms = CountryIntelManager.getOtherCountryTerms(code);
     const matchingNews = this.ctx.allNews.filter((n) => {
       const t = n.title.toLowerCase();
-      return searchTerms.some((term) => t.includes(term));
+      return CountryIntelManager.firstMentionPosition(t, searchTerms) !== Infinity;
     });
     const filteredNews = matchingNews.filter((n) => {
       const t = n.title.toLowerCase();
@@ -1343,7 +1343,7 @@ export class CountryIntelManager implements AppModule {
 
     const countryLower = country.toLowerCase();
     const rawLower = normalized.toLowerCase();
-    return rawLower === countryLower || rawLower.includes(countryLower);
+    return rawLower === countryLower || CountryIntelManager.countryTermIndex(rawLower, countryLower) !== -1;
   }
 
   private mapSignalType(type: string): CountryDeepDiveSignalDetails['recentHigh'][number]['type'] {
@@ -1472,10 +1472,21 @@ export class CountryIntelManager implements AppModule {
 
   private static otherCountryTermsCache: Map<string, string[]> = new Map();
 
+  static escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  static countryTermIndex(text: string, term: string): number {
+    const normalizedTerm = term.trim().toLowerCase();
+    if (!normalizedTerm) return -1;
+    const match = new RegExp(`(^|[^a-z0-9])${CountryIntelManager.escapeRegExp(normalizedTerm)}(?=$|[^a-z0-9])`, 'i').exec(text);
+    return match ? match.index + (match[1] ?? '').length : -1;
+  }
+
   static firstMentionPosition(text: string, terms: string[]): number {
     let earliest = Infinity;
     for (const term of terms) {
-      const idx = text.indexOf(term);
+      const idx = CountryIntelManager.countryTermIndex(text, term);
       if (idx !== -1 && idx < earliest) earliest = idx;
     }
     return earliest;
