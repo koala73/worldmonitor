@@ -149,9 +149,9 @@ export class CountryBriefPage implements CountryBriefPanel {
 
       // Citation links
       if (target.classList.contains('cb-citation')) {
-        e.preventDefault();
         const href = target.getAttribute('href');
-        if (href) {
+        if (href?.startsWith('#')) {
+          e.preventDefault();
           const el = this.overlay.querySelector(href);
           el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
           el?.classList.add('cb-news-highlight');
