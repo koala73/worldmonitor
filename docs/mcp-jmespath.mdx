@@ -18,7 +18,7 @@ This page is the practical reference: a quick orientation, then twelve worked ex
 
   Failures return `{ _jmespath_error, original_keys, ... }` inside the normal result envelope — the tool call still succeeds at the JSON-RPC layer (no `isError: true`), and `original_keys` echoes the top-level keys of the unprojected response so the model can self-correct on the next call.
 
-The three response shapes used below are the captured fixtures under `tests/fixtures/jmespath-samples/` (re-captured periodically against the prod MCP endpoint). They were picked deliberately — fat (~100 KB), medium (~30 KB), and thin (~10 KB) — to span the size tiers you'll actually project against.
+The three response shapes used below are the captured fixtures under `tests/fixtures/jmespath-samples/` (re-captured periodically against the prod MCP endpoint). They were picked deliberately — fat (~100 KB with `limit: 0`), medium (~30 KB), and thin (~10 KB) — to span the size tiers you'll actually project against.
 
 ## The twelve examples
 
@@ -32,12 +32,13 @@ The three response shapes used below are the captured fixtures under `tests/fixt
 {
   "name": "get_market_data",
   "arguments": {
+    "limit": 0,
     "jmespath": "data.\"fear-greed\".composite"
   }
 }
 ```
 
-**Unprojected response (~100 KB).** Hundreds of equity quotes, every sector, all of crypto, every Gulf ticker, the full fear-greed breakdown:
+**Unprojected response (~100 KB with `limit: 0`).** Hundreds of equity quotes, every sector, all of crypto, every Gulf ticker, the full fear-greed breakdown:
 
 ```json
 {
@@ -67,11 +68,13 @@ The three response shapes used below are the captured fixtures under `tests/fixt
 
 **Why this works.** Drill-down is just dotted path navigation. `data."fear-greed"` quotes the hyphenated key, then `.composite` plucks the nested object. Everything else in the payload — the 100 KB of quotes — never crosses the wire.
 
+Omit `limit: 0` for ordinary use: cache tools default-cap list- and map-shaped fields at 30 items when `limit` is omitted.
+
 ---
 
 ### 2. Slim each item to a few fields (multiselect-hash)
 
-**Intent.** From `get_market_data`, get a compact table of all equity quotes: symbol, price, percent change.
+**Intent.** From `get_market_data`, get a compact three-row table of the default-capped equity quotes: symbol, price, percent change.
 
 **Tool call:**
 
@@ -79,7 +82,7 @@ The three response shapes used below are the captured fixtures under `tests/fixt
 {
   "name": "get_market_data",
   "arguments": {
-    "jmespath": "data.\"stocks-bootstrap\".quotes[*].{s:symbol,p:price,chg:change}"
+    "jmespath": "data.\"stocks-bootstrap\".quotes[0:3].{s:symbol,p:price,chg:change}"
   }
 }
 ```
@@ -160,10 +163,18 @@ The three response shapes used below are the captured fixtures under `tests/fixt
 [
   {
     "id": "568494",
+    "dateStart": 1735603200000,
+    "dateEnd": 1735603200000,
+    "location": {
+      "latitude": 34.820728,
+      "longitude": 44.361441
+    },
     "country": "Iraq",
     "sideA": "Government of Iraq",
     "sideB": "IS",
     "deathsBest": 7,
+    "deathsLow": 7,
+    "deathsHigh": 7,
     "violenceType": "UCDP_VIOLENCE_TYPE_STATE_BASED",
     "sourceOriginal": "the Iraqi Security Information Cell"
   }
@@ -231,14 +242,14 @@ The three response shapes used below are the captured fixtures under `tests/fixt
 **Why this works.** `[start:stop]` is the slice projection (`stop` is exclusive). Negative indices and a step are also supported — `[-5:]` for the last five, `[::-1]` to reverse, `[::2]` for every other element. Slicing is **post-filter** in the pipeline — to slice the filtered set, pipe (see example 12).
 
 <Tip>
-**`limit` vs. slicing.** Several tools (`get_country_macro`, `get_eu_*`, `get_displacement_data`) accept a tool-level `limit` argument that caps the response **before** projection. `limit` and JMESPath compose: the tool-level cap narrows the candidate set, then your `[0:N]` slice picks the prefix. Pass `limit: 0` to disable the tool-level cap when you want everything and intend to project further with JMESPath.
+**`limit` vs. slicing.** Cache tools accept a tool-level `limit` argument that caps list- or map-shaped slices **before** projection (default 30 for cache tools that expose list/map fields). `limit` and JMESPath compose: the tool-level cap narrows the candidate set, then your `[0:N]` slice picks the prefix. Pass `limit: 0` to disable the tool-level cap when you want everything and intend to project further with JMESPath.
 </Tip>
 
 ---
 
 ### 7. `length()` for counting
 
-**Intent.** How many UCDP events are in the latest bundle?
+**Intent.** How many UCDP events are in the default-capped latest bundle?
 
 **Tool call:**
 
@@ -254,10 +265,12 @@ The three response shapes used below are the captured fixtures under `tests/fixt
 **Projected response:**
 
 ```json
-38
+30
 ```
 
 **Why this works.** `length()` is one of JMESPath's built-in functions; it works on arrays, strings, and objects (where it returns the key count). Useful as a sanity check before a longer call — a `length()` projection returns a single integer, costs nothing in tokens, and tells the model whether the bundle is empty before deciding what to project next.
+
+Because this call omits `limit`, the tool-level default cap is applied before JMESPath, so the count is the capped candidate set (30). Pass `limit: 0` when you need to count the full underlying bundle instead.
 
 ---
 
@@ -280,9 +293,9 @@ The three response shapes used below are the captured fixtures under `tests/fixt
 
 ```json
 [
-  { "c": "DR Congo (Zaire)", "d": 17 },
-  { "c": "Iraq",             "d": 7  },
-  { "c": "Mexico",           "d": 3  }
+  { "c": "Ukraine",          "d": 30 },
+  { "c": "Somalia",          "d": 27 },
+  { "c": "DR Congo (Zaire)", "d": 17 }
 ]
 ```
 
@@ -298,7 +311,7 @@ This is the workhorse shape for "give me the top-N by some metric". The same sha
 
 ### 9. Filter on enum-string field
 
-**Intent.** From `get_conflict_events`, return only UCDP events classified as state-based violence — the highest-severity tier.
+**Intent.** From `get_conflict_events`, return the first five UCDP events classified as state-based violence — the highest-severity tier.
 
 **Tool call:**
 
@@ -306,17 +319,20 @@ This is the workhorse shape for "give me the top-N by some metric". The same sha
 {
   "name": "get_conflict_events",
   "arguments": {
-    "jmespath": "data.\"ucdp-events\".events[?violenceType == 'UCDP_VIOLENCE_TYPE_STATE_BASED'].{c:country, a:sideA, b:sideB, d:deathsBest}"
+    "jmespath": "data.\"ucdp-events\".events[?violenceType == 'UCDP_VIOLENCE_TYPE_STATE_BASED'].{c:country, a:sideA, b:sideB, d:deathsBest} | [0:5]"
   }
 }
 ```
 
-**Projected response:**
+**Projected response:** five of 14 state-based rows in the default-capped fixture:
 
 ```json
 [
   { "c": "Iraq", "a": "Government of Iraq", "b": "IS", "d": 7 },
-  { "c": "Yemen (North Yemen)", "a": "Government of United Kingdom, Government of United States of America", "b": "Government of Yemen (North Yemen)", "d": 0 }
+  { "c": "Yemen (North Yemen)", "a": "Government of United Kingdom, Government of United States of America", "b": "Government of Yemen (North Yemen)", "d": 0 },
+  { "c": "Pakistan", "a": "Government of Pakistan", "b": "TTP", "d": 2 },
+  { "c": "Somalia", "a": "Government of Somalia", "b": "Al-Shabaab", "d": 10 },
+  { "c": "Ukraine", "a": "Government of Russia (Soviet Union)", "b": "Government of Ukraine", "d": 7 }
 ]
 ```
 
@@ -385,7 +401,8 @@ This is the workhorse shape for "give me the top-N by some metric". The same sha
   { "risk": "critical", "count": 28  },
   { "risk": "critical", "count": 627 },
   { "risk": "critical", "count": 33  },
-  { "risk": "critical", "count": 735 }
+  { "risk": "critical", "count": 735 },
+  { "risk": "critical", "count": 274 }
 ]
 ```
 
@@ -414,11 +431,11 @@ The flatten drops the original map keys (the chokepoint names). If you need the 
 
 ```json
 [
+  { "c": "Ukraine",          "d": 30, "t": "UCDP_VIOLENCE_TYPE_STATE_BASED" },
+  { "c": "Somalia",          "d": 27, "t": "UCDP_VIOLENCE_TYPE_STATE_BASED" },
   { "c": "DR Congo (Zaire)", "d": 17, "t": "UCDP_VIOLENCE_TYPE_ONE_SIDED" },
-  { "c": "Iraq",             "d": 7,  "t": "UCDP_VIOLENCE_TYPE_STATE_BASED" },
-  { "c": "Mexico",           "d": 3,  "t": "UCDP_VIOLENCE_TYPE_NON_STATE" },
-  { "c": "Ecuador",          "d": 2,  "t": "UCDP_VIOLENCE_TYPE_NON_STATE" },
-  { "c": "Brazil",           "d": 1,  "t": "UCDP_VIOLENCE_TYPE_NON_STATE" }
+  { "c": "Somalia",          "d": 10, "t": "UCDP_VIOLENCE_TYPE_STATE_BASED" },
+  { "c": "Ukraine",          "d": 7,  "t": "UCDP_VIOLENCE_TYPE_STATE_BASED" }
 ]
 ```
 
@@ -428,7 +445,7 @@ The flatten drops the original map keys (the chokepoint names). If you need the 
 
 ### Get the full payload (no projection)
 
-Omit the `jmespath` argument entirely. Some tools (`get_country_macro`, the three `get_eu_*` tools, `get_displacement_data`) also default-cap their list-shaped fields at 30 rows for the same reason; pass `limit: 0` to disable that cap when you genuinely want the whole bundle:
+Omit the `jmespath` argument entirely. Cache tools default-cap list- or map-shaped fields at 30 items when `limit` is omitted; pass `limit: 0` to disable that cap when you genuinely want the whole bundle:
 
 ```json
 {
@@ -465,13 +482,13 @@ A JMESPath expression can fail three ways: the expression itself exceeds 1024 by
 }
 ```
 
-`original_keys` is the top-level keys of the unprojected response — enough context for the model to retry with a corrected expression in one extra call. A bad expression **does** consume one daily quota slot per attempt; the echoed `original_keys` exists specifically to make the retry self-correcting rather than guesswork. The three kinds (`expression_too_long`, `invalid_expression`, `projection_too_large`) and their exact discriminator strings live in the [MCP Error Catalog](/mcp-error-catalog#_jmespath_error--projection-failed).
+`original_keys` is the top-level keys of the unprojected response — enough context for the model to retry with a corrected expression in one extra call. A bad expression **does** consume one Pro/OAuth daily quota slot per attempt when that quota path applies; the echoed `original_keys` exists specifically to make the retry self-correcting rather than guesswork. The three kinds (`expression_too_long`, `invalid_expression`, `projection_too_large`) and their exact discriminator strings live in the [MCP Error Catalog](/mcp-error-catalog#_jmespath_error--projection-failed).
 
 ## Complements to projection
 
 ### `summary: true` flag
 
-Every cache tool also accepts a universal `summary: true` argument that returns a server-built summary (counts + samples) instead of the full payload. Use it when:
+Every cache tool also accepts a universal `summary: true` argument that returns a server-built summary instead of the full payload. Arrays become `{ count, sample }` with up to 3 sample items; object fields with more than 5 keys are treated as entity maps and become `{ count, sample_keys }` with up to 3 sample keys. Use it when:
 
 - You want a quick sanity-check of what's in the bundle before designing a projection — `summary: true` returns the shape and tier counts in a handful of fields.
 - The model only needs aggregate counts ("how many active conflicts?", "how many critical chokepoints?") and not the underlying rows.

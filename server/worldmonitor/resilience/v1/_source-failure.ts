@@ -8,6 +8,10 @@
 // dimension scorers stay oblivious.
 
 import type { ResilienceDimensionId, ResilienceSeedReader } from './_dimension-scorers';
+import { resolveSeedMetaKey } from './_dimension-freshness';
+import { INDICATOR_REGISTRY, getIndicatorSourceKeys, type IndicatorSpec } from './_indicator-registry';
+import { STANDALONE_SOURCE_META_MAX_STALE_MIN } from './_standalone-source-thresholds';
+export { STANDALONE_SOURCE_META_MAX_STALE_MIN } from './_standalone-source-thresholds';
 
 // Must match RESILIENCE_STATIC_META_KEY in scripts/seed-resilience-static.mjs.
 export const RESILIENCE_STATIC_META_KEY = 'seed-meta:resilience:static';
@@ -88,4 +92,88 @@ export function failedDimensionsFromDatasets(
     for (const dim of dims) out.add(dim);
   }
   return out;
+}
+
+export interface StandaloneSourceFailureResult {
+  dimensions: Set<ResilienceDimensionId>;
+  failedMetaKeys: string[];
+}
+
+const MINUTE_MS = 60 * 1000;
+
+const IGNORED_STANDALONE_SOURCE_META_KEYS = new Set([
+  // Retired: scoreFuelStockDays always returns coverage=0 +
+  // imputationClass=null. The seeder still writes historical data for a
+  // possible future replacement dimension, but it should not pollute
+  // source-failure logs while the dimension is intentionally inactive.
+  'seed-meta:resilience:recovery:fuel-stocks',
+]);
+
+/**
+ * Read standalone seed-meta records referenced by INDICATOR_REGISTRY and map
+ * non-ok or stale source meta to affected dimensions. The resilience-static
+ * aggregate is intentionally excluded here because static adapters carry
+ * per-dataset failures via readFailedDatasets().
+ */
+export async function readStandaloneSourceFailureDimensions(
+  reader: ResilienceSeedReader,
+  nowMs?: number,
+): Promise<StandaloneSourceFailureResult> {
+  const metaKeyToIndicators = buildStandaloneMetaKeyToIndicators(INDICATOR_REGISTRY);
+
+  const dimensions = new Set<ResilienceDimensionId>();
+  const failedMetaKeys: string[] = [];
+
+  await Promise.all(
+    [...metaKeyToIndicators.entries()].map(async ([metaKey, indicators]) => {
+      try {
+        const meta = await reader(metaKey);
+        if (!meta || typeof meta !== 'object') return;
+
+        const status = (meta as { status?: unknown }).status;
+        const nonOk = Boolean(status) && status !== 'ok';
+        const fetchedAt = Number((meta as { fetchedAt?: unknown }).fetchedAt);
+        const hasFetchedAt = Number.isFinite(fetchedAt) && fetchedAt > 0;
+        const maxStaleMin = STANDALONE_SOURCE_META_MAX_STALE_MIN[metaKey];
+        const stale = hasFetchedAt
+          && typeof maxStaleMin === 'number'
+          && ((nowMs ?? Date.now()) - fetchedAt) > maxStaleMin * MINUTE_MS;
+
+        if (!nonOk && !stale) return;
+
+        failedMetaKeys.push(metaKey);
+        for (const indicator of indicators) {
+          dimensions.add(indicator.dimension);
+        }
+      } catch {
+        // Match readFreshnessMap/readFailedDatasets: Redis/meta read failures
+        // should not fail the country score request.
+      }
+    }),
+  );
+
+  failedMetaKeys.sort();
+  return { dimensions, failedMetaKeys };
+}
+
+export function buildStandaloneMetaKeyToIndicators(
+  indicators: readonly IndicatorSpec[],
+): Map<string, IndicatorSpec[]> {
+  const metaKeyToIndicators = new Map<string, IndicatorSpec[]>();
+  for (const indicator of indicators) {
+    for (const sourceKey of getIndicatorSourceKeys(indicator)) {
+      const metaKey = resolveSeedMetaKey(sourceKey);
+      if (metaKey === RESILIENCE_STATIC_META_KEY) continue;
+      if (IGNORED_STANDALONE_SOURCE_META_KEYS.has(metaKey)) continue;
+      const existing = metaKeyToIndicators.get(metaKey);
+      if (existing) {
+        if (!existing.includes(indicator)) {
+          existing.push(indicator);
+        }
+      } else {
+        metaKeyToIndicators.set(metaKey, [indicator]);
+      }
+    }
+  }
+  return metaKeyToIndicators;
 }

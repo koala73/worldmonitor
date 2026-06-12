@@ -11,29 +11,30 @@ const TTL = 10800; // 180min — 2h buffer over 1h cron cadence (was 120min = ex
 const ALLOWED_DOMAINS = new Set(loadSharedConfig('rss-allowed-domains.json'));
 
 const ADVISORY_FEEDS = [
-  { name: 'US State Dept', sourceCountry: 'US', url: 'https://travel.state.gov/_res/rss/TAsTWs.xml', levelParser: 'us' },
-{ name: 'UK FCDO', sourceCountry: 'UK', url: 'https://www.gov.uk/foreign-travel-advice.atom' },
-  { name: 'US Embassy Thailand', sourceCountry: 'US', url: 'https://th.usembassy.gov/category/alert/feed/', targetCountry: 'TH' },
-  { name: 'US Embassy UAE', sourceCountry: 'US', url: 'https://ae.usembassy.gov/category/alert/feed/', targetCountry: 'AE' },
-  { name: 'US Embassy Germany', sourceCountry: 'US', url: 'https://de.usembassy.gov/category/alert/feed/', targetCountry: 'DE' },
-  { name: 'US Embassy Ukraine', sourceCountry: 'US', url: 'https://ua.usembassy.gov/category/alert/feed/', targetCountry: 'UA' },
-  { name: 'US Embassy Mexico', sourceCountry: 'US', url: 'https://mx.usembassy.gov/category/alert/feed/', targetCountry: 'MX' },
-  { name: 'US Embassy India', sourceCountry: 'US', url: 'https://in.usembassy.gov/category/alert/feed/', targetCountry: 'IN' },
-  { name: 'US Embassy Pakistan', sourceCountry: 'US', url: 'https://pk.usembassy.gov/category/alert/feed/', targetCountry: 'PK' },
-  { name: 'US Embassy Colombia', sourceCountry: 'US', url: 'https://co.usembassy.gov/category/alert/feed/', targetCountry: 'CO' },
-  { name: 'US Embassy Poland', sourceCountry: 'US', url: 'https://pl.usembassy.gov/category/alert/feed/', targetCountry: 'PL' },
-  { name: 'US Embassy Bangladesh', sourceCountry: 'US', url: 'https://bd.usembassy.gov/category/alert/feed/', targetCountry: 'BD' },
-  { name: 'US Embassy Italy', sourceCountry: 'US', url: 'https://it.usembassy.gov/category/alert/feed/', targetCountry: 'IT' },
-  { name: 'US Embassy Dominican Republic', sourceCountry: 'US', url: 'https://do.usembassy.gov/category/alert/feed/', targetCountry: 'DO' },
-  { name: 'US Embassy Myanmar', sourceCountry: 'US', url: 'https://mm.usembassy.gov/category/alert/feed/', targetCountry: 'MM' },
-  { name: 'CDC Travel Notices', sourceCountry: 'US', url: 'https://wwwnc.cdc.gov/travel/rss/notices.xml' },
-  { name: 'ECDC Epidemiological Updates', sourceCountry: 'EU', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/1310/feed' },
-  { name: 'ECDC Threats Report', sourceCountry: 'EU', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/1505/feed' },
-  { name: 'ECDC Risk Assessments', sourceCountry: 'EU', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/1295/feed' },
-  { name: 'ECDC Avian Influenza', sourceCountry: 'EU', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/323/feed' },
-  { name: 'ECDC Publications', sourceCountry: 'EU', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/1244/feed' },
-  { name: 'WHO News', sourceCountry: 'INT', url: 'https://www.who.int/rss-feeds/news-english.xml' },
-  { name: 'WHO Africa Emergencies', sourceCountry: 'INT', url: 'https://www.afro.who.int/rss/emergencies.xml' },
+  { name: 'US State Dept', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://travel.state.gov/_res/rss/TAsTWs.xml', levelParser: 'us' },
+  { name: 'Australia DFAT Smartraveller', sourceCountry: 'AU', sourceCategory: 'travel-advisory', url: 'https://www.smartraveller.gov.au/countries/documents/index.rss', levelParser: 'au' },
+  { name: 'UK FCDO', sourceCountry: 'UK', sourceCategory: 'travel-advisory', url: 'https://www.gov.uk/foreign-travel-advice.atom' },
+  { name: 'US Embassy Thailand', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://th.usembassy.gov/category/alert/feed/', targetCountry: 'TH' },
+  { name: 'US Embassy UAE', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://ae.usembassy.gov/category/alert/feed/', targetCountry: 'AE' },
+  { name: 'US Embassy Germany', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://de.usembassy.gov/category/alert/feed/', targetCountry: 'DE' },
+  { name: 'US Embassy Ukraine', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://ua.usembassy.gov/category/alert/feed/', targetCountry: 'UA' },
+  { name: 'US Embassy Mexico', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://mx.usembassy.gov/category/alert/feed/', targetCountry: 'MX' },
+  { name: 'US Embassy India', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://in.usembassy.gov/category/alert/feed/', targetCountry: 'IN' },
+  { name: 'US Embassy Pakistan', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://pk.usembassy.gov/category/alert/feed/', targetCountry: 'PK' },
+  { name: 'US Embassy Colombia', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://co.usembassy.gov/category/alert/feed/', targetCountry: 'CO' },
+  { name: 'US Embassy Poland', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://pl.usembassy.gov/category/alert/feed/', targetCountry: 'PL' },
+  { name: 'US Embassy Bangladesh', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://bd.usembassy.gov/category/alert/feed/', targetCountry: 'BD' },
+  { name: 'US Embassy Italy', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://it.usembassy.gov/category/alert/feed/', targetCountry: 'IT' },
+  { name: 'US Embassy Dominican Republic', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://do.usembassy.gov/category/alert/feed/', targetCountry: 'DO' },
+  { name: 'US Embassy Myanmar', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://mm.usembassy.gov/category/alert/feed/', targetCountry: 'MM' },
+  { name: 'CDC Travel Notices', sourceCountry: 'US', sourceCategory: 'health', url: 'https://wwwnc.cdc.gov/travel/rss/notices.xml' },
+  { name: 'ECDC Epidemiological Updates', sourceCountry: 'EU', sourceCategory: 'health', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/1310/feed' },
+  { name: 'ECDC Threats Report', sourceCountry: 'EU', sourceCategory: 'health', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/1505/feed' },
+  { name: 'ECDC Risk Assessments', sourceCountry: 'EU', sourceCategory: 'health', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/1295/feed' },
+  { name: 'ECDC Avian Influenza', sourceCountry: 'EU', sourceCategory: 'health', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/323/feed' },
+  { name: 'ECDC Publications', sourceCountry: 'EU', sourceCategory: 'health', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/1244/feed' },
+  { name: 'WHO News', sourceCountry: 'INT', sourceCategory: 'health', url: 'https://www.who.int/rss-feeds/news-english.xml' },
+  { name: 'WHO Africa Emergencies', sourceCountry: 'INT', sourceCategory: 'health', url: 'https://www.afro.who.int/rss/emergencies.xml' },
 ];
 
 const RELAY_URL = process.env.RELAY_URL || 'https://proxy.worldmonitor.app';
@@ -44,17 +45,24 @@ function parseUsLevel(title) {
   return { '4': 'do-not-travel', '3': 'reconsider', '2': 'caution', '1': 'normal' }[m[1]] || 'info';
 }
 
-function parseAuLevel(title) {
-  const l = title.toLowerCase();
+export function parseAuLevel(item) {
+  const advisoryLevel = String(item.advisoryLevel || '').trim();
+  if (/^4(?:\/5)?$/.test(advisoryLevel)) return 'do-not-travel';
+  if (/^3(?:\/5)?$/.test(advisoryLevel)) return 'reconsider';
+  if (/^2(?:\/5)?$/.test(advisoryLevel)) return 'caution';
+  if (/^1(?:\/5)?$/.test(advisoryLevel)) return 'normal';
+
+  const l = `${item.title || ''} ${item.description || ''}`.toLowerCase();
   if (l.includes('do not travel')) return 'do-not-travel';
   if (l.includes('reconsider')) return 'reconsider';
   if (l.includes('high degree of caution') || l.includes('high degree')) return 'caution';
+  if (l.includes('normal safety precautions') || l.includes('normal precautions')) return 'normal';
   return 'info';
 }
 
-function parseLevel(title, parser) {
-  if (parser === 'us') return parseUsLevel(title);
-  if (parser === 'au') return parseAuLevel(title);
+function parseLevel(item, parser) {
+  if (parser === 'us') return parseUsLevel(item.title || '');
+  if (parser === 'au') return parseAuLevel(item);
   return 'info';
 }
 
@@ -94,7 +102,7 @@ function stripHtml(html) {
     .replace(/&#8220;/g, '"').replace(/&#8221;/g, '"').replace(/\s+/g, ' ').trim();
 }
 
-function parseRssItems(xml) {
+export function parseRssItems(xml) {
   const items = [];
   const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
   let match;
@@ -102,8 +110,10 @@ function parseRssItems(xml) {
     const block = match[1];
     const title = stripHtml((block.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '');
     const link = stripHtml((block.match(/<link[^>]*>([\s\S]*?)<\/link>/i) || [])[1] || '');
+    const description = stripHtml((block.match(/<description[^>]*>([\s\S]*?)<\/description>/i) || [])[1] || '');
     const pubDate = stripHtml((block.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i) || [])[1] || '');
-    items.push({ title, link, pubDate });
+    const advisoryLevel = stripHtml((block.match(/<ta:level[^>]*>([\s\S]*?)<\/ta:level>/i) || [])[1] || '');
+    items.push({ title, link, description, pubDate, advisoryLevel });
   }
   return items;
 }
@@ -117,9 +127,10 @@ function parseAtomEntries(xml) {
     const title = stripHtml((block.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '');
     const linkMatch = block.match(/<link[^>]*href=["']([^"']+)["']/i);
     const link = linkMatch ? linkMatch[1] : '';
+    const description = stripHtml((block.match(/<summary[^>]*>([\s\S]*?)<\/summary>/i) || [])[1] || '');
     const updated = stripHtml((block.match(/<updated[^>]*>([\s\S]*?)<\/updated>/i) || [])[1] || '');
     const published = stripHtml((block.match(/<published[^>]*>([\s\S]*?)<\/published>/i) || [])[1] || '');
-    entries.push({ title, link, pubDate: updated || published });
+    entries.push({ title, link, description, pubDate: updated || published });
   }
   return entries;
 }
@@ -161,7 +172,7 @@ async function fetchFeed(feed) {
         pubDate: item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString(),
         source: feed.name,
         sourceCountry: feed.sourceCountry,
-        level: parseLevel(item.title, feed.levelParser),
+        level: parseLevel(item, feed.levelParser),
         country: extractCountry(item.title, feed) || '',
       }));
   } catch (e) {
@@ -218,17 +229,20 @@ export function declareRecords(data) {
   return Array.isArray(data?.advisories) ? data.advisories.length : 0;
 }
 
-runSeed('intelligence', 'advisories', CANONICAL_KEY, fetchAll, {
-  validateFn: validate,
-  ttlSeconds: TTL,
-  recordCount: (d) => d?.advisories?.length || 0,
-  sourceVersion: 'rss-feeds',
-  extraKeys: [{ key: BOOTSTRAP_KEY, transform: (d) => d, ttl: TTL, declareRecords }],
+const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^.*[\\/]/, ''));
+if (isMain) {
+  runSeed('intelligence', 'advisories', CANONICAL_KEY, fetchAll, {
+    validateFn: validate,
+    ttlSeconds: TTL,
+    recordCount: (d) => d?.advisories?.length || 0,
+    sourceVersion: 'rss-feeds',
+    extraKeys: [{ key: BOOTSTRAP_KEY, transform: (d) => d, ttl: TTL, declareRecords }],
 
-  declareRecords,
-  schemaVersion: 1,
-  maxStaleMin: 120,
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
-  process.exit(1);
-});
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 120,
+  }).catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(1);
+  });
+}

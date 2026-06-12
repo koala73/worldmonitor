@@ -1,180 +1,158 @@
 ---
 title: "Country Instability Index"
-description: "Real-time stability scoring for 24 strategically significant countries, combining unrest, security, and information signals into a dynamic instability metric."
+description: "Real-time CII v8 stability scoring for 31 Tier-1 countries, combining baseline risk with unrest, conflict, security, information signals, and signed 24-hour movement deltas."
 ---
-The Country Instability Index maintains a real-time instability score for strategically significant countries. Rather than relying on static risk ratings, the CII dynamically reflects current conditions based on multiple input streams.
+The Country Instability Index (CII) maintains a high-frequency instability
+score for the 31 Tier-1 countries tracked by the Strategic Risk API. Rather
+than relying on static ratings, CII blends an editorial baseline with live
+event pressure and publishes the result through the server-side
+`GetRiskScores` RPC.
 
-## Monitored Countries (Tier 1)
+For the full v8 formula, coefficient table, and change history, see
+[CII Risk Scoring Methodology](/methodology/cii-risk-scores). This page is
+the operator-facing overview.
+
+## Monitored Countries
+
+The current Tier-1 set is:
 
 | Region | Countries |
 |--------|-----------|
 | **Americas** | United States, Venezuela, Brazil, Mexico, Cuba |
 | **Europe** | Germany, France, United Kingdom, Poland |
 | **Eastern Europe** | Russia, Ukraine |
-| **Middle East** | Iran, Israel, Saudi Arabia, United Arab Emirates, Turkey, Syria, Yemen |
-| **Asia-Pacific** | China, Taiwan, North Korea, India, Pakistan, Myanmar |
+| **Middle East** | Iran, Israel, Saudi Arabia, United Arab Emirates, Turkey, Syria, Yemen, Iraq, Lebanon, Egypt, Qatar |
+| **Asia-Pacific** | China, Taiwan, North Korea, India, Pakistan, Myanmar, South Korea, Japan |
+| **Central/South Asia** | Afghanistan |
 
-## Three Component Scores
+Tier-1 membership is curated rather than algorithmic. A country is included
+when it has sustained global-risk relevance, active/recent armed conflict or
+severe domestic instability, high regional escalation potential, major
+economic/security-system importance, or a dashboard-specific monitoring need.
+Changes to this set are methodology-significant because the Strategic Risk
+roll-up is computed from the top-scoring countries inside this universe.
 
-Each country's CII is computed from three weighted components:
+## Score Model
 
-| Component | Weight | Data Sources | What It Measures |
-|-----------|--------|--------------|------------------|
-| **Unrest** | 40% | ACLED protests, GDELT events | Civil unrest intensity, fatalities, event severity |
-| **Security** | 30% | Military flights, naval vessels | Unusual military activity patterns |
-| **Information** | 30% | News velocity, alert clusters | Media attention intensity and acceleration |
-
-## Scoring Algorithm
-
-```
-Unrest Score:
-  base = min(50, protest_count × 8)
-  fatality_boost = min(30, total_fatalities × 5)
-  severity_boost = min(20, high_severity_count × 10)
-  unrest = min(100, base + fatality_boost + severity_boost)
-
-Security Score:
-  flight_score = min(50, military_flights × 3)
-  vessel_score = min(30, naval_vessels × 5)
-  security = min(100, flight_score + vessel_score)
-
-Information Score:
-  base = min(40, news_count × 5)
-  velocity_boost = min(40, avg_velocity × 10)
-  alert_boost = 20 if any_alert else 0
-  information = min(100, base + velocity_boost + alert_boost)
-
-Final CII = round(unrest × 0.4 + security × 0.3 + information × 0.3)
-```
-
-## Scoring Bias Prevention
-
-Raw news volume creates a natural bias: English-language media generates far more coverage of the US, UK, and Western Europe than conflict zones. Without correction, stable democracies would consistently score higher than actual crisis regions.
-
-### Log Scaling for High-Volume Countries
-
-Countries with high media coverage receive logarithmic dampening on their unrest and information scores:
+Each country's score combines a static baseline with a dynamic event score:
 
 ```
-if (newsVolume > threshold):
-  dampingFactor = 1 / (1 + log10(newsVolume / threshold))
-  score = rawScore × dampingFactor
+eventScore = Unrest * 0.25
+           + Conflict * 0.30
+           + Security * 0.20
+           + Information * 0.25
+
+combinedScore = baselineRisk * 0.40
+              + eventScore * 0.60
+              + supplemental boosts
 ```
 
-This ensures the US receiving 50 news mentions about routine political activity doesn't outscore Ukraine with 10 mentions about active combat.
+The result is clamped by active conflict and travel-advisory floors, then
+bounded to 0-100.
 
-### Conflict Zone Floor Scores
+| Component | What It Measures | Main Inputs |
+|-----------|------------------|-------------|
+| **Unrest** | Civil disorder pressure before or below open conflict | ACLED protests and riots, protest fatalities, high-severity unrest, internet/power outages |
+| **Conflict** | Kinetic violence and strike activity | ACLED battles, explosions, violence against civilians, fatalities, Iran-region strike intensity, OREF alerts for Israel |
+| **Security** | Hard-security tempo near the country | Military flights, military vessels, aviation closures/delays, GPS/GNSS jamming |
+| **Information** | Information-environment pressure | Classified news headlines and country-attributed threat summaries |
 
-Active conflict zones have minimum score floors that prevent them from appearing stable during data gaps or low-coverage periods:
+## Boosts And Floors
 
-| Country | Floor | Rationale |
-|---------|-------|-----------|
-| Ukraine | 55 | Active war with Russia |
-| Syria | 50 | Ongoing civil war |
-| Yemen | 50 | Ongoing civil war |
-| Myanmar | 45 | Military coup, civil conflict |
-| Israel | 45 | Active Gaza conflict |
+Supplemental boosts can raise the blended score when corroborating signals
+arrive outside the base event components:
 
-The floor applies *after* the standard calculation. If the computed score exceeds the floor, the computed score is used. This prevents false "all clear" signals while preserving sensitivity to actual escalations.
+| Boost | Max | Trigger |
+|-------|----:|---------|
+| Climate anomalies | 15 | Country-attributed climate severity |
+| Cyber threats | 12 | Severity-weighted cyber threat counts |
+| Wildfires | 8 | High-brightness and total fire counts |
+| Travel advisories | 15 | Do-not-travel, reconsider, or caution advisories |
+| OREF blend | 25 | Active and 24-hour Israel alert pressure |
+| Displacement | 20 | Log-scaled humanitarian displacement |
+| News urgency | 5 | High Information component pressure |
+| Earthquakes | 25 | Significant, major, or severe earthquakes |
+| Sanctions | 14 | Sanctions entry volume and new-entry activity |
+| AIS disruptions | 10 | Maritime disruption buckets |
+
+The score floor is the larger of UCDP conflict floors and State Department
+advisory floors. When live advisory data is absent, the scorer applies the
+curated fallback levels published in the
+[methodology](/methodology/cii-risk-scores#advisory-fallback-table) before
+calculating the advisory boost and floor.
+
+| Floor | Threshold |
+|-------|----------:|
+| UCDP active war | 70 |
+| UCDP minor conflict | 50 |
+| Do-not-travel advisory | 60 |
+| Reconsider-travel advisory | 50 |
+
+UCDP conflict floors are derived from the **latest available** UCDP GED release
+(the seeder selects the newest version that returns events, not merely the first
+to respond) and only count events inside a **2-year recency window** — older
+events no longer pin the floor. Within that window, CII classifies a Tier-1
+country as UCDP **active war** when total deaths are greater than 1000 or event
+count is greater than 100, and as UCDP **minor conflict** when event count is
+greater than 10 but the war thresholds are not met. Because UCDP GED ships as
+annual releases that lag real time, recent kinetic conflict is carried by
+**ACLED** (real-time) and the cross-source signal feed; UCDP supplies the
+historical baseline floor. For `/api/health.riskScores`, the conflict realtime
+family is covered when either ACLED or an in-window UCDP feed is present. ACLED
+auth being unconfigured degrades the conflict signal to UCDP-only; it becomes
+`COVERAGE_PARTIAL` only when ACLED is dark and UCDP is also absent, stale, or
+outside the 2-year scoring window (see [Data Sources](/data-sources#dual-source-protest-tracking)).
 
 ## Instability Levels
 
-| Level | Score Range | Visual | Meaning |
-|-------|-------------|--------|---------|
-| **Critical** | 81-100 | Red | Active crisis or major escalation |
-| **High** | 66-80 | Orange | Significant instability requiring close monitoring |
-| **Elevated** | 51-65 | Yellow | Above-normal activity patterns |
-| **Normal** | 31-50 | Gray | Baseline geopolitical activity |
-| **Low** | 0-30 | Green | Unusually quiet period |
+| Level | Score Range | Meaning |
+|-------|-------------|---------|
+| **Critical** | 81-100 | Active crisis or major escalation |
+| **High** | 66-80 | Significant instability requiring close monitoring |
+| **Elevated** | 51-65 | Above-normal activity patterns |
+| **Normal** | 31-50 | Baseline geopolitical activity |
+| **Low** | 0-30 | Unusually quiet period |
 
-## Trend Detection
+## Bias Prevention
 
-The CII tracks 24-hour changes to identify trajectory:
+CII is intentionally not a raw media-volume index. The v8 model separates
+news pressure from conflict scoring, applies lower event multipliers and log
+dampening in high-observability countries, and uses conflict/advisory floors
+so active crises do not appear quiet during data gaps.
 
-- **Rising**: Score increased by ≥5 points (escalating situation)
-- **Stable**: Change within ±5 points (steady state)
-- **Falling**: Score decreased by ≥5 points (de-escalation)
-
-## Contextual Score Boosts
-
-Beyond the base component scores, several contextual factors can boost a country's CII score (up to a combined maximum of 23 additional points):
-
-| Boost Type | Max Points | Condition | Purpose |
-|------------|------------|-----------|---------|
-| **Hotspot Activity** | 10 | Events near defined hotspots | Captures localized escalation |
-| **News Urgency** | 5 | Information component ≥50 | High media attention indicator |
-| **Focal Point** | 8 | AI focal point detection on country | Multi-source convergence indicator |
-
-**Hotspot Boost Calculation**:
-
-- Hotspot activity (0-100) scaled by 1.5x then capped at 10
-- Zero boost for countries with no associated hotspot activity
-
-**News Urgency Boost Tiers**:
-
-- Information ≥70: +5 points
-- Information ≥50: +3 points
-- Information &lt;50: +0 points
-
-**Focal Point Boost Tiers**:
-
-- Critical urgency: +8 points
-- Elevated urgency: +4 points
-- Normal urgency: +0 points
-
-These boosts are designed to elevate scores only when corroborating evidence exists. A country must have both high base scores AND contextual signals to reach extreme levels.
-
-See [Geographic Convergence](/geographic-convergence) for the full algorithm.
+The editorial rationale, Tier-1 inclusion criteria, advisory fallback table,
+Gaza text-attribution caveat, and per-country `baselineRisk` /
+`eventMultiplier` values are published in
+[CII Risk Scoring Methodology](/methodology/cii-risk-scores).
 
 ## Server-Side Pre-Computation
 
-To eliminate the "cold start" problem where new users would see blank data during the Learning Mode warmup, CII scores are **pre-computed server-side** via the `/api/risk-scores` endpoint. See the [Server-Side Risk Score API](/strategic-risk#server-side-risk-score-api) section for details.
+CII scores are computed server-side by `GET /api/intelligence/v1/get-risk-scores`
+and cached in Redis. The live cache is versioned by the current
+`methodology_version` (`v8`), with a stale-cache key used as a fallback during
+upstream outages.
 
-## Learning Mode (15-Minute Warmup)
+The Railway relay process also runs an active CII warm-ping loop every 8
+minutes against the same RPC. That keeps the server-side risk-score cache warm
+for bootstrap and health monitoring while preserving the RPC handler as the
+scoring source of truth.
 
-On dashboard startup, the CII system enters **Learning Mode**, a 15-minute calibration period where scores are calculated but alerts are suppressed. This prevents the flood of false-positive alerts that would otherwise occur as the system establishes baseline values.
+## Trend Detection
 
-**Note**: Server-side pre-computation now provides immediate scores to new users. Learning Mode primarily affects client-side dynamic adjustments and alert generation rather than initial score display.
+The server publishes `dynamicScore` as a signed movement delta in the range
+`-100..100` against a valid CII snapshot from approximately 24 hours earlier:
 
-**Why 15 minutes?** Real-world testing showed that CII scores stabilize after approximately 10-20 minutes of data collection. The 15-minute window provides sufficient time for:
+- **Rising**: score movement is greater than 1 point.
+- **Stable**: score movement is between -1 and +1 points, or no valid prior
+  snapshot is available.
+- **Falling**: score movement is less than -1 point.
 
-- Multiple refresh cycles across all data sources
-- Trend detection to establish direction (rising/stable/falling)
-- Cross-source correlation to normalize bias
+Because CII `combinedScore` is rounded to whole points, `+2` and `-2` are the
+first integer movements that produce rising/falling trend labels. `dynamicScore`
+is `0` during cold start or when the server cannot find a valid approximate
+24-hour prior snapshot.
 
-### Visual Indicators
-
-During Learning Mode, the dashboard provides clear visual feedback:
-
-| Location | Indicator |
-|----------|-----------|
-| **CII Panel** | Yellow banner with progress bar and countdown timer |
-| **Strategic Risk Overview** | "Learning Mode - Xm until reliable" status |
-| **Score Display** | Scores shown at 60% opacity (dimmed) |
-
-### Behavior
-
-```
-Minutes 0-15: Learning Mode Active
-  - CII scores calculated and displayed (dimmed)
-  - Trend detection active (stores baseline)
-  - All CII-related alerts suppressed
-  - Progress bar fills as time elapses
-
-After 15 minutes: Learning Complete
-  - Full opacity scores
-  - Alert generation enabled (threshold ≥10 point change)
-  - "All data sources active" status shown
-```
-
-This ensures users understand that early scores are provisional while preventing alert fatigue during the calibration period.
-
-## Keyword Attribution
-
-Countries are matched to data via keyword lists:
-
-- **Russia**: `russia`, `moscow`, `kremlin`, `putin`
-- **China**: `china`, `beijing`, `xi jinping`, `prc`
-- **Taiwan**: `taiwan`, `taipei`
-
-This enables attribution of news and events to specific countries even when formal country codes aren't present in the source data.
+During initial dashboard startup, Learning Mode suppresses noisy early CII
+alerts while data and trend baselines settle. Server-side pre-computation means
+users still receive immediate scores; Learning Mode primarily affects local
+alert generation.

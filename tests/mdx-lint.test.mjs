@@ -33,9 +33,48 @@ function isIgnored(filename) {
   });
 }
 
-const docFiles = readdirSync(DOCS_DIR)
+function collectNavigationPages(node, pages = new Set()) {
+  if (Array.isArray(node)) {
+    for (const item of node) collectNavigationPages(item, pages);
+    return pages;
+  }
+
+  if (!node || typeof node !== 'object') return pages;
+
+  if (Array.isArray(node.pages)) {
+    for (const page of node.pages) {
+      if (typeof page === 'string') pages.add(page);
+      else collectNavigationPages(page, pages);
+    }
+  }
+
+  for (const value of Object.values(node)) {
+    if (value !== node.pages) collectNavigationPages(value, pages);
+  }
+
+  return pages;
+}
+
+function resolveNavigationPage(page) {
+  for (const ext of ['.mdx', '.md']) {
+    const candidate = `${page}${ext}`;
+    if (!isIgnored(candidate) && existsSync(join(DOCS_DIR, candidate))) {
+      return join(DOCS_DIR, candidate);
+    }
+  }
+  return null;
+}
+
+const topLevelDocFiles = readdirSync(DOCS_DIR)
   .filter(f => (f.endsWith('.mdx') || f.endsWith('.md')) && !isIgnored(f))
   .map(f => join(DOCS_DIR, f));
+
+const docsConfig = JSON.parse(readFileSync(join(DOCS_DIR, 'docs.json'), 'utf8'));
+const navigationDocFiles = [...collectNavigationPages(docsConfig)]
+  .map(resolveNavigationPage)
+  .filter(Boolean);
+
+const docFiles = [...new Set([...topLevelDocFiles, ...navigationDocFiles])];
 
 /** Strip fenced code blocks and inline code spans from content. */
 function stripCode(content) {
@@ -59,11 +98,11 @@ function stripCode(content) {
   return result;
 }
 
-/** Find bare angle brackets: < followed by digit or hyphen. */
+/** Find bare angle brackets: < followed by syntax Mintlify treats as JSX. */
 function findBareAngleBrackets(lines) {
   const issues = [];
   for (let i = 0; i < lines.length; i++) {
-    const match = lines[i].match(/<[\d-]/);
+    const match = lines[i].match(/<[=\d-]|\b[A-Za-z_$][\w$.-]*<(?!\/)[^>\n]+>/);
     if (match) {
       issues.push({ line: i + 1, text: lines[i].trim(), type: 'angle bracket' });
     }
@@ -88,7 +127,7 @@ function findBareCurlyBraces(lines) {
 describe('MDX files have no bare angle brackets', () => {
   for (const file of docFiles) {
     const name = file.split('/').pop();
-    it(`${name} has no bare <digit or <hyphen outside code`, () => {
+    it(`${name} has no bare <equals, <digit, or <hyphen outside code`, () => {
       const content = readFileSync(file, 'utf8');
       const lines = stripCode(content);
       const issues = findBareAngleBrackets(lines);

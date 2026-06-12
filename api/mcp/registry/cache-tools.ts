@@ -1,4 +1,5 @@
 import ISO2_TO_ISO3 from '../../../shared/iso2-to-iso3.js';
+import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 import { DEFAULT_LIST_LIMIT } from '../constants';
 import {
   argBool,
@@ -242,17 +243,18 @@ export const CACHE_TOOLS: ToolDef[] = [
       'conflict:ucdp-events:v1',
       'conflict:iran-events:v1',
       'unrest:events:v1',
-      'risk:scores:sebuf:stale:v3',
+      CII_RISK_SCORE_CACHE_KEYS.stale,
     ],
     _seedMetaKey: 'seed-meta:conflict:ucdp-events',
     _maxStaleMin: 30,
     // NOTE: `GET /api/intelligence/v1/get-risk-scores` is NOT covered here.
-    // The audit-time hint matched on 3 keys (conflict:ucdp-events:v1,
-    // conflict:iran-events:v1, risk:scores:sebuf:stale:v3) but the handler at
-    // server/worldmonitor/intelligence/v1/get-risk-scores.ts:242-256 reads 12
-    // cross-domain keys (infra outages, climate anomalies, cyber threats,
-    // wildfires, GPS jamming, OREF history, security advisories, displacement,
-    // news insights, news threats). Excluded as `deferred-to-future-tool` —
+    // The audit-time hint matched only this tool's conflict/risk cache keys,
+    // but the handler at server/worldmonitor/intelligence/v1/get-risk-scores.ts
+    // reads a broader cross-domain set (infra outages, climate anomalies,
+    // cyber threats, wildfires, GPS jamming, OREF history, security
+    // advisories, displacement, news insights, news threats, aviation,
+    // earthquakes, sanctions, temporal anomalies, and military CII). Excluded
+    // as `deferred-to-future-tool` -
     // belongs in a future expanded_risk_scores composite tool, not here.
     _apiPaths: [
       "GET /api/conflict/v1/list-iran-events",
@@ -708,8 +710,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         for (const label of ['macro', 'growth', 'labor', 'external']) pickNestedMap(data, label, 'countries', codes);
         return data;
       }
-      const defaultLimit = process.env.MCP_LIMIT_DEFAULT_30 === 'on' ? DEFAULT_LIST_LIMIT : 0;
-      const limit = argNum(params.limit) ?? defaultLimit;
+      const limit = argNum(params.limit) ?? DEFAULT_LIST_LIMIT;
       for (const label of ['macro', 'growth', 'labor', 'external']) capNestedMap(data, label, 'countries', limit);
       return data;
     },
@@ -761,8 +762,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         pickNestedMap(data, 'house-prices', 'countries', codes);
         return data;
       }
-      const defaultLimit = process.env.MCP_LIMIT_DEFAULT_30 === 'on' ? DEFAULT_LIST_LIMIT : 0;
-      capNestedMap(data, 'house-prices', 'countries', argNum(params.limit) ?? defaultLimit);
+      capNestedMap(data, 'house-prices', 'countries', argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       return data;
     },
     _cacheKeys: ['economic:eurostat:house-prices:v1'],
@@ -802,8 +802,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         pickNestedMap(data, 'gov-debt-q', 'countries', codes);
         return data;
       }
-      const defaultLimit = process.env.MCP_LIMIT_DEFAULT_30 === 'on' ? DEFAULT_LIST_LIMIT : 0;
-      capNestedMap(data, 'gov-debt-q', 'countries', argNum(params.limit) ?? defaultLimit);
+      capNestedMap(data, 'gov-debt-q', 'countries', argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       return data;
     },
     _cacheKeys: ['economic:eurostat:gov-debt-q:v1'],
@@ -843,8 +842,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         pickNestedMap(data, 'industrial-production', 'countries', codes);
         return data;
       }
-      const defaultLimit = process.env.MCP_LIMIT_DEFAULT_30 === 'on' ? DEFAULT_LIST_LIMIT : 0;
-      capNestedMap(data, 'industrial-production', 'countries', argNum(params.limit) ?? defaultLimit);
+      capNestedMap(data, 'industrial-production', 'countries', argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       return data;
     },
     _cacheKeys: ['economic:eurostat:industrial-production:v1'],
@@ -1608,7 +1606,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     _freshnessChecks: [
       { key: 'seed-meta:supply_chain:transit-summaries',   maxStaleMin: 30 },             // 10-min relay; 30min = 3× interval
       { key: 'seed-meta:supply_chain:chokepoint_transits', maxStaleMin: 30 },             // 10-min relay; 30min = 3× interval
-      { key: 'seed-meta:supply_chain:portwatch-ports',     maxStaleMin: 2160 },           // 12h cron; 36h = 3× interval
+      { key: 'seed-meta:supply_chain:portwatch-ports',     maxStaleMin: 2160, minRecordCount: 174 }, // 12h cron; 36h = 3× interval; #3613 requires full country coverage
       { key: 'seed-meta:energy:chokepoint-baselines',      maxStaleMin: 60 * 24 * 400 },  // ~400d static registry
       { key: 'seed-meta:portwatch:chokepoints-ref',        maxStaleMin: 60 * 24 * 14 },   // weekly cron; 14d = 2× interval
       { key: 'seed-meta:energy:chokepoint-flows',          maxStaleMin: 720 },            // 6h cron; 12h = 2× interval

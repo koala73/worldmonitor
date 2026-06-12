@@ -168,6 +168,14 @@ function toHapiSummary(proto: ProtoHumanSummary): HapiConflictSummary {
 
 // ---- UCDP classification derivation heuristic ----
 
+function isRecentUcdpClassificationDate(dateStart: unknown, now: number, windowMs: number): boolean {
+  const eventMs = Number(dateStart);
+  return Number.isFinite(eventMs)
+    && Number.isFinite(now)
+    && eventMs <= now
+    && now - eventMs < windowMs;
+}
+
 function deriveUcdpClassifications(events: ProtoUcdpEvent[]): Map<string, UcdpConflictStatus> {
   const byCountry = new Map<string, ProtoUcdpEvent[]>();
   for (const e of events) {
@@ -182,7 +190,7 @@ function deriveUcdpClassifications(events: ProtoUcdpEvent[]): Map<string, UcdpCo
 
   for (const [country, countryEvents] of byCountry) {
     // Filter to trailing 2-year window
-    const recentEvents = countryEvents.filter(e => (now - e.dateStart) < twoYearsMs);
+    const recentEvents = countryEvents.filter(e => isRecentUcdpClassificationDate(e.dateStart, now, twoYearsMs));
     const totalDeaths = recentEvents.reduce((sum, e) => sum + e.deathsBest, 0);
     const eventCount = recentEvents.length;
 

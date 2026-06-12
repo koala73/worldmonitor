@@ -6,14 +6,14 @@
       "type": "task",
       "description": "Retrieve the current AI-generated strategic intelligence brief for a country, keyed by ISO 3166-1 alpha-2 code.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/fetch-country-brief/SKILL.md",
-      "sha256": "82a76d25398856adaf72b5977d58585259caae7ce8cad24f5c2603fb2a3c76e0"
+      "sha256": "dced77c4da34395028b70e857f7f3fafb29f9f4a8df4858498d341f4c7b37b8b"
     },
     {
       "name": "fetch-resilience-score",
       "type": "task",
       "description": "Retrieve the composite country resilience score (0-100) and its domain/pillar breakdown for a single country.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/fetch-resilience-score/SKILL.md",
-      "sha256": "693cc336e0f5212de6ee462be69e6d987d652320f7770e1db2316800e31f21c0"
+      "sha256": "2c0cec4b2e94d7990d78327492b992f479699feec898455c9a77331433cccb68"
     }
   ]
 }

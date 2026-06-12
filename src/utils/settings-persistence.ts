@@ -12,6 +12,7 @@ export interface ImportResult {
 }
 
 import { CLOUD_SYNC_KEYS } from './sync-keys';
+import { invalidatePanelStorageCacheForKeys } from './panel-storage';
 
 const MAX_IMPORT_SIZE_BYTES = 5 * 1024 * 1024;
 
@@ -87,12 +88,15 @@ export function importSettings(file: File): Promise<ImportResult> {
         }
 
         let keysImported = 0;
+        const importedKeys: string[] = [];
         for (const [key, value] of Object.entries(parsed.data)) {
           if (isSettingsKey(key) && typeof value === 'string') {
             localStorage.setItem(key, value);
             keysImported++;
+            importedKeys.push(key);
           }
         }
+        invalidatePanelStorageCacheForKeys(importedKeys);
 
         resolve({ success: true, keysImported });
       } catch (err) {

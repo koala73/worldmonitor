@@ -36,9 +36,69 @@ function defineGlobal(name, value) {
   });
 }
 
-async function loadCountryDeepDivePanel() {
+async function loadCountryDeepDivePanel(options = {}) {
+  const resilienceWidgetMode = options.resilienceWidgetMode ?? 'success';
+  const premiumAccess = options.premiumAccess === true;
   const tempDir = mkdtempSync(join(tmpdir(), 'wm-country-deep-dive-'));
   const outfile = join(tempDir, 'CountryDeepDivePanel.bundle.mjs');
+  const resilienceWidgetStub = resilienceWidgetMode === 'import-reject'
+    ? `
+      throw new Error('synthetic resilience widget chunk failure');
+      export class ResilienceWidget {}
+    `
+    : resilienceWidgetMode === 'constructor-throw'
+      ? `
+        export class ResilienceWidget {
+          constructor() {
+            throw new Error('synthetic resilience widget constructor failure');
+          }
+        }
+      `
+      : resilienceWidgetMode === 'get-element-throw'
+        ? `
+          const state = globalThis.__wmCountryDeepDiveTestState;
+          export class ResilienceWidget {
+            constructor(code) {
+              this.code = code;
+              this.destroyCount = 0;
+              this.energyMixData = null;
+              state.widgets.push(this);
+            }
+            setEnergyMix(data) {
+              this.energyMixData = data;
+            }
+            getElement() {
+              throw new Error('synthetic resilience widget getElement failure');
+            }
+            destroy() {
+              this.destroyCount += 1;
+            }
+          }
+        `
+      : `
+        const state = globalThis.__wmCountryDeepDiveTestState;
+        export class ResilienceWidget {
+          constructor(code) {
+            this.code = code;
+            this.destroyCount = 0;
+            this.energyMixData = null;
+            this.element = document.createElement('section');
+            this.element.className = 'resilience-widget-stub';
+            this.element.setAttribute('data-country-code', code);
+            this.element.textContent = 'Resilience ' + code;
+            state.widgets.push(this);
+          }
+          setEnergyMix(data) {
+            this.energyMixData = data;
+          }
+          getElement() {
+            return this.element;
+          }
+          destroy() {
+            this.destroyCount += 1;
+          }
+        }
+      `;
 
   const stubModules = new Map([
     ['feeds-stub', `
@@ -80,8 +140,15 @@ async function loadCountryDeepDivePanel() {
       export function safeHtmlToString(value) { return String(value ?? ''); }
     `],
     ['intel-brief-stub', `export function formatIntelBrief(value) { return value; }`],
+    ['export-stub', `
+      const state = globalThis.__wmCountryDeepDiveTestState;
+      export function exportCountryEvidenceMarkdown(data) {
+        state.evidenceExports.push(data);
+      }
+    `],
     ['utils-stub', `
       export function getCSSColor() { return '#44ff88'; }
+      export function showToast(msg) { globalThis.__wmCountryDeepDiveTestState.toasts.push(msg); }
       export function createCircuitBreaker() { return { execute: (fn) => fn() }; }
       export function loadFromStorage() { return null; }
       export function saveToStorage() {}
@@ -90,7 +157,7 @@ async function loadCountryDeepDivePanel() {
     ['ports-stub', `export const PORTS = [];`],
     ['trade-routes-stub', `export function getChokepointRoutes() { return []; } export const TRADE_ROUTES = [];`],
     ['geo-stub', `export const STRATEGIC_WATERWAYS = [];`],
-    ['analytics-stub', `export function trackGateHit() {}`],
+    ['analytics-stub', `export function trackGateHit(feature) { globalThis.__wmCountryDeepDiveTestState.gateHits.push(feature); }`],
     ['chokepoint-registry-stub', `export const CHOKEPOINT_REGISTRY = [];`],
     ['supplier-route-risk-stub', `
       export function computeAlternativeSuppliers(exporters) {
@@ -116,30 +183,26 @@ async function loadCountryDeepDivePanel() {
       export class IntelligenceServiceClient {}
     `],
     ['panel-gating-stub', `
-      export function hasPremiumAccess() { return false; }
+      export function hasPremiumAccess() { return ${premiumAccess ? 'true' : 'false'}; }
       export function getPanelGateReason() { return 'none'; }
     `],
     ['auth-state-stub', `
       export function getAuthState() { return { user: null }; }
     `],
-    ['resilience-widget-stub', `
+    ['resilience-widget-stub', resilienceWidgetStub],
+    ['sentry-browser-stub', `
       const state = globalThis.__wmCountryDeepDiveTestState;
-      export class ResilienceWidget {
-        constructor(code) {
-          this.code = code;
-          this.destroyCount = 0;
-          this.element = document.createElement('section');
-          this.element.className = 'resilience-widget-stub';
-          this.element.setAttribute('data-country-code', code);
-          this.element.textContent = 'Resilience ' + code;
-          state.widgets.push(this);
-        }
-        getElement() {
-          return this.element;
-        }
-        destroy() {
-          this.destroyCount += 1;
-        }
+      export function addBreadcrumb(breadcrumb) {
+        state.sentryBreadcrumbs.push(breadcrumb);
+      }
+      export function captureException(error, context) {
+        state.sentryExceptions.push({ error, context });
+      }
+      export function captureMessage(message, context) {
+        state.sentryMessages.push({ message, context });
+      }
+      export function setUser(user) {
+        state.sentryUser = user;
       }
     `],
   ]);
@@ -151,6 +214,7 @@ async function loadCountryDeepDivePanel() {
     ['@/services/related-assets', 'related-assets-stub'],
     ['@/utils/sanitize', 'sanitize-stub'],
     ['@/utils/format-intel-brief', 'intel-brief-stub'],
+    ['@/utils/export', 'export-stub'],
     ['@/utils', 'utils-stub'],
     ['@/utils/country-flag', 'country-flag-stub'],
     ['@/config/ports', 'ports-stub'],
@@ -161,10 +225,12 @@ async function loadCountryDeepDivePanel() {
     ['@/utils/supplier-route-risk', 'supplier-route-risk-stub'],
     ['@/services/supply-chain', 'supply-chain-stub'],
     ['./ResilienceWidget', 'resilience-widget-stub'],
+    ['@/components/ResilienceWidget', 'resilience-widget-stub'],
     ['@/services/runtime', 'runtime-stub'],
     ['@/generated/client/worldmonitor/intelligence/v1/service_client', 'intelligence-client-stub'],
     ['@/services/panel-gating', 'panel-gating-stub'],
     ['@/services/auth-state', 'auth-state-stub'],
+    ['@sentry/browser', 'sentry-browser-stub'],
   ]);
 
   const plugin = {
@@ -203,7 +269,7 @@ async function loadCountryDeepDivePanel() {
   };
 }
 
-export async function createCountryDeepDivePanelHarness() {
+export async function createCountryDeepDivePanelHarness(options = {}) {
   const originalGlobals = {
     document: snapshotGlobal('document'),
     window: snapshotGlobal('window'),
@@ -215,7 +281,16 @@ export async function createCountryDeepDivePanelHarness() {
     HTMLButtonElement: snapshotGlobal('HTMLButtonElement'),
   };
   const browserEnvironment = createBrowserEnvironment();
-  const state = { widgets: [] };
+  const state = {
+    widgets: [],
+    sentryBreadcrumbs: [],
+    sentryExceptions: [],
+    sentryMessages: [],
+    sentryUser: undefined,
+    evidenceExports: [],
+    gateHits: [],
+    toasts: [],
+  };
 
   defineGlobal('document', browserEnvironment.document);
   defineGlobal('window', browserEnvironment.window);
@@ -230,7 +305,7 @@ export async function createCountryDeepDivePanelHarness() {
   let CountryDeepDivePanel;
   let cleanupBundle;
   try {
-    ({ CountryDeepDivePanel, cleanupBundle } = await loadCountryDeepDivePanel());
+    ({ CountryDeepDivePanel, cleanupBundle } = await loadCountryDeepDivePanel(options));
   } catch (error) {
     delete globalThis.__wmCountryDeepDiveTestState;
     restoreGlobal('document', originalGlobals.document);
@@ -271,6 +346,21 @@ export async function createCountryDeepDivePanelHarness() {
     getPanelRoot,
     getWidgets() {
       return state.widgets;
+    },
+    getSentryBreadcrumbs() {
+      return state.sentryBreadcrumbs;
+    },
+    getSentryExceptions() {
+      return state.sentryExceptions;
+    },
+    getEvidenceExports() {
+      return state.evidenceExports;
+    },
+    getGateHits() {
+      return state.gateHits;
+    },
+    getToasts() {
+      return state.toasts;
     },
     cleanup,
   };

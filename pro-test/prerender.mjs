@@ -12,11 +12,14 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const htmlPath = resolve(__dirname, '../public/pro/index.html');
 
 const en = JSON.parse(readFileSync(resolve(__dirname, 'src/locales/en.json'), 'utf-8'));
 
-const seoContent = `
+// Hides the prerender block from assistive tech once JS runs (the CSS in <head>
+// already hides it visually for .js browsers). Appended to every page's block.
+const HIDE_SCRIPT = `<script>(function(){try{var s=document.getElementById('seo-prerender');if(s){s.setAttribute('aria-hidden','true');s.setAttribute('inert','')}}catch(e){}})()</script>`;
+
+const indexContent = `
 <div id="seo-prerender" lang="en">
   <h1>World Monitor Pro — From ${en.hero.noiseWord} to ${en.hero.signalWord}</h1>
   <p>${en.hero.valueProps}</p>
@@ -119,16 +122,114 @@ const seoContent = `
     <li><a href="https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map">Featured in WIRED</a></li>
   </ul>
 </div>
-<script>(function(){try{var s=document.getElementById('seo-prerender');if(s){s.setAttribute('aria-hidden','true');s.setAttribute('inert','')}}catch(e){}})()</script>`;
+${HIDE_SCRIPT}`;
 
-// Fail loudly if any key resolved to undefined — this prevents the build from
-// silently shipping "undefined" strings to crawlers.
-if (seoContent.includes('undefined')) {
-  console.error('[prerender] ERROR: SEO content contains literal "undefined". Check that all en.json keys referenced in this file exist.');
-  process.exit(1);
+// /welcome landing page — reads ONLY en.welcome.* keys.
+const w = en.welcome;
+const welcomeContent = `
+<div id="seo-prerender" lang="en">
+  <h1>${w.hero.headline1} ${w.hero.headline2}</h1>
+  <p>${w.hero.eyebrow}. ${w.hero.sub}</p>
+  <p>${w.hero.trustUsers} · ${w.hero.trustOpenSource}. <a href="https://www.worldmonitor.app/">${w.hero.ctaPrimary}</a> — ${w.hero.ctaFree}.</p>
+
+  <h2>${w.live.title}</h2>
+  <p>${w.live.subtitle}</p>
+  <p>${w.live.cardHeadlines} · ${w.live.cardCii} · ${w.live.cardChokepoints} · ${w.live.cardMarkets}</p>
+
+  <h2>${w.moments.title}</h2>
+  <p>${w.moments.sub}</p>
+  <h3>${w.moments.m1.title}</h3><p>${w.moments.m1.kicker}.</p>
+  <p>${w.moments.m1.s1} ${w.moments.m1.s2} ${w.moments.m1.s3} ${w.moments.m1.s4}</p>
+  <h3>${w.moments.m2.title1} ${w.moments.m2.title2}</h3><p>${w.moments.m2.kicker}.</p>
+  <p>${w.moments.m2.s1} ${w.moments.m2.s2} ${w.moments.m2.s3} ${w.moments.m2.s4}</p>
+  <h3>${w.moments.m3.title}</h3><p>${w.moments.m3.kicker}.</p>
+  <p>${w.moments.m3.s1} ${w.moments.m3.s2} ${w.moments.m3.s3} ${w.moments.m3.s4}</p>
+  <h3>${w.moments.m4.title1} ${w.moments.m4.title2}</h3><p>${w.moments.m4.kicker}.</p>
+  <p>${w.moments.m4.s1} ${w.moments.m4.s2} ${w.moments.m4.s3} ${w.moments.m4.s4}</p>
+  <p>${w.moments.bridge1} ${w.moments.bridge2}</p>
+
+  <h2>${w.firstFive.title}</h2>
+  <p>${w.firstFive.sub}</p>
+  <dl>
+    <dt>${w.firstFive.f1Title}</dt><dd>${w.firstFive.f1Desc}</dd>
+    <dt>${w.firstFive.f2Title}</dt><dd>${w.firstFive.f2Desc}</dd>
+    <dt>${w.firstFive.f3Title}</dt><dd>${w.firstFive.f3Desc}</dd>
+    <dt>${w.firstFive.f4Title}</dt><dd>${w.firstFive.f4Desc}</dd>
+    <dt>${w.firstFive.f5Title}</dt><dd>${w.firstFive.f5Desc}</dd>
+  </dl>
+
+  <h2>${w.depth.title}</h2>
+  <p>${w.depth.sub}</p>
+  <p>${w.depth.s1v} ${w.depth.s1l} · ${w.depth.s2v} ${w.depth.s2l} · ${w.depth.s3v} ${w.depth.s3l} · ${w.depth.s4v} ${w.depth.s4l} · ${w.depth.s5v} ${w.depth.s5l} · ${w.depth.s6v} ${w.depth.s6l} · ${w.depth.s7v} ${w.depth.s7l} · ${w.depth.s8v} ${w.depth.s8l} · ${w.depth.s9v} ${w.depth.s9l} · ${w.depth.s10v} ${w.depth.s10l} · ${w.depth.s11v} ${w.depth.s11l} · ${w.depth.s12v} ${w.depth.s12l} · ${w.depth.s13v} ${w.depth.s13l} · ${w.depth.s14v} ${w.depth.s14l} · ${w.depth.s15v} ${w.depth.s15l}</p>
+  <dl>
+    <dt>${w.depth.n1Title}</dt><dd>${w.depth.n1Desc}</dd>
+    <dt>${w.depth.n2Title}</dt><dd>${w.depth.n2Desc}</dd>
+    <dt>${w.depth.n3Title}</dt><dd>${w.depth.n3Desc}</dd>
+    <dt>${w.depth.n4Title}</dt><dd>${w.depth.n4Desc}</dd>
+    <dt>${w.depth.n5Title}</dt><dd>${w.depth.n5Desc}</dd>
+    <dt>${w.depth.n6Title}</dt><dd>${w.depth.n6Desc}</dd>
+  </dl>
+
+  <h2>${w.agents.title}</h2>
+  <p>${w.agents.sub}</p>
+  <p>${w.agents.b1} · ${w.agents.b2} · ${w.agents.b3} · ${w.agents.b4}</p>
+
+  <h2>${w.pricing.title1} ${w.pricing.title2}</h2>
+  <p>${w.pricing.sub}</p>
+  <h3>${w.pricing.freeTitle}</h3><p>${w.pricing.freeDesc}</p>
+  <p>${w.pricing.freeF1} · ${w.pricing.freeF2} · ${w.pricing.freeF3} · ${w.pricing.freeF4}</p>
+  <h3>${w.pricing.proTitle}</h3><p>${w.pricing.proDesc}</p>
+  <p>${w.pricing.proF1} · ${w.pricing.proF2} · ${w.pricing.proF3} · ${w.pricing.proF4} · ${w.pricing.proF5}</p>
+  <p>${w.pricing.note} — <a href="https://www.worldmonitor.app/pro">${w.pricing.cta}</a></p>
+
+  <h2>${w.faq.title}</h2>
+  <dl>
+    <dt>${w.faq.q1}</dt><dd>${w.faq.a1}</dd>
+    <dt>${w.faq.q2}</dt><dd>${w.faq.a2}</dd>
+    <dt>${w.faq.q3}</dt><dd>${w.faq.a3}</dd>
+    <dt>${w.faq.q4}</dt><dd>${w.faq.a4}</dd>
+    <dt>${w.faq.q5}</dt><dd>${w.faq.a5}</dd>
+    <dt>${w.faq.q6}</dt><dd>${w.faq.a6}</dd>
+    <dt>${w.faq.q7}</dt><dd>${w.faq.a7}</dd>
+    <dt>${w.faq.q8}</dt><dd>${w.faq.a8}</dd>
+    <dt>${w.faq.q9}</dt><dd>${w.faq.a9}</dd>
+  </dl>
+
+  <h2>${w.cta.title}</h2>
+  <p>${w.cta.subtitle}</p>
+  <p><a href="https://www.worldmonitor.app/">${w.cta.button}</a> — ${w.cta.note}. <a href="https://www.worldmonitor.app/pro">${w.cta.secondary}</a></p>
+
+  <h2>Explore more</h2>
+  <ul>
+    <li><a href="https://www.worldmonitor.app/pro">World Monitor Pro — AI analyst, digest &amp; MCP</a></li>
+    <li><a href="https://www.worldmonitor.app/blog/">World Monitor Blog — OSINT guides &amp; analysis</a></li>
+    <li><a href="https://www.worldmonitor.app/blog/posts/what-is-worldmonitor-real-time-global-intelligence/">What is World Monitor?</a></li>
+    <li><a href="https://github.com/koala73/worldmonitor">Open source on GitHub (AGPL-3.0)</a></li>
+    <li><a href="https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map">Featured in WIRED</a></li>
+  </ul>
+</div>
+${HIDE_SCRIPT}`;
+
+const PAGES = [
+  { file: 'index.html', content: indexContent },
+  { file: 'welcome.html', content: welcomeContent },
+];
+
+for (const { file, content } of PAGES) {
+  // Fail loudly if any key resolved to undefined — this prevents the build from
+  // silently shipping "undefined" strings to crawlers.
+  if (content.includes('undefined')) {
+    console.error(`[prerender] ERROR: SEO content for ${file} contains literal "undefined". Check that all en.json keys referenced in this file exist.`);
+    process.exit(1);
+  }
+
+  const htmlPath = resolve(__dirname, '../public/pro', file);
+  let html = readFileSync(htmlPath, 'utf-8');
+  if (!html.includes('<div id="root"></div>')) {
+    console.error(`[prerender] ERROR: ${file} has no empty <div id="root"></div> to inject into.`);
+    process.exit(1);
+  }
+  html = html.replace('<div id="root"></div>', `<div id="root">${content}</div>`);
+  writeFileSync(htmlPath, html, 'utf-8');
+  console.log(`[prerender] Injected SEO content into public/pro/${file}`);
 }
-
-let html = readFileSync(htmlPath, 'utf-8');
-html = html.replace('<div id="root"></div>', `<div id="root">${seoContent}</div>`);
-writeFileSync(htmlPath, html, 'utf-8');
-console.log('[prerender] Injected SEO content into public/pro/index.html');

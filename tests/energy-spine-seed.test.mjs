@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   buildSpineEntry,
@@ -8,6 +9,8 @@ import {
   SPINE_META_KEY,
   SPINE_TTL_SECONDS,
 } from '../scripts/seed-energy-spine.mjs';
+
+const seedSrc = readFileSync(new URL('../scripts/seed-energy-spine.mjs', import.meta.url), 'utf8');
 
 // ---------------------------------------------------------------------------
 // Mock data helpers
@@ -150,14 +153,14 @@ describe('buildSpineEntry — full data', () => {
     assert.equal(spine.mix.renewShare, 55.8);
   });
 
-  it('populates comtradeReporterCode for DE (276)', () => {
+  it('does not populate comtradeReporterCode for unseeded DE', () => {
     const spine = buildSpineEntry('DE', {
       mix: makeMix(),
       jodiOil: makeJodiOil(),
       jodiGas: makeJodiGas(),
       ieaStocks: makeIeaStocks(),
     });
-    // DE is not in ISO2_TO_COMTRADE — should be null
+    // The spine advertises only the reporters currently seeded in comtrade:flows.
     assert.equal(spine.shockInputs.comtradeReporterCode, null);
     assert.deepEqual(spine.shockInputs.supportedChokepoints, []);
   });
@@ -171,6 +174,36 @@ describe('buildSpineEntry — full data', () => {
     });
     assert.equal(spine.shockInputs.comtradeReporterCode, '842');
     assert.deepEqual(spine.shockInputs.supportedChokepoints, ['hormuz', 'malacca', 'suez', 'babelm']);
+  });
+
+  it('resolves strategic non-M49 Comtrade reporter codes from shared overrides', () => {
+    const india = buildSpineEntry('IN', {
+      mix: makeMix(),
+      jodiOil: makeJodiOil(),
+      jodiGas: makeJodiGas(),
+      ieaStocks: makeIeaStocks(),
+    });
+    const taiwan = buildSpineEntry('TW', {
+      mix: makeMix(),
+      jodiOil: makeJodiOil(),
+      jodiGas: makeJodiGas(),
+      ieaStocks: makeIeaStocks(),
+    });
+
+    assert.equal(india.shockInputs.comtradeReporterCode, '699');
+    assert.equal(taiwan.shockInputs.comtradeReporterCode, '490');
+  });
+
+  it('does not carry an inline IN/TW Comtrade reporter-code map', () => {
+    assert.ok(
+      seedSrc.includes("require('./shared/comtrade-reporter-overrides.json')"),
+      'seed-energy-spine must read the shared reporter override file',
+    );
+    assert.doesNotMatch(
+      seedSrc,
+      /ISO2_TO_COMTRADE\s*=\s*\{[\s\S]*?\bIN:\s*['"]699['"][\s\S]*?\bTW:\s*['"]490['"][\s\S]*?\}/,
+      'seed-energy-spine must not define a stale IN/TW-only inline reporter map',
+    );
   });
 
   it('populates source timestamps correctly', () => {

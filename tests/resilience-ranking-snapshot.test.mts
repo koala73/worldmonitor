@@ -4,6 +4,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 
+import {
+  RESILIENCE_DIMENSION_ORDER,
+  RESILIENCE_DOMAIN_ORDER,
+  RESILIENCE_RETIRED_DIMENSIONS,
+} from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
+
 // Regression-verifies the frozen resilience-ranking snapshots under
 // docs/snapshots/. Two shapes are supported:
 //
@@ -32,8 +38,12 @@ const SNAPSHOT_DIR = path.join(REPO_ROOT, 'docs', 'snapshots');
 const HIGH_BAND_ANCHORS = new Set(['NO', 'CH', 'DK', 'IS', 'FI', 'SE', 'NZ']);
 const LOW_BAND_ANCHORS = new Set(['YE', 'SO', 'SD', 'CD']);
 const POST_PILLAR_COMBINE_CAPTURE_DATE = '2026-05-28';
+const ACTIVE_DIMENSION_COUNT_FIX_DATE = '2026-06-01';
 const MIN_FULL_UNIVERSE_RANKED_COUNTRIES = 160;
 const MIN_FULL_UNIVERSE_TOTAL_COUNTRIES = 190;
+const CURRENT_ACTIVE_DIMENSION_COUNT = RESILIENCE_DIMENSION_ORDER.filter(
+  (dimensionId) => !RESILIENCE_RETIRED_DIMENSIONS.has(dimensionId),
+).length;
 
 const METHODOLOGY_BANDS: Record<string, { highFloor: number; lowCeiling: number }> = {
   'domain-weighted-6d': { highFloor: 70, lowCeiling: 45 },
@@ -273,9 +283,17 @@ describe('resilience-ranking snapshots', () => {
         assert.equal(snapshot.schemaVersion, '2.0');
       });
 
-      it('methodology pins the 6-domain / 19-dimension / 3-pillar shape', () => {
-        assert.equal(snapshot.methodology.domainCount, 6);
-        assert.equal(snapshot.methodology.dimensionCount, 19);
+      it('methodology pins the domain / active-dimension / pillar shape', () => {
+        assert.equal(snapshot.methodology.domainCount, RESILIENCE_DOMAIN_ORDER.length);
+        if (snapshot.capturedAt >= ACTIVE_DIMENSION_COUNT_FIX_DATE) {
+          assert.equal(snapshot.methodology.dimensionCount, CURRENT_ACTIVE_DIMENSION_COUNT);
+        } else {
+          assert.ok(
+            snapshot.methodology.dimensionCount === 19 ||
+              snapshot.methodology.dimensionCount === CURRENT_ACTIVE_DIMENSION_COUNT,
+            `historical snapshot dimensionCount must be the legacy 19 or current active count ${CURRENT_ACTIVE_DIMENSION_COUNT}, got ${snapshot.methodology.dimensionCount}`,
+          );
+        }
         assert.equal(snapshot.methodology.pillarCount, 3);
         assert.equal(snapshot.methodology.greyOutThreshold, 0.40);
       });

@@ -1,0 +1,46 @@
+---
+title: "Threat Timeline"
+description: "Seven-day threat-level distribution panel for intelligence insights, with severity buckets, trend readout, grouped alerts, and source provenance."
+---
+
+The **Threat Timeline** panel (internal id `threat-timeline`) turns the threat-level metadata already attached to intelligence insights into a short-horizon distribution view. It helps analysts see whether the current environment is worsening, easing, or simply noisy instead of reading threat labels one item at a time.
+
+## What the panel shows
+
+A seven-day stacked timeline grouped by the canonical threat levels: `critical`, `high`, `medium`, `low`, and `info`.
+
+- **Distribution chart** - one stacked bar per UTC day for the last seven days, including today.
+- **Trend summary** - critical/high counts, active high-severity days, and a simple recent-vs-earlier trend label.
+- **Grouped alerts** - current items sorted by threat severity first, then recency, with the top items shown under each severity lane.
+- **Source provenance** - each item keeps its source label and source-count badge when available. Fallback clustered stories can surface `Keyword fallback` when their threat label came from the local classifier.
+- **Degraded state** - if timestamped threat-level data is unavailable, the panel shows a waiting/degraded message rather than inventing a trend.
+
+Panel id is `threat-timeline`; canonical component is `src/components/ThreatTimelinePanel.ts`. The bucketing and fallback normalization live in `src/components/threat-timeline-utils.ts`.
+
+## How you reach it
+
+- **Cmd+K**: type *threat timeline*, *threat levels*, or *threat trend*.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** variant only. It is not present in the tech, finance, commodity, or happy variants. Source: `'threat-timeline'` in `FULL_PANELS` of `src/config/panels.ts`.
+
+## Data sources
+
+The primary source is the existing intelligence insights snapshot read through `@/services/insights-loader`:
+
+- Bootstrap key: `insights` from `/api/bootstrap?keys=insights`
+- Redis source: `intelligence:insights:v1`
+- Item fields consumed: `topStories[].threatLevel`, `topStories[].pubDate`, title, source, link, and source count
+
+When the server insights snapshot is unavailable, the panel can fall back to the current clustered news events already held by the dashboard data loader. That fallback is degraded by design and is used only to preserve useful local context until the insights snapshot is available again.
+
+## Refresh cadence
+
+The underlying insights seed is produced by the intelligence cron. The panel reads the cached bootstrap snapshot during dashboard data loading and refreshes alongside the existing AI Insights panel rather than adding a separate upstream pipeline.
+
+## Tier & gating
+
+Threat Timeline is **free** on the web. It has no `premium` flag in the full-variant panel registration.
+
+## API reference
+
+- [AI intelligence](/ai-intelligence) - overview of threat classification and AI-assisted intelligence surfaces.
+- [API platform](/api-platform) - bootstrap hydration, including key-filtered reads.

@@ -21,11 +21,26 @@
 //     prompt + parser without network.
 
 import { extractFirstJsonObject, cleanJsonText } from '../_llm-json.mjs';
+import { withRetry, httpRetryError, createLlmBudgetError, isLlmBudgetError } from '../_seed-utils.mjs';
 
 const CHROME_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 const NARRATIVE_MAX_TOKENS = 900;
 const NARRATIVE_TEMPERATURE = 0.3;
+// Bounded retry for the per-region narrative call. One call per region per 6h
+// cycle under the regional bundle's section timeout: honor a provider's
+// Retry-After (429/503) instead of dropping straight to the next provider, but
+// never sleep/fetch past the remaining per-call budget.
+const NARRATIVE_LLM_MAX_RETRIES = 2;
+const NARRATIVE_LLM_RETRY_BASE_MS = 1_000;
+const NARRATIVE_LLM_RETRY_AFTER_MAX_MS = 10_000;
+const NARRATIVE_LLM_CALL_BUDGET_MS = 45_000;
+const NARRATIVE_LLM_CALL_BUDGET_GUARD_MS = 5_000;
+
+let narrativeFetchForTests = null;
+export function __setNarrativeTransportForTests(overrides = null) {
+  narrativeFetchForTests = typeof overrides?.fetch === 'function' ? overrides.fetch : null;
+}
 const MAX_ACTORS_IN_PROMPT = 5;
 const MAX_EVIDENCE_IN_PROMPT = 15;
 const MAX_TRANSMISSIONS_IN_PROMPT = 5;
@@ -291,32 +306,45 @@ export function parseNarrativeJson(text, validEvidenceIds) {
  * @param {{ validate?: (text: string) => boolean }} [opts]
  * @returns {Promise<{ text: string, provider: string, model: string } | null>}
  */
-async function callLlmDefault({ systemPrompt, userPrompt }, opts = {}) {
+export async function callLlmDefault({ systemPrompt, userPrompt }, opts = {}) {
   const validate = opts.validate;
+  const narrativeFetch = narrativeFetchForTests || ((...args) => globalThis.fetch(...args));
+  const callBudgetMs = Number.isFinite(opts.callBudgetMs)
+    ? Math.max(0, Math.floor(opts.callBudgetMs))
+    : NARRATIVE_LLM_CALL_BUDGET_MS;
+  const retryDelayMs = Number.isFinite(opts.retryDelayMs)
+    ? Math.max(0, Math.floor(opts.retryDelayMs))
+    : NARRATIVE_LLM_RETRY_BASE_MS;
+  const budgetStartedAtMs = Date.now();
+  const usableBudgetMs = () => Math.max(0, budgetStartedAtMs + callBudgetMs - Date.now() - NARRATIVE_LLM_CALL_BUDGET_GUARD_MS);
+
   for (const provider of DEFAULT_PROVIDERS) {
     const envVal = process.env[provider.envKey];
     if (!envVal) continue;
     try {
-      const resp = await fetch(provider.apiUrl, {
-        method: 'POST',
-        headers: provider.headers(envVal),
-        body: JSON.stringify({
-          model: provider.model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-          ],
-          max_tokens: NARRATIVE_MAX_TOKENS,
-          temperature: NARRATIVE_TEMPERATURE,
-          response_format: { type: 'json_object' },
-        }),
-        signal: AbortSignal.timeout(provider.timeout),
-      });
-
-      if (!resp.ok) {
-        console.warn(`[narrative] ${provider.name}: HTTP ${resp.status}`);
-        continue;
-      }
+      const resp = await withRetry(async () => {
+        const usable = usableBudgetMs();
+        if (usable <= 0) throw createLlmBudgetError('narrative llm budget exhausted');
+        const response = await narrativeFetch(provider.apiUrl, {
+          method: 'POST',
+          headers: provider.headers(envVal),
+          body: JSON.stringify({
+            model: provider.model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            max_tokens: NARRATIVE_MAX_TOKENS,
+            temperature: NARRATIVE_TEMPERATURE,
+            response_format: { type: 'json_object' },
+          }),
+          signal: AbortSignal.timeout(Math.max(1, Math.min(provider.timeout, usable))),
+        });
+        if (!response.ok) {
+          throw httpRetryError(response, { maxRetryAfterMs: NARRATIVE_LLM_RETRY_AFTER_MAX_MS, capMs: usableBudgetMs() });
+        }
+        return response;
+      }, NARRATIVE_LLM_MAX_RETRIES, retryDelayMs);
 
       const json = /** @type {any} */ (await resp.json());
       const text = json?.choices?.[0]?.message?.content;
@@ -340,6 +368,8 @@ async function callLlmDefault({ systemPrompt, userPrompt }, opts = {}) {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[narrative] ${provider.name}: ${msg}`);
+      // Budget spent — give up rather than burning the next provider's timeout.
+      if (isLlmBudgetError(err)) return null;
     }
   }
   return null;

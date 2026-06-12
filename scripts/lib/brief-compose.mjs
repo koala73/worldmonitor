@@ -23,6 +23,7 @@ import {
   filterTopStories,
   issueDateInTz,
 } from '../../shared/brief-filter.js';
+import { classifyEphemeralLiveCoverage } from '../../shared/ephemeral-live-classifier.js';
 import { sanitizeForPrompt, sanitizeHeadline } from '../../server/_shared/llm-sanitize.js';
 
 // ── Rule dedupe (one brief per user, not per variant) ───────────────────────
@@ -754,6 +755,7 @@ function digestStoryToUpstreamTopStory(s) {
   // become "Philippine senator flees ICC arrest".
   const cleanTitle = stripHeadlineSuffix(stripHeadlinePrefix(rawTitle), primarySource);
   const rawDescription = typeof s?.description === 'string' ? s.description.trim() : '';
+  const primaryLink = typeof s?.link === 'string' ? s.link : undefined;
   return {
     primaryTitle: cleanTitle,
     // When upstream persists a real RSS description (via story:track:v1
@@ -762,7 +764,15 @@ function digestStoryToUpstreamTopStory(s) {
     // something to ground on.
     description: rawDescription || cleanTitle,
     primarySource,
-    primaryLink: typeof s?.link === 'string' ? s.link : undefined,
+    primaryLink,
+    // Preserve the raw-title verdict across display cleanup. Without this,
+    // "Watch: Press conference live" would be stripped to "Press conference
+    // live" before filterTopStories can tell it was an expiring viewing invite.
+    isEphemeralLiveCoverage: classifyEphemeralLiveCoverage({
+      title: rawTitle,
+      link: primaryLink,
+      description: rawDescription,
+    }),
     threatLevel: s?.severity,
     importanceScore: Number.isFinite(Number(s?.currentScore)) ? Number(s.currentScore) : undefined,
     // Transient coherence signal from story:track:v1. Not written into

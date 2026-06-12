@@ -289,7 +289,7 @@ export async function embedBatch(normalizedTitles, deps = {}) {
     // a cold cache on a high-volume language tick (or a future tick-
     // size growth) would silently exceed it. 200 × 9.4KB ≈ 1.9MB per
     // request matches the chunking pattern used by sibling seeders
-    // (PIPE_BATCH=50 in seed-resilience-intervals.mjs / seed-comtrade-
+    // (PIPE_BATCH=50 in seed-resilience-scores.mjs / seed-comtrade-
     // bilateral-hs4.mjs, SET_BATCH=30 in resilience/v1/_shared.ts).
     //
     // Outage break: defaultRedisPipeline returns null on HTTP error

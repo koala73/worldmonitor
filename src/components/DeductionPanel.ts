@@ -10,6 +10,7 @@ import { buildNewsContext } from '@/utils/news-context';
 import { getActiveFrameworkForPanel } from '@/services/analysis-framework-store';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { FrameworkSelector } from './FrameworkSelector';
+import { extractDeductionProbability } from './deduction-probability';
 
 // deduct-situation + list-market-implications are premium-gated.
 const client = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
@@ -156,7 +157,7 @@ export class DeductionPanel extends Panel {
             if (group.cls === 'ds-primary') {
                 const headingNode = group.nodes[0];
                 const fullText = headingNode?.textContent ?? '';
-                const probMatch = /(\d{1,3})\s*%/.exec(fullText);
+                const probability = extractDeductionProbability(fullText);
                 const timeMatch = /\(([^)]+)\)/.exec(fullText);
                 labelEl.textContent = group.label;
                 if (timeMatch) {
@@ -165,10 +166,11 @@ export class DeductionPanel extends Panel {
                     timeSpan.textContent = timeMatch[1] ?? '';
                     labelEl.appendChild(timeSpan);
                 }
-                if (probMatch) {
+                if (probability) {
                     const badge = document.createElement('span');
                     badge.className = 'ds-prob-badge';
-                    badge.textContent = `${probMatch[1]}%`;
+                    badge.textContent = probability.label;
+                    badge.title = probability.isRange ? 'Rough probability range from the source' : 'Approximate probability from the source';
                     labelEl.appendChild(badge);
                 }
             } else {
@@ -195,12 +197,13 @@ export class DeductionPanel extends Panel {
                     bodyNodes.forEach(n => {
                         if (n.tagName === 'UL') {
                             n.querySelectorAll('li').forEach(li => {
-                                const probMatch = /^(\d{1,3})\s*%\s*[:\s]?(.*)/.exec(li.textContent ?? '');
-                                if (probMatch) {
+                                const probability = extractDeductionProbability(li.textContent ?? '', { leadingOnly: true });
+                                if (probability) {
                                     const badge = document.createElement('span');
                                     badge.className = 'ds-alt-prob';
-                                    badge.textContent = `${probMatch[1]}%`;
-                                    li.textContent = (probMatch[2] ?? '').replace(/^\s*[:\s]+/, '').trim();
+                                    badge.textContent = probability.label;
+                                    badge.title = probability.isRange ? 'Rough probability range from the source' : 'Approximate probability from the source';
+                                    li.textContent = probability.remainder;
                                     li.insertBefore(badge, li.firstChild);
                                 }
                             });

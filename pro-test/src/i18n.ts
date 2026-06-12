@@ -45,11 +45,11 @@ const OG_LOCALE: Record<string, string> = {
   tr: 'tr_TR', vi: 'vi_VN', zh: 'zh_CN',
 };
 
-function applyMetaTags(): void {
-  const title = i18next.t('meta.title');
-  const desc = i18next.t('meta.description');
-  const ogTitle = i18next.t('meta.ogTitle');
-  const ogDesc = i18next.t('meta.ogDescription');
+function applyMetaTags(prefix = 'meta'): void {
+  const title = i18next.t(`${prefix}.title`);
+  const desc = i18next.t(`${prefix}.description`);
+  const ogTitle = i18next.t(`${prefix}.ogTitle`);
+  const ogDesc = i18next.t(`${prefix}.ogDescription`);
   const base = (i18next.language || 'en').split('-')[0] || 'en';
 
   document.title = title;
@@ -77,7 +77,8 @@ function applyMetaTags(): void {
 // locale-stable links. If anyone ever adds in-page links from /pro that
 // drop ?lang=, they need to either propagate the param or surface a
 // language switcher; otherwise the recipient lands on browser-default.
-export async function initI18n(): Promise<void> {
+export async function initI18n(options?: { metaPrefix?: string }): Promise<void> {
+  const metaPrefix = options?.metaPrefix ?? 'meta';
   if (i18next.isInitialized) return;
   // One-time migration: drop the legacy `i18nextLng` auto-cache so users
   // whose browser is e.g. French but who got pinned to `en` on any past
@@ -96,7 +97,7 @@ export async function initI18n(): Promise<void> {
   const base = (i18next.language || detected).split('-')[0] || 'en';
   document.documentElement.setAttribute('lang', base === 'zh' ? 'zh-CN' : base);
   if (RTL_LANGUAGES.has(base)) document.documentElement.setAttribute('dir', 'rtl');
-  applyMetaTags();
+  applyMetaTags(metaPrefix);
 }
 
 export function t(key: string, options?: Record<string, unknown>): string {
@@ -111,6 +112,6 @@ export function t(key: string, options?: Record<string, unknown>): string {
  * the raw key as a string.
  */
 export function tArray(key: string): string[] | null {
-  const value = i18next.t(key, { returnObjects: true, defaultValue: null });
-  return Array.isArray(value) && value.every(v => typeof v === 'string') ? value : null;
+  const value: unknown = i18next.t(key, { returnObjects: true, defaultValue: null });
+  return Array.isArray(value) && value.every((v): v is string => typeof v === 'string') ? value : null;
 }

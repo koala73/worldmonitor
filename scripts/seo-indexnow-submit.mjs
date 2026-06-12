@@ -34,6 +34,14 @@ const BATCHES = [
       'https://www.worldmonitor.app/blog/posts/build-on-worldmonitor-developer-api-open-source/',
       'https://www.worldmonitor.app/blog/posts/worldmonitor-vs-traditional-intelligence-tools/',
       'https://www.worldmonitor.app/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/',
+      'https://www.worldmonitor.app/blog/posts/country-instability-index-methodology-explained/',
+      'https://www.worldmonitor.app/blog/posts/daily-intelligence-briefing-workflow-15-minutes/',
+      'https://www.worldmonitor.app/blog/posts/verify-breaking-news-osint-workflow-journalists/',
+      'https://www.worldmonitor.app/blog/posts/country-risk-monitoring-workflow-for-analysts/',
+      'https://www.worldmonitor.app/blog/posts/build-supply-chain-early-warning-system-api/',
+      'https://www.worldmonitor.app/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/',
+      'https://www.worldmonitor.app/blog/posts/ask-claude-whats-happening-worldmonitor-mcp/',
+      'https://www.worldmonitor.app/blog/posts/free-geopolitical-data-apis-2026/',
     ],
   },
   { host: 'tech.worldmonitor.app', urls: ['https://tech.worldmonitor.app/'] },
@@ -53,7 +61,10 @@ async function submit(endpoint, host, urlList) {
   const keyLocation = `https://${host}/${KEY}.txt`;
   const res = await fetch(endpoint, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'User-Agent': 'WorldMonitor-IndexNow/1.0 (+https://www.worldmonitor.app)',
+    },
     body: JSON.stringify({ host, key: KEY, keyLocation, urlList }),
   });
   return { endpoint, host, status: res.status, ok: res.ok };

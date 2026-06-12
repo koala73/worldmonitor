@@ -2,30 +2,79 @@
 title: "Strategic Risk"
 description: "Composite risk scoring that synthesizes all intelligence modules into a unified strategic assessment, including the Pentagon Pizza Index and server-side risk computation."
 ---
-The Strategic Risk system provides a composite dashboard that synthesizes all intelligence modules into a single risk assessment, combining convergence detection, country instability, and infrastructure monitoring into actionable risk levels.
+The Strategic Risk system provides a composite dashboard for global risk triage. Its server-published headline score is a top-5 Country Instability Index (CII) roll-up, while the panel layers additional convergence, infrastructure, theater posture, breaking-news, sanctions, and radiation-watch context around that headline.
 
 ## Strategic Risk Overview
 
-The Strategic Risk Overview synthesizes all intelligence modules into a single risk assessment.
+The Strategic Risk Overview displays the server-side Strategic Risk headline and nearby operational context from the browser panel.
 
-### Composite Score (0-100)
+### Server Score and Browser Fallback (0-100)
 
-The strategic risk score combines three components:
+The displayed/server headline score comes from `GetRiskScores.strategicRisks[0]`.
+The server derives it from the weighted top 5 CII countries by `combinedScore`,
+not from the additive panel context formula:
 
-| Component | Weight | Calculation |
-|-----------|--------|-------------|
-| **Convergence** | 40% | `min(100, convergence_zones × 20)` |
-| **CII Deviation** | 35% | `min(100, avg_deviation × 2)` |
-| **Infrastructure** | 25% | `min(100, incidents × 25)` |
+```
+topScores = top 5 countries by combinedScore
+weights = [1.00, 0.85, 0.70, 0.55, 0.40]
+weightedAvg = sum(topScores[i] * weights[i]) / sum(weights)
+headline = round(weightedAvg * 0.70 + 15)
+```
+
+See
+[CII Risk Scoring Methodology](/methodology/cii-risk-scores#3-strategic-risk-roll-up)
+for the exact top-5 window, scale factor, floor, and severity bands.
+
+When cached server scores are unavailable, the browser can render a local
+fallback overview that combines map-side convergence, infrastructure, theater
+posture, breaking news, sanctions, radiation-watch signals, and the locally
+available CII summary:
+
+```
+compositeScore =
+    convergenceScore * 0.30
+  + ciiRiskScore     * 0.50
+  + infraScore       * 0.20
+  + theaterBoost
+  + breakingBoost
+  + sanctionsScore
+  + radiationScore
+```
+
+Those additive terms are local fallback context, not the server Strategic Risk
+contract. `sanctionsScore` is capped at 10 from new sanctions entries,
+largest-country entry volume, and sanctioned vessel/aircraft counts;
+`radiationScore` is capped at 12 from radiation-watch spikes, elevated readings,
+and corroborated observations, reduced by low-confidence or conflicting
+observations.
 
 ### Risk Levels
 
-| Score | Level | Trend Icon | Meaning |
-|-------|-------|------------|---------|
-| 70-100 | **Critical** | Escalating | Multiple converging crises |
-| 50-69 | **Elevated** | Stable | Heightened global tension |
-| 30-49 | **Moderate** | Stable | Normal fluctuation |
-| 0-29 | **Low** | De-escalating | Unusually quiet period |
+The browser panel and the server API intentionally expose two related but
+different level schemes for the same 0-100 headline score.
+
+**Panel-visible display labels** use the same five CII-aligned bands as country
+risk rows:
+
+| Headline score | Panel label | Meaning |
+|----------------|-------------|---------|
+| >=81 | **Critical** | Active crisis or major escalation |
+| 66-80 | **High** | Significant instability requiring close monitoring |
+| 51-65 | **Elevated** | Above-normal activity patterns |
+| 31-50 | **Normal** | Baseline geopolitical activity |
+| &lt;31 | **Low** | Unusually quiet period |
+
+**Server/on-wire enum labels** remain the three-tier `StrategicRisk.level`
+contract returned by `GetRiskScores`:
+
+| Headline score | `StrategicRisk.level` | Meaning |
+|----------------|-----------------------|---------|
+| 70-100 | `SEVERITY_LEVEL_HIGH` | Multiple converging crises |
+| 40-69 | `SEVERITY_LEVEL_MEDIUM` | Heightened global tension |
+| 0-39 | `SEVERITY_LEVEL_LOW` | Lower global strategic pressure |
+
+API clients should treat `StrategicRisk.level` as the server severity enum and
+the Strategic Risk panel label as a display mapping of `StrategicRisk.score`.
 
 ### Unified Alert System
 
@@ -49,20 +98,33 @@ Priority: Critical
 
 ### Alert Priority
 
+Alert priority is separate from the server Strategic Risk High/Medium/Low
+bands. References to Critical and High CII below use the Country Instability
+Index country-score bands documented in
+[Country Instability Index](/country-instability-index#instability-levels).
+
 | Priority | Criteria |
 |----------|----------|
-| **Critical** | CII critical level, convergence score ≥80, cascade critical impact |
-| **High** | CII high level, convergence score ≥60, cascade affecting ≥5 countries |
-| **Medium** | CII change ≥10 points, convergence score ≥40 |
+| **Critical** | CII country Critical band (81-100), convergence has 4+ types or score ≥90, cascade critical impact, high-impact radiation/sanctions signal |
+| **High** | CII country High band (66-80) or ≥30-point CII move, convergence has 3+ types or score ≥70, cascade affecting ≥5 countries |
+| **Medium** | CII country Elevated band or ≥15-point CII move, convergence score ≥50, cascade medium impact or ≥3 countries |
 | **Low** | Minor changes and low-impact events |
 
 ### Trend Detection
 
-The system tracks the composite score over time:
+Country-level CII rows track approximate 24-hour movement through
+`dynamicScore`:
 
-- First measurement establishes baseline (shows "Stable")
-- Subsequent changes of ±5 points trigger trend changes
-- This prevents false "escalating" signals on initialization
+- `dynamicScore` is a signed delta from -100 to 100 against the nearest valid prior CII snapshot.
+- Positive values mean the score rose, negative values mean it fell, and `0` means stable or no valid prior snapshot.
+- Trend labels use the server deadband: greater than `+1` is rising, less than `-1` is falling, and values from `-1` through `+1` remain stable.
+
+The server-published global `StrategicRisk` headline is different: it currently
+sets `trend` to stable while publishing the top-5 CII roll-up score. If cached
+server scores are unavailable, the browser fallback computes its own
+escalating/stable/de-escalating panel trend from local additive context; that
+fallback trend is a UI continuity signal, not the authoritative server
+Strategic Risk trend contract.
 
 ## Pentagon Pizza Index (PizzINT)
 
@@ -82,11 +144,11 @@ Aggregate activity maps to a 5-level readiness scale:
 
 | Level | Threshold | Label | Meaning |
 |-------|-----------|-------|---------|
-| **DEFCON 1** | ≥90% | COCKED PISTOL | Maximum readiness; crisis response active |
-| **DEFCON 2** | ≥75% | FAST PACE | High activity; significant event underway |
-| **DEFCON 3** | ≥50% | ROUND HOUSE | Elevated; above-normal operations |
-| **DEFCON 4** | ≥25% | DOUBLE TAKE | Increased vigilance |
-| **DEFCON 5** | &lt;25% | FADE OUT | Normal peacetime operations |
+| **DEFCON 1** | ≥85% | Maximum Activity | Maximum readiness; crisis response active |
+| **DEFCON 2** | 70% – 84% | High Activity | High activity; significant event underway |
+| **DEFCON 3** | 50% – 69% | Elevated Activity | Elevated; above-normal operations |
+| **DEFCON 4** | 25% – 49% | Above Normal | Increased vigilance |
+| **DEFCON 5** | &lt;25% | Normal Activity | Normal peacetime operations |
 
 ### GDELT Tension Pairs
 
@@ -95,11 +157,11 @@ The indicator also displays geopolitical tension scores from GDELT (Global Datab
 | Pair | Monitored Relationship |
 |------|----------------------|
 | USA ↔ Russia | Primary nuclear peer adversary |
-| USA ↔ China | Economic and military competition |
-| USA ↔ Iran | Middle East regional tensions |
-| Israel ↔ Iran | Direct conflict potential |
-| China ↔ Taiwan | Cross-strait relations |
 | Russia ↔ Ukraine | Active conflict zone |
+| USA ↔ China | Economic and military competition |
+| China ↔ Taiwan | Cross-strait relations |
+| USA ↔ Iran | Middle East regional tensions |
+| USA ↔ Venezuela | Western Hemisphere escalation and sanctions pressure |
 
 Each pair shows:
 
@@ -159,46 +221,42 @@ Strategic risk and Country Instability Index (CII) scores are pre-computed serve
 
 The `GetRiskScores` RPC handler (`get-risk-scores.ts`):
 
-1. Fetches recent protest/riot/battle/explosion/civilian-violence data from ACLED (7-day window)
-2. Fetches auxiliary sources from Redis: UCDP conflicts, outages, climate, cyber threats, fires, GPS jamming, Iran events, OREF alerts
-3. Computes CII scores for 24 Tier 1 countries using the same formulas as the frontend
-4. Derives strategic risk from weighted top-5 CII scores
-5. Caches results in Redis (10-minute TTL, 1-hour stale fallback)
+1. Fetches recent protest/riot/battle/explosion/civilian-violence data from ACLED.
+2. Fetches auxiliary sources from Redis, including UCDP conflicts, outages, climate, cyber threats, fires, GPS jamming, Iran events, OREF alerts, advisories, displacement, classified news summaries, aviation alerts, earthquakes, sanctions, and military/AIS CII aggregates.
+3. Computes CII v8 scores for 31 Tier-1 countries using the shared coefficient table documented in [CII Risk Scoring Methodology](/methodology/cii-risk-scores).
+4. Derives Strategic Risk from the weighted top 5 CII scores.
+5. Caches results in Redis with versioned live and stale keys tied to the current CII formula version.
 
 ### CII Score Calculation
 
 Each country's score combines a static baseline (40%) with a dynamic event score (60%), plus supplemental boosts and floors.
 
-**Baseline Risk** (0-50 points): Static geopolitical risk reflecting structural fragility.
-
-| Country | Baseline | Rationale |
-|---------|----------|-----------|
-| Syria, Ukraine, Yemen | 50 | Active conflict zones |
-| Myanmar, North Korea, Cuba | 45 | Civil unrest, authoritarian |
-| Iran, Israel, Pakistan, Venezuela, Mexico | 35-40 | Regional tensions, organized crime |
-| Taiwan, Saudi Arabia, Turkey, Russia, China, India | 20-35 | Moderate instability |
-| Brazil, Mexico | 15-35 | Variable instability |
-| Germany, UK, US, France, Poland, UAE | 5-10 | Stable/low risk |
+**Baseline Risk** (0-50 points): Static geopolitical risk reflecting structural fragility. The canonical per-country values live in [CII Risk Scoring Methodology](/methodology/cii-risk-scores#2-per-country-baselinerisk-and-eventmultiplier).
 
 **Event Score** blends four sub-components:
 
 | Sub-component | Weight | Scoring |
 |---------------|--------|---------|
-| Unrest | 25% | Log2 dampening for democracies (multiplier &lt; 0.7), linear for authoritarian states. Base capped at 50, plus protest fatality boost (up to 30), plus outage severity boost (TOTAL 30pts, MAJOR 15pts, PARTIAL 5pts, capped at 50) |
-| Conflict | 30% | Weighted ACLED events (battles x3, explosions x4, civilian violence x5), sqrt-scaled fatalities, civilian boost, Iran strike severity, OREF alert boost (IL only: 25 base + 5 per alert) |
-| Security | 20% | GPS/GNSS jamming hexes (high: 5pts, medium: 2pts, capped at 35) |
-| Information | 25% | Reserved (0); no server-side news data |
+| Unrest | 25% | ACLED protests/riots, protest fatalities, high-severity unrest, and outage severity |
+| Conflict | 30% | Weighted ACLED battles/explosions/civilian violence, fatalities, Iran strike severity, and OREF alert pressure |
+| Security | 20% | Military flights, military vessels, aviation closures/delays, and GPS/GNSS jamming |
+| Information | 25% | Classified news headlines and country-attributed threat summaries |
 
 **Floors** (minimum score guarantees):
 
 | Floor type | Threshold | Trigger |
 |------------|-----------|---------|
-| UCDP active war | >= 70 | UCDP intensity level 2+ |
-| UCDP minor conflict | >= 50 | UCDP intensity level 1 |
-| Advisory do-not-travel | >= 60 | UA, SY, YE, MM |
-| Advisory reconsider | >= 50 | IL, IR, PK, VE, CU, MX |
+| UCDP active war | >= 70 | 2-year Tier-1 UCDP total deaths > 1000 or event count > 100 |
+| UCDP minor conflict | >= 50 | 2-year Tier-1 UCDP event count > 10 below the war thresholds |
+| Advisory do-not-travel | >= 60 | Live advisory feed when present; otherwise embedded State Department fallback table |
+| Advisory reconsider | >= 50 | Live advisory feed when present; otherwise embedded State Department fallback table |
 
-**Supplemental Boosts**: Advisory boost (+15/+10/+5), OREF blend boost for IL (+15 active + history tiers), climate (+15 max), cyber (+10 max), fires (+8 max).
+**Supplemental Boosts**: Advisory boost (+15/+10/+5), OREF blend boost for IL (+15 active + history tiers), climate (+15 max), cyber (+12 max), fires (+8 max), displacement (+20 max), news urgency (+5 max), earthquakes (+25 max), sanctions (+14 max), and AIS disruptions (+10 max).
+
+Advisory outputs expose both `advisoryLevel` and `advisoryProvenance` on each
+`CiiScore`. `advisoryProvenance` is `live` when the score used the seeded
+advisory feed, `fallback` when it used the embedded State Department fallback
+table, and `absent` when no advisory level affected boosts or floors.
 
 ### Event Significance Multipliers
 
@@ -210,7 +268,8 @@ Events in some countries carry more global significance than others:
 | 2.0-2.5x | China, Russia, Iran, Saudi Arabia, Cuba | Authoritarian states suppress protests |
 | 1.5-1.8x | Taiwan, Pakistan, Myanmar, Venezuela, UAE | Regional flashpoints |
 | 1.0-1.2x | Mexico, Turkey | Moderate significance |
-| 0.5-0.8x | US, UK, France, Germany, Poland, Ukraine, Syria, Yemen, Israel, India, Brazil | Protests are routine or events already captured by floors |
+| 0.5-0.8x | UK, France, Germany, Poland, Ukraine, Syria, Yemen, Israel, India, Brazil | Protests are routine or events already captured by floors |
+| 0.3x | US | Very high observability and high-volume domestic reporting require stronger dampening |
 
 ### Strategic Risk Derivation
 
@@ -229,19 +288,38 @@ The top countries contribute most heavily, with diminishing influence for lower-
 |--------|-----------|----------|
 | ACLED | Fetched live via API | Protests, riots, battles, explosions, civilian violence, fatalities |
 | UCDP | `conflict:ucdp-events:v1` | War/minor conflict floors |
-| Outages | `infra:outages:v1` | Unrest outage boost (TOTAL/MAJOR/PARTIAL severity) |
+| Outages | `infra:outages:v1` | Unrest outage boost |
 | Climate | `climate:anomalies:v2` | Climate severity boost |
-| Cyber | `cyber:threats-bootstrap:v2` | Cyber threat count boost |
-| Fires | `wildfire:fires:v1` | Wildfire count boost |
-| GPS Jamming | `intelligence:gpsjam:v2` | Security score (high/medium hex levels) |
+| Cyber | `cyber:threats-bootstrap:v2` | Severity-weighted cyber boost |
+| Fires | `wildfire:fires:v1` | Severity-weighted wildfire boost |
+| GPS Jamming | `intelligence:gpsjam:v2` | Security score |
+| Military CII | Relay/seeded military aggregate | Security score and AIS disruption boost |
+| Aviation Alerts | Seeded aviation disruption data | Security score |
 | Iran Events | `conflict:iran-events:v1` | Strike boost with severity weighting |
-| OREF Alerts | `relay:oref:history:v1` | IL conflict boost + blend boost (activeAlertCount, historyCount24h) |
+| OREF Alerts | `relay:oref:history:v1` | IL conflict boost and blend boost |
+| News Threats | Classified headline summaries | Information score and news urgency boost |
+| Displacement | Humanitarian displacement aggregate | Displacement boost |
+| Earthquakes | Earthquake feed | Earthquake boost |
+| Sanctions | Sanctions country aggregate | Sanctions boost |
+| Security advisories | `intelligence:advisories:v1` plus embedded fallback table | Advisory boost/floor with `advisoryProvenance` |
 
 ### Fallback Behavior
 
 When upstream data is unavailable (API errors, rate limits):
 
-1. **Stale cache** (1-hour TTL): Return recent scores
-2. **Baseline fallback**: Return scores using only static baselines and advisory floors
+1. **Stale cache**: Return the latest versioned stale risk-score payload when available.
+2. **Baseline fallback**: Return scores using static baselines and available floors when no usable live or stale payload exists.
 
-This ensures the dashboard always displays meaningful data even during upstream outages. The relay CII seed loop is disabled; the RPC handler computes scores on-demand with `cachedFetchJson` coalescing concurrent requests.
+The RPC exposes the fallback state on `GetRiskScoresResponse`: stale-cache
+responses set `degraded=true` and `stale=true`; cold baseline-only responses set
+`degraded=true` and `stale=false`. Fresh/cache-hit responses set both flags to
+`false`.
+
+The relay CII warm-ping loop is active in `scripts/ais-relay.cjs`: it calls
+`/api/intelligence/v1/get-risk-scores` every 8 minutes, lets the RPC handler
+refresh live/stale cache state, and writes `seed-meta:intelligence:risk-scores`
+for health monitoring when scores are returned. That seed-meta `recordCount`
+is realtime signal-density coverage, not raw feed availability: it counts the
+score-relevant Tier-1 conflict (ACLED or UCDP), news, and cyber signal families
+present in the CII refresh. Quiet-but-fresh realtime feeds can therefore produce
+`COVERAGE_PARTIAL`; source-specific freshness remains the feed-heartbeat view.

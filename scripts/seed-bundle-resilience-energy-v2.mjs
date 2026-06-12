@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
 // PR 1 of the resilience repair plan. Railway cron bundle wrapping
-// the three World Bank seeders that feed the v2 energy construct:
+// the three annual source seeders that feed the v2 energy construct:
 //
 //   - seed-low-carbon-generation.mjs   → resilience:low-carbon-generation:v1
 //   - seed-fossil-electricity-share.mjs → resilience:fossil-electricity-share:v1
 //   - seed-power-reliability.mjs       → resilience:power-losses:v1
 //
 // Cadence: per-slot interval is 7 days; data is annual at source so polling
-// more frequently just hammers the World Bank API without gaining fresh
+// more frequently just hammers upstream source APIs without gaining fresh
 // data. The per-slot intervalMs gate inside _bundle-runner.mjs enforces the
 // 7-day minimum between actual seeds — the Railway cron only needs to fire
 // often enough to catch the next-eligible day after the interval expires.

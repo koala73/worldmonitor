@@ -4,13 +4,14 @@
 
 import crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { loadEnvFile, runSeed, CHROME_UA, withRetry } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, CHROME_UA, withRetry, parseRetryAfterMs, getResponseHeader, isRetryableHttpStatus } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
 import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
 import { loadTickerSet } from './_ticker-validation.mjs';
 import { computeEmaWindows, computeRisk24h } from './_ema-threat-engine.mjs';
+import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.mjs';
 // Queue / outcome / runId constants live in the shared shim so the
 // HTTP-trigger handler (server/_shared/simulation-queue.ts) and this
 // seeder agree on the Redis schema. See #3734 + docs/plans/2026-05-18-
@@ -103,6 +104,13 @@ const CYBER_SCORE_CRITICAL_MULTIPLIER = 0.75; // bonus per critical-class threat
 const CYBER_PROB_MAX = 0.72;                // probability ceiling for cyber forecasts
 const CYBER_PROB_VOLUME_WEIGHT = 0.5;       // weight of volume in probability formula
 const CYBER_PROB_TYPE_WEIGHT = 0.15;        // weight of type diversity in probability formula
+const CONFLICT_BASE_DETECTOR_PROB_MAX = 0.90;
+const UCDP_CONFLICT_ZONE_PROB_MAX = 0.85;
+const VELOCITY_SPIKE_PROBABILITY_LIFT = 0.08;
+const VELOCITY_SPIKE_PROBABILITY_MAX = 0.99;
+const DEFENSE_DIRECT_CONFIRMATION_PRESSURE_LIFT = 0.12;
+const DEFENSE_DIRECT_CONFIRMATION_CONFIDENCE_LIFT = 0.08;
+const DEFENSE_ABSENT_CONFIRMATION_CONFIDENCE_PENALTY = 0.04;
 const MAX_MILITARY_SURGE_AGE_MS = 3 * 60 * 60 * 1000;
 const MAX_MILITARY_BUNDLE_DRIFT_MS = 5 * 60 * 1000;
 
@@ -679,7 +687,7 @@ async function readInputKeys() {
   const { url, token } = getRedisCredentials();
   const fredKeys = FRED_MARKET_SERIES.map((seriesId) => FRED_MARKET_INPUT_KEYS[seriesId]);
   const keys = [
-    'risk:scores:sebuf:stale:v3',
+    CII_RISK_SCORE_CACHE_KEYS.stale,
     'temporal:anomalies:v1',
     'theater_posture:sebuf:stale:v1',
     'military:forecast-inputs:stale:v1',
@@ -764,7 +772,7 @@ async function readInputKeys() {
   );
 
   return {
-    ciiScores: parsedByKey['risk:scores:sebuf:stale:v3'],
+    ciiScores: parsedByKey[CII_RISK_SCORE_CACHE_KEYS.stale],
     temporalAnomalies: parsedByKey['temporal:anomalies:v1'],
     theaterPosture: parsedByKey['theater_posture:sebuf:stale:v1'],
     militaryForecastInputs: parsedByKey['military:forecast-inputs:stale:v1'],
@@ -1001,7 +1009,7 @@ function detectConflictScenarios(inputs, emaRiskScores) {
 
     const ciiNorm = normalize(c.score, 50, 100);
     const eventBoost = (matchingIran.length + matchingUcdp.length) > 0 ? 0.1 : 0;
-    let prob = Math.min(0.9, ciiNorm * 0.6 + eventBoost + (c.trend === 'rising' ? 0.1 : 0));
+    let prob = Math.min(CONFLICT_BASE_DETECTOR_PROB_MAX, ciiNorm * 0.6 + eventBoost + (c.trend === 'rising' ? 0.1 : 0));
 
     const emaRisk = emaRiskScores?.get(countryName ?? '');
     if (emaRisk?.velocitySpike) {
@@ -1010,7 +1018,7 @@ function detectConflictScenarios(inputs, emaRiskScores) {
         value: `EMA z-score: ${emaRisk.zscore.toFixed(1)} (${emaRisk.risk24h}/100 risk)`,
         weight: 0.35,
       });
-      prob = Math.min(0.99, prob + 0.08);
+      prob = Math.min(VELOCITY_SPIKE_PROBABILITY_MAX, prob + VELOCITY_SPIKE_PROBABILITY_LIFT);
       sourceCount++;
     }
 
@@ -1854,7 +1862,7 @@ function detectUcdpConflictZones(inputs, emaRiskScores) {
     if (count < 10) continue;
 
     const signals = [{ type: 'ucdp', value: `${count} UCDP conflict events`, weight: 0.5 }];
-    let prob = Math.min(0.85, normalize(count, 5, 100) * 0.7);
+    let prob = Math.min(UCDP_CONFLICT_ZONE_PROB_MAX, normalize(count, 5, 100) * 0.7);
 
     const emaRisk = emaRiskScores?.get(country?.toLowerCase?.() ?? '');
     if (emaRisk?.velocitySpike) {
@@ -1863,7 +1871,7 @@ function detectUcdpConflictZones(inputs, emaRiskScores) {
         value: `EMA z-score: ${emaRisk.zscore.toFixed(1)} (${emaRisk.risk24h}/100 risk)`,
         weight: 0.35,
       });
-      prob = Math.min(0.99, prob + 0.08);
+      prob = Math.min(VELOCITY_SPIKE_PROBABILITY_MAX, prob + VELOCITY_SPIKE_PROBABILITY_LIFT);
     }
 
     predictions.push(makePrediction(
@@ -2286,6 +2294,8 @@ const PROJECTION_CURVES = {
   cyber:          { h24: 1.0, d7: 0.78, d30: 0.4 },
   infrastructure: { h24: 1.0, d7: 0.5, d30: 0.25 },
 };
+const PROJECTION_PROBABILITY_FLOOR = 0.01;
+const PROJECTION_PROBABILITY_CAP = 0.95;
 
 function computeProjections(predictions) {
   for (const pred of predictions) {
@@ -2294,9 +2304,9 @@ function computeProjections(predictions) {
     const anchorMult = curve[anchor] || 1;
     const base = anchorMult > 0 ? pred.probability / anchorMult : pred.probability;
     pred.projections = {
-      h24: Math.round(Math.min(0.95, Math.max(0.01, base * curve.h24)) * 1000) / 1000,
-      d7:  Math.round(Math.min(0.95, Math.max(0.01, base * curve.d7)) * 1000) / 1000,
-      d30: Math.round(Math.min(0.95, Math.max(0.01, base * curve.d30)) * 1000) / 1000,
+      h24: Math.round(Math.min(PROJECTION_PROBABILITY_CAP, Math.max(PROJECTION_PROBABILITY_FLOOR, base * curve.h24)) * 1000) / 1000,
+      d7:  Math.round(Math.min(PROJECTION_PROBABILITY_CAP, Math.max(PROJECTION_PROBABILITY_FLOOR, base * curve.d7)) * 1000) / 1000,
+      d30: Math.round(Math.min(PROJECTION_PROBABILITY_CAP, Math.max(PROJECTION_PROBABILITY_FLOOR, base * curve.d30)) * 1000) / 1000,
     };
   }
 }
@@ -10210,13 +10220,13 @@ function buildMarketState(worldSignals, transmissionGraph) {
     const calibratedPressure = (pressureNumerator / divisor)
       + (macroConfirmation * Number(calibration.macroLift || 0))
       + (edgeDensity * Number(calibration.edgeLift || 0))
-      + (defenseSignalConfirmation * 0.12)
+      + (defenseSignalConfirmation * DEFENSE_DIRECT_CONFIRMATION_PRESSURE_LIFT)
       - (!defenseSignalConfirmation && config.id === 'defense' ? Number(calibration.dampener || 0) : 0);
     const calibratedConfidence = (confidenceNumerator / divisor)
       + Math.min(0.08, macroSignals.length * 0.02)
       + (edgeDensity * Number(calibration.confidenceLift || 0))
-      + (defenseSignalConfirmation * 0.08)
-      - (!defenseSignalConfirmation && config.id === 'defense' ? 0.04 : 0);
+      + (defenseSignalConfirmation * DEFENSE_DIRECT_CONFIRMATION_CONFIDENCE_LIFT)
+      - (!defenseSignalConfirmation && config.id === 'defense' ? DEFENSE_ABSENT_CONFIRMATION_CONFIDENCE_PENALTY : 0);
     const pressureScore = +clampUnitInterval(calibratedPressure).toFixed(3);
     const confidence = +clampUnitInterval(calibratedConfidence).toFixed(3);
     return {
@@ -14023,6 +14033,33 @@ const FORECAST_LLM_PROVIDERS = [
   { name: 'openrouter', envKey: 'OPENROUTER_API_KEY', apiUrl: 'https://openrouter.ai/api/v1/chat/completions', model: 'google/gemini-2.5-flash', timeout: 25_000 },
 ];
 const FORECAST_LLM_PROVIDER_NAMES = new Set(FORECAST_LLM_PROVIDERS.map(provider => provider.name));
+const FORECAST_LLM_PROVIDER_MAX_RETRIES = 2;
+const FORECAST_LLM_RETRY_BASE_MS = 1_000;
+const FORECAST_LLM_RETRY_AFTER_MAX_MS = 10_000;
+// The forecast seed lock is 180s; leave headroom for non-LLM work and cleanup.
+const FORECAST_LLM_STAGE_BUDGET_MS = 120_000;
+const FORECAST_LLM_STAGE_BUDGET_GUARD_MS = 5_000;
+// Cumulative LLM ceiling for one seed run. The per-stage budget bounds a single
+// call, but a run makes ~10 LLM calls (scenario/combined/critique/impact +
+// market-implications in afterPublish) — all under the same 180s lock with no
+// lock renewal. Without a run-level cap, several degraded stages still serialize
+// past 180s and the lock expires mid-run, letting the next cron tick start a
+// duplicate. 150s leaves ~30s for input reads, publish, and cleanup.
+const FORECAST_LLM_RUN_BUDGET_MS = 150_000;
+// Anchored at the start of the direct seed run; null in tests and the deep-forecast
+// worker (separate entry/lock) so only the per-stage budget applies there.
+let forecastLlmRunDeadlineMs = null;
+
+function beginForecastLlmRunBudget(runBudgetMs = FORECAST_LLM_RUN_BUDGET_MS) {
+  forecastLlmRunDeadlineMs = Number.isFinite(runBudgetMs) && runBudgetMs > 0
+    ? Date.now() + Math.floor(runBudgetMs)
+    : null;
+  return forecastLlmRunDeadlineMs;
+}
+
+function __setForecastLlmRunDeadlineForTests(deadlineMs = null) {
+  forecastLlmRunDeadlineMs = Number.isFinite(deadlineMs) ? deadlineMs : null;
+}
 
 function parseForecastProviderOrder(raw) {
   if (typeof raw !== 'string' || !raw.trim()) return null;
@@ -14310,9 +14347,74 @@ function getEnrichmentFailureReason({ result, raw, scenarios = 0, perspectives =
 }
 
 let forecastLlmCallOverrideForTests = null;
+let forecastLlmFetchForTests = null;
 
 function __setForecastLlmCallOverrideForTests(override = null) {
   forecastLlmCallOverrideForTests = typeof override === 'function' ? override : null;
+}
+
+function __setForecastLlmTransportForTests(overrides = null) {
+  forecastLlmFetchForTests = typeof overrides?.fetch === 'function' ? overrides.fetch : null;
+}
+
+async function __callForecastLlmForTests(systemPrompt, userPrompt, options = {}) {
+  return await callForecastLLM(systemPrompt, userPrompt, options);
+}
+
+function getForecastLlmRetryAfterMs(resp) {
+  const retryAfterMs = parseRetryAfterMs(getResponseHeader(resp?.headers, 'Retry-After'));
+  return retryAfterMs == null ? null : Math.min(retryAfterMs, FORECAST_LLM_RETRY_AFTER_MAX_MS);
+}
+
+function createForecastLlmBudgetError(stage, budgetStartedAtMs, stageBudgetMs) {
+  const elapsedMs = Math.max(0, Date.now() - budgetStartedAtMs);
+  const err = new Error(`llm budget exhausted after ${elapsedMs}ms (stage budget ${stageBudgetMs}ms)`);
+  err.nonRetryable = true;
+  err.forecastLlmBudgetExhausted = true;
+  err.stage = stage;
+  return err;
+}
+
+function getForecastLlmStageBudgetMs(options = {}) {
+  return Number.isFinite(options.stageBudgetMs)
+    ? Math.max(0, Math.floor(options.stageBudgetMs))
+    : FORECAST_LLM_STAGE_BUDGET_MS;
+}
+
+function getRemainingForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs) {
+  const stageRemaining = budgetStartedAtMs + stageBudgetMs - Date.now();
+  // The run deadline (when set) caps cumulative LLM time across all stages so
+  // the seed can't outlive its 180s lock; whichever budget is tighter wins.
+  const runRemaining = forecastLlmRunDeadlineMs == null
+    ? Infinity
+    : forecastLlmRunDeadlineMs - Date.now();
+  return Math.max(0, Math.min(stageRemaining, runRemaining));
+}
+
+function getUsableForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs) {
+  return Math.max(0, getRemainingForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs) - FORECAST_LLM_STAGE_BUDGET_GUARD_MS);
+}
+
+function isForecastLlmBudgetError(err) {
+  return Boolean(err?.forecastLlmBudgetExhausted);
+}
+
+function createForecastLlmHttpError(resp, usableBudgetMs = Infinity) {
+  const err = new Error(`HTTP ${resp.status}`);
+  err.status = resp.status;
+  err.nonRetryable = !isRetryableHttpStatus(resp.status);
+  const retryAfterMs = getForecastLlmRetryAfterMs(resp);
+  if (retryAfterMs != null) {
+    const cappedRetryAfterMs = Number.isFinite(usableBudgetMs)
+      ? Math.min(retryAfterMs, Math.max(0, usableBudgetMs))
+      : retryAfterMs;
+    if (cappedRetryAfterMs > 0) {
+      err.retryAfterMs = cappedRetryAfterMs;
+    } else {
+      err.nonRetryable = true;
+    }
+  }
+  return err;
 }
 
 async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
@@ -14321,6 +14423,8 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
   }
   const stage = options.stage || 'default';
   const providers = resolveForecastLlmProviders(options);
+  const stageBudgetMs = getForecastLlmStageBudgetMs(options);
+  const budgetStartedAtMs = Date.now();
   const requestedOrder = Array.isArray(options.providerOrder) && options.providerOrder.length > 0
     ? options.providerOrder.join(',')
     : providers.map(provider => provider.name).join(',');
@@ -14330,30 +14434,48 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
     const apiKey = process.env[provider.envKey];
     if (!apiKey) continue;
     try {
-      const resp = await fetch(provider.apiUrl, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'User-Agent': CHROME_UA,
-          ...(provider.name === 'openrouter' ? { 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor' } : {}),
-        },
-        body: JSON.stringify({
-          model: provider.model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-          ],
-          max_tokens: options.maxTokens || 1500,
-          temperature: options.temperature ?? 0.3,
-        }),
-        signal: AbortSignal.timeout(provider.timeout),
-      });
-      if (!resp.ok) {
-        console.warn(`  [LLM:${stage}] ${provider.name} HTTP ${resp.status}`);
+      const forecastFetch = forecastLlmFetchForTests || ((...args) => globalThis.fetch(...args));
+      const retryDelayMs = Number.isFinite(options.retryDelayMs)
+        ? Math.max(0, Math.floor(options.retryDelayMs))
+        : FORECAST_LLM_RETRY_BASE_MS;
+      const resp = await withRetry(async () => {
+        const usableBudgetMs = getUsableForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs);
+        if (usableBudgetMs <= 0) throw createForecastLlmBudgetError(stage, budgetStartedAtMs, stageBudgetMs);
+        const response = await forecastFetch(provider.apiUrl, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            'User-Agent': CHROME_UA,
+            ...(provider.name === 'openrouter' ? { 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor' } : {}),
+          },
+          body: JSON.stringify({
+            model: provider.model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            max_tokens: options.maxTokens || 1500,
+            temperature: options.temperature ?? 0.3,
+          }),
+          signal: AbortSignal.timeout(Math.max(1, Math.min(provider.timeout, usableBudgetMs))),
+        });
+        if (!response.ok) {
+          throw createForecastLlmHttpError(
+            response,
+            getUsableForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs),
+          );
+        }
+        return response;
+      }, FORECAST_LLM_PROVIDER_MAX_RETRIES, retryDelayMs);
+
+      let json;
+      try {
+        json = await resp.json();
+      } catch (err) {
+        console.warn(`  [LLM:${stage}] ${provider.name} invalid response: ${err.message}`);
         continue;
       }
-      const json = await resp.json();
       const text = json.choices?.[0]?.message?.content?.trim();
       if (!text || text.length < 20) continue;
       const model = json.model || provider.model;
@@ -14361,6 +14483,7 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
       return { text, model, provider: provider.name };
     } catch (err) {
       console.warn(`  [LLM:${stage}] ${provider.name} ${err.message}`);
+      if (isForecastLlmBudgetError(err)) return null;
     }
   }
   return null;
@@ -15976,6 +16099,39 @@ function validateMarketImplications(cards, allowedTickers = ALL_ALLOWED_TICKERS)
   return valid;
 }
 
+const MARKET_IMPLICATIONS_META_KEY = 'seed-meta:intelligence:market-implications';
+const MARKET_IMPLICATIONS_META_TTL = 86400 * 7;
+
+function marketImplicationsMetaErrorReason(reason) {
+  return String(reason || 'unknown').replace(/\s+/g, ' ').slice(0, 240);
+}
+
+// Surface a producer-side LLM failure to /api/health instead of silently
+// returning. Without this the success-only seed-meta write freezes at the
+// last-good fetchedAt; the canonical key then TTLs out and health reports
+// `marketImplications: EMPTY` — indistinguishable from a stopped cron. Writing
+// a `status:'error'` seed-meta makes api/health.js classifyKey emit SEED_ERROR
+// (warn: producer failing) per the socialVelocity precedent (PR #4084). We also
+// re-EXPIRE the canonical key so the last-good cards survive while the LLM step
+// retries on the next cron, rather than expiring to EMPTY mid-outage.
+async function writeMarketImplicationsFailureMeta(reason) {
+  const { url, token } = getRedisCredentials();
+  const meta = {
+    fetchedAt: Date.now(),
+    recordCount: 0,
+    status: 'error',
+    errorReason: marketImplicationsMetaErrorReason(reason),
+  };
+  await redisSet(url, token, MARKET_IMPLICATIONS_META_KEY, meta, MARKET_IMPLICATIONS_META_TTL);
+  // EXPIRE is a best-effort last-good preservation hint — failure here only
+  // shortens how long stale cards linger, it never loses the error signal above.
+  try {
+    await redisCommand(url, token, ['EXPIRE', MARKET_IMPLICATIONS_KEY, String(MARKET_IMPLICATIONS_TTL)]);
+  } catch (err) {
+    console.warn(`  [MarketImplications] last-good EXPIRE refresh failed: ${err.message}`);
+  }
+}
+
 async function buildAndSeedMarketImplications(inputs) {
   const startMs = Date.now();
   console.log('  [MarketImplications] Building world-state context...');
@@ -15991,7 +16147,8 @@ async function buildAndSeedMarketImplications(inputs) {
   });
 
   if (!result?.text) {
-    console.warn('  [MarketImplications] LLM returned no response — skipping write');
+    console.warn('  [MarketImplications] LLM returned no response — writing error seed-meta');
+    await writeMarketImplicationsFailureMeta('llm_no_response');
     return;
   }
 
@@ -16000,6 +16157,7 @@ async function buildAndSeedMarketImplications(inputs) {
 
   if (!Array.isArray(rawCards) || rawCards.length === 0) {
     console.warn(`  [MarketImplications] No parseable cards in LLM response (diagnostics: ${JSON.stringify(parsed.diagnostics)})`);
+    await writeMarketImplicationsFailureMeta('no_parseable_cards');
     return;
   }
 
@@ -16026,7 +16184,8 @@ async function buildAndSeedMarketImplications(inputs) {
 
   const cards = validateMarketImplications(rawCards, effectiveTickers);
   if (cards.length === 0) {
-    console.warn('  [MarketImplications] All cards failed validation — skipping write');
+    console.warn('  [MarketImplications] All cards failed validation — writing error seed-meta');
+    await writeMarketImplicationsFailureMeta('all_cards_failed_validation');
     return;
   }
   if (cards.length < rawCards.length) {
@@ -16036,9 +16195,8 @@ async function buildAndSeedMarketImplications(inputs) {
   const payload = { cards, generatedAt: new Date().toISOString(), model: result.model || '' };
   await redisSet(url, token, MARKET_IMPLICATIONS_KEY, payload, MARKET_IMPLICATIONS_TTL);
 
-  const metaKey = 'seed-meta:intelligence:market-implications';
-  const meta = { fetchedAt: Date.now(), recordCount: cards.length };
-  await redisSet(url, token, metaKey, meta, 86400 * 7);
+  const meta = { fetchedAt: Date.now(), recordCount: cards.length, status: 'ok' };
+  await redisSet(url, token, MARKET_IMPLICATIONS_META_KEY, meta, MARKET_IMPLICATIONS_META_TTL);
 
   const durationMs = Date.now() - startMs;
   console.log(`  [MarketImplications] Published ${cards.length} cards to ${MARKET_IMPLICATIONS_KEY} (${Math.round(durationMs)}ms, model=${result.model || 'unknown'})`);
@@ -16048,10 +16206,26 @@ export function declareRecords(data) {
   return Array.isArray(data?.predictions) ? data.predictions.length : 0;
 }
 
+export const FORECAST_EXTRA_KEYS = [
+  {
+    key: PRIOR_KEY,
+    transform: (data) => ({
+      predictions: data.predictions.map(buildPriorForecastSnapshot),
+    }),
+    ttl: 7200,
+    declareRecords,
+    skipWhenEmpty: true,
+  },
+];
+
 if (_isDirectRun) {
   const refreshRequest = await readForecastRefreshRequest();
   const triggerContext = buildForecastTriggerContext(refreshRequest);
   console.log(`  [Trigger] source=${triggerContext.triggerSource}${triggerContext.triggerRequest?.requester ? ` requester=${triggerContext.triggerRequest.requester}` : ''}`);
+
+  // Bound cumulative LLM time across every stage of this run (fetchForecasts +
+  // afterPublish market-implications) so the seed can't outlive its 180s lock.
+  beginForecastLlmRunBudget();
 
   await runSeed('forecast', 'predictions', CANONICAL_KEY, async () => {
     const data = await fetchForecasts();
@@ -16161,16 +16335,7 @@ if (_isDirectRun) {
         console.warn(`  [MarketImplications] Stage failed: ${err.message}`);
       }
     },
-    extraKeys: [
-      {
-        key: PRIOR_KEY,
-        transform: (data) => ({
-          predictions: data.predictions.map(buildPriorForecastSnapshot),
-        }),
-        ttl: 7200,
-        declareRecords,
-      },
-    ],
+    extraKeys: FORECAST_EXTRA_KEYS,
   });
 }
 
@@ -17462,6 +17627,9 @@ export {
   PROMPT_LAST_ATTEMPT_KEY,
   readImpactPromptLearnedSection,
   clearImpactPromptLearnedSection,
+  __callForecastLlmForTests,
   __setForecastLlmCallOverrideForTests,
+  __setForecastLlmTransportForTests,
+  __setForecastLlmRunDeadlineForTests,
   __setRedisStoreForTests,
 };

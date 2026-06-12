@@ -1,9 +1,10 @@
 import type { AppContext, AppModule } from '@/app/app-context';
+import { applyAgentBusAction } from '@/app/agent-bus-applier';
 import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
 import { replayPendingCalls, clearAllPendingCalls } from '@/app/pending-panel-data';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
 import { effectivePubDateMs } from '@/services/feed-date';
-import type { ClusteredEvent } from '@/types';
+import type { ClusteredEvent, MapLayers } from '@/types';
 import type { RelatedAsset } from '@/types';
 import type { TheaterPostureSummary } from '@/services/military-surge';
 import {
@@ -40,6 +41,7 @@ import {
   InternetDisruptionsPanel,
   RuntimeConfigPanel,
   InsightsPanel,
+  ThreatTimelinePanel,
   MacroSignalsPanel,
   FearGreedPanel,
   MarketBreadthPanel,
@@ -85,6 +87,7 @@ import {
   WsbTickerScannerPanel,
   AAIISentimentPanel,
   EnergyCrisisPanel,
+  MobilePanelNav,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { focusInvestmentOnMap } from '@/services/investments-focus';
@@ -99,6 +102,8 @@ import {
   ALL_PANELS,
   VARIANT_DEFAULTS,
   isPanelInVariantDefaults,
+  getEffectivePanelConfig,
+  isPanelEntitled,
 } from '@/config';
 import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-resolution';
 import { BETA_MODE } from '@/config/beta';
@@ -179,6 +184,7 @@ export interface PanelLayoutManagerCallbacks {
   loadAllData: () => Promise<void>;
   updateMonitorResults: () => void;
   loadSecurityAdvisories?: () => Promise<void>;
+  applyMapLayerChange?: (layer: keyof MapLayers, enabled: boolean, source: 'programmatic') => void;
 }
 
 export class PanelLayoutManager implements AppModule {
@@ -188,6 +194,8 @@ export class PanelLayoutManager implements AppModule {
   private resolvedPanelOrder: string[] = [];
   private bottomSetMemory: Set<string> = new Set();
   private criticalBannerEl: HTMLElement | null = null;
+  private mobilePanelNav: MobilePanelNav | null = null;
+  private mobileMapCollapseBtn: HTMLButtonElement | null = null;
   private aviationCommandBar: AviationCommandBar | null = null;
   private readonly applyTimeRangeFilterDebounced: (() => void) & { cancel(): void };
   private unsubscribeAuth: (() => void) | null = null;
@@ -373,6 +381,9 @@ export class PanelLayoutManager implements AppModule {
       this.criticalBannerEl.remove();
       this.criticalBannerEl = null;
     }
+    this.mobilePanelNav?.destroy();
+    this.mobilePanelNav = null;
+    this.mobileMapCollapseBtn = null;
     // Clean up happy variant panels
     this.ctx.tvMode?.destroy();
     this.ctx.tvMode = null;
@@ -558,6 +569,7 @@ export class PanelLayoutManager implements AppModule {
               <option value="oceania">${t('components.deckgl.views.oceania')}</option>
             </select>
           </div>
+          <span id="missionPresetMount" class="mission-preset-mount"></span>
           <button class="mobile-search-btn" id="mobileSearchBtn" aria-label="${t('header.search')}">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </button>
@@ -565,10 +577,11 @@ export class PanelLayoutManager implements AppModule {
         <div class="header-right">
           <button class="search-btn" id="searchBtn"><kbd>⌘K</kbd> ${t('header.search')}</button>
           ${this.ctx.isDesktopApp ? '' : `<button class="copy-link-btn" id="copyLinkBtn">${t('header.copyLink')}</button>`}
+          ${this.ctx.isDesktopApp ? '' : `<button class="copy-link-btn embed-link-btn" id="embedLinkBtn">${t('header.embed')}</button>`}
           ${this.ctx.isDesktopApp ? '' : `<button class="fullscreen-btn" id="fullscreenBtn" title="${t('header.fullscreen')}">⛶</button>`}
           ${SITE_VARIANT === 'happy' ? `<button class="tv-mode-btn" id="tvModeBtn" title="TV Mode (Shift+T)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>` : ''}
           <span id="unifiedSettingsMount"></span>
-          <span id="authWidgetMount" class="auth-widget-mount" style="display:inline-flex;align-items:center;min-width:148px;min-height:32px"></span>
+          <span id="authWidgetMount" class="auth-widget-mount"></span>
         </div>
       </div>
       <div class="mobile-menu-overlay" id="mobileMenuOverlay"></div>
@@ -601,6 +614,11 @@ export class PanelLayoutManager implements AppModule {
         <button class="mobile-menu-item" id="mobileMenuRegion">
           <span class="mobile-menu-item-icon">🌐</span>
           <span class="mobile-menu-item-label">${t('components.deckgl.views.global')}</span>
+          <span class="mobile-menu-chevron">▸</span>
+        </button>
+        <button class="mobile-menu-item" id="mobileMenuMission">
+          <span class="mobile-menu-item-icon">◎</span>
+          <span class="mobile-menu-item-label">Mission</span>
           <span class="mobile-menu-chevron">▸</span>
         </button>
         <div class="mobile-menu-divider"></div>
@@ -702,7 +720,23 @@ export class PanelLayoutManager implements AppModule {
 
     if (this.ctx.isMobile) {
       this.setupMobileMapToggle();
+      this.setupMobilePanelNav();
     }
+  }
+
+  private setupMobilePanelNav(): void {
+    const grid = document.getElementById('panelsGrid');
+    if (!grid) return;
+    this.mobilePanelNav = new MobilePanelNav(() => this.ctx.panelSettings);
+    grid.before(this.mobilePanelNav.getElement());
+    this.mobilePanelNav.refresh();
+  }
+
+  private updateMobileMapCollapseBtn(isCollapsed: boolean): void {
+    if (!this.mobileMapCollapseBtn) return;
+    this.mobileMapCollapseBtn.textContent = isCollapsed
+      ? `▶ ${t('components.map.showMap')}`
+      : `▼ ${t('components.map.hideMap')}`;
   }
 
   private setupMobileMapToggle(): void {
@@ -714,33 +748,38 @@ export class PanelLayoutManager implements AppModule {
     const collapsed = stored === 'true';
     if (collapsed) mapSection.classList.add('collapsed');
 
-    const updateBtn = (btn: HTMLButtonElement, isCollapsed: boolean) => {
-      btn.textContent = isCollapsed ? `▶ ${t('components.map.showMap')}` : `▼ ${t('components.map.hideMap')}`;
-    };
-
     const btn = document.createElement('button');
     btn.className = 'map-collapse-btn';
-    updateBtn(btn, collapsed);
     headerLeft.after(btn);
+    this.mobileMapCollapseBtn = btn;
+    this.updateMobileMapCollapseBtn(collapsed);
 
     btn.addEventListener('click', () => {
       const isCollapsed = mapSection.classList.toggle('collapsed');
-      updateBtn(btn, isCollapsed);
+      this.updateMobileMapCollapseBtn(isCollapsed);
       localStorage.setItem('mobile-map-collapsed', String(isCollapsed));
       if (!isCollapsed) window.dispatchEvent(new Event('resize'));
     });
   }
 
-  renderCriticalBanner(postures: TheaterPostureSummary[]): void {
-    if (this.ctx.isMobile) {
-      if (this.criticalBannerEl) {
-        this.criticalBannerEl.remove();
-        this.criticalBannerEl = null;
-      }
-      document.body.classList.remove('has-critical-banner');
-      return;
+  /** Expand the mobile map (no-op if already expanded) so a banner's
+   *  "View Region" fly-to is actually visible, then scroll it into view. */
+  private revealMobileMap(): void {
+    const mapSection = document.getElementById('mapSection');
+    if (!mapSection) return;
+    // Map panel disabled in settings — nothing to reveal; scrolling to an
+    // empty top would read as the tap doing nothing.
+    if (mapSection.classList.contains('hidden')) return;
+    if (mapSection.classList.contains('collapsed')) {
+      mapSection.classList.remove('collapsed');
+      localStorage.setItem('mobile-map-collapsed', 'false');
+      this.updateMobileMapCollapseBtn(false);
+      window.dispatchEvent(new Event('resize'));
     }
+    document.querySelector('.main-content')?.scrollTo({ top: 0 });
+  }
 
+  renderCriticalBanner(postures: TheaterPostureSummary[]): void {
     const dismissedAt = sessionStorage.getItem('banner-dismissed');
     if (dismissedAt && Date.now() - parseInt(dismissedAt, 10) < 30 * 60 * 1000) {
       return;
@@ -786,6 +825,7 @@ export class PanelLayoutManager implements AppModule {
       console.log('[Banner] View Region clicked:', top.theaterId, 'lat:', top.centerLat, 'lon:', top.centerLon);
       trackCriticalBannerAction('view', top.theaterId);
       if (typeof top.centerLat === 'number' && typeof top.centerLon === 'number') {
+        if (this.ctx.isMobile) this.revealMobileMap();
         this.ctx.map?.setCenter(top.centerLat, top.centerLon, 4);
       } else {
         console.error('[Banner] Missing coordinates for', top.theaterId);
@@ -817,6 +857,7 @@ export class PanelLayoutManager implements AppModule {
       const panel = this.ctx.panels[key];
       panel?.toggle(config.enabled);
     });
+    this.mobilePanelNav?.refresh();
   }
 
   /**
@@ -1198,7 +1239,16 @@ export class PanelLayoutManager implements AppModule {
     // reactively by updatePanelGating() via auth state subscription (all in WEB_PREMIUM_PANELS).
 
     this.lazyPanel('chat-analyst', () =>
-      import('@/components/ChatAnalystPanel').then(m => new m.ChatAnalystPanel()),
+      import('@/components/ChatAnalystPanel').then(m => {
+        const panel = new m.ChatAnalystPanel();
+        panel.setDashboardActionHandler((action) => applyAgentBusAction(this.ctx, action, {
+          getPanelConfig: (panelId) => getEffectivePanelConfig(panelId, SITE_VARIANT),
+          isPanelAllowed: (panelId, config) => isPanelEntitled(panelId, config, hasPremiumAccess(getAuthState())),
+          hasPremiumAccess: () => hasPremiumAccess(getAuthState()),
+          applyLayerChange: this.callbacks.applyMapLayerChange,
+        }));
+        return panel;
+      }),
     );
 
     this.lazyPanel('forecast', () =>
@@ -1346,6 +1396,9 @@ export class PanelLayoutManager implements AppModule {
     }
 
     this.createPanel('insights', () => new InsightsPanel());
+    if (isPanelInVariantDefaults('threat-timeline')) {
+      this.createPanel('threat-timeline', () => new ThreatTimelinePanel());
+    }
 
     // Global Giving panel (all variants)
     this.lazyPanel('giving', () =>
@@ -1810,6 +1863,52 @@ export class PanelLayoutManager implements AppModule {
     }
   }
 
+  public applySavedPanelOrder(panelOrder?: string[]): void {
+    const grid = document.getElementById('panelsGrid');
+    const bottomGrid = document.getElementById('mapBottomGrid');
+    if (!grid || !bottomGrid) return;
+
+    const activePanelKeys = Object.keys(this.ctx.panelSettings).filter(k => k !== 'map');
+    const savedOrder = (panelOrder ?? this.getSavedPanelOrder()).filter(k => activePanelKeys.includes(k));
+    if (savedOrder.length === 0) return;
+
+    const seen = new Set<string>();
+    const allOrder: string[] = [];
+    const appendUnique = (key: string) => {
+      if (seen.has(key) || !activePanelKeys.includes(key)) return;
+      seen.add(key);
+      allOrder.push(key);
+    };
+    savedOrder.forEach(appendUnique);
+    this.resolvedPanelOrder.forEach(appendUnique);
+    activePanelKeys.forEach(appendUnique);
+
+    this.bottomSetMemory = panelOrder ? new Set<string>() : this.getSavedBottomSet();
+    this.resolvedPanelOrder = allOrder;
+
+    const effectiveUltraWide = this.getEffectiveUltraWide();
+    this.wasUltraWide = effectiveUltraWide;
+    const sidebarOrder = effectiveUltraWide
+      ? allOrder.filter(k => !this.bottomSetMemory.has(k))
+      : allOrder;
+    const bottomOrder = effectiveUltraWide
+      ? allOrder.filter(k => this.bottomSetMemory.has(k))
+      : [];
+
+    const firstAddBlock = grid.querySelector('.add-panel-block');
+    sidebarOrder.forEach((key) => {
+      const el = this.ctx.panels[key]?.getElement();
+      if (!el) return;
+      if (firstAddBlock) grid.insertBefore(el, firstAddBlock);
+      else grid.appendChild(el);
+    });
+
+    bottomOrder.forEach((key) => {
+      const el = this.ctx.panels[key]?.getElement();
+      if (el) bottomGrid.appendChild(el);
+    });
+  }
+
   savePanelOrder(): void {
     const grid = document.getElementById('panelsGrid');
     const bottomGrid = document.getElementById('mapBottomGrid');
@@ -2071,6 +2170,9 @@ export class PanelLayoutManager implements AppModule {
       if (savedConfig && !savedConfig.enabled) {
         this.ctx.panels[key]?.hide();
       }
+      // Same late-mount problem for the mobile category filter: the user may
+      // have picked a chip while this import was in flight.
+      this.mobilePanelNav?.applyToNewPanel(el);
     }).catch((err) => {
       console.error(`[panel] failed to lazy-load "${key}"`, err);
     });

@@ -243,6 +243,14 @@ const THIRD_PARTY_FETCH_HOST_ALLOWLIST = new Set([
   'basemaps.cartocdn.com',
   'tiles.openfreemap.org',
   'protomaps.github.io',
+  // Clerk Frontend API (CNAME → Clerk's auth infra). The bundled Clerk SDK
+  // fetches it for session/token refresh and retries transient failures
+  // itself (`retryImmediately`); a `Failed to fetch (clerk.worldmonitor.app)`
+  // that leaks to onunhandledrejection is a Clerk-SDK-internal network blip,
+  // not our code — same disposition as the existing `/ClerkJS: Network error/`
+  // ignoreError. NOT our `api.worldmonitor.app`, which stays off the list so
+  // genuine API regressions still surface (WORLDMONITOR-SA/SB).
+  'clerk.worldmonitor.app',
 ]);
 
 function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
@@ -341,6 +349,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /Unexpected end of script/,
       /Style is not done loading/,
       /Event `CustomEvent`.*captured as promise rejection/,
+      /Event `ProgressEvent`.*captured as promise rejection/, // resource/XHR `error` ProgressEvent leaking via onunhandledrejection (img/script/audio/EventSource load failure). Our IDB/worker/FileReader onerror handlers all reject with wrapped Errors (never a raw ProgressEvent); the only XHR caller is fire-and-forget + Tauri-desktop-only where Sentry is disabled — so a raw ProgressEvent rejection can never originate from our bundle. Sibling of the CustomEvent entry above — WORLDMONITOR-SQ
       /getProgramInfoLog/,
       /__firefox__/,
       /ifameElement\.contentDocument/,
@@ -520,6 +529,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /Octal literals are not allowed in strict mode/, // Runtime SyntaxError from injected extension script; our TS bundle never emits octal literals and doesn't eval (WORLDMONITOR-NV)
       /Unexpected identifier 'm'/, // Foreign script injection on Opera; pre-compiled bundle can't parse-fail at runtime (WORLDMONITOR-NT)
       /PlayerControlsInterface\.\w+ is not a function/, // Android Chrome WebView native bridge injection (Bilibili/UC/QQ-style host) — never emitted by our code (WORLDMONITOR-P2)
+      /github\.com\/styled-components\/styled-components\/blob/, // styled-components runtime error (errors.md#N URL); we don't depend on styled-components, so it can only be a browser extension (Grammarly et al.) injecting its own bundle — WORLDMONITOR-SE
     ],
     beforeSend(event) {
       const msg = event.exception?.values?.[0]?.value ?? '';
@@ -652,6 +662,27 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // A first-party frame elsewhere in the stack means the error likely originated in our code; surface it even if
       // an extension wrapped the call.
       if (!hasFirstParty && frames.some(f => /^(?:chrome|moz|safari(?:-web)?)-extension:\/\//.test(f.filename ?? ''))) return null;
+      // Bare `Failed to fetch` leaking via onunhandledrejection when a browser
+      // extension has monkeypatched `window.fetch` (e.g. Adjust SDK's
+      // injectScriptAdjust.js, page-inspector extensions) and chained an uncaught
+      // `.then()` on the result. A transient network blip rejects the underlying
+      // fetch and the extension's orphan promise surfaces as an unhandled rejection.
+      // Our first-party frames (the runtime fetch interceptor + country-geometry
+      // loader) appear ONLY because our wrapper sits in the call chain — our own
+      // fetch callers already wrap rejections in try/catch (country-geometry's
+      // ensureLoaded logs a warning and resolves), so this is NOT a first-party
+      // leak. Unlike the generic `!hasFirstParty` `Failed to fetch` gate below,
+      // this fires WITH first-party frames present, but only when an extension has
+      // a monkeypatched-`window.fetch` frame on the stack — a genuine API outage
+      // (host-suffixed `Failed to fetch (<host>)`, handled above) and any
+      // non-extension user are unaffected. The function match is anchored to
+      // exactly `window.fetch` / `fetch` (not a loose `/fetch/`) so an extension
+      // frame named `fetchContent` / `prefetch` does NOT swallow a real bare
+      // `Failed to fetch` from our own code (WORLDMONITOR-SG).
+      if (/^(?:TypeError: )?Failed to fetch$/.test(msg)
+          && frames.some(f => /^(?:chrome|moz|safari(?:-web)?)-extension:\/\//.test(f.filename ?? '') && /^(?:window\.)?fetch$/i.test(f.function ?? ''))) {
+        return null;
+      }
       // Suppress Sentry SDK DOM breadcrumb null-access on document.activeElement/contains.
       // Gated on !hasFirstParty because Sentry wraps first-party handlers, so a genuine app `el.contains(...)` bug
       // can produce a stack containing both main-*.js and sentry-*.js frames.
@@ -778,6 +809,20 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
           // safety as the `Failed to fetch` / `signal timed out` blocks above
           // (WORLDMONITOR-RF).
           || /^(?:SyntaxError: )?Unexpected EOF$/.test(msg)
+          // Firefox's wording for a failed `fetch()` — the engine-emitted
+          // equivalent of Chrome's bare `Failed to fetch` (above) and Safari's
+          // `Load failed`. Surfaces via `onunhandledrejection` with zero captured
+          // frames. Same provenance reasoning as the `Failed to fetch` gate
+          // (WORLDMONITOR-KM): a genuine first-party fetch failure keeps a
+          // source-mapped .ts frame on the awaiting site (hasFirstParty → NOT
+          // suppressed, preserved by the first-party-stack test), so a zero-frame
+          // rejection is a background / service-worker / extension / stale-pre-
+          // deploy-bundle fetch. The literal phrase is engine-emitted only — our
+          // shipped code never synthesizes it. This aligns the Firefox phrasing
+          // with the bare `Failed to fetch` handling; the earlier blanket
+          // "let NetworkError through" caution predated the KM provenance
+          // refinement (WORLDMONITOR-RK).
+          || /^(?:TypeError: )?NetworkError when attempting to fetch resource\.?$/.test(msg)
         )
       ) return null;
       if (hasAnyStack && !hasFirstParty && (
@@ -797,6 +842,24 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
         || /Connection lost while action was in flight/.test(msg)
         || /WEBGLRenderPipeline.*Link error/.test(msg)
       )) return null;
+      // `SyntaxError: Invalid or unexpected token` (and the Unexpected token/keyword/EOF
+      // family) surfacing THROUGH the deck.gl/maplibre WebGL init path. Our compiled,
+      // already-parsed bundle cannot emit a JS parse error at the first-party
+      // `MapContainer.initDeck` call site — a runtime SyntaxError here means deck.gl /
+      // maplibre parsed external content (a Worker script, a `new Function` shader
+      // builder, or a stale/corrupt lazily-loaded chunk after a deploy). The
+      // `!hasFirstParty` token-parse gate above misses this because `initDeck` rides the
+      // stack as the CALLER, not the source. Gate on the presence of a deck-stack /
+      // maplibre vendor frame so a genuine first-party SyntaxError elsewhere still
+      // surfaces (WORLDMONITOR-SP).
+      // `(?:SyntaxError: )?` mirrors the EOF/token gates above (lines 588, 601):
+      // some engines embed the exception type in the `value` field, so `msg` can be
+      // either `Invalid or unexpected token` or `SyntaxError: Invalid or unexpected
+      // token`. Anchoring without the optional prefix would let the prefixed variant
+      // slip through here despite the first-party `MapContainer` frame (Greptile P2).
+      if (excType === 'SyntaxError'
+          && /^(?:SyntaxError: )?(?:Invalid or unexpected token|Unexpected (?:token|keyword|identifier|EOF|end of script))/.test(msg)
+          && frames.some(f => /\/(?:maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
       return event;
     },
   };

@@ -6,6 +6,11 @@ import { fileURLToPath } from 'node:url';
 import { resolveIso2 } from './_country-resolver.mjs';
 import { getRedisCredentials, loadEnvFile } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
+import {
+  currentCacheFormulaLocal,
+  currentMethodologyFormulaLocal,
+  validationFormulaMetadata,
+} from './lib/resilience-formula.mjs';
 
 // Normalize any country identifier the upstream seeders emit (ISO2, ISO3, or
 // full English name) to canonical uppercase ISO2, or null when unrecognized.
@@ -27,17 +32,9 @@ loadEnvFile(import.meta.url);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const VALIDATION_DIR = join(__dirname, '..', 'docs', 'methodology', 'country-resilience-index', 'validation');
 
-const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v18:';
-const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v18';
+const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v25:';
+const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v25';
 
-// Mirror of _shared.ts#currentCacheFormula. Must stay in lockstep; see
-// the same comment in scripts/validate-resilience-correlation.mjs for
-// the rationale.
-function currentCacheFormulaLocal() {
-  const combine = (process.env.RESILIENCE_PILLAR_COMBINE_ENABLED ?? 'false').toLowerCase() === 'true';
-  const v2 = (process.env.RESILIENCE_SCHEMA_V2_ENABLED ?? 'true').toLowerCase() === 'true';
-  return combine && v2 ? 'pc' : 'd6';
-}
 const BACKTEST_RESULT_KEY = 'resilience:backtest:outcomes:v1';
 const BACKTEST_TTL_SECONDS = 7 * 24 * 60 * 60;
 
@@ -693,20 +690,7 @@ async function runBacktest() {
   const overallPass = familyResults.every((f) => f.pass);
   const passCount = familyResults.filter((f) => f.pass).length;
 
-  const output = {
-    generatedAt: Date.now(),
-    holdoutPeriod: '2024-2025',
-    aucThreshold: AUC_THRESHOLD,
-    gateWidth: GATE_WIDTH,
-    families: familyResults,
-    overallPass,
-    summary: {
-      totalFamilies: familyResults.length,
-      passed: passCount,
-      failed: familyResults.length - passCount,
-      totalCountries: scores.size,
-    },
-  };
+  const output = buildBacktestOutput(familyResults, scores.size);
 
   try {
     await redisSet(url, token, BACKTEST_RESULT_KEY, output, BACKTEST_TTL_SECONDS);
@@ -740,6 +724,27 @@ async function runBacktest() {
   console.log(`Overall: ${passCount}/${familyResults.length} families passed. ${overallPass ? 'ALL GATES MET.' : 'SOME GATES FAILED.'}`);
 
   return output;
+}
+
+function buildBacktestOutput(familyResults, totalCountries) {
+  const overallPass = familyResults.every((f) => f.pass);
+  const passCount = familyResults.filter((f) => f.pass).length;
+
+  return {
+    generatedAt: Date.now(),
+    ...validationFormulaMetadata(),
+    holdoutPeriod: '2024-2025',
+    aucThreshold: AUC_THRESHOLD,
+    gateWidth: GATE_WIDTH,
+    families: familyResults,
+    overallPass,
+    summary: {
+      totalFamilies: familyResults.length,
+      passed: passCount,
+      failed: familyResults.length - passCount,
+      totalCountries,
+    },
+  };
 }
 
 const isMain = process.argv[1]?.replace(/\\/g, '/').endsWith('backtest-resilience-outcomes.mjs');
@@ -803,4 +808,7 @@ export {
   AUC_THRESHOLD,
   GATE_WIDTH,
   runBacktest,
+  buildBacktestOutput,
+  currentCacheFormulaLocal,
+  currentMethodologyFormulaLocal,
 };

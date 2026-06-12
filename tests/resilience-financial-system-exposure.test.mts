@@ -133,6 +133,58 @@ describe('scoreFinancialSystemExposure — fail-closed preflight', () => {
     );
   });
 
+  it('throws ResilienceConfigurationError when required seed-meta status is non-ok', async () => {
+    const reader: ResilienceSeedReader = async (key) => {
+      if (key === 'seed-meta:economic:wb-external-debt') return { fetchedAt: Date.now(), status: 'ok' };
+      if (key === 'seed-meta:economic:bis-lbs') return { fetchedAt: Date.now(), status: 'error' };
+      if (key === 'seed-meta:economic:fatf-listing') return { fetchedAt: Date.now(), status: 'ok' };
+      return null;
+    };
+    await assert.rejects(
+      () => scoreFinancialSystemExposure(TEST_ISO2, reader),
+      (err: unknown) => {
+        if (!(err instanceof ResilienceConfigurationError)) return false;
+        return err.missingKeys.includes('economic:bis-lbs:v1');
+      },
+      'must throw ResilienceConfigurationError naming the non-ok seed key',
+    );
+  });
+
+  it('throws ResilienceConfigurationError when required seed-meta status is explicitly null', async () => {
+    const reader: ResilienceSeedReader = async (key) => {
+      if (key === 'seed-meta:economic:wb-external-debt') return { fetchedAt: Date.now(), status: 'ok' };
+      if (key === 'seed-meta:economic:bis-lbs') return { fetchedAt: Date.now(), status: null };
+      if (key === 'seed-meta:economic:fatf-listing') return { fetchedAt: Date.now(), status: 'ok' };
+      return null;
+    };
+    await assert.rejects(
+      () => scoreFinancialSystemExposure(TEST_ISO2, reader),
+      (err: unknown) => {
+        if (!(err instanceof ResilienceConfigurationError)) return false;
+        return err.missingKeys.includes('economic:bis-lbs:v1');
+      },
+      'must reject explicitly present non-ok falsy seed-meta status',
+    );
+  });
+
+  it('throws ResilienceConfigurationError when required seed-meta is stale', async () => {
+    const staleFetchedAt = Date.now() - 90 * 24 * 60 * 60 * 1000;
+    const reader: ResilienceSeedReader = async (key) => {
+      if (key === 'seed-meta:economic:wb-external-debt') return { fetchedAt: Date.now(), status: 'ok' };
+      if (key === 'seed-meta:economic:bis-lbs') return { fetchedAt: Date.now(), status: 'ok' };
+      if (key === 'seed-meta:economic:fatf-listing') return { fetchedAt: staleFetchedAt, status: 'ok' };
+      return null;
+    };
+    await assert.rejects(
+      () => scoreFinancialSystemExposure(TEST_ISO2, reader),
+      (err: unknown) => {
+        if (!(err instanceof ResilienceConfigurationError)) return false;
+        return err.missingKeys.includes('economic:fatf-listing:v1');
+      },
+      'must throw ResilienceConfigurationError naming the stale seed key',
+    );
+  });
+
   it('ResilienceConfigurationError carries missingKeys array (not undefined) — two-arg constructor', async () => {
     const reader: ResilienceSeedReader = async () => null;
     try {

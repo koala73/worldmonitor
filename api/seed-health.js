@@ -1,10 +1,20 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { jsonResponse } from './_json-response.js';
+import { unwrapEnvelope } from './_seed-envelope.js';
 // @ts-expect-error — JS module, no declaration file
 import { redisPipeline } from './_upstash-json.js';
 
 export const config = { runtime: 'edge' };
+
+// Keep these literals in sync with scripts/_resilience-intervals.mjs. Edge
+// functions cannot import from scripts/, so tests enforce this mirror.
+const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v9:';
+const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
+const RESILIENCE_INTERVAL_SOURCE_VERSION = `resilience-intervals:${RESILIENCE_INTERVAL_KEY_PREFIX}${RESILIENCE_INTERVAL_METHODOLOGY}`;
+const RESILIENCE_INTERVAL_PROBE_KEY = `${RESILIENCE_INTERVAL_KEY_PREFIX}US`;
+const RESILIENCE_INTERVAL_SCORE_MIN = 0;
+const RESILIENCE_INTERVAL_SCORE_MAX = 100;
 
 const SEED_DOMAINS = {
   // Phase 1 — Snapshot endpoints
@@ -40,7 +50,7 @@ const SEED_DOMAINS = {
   'aviation:faa':             { key: 'seed-meta:aviation:faa',             intervalMin: 45 },
   'news:insights':            { key: 'seed-meta:news:insights',            intervalMin: 15 },
   'positive-events:geo':      { key: 'seed-meta:positive-events:geo',      intervalMin: 30 },
-  'risk:scores:sebuf':        { key: 'seed-meta:risk:scores:sebuf',        intervalMin: 15 },
+  'intelligence:risk-scores': { key: 'seed-meta:intelligence:risk-scores', intervalMin: 15 }, // CII warm-ping every 8min; intervalMin*2 = 30min, aligned with api/health.js riskScores.
   'conflict:iran-events':     { key: 'seed-meta:conflict:iran-events',     intervalMin: 5040 },
   'conflict:ucdp-events':     { key: 'seed-meta:conflict:ucdp-events',     intervalMin: 210 },
   'weather:alerts':           { key: 'seed-meta:weather:alerts',           intervalMin: 15 },
@@ -67,8 +77,8 @@ const SEED_DOMAINS = {
   'intelligence:gdelt-intel': { key: 'seed-meta:intelligence:gdelt-intel', intervalMin: 210 }, // 420min maxStaleMin / 2 — aligned with health.js (6h cron + 1h grace)
   'correlation:cards':        { key: 'seed-meta:correlation:cards',        intervalMin: 5 },
   'intelligence:advisories':  { key: 'seed-meta:intelligence:advisories',  intervalMin: 60 },
-  'intelligence:social-reddit': { key: 'seed-meta:intelligence:social-reddit', intervalMin: 90 }, // 60min relay loop (hourly, bumped from 10min to reduce Reddit IP blocking); intervalMin = maxStaleMin / 2 (180 / 2)
-  'intelligence:wsb-tickers': { key: 'seed-meta:intelligence:wsb-tickers', intervalMin: 90 }, // 60min relay loop (hourly, bumped from 10min); intervalMin = maxStaleMin / 2 (180 / 2)
+  'intelligence:social-reddit': { key: 'seed-meta:intelligence:social-reddit', intervalMin: 270 }, // 180min relay loop (3h; dropped from 60min now that ScrapeCreators handles Reddit); intervalMin = maxStaleMin / 2 (540 / 2), matching api/health.js
+  'intelligence:wsb-tickers': { key: 'seed-meta:intelligence:wsb-tickers', intervalMin: 270 }, // 180min relay loop (3h); intervalMin = maxStaleMin / 2 (540 / 2), matching api/health.js
   'trade:customs-revenue':    { key: 'seed-meta:trade:customs-revenue',    intervalMin: 720 },
   'thermal:escalation':       { key: 'seed-meta:thermal:escalation',       intervalMin: 180 },
   'radiation:observations':   { key: 'seed-meta:radiation:observations',   intervalMin: 15 },
@@ -77,7 +87,17 @@ const SEED_DOMAINS = {
   'economic:grocery-basket':  { key: 'seed-meta:economic:grocery-basket',  intervalMin: 5040 }, // weekly seed; intervalMin = maxStaleMin / 2
   'economic:bigmac':          { key: 'seed-meta:economic:bigmac',          intervalMin: 5040 }, // weekly seed; intervalMin = maxStaleMin / 2
   'resilience:static':        { key: 'seed-meta:resilience:static',        intervalMin: 288000 }, // annual October snapshot; intervalMin = health.js maxStaleMin / 2 (400d alert threshold)
-  'resilience:intervals':     { key: 'seed-meta:resilience:intervals',     intervalMin: 10080 }, // weekly cron; intervalMin = health.js maxStaleMin / 2 (20160 / 2)
+  'resilience:intervals':     {
+    key: 'seed-meta:resilience:intervals',
+    intervalMin: 420, // Same 840min freshness budget as api/health.js, expressed as intervalMin * 2.
+    dataProbe: {
+      key: RESILIENCE_INTERVAL_PROBE_KEY,
+      kind: 'resilience_interval',
+      methodology: RESILIENCE_INTERVAL_METHODOLOGY,
+      formula: currentResilienceCacheFormula(),
+      sourceVersion: RESILIENCE_INTERVAL_SOURCE_VERSION,
+    },
+  },
   'regulatory:actions':       { key: 'seed-meta:regulatory:actions',       intervalMin: 120 }, // 2h cron; intervalMin = maxStaleMin / 3
   'economic:owid-energy-mix': { key: 'seed-meta:economic:owid-energy-mix', intervalMin: 25200 }, // monthly cron on 1st; intervalMin = health.js maxStaleMin / 2 (50400 / 2)
   'economic:fao-ffpi':        { key: 'seed-meta:economic:fao-ffpi',        intervalMin: 43200 }, // monthly seed; intervalMin = health.js maxStaleMin / 2 (86400 / 2)
@@ -91,7 +111,7 @@ const SEED_DOMAINS = {
   'economic:fatf-listing':     { key: 'seed-meta:economic:fatf-listing',     intervalMin: 30240 }, // FATF plenary 3×/year; intervalMin = health.js maxStaleMin / 2 (60480 / 2)
   'product-catalog':          { key: 'seed-meta:product-catalog',          intervalMin: 360 }, // relay loop every 6h; intervalMin = health.js maxStaleMin / 3 (1080 / 3)
   'portwatch:chokepoints-ref': { key: 'seed-meta:portwatch:chokepoints-ref', intervalMin: 10080 }, // seed-bundle-portwatch runs this at WEEK cadence; intervalMin*2 = 14d matches api/health.js SEED_META.portwatchChokepointsRef
-  'supply_chain:portwatch-ports': { key: 'seed-meta:supply_chain:portwatch-ports', intervalMin: 720 }, // 12h cron (0 */12 * * *); intervalMin = maxStaleMin / 3 (2160 / 3)
+  'supply_chain:portwatch-ports': { key: 'seed-meta:supply_chain:portwatch-ports', intervalMin: 720, minRecordCount: 174 }, // 12h cron (0 */12 * * *); intervalMin = maxStaleMin / 3 (2160 / 3); #3613 requires 174-country coverage before OK.
   'energy:chokepoint-flows': { key: 'seed-meta:energy:chokepoint-flows', intervalMin: 360 }, // 6h relay loop; intervalMin = maxStaleMin / 2 (720 / 2)
   'energy:eia-petroleum':   { key: 'seed-meta:energy:eia-petroleum',   intervalMin: 1440 }, // daily bundle cron; intervalMin*3 = health.js maxStaleMin (4320)
   'energy:spine':                 { key: 'seed-meta:energy:spine',                 intervalMin: 1440 }, // daily cron (0 6 * * *); intervalMin = maxStaleMin / 2 (2880 / 2)
@@ -111,19 +131,162 @@ const SEED_DOMAINS = {
   'resilience:recovery:sovereign-wealth': { key: 'seed-meta:resilience:recovery:sovereign-wealth', intervalMin: 43200 }, // monthly bundle cron (30d); intervalMin*2 = 60d matches health.js maxStaleMin
 };
 
-async function getMetaBatch(keys) {
-  const pipeline = keys.map((k) => ['GET', k]);
-  const data = await redisPipeline(pipeline, 3000);
-  if (!data) throw new Error('Redis not configured');
+function parseJsonValue(raw) {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
 
-  const result = new Map();
-  for (let i = 0; i < keys.length; i++) {
-    const raw = data[i]?.result;
-    if (raw) {
-      try { result.set(keys[i], JSON.parse(raw)); } catch { /* skip */ }
+function parseFiniteRecordCount(raw) {
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
+  if (typeof raw === 'string' && raw.trim() !== '') {
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function isEnabledEnv(name, defaultValue) {
+  return String(process.env[name] ?? defaultValue).toLowerCase() === 'true';
+}
+
+function currentResilienceCacheFormula() {
+  // Mirrors server/worldmonitor/resilience/v1/_shared.ts currentCacheFormula().
+  // Edge functions cannot import the server module, so this is intentionally
+  // duplicated and guarded by tests.
+  return isEnabledEnv('RESILIENCE_PILLAR_COMBINE_ENABLED', 'false') &&
+    isEnabledEnv('RESILIENCE_SCHEMA_V2_ENABLED', 'true')
+    ? 'pc'
+    : 'd6';
+}
+
+function isValidResilienceIntervalPayload(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false;
+  if (typeof payload.p05 !== 'number' || !Number.isFinite(payload.p05)) return false;
+  if (typeof payload.p95 !== 'number' || !Number.isFinite(payload.p95)) return false;
+  return (
+    payload.p05 >= RESILIENCE_INTERVAL_SCORE_MIN &&
+    payload.p05 <= RESILIENCE_INTERVAL_SCORE_MAX &&
+    payload.p95 >= RESILIENCE_INTERVAL_SCORE_MIN &&
+    payload.p95 <= RESILIENCE_INTERVAL_SCORE_MAX &&
+    payload.p05 <= payload.p95
+  );
+}
+
+function evaluateDataProbe(cfg, raw) {
+  if (!cfg) return null;
+  const requiredFormula = cfg.formula ?? null;
+  if (!raw) {
+    return {
+      ok: false,
+      status: 'data_missing',
+      key: cfg.key,
+      requiredMethodology: cfg.methodology ?? null,
+      requiredSourceVersion: cfg.sourceVersion ?? null,
+      requiredFormula,
+    };
+  }
+
+  const parsed = unwrapEnvelope(parseJsonValue(raw)).data;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return {
+      ok: false,
+      status: 'data_invalid',
+      key: cfg.key,
+      requiredMethodology: cfg.methodology ?? null,
+      requiredSourceVersion: cfg.sourceVersion ?? null,
+      requiredFormula,
+    };
+  }
+
+  const methodology = typeof parsed.methodology === 'string' ? parsed.methodology : null;
+  const formula = typeof parsed._formula === 'string' ? parsed._formula : null;
+  if (cfg.methodology && methodology !== cfg.methodology) {
+    return {
+      ok: false,
+      status: 'methodology_mismatch',
+      key: cfg.key,
+      methodology,
+      formula,
+      requiredMethodology: cfg.methodology,
+      requiredSourceVersion: cfg.sourceVersion ?? null,
+      requiredFormula,
+    };
+  }
+
+  if (requiredFormula && formula !== requiredFormula) {
+    return {
+      ok: false,
+      status: 'formula_mismatch',
+      key: cfg.key,
+      formula,
+      requiredFormula,
+      methodology,
+      requiredMethodology: cfg.methodology ?? null,
+      requiredSourceVersion: cfg.sourceVersion ?? null,
+    };
+  }
+
+  if (cfg.kind === 'resilience_interval' && !isValidResilienceIntervalPayload(parsed)) {
+    return {
+      ok: false,
+      status: 'data_invalid',
+      key: cfg.key,
+      formula,
+      requiredFormula,
+      methodology,
+      requiredMethodology: cfg.methodology ?? null,
+      requiredSourceVersion: cfg.sourceVersion ?? null,
+      p05: typeof parsed.p05 === 'number' && Number.isFinite(parsed.p05) ? parsed.p05 : null,
+      p95: typeof parsed.p95 === 'number' && Number.isFinite(parsed.p95) ? parsed.p95 : null,
+    };
+  }
+
+  return {
+    ok: true,
+    status: 'ok',
+    key: cfg.key,
+    methodology,
+    requiredMethodology: cfg.methodology ?? null,
+    requiredSourceVersion: cfg.sourceVersion ?? null,
+    formula,
+    requiredFormula,
+    computedAt: typeof parsed.computedAt === 'string' ? parsed.computedAt : null,
+  };
+}
+
+async function getSeedBatch(entries) {
+  const commands = [];
+  const metaSlots = [];
+  const probeSlots = [];
+  for (const [domain, cfg] of entries) {
+    metaSlots.push({ domain, key: cfg.key, index: commands.length });
+    commands.push(['GET', cfg.key]);
+    if (cfg.dataProbe?.key) {
+      probeSlots.push({ domain, index: commands.length });
+      commands.push(['GET', cfg.dataProbe.key]);
     }
   }
-  return result;
+
+  const data = await redisPipeline(commands, 3000);
+  if (!data) throw new Error('Redis not configured');
+
+  const metaMap = new Map();
+  const probeMap = new Map();
+  for (const slot of metaSlots) {
+    const raw = data[slot.index]?.result;
+    if (raw) {
+      const parsed = parseJsonValue(raw);
+      if (parsed) metaMap.set(slot.key, parsed);
+    }
+  }
+  for (const slot of probeSlots) {
+    probeMap.set(slot.domain, data[slot.index]?.result ?? null);
+  }
+  return { metaMap, probeMap };
 }
 
 export default async function handler(req) {
@@ -140,11 +303,11 @@ export default async function handler(req) {
 
   const now = Date.now();
   const entries = Object.entries(SEED_DOMAINS);
-  const metaKeys = entries.map(([, v]) => v.key);
 
   let metaMap;
+  let probeMap;
   try {
-    metaMap = await getMetaBatch(metaKeys);
+    ({ metaMap, probeMap } = await getSeedBatch(entries));
   } catch {
     return jsonResponse({ error: 'Redis unavailable' }, 503, cors);
   }
@@ -159,23 +322,45 @@ export default async function handler(req) {
 
     if (!meta) {
       seeds[domain] = { status: 'missing', fetchedAt: null, recordCount: null, stale: true };
+      if (cfg.minRecordCount != null) seeds[domain].minRecordCount = cfg.minRecordCount;
       missingCount++;
       continue;
     }
 
     const ageMs = now - (meta.fetchedAt || 0);
+    const recordCount = parseFiniteRecordCount(meta.recordCount);
+    const coveragePartial = cfg.minRecordCount != null && (recordCount == null || recordCount < cfg.minRecordCount);
     const isError = meta.status === 'error';
-    const stale = ageMs > maxStalenessMs || isError;
+    const probe = evaluateDataProbe(cfg.dataProbe, probeMap.get(domain));
+    const sourceMismatch = Boolean(
+      cfg.dataProbe?.sourceVersion &&
+      typeof meta.sourceVersion === 'string' &&
+      meta.sourceVersion !== '' &&
+      meta.sourceVersion !== cfg.dataProbe.sourceVersion
+    );
+    const stale = ageMs > maxStalenessMs || coveragePartial || isError || sourceMismatch || probe?.ok === false;
     if (stale) staleCount++;
 
     seeds[domain] = {
-      status: stale ? (isError ? 'error' : 'stale') : 'ok',
+      status: isError
+        ? 'error'
+        : sourceMismatch
+          ? 'source_version_mismatch'
+          : probe?.ok === false
+            ? probe.status
+            : coveragePartial
+              ? 'coverage_partial'
+              : stale
+              ? 'stale'
+              : 'ok',
       fetchedAt: meta.fetchedAt,
-      recordCount: meta.recordCount ?? null,
+      recordCount: recordCount ?? meta.recordCount ?? null,
       sourceVersion: meta.sourceVersion || null,
       ageMinutes: Math.round(ageMs / 60000),
       stale,
     };
+    if (cfg.minRecordCount != null) seeds[domain].minRecordCount = cfg.minRecordCount;
+    if (probe) seeds[domain].dataProbe = probe;
   }
 
   const overall = missingCount > 0 ? 'degraded' : staleCount > 0 ? 'warning' : 'healthy';

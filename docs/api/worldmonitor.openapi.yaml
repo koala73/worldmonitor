@@ -5335,7 +5335,7 @@ paths:
             parameters:
                 - name: variant
                   in: query
-                  description: 'Site variant: full, tech, finance, happy'
+                  description: 'Digest variant: full, tech, finance, happy, commodity. Unsupported site variants, including energy, currently fall back to full.'
                   required: false
                   schema:
                     type: string
@@ -11387,6 +11387,21 @@ components:
                     type: integer
                     format: int64
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                degraded:
+                    type: boolean
+                    description: |-
+                        True when the forecast backend could not read the canonical cache.
+                         Distinguishes an outage from a healthy empty forecast set.
+                stale:
+                    type: boolean
+                    description: |-
+                        True when forecasts are served from a stale fallback. Currently false for
+                         this endpoint because get-forecasts does not have a stale fallback cache.
+                error:
+                    type: string
+                    description: |-
+                        Stable machine-readable reason when degraded=true, empty otherwise.
+                         Value: "forecast_backend_unavailable" on Redis/backend read failures.
         worldmonitor_forecast_v1_Forecast:
             type: object
             properties:
@@ -11420,6 +11435,11 @@ components:
                         $ref: '#/components/schemas/worldmonitor_forecast_v1_CascadeEffect'
                 trend:
                     type: string
+                    description: |-
+                        Forecast trend direction. Current values are "rising", "falling", and
+                         "stable". The seeder compares probability against the prior forecast
+                         snapshot and uses a +/-0.05 deadband: deltas above +0.05 are rising,
+                         below -0.05 are falling, and everything inside the band is stable.
                 priorProbability:
                     type: number
                     format: double
@@ -12655,6 +12675,16 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_intelligence_v1_StrategicRisk'
+                degraded:
+                    type: boolean
+                    description: |-
+                        True when upstream scoring inputs failed and the response is served from
+                         a stale cache or from the baseline-only cold fallback.
+                stale:
+                    type: boolean
+                    description: |-
+                        True when degraded=true because a stale cached score payload was served.
+                         Baseline-only cold fallback sets degraded=true and stale=false.
             description: GetRiskScoresResponse contains composite risk scores and strategic assessments.
         worldmonitor_intelligence_v1_CiiScore:
             type: object
@@ -12671,9 +12701,11 @@ components:
                 dynamicScore:
                     type: number
                     maximum: 100
-                    minimum: 0
+                    minimum: -100
                     format: double
-                    description: Dynamic real-time score (0-100).
+                    description: |-
+                        Approximate 24-hour score movement delta (-100 to 100). Positive means rising,
+                         negative means falling, and 0 means stable or no valid prior snapshot.
                 combinedScore:
                     type: number
                     maximum: 100
@@ -12699,9 +12731,9 @@ components:
                 methodologyVersion:
                     type: string
                     description: |-
-                        Methodology version string for this score (e.g. "v1").
-                         Bumped whenever the editorial weights in CII_FORMULA_VERSION change so
-                         API clients can detect score drift. See docs/methodology/cii-risk-scores.mdx.
+                        Methodology version string for this score (for example, the current CII formula version).
+                         Bumped whenever CII_FORMULA_VERSION changes so API clients can detect
+                         score or movement-semantics drift. See docs/methodology/cii-risk-scores.mdx.
                 eventMultiplier:
                     type: number
                     maximum: 10
@@ -12717,6 +12749,18 @@ components:
                          future weight changes while still catching obviously-wrong inputs (e.g.
                          a runaway computation producing 1e6 or NaN-coerced values). Added in
                          PR #3780 review.
+                advisoryLevel:
+                    type: string
+                    description: |-
+                        Travel advisory level used by the score, when any advisory input applies.
+                         Empty means no live or fallback advisory level affected boosts/floors.
+                advisoryProvenance:
+                    type: string
+                    pattern: ^(live|fallback|absent)$
+                    description: |-
+                        Provenance for advisory_level: "live" when sourced from the Redis advisory
+                         feed, "fallback" when using the embedded State Department fallback table,
+                         and "absent" when no advisory input affected this score.
             description: CiiScore represents a Composite Instability Index score for a region or country.
         worldmonitor_intelligence_v1_CiiComponents:
             type: object
@@ -12726,25 +12770,25 @@ components:
                     maximum: 100
                     minimum: 0
                     format: double
-                    description: News activity signal contribution (0-100).
+                    description: Information-environment contribution from news urgency and threat-summary signals (0-100).
                 ciiContribution:
                     type: number
                     maximum: 100
                     minimum: 0
                     format: double
-                    description: CII index contribution (0-100).
+                    description: Domestic unrest contribution from protests, riots, fatalities, severity, and outages (0-100).
                 geoConvergence:
                     type: number
                     maximum: 100
                     minimum: 0
                     format: double
-                    description: Geographic convergence score (0-100).
+                    description: Armed-conflict contribution from ACLED events, fatalities, civilian violence, strikes, and OREF alerts (0-100).
                 militaryActivity:
                     type: number
                     maximum: 100
                     minimum: 0
                     format: double
-                    description: Military activity contribution (0-100).
+                    description: Security-mobility contribution from military flights, military vessels, aviation disruption, and GPS interference (0-100).
             description: CiiComponents represents the contributing factors to a CII score.
         worldmonitor_intelligence_v1_StrategicRisk:
             type: object
@@ -13028,7 +13072,9 @@ components:
                 fetchedAt:
                     type: integer
                     format: int64
-                    description: 'Data freshness timestamp derived from CII computedAt, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        Data freshness timestamp derived from CII computedAt, as Unix epoch milliseconds.
+                         0 means the CII computation time is unknown, including no CII score for this country. Warning: Values > 2^53 may lose precision in JavaScript
                 upstreamUnavailable:
                     type: boolean
                     description: True when all upstream Redis keys were unavailable. Signals CDN cache bypass.
@@ -13065,7 +13111,27 @@ components:
                     type: integer
                     format: int64
                     description: 'Brief generation time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                sources:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_intelligence_v1_BriefSource'
             description: GetCountryIntelBriefResponse contains an AI-generated intelligence brief for a country.
+        worldmonitor_intelligence_v1_BriefSource:
+            type: object
+            properties:
+                title:
+                    type: string
+                    description: Source article headline.
+                source:
+                    type: string
+                    description: Source outlet or feed label.
+                url:
+                    type: string
+                    description: Absolute http(s) source article URL.
+                publishedAt:
+                    type: string
+                    description: Article publication time, when available.
+            description: BriefSource describes one article used to ground an AI-generated brief.
         worldmonitor_intelligence_v1_SearchGdeltDocumentsRequest:
             type: object
             properties:
@@ -16145,14 +16211,22 @@ components:
                 fsiValue:
                     type: number
                     format: double
+                    description: |-
+                        Bespoke Fear & Greed header stress ratio, not the KCFSI/ECB FSI panel
+                         composite. Formula: (HYG / TLT) / (VIX * HY OAS / 100).
                 fsiLabel:
                     type: string
+                    description: |-
+                        Label for fsi_value: Low Stress (>=1.5), Moderate Stress (>=0.8),
+                         Elevated Stress (>=0.3), otherwise High Stress.
                 hygPrice:
                     type: number
                     format: double
+                    description: Latest HYG ETF price used in the Fear & Greed header stress ratio.
                 tltPrice:
                     type: number
                     format: double
+                    description: Latest TLT ETF price used in the Fear & Greed header stress ratio.
                 sectorPerformance:
                     type: array
                     items:
@@ -17680,7 +17754,10 @@ components:
                     items:
                         type: string
                         minItems: 1
-                        description: Headlines to summarize (max 8 used).
+                        description: |-
+                            Headlines to summarize. Up to 10 raw headlines are used for request
+                             identity/cache matching; the LLM prompt uses up to 5 unique, non-empty
+                             sanitized headline/body pairs.
                     minItems: 1
                 mode:
                     type: string
@@ -17761,7 +17838,7 @@ components:
             properties:
                 variant:
                     type: string
-                    description: 'Site variant: full, tech, finance, happy'
+                    description: 'Digest variant: full, tech, finance, happy, commodity. Unsupported site variants, including energy, currently fall back to full.'
                 lang:
                     type: string
                     description: ISO 639-1 language code (en, fr, ar, etc.)
@@ -17779,7 +17856,9 @@ components:
                         type: string
                     description: |-
                         Per-feed status — only non-ok states emitted; absent key implies ok.
-                         Values: empty (feed returned 0 items), timeout (timed out during fetch).
+                         Values: empty (feed returned 0 items), timeout (timed out during fetch),
+                         all-undated (every parsed item lacked a usable date), partial-undated
+                         (some parsed items lacked a usable date).
                 generatedAt:
                     type: string
                     description: ISO 8601 timestamp of when this digest was generated
@@ -17835,7 +17914,12 @@ components:
                 importanceScore:
                     type: integer
                     format: int32
-                    description: 'Composite importance score (0-100): severity × 55% + source tier × 20% + corroboration × 15% + recency × 10%.'
+                    description: |-
+                        Composite importance score. The base 0-100 score uses severity × 55% +
+                         source tier × 20% + corroboration × 15% + recency × 10%, then may add an
+                         18-point diplomacy/flashpoint boost and 4 points per entity-level
+                         corroborating source, capped at five sources. The final score can exceed
+                         100; with current boosts it is approximately capped at 138.
                 corroborationCount:
                     type: integer
                     format: int32
@@ -17877,7 +17961,9 @@ components:
                     description: Confidence score (0.0 to 1.0).
                 source:
                     type: string
-                    description: Classification source — "keyword", "ml", or "llm".
+                    description: |-
+                        Classification source — "keyword", "keyword-historical-downgrade", or
+                         "llm".
             description: ThreatClassification represents an AI-assessed threat level for a news item.
         worldmonitor_news_v1_StoryMeta:
             type: object
@@ -18506,15 +18592,14 @@ components:
                 headlineEligible:
                     type: boolean
                     description: |-
-                        Plan 2026-04-26-002 §U3 (PR 2) — eligibility flag for headline
-                         ranking inclusion. PR 2 introduces the field populated `true` for
-                         every country (no behavior change). PR 6 / §U7 swaps the population
-                         logic to coverage ≥ 0.65 AND (population ≥ 200k OR coverage ≥ 0.85)
-                         AND !lowConfidence; the headline ranking endpoint then filters by
-                         `headlineEligible: true`. Raw API endpoints keep returning the full
-                         set unfiltered. Widget consumes the field starting in PR 6 to show
-                         a "Low confidence — outside headline ranking" badge for
-                         `headlineEligible: false` countries on country detail pages.
+                        Current headline-ranking eligibility. True only when the country passes
+                         the headline gate: coverage >= 0.65 AND (population >= 200k OR
+                         coverage >= 0.85) AND !lowConfidence. GetResilienceRanking includes
+                         only eligible countries in items[]; scored but ineligible countries
+                         remain in greyedOut[]. Raw score endpoints still return the country
+                         score when available. Widget and country detail copy should show
+                         "Outside headline ranking" when false unless low-confidence is the more
+                         specific reason.
         worldmonitor_resilience_v1_ResilienceDomain:
             type: object
             properties:
@@ -18597,7 +18682,9 @@ components:
                 score:
                     type: number
                     format: double
-                    description: Pillar score in [0, 100], coverage-weighted mean of member domains.
+                    description: |-
+                        Pillar score in [0, 100], mean of member domains weighted by
+                         domain.weight * average_dimension_coverage.
                 weight:
                     type: number
                     format: double
@@ -18616,8 +18703,9 @@ components:
                  (economic, infrastructure, energy, social-governance, health-food,
                  recovery) into long-run capacity (structural-readiness), current shock
                  pressure (live-shock-exposure), and recovery capability (recovery-capacity).
-                 Pillar scores and coverage are real coverage-weighted aggregates computed
-                 from the constituent domains; see _pillar-membership.ts for the mapping.
+                 Pillar scores are real domain-weighted, coverage-scaled aggregates computed
+                 from the constituent domains; pillar coverage remains the mean of
+                 member-domain average dimension coverage. See _pillar-membership.ts for the mapping.
                  When RESILIENCE_SCHEMA_V2_ENABLED and RESILIENCE_PILLAR_COMBINE_ENABLED
                  are both true, the top-level overall_score on GetResilienceScoreResponse
                  uses the pillar-combined score with the min-pillar penalty term in
@@ -18636,6 +18724,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_resilience_v1_ResilienceRankingItem'
+                fetchedAt:
+                    type: string
+                scored:
+                    type: integer
+                    format: int32
+                total:
+                    type: integer
+                    format: int32
+                coverage:
+                    type: number
+                    format: double
+                partial:
+                    type: boolean
         worldmonitor_resilience_v1_ResilienceRankingItem:
             type: object
             properties:
@@ -18656,10 +18757,11 @@ components:
                 headlineEligible:
                     type: boolean
                     description: |-
-                        Plan 2026-04-26-002 §U3 (PR 2) — eligibility flag for headline
-                         ranking. PR 2 populates `true` for every country; PR 6 / §U7 swaps
-                         to coverage-and-population logic and the headline endpoint then
-                         filters by this field.
+                        Current headline-ranking eligibility. True only when the country passes
+                         the headline gate: coverage >= 0.65 AND (population >= 200k OR
+                         coverage >= 0.85) AND !lowConfidence. GetResilienceRanking includes
+                         only eligible countries in items[]; scored but ineligible countries
+                         remain in greyedOut[].
         worldmonitor_resilience_v1_GetResilienceRuntimeManifestRequest:
             type: object
         worldmonitor_resilience_v1_GetResilienceRuntimeManifestResponse:
@@ -18686,6 +18788,10 @@ components:
                     $ref: '#/components/schemas/worldmonitor_resilience_v1_ResilienceRuntimeCacheState'
                 rankingCache:
                     $ref: '#/components/schemas/worldmonitor_resilience_v1_ResilienceRankingCacheState'
+                constructVersions:
+                    $ref: '#/components/schemas/worldmonitor_resilience_v1_ResilienceRuntimeConstructVersions'
+                intervals:
+                    $ref: '#/components/schemas/worldmonitor_resilience_v1_ResilienceRuntimeIntervalState'
         worldmonitor_resilience_v1_ResilienceRuntimeFlag:
             type: object
             properties:
@@ -18720,6 +18826,27 @@ components:
                 total:
                     type: integer
                     format: int32
+        worldmonitor_resilience_v1_ResilienceRuntimeConstructVersions:
+            type: object
+            properties:
+                energy:
+                    type: string
+                    description: 'Safe derived energy construct version. Valid values: "legacy" or "v2".'
+        worldmonitor_resilience_v1_ResilienceRuntimeIntervalState:
+            type: object
+            properties:
+                available:
+                    type: boolean
+                    description: True only when the public sample interval can be read for the active formula.
+                methodology:
+                    type: string
+                    description: Public methodology tag used to audit scoreInterval/rankStable semantics.
+                sampleCountry:
+                    type: string
+                    description: ISO2 country used for the public availability probe.
+                lastObservedAt:
+                    type: string
+                    description: Latest safe observed timestamp from interval seed-meta or sample payload.
         worldmonitor_sanctions_v1_ListSanctionsPressureRequest:
             type: object
             properties:
@@ -18892,7 +19019,8 @@ components:
                     pattern: ^([A-Z]{2})?$
                     description: |-
                         Optional 2-letter ISO country code to scope the impact computation.
-                         When absent, the worker computes for all countries with seeded exposure.
+                         When absent, v1 computes only the seeded reporter set:
+                         US, CN, RU, IR, IN, TW.
             required:
                 - scenarioId
             description: |-
@@ -18982,20 +19110,26 @@ components:
                     format: double
                     description: |-
                         Raw weighted impact value aggregated across the country's exposed HS2
-                         chapters. Relative-only — not a currency amount.
+                         chapters. Physical scenarios use exposureScore * (disruption_pct / 100)
+                         * cost_shock_multiplier; tariff-shock scenarios use vulnerabilityIndex
+                         * cost_shock_multiplier. Relative-only - not a currency amount.
                 impactPct:
                     type: integer
                     format: int32
-                    description: Impact as a 0-100 share of the worst-hit country.
-            description: ScenarioImpactCountry carries a single country's scenario impact score.
+                    description: |-
+                        Impact as a 0-100 share of max(maxReturnedTotalImpact, 1), capped at 100.
+                         Because of the denominator floor, the top country can be below 100 when
+                         all returned totalImpact values are below 1.
+            description: ScenarioImpactCountry carries a single country's relative scenario impact score.
         worldmonitor_scenario_v1_ScenarioResultTemplate:
             type: object
             properties:
                 name:
                     type: string
                     description: |-
-                        Display name (worker derives this from affected_chokepoint_ids; may be
-                         `tariff_shock` for tariff-type scenarios).
+                        Worker-derived template key, not a display name. Physical scenarios join
+                         affected_chokepoint_ids with `+`; tariff-type scenarios may use
+                         `tariff_shock` when no physical chokepoint is affected.
                 disruptionPct:
                     type: integer
                     format: int32
@@ -19389,6 +19523,9 @@ components:
                     format: int32
                 status:
                     type: string
+                    description: |-
+                        Traffic-light score badge: green (<20), yellow (20-49), or red (>=50).
+                         Not an operational closure taxonomy.
                 activeWarnings:
                     type: integer
                     format: int32
@@ -19532,20 +19669,41 @@ components:
                 currentMbd:
                     type: number
                     format: double
+                    description: |-
+                        Current estimated flow in million barrels/day. Computed as
+                         baseline_mbd * flow_ratio.
                 baselineMbd:
                     type: number
                     format: double
+                    description: |-
+                        EIA 2023 annual reference level in million barrels/day for the mapped
+                         seven-item live-flow subset.
                 flowRatio:
                     type: number
                     format: double
+                    description: |-
+                        Latest 7-day PortWatch average divided by the preceding rolling baseline
+                         window of up to 90 days, clamped to 0.0-1.5.
                 disrupted:
                     type: boolean
+                    description: |-
+                        True when each of the latest 3 daily ratios is below 85% of the same
+                         rolling baseline window. Separate from the green/yellow/red status badge.
                 source:
                     type: string
+                    description: |-
+                        Flow source: "portwatch-dwt" when DWT-majority coverage is used,
+                         otherwise "portwatch-counts" for vessel-count coverage.
                 hazardAlertLevel:
                     type: string
+                    description: |-
+                        Nearest active GDACS hazard alert level within the configured radius:
+                         "RED", "ORANGE", or empty string when no nearby alert applies.
                 hazardAlertName:
                     type: string
+                    description: |-
+                        Name of the nearest active GDACS hazard event within the configured
+                         radius, or empty string when no nearby alert applies.
         worldmonitor_supply_chain_v1_GetChokepointHistoryRequest:
             type: object
             properties:
@@ -19696,7 +19854,7 @@ components:
                 vulnerabilityIndex:
                     type: number
                     format: double
-                    description: Composite vulnerability index 0–100 (weighted sum of top-3 exposures).
+                    description: 'Composite vulnerability index 0-100: top1 * 0.5 + top2 * 0.3 + top3 * 0.2.'
                 fetchedAt:
                     type: string
                     description: ISO timestamp of when this data was last seeded.
@@ -19713,7 +19871,11 @@ components:
                 exposureScore:
                     type: number
                     format: double
-                    description: Exposure score 0–100; higher = more dependent on this chokepoint.
+                    description: |-
+                        Exposure score 0-100; higher = more dependent on this chokepoint. With
+                         bilateral product data, sums routeCoverage * exporterShare * productWeight
+                         * 100 across matching products; fallback uses route overlap only. HS2 27
+                         supported energy chokepoints receive a 1.5x boost capped at 100.
                 coastSide:
                     type: string
                     description: Which ocean/basin side the country's ports face (atlantic, pacific, indian, med, multi, landlocked).

@@ -11,10 +11,22 @@ import {
   RESILIENCE_INTERVAL_KEY_PREFIX,
   RESILIENCE_INTERVAL_METHODOLOGY,
 } from '../server/worldmonitor/resilience/v1/_shared.ts';
-import { RESILIENCE_INTERVAL_METHODOLOGY as SCRIPT_INTERVAL_METHODOLOGY } from '../scripts/_resilience-intervals.mjs';
+import {
+  RESILIENCE_INTERVAL_KEY_PREFIX as SCRIPT_INTERVAL_KEY_PREFIX,
+  RESILIENCE_INTERVAL_METHODOLOGY as SCRIPT_INTERVAL_METHODOLOGY,
+} from '../scripts/_resilience-intervals.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
+const R5_2_MIN_SCORE_RANKING_VERSION = 24;
+const R5_2_MIN_HISTORY_VERSION = 19;
+const R5_2_MIN_INTERVAL_VERSION = 8;
+
+function cacheVersion(label: string, value: string, pattern: RegExp): number {
+  const match = pattern.exec(value);
+  assert.ok(match?.[1], `${label} must include a numeric cache version, got ${value}`);
+  return Number(match[1]);
+}
 
 // Phase 1 T1.9 cache-key / health-registry sync guard.
 //
@@ -72,6 +84,87 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
     assert.ok(
       healthText.includes(`'${probeKey}'`) || healthText.includes(`"${probeKey}"`),
       `api/health.js must reference ${probeKey} for the resilienceIntervals probe. Did you bump the interval key without updating health?`,
+    );
+  });
+
+  it('api/seed-health.js resilience interval probe mirrors the script prefix, methodology, and formula gate', () => {
+    const seedHealthText = readFileSync(join(repoRoot, 'api/seed-health.js'), 'utf-8');
+    assert.ok(
+      seedHealthText.includes(`const RESILIENCE_INTERVAL_KEY_PREFIX = '${SCRIPT_INTERVAL_KEY_PREFIX}';`) ||
+        seedHealthText.includes(`const RESILIENCE_INTERVAL_KEY_PREFIX = "${SCRIPT_INTERVAL_KEY_PREFIX}";`),
+      `api/seed-health.js must mirror scripts/_resilience-intervals.mjs RESILIENCE_INTERVAL_KEY_PREFIX=${SCRIPT_INTERVAL_KEY_PREFIX}`,
+    );
+    assert.ok(
+      seedHealthText.includes(`const RESILIENCE_INTERVAL_METHODOLOGY = '${SCRIPT_INTERVAL_METHODOLOGY}';`) ||
+        seedHealthText.includes(`const RESILIENCE_INTERVAL_METHODOLOGY = "${SCRIPT_INTERVAL_METHODOLOGY}";`),
+      `api/seed-health.js must mirror scripts/_resilience-intervals.mjs RESILIENCE_INTERVAL_METHODOLOGY=${SCRIPT_INTERVAL_METHODOLOGY}`,
+    );
+    assert.ok(
+      seedHealthText.includes("function currentResilienceCacheFormula()") &&
+        seedHealthText.includes("RESILIENCE_PILLAR_COMBINE_ENABLED") &&
+        seedHealthText.includes("RESILIENCE_SCHEMA_V2_ENABLED") &&
+        seedHealthText.includes("formula: currentResilienceCacheFormula()"),
+      'api/seed-health.js must mirror the server currentCacheFormula gate for resilience interval probes',
+    );
+    assert.ok(
+      seedHealthText.includes("kind: 'resilience_interval'") &&
+        seedHealthText.includes('isValidResilienceIntervalPayload') &&
+        seedHealthText.includes('payload.p05 <= payload.p95'),
+      'api/seed-health.js must validate resilience interval payload shape before reporting healthy',
+    );
+  });
+
+  it('score and ranking cache namespaces share the same methodology generation', () => {
+    const scoreVersion = cacheVersion(
+      'RESILIENCE_SCORE_CACHE_PREFIX',
+      RESILIENCE_SCORE_CACHE_PREFIX,
+      /^resilience:score:v(\d+):$/,
+    );
+    const rankingVersion = cacheVersion(
+      'RESILIENCE_RANKING_CACHE_KEY',
+      RESILIENCE_RANKING_CACHE_KEY,
+      /^resilience:ranking:v(\d+)$/,
+    );
+
+    assert.equal(
+      rankingVersion,
+      scoreVersion,
+      `ranking cache version v${rankingVersion} must match score cache version v${scoreVersion}; ` +
+      'methodology-affecting score changes require ranking aggregates to recompute in the same namespace generation.',
+    );
+  });
+
+  it('R5-2 namespace floor covers score/ranking plus derived history and interval caches', () => {
+    const scoreVersion = cacheVersion(
+      'RESILIENCE_SCORE_CACHE_PREFIX',
+      RESILIENCE_SCORE_CACHE_PREFIX,
+      /^resilience:score:v(\d+):$/,
+    );
+    const historyVersion = cacheVersion(
+      'RESILIENCE_HISTORY_KEY_PREFIX',
+      RESILIENCE_HISTORY_KEY_PREFIX,
+      /^resilience:history:v(\d+):$/,
+    );
+    const intervalVersion = cacheVersion(
+      'RESILIENCE_INTERVAL_KEY_PREFIX',
+      RESILIENCE_INTERVAL_KEY_PREFIX,
+      /^resilience:intervals:v(\d+):$/,
+    );
+
+    assert.ok(
+      scoreVersion >= R5_2_MIN_SCORE_RANKING_VERSION,
+      `score cache version v${scoreVersion} must be at least v${R5_2_MIN_SCORE_RANKING_VERSION} ` +
+      'for the R5-2 / PR #4101 governance WGI slot-semantics closure.',
+    );
+    assert.ok(
+      historyVersion >= R5_2_MIN_HISTORY_VERSION,
+      `history cache version v${historyVersion} must be at least v${R5_2_MIN_HISTORY_VERSION} ` +
+      'so pre-R5-2 governance/state-continuity scores do not mix into the 30-day trend window.',
+    );
+    assert.ok(
+      intervalVersion >= R5_2_MIN_INTERVAL_VERSION,
+      `interval cache version v${intervalVersion} must be at least v${R5_2_MIN_INTERVAL_VERSION} ` +
+      'so pre-R5-2 sensitivity bands are not served with post-R5-2 scores.',
     );
   });
 
@@ -356,6 +449,14 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
 // script copy, so a one-sided bump diverges silently: bumping only the script
 // constant would NOT invalidate ranking caches as an engineer might expect.
 describe('resilience interval methodology constant parity (#3972)', () => {
+  it('server _shared.ts and scripts/_resilience-intervals.mjs use the same interval prefix', () => {
+    assert.equal(
+      SCRIPT_INTERVAL_KEY_PREFIX,
+      RESILIENCE_INTERVAL_KEY_PREFIX,
+      'interval prefix must be bumped in both the server readers and the seed writer helper',
+    );
+  });
+
   it('server _shared.ts and scripts/_resilience-intervals.mjs agree', () => {
     assert.equal(
       SCRIPT_INTERVAL_METHODOLOGY,

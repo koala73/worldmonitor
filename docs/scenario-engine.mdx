@@ -3,7 +3,7 @@ title: "Scenario Engine"
 description: "Run pre-built supply-chain disruption scenarios — conflicts, sanctions, tariff shocks, and weather events — and see which chokepoints, sectors, and countries are exposed, directly on the map."
 ---
 
-Scenario Engine turns WorldMonitor's live supply-chain graph into an interactive what-if tool. Instead of asking "what is the state of this lane today," you pick a named disruption scenario — a Hormuz closure, a Panama drought, a tariff shock on semiconductors — and the engine resolves the downstream impact on chokepoints, HS2 sectors, and countries, then paints the result onto the existing map.
+Scenario Engine turns WorldMonitor's live supply-chain graph into an interactive what-if tool. Instead of asking "what is the state of this lane today," you pick a named disruption scenario — a Hormuz closure, a Panama drought, a tariff shock on semiconductors — and the engine resolves the downstream impact on chokepoints, HS2 sectors, and the currently seeded reporter countries, then paints the result onto the existing map.
 
 ## Who it is for
 
@@ -30,15 +30,15 @@ The currently shipped types are:
 | `sanctions` | Targeted trade restrictions (e.g. Russia / Baltic grain suspension). |
 | `tariff_shock` | A sudden tariff action and its cost pass-through (e.g. US tariff escalation on electronics). |
 
-Each template declares the chokepoints it affects (IDs from the chokepoint registry), a duration in days, affected HS2 sectors, and a cost-shock multiplier. Run them as-is — there are no sliders in v1. The `ScenarioType` union leaves room for `infrastructure` and `pandemic` categories, but no templates of those types ship today.
+Each template declares the chokepoints it affects (IDs from the chokepoint registry), a duration in days, affected HS2 sectors, and a cost-shock multiplier. On the template-list wire shape, `affectedHs2: []` means all HS2 chapters (the registry stores that sentinel as `null`). Run templates as-is — there are no sliders in v1. The `ScenarioType` union leaves room for `infrastructure` and `pandemic` categories, but no templates of those types ship today.
 
 ## What you get back
 
 A completed scenario returns:
 
 - **Affected chokepoints** — which ones go red on the map.
-- **Impact ranking** — the top affected countries by ISO-2, ordered by exposure, with per-country import-value impact against the selected HS2 sectors.
-- **Sector call-outs** — which HS2 chapters take the biggest hit.
+- **Impact ranking** — the top affected seeded reporter countries by ISO-2, ordered by the worker's relative weighted impact score. `totalImpact` is not a currency amount.
+- **Template echo** — the worker-derived template key (`affectedChokepointIds.join('+')`, or `tariff_shock` when there are no physical chokepoints), duration, disruption percent, and cost-shock multiplier so clients can render the run without re-looking up the catalog. The status result does not repeat `affectedHs2`; read sector scope from `/list-scenario-templates`.
 - **A summary card** injected into the Supply Chain panel that stays visible until you deactivate the scenario.
 
 The UI is state-driven, not modal — activating a scenario sets a `scenarioState` on every map renderer (deck.gl, globe, SVG fallback) so chokepoint colors and country choropleths reflect the disruption until you deactivate. This is coordinated by `MapContainer.activateScenario` at `src/components/MapContainer.ts:1010`, which is explicitly PRO-gated.
@@ -47,7 +47,7 @@ The UI is state-driven, not modal — activating a scenario sets a `scenarioStat
 
 Scenario Engine is **PRO**. Free users see the trigger buttons but are blocked at activation: a `scenario-engine` gate-hit event is logged and the map is not repainted. The `ScenarioService.RunScenario` handler also enforces PRO at the edge (`server/worldmonitor/scenario/v1/run-scenario.ts`).
 
-Rate limits on the API side — 10 jobs / minute / IP, with a global queue cap at 100 in-flight — are documented in [Scenarios API](/api-scenarios#run-a-scenario).
+Rate limits on the API side — 10 jobs / minute / IP, with queue backpressure once the pending queue is already above 100 jobs — are documented in [Scenarios API](/api-scenarios#run-a-scenario).
 
 ## Run it yourself
 
@@ -66,7 +66,29 @@ For scripted use, see [`POST /api/scenario/v1/run-scenario`](/api-scenarios#run-
 - **Scenario templates** — `server/worldmonitor/supply-chain/v1/scenario-templates.ts`. Additions require a proto-side change; not user-configurable today.
 - **Job queue** — Redis list `scenario-queue:pending`; worker results land at `scenario-result:{jobId}`.
 - **Chokepoint registry** — the same registry that backs live chokepoint status and Route Explorer, ensuring scenario results visually align with the rest of the product.
-- **Trade / impact data** — HS2 import exposure per country, sourced from the supply-chain cache set.
+- **Trade / impact data** — HS2 exposure cache entries read from `supply-chain:exposure:{ISO2}:{HS2}:v1`. If `iso2` is omitted, v1 computes only the seeded reporter set: `US`, `CN`, `RU`, `IR`, `IN`, and `TW`. Supplying `iso2` scopes the job to that single country key.
+
+## Impact Math
+
+For physical chokepoint scenarios, each matching exposure entry contributes:
+
+```text
+adjustedImpact = exposureScore * (disruptionPct / 100) * costShockMultiplier
+```
+
+For tariff-shock scenarios with no physical chokepoint closure, the worker uses
+the country's cached `vulnerabilityIndex` as the exposure proxy:
+
+```text
+adjustedImpact = vulnerabilityIndex * costShockMultiplier
+```
+
+The worker sums `adjustedImpact` by country, sorts descending, and returns the
+top 20. `impactPct` is a 0-100 share against a denominator floor of `1`, so the top returned country can be below 100 when every returned `totalImpact` is below `1`:
+
+```text
+impactPct = round(countryTotalImpact / max(maxReturnedTotalImpact, 1) * 100)
+```
 
 ## Related workflows
 

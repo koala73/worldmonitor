@@ -13,6 +13,28 @@ import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
 const brotliCompressAsync = promisify(brotliCompress);
 const BROTLI_EXTENSIONS = new Set(['.js', '.mjs', '.css', '.html', '.svg', '.json', '.txt', '.xml', '.wasm']);
 
+// @clerk/clerk-js is loaded as a UMD bundle from the Clerk Frontend API at
+// runtime (src/services/clerk.ts), not bundled. Resolve the version from
+// package.json so the runtime SDK matches the @clerk/clerk-js types we compile
+// against, and inject it via `define` (__CLERK_JS_VERSION__). Fall back to
+// devDependencies in case the (types-only) dep is moved there, and fail the
+// build loudly if it can't be resolved — an empty version yields a `.../@/dist`
+// URL that 404s and silently breaks auth in production.
+const CLERK_DEPS = pkg.dependencies as Record<string, string>;
+const CLERK_DEV_DEPS = (pkg.devDependencies ?? {}) as Record<string, string>;
+const CLERK_JS_VERSION = (CLERK_DEPS['@clerk/clerk-js'] || CLERK_DEV_DEPS['@clerk/clerk-js'] || '')
+  .replace(/^[\^~>=<\s]*/, '');
+if (!CLERK_JS_VERSION) {
+  throw new Error('[vite] @clerk/clerk-js not found in package.json — __CLERK_JS_VERSION__ would be empty and 404 the Clerk Frontend API script URL.');
+}
+// @clerk/ui (the runtime UI controller, pinned by CLERK_UI_VERSION in
+// src/services/clerk.ts) is major 1, which pairs with @clerk/clerk-js major 6.
+// Fail the build if the SDK major drifts so the pairing is updated deliberately
+// rather than loading an incompatible UI controller and breaking auth at runtime.
+if (CLERK_JS_VERSION.split('.')[0] !== '6') {
+  throw new Error(`[vite] @clerk/clerk-js major is ${CLERK_JS_VERSION.split('.')[0]}, expected 6 — update CLERK_UI_VERSION in src/services/clerk.ts to the paired @clerk/ui major, then bump this guard.`);
+}
+
 // Single source of truth for chunk names that must NOT be hoisted into the
 // entry HTML's modulepreload list. Used by both `manualChunks` (return values
 // must literally match these strings) and `modulePreload.resolveDependencies`
@@ -532,7 +554,8 @@ const RSS_PROXY_ALLOWED_DOMAINS = new Set([
   'www.ft.com', 'openai.com', 'www.reutersagency.com', 'feeds.reuters.com',
   'asia.nikkei.com', 'www.cfr.org', 'www.csis.org', 'www.politico.com',
   'www.brookings.edu', 'layoffs.fyi', 'www.defensenews.com', 'www.militarytimes.com',
-  'taskandpurpose.com', 'news.usni.org', 'www.oryxspioenkop.com', 'www.gov.uk',
+  'taskandpurpose.com', 'news.usni.org', 'www.oryxspioenkop.com',
+  'www.smartraveller.gov.au', 'www.gov.uk',
   'www.foreignaffairs.com', 'www.atlanticcouncil.org',
   // Tech variant
   'www.zdnet.com', 'www.techmeme.com', 'www.darkreading.com', 'www.schneier.com',
@@ -565,6 +588,8 @@ const RSS_PROXY_ALLOWED_DOMAINS = new Set([
   'www.hurriyet.com.tr', 'tvn24.pl', 'www.polsatnews.pl', 'www.rp.pl', 'meduza.io',
   'novayagazeta.eu', 'www.bangkokpost.com', 'vnexpress.net', 'www.abc.net.au',
   'news.ycombinator.com',
+  // Hindi / India feeds
+  'www.aajtak.in', 'www.amarujala.com',
   // Hungarian / Central European feeds
   'telex.hu', 'index.hu', 'hvg.hu', '444.hu', '24.hu', 'hirado.hu', 'portfolio.hu', 'www.portfolio.hu', 'www.atv.hu',
   // Investigative journalism sources
@@ -747,6 +772,9 @@ export default defineConfig(({ mode }) => {
   return {
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version),
+      // Resolved + build-time validated above (devDependencies fallback +
+      // non-empty + major-pairing guards).
+      __CLERK_JS_VERSION__: JSON.stringify(CLERK_JS_VERSION),
       // Vercel sets VERCEL_GIT_COMMIT_SHA on production + preview builds.
       // Local `vite build` falls back to 'dev' — installStaleBundleCheck
       // detects the marker and skips the comparison so dev tabs don't
@@ -807,7 +835,7 @@ export default defineConfig(({ mode }) => {
 
         workbox: {
           globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
-          globIgnores: ['**/ml*.js', '**/onnx*.wasm', '**/locale-*.js'],
+          globIgnores: ['**/ml*.js', '**/onnx*.wasm', '**/locale-*.js', '**/clerk-*.js'],
           // globe.gl + three.js grows main bundle past the 2 MiB default limit
           maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
           navigateFallback: null,
@@ -956,6 +984,7 @@ export default defineConfig(({ mode }) => {
         },
         input: {
           main: resolve(__dirname, 'index.html'),
+          embed: resolve(__dirname, 'embed.html'),
           settings: resolve(__dirname, 'settings.html'),
           liveChannels: resolve(__dirname, 'live-channels.html'),
           mcpGrant: resolve(__dirname, 'mcp-grant.html'),
@@ -996,6 +1025,11 @@ export default defineConfig(({ mode }) => {
               }
               if (id.includes('/@sentry/')) {
                 return 'sentry';
+              }
+              if (id.includes('/@clerk/clerk-js/')) {
+                // Clerk remains a runtime dynamic import; the stable chunk name
+                // lets Workbox keep the large auth SDK out of precache.
+                return 'clerk';
               }
             }
             if (id.includes('/src/components/') && id.endsWith('Panel.ts')) {

@@ -34,7 +34,7 @@ import { buildPillarList } from './_pillar-membership';
 
 // Phase 2 T2.1/T2.3: feature flag for the three-pillar response shape.
 // Default is `true` → responses carry `schemaVersion: "2.0"` and a
-// non-empty `pillars` array with real coverage-weighted scores from
+// non-empty `pillars` array with real domain-weighted, coverage-scaled scores from
 // `_pillar-membership.ts#buildPillarList`. When `false`, responses fall
 // back to the Phase 1 shape (`schemaVersion: "1.0"`, `pillars: []`) —
 // retained as an emergency opt-out for one release cycle.
@@ -72,8 +72,14 @@ export function isPillarCombineEnabled(): boolean {
 
 // PR 1 of the resilience repair plan (docs/plans/2026-04-22-001-fix-
 // resilience-scorer-structural-bias-plan.md §3.1–§3.3): activation
-// flag for the v2 energy construct. Default is `false` so activation
-// is an explicit operator action.
+// flag for the v2 energy construct. Default is `false` because the
+// repo cannot prove production Railway seed state at build time.
+// Activation remains an explicit operator action after
+// seed-bundle-resilience-energy-v2 is provisioned and /api/health is
+// green for seed-meta:resilience:{fossil-electricity-share,low-carbon-
+// generation,power-losses}. The public runtime manifest exposes only
+// the derived construct version (`legacy` or `v2`), never this raw env
+// flag name or internal cache keys.
 //
 // When off (default): `scoreEnergy` uses the legacy inputs
 // (energyImportDependency, gasShare, coalShare, renewShare,
@@ -83,7 +89,7 @@ export function isPillarCombineEnabled(): boolean {
 // When on: `scoreEnergy` uses the v2 inputs under the Option B
 // (power-system security) framing:
 //   - importedFossilDependence = EG.ELC.FOSL.ZS × max(EG.IMP.CONS.ZS, 0) / 100   (weight 0.35)
-//   - lowCarbonGenerationShare = EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS                 (weight 0.20)
+//   - lowCarbonGenerationShare = OWID Grapher share-electricity-low-carbon      (weight 0.20)
 //   - powerLossesPct           = EG.ELC.LOSS.ZS                                  (weight 0.20)
 //   - euGasStorageStress       = legacy gasStorageStress scoped to EU            (weight 0.10)
 //   - energyPriceStress        = legacy energyPriceStress                        (weight 0.15)
@@ -101,11 +107,10 @@ export function isPillarCombineEnabled(): boolean {
 // re-importing the module.
 //
 // Cache invalidation: energy dimension scores are embedded in the
-// overall score, so flipping this flag requires either bumping
-// RESILIENCE_SCORE_CACHE_PREFIX or waiting for the 6h TTL to clear.
-// The current PR 1 plan stages the flag flip AFTER an acceptance-
-// gate rerun that produces a fresh post-flip snapshot; the cache
-// prefix bump lands in the commit that performs the acceptance run.
+// overall score, so flipping this flag requires a score-cache prefix
+// bump in the same release. The flag-flip runbook keeps that bump,
+// acceptance-gate rerun, and post-flip snapshot together so rollback
+// can simply restore the env flag to false.
 export function isEnergyV2Enabled(): boolean {
   return (process.env.RESILIENCE_ENERGY_V2_ENABLED ?? 'false').toLowerCase() === 'true';
 }
@@ -172,7 +177,41 @@ export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 12 * 60 * 60;
 // (gross-imports-denominated) would continue to serve for the full 6h
 // TTL post-deploy, defeating the construct fix this PR delivers. Same
 // pattern as the v11→v12 bump that PR 3A used for the SWF-side fix.
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v18:';
+// v18→v19 bump for issue #3971: cyberDigital now caps the per-snapshot
+// severity-weighted cyber threat count before normalization. The `_formula`
+// tag does not distinguish intra-formula scorer changes, so cached v18
+// scores would otherwise serve pre-cap cyberDigital values until TTL.
+// v19→v20 bump for country-resilience audit P1-3: freshness/staleness
+// now derates confidence coverage and therefore can change lowConfidence
+// plus headlineEligible. Scores are unchanged, but cached v19 score
+// payloads already carry the old confidence/eligibility booleans.
+// v20→v21 bump for the P1-1 CRI contract fix: pillar member domains now
+// use domain.weight * average dimension coverage inside the active `pc`
+// formula. The `_formula` tag remains `pc`, so the prefix bump is required
+// to reject old same-tag pillar scores deterministically at deploy. v20 is
+// reserved for the parallel staleness-derate rollout, so this branch sequences
+// the next same-tag `pc` formula change into v21.
+// v21→v22 bump for country-resilience audit round 2 P2-N2/P2-N3:
+// currencyExternal now scores inflation stability around a low-positive target
+// band instead of treating deflation/0% inflation as perfect, and blend math
+// rejects NaN scores rather than consuming their weights.
+// v22→v23 bump batches three same-tag `pc` scorer changes: import-HHI stale /
+// missing source years now derate certainty coverage (#4088), infrastructure
+// treats an observed outage feed with zero outages as observed-quiet (score 100)
+// matching cyberDigital (P3-8), and WTO tradePolicy restriction/barrier rows now
+// score one-row-per-reporter severity instead of stale count anchors (P2-1).
+// Same `pc` formula tag, but recovery, infrastructure, tradePolicy, pillar, and
+// overall scores can move.
+// v23→v24 bump for country-resilience audit round 5 R5-2 / PR #4101:
+// governance WGI indicator slots now preserve each WGI series as its own
+// signal instead of relying on drift-prone slot semantics. The formula tag is
+// still `pc`, but governance, state-continuity, pillar, and overall payloads can
+// move, so cached score entries must not survive the methodology change.
+// v24→v25 bump for issue #4009: cyberDigital now groups cyber threats by
+// stable firstSeenAt discovery day and decays old one-day bursts while
+// allowing sustained multi-day pressure to reach the cap. Same `pc` formula
+// tag, but infrastructure, pillar, and overall payloads can move.
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v25:';
 // Bumped from v4 to v5 in the pillar-combined activation PR. Provides
 // a clean slate at PR deploy so pre-PR history points (which were
 // written without a formula tag) do not mix with tagged points. NOTE:
@@ -227,7 +266,28 @@ export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v18:';
 // (history's moving average mixes v12 scores from day -29 with v13
 // scores from day 0). Same skill (cache-prefix-bump-propagation-scope)
 // that motivated the v6→v7 bump for the SWF-side fix in PR 3A.
-export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v13:';
+// v13→v14 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX v18→v19
+// for issue #3971. Mixing uncapped cyberDigital history points with
+// capped points inside the rolling 30-day trend window would manufacture
+// false changes for countries hit by a single-day cyber-feed burst.
+// v15→v16 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX v20→v21 for
+// the P1-1 `pc` aggregation fix. Mixing coverage-only pillar history with
+// domain-weighted pillar history would manufacture false 30-day changes.
+// v16→v17 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX v21→v22 for
+// the inflation-stability scorer change; otherwise old and new currency
+// external baselines would mix inside the rolling 30-day trend window.
+// v17→v18 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX v22→v23 for
+// the batched import-HHI certainty derate, P3-8 outage semantics, and WTO
+// severity scoring changes; otherwise pre-change and post-change scores would
+// mix inside the rolling 30-day trend window and manufacture deploy-day trends.
+// v18→v19 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX v23→v24 for
+// the WGI governance indicator-slot semantics change. History points written
+// from pre-change governance/state-continuity scores must not mix with v24
+// scores inside the rolling 30-day trend window.
+// v19→v20 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX v24→v25 for
+// issue #4009 so pre-smoothing cyberDigital history points do not mix with
+// discovery-decayed points inside the rolling 30-day trend window.
+export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v20:';
 // v12 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX (v11 → v12)
 // for PR 3A §net-imports denominator. As with the score prefix, the
 // version bump is a belt — the suspenders are cache-only metadata on
@@ -252,22 +312,65 @@ export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v13:';
 // pre-fix AE liquidReserveAdequacy) would continue to serve for the
 // full 12h ranking TTL post-deploy. v18 forces a clean recompute
 // against post-fix v18 score entries.
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v18';
+// v18→v19 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX for issue
+// #3971 so the public ranking recomputes against capped cyberDigital
+// score entries instead of serving the pre-cap aggregate for 12h.
+// v19→v20 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX for P1-3
+// so ranking items recompute against staleness-derated confidence
+// coverage instead of serving old overallCoverage/headlineEligible.
+// v20→v21 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX for the P1-1
+// `pc` aggregation fix. v20 is reserved for the parallel staleness-derate
+// rollout, so this branch sequences the next same-tag `pc` ranking into v21.
+// v21→v22 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX for the
+// inflation-stability scorer change so the public ranking recomputes against
+// v22 score entries instead of serving pre-fix aggregates for 12h.
+// v22→v23 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX for the batched
+// import-HHI certainty derate, P3-8 outage semantics, and WTO severity scoring
+// changes so the public ranking recomputes against v23 score entries instead
+// of serving pre-fix aggregates for 12h.
+// v23→v24 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX for the PR #4101
+// WGI governance indicator-slot semantics change so the public ranking
+// recomputes against v24 score entries instead of serving pre-change aggregates
+// for 12h.
+// v24→v25 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX for issue #4009
+// so the public ranking recomputes against discovery-decayed cyberDigital score
+// entries instead of serving pre-change aggregates for 12h.
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v25';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 // v2→v3: issue #3967. v2 intervals were still generated by jittering
 // six-domain weights after the pillar-combined score formula activated,
 // so scoreInterval/rankStable could mix pc scores with d6-shaped bands.
 // v3 payloads carry a `_formula` tag and readers reject untagged or
 // stale-formula entries, mirroring score/ranking cache isolation.
-export const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v3:';
-export const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v1';
+// v4→v5: P1-1 changes the same-tag `pc` pillar scores that intervals
+// perturb around, so old interval bands must not be reused.
+// v5→v6: P2-N2 changes currencyExternal score inputs under the same formula
+// tag, so old sensitivity bands must not be served with v22 scores.
+// v6→v7: the v23 batch changes same-tag `pc` baselines through import-HHI
+// certainty coverage, P3-8 outage semantics, and WTO severity scoring, so old
+// rank-stability bands must not be served with v23 scores.
+// v7→v8: PR #4101 changes same-tag `pc` baselines through governance WGI
+// indicator-slot semantics, so old rank-stability bands must not be served
+// with v24 scores.
+// v8→v9: issue #4009 changes same-tag `pc` cyberDigital baselines through
+// discovery-day smoothing, so old rank-stability bands must not be served with
+// v25 scores.
+export const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v9:';
+export const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
 export const RESILIENCE_STATIC_META_KEY = 'seed-meta:resilience:static';
 export const RESILIENCE_RANKING_META_KEY = 'seed-meta:resilience:ranking';
+export const RESILIENCE_INTERVALS_META_KEY = 'seed-meta:resilience:intervals';
 export const RESILIENCE_RANKING_META_TTL_SECONDS = 7 * 24 * 60 * 60;
 const RANK_STABLE_MAX_INTERVAL_WIDTH = 8;
 
 const LOW_CONFIDENCE_COVERAGE_THRESHOLD = 0.55;
 const LOW_CONFIDENCE_IMPUTATION_SHARE_THRESHOLD = 0.40;
+const STALENESS_CONFIDENCE_COVERAGE_FACTOR: Record<string, number> = {
+  '': 1.0,
+  fresh: 1.0,
+  aging: 0.7,
+  stale: 0.4,
+};
 
 // Cache formula tag. Stored inside score + ranking JSON payloads and as
 // a suffix in history sorted-set member strings so the reader can reject
@@ -293,11 +396,13 @@ interface ResilienceHistoryPoint {
   formula: CacheFormulaTag;
 }
 
-interface CachedScoreIntervalPayload extends ScoreInterval {
-  _formula?: CacheFormulaTag;
-  draws?: number;
-  computedAt?: string;
-  methodology?: string;
+export interface ResilienceIntervalPayload {
+  p05?: unknown;
+  p95?: unknown;
+  _formula?: unknown;
+  draws?: unknown;
+  computedAt?: unknown;
+  methodology?: unknown;
 }
 
 interface ResilienceStaticIndex {
@@ -323,10 +428,8 @@ function intervalCacheKey(countryCode: string): string {
 }
 
 async function readScoreInterval(countryCode: string): Promise<ScoreInterval | undefined> {
-  const raw = await getCachedJson(intervalCacheKey(countryCode), true) as CachedScoreIntervalPayload | null;
-  if (!raw || typeof raw.p05 !== 'number' || typeof raw.p95 !== 'number') return undefined;
-  if (raw._formula !== currentCacheFormula()) return undefined;
-  return { p05: raw.p05, p95: raw.p95 };
+  const raw = await getCachedJson(intervalCacheKey(countryCode), true) as ResilienceIntervalPayload | null;
+  return toCurrentScoreInterval(raw);
 }
 
 function historyKey(countryCode: string): string {
@@ -475,31 +578,67 @@ export function buildDomainList(dimensions: ResilienceDimension[]): ResilienceDo
   });
 }
 
-// Sorted-set member format: `YYYY-MM-DD:SCORE[:FORMULA]`. The optional
-// formula tag is either 'd6' or 'pc'. Legacy untagged members predate
-// the pillar-combined activation and are implicitly 'd6' (the only
-// formula in use before this PR). On activation, readHistory callers
-// filter by `currentCacheFormula()` so a 30-day window of d6 points is
-// not silently compared against a fresh pc point (which would
-// manufacture a ranking-wide fake-negative change30d / false "falling"
-// trend on day one).
+const HISTORY_SCORE_FRACTION_DIVISOR = 1_000;
+const HISTORY_SCORE_FRACTION_SCALE = 100;
+const HISTORY_SCORE_FRACTION_OFFSET = 1;
+
+function dateScoreForHistory(date: string): number {
+  return Number(date.replace(/-/g, ''));
+}
+
+function encodeHistoryScore(date: string, score: number): number {
+  const scoreInteger = Math.round(round(score) * HISTORY_SCORE_FRACTION_SCALE);
+  return dateScoreForHistory(date) + (scoreInteger + HISTORY_SCORE_FRACTION_OFFSET) / HISTORY_SCORE_FRACTION_DIVISOR / HISTORY_SCORE_FRACTION_SCALE;
+}
+
+function decodeHistoryScore(date: string, rawSortedSetScore: unknown): number {
+  const sortedSetScore = Number(rawSortedSetScore);
+  const dateScore = dateScoreForHistory(date);
+  if (!Number.isFinite(sortedSetScore)) return 0;
+  return round(
+    (((sortedSetScore - dateScore) * HISTORY_SCORE_FRACTION_DIVISOR * HISTORY_SCORE_FRACTION_SCALE) - HISTORY_SCORE_FRACTION_OFFSET)
+      / HISTORY_SCORE_FRACTION_SCALE,
+  );
+}
+
+// Sorted-set member formats:
+//   - Current: `YYYY-MM-DD:FORMULA`, with the score encoded into the ZSET
+//     score as `YYYYMMDD + ((score*100)+1)/100000`. The member is stable per
+//     day+formula, so same-day rebuilds update the existing point instead of
+//     shrinking the effective rolling window with duplicate same-day members.
+//   - Legacy: `YYYY-MM-DD:SCORE[:FORMULA]`. Untagged members predate the
+//     pillar-combined activation and are implicitly 'd6' (the only formula in
+//     use before this PR).
+//
+// On activation, readHistory callers filter by `currentCacheFormula()` so a
+// 30-day window of d6 points is not silently compared against a fresh pc point
+// (which would manufacture a ranking-wide fake-negative change30d / false
+// "falling" trend on day one).
 function parseHistoryPoints(raw: unknown): ResilienceHistoryPoint[] {
   if (!Array.isArray(raw)) return [];
-  const history: ResilienceHistoryPoint[] = [];
+  const historyByDateFormula = new Map<string, { point: ResilienceHistoryPoint; stableMember: boolean }>();
 
   for (let index = 0; index < raw.length; index += 2) {
     const member = String(raw[index] || '');
     const parts = member.split(':');
     if (parts.length < 2) continue;
     const date = parts[0]!;
-    const score = Number(parts[1]);
-    const rawFormula = parts[2];
+    const secondPart = parts[1]!;
+    const stableMember = secondPart === 'd6' || secondPart === 'pc';
+    const score = stableMember ? decodeHistoryScore(date, raw[index + 1]) : Number(secondPart);
+    const rawFormula = stableMember ? secondPart : parts[2];
     const formula: CacheFormulaTag = rawFormula === 'pc' ? 'pc' : 'd6';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(score)) continue;
-    history.push({ date, score, formula });
+    const key = `${date}:${formula}`;
+    const previous = historyByDateFormula.get(key);
+    if (!previous || stableMember || !previous.stableMember) {
+      historyByDateFormula.set(key, { point: { date, score, formula }, stableMember });
+    }
   }
 
-  return history.sort((left, right) => left.date.localeCompare(right.date));
+  return [...historyByDateFormula.values()]
+    .map((entry) => entry.point)
+    .sort((left, right) => left.date.localeCompare(right.date));
 }
 
 // Plan 2026-04-26-002 §U7 (PR 6) — headline-eligible gate. Per origin
@@ -547,6 +686,12 @@ export function computeLowConfidence(dimensions: ResilienceDimension[], imputati
   // entries SHOULD drag the confidence down — that is precisely the
   // sparse-data signal lowConfidence exists to surface.
   //
+  // Staleness now derates the coverage signal for observed-but-old data:
+  // a stale snapshot is still a measured score, but it should not look
+  // as confidence-worthy as a fresh observed snapshot. Missing freshness
+  // proof (`lastObservedAtMs=0`) is left to the existing sparse-data and
+  // source-failure paths so this slice only changes stale observed data.
+  //
   // INTENTIONALLY NOT weighted by RESILIENCE_DIMENSION_WEIGHTS. The
   // coverage signal answers a different question from the scoring
   // aggregation: "how much real data do we have on this country?"
@@ -560,7 +705,7 @@ export function computeLowConfidence(dimensions: ResilienceDimension[], imputati
   // RETIRED + NOT_APPLICABLE_WHEN_ZERO_COVERAGE decision lives in one
   // place across both readers (this one and computeOverallCoverage).
   const scoring = dimensions.filter((dimension) => !isExcludedFromConfidenceMean(dimension));
-  const averageCoverage = mean(scoring.map((dimension) => dimension.coverage)) ?? 0;
+  const averageCoverage = mean(scoring.map((dimension) => confidenceCoverage(dimension))) ?? 0;
   return averageCoverage < LOW_CONFIDENCE_COVERAGE_THRESHOLD || imputationShare > LOW_CONFIDENCE_IMPUTATION_SHARE_THRESHOLD;
 }
 
@@ -576,15 +721,19 @@ async function appendHistory(
   overallScore: number,
   formula: CacheFormulaTag,
 ): Promise<void> {
-  const dateScore = Number(todayIsoDate().replace(/-/g, ''));
-  // Member format `YYYY-MM-DD:SCORE:FORMULA` — see parseHistoryPoints
-  // above for the reader. The formula tag is required because the v4→v5
-  // history prefix bump happens at PR deploy, not at flag flip, so the
-  // v5 series accumulates d6-tagged entries during the default-off
-  // window; only the per-member tag lets the reader correctly filter
-  // those out when the pillar-combined formula later activates.
+  const today = todayIsoDate();
+  const dateScore = dateScoreForHistory(today);
+  // Current member format `YYYY-MM-DD:FORMULA` — see parseHistoryPoints above
+  // for the backwards-compatible reader. The formula tag is required because
+  // the history prefix bump happens at PR deploy, not at flag flip, so the
+  // series can accumulate d6-tagged entries during the default-off window; only
+  // the per-member tag lets the reader correctly filter those out when the
+  // pillar-combined formula later activates. Remove legacy same-day members
+  // first so old `YYYY-MM-DD:SCORE:FORMULA` duplicates stop consuming the
+  // 30-member rolling window after the next write.
   await runRedisPipeline([
-    ['ZADD', historyKey(countryCode), dateScore, `${todayIsoDate()}:${round(overallScore)}:${formula}`],
+    ['ZREMRANGEBYSCORE', historyKey(countryCode), dateScore, dateScore],
+    ['ZADD', historyKey(countryCode), encodeHistoryScore(today, overallScore), `${today}:${formula}`],
     ['ZREMRANGEBYRANK', historyKey(countryCode), 0, -31],
   ]);
 }
@@ -764,6 +913,36 @@ export function rankingCacheTagMatches(payload: unknown): boolean {
   return tag === currentCacheFormula() && intervalMethodology === RESILIENCE_INTERVAL_METHODOLOGY;
 }
 
+export function isCurrentResilienceIntervalPayload(
+  value: unknown,
+): value is ResilienceIntervalPayload & {
+  p05: number;
+  p95: number;
+  _formula: string;
+  methodology: typeof RESILIENCE_INTERVAL_METHODOLOGY;
+} {
+  if (!value || typeof value !== 'object') return false;
+  const payload = value as ResilienceIntervalPayload;
+  return (
+    typeof payload.p05 === 'number' &&
+    Number.isFinite(payload.p05) &&
+    typeof payload.p95 === 'number' &&
+    Number.isFinite(payload.p95) &&
+    payload.p05 >= 0 &&
+    payload.p05 <= 100 &&
+    payload.p95 >= 0 &&
+    payload.p95 <= 100 &&
+    payload.p05 <= payload.p95 &&
+    payload._formula === currentCacheFormula() &&
+    payload.methodology === RESILIENCE_INTERVAL_METHODOLOGY
+  );
+}
+
+export function toCurrentScoreInterval(value: unknown): ScoreInterval | undefined {
+  if (!isCurrentResilienceIntervalPayload(value)) return undefined;
+  return { p05: value.p05, p95: value.p95 };
+}
+
 export async function ensureResilienceScoreCached(countryCode: string, reader?: ResilienceSeedReader): Promise<GetResilienceScoreResponse> {
   const normalizedCountryCode = normalizeCountryCode(countryCode);
   if (!normalizedCountryCode) {
@@ -939,6 +1118,10 @@ export function computeOverallCoverage(response: GetResilienceScoreResponse): nu
   // average because they reflect real data sparsity for that country.
   // See `computeLowConfidence` for the matching rationale.
   //
+  // Staleness derating mirrors `computeLowConfidence`: stale observed
+  // snapshots lower the user-facing data-quality coverage pill without
+  // changing the raw per-dimension coverage field or the score formula.
+  //
   // INTENTIONALLY NOT weighted by RESILIENCE_DIMENSION_WEIGHTS —
   // same reason as `computeLowConfidence`: this is a data-availability
   // signal ("how much real data do we have?"), not a score-composition
@@ -949,10 +1132,20 @@ export function computeOverallCoverage(response: GetResilienceScoreResponse): nu
   const coverages = response.domains.flatMap((domain) =>
     domain.dimensions
       .filter((dimension) => !isExcludedFromConfidenceMean(dimension))
-      .map((dimension) => dimension.coverage),
+      .map((dimension) => confidenceCoverage(dimension)),
   );
   if (coverages.length === 0) return 0;
   return coverages.reduce((sum, coverage) => sum + coverage, 0) / coverages.length;
+}
+
+function confidenceCoverage(dimension: ResilienceDimension): number {
+  const lastObservedAtMs = Number(dimension.freshness?.lastObservedAtMs ?? 0);
+  if (!Number.isFinite(lastObservedAtMs) || lastObservedAtMs <= 0) {
+    return dimension.coverage;
+  }
+  const staleness = dimension.freshness?.staleness ?? '';
+  const factor = STALENESS_CONFIDENCE_COVERAGE_FACTOR[staleness] ?? 1.0;
+  return dimension.coverage * factor;
 }
 
 function isRankStable(interval: ScoreInterval | null | undefined): boolean {
@@ -1001,6 +1194,33 @@ export function sortRankingItems(items: ResilienceRankingItem[]): ResilienceRank
   });
 }
 
+export interface ResilienceWarmFailure {
+  countryCode: string;
+  stage: 'compute' | 'persist';
+  reason: string;
+  retried: boolean;
+}
+
+export interface WarmedResilienceScores extends Map<string, GetResilienceScoreResponse> {
+  failures: ResilienceWarmFailure[];
+  failedCountryCodes: Set<string>;
+}
+
+function createWarmedResilienceScores(): WarmedResilienceScores {
+  const warmed = new Map<string, GetResilienceScoreResponse>() as WarmedResilienceScores;
+  warmed.failures = [];
+  warmed.failedCountryCodes = new Set<string>();
+  return warmed;
+}
+
+function recordWarmFailure(
+  warmed: WarmedResilienceScores,
+  failure: ResilienceWarmFailure,
+): void {
+  warmed.failures.push(failure);
+  warmed.failedCountryCodes.add(failure.countryCode);
+}
+
 // Warms the resilience score cache for the given countries and returns a map
 // of country-code → score for ONLY the scores whose writes actually landed in
 // Redis. Two subtle requirements:
@@ -1023,31 +1243,38 @@ export function sortRankingItems(items: ResilienceRankingItem[]): ResilienceRank
 // — no post-warm Redis re-read.
 export async function warmMissingResilienceScores(
   countryCodes: string[],
-): Promise<Map<string, GetResilienceScoreResponse>> {
+  scoreBuilder: (
+    countryCode: string,
+    reader: ResilienceSeedReader,
+  ) => Promise<GetResilienceScoreResponse> = buildResilienceScore,
+): Promise<WarmedResilienceScores> {
   const uniqueCodes = [...new Set(countryCodes.map((countryCode) => normalizeCountryCode(countryCode)).filter(Boolean))];
-  const warmed = new Map<string, GetResilienceScoreResponse>();
+  const warmed = createWarmedResilienceScores();
   if (uniqueCodes.length === 0) return warmed;
 
   // Share one memoized reader across all countries so global Redis keys (conflict events,
   // sanctions, unrest, etc.) are fetched only once instead of once per country.
   const sharedReader = createMemoizedSeedReader();
   const computed = await Promise.allSettled(
-    uniqueCodes.map(async (cc) => ({ cc, score: await buildResilienceScore(cc, sharedReader) })),
+    uniqueCodes.map(async (cc) => ({ cc, score: await scoreBuilder(cc, sharedReader) })),
   );
 
   const scores: Array<{ cc: string; score: GetResilienceScoreResponse }> = [];
-  const computeFailures: Array<{ countryCode: string; reason: string }> = [];
   for (let i = 0; i < computed.length; i++) {
     const result = computed[i]!;
     if (result.status === 'fulfilled') {
       scores.push(result.value);
     } else {
-      computeFailures.push({
+      const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
+      recordWarmFailure(warmed, {
         countryCode: uniqueCodes[i]!,
-        reason: result.reason instanceof Error ? result.reason.message : String(result.reason),
+        stage: 'compute',
+        reason,
+        retried: false,
       });
     }
   }
+  const computeFailures = warmed.failures.filter((failure) => failure.stage === 'compute');
   if (computeFailures.length > 0) {
     const sample = computeFailures.slice(0, 10).map((f) => `${f.countryCode}(${f.reason})`).join(', ');
     console.warn(`[resilience] warm compute failed for ${computeFailures.length}/${uniqueCodes.length} countries: ${sample}${computeFailures.length > 10 ? '...' : ''}`);
@@ -1084,25 +1311,50 @@ export async function warmMissingResilienceScores(
   // Fire all batches concurrently. Serial awaits would add 7 extra Upstash
   // round-trips for a 222-country warm (~100-500ms each on Edge). Each batch
   // is independent, so Promise.all collapses them into a single wall-clock
-  // window bounded by the slowest batch. Failed batches still pad with empty
-  // entries to preserve per-command index alignment downstream.
+  // window bounded by the slowest batch. Failed batches are retried once and
+  // merged per command so an initial OK is not lost if the retry transport
+  // fails.
   const batches: Array<Array<Array<string>>> = [];
   for (let i = 0; i < allSetCommands.length; i += SET_BATCH) {
     batches.push(allSetCommands.slice(i, i + SET_BATCH));
   }
+
+  const batchPersisted = (batch: Array<Array<string>>, results: Array<{ result?: unknown }>): boolean =>
+    results.length === batch.length && results.every((result) => result?.result === 'OK');
+
   const batchOutcomes = await Promise.all(batches.map((batch) => runRedisPipeline(batch)));
-  const persistResults: Array<{ result?: unknown }> = [];
+  const retryBatchIndexes: number[] = [];
+  for (let b = 0; b < batches.length; b++) {
+    if (!batchPersisted(batches[b]!, batchOutcomes[b]!)) retryBatchIndexes.push(b);
+  }
+  const retryOutcomesByBatch = new Map<number, Array<{ result?: unknown }>>();
+  if (retryBatchIndexes.length > 0) {
+    const retryOutcomes = await Promise.all(retryBatchIndexes.map((batchIndex) => runRedisPipeline(batches[batchIndex]!)));
+    for (let i = 0; i < retryBatchIndexes.length; i++) {
+      retryOutcomesByBatch.set(retryBatchIndexes[i]!, retryOutcomes[i]!);
+    }
+  }
+
+  const resultReason = (result: { result?: unknown } | undefined, fallback: string): string =>
+    result ? `SET returned ${JSON.stringify(result.result ?? null)}` : fallback;
+  const retriedBatchIndexes = new Set(retryBatchIndexes);
+  const persistResults: Array<{ result?: unknown; reason?: string; retried: boolean }> = [];
   for (let b = 0; b < batches.length; b++) {
     const batch = batches[b]!;
     const batchResults = batchOutcomes[b]!;
-    if (batchResults.length !== batch.length) {
-      // runRedisPipeline returns [] on transport/HTTP failure. Pad with
-      // empty entries so the per-command index alignment downstream stays
-      // correct — those entries will fail the OK check and be excluded
-      // from `warmed`, which is the safe behavior (no proof = no claim).
-      for (let j = 0; j < batch.length; j++) persistResults.push({});
-    } else {
-      for (const result of batchResults) persistResults.push(result);
+    const batchRetried = retriedBatchIndexes.has(b);
+    const retryResults = retryOutcomesByBatch.get(b);
+    for (let j = 0; j < batch.length; j++) {
+      const initialResult = batchResults.length === batch.length ? batchResults[j] : undefined;
+      const retryResult = retryResults?.length === batch.length ? retryResults[j] : undefined;
+      const persisted = initialResult?.result === 'OK' || retryResult?.result === 'OK';
+      persistResults.push({
+        result: persisted ? 'OK' : undefined,
+        reason: persisted
+          ? undefined
+          : resultReason(retryResult, resultReason(initialResult, 'pipeline transport failure')),
+        retried: batchRetried && initialResult?.result !== 'OK',
+      });
     }
   }
 
@@ -1113,10 +1365,16 @@ export async function warmMissingResilienceScores(
       warmed.set(cc, score);
     } else {
       persistFailures++;
+      recordWarmFailure(warmed, {
+        countryCode: cc,
+        stage: 'persist',
+        reason: persistResults[i]?.reason ?? 'SET did not return OK',
+        retried: persistResults[i]?.retried ?? false,
+      });
     }
   }
   if (persistFailures > 0) {
-    console.warn(`[resilience] warm persisted ${warmed.size}/${scores.length} scores (${persistFailures} SETs did not return OK)`);
+    console.warn(`[resilience] warm persisted ${warmed.size}/${scores.length} scores after retry (${persistFailures} SETs did not return OK)`);
   }
   return warmed;
 }

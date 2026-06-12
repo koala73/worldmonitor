@@ -118,6 +118,19 @@ export function declareRecords(data) {
   return Array.isArray(data?.tokens) ? data.tokens.length : 0;
 }
 
+// Each panel has its own {tokens, ...} shape — reuse canonical declareRecords
+// since the transformed extra-key payloads are structurally identical to the
+// canonical one (a single panel). `skipWhenEmpty` guards against a partial
+// upstream fetch (CoinGecko dropping the AI or Other IDs for a cycle while DeFi
+// still resolves, so validateFn passes on the canonical panel): without it,
+// runSeed would clobber the good cached AI/Other panel with a recordCount=0
+// write — blanking the UI panel and tripping the seed-contract probe's
+// minRecords:1 floor (false 503). Exported so a test can assert the guard.
+export const TOKEN_PANEL_EXTRA_KEYS = [
+  { key: AI_KEY,    transform: (data) => data.ai,    ttl: CACHE_TTL, declareRecords, skipWhenEmpty: true },
+  { key: OTHER_KEY, transform: (data) => data.other, ttl: CACHE_TTL, declareRecords, skipWhenEmpty: true },
+];
+
 // isMain guard — required so tests/agents can `import` declareRecords without
 // firing runSeed on module load (which would touch Redis and process.exit).
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^file:\/\//, ''));
@@ -127,13 +140,7 @@ if (isMain) runSeed('market', 'token-panels', DEFI_KEY, fetchTokenPanels, {
   sourceVersion: 'coingecko-paprika-fallback',
   recordCount: (data) => data.total,
   publishTransform: (data) => data.defi,
-  extraKeys: [
-    // Each panel has its own {tokens, ...} shape — reuse canonical declareRecords
-    // since the transformed extra-key payloads are structurally identical to the
-    // canonical one (a single panel).
-    { key: AI_KEY,    transform: (data) => data.ai,    ttl: CACHE_TTL, declareRecords },
-    { key: OTHER_KEY, transform: (data) => data.other, ttl: CACHE_TTL, declareRecords },
-  ],
+  extraKeys: TOKEN_PANEL_EXTRA_KEYS,
 
   declareRecords,
   schemaVersion: 1,

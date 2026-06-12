@@ -40,6 +40,7 @@ function baseItem(overrides: Record<string, unknown> = {}) {
     description: '',
     isOpinion: false,
     isFeelGood: false,
+    isEphemeralLiveCoverage: false,
     ...overrides,
   };
 }
@@ -99,7 +100,7 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
     // ParseResult with isFeelGood-less items writing '0' onto fresh
     // story:track:v1 rows, defeating buildDigest's residue catch) is
     // closed by the rss:feed:v4 cache-prefix bump in fetchAndParseRss —
-    // see test "rss:feed cache prefix is v4 (post-isFeelGood)" below.
+    // see test "rss:feed cache prefix is v5" below.
     // After the bump, no cached pre-PR ParseResult can reach this code
     // path: every cache miss forces a fresh parseRssXml run that
     // stamps isFeelGood correctly. Genuinely-pre-existing story:track:v1
@@ -110,6 +111,25 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
     delete (legacyItem as Record<string, unknown>).isFeelGood;
     assert.strictEqual(
       fieldsToMap(buildStoryTrackHsetFields(legacyItem as Parameters<typeof buildStoryTrackHsetFields>[0], '1745000000000', 42)).get('isFeelGood'),
+      '0',
+    );
+  });
+
+  it('writes isEphemeralLiveCoverage as "1" / "0" — stamps expiring live-programming teasers', () => {
+    const liveItem = baseItem({ isEphemeralLiveCoverage: true });
+    assert.strictEqual(
+      fieldsToMap(buildStoryTrackHsetFields(liveItem, '1745000000000', 42)).get('isEphemeralLiveCoverage'),
+      '1',
+    );
+    const durableItem = baseItem({ isEphemeralLiveCoverage: false });
+    assert.strictEqual(
+      fieldsToMap(buildStoryTrackHsetFields(durableItem, '1745000000000', 42)).get('isEphemeralLiveCoverage'),
+      '0',
+    );
+    const legacyItem = baseItem();
+    delete (legacyItem as Record<string, unknown>).isEphemeralLiveCoverage;
+    assert.strictEqual(
+      fieldsToMap(buildStoryTrackHsetFields(legacyItem as Parameters<typeof buildStoryTrackHsetFields>[0], '1745000000000', 42)).get('isEphemeralLiveCoverage'),
       '0',
     );
   });
@@ -326,29 +346,30 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
 });
 
 describe('fetchAndParseRss — cache prefix invalidation contract', () => {
-  it('rss:feed cache prefix is v4 (post-isFeelGood), not v3 (pre-isFeelGood)', () => {
-    // Pre-PR ParsedItems cached at rss:feed:v3 lack the isFeelGood
-    // field. If a cache hit returned one of those, the falsy-coerce in
+  it('rss:feed cache prefix is v5 (post-isEphemeralLiveCoverage), not v4', () => {
+    // Pre-PR ParsedItems cached at rss:feed:v4 lack the
+    // isEphemeralLiveCoverage field. If a cache hit returned one of those,
+    // the falsy-coerce in
     // buildStoryTrackHsetFields would stamp '0' onto the row, and
     // buildDigest's stampMissing check (`typeof !== 'string' || length === 0`)
-    // would treat '0' as a genuine "not feel-good" verdict — defeating
-    // the residue catch for the 1h healthy-cache rollout window. The v4
+    // would treat '0' as a genuine "not ephemeral-live" verdict — defeating
+    // the residue catch for the 1h healthy-cache rollout window. The v5
     // prefix invalidates every pre-PR entry; cold reads on the first
     // post-deploy cron tick force fresh parseRssXml runs that stamp
-    // isFeelGood correctly. This test locks the cutover so a future
-    // refactor cannot silently revert to v3.
+    // isEphemeralLiveCoverage correctly. This test locks the cutover so a future
+    // refactor cannot silently revert to v4.
     const __dirname = dirname(fileURLToPath(import.meta.url));
     const src = readFileSync(
       resolve(__dirname, '..', 'server', 'worldmonitor', 'news', 'v1', 'list-feed-digest.ts'),
       'utf-8',
     );
     assert.ok(
-      src.includes("`rss:feed:v4:${variant}:${feed.url}`"),
-      'rss:feed cache key must use v4 prefix — see comment above the cacheKey assignment in fetchAndParseRss',
+      src.includes("`rss:feed:v5:${variant}:${feed.url}`"),
+      'rss:feed cache key must use v5 prefix — see comment above the cacheKey assignment in fetchAndParseRss',
     );
     assert.ok(
-      !src.includes("`rss:feed:v3:${variant}:${feed.url}`"),
-      'must NOT leave a residual v3 cacheKey assignment — would silently revert the cutover',
+      !src.includes("`rss:feed:v4:${variant}:${feed.url}`"),
+      'must NOT leave a residual v4 cacheKey assignment — would silently revert the cutover',
     );
   });
 });

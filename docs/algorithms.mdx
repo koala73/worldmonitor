@@ -9,9 +9,9 @@ description: "Detailed documentation of World Monitor's scoring formulas, detect
 
 ### Country Instability Index (CII)
 
-Every country with incoming event data receives a live instability score (0-100). 24 curated tier-1 nations (US, Russia, China, Ukraine, Iran, Israel, Taiwan, North Korea, Saudi Arabia, Turkey, Poland, Germany, France, UK, India, Pakistan, Syria, Yemen, Myanmar, Venezuela, Cuba, Mexico, Brazil, UAE) have individually tuned baseline risk profiles and keyword lists. All other countries that generate any signal (protests, conflicts, outages, displacement flows, climate anomalies) are scored automatically using a universal default baseline (`DEFAULT_BASELINE_RISK = 15`, `DEFAULT_EVENT_MULTIPLIER = 1.0`).
+Every Tier-1 country receives a live instability score (0-100). CII v8 tracks 31 Tier-1 countries with shared server/frontend `baselineRisk` and `eventMultiplier` coefficients plus signed 24-hour movement deltas: US, Russia, China, Ukraine, Iran, Israel, Taiwan, North Korea, Saudi Arabia, Turkey, Poland, Germany, France, UK, India, Pakistan, Syria, Yemen, Myanmar, Venezuela, Cuba, Mexico, Brazil, UAE, South Korea, Iraq, Afghanistan, Lebanon, Egypt, Japan, and Qatar. Countries outside the curated Tier-1 set use the default editorial coefficients when they are scored by supporting systems (`DEFAULT_CII_BASELINE_RISK = 15`, `DEFAULT_CII_EVENT_MULTIPLIER = 1.0`).
 
-The server-side score (`get-risk-scores.ts`) uses the same formulas as the frontend (`country-instability.ts`):
+Authoritative CII scores come from the server-side `GET /api/intelligence/v1/get-risk-scores` RPC (`server/worldmonitor/intelligence/v1/get-risk-scores.ts`) and are served to the browser through the cached risk-score feed. The frontend `country-instability.ts` path shares the published `baselineRisk` / `eventMultiplier` coefficients and v3 conflict curve constants, but it is a fallback/local renderer path after cached backend scores, not the source of truth for published scores:
 
 | Component            | Weight | Details |
 | -------------------- | ------ | ------- |
@@ -20,17 +20,17 @@ The server-side score (`get-risk-scores.ts`) uses the same formulas as the front
 
 **Unrest score** (0-100): Log2 dampening for high-volume low-multiplier countries (`multiplier &lt; 0.7`), linear otherwise. Base capped at 50, plus protest/riot fatality boost (up to 30), plus outage severity boost (TOTAL: 30pts, MAJOR: 15pts, PARTIAL: 5pts, capped at 50).
 
-**Conflict score** (0-100): Weighted ACLED events (battles x3, explosions x4, civilian violence x5, capped at 50), sqrt-scaled fatalities (up to 40), civilian boost (up to 10), Iran strike boost with severity weighting (up to 50), and OREF alert boost for Israel (25 base + 5 per active alert, up to 50 total). Rolling 24-hour history adds a secondary boost: 3-9 alerts contribute +5, 10+ contribute +10 to the blended score.
+**Conflict score** (0-100): Weighted ACLED activity (battles x3, explosions x4, civilian violence x5, multiplied by `eventMultiplier`) is log-scaled with the v3 curve `min(70, log1p(rawActivity) / log1p(4000) * 70)` before additional boosts. Sqrt-scaled fatalities contribute up to 40, civilian targeting up to 10, Iran strike severity up to 50, and OREF alerts for Israel add 25 base + 5 per active alert up to 50 total. Rolling 24-hour OREF history contributes through the Israel blend boost described below.
 
-**Security score** (0-100): GPS/GNSS jamming (high: 5pts, medium: 2pts per hex, capped at 35). Jamming classification thresholds: Low 0-2% (hidden), Medium 2-10% (amber), High >10% (red).
+**Security score** (0-100): Military flights (3pts each, capped at 50), military vessels (5pts each, capped at 30), aviation closures/delays (severity-weighted, capped at 40), and GPS/GNSS jamming (high: 5pts, medium: 2pts per hex, capped at 35). Foreign military presence is weighted ×2.
 
-**Information score**: Reserved (0); no server-side news data available.
+**Information score** (0-100): Country-attributed classified news pressure from top-story country attribution and threat summaries. Critical/high/medium headlines contribute with descending weights; info-level headlines do not move the score.
 
-**Floors**: UCDP active war pins score at >= 70, UCDP minor conflict at >= 50. Travel advisory do-not-travel pins at >= 60, reconsider at >= 50.
+**Floors**: UCDP active war pins score at >= 70, UCDP minor conflict at >= 50. Travel advisory do-not-travel pins at >= 60, reconsider at >= 50. Advisory floors and boosts use the live advisory feed when available; otherwise the server may apply the embedded State Department fallback table. Each `CiiScore` exposes `advisoryLevel` plus `advisoryProvenance` (`live`, `fallback`, or `absent`) so clients can tell which path affected the score. UCDP floors read from the **latest** UCDP GED release (the seeder picks the newest version returning events, not the first to respond) and only count Tier-1 events within a **2-year recency window**; within that window, war means total deaths > 1000 or event count > 100, and minor conflict means event count > 10 below the war thresholds. Since UCDP GED is an annual, lagging dataset, recent conflict is driven by the real-time ACLED feed. The `/api/health.riskScores` signal-density check counts three realtime families — conflict (ACLED **or** recent UCDP), news, and cyber — and reads `COVERAGE_PARTIAL` if any family has no Tier-1 signal (e.g. ACLED auth missing while UCDP is out of window).
 
-**Boosts**: Advisory boost (+15 do-not-travel, +10 reconsider, +5 caution), OREF blend boost for Israel (+15 active alerts, +5/10 based on 24h history count), climate severity (up to +15), cyber threats (up to +10), wildfires (up to +8).
+**Boosts**: Advisory boost (+15 do-not-travel, +10 reconsider, +5 caution), OREF blend boost for Israel (+15 active alerts, +5/10 based on 24h history count), climate severity (up to +15), cyber threats (up to +12), wildfires (up to +8), displacement (up to +20), news urgency (up to +5), earthquakes (up to +25), sanctions (up to +14), and AIS disruptions (up to +10).
 
-See [CII Risk Scoring Methodology](/methodology/cii-risk-scores) for the published per-country `baselineRisk` and `eventMultiplier` tables, the strategic-risk band derivation, and the known 7-country server vs frontend drift.
+See [CII Risk Scoring Methodology](/methodology/cii-risk-scores) for the published per-country `baselineRisk` and `eventMultiplier` tables, the v8 formula, and the strategic-risk band derivation.
 
 ### Hotspot Escalation Scoring
 
@@ -41,42 +41,54 @@ Intelligence hotspots receive dynamic escalation scores blending four normalized
 - **Geo-convergence alerts** (25%) — spatial binning detects 3+ event types (protests + military + earthquakes) co-occurring within 1° lat/lon cells
 - **Military activity** (15%) — vessel clusters and flight density near the hotspot
 
-The system blends static baseline risk (40%) with detected events (60%) and tracks trends via linear regression on 48-hour history. Signal emissions cool down for 2 hours to prevent alert fatigue.
+The dynamic raw score is converted from 0-100 onto the hotspot's 1-5 escalation
+scale, then blended as `staticBaseline × 0.30 + dynamicScore × 0.70`.
+`staticBaseline` is the hotspot config's `escalationScore` (default `3`) and
+the dynamic component is the weighted news/CII/geo/military signal. Signal
+emissions cool down for 2 hours and fire on whole-band upward crossings at
+`>=2/5`, rapid increases of at least `0.5`, or first entry into the critical
+band at `>=4.5/5`.
 
 ### Geographic Convergence Detection
 
-Events (protests, military flights, vessels, earthquakes) are binned into 1°×1° geographic cells within a 24-hour window. When 3+ distinct event types converge in one cell, a convergence alert fires. Scoring is based on type diversity (×25pts per unique type) plus event count bonuses (×2pts). Alerts are reverse-geocoded to human-readable names using conflict zones, waterways, and hotspot databases.
+Events (protests, military flights, vessels, earthquakes) are binned into 1°×1° geographic cells within a 24-hour window. When 3+ distinct event types converge in one cell, a convergence alert fires. Scoring is based on type diversity (×25pts per unique type) plus event count bonuses (×2pts, capped at 25). Current emitted alerts are high or critical priority: 4 types or score ≥90 is critical; 3-type alerts below 90 are high. Alerts are reverse-geocoded to human-readable names using conflict zones, waterways, and hotspot databases.
 
 ### Strategic Risk Score Algorithm
 
-The Strategic Risk panel computes a 0–100 composite geopolitical risk score that synthesizes data from all intelligence modules into a single, continuously updated metric.
+The Strategic Risk panel prefers the cached server-published Strategic Risk headline from `GET /api/intelligence/v1/get-risk-scores`. In cached mode, the authoritative `StrategicRisk[0]` score is the server roll-up of the top-5 CII `combinedScore` values with weights `[1.00, 0.85, 0.70, 0.55, 0.40]`, scale factor `0.70`, floor `15`, and server severity bands High >= 70, Medium 40-69, Low < 40.
 
-**Composite formula**:
+When cached server scores are unavailable, the browser renders a local fallback overview that synthesizes locally available module data into temporary panel context. This panel-local context is useful for continuity during cache misses, but it is not the published Strategic Risk contract.
+
+**Browser/local fallback composite formula**:
 
 ```
 compositeScore =
-    convergenceScore × 0.30     // multi-type events co-located in same H3 cell
+    convergenceScore × 0.30     // multi-type events co-located in same 1° cell
   + ciiRiskScore     × 0.50     // CII top-5 country weighted blend
   + infraScore       × 0.20     // infrastructure cascade incidents
   + theaterBoost     (0–25)     // military asset density + strike packaging
   + breakingBoost    (0–15)     // breaking news severity injection
+  + sanctionsScore   (0–10)     // sanctions pressure and targeted-asset activity
+  + radiationScore   (0–12)     // radiation-watch spikes and corroboration
 ```
 
 **Sub-scores**:
 
 - `convergenceScore` — `min(100, convergenceAlertCount × 25)`. Each geographic cell with 3+ distinct event types contributing 25 points
-- `ciiRiskScore` — Top 5 countries by CII score, weighted `[0.40, 0.25, 0.20, 0.10, 0.05]`, with a bonus of `min(20, elevatedCount × 5)` for each country above CII 50
+- `ciiRiskScore` — Local fallback only: top 5 locally available country scores, weighted `[0.40, 0.25, 0.20, 0.10, 0.05]`, with a bonus of `min(20, elevatedCount × 5)` for each country above CII 50
 - `infraScore` — `min(100, cascadeAlertCount × 25)`. Each infrastructure cascade incident contributing 25 points
 - `theaterBoost` — For each theater posture summary: `min(10, floor((aircraft + vessels) / 5))` + 5 if strike-capable (tanker + AWACS + fighters co-present). Summed across theaters, capped at 25. Halved when posture data is stale
 - `breakingBoost` — Critical breaking news alerts add 15 points, high adds 8, capped at 15. Breaking alerts expire after 30 minutes
+- `sanctionsScore` — Up to 10 points from new sanctions entries, largest-country entry volume, and sanctioned vessel/aircraft counts
+- `radiationScore` — Up to 12 points from radiation-watch spikes, elevated readings, and corroborated observations, reduced by low-confidence or conflicting observations
 
-**Alert fusion**: Alerts from convergence detection, CII spikes (≥10-point change), and infrastructure cascades are merged when they occur within a 2-hour window and are within 200km or in the same country. Merged alerts carry the highest priority and combine summaries. The alert queue caps at 50 entries with 24-hour pruning.
+**Alert fusion**: Alerts from convergence detection, CII spikes (≥10-point change), infrastructure cascades, sanctions pressure, and radiation watch are merged when they occur within a 2-hour window and are within 200km or in the same country. Merged alerts carry the highest priority and combine summaries. Direct inserts pop the oldest alert after 50 entries; the Strategic Risk refresh path then sorts by newest timestamp and trims the recomputed queue to 100 entries after 24-hour pruning.
 
 **Trend detection**: Delta ≥3 from previous composite = "escalating", ≤−3 = "de-escalating", otherwise "stable". A 15-minute learning period after panel initialization suppresses CII spike alerts to prevent false positives from initial data loading.
 
 ### Population Exposure Estimation
 
-Active events (conflicts, earthquakes, floods, wildfires) are cross-referenced against WorldPop population density data to estimate the number of civilians within the impact zone. Event-specific radii reflect typical impact footprints:
+Active events (conflicts, earthquakes, floods, wildfires) are matched to the nearest centroid in the local 20-country priority population table and then estimated from `population / area` density. This is a coarse exposure approximation, not a live WorldPop lookup. Event-specific radii reflect typical impact footprints:
 
 | Event Type      | Radius | Rationale                                |
 | --------------- | ------ | ---------------------------------------- |
@@ -85,7 +97,7 @@ Active events (conflicts, earthquakes, floods, wildfires) are cross-referenced a
 | **Floods**      | 100 km | Watershed and drainage basin extent      |
 | **Wildfires**   | 30 km  | Smoke and evacuation perimeter           |
 
-API calls to WorldPop are batched concurrently (max 10 parallel requests) to handle multiple simultaneous events without sequential bottlenecks. The Population Exposure panel displays a summary header with total affected population and a per-event breakdown table.
+If an event falls outside the priority centroid table, the fallback density uses a synthetic `50,000,000 / 500,000 km2` country profile. The Population Exposure panel displays a summary header with total affected population and a per-event breakdown table.
 
 ---
 
@@ -161,14 +173,15 @@ Beyond displaying static cable routes on the map, the system actively monitors c
 
 Advisories are classified by severity: `fault` (cable break, cut, or damage — potential traffic rerouting) or `degraded` (repair work in progress with partial capacity). Impact descriptions are generated dynamically, linking the advisory to the specific cable and the countries it serves — enabling questions like "which cables serving South Asia are currently under repair?"
 
-**Health scoring algorithm** — Each cable receives a composite health score (0–100) computed from weighted signals with exponential time decay:
+**Health scoring algorithm** — Each cable receives a status score computed from the strongest live signal after linear per-signal TTL decay:
 
 ```
-signal_weight = severity × (e^(-λ × age_hours))     where λ = ln(2) / 168 (7-day half-life)
-health_score  = max(0, 100 − Σ(signal_weights) × 100)
+recency_weight = clamp(1 - age_seconds / ttl_seconds, 0, 1)
+effective      = severity * confidence * recency_weight
+score          = round(max(effective) * 100) / 100
 ```
 
-Signals are classified into two kinds: `operator_fault` (confirmed cable damage — severity 1.0) and `cable_advisory` (repair operations, navigational warnings — severity 0.6). Geographic matching uses cosine-latitude-corrected equirectangular approximation to find the nearest cataloged cable within 50km of each NGA warning's coordinates. Results are cached in Redis (6-hour TTL for complete results, 10 minutes for partial) with an in-memory fallback that serves stale data when Redis is unavailable — ensuring the cable health layer never shows blank data even during cache failures.
+Signals are classified as `operator_fault`, `cable_advisory`, or `repair_activity`, each with its own severity, confidence, and TTL. A cable is marked `FAULT` when the top effective score is at least `0.80` and an operator-fault signal is present; `DEGRADED` when the top score is at least `0.50`, or at least `0.80` with repair activity; otherwise `OK`. Geographic matching uses cosine-latitude-corrected equirectangular distance to find the nearest cataloged cable within `555km` (about 5 degrees at the equator) of each NGA warning coordinate. Computed cable-health results are Redis-cached for `1800` seconds, and the NGA warning fetch is cached for `86400` seconds.
 
 ### Infrastructure Cascade Modeling
 
@@ -221,19 +234,22 @@ Entity matching uses word-boundary regex to prevent false positives (e.g., "Iran
 
 ### Headline Scoring
 
-The AI Insights panel ranks news items by geopolitical significance using a multi-signal importance scoring algorithm. Rather than displaying stories in chronological order, the algorithm surfaces the most consequential developments by applying keyword-weighted scoring across five severity tiers:
+The AI Insights panel ranks news clusters by geopolitical significance using `scoreImportance` in `scripts/_clustering.mjs`. Rather than displaying stories in chronological order, the algorithm combines upstream classifier scores, source quality, corroboration, keyword groups, recency, and demotion rules:
 
-| Category | Base Score | Per-Match Bonus | Keywords |
-| --- | --- | --- | --- |
-| **Violence** | +100 | +25 | killed, dead, death, shot, casualty, massacre, crackdown |
-| **Military** | +80 | +20 | war, invasion, airstrike, missile, troops, combat, fleet |
-| **Unrest** | +40 | +15 | protest, uprising, riot, demonstration, revolution |
-| **Flashpoint** | — | +20 | iran, russia, china, taiwan, ukraine, israel, gaza, north korea, syria, yemen, hamas, hezbollah, nato, kremlin |
-| **Crisis** | — | +10 | sanctions, escalation, breaking, urgent, humanitarian |
+| Signal | Scoring rule |
+| --- | --- |
+| **Upstream classifier** | `upstreamImportanceScore * 2.2` when present |
+| **Threat level** | LLM-sourced threats add critical `+220`, high `+150`, medium `+80`, low `+20`; non-LLM threat scores contribute 35% only when backed by upstream signal and not keyword-historical downgrade |
+| **Source tier** | Tier 1 `+35`, Tier 2 `+20`, Tier 3 `+8` |
+| **Source count** | `min(sourceCount, 6) * 12` |
+| **Entity corroboration** | `+45` when the cluster has corroborated entities |
+| **Keyword groups** | Violence `+50 + 12/match`; military `+40 + 10/match`; unrest `+35 + 9/match`; flashpoint `+30 + 8/match`; diplomacy `+35 + 9/match`; crisis `+15 + 5/match` |
+| **Flashpoint interaction** | Violence, unrest, or diplomacy terms combined with flashpoint terms multiply the score by `1.25` |
+| **Recency** | A 16-hour linear recency multiplier bottoms out at `0.5` |
 
-**Source confirmation boost** — each additional independent source reporting the same story adds +10 points, rewarding multi-source corroboration over single-source reporting.
+**Source confirmation boost** — source count and entity corroboration reward multi-source reporting over single-source reporting.
 
-**Demotion keywords** — corporate and financial noise (CEO, earnings, stock, startup, revenue) reduces scores, preventing business news from crowding out geopolitical developments in the full/geopolitical variant.
+**Demotion keywords** — corporate and financial noise reduces scores to 35% when no corroborated entity or strong non-keyword signal is present, preventing business news from crowding out geopolitical developments in the full/geopolitical variant.
 
 **Theater posture integration** — when the Strategic Posture Assessment detects elevated military activity (e.g., unusual flight patterns in a theater), related news stories receive additional scoring boosts, surfacing contextually relevant reporting alongside the military signal.
 
@@ -250,7 +266,7 @@ Every RSS headline is tokenized into individual terms and tracked in per-term fr
 | **Source diversity** | ≥ 2 unique RSS feed sources                   |
 | **Cooldown**         | 30 minutes since last spike for the same term |
 
-The tokenizer extracts CVE identifiers (`CVE-2024-xxxxx`), APT/FIN threat actor designators, and 12 compound terms for world leaders (e.g., "Xi Jinping", "Kim Jong Un") that would be lost by naive whitespace splitting. A configurable blocklist suppresses common noise terms.
+The tokenizer extracts CVE identifiers (`CVE-2024-xxxxx`), APT/FIN threat actor designators, and 16 tracked world-leader names, including multi-word names such as "Xi Jinping" and "Kim Jong Un" that would be lost by naive whitespace splitting. A configurable blocklist suppresses common noise terms.
 
 Detected spikes are auto-summarized via Groq (rate-limited to 5 summaries/hour) and emitted as `keyword_spike` signals into the correlation engine, where they compound with other signal types for convergence detection. The term registry is capped at 10,000 entries with LRU eviction to bound memory usage. All thresholds (spike multiplier, min count, cooldown, blocked terms) are configurable via the Settings panel.
 
@@ -262,9 +278,9 @@ The algorithm uses **Welford's online method** for numerically stable streaming 
 
 | Z-Score | Severity      | Example                            |
 | ------- | ------------- | ---------------------------------- |
-| ≥ 1.5   | Low           | Slightly elevated protest activity |
-| ≥ 2.0   | Medium        | Unusual naval presence             |
-| ≥ 3.0   | High/Critical | Military flights 3x above baseline |
+| ≥ 1.5   | Medium        | Slightly elevated protest activity |
+| ≥ 2.0   | High          | Unusual naval presence             |
+| ≥ 3.0   | Critical      | Military flights 3x above baseline |
 
 A minimum of 10 historical samples is required before anomalies are reported, preventing false positives during the learning phase. Anomalies are ingested back into the signal aggregator, where they compound with other signals for convergence detection.
 
@@ -286,6 +302,9 @@ The dashboard monitors five independent alert origins and fuses them into a unif
 - **Global cooldown** — after any alert fires, a 60-second global cooldown prevents rapid-fire notification bursts
 - **Recency gate** — items older than 15 minutes at processing time are silently dropped, preventing stale events from generating alerts after a reconnection
 - **Source tier gating** — Tier 3+ sources (niche outlets, aggregators) must have LLM-confirmed classification (`threat.source !== 'keyword'`) to fire an alert; Tier 1–2 sources bypass this gate
+- **Story-phase gate** — sustained and fading RSS stories are suppressed; the banner is reserved for breaking/developing stories or items without story metadata
+- **Importance floor** — RSS items with `importanceScore < 30` are too low-signal for the banner
+- **Startup grace** — RSS alerts are suppressed for the first 10 seconds after app load so the initial feed fetch does not replay old articles as breaking news. OREF siren alerts are exempt
 - **User sensitivity control** — configurable between `critical-only` (only critical severity fires) and `critical-and-high` (both critical and high severities)
 
 When an alert passes all gates, the system dispatches a `wm:breaking-news` CustomEvent on `document`, which the Breaking News Banner consumes to display a persistent top-of-screen notification. Optional browser Notification API popups and an audio chime are available as user settings. Clicking the banner scrolls to the RSS panel that sourced the alert and applies a 1.5-second flash highlight animation.
@@ -324,6 +343,15 @@ Beyond aggregating signals by geography, the system detects meaningful correlati
 | `military_surge`          | Theater posture assessment detects unusual force concentration                 | Military escalation warning                              |
 
 Each signal carries a severity (low/medium/high), geographic coordinates, a human-readable summary, and the raw data that triggered it. Signals are deduplicated per-type with configurable cooldown windows (30 minutes to 6 hours) to prevent alert fatigue. The correlation output feeds into the AI Insights panel, where the narrative synthesis engine weaves detected correlations into a structured intelligence brief.
+
+The Escalation Monitor correlation adapter clusters by country over a 48-hour
+window and emits cards at a composite threshold of `20`. Its current signal
+weights are `conflict_event` 45%, `escalation_outage` 25%, and `news_severity`
+30%. Conflict/protest severities map high/medium/low to `85/55/30`; internet
+outages map total/major/partial to `90/70/40` and are only kept for countries
+that also have a conflict event; qualifying news clusters must be medium or
+higher, match escalation keywords, and map critical/high/medium threat levels
+to `85/65/45`.
 
 ### PizzINT Activity Monitor & GDELT Tension Index
 

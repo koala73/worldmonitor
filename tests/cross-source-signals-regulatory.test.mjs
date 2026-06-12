@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { CII_RISK_SCORE_CACHE_KEYS } from '../scripts/_cii-risk-cache-keys.mjs';
 
 function normalize(value) {
   return JSON.parse(JSON.stringify(value));
@@ -19,7 +20,7 @@ const pureSrc = seedSrc
   // body still evaluates as a plain declaration.
   .replace(/^export\s+(function\s+declareRecords)/m, '$1');
 
-const ctx = vm.createContext({ console, Date, Math, Number, Array, Map, Set, String, RegExp });
+const ctx = vm.createContext({ console, Date, Math, Number, Array, Map, Set, String, RegExp, CII_RISK_SCORE_CACHE_KEYS });
 vm.runInContext(`${pureSrc}\n;globalThis.__exports = { SOURCE_KEYS, TYPE_CATEGORY, BASE_WEIGHT, scoreTier, extractRegulatoryAction, detectCompositeEscalation };`, ctx);
 
 const {

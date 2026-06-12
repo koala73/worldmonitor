@@ -85,6 +85,7 @@
             "pages": [
               "signal-intelligence",
               "ai-intelligence",
+              "methodology/news-digest-and-briefing",
               "country-instability-index",
               "methodology/country-resilience-index",
               "methodology/chokepoints",
@@ -94,6 +95,7 @@
               "methodology/disruptions",
               "methodology/cii-risk-scores",
               "methodology/disease-alert-level",
+              "methodology/thermal-escalation",
               "corrections",
               "geographic-convergence",
               "strategic-risk",
@@ -103,6 +105,7 @@
           {
             "group": "Workflows",
             "pages": [
+              "embed-live-map",
               "route-explorer",
               "scenario-engine"
             ]
@@ -139,6 +142,7 @@
               "panels/daily-market-brief",
               "panels/regional-intelligence",
               "panels/strategic-posture",
+              "panels/threat-timeline",
               "panels/stock-analysis",
               "panels/stock-backtest",
               "panels/wsb-ticker-scanner"

@@ -9,7 +9,7 @@
  * regressions that matter for this plan: layout placement, disable-on-realtime
  * state, snap-to-high logic, and atomic-save routing.
  *
- * See plans/forbid-realtime-all-events.md §2.
+ * See docs/archive/plans/forbid-realtime-all-events.md §2.
  *
  * Run: node --test tests/notifications-settings-ui-invariants.test.mjs
  */

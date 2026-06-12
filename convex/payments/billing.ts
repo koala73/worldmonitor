@@ -109,10 +109,32 @@ async function createCustomerPortalUrlForUser(
   }
 
   const client = getDodoClient();
-  const session = await client.customers.customerPortal.create(
-    dodoCustomerId,
-    { send_email: false },
-  );
+  let session;
+  try {
+    session = await client.customers.customerPortal.create(
+      dodoCustomerId,
+      { send_email: false },
+    );
+  } catch (err) {
+    // The Dodo REST SDK throws a plain Error (APIError on a non-2xx Dodo
+    // response, or a transport failure) when the portal-session create
+    // fails. Convex's action runtime then masks any NON-ConvexError throw
+    // as an opaque `[Request ID: X] Server Error`, dropping the real cause
+    // from the wire — the exact opacity WORLDMONITOR-R5 fought for the
+    // missing-customer path above (this was the last unwrapped throw site).
+    // Re-throw as a structured ConvexError so the client receives
+    // `err.data.kind === 'DODO_PORTAL_ERROR'` for proper Sentry
+    // classification (browser → `extractBillingErrorKind` → tag
+    // `billing_error_kind`; the user still falls back to the generic Dodo
+    // portal), and log the underlying cause here so it survives in the
+    // Convex function logs for server-side triage. WORLDMONITOR-ST.
+    const cause = err instanceof Error ? err.message : String(err);
+    console.error(
+      `[billing] Dodo customer-portal create failed for customer ${dodoCustomerId}:`,
+      cause,
+    );
+    throw new ConvexError({ kind: "DODO_PORTAL_ERROR" });
+  }
 
   return { portal_url: session.link };
 }

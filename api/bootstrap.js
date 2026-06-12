@@ -4,6 +4,7 @@ import { jsonResponse } from './_json-response.js';
 // @ts-expect-error — JS module, no declaration file
 import { redisPipeline } from './_upstash-json.js';
 import { unwrapEnvelope } from './_seed-envelope.js';
+import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.js';
 
 export const config = { runtime: 'edge' };
 
@@ -58,7 +59,7 @@ const BOOTSTRAP_CACHE_KEYS = {
   renewableEnergy:  'economic:worldbank-renewable:v1',
   positiveGeoEvents: 'positive_events:geo-bootstrap:v1',
   theaterPosture: 'theater_posture:sebuf:stale:v1',
-  riskScores: 'risk:scores:sebuf:stale:v3',
+  riskScores: CII_RISK_SCORE_CACHE_KEYS.stale,
   naturalEvents: 'natural:events:v1',
   flightDelays: 'aviation:delays-bootstrap:v2',
   insights: 'news:insights:v1',
@@ -199,6 +200,23 @@ const TIER_CDN_CACHE = {
   fast: 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900',
 };
 
+export function isPublicWeatherBootstrapRequest(req) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return false;
+
+  const url = new URL(req.url);
+  const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
+  if (pathname !== '/api/bootstrap') return false;
+
+  const params = Array.from(url.searchParams.keys());
+  if (params.some((key) => key !== 'keys')) return false;
+
+  const keyParams = url.searchParams.getAll('keys');
+  if (keyParams.length !== 1) return false;
+
+  const requested = keyParams[0].split(',').map((key) => key.trim()).filter(Boolean);
+  return requested.length === 1 && requested[0] === 'weatherAlerts';
+}
+
 const NEG_SENTINEL = '__WM_NEG__';
 
 async function getCachedJsonBatch(keys) {
@@ -236,7 +254,9 @@ export default async function handler(req) {
   if (req.method === 'OPTIONS')
     return new Response(null, { status: 204, headers: cors });
 
-  const apiKeyResult = await validateApiKey(req);
+  const apiKeyResult = isPublicWeatherBootstrapRequest(req)
+    ? { valid: true, required: false }
+    : await validateApiKey(req);
   if (apiKeyResult.required && !apiKeyResult.valid)
     return jsonResponse({ error: apiKeyResult.error }, 401, cors);
 

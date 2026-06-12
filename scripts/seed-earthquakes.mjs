@@ -4,7 +4,7 @@ import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
-const USGS_FEED_URL = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson';
+const USGS_FEED_URL = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_week.geojson';
 const CANONICAL_KEY = 'seismology:earthquakes:v1';
 const CACHE_TTL = 21600; // 6h — 6x the 1h cron interval (was 2x = survived only 1 missed run)
 
@@ -102,7 +102,7 @@ export function declareRecords(data) {
 runSeed('seismology', 'earthquakes', CANONICAL_KEY, fetchEarthquakes, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
-  sourceVersion: 'usgs-4.5-day-nuclear-v1',
+  sourceVersion: 'usgs-4.5-week-nuclear-v1',
   declareRecords,
   schemaVersion: 1,
   maxStaleMin: 30,

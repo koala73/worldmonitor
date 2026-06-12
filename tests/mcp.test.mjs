@@ -267,6 +267,32 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(freshness.cached_at, new Date(now - 24 * 60 * 60_000).toISOString());
   });
 
+  it('evaluateFreshness marks below-floor recordCount stale even when fetchedAt is fresh', () => {
+    const now = Date.UTC(2026, 5, 11, 12, 0, 0);
+    const freshness = evaluateFreshness(
+      [
+        { key: 'seed-meta:supply_chain:portwatch-ports', maxStaleMin: 2160, minRecordCount: 174 },
+      ],
+      [
+        { fetchedAt: now - 12 * 60 * 60_000, recordCount: 139 },
+      ],
+      now,
+    );
+
+    assert.equal(freshness.stale, true);
+    assert.equal(freshness.cached_at, new Date(now - 12 * 60 * 60_000).toISOString());
+  });
+
+  it('get_chokepoint_status declares the PortWatch 174-country freshness floor', async () => {
+    const { CACHE_TOOLS } = await import(`../api/mcp/registry/cache-tools.ts?t=${Date.now()}`);
+    const tool = CACHE_TOOLS.find((candidate) => candidate.name === 'get_chokepoint_status');
+    const portwatchFreshness = tool?._freshnessChecks?.find(
+      (check) => check.key === 'seed-meta:supply_chain:portwatch-ports',
+    );
+
+    assert.equal(portwatchFreshness?.minRecordCount, 174);
+  });
+
   // --- Rate limiting ---
 
   it('returns JSON-RPC -32029 when rate limited', async () => {
@@ -884,40 +910,21 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(out.data['ucdp-events'].events.length, 50, 'limit: 0 must opt out of the default cap and return the full list');
   });
 
-  // --- limit on country/EU/displacement tools (env-var-gated default cap) ---
+  // --- limit on country/EU/displacement tools ---
   //
   // Five tools — get_country_macro, get_eu_housing_cycle,
   // get_eu_quarterly_gov_debt, get_eu_industrial_production,
   // get_displacement_data — return per-country payloads that can exceed the
-  // per-tool output budget on default args. The four IMF/Eurostat tools cap
-  // their keyed-object country maps via `capNestedMap`, gated by
-  // `MCP_LIMIT_DEFAULT_30=on` (additive-contract: env-var off → no behaviour
-  // change). `limit: 0` is the customer-facing opt-out and always returns
-  // the full payload. `get_displacement_data` has had array-based limit since
-  // v1.3.0 (#3678) — its block is unchanged; the test below pins the
-  // existing default cap and `limit: 0` opt-out so the budget gate's hot
-  // path stays covered.
+  // per-tool output budget on default args. The IMF/Eurostat tools cap their
+  // keyed-object country maps via `capNestedMap`; displacement caps arrays.
+  // `limit: 0` is the customer-facing opt-out and always returns the full
+  // payload.
 
   function makeCountryMap(prefix, n) {
     return Object.fromEntries(Array.from({ length: n }, (_, i) => [`${prefix}${i}`, { value: i }]));
   }
 
-  it('limit: get_country_macro env-var off → no cap (additive contract)', async () => {
-    const macro = { countries: makeCountryMap('C', 60) };
-    const meta = {
-      'seed-meta:economic:imf-macro': { fetchedAt: Date.now() - 60_000, recordCount: 60 },
-      'seed-meta:economic:imf-growth': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
-      'seed-meta:economic:imf-labor': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
-      'seed-meta:economic:imf-external': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
-    };
-    mockCacheKeys({ 'economic:imf:macro:v2': macro }, meta);
-    delete process.env.MCP_LIMIT_DEFAULT_30;
-    const out = await callTool('get_country_macro', {});
-    assert.equal(Object.keys(out.data.macro.countries).length, 60,
-      'env-var off → default args returns the full country map (additive contract)');
-  });
-
-  it('limit: get_country_macro env-var on → caps every IMF dataset to 30', async () => {
+  it('limit: get_country_macro default args → caps every IMF dataset to 30', async () => {
     // Mock all four IMF cache keys with 60 countries each so the test
     // actually verifies the `for (const label of ['macro','growth','labor',
     // 'external'])` capNestedMap loop, not just the macro label.
@@ -934,11 +941,10 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       'economic:imf:labor:v1': payload,
       'economic:imf:external:v1': payload,
     }, meta);
-    process.env.MCP_LIMIT_DEFAULT_30 = 'on';
     const out = await callTool('get_country_macro', {});
     for (const label of ['macro', 'growth', 'labor', 'external']) {
       assert.equal(Object.keys(out.data[label].countries).length, 30,
-        `env-var on → ${label}.countries capped to DEFAULT_LIST_LIMIT (30)`);
+        `default args → ${label}.countries capped to DEFAULT_LIST_LIMIT (30)`);
     }
   });
 
@@ -956,13 +962,12 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       'seed-meta:economic:imf-external': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
     };
     mockCacheKeys({ 'economic:imf:macro:v2': payload }, meta);
-    process.env.MCP_LIMIT_DEFAULT_30 = 'on';
     const out = await callTool('get_country_macro', { countries: ['C0', 'C1', 'C2', 'C3', 'C4'], limit: 1 });
     assert.equal(Object.keys(out.data.macro.countries).length, 5,
       'countries filter takes precedence; limit is ignored when countries is supplied');
   });
 
-  it('limit: get_country_macro limit:0 → full payload regardless of env-var', async () => {
+  it('limit: get_country_macro limit:0 → full payload', async () => {
     const macro = { countries: makeCountryMap('C', 60) };
     const meta = {
       'seed-meta:economic:imf-macro': { fetchedAt: Date.now() - 60_000, recordCount: 60 },
@@ -971,63 +976,44 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       'seed-meta:economic:imf-external': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
     };
     mockCacheKeys({ 'economic:imf:macro:v2': macro }, meta);
-    process.env.MCP_LIMIT_DEFAULT_30 = 'on';
     const out = await callTool('get_country_macro', { limit: 0 });
     assert.equal(Object.keys(out.data.macro.countries).length, 60,
-      'limit: 0 is the customer-facing opt-out — full payload even with env-var on');
+      'limit: 0 is the customer-facing opt-out and returns the full payload');
   });
 
-  it('limit: get_eu_housing_cycle env-var off → no cap, env-var on → cap to 30, limit:0 → full', async () => {
+  it('limit: get_eu_housing_cycle default args → cap to 30, limit:0 → full', async () => {
     const hp = { countries: makeCountryMap('EU', 40) };
     const meta = { 'seed-meta:economic:eurostat-house-prices': { fetchedAt: Date.now() - 60_000, recordCount: 40 } };
 
     mockCacheKeys({ 'economic:eurostat:house-prices:v1': hp }, meta);
-    delete process.env.MCP_LIMIT_DEFAULT_30;
-    const off = await callTool('get_eu_housing_cycle', {});
-    assert.equal(Object.keys(off.data['house-prices'].countries).length, 40, 'env-var off → no cap');
-
-    mockCacheKeys({ 'economic:eurostat:house-prices:v1': hp }, meta);
-    process.env.MCP_LIMIT_DEFAULT_30 = 'on';
-    const on = await callTool('get_eu_housing_cycle', {});
-    assert.equal(Object.keys(on.data['house-prices'].countries).length, 30, 'env-var on → cap to 30');
+    const capped = await callTool('get_eu_housing_cycle', {});
+    assert.equal(Object.keys(capped.data['house-prices'].countries).length, 30, 'default args → cap to 30');
 
     mockCacheKeys({ 'economic:eurostat:house-prices:v1': hp }, meta);
     const optOut = await callTool('get_eu_housing_cycle', { limit: 0 });
     assert.equal(Object.keys(optOut.data['house-prices'].countries).length, 40, 'limit: 0 → full payload');
   });
 
-  it('limit: get_eu_quarterly_gov_debt env-var off → no cap, env-var on → cap to 30, limit:0 → full', async () => {
+  it('limit: get_eu_quarterly_gov_debt default args → cap to 30, limit:0 → full', async () => {
     const gd = { countries: makeCountryMap('EU', 40) };
     const meta = { 'seed-meta:economic:eurostat-gov-debt-q': { fetchedAt: Date.now() - 60_000, recordCount: 40 } };
 
     mockCacheKeys({ 'economic:eurostat:gov-debt-q:v1': gd }, meta);
-    delete process.env.MCP_LIMIT_DEFAULT_30;
-    const off = await callTool('get_eu_quarterly_gov_debt', {});
-    assert.equal(Object.keys(off.data['gov-debt-q'].countries).length, 40, 'env-var off → no cap');
-
-    mockCacheKeys({ 'economic:eurostat:gov-debt-q:v1': gd }, meta);
-    process.env.MCP_LIMIT_DEFAULT_30 = 'on';
-    const on = await callTool('get_eu_quarterly_gov_debt', {});
-    assert.equal(Object.keys(on.data['gov-debt-q'].countries).length, 30, 'env-var on → cap to 30');
+    const capped = await callTool('get_eu_quarterly_gov_debt', {});
+    assert.equal(Object.keys(capped.data['gov-debt-q'].countries).length, 30, 'default args → cap to 30');
 
     mockCacheKeys({ 'economic:eurostat:gov-debt-q:v1': gd }, meta);
     const optOut = await callTool('get_eu_quarterly_gov_debt', { limit: 0 });
     assert.equal(Object.keys(optOut.data['gov-debt-q'].countries).length, 40, 'limit: 0 → full payload');
   });
 
-  it('limit: get_eu_industrial_production env-var off → no cap, env-var on → cap to 30, limit:0 → full', async () => {
+  it('limit: get_eu_industrial_production default args → cap to 30, limit:0 → full', async () => {
     const ip = { countries: makeCountryMap('EU', 40) };
     const meta = { 'seed-meta:economic:eurostat-industrial-production': { fetchedAt: Date.now() - 60_000, recordCount: 40 } };
 
     mockCacheKeys({ 'economic:eurostat:industrial-production:v1': ip }, meta);
-    delete process.env.MCP_LIMIT_DEFAULT_30;
-    const off = await callTool('get_eu_industrial_production', {});
-    assert.equal(Object.keys(off.data['industrial-production'].countries).length, 40, 'env-var off → no cap');
-
-    mockCacheKeys({ 'economic:eurostat:industrial-production:v1': ip }, meta);
-    process.env.MCP_LIMIT_DEFAULT_30 = 'on';
-    const on = await callTool('get_eu_industrial_production', {});
-    assert.equal(Object.keys(on.data['industrial-production'].countries).length, 30, 'env-var on → cap to 30');
+    const capped = await callTool('get_eu_industrial_production', {});
+    assert.equal(Object.keys(capped.data['industrial-production'].countries).length, 30, 'default args → cap to 30');
 
     mockCacheKeys({ 'economic:eurostat:industrial-production:v1': ip }, meta);
     const optOut = await callTool('get_eu_industrial_production', { limit: 0 });
@@ -2203,16 +2189,28 @@ describe('api/mcp.ts — PRO MCP Server', () => {
   // --- get_maritime_activity ---
 
   it('get_maritime_activity returns zones and disruptions for valid country code', async () => {
+    // Fixture mirrors the REAL wire shape of the generated sebuf handler:
+    // camelCase keys + nested `location` objects. The original fixture used
+    // snake_case (which the wire never produces), so the tool's misread of
+    // density_zones/snapshot_at passed the suite while returning total_zones=0
+    // in production — WORLDMONITOR-T8. Items outside the AE bbox (+3° pad)
+    // must be filtered out tool-side; the inner fetch must carry NO bbox
+    // query (the handler 400s any dimension >10°, and 67 COUNTRY_BBOXES
+    // exceed that).
+    let innerUrl = null;
     globalThis.fetch = async (url) => {
       if (url.toString().includes('/api/maritime/v1/get-vessel-snapshot')) {
+        innerUrl = url.toString();
         return new Response(JSON.stringify({
           snapshot: {
-            snapshot_at: 1711620000000,
-            density_zones: [
-              { name: 'Strait of Hormuz', intensity: 82, ships_per_day: 45, delta_pct: 3.2, note: '' },
+            snapshotAt: 1711620000000,
+            densityZones: [
+              { name: 'Strait of Hormuz', location: { latitude: 26.6, longitude: 56.3 }, intensity: 82, shipsPerDay: 45, deltaPct: 3.2, note: '' },
+              { name: 'Zone 50,4 North Sea', location: { latitude: 51, longitude: 5 }, intensity: 1, shipsPerDay: 114240, deltaPct: 0, note: 'High traffic area' },
             ],
             disruptions: [
-              { name: 'Gulf AIS Gap', type: 'AIS_DISRUPTION_TYPE_GAP_SPIKE', severity: 'AIS_DISRUPTION_SEVERITY_ELEVATED', dark_ships: 3, vessel_count: 12, region: 'Persian Gulf', description: 'Elevated dark-ship activity' },
+              { name: 'Gulf AIS Gap', type: 'AIS_DISRUPTION_TYPE_GAP_SPIKE', severity: 'AIS_DISRUPTION_SEVERITY_ELEVATED', location: { latitude: 25.5, longitude: 54.0 }, darkShips: 3, vesselCount: 12, region: 'Persian Gulf', description: 'Elevated dark-ship activity' },
+              { name: 'Taiwan Strait', type: 'AIS_DISRUPTION_TYPE_CHOKEPOINT_CONGESTION', severity: 'AIS_DISRUPTION_SEVERITY_LOW', location: { latitude: 24.5, longitude: 119.5 }, darkShips: 0, vesselCount: 17, region: 'Taiwan Strait', description: 'Congestion' },
             ],
           },
         }), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -2228,11 +2226,101 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const body = await res.json();
     const data = JSON.parse(body.result.content[0].text);
     assert.equal(data.country_code, 'AE');
-    assert.equal(data.total_zones, 1);
-    assert.equal(data.total_disruptions, 1);
+    assert.ok(innerUrl !== null, 'inner vessel-snapshot fetch must happen');
+    assert.ok(!/sw_lat|ne_lat/.test(innerUrl), 'inner fetch must NOT send a bbox (handler caps at 10°/side)');
+    assert.equal(data.total_zones, 1, 'North Sea zone must be filtered out of AE results');
+    assert.equal(data.total_disruptions, 1, 'Taiwan Strait must be filtered out of AE results');
     assert.equal(data.density_zones[0].name, 'Strait of Hormuz');
+    assert.equal(data.density_zones[0].ships_per_day, 45, 'camelCase wire field must map to snake_case output');
     assert.equal(data.disruptions[0].dark_ships, 3);
+    assert.equal(data.snapshot_at, new Date(1711620000000).toISOString(), 'snapshotAt wire field must populate snapshot_at');
     assert.ok(data.bounding_box?.sw_lat !== undefined, 'bounding_box must be present');
+  });
+
+  it('get_maritime_activity keeps dateline-adjacent results when the pad crosses ±180 (FJ)', async () => {
+    // FJ bbox is [-18.25, 177.34, -16.15, 180]: the +3° pad pushes the east
+    // edge to 183, so a point at -179 sits just across the dateline and MUST
+    // match (it is 1-4° away), while a genuinely distant Pacific point must
+    // not. The original filter only treated sw_lon > ne_lon as wrapped and
+    // silently dropped the -179 point.
+    globalThis.fetch = async (url) => {
+      if (url.toString().includes('/api/maritime/v1/get-vessel-snapshot')) {
+        return new Response(JSON.stringify({
+          snapshot: {
+            snapshotAt: 1711620000000,
+            densityZones: [
+              { name: 'Across the dateline', location: { latitude: -17.5, longitude: -179 }, intensity: 10, shipsPerDay: 20, deltaPct: 0, note: '' },
+              { name: 'West of Fiji in-box', location: { latitude: -17.0, longitude: 178.0 }, intensity: 5, shipsPerDay: 10, deltaPct: 0, note: '' },
+              { name: 'Far Pacific', location: { latitude: -17.5, longitude: -150 }, intensity: 3, shipsPerDay: 5, deltaPct: 0, note: '' },
+            ],
+            disruptions: [],
+          },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return originalFetch(url);
+    };
+
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 23, method: 'tools/call',
+      params: { name: 'get_maritime_activity', arguments: { country_code: 'FJ' } },
+    }));
+    const body = await res.json();
+    const data = JSON.parse(body.result.content[0].text);
+    const names = data.density_zones.map((z) => z.name).sort();
+    assert.deepEqual(names, ['Across the dateline', 'West of Fiji in-box'], 'dateline-adjacent point must match; far-Pacific point must not');
+  });
+
+  it('get_maritime_activity matches every longitude for full-span bboxes (AQ stored as -180..180)', async () => {
+    globalThis.fetch = async (url) => {
+      if (url.toString().includes('/api/maritime/v1/get-vessel-snapshot')) {
+        return new Response(JSON.stringify({
+          snapshot: {
+            snapshotAt: 1711620000000,
+            densityZones: [
+              { name: 'Drake Passage', location: { latitude: -65, longitude: -62 }, intensity: 4, shipsPerDay: 8, deltaPct: 0, note: '' },
+              { name: 'Ross Sea', location: { latitude: -75, longitude: 175 }, intensity: 1, shipsPerDay: 1, deltaPct: 0, note: '' },
+            ],
+            disruptions: [],
+          },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return originalFetch(url);
+    };
+
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 24, method: 'tools/call',
+      params: { name: 'get_maritime_activity', arguments: { country_code: 'AQ' } },
+    }));
+    const body = await res.json();
+    const data = JSON.parse(body.result.content[0].text);
+    assert.equal(data.total_zones, 2, 'a full-circle longitude span must not collapse under pad normalization');
+  });
+
+  it('get_maritime_activity works for countries whose bbox exceeds the 10° handler cap (e.g. JP)', async () => {
+    globalThis.fetch = async (url) => {
+      if (url.toString().includes('/api/maritime/v1/get-vessel-snapshot')) {
+        return new Response(JSON.stringify({
+          snapshot: {
+            snapshotAt: 1711620000000,
+            densityZones: [
+              { name: 'Tokyo Bay', location: { latitude: 35.4, longitude: 139.8 }, intensity: 60, shipsPerDay: 500, deltaPct: 1, note: '' },
+            ],
+            disruptions: [],
+          },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return originalFetch(url);
+    };
+
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 22, method: 'tools/call',
+      params: { name: 'get_maritime_activity', arguments: { country_code: 'JP' } },
+    }));
+    const body = await res.json();
+    assert.equal(body.error, undefined, 'JP (14°×16° bbox) must not error');
+    const data = JSON.parse(body.result.content[0].text);
+    assert.equal(data.total_zones, 1);
+    assert.equal(data.density_zones[0].name, 'Tokyo Bay');
   });
 
   it('get_maritime_activity returns error for unknown country code', async () => {
@@ -2590,7 +2678,7 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     // Sign for digest endpoint.
     const signed = await signInternalMcpRequest({
       method: 'GET',
-      url: 'https://worldmonitor.app/api/news/v1/list-feed-digest?lang=en&variant=geo',
+      url: 'https://worldmonitor.app/api/news/v1/list-feed-digest?lang=en&variant=full',
       body: null,
       userId: PRO_USER_ID,
       secret: HMAC_SECRET,

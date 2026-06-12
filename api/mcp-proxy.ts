@@ -222,6 +222,8 @@ function makeDeferred() {
 class SseSession {
   constructor(sseUrl, headers) {
     this._sseUrl = sseUrl;
+    this._originHost = new URL(sseUrl).host;
+    this._originProtocol = new URL(sseUrl).protocol;
     this._headers = headers;
     this._endpointUrl = null;
     this._endpointDeferred = makeDeferred();
@@ -282,6 +284,15 @@ class SseSession {
                 }
                 if (BLOCKED_HOST_PATTERNS.some(p => p.test(resolved.hostname))) {
                   this._endpointDeferred.reject(new Error('SSE endpoint host is blocked'));
+                  return;
+                }
+                // Pin endpoint to the same host as the original SSE URL to
+                // prevent a malicious server from redirecting via the endpoint
+                // event to an internal host (DNS rebinding / SSRF).
+                if (resolved.host !== this._originHost || resolved.protocol !== this._originProtocol) {
+                  this._endpointDeferred.reject(
+                    new Error('SSE endpoint host or protocol does not match origin server'),
+                  );
                   return;
                 }
                 this._endpointUrl = resolved.toString();

@@ -4,12 +4,12 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
   'resilience:static:NO': {
     wgi: {
       indicators: {
-        VA: { value: 1.9, year: 2025 },
-        PV: { value: 1.7, year: 2025 },
-        GE: { value: 1.8, year: 2025 },
-        RQ: { value: 1.9, year: 2025 },
-        RL: { value: 1.8, year: 2025 },
-        CC: { value: 1.9, year: 2025 },
+        'VA.EST': { value: 1.9, year: 2025 },
+        'PV.EST': { value: 1.7, year: 2025 },
+        'GE.EST': { value: 1.8, year: 2025 },
+        'RQ.EST': { value: 1.9, year: 2025 },
+        'RL.EST': { value: 1.8, year: 2025 },
+        'CC.EST': { value: 1.9, year: 2025 },
       },
     },
     infrastructure: {
@@ -41,12 +41,12 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
   'resilience:static:US': {
     wgi: {
       indicators: {
-        VA: { value: 0.9, year: 2025 },
-        PV: { value: 0.6, year: 2025 },
-        GE: { value: 1.1, year: 2025 },
-        RQ: { value: 1.2, year: 2025 },
-        RL: { value: 1.0, year: 2025 },
-        CC: { value: 1.1, year: 2025 },
+        'VA.EST': { value: 0.9, year: 2025 },
+        'PV.EST': { value: 0.6, year: 2025 },
+        'GE.EST': { value: 1.1, year: 2025 },
+        'RQ.EST': { value: 1.2, year: 2025 },
+        'RL.EST': { value: 1.0, year: 2025 },
+        'CC.EST': { value: 1.1, year: 2025 },
       },
     },
     infrastructure: {
@@ -78,12 +78,12 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
   'resilience:static:YE': {
     wgi: {
       indicators: {
-        VA: { value: -1.9, year: 2025 },
-        PV: { value: -2.3, year: 2025 },
-        GE: { value: -1.8, year: 2025 },
-        RQ: { value: -1.7, year: 2025 },
-        RL: { value: -2.0, year: 2025 },
-        CC: { value: -2.1, year: 2025 },
+        'VA.EST': { value: -1.9, year: 2025 },
+        'PV.EST': { value: -2.3, year: 2025 },
+        'GE.EST': { value: -1.8, year: 2025 },
+        'RQ.EST': { value: -1.7, year: 2025 },
+        'RL.EST': { value: -2.0, year: 2025 },
+        'CC.EST': { value: -2.1, year: 2025 },
       },
     },
     infrastructure: {
@@ -206,30 +206,17 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
   'sanctions:country-counts:v1': { NO: 2, US: 45, YE: 180, LB: 30 },
   'trade:restrictions:v1:tariff-overview:50': {
     restrictions: [
-      { reportingCountry: 'United States', status: 'IN_FORCE' },
-      { reportingCountry: 'United States', status: 'IN_FORCE' },
-      { affectedCountry: 'United States', status: 'PLANNED' },
-      { reportingCountry: 'Yemen', status: 'IN_FORCE' },
-      { reportingCountry: 'Yemen', status: 'IN_FORCE' },
-      { reportingCountry: 'Yemen', status: 'IN_FORCE' },
-      { affectedCountry: 'Yemen', status: 'PLANNED' },
-      { affectedCountry: 'Yemen', status: 'PLANNED' },
+      { reportingCountry: 'Norway', status: 'low' },
+      { reportingCountry: 'United States', status: 'low' },
     ],
-    _reporterCountries: ['US', 'CN', 'DE', 'JP', 'GB', 'IN', 'BR', 'RU', 'KR', 'AU', 'CA', 'MX', 'FR', 'IT', 'NL'],
+    _reporterCountries: ['NO', 'US', 'CN', 'DE', 'JP', 'GB', 'IN', 'BR', 'RU', 'KR', 'AU', 'CA', 'MX', 'FR', 'IT', 'NL'],
   },
   'trade:barriers:v1:tariff-gap:50': {
     barriers: [
-      { notifyingCountry: 'United States' },
-      { notifyingCountry: 'United States' },
-      { notifyingCountry: 'United States' },
-      { notifyingCountry: 'Yemen' },
-      { notifyingCountry: 'Yemen' },
-      { notifyingCountry: 'Yemen' },
-      { notifyingCountry: 'Yemen' },
-      { notifyingCountry: 'Yemen' },
-      { notifyingCountry: 'Yemen' },
+      { notifyingCountry: 'Norway', status: 'high' },
+      { notifyingCountry: 'United States', status: 'low' },
     ],
-    _reporterCountries: ['US', 'CN', 'DE', 'JP', 'GB', 'IN', 'BR', 'RU', 'KR', 'AU', 'CA', 'MX', 'FR', 'IT', 'NL'],
+    _reporterCountries: ['NO', 'US', 'CN', 'DE', 'JP', 'GB', 'IN', 'BR', 'RU', 'KR', 'AU', 'CA', 'MX', 'FR', 'IT', 'NL'],
   },
   'cyber:threats:v2': {
     threats: [

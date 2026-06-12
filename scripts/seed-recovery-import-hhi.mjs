@@ -39,6 +39,7 @@ if (COMTRADE_KEYS.length === 0) {
   console.error('[seed] import-hhi: COMTRADE_API_KEYS is required. Set the env var (comma-separated keys) and retry.');
 }
 const COMTRADE_URL = 'https://comtradeapi.un.org/data/v1/get/C/A/HS';
+const COMTRADE_MAX_RECORDS = 250_000;
 const DEFAULT_PER_KEY_DELAY_MS = 1_500;
 const MAX_PER_KEY_DELAY_MS = 60_000;
 const MIN_429_RETRY_BACKOFF_MS = 5_000;
@@ -154,9 +155,13 @@ const ALL_REPORTERS = Object.values(UN_TO_ISO2).filter(c => c.length === 2);
 // The 4y window gives us a chance to pick a reporter's latest
 // non-empty year without degrading the result for on-time reporters
 // (they still get their newest year on the completeness tiebreak).
-export function parseRecords(data) {
+export function parseRecords(data, options = {}) {
   const records = data?.data ?? [];
   if (!Array.isArray(records)) return { rows: [], year: null };
+  const maxRecords = Number(options?.maxRecords);
+  if (Number.isFinite(maxRecords) && maxRecords > 0 && records.length >= maxRecords) {
+    return { rows: [], year: null, truncated: true, rawCount: records.length };
+  }
   const valid = records.filter(r => r && Number(r.primaryValue ?? 0) > 0);
   if (valid.length === 0) return { rows: [], year: null };
   const byPeriod = new Map();
@@ -263,7 +268,7 @@ export async function fetchImportsForReporter(reporterCode, apiKey, periodParam 
   // truncation. cmdCode=TOTAL with the 4y window typically returns
   // ~200 partners × 4 years = ~800 rows for an active reporter, so the
   // 250000 cap is generous belt-and-suspenders headroom.
-  url.searchParams.set('maxRecords', '250000');
+  url.searchParams.set('maxRecords', String(COMTRADE_MAX_RECORDS));
 
   async function once() {
     return fetch(url.toString(), {
@@ -317,7 +322,15 @@ export async function fetchImportsForReporter(reporterCode, apiKey, periodParam 
     }
     return { records: [], year: null, status: resp.status, errorMessage };
   }
-  const { rows, year } = parseRecords(await resp.json());
+  const parsed = parseRecords(await resp.json(), { maxRecords: COMTRADE_MAX_RECORDS });
+  const { rows, year } = parsed;
+  if (parsed.truncated) {
+    const errorMessage = `Comtrade returned ${parsed.rawCount} rows at maxRecords=${COMTRADE_MAX_RECORDS}; omitting reporter to avoid truncated HHI`;
+    if (IMPORT_HHI_VERBOSE) {
+      console.warn(`  [verbose] reporter=${reporterCode} status=${resp.status} ${errorMessage}`);
+    }
+    return { records: [], year: null, status: resp.status, errorMessage, truncated: true };
+  }
   if (IMPORT_HHI_VERBOSE) {
     console.log(`  [verbose] reporter=${reporterCode} status=${resp.status} parsedRows=${rows.length} year=${year ?? 'null'}`);
   }
@@ -515,8 +528,10 @@ async function fetchImportHhi() {
 // shifts until empty; no coordination needed because Array.shift is atomic
 // in single-threaded Node.js.
 export function validate(data) {
-  return typeof data?.countries === 'object'
-    && Object.keys(data.countries).length >= MIN_IMPORT_HHI_PUBLISH_COUNTRY_COUNT;
+  const countries = data?.countries;
+  if (!countries || typeof countries !== 'object') return false;
+  return Object.keys(countries).length >= MIN_IMPORT_HHI_PUBLISH_COUNTRY_COUNT
+    && WATCH_REPORTERS.every(iso2 => Boolean(countries[iso2]));
 }
 
 export function declareRecords(data) {

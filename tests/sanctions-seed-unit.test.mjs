@@ -32,6 +32,7 @@ const {
   compactNote,
   sortEntries,
   buildCountryPressure,
+  buildCountryCounts,
   buildProgramPressure,
 } = ctx;
 
@@ -151,6 +152,25 @@ describe('buildCountryPressure', () => {
   });
 });
 
+describe('buildCountryCounts', () => {
+  it('keeps all country counts even when pressure rows are top-12 truncated', () => {
+    const entries = Array.from({ length: 13 }, (_, i) => ({
+      countryCodes: [`${String.fromCharCode(65 + i)}${String.fromCharCode(65 + i)}`],
+      countryNames: [`Country${i}`],
+      isNew: false,
+      entityType: 'SANCTIONS_ENTITY_TYPE_ENTITY',
+    }));
+
+    assert.equal(buildCountryPressure(entries).length, 12,
+      'pressure rows remain a top-12 display summary');
+    const counts = normalize(buildCountryCounts(entries));
+    assert.equal(Object.keys(counts).length, 13,
+      'country counts must retain the all-country sanctions pressure map for downstream scoring');
+    assert.equal(counts.MM, 1,
+      'the 13th country must not disappear from the all-country count map');
+  });
+});
+
 // ---------------------------------------------------------------------------
 // buildProgramPressure
 // ---------------------------------------------------------------------------
@@ -175,4 +195,3 @@ describe('buildProgramPressure', () => {
     assert.equal(buildProgramPressure(entries).length, 12);
   });
 });
-

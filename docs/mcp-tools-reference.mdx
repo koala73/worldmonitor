@@ -16,7 +16,7 @@ Cache-backed tools (the majority) include `cached_at` (ISO timestamp) and `stale
 The `curl` examples below all assume you've exported your API key:
 
 ```bash
-export WM_KEY="wm_live_..."  # or use the OAuth bearer token instead — see /mcp-server#authentication
+export WM_KEY="wm_0123456789abcdef0123456789abcdef01234567"  # or use the OAuth bearer token instead — see /mcp-server#authentication
 ```
 
 If you've completed the OAuth flow instead, replace `-H "X-WorldMonitor-Key: $WM_KEY"` with `-H "Authorization: Bearer $TOKEN"` in each example.
@@ -153,13 +153,25 @@ Things to know:
 - Per-array `items.properties` lists known fields but does NOT enumerate every observed key — the schema is a **hint surface** for JMESPath authoring, not a bytecode-level contract.
 - Schemas describe the success-path payload only. The two catalog-class soft envelopes (`_budget_exceeded`, `_jmespath_error`) are NOT in the per-tool schema — they replace the payload entirely and have their own shapes. See the [MCP Error Catalog](/mcp-error-catalog) for both envelopes.
 
+Universal arguments:
+
+- Every tool accepts `jmespath` (string), an optional server-side projection applied after per-tool filters and `summary`.
+- Every cache tool also accepts `summary` (boolean), which returns counts plus 3-item samples instead of full lists.
+- The per-tool tables below list only tool-specific arguments declared by the registry; the universal injected arguments are intentionally documented once here.
+
 ## Markets & economy
 
 ### `get_market_data`
 
 Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance, ETF flows, and Gulf market quotes from WorldMonitor's curated bootstrap cache.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `symbols` | `array<string>` | Tickers to keep, e.g. ["AAPL","GC=F","BTC"]. Case-insensitive; matches equity/commodity/crypto/gulf quotes, sector ETFs, and ETF-flow tickers. Omit for the full snapshot. |
+| `asset_class` | `array<string: equity / commodity / crypto / sectors / etf / gulf / sentiment>` | Restrict the response to one or more asset classes. Omit for all. |
+| `limit` | number | Cap each per-class quote list (stocks/commodities/crypto/gulf/sectors/ETF flows) to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/market/v1/get-fear-greed-index`, `GET /api/market/v1/get-sector-summary`, `GET /api/market/v1/list-commodity-quotes`, `GET /api/market/v1/list-crypto-quotes`, `GET /api/market/v1/list-etf-flows`, `GET /api/market/v1/list-gulf-quotes`, `GET /api/market/v1/list-market-quotes`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -184,7 +196,13 @@ curl -s https://worldmonitor.app/mcp \
 
 Macro economic indicators: Fed Funds rate (FRED), economic calendar events, fuel prices, ECB FX rates, EU yield curve, earnings calendar, COT positioning, energy storage data, BIS household debt service ratio (DSR, quarterly, leading indicator of household financial stress across ~40 advanced economies), and BIS residential + commercial property price indices (real, quarterly).
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `dataset` | `array<string: fedfunds / econ-calendar / fuel-prices / ecb-fx-rates / yield-curve-eu / spending / earnings-calendar / cot / dsr / property-residential / property-commercial>` | Restrict the response to one or more sub-datasets. Omit for the full economic bundle. |
+| `country` | string | Filter the country-keyed datasets (fuel-prices, BIS DSR/property, economic calendar) to one ISO 3166-1 alpha-2 code. |
+| `limit` | number | Cap each list dataset (calendar, spending, earnings) to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/economic/v1/get-ecb-fx-rates`, `GET /api/economic/v1/get-economic-calendar`, `GET /api/economic/v1/get-eu-yield-curve`, `GET /api/economic/v1/list-fuel-prices`, `GET /api/market/v1/get-cot-positioning`, `GET /api/market/v1/list-earnings-calendar`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -209,7 +227,12 @@ curl -s https://worldmonitor.app/mcp \
 
 Per-country macroeconomic indicators from IMF WEO (~210 countries, monthly cadence). Bundles fiscal/external balance (inflation, current account, gov revenue/expenditure/primary balance, CPI), growth & per-capita (real GDP growth, GDP/capita USD & PPP, savings & investment rates, savings-investment gap), labor & demographics (unemployment, population), and external trade (current account USD, import/export volume % changes). Latest available year per series. Use for country-level economic screening, peer benchmarking, and stagflation/imbalance flags. NOTE: export/import LEVELS in USD (exportsUsd, importsUsd, tradeBalanceUsd) are returned as null — WEO retracted broad coverage for BX/BM indicators in 2026-04; use currentAccountUsd or volume changes (import/exportVolumePctChg) instead.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `countries` | `array<string>` | ISO 3166-1 alpha-2 country codes to keep across all four IMF datasets (e.g. ["US","DE","CN"]). Omit for all ~210 countries. |
+| `limit` | integer | Cap each IMF dataset country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap). |
 
 - **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -234,7 +257,12 @@ curl -s https://worldmonitor.app/mcp \
 
 Eurostat annual house price index (prc_hpi_a, base 2015=100) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes the latest value, prior value, date, unit, and a 10-year sparkline series. Complements BIS WS_SPP with broader EU coverage for the Housing cycle tile.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `countries` | `array<string>` | Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all. |
+| `limit` | integer | Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap). |
 
 - **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -259,7 +287,12 @@ curl -s https://worldmonitor.app/mcp \
 
 Eurostat quarterly general government gross debt (gov_10q_ggdebt, %GDP) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes latest value, prior value, quarter label, and an 8-quarter sparkline series. Provides fresher debt-trajectory signal than annual IMF GGXWDG_NGDP for EU panels.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `countries` | `array<string>` | Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all. |
+| `limit` | integer | Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap). |
 
 - **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -284,7 +317,12 @@ curl -s https://worldmonitor.app/mcp \
 
 Eurostat monthly industrial production index (sts_inpr_m, NACE B-D industry excl. construction, SCA, base 2021=100) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes latest value, prior value, month label, and a 12-month sparkline series. Leading indicator of real-economy activity used by the "Real economy pulse" sparkline.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `countries` | `array<string>` | Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all. |
+| `limit` | integer | Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap). |
 
 - **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -309,7 +347,13 @@ curl -s https://worldmonitor.app/mcp \
 
 Global trade and pricing indicators: US tariff trends (HTS-coded), BigMac index, FAO Food Price Index, and per-country national debt levels.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `dataset` | `array<string: tariffs / bigmac / fao-ffpi / national-debt>` | Restrict the response to one or more sub-datasets. Omit for the full bundle. |
+| `country` | string | Filter the per-country datasets to one ISO 3166-1 alpha-2 country code (e.g. "US"). It is translated to alpha-3 internally for the national-debt dataset; passing an alpha-3 code directly also works. |
+| `limit` | number | Cap each list dataset (tariff datapoints, BigMac countries, debt entries) to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/economic/v1/get-fao-food-price-index`, `GET /api/economic/v1/get-national-debt`, `GET /api/economic/v1/list-bigmac-prices`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -392,7 +436,14 @@ curl -s https://worldmonitor.app/mcp \
 
 Active Polymarket event contracts with current probabilities. Covers geopolitical, economic, and election prediction markets.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `category` | string: geopolitical / tech / finance | Restrict to one market category bucket. Omit for all three. |
+| `query` | string | Keep only markets whose title contains this text (case-insensitive). |
+| `source` | string: kalshi / polymarket | Filter to one prediction-market source. |
+| `limit` | number | Cap each category bucket to at most this many markets (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/prediction/v1/list-prediction-markets`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -419,7 +470,13 @@ curl -s https://worldmonitor.app/mcp \
 
 Energy supply, prices, storage, disruptions, and policy: EIA petroleum stocks, electricity prices (Ember), gas storage (GIE), fuel shortages, fossil & renewable shares, active energy disruptions, government crisis policies.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `dataset` | `array<string: eia-petroleum / electricity / ember / gas-storage / fuel-shortages / disruptions / crisis-policies / fossil-share / renewable>` | Restrict the response to one or more energy sub-datasets. Omit for the full bundle. |
+| `country` | string | Filter the country-keyed datasets (Ember electricity mix, gas storage, fuel shortages, energy disruptions, fossil-share) to one ISO 3166-1 alpha-2 code. |
+| `limit` | number | Cap each list-bearing energy slice (crisis-policies, electricity regions, gas-storage countries, World Bank renewable history/regions) to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/economic/v1/get-energy-crisis-policies`, `GET /api/supply-chain/v1/get-fuel-shortage-detail`, `GET /api/supply-chain/v1/list-energy-disruptions`, `GET /api/supply-chain/v1/list-fuel-shortages`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -446,7 +503,13 @@ curl -s https://worldmonitor.app/mcp \
 
 Active armed conflict events (UCDP, Iran), unrest events with geo-coordinates, and country risk scores. Covers ongoing conflicts, protests, and instability indices worldwide.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `country` | string | Filter to one country — matches the country name on conflict/unrest events and the ISO 3166-1 alpha-2 region code on risk scores (case-insensitive). |
+| `min_fatalities` | number | Drop events below this fatality count (UCDP deathsBest / unrest fatalities). |
+| `limit` | number | Cap each event list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/conflict/v1/list-iran-events`, `GET /api/conflict/v1/list-ucdp-events`, `GET /api/unrest/v1/list-unrest-events`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -508,6 +571,7 @@ AI-generated per-country intelligence brief. Produces an LLM-analyzed geopolitic
 
 - **API endpoints:** `GET /api/intelligence/v1/get-country-intel-brief`
 - **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Worst-case total budget **~24s** (2s context-digest fetch + 22s brief generation, sequential).
+- **Sources:** returns a bounded `sources` array with original article links from the digest items used to ground the country context. URLs are copied from feed data, not generated by the LLM.
 
 <CodeGroup>
 
@@ -528,7 +592,15 @@ curl -s https://worldmonitor.app/mcp \
 
 AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals, and security advisories from WorldMonitor's intelligence layer.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `topic` | string: conflict / economy / cyber / nuclear / intelligence / maritime | Filter GDELT intelligence to a single topic. |
+| `category` | string | Filter top news stories to one category (e.g. "conflict", "economy"; fallback is "general"). |
+| `country` | string | Filter top stories and travel advisories to one ISO 3166-1 alpha-2 country code (case-insensitive). |
+| `alerts_only` | boolean | Keep only top stories flagged as alerts. |
+| `limit` | number | Cap each list (top stories, signals, advisories) to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/intelligence/v1/list-cross-source-signals`, `GET /api/intelligence/v1/search-gdelt-documents`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -553,7 +625,14 @@ curl -s https://worldmonitor.app/mcp \
 
 Active cyber threat intelligence: malware IOCs (URLhaus, Feodotracker), CISA known exploited vulnerabilities, and active command-and-control infrastructure.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `threat_type` | string | Filter to one threat type (case-insensitive substring, e.g. "malware", "vulnerability", "c2"). |
+| `min_severity` | string: low / medium / high / critical | Drop threats below this severity level. |
+| `country` | string | Filter to one ISO 3166-1 alpha-2 country code (many threats have no country and are dropped by this filter). |
+| `limit` | number | Cap the threat list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -578,7 +657,14 @@ curl -s https://worldmonitor.app/mcp \
 
 OFAC SDN sanctioned entities list and sanctions pressure scores by country. Useful for compliance screening and geopolitical pressure analysis.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `country` | string | Filter sanctioned entities and pressure scores to one ISO 3166-1 alpha-2 country code. |
+| `entity_type` | string | Filter to one entity type (case-insensitive substring, e.g. "vessel", "aircraft", "person", "entity"). |
+| `query` | string | Keep only sanctioned entities whose name contains this text (case-insensitive). |
+| `limit` | number | Cap the entity list and recent pressure entries to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/sanctions/v1/list-sanctions-pressure`, `GET /api/sanctions/v1/lookup-sanction-entity`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -603,7 +689,12 @@ curl -s https://worldmonitor.app/mcp \
 
 Reddit geopolitical social velocity: top posts from worldnews, geopolitics, and related subreddits with engagement scores and trend signals.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `subreddit` | string | Filter to one subreddit (e.g. "worldnews", "geopolitics"). |
+| `limit` | number | Cap the post list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/intelligence/v1/get-social-velocity`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -628,7 +719,13 @@ curl -s https://worldmonitor.app/mcp \
 
 Theater posture assessment and military risk scores. Reflects aggregated military positioning and escalation signals across global theaters.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `theater` | string | Filter to one theater by id (case-insensitive substring, e.g. "iran", "taiwan", "baltic", "korea"). |
+| `posture_level` | string | Filter to a single posture level. |
+| `limit` | number | Cap the theaters list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/military/v1/get-theater-posture`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -653,11 +750,17 @@ curl -s https://worldmonitor.app/mcp \
 
 Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data (chokepoint geometry, canonical 13-chokepoint registry) and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `chokepoint` | string | Filter to one chokepoint — matches by case-insensitive substring across the differing identifiers used by each dataset (e.g. "hormuz" matches "hormuz_strait", "Strait of Hormuz"). |
+| `dataset` | `array<string: transit-summaries / chokepoint_transits / _countries / chokepoint-baselines / ref / chokepoint-flows>` | Restrict the response to one or more sub-datasets. Omit for the full bundle. |
+| `limit` | number | Cap the chokepoint-baselines list and the _countries ISO2 index to at most this many items (default 30, pass 0 for no cap). Keyed-object maps (transit-summaries, chokepoint_transits, ref, chokepoint-flows) are intentionally not capped — use the `chokepoint` filter instead. |
 
 - **API endpoints:** `GET /api/intelligence/v1/get-country-port-activity`, `GET /api/supply-chain/v1/get-chokepoint-status`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget (per slice):** `stale: true` flags when ANY contributing slice exceeds its individual budget — **30 min** for live transit summaries (relay), **36 h** for PortWatch port activity, **14 d** for chokepoint flows, and up to **~400 d** for the static chokepoint registry / geographic baselines. The bundle's `cached_at` reflects the oldest contributing seed; `stale: true` doesn't mean ALL the data is old.
+- **Freshness budget (per slice):** `stale: true` flags when ANY contributing slice exceeds its individual budget — **30 min** for live transit summaries (relay), **36 h** for PortWatch port activity, **12 h** for chokepoint flows, **14 d** for the PortWatch chokepoint reference, and up to **~400 d** for the static chokepoint registry / geographic baselines. The bundle's `cached_at` reflects the oldest contributing seed; `stale: true` doesn't mean ALL the data is old.
 
 <CodeGroup>
 
@@ -678,7 +781,12 @@ curl -s https://worldmonitor.app/mcp \
 
 Positive geopolitical events: diplomatic agreements, humanitarian aid, development milestones, and peace initiatives worldwide.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `category` | string: science-health / nature-wildlife / climate-wins / innovation-tech / humanity-kindness / culture-community | Filter to one positive-event category. |
+| `limit` | number | Cap the event list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/positive-events/v1/list-positive-geo-events`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -705,7 +813,14 @@ curl -s https://worldmonitor.app/mcp \
 
 Airport delays, NOTAM airspace closures, and tracked military aircraft. Covers FAA delay data and active airspace restrictions.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `disrupted_only` | boolean | Drop airports with severity "normal" — keep only airports actually experiencing delays/closures. The bootstrap lists every monitored airport, so most rows are non-events without this. |
+| `country` | string | Filter to one country by name (case-insensitive substring, e.g. "united states"). |
+| `iata` | string | Filter to a single airport by IATA code (e.g. "JFK"). |
+| `limit` | number | Cap the alert list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -787,7 +902,13 @@ curl -s https://worldmonitor.app/mcp \
 
 Dry bulk shipping stress index, customs revenue flows, and COMTRADE bilateral trade data. Tracks global supply chain pressure and trade disruptions.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `dataset` | `array<string: shipping_stress / customs-revenue / flows>` | Restrict the response to one or more sub-datasets (dry-bulk shipping stress / customs revenue / COMTRADE flows). Omit for all. |
+| `commodity` | string | Filter COMTRADE flows to one commodity — matches the HS code exactly or the commodity description by substring (e.g. "2709" or "crude"). |
+| `limit` | number | Cap each list dataset (carriers, months, flows) to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/supply-chain/v1/get-shipping-stress`, `GET /api/trade/v1/get-customs-revenue`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -812,7 +933,13 @@ curl -s https://worldmonitor.app/mcp \
 
 Internet infrastructure health: Cloudflare Radar outages and service status for major cloud providers and internet services.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `country` | string | Filter to one country by name (case-insensitive substring). |
+| `severity` | string | Filter to one outage severity (case-insensitive substring). |
+| `limit` | number | Cap the outage list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/infrastructure/v1/list-internet-outages`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -910,7 +1037,13 @@ curl -s https://worldmonitor.app/mcp \
 
 Climate intelligence: temperature/precipitation anomalies (vs 30-year WMO normals), climate-relevant disaster alerts (ReliefWeb/GDACS/FIRMS), atmospheric CO2 trend (NOAA Mauna Loa), air quality (OpenAQ/WAQI PM2.5 stations), Arctic sea ice extent and ocean heat indicators (NSIDC/NOAA), weather alerts, and climate news.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `dataset` | `array<string: anomalies / disasters / co2-monitoring / air-quality / ocean-ice / news-intelligence / alerts>` | Restrict the response to one or more climate sub-datasets. Omit for the full bundle. |
+| `country` | string | Filter the country-tagged datasets (climate disasters, air-quality stations) to one ISO 3166-1 alpha-2 code. |
+| `limit` | number | Cap each list dataset (anomalies, disasters, stations, news, alerts) to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/climate/v1/get-co2-monitoring`, `GET /api/climate/v1/get-ocean-ice-data`, `GET /api/climate/v1/list-air-quality-data`, `GET /api/climate/v1/list-climate-anomalies`, `GET /api/climate/v1/list-climate-disasters`, `GET /api/climate/v1/list-climate-news`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -935,7 +1068,14 @@ curl -s https://worldmonitor.app/mcp \
 
 Recent earthquakes (USGS), active wildfires (NASA FIRMS), and natural hazard events. Includes magnitude, location, and threat severity.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `dataset` | `array<string: earthquakes / wildfires / other>` | Restrict to one or more hazard datasets (earthquakes / wildfires / other natural events). Omit for all. |
+| `min_magnitude` | number | Drop earthquakes and natural events below this magnitude. |
+| `active_only` | boolean | Keep only natural events that are still active (not closed). |
+| `limit` | number | Cap each hazard list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/natural/v1/list-natural-events`, `GET /api/seismology/v1/list-earthquakes`, `GET /api/wildfire/v1/list-fire-detections`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -960,7 +1100,13 @@ curl -s https://worldmonitor.app/mcp \
 
 Radiation observation levels from global monitoring stations. Flags anomalous readings that may indicate nuclear incidents.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `country` | string | Filter to one country by name (case-insensitive substring). |
+| `anomalous_only` | boolean | Drop observations with severity "normal" — keep only elevated/spike readings. |
+| `limit` | number | Cap the observation list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/radiation/v1/list-radiation-observations`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -985,7 +1131,13 @@ curl -s https://worldmonitor.app/mcp \
 
 Tech and research event signals: emerging technology events bootstrap data from curated research feeds.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `type` | string: conference / earnings / ipo / other | Filter to one tech-event type. |
+| `source` | string | Filter to one source feed (e.g. "techmeme", "dev.events", "curated"). |
+| `limit` | number | Cap the event list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/research/v1/list-tech-events`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -1012,7 +1164,15 @@ curl -s https://worldmonitor.app/mcp \
 
 Active disease outbreaks (WHO/ECDC etc.) and global air-quality station readings (OpenAQ/WAQI PM2.5). For health-risk screening.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `signal_type` | `array<string: outbreaks / air-quality>` | Restrict to disease outbreaks, air-quality stations, or both. Omit for both. |
+| `country` | string | Filter outbreaks and air-quality stations to one ISO 3166-1 alpha-2 country code. |
+| `disease` | string | Keep only outbreaks whose disease name contains this text (case-insensitive). |
+| `min_aqi` | number | Drop air-quality stations below this AQI value. |
+| `limit` | number | Cap the outbreak and station lists to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/health/v1/list-air-quality-alerts`, `GET /api/health/v1/list-disease-outbreaks`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -1039,7 +1199,12 @@ curl -s https://worldmonitor.app/mcp \
 
 Refugee and IDP counts by country (UNHCR annual data).
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `countries` | `array<string>` | ISO 3166-1 alpha-3 country codes to keep (e.g. ["SYR","UKR","AFG"]). Matches both per-country totals and origin/asylum flows. Omit for all. |
+| `limit` | number | Cap the per-country and top-flow lists to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/displacement/v1/get-displacement-summary`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -1074,6 +1239,7 @@ AI-generated world intelligence brief. Fetches the latest geopolitical headlines
 
 - **API endpoints:** `GET /api/news/v1/list-feed-digest`, `POST /api/news/v1/summarize-article`
 - **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Worst-case total budget **~24s** (6s digest fetch + 18s LLM summarization, sequential).
+- **Sources:** returns a bounded `sources` array with original article links from the feed digest items sent as grounding inputs. URLs are copied from feed data, not generated by the LLM.
 
 <CodeGroup>
 
@@ -1153,7 +1319,13 @@ curl -s https://worldmonitor.app/mcp \
 
 AI-generated geopolitical and economic forecasts from WorldMonitor's predictive models. Covers upcoming risk events and probability assessments.
 
-**Parameters:** none
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `domain` | string | Filter to one forecast domain (exact, case-insensitive — e.g. "shipping", "energy", "macro"). |
+| `region` | string | Filter to one region/theater (case-insensitive substring). |
+| `limit` | number | Cap the forecast list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/forecast/v1/get-forecasts`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -1184,7 +1356,7 @@ Returns the full uncompressed definition of any other tool by name. Use when the
 |-----------|------|----------|-------------|
 | `tool_name` | string | **yes** | Exact tool name from `tools/list` (e.g. `"get_market_data"`). |
 
-**Response shape:** identical to a single `tools/list` entry — `{ name, description, inputSchema, annotations }` — with the full uncompressed `description` and the same `inputSchema.properties` (including injected `summary` for cache tools and `jmespath` for every tool).
+**Response shape:** identical to a single `tools/list` entry — `{ name, description, inputSchema, outputSchema, annotations }` — with the full uncompressed `description` and the same `inputSchema.properties` (including injected `summary` for cache tools and `jmespath` for every tool).
 
 **Soft errors** (HTTP 200, returned inside the normal `content[0].text` envelope — NOT JSON-RPC errors):
 

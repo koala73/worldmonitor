@@ -14,7 +14,7 @@ import { getNaturalEventIcon } from '@/services/eonet';
 import type { WeatherAlert } from '@/services/weather';
 import type { RadiationObservation } from '@/services/radiation';
 import { getSeverityColor } from '@/services/weather';
-import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime';
+import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/smart-poll-loop';
 import {
   MAP_URLS,
   INTEL_HOTSPOTS,
@@ -49,6 +49,7 @@ import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor
 import { tokenizeForMatch, matchKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { MapPopup } from './MapPopup';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
+import type { AcledConflictEvent } from '@/generated/client/worldmonitor/conflict/v1/service_client';
 import {
   updateHotspotEscalation,
   getHotspotEscalation,
@@ -57,23 +58,43 @@ import {
   setGeoAlertGetter,
 } from '@/services/hotspot-escalation';
 import { getCountryScore } from '@/services/country-instability';
+import { getCachedCountryScoreValue } from '@/services/cached-risk-scores';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
 import { getCountryAtCoordinates, getCountryBbox } from '@/services/country-geometry';
 import type { CountryClickPayload } from './DeckGLMap';
 import { t } from '@/services/i18n';
 import type { ScenarioVisualState } from '@/config/scenario-templates';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import {
+  getLayerExplanation,
+  getLayersForVariant,
+  hasCuratedLayerExplanation,
+  resolveLayerLabel,
+  type MapVariant,
+} from '@/config/map-layer-definitions';
+import { renderLayerExplanationCard } from '@/utils/layer-explanation-card';
+import {
+  createCountryClickGestureTracker,
+  finishCountryClickGesture,
+  shouldSuppressCountryClick,
+  startCountryClickGesture,
+  updateCountryClickGestureDrag,
+} from './map-interaction-guard';
 
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
 
-interface MapState {
+export interface MapState {
   zoom: number;
   pan: { x: number; y: number };
   view: MapView;
   layers: MapLayers;
   timeRange: TimeRange;
+}
+
+export interface MapComponentOptions {
+  chrome?: boolean;
 }
 
 interface HotspotWithBreaking extends Hotspot {
@@ -117,6 +138,7 @@ export class MapComponent {
   private clusterCanvas: HTMLCanvasElement;
   private clusterGl: WebGLRenderingContext | null = null;
   private state: MapState;
+  private layerExplanationOutsideClickHandler: ((event: MouseEvent) => void) | null = null;
   private worldData: WorldTopology | null = null;
   private countryFeatures: Feature<Geometry>[] | null = null;
   private isResizing = false;
@@ -135,6 +157,7 @@ export class MapComponent {
   private cableAdvisories: CableAdvisory[] = [];
   private repairShips: RepairShip[] = [];
   private healthByCableId: Record<string, CableHealthRecord> = {};
+  private conflictEvents: AcledConflictEvent[] = [];
   private protests: SocialUnrestEvent[] = [];
   private flightDelays: AirportDelayAlert[] = [];
   private aircraftPositions: PositionSample[] = [];
@@ -176,10 +199,11 @@ export class MapComponent {
   private readonly MIN_RENDER_INTERVAL_MS = 100;
   private healthCheckLoop: SmartPollLoopHandle | null = null;
 
-  constructor(container: HTMLElement, initialState: MapState) {
+  constructor(container: HTMLElement, initialState: MapState, options: MapComponentOptions = {}) {
     this.container = container;
     this.state = initialState;
     this.hotspots = [...INTEL_HOTSPOTS];
+    const chrome = options.chrome ?? true;
 
     this.wrapper = document.createElement('div');
     this.wrapper.className = 'map-wrapper';
@@ -201,17 +225,19 @@ export class MapComponent {
     this.wrapper.appendChild(this.overlays);
 
     container.appendChild(this.wrapper);
-    container.appendChild(this.createControls());
-    container.appendChild(this.createTimeSlider());
-    container.appendChild(this.createLayerToggles());
-    container.appendChild(this.createLegend());
-    this.healthCheckLoop = startSmartPollLoop(() => { this.runHealthCheck(); }, {
-      intervalMs: 30_000,
-      pauseWhenHidden: true,
-      refreshOnVisible: false,
-      runImmediately: false,
-      jitterFraction: 0,
-    });
+    if (chrome) {
+      container.appendChild(this.createControls());
+      container.appendChild(this.createTimeSlider());
+      container.appendChild(this.createLayerToggles());
+      container.appendChild(this.createLegend());
+      this.healthCheckLoop = startSmartPollLoop(() => { this.runHealthCheck(); }, {
+        intervalMs: 30_000,
+        pauseWhenHidden: true,
+        refreshOnVisible: false,
+        runImmediately: false,
+        jitterFraction: 0,
+      });
+    }
 
     this.svg = d3.select(svgElement);
     this.baseLayerGroup = this.svg.append('g').attr('class', 'map-base');
@@ -374,6 +400,13 @@ export class MapComponent {
 
 
 
+  private getLayerControlLabel(layer: keyof MapLayers): string {
+    if (layer === 'sanctions') return t('components.deckgl.layerHelp.labels.sanctions');
+
+    const def = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'flat').find(item => item.key === layer);
+    return def ? resolveLayerLabel(def, t) : String(layer);
+  }
+
   private createLayerToggles(): HTMLElement {
     const toggles = document.createElement('div');
     toggles.className = 'layer-toggles';
@@ -433,43 +466,6 @@ export class MapComponent {
                  : SITE_VARIANT === 'happy' ? happyLayers
                  : SITE_VARIANT === 'energy' ? energyLayers
                  : fullLayers;
-    const layerLabelKeys: Partial<Record<keyof MapLayers, string>> = {
-      hotspots: 'components.deckgl.layers.intelHotspots',
-      conflicts: 'components.deckgl.layers.conflictZones',
-      bases: 'components.deckgl.layers.militaryBases',
-      nuclear: 'components.deckgl.layers.nuclearSites',
-      irradiators: 'components.deckgl.layers.gammaIrradiators',
-      military: 'components.deckgl.layers.militaryActivity',
-      cables: 'components.deckgl.layers.underseaCables',
-      pipelines: 'components.deckgl.layers.pipelines',
-      outages: 'components.deckgl.layers.internetOutages',
-      datacenters: 'components.deckgl.layers.aiDataCenters',
-      ais: 'components.deckgl.layers.shipTraffic',
-      flights: 'components.deckgl.layers.flightDelays',
-      natural: 'components.deckgl.layers.naturalEvents',
-      weather: 'components.deckgl.layers.weatherAlerts',
-      economic: 'components.deckgl.layers.economicCenters',
-      waterways: 'components.deckgl.layers.strategicWaterways',
-      startupHubs: 'components.deckgl.layers.startupHubs',
-      cloudRegions: 'components.deckgl.layers.cloudRegions',
-      accelerators: 'components.deckgl.layers.accelerators',
-      techHQs: 'components.deckgl.layers.techHQs',
-      techEvents: 'components.deckgl.layers.techEvents',
-      stockExchanges: 'components.deckgl.layers.stockExchanges',
-      financialCenters: 'components.deckgl.layers.financialCenters',
-      centralBanks: 'components.deckgl.layers.centralBanks',
-      commodityHubs: 'components.deckgl.layers.commodityHubs',
-      gulfInvestments: 'components.deckgl.layers.gulfInvestments',
-      iranAttacks: 'components.deckgl.layers.iranAttacks',
-      gpsJamming: 'components.deckgl.layers.gpsJamming',
-      ciiChoropleth: 'components.deckgl.layers.ciiChoropleth',
-    };
-    const getLayerLabel = (layer: keyof MapLayers): string => {
-      if (layer === 'sanctions') return t('components.deckgl.layerHelp.labels.sanctions');
-      const key = layerLabelKeys[layer];
-      return key ? t(key) : layer;
-    };
-
     const MAX_SVG_LAYERS = 9;
     const enforceLayerLimit = () => {
       const allBtns = Array.from(toggles.querySelectorAll<HTMLButtonElement>('.layer-toggle'));
@@ -495,15 +491,37 @@ export class MapComponent {
     };
 
     layers.forEach((layer) => {
+      const layerLabel = this.getLayerControlLabel(layer);
+      const explainLabel = `Explain ${layerLabel} layer`;
+      const row = document.createElement('div');
+      row.className = 'layer-toggle-row';
+      row.dataset.layer = layer;
+
       const btn = document.createElement('button');
       btn.className = `layer-toggle ${this.state.layers[layer] ? 'active' : ''}`;
       btn.dataset.layer = layer;
-      btn.textContent = getLayerLabel(layer);
+      btn.textContent = layerLabel;
       btn.addEventListener('click', () => {
         this.toggleLayer(layer);
         enforceLayerLimit();
       });
-      toggles.appendChild(btn);
+      row.appendChild(btn);
+
+      const explainBtn = document.createElement('button');
+      explainBtn.type = 'button';
+      explainBtn.className = `layer-explain-btn ${hasCuratedLayerExplanation(layer) ? 'has-layer-explanation' : ''}`;
+      explainBtn.dataset.layer = layer;
+      explainBtn.textContent = 'i';
+      explainBtn.title = explainLabel;
+      explainBtn.setAttribute('aria-label', explainLabel);
+      explainBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.showLayerExplanation(layer);
+      });
+      row.appendChild(explainBtn);
+
+      toggles.appendChild(row);
     });
 
     // Add help button
@@ -519,12 +537,66 @@ export class MapComponent {
     return toggles;
   }
 
+  private clearLayerExplanationOutsideClickHandler(): void {
+    if (!this.layerExplanationOutsideClickHandler) return;
+    document.removeEventListener('click', this.layerExplanationOutsideClickHandler);
+    this.layerExplanationOutsideClickHandler = null;
+  }
+
+  private showLayerExplanation(layer: keyof MapLayers): void {
+    const existing = this.container.querySelector('.layer-explanation-popup') as HTMLElement | null;
+    this.clearLayerExplanationOutsideClickHandler();
+    if (existing?.dataset.layer === layer) {
+      existing.remove();
+      this.container.querySelector(`.layer-explain-btn[data-layer="${layer}"]`)?.classList.remove('active');
+      return;
+    }
+    existing?.remove();
+    this.container.querySelector('.layer-help-popup')?.remove();
+    this.container.querySelectorAll('.layer-explain-btn.active').forEach(btn => btn.classList.remove('active'));
+
+    const popup = document.createElement('div');
+    popup.className = 'layer-explanation-popup';
+    popup.dataset.layer = layer;
+    setTrustedHtml(popup, trustedHtml(
+      renderLayerExplanationCard(this.getLayerControlLabel(layer), getLayerExplanation(layer)),
+      "static layer explanation metadata",
+    ));
+
+    const closePopup = (): void => {
+      this.clearLayerExplanationOutsideClickHandler();
+      popup.remove();
+      this.container.querySelector(`.layer-explain-btn[data-layer="${layer}"]`)?.classList.remove('active');
+    };
+
+    popup.querySelector('.layer-explanation-close')?.addEventListener('click', closePopup);
+    const content = popup.querySelector('.layer-explanation-content');
+    content?.addEventListener('wheel', (e) => e.stopPropagation(), { passive: false });
+    content?.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: false });
+
+    setTimeout(() => {
+      const closeHandler = (e: MouseEvent) => {
+        if (!popup.contains(e.target as Node)) {
+          closePopup();
+        }
+      };
+      this.layerExplanationOutsideClickHandler = closeHandler;
+      document.addEventListener('click', closeHandler);
+    }, 100);
+
+    this.container.appendChild(popup);
+    this.container.querySelector(`.layer-explain-btn[data-layer="${layer}"]`)?.classList.add('active');
+  }
+
   private showLayerHelp(): void {
     const existing = this.container.querySelector('.layer-help-popup');
     if (existing) {
       existing.remove();
       return;
     }
+    this.container.querySelector('.layer-explanation-popup')?.remove();
+    this.clearLayerExplanationOutsideClickHandler();
+    this.container.querySelectorAll('.layer-explain-btn.active').forEach(btn => btn.classList.remove('active'));
 
     const popup = document.createElement('div');
     popup.className = 'layer-help-popup';
@@ -738,6 +810,7 @@ export class MapComponent {
     let lastPos = { x: 0, y: 0 };
     let lastTouchDist = 0;
     let lastTouchCenter = { x: 0, y: 0 };
+    const countryClickGesture = createCountryClickGestureTracker();
     const shouldIgnoreInteractionStart = (target: EventTarget | null): boolean => {
       if (!(target instanceof Element)) return false;
       return Boolean(
@@ -782,6 +855,7 @@ export class MapComponent {
       if (e.button === 0) { // Left click
         isDragging = true;
         lastPos = { x: e.clientX, y: e.clientY };
+        startCountryClickGesture(countryClickGesture, { x: e.clientX, y: e.clientY });
         this.container.style.cursor = 'grabbing';
       }
     });
@@ -791,6 +865,7 @@ export class MapComponent {
 
       const dx = e.clientX - lastPos.x;
       const dy = e.clientY - lastPos.y;
+      updateCountryClickGestureDrag(countryClickGesture, { x: e.clientX, y: e.clientY });
 
       const panSpeed = 1 / this.state.zoom;
       this.state.pan.x += dx * panSpeed;
@@ -803,6 +878,7 @@ export class MapComponent {
     document.addEventListener('mouseup', () => {
       if (isDragging) {
         isDragging = false;
+        finishCountryClickGesture(countryClickGesture);
         this.container.style.cursor = 'grab';
       }
     });
@@ -924,6 +1000,7 @@ export class MapComponent {
     this.container.addEventListener('click', (e) => {
       if (!this.onCountryClick) return;
       if (performance.now() - lastDragEndTime < 300) return;
+      if (shouldSuppressCountryClick(countryClickGesture)) return;
       const containerRect = this.container.getBoundingClientRect();
       const zoom = this.state.zoom;
       const width = this.container.clientWidth;
@@ -1521,6 +1598,7 @@ export class MapComponent {
 
         this.overlays.appendChild(clickArea);
       });
+      this.renderConflictEventMarkers(projection);
     }
 
     // Iran events (severity-colored circles matching DeckGL layer)
@@ -2902,6 +2980,47 @@ export class MapComponent {
     }
   }
 
+  private renderConflictEventMarkers(projection: d3.GeoProjection): void {
+    const visibleEvents = this.state.timeRange === 'all'
+      ? this.conflictEvents
+      : this.conflictEvents.filter((event) => event.occurredAt >= Date.now() - this.getTimeRangeMs());
+    const clusters = this.clusterMarkers(
+      visibleEvents
+        .map((event) => ({
+          event,
+          lat: event.location?.latitude ?? Number.NaN,
+          lon: event.location?.longitude ?? Number.NaN,
+        }))
+        .filter((item) => Number.isFinite(item.lat) && Number.isFinite(item.lon)),
+      projection,
+      this.state.zoom >= 4 ? 10 : this.state.zoom >= 3 ? 16 : 28,
+      (item) => item.event.country,
+    );
+
+    clusters.forEach((cluster) => {
+      if (cluster.items.length === 0) return;
+      const primary = cluster.items[0]!.event;
+      const fatalities = cluster.items.reduce((sum, item) => sum + (item.event.fatalities || 0), 0);
+      const isCluster = cluster.items.length > 1;
+      const div = document.createElement('div');
+      div.className = `conflict-event-marker${fatalities > 0 ? ' fatal' : ''}${isCluster ? ' cluster' : ''}`;
+      div.style.left = `${cluster.pos[0]}px`;
+      div.style.top = `${cluster.pos[1]}px`;
+      div.title = isCluster
+        ? `${primary.country}: ${cluster.items.length} conflict events${fatalities > 0 ? `, ${fatalities} fatalities` : ''}`
+        : `${primary.country}${primary.admin1 ? `, ${primary.admin1}` : ''}: ${primary.eventType}${primary.fatalities > 0 ? `, ${primary.fatalities} fatalities` : ''}`;
+
+      if (isCluster) {
+        const badge = document.createElement('span');
+        badge.className = 'conflict-event-count';
+        badge.textContent = String(cluster.items.length);
+        div.appendChild(badge);
+      }
+
+      this.overlays.appendChild(div);
+    });
+  }
+
   private makeWebcamTooltipShell(): { tooltip: HTMLDivElement; closeBtn: HTMLButtonElement } {
     this.container.querySelector('.webcam-tooltip')?.remove();
     const tooltip = document.createElement('div');
@@ -3352,7 +3471,7 @@ export class MapComponent {
   }
 
   public initEscalationGetters(): void {
-    setCIIGetter(getCountryScore);
+    setCIIGetter((code) => getCachedCountryScoreValue(code) ?? getCountryScore(code));
     setGeoAlertGetter(getAlertsNearLocation);
   }
 
@@ -3963,6 +4082,11 @@ export class MapComponent {
 
   public setCableHealth(healthMap: Record<string, CableHealthRecord>): void {
     this.healthByCableId = healthMap;
+    this.render();
+  }
+
+  public setConflictEvents(events: AcledConflictEvent[]): void {
+    this.conflictEvents = events;
     this.render();
   }
 

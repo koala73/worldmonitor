@@ -41,6 +41,26 @@ assert.ok(tpMatch, 'THIRD_PARTY_FETCH_HOST_ALLOWLIST must be defined in src/boot
 // eslint-disable-next-line no-new-func
 const beforeSend = new Function('event', `${tpMatch[0]}\n${fnBody}`);
 
+// Extract the `ignoreErrors` array literal so tests can assert which messages
+// Sentry's built-in (pre-beforeSend) filter drops. The array body contains
+// regex/string literals and `//` comments — all valid inside a JS array literal,
+// so it eval's directly. Closing token is the deferred builder's `\n    ],`.
+const ieStart = mainSrc.indexOf('ignoreErrors: [');
+assert.ok(ieStart !== -1, 'ignoreErrors array must exist in src/bootstrap/sentry-defer.ts');
+const ieEnd = mainSrc.indexOf('\n    ],', ieStart);
+assert.ok(ieEnd > ieStart, 'Failed to find ignoreErrors closing bracket');
+const ieBody = mainSrc.slice(ieStart + 'ignoreErrors: ['.length, ieEnd);
+// The body's final entry ends in a `//` comment with no trailing newline, so the
+// closing bracket must go on its own line or it gets swallowed by that comment.
+// eslint-disable-next-line no-new-func
+const ignoreErrors = new Function(`return [${ieBody}\n]`)();
+
+/** Mirror Sentry's ignoreErrors semantics: RegExp → test, string → substring. */
+function isIgnored(msg) {
+  return ignoreErrors.some(p =>
+    p instanceof RegExp ? p.test(msg) : typeof p === 'string' ? msg.includes(p) : false);
+}
+
 /** Helper to build a minimal Sentry event. */
 function makeEvent(value, type = 'Error', frames = []) {
   return {
@@ -140,8 +160,14 @@ describe('empty-stack network/timeout errors are NOT suppressed', () => {
   // stacks — that exact phrase is emitted only by the runtime on stale-chunk-after-
   // deploy, which the chunk-reload guard already auto-recovers. See the dedicated
   // suite below for that case (WORLDMONITOR-Q / WORLDMONITOR-15).
+  // Note: Firefox's `NetworkError when attempting to fetch resource.` USED to
+  // live here (preserved with empty stacks on a "could be our code" caution),
+  // but that predated the `Failed to fetch` provenance refinement. It now lives
+  // in the zero-frame suppression suite below — it is the engine-equivalent of
+  // Chrome's bare `Failed to fetch` and is suppressed the same way (zero frames
+  // → background/SW/extension; a real first-party failure keeps a .ts frame).
+  // WORLDMONITOR-RK / WORLDMONITOR-KM.
   const networkErrors = [
-    'TypeError: NetworkError when attempting to fetch resource.',
     'Could not connect to the server',
     'Operation timed out',
     'Invalid or unexpected token',
@@ -280,6 +306,15 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
     // is engine-emitted only.
     ['Unexpected EOF', 'SyntaxError'],
     ['SyntaxError: Unexpected EOF', 'SyntaxError'],
+    // Firefox's wording for a failed `fetch()` (WORLDMONITOR-RK) — the
+    // engine-equivalent of Chrome's bare `Failed to fetch` above. Zero frames
+    // via `onunhandledrejection` = background / service-worker / extension /
+    // stale-pre-deploy-bundle fetch. A genuine first-party fetch failure keeps
+    // a source-mapped .ts frame on the awaiting site (asserted "lets through"
+    // by the first-party-stack loop below). Both the bare and type-prefixed
+    // value shapes are matched.
+    ['NetworkError when attempting to fetch resource.', 'TypeError'],
+    ['TypeError: NetworkError when attempting to fetch resource.', 'TypeError'],
   ];
 
   for (const [msg, type] of zeroFrameErrors) {
@@ -425,11 +460,69 @@ describe('existing beforeSend filters', () => {
     assert.equal(beforeSend(event), null, 'Allowlisted AJAX host should be suppressed regardless of stack shape');
   });
 
+  it('suppresses Clerk SDK "Failed to fetch (clerk.worldmonitor.app)" even with a clerk first-party frame', () => {
+    // WORLDMONITOR-SA/SB: the bundled Clerk SDK fetches its Frontend API
+    // (clerk.worldmonitor.app, a CNAME to Clerk's auth infra) for token
+    // refresh and retries transient failures itself. A leaked
+    // `Failed to fetch (clerk.worldmonitor.app)` is a Clerk-SDK-internal
+    // network blip, not our code — same disposition as `/ClerkJS: Network
+    // error/`. The clerk-*.js chunk reads as first-party (not in the vendor
+    // list), so the host allowlist — not hasFirstParty — must decide.
+    const event = makeEvent('Failed to fetch (clerk.worldmonitor.app)', 'TypeError', [
+      { filename: '/assets/clerk-DC7Q2aDh.js', lineno: 848, function: 'i' },
+      { filename: 'chrome-extension://ebeglcfoffnnadgncmppkkohfcigngkj/js/injected/hook.js', lineno: 1, function: 'Object.apply' },
+      { filename: '/assets/panels-CYSIkWVK.js', lineno: 45, function: 'window.fetch' },
+    ]);
+    assert.equal(beforeSend(event), null, 'Clerk Frontend API fetch failure should be suppressed');
+  });
+
   it('does NOT suppress plain "Failed to fetch" from first-party code without maplibre frames', () => {
     const event = makeEvent('Failed to fetch', 'TypeError', [
       { filename: '/assets/panels-wF5GXf0N.js', lineno: 100, function: 'MyApiCall' },
     ]);
     assert.ok(beforeSend(event) !== null, 'Plain first-party fetch failure should surface');
+  });
+
+  it('suppresses bare "Failed to fetch" when an extension monkeypatched window.fetch (WORLDMONITOR-SG)', () => {
+    // Real WORLDMONITOR-SG stack: our runtime fetch interceptor + country-geometry
+    // loader are first-party frames, but the leaked rejection comes from an
+    // extension (Adjust SDK injectScriptAdjust.js / page-inspector) that wrapped
+    // window.fetch and chained an uncaught `.then()`. hasFirstParty is true, so
+    // the generic !hasFirstParty gate misses it; the extension `window.fetch`
+    // frame is what proves third-party interference.
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/assets/main-BHkAr2lX.js', lineno: 1394, function: 'rS.init' },
+      { filename: '/assets/panels-B8qWCRUs.js', lineno: 63, function: 'd1' },
+      { filename: '/assets/panels-B8qWCRUs.js', lineno: 61, function: 'DY.window.fetch' },
+      { filename: 'chrome-extension://dbjbempljhcmhlfpfacalomonjpalpko/scripts/inspector.js', lineno: 7, function: 'window.fetch' },
+      { filename: 'chrome-extension://bkkbcggnhapdmkeljlodobbkopceiche/injectScriptAdjust.js', lineno: 1, function: 'doDefault' },
+    ]);
+    assert.equal(beforeSend(event), null, 'Extension-wrapped window.fetch network blip should be suppressed');
+  });
+
+  it('does NOT suppress bare "Failed to fetch" with a first-party frame and a NON-fetch extension frame', () => {
+    // Precision guard for WORLDMONITOR-SG: an extension frame whose function is
+    // not a fetch wrapper is NOT evidence the extension owns the orphan fetch
+    // promise, so a genuine first-party fetch failure must still surface.
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/assets/panels-wF5GXf0N.js', lineno: 100, function: 'MyApiCall' },
+      { filename: 'chrome-extension://abcdefghijklmnopabcdefghijklmnop/content.js', lineno: 1, function: 'inject' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'First-party fetch failure with a non-fetch extension frame must surface');
+  });
+
+  it('does NOT suppress when the extension frame function merely CONTAINS "fetch" (prefetch/fetchContent)', () => {
+    // The function match is anchored to exactly `window.fetch`/`fetch`, not a
+    // loose `/fetch/`, so an extension frame named `prefetch` or `fetchContent`
+    // is not treated as a monkeypatched window.fetch — a real bare "Failed to
+    // fetch" from our own code must still surface (Greptile review on #4157).
+    for (const fn of ['prefetch', 'fetchContent', 'fetchUserData']) {
+      const event = makeEvent('Failed to fetch', 'TypeError', [
+        { filename: '/assets/panels-wF5GXf0N.js', lineno: 100, function: 'MyApiCall' },
+        { filename: 'chrome-extension://abcdefghijklmnopabcdefghijklmnop/inject.js', lineno: 1, function: fn },
+      ]);
+      assert.ok(beforeSend(event) !== null, `extension frame function "${fn}" must not trigger SG suppression`);
+    }
   });
 
   it('does NOT suppress "Failed to fetch (<hostname>)" when no maplibre frame is present', () => {
@@ -740,4 +833,88 @@ describe('existing beforeSend filters', () => {
     assert.ok(beforeSend(event) !== null, '3+ char variable names must surface');
   });
 
+});
+
+// ─── WORLDMONITOR-SQ: ProgressEvent rejection ignoreErrors entry ──────────
+//
+// A raw DOM `ProgressEvent` (type=error) from a failed resource/XHR load that
+// leaks via onunhandledrejection. Sentry synthesizes the message
+// `Event `ProgressEvent` (type=error) captured as promise rejection`. No
+// first-party path rejects a promise with a raw ProgressEvent (our IDB/worker/
+// FileReader onerror handlers all reject wrapped Errors; the lone XHR caller is
+// fire-and-forget + Tauri-only where Sentry is disabled), so it goes in
+// ignoreErrors alongside the CustomEvent sibling.
+describe('ignoreErrors — ProgressEvent promise rejection (WORLDMONITOR-SQ)', () => {
+  const PROD_MSG = 'Event `ProgressEvent` (type=error) captured as promise rejection';
+  const progressEventPattern = ignoreErrors.find(
+    p => p instanceof RegExp && /ProgressEvent/.test(p.source));
+
+  it('defines a ProgressEvent ignore pattern', () => {
+    assert.ok(progressEventPattern, 'a /ProgressEvent/ ignoreErrors pattern must exist');
+  });
+
+  it('suppresses the exact production ProgressEvent rejection message', () => {
+    assert.ok(isIgnored(PROD_MSG), `ignoreErrors must drop: ${PROD_MSG}`);
+  });
+
+  it('is scoped to the rejection phrase, not a bare ProgressEvent reference', () => {
+    // Guards against an over-broad `/ProgressEvent/` that would mask a real
+    // first-party error merely mentioning the word.
+    assert.ok(!progressEventPattern.test('ProgressEvent fired during upload'),
+      'pattern must require the "captured as promise rejection" phrase');
+  });
+});
+
+// ─── WORLDMONITOR-SP: SyntaxError through the deck.gl/maplibre init path ───
+//
+// `SyntaxError: Invalid or unexpected token` (and the Unexpected token/EOF
+// family) surfacing through deck.gl/maplibre WebGL init. Our compiled bundle
+// can't emit a JS parse error at the first-party `MapContainer.initDeck` call
+// site — the parse failure is in vendor-loaded content (a Worker script, a
+// `new Function` shader builder, or a stale/corrupt lazy chunk). The pre-
+// existing `!hasFirstParty` token-parse gate misses it because `initDeck` rides
+// the stack as the caller, so this gate keys off a deck-stack/maplibre frame.
+describe('SyntaxError via deck.gl/maplibre init path (WORLDMONITOR-SP)', () => {
+  // Mirrors the real WORLDMONITOR-SP stack: deck-stack + maplibre vendor frames
+  // plus the first-party MapContainer.initDeck caller.
+  const mapInitStack = [
+    { filename: '/assets/deck-stack-Dq2qX5Bt.js', lineno: 1606, function: 'Go._getViews' },
+    { filename: '/assets/maplibre-BniwwzLw.js', lineno: 811, function: 'lo.addControl' },
+    { filename: '/assets/MapContainer-C6imt_dN.js', lineno: 1632, function: 'os.initDeck' },
+  ];
+
+  it('suppresses "Invalid or unexpected token" through the map init path despite a first-party initDeck frame', () => {
+    const event = makeEvent('Invalid or unexpected token', 'SyntaxError', mapInitStack);
+    assert.equal(beforeSend(event), null,
+      'deploy/asset parse failure through deck.gl/maplibre init must be suppressed');
+  });
+
+  it('suppresses the Safari "Unexpected EOF" variant through the same path', () => {
+    assert.equal(beforeSend(makeEvent('Unexpected EOF', 'SyntaxError', mapInitStack)), null);
+  });
+
+  it('suppresses the type-prefixed value variant ("SyntaxError: Invalid or unexpected token")', () => {
+    // Some engines embed the exception type in the value field — the gate must
+    // tolerate the `SyntaxError: ` prefix like the sibling EOF/token gates do.
+    assert.equal(
+      beforeSend(makeEvent('SyntaxError: Invalid or unexpected token', 'SyntaxError', mapInitStack)),
+      null,
+    );
+  });
+
+  it('does NOT suppress the same SyntaxError when no deck/maplibre frame is present', () => {
+    // A genuine first-party parse failure (no map vendor frame) must still surface.
+    const event = makeEvent('Invalid or unexpected token', 'SyntaxError', [
+      firstPartyFrame('/assets/panels-DzUv7BBV.js', 'loadTab'),
+    ]);
+    assert.ok(beforeSend(event) !== null,
+      'first-party SyntaxError without a map frame must reach Sentry');
+  });
+
+  it('does NOT suppress a non-SyntaxError TypeError that merely has a map frame', () => {
+    // Gate is scoped to excType === SyntaxError + the token-parse message family.
+    const event = makeEvent('something broke', 'TypeError', mapInitStack);
+    assert.ok(beforeSend(event) !== null,
+      'non-SyntaxError with a map frame must not be swept up by the SP gate');
+  });
 });

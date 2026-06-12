@@ -49,7 +49,7 @@ description: "Comprehensive documentation of all data sources, feed tiers, and c
 - Critical mineral deposits
 - NASA FIRMS satellite fire detection (VIIRS thermal hotspots)
 - 19 global trade routes (container, energy, bulk) with multi-segment arcs through strategic chokepoints
-- Airport delays and closures across 107 monitored airports (FAA + AviationStack + ICAO NOTAM)
+- Airport delays and closures across 111 monitored airports (FAA + AviationStack + ICAO NOTAM)
 - **Aviation intelligence** — 6-tab airline intel panel (ops, flights, airlines, tracking, news, prices) with customizable airport/airline watchlists, live ADS-B flight tracking, and flight price search
 
 </details>
@@ -85,9 +85,9 @@ description: "Comprehensive documentation of all data sources, feed tiers, and c
 <details>
 <summary><strong>Finance & Markets</strong> (Finance variant)</summary>
 
-- 92 global stock exchanges — mega (NYSE, NASDAQ, Shanghai, Euronext, Tokyo), major (Hong Kong, London, NSE/BSE, Toronto, Korea, Saudi Tadawul), and emerging markets — with market caps and trading hours
+- 29 global stock exchanges — mega (NYSE, NASDAQ, Shanghai, Euronext, Tokyo), major (Hong Kong, London, NSE/BSE, Toronto, Korea, Saudi Tadawul), and emerging markets — with market caps and trading hours
 - 19 financial centers — ranked by Global Financial Centres Index (New York #1 through offshore centers: Cayman Islands, Luxembourg, Bermuda, Channel Islands)
-- 13 central banks — Federal Reserve, ECB, BoJ, BoE, PBoC, SNB, RBA, BoC, RBI, BoK, BCB, SAMA, plus supranational institutions (BIS, IMF)
+- 14 central-bank and supranational finance institutions — 12 policy-rate institutions (Federal Reserve, ECB, BoJ, BoE, PBoC, SNB, RBA, BoC, RBI, BoK, BCB, SAMA) plus BIS and IMF
 - BIS central bank data — policy rates across major economies, real effective exchange rates (REER), and credit-to-GDP ratios sourced from the Bank for International Settlements
 - 10 commodity hubs — exchanges (CME Group, ICE, LME, SHFE, DCE, TOCOM, DGCX, MCX) and physical hubs (Rotterdam, Houston)
 - Gulf FDI investment layer — 64 Saudi/UAE foreign direct investments plotted globally, color-coded by status (operational, under-construction, announced), sized by investment amount
@@ -101,13 +101,15 @@ description: "Comprehensive documentation of all data sources, feed tiers, and c
 
 ### Telegram OSINT Intelligence Feed
 
-26 curated Telegram channels provide a raw, low-latency intelligence feed covering conflict zones, OSINT analysis, and breaking news — sources that are often minutes ahead of traditional wire services during fast-moving events.
+56 enabled channels in the default `full` Telegram channel set provide a raw, low-latency intelligence feed covering conflict zones, OSINT analysis, and breaking news — sources that are often minutes ahead of traditional wire services during fast-moving events.
 
-| Tier       | Channels                                                                                                              |
-| ---------- | --------------------------------------------------------------------------------------------------------------------- |
-| **Tier 1** | VahidOnline (Iran politics)                                                                                           |
-| **Tier 2** | Abu Ali Express, Aurora Intel, BNO News, Clash Report, DeepState, Defender Dome, Iran International, LiveUAMap, OSINTdefender, OSINT Updates, Ukraine Air Force (kpszsu), Povitryani Tryvoha |
-| **Tier 3** | Bellingcat, CyberDetective, GeopoliticalCenter, Middle East Spectator, Middle East Now Breaking, NEXTA, OSINT Industries, OsintOps News, OSINT Live, OsintTV, The Spectator Index, War Monitor, WFWitness |
+| Tier       | Enabled channels in `full` set |
+| ---------- | ------------------------------ |
+| **Tier 1** | 3                              |
+| **Tier 2** | 23                             |
+| **Tier 3** | 30                             |
+
+The channel set intentionally includes official, state-affiliated, partisan, and belligerent-party channels — for example military, ministry, state-media, and faction-aligned sources alongside independent OSINT accounts. Telegram posts are ingested as raw OSINT leads, not endorsed truth. The Telegram channel config carries operational `tier`, `topic`, and `region` metadata for polling and filtering; unlike RSS feeds, Telegram channels do not currently carry the RSS `stateAffiliation` or propaganda-risk fields, so source-bias review must use the disclosed channel identity plus the operational tier rather than RSS-style affiliation tags.
 
 **Architecture**: A GramJS MTProto client running on the Railway relay polls all channels sequentially on a 60-second cycle. Each channel has a 15-second timeout (GramJS `getEntity`/`getMessages` can hang indefinitely on FLOOD_WAIT or MTProto stalls), and the entire cycle has a 3-minute hard timeout. A stuck-poll guard force-clears the mutex after 3.5 minutes, and FLOOD_WAIT errors from Telegram's API stop the cycle early rather than propagating to every remaining channel.
 
@@ -141,18 +143,32 @@ GPS jamming and spoofing — increasingly used as electronic warfare in conflict
 
 Government travel advisories serve as expert risk assessments from national intelligence agencies — when the US State Department issues a "Do Not Travel" advisory, it reflects classified threat intelligence that no open-source algorithm can replicate.
 
-**Sources**: 4 government advisory feeds (US State Dept, Australia DFAT Smartraveller, UK FCDO, New Zealand MFAT), 13 US Embassy country-specific alert feeds (Thailand, UAE, Germany, Ukraine, Mexico, India, Pakistan, Colombia, Poland, Bangladesh, Italy, Dominican Republic, Myanmar), and health agency feeds (CDC Travel Notices, ECDC epidemiological updates, WHO News, WHO Africa Emergencies).
+**Sources**: 3 government advisory feeds (US State Dept, Australia DFAT Smartraveller, UK FCDO), 13 US Embassy country-specific alert feeds (Thailand, UAE, Germany, Ukraine, Mexico, India, Pakistan, Colombia, Poland, Bangladesh, Italy, Dominican Republic, Myanmar), and health agency feeds (CDC Travel Notices, ECDC epidemiological updates, WHO News, WHO Africa Emergencies).
 
 **Advisory levels** (ranked): Do-Not-Travel (4) → Reconsider Travel (3) → Exercise Caution (2) → Normal (1) → Info (0). Both RSS (item) and Atom (entry) formats are parsed. Country extraction uses a 265-entry country name map (generated from GeoJSON + aliases) for accurate matching of compound names and alternative spellings.
 
 **Architecture**: Advisories follow the gold standard pattern. A Railway cron seed (`seed-security-advisories.mjs`) fetches all 24 feeds hourly via the relay RSS proxy, deduplicates by title, builds a `byCountry` risk-level map, and writes to Redis. The Vercel `ListSecurityAdvisories` RPC reads Redis only (no external calls). Bootstrap hydration provides instant advisory data on page load.
 
-**CII integration** — advisories feed into instability scores through two mechanisms:
+**CII integration** — the server-side CII scorer reads the seeded advisory
+`byCountry` level when available and otherwise may use an embedded State
+Department fallback table for selected countries. Each emitted `CiiScore`
+exposes `advisoryLevel` and `advisoryProvenance` (`live`, `fallback`, or
+`absent`) so downstream users can tell whether the score used the live feed,
+fallback table, or no advisory input. Advisories feed into instability scores
+through two mechanisms:
 
-- **Score boost**: Do-Not-Travel → +15 points, Reconsider → +10, Caution → +5. Multi-source agreement adds a consensus bonus: ≥3 governments concur → +5, ≥2 → +3
-- **Score floor**: Do-Not-Travel from any government forces a minimum CII score of 60; Reconsider forces minimum 50. This prevents a country with low event data but active DNT warnings from showing an artificially calm score
+- **Score boost**: Do-Not-Travel → +15 points, Reconsider → +10, Caution → +5. The server scorer uses the live `byCountry` level when present; if live data is missing for selected Tier-1 countries, it falls back to the published CII advisory table rather than adding a separate multi-source agreement boost.
+- **Score floor**: Do-Not-Travel forces a minimum CII score of 60; Reconsider forces minimum 50. This prevents a country with low event data but active or curated advisory risk from showing an artificially calm score.
 
-The Security Advisories panel displays advisories with colored level badges and source country flags, filterable by severity (Critical, All) and issuing government (US, AU, UK, NZ, Health).
+**CII advisory fallback**: The score-shifting fallback table is intentionally
+small and versioned with the CII methodology. It currently covers AF, MM, SY,
+UA, and YE as Do-Not-Travel; CU, IL, IQ, IR, LB, MX, PK, and VE as Reconsider;
+and RU and TR as Caution. Live advisory feed values override the fallback for
+the same country. See
+[CII Risk Scoring Methodology](/methodology/cii-risk-scores#advisory-fallback-table)
+for the rationale and per-country score effects.
+
+The Security Advisories panel displays advisories with colored level badges and source country flags, filterable by severity (Critical, All) and issuing source group (US, AU, UK, Health).
 
 ### Airport Delay & NOTAM Monitoring
 
@@ -235,6 +251,8 @@ Events from both sources are **Haversine-deduplicated** on a 0.1° grid (~10km) 
 
 Protest scoring is regime-aware: democratic countries use logarithmic scaling (routine protests don't trigger instability), while authoritarian states use linear scoring (every protest is significant). Fatalities and concurrent internet outages apply severity boosts.
 
+ACLED is authenticated: set either `ACLED_EMAIL` + `ACLED_PASSWORD` (OAuth, auto-refreshed) or a static `ACLED_ACCESS_TOKEN` on the API project. When ACLED auth is absent the fetch degrades gracefully to an empty result — but ACLED is also the **real-time conflict source** for the Country Instability Index, so without it CII conflict scoring falls back to UCDP alone. Since UCDP GED ships as lagging annual releases, that fallback can leave no conflict events inside the CII 2-year recency window, which `/api/health.riskScores` reports as `COVERAGE_PARTIAL` (cyber and news families still cover, so the metric reads 2 of 3). The `get-risk-scores` RPC logs a `[CII] ACLED returned 0 events` warning when this happens.
+
 ### Climate Anomaly Detection
 
 15 conflict-prone and disaster-prone zones are continuously monitored for temperature and precipitation anomalies using Open-Meteo ERA5 reanalysis data. A 30-day baseline is computed, and current conditions are compared against it to determine severity:
@@ -303,6 +321,76 @@ Resource management is aggressive — iframes are lazy-loaded via Intersection O
 
 Rather than each client browser independently fetching dozens of RSS feeds through individual edge function invocations, the `listFeedDigest` RPC endpoint aggregates all feeds server-side into a single categorized response.
 
+The public server digest feed inventory below is source-backed from `server/worldmonitor/news/v1/_feeds.ts`; that code file remains the source of truth for exact URLs, Google News query wrappers, and locale-specific URL parameters. Feed choices are intentionally visible here so regional coverage, official-source inclusion, and politically sensitive inclusions such as `Trump - Truth Social` can be reviewed rather than hidden behind a generic "RSS" label. Language-scoped feeds are marked with their language code and are only included when the request language matches. The `full` variant also appends `INTEL_SOURCES` under the `intel` category.
+
+| Variant | Category | Server feed sources |
+| --- | --- | --- |
+| `full` | `politics` | BBC World; Guardian World; AP News; Reuters World; CNN World; Trump - Truth Social |
+| `full` | `us` | Reuters US; NPR News; PBS NewsHour; ABC News; CBS News; NBC News; Wall Street Journal; Politico; The Hill; Axios |
+| `full` | `europe` | France 24; EuroNews; Le Monde; DW News; Tagesschau (de); ANSA (it); NOS Nieuws (nl); SVT Nyheter (sv); Telex (hu); Index.hu (hu); HVG (hu); 444.hu (hu); 24.hu (hu); Híradó (hu); Portfolio.hu (hu); ATV (hu); N1 Croatia (hr); Index.hr (hr); Jutarnji list (hr); Balkan Insight |
+| `full` | `middleeast` | BBC Middle East; Al Jazeera; Guardian ME; Oman Observer; BBC Persian (fa); The National |
+| `full` | `tech` | Hacker News; Ars Technica; The Verge; MIT Tech Review |
+| `full` | `ai` | AI News; VentureBeat AI; The Verge AI; MIT Tech Review; ArXiv AI |
+| `full` | `finance` | CNBC; MarketWatch; Yahoo Finance; Financial Times; Reuters Business |
+| `full` | `gov` | White House; White House Actions; State Dept; Pentagon; Federal Reserve; SEC; UN News; CISA; Treasury; DOJ |
+| `full` | `africa` | BBC Africa; News24; Africanews; Jeune Afrique (fr); Premium Times |
+| `full` | `latam` | BBC Latin America; Guardian Americas; Primicias (es); Infobae Americas (es); El Universo (es); Clarín (es); InSight Crime |
+| `full` | `asia` | BBC Asia; The Diplomat; Nikkei Asia; CNA; NDTV; South China Morning Post; The Hindu; Asia News; BBC Hindi (hi); Aaj Tak (hi); NDTV India (hi); Amar Ujala (hi) |
+| `full` | `energy` | Oil & Gas; Reuters Energy; Nuclear Energy |
+| `full` | `thinktanks` | Foreign Policy; Atlantic Council; Foreign Affairs; War on the Rocks; CSIS |
+| `full` | `crisis` | CrisisWatch; IAEA; WHO |
+| `full` | `layoffs` | Layoffs.fyi; TechCrunch Layoffs; Layoffs News |
+| `full` | `intel` | Defense One; The War Zone; Defense News; Military Times; Task & Purpose; USNI News; gCaptain; Oryx OSINT; Foreign Policy; Foreign Affairs; Atlantic Council; Bellingcat; Krebs Security; Arms Control Assn; Bulletin of Atomic Scientists; FAO News; OCCRP; DFRLab; Lighthouse Reports; The Sentry; GITOC; VSquare; Correctiv |
+| `tech` | `tech` | TechCrunch; The Verge; Ars Technica; Hacker News |
+| `tech` | `ai` | AI News; VentureBeat AI; The Verge AI; ArXiv AI |
+| `tech` | `startups` | TechCrunch Startups; VentureBeat; Crunchbase News |
+| `tech` | `vcblogs` | Y Combinator Blog; a16z Blog; First Round Review; Sequoia Blog; Stratechery |
+| `tech` | `regionalStartups` | EU Startups; Tech.eu; Sifted (Europe); Tech in Asia; TechCabal (Africa); Inc42 (India) |
+| `tech` | `unicorns` | Unicorn News; Decacorn News |
+| `tech` | `accelerators` | YC News; YC Blog; Demo Day News |
+| `tech` | `security` | Krebs Security; Dark Reading |
+| `tech` | `policy` | Politico Tech; AI Regulation; Tech Antitrust |
+| `tech` | `github` | GitHub Blog |
+| `tech` | `funding` | VC News |
+| `tech` | `cloud` | InfoQ; The New Stack |
+| `tech` | `layoffs` | Layoffs.fyi; TechCrunch Layoffs |
+| `tech` | `finance` | CNBC Tech; Yahoo Finance |
+| `tech` | `dev` | Dev.to; Lobsters; Changelog; Show HN |
+| `tech` | `ipo` | IPO News; Tech IPO News |
+| `tech` | `producthunt` | Product Hunt |
+| `tech` | `hardware` | Tom's Hardware; SemiAnalysis; Semiconductor News |
+| `tech` | `outages` | AWS Status; Cloud Outages |
+| `finance` | `markets` | CNBC; Yahoo Finance; Seeking Alpha |
+| `finance` | `forex` | Forex News |
+| `finance` | `bonds` | Bond Market |
+| `finance` | `commodities` | Oil & Gas; Gold & Metals |
+| `finance` | `crypto` | CoinDesk; Cointelegraph; The Block; Decrypt; The Defiant; Bitcoin Magazine; DL News; CryptoSlate; Unchained; DeFi News; Bloomberg Crypto; Reuters Crypto; Wu Blockchain; Messari; NFT News; Stablecoin Policy |
+| `finance` | `centralbanks` | Federal Reserve |
+| `finance` | `economic` | Economic Data |
+| `finance` | `ipo` | IPO News |
+| `finance` | `derivatives` | Options Market; Futures Trading |
+| `finance` | `fintech` | Fintech News; Trading Tech; Blockchain Finance |
+| `finance` | `fin-regulation` | SEC; Financial Regulation; Banking Rules; Crypto Regulation |
+| `finance` | `institutional` | Hedge Fund News; Private Equity; Sovereign Wealth |
+| `finance` | `analysis` | Market Outlook; Risk & Volatility; Bank Research |
+| `finance` | `gccNews` | Arabian Business; The National; Arab News; Gulf FDI; Gulf Investments; Vision 2030 |
+| `commodity` | `commodity-news` | Kitco News; Mining.com; Bloomberg Commodities; Reuters Commodities; S&P Global Commodity; CNBC Commodities |
+| `commodity` | `gold-silver` | Kitco Gold; Gold Price News; Silver Price News; Precious Metals; World Gold Council |
+| `commodity` | `energy` | OilPrice.com; Rigzone; EIA Reports; OPEC News; Natural Gas News; Energy Intel; Reuters Energy |
+| `commodity` | `mining-news` | Mining Journal; Northern Miner; Mining Weekly; Mining Technology; Australian Mining; Mine Web (SNL); Resource World |
+| `commodity` | `critical-minerals` | Benchmark Mineral; Lithium Market; Cobalt Market; Rare Earths News; EV Battery Supply; IEA Critical Minerals; Uranium Market |
+| `commodity` | `base-metals` | LME Metals; Copper Market; Nickel News; Aluminum & Zinc; Iron Ore Market; Metals Bulletin |
+| `commodity` | `mining-companies` | BHP News; Rio Tinto News; Glencore & Vale; Gold Majors; Freeport & Copper Miners; Critical Mineral Companies |
+| `commodity` | `supply-chain` | Shipping & Freight; Trade Routes; China Commodity Imports; Port & Logistics |
+| `commodity` | `commodity-regulation` | Mining Regulation; ESG in Mining; Trade & Tariffs; Indonesia Nickel Policy; China Mineral Policy |
+| `commodity` | `markets` | Yahoo Finance Commodities; CNBC Markets; Seeking Alpha Metals; Commodity Futures |
+| `commodity` | `finance` | CNBC; MarketWatch; Yahoo Finance; Financial Times; Reuters Business |
+| `happy` | `positive` | Good News Network; Positive.News; Reasons to be Cheerful; Optimist Daily |
+| `happy` | `science` | ScienceDaily; Nature News; Singularity Hub; Human Progress |
+| `happy` | `nature` | Mongabay; Conservation Optimism |
+| `happy` | `inspiring` | GNN Heroes; GNN Health |
+| `happy` | `community` | Yes! Magazine; Shareable |
+
 **Architecture**:
 
 ```
@@ -319,7 +407,7 @@ Client (1 RPC call) → listFeedDigest → Redis check (digest:v1:{variant}:{lan
                            └────────┬────────────────┘
                                     │
                               ┌─────┴─────┐
-                              │ Per-feed   │ ← cached 600s per URL
+                              │ Per-feed   │ ← healthy 3600s, empty/failed 300s
                               │ Redis      │
                               └─────┬─────┘
                                     │
@@ -331,7 +419,7 @@ Client (1 RPC call) → listFeedDigest → Redis check (digest:v1:{variant}:{lan
                            └─────────────────────────┘
 ```
 
-The digest cache key is `news:digest:v1:{variant}:{lang}` with a 900-second TTL. Individual feed results are separately cached per URL for 600 seconds. Items per feed are capped at 5, categories at 20 items each. XML parsing is edge-runtime-compatible (regex-based, no DOM parser), handling both RSS item and Atom entry formats. Each item is keyword-classified at aggregation time. An in-memory fallback cache (capped at 50 entries) provides last-known-good data if Redis fails.
+The digest cache key is `news:digest:v1:{variant}:{lang}` with a 900-second TTL. Individual feed results are separately cached per URL: healthy parsed feeds use 3600 seconds, while empty or failed zero-item parses use 300 seconds so transient blocks are retried sooner. Items per feed are capped at 5, categories at 20 items each. XML parsing is edge-runtime-compatible (regex-based, no DOM parser), handling both RSS item and Atom entry formats. Each item is keyword-classified at aggregation time. An in-memory fallback cache (capped at 50 entries) provides last-known-good data if Redis fails.
 
 This eliminates per-client feed fan-out — 1,000 concurrent users each polling 25 feed categories would have generated 25,000 edge invocations per poll cycle. With server-side aggregation, they generate exactly 1 (or 0 if the digest is cached).
 
@@ -356,7 +444,7 @@ Feeds also carry a **propaganda risk rating** and **state affiliation flag**. St
 
 ### Data Freshness & Intelligence Gaps
 
-A singleton tracker monitors 35 data sources (GDELT, GDELT Doc, RSS, AIS, OpenSky, Wingbits, USGS, weather, outages, ACLED, ACLED conflict, Polymarket, predictions, PizzINT, economic, oil, spending, NASA FIRMS, cyber threats, UCDP, UCDP events, HAPI, UNHCR, climate, WorldPop, giving, BIS, BLS, WTO trade, supply chain, security advisories, sanctions pressure, radiation, GPS jamming, Treasury revenue) with status categorization: fresh (&lt;15 min), stale (2h), very_stale (6h), no_data, error, disabled. Two sources (GDELT, RSS) are flagged as `requiredForRisk` — their absence directly impacts CII scoring quality. The tracker explicitly reports **intelligence gaps** — what analysts can't see — preventing false confidence when critical data sources are down or degraded.
+A singleton tracker monitors 35 data sources (GDELT, GDELT Doc, RSS, AIS, OpenSky, Wingbits, USGS, weather, outages, ACLED, ACLED conflict, Polymarket, predictions, PizzINT, economic, oil, spending, NASA FIRMS, cyber threats, UCDP, UCDP events, HAPI, UNHCR, climate, WorldPop, giving, BIS, BLS, WTO trade, supply chain, security advisories, sanctions pressure, radiation, GPS jamming, Treasury revenue) with status categorization: fresh (&lt;15 min), stale (2h), very_stale (6h), no_data, error, disabled. Two browser-tracker sources (GDELT, RSS) are flagged as `requiredForRisk`; that flag drives the Strategic Risk panel's hard insufficient-data gate, not the exhaustive list of CII score inputs. Score-relevant feeds such as UCDP events, ACLED conflict, news summaries, and cyber threats are tracked through source-specific health plus `/api/health.riskScores` signal-density coverage. The tracker explicitly reports **intelligence gaps** — what analysts can't see — preventing false confidence when critical data sources are down or degraded.
 
 ---
 
@@ -396,12 +484,14 @@ Markets are filtered to exclude sports and entertainment (100+ exclusion keyword
 WorldMonitor is grateful to the following organizations for making their data publicly accessible.
 
 ### Energy & Commodities
+
 | Provider | Data | Link |
 |----------|------|------|
 | GIE AGSI+ | EU natural gas storage levels | [agsi.gie.eu](https://agsi.gie.eu) |
 | U.S. EIA | Crude oil inventories, fuel prices, energy data | [eia.gov/opendata](https://www.eia.gov/opendata) |
 
 ### Finance & Economics
+
 | Provider | Data | Link |
 |----------|------|------|
 | ECB Data Portal | FX reference rates, yield curve, ESTR/EURIBOR, financial stress index | [data-api.ecb.europa.eu](https://data-api.ecb.europa.eu) |
@@ -415,6 +505,7 @@ WorldMonitor is grateful to the following organizations for making their data pu
 | CoinGecko | Cryptocurrency prices and market data | [coingecko.com](https://www.coingecko.com) |
 
 ### Geopolitics & Conflict
+
 | Provider | Data | Link |
 |----------|------|------|
 | ACLED | Armed conflict and protest event data | [acleddata.com](https://acleddata.com) |
@@ -423,6 +514,7 @@ WorldMonitor is grateful to the following organizations for making their data pu
 | IMF PortWatch | Chokepoint transit intelligence | [portwatch.imf.org](https://portwatch.imf.org) |
 
 ### Environment & Disasters
+
 | Provider | Data | Link |
 |----------|------|------|
 | USGS Earthquake Hazards | Global seismic activity | [earthquake.usgs.gov](https://earthquake.usgs.gov) |
@@ -432,6 +524,7 @@ WorldMonitor is grateful to the following organizations for making their data pu
 | Open-Meteo | ERA5 reanalysis climate data | [open-meteo.com](https://open-meteo.com) |
 
 ### Infrastructure & Cyber
+
 | Provider | Data | Link |
 |----------|------|------|
 | Cloudflare Radar | Internet outages and traffic anomalies | [radar.cloudflare.com](https://radar.cloudflare.com) |
@@ -440,6 +533,7 @@ WorldMonitor is grateful to the following organizations for making their data pu
 | CelesTrak | Satellite TLE data for orbital tracking | [celestrak.org](https://celestrak.org) |
 
 ### Aviation
+
 | Provider | Data | Link |
 |----------|------|------|
 | Wingbits | Live ADS-B flight data | [wingbits.com](https://wingbits.com) |

@@ -21,6 +21,7 @@ RUN npm ci --prefix scripts --omit=dev
 # Relay script and shared helpers
 COPY scripts/ais-relay.cjs ./scripts/ais-relay.cjs
 COPY scripts/_proxy-utils.cjs ./scripts/_proxy-utils.cjs
+COPY scripts/lib/usni-fleet-parser.cjs ./scripts/lib/usni-fleet-parser.cjs
 COPY scripts/shared/country-name-to-iso2.cjs ./scripts/shared/country-name-to-iso2.cjs
 COPY scripts/_seed-utils.mjs ./scripts/_seed-utils.mjs
 # _seed-envelope-source.mjs and _seed-contract.mjs are transitively imported

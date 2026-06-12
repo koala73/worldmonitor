@@ -128,7 +128,9 @@
       "languages": "Γλώσσες",
       "currencies": "Νομίσματα",
       "area": "Έκταση"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "ΚΟΣΜΟΣ",
@@ -207,7 +209,8 @@
     "panelCatMining": "Εξόρυξη & Αλυσίδα Εφοδιασμού",
     "panelCatCommodityEcon": "Οικονομία & Εμπόριο",
     "panelCatHappyNews": "Καλές Ειδήσεις",
-    "panelCatHappyPlanet": "Πλανήτης & Δωρεές"
+    "panelCatHappyPlanet": "Πλανήτης & Δωρεές",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "Ζωντανές Ειδήσεις",
@@ -456,7 +459,8 @@
       "flightMilitary": "Στρατιωτική · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Στρατιωτική · {{type}} · στο έδαφος",
       "flightSearchHint": "Πατήστε Enter ή κάντε κλικ για αναζήτηση ζωντανής θέσης",
-      "flightNotFound": "Δεν βρέθηκε ζωντανή θέση για {{callsign}}"
+      "flightNotFound": "Δεν βρέθηκε ζωντανή θέση για {{callsign}}",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "ΕΥΡΗΜΑ ΠΛΗΡΟΦΟΡΙΩΝ",
@@ -1215,7 +1219,13 @@
       "noSignals": "Δεν ανιχνεύθηκαν σήματα αστάθειας",
       "infoTooltip": "<strong>Μεθοδολογία</strong><ul><li><strong>Α</strong>ναταραχή: πολιτική αναταραχή & διαμαρτυρίες</li><li><strong>Σ</strong>ύγκρουση: ένταση ένοπλων συγκρούσεων</li><li><strong>Α</strong>σφάλεια: στρατιωτικές πτήσεις/πλοία πάνω από επικράτεια</li><li><strong>Π</strong>ληροφορίες: ταχύτητα ειδήσεων και συσχέτιση εστιακών σημείων</li><li>Ενίσχυση εγγύτητας σε εστίες (στρατηγικές τοποθεσίες)</li></ul><em>Οι τιμές Α:Σ:Α:Π δείχνουν βαθμολογίες συνιστωσών.</em> Η Ανίχνευση Εστιακών Σημείων συσχετίζει οντότητες ειδήσεων με σήματα χάρτη για ακριβή βαθμολόγηση.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "Περιλαμβάνει βάση αναφοράς ανά χώρα + πολλαπλασιαστή συμβάντος — δείτε /docs/methodology/cii-risk-scores για τον δημοσιευμένο πίνακα"
+      "methodologyLink": "Περιλαμβάνει βάση αναφοράς ανά χώρα + πολλαπλασιαστή συμβάντος — δείτε /docs/methodology/cii-risk-scores για τον δημοσιευμένο πίνακα",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "insights": {
       "noStories": "Δεν υπάρχουν ακόμα έκτακτες ή πολυπηγές ιστορίες",
@@ -1334,9 +1344,8 @@
     "strategicRisk": {
       "noRisks": "Δεν ανιχνεύθηκαν σημαντικοί κίνδυνοι",
       "levels": {
-        "critical": "Κρίσιμο",
-        "elevated": "Αυξημένο",
-        "moderate": "Μέτριο",
+        "high": "Υψηλό",
+        "medium": "Μεσαίο",
         "low": "Χαμηλό"
       },
       "trend": "Τάση",
@@ -1368,7 +1377,14 @@
         "minutesAgo": "{{count}}λ πριν",
         "hoursAgo": "{{count}}ω πριν"
       },
-      "infoTooltip": "<strong>Μεθοδολογία</strong> Σύνθετη βαθμολογία (0-100) που συνδυάζει:<ul><li>50% Αστάθεια Χωρών (κορυφαίες 5 σταθμισμένες)</li><li>30% Ζώνες γεωγραφικής σύγκλισης</li><li>20% Συμβάντα υποδομών</li></ul>Αυτόματη ανανέωση κάθε 5 λεπτά."
+      "infoTooltip": "<strong>Μεθοδολογία</strong> Σύνθετη βαθμολογία (0-100) που συνδυάζει:<ul><li>50% Αστάθεια Χωρών (κορυφαίες 5 σταθμισμένες)</li><li>30% Ζώνες γεωγραφικής σύγκλισης</li><li>20% Συμβάντα υποδομών</li></ul>Αυτόματη ανανέωση κάθε 5 λεπτά.",
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "techEvents": {
       "loading": "Φόρτωση tech εκδηλώσεων...",
@@ -1412,7 +1428,7 @@
       "noMatching": "Δεν βρέθηκαν οδηγίες για αυτό το φίλτρο",
       "critical": "Κρίσιμο",
       "health": "Υγεία",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
       "refresh": "Ανανέωση",
       "levels": {
         "doNotTravel": "Μην ταξιδεύετε",
@@ -1992,9 +2008,23 @@
         "categories": "Κατηγορίες",
         "movers": "Κινούμενες Τιμές",
         "spread": "Διαφορά Λιανοπωλητή",
-        "health": "Υγεία Δεδομένων"
+        "health": "Υγεία Δεδομένων",
+        "world": "World"
       },
-      "infoTooltip": "<strong>Τιμές Καταναλωτή</strong> Παρακολούθηση τιμών καλαθιού σε πραγματικό χρόνο:<ul><li><strong>Επισκόπηση</strong>: Δείκτης βασικών αγαθών, καλάθι αξίας και μεταβολή εβδομάδα-σε-εβδομάδα</li><li><strong>Κατηγορίες</strong>: Τάσεις τιμών ανά κατηγορία με εύρος 30 ημερών</li><li><strong>Κινούμενες Τιμές</strong>: Μεγαλύτερες ανοδικές και καθοδικές κινήσεις αυτήν την εβδομάδα</li><li><strong>Διαφορά</strong>: Διακύμανση τιμών μεταξύ λιανοπωλητών για το ίδιο καλάθι</li></ul>Δεδομένα προερχόμενα από ζωντανή ανάλυση τιμών λιανοπωλητών."
+      "infoTooltip": "<strong>Τιμές Καταναλωτή</strong> Παρακολούθηση τιμών καλαθιού σε πραγματικό χρόνο:<ul><li><strong>Επισκόπηση</strong>: Δείκτης βασικών αγαθών, καλάθι αξίας και μεταβολή εβδομάδα-σε-εβδομάδα</li><li><strong>Κατηγορίες</strong>: Τάσεις τιμών ανά κατηγορία με εύρος 30 ημερών</li><li><strong>Κινούμενες Τιμές</strong>: Μεγαλύτερες ανοδικές και καθοδικές κινήσεις αυτήν την εβδομάδα</li><li><strong>Διαφορά</strong>: Διακύμανση τιμών μεταξύ λιανοπωλητών για το ίδιο καλάθι</li></ul>Δεδομένα προερχόμενα από ζωντανή ανάλυση τιμών λιανοπωλητών.",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "marketImplications": {
       "infoTooltip": "<strong>AI Συνέπειες για την Αγορά</strong> Σήματα συναλλαγών που παράγονται από LLM προερχόμενα από ζωντανή γεωπολιτική, εμπορεύματα και κατάσταση μακροοικονομικών δεδομένων μετά από κάθε κύκλο πρόβλεψης.<ul><li><strong>Κατεύθυνση</strong>: LONG / SHORT / HEDGE με등level εμπιστοσύνης</li><li><strong>Χρονικό Διάστημα</strong>: Ορίζοντας 1W, 2W, 1M ή 3M</li><li><strong>Κίνητρο</strong>: Βασικός καταλύτης πίσω από το σήμα</li><li><strong>Κίνδυνος</strong>: Προειδοποίηση ή συνθήκη ακύρωσης</li></ul><em>Μόνο για ενημερωτικούς σκοπούς. Δεν αποτελεί επενδυτική συμβουλή.</em>",
@@ -2266,6 +2296,45 @@
         "method": "Portwatch DWT + AIS calibration",
         "sampleLabel": "Σήματα διακοπής AIS",
         "creditName": "EIA World Oil Transit Chokepoints"
+      }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
+    },
+    "panelFreshness": {
+      "status": {
+        "fresh": "Fresh",
+        "stale": "Stale",
+        "veryStale": "Very stale",
+        "noData": "No data",
+        "disabled": "Disabled",
+        "error": "Error"
+      },
+      "labelWithAge": "{{status}} {{age}}",
+      "title": "Data freshness: {{status}}. {{sources}}",
+      "sourceDetail": "{{name}}: {{status}}, {{update}}",
+      "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
+      "lastUpdated": "last updated {{time}}",
+      "neverUpdated": "never updated",
+      "health": {
+        "partialCoverage": "partial coverage",
+        "contentStale": "content stale",
+        "seedStale": "seed stale",
+        "noSourceData": "no source data",
+        "sourceErrorReported": "source error reported",
+        "freshnessStoreUnavailable": "freshness store unavailable",
+        "freshnessStoreDegraded": "freshness store degraded"
+      },
+      "time": {
+        "never": "never",
+        "justNow": "just now",
+        "minutesAgo": "{{count}}m ago",
+        "hoursAgo": "{{count}}h ago",
+        "daysAgo": "{{count}}d ago",
+        "compactNow": "now",
+        "compactMinutes": "{{count}}m",
+        "compactHours": "{{count}}h",
+        "compactDays": "{{count}}d"
       }
     }
   },

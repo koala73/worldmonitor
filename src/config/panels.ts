@@ -20,6 +20,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'live-webcams': { name: 'Live Webcams', enabled: true, priority: 1 },
   'windy-webcams': { name: 'Windy Live Webcam', enabled: false, priority: 2 },
   insights: { name: 'AI Insights', enabled: true, priority: 1 },
+  'threat-timeline': { name: 'Threat Timeline', enabled: true, priority: 1 },
   'strategic-posture': { name: 'AI Strategic Posture', enabled: true, priority: 1 },
   forecast: { name: 'AI Forecasts', enabled: true, priority: 1, ...(_desktop && { premium: 'locked' as const }) }, // trial: unlocked on web, locked on desktop
   cii: { name: 'Country Instability', enabled: true, priority: 1, ...(_desktop && { premium: 'enhanced' as const }) },
@@ -1088,7 +1089,24 @@ const ENERGY_MOBILE_MAP_LAYERS: MapLayers = {
 // UNIFIED PANEL REGISTRY
 // ============================================
 
-/** All panels from all variants — union with FULL taking precedence for duplicate keys. */
+type PanelVariant = 'full' | 'tech' | 'finance' | 'commodity' | 'energy' | 'happy';
+
+const VARIANT_PANEL_CONFIGS: Record<PanelVariant, Record<string, PanelConfig>> = {
+  full: FULL_PANELS,
+  tech: TECH_PANELS,
+  finance: FINANCE_PANELS,
+  commodity: COMMODITY_PANELS,
+  energy: ENERGY_PANELS,
+  happy: HAPPY_PANELS,
+};
+
+function getVariantPanelConfigs(variant: string): Record<string, PanelConfig> | undefined {
+  return Object.prototype.hasOwnProperty.call(VARIANT_PANEL_CONFIGS, variant)
+    ? VARIANT_PANEL_CONFIGS[variant as PanelVariant]
+    : undefined;
+}
+
+/** All panels from all variants — canonical cross-variant registry. */
 export const ALL_PANELS: Record<string, PanelConfig> = {
   ...HAPPY_PANELS,
   ...COMMODITY_PANELS,
@@ -1100,12 +1118,12 @@ export const ALL_PANELS: Record<string, PanelConfig> = {
 
 /** Per-variant canonical panel order (keys = which panels are enabled by default). */
 export const VARIANT_DEFAULTS: Record<string, string[]> = {
-  full:      Object.keys(FULL_PANELS),
-  tech:      Object.keys(TECH_PANELS),
-  finance:   Object.keys(FINANCE_PANELS),
-  commodity: Object.keys(COMMODITY_PANELS),
-  energy:    Object.keys(ENERGY_PANELS),
-  happy:     Object.keys(HAPPY_PANELS),
+  full:      Object.keys(VARIANT_PANEL_CONFIGS.full),
+  tech:      Object.keys(VARIANT_PANEL_CONFIGS.tech),
+  finance:   Object.keys(VARIANT_PANEL_CONFIGS.finance),
+  commodity: Object.keys(VARIANT_PANEL_CONFIGS.commodity),
+  energy:    Object.keys(VARIANT_PANEL_CONFIGS.energy),
+  happy:     Object.keys(VARIANT_PANEL_CONFIGS.happy),
 };
 
 /**
@@ -1143,7 +1161,7 @@ export const VARIANT_PANEL_OVERRIDES: Partial<Record<string, Partial<Record<stri
  * applying variant-specific display overrides (name, premium, etc.).
  */
 export function getEffectivePanelConfig(key: string, variant: string): PanelConfig {
-  const base = ALL_PANELS[key];
+  const base = getVariantPanelConfigs(variant)?.[key] ?? ALL_PANELS[key];
   if (!base) return { name: key, enabled: false, priority: 2 };
   const override = VARIANT_PANEL_OVERRIDES[variant]?.[key] ?? {};
   return { ...base, ...override };
@@ -1246,74 +1264,91 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
     panelKeys: ['map', 'live-news', 'live-webcams', 'windy-webcams', 'insights', 'strategic-posture', 'latest-brief'],
   },
 
-  // Full (geopolitical) variant
+  // Full (geopolitical) variant — marketsFinance/topical/dataTracking are
+  // shared with the energy variant, which has no dedicated category block.
   intelligence: {
     labelKey: 'header.panelCatIntelligence',
-    panelKeys: ['cii', 'strategic-risk', 'intel', 'gdelt-intel', 'cascade', 'telegram-intel', 'forecast', 'cross-source-signals', 'regional-intelligence', 'deduction', 'chat-analyst', 'thermal-escalation', 'social-velocity', 'geo-hubs'],
+    panelKeys: ['cii', 'strategic-risk', 'threat-timeline', 'intel', 'gdelt-intel', 'cascade', 'telegram-intel', 'forecast', 'cross-source-signals', 'regional-intelligence', 'deduction', 'chat-analyst', 'thermal-escalation', 'social-velocity', 'geo-hubs'],
+    variants: ['full'],
   },
   correlation: {
     labelKey: 'header.panelCatCorrelation',
     panelKeys: ['military-correlation', 'escalation-correlation', 'economic-correlation', 'disaster-correlation'],
+    variants: ['full'],
   },
   regionalNews: {
     labelKey: 'header.panelCatRegionalNews',
     panelKeys: ['politics', 'us', 'europe', 'middleeast', 'africa', 'latam', 'asia'],
+    variants: ['full'],
   },
   marketsFinance: {
     labelKey: 'header.panelCatMarketsFinance',
     panelKeys: ['commodities', 'energy-complex', 'energy-risk-overview', 'pipeline-status', 'storage-facility-map', 'oil-inventories', 'fuel-prices', 'chokepoint-strip', 'fuel-shortages', 'energy-disruptions', 'hormuz-tracker', 'energy-crisis', 'markets', 'economic', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'finance', 'polymarket', 'macro-signals', 'gulf-economies', 'etf-flows', 'stablecoins', 'crypto', 'heatmap', 'aaii-sentiment', 'cot-positioning', 'earnings-calendar', 'economic-calendar', 'fear-greed', 'fsi', 'macro-tiles', 'market-breadth', 'liquidity-shifts', 'national-debt', 'positioning-247', 'wsb-ticker-scanner', 'yield-curve', 'gold-intelligence', 'bigmac', 'market-implications'],
+    variants: ['full', 'energy'],
   },
   topical: {
     labelKey: 'header.panelCatTopical',
     panelKeys: ['energy', 'gov', 'thinktanks', 'tech', 'ai', 'layoffs'],
+    variants: ['full', 'energy'],
   },
   dataTracking: {
     labelKey: 'header.panelCatDataTracking',
     panelKeys: ['monitors', 'satellite-fires', 'ucdp-events', 'displacement', 'climate', 'climate-news', 'population-exposure', 'security-advisories', 'radiation-watch', 'oref-sirens', 'world-clock', 'tech-readiness', 'disease-outbreaks', 'fao-food-price-index', 'grocery-basket', 'defense-patents'],
+    variants: ['full', 'energy'],
   },
 
   // Tech variant
   techAi: {
     labelKey: 'header.panelCatTechAi',
     panelKeys: ['ai', 'tech', 'hardware', 'cloud', 'dev', 'github', 'producthunt', 'events', 'service-status', 'tech-readiness', 'internet-disruptions', 'tech-hubs'],
+    variants: ['tech'],
   },
   startupsVc: {
     labelKey: 'header.panelCatStartupsVc',
     panelKeys: ['startups', 'vcblogs', 'regionalStartups', 'unicorns', 'accelerators', 'funding', 'ipo'],
+    variants: ['tech'],
   },
   securityPolicy: {
     labelKey: 'header.panelCatSecurityPolicy',
     panelKeys: ['security', 'policy', 'ai-regulation'],
+    variants: ['tech'],
   },
   techMarkets: {
     labelKey: 'header.panelCatMarkets',
     panelKeys: ['markets', 'finance', 'crypto', 'economic', 'sanctions-pressure', 'polymarket', 'macro-signals', 'etf-flows', 'stablecoins', 'layoffs', 'monitors', 'world-clock'],
+    variants: ['tech'],
   },
 
   // Finance variant
   finMarkets: {
     labelKey: 'header.panelCatMarkets',
     panelKeys: ['markets', 'stock-analysis', 'stock-backtest', 'daily-market-brief', 'markets-news', 'heatmap', 'macro-signals', 'analysis', 'polymarket'],
+    variants: ['finance'],
   },
   fixedIncomeFx: {
     labelKey: 'header.panelCatFixedIncomeFx',
     panelKeys: ['forex', 'bonds'],
+    variants: ['finance'],
   },
   finCommodities: {
     labelKey: 'header.panelCatCommodities',
     panelKeys: ['commodities', 'energy-complex', 'commodities-news'],
+    variants: ['finance'],
   },
   cryptoDigital: {
     labelKey: 'header.panelCatCryptoDigital',
     panelKeys: ['crypto', 'crypto-heatmap', 'defi-tokens', 'ai-tokens', 'other-tokens', 'crypto-news', 'etf-flows', 'stablecoins', 'fintech'],
+    variants: ['finance'],
   },
   centralBanksEcon: {
     labelKey: 'header.panelCatCentralBanks',
     panelKeys: ['centralbanks', 'economic', 'energy-complex', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'economic-news'],
+    variants: ['finance'],
   },
   dealsInstitutional: {
     labelKey: 'header.panelCatDeals',
     panelKeys: ['ipo', 'derivatives', 'institutional', 'fin-regulation'],
+    variants: ['finance'],
   },
   gulfMena: {
     labelKey: 'header.panelCatGulfMena',
@@ -1325,10 +1360,12 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   commodityPrices: {
     labelKey: 'header.panelCatCommodityPrices',
     panelKeys: ['commodities', 'energy-complex', 'gold-silver', 'energy', 'base-metals', 'critical-minerals', 'markets', 'heatmap', 'macro-signals'],
+    variants: ['commodity'],
   },
   miningIndustry: {
     labelKey: 'header.panelCatMining',
     panelKeys: ['commodity-news', 'mining-news', 'mining-companies', 'supply-chain', 'commodity-regulation'],
+    variants: ['commodity'],
   },
   commodityEcon: {
     labelKey: 'header.panelCatCommodityEcon',
@@ -1348,6 +1385,38 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
     variants: ['happy'],
   },
 };
+
+export interface VariantPanelCategory {
+  key: string;
+  labelKey: string;
+  panelKeys: string[];
+}
+
+// Categories applicable to `variant` that contain at least one enabled panel.
+// Shared by the settings panel-tab filter and the mobile category nav —
+// callers prepend their own "all" entry and localize labelKey via t().
+export function getVariantPanelCategories(
+  panelSettings: Record<string, PanelConfig>,
+  variant: string,
+): VariantPanelCategory[] {
+  return Object.entries(PANEL_CATEGORY_MAP)
+    .filter(([, def]) => !def.variants || def.variants.includes(variant))
+    .filter(([, def]) => def.panelKeys.some((pk) => panelSettings[pk]?.enabled))
+    .map(([key, def]) => ({ key, labelKey: def.labelKey, panelKeys: def.panelKeys }));
+}
+
+// Enabled panels that carry a premium gate on the current surface — drives
+// the mobile nav's PRO chip. getEffectivePanelConfig folds in per-variant
+// premium overrides; unknown keys (custom widgets, MCP panels) resolve to a
+// premium-less stub and drop out.
+export function getProPanelKeys(
+  panelSettings: Record<string, PanelConfig>,
+  variant: string,
+): string[] {
+  return Object.keys(panelSettings).filter((key) =>
+    panelSettings[key]?.enabled && Boolean(getEffectivePanelConfig(key, variant).premium),
+  );
+}
 
 // Monitor palette — fixed category colors persisted to localStorage (not theme-dependent)
 export const MONITOR_COLORS = [

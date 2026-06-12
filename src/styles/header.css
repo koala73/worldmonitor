@@ -1,0 +1,83 @@
+.header {
+  contain: layout;
+}
+
+.header-right {
+  --header-auth-slot-width: 200px;
+  --header-findings-slot-width: 72px;
+
+  padding-left: calc(var(--header-findings-slot-width) + 12px);
+  position: relative;
+}
+
+.header-right > .intel-findings-badge {
+  box-sizing: border-box;
+  justify-content: center;
+  left: 0;
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  width: var(--header-findings-slot-width);
+}
+
+#missionPresetMount,
+#unifiedSettingsMount,
+#authWidgetMount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+#missionPresetMount,
+#unifiedSettingsMount {
+  contain: layout;
+}
+
+#missionPresetMount {
+  min-width: 86px;
+  min-height: 24px;
+}
+
+#unifiedSettingsMount {
+  min-width: 28px;
+  min-height: 28px;
+}
+
+#authWidgetMount {
+  min-width: var(--header-auth-slot-width);
+  min-height: 32px;
+}
+
+.auth-header-widget-pending {
+  width: var(--header-auth-slot-width);
+}
+
+.auth-header-skeleton {
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--text) 7%, transparent),
+      color-mix(in srgb, var(--text) 13%, transparent),
+      color-mix(in srgb, var(--text) 7%, transparent)
+    );
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 6px;
+  display: block;
+  height: 32px;
+  pointer-events: none;
+}
+
+.auth-header-skeleton-signin {
+  flex: 0 0 72px;
+}
+
+.auth-header-skeleton-signup {
+  flex: 0 0 120px;
+}
+
+#missionPresetMount:empty,
+#unifiedSettingsMount:empty,
+#authWidgetMount:empty {
+  visibility: hidden;
+}

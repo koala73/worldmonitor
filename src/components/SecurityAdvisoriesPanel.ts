@@ -3,7 +3,7 @@ import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
 import type { SecurityAdvisory } from '@/services/security-advisories';
 
-type AdvisoryFilter = 'all' | 'critical' | 'US' | 'AU' | 'UK' | 'NZ' | 'health';
+type AdvisoryFilter = 'all' | 'critical' | 'US' | 'AU' | 'UK' | 'health';
 
 export class SecurityAdvisoriesPanel extends Panel {
   private advisories: SecurityAdvisory[] = [];
@@ -58,7 +58,6 @@ export class SecurityAdvisoriesPanel extends Panel {
       case 'US':
       case 'AU':
       case 'UK':
-      case 'NZ':
         return this.advisories.filter(a => a.sourceCountry === this.activeFilter);
       default:
         return this.advisories;
@@ -90,7 +89,6 @@ export class SecurityAdvisoriesPanel extends Panel {
       case 'US': return '\u{1F1FA}\u{1F1F8}';
       case 'AU': return '\u{1F1E6}\u{1F1FA}';
       case 'UK': return '\u{1F1EC}\u{1F1E7}';
-      case 'NZ': return '\u{1F1F3}\u{1F1FF}';
       case 'EU': return '\u{1F1EA}\u{1F1FA}';
       case 'INT': return '\u{1F3E5}';
       default: return '\u{1F310}';
@@ -147,7 +145,6 @@ export class SecurityAdvisoriesPanel extends Panel {
         <button class="sa-filter ${this.activeFilter === 'US' ? 'sa-filter-active' : ''}" data-filter="US">\u{1F1FA}\u{1F1F8} US</button>
         <button class="sa-filter ${this.activeFilter === 'AU' ? 'sa-filter-active' : ''}" data-filter="AU">\u{1F1E6}\u{1F1FA} AU</button>
         <button class="sa-filter ${this.activeFilter === 'UK' ? 'sa-filter-active' : ''}" data-filter="UK">\u{1F1EC}\u{1F1E7} UK</button>
-        <button class="sa-filter ${this.activeFilter === 'NZ' ? 'sa-filter-active' : ''}" data-filter="NZ">\u{1F1F3}\u{1F1FF} NZ</button>
         <button class="sa-filter ${this.activeFilter === 'health' ? 'sa-filter-active' : ''}" data-filter="health">\u{1F3E5} ${t('components.securityAdvisories.health')}</button>
       </div>
     `;

@@ -1,4 +1,5 @@
 import { strict as assert } from 'node:assert';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const SECRET = 'test-secret-must-be-at-least-32-chars-long-xxx';
@@ -114,6 +115,20 @@ test('enterprise key carries kind=enterprise (the only key kind that bypasses en
   const r = await validateApiKey(makeReq({ key: ENTERPRISE_KEY }));
   assert.equal(r.valid, true);
   assert.equal(r.kind, 'enterprise');
+});
+
+test('enterprise key allowlist uses timingSafeIncludes, not Array.includes', async () => {
+  const source = await readFile(new URL('./_api-key.js', import.meta.url), 'utf8');
+  assert.match(
+    source,
+    /import\s*\{[^}]*\btimingSafeIncludes\b[^}]*\}\s*from\s*['"]\.\/_crypto\.js['"]/,
+    'api/_api-key.js must use the Edge-safe timingSafeIncludes helper',
+  );
+  assert.doesNotMatch(
+    source,
+    /\bvalidKeys\.includes\s*\(\s*key\s*\)/,
+    'enterprise key validation must not use non-constant-time Array.includes(key)',
+  );
 });
 
 test('valid wms_ session token works even when Origin is also forged (not redundant — no privilege escalation)', async () => {

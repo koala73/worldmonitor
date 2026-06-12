@@ -94,6 +94,7 @@ export const COMMANDS: Command[] = [
   { id: 'panel:cii', keywords: ['cii', 'instability', 'country risk'], label: 'Panel: Country Instability', icon: '\u{1F3AF}', category: 'panels' },
   { id: 'panel:cascade', keywords: ['cascade', 'infrastructure cascade', 'cascading failure', 'contagion'], label: 'Panel: Infrastructure Cascade', icon: '\u{1F517}', category: 'panels' },
   { id: 'panel:strategic-risk', keywords: ['risk', 'strategic risk', 'threat level'], label: 'Panel: Strategic Risk', icon: '\u26A0\uFE0F', category: 'panels' },
+  { id: 'panel:threat-timeline', keywords: ['threat timeline', 'threat levels', 'threat trend', 'security escalation'], label: 'Panel: Threat Timeline', icon: '\u26A0\uFE0F', category: 'panels' },
   { id: 'panel:cross-source-signals', keywords: ['cross source', 'signal aggregator', 'composite escalation', 'multi signal'], label: 'Panel: Cross-Source Signals', icon: '\u{1F4E1}', category: 'panels' },
   { id: 'panel:politics', keywords: ['world news', 'politics', 'geopolitics'], label: 'Panel: World News', icon: '\u{1F30D}', category: 'panels' },
   { id: 'panel:us', keywords: ['united states', 'us news', 'america news'], label: 'Panel: United States', icon: '\u{1F1FA}\u{1F1F8}', category: 'panels' },
@@ -176,7 +177,13 @@ export const COMMANDS: Command[] = [
   { id: 'panel:security', keywords: ['cybersecurity', 'security news', 'hacking', 'breaches', 'vulnerabilities'], label: 'Panel: Cybersecurity', icon: '\u{1F512}', category: 'panels' },
 
   // Economic / price panels
-  { id: 'panel:consumer-prices', keywords: ['consumer prices', 'cpi', 'inflation', 'cost of living'], label: 'Panel: Consumer Prices', icon: '\u{1F6D2}', category: 'panels' },
+  { id: 'panel:consumer-prices', keywords: ['consumer prices', 'cpi', 'cost of living'], label: 'Panel: Consumer Prices', icon: '\u{1F6D2}', category: 'panels' },
+  // Deep-links to the World tab (IMF official inflation, all countries). The
+  // `global inflation` / `country inflation` queries route here (not the base
+  // command) so a single, unambiguous CMD+K result lands on the World tab. The
+  // `@world` suffix is parsed by search-manager's panel handler — the contract
+  // guardrail's `panel:<id>'` parser ignores it, so panel parity stays intact.
+  { id: 'panel:consumer-prices@world', keywords: ['inflation', 'global inflation', 'inflation by country', 'country inflation', 'inflation ranking', 'world inflation', 'imf inflation', 'highest inflation', 'cpi by country'], label: 'Panel: Global Inflation (by country)', icon: '\u{1F4C8}', category: 'panels' },
   { id: 'panel:grocery-basket', keywords: ['grocery', 'grocery basket', 'grocery index', 'food prices', 'supermarket'], label: 'Panel: Grocery Index', icon: '\u{1F96C}', category: 'panels' },
   { id: 'panel:bigmac', keywords: ['bigmac', 'big mac', 'big mac index', 'purchasing power parity', 'ppp'], label: 'Panel: Big Mac Index', icon: '\u{1F354}', category: 'panels' },
   { id: 'panel:fuel-prices', keywords: ['fuel prices', 'gas prices', 'gasoline', 'diesel', 'petrol', 'fuel cost', 'pump prices'], label: 'Panel: Fuel Prices', icon: '\u26FD', category: 'panels' },

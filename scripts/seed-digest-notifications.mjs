@@ -34,6 +34,7 @@ const { normalizeResendSender } = require('./lib/resend-from.cjs');
 import { readRawJsonFromUpstash, redisPipeline } from '../api/_upstash-json.js';
 import { classifyOpinion } from '../server/_shared/opinion-classifier.js';
 import { classifyFeelGood } from '../server/_shared/feelgood-classifier.js';
+import { classifyEphemeralLiveCoverage } from '../shared/ephemeral-live-classifier.js';
 import {
   composeBriefFromDigestStories,
   compareRules,
@@ -81,6 +82,17 @@ import { readCooldownConfig } from './lib/digest-cooldown-config.mjs';
 import { evaluateCooldown } from './lib/digest-cooldown-decision.mjs';
 import { emitCooldownShadowLog } from './lib/digest-cooldown-shadow-log.mjs';
 
+const EPHEMERAL_LIVE_LOG_TITLE_SAMPLE_LIMIT = 5;
+const EPHEMERAL_LIVE_LOG_TITLE_MAX_CHARS = 160;
+
+function compactDroppedEphemeralLiveTitle(title) {
+  const compact = String(title ?? '').replace(/\s+/g, ' ').trim();
+  if (!compact) return '<missing title>';
+  return compact.length > EPHEMERAL_LIVE_LOG_TITLE_MAX_CHARS
+    ? `${compact.slice(0, EPHEMERAL_LIVE_LOG_TITLE_MAX_CHARS - 3)}...`
+    : compact;
+}
+
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL ?? '';
@@ -102,6 +114,10 @@ const RESEND_FROM =
     process.env.RESEND_FROM_BRIEF ?? process.env.RESEND_FROM_EMAIL,
     'WorldMonitor Brief',
   ) ?? 'WorldMonitor Brief <brief@worldmonitor.app>';
+const DIGEST_LAST_RUN_KEY = 'digest:last-run';
+const DIGEST_LAST_RUN_META_KEY = 'seed-meta:digest:last-run';
+const DIGEST_LAST_RUN_TTL_SECONDS = 7 * 24 * 60 * 60;
+let digestRunStartedAtMs = null;
 
 if (process.env.DIGEST_CRON_ENABLED === '0') {
   console.log('[digest] DIGEST_CRON_ENABLED=0 — skipping run');
@@ -335,6 +351,45 @@ async function upstashPipeline(commands) {
   return res.json();
 }
 
+function compactDigestLastRunReason(reason) {
+  return String(reason ?? 'unknown').replace(/\s+/g, ' ').trim().slice(0, 240);
+}
+
+async function writeDigestLastRunMeta({
+  startedAtMs,
+  finishedAtMs = Date.now(),
+  status = 'ok',
+  sentCount = 0,
+  errorReason = null,
+}) {
+  const run = {
+    fetchedAt: finishedAtMs,
+    recordCount: 1,
+    status,
+    sentCount,
+    startedAt: startedAtMs,
+    durationMs: Math.max(0, finishedAtMs - startedAtMs),
+  };
+  if (errorReason) run.errorReason = compactDigestLastRunReason(errorReason);
+
+  try {
+    const result = await upstashPipeline([
+      ['SET', DIGEST_LAST_RUN_KEY, JSON.stringify(run), 'EX', String(DIGEST_LAST_RUN_TTL_SECONDS)],
+      ['SET', DIGEST_LAST_RUN_META_KEY, JSON.stringify(run), 'EX', String(DIGEST_LAST_RUN_TTL_SECONDS)],
+    ]);
+    const ok = Array.isArray(result)
+      && result.length === 2
+      && result.every((cell) => cell && typeof cell === 'object' && !('error' in cell));
+    if (!ok) {
+      console.warn('[digest] last-run health write did not confirm both keys');
+    }
+    return ok;
+  } catch (err) {
+    console.warn(`[digest] last-run health write failed: ${err?.message ?? err}`);
+    return false;
+  }
+}
+
 // ── Schedule helpers ──────────────────────────────────────────────────────────
 
 function toLocalHour(nowMs, timezone) {
@@ -559,6 +614,8 @@ async function buildDigest(rule, windowStartMs) {
   let droppedStaleAtRead = 0;
   let droppedOpinion = 0;
   let droppedFeelGood = 0;
+  let droppedEphemeralLive = 0;
+  const droppedEphemeralLiveTitleSamples = [];
   for (let i = 0; i < hashes.length; i++) {
     const raw = trackResults[i]?.result;
     if (!Array.isArray(raw) || raw.length === 0) continue;
@@ -621,6 +678,30 @@ async function buildDigest(rule, windowStartMs) {
       continue;
     }
 
+    // Ephemeral live-programming exclusion. This is intentionally a digest/
+    // brief read-path filter, not a global news-feed drop: live video teasers
+    // can be acceptable inside a live news surface, but a delayed daily brief
+    // should not tell readers hours later to "WATCH LIVE" a briefing that may
+    // address something.
+    const stampedEphemeralLive = track.isEphemeralLiveCoverage === '1';
+    const ephemeralLiveStampMissing =
+      typeof track.isEphemeralLiveCoverage !== 'string' ||
+      track.isEphemeralLiveCoverage.length === 0;
+    if (
+      stampedEphemeralLive ||
+      (ephemeralLiveStampMissing && classifyEphemeralLiveCoverage({
+        title: track.title,
+        link: track.link ?? '',
+        description: typeof track.description === 'string' ? track.description : '',
+      }))
+    ) {
+      droppedEphemeralLive++;
+      if (droppedEphemeralLiveTitleSamples.length < EPHEMERAL_LIVE_LOG_TITLE_SAMPLE_LIMIT) {
+        droppedEphemeralLiveTitleSamples.push(compactDroppedEphemeralLiveTitle(track.title));
+      }
+      continue;
+    }
+
     const phase = derivePhase(track);
     if (phase === 'fading') continue;
     if (!matchesSensitivity(rule.sensitivity ?? 'high', track.severity)) continue;
@@ -676,6 +757,18 @@ async function buildDigest(rule, windowStartMs) {
       `[digest] buildDigest feel-good filter dropped ${droppedFeelGood} ` +
         `feel-good/lifestyle item(s) from the pool (variant=${rule.variant ?? 'full'} ` +
         `lang=${rule.lang ?? 'en'} sensitivity=${rule.sensitivity ?? 'high'})`,
+    );
+  }
+
+  if (droppedEphemeralLive > 0) {
+    const titleSampleSuffix = droppedEphemeralLiveTitleSamples.length > 0
+      ? ` sample_titles=${JSON.stringify(droppedEphemeralLiveTitleSamples)}`
+      : '';
+    console.log(
+      `[digest] buildDigest ephemeral-live filter dropped ${droppedEphemeralLive} ` +
+        `live-programming teaser(s) from the pool (variant=${rule.variant ?? 'full'} ` +
+        `lang=${rule.lang ?? 'en'} sensitivity=${rule.sensitivity ?? 'high'})` +
+        titleSampleSuffix,
     );
   }
 
@@ -1527,7 +1620,8 @@ function injectBriefCta(html, magazineUrl) {
 // ── Brief composition (runs once per cron tick, before digest loop) ─────────
 
 /**
- * Write brief:{userId}:{issueDate} for every eligible user and
+ * Write brief:{userId}:{issueSlot} for every eligible user and
+ * brief:latest:{userId} as the latest-pointer for share/readback, then
  * return { briefByUser, counters } for the digest loop + main's
  * end-of-run exit gate. One brief per user regardless of how many
  * variants they have enabled.
@@ -1805,6 +1899,7 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
     cap: 0,
     source_topic_cap: 0,
     institutional_static_page: 0,
+    ephemeral_live: 0,
     in: winnerStories.length,
   };
   const orderStats = {
@@ -1863,6 +1958,7 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
       `dropped_cap=${dropStats.cap} ` +
       `dropped_source_topic_cap=${dropStats.source_topic_cap} ` +
       `dropped_institutional_static_page=${dropStats.institutional_static_page} ` +
+      `dropped_ephemeral_live=${dropStats.ephemeral_live} ` +
       `out=${out}`,
   );
 
@@ -2046,6 +2142,7 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
 
 async function main() {
   const nowMs = Date.now();
+  digestRunStartedAtMs = nowMs;
   console.log('[digest] Cron run start:', new Date(nowMs).toISOString());
 
   let rules;
@@ -2060,16 +2157,27 @@ async function main() {
     });
     if (!res.ok) {
       console.error('[digest] Failed to fetch rules:', res.status);
+      await writeDigestLastRunMeta({
+        startedAtMs: nowMs,
+        status: 'error',
+        errorReason: `fetch_rules_http_${res.status}`,
+      });
       return;
     }
     rules = await res.json();
   } catch (err) {
     console.error('[digest] Fetch rules failed:', err.message);
+    await writeDigestLastRunMeta({
+      startedAtMs: nowMs,
+      status: 'error',
+      errorReason: `fetch_rules_failed:${err.message}`,
+    });
     return;
   }
 
   if (!Array.isArray(rules) || rules.length === 0) {
     console.log('[digest] No digest rules found — nothing to do');
+    await writeDigestLastRunMeta({ startedAtMs: nowMs, sentCount: 0 });
     return;
   }
 
@@ -2107,6 +2215,7 @@ async function main() {
       console.warn(
         `[digest] No rules matched userId=${onlyUserFilter.userId} — nothing to do (exiting green).`,
       );
+      await writeDigestLastRunMeta({ startedAtMs: nowMs, sentCount: 0 });
       return;
     }
   } else if (onlyUserFilter.kind === 'reject') {
@@ -2880,11 +2989,26 @@ async function main() {
     console.warn(
       `[digest] brief: exiting non-zero — compose_failed=${composeFailed} compose_success=${composeSuccess} crossed the threshold`,
     );
+    await writeDigestLastRunMeta({
+      startedAtMs: nowMs,
+      status: 'error',
+      sentCount,
+      errorReason: `brief_compose_failed:${composeFailed}:success:${composeSuccess}`,
+    });
     process.exit(1);
   }
+
+  await writeDigestLastRunMeta({ startedAtMs: nowMs, sentCount });
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
+  const finishedAtMs = Date.now();
   console.error('[digest] Fatal:', err);
+  await writeDigestLastRunMeta({
+    startedAtMs: digestRunStartedAtMs ?? finishedAtMs,
+    finishedAtMs,
+    status: 'error',
+    errorReason: `fatal:${err?.message ?? err}`,
+  });
   process.exit(1);
 });

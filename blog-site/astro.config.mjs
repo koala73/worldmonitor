@@ -20,7 +20,21 @@ const POST_DATES = {
   'https://www.worldmonitor.app/blog/posts/what-is-worldmonitor-real-time-global-intelligence/': '2026-02-10',
   'https://www.worldmonitor.app/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/': '2026-03-04',
   'https://www.worldmonitor.app/blog/posts/worldmonitor-vs-traditional-intelligence-tools/': '2026-03-11',
-  'https://www.worldmonitor.app/blog/': '2026-03-19',
+  'https://www.worldmonitor.app/blog/posts/country-instability-index-methodology-explained/': '2026-05-30',
+  'https://www.worldmonitor.app/blog/posts/daily-intelligence-briefing-workflow-15-minutes/': '2026-06-02',
+  'https://www.worldmonitor.app/blog/posts/verify-breaking-news-osint-workflow-journalists/': '2026-06-04',
+  'https://www.worldmonitor.app/blog/posts/country-risk-monitoring-workflow-for-analysts/': '2026-06-06',
+  'https://www.worldmonitor.app/blog/posts/build-supply-chain-early-warning-system-api/': '2026-06-08',
+  'https://www.worldmonitor.app/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/': '2026-06-10',
+  'https://www.worldmonitor.app/blog/posts/build-geopolitical-risk-agent-worldmonitor-mcp/': '2026-06-10',
+  'https://www.worldmonitor.app/blog/posts/supply-chain-early-warning-dashboard-worldmonitor-api/': '2026-06-10',
+  'https://www.worldmonitor.app/blog/posts/country-risk-monitoring-due-diligence-worldmonitor/': '2026-06-10',
+  'https://www.worldmonitor.app/blog/posts/energy-shock-monitoring-chokepoints-worldmonitor/': '2026-06-10',
+  'https://www.worldmonitor.app/blog/posts/geopolitical-risk-alerts-slack-teams-worldmonitor-api/': '2026-06-10',
+  'https://www.worldmonitor.app/blog/posts/ask-claude-whats-happening-worldmonitor-mcp/': '2026-06-10',
+  'https://www.worldmonitor.app/blog/posts/free-geopolitical-data-apis-2026/': '2026-06-10',
+  'https://www.worldmonitor.app/blog/posts/embed-live-global-map-worldmonitor/': '2026-06-11',
+  'https://www.worldmonitor.app/blog/': '2026-06-10',
 };
 
 export default defineConfig({

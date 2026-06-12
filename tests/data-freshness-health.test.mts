@@ -12,10 +12,10 @@ import {
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
-function jsonResponse(body: unknown): Response {
+function jsonResponse(body: unknown, status = 200): Response {
   return {
-    ok: true,
-    status: 200,
+    ok: status >= 200 && status < 300,
+    status,
     json: async () => body,
   } as Response;
 }
@@ -155,10 +155,14 @@ describe('health freshness ingestion', () => {
     const applied = await refreshDataFreshnessFromHealth({
       endpoint: '/api/health',
       urlResolver: (path) => path,
+      // REDIS_DOWN returns HTTP 503 (api/health.js). The consumer must parse the
+      // body before bailing on !resp.ok, or this outage branch never runs and
+      // mapped sources keep stale freshness. Mocking 503 (not 200) makes this a
+      // real guard for that regression.
       fetchFn: async () => jsonResponse({
         status: 'REDIS_DOWN',
         checkedAt: new Date(checkedAtMs).toISOString(),
-      }),
+      }, 503),
     });
 
     assert.equal(applied, mappedSources.size);
@@ -256,21 +260,19 @@ describe('health freshness ingestion', () => {
     assert.equal(bls?.lastUpdate?.toISOString(), new Date(checkedAtMs - 90 * 60_000).toISOString());
   });
 
-  it('keeps health freshness failures debounced by updating the timestamp in finally', () => {
+  it('polls health freshness from the app scheduler instead of StrategicRiskPanel', () => {
+    const appSrc = readFileSync(resolve(repoRoot, 'src/App.ts'), 'utf8');
     const panelSrc = readFileSync(resolve(repoRoot, 'src/components/StrategicRiskPanel.ts'), 'utf8');
-    const methodMatch = panelSrc.match(/private async refreshHealthFreshness\(\): Promise<void> \{[\s\S]*?\n {2}\}/);
-    assert.ok(methodMatch, 'StrategicRiskPanel.refreshHealthFreshness method should exist');
 
-    const methodSrc = methodMatch[0];
     assert.doesNotMatch(
       panelSrc,
-      /void this\.refreshHealthFreshness\(\)\.catch\(/,
-      'refreshHealthFreshness swallows internally, so refresh() should not add a dead outer catch',
+      /refreshDataFreshnessFromHealth|refreshHealthFreshness|lastHealthFreshnessRefreshAt/,
+      'StrategicRiskPanel must not own /api/health freshness polling',
     );
     assert.match(
-      methodSrc,
-      /finally\s*\{[\s\S]*this\.lastHealthFreshnessRefreshAt\s*=\s*Date\.now\(\);[\s\S]*\}/,
-      'lastHealthFreshnessRefreshAt should update in finally so failed health fetches are debounced',
+      appSrc,
+      /scheduleRefresh\(\s*['"]health-freshness['"][\s\S]*refreshDataFreshnessFromHealth\(\)[\s\S]*REFRESH_INTERVALS\.healthFreshness[\s\S]*runImmediately:\s*true/,
+      'App scheduler should poll /api/health freshness immediately and on an interval, independent of panel visibility',
     );
   });
 });

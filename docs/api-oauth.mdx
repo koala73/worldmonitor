@@ -17,6 +17,8 @@ WorldMonitor runs a minimal OAuth 2.1 authorization server whose only client-fac
 | `/.well-known/oauth-authorization-server` | AS metadata (endpoints, supported grants, PKCE methods) |
 | `/.well-known/oauth-protected-resource` | Resource metadata (authorization servers, scopes) |
 
+`/.well-known/oauth-protected-resource` currently advertises the public resource scope `mcp`. Pro authorization-code grants return the internal scope value `mcp_pro`; legacy API-key grants and `client_credentials` return `mcp`.
+
 ## Endpoints
 
 ### `POST /api/oauth/register`
@@ -35,6 +37,7 @@ Dynamic Client Registration. Returns a `client_id` (public clients, no secret).
 **Response**: `{ "client_id": "c_01HX...", "client_id_issued_at": 1713456789, ... }`
 
 **Redirect URI allowlist**: only these prefixes are accepted:
+
 - `https://claude.ai/api/mcp/auth_callback`
 - `https://claude.com/api/mcp/auth_callback`
 - `http://localhost:<port>` / `http://127.0.0.1:<port>` — any port
@@ -48,6 +51,7 @@ Dynamic Client Registration. Returns a `client_id` (public clients, no secret).
 Starts the OAuth flow. Renders a consent page that redirects to Clerk for sign-in, then issues an authorization code bound to the caller's PRO entitlement.
 
 **Required query params**:
+
 - `response_type=code`
 - `client_id` — from DCR
 - `redirect_uri` — must match the one registered
@@ -74,11 +78,11 @@ redirect_uri=<same as /authorize>
 **Response**:
 ```json
 {
-  "access_token": "wm_oat_...",
+  "access_token": "6f13d8fa-89b6-4a02-a527-7f6f61a2df55",
   "token_type": "Bearer",
   "expires_in": 3600,
-  "refresh_token": "wm_ort_...",
-  "scope": "mcp:read"
+  "refresh_token": "6ba38313-9a4d-4797-9186-3d2c3c1cfe02",
+  "scope": "mcp_pro"
 }
 ```
 
@@ -89,20 +93,21 @@ refresh_token=<from previous exchange>
 client_id=<from DCR>
 ```
 
-**Rate limit**: 10 token requests / minute / IP.
+**Rate limit**: 10 token requests / minute. The limiter is keyed by `client_secret` hash for `client_credentials`, by `client_id` when present (`authorization_code` and `refresh_token`), and falls back to caller IP only when neither identifier is available.
 
 **Token TTLs**:
+
 - Access token: 1 hour
 - Refresh token: 7 days
 
-All token-endpoint responses include `Cache-Control: no-store, Pragma: no-cache`.
+Access and refresh tokens are opaque UUIDs. All token-endpoint responses include `Cache-Control: no-store, Pragma: no-cache`.
 
 ## Using tokens
 
 Pass the access token on every MCP request:
 
 ```
-Authorization: Bearer wm_oat_...
+Authorization: Bearer 6f13d8fa-89b6-4a02-a527-7f6f61a2df55
 ```
 
 Tokens are bound to the user's account and re-check entitlement on every call — a downgrade revokes access on the next request.

@@ -1,0 +1,33 @@
+---
+title: "Embed Live Map"
+description: "Add the public World Monitor live map to an article or internal page with an iframe."
+---
+
+World Monitor exposes a public map-only iframe at `/embed`.
+
+```html
+<iframe
+  src="https://www.worldmonitor.app/embed?layers=conflicts,earthquakes,weather&center=20,0&zoom=1&theme=dark&variant=full"
+  title="World Monitor live map"
+  loading="lazy"
+  referrerpolicy="strict-origin-when-cross-origin"
+  style="width:100%;height:420px;border:0;display:block"
+  allowfullscreen
+></iframe>
+```
+
+## Query Parameters
+
+| Parameter | Example | Notes |
+| --- | --- | --- |
+| `layers` | `conflicts,earthquakes,weather` | Allow-listed public layers only. Supported values: `conflicts`, `earthquakes`, `protests`, `weather`. Unknown, premium, authenticated, or high-frequency layers are ignored. |
+| `center` | `25.2,55.3` | Latitude and longitude, clamped to valid ranges. |
+| `zoom` | `4` | Clamped between `1` and `10`. |
+| `theme` | `dark` | `dark` or `light`. |
+| `variant` | `full` | One of `full`, `tech`, `finance`, `commodity`, `happy`, or `energy`. |
+
+## Scope
+
+The embed route is intentionally map-only. It does not expose arbitrary panels, account state, premium layers, saved preferences, Clerk auth, or notification state. Use the dashboard's **Embed** button to generate a snippet for the current public map view.
+
+Each embed includes a permanent attribution link back to World Monitor with source campaign parameters.

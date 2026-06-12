@@ -1,9 +1,9 @@
 ---
 title: "Scenarios API"
-description: "Run pre-defined supply-chain disruption scenarios against any country and poll for worker-computed results."
+description: "Run pre-defined supply-chain disruption scenarios against a scoped country or the v1 seeded reporter set, then poll for worker-computed results."
 ---
 
-The **scenarios** API is a PRO-only, job-queued surface on top of the WorldMonitor chokepoint + trade dataset. Callers enqueue a named scenario template against an optional country, then poll a job-id until the worker completes.
+The **scenarios** API is a PRO-only, job-queued surface on top of the WorldMonitor chokepoint + trade dataset. Callers enqueue a named scenario template against an optional country, then poll a job-id until the worker completes. If no country is supplied, v1 computes across the seeded reporter set only: `US`, `CN`, `RU`, `IR`, `IN`, and `TW`.
 
 <Info>
 This service is proto-backed — see `proto/worldmonitor/scenario/v1/service.proto`. Auto-generated reference will replace this page once the scenario service is included in the published OpenAPI bundle.
@@ -55,18 +55,18 @@ Enqueues a job. Returns the assigned `jobId` the caller must poll.
 - **Auth**: PRO entitlement required. Granted by either (a) a valid `X-WorldMonitor-Key` (env key from `WORLDMONITOR_VALID_KEYS`, or a user-owned `wm_`-prefixed key whose owner has the `apiAccess` entitlement), **or** (b) a Clerk bearer token whose user has role `pro` or Dodo entitlement tier ≥ 1. A trusted browser Origin alone is **not** sufficient — `isCallerPremium()` in `server/_shared/premium-check.ts` only counts explicit credentials. Browser calls work because `premiumFetch()` (`src/services/premium-fetch.ts`) injects one of the two credential forms on the caller's behalf.
 - **Rate limits**:
   - 10 jobs / minute / IP (enforced at the gateway via `ENDPOINT_RATE_POLICIES` in `server/_shared/rate-limit.ts`)
-  - Global queue capped at 100 in-flight jobs; excess rejected with `429`
+  - Queue backpressure checks the pending Redis list before enqueue; depth `> 100` is rejected with `429`, so depth `100` can still accept one more job.
 
 **Request**:
 ```json
 {
   "scenarioId": "hormuz-tanker-blockade",
-  "iso2": "SG"
+  "iso2": "US"
 }
 ```
 
 - `scenarioId` — id from `/list-scenario-templates`. Required.
-- `iso2` — optional ISO-3166-1 alpha-2 (uppercase). Scopes the scenario to one country. Empty string = scope-all.
+- `iso2` — optional ISO-3166-1 alpha-2 (uppercase). Scopes the scenario to one country. Empty string means the worker uses the v1 seeded reporter set: `US`, `CN`, `RU`, `IR`, `IN`, and `TW`.
 
 **Response (`200`)**:
 ```json
@@ -94,7 +94,7 @@ If your integration branches on `response.status === 202`, switch to branching o
 | 403 | `PRO subscription required` | Not PRO |
 | 405 | — | Method other than `POST` (enforced by sebuf service-config) |
 | 429 | `Too many requests` | Per-IP 10/min gateway rate limit |
-| 429 | `Scenario queue is at capacity, please try again later` | Global queue > 100 |
+| 429 | `Scenario queue is at capacity, please try again later` | Pending queue depth is greater than 100 before enqueue |
 | 502 | `Failed to enqueue scenario job` | Redis enqueue failure |
 
 ## Poll job status
@@ -134,7 +134,7 @@ Returns the job's current state as written by the worker, or a synthesised `pend
   "result": {
     "affectedChokepointIds": ["hormuz_strait"],
     "topImpactCountries": [
-      { "iso2": "JP", "totalImpact": 1500.0, "impactPct": 100 }
+      { "iso2": "US", "totalImpact": 150.0, "impactPct": 100 }
     ],
     "template": {
       "name": "hormuz_strait",
@@ -145,6 +145,20 @@ Returns the job's current state as written by the worker, or a synthesised `pend
   }
 }
 ```
+
+In the status payload, `template.name` is the worker-derived key: physical
+scenarios join affected chokepoint ids with `+`, while tariff-shock scenarios
+with no physical chokepoint use `tariff_shock`. It is not the catalog label.
+
+`totalImpact` is a relative weighted score, not a currency amount or USD import
+value. For physical chokepoint scenarios, the worker computes
+`exposureScore * (disruptionPct / 100) * costShockMultiplier` for each matching
+exposure entry, then sums by country. For tariff-shock scenarios with no
+affected chokepoint ids, it uses
+`vulnerabilityIndex * costShockMultiplier`. `impactPct` is each returned
+country's share of `max(maxReturnedTotalImpact, 1)`, capped at 100. That
+denominator floor means the top returned country can be below 100 when every
+returned `totalImpact` is below `1`.
 
 **Failed response (`200`)**:
 

@@ -1,4 +1,5 @@
 import { isSessionTokenShape, validateSessionToken } from './_session.js';
+import { timingSafeIncludes } from './_crypto.js';
 
 const DESKTOP_ORIGIN_PATTERNS = [
   /^https?:\/\/tauri\.localhost(:\d+)?$/,
@@ -11,10 +12,10 @@ function isDesktopOrigin(origin) {
   return Boolean(origin) && DESKTOP_ORIGIN_PATTERNS.some(p => p.test(origin));
 }
 
-function isValidEnterpriseKey(key) {
+async function isValidEnterpriseKey(key) {
   if (!key) return false;
   const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
-  return validKeys.includes(key);
+  return timingSafeIncludes(key, validKeys);
 }
 
 function getCookie(req, name) {
@@ -63,7 +64,7 @@ export async function validateApiKey(req, options = {}) {
   // Desktop app — always require an enterprise key.
   if (isDesktopOrigin(origin)) {
     if (!headerKey) return { valid: false, required: true, error: 'API key required for desktop access' };
-    if (!isValidEnterpriseKey(headerKey)) return { valid: false, required: true, error: 'Invalid API key' };
+    if (!await isValidEnterpriseKey(headerKey)) return { valid: false, required: true, error: 'Invalid API key' };
     return { valid: true, required: true, kind: 'enterprise' };
   }
 
@@ -93,7 +94,7 @@ export async function validateApiKey(req, options = {}) {
   // Collision risk is negligible (wm_ user keys carry ≥192 bits of entropy
   // and would have to be added to the static env list to be honored at all,
   // which itself requires server-env-write access).
-  if (key && isValidEnterpriseKey(key)) {
+  if (key && await isValidEnterpriseKey(key)) {
     return { valid: true, required: true, kind: 'enterprise' };
   }
 
