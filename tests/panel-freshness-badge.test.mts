@@ -48,9 +48,6 @@ describe('dataFreshness panel summaries', () => {
 
     const summary = dataFreshness.getPanelFreshness('polymarket');
     assert.equal(summary?.status, 'stale');
-    assert.match(summary?.label ?? '', /^Stale/);
-    assert.match(summary?.title ?? '', /Prediction Markets/);
-    assert.match(summary?.title ?? '', /Predictions Feed/);
     assert.equal(summary?.sources.length, 2);
   });
 
@@ -60,33 +57,77 @@ describe('dataFreshness panel summaries', () => {
 
     assert.equal(dataFreshness.getPanelFreshness('polymarket')?.status, 'fresh');
 
-    dataFreshness.setEnabled('giving', false);
-    assert.equal(dataFreshness.getPanelFreshness('giving')?.status, 'disabled');
+    setSeedHealth('usgs', 'OK');
+    dataFreshness.setEnabled('usgs', false);
+    assert.equal(dataFreshness.getPanelFreshness('natural')?.status, 'disabled');
     dataFreshness.setEnabled('predictions', true);
-    dataFreshness.setEnabled('giving', true);
+    dataFreshness.setEnabled('usgs', true);
   });
 
   it('surfaces no data when a mapped source has no usable timestamp', () => {
-    setSeedHealth('giving', 'EMPTY', { records: 0 });
+    setSeedHealth('rss', 'EMPTY', { records: 0 });
 
-    const summary = dataFreshness.getPanelFreshness('giving');
+    const summary = dataFreshness.getPanelFreshness('live-news');
     assert.equal(summary?.status, 'no_data');
-    assert.equal(summary?.label, 'No data');
-    assert.match(summary?.title ?? '', /never updated/);
+    assert.equal(summary?.sources[0]?.lastUpdate, null);
+  });
+
+  it('does not expose badges for panels with unmapped or mixed-unmapped source sets', () => {
+    dataFreshness.recordUpdate('giving', 4);
+    dataFreshness.recordUpdate('worldpop', 4);
+    dataFreshness.recordUpdate('economic', 4);
+    dataFreshness.recordUpdate('oil', 4);
+    dataFreshness.recordUpdate('wto_trade', 4);
+    setSeedHealth('treasury_revenue', 'OK');
+
+    assert.equal(dataFreshness.getPanelFreshness('giving'), null);
+    assert.equal(dataFreshness.getPanelFreshness('population-exposure'), null);
+    assert.equal(dataFreshness.getPanelFreshness('economic'), null);
+    assert.equal(dataFreshness.getPanelFreshness('trade-policy'), null);
+  });
+
+  it('does not let client fetch records clobber seed-health freshness for badge sources', () => {
+    const originalNow = Date.now;
+    const baseMs = originalNow();
+    const laterMs = baseMs + 10 * 60_000;
+    try {
+      Date.now = () => baseMs;
+      setSeedHealth('rss', 'STALE_SEED', { seedAgeMin: 70, maxStaleMin: 60, records: 2, checkedAtMs: baseMs });
+      const seedUpdate = dataFreshness.getSource('rss')?.lastUpdate?.getTime();
+      assert.equal(seedUpdate, baseMs - 70 * 60_000);
+      assert.equal(dataFreshness.getPanelFreshness('live-news')?.status, 'stale');
+
+      Date.now = () => laterMs;
+      dataFreshness.recordUpdate('rss', 99);
+      dataFreshness.recordError('rss', 'client poll failed');
+
+      const source = dataFreshness.getSource('rss');
+      assert.equal(source?.lastUpdate?.getTime(), seedUpdate);
+      assert.equal(source?.healthStatus, 'STALE_SEED');
+      assert.equal(source?.lastError, null);
+      assert.equal(dataFreshness.getPanelFreshness('live-news')?.status, 'stale');
+    } finally {
+      Date.now = originalNow;
+    }
   });
 
   it('keeps health and error details human-readable in tooltip text', () => {
     setSeedHealth('polymarket', 'OK');
     setSeedHealth('predictions', 'REDIS_DOWN');
 
-    const redisSummary = dataFreshness.getPanelFreshness('polymarket');
-    assert.match(redisSummary?.title ?? '', /freshness store unavailable/);
-    assert.doesNotMatch(redisSummary?.title ?? '', /REDIS_DOWN/);
+    const panel = harness.createFreshnessPanel();
+    try {
+      const badge = panel.getElement().querySelector('.panel-freshness-badge');
+      assert.ok(badge, 'freshness badge is rendered');
+      assert.match(badge.getAttribute('aria-label') ?? '', /freshness store unavailable/);
+      assert.doesNotMatch(badge.getAttribute('aria-label') ?? '', /REDIS_DOWN/);
+    } finally {
+      panel.destroy();
+    }
 
     dataFreshness.recordError('polymarket', 'provider token expired');
-    const errorSummary = dataFreshness.getPanelFreshness('polymarket');
-    assert.match(errorSummary?.title ?? '', /source error reported/);
-    assert.doesNotMatch(errorSummary?.title ?? '', /provider token expired/);
+    const summary = dataFreshness.getPanelFreshness('polymarket');
+    assert.equal(summary?.sources.find((source) => source.id === 'polymarket')?.lastError, null);
   });
 });
 

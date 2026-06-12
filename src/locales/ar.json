@@ -2363,6 +2363,42 @@
     },
     "mobileNav": {
       "panelCategories": "Panel categories"
+    },
+    "panelFreshness": {
+      "status": {
+        "fresh": "Fresh",
+        "stale": "Stale",
+        "veryStale": "Very stale",
+        "noData": "No data",
+        "disabled": "Disabled",
+        "error": "Error"
+      },
+      "labelWithAge": "{{status}} {{age}}",
+      "title": "Data freshness: {{status}}. {{sources}}",
+      "sourceDetail": "{{name}}: {{status}}, {{update}}",
+      "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
+      "lastUpdated": "last updated {{time}}",
+      "neverUpdated": "never updated",
+      "health": {
+        "partialCoverage": "partial coverage",
+        "contentStale": "content stale",
+        "seedStale": "seed stale",
+        "noSourceData": "no source data",
+        "sourceErrorReported": "source error reported",
+        "freshnessStoreUnavailable": "freshness store unavailable",
+        "freshnessStoreDegraded": "freshness store degraded"
+      },
+      "time": {
+        "never": "never",
+        "justNow": "just now",
+        "minutesAgo": "{{count}}m ago",
+        "hoursAgo": "{{count}}h ago",
+        "daysAgo": "{{count}}d ago",
+        "compactNow": "now",
+        "compactMinutes": "{{count}}m",
+        "compactHours": "{{count}}h",
+        "compactDays": "{{count}}d"
+      }
     }
   },
   "popups": {

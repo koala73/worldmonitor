@@ -5,11 +5,13 @@
  */
 
 import { getCSSColor } from '@/utils/theme-colors';
+import { isHealthMappedSource } from '@/services/health-freshness-map';
 import type { DataSourceId } from '@/types';
 
 export type { DataSourceId } from '@/types';
 
 export type FreshnessStatus = 'fresh' | 'stale' | 'very_stale' | 'no_data' | 'disabled' | 'error';
+type FreshnessEvidence = 'session' | 'seed-health';
 
 export interface DataSourceState {
   id: DataSourceId;
@@ -23,6 +25,7 @@ export interface DataSourceState {
   requiredForRisk: boolean;
   maxStaleMin?: number;
   healthStatus?: string;
+  freshnessEvidence: FreshnessEvidence | null;
 }
 
 export interface DataFreshnessSummary {
@@ -45,16 +48,13 @@ export interface PanelFreshnessSource {
   itemCount: number;
   healthStatus?: string;
   lastError: string | null;
-  timeSince: string;
 }
 
 export interface PanelFreshnessSummary {
   panelId: string;
   status: FreshnessStatus;
-  label: string;
-  title: string;
-  ariaLabel: string;
   lastUpdate: Date | null;
+  labelUpdate: Date | null;
   sources: PanelFreshnessSource[];
 }
 
@@ -153,15 +153,6 @@ const STATUS_SEVERITY: Record<FreshnessStatus, number> = {
   error: 5,
 };
 
-const STATUS_LABELS: Record<FreshnessStatus, string> = {
-  fresh: 'Fresh',
-  stale: 'Stale',
-  very_stale: 'Very stale',
-  no_data: 'No data',
-  disabled: 'Disabled',
-  error: 'Error',
-};
-
 class DataFreshnessTracker {
   private sources: Map<DataSourceId, DataSourceState> = new Map();
   private listeners: Set<() => void> = new Set();
@@ -178,6 +169,7 @@ class DataFreshnessTracker {
         enabled: true, // Assume enabled by default
         status: 'no_data',
         requiredForRisk: meta.requiredForRisk,
+        freshnessEvidence: null,
       });
     }
   }
@@ -188,9 +180,16 @@ class DataFreshnessTracker {
   recordUpdate(sourceId: DataSourceId, itemCount: number = 1): void {
     const source = this.sources.get(sourceId);
     if (source) {
+      if (isHealthMappedSource(sourceId) && source.freshnessEvidence === 'seed-health') {
+        source.itemCount += itemCount;
+        source.status = source.enabled ? this.calculateStatus(source) : 'disabled';
+        this.notifyListeners();
+        return;
+      }
       source.lastUpdate = new Date();
       source.itemCount += itemCount;
       source.lastError = null;
+      source.freshnessEvidence = 'session';
       source.status = this.calculateStatus(source);
       this.notifyListeners();
     }
@@ -202,6 +201,11 @@ class DataFreshnessTracker {
   recordError(sourceId: DataSourceId, error: string): void {
     const source = this.sources.get(sourceId);
     if (source) {
+      if (isHealthMappedSource(sourceId) && source.freshnessEvidence === 'seed-health') {
+        source.status = source.enabled ? this.calculateStatus(source) : 'disabled';
+        this.notifyListeners();
+        return;
+      }
       source.lastError = error;
       source.status = 'error';
       this.notifyListeners();
@@ -244,6 +248,7 @@ class DataFreshnessTracker {
         ? (maxContentAgeMin ?? maxStaleMin)
         : maxStaleMin;
       source.healthStatus = update.status;
+      source.freshnessEvidence = 'seed-health';
       source.lastError = this.healthStatusIsError(update.status) ? update.status : null;
       source.lastUpdate = this.healthStatusHasNoData(update.status)
         ? null
@@ -367,8 +372,17 @@ class DataFreshnessTracker {
    * Get freshness sources that contribute to a panel header badge.
    */
   getSourcesForPanel(panelId: string): PanelFreshnessSource[] {
-    return this.getSourceIdsForPanel(panelId)
-      .map(sourceId => this.getSource(sourceId))
+    const sourceIds = this.getSourceIdsForPanel(panelId);
+    if (sourceIds.length === 0 || sourceIds.some(sourceId => !isHealthMappedSource(sourceId))) {
+      return [];
+    }
+
+    const sources = sourceIds.map(sourceId => this.getSource(sourceId));
+    if (sources.some(source => !source || source.freshnessEvidence !== 'seed-health')) {
+      return [];
+    }
+
+    return sources
       .filter((source): source is DataSourceState => Boolean(source))
       .map(source => ({
         id: source.id,
@@ -378,7 +392,6 @@ class DataFreshnessTracker {
         itemCount: source.itemCount,
         healthStatus: source.healthStatus,
         lastError: source.lastError,
-        timeSince: this.formatTimeSince(source.lastUpdate),
       }));
   }
 
@@ -409,24 +422,11 @@ class DataFreshnessTracker {
       ? new Date(Math.min(...worstStatusUpdates.map(date => date.getTime())))
       : newestUpdate;
 
-    const sourceDetails = sources.map(source => {
-      const updateText = source.lastUpdate
-        ? `last updated ${source.timeSince}`
-        : 'never updated';
-      const healthText = this.formatHealthDetail(source);
-      return `${source.name}: ${STATUS_LABELS[source.status]}, ${updateText}${healthText}`;
-    });
-
-    const label = this.formatPanelFreshnessLabel(worstStatus, labelUpdate);
-    const title = `Data freshness: ${STATUS_LABELS[worstStatus]}. ${sourceDetails.join('; ')}`;
-
     return {
       panelId,
       status: worstStatus,
-      label,
-      title,
-      ariaLabel: title,
       lastUpdate: newestUpdate,
+      labelUpdate,
       sources,
     };
   }
@@ -505,58 +505,6 @@ class DataFreshnessTracker {
     return `${Math.floor(ms / 86400000)}d ago`;
   }
 
-  private formatPanelFreshnessLabel(status: FreshnessStatus, lastUpdate: Date | null): string {
-    if (status === 'fresh' || status === 'stale' || status === 'very_stale') {
-      const age = this.formatCompactAge(lastUpdate);
-      return age ? `${STATUS_LABELS[status]} ${age}` : STATUS_LABELS[status];
-    }
-    return STATUS_LABELS[status];
-  }
-
-  private formatHealthDetail(source: PanelFreshnessSource): string {
-    if (source.lastError) {
-      return `, ${this.formatHealthStatus(source.lastError) ?? 'source error reported'}`;
-    }
-    if (source.healthStatus) {
-      const label = this.formatHealthStatus(source.healthStatus);
-      return label ? `, ${label}` : '';
-    }
-    return '';
-  }
-
-  private formatHealthStatus(status: string): string | null {
-    switch (status) {
-      case 'OK':
-        return null;
-      case 'COVERAGE_PARTIAL':
-        return 'partial coverage';
-      case 'STALE_CONTENT':
-        return 'content stale';
-      case 'STALE_SEED':
-        return 'seed stale';
-      case 'EMPTY':
-      case 'EMPTY_DATA':
-      case 'EMPTY_ON_DEMAND':
-        return 'no source data';
-      case 'SEED_ERROR':
-        return 'source error reported';
-      case 'REDIS_DOWN':
-        return 'freshness store unavailable';
-      case 'REDIS_PARTIAL':
-        return 'freshness store degraded';
-      default:
-        return null;
-    }
-  }
-
-  private formatCompactAge(date: Date | null): string {
-    if (!date) return '';
-    const ms = Math.max(0, Date.now() - date.getTime());
-    if (ms < 60000) return 'now';
-    if (ms < 3600000) return `${Math.floor(ms / 60000)}m`;
-    if (ms < 86400000) return `${Math.floor(ms / 3600000)}h`;
-    return `${Math.floor(ms / 86400000)}d`;
-  }
 }
 
 // Singleton instance

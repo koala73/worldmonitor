@@ -8,6 +8,7 @@ import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { getSecretState } from '@/services/runtime-config';
 import { PanelGateReason } from '@/services/panel-gating';
 import { dataFreshness, type PanelFreshnessSummary } from '@/services/data-freshness';
+import { formatPanelFreshnessDisplay } from '@/services/panel-freshness-display';
 
 export type PanelSeverity = 'critical' | 'high' | 'medium' | 'low' | 'none';
 
@@ -729,10 +730,11 @@ export class Panel {
       this.freshnessBadgeEl.style.display = 'none';
       return;
     }
-    this.freshnessBadgeEl.textContent = summary.label;
+    const display = formatPanelFreshnessDisplay(summary);
+    this.freshnessBadgeEl.textContent = display.label;
     this.freshnessBadgeEl.className = `panel-freshness-badge panel-freshness-${summary.status}`;
-    this.freshnessBadgeEl.title = summary.title;
-    this.freshnessBadgeEl.setAttribute('aria-label', summary.ariaLabel);
+    this.freshnessBadgeEl.title = display.title;
+    this.freshnessBadgeEl.setAttribute('aria-label', display.ariaLabel);
     this.freshnessBadgeEl.style.display = 'inline-flex';
   }
 

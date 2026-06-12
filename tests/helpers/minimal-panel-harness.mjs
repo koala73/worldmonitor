@@ -94,7 +94,15 @@ async function loadMinimalPanel() {
   `;
 
   const stubModules = new Map([
-    ['i18n-stub', `export function t() { return ''; }`],
+    ['i18n-stub', `
+      function interpolate(value, options = {}) {
+        return String(value).replace(/\\{\\{\\s*([\\w.]+)\\s*\\}\\}/g, (_, key) => String(options[key] ?? ''));
+      }
+      export function t(key, options = {}) {
+        if (typeof options.defaultValue === 'string') return interpolate(options.defaultValue, options);
+        return key;
+      }
+    `],
     ['runtime-stub', `export function isDesktopRuntime() { return false; }`],
     ['tauri-bridge-stub', `export function invokeTauri() { return Promise.reject(new Error('not wired in test')); }`],
     ['analytics-stub', `export function trackPanelResized() {}`],

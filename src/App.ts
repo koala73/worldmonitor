@@ -84,6 +84,7 @@ import { describeFreshness } from '@/services/persistent-cache';
 import { DesktopUpdater } from '@/app/desktop-updater';
 import { CountryIntelManager } from '@/app/country-intel';
 import { registerWebMcpTools } from '@/services/webmcp';
+import { refreshDataFreshnessFromHealth } from '@/services/health-freshness';
 import { SearchManager } from '@/app/search-manager';
 import { RefreshScheduler } from '@/app/refresh-scheduler';
 import { PanelLayoutManager } from '@/app/panel-layout';
@@ -1671,6 +1672,13 @@ export class App {
   private setupRefreshIntervals(): void {
     // Always refresh news for all variants
     this.refreshScheduler.scheduleRefresh('news', () => this.dataLoader.loadNews(), REFRESH_INTERVALS.feeds);
+    this.refreshScheduler.scheduleRefresh(
+      'health-freshness',
+      async () => { await refreshDataFreshnessFromHealth(); },
+      REFRESH_INTERVALS.healthFreshness,
+      undefined,
+      { runImmediately: true },
+    );
 
     // Happy variant only refreshes news -- skip all geopolitical/financial/military refreshes
     if (SITE_VARIANT !== 'happy') {

@@ -21,7 +21,6 @@ import {
 import { getLearningProgress, type CountryScore } from '@/services/country-instability';
 import { fetchCachedRiskScores, toCountryScore, type CachedRiskScores } from '@/services/cached-risk-scores';
 import { getCachedPosture } from '@/services/cached-theater-posture';
-import { refreshDataFreshnessFromHealth } from '@/services/health-freshness';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
 type StrategicRiskDisplayLevel = 'critical' | 'high' | 'elevated' | 'normal' | 'low';
@@ -50,7 +49,6 @@ export class StrategicRiskPanel extends Panel {
   private breakingAlerts: Map<string, { threatLevel: 'critical' | 'high'; timestamp: number }> = new Map();
   private boundOnBreaking: ((e: Event) => void) | null = null;
   private breakingExpiryTimer: ReturnType<typeof setTimeout> | null = null;
-  private lastHealthFreshnessRefreshAt = 0;
 
   constructor() {
     super({
@@ -100,7 +98,6 @@ export class StrategicRiskPanel extends Panel {
   private lastRiskFingerprint = '';
 
   public async refresh(): Promise<boolean> {
-    void this.refreshHealthFreshness();
     this.freshnessSummary = dataFreshness.getSummary();
     this.convergenceAlerts = detectConvergence();
 
@@ -182,19 +179,6 @@ export class StrategicRiskPanel extends Panel {
     const changed = fp !== this.lastRiskFingerprint;
     this.lastRiskFingerprint = fp;
     return changed;
-  }
-
-  private async refreshHealthFreshness(): Promise<void> {
-    const now = Date.now();
-    if (now - this.lastHealthFreshnessRefreshAt < 60_000) return;
-    try {
-      await refreshDataFreshnessFromHealth({ signal: this.signal });
-    } catch (error) {
-      // Health is additive; local session freshness remains useful if it fails.
-      console.debug('[StrategicRiskPanel] Health freshness fetch failed (non-fatal)', error);
-    } finally {
-      this.lastHealthFreshnessRefreshAt = Date.now();
-    }
   }
 
   private cachedTrendToOverviewTrend(trend: string): StrategicRiskOverview['trend'] {
