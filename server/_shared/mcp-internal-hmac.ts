@@ -399,6 +399,27 @@ export async function verifyInternalMcpRequest(
     return null;
   }
 
+  // Vercel's filesystem router serves every gateway domain through a dynamic
+  // route file (api/<domain>/v1/[rpc].ts) and injects the matched segment into
+  // the function's request URL as a query parameter (?rpc=<segment>) — see
+  // "named parameters are automatically passed through in the query string"
+  // in Vercel's routing docs. The signer (api/mcp/auth.ts buildAuthHeaders)
+  // signs the OUTBOUND url, which never carries that param, so hashing the
+  // inbound query verbatim 401s EVERY legitimate Pro tool fetch
+  // (WORLDMONITOR-R1 / WORLDMONITOR-T8 — deterministic since U7 shipped,
+  // confirmed live: signing WITH the injected param verifies, without fails).
+  // Strip `rpc` entries ONLY when every value exactly equals the final path
+  // segment — i.e. only the router-injected echo. A caller-appended
+  // ?rpc=<anything-else> still participates in the hash and breaks the
+  // signature, so this is not a bypass vector: stripping the exact echo is
+  // semantically identical to the router not having injected it.
+  const pathSegments = url.pathname.split('/').filter(Boolean);
+  const lastSegment = pathSegments[pathSegments.length - 1] ?? '';
+  const rpcParams = url.searchParams.getAll('rpc');
+  if (rpcParams.length > 0 && rpcParams.every((v) => v === lastSegment)) {
+    url.searchParams.delete('rpc');
+  }
+
   // Body must be cloned BEFORE reading so the downstream handler can still
   // read it — Web Fetch API contract: a body can only be consumed once on
   // any given Request/Response.

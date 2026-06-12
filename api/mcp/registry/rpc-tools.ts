@@ -513,15 +513,25 @@ export const RPC_TOOLS: ToolDef[] = [
       const bbox = COUNTRY_BBOXES[code];
       if (!bbox) return { error: `Unknown country code: ${code}. Use ISO 3166-1 alpha-2 (e.g. "AE", "SA", "JP").` };
       const [sw_lat, sw_lon, ne_lat, ne_lon] = bbox;
-      const bboxQ = `sw_lat=${sw_lat}&sw_lon=${sw_lon}&ne_lat=${ne_lat}&ne_lon=${ne_lon}`;
-      const url = `${base}/api/maritime/v1/get-vessel-snapshot?${bboxQ}`;
+      // Deliberately NO bbox on the inner fetch: the handler rejects any bbox
+      // dimension >10° (BboxValidationError → HTTP 400), and 67 of the 167
+      // COUNTRY_BBOXES exceed that (US, JP, AU, BR, …) — WORLDMONITOR-T8.
+      // The relay's density/disruption sets are global regardless of bbox
+      // (bbox only scopes tanker/candidate reports, which this tool never
+      // requests), so we take the cached global snapshot and filter to the
+      // country bbox here using each item's coordinates.
+      const url = `${base}/api/maritime/v1/get-vessel-snapshot`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
 
+      // Wire shape is the generated sebuf JSON — camelCase field names with
+      // nested `location` (the previous snake_case reads matched nothing, so
+      // density_zones was permanently empty).
+      type VesselLoc = { latitude?: number; longitude?: number };
       type VesselResp = {
         snapshot?: {
-          snapshot_at?: number;
-          density_zones?: { name: string; intensity: number; ships_per_day: number; delta_pct: number; note: string }[];
-          disruptions?: { name: string; type: string; severity: string; dark_ships: number; vessel_count: number; region: string; description: string }[];
+          snapshotAt?: number;
+          densityZones?: { name?: string; location?: VesselLoc; intensity?: number; shipsPerDay?: number; deltaPct?: number; note?: string }[];
+          disruptions?: { name?: string; type?: string; severity?: string; location?: VesselLoc; darkShips?: number; vesselCount?: number; region?: string; description?: string }[];
         };
       };
 
@@ -529,23 +539,55 @@ export const RPC_TOOLS: ToolDef[] = [
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(8_000),
       });
-      if (!res.ok) throw new Error(`get-vessel-snapshot HTTP ${res.status}`);
+      if (!res.ok) {
+        const detail = (await res.text().catch(() => '')).slice(0, 200);
+        throw new Error(`get-vessel-snapshot HTTP ${res.status}${detail ? ` — ${detail}` : ''}`);
+      }
       const data = await res.json() as VesselResp;
       const snap = data.snapshot ?? {};
+
+      // 3° pad: maritime zones sit offshore, outside land bboxes (e.g. the
+      // Strait of Hormuz at 26.6N/56.3E vs AE's ne corner at 26.06/56.38).
+      // (0,0) is the handler's default for missing coordinates → exclude.
+      const PAD_DEG = 3;
+      const inCountryBbox = (loc?: VesselLoc): boolean => {
+        const lat = loc?.latitude ?? 0;
+        const lon = loc?.longitude ?? 0;
+        if (lat === 0 && lon === 0) return false;
+        if (lat < sw_lat - PAD_DEG || lat > ne_lat + PAD_DEG) return false;
+        const lo = sw_lon - PAD_DEG;
+        // Source boxes stored wrapped (sw_lon > ne_lon) span the dateline;
+        // unwrap to a monotonic interval before reasoning about the pad.
+        const hi = (sw_lon > ne_lon ? ne_lon + 360 : ne_lon) + PAD_DEG;
+        // Pad widened the interval to the full circle — AQ and RU are stored
+        // as -180..180 spans, so every longitude matches.
+        if (hi - lo >= 360) return true;
+        // The pad itself can push a ±180-adjacent box past the dateline
+        // (FJ ne_lon=180 → hi=183; NZ 178.29 → 181.29): points just across
+        // it (e.g. -179) must still match, so renormalize the overflowing
+        // end into [-180,180] and compare on the wrapped complement.
+        const wraps = lo < -180 || hi > 180;
+        const loN = lo < -180 ? lo + 360 : lo;
+        const hiN = hi > 180 ? hi - 360 : hi;
+        return wraps ? lon >= loN || lon <= hiN : lon >= loN && lon <= hiN;
+      };
+
+      const zones = (snap.densityZones ?? []).filter(z => inCountryBbox(z.location));
+      const disruptions = (snap.disruptions ?? []).filter(d => inCountryBbox(d.location));
 
       return {
         country_code: code,
         bounding_box: { sw_lat, sw_lon, ne_lat, ne_lon },
-        snapshot_at: snap.snapshot_at ? new Date(snap.snapshot_at).toISOString() : new Date().toISOString(),
-        total_zones: (snap.density_zones ?? []).length,
-        total_disruptions: (snap.disruptions ?? []).length,
-        density_zones: (snap.density_zones ?? []).map(z => ({
-          name: z.name, intensity: z.intensity, ships_per_day: z.ships_per_day,
-          delta_pct: z.delta_pct, ...(z.note ? { note: z.note } : {}),
+        snapshot_at: snap.snapshotAt ? new Date(snap.snapshotAt).toISOString() : new Date().toISOString(),
+        total_zones: zones.length,
+        total_disruptions: disruptions.length,
+        density_zones: zones.map(z => ({
+          name: z.name, intensity: z.intensity, ships_per_day: z.shipsPerDay,
+          delta_pct: z.deltaPct, ...(z.note ? { note: z.note } : {}),
         })),
-        disruptions: (snap.disruptions ?? []).map(d => ({
+        disruptions: disruptions.map(d => ({
           name: d.name, type: d.type, severity: d.severity,
-          dark_ships: d.dark_ships, vessel_count: d.vessel_count,
+          dark_ships: d.darkShips, vessel_count: d.vesselCount,
           region: d.region, description: d.description,
         })),
       };
