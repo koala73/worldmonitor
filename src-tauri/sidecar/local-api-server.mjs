@@ -1822,6 +1822,15 @@ export async function createLocalApiServer(options = {}) {
       if (context.allowPrivateRemoteBase) {
         try { extraAllowedPrivateOrigins.push(new URL(context.remoteBase).origin); } catch {}
       }
+      // Docker self-host: the operator-configured Redis REST proxy is on the
+      // compose network (private IP by construction, e.g. http://redis-rest:80
+      // in the shipped docker-compose.yml). Without this the SSRF guard blocks
+      // every handler Redis read and /api/health reports REDIS_DOWN while the
+      // proxy is healthy. The origin comes from operator config, same trust
+      // as allowPrivateRemoteBase.
+      if (context.mode === 'docker' && process.env.UPSTASH_REDIS_REST_URL) {
+        try { extraAllowedPrivateOrigins.push(new URL(process.env.UPSTASH_REDIS_REST_URL).origin); } catch {}
+      }
       for (const origin of context.allowPrivateFetchOrigins) {
         try { extraAllowedPrivateOrigins.push(new URL(origin).origin); } catch {}
       }
