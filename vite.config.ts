@@ -42,10 +42,15 @@ if (CLERK_JS_VERSION.split('.')[0] !== '6') {
 // silent-breakage failure mode where renaming a chunk in `manualChunks`
 // re-eagerises the WebGL stack without any build-time error.
 //   - maplibre, deck-stack: heavy WebGL deps, only reachable via MapContainer
+//   - globe-stack: globe.gl + three.js, only reachable when globe mode loads
 //   - MapContainer: the dynamic-import target itself
-const LAZY_HTML_PRELOAD_CHUNKS = ['maplibre', 'deck-stack', 'MapContainer'] as const;
+const LAZY_HTML_PRELOAD_CHUNKS = ['maplibre', 'deck-stack', 'globe-stack', 'MapContainer'] as const;
 const LAZY_HTML_PRELOAD_RE = new RegExp(
   `/(${LAZY_HTML_PRELOAD_CHUNKS.join('|')})-[A-Za-z0-9_-]+\\.js$`,
+);
+const HTML_MODULEPRELOAD_TAG_RE = /<link\b[^>]*rel=["']modulepreload["'][^>]*>/g;
+const LAZY_HTML_CHUNK_REF_RE = new RegExp(
+  `\\bhref=["'][^"']*/(${LAZY_HTML_PRELOAD_CHUNKS.join('|')})-[A-Za-z0-9_-]+\\.js["']`,
 );
 
 // Panel-cluster manualChunks map. Splits the previously monolithic ~2.3MB
@@ -142,6 +147,37 @@ function brotliPrecompressPlugin(): Plugin {
         await mkdir(dirname(compressedPath), { recursive: true });
         await writeFile(compressedPath, compressedBuffer);
       }));
+    },
+  };
+}
+
+function lazyHtmlPreloadGuardPlugin(): Plugin {
+  return {
+    name: 'lazy-html-preload-guard',
+    apply: 'build',
+    enforce: 'post',
+    async writeBundle(outputOptions, bundle) {
+      const outDir = outputOptions.dir;
+      if (!outDir) return;
+
+      const violations: string[] = [];
+
+      await Promise.all(Object.entries(bundle).map(async ([fileName, asset]) => {
+        if (asset.type !== 'asset' || !fileName.endsWith('.html')) return;
+
+        const html = await readFile(resolve(outDir, fileName), 'utf8');
+        const preloadTags = html.match(HTML_MODULEPRELOAD_TAG_RE) ?? [];
+        const matches = preloadTags.filter((tag) => LAZY_HTML_CHUNK_REF_RE.test(tag));
+        if (matches.length > 0) {
+          violations.push(`${fileName}: ${matches.join(', ')}`);
+        }
+      }));
+
+      if (violations.length > 0) {
+        this.error(
+          `Lazy chunks were emitted as entry HTML modulepreload dependencies:\n${violations.join('\n')}`,
+        );
+      }
     },
   };
 }
@@ -804,6 +840,7 @@ export default defineConfig(({ mode }) => {
       youtubeLivePlugin(),
       gpsjamDevPlugin(),
       sebufApiPlugin(),
+      lazyHtmlPreloadGuardPlugin(),
       brotliPrecompressPlugin(),
       VitePWA({
         registerType: 'autoUpdate',
@@ -1013,6 +1050,9 @@ export default defineConfig(({ mode }) => {
                 || id.includes('/h3-js/')
               ) {
                 return 'deck-stack';
+              }
+              if (id.includes('/globe.gl/') || id.includes('/three/')) {
+                return 'globe-stack';
               }
               if (id.includes('/d3/')) {
                 return 'd3';
