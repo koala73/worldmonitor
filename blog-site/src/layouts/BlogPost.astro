@@ -24,7 +24,7 @@ function toAbsoluteWorldMonitorUrl(pathOrUrl: string | undefined): string | unde
   return new URL(pathOrUrl, 'https://www.worldmonitor.app').href;
 }
 
-const ogImage = toAbsoluteWorldMonitorUrl(heroImage || (slug ? `/blog/og/${slug}.png` : undefined));
+const ogImage = toAbsoluteWorldMonitorUrl(heroImage || (slug ? `/blog/images/blog/${slug}.jpg` : undefined));
 const formattedDate = pubDate.toLocaleDateString('en-US', {
   year: 'numeric',
   month: 'short',

@@ -8,7 +8,10 @@ const SITE_URL = 'https://www.worldmonitor.app';
 const BLOG_DIR = new URL('./src/content/blog/', import.meta.url);
 
 function readFrontmatterDate(markdown, key) {
-  const match = markdown.match(new RegExp(`^${key}:\\s*["']?([^"'\\n]+)["']?`, 'm'));
+  const frontmatter = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!frontmatter) return undefined;
+
+  const match = frontmatter[1].match(new RegExp(`^${key}:\\s*["']?([^"'\\n]+)["']?\\s*$`, 'm'));
   return match?.[1];
 }
 
