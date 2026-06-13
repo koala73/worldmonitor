@@ -47,7 +47,7 @@ const TIER_CONFIG = {
     description: 'Get started with the essentials',
     features: ['Core dashboard panels', 'Global news feed', 'Earthquake & weather alerts', 'Basic map view'],
     cta: 'Get Started',
-    href: 'https://worldmonitor.app',
+    href: 'https://worldmonitor.app/dashboard',
     highlighted: false,
   },
   pro: {

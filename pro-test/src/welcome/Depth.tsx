@@ -1,6 +1,7 @@
 import { motion } from 'motion/react';
 import { Satellite, RadioTower, Anchor, Server, Cable, Megaphone } from 'lucide-react';
 import { t } from '../i18n';
+import { DASHBOARD_PATH } from '../routes';
 import { SectionHeading } from './SectionHeading';
 
 const STAT_CELLS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] as const;
@@ -41,7 +42,7 @@ export const Depth = () => (
         {NUGGETS.map(({ icon: Icon, n }, i) => (
           <motion.a
             key={n}
-            href={`/?ref=welcome-depth-n${n}`}
+            href={`${DASHBOARD_PATH}?ref=welcome-depth-n${n}`}
             initial={{ opacity: 0, y: 16 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-40px' }}
@@ -56,7 +57,7 @@ export const Depth = () => (
       </div>
       <p className="text-center font-mono text-xs text-wm-muted mt-8">
         {t('welcome.depth.faith')}{' '}
-        <a href="/?ref=welcome-depth" className="text-wm-green hover:text-green-300 transition-colors">{t('welcome.depth.faithCta')}</a>{' '}
+        <a href={`${DASHBOARD_PATH}?ref=welcome-depth`} className="text-wm-green hover:text-green-300 transition-colors">{t('welcome.depth.faithCta')}</a>{' '}
         {t('welcome.depth.faithNote')}
       </p>
     </div>

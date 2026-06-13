@@ -1,5 +1,5 @@
 {
-  "_comment": "Hand-curated fallback for the /welcome live-teaser strip. Rendered immediately (and into the SEO prerender) while the live fetch runs; replaced in place when live data arrives. NEVER auto-refresh this file during `npm run build` — the pro-bundle-freshness CI gate rebuilds and diffs the committed bundle, so build-time network data would make builds nondeterministic. Refresh by hand when values drift too far from reality.",
+  "_comment": "Hand-curated fallback for the root welcome live-teaser strip. Rendered immediately (and into the SEO prerender) while the live fetch runs; replaced in place when live data arrives. NEVER auto-refresh this file during `npm run build` — the pro-bundle-freshness CI gate rebuilds and diffs the committed bundle, so build-time network data would make builds nondeterministic. Refresh by hand when values drift too far from reality.",
   "headlines": [
     { "title": "Security council convenes emergency session on Red Sea shipping attacks", "source": "Reuters", "publishedAt": 0 },
     { "title": "Major central banks signal divergence ahead of rate decisions", "source": "Financial Times", "publishedAt": 0 },
