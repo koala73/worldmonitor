@@ -29,6 +29,20 @@
  * The init options block (the giant `ignoreErrors` regex array, `beforeSend`
  * suppression logic, allowlists) lives inside the dynamic-import callback so
  * it ships in the deferred sentry-*.js chunk, not the main entry.
+ *
+ * Release-health tradeoff: `browserSessionIntegration` (a Sentry default
+ * integration) calls `startSession()` + `captureSession()` synchronously
+ * inside `Sentry.init()`. Deferring init therefore delays the session
+ * (Sentry treats browser sessions as "akin to a page view") by up to the
+ * `requestIdleCallback` timeout, and users who leave before the deferred
+ * init fires get no session at all. Expect a one-time step-change in the
+ * Sentry release-health dashboard after this ships: lower total session
+ * volume and a shifted crash-free-session rate — a pre-init crash is still
+ * captured as an error via the queue above, but no session was ever started
+ * to attribute it to. This is inherent to deferral (a session cannot start
+ * without the SDK loaded) and is the accepted cost of the pre-LCP CPU
+ * savings. Vercel Analytics (`inject()` in `main.ts`) remains the primary
+ * traffic metric and is unaffected.
  */
 
 type SentryNs = typeof import('@sentry/browser');
