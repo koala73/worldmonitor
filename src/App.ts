@@ -7,7 +7,6 @@ import {
   DEFAULT_MAP_LAYERS,
   MOBILE_DEFAULT_MAP_LAYERS,
   STORAGE_KEYS,
-  DEFAULT_MAP_MODE,
   SITE_VARIANT,
   ALL_PANELS,
   VARIANT_DEFAULTS,
@@ -17,6 +16,7 @@ import {
 } from '@/config';
 import { sanitizeLayersForVariant } from '@/config/map-layer-definitions';
 import type { MapVariant } from '@/config/map-layer-definitions';
+import { getStoredMapModePreference } from '@/services/map-mode-preference';
 import {
   initDB,
   cleanOldSnapshots,
@@ -228,7 +228,7 @@ export class App {
     }
 
     if (keySet.has(STORAGE_KEYS.mapMode)) {
-      const mode = loadFromStorage<string>(STORAGE_KEYS.mapMode, DEFAULT_MAP_MODE);
+      const mode = getStoredMapModePreference();
       if (mode === 'globe') this.state.map?.switchToGlobe();
       else this.state.map?.switchToFlat();
     }

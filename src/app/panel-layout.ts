@@ -91,14 +91,13 @@ import {
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { focusInvestmentOnMap } from '@/services/investments-focus';
-import { debounce, saveToStorage, loadFromStorage } from '@/utils';
+import { debounce, saveToStorage } from '@/utils';
 import { escapeHtml } from '@/utils/sanitize';
 import {
   FEEDS,
   CANONICAL_FEEDS,
   INTEL_SOURCES,
   STORAGE_KEYS,
-  DEFAULT_MAP_MODE,
   SITE_VARIANT,
   ALL_PANELS,
   VARIANT_DEFAULTS,
@@ -111,6 +110,7 @@ import { BETA_MODE } from '@/config/beta';
 import { t } from '@/services/i18n';
 import { getCurrentTheme } from '@/utils';
 import { trackCriticalBannerAction } from '@/services/analytics';
+import { getStoredMapModePreference } from '@/services/map-mode-preference';
 import { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
 import { openWidgetChatModal } from '@/components/WidgetChatModal';
 import { loadWidgets, saveWidget } from '@/services/widget-store';
@@ -476,8 +476,7 @@ export class PanelLayoutManager implements AppModule {
   }
 
   async renderLayout(): Promise<void> {
-    const preferredMapMode = loadFromStorage<string>(STORAGE_KEYS.mapMode, DEFAULT_MAP_MODE);
-    const isGlobeMode = preferredMapMode === 'globe';
+    const isGlobeMode = getStoredMapModePreference() === 'globe';
 
     setTrustedHtml(this.ctx.container, trustedHtml(`
       ${this.ctx.isDesktopApp ? '<div class="tauri-titlebar" data-tauri-drag-region></div>' : ''}
@@ -932,7 +931,7 @@ export class PanelLayoutManager implements AppModule {
     const panelsGrid = document.getElementById('panelsGrid')!;
 
     const mapContainer = document.getElementById('mapContainer') as HTMLElement;
-    const preferGlobe = loadFromStorage<string>(STORAGE_KEYS.mapMode, DEFAULT_MAP_MODE) === 'globe';
+    const preferGlobe = getStoredMapModePreference() === 'globe';
     // Dynamic import: keeps maplibre-gl + @deck.gl/* + @loaders.gl + @luma.gl
     // out of the entry chunk. Loads in parallel with paint, so the map mounts
     // a beat after the panel grid renders instead of blocking it.
