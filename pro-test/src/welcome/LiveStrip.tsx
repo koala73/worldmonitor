@@ -64,7 +64,7 @@ function timeAgo(ts: number): string {
   return hours < 24 ? `${hours}h` : `${Math.round(hours / 24)}d`;
 }
 
-function Sparkline({ quote }: { quote: TeaserQuote }) {
+function Sparkline({ quote, className = 'w-16 h-6' }: { quote: TeaserQuote; className?: string }) {
   const pts = quote.sparkline;
   if (pts.length < 2) return null;
   const min = Math.min(...pts);
@@ -75,7 +75,7 @@ function Sparkline({ quote }: { quote: TeaserQuote }) {
     .join(' ');
   const up = quote.change >= 0;
   return (
-    <svg viewBox="0 0 100 26" className="w-16 h-6 shrink-0" preserveAspectRatio="none" aria-hidden="true">
+    <svg viewBox="0 0 100 26" className={`${className} shrink-0`} preserveAspectRatio="none" aria-hidden="true">
       <polyline
         points={coords}
         fill="none"
@@ -91,6 +91,100 @@ function formatPrice(price: number): string {
   return price >= 1000
     ? price.toLocaleString('en-US', { maximumFractionDigits: 0 })
     : price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+const QUOTE_GROUPS: Record<string, string> = {
+  '^GSPC': 'equity',
+  '^IXIC': 'equity',
+  '^VIX': 'vol',
+  BTC: 'crypto',
+  ETH: 'crypto',
+  'CL=F': 'energy',
+  'BZ=F': 'energy',
+  'GC=F': 'metal',
+  'HG=F': 'metal',
+  'NG=F': 'energy',
+  'EURUSD=X': 'fx',
+  'USDJPY=X': 'fx',
+};
+
+const QUOTE_CODES: Record<string, string> = {
+  '^GSPC': 'SPX',
+  '^IXIC': 'NDX',
+  '^VIX': 'VIX',
+  BTC: 'BTC',
+  ETH: 'ETH',
+  'CL=F': 'WTI',
+  'BZ=F': 'BRENT',
+  'GC=F': 'GOLD',
+  'HG=F': 'CU',
+  'NG=F': 'GAS',
+  'EURUSD=X': 'EUR',
+  'USDJPY=X': 'JPY',
+};
+
+const SUMMARY_EXCLUDED_SYMBOLS = new Set(['^VIX']);
+
+function quoteGroup(symbol: string): string {
+  return QUOTE_GROUPS[symbol] ?? 'market';
+}
+
+function quoteCode(symbol: string, display: string): string {
+  return QUOTE_CODES[symbol] ?? display;
+}
+
+function formatChange(change: number, digits = 2): string {
+  return `${change >= 0 ? '+' : ''}${change.toFixed(digits)}%`;
+}
+
+function MarketStat({ label, children, tone = 'text-wm-text' }: { label: string; children: ReactNode; tone?: string }) {
+  return (
+    <div className="min-w-0 rounded-sm border border-wm-border/80 bg-wm-bg/50 px-2 py-1.5">
+      <div className="font-mono text-[9px] uppercase tracking-widest text-wm-muted truncate">{label}</div>
+      <div className={`font-mono text-[11px] leading-tight truncate ${tone}`}>{children}</div>
+    </div>
+  );
+}
+
+function MarketTape({ quotes }: { quotes: TeaserQuote[] }) {
+  const visible = quotes.slice(0, 12);
+  const summaryQuotes = visible.filter(q => !SUMMARY_EXCLUDED_SYMBOLS.has(q.symbol));
+  const gainers = summaryQuotes.filter(q => q.change >= 0).length;
+  const best = summaryQuotes.reduce<TeaserQuote | null>((max, q) => (!max || q.change > max.change ? q : max), null);
+  const weakest = summaryQuotes.reduce<TeaserQuote | null>((min, q) => (!min || q.change < min.change ? q : min), null);
+
+  return (
+    <div>
+      <div className="grid grid-cols-3 gap-2 mb-3">
+        <MarketStat label={t('welcome.live.marketBreadth')} tone={gainers >= summaryQuotes.length / 2 ? 'text-wm-green' : 'text-[#ff5f57]'}>
+          {gainers}/{summaryQuotes.length}
+        </MarketStat>
+        <MarketStat label={t('welcome.live.marketBest')} tone="text-wm-green">
+          {best ? `${quoteCode(best.symbol, best.display)} ${formatChange(best.change, 1)}` : '--'}
+        </MarketStat>
+        <MarketStat label={t('welcome.live.marketWeakest')} tone="text-[#ff5f57]">
+          {weakest ? `${quoteCode(weakest.symbol, weakest.display)} ${formatChange(weakest.change, 1)}` : '--'}
+        </MarketStat>
+      </div>
+      <ul className="space-y-2">
+        {visible.map(q => (
+          <li key={q.symbol} className="grid grid-cols-[minmax(0,1fr)_3.5rem_3.6rem] gap-2 items-center text-sm">
+            <span className="min-w-0">
+              <span className="block truncate leading-tight">{q.display}</span>
+              <span className="block font-mono text-[9px] uppercase tracking-wider text-wm-muted">{quoteGroup(q.symbol)}</span>
+            </span>
+            <Sparkline quote={q} className="w-14 h-5" />
+            <span className="min-w-0 text-right">
+              <span className="block font-mono text-[11px] leading-tight truncate">{formatPrice(q.price)}</span>
+              <span className={`block font-mono text-[10px] leading-tight ${q.change >= 0 ? 'text-wm-green' : 'text-[#ff5f57]'}`}>
+                {formatChange(q.change)}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 export const LiveStrip = () => {
@@ -168,18 +262,7 @@ export const LiveStrip = () => {
           </Card>
 
           <Card icon={<LineChart className="w-4 h-4" aria-hidden="true" />} title={t('welcome.live.cardMarkets')} live={teasers.quotes.live}>
-            <ul className="space-y-3">
-              {teasers.quotes.items.map(q => (
-                <li key={q.symbol} className="flex items-center gap-3 text-sm">
-                  <span className="flex-1 truncate">{q.display}</span>
-                  <Sparkline quote={q} />
-                  <span className="font-mono text-xs w-16 text-right">{formatPrice(q.price)}</span>
-                  <span className={`font-mono text-xs w-14 text-right ${q.change >= 0 ? 'text-wm-green' : 'text-[#ff5f57]'}`}>
-                    {q.change >= 0 ? '+' : ''}{q.change.toFixed(2)}%
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <MarketTape quotes={teasers.quotes.items} />
           </Card>
         </div>
       </div>
