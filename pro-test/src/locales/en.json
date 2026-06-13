@@ -450,6 +450,9 @@
       "cardChokepoints": "Maritime chokepoints",
       "chokeSummary": "{{disrupted}} of {{total}} disrupted",
       "cardMarkets": "Markets",
+      "marketBreadth": "Up",
+      "marketBest": "Best",
+      "marketWeakest": "Weakest",
       "trendRising": "rising",
       "trendFalling": "falling",
       "trendStable": "stable"
