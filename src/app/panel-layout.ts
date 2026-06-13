@@ -104,6 +104,7 @@ import {
   isPanelInVariantDefaults,
   getEffectivePanelConfig,
   isPanelEntitled,
+  enforceFreePanelLimit,
 } from '@/config';
 import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-resolution';
 import { BETA_MODE } from '@/config/beta';
@@ -112,7 +113,7 @@ import { getCurrentTheme } from '@/utils';
 import { trackCriticalBannerAction } from '@/services/analytics';
 import { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
 import { openWidgetChatModal } from '@/components/WidgetChatModal';
-import { loadWidgets, saveWidget } from '@/services/widget-store';
+import { loadWidgets, saveWidget, isProUser } from '@/services/widget-store';
 import type { CustomWidgetSpec } from '@/services/widget-store';
 import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitled, hasTier, getEntitlementState, onEntitlementChange, shouldReloadOnEntitlementChange } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
@@ -754,11 +755,20 @@ export class PanelLayoutManager implements AppModule {
       // nothing changes visually until they create a second tab.
       const initial: PanelTab = {
         id: generateTabId(),
-        name: 'Main',
+        name: t('dashboardTabs.defaultName'),
         ...this.captureCurrentTabState(),
       };
       state = { activeTabId: initial.id, tabs: [initial] };
       saveTabsState(state);
+    } else {
+      // Clamp stored snapshots to the current free-tier cap so a workspace
+      // saved while Pro (or persisted before the cap existed) can't re-enable
+      // an over-cap layout when the user later switches to it. applyTabPanelState
+      // re-clamps on apply too; this keeps the persisted store self-healing.
+      const pro = isProUser();
+      for (const tab of state.tabs) {
+        tab.panelSettings = enforceFreePanelLimit(tab.panelSettings, pro);
+      }
     }
     this.tabsState = state;
 
@@ -808,10 +818,13 @@ export class PanelLayoutManager implements AppModule {
     this.snapshotActiveTab();
 
     const defaults = buildDefaultTabPanels(this.ctx.panelSettings);
+    // The variant default set can exceed FREE_MAX_PANELS (e.g. 81 panels in the
+    // full variant); clamp it to the free-tier cap so a new tab can't bypass
+    // the limit that settings/search/boot all enforce.
     const tab: PanelTab = {
       id: generateTabId(),
-      name: 'New Tab',
-      panelSettings: defaults.panelSettings,
+      name: t('dashboardTabs.newTabName'),
+      panelSettings: enforceFreePanelLimit(defaults.panelSettings, isProUser()),
       panelOrder: defaults.panelOrder,
       bottomSet: [],
     };
@@ -821,7 +834,7 @@ export class PanelLayoutManager implements AppModule {
 
     this.applyTabPanelState(tab.panelSettings, tab.panelOrder, tab.bottomSet);
     this.panelTabBar?.refresh();
-    showToast('New tab created');
+    showToast(t('dashboardTabs.newTabCreated'));
   }
 
   private renameTab(tabId: string, name: string): void {
@@ -849,7 +862,7 @@ export class PanelLayoutManager implements AppModule {
       saveTabsState(this.tabsState);
     }
     this.panelTabBar?.refresh();
-    showToast(`Tab "${removed!.name}" deleted`);
+    showToast(t('dashboardTabs.tabDeleted', { name: removed!.name }));
   }
 
   /**
@@ -884,8 +897,14 @@ export class PanelLayoutManager implements AppModule {
       }
     }
 
-    this.ctx.panelSettings = next;
-    saveToStorage(STORAGE_KEYS.panels, next);
+    // Final free-tier guarantee: this is the only path that writes a tab's
+    // panel selection into STORAGE_KEYS.panels, so clamping here means no tab
+    // operation (add / switch / delete-fallback) can ever persist an over-cap
+    // workspace, regardless of how the snapshot was produced.
+    const capped = enforceFreePanelLimit(next, isProUser());
+
+    this.ctx.panelSettings = capped;
+    saveToStorage(STORAGE_KEYS.panels, capped);
     saveToStorage(this.ctx.PANEL_ORDER_KEY, panelOrder);
     saveToStorage(this.ctx.PANEL_ORDER_KEY + '-bottom-set', bottomSet);
 

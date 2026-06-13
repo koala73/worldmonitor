@@ -48,6 +48,7 @@ export {
   getEffectivePanelConfig,
   isPanelInVariantDefaults,
   isPanelEntitled,
+  enforceFreePanelLimit,
   FREE_MAX_PANELS,
   FREE_MAX_SOURCES,
 } from './panels';

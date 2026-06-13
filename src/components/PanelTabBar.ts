@@ -1,4 +1,5 @@
 import type { PanelTab, TabsState } from '@/services/tab-store';
+import { t } from '@/services/i18n';
 
 export interface PanelTabBarCallbacks {
   onSelect(tabId: string): void;
@@ -26,7 +27,25 @@ export class PanelTabBar {
     this.element = document.createElement('div');
     this.element.className = 'dashboard-tabs-bar';
     this.element.setAttribute('role', 'tablist');
-    this.element.setAttribute('aria-label', 'Dashboard tabs');
+    this.element.setAttribute('aria-label', t('dashboardTabs.ariaLabel'));
+
+    // Delegate dblclick at the container (attached ONCE, survives re-renders).
+    // A per-label listener breaks for inactive tabs: the first click switches
+    // tabs → render() → replaceChildren() swaps out the label node, so the two
+    // clicks land on different elements and the browser dispatches dblclick on
+    // their common ancestor (this container) rather than the new label.
+    // Resolving the tab from the DOM here makes rename work on any tab.
+    this.element.addEventListener('dblclick', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('.dashboard-tab-close')) return; // don't rename on delete dblclick
+      const tabEl = target.closest('.dashboard-tab') as HTMLElement | null;
+      if (!tabEl) return;
+      const tabId = tabEl.dataset.tabId;
+      if (!tabId) return;
+      const tab = this.getState().tabs.find((tb) => tb.id === tabId);
+      if (tab) this.startRename(tabEl, tab);
+    });
+
     this.render();
   }
 
@@ -50,8 +69,8 @@ export class PanelTabBar {
     }
     const addBtn = document.createElement('button');
     addBtn.className = 'dashboard-tab-add';
-    addBtn.title = 'New tab (starts with the default panels)';
-    addBtn.setAttribute('aria-label', 'Add tab');
+    addBtn.title = t('dashboardTabs.addTabTitle');
+    addBtn.setAttribute('aria-label', t('dashboardTabs.addTab'));
     addBtn.textContent = '+';
     addBtn.addEventListener('click', () => this.callbacks.onAdd());
     this.element.appendChild(addBtn);
@@ -66,19 +85,23 @@ export class PanelTabBar {
     label.className = 'dashboard-tab-label';
     label.setAttribute('role', 'tab');
     label.setAttribute('aria-selected', String(isActive));
+    // ARIA tab contract: a role="tab" must point at the tabpanel it controls.
+    // All tabs drive the same panel grid (only its contents swap on switch).
+    label.setAttribute('aria-controls', 'panelsGrid');
     label.textContent = tab.name;
-    label.title = `${tab.name} — double-click to rename`;
+    label.title = t('dashboardTabs.renameHint', { name: tab.name });
     label.addEventListener('click', () => {
       if (!isActive) this.callbacks.onSelect(tab.id);
     });
-    label.addEventListener('dblclick', () => this.startRename(el, tab));
+    // dblclick-to-rename is handled by the container-level delegate in the
+    // constructor so it works for inactive tabs too (see note there).
     el.appendChild(label);
 
     if (canDelete) {
       const close = document.createElement('button');
       close.className = 'dashboard-tab-close';
-      close.setAttribute('aria-label', `Delete tab ${tab.name}`);
-      close.title = 'Delete tab';
+      close.setAttribute('aria-label', t('dashboardTabs.deleteTabAria', { name: tab.name }));
+      close.title = t('dashboardTabs.deleteTab');
       close.textContent = '×';
       close.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -98,7 +121,7 @@ export class PanelTabBar {
     input.className = 'dashboard-tab-rename';
     input.value = tab.name;
     input.maxLength = 40;
-    input.setAttribute('aria-label', 'Tab name');
+    input.setAttribute('aria-label', t('dashboardTabs.tabNameAria'));
 
     // `done` guards the blur that fires when commit/cancel re-renders the bar.
     let done = false;
