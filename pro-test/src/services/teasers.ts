@@ -203,6 +203,11 @@ function orderAndBackfillQuotes(liveItems: TeaserQuote[]): TeaserQuote[] {
     .filter((q): q is TeaserQuote => Boolean(q));
 }
 
+function hasCompleteLiveQuoteSet(liveItems: TeaserQuote[]): boolean {
+  const liveSymbols = new Set(liveItems.map(q => q.symbol));
+  return QUOTE_SYMBOLS.every(symbol => liveSymbols.has(symbol));
+}
+
 async function fetchQuotes(): Promise<{ items: TeaserQuote[]; live: boolean } | null> {
   const marketQs = MARKET_QUOTE_SYMBOLS.map(s => `symbols=${encodeURIComponent(s)}`).join('&');
   const commodityQs = COMMODITY_QUOTE_SYMBOLS.map(s => `symbols=${encodeURIComponent(s)}`).join('&');
@@ -219,7 +224,13 @@ async function fetchQuotes(): Promise<{ items: TeaserQuote[]; live: boolean } | 
   ].map(normalizeQuote).filter((q): q is TeaserQuote => Boolean(q));
   const items = orderAndBackfillQuotes(liveItems);
   if (!items.length) return null;
-  return { items, live: Boolean(liveItems.length) && !market?.rateLimited };
+  const live =
+    market !== null &&
+    commodities !== null &&
+    crypto !== null &&
+    !market.rateLimited &&
+    hasCompleteLiveQuoteSet(liveItems);
+  return { items, live };
 }
 
 interface FeedDigestResponse {

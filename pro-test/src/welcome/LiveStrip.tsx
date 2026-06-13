@@ -123,6 +123,8 @@ const QUOTE_CODES: Record<string, string> = {
   'USDJPY=X': 'JPY',
 };
 
+const SUMMARY_EXCLUDED_SYMBOLS = new Set(['^VIX']);
+
 function quoteGroup(symbol: string): string {
   return QUOTE_GROUPS[symbol] ?? 'market';
 }
@@ -146,15 +148,16 @@ function MarketStat({ label, children, tone = 'text-wm-text' }: { label: string;
 
 function MarketTape({ quotes }: { quotes: TeaserQuote[] }) {
   const visible = quotes.slice(0, 12);
-  const gainers = visible.filter(q => q.change >= 0).length;
-  const best = visible.reduce<TeaserQuote | null>((max, q) => (!max || q.change > max.change ? q : max), null);
-  const weakest = visible.reduce<TeaserQuote | null>((min, q) => (!min || q.change < min.change ? q : min), null);
+  const summaryQuotes = visible.filter(q => !SUMMARY_EXCLUDED_SYMBOLS.has(q.symbol));
+  const gainers = summaryQuotes.filter(q => q.change >= 0).length;
+  const best = summaryQuotes.reduce<TeaserQuote | null>((max, q) => (!max || q.change > max.change ? q : max), null);
+  const weakest = summaryQuotes.reduce<TeaserQuote | null>((min, q) => (!min || q.change < min.change ? q : min), null);
 
   return (
     <div>
       <div className="grid grid-cols-3 gap-2 mb-3">
-        <MarketStat label={t('welcome.live.marketBreadth')} tone={gainers >= visible.length / 2 ? 'text-wm-green' : 'text-[#ff5f57]'}>
-          {gainers}/{visible.length}
+        <MarketStat label={t('welcome.live.marketBreadth')} tone={gainers >= summaryQuotes.length / 2 ? 'text-wm-green' : 'text-[#ff5f57]'}>
+          {gainers}/{summaryQuotes.length}
         </MarketStat>
         <MarketStat label={t('welcome.live.marketBest')} tone="text-wm-green">
           {best ? `${quoteCode(best.symbol, best.display)} ${formatChange(best.change, 1)}` : '--'}
