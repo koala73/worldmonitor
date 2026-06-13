@@ -26,6 +26,12 @@ function mayHaveClerkSession(): boolean {
   return false;
 }
 
+function dashboardRedirectTarget(): string {
+  return window.location.search
+    ? `${DASHBOARD_PATH}${window.location.search}`
+    : DASHBOARD_PATH;
+}
+
 export default function WelcomeApp() {
   useEffect(() => {
     if (!mayHaveClerkSession()) return;
@@ -33,7 +39,7 @@ export default function WelcomeApp() {
     import('./services/checkout')
       .then(({ ensureClerk }) => ensureClerk())
       .then((clerk) => {
-        if (!cancelled && clerk.user) window.location.replace(DASHBOARD_PATH);
+        if (!cancelled && clerk.user) window.location.replace(dashboardRedirectTarget());
       })
       .catch(() => {
         // Auth is optional for the public landing page; anonymous visitors keep reading.
