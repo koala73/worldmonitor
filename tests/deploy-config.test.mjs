@@ -149,6 +149,17 @@ describe('welcome landing page routing', () => {
     assert.equal(rewrite.destination, '/index.html');
   });
 
+  it('does not keep stale welcome exclusions in the SPA catch-all rewrite', () => {
+    const catchAll = vercelConfig.rewrites.find((r) =>
+      r.destination === '/index.html' && r.source.startsWith('/((?!')
+    );
+    assert.ok(catchAll, 'expected the SPA catch-all rewrite');
+    assert.ok(
+      !catchAll.source.includes('|welcome|'),
+      'legacy /welcome redirect must not leave welcome excluded from the SPA catch-all rewrite'
+    );
+  });
+
   it('redirects legacy /welcome to / permanently', () => {
     const redirect = vercelConfig.redirects.find((r) => r.source === '/welcome');
     assert.ok(redirect, 'expected a redirect for /welcome');
@@ -209,7 +220,9 @@ describe('welcome landing page routing', () => {
     assert.ok(welcomeApp.includes("import('./services/checkout')"));
     assert.ok(welcomeApp.includes('mayHaveClerkSession()'));
     assert.ok(welcomeApp.includes("import { DASHBOARD_PATH } from './routes';"));
-    assert.ok(welcomeApp.includes('if (!cancelled && clerk.user) window.location.replace(DASHBOARD_PATH);'));
+    assert.ok(welcomeApp.includes('function dashboardRedirectTarget(): string'));
+    assert.ok(welcomeApp.includes('? `${DASHBOARD_PATH}${window.location.search}`'));
+    assert.ok(welcomeApp.includes('if (!cancelled && clerk.user) window.location.replace(dashboardRedirectTarget());'));
   });
 });
 

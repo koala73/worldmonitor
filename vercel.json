@@ -19,7 +19,7 @@
     { "source": "/.well-known/oauth-protected-resource", "destination": "/api/oauth-protected-resource" },
     { "source": "/embed", "destination": "/embed.html" },
     { "source": "/dashboard", "destination": "/index.html" },
-    { "source": "/((?!api|mcp|oauth|assets|blog|docs|embed|embed\\.html|favico|map-styles|data|textures|pro|welcome|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)", "destination": "/index.html" }
+    { "source": "/((?!api|mcp|oauth|assets|blog|docs|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)", "destination": "/index.html" }
   ],
   "headers": [
     {
