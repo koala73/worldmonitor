@@ -24,6 +24,9 @@
     "ws": "^8.18.0",
     "yaml": "^2.8.3"
   },
+  "overrides": {
+    "esbuild": "0.28.1"
+  },
   "engines": {
     "node": ">=20"
   }

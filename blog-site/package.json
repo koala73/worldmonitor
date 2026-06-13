@@ -23,6 +23,7 @@
   "overrides": {
     "devalue": "^5.8.1",
     "defu": "^6.1.5",
+    "esbuild": "0.28.1",
     "fast-xml-parser": "^5.8.0",
     "h3": "^1.15.9",
     "picomatch": "^4.0.4",
