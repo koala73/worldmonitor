@@ -1279,7 +1279,7 @@ export class App {
     this.eventHandlers.setupAuthWidget();
     // Capture any ?ref= / ?wm_referral= from the URL into localStorage
     // and strip from the visible URL. Runs BEFORE the pending-checkout
-    // capture so a /pro?ref=X&checkoutProduct=Y landing preserves both
+    // capture so a /dashboard?ref=X&checkoutProduct=Y landing preserves both
     // signals. Pure read of current URL — no-op when neither param is
     // present.
     captureReferralFromUrl();

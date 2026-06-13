@@ -1,7 +1,7 @@
 import { describe, it, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-const BASE_URL = 'https://worldmonitor.app/';
+const BASE_URL = 'https://worldmonitor.app/dashboard';
 
 interface MutableLocation {
   href: string;

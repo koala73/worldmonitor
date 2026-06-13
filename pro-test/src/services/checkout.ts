@@ -21,6 +21,7 @@ import {
   buildCheckoutReturnUrl,
 } from './checkout-intent-url';
 import { createEntitlementWatchdog, type EntitlementWatchdog } from './entitlement-watchdog';
+import { DASHBOARD_CHECKOUT_SUCCESS_URL } from '../routes';
 
 let clerk: InstanceType<typeof Clerk> | null = null;
 let checkoutInFlight = false;
@@ -219,10 +220,10 @@ export function initOverlay(onSuccess?: () => void): void {
       // status endpoint is authoritative for the entitlement; the
       // URL params are informational at this point.
       if (reason === 'event-redirect') {
-        window.location.href = redirectTo || 'https://worldmonitor.app/?wm_checkout=success';
+        window.location.href = redirectTo || DASHBOARD_CHECKOUT_SUCCESS_URL;
       } else {
         safeCloseOverlay();
-        window.location.href = 'https://worldmonitor.app/?wm_checkout=success';
+        window.location.href = DASHBOARD_CHECKOUT_SUCCESS_URL;
       }
     };
 
@@ -417,7 +418,7 @@ async function doCheckout(
       },
       body: JSON.stringify({
         productId,
-        returnUrl: 'https://worldmonitor.app/?wm_checkout=success',
+        returnUrl: DASHBOARD_CHECKOUT_SUCCESS_URL,
         discountCode: options.discountCode,
         referralCode: options.referralCode,
       }),

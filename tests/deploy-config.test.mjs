@@ -132,39 +132,84 @@ describe('deploy/cache configuration guardrails', () => {
   });
 });
 
-// /welcome marketing landing page — a second HTML entry in the pro-test
-// bundle (vite rollupOptions.input), served from public/pro/welcome.html.
-// It must opt out of the SPA catch-all rewrite (plain alternation, no
-// `(?:...)` groups — Vercel's source-pattern parser rejects them) and
-// carry the same bfcache-friendly no-cache header as /pro.
+// Root marketing landing page — a second HTML entry in the pro-test bundle
+// (vite rollupOptions.input), served from public/pro/welcome.html. The
+// dashboard keeps the SPA shell at /dashboard, while /welcome redirects to
+// root so crawlers and humans do not see duplicate landing URLs.
 describe('welcome landing page routing', () => {
-  it('rewrites /welcome to the pro-test bundle welcome.html', () => {
-    const rewrite = vercelConfig.rewrites.find((r) => r.source === '/welcome');
-    assert.ok(rewrite, 'expected a rewrite for /welcome');
+  it('rewrites / to the pro-test bundle welcome.html', () => {
+    const rewrite = vercelConfig.rewrites.find((r) => r.source === '/');
+    assert.ok(rewrite, 'expected a rewrite for /');
     assert.equal(rewrite.destination, '/pro/welcome.html');
   });
 
-  it('excludes welcome from the SPA catch-all rewrite', () => {
-    const catchAll = vercelConfig.rewrites.find((r) => r.destination === '/index.html');
-    assert.ok(catchAll, 'expected the SPA catch-all rewrite');
-    assert.ok(
-      catchAll.source.includes('|welcome|'),
-      'SPA catch-all negative lookahead must contain |welcome| or /welcome falls through to the dashboard'
-    );
+  it('rewrites /dashboard to the existing SPA shell', () => {
+    const rewrite = vercelConfig.rewrites.find((r) => r.source === '/dashboard');
+    assert.ok(rewrite, 'expected a rewrite for /dashboard');
+    assert.equal(rewrite.destination, '/index.html');
   });
 
-  it('requires revalidation for /welcome HTML without disabling bfcache', () => {
-    const welcomeCache = getCacheHeaderValue('/welcome');
-    assert.equal(welcomeCache, 'private, no-cache, must-revalidate');
-    assert.ok(!welcomeCache.includes('no-store'), 'HTML must not set no-store — it disables bfcache');
+  it('redirects legacy /welcome to / permanently', () => {
+    const redirect = vercelConfig.redirects.find((r) => r.source === '/welcome');
+    assert.ok(redirect, 'expected a redirect for /welcome');
+    assert.equal(redirect.destination, '/');
+    assert.equal(redirect.permanent, true);
   });
 
-  it('sitemap lists the /welcome page', () => {
+  it('requires revalidation for /dashboard HTML without disabling bfcache', () => {
+    const dashboardCache = getCacheHeaderValue('/dashboard');
+    assert.equal(dashboardCache, 'private, no-cache, must-revalidate');
+    assert.ok(!dashboardCache.includes('no-store'), 'HTML must not set no-store — it disables bfcache');
+  });
+
+  it('sitemap lists /dashboard and does not list legacy /welcome', () => {
     const sitemap = readFileSync(resolve(__dirname, '../public/sitemap.xml'), 'utf-8');
     assert.ok(
-      sitemap.includes('<loc>https://www.worldmonitor.app/welcome</loc>'),
-      'public/sitemap.xml must list https://www.worldmonitor.app/welcome'
+      sitemap.includes('<loc>https://www.worldmonitor.app/dashboard</loc>'),
+      'public/sitemap.xml must list https://www.worldmonitor.app/dashboard'
     );
+    assert.ok(
+      !sitemap.includes('<loc>https://www.worldmonitor.app/welcome</loc>'),
+      'public/sitemap.xml must not list legacy https://www.worldmonitor.app/welcome'
+    );
+  });
+
+  it('pins welcome and dashboard SEO canonicals to their new routes', () => {
+    const welcomeHtml = readFileSync(resolve(__dirname, '../pro-test/welcome.html'), 'utf-8');
+    const generatedWelcomeHtml = readFileSync(resolve(__dirname, '../public/pro/welcome.html'), 'utf-8');
+    const dashboardHtml = readFileSync(resolve(__dirname, '../index.html'), 'utf-8');
+    assert.ok(
+      welcomeHtml.includes('<link rel="canonical" href="https://www.worldmonitor.app/" />'),
+      'welcome source must canonicalize to root'
+    );
+    assert.ok(
+      !welcomeHtml.includes('https://www.worldmonitor.app/welcome'),
+      'welcome source must not emit legacy /welcome SEO URLs'
+    );
+    assert.ok(
+      generatedWelcomeHtml.includes('<link rel="canonical" href="https://www.worldmonitor.app/" />'),
+      'generated welcome HTML must canonicalize to root'
+    );
+    assert.ok(
+      !generatedWelcomeHtml.includes('https://www.worldmonitor.app/welcome'),
+      'generated welcome HTML must not emit legacy /welcome SEO URLs'
+    );
+    assert.ok(
+      generatedWelcomeHtml.includes('https://www.worldmonitor.app/dashboard'),
+      'generated welcome HTML must launch the dashboard at /dashboard'
+    );
+    assert.ok(
+      dashboardHtml.includes('<link rel="canonical" href="https://www.worldmonitor.app/dashboard" />'),
+      'dashboard shell must canonicalize to /dashboard'
+    );
+  });
+
+  it('redirects signed-in welcome visitors to /dashboard client-side', () => {
+    const welcomeApp = readFileSync(resolve(__dirname, '../pro-test/src/WelcomeApp.tsx'), 'utf-8');
+    assert.ok(welcomeApp.includes("import('./services/checkout')"));
+    assert.ok(welcomeApp.includes('mayHaveClerkSession()'));
+    assert.ok(welcomeApp.includes("import { DASHBOARD_PATH } from './routes';"));
+    assert.ok(welcomeApp.includes('if (!cancelled && clerk.user) window.location.replace(DASHBOARD_PATH);'));
   });
 });
 
@@ -536,7 +581,9 @@ describe('embeddable map route guardrails', () => {
 
   it('rewrites /embed to the dedicated embed.html entry before the SPA catch-all', () => {
     const rewriteIndex = vercelConfig.rewrites.findIndex((r) => r.source === '/embed');
-    const catchAllIndex = vercelConfig.rewrites.findIndex((r) => r.destination === '/index.html');
+    const catchAllIndex = vercelConfig.rewrites.findIndex((r) =>
+      r.destination === '/index.html' && r.source.startsWith('/((?!')
+    );
     assert.ok(rewriteIndex !== -1, 'expected /embed rewrite');
     assert.ok(catchAllIndex !== -1, 'expected SPA catch-all rewrite');
     assert.ok(rewriteIndex < catchAllIndex, '/embed rewrite must appear before the SPA catch-all');
@@ -544,7 +591,9 @@ describe('embeddable map route guardrails', () => {
   });
 
   it('excludes /embed and /embed.html from the SPA catch-all rewrite and cache header', () => {
-    const catchAll = vercelConfig.rewrites.find((r) => r.destination === '/index.html');
+    const catchAll = vercelConfig.rewrites.find((r) =>
+      r.destination === '/index.html' && r.source.startsWith('/((?!')
+    );
     assert.ok(catchAll.source.includes('|embed|embed\\.html|'), 'SPA catch-all must exclude the public embed entry');
     assert.ok(SPA_HTML_CACHE_SOURCE.includes('|embed|embed\\.html|'), 'HTML cache catch-all must exclude the public embed entry');
     assert.equal(getCacheHeaderValue(SPA_HTML_CACHE_SOURCE), 'private, no-cache, must-revalidate');
