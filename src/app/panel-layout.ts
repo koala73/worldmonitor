@@ -98,6 +98,7 @@ import {
   CANONICAL_FEEDS,
   INTEL_SOURCES,
   STORAGE_KEYS,
+  DEFAULT_MAP_MODE,
   SITE_VARIANT,
   ALL_PANELS,
   VARIANT_DEFAULTS,
@@ -475,6 +476,9 @@ export class PanelLayoutManager implements AppModule {
   }
 
   async renderLayout(): Promise<void> {
+    const preferredMapMode = loadFromStorage<string>(STORAGE_KEYS.mapMode, DEFAULT_MAP_MODE);
+    const isGlobeMode = preferredMapMode === 'globe';
+
     setTrustedHtml(this.ctx.container, trustedHtml(`
       ${this.ctx.isDesktopApp ? '<div class="tauri-titlebar" data-tauri-drag-region></div>' : ''}
       <div class="header">
@@ -672,8 +676,8 @@ export class PanelLayoutManager implements AppModule {
             <span class="header-clock" id="headerClock" translate="no"></span>
             <div class="map-header-actions">
               <div class="map-dimension-toggle" id="mapDimensionToggle">
-                <button class="map-dim-btn${loadFromStorage<string>(STORAGE_KEYS.mapMode, 'flat') === 'globe' ? '' : ' active'}" data-mode="flat" title="2D Map">2D</button>
-                <button class="map-dim-btn${loadFromStorage<string>(STORAGE_KEYS.mapMode, 'flat') === 'globe' ? ' active' : ''}" data-mode="globe" title="3D Globe">3D</button>
+                <button class="map-dim-btn${isGlobeMode ? '' : ' active'}" data-mode="flat" title="2D Map">2D</button>
+                <button class="map-dim-btn${isGlobeMode ? ' active' : ''}" data-mode="globe" title="3D Globe">3D</button>
               </div>
               <button class="map-pin-btn" id="mapFullscreenBtn" title="Fullscreen">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
@@ -928,7 +932,7 @@ export class PanelLayoutManager implements AppModule {
     const panelsGrid = document.getElementById('panelsGrid')!;
 
     const mapContainer = document.getElementById('mapContainer') as HTMLElement;
-    const preferGlobe = loadFromStorage<string>(STORAGE_KEYS.mapMode, 'flat') === 'globe';
+    const preferGlobe = loadFromStorage<string>(STORAGE_KEYS.mapMode, DEFAULT_MAP_MODE) === 'globe';
     // Dynamic import: keeps maplibre-gl + @deck.gl/* + @loaders.gl + @luma.gl
     // out of the entry chunk. Loads in parallel with paint, so the map mounts
     // a beat after the panel grid renders instead of blocking it.

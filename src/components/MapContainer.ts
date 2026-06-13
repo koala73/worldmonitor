@@ -161,7 +161,7 @@ export class MapContainer {
     this.container = container;
     this.initialState = initialState;
     this.isMobile = isMobileDevice();
-    this.useGlobe = preferGlobe && this.hasWebGLSupport();
+    this.useGlobe = preferGlobe && this.hasGlobeSupport();
 
     this.useDeckGL = !this.useGlobe && this.shouldUseDeckGL();
 
@@ -180,6 +180,19 @@ export class MapContainer {
       // an empty/black render surface instead of a usable map.
       const gl2 = canvas.getContext('webgl2');
       return !!gl2;
+    } catch {
+      return false;
+    }
+  }
+
+  private hasGlobeSupport(): boolean {
+    try {
+      const canvas = document.createElement('canvas');
+      return !!(
+        canvas.getContext('webgl2')
+        || canvas.getContext('webgl')
+        || canvas.getContext('experimental-webgl')
+      );
     } catch {
       return false;
     }

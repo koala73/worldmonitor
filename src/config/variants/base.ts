@@ -110,6 +110,9 @@ export const STORAGE_KEYS = {
   webcamPrefs: 'worldmonitor-webcam-prefs',
 } as const;
 
+export type MapModePreference = 'flat' | 'globe';
+export const DEFAULT_MAP_MODE: MapModePreference = 'globe';
+
 // Type definitions for variant configs
 export interface VariantConfig {
   name: string;
