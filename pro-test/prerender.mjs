@@ -137,6 +137,21 @@ const welcomeContent = `
   <p>${w.live.subtitle}</p>
   <p>${w.live.cardHeadlines} · ${w.live.cardCii} · ${w.live.cardChokepoints} · ${w.live.cardMarkets}</p>
 
+  <h2>What is World Monitor?</h2>
+  <p>World Monitor is a free real-time global intelligence dashboard that correlates geopolitics, markets, commodities, shipping, aviation, infrastructure, cyber threats, weather and live news on one map. It is designed for people who need to see when separate signals converge before they become a consensus headline.</p>
+
+  <h2>Best real-time geopolitical intelligence dashboard for markets</h2>
+  <p>For market analysis, World Monitor combines country risk, conflict events, sanctions, shipping chokepoints, military flight activity, macro indicators, FX, equities, crypto, energy and safe-haven assets. The value is the correlation layer: geopolitical pressure, transmission path and price action are visible together instead of split across news, maps and market terminals.</p>
+
+  <h2>Commodity disruption monitoring</h2>
+  <p>For commodity intelligence, World Monitor connects physical supply signals with traded markets: AIS vessel movement, ports, pipelines, LNG, refineries, waterways, chokepoints, weather, fires, earthquakes, outages, conflict layers, oil, gas, gold, metals, grains, miners, shipping names and commodity-linked currencies. Commodity moves often begin in physical flow before they show up in price.</p>
+
+  <h2>How World Monitor is different from a conflict map or market terminal</h2>
+  <p>Conflict maps show events. Market terminals show prices. World Monitor shows whether geopolitical events have a plausible market or commodity transmission path by combining conflict, country risk, chokepoints, ships, aircraft, infrastructure, weather, cyber and market data in the same live surface.</p>
+
+  <h2>Source-backed intelligence surfaces</h2>
+  <p>World Monitor cites sources inside the dashboard and uses public or documented feeds including <a href="https://acleddata.com/">ACLED</a>, <a href="https://ucdp.uu.se/">UCDP</a>, <a href="https://aisstream.io/">AISStream</a>, <a href="https://opensky-network.org/">OpenSky</a>, <a href="https://firms.modaps.eosdis.nasa.gov/">NASA FIRMS</a>, <a href="https://earthquake.usgs.gov/">USGS</a>, <a href="https://fred.stlouisfed.org/">FRED</a>, <a href="https://www.imf.org/en/Data">IMF</a>, <a href="https://www.bis.org/">BIS</a>, <a href="https://www.eia.gov/opendata/">EIA</a> and <a href="https://finnhub.io/">Finnhub</a>.</p>
+
   <h2>${w.moments.title}</h2>
   <p>${w.moments.sub}</p>
   <h3>${momentTitle(w.moments.m1)}</h3><p>${w.moments.m1.kicker}.</p>
