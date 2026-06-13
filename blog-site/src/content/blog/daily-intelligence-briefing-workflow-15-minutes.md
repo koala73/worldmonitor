@@ -1,11 +1,12 @@
 ---
 title: "The 15-Minute Morning Intelligence Briefing: A Repeatable Daily Workflow"
-description: "A minute-by-minute morning briefing routine used by analysts: world brief, risk movers, your watchlist, regional deep-dive, and forward indicators — then automate it."
-metaTitle: "Daily Intelligence Briefing Workflow (15 Minutes) | World Monitor"
+description: "A minute-by-minute morning briefing routine for analysts: world brief, risk movers, watchlists, regional context, forward indicators, and automation."
+metaTitle: "Daily Intelligence Briefing Workflow | World Monitor"
 keywords: "daily intelligence briefing, morning intelligence briefing template, geopolitical daily brief, intelligence analyst workflow, situational awareness routine, morning market and risk briefing"
 audience: "Analysts, executives, traders, security professionals, journalists, anyone who needs daily situational awareness"
 heroImage: "/blog/images/blog/daily-intelligence-briefing-workflow-15-minutes.jpg"
 pubDate: "2026-06-02"
+modifiedDate: "2026-06-13"
 ---
 
 The difference between a professional intelligence consumer and a doomscroller is not access to information. It is that one of them runs the same sequence every morning and the other opens a feed and hopes.

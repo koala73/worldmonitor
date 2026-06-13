@@ -1,11 +1,12 @@
 ---
 title: "How to Monitor Country Risk Like an Intelligence Agency (Without the Budget)"
-description: "A four-step country risk monitoring workflow: baseline scores, dossier deep-dives, continuous watch, and automated alerts — built entirely on free and Pro tools."
-metaTitle: "Country Risk Monitoring Workflow for Analysts | World Monitor"
+description: "A four-step country risk workflow: baseline scores, dossier deep-dives, continuous watch, and automated alerts across free and Pro tools."
+metaTitle: "Country Risk Monitoring Workflow | World Monitor"
 keywords: "country risk monitoring, geopolitical risk assessment workflow, political risk analysis tools, country risk analysis free, monitor country instability"
 audience: "Risk analysts, corporate security teams, procurement and supply chain managers, investors, NGO security officers"
 heroImage: "/blog/images/blog/country-risk-monitoring-workflow-for-analysts.jpg"
 pubDate: "2026-06-06"
+modifiedDate: "2026-06-13"
 ---
 
 Most organizations monitor country risk the same way: an annual PDF from a consultancy, a quarterly review meeting, and then a frantic scramble when something actually happens. The PDF was accurate the day it was written. Risk is not.

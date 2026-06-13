@@ -1,16 +1,17 @@
 ---
 title: "Energy Shock Monitoring: Track Chokepoints, Fuel Shortages, and Market Stress"
 description: "How analysts can monitor oil, gas, electricity, maritime chokepoints, fuel shortages, and policy responses with WorldMonitor before an energy shock spreads."
-metaTitle: "Energy Shock Monitoring with WorldMonitor"
+metaTitle: "Energy Shock Monitoring: Chokepoints | WorldMonitor"
 keywords: "energy shock monitoring, oil chokepoint dashboard, fuel shortage tracker, energy security intelligence, geopolitical energy risk"
 audience: "Energy analysts, commodity traders, policy teams, infrastructure risk managers"
 heroImage: "/blog/og/energy-shock-monitoring-chokepoints-worldmonitor.png"
 pubDate: "2026-06-10"
+modifiedDate: "2026-06-13"
 ---
 
 An energy shock rarely starts as a chart. It starts as a closure rumor, a tanker reroute, a fuel shortage, a policy announcement, a port delay, a pipeline disruption, or a military signal near a chokepoint. By the time the price chart explains it, the operational window has already narrowed.
 
-WorldMonitor helps energy analysts watch the chain before it becomes one number on a terminal: maritime chokepoints, fuel shortages, energy disruptions, commodity prices, country risk, news intelligence, and policy response.
+WorldMonitor helps energy analysts watch the chain before it becomes one number on a terminal: maritime chokepoints, fuel shortages, energy disruptions, commodity prices, country risk, news intelligence, and policy response. For the route side of the problem, start with the guide to [tracking chokepoints and freight costs](/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/); for the market side, pair it with [real-time market intelligence for traders](/blog/posts/real-time-market-intelligence-for-traders-and-analysts/).
 
 This is a practical workflow for monitoring energy-shock risk.
 

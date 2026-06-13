@@ -1,11 +1,12 @@
 ---
 title: "Cmd+K: Search Everything on the Planet in Under a Second"
 description: "Fuzzy-search 195 countries, 25+ data layers, and 150+ commands with World Monitor's Cmd+K palette. Multilingual, keyboard-driven intelligence access."
-metaTitle: "Cmd+K Command Palette Search | World Monitor"
+metaTitle: "Cmd+K Intelligence Search Palette | World Monitor"
 keywords: "intelligence dashboard search, command palette dashboard, OSINT search tool, fast country intelligence lookup, keyboard-driven intelligence"
 audience: "Power users, analysts, developers, keyboard-first professionals"
 heroImage: "/blog/images/blog/command-palette-search-everything-instantly.jpg"
 pubDate: "2026-03-06"
+modifiedDate: "2026-06-13"
 ---
 
 You're monitoring a developing situation. News breaks about a military incident in the South China Sea. You need Taiwan's intelligence dossier, the military bases layer, the AIS maritime panel, and the strategic theater posture, right now.

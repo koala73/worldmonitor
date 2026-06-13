@@ -1,11 +1,12 @@
 ---
 title: "A Journalist's OSINT Workflow: Verifying Breaking News in Ten Minutes"
-description: "Cross-check breaking news claims against ship traffic, flight data, satellite fire detection, internet outages, and live webcams — a practical OSINT verification workflow."
-metaTitle: "OSINT Verification Workflow for Breaking News | World Monitor"
+description: "Cross-check breaking news against ship traffic, flight data, satellite fire detection, internet outages, and webcams with this OSINT workflow."
+metaTitle: "OSINT Breaking News Verification Workflow | World Monitor"
 keywords: "OSINT verification techniques, verify breaking news, OSINT for journalists, open source verification tools, fact-checking breaking news, news verification workflow"
 audience: "Journalists, fact-checkers, newsroom researchers, OSINT analysts, media literacy educators"
 heroImage: "/blog/images/blog/verify-breaking-news-osint-workflow-journalists.jpg"
 pubDate: "2026-06-04"
+modifiedDate: "2026-06-13"
 ---
 
 A claim appears on social media: explosion at a major Gulf port, multiple casualties, operations halted. Three accounts are posting the same shaky video. Your editor wants to know if it is real, and wants to know now.

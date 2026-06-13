@@ -1,11 +1,12 @@
 ---
 title: "Inside the Country Instability Index: How Real-Time Risk Scoring Actually Works"
-description: "The full methodology behind World Monitor's Country Instability Index: signal weights, baseline blending, score floors, and what a 0-100 instability score really means."
-metaTitle: "Country Instability Index Methodology Explained | World Monitor"
+description: "World Monitor explains CII signal weights, baseline blending, score floors, and what a 0-100 country instability score means for analysts."
+metaTitle: "Country Instability Index Methodology | World Monitor"
 keywords: "country instability index, political instability index methodology, country risk score calculation, geopolitical risk index, real-time risk scoring, how is country risk measured"
 audience: "Risk analysts, researchers, students of international relations, data journalists, quantitative analysts"
 heroImage: "/blog/images/blog/country-instability-index-methodology-explained.jpg"
 pubDate: "2026-05-30"
+modifiedDate: "2026-06-13"
 ---
 
 Every risk platform sells a number. A country is "72/100" or "high risk" or "amber." Almost none of them will tell you how the number is computed — which means you cannot challenge it, calibrate it, or defend it when a decision built on it goes wrong.

@@ -1,18 +1,19 @@
 ---
 title: "Country Risk Monitoring for Due Diligence: A Practical WorldMonitor Workflow"
-description: "Use CII, travel advisory provenance, sanctions pressure, macro indicators, and conflict events to screen country exposure before an investment, vendor, trip, or market entry."
+description: "Use CII, advisory provenance, sanctions, macro indicators, and conflict events to screen country exposure before investments, suppliers, trips, or market entry."
 metaTitle: "Country Risk Monitoring for Due Diligence | WorldMonitor"
 keywords: "country risk monitoring, country risk API, geopolitical due diligence, country instability index, sanctions risk screening"
 audience: "Risk teams, investors, security managers, compliance analysts, consultants"
 heroImage: "/blog/og/country-risk-monitoring-due-diligence-worldmonitor.png"
 pubDate: "2026-06-10"
+modifiedDate: "2026-06-13"
 ---
 
 Country risk due diligence is the process of asking: "What could go wrong because this deal, supplier, shipment, facility, or trip depends on a country?"
 
 Most teams answer that question with a static country report. That is useful once. It is not enough when conflict events, sanctions exposure, travel advisories, cyber activity, market stress, and public-health signals can change every day.
 
-WorldMonitor gives risk teams a more repeatable workflow: combine the Country Instability Index, advisory provenance, sanctions pressure, conflict events, macro indicators, and news intelligence into a living country-risk file.
+WorldMonitor gives risk teams a more repeatable workflow: combine the Country Instability Index, advisory provenance, sanctions pressure, conflict events, macro indicators, and news intelligence into a living country-risk file. If you are starting from the scoring model itself, read the [Country Instability Index methodology](/blog/posts/country-instability-index-methodology-explained/) first; if you need the same workflow in software, pair this guide with the [developer API overview](/blog/posts/build-on-worldmonitor-developer-api-open-source/).
 
 ## When to run a country risk workflow
 

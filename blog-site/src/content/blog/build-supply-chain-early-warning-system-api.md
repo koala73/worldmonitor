@@ -1,11 +1,12 @@
 ---
 title: "Build a Supply-Chain Early-Warning System in an Afternoon"
 description: "Score your trade lanes for chokepoint exposure, subscribe to disruption webhooks, and pipe alerts to Slack — a working tutorial on the World Monitor API."
-metaTitle: "Supply Chain Risk API Tutorial: Chokepoint Alerts | World Monitor"
+metaTitle: "Supply Chain Risk API: Chokepoint Alerts | World Monitor"
 keywords: "supply chain risk API, chokepoint monitoring API, shipping disruption alerts, maritime risk API, trade route risk scoring, supply chain early warning system"
 audience: "Supply chain engineers, logistics developers, procurement analysts, platform teams, risk managers"
 heroImage: "/blog/images/blog/build-supply-chain-early-warning-system-api.jpg"
 pubDate: "2026-06-08"
+modifiedDate: "2026-06-13"
 ---
 
 When the Strait of Hormuz shut down this spring, companies found out in one of two ways. Some read about it in the news and started calling freight forwarders. Others had already received a webhook hours earlier, when the disruption score crossed their alert threshold, and were quoting Cape of Good Hope routings before their competitors knew there was a problem.

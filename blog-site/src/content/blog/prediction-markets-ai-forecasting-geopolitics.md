@@ -1,11 +1,12 @@
 ---
 title: "Predict What Happens Next: Prediction Markets and AI Forecasting in World Monitor"
-description: "World Monitor combines Polymarket prediction odds with AI geopolitical forecasting. See market probabilities alongside live intelligence for actionable insights."
+description: "World Monitor combines Polymarket odds with AI geopolitical forecasting, putting market probabilities beside live intelligence for actionable context."
 metaTitle: "Prediction Markets + AI Forecasting | World Monitor"
 keywords: "prediction markets geopolitics, Polymarket intelligence tool, AI geopolitical forecasting, geopolitical risk prediction, political prediction dashboard"
 audience: "Geopolitical analysts, traders using prediction markets, policy researchers, forecasting enthusiasts"
 heroImage: "/blog/images/blog/prediction-markets-ai-forecasting-geopolitics.jpg"
 pubDate: "2026-03-03"
+modifiedDate: "2026-06-13"
 ---
 
 Intelligence is about the past and present. Forecasting is about what comes next. Most dashboards give you one or the other. World Monitor gives you both.

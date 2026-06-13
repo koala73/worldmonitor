@@ -1,11 +1,12 @@
 ---
 title: "Free Geopolitical Data APIs in 2026"
 description: "A practical comparison of ACLED, GDELT, UCDP, USGS, NASA FIRMS, Cloudflare Radar, and WorldMonitor for developers building geopolitical risk tools."
-metaTitle: "Free Geopolitical Data APIs in 2026: ACLED, GDELT, UCDP, USGS"
+metaTitle: "Free Geopolitical Data APIs 2026 | WorldMonitor"
 keywords: "free conflict data API, country risk API, geopolitical data API free, ACLED API, GDELT API, UCDP API, OSINT API"
 audience: "Developers, data engineers, OSINT builders, risk analysts, product teams"
 heroImage: "/blog/images/blog/build-on-worldmonitor-developer-api-open-source.jpg"
 pubDate: "2026-06-10"
+modifiedDate: "2026-06-13"
 ---
 
 There is no single "geopolitical API." There are conflict-event databases, news firehoses, earthquake feeds, internet-outage indicators, satellite fire detections, trade datasets, weather alerts, sanctions lists, market feeds, and country-risk models. Each answers a different question.

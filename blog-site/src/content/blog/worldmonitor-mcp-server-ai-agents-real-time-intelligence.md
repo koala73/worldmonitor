@@ -1,11 +1,12 @@
 ---
 title: "Give Your AI Agent Eyes on the World: The World Monitor MCP Server"
 description: "Connect Claude, Cursor, or any MCP client to 39 live geopolitical intelligence tools. Real-time country risk, conflicts, chokepoints, and markets for AI agents."
-metaTitle: "Real-Time Intelligence MCP Server for AI Agents | World Monitor"
+metaTitle: "Real-Time Intelligence MCP Server | World Monitor"
 keywords: "MCP server real-time data, Claude MCP server, Model Context Protocol geopolitics, AI agent live data, geopolitical data for LLMs, real-time intelligence API for AI"
 audience: "AI engineers, agent builders, Claude power users, developers, intelligence analysts automating workflows"
 heroImage: "/blog/images/blog/worldmonitor-mcp-server-ai-agents-real-time-intelligence.jpg"
 pubDate: "2026-06-10"
+modifiedDate: "2026-06-13"
 ---
 
 Ask any LLM what is happening in the Strait of Hormuz right now and you get a polite version of "my training data ends months ago." Large language models are brilliant reasoners with no eyes. They cannot see today's vessel traffic, this morning's conflict events, or the country risk score that moved overnight.

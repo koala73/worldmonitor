@@ -1,18 +1,19 @@
 ---
 title: "Build Geopolitical Risk Alerts for Slack or Teams with WorldMonitor"
-description: "Turn WorldMonitor API and MCP data into practical alerts for country risk, chokepoints, cyber threats, forecasts, and data freshness without creating alert fatigue."
-metaTitle: "Geopolitical Risk Alerts for Slack and Teams | WorldMonitor API"
+description: "Turn WorldMonitor API and MCP data into practical alerts for country risk, chokepoints, cyber threats, forecasts, and data freshness without alert fatigue."
+metaTitle: "Geopolitical Risk Alerts for Slack | WorldMonitor API"
 keywords: "geopolitical risk alerts, OSINT alert pipeline, Slack risk alerts, intelligence API alerts, WorldMonitor API alerts"
 audience: "Developers, security operations teams, risk analysts, platform engineers"
 heroImage: "/blog/og/geopolitical-risk-alerts-slack-teams-worldmonitor-api.png"
 pubDate: "2026-06-10"
+modifiedDate: "2026-06-13"
 ---
 
 Most alert systems fail because they forward too much. A headline is not an alert. A price tick is not an alert. A single noisy event is not an alert.
 
 A useful geopolitical risk alert tells a team that a relevant state changed: a country moved into a higher risk band, a route became stressed, a cyber signal hit a watched region, a forecast changed materially, or the data you depend on went stale.
 
-WorldMonitor gives developers the data layer for that kind of alerting through REST APIs, MCP tools, seed-health metadata, and structured risk outputs.
+WorldMonitor gives developers the data layer for that kind of alerting through REST APIs, MCP tools, seed-health metadata, and structured risk outputs. If your first use case is logistics, the companion guide shows how to [build a supply-chain early-warning system](/blog/posts/build-supply-chain-early-warning-system-api/); if analysts want conversational follow-up, connect alerts to the [WorldMonitor MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/).
 
 ## Alert on state changes, not noise
 
