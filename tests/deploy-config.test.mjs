@@ -11,6 +11,15 @@ const viteConfigSource = readFileSync(resolve(__dirname, '../vite.config.ts'), '
 const dockerfileSource = readFileSync(resolve(__dirname, '../Dockerfile'), 'utf-8');
 const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|oauth|assets|blog|docs|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html).*)';
+const GLOBAL_CSP_INLINE_SCRIPT_HTML_FILES = [
+  'index.html',
+  'settings.html',
+  'live-channels.html',
+  'mcp-grant.html',
+  'public/offline.html',
+  'public/pro/index.html',
+  'public/pro/welcome.html',
+];
 
 const getCacheHeaderValue = (sourcePath) => {
   const rule = vercelConfig.headers.find((entry) => entry.source === sourcePath);
@@ -35,6 +44,13 @@ const getCspDirectiveTokens = (csp, directive) => {
     .find((part) => part.startsWith(`${directive} `));
   const tokens = directiveSource?.slice(directive.length).trim().split(/\s+/).filter(Boolean) ?? [];
   return [...new Set(tokens)].sort();
+};
+
+const getInlineScriptHashTokens = (htmlSource) => {
+  return [...htmlSource.matchAll(/<script\b(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)]
+    .map((match) => match[1])
+    .filter((body) => body.trim().length > 0)
+    .map((body) => `'sha256-${createHash('sha256').update(body).digest('base64')}'`);
 };
 
 const getVariantHosts = () => {
@@ -141,7 +157,7 @@ const DASHBOARD_HTML_DESTINATION = '/dashboard.html';
 // /welcome and /index.html redirect to root so crawlers and humans do not see
 // duplicate landing URLs.
 describe('welcome landing page routing', () => {
-  it('rewrites / to the pro-test bundle welcome.html', () => {
+  it('declares / as the welcome rewrite after moving dashboard HTML off root index', () => {
     const rewrite = vercelConfig.rewrites.find((r) => r.source === '/');
     assert.ok(rewrite, 'expected a rewrite for /');
     assert.equal(rewrite.destination, '/pro/welcome.html');
@@ -201,6 +217,12 @@ describe('welcome landing page routing', () => {
     const dashboardCache = getCacheHeaderValue('/dashboard');
     assert.equal(dashboardCache, 'private, no-cache, must-revalidate');
     assert.ok(!dashboardCache.includes('no-store'), 'HTML must not set no-store — it disables bfcache');
+  });
+
+  it('requires revalidation for root welcome HTML without disabling bfcache', () => {
+    const welcomeCache = getCacheHeaderValue('/');
+    assert.equal(welcomeCache, 'private, no-cache, must-revalidate');
+    assert.ok(!welcomeCache.includes('no-store'), 'HTML must not set no-store — it disables bfcache');
   });
 
   it('requires revalidation for direct dashboard.html without disabling bfcache', () => {
@@ -502,21 +524,21 @@ describe('security header guardrails', () => {
     assert.ok(scriptSrc.includes("'self'"), 'CSP script-src must include self');
   });
 
-  it('CSP script-src includes hashes for every inline script in index.html', () => {
-    const indexHtml = readFileSync(resolve(__dirname, '../index.html'), 'utf-8');
+  it('CSP script-src hashes exactly match inline scripts served under the global CSP', () => {
     const csp = getHeaderValue('Content-Security-Policy');
-    const scriptTokens = getCspDirectiveTokens(csp, 'script-src');
-    const inlineHashTokens = [...indexHtml.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
-      .map((match) => match[1])
-      .filter((body) => body.trim().length > 0)
-      .map((body) => `'sha256-${createHash('sha256').update(body).digest('base64')}'`);
-    const missing = inlineHashTokens.filter((token) => !scriptTokens.includes(token));
+    const scriptHashTokens = getCspDirectiveTokens(csp, 'script-src')
+      .filter((token) => token.startsWith("'sha256-"));
+    const inlineHashTokens = [...new Set(GLOBAL_CSP_INLINE_SCRIPT_HTML_FILES.flatMap((file) => {
+      const html = readFileSync(resolve(__dirname, '..', file), 'utf-8');
+      return getInlineScriptHashTokens(html);
+    }))].sort();
 
+    assert.ok(inlineHashTokens.length > 0, 'expected inline scripts under the global CSP');
     assert.deepEqual(
-      missing,
-      [],
-      `CSP script-src is missing inline script hashes: ${missing.join(', ')}. ` +
-        'Any inline script edit must update the production CSP header.'
+      scriptHashTokens,
+      inlineHashTokens,
+      'CSP script-src hashes must be the exact set required by deployed HTML files: ' +
+        GLOBAL_CSP_INLINE_SCRIPT_HTML_FILES.join(', ')
     );
   });
 
