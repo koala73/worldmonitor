@@ -9,7 +9,7 @@
   ],
   "rewrites": [
     { "source": "/docs/:match*", "destination": "https://worldmonitor.mintlify.dev/docs/:match*" },
-    { "source": "/", "destination": "/pro/welcome.html" },
+    { "source": "/", "has": [{ "type": "host", "value": "^(www\\.)?worldmonitor\\.app$" }], "destination": "/pro/welcome.html" },
     { "source": "/pro", "destination": "/pro/index.html" },
     { "source": "/mcp", "destination": "/api/mcp" },
     { "source": "/mcp-grant", "destination": "/mcp-grant.html" },
