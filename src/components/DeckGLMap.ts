@@ -2067,6 +2067,13 @@ export class DeckGLMap {
         getFillColor: (d) => ('count' in d ? [0, 212, 255, 180] : [255, 215, 0, 200]) as [number, number, number, number],
         radiusUnits: 'pixels',
         pickable: true,
+        onClick: (info) => {
+          if (info.object && !('count' in info.object)) {
+            this.showWebcamClickPopup(info.object as WebcamEntry, info.x, info.y);
+            return true;
+          }
+          return false;
+        },
       }));
     }
 
