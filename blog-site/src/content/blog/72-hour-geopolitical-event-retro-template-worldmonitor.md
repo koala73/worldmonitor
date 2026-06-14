@@ -169,6 +169,8 @@ Next review date:
 
 Keep the final document short. The point is to update the monitoring system, not create a museum piece.
 
+For the pre-event side of this workflow, pair the retro with the [supply-chain scenario engine](/blog/posts/stress-test-supply-chain-scenario-engine-worldmonitor/) and the [country risk monitoring workflow](/blog/posts/country-risk-monitoring-workflow-for-analysts/).
+
 ## Source transparency
 
 WorldMonitor can support retros through chokepoint status, Scenario Engine templates, country risk, forecasts, market implications, disease and disaster panels, displacement summaries, security advisories, and news context. But the retro owner still needs to record which data was actually visible at the time.

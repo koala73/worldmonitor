@@ -96,6 +96,8 @@ Then run the workflow:
 
 The last step is the one teams skip. A stress test is only useful when someone can later ask, "What did we believe, what changed, and which signal would have invalidated the plan?"
 
+Use the [maritime chokepoint explainer](/blog/posts/what-is-a-maritime-chokepoint/) and the [global trade route monitoring guide](/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/) as inputs before choosing a template.
+
 ## Source transparency
 
 Scenario Engine sits on top of WorldMonitor's chokepoint registry, live chokepoint status, HS2 exposure caches, and supply-chain panel state. The template catalog is curated in code. The job queue and worker output are explicit: callers can see pending, processing, done, and failed states rather than receiving an opaque spinner.

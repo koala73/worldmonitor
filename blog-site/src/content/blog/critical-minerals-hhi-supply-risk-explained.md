@@ -123,6 +123,8 @@ It also treats current production shares as the concentration surface. That is o
 
 That is why WorldMonitor places mineral concentration next to other supply-chain signals. A critical HHI score plus an export-control headline plus a chokepoint disruption is a different risk profile than a critical HHI score alone.
 
+For operational follow-through, pair this structural concentration view with the [supply-chain scenario engine](/blog/posts/stress-test-supply-chain-scenario-engine-worldmonitor/) and the [maritime chokepoint explainer](/blog/posts/what-is-a-maritime-chokepoint/).
+
 ## Source transparency
 
 WorldMonitor computes the Critical Minerals view from a committed 2024 production dataset and transparent scoring logic. The HHI formula is public in the codebase, and the risk thresholds are simple enough for a spreadsheet check.

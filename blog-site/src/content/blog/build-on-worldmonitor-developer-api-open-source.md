@@ -1,5 +1,5 @@
 ---
-title: "Build on World Monitor: Open APIs, Proto-First Architecture, and the Developer Platform"
+title: "Build on World Monitor: APIs and Developer Platform"
 description: "Build intelligence apps on World Monitor's typed API: 34 services, 276 proto files, 60+ edge functions, and auto-generated TypeScript clients. AGPL-3.0."
 metaTitle: "Developer API & Open Source Platform | World Monitor"
 keywords: "open source intelligence API, OSINT API free, geopolitical data API, intelligence platform developer, proto-first API architecture"
@@ -107,7 +107,7 @@ For example:
 
 ### Custom Dashboards
 
-Build a domain-specific dashboard that pulls exactly the data you need. Use the typed TypeScript clients for a seamless development experience:
+Build a domain-specific dashboard that pulls exactly the data you need. Use the typed TypeScript clients for a smooth development experience:
 
 ```typescript
 // Auto-generated client with full type safety
@@ -208,7 +208,7 @@ World Monitor's open, typed, proto-first architecture is the alternative:
 
 The intelligence platform of the future isn't a product. It's an ecosystem. World Monitor is building the foundation.
 
-Building an AI agent instead of an app? The same platform is exposed as a Model Context Protocol server with 39 live tools — see [how to connect Claude and other agents to World Monitor's MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/).
+Building an AI agent instead of an app? The same platform is exposed as a Model Context Protocol server with 39 live tools. See [how to connect Claude and other agents to World Monitor's MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/).
 
 ## Frequently Asked Questions
 

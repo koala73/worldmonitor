@@ -1,5 +1,5 @@
 ---
-title: "Satellite Eyes: How World Monitor Brings Orbital Surveillance to Your Browser"
+title: "Satellite Imagery OSINT in Your Browser"
 description: "Access satellite imagery for geopolitical hotspots in World Monitor. Search by location, time, and cloud cover, then overlay it on live intelligence layers."
 metaTitle: "Satellite Imagery OSINT Dashboard | World Monitor"
 keywords: "satellite imagery OSINT, free satellite intelligence, orbital surveillance dashboard, STAC API satellite search, geopolitical satellite monitoring"
@@ -21,7 +21,7 @@ World Monitor's orbital surveillance layer overlays satellite imagery onto both 
 - Time-range queries to compare before and after events
 - Cloud coverage percentage so you know if the image is useful
 - Resolution metadata for assessing detail level
-- Seamless overlay with conflict data, military bases, and infrastructure layers
+- Smooth overlay with conflict data, military bases, and infrastructure layers
 
 ## STAC API: The Engine Behind the Imagery
 

@@ -1,5 +1,5 @@
 ---
-title: "Country Resilience Index Methodology: How WorldMonitor Scores National Shock Capacity"
+title: "Country Resilience Index Methodology"
 description: "A practical guide to the WorldMonitor Country Resilience Index: 196 countries, 6 domains, 20 active dimensions, 3 pillars, and a transparent 0-100 score."
 metaTitle: "Country Resilience Index Methodology | WorldMonitor"
 keywords: "country resilience index, resilience score methodology, country risk methodology, national resilience indicators, shock absorption score"
@@ -96,6 +96,8 @@ For a supply-chain team, CRI can sit beside route and supplier exposure. A port 
 For a humanitarian or policy team, CRI helps separate "acute event severity" from "system capacity." A flood, outbreak, or border shock has different consequences depending on public-service continuity and recovery capacity.
 
 For macro teams, CRI is a country-quality filter. It is not a trade signal by itself, but it can help explain why the same external shock transmits differently across currencies, sovereign spreads, commodity importers, and frontier markets.
+
+For acute risk context, pair CRI with the [Country Instability Index methodology](/blog/posts/country-instability-index-methodology-explained/) and the [country risk monitoring workflow](/blog/posts/country-risk-monitoring-workflow-for-analysts/).
 
 ## Source transparency
 

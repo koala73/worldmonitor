@@ -1,7 +1,7 @@
 ---
 title: "Self-Host WorldMonitor: Run an Open Source OSINT Dashboard Locally"
 description: "A practical overview of self-hosting WorldMonitor with Docker or Podman, required secrets, Redis, seeders, optional API keys, and AGPL responsibilities."
-metaTitle: "Self-Host WorldMonitor Open Source OSINT Dashboard | WorldMonitor"
+metaTitle: "Self-Host WorldMonitor OSINT Dashboard"
 keywords: "self host WorldMonitor, open source OSINT dashboard, Docker OSINT dashboard, geopolitical dashboard self hosted, AGPL intelligence dashboard"
 audience: "Developers, OSINT builders, platform teams, security researchers"
 heroImage: "/blog/og/self-host-worldmonitor-open-source-osint-dashboard.png"
@@ -121,6 +121,8 @@ For production-like deployment, you need to think beyond "does it start?":
 - public exposure and network policy
 
 WorldMonitor is a real-time intelligence dashboard with many external dependencies. That means operational hygiene matters.
+
+For developer context before you deploy, read the [developer API and open-source guide](/blog/posts/build-on-worldmonitor-developer-api-open-source/) and the [MCP server guide](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/).
 
 ## Source transparency
 

@@ -6,6 +6,8 @@ interface Props {
   keywords?: string;
   ogType?: string;
   ogImage?: string;
+  ogImageAlt?: string;
+  canonicalUrl?: string;
   publishedTime?: string;
   modifiedTime?: string;
   author?: string;
@@ -15,11 +17,17 @@ interface Props {
   faqLd?: Record<string, unknown>;
 }
 
-const { title, description, metaTitle, keywords, ogType, ogImage, publishedTime, modifiedTime, author, section, jsonLd, breadcrumbLd, faqLd } = Astro.props;
+const { title, description, metaTitle, keywords, ogType, ogImage, ogImageAlt, canonicalUrl, publishedTime, modifiedTime, author, section, jsonLd, breadcrumbLd, faqLd } = Astro.props;
 const pageTitle = metaTitle || title;
 const resolvedOgImage = ogImage || 'https://www.worldmonitor.app/favico/og-image.png';
+const resolvedOgImageAlt = ogImageAlt || pageTitle;
 const resolvedOgType = ogType || 'website';
 const keywordTags = keywords ? keywords.split(',').map(k => k.trim()).slice(0, 6) : [];
+const resolvedCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, 'https://www.worldmonitor.app').href;
+
+function stringifyJsonLd(value: Record<string, unknown>): string {
+  return JSON.stringify(value).replace(/</g, '\\u003c');
+}
 ---
 
 <!doctype html>
@@ -32,18 +40,20 @@ const keywordTags = keywords ? keywords.split(',').map(k => k.trim()).slice(0, 6
     {keywords && <meta name="keywords" content={keywords} />}
     <meta name="robots" content="index, follow" />
     <meta name="author" content={author || 'World Monitor'} />
-    <link rel="canonical" href={Astro.url.href} />
+    <meta name="theme-color" content="#050505" />
+    <link rel="canonical" href={resolvedCanonicalUrl} />
 
     <meta property="og:type" content={resolvedOgType} />
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={description} />
-    <meta property="og:url" content={Astro.url.href} />
+    <meta property="og:url" content={resolvedCanonicalUrl} />
     <meta property="og:site_name" content="World Monitor Blog" />
     <meta property="og:image" content={resolvedOgImage} />
+    <meta property="og:image:secure_url" content={resolvedOgImage} />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:locale" content="en_US" />
-    <meta property="og:image:alt" content={pageTitle} />
+    <meta property="og:image:alt" content={resolvedOgImageAlt} />
     {publishedTime && <meta property="article:published_time" content={publishedTime} />}
     {modifiedTime && <meta property="article:modified_time" content={modifiedTime} />}
     {resolvedOgType === 'article' && <meta property="article:publisher" content="https://www.worldmonitor.app" />}
@@ -54,6 +64,7 @@ const keywordTags = keywords ? keywords.split(',').map(k => k.trim()).slice(0, 6
     <meta name="twitter:title" content={pageTitle} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={resolvedOgImage} />
+    <meta name="twitter:image:alt" content={resolvedOgImageAlt} />
     <meta name="twitter:site" content="@worldmonitorai" />
     <meta name="twitter:creator" content="@worldmonitorai" />
 
@@ -64,13 +75,13 @@ const keywordTags = keywords ? keywords.split(',').map(k => k.trim()).slice(0, 6
     <link rel="alternate" type="application/rss+xml" title="World Monitor Blog" href="/blog/rss.xml" />
 
     {jsonLd && (
-      <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+      <script type="application/ld+json" set:html={stringifyJsonLd(jsonLd)} />
     )}
     {breadcrumbLd && (
-      <script type="application/ld+json" set:html={JSON.stringify(breadcrumbLd)} />
+      <script type="application/ld+json" set:html={stringifyJsonLd(breadcrumbLd)} />
     )}
     {faqLd && (
-      <script type="application/ld+json" set:html={JSON.stringify(faqLd)} />
+      <script type="application/ld+json" set:html={stringifyJsonLd(faqLd)} />
     )}
 
     <style is:global>

@@ -1,6 +1,6 @@
 ---
-title: "Humanitarian Situational Awareness: An NGO Security Workflow with WorldMonitor"
-description: "A field-security workflow for NGOs using displacement, humanitarian summaries, advisories, disease alerts, disasters, and country-risk context without rewriting the analyst's judgment."
+title: "Humanitarian Situational Awareness Workflow"
+description: "A field-security workflow for NGOs using displacement, humanitarian summaries, advisories, disease alerts, disasters, and country-risk context."
 metaTitle: "Humanitarian Situational Awareness Workflow | WorldMonitor"
 keywords: "humanitarian situational awareness, NGO security monitoring, displacement monitoring, humanitarian risk dashboard, field security workflow"
 audience: "NGO security teams, humanitarian operations leads, field program managers, crisis analysts"
@@ -93,6 +93,8 @@ Every daily review should leave a compact record:
 - next check time
 
 The source-freshness note is essential. "No new displacement change" means something different when the displacement dataset is fresh versus stale. WorldMonitor surfaces upstream availability and freshness in several services so teams can avoid mistaking missing data for calm conditions.
+
+For neighboring workflows, combine this with [country risk monitoring for due diligence](/blog/posts/country-risk-monitoring-due-diligence-worldmonitor/) and [natural-disaster monitoring](/blog/posts/natural-disaster-monitoring-earthquakes-fires-volcanoes/).
 
 ## Source transparency
 

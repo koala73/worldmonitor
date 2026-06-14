@@ -1,7 +1,7 @@
 ---
 title: "The Geopolitics-to-Markets Pipeline for Macro Traders"
-description: "A workflow for translating geopolitical events into market watchlists using transmission paths, macro radar, commodities, forecasts, stablecoins, and source-backed context."
-metaTitle: "Geopolitics to Markets Pipeline for Macro Traders | WorldMonitor"
+description: "Translate geopolitical events into market watchlists with transmission paths, macro radar, commodities, forecasts, stablecoins, and source-backed context."
+metaTitle: "Geopolitics-to-Markets Pipeline | WorldMonitor"
 keywords: "geopolitics to markets, macro trading workflow, geopolitical market risk, market implications, macro radar, commodity risk"
 audience: "Macro traders, portfolio managers, market strategists, risk analysts"
 heroImage: "/blog/og/geopolitics-to-markets-pipeline-macro-traders-worldmonitor.png"
@@ -104,6 +104,8 @@ The first mistake is treating geopolitics as a universal risk-off button. Some e
 The second mistake is ignoring time horizon. A tariff policy may matter slowly through margins and inventory. A chokepoint closure may matter quickly through energy and freight. A sanctions package may hit first through sentiment, then through compliance, then through rerouted trade.
 
 The pipeline forces the question: is this a same-day liquidity event, a 7-day repricing event, or a 6-month fundamentals event?
+
+For adjacent market surfaces, see the [real-time market intelligence workflow](/blog/posts/real-time-market-intelligence-for-traders-and-analysts/) and the [trade routes and chokepoints guide](/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/).
 
 ## Source transparency
 

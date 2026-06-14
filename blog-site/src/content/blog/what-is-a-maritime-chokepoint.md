@@ -94,6 +94,8 @@ When a chokepoint turns yellow or red, ask four questions:
 
 For operational decisions, the fourth question is often the most important. A disruption with a cheap alternate route is different from one that forces ships around a continent or cuts off a specialized cargo flow.
 
+For operational follow-through, connect this explainer to the [supply-chain scenario engine](/blog/posts/stress-test-supply-chain-scenario-engine-worldmonitor/) and the [global trade route monitoring guide](/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/).
+
 ## Source transparency
 
 WorldMonitor's chokepoint status combines Redis-backed transit summaries, flow estimates, navigational warnings, AIS disruption matching, and a static threat taxonomy. Upstream gaps are surfaced as unavailable data rather than silently turned into calm conditions.
