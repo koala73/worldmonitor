@@ -3136,5 +3136,18 @@
     "or": "ή εισάγετε έναν προσαρμοσμένο διακομιστή",
     "generatingVisualization": "Δημιουργία απεικόνισης...",
     "visualizationFailed": "Η απεικόνιση απέτυχε"
+  },
+  "dashboardTabs": {
+    "ariaLabel": "Dashboard tabs",
+    "defaultName": "Main",
+    "newTabName": "New Tab",
+    "newTabCreated": "New tab created",
+    "tabDeleted": "Tab \"{{name}}\" deleted",
+    "addTab": "Add tab",
+    "addTabTitle": "New tab (starts with the default panels)",
+    "renameHint": "{{name}} — double-click to rename",
+    "deleteTab": "Delete tab",
+    "deleteTabAria": "Delete tab {{name}}",
+    "tabNameAria": "Tab name"
   }
 }

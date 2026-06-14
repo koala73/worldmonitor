@@ -11,6 +11,7 @@ import {
   ALL_PANELS,
   VARIANT_DEFAULTS,
   getEffectivePanelConfig,
+  enforceFreePanelLimit,
   FREE_MAX_PANELS,
   FREE_MAX_SOURCES,
 } from '@/config';
@@ -1434,26 +1435,23 @@ export class App {
     if (isProUser()) return;
 
     // --- Panel limit ---
+    // Delegate to the shared enforceFreePanelLimit helper so this boot path and
+    // the dashboard-tab add/switch/load paths stay in lockstep (same cw-* and
+    // count rules). isPro is false here — the isProUser() early-return above
+    // already short-circuited pro users.
     const panelSettings = loadFromStorage<Record<string, PanelConfig>>(STORAGE_KEYS.panels, {});
-    let cwDisabled = false;
+    const clampedPanels = enforceFreePanelLimit(panelSettings, false);
+    let panelsChanged = false;
     for (const key of Object.keys(panelSettings)) {
-      if (key.startsWith('cw-') && panelSettings[key]?.enabled) {
-        panelSettings[key] = { ...panelSettings[key]!, enabled: false };
-        cwDisabled = true;
+      if (panelSettings[key]?.enabled !== clampedPanels[key]?.enabled) {
+        panelsChanged = true;
+        break;
       }
     }
-    const enabledKeys = Object.entries(panelSettings)
-      .filter(([k, v]) => v.enabled && !k.startsWith('cw-'))
-      .sort(([ka, a], [kb, b]) => (a.priority ?? 99) - (b.priority ?? 99) || ka.localeCompare(kb))
-      .map(([k]) => k);
-    const needsTrim = enabledKeys.length > FREE_MAX_PANELS;
-    if (needsTrim) {
-      for (const key of enabledKeys.slice(FREE_MAX_PANELS)) {
-        panelSettings[key] = { ...panelSettings[key]!, enabled: false };
-      }
-      console.log(`[App] Free tier: trimmed ${enabledKeys.length - FREE_MAX_PANELS} panel(s) to enforce ${FREE_MAX_PANELS}-panel limit`);
+    if (panelsChanged) {
+      saveToStorage(STORAGE_KEYS.panels, clampedPanels);
+      console.log(`[App] Free tier: enforced ${FREE_MAX_PANELS}-panel limit (disabled over-cap / cw-* panels)`);
     }
-    if (cwDisabled || needsTrim) saveToStorage(STORAGE_KEYS.panels, panelSettings);
 
     // --- Source limit ---
     // Free-tier 80-source cap. Pre-2026-05-01 this used `Array.sort().slice()`
