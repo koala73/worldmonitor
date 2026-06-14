@@ -218,6 +218,27 @@ function htmlVariantPlugin(activeMeta: VariantMeta, activeVariant: string, isDes
   };
 }
 
+function dashboardHtmlOutputPlugin(): Plugin {
+  return {
+    name: 'wm-dashboard-html-output',
+    apply: 'build',
+    enforce: 'post',
+    generateBundle(_options, bundle) {
+      const dashboardEntry = Object.entries(bundle).find(([, output]) =>
+        output.type === 'asset' && output.fileName === 'index.html'
+      );
+      if (!dashboardEntry) {
+        throw new Error('[vite] expected dashboard HTML entry index.html before renaming it to dashboard.html');
+      }
+
+      const [bundleKey, dashboardHtml] = dashboardEntry;
+      delete bundle[bundleKey];
+      dashboardHtml.fileName = 'dashboard.html';
+      bundle['dashboard.html'] = dashboardHtml;
+    },
+  };
+}
+
 function polymarketPlugin(): Plugin {
   const GAMMA_BASE = 'https://gamma-api.polymarket.com';
   const ALLOWED_ORDER = ['volume', 'liquidity', 'startDate', 'endDate', 'spread'];
@@ -799,6 +820,7 @@ export default defineConfig(({ mode }) => {
         },
       },
       htmlVariantPlugin(activeMeta, activeVariant, isDesktopBuild),
+      !isDesktopBuild && dashboardHtmlOutputPlugin(),
       polymarketPlugin(),
       rssProxyPlugin(),
       youtubeLivePlugin(),
@@ -819,7 +841,7 @@ export default defineConfig(({ mode }) => {
           name: `${activeMeta.siteName} - ${activeMeta.subject}`,
           short_name: activeMeta.shortName,
           description: activeMeta.description,
-          start_url: '/',
+          start_url: '/dashboard',
           scope: '/',
           display: 'standalone',
           orientation: 'any',

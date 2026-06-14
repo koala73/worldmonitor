@@ -132,10 +132,14 @@ describe('deploy/cache configuration guardrails', () => {
   });
 });
 
+const DASHBOARD_HTML_DESTINATION = '/dashboard.html';
+
 // Root marketing landing page — a second HTML entry in the pro-test bundle
 // (vite rollupOptions.input), served from public/pro/welcome.html. The
-// dashboard keeps the SPA shell at /dashboard, while /welcome redirects to
-// root so crawlers and humans do not see duplicate landing URLs.
+// dashboard source template remains index.html, but the web build renames its
+// output to dashboard.html so Vercel's filesystem cannot shadow the / rewrite.
+// /welcome and /index.html redirect to root so crawlers and humans do not see
+// duplicate landing URLs.
 describe('welcome landing page routing', () => {
   it('rewrites / to the pro-test bundle welcome.html', () => {
     const rewrite = vercelConfig.rewrites.find((r) => r.source === '/');
@@ -146,12 +150,31 @@ describe('welcome landing page routing', () => {
   it('rewrites /dashboard to the existing SPA shell', () => {
     const rewrite = vercelConfig.rewrites.find((r) => r.source === '/dashboard');
     assert.ok(rewrite, 'expected a rewrite for /dashboard');
-    assert.equal(rewrite.destination, '/index.html');
+    assert.equal(rewrite.destination, DASHBOARD_HTML_DESTINATION);
+  });
+
+  it('does not point any rewrite at root index.html', () => {
+    const indexRewrites = vercelConfig.rewrites.filter((r) => r.destination === '/index.html');
+    assert.deepEqual(
+      indexRewrites,
+      [],
+      'dashboard rewrites must target dashboard.html so Vercel filesystem precedence cannot serve a root index.html at /'
+    );
+  });
+
+  it('renames the web dashboard HTML output away from root index.html', () => {
+    assert.match(viteConfigSource, /function dashboardHtmlOutputPlugin\(\)/);
+    assert.match(viteConfigSource, /enforce:\s*'post'/);
+    assert.match(viteConfigSource, /Object\.entries\(bundle\)\.find/);
+    assert.match(viteConfigSource, /output\.fileName === 'index\.html'/);
+    assert.match(viteConfigSource, /delete bundle\[bundleKey\]/);
+    assert.match(viteConfigSource, /dashboardHtml\.fileName = 'dashboard\.html'/);
+    assert.match(viteConfigSource, /!isDesktopBuild && dashboardHtmlOutputPlugin\(\)/);
   });
 
   it('does not keep stale welcome exclusions in the SPA catch-all rewrite', () => {
     const catchAll = vercelConfig.rewrites.find((r) =>
-      r.destination === '/index.html' && r.source.startsWith('/((?!')
+      r.destination === DASHBOARD_HTML_DESTINATION && r.source.startsWith('/((?!')
     );
     assert.ok(catchAll, 'expected the SPA catch-all rewrite');
     assert.ok(
@@ -167,10 +190,27 @@ describe('welcome landing page routing', () => {
     assert.equal(redirect.permanent, true);
   });
 
+  it('redirects direct /index.html requests to / permanently', () => {
+    const redirect = vercelConfig.redirects.find((r) => r.source === '/index.html');
+    assert.ok(redirect, 'expected a redirect for /index.html');
+    assert.equal(redirect.destination, '/');
+    assert.equal(redirect.permanent, true);
+  });
+
   it('requires revalidation for /dashboard HTML without disabling bfcache', () => {
     const dashboardCache = getCacheHeaderValue('/dashboard');
     assert.equal(dashboardCache, 'private, no-cache, must-revalidate');
     assert.ok(!dashboardCache.includes('no-store'), 'HTML must not set no-store — it disables bfcache');
+  });
+
+  it('requires revalidation for direct dashboard.html without disabling bfcache', () => {
+    const dashboardCache = getCacheHeaderValue('/dashboard.html');
+    assert.equal(dashboardCache, 'private, no-cache, must-revalidate');
+    assert.ok(!dashboardCache.includes('no-store'), 'HTML must not set no-store — it disables bfcache');
+  });
+
+  it('starts installed PWAs on /dashboard, not the public welcome page', () => {
+    assert.match(viteConfigSource, /start_url:\s*'\/dashboard'/);
   });
 
   it('sitemap lists /dashboard and does not list legacy /welcome', () => {
@@ -217,11 +257,13 @@ describe('welcome landing page routing', () => {
 
   it('redirects signed-in welcome visitors to /dashboard client-side', () => {
     const welcomeApp = readFileSync(resolve(__dirname, '../pro-test/src/WelcomeApp.tsx'), 'utf-8');
-    assert.ok(welcomeApp.includes("import('./services/checkout')"));
+    assert.ok(welcomeApp.includes("import('./services/clerk')"));
+    assert.ok(!welcomeApp.includes("import('./services/checkout')"));
     assert.ok(welcomeApp.includes('mayHaveClerkSession()'));
+    assert.ok(welcomeApp.includes('hasLikelyLiveClerkSession(document.cookie)'));
     assert.ok(welcomeApp.includes("import { DASHBOARD_PATH } from './routes';"));
     assert.ok(welcomeApp.includes('function dashboardRedirectTarget(): string'));
-    assert.ok(welcomeApp.includes('? `${DASHBOARD_PATH}${window.location.search}`'));
+    assert.ok(welcomeApp.includes('`${DASHBOARD_PATH}${window.location.search}${window.location.hash}`'));
     assert.ok(welcomeApp.includes('if (!cancelled && clerk.user) window.location.replace(dashboardRedirectTarget());'));
   });
 });
@@ -595,7 +637,7 @@ describe('embeddable map route guardrails', () => {
   it('rewrites /embed to the dedicated embed.html entry before the SPA catch-all', () => {
     const rewriteIndex = vercelConfig.rewrites.findIndex((r) => r.source === '/embed');
     const catchAllIndex = vercelConfig.rewrites.findIndex((r) =>
-      r.destination === '/index.html' && r.source.startsWith('/((?!')
+      r.destination === DASHBOARD_HTML_DESTINATION && r.source.startsWith('/((?!')
     );
     assert.ok(rewriteIndex !== -1, 'expected /embed rewrite');
     assert.ok(catchAllIndex !== -1, 'expected SPA catch-all rewrite');
@@ -605,7 +647,7 @@ describe('embeddable map route guardrails', () => {
 
   it('excludes /embed and /embed.html from the SPA catch-all rewrite and cache header', () => {
     const catchAll = vercelConfig.rewrites.find((r) =>
-      r.destination === '/index.html' && r.source.startsWith('/((?!')
+      r.destination === DASHBOARD_HTML_DESTINATION && r.source.startsWith('/((?!')
     );
     assert.ok(catchAll.source.includes('|embed|embed\\.html|'), 'SPA catch-all must exclude the public embed entry');
     assert.ok(SPA_HTML_CACHE_SOURCE.includes('|embed|embed\\.html|'), 'HTML cache catch-all must exclude the public embed entry');
@@ -899,17 +941,18 @@ describe('vercel.json functions config (none expected after carousel moved to ed
   });
 });
 
-// Agent readiness: RFC 8288 Link response headers on the homepage.
+// Agent readiness: RFC 8288 Link response headers on the homepage and
+// dashboard entry.
 // Scanners like isitagentready.com fetch GET / and expect a Link
 // header advertising every well-known resource. Each rel is either
 // an IANA-registered token (api-catalog, service-desc, service-doc,
 // status) or the full IANA URI form (RFC 9728 OAuth rels). The MCP
 // card rel carries anchor="/mcp" because the server card describes
-// the /mcp endpoint, not the homepage.
+// the /mcp endpoint, not the document URL being fetched.
 describe('agent readiness: homepage Link headers', () => {
   const vercel = JSON.parse(readFileSync(resolve(__dirname, '../vercel.json'), 'utf-8'));
 
-  for (const source of ['/', '/index.html']) {
+  for (const source of ['/', '/dashboard', '/dashboard.html']) {
     it(`${source} emits a Link header`, () => {
       const entry = vercel.headers.find((h) => h.source === source);
       assert.ok(entry, `expected a headers entry for ${source}`);
@@ -957,12 +1000,12 @@ describe('agent readiness: homepage Link headers', () => {
     });
   }
 
-  // / and /index.html serve the same document; their Link headers must
-  // stay in lockstep. Hardcoded duplication in vercel.json otherwise
+  // /dashboard and /dashboard.html serve the same document; their Link headers
+  // must stay in lockstep. Hardcoded duplication in vercel.json otherwise
   // silently drifts — this guard catches the drift at CI time.
-  it('/ and /index.html Link headers are identical', () => {
-    const slash = vercel.headers.find((h) => h.source === '/').headers.find((h) => h.key === 'Link');
-    const index = vercel.headers.find((h) => h.source === '/index.html').headers.find((h) => h.key === 'Link');
-    assert.strictEqual(slash.value, index.value);
+  it('/dashboard and /dashboard.html Link headers are identical', () => {
+    const dashboard = vercel.headers.find((h) => h.source === '/dashboard').headers.find((h) => h.key === 'Link');
+    const dashboardHtml = vercel.headers.find((h) => h.source === '/dashboard.html').headers.find((h) => h.key === 'Link');
+    assert.strictEqual(dashboard.value, dashboardHtml.value);
   });
 });
