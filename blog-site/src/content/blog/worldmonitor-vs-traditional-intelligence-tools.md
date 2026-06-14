@@ -1,5 +1,5 @@
 ---
-title: "World Monitor vs. Traditional Intelligence Tools: Why Free and Open Source Wins"
+title: "World Monitor vs. Traditional Intelligence Tools"
 description: "Compare World Monitor to Bloomberg, Palantir, Dataminr, and Recorded Future. Free, open-source multi-domain intelligence vs. six-figure enterprise platforms."
 metaTitle: "World Monitor vs Bloomberg, Palantir, Dataminr"
 keywords: "Bloomberg Terminal alternative free, Palantir alternative open source, Dataminr alternative, intelligence platform comparison, free OSINT alternative"

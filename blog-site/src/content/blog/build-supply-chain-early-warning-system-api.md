@@ -1,16 +1,17 @@
 ---
 title: "Build a Supply-Chain Early-Warning System in an Afternoon"
-description: "Score your trade lanes for chokepoint exposure, subscribe to disruption webhooks, and pipe alerts to Slack — a working tutorial on the World Monitor API."
-metaTitle: "Supply Chain Risk API Tutorial: Chokepoint Alerts | World Monitor"
+description: "Score your trade lanes for chokepoint exposure, subscribe to disruption webhooks, and pipe alerts to Slack with this World Monitor API tutorial."
+metaTitle: "Supply Chain Risk API: Chokepoint Alerts | World Monitor"
 keywords: "supply chain risk API, chokepoint monitoring API, shipping disruption alerts, maritime risk API, trade route risk scoring, supply chain early warning system"
 audience: "Supply chain engineers, logistics developers, procurement analysts, platform teams, risk managers"
 heroImage: "/blog/images/blog/build-supply-chain-early-warning-system-api.jpg"
 pubDate: "2026-06-08"
+modifiedDate: "2026-06-13"
 ---
 
 When the Strait of Hormuz shut down this spring, companies found out in one of two ways. Some read about it in the news and started calling freight forwarders. Others had already received a webhook hours earlier, when the disruption score crossed their alert threshold, and were quoting Cape of Good Hope routings before their competitors knew there was a problem.
 
-The second group did not have a $50,000-a-year risk platform. The capability they used — [live chokepoint tracking](/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/) with programmatic alerts — is part of World Monitor's API. This post builds that early-warning system end to end: score your lanes, subscribe to alerts, verify deliveries, and route them to Slack.
+The second group did not have a $50,000-a-year risk platform. The capability they used, [live chokepoint tracking](/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/) with programmatic alerts, is part of World Monitor's API. This post builds that early-warning system end to end: score your lanes, subscribe to alerts, verify deliveries, and route them to Slack.
 
 You need an API key (`X-WorldMonitor-Key`, issued with [Pro or API plans](https://www.worldmonitor.app/pro)) and about an afternoon.
 
@@ -18,9 +19,9 @@ You need an API key (`X-WorldMonitor-Key`, issued with [Pro or API plans](https:
 
 Three signals, three endpoints:
 
-1. **Lane exposure** — which chokepoints does each of my trade lanes depend on? (`/api/v2/shipping/route-intelligence`)
-2. **Live disruption** — push notification when a chokepoint's disruption score crosses my threshold (`/api/v2/shipping/webhooks`)
-3. **Country context** — structural resilience of origin and destination countries (`/api/resilience/v1/get-resilience-score`)
+1. **Lane exposure:** which chokepoints does each of my trade lanes depend on? (`/api/v2/shipping/route-intelligence`)
+2. **Live disruption:** push notification when a chokepoint's disruption score crosses my threshold (`/api/v2/shipping/webhooks`)
+3. **Country context:** structural resilience of origin and destination countries (`/api/resilience/v1/get-resilience-score`)
 
 A small receiver service glues them together and posts to Slack.
 
@@ -56,7 +57,7 @@ The response tells you everything a routing decision needs:
 }
 ```
 
-Read it like this: this tanker lane is 100% exposed to both Hormuz and Suez, the current disruption score on the primary chokepoint is 68/100, and the documented bypass adds 12 transit days at a 1.35× cost multiplier. `cargoType` matters — bypass options are filtered to corridors suitable for your cargo (`container`, `tanker`, `bulk`, or `roro`), and `hs2` lets you scope by commodity chapter.
+Read it like this: this tanker lane is 100% exposed to both Hormuz and Suez, the current disruption score on the primary chokepoint is 68/100, and the documented bypass adds 12 transit days at a 1.35× cost multiplier. `cargoType` matters because bypass options are filtered to corridors suitable for your cargo (`container`, `tanker`, `bulk`, or `roro`), and `hs2` lets you scope by commodity chapter.
 
 Run this once for every lane in your network and you have an exposure matrix: which chokepoints, at what percentage, with what fallback. Most teams discover that 70% of their volume funnels through two or three waterways.
 
@@ -75,7 +76,7 @@ curl -s -X POST 'https://api.worldmonitor.app/api/v2/shipping/webhooks' \
   }'
 ```
 
-The `201` response returns a `subscriberId` and a one-time `secret` — persist it; the server never shows it again (there is a `rotate-secret` endpoint when you need a new one). Omitting `chokepointIds` subscribes you to all 13 monitored chokepoints. Subscriptions expire after 30 days, so re-register on a monthly cron to keep both the record and the owner index alive.
+The `201` response returns a `subscriberId` and a one-time `secret`; persist it, because the server never shows it again. There is a `rotate-secret` endpoint when you need a new one. Omitting `chokepointIds` subscribes you to all 13 monitored chokepoints. Subscriptions expire after 30 days, so re-register on a monthly cron to keep both the record and the owner index alive.
 
 When a chokepoint's disruption score crosses your threshold, you get:
 
@@ -118,7 +119,7 @@ function verify(rawBody, signatureHeader, secret) {
 }
 
 // Remembers delivery IDs we have already processed. Use a TTL cache or a
-// shared store (Redis) in production — an unbounded Set leaks memory.
+// shared store (Redis) in production; an unbounded Set leaks memory.
 const seenDeliveries = new Set();
 
 app.post('/wm-shipping', (req, res) => {
@@ -137,9 +138,9 @@ app.post('/wm-shipping', (req, res) => {
 });
 ```
 
-Three production notes from the delivery contract: the HMAC must be computed over the **raw request bytes**, which is why the `express.json` `verify` hook stashes `req.rawBody` — recomputing it from the parsed object will not match; delivery is **at-least-once**, so deduplicate on `X-WM-Delivery-Id` (back the Set with a TTL cache or Redis so it does not grow forever); and repeated delivery failures deactivate the subscription, so wire up the `reactivate` endpoint in your runbook.
+Three production notes from the delivery contract: the HMAC must be computed over the **raw request bytes**, which is why the `express.json` `verify` hook stashes `req.rawBody`; recomputing it from the parsed object will not match. Delivery is **at-least-once**, so deduplicate on `X-WM-Delivery-Id` and back the Set with a TTL cache or Redis so it does not grow forever. Repeated delivery failures deactivate the subscription, so wire up the `reactivate` endpoint in your runbook.
 
-The `lanesExposedTo()` lookup is your exposure matrix from Step 1 — that is what turns a generic "Hormuz is disrupted" alert into "your AE→NL tanker lane just lost its primary route; the Cape bypass costs 1.35× and 12 extra days."
+The `lanesExposedTo()` lookup is your exposure matrix from Step 1. That is what turns a generic "Hormuz is disrupted" alert into "your AE→NL tanker lane just lost its primary route; the Cape bypass costs 1.35× and 12 extra days."
 
 ## Step 4: Add Country Context
 
@@ -150,7 +151,7 @@ curl -s 'https://api.worldmonitor.app/api/resilience/v1/get-resilience-score?cou
   -H 'X-WorldMonitor-Key: wm_YOUR_KEY'
 ```
 
-You get a 0–100 resilience score with per-domain breakdowns (energy, infrastructure, governance, security and more), a trend, and a 30-day change — computed across 196 countries and refreshed every six hours. Combine it with the real-time [Country Instability Index](/blog/posts/country-instability-index-methodology-explained/) and you cover both clocks: CII for what is burning this week, resilience for which countries absorb shocks and which shatter.
+You get a 0–100 resilience score with per-domain breakdowns (energy, infrastructure, governance, security and more), a trend, and a 30-day change. It is computed across 196 countries and refreshed every six hours. Combine it with the real-time [Country Instability Index](/blog/posts/country-instability-index-methodology-explained/) and you cover both clocks: CII for what is burning this week, resilience for which countries absorb shocks and which shatter.
 
 A simple weekly job that flags any origin country whose resilience dropped more than a few points in 30 days catches slow-burn deterioration that no chokepoint webhook will ever see.
 
@@ -161,7 +162,7 @@ A simple weekly job that flags any origin country whose resilience dropped more 
 - **Country-level early warning** on supplier fragility, refreshed every six hours
 - A Slack channel that occasionally says something genuinely important
 
-Total code: one webhook receiver and two cron jobs. If you want to stress-test the design, the [scenario engine](https://www.worldmonitor.app/docs/scenario-engine) simulates events like a Taiwan Strait closure or a Panama drought against live trade data — and AI agents can run the same checks conversationally through the [MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/).
+Total code: one webhook receiver and two cron jobs. If you want to stress-test the design, the [scenario engine](https://www.worldmonitor.app/docs/scenario-engine) simulates events like a Taiwan Strait closure or a Panama drought against live trade data. AI agents can run the same checks conversationally through the [MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/).
 
 ## Frequently Asked Questions
 
@@ -175,7 +176,7 @@ Chokepoint transit counts blend IMF PortWatch weekly baselines with real-time AI
 
 **Do I need to host my own receiver?**
 
-For webhooks, yes — any HTTPS endpoint works (private and loopback addresses are rejected at registration). If you just want notifications without code, Pro accounts can route alerts to Slack, Discord, Telegram, or email through the built-in notification channels instead.
+For webhooks, yes. Any HTTPS endpoint works, while private and loopback addresses are rejected at registration. If you just want notifications without code, Pro accounts can route alerts to Slack, Discord, Telegram, or email through the built-in notification channels instead.
 
 ---
 

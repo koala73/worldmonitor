@@ -17,6 +17,7 @@ import {
 } from '@/config';
 import { sanitizeLayersForVariant } from '@/config/map-layer-definitions';
 import type { MapVariant } from '@/config/map-layer-definitions';
+import { getStoredMapModePreference } from '@/services/map-mode-preference';
 import {
   initDB,
   cleanOldSnapshots,
@@ -228,7 +229,7 @@ export class App {
     }
 
     if (keySet.has(STORAGE_KEYS.mapMode)) {
-      const mode = loadFromStorage<string>(STORAGE_KEYS.mapMode, 'flat');
+      const mode = getStoredMapModePreference();
       if (mode === 'globe') this.state.map?.switchToGlobe();
       else this.state.map?.switchToFlat();
     }

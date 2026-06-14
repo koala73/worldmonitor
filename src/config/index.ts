@@ -12,6 +12,8 @@ export {
   REFRESH_INTERVALS,
   MONITOR_COLORS,
   STORAGE_KEYS,
+  DEFAULT_MAP_MODE,
+  type MapModePreference,
 } from './variants/base';
 
 // Market data (shared)

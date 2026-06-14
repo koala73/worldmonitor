@@ -27,6 +27,22 @@
 
 Each "bundle" is a single Railway cron service that replaces N individual services. The bundle script spawns each member seed sequentially via `child_process.execFile`, checking Redis `seed-meta:` timestamps to skip seeds that ran recently. Original seed scripts are unchanged.
 
+**Graceful fetch failures:** `runSeed` now treats transient upstream fetch
+failures as non-zero graceful failures after extending the last-good Redis TTL.
+This applies to bundled members and standalone `runSeed` cron seeders: Railway
+may mark that cron run failed, but `/api/health` and seed-contract probes still
+read the preserved `seed-meta:` freshness. Alerting should either tolerate these
+transient cron failures or key sustained data-health pages off those freshness
+checks. Bundle member logs use `status=GRACEFUL_FAIL`; external log consumers
+that match only `status=FAILED` should include `GRACEFUL_FAIL`. The bundle
+summary still reports these under `failed:N`, so use per-section status when
+distinguishing graceful upstream outages from hard failures.
+
+**Standalone follow-up:** `scripts/seed-military-flights.mjs` and
+`scripts/seed-service-statuses.mjs` still have manual graceful failure paths
+that exit `0`. Track those separately if the standalone graceful-failure
+contract needs to be made fully uniform beyond shared `runSeed` users.
+
 **Per-bundle migration:**
 
 1. Delete ONE old member first (to free a slot under the 100 limit)

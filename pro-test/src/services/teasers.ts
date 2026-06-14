@@ -155,23 +155,82 @@ interface MarketQuotesResponse {
   rateLimited?: boolean;
 }
 
-const QUOTE_SYMBOLS = ['SPY', 'QQQ', 'BTC-USD', 'GC=F'];
+interface CommodityQuotesResponse {
+  quotes?: Array<{ symbol?: string; display?: string; price?: number; change?: number; sparkline?: number[] }>;
+}
+
+interface CryptoQuotesResponse {
+  quotes?: Array<{ symbol?: string; name?: string; price?: number; change?: number; sparkline?: number[] }>;
+}
+
+const MARKET_QUOTE_SYMBOLS = ['^GSPC', '^IXIC', '^VIX'];
+const COMMODITY_QUOTE_SYMBOLS = ['CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'];
+const CRYPTO_QUOTE_IDS = ['bitcoin', 'ethereum'];
+const QUOTE_SYMBOLS = ['^GSPC', '^IXIC', '^VIX', 'BTC', 'ETH', 'CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'];
+
+const QUOTE_LABELS: Record<string, string> = {
+  '^GSPC': 'S&P 500',
+  '^IXIC': 'Nasdaq',
+  '^VIX': 'VIX',
+  BTC: 'Bitcoin',
+  ETH: 'Ethereum',
+  'CL=F': 'WTI crude',
+  'BZ=F': 'Brent',
+  'GC=F': 'Gold',
+  'HG=F': 'Copper',
+  'NG=F': 'Nat gas',
+  'EURUSD=X': 'EUR/USD',
+  'USDJPY=X': 'USD/JPY',
+};
+
+function normalizeQuote(q: { symbol?: string; display?: string; name?: string; price?: number; change?: number; sparkline?: number[] }): TeaserQuote | null {
+  if (typeof q.symbol !== 'string' || typeof q.price !== 'number' || q.price <= 0) return null;
+  return {
+    symbol: q.symbol,
+    display: QUOTE_LABELS[q.symbol] ?? q.display ?? q.name ?? q.symbol,
+    price: q.price,
+    change: q.change ?? 0,
+    sparkline: Array.isArray(q.sparkline) ? q.sparkline : [],
+  };
+}
+
+function orderAndBackfillQuotes(liveItems: TeaserQuote[]): TeaserQuote[] {
+  const bySymbol = new Map<string, TeaserQuote>();
+  for (const q of fallback.quotes) bySymbol.set(q.symbol, q);
+  for (const q of liveItems) bySymbol.set(q.symbol, q);
+  return QUOTE_SYMBOLS
+    .map(symbol => bySymbol.get(symbol))
+    .filter((q): q is TeaserQuote => Boolean(q));
+}
+
+function hasCompleteLiveQuoteSet(liveItems: TeaserQuote[]): boolean {
+  const liveSymbols = new Set(liveItems.map(q => q.symbol));
+  return QUOTE_SYMBOLS.every(symbol => liveSymbols.has(symbol));
+}
 
 async function fetchQuotes(): Promise<{ items: TeaserQuote[]; live: boolean } | null> {
-  const qs = QUOTE_SYMBOLS.map(s => `symbols=${encodeURIComponent(s)}`).join('&');
-  const resp = await fetchJson<MarketQuotesResponse>(`/api/market/v1/list-market-quotes?${qs}`);
-  if (!resp || !Array.isArray(resp.quotes)) return null;
-  const items = resp.quotes
-    .filter(q => typeof q.symbol === 'string' && typeof q.price === 'number' && q.price > 0)
-    .map(q => ({
-      symbol: q.symbol as string,
-      display: q.display || (q.symbol as string),
-      price: q.price as number,
-      change: q.change ?? 0,
-      sparkline: Array.isArray(q.sparkline) ? q.sparkline : [],
-    }));
+  const marketQs = MARKET_QUOTE_SYMBOLS.map(s => `symbols=${encodeURIComponent(s)}`).join('&');
+  const commodityQs = COMMODITY_QUOTE_SYMBOLS.map(s => `symbols=${encodeURIComponent(s)}`).join('&');
+  const cryptoQs = CRYPTO_QUOTE_IDS.map(id => `ids=${encodeURIComponent(id)}`).join('&');
+  const [market, commodities, crypto] = await Promise.all([
+    fetchJson<MarketQuotesResponse>(`/api/market/v1/list-market-quotes?${marketQs}`),
+    fetchJson<CommodityQuotesResponse>(`/api/market/v1/list-commodity-quotes?${commodityQs}`),
+    fetchJson<CryptoQuotesResponse>(`/api/market/v1/list-crypto-quotes?${cryptoQs}`),
+  ]);
+  const liveItems = [
+    ...(market?.quotes ?? []),
+    ...(commodities?.quotes ?? []),
+    ...(crypto?.quotes ?? []),
+  ].map(normalizeQuote).filter((q): q is TeaserQuote => Boolean(q));
+  const items = orderAndBackfillQuotes(liveItems);
   if (!items.length) return null;
-  return { items, live: !resp.rateLimited };
+  const live =
+    market !== null &&
+    commodities !== null &&
+    crypto !== null &&
+    !market.rateLimited &&
+    hasCompleteLiveQuoteSet(liveItems);
+  return { items, live };
 }
 
 interface FeedDigestResponse {

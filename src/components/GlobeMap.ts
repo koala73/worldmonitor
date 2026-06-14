@@ -62,6 +62,9 @@ import type { RadiationObservation } from '@/services/radiation';
 import type { ScenarioVisualState } from '@/config/scenario-templates';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
+export interface GlobeMapOptions {
+  onInitError?: (error: unknown) => void;
+}
 
 const SAT_COUNTRY_COLORS: Record<string, string> = { CN: '#ff2020', RU: '#ff8800', US: '#4488ff', EU: '#44cc44', KR: '#aa66ff', IN: '#ff66aa', TR: '#ff4466', OTHER: '#ccccff' };
 const SAT_TYPE_EMOJI: Record<string, string> = { sar: '\u{1F4E1}', optical: '\u{1F4F7}', military: '\u{1F396}', sigint: '\u{1F4FB}' };
@@ -570,7 +573,7 @@ export class GlobeMap {
     this.onMapContextMenuCb({ lat: coords.lat, lon: coords.lng, screenX: e.clientX, screenY: e.clientY });
   };
 
-  constructor(container: HTMLElement, initialState: MapContainerState) {
+  constructor(container: HTMLElement, initialState: MapContainerState, options: GlobeMapOptions = {}) {
     this.container = container;
     this.popup = new MapPopup(this.container);
     this.layers = { ...initialState.layers };
@@ -582,6 +585,7 @@ export class GlobeMap {
 
     this.initGlobe().catch(err => {
       console.error('[GlobeMap] Init failed:', err);
+      options.onInitError?.(err);
     });
   }
 

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -23,6 +23,10 @@ function auditReportWith(via) {
       },
     },
   };
+}
+
+function readRepoJson(relativePath) {
+  return JSON.parse(readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8'));
 }
 
 describe('security audit baseline', () => {
@@ -76,6 +80,22 @@ describe('security audit baseline', () => {
       'pro-test/package-lock.json',
       'scripts/package-lock.json',
     ]);
+  });
+
+  it('keeps the root esbuild audit fix scoped away from Vite build tooling', () => {
+    const packageJson = readRepoJson('package.json');
+    const lockfile = readRepoJson('package-lock.json');
+    const rootEsbuild = lockfile.packages['node_modules/esbuild'];
+    const vite = lockfile.packages['node_modules/vite'];
+    const viteEsbuild = lockfile.packages['node_modules/vite/node_modules/esbuild'];
+
+    assert.equal(packageJson.overrides?.esbuild, undefined);
+    assert.equal(packageJson.overrides?.convex?.esbuild, '0.28.1');
+    assert.equal(rootEsbuild?.version, '0.28.1');
+    assert.equal(vite?.dependencies?.esbuild, '^0.25.0');
+    assert.ok(viteEsbuild, 'Vite must keep its own esbuild when root uses the audit-patched version');
+    assert.match(viteEsbuild.version, /^0\.25\./);
+    assert.notEqual(viteEsbuild.version, rootEsbuild.version);
   });
 
   it('flags baseline entries that no longer match any current advisory', () => {

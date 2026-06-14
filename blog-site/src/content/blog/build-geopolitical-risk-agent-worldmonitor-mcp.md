@@ -6,11 +6,12 @@ keywords: "geopolitical risk agent, MCP intelligence server, WorldMonitor MCP, A
 audience: "AI builders, developers, risk analysts, agent engineers"
 heroImage: "/blog/og/build-geopolitical-risk-agent-worldmonitor-mcp.png"
 pubDate: "2026-06-10"
+modifiedDate: "2026-06-13"
 ---
 
 A geopolitical risk agent is an AI assistant that can answer live risk questions with current data instead of memory. It should know which countries are deteriorating, which chokepoints are stressed, which markets are moving, which flights or ships matter, and whether its data is fresh enough to trust.
 
-WorldMonitor is built for that pattern. The [MCP server](https://www.worldmonitor.app/docs/mcp-server) exposes the same intelligence stack that powers the dashboard through the [Model Context Protocol](https://modelcontextprotocol.io), so compatible clients can call live tools rather than scrape pages or paste screenshots into a chat window.
+WorldMonitor is built for that pattern. The [MCP server](https://www.worldmonitor.app/docs/mcp-server) exposes the same intelligence stack that powers the dashboard through the [Model Context Protocol](https://modelcontextprotocol.io), so compatible clients can call live tools rather than scrape pages or paste screenshots into a chat window. If you want a no-code version first, start with [asking Claude what is happening in the world](/blog/posts/ask-claude-whats-happening-worldmonitor-mcp/); if you need deterministic backend jobs, use the [developer API overview](/blog/posts/build-on-worldmonitor-developer-api-open-source/) alongside MCP.
 
 This guide shows one practical build: a risk agent that can brief a country, check route exposure, summarize conflict signals, and return a source-aware answer.
 

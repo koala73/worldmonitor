@@ -1,18 +1,19 @@
 ---
 title: "Build a Supply Chain Early Warning Dashboard with WorldMonitor's API"
-description: "A practical blueprint for monitoring chokepoints, port activity, energy disruptions, trade policy, and commodity signals before they become procurement surprises."
+description: "A practical blueprint for monitoring chokepoints, port activity, energy disruption, trade policy, and commodity signals before procurement surprises."
 metaTitle: "Supply Chain Early Warning Dashboard | WorldMonitor API"
 keywords: "supply chain early warning dashboard, supply chain risk API, chokepoint monitoring API, geopolitical supply chain risk, port disruption monitoring"
 audience: "Supply chain teams, logistics analysts, procurement leaders, data engineers"
 heroImage: "/blog/og/supply-chain-early-warning-dashboard-worldmonitor-api.png"
 pubDate: "2026-06-10"
+modifiedDate: "2026-06-13"
 ---
 
 A supply chain early warning dashboard should answer one question before the weekly operations meeting: which routes, commodities, suppliers, or countries need attention now?
 
 WorldMonitor is useful here because it does not treat supply chain risk as a single feed. It connects maritime chokepoints, port activity, fuel shortages, energy disruptions, customs flows, commodity prices, trade policy, natural disasters, conflict events, and country risk into one API surface.
 
-This guide gives you a practical dashboard design you can build with the [WorldMonitor API](https://www.worldmonitor.app/docs/api-reference) or the [WorldMonitor MCP server](https://www.worldmonitor.app/docs/mcp-server).
+This guide gives you a practical dashboard design you can build with the [WorldMonitor API](https://www.worldmonitor.app/docs/api-reference) or the [WorldMonitor MCP server](https://www.worldmonitor.app/docs/mcp-server). For a narrower implementation path, see the tutorial on how to [build a supply-chain early-warning system](/blog/posts/build-supply-chain-early-warning-system-api/), then add alert delivery with the [Slack and Teams alert workflow](/blog/posts/geopolitical-risk-alerts-slack-teams-worldmonitor-api/).
 
 ## The dashboard shape
 

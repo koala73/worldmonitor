@@ -4,6 +4,7 @@ import {
   acquireLockSafely,
   CHROME_UA,
   extendExistingTtl,
+  GRACEFUL_FETCH_FAILURE_EXIT_CODE,
   getRedisCredentials,
   loadEnvFile,
   logSeedResult,
@@ -549,7 +550,7 @@ async function main() {
       process.exit(1);
     }
     console.log(`\n=== Failed gracefully (${Math.round(durationMs)}ms) ===`);
-    process.exit(0);
+    process.exit(GRACEFUL_FETCH_FAILURE_EXIT_CODE);
   }
 
   if (!validateAirQualityPayload(payload)) {

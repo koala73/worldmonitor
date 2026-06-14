@@ -460,6 +460,11 @@ export async function readCanonicalEnvelopeMeta(canonicalKey) {
 // fetches like seed-imf-* WEO bundles).
 export const PERMANENT_4XX_STATUSES = new Set([400, 401, 403, 404, 410, 422, 451]);
 
+// sysexits.h EX_TEMPFAIL: fetch failed, last-good TTL was extended, and the
+// bundle runner should retry/report non-OK without treating the seeder as a
+// generic crash.
+export const GRACEFUL_FETCH_FAILURE_EXIT_CODE = 75;
+
 // Cap upstream Retry-After hints so a stuck/abusive header can't park the
 // bundle past its section timeoutMs. Mirrors _yahoo-fetch.mjs convention.
 const MAX_RETRY_AFTER_MS = 60_000;
@@ -1314,8 +1319,8 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     // releases at most once for a given runId, and EXPIRE pipelines on
     // existing keys are safely re-runnable — so a race between the
     // catch path and the handler converges on the correct end state.
-    // process.exit(0) below terminates before any pending SIGTERM can
-    // fire on the success path of cleanup.
+    // process.exit below terminates before any pending SIGTERM can fire
+    // on the success path of cleanup.
     await releaseLock(`${domain}:${resource}`, runId);
     const durationMs = Date.now() - startMs;
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
@@ -1327,7 +1332,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     await extendExistingTtl(keys, ttl);
 
     console.log(`\n=== Failed gracefully (${Math.round(durationMs)}ms) ===`);
-    process.exit(0);
+    process.exit(GRACEFUL_FETCH_FAILURE_EXIT_CODE);
   }
   // Transition to publish phase — handler stays installed but switches
   // behavior via the phase tracker.

@@ -1,5 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   buildOpenAqHeaders,
@@ -15,6 +20,7 @@ import {
   OPENAQ_META_KEY,
   mergeAirQualityStations,
 } from '../scripts/seed-health-air-quality.mjs';
+import { GRACEFUL_FETCH_FAILURE_EXIT_CODE } from '../scripts/_seed-utils.mjs';
 
 describe('air quality AQI helpers', () => {
   it('maps PM2.5 concentrations onto EPA AQI breakpoints', () => {
@@ -227,5 +233,63 @@ describe('air quality payload assembly', () => {
     assert.equal(commands[1][4], '3600');
     assert.match(String(commands[2][2]), /"recordCount":1/);
     assert.match(String(commands[3][2]), /"sourceVersion":"source-v1"/);
+  });
+});
+
+describe('air quality main graceful failure behavior', () => {
+  it('exits with graceful-failure code after fetch failure and TTL extension', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'wm-air-quality-fail-'));
+    const preloadPath = join(tempDir, 'preload.mjs');
+    const redisUrl = 'https://fake-upstash.local';
+    writeFileSync(preloadPath, `
+process.env.UPSTASH_REDIS_REST_URL = ${JSON.stringify(redisUrl)};
+process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
+process.env.OPENAQ_API_KEY = 'fake-openaq-key';
+delete process.env.WAQI_API_KEY;
+
+globalThis.fetch = async (url, init = {}) => {
+  const href = String(url);
+  if (href === ${JSON.stringify(redisUrl)}) {
+    return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+  }
+  if (href === ${JSON.stringify(`${redisUrl}/pipeline`)}) {
+    const commands = init.body ? JSON.parse(init.body) : [];
+    return new Response(JSON.stringify(commands.map(() => ({ result: 1 }))), { status: 200 });
+  }
+  if (href.startsWith('https://api.openaq.org/')) {
+    throw new Error('forced OpenAQ outage');
+  }
+  return new Response(JSON.stringify({ result: null }), { status: 200 });
+};
+`);
+
+    try {
+      const scriptPath = fileURLToPath(new URL('../scripts/seed-health-air-quality.mjs', import.meta.url));
+      const result = await new Promise((resolve) => {
+        const child = spawn(process.execPath, ['--import', preloadPath, scriptPath], {
+          env: {
+            ...process.env,
+            UPSTASH_REDIS_REST_URL: redisUrl,
+            UPSTASH_REDIS_REST_TOKEN: 'fake-token',
+            OPENAQ_API_KEY: 'fake-openaq-key',
+            WAQI_API_KEY: '',
+          },
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        let stdout = '';
+        let stderr = '';
+        child.stdout.on('data', (chunk) => { stdout += chunk; });
+        child.stderr.on('data', (chunk) => { stderr += chunk; });
+        child.on('close', (code) => resolve({ code, stdout, stderr }));
+      });
+
+      const combined = result.stdout + result.stderr;
+      assert.equal(result.code, GRACEFUL_FETCH_FAILURE_EXIT_CODE);
+      assert.match(combined, /FETCH FAILED: forced OpenAQ outage/);
+      assert.match(combined, /Extended TTL on 4 key\(s\)/);
+      assert.match(combined, /=== Failed gracefully \(/);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });

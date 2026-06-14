@@ -1,5 +1,5 @@
 ---
-title: "OSINT for Everyone: How World Monitor Democratizes Open Source Intelligence"
+title: "OSINT for Everyone: Open Source Intelligence with World Monitor"
 description: "World Monitor brings professional-grade OSINT to everyone. 435+ feeds, live tracking, AI threat analysis, and 45 data layers in one free open source dashboard."
 metaTitle: "OSINT for Everyone: Free Intelligence Dashboard"
 keywords: "OSINT tools free, open source intelligence software, OSINT dashboard, intelligence gathering tools, OSINT for beginners"
