@@ -4,6 +4,7 @@
   "redirects": [
     { "source": "/docs", "destination": "/docs/documentation", "permanent": false },
     { "source": "/security.txt", "destination": "/.well-known/security.txt", "permanent": true },
+    { "source": "/index.html", "destination": "/", "permanent": true },
     { "source": "/welcome", "destination": "/", "permanent": true }
   ],
   "rewrites": [
@@ -18,8 +19,8 @@
     { "source": "/oauth/authorize-pro", "destination": "/api/oauth/authorize-pro" },
     { "source": "/.well-known/oauth-protected-resource", "destination": "/api/oauth-protected-resource" },
     { "source": "/embed", "destination": "/embed.html" },
-    { "source": "/dashboard", "destination": "/index.html" },
-    { "source": "/((?!api|mcp|oauth|assets|blog|docs|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)", "destination": "/index.html" }
+    { "source": "/dashboard", "destination": "/dashboard.html" },
+    { "source": "/((?!api|mcp|oauth|assets|blog|docs|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)", "destination": "/dashboard.html" }
   ],
   "headers": [
     {
@@ -139,7 +140,7 @@
       ]
     },
     {
-      "source": "/index.html",
+      "source": "/dashboard.html",
       "headers": [
         { "key": "Cache-Control", "value": "private, no-cache, must-revalidate" },
         { "key": "Link", "value": "</.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json\", </openapi.yaml>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi\", </docs/documentation>; rel=\"service-doc\"; type=\"text/html\", </api/health>; rel=\"status\"; type=\"application/json\", </.well-known/oauth-protected-resource>; rel=\"http://www.iana.org/assignments/relation/oauth-protected-resource\", </.well-known/oauth-authorization-server>; rel=\"http://www.iana.org/assignments/relation/oauth-authorization-server\", </.well-known/mcp/server-card.json>; rel=\"mcp-server-card\"; anchor=\"/mcp\", </.well-known/agent-skills/index.json>; rel=\"agent-skills-index\"; type=\"application/json\"" }
