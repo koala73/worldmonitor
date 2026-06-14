@@ -1,7 +1,7 @@
 /**
  * Detect whether the current document is the /pro marketing page's
  * "live preview" iframe that embeds the full main app at
- * `https://worldmonitor.app?embed=pro-preview` for a visual dashboard
+ * `https://worldmonitor.app/dashboard?embed=pro-preview` for a visual dashboard
  * preview. See pro-test/src/App.tsx for the embedding site.
  *
  * This is INTENTIONALLY narrow — not a blanket "inside any iframe" check.
@@ -26,7 +26,7 @@ export const IS_EMBEDDED_PREVIEW: boolean = (() => {
   if (typeof window === 'undefined') return false;
 
   // Gate 1: must be inside a frame at all. A top-level visit to
-  // worldmonitor.app?embed=pro-preview (e.g. someone linking with the
+  // worldmonitor.app/dashboard?embed=pro-preview (e.g. someone linking with the
   // param by accident) should not disable premium RPCs.
   let insideFrame: boolean;
   try {

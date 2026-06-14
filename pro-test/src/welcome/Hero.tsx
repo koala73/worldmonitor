@@ -2,6 +2,7 @@ import { motion } from 'motion/react';
 import { ArrowRight, Github } from 'lucide-react';
 import { WiredBadge } from '../components/WiredBadge';
 import { t } from '../i18n';
+import { DASHBOARD_PATH } from '../routes';
 import dashboardScreenshot from '../assets/worldmonitor-7-mar-2026.jpg';
 
 const HERO_PROOF_STATS = [
@@ -39,7 +40,7 @@ const ConsoleFrame = () => (
   >
     <div className="absolute -inset-8 bg-wm-green/5 blur-[60px] rounded-full pointer-events-none" aria-hidden="true" />
     <a
-      href="/?ref=welcome-plate"
+      href={`${DASHBOARD_PATH}?ref=welcome-plate`}
       className="relative block border border-wm-border rounded-md overflow-hidden border-glow bg-wm-card hover:border-wm-green/40 transition-colors"
     >
       <div className="flex items-center justify-between gap-3 px-3 sm:px-4 h-9 border-b border-wm-border bg-wm-bg/80 font-mono text-[10px] uppercase tracking-widest text-wm-muted">
@@ -98,7 +99,7 @@ export const Hero = () => (
         className="mt-9 mx-auto flex max-w-[22rem] sm:max-w-none flex-col sm:flex-row items-stretch sm:items-center justify-center gap-4"
       >
         <a
-          href="/?ref=welcome-hero"
+          href={`${DASHBOARD_PATH}?ref=welcome-hero`}
           className="w-full sm:w-auto justify-center bg-wm-green text-wm-bg px-5 sm:px-8 py-3.5 rounded-sm font-mono text-sm uppercase tracking-wide sm:tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-2"
         >
           {t('welcome.hero.ctaPrimary')} <ArrowRight className="w-4 h-4" aria-hidden="true" />

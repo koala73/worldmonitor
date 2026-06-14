@@ -63,7 +63,7 @@ const CHECKOUT_REFERRAL_PARAM = 'checkoutReferral';
 const CHECKOUT_DISCOUNT_PARAM = 'checkoutDiscount';
 const PENDING_CHECKOUT_KEY = 'wm-pending-checkout';
 const POST_CHECKOUT_FLAG_KEY = 'wm-post-checkout';
-const APP_CHECKOUT_BASE_URL = 'https://worldmonitor.app/';
+const APP_CHECKOUT_BASE_URL = 'https://worldmonitor.app/dashboard';
 
 /**
  * Session flag set just before the post-overlay reload. Lets panel-layout
