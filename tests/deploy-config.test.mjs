@@ -11,6 +11,7 @@ const viteConfigSource = readFileSync(resolve(__dirname, '../vite.config.ts'), '
 const dockerfileSource = readFileSync(resolve(__dirname, '../Dockerfile'), 'utf-8');
 const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|oauth|assets|blog|docs|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html).*)';
+const FULL_SITE_ROOT_HOST_PATTERN = '^(www\\.)?worldmonitor\\.app$';
 const GLOBAL_CSP_INLINE_SCRIPT_HTML_FILES = [
   'index.html',
   'settings.html',
@@ -58,6 +59,14 @@ const getVariantHosts = () => {
   return [...variantMetaSource.matchAll(/url:\s*'https:\/\/([^/']+)\//g)]
     .map((match) => match[1])
     .sort();
+};
+
+const getVariantUrls = () => {
+  const variantMetaSource = readFileSync(resolve(__dirname, '../src/config/variant-meta.ts'), 'utf-8');
+  return Object.fromEntries(
+    [...variantMetaSource.matchAll(/\n\s{2}([a-z]+):\s*\{[\s\S]*?url:\s*'([^']+)'/g)]
+      .map((match) => [match[1], match[2]])
+  );
 };
 
 describe('deploy/cache configuration guardrails', () => {
@@ -151,16 +160,64 @@ describe('deploy/cache configuration guardrails', () => {
 const DASHBOARD_HTML_DESTINATION = '/dashboard.html';
 
 // Root marketing landing page — a second HTML entry in the pro-test bundle
-// (vite rollupOptions.input), served from public/pro/welcome.html. The
-// dashboard source template remains index.html, but the web build renames its
-// output to dashboard.html so Vercel's filesystem cannot shadow the / rewrite.
-// /welcome and /index.html redirect to root so crawlers and humans do not see
-// duplicate landing URLs.
+// (vite rollupOptions.input), served from public/pro/welcome.html on the full
+// site host only. Variant subdomain roots must keep falling through to the
+// dashboard catch-all because all variants share this one Vercel deployment and
+// the app selects the variant at runtime from location.hostname.
+// The dashboard source template remains index.html, but the web build renames
+// its output to dashboard.html so Vercel's filesystem cannot shadow the /
+// rewrite. /welcome and /index.html redirect to root so crawlers and humans do
+// not see duplicate landing URLs.
 describe('welcome landing page routing', () => {
-  it('declares / as the welcome rewrite after moving dashboard HTML off root index', () => {
+  const getRootRewrite = () => vercelConfig.rewrites.find((r) => r.source === '/');
+  const getSpaCatchAllRewrite = () => vercelConfig.rewrites.find((r) =>
+    r.destination === DASHBOARD_HTML_DESTINATION && r.source.startsWith('/((?!')
+  );
+  const rootDestinationForHost = (host) => {
+    const rewrite = getRootRewrite();
+    assert.ok(rewrite, 'expected a rewrite for /');
+    const hostCondition = rewrite.has?.find((condition) => condition.type === 'host');
+    if (!hostCondition || new RegExp(hostCondition.value).test(host)) return rewrite.destination;
+    return getSpaCatchAllRewrite()?.destination ?? null;
+  };
+
+  it('declares / as the full-site welcome rewrite after moving dashboard HTML off root index', () => {
     const rewrite = vercelConfig.rewrites.find((r) => r.source === '/');
     assert.ok(rewrite, 'expected a rewrite for /');
     assert.equal(rewrite.destination, '/pro/welcome.html');
+    assert.deepEqual(rewrite.has, [
+      { type: 'host', value: FULL_SITE_ROOT_HOST_PATTERN },
+    ]);
+  });
+
+  it('routes only full-site roots to welcome and leaves variant roots on the dashboard', () => {
+    assert.equal(rootDestinationForHost('worldmonitor.app'), '/pro/welcome.html');
+    assert.equal(rootDestinationForHost('www.worldmonitor.app'), '/pro/welcome.html');
+    assert.equal(rootDestinationForHost('worldmonitor.app.evil.example'), DASHBOARD_HTML_DESTINATION);
+
+    const variantHosts = getVariantHosts().filter((host) => host !== 'www.worldmonitor.app');
+    for (const host of variantHosts) {
+      assert.equal(
+        rootDestinationForHost(host),
+        DASHBOARD_HTML_DESTINATION,
+        `${host}/ must fall through to the dashboard catch-all, not the full-site welcome page`
+      );
+    }
+  });
+
+  it('keeps variant canonicals aligned with the root dashboard routing strategy', () => {
+    const variantUrls = getVariantUrls();
+    assert.equal(variantUrls.full, 'https://www.worldmonitor.app/dashboard');
+
+    const nonFullUrls = Object.entries(variantUrls).filter(([variant]) => variant !== 'full');
+    assert.ok(nonFullUrls.length >= 5, 'expected non-full variant metadata entries');
+    for (const [variant, url] of nonFullUrls) {
+      assert.equal(
+        new URL(url).pathname,
+        '/',
+        `${variant} canonical must remain root while variant roots serve dashboards`
+      );
+    }
   });
 
   it('rewrites /dashboard to the existing SPA shell', () => {
