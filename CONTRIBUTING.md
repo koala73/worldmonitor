@@ -101,7 +101,7 @@ npm run typecheck
 
 # Run tests
 npm run test:data          # Data integrity tests
-npm run test:e2e           # Playwright end-to-end tests
+npm run test:e2e:full      # Playwright end-to-end tests (full variant)
 
 # Production build (per variant)
 npm run build              # full
