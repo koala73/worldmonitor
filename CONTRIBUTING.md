@@ -115,7 +115,7 @@ The dev server runs at `http://localhost:3000`. Run `make help` to see all avail
 
 For full functionality, copy `.env.example` to `.env.local` and fill in the API keys you need. The app runs without any API keys — external data sources will simply be unavailable.
 
-See [API Dependencies](docs/DOCUMENTATION.md#api-dependencies) for the full list.
+See the [API dependencies docs](https://www.worldmonitor.app/docs/data-sources) for the full list.
 
 ## How to Contribute
 
@@ -259,7 +259,7 @@ To add a new data layer to the map:
 6. **Create the service module** in `src/services/{domain}/` wrapping the generated client
 7. **Add the layer config** and implement the map renderer following existing layer patterns
 8. **Add to layer toggles** — make it toggleable in the UI
-9. **Document the source** — add it to `docs/DOCUMENTATION.md`
+9. **Document the source** — add it to the [data sources docs](https://www.worldmonitor.app/docs/data-sources)
 
 For endpoints that deal with non-JSON payloads (XML feeds, binary data, HTML embeds), you can add a standalone Edge Function in `api/` instead of Sebuf. For anything returning JSON, prefer Sebuf — the typed contracts are always worth it.
 
