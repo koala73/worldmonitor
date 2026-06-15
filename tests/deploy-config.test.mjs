@@ -334,6 +334,26 @@ describe('welcome landing page routing', () => {
     );
   });
 
+  it('keeps welcome dashboard launch CTAs off the root welcome route', () => {
+    const welcomeMomentsSource = readFileSync(resolve(__dirname, '../pro-test/src/welcome/Moments.tsx'), 'utf-8');
+    const generatedWelcomeHtml = readFileSync(resolve(__dirname, '../public/pro/welcome.html'), 'utf-8');
+    const welcomeAssetPath = generatedWelcomeHtml.match(/src="\/pro\/(assets\/welcome-[^"]+\.js)"/)?.[1];
+    assert.ok(welcomeAssetPath, 'generated welcome HTML must reference a hashed welcome JS entry');
+
+    const generatedWelcomeAsset = readFileSync(resolve(__dirname, '../public/pro', welcomeAssetPath), 'utf-8');
+    const rootWelcomeLaunchLink = /href\s*[:=]\s*["'`]\/\?ref=welcome-/;
+    assert.doesNotMatch(
+      welcomeMomentsSource,
+      rootWelcomeLaunchLink,
+      'welcome source must not route launch CTAs back to the root welcome page'
+    );
+    assert.doesNotMatch(
+      generatedWelcomeAsset,
+      rootWelcomeLaunchLink,
+      'generated welcome JS must not route launch CTAs back to the root welcome page'
+    );
+  });
+
   it('redirects signed-in welcome visitors to /dashboard client-side', () => {
     const welcomeApp = readFileSync(resolve(__dirname, '../pro-test/src/WelcomeApp.tsx'), 'utf-8');
     assert.ok(welcomeApp.includes("import('./services/clerk')"));
