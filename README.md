@@ -73,7 +73,7 @@ npm install
 npm run dev
 ```
 
-Open [localhost:5173](http://localhost:5173). The app runs with no environment variables.
+Open [localhost:3000](http://localhost:3000). The app runs with no environment variables.
 
 Feature-specific data sources may require credentials — for example, the flight-price command (`fly LON DXB`) needs `TRAVELPAYOUTS_API_TOKEN` to return live quotes; without it the command shows a "credentials required" message rather than synthetic data. See `.env.example` for the full list.
 
