@@ -12,7 +12,7 @@ Real-time global intelligence dashboard. TypeScript SPA (Vite + Preact) with 154
 .
 ├── src/                    # Browser SPA (TypeScript, class-based components)
 │   ├── app/                # App orchestration (data-loader, refresh-scheduler, panel-layout)
-│   ├── components/         # 86 UI panels + map components (Panel subclasses)
+│   ├── components/         # 154 UI panels + map components (Panel subclasses)
 │   ├── config/             # Variant configs, panel/layer definitions, market symbols
 │   ├── services/           # Business logic (184+ service files, organized by domain)
 │   ├── types/              # TypeScript type definitions
