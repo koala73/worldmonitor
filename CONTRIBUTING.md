@@ -29,7 +29,7 @@ World Monitor is a real-time OSINT dashboard built with **Vanilla TypeScript** (
 | **TypeScript** | All code — frontend, edge functions, and handlers |
 | **Vite** | Build tool and dev server |
 | **Sebuf** | Proto-first HTTP RPC framework for typed API contracts |
-| **Protobuf / Buf** | Service and message definitions across 22 domains |
+| **Protobuf / Buf** | Service and message definitions across 35 domains |
 | **MapLibre GL** | Base map rendering (tiles, globe mode, camera) |
 | **deck.gl** | WebGL overlay layers (scatterplot, geojson, arcs, heatmaps) |
 | **d3** | Charts, sparklines, and data visualization |
@@ -40,13 +40,16 @@ World Monitor is a real-time OSINT dashboard built with **Vanilla TypeScript** (
 
 ### Variant System
 
-The codebase produces three app variants from the same source, each targeting a different audience:
+The codebase produces 6 app variants from the same source, each targeting a different audience or use case:
 
 | Variant | Command | Focus |
 |---|---|---|
 | `full` | `npm run dev` | Geopolitics, military, conflicts, infrastructure |
 | `tech` | `npm run dev:tech` | Startups, AI/ML, cloud, cybersecurity |
 | `finance` | `npm run dev:finance` | Markets, trading, central banks, commodities |
+| `commodity` | `npm run dev:commodity` | Commodities, mining, energy markets |
+| `happy` | `npm run dev:happy` | Positive news and constructive signals |
+| `energy` | `npm run dev:energy` | Energy security, chokepoints, oil/gas |
 
 Variants share all code but differ in default panels, map layers, and RSS feeds. Variant configs live in `src/config/variants/`.
 
@@ -54,14 +57,14 @@ Variants share all code but differ in default panels, map layers, and RSS feeds.
 
 | Directory | Purpose |
 |---|---|
-| `src/components/` | UI components — Panel subclasses, map, modals (~50 panels) |
+| `src/components/` | UI components — 154 top-level TypeScript component files |
 | `src/services/` | Data fetching modules — sebuf client wrappers, AI, signal analysis |
 | `src/config/` | Static data and variant configs (feeds, geo, military, pipelines, ports) |
 | `src/generated/` | Auto-generated sebuf client + server stubs (**do not edit by hand**) |
 | `src/types/` | TypeScript type definitions |
-| `src/locales/` | i18n JSON files (14 languages) |
+| `src/locales/` | i18n JSON files (24 languages) |
 | `src/workers/` | Web Workers for analysis |
-| `server/` | Sebuf handler implementations for all 17 domain services |
+| `server/` | Sebuf handler implementations for all 34 server handler domains |
 | `api/` | Vercel Edge Functions (sebuf gateway + legacy endpoints) |
 | `proto/` | Protobuf service and message definitions |
 | `data/` | Static JSON datasets |
@@ -95,18 +98,24 @@ npm run dev
 # Start other variants
 npm run dev:tech
 npm run dev:finance
+npm run dev:commodity
+npm run dev:happy
+npm run dev:energy
 
 # Run type checking
 npm run typecheck
 
 # Run tests
 npm run test:data          # Data integrity tests
-npm run test:e2e           # Playwright end-to-end tests
+npm run test:e2e:full      # Playwright end-to-end tests (full variant)
 
 # Production build (per variant)
 npm run build              # full
 npm run build:tech
 npm run build:finance
+npm run build:commodity
+npm run build:happy
+npm run build:energy
 ```
 
 The dev server runs at `http://localhost:3000`. Run `make help` to see all available make targets.
@@ -123,7 +132,7 @@ See [API Dependencies](docs/DOCUMENTATION.md#api-dependencies) for the full list
 
 - **Bug fixes** — found something broken? Fix it!
 - **New data layers** — add new geospatial data sources to the map
-- **RSS feeds** — expand our 100+ feed collection with quality sources
+- **RSS feeds** — expand our 500+ feed collection with quality sources
 - **UI/UX improvements** — make the dashboard more intuitive
 - **Performance optimizations** — faster loading, better caching
 - **Documentation** — improve docs, add examples, fix typos

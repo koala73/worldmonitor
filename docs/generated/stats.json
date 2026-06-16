@@ -9,6 +9,10 @@
     "commodity": 18,
     "energy": 18
   },
+  "variantCount": 6,
+  "componentTopLevelTsFiles": 154,
+  "serviceTopLevelEntries": 184,
+  "apiEndpointEntries": 80,
   "protoFiles": 276,
   "protoServices": 34,
   "protoDomainFolders": 35,
