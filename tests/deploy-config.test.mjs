@@ -240,7 +240,7 @@ describe('welcome landing page routing', () => {
     );
     assert.match(
       middlewareSource,
-      /Response\.redirect\(dashboardUrl\.toString\(\), 307\)/,
+      /Response\.redirect\(dashboardUrl\.toString\(\), 308\)/,
       'middleware must redirect, preserving the original query string',
     );
   });

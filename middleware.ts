@@ -137,7 +137,7 @@ export default function middleware(request: Request) {
   if (path === '/' && hasLegacyDashboardRootState(url.searchParams)) {
     const dashboardUrl = new URL(request.url);
     dashboardUrl.pathname = '/dashboard';
-    return Response.redirect(dashboardUrl.toString(), 307);
+    return Response.redirect(dashboardUrl.toString(), 308);
   }
 
   // Variant-aware crawlable stub for social preview bots AND AI crawlers
