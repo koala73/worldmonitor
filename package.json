@@ -168,7 +168,7 @@
     "telegram": "^2.26.22",
     "topojson-client": "^3.1.0",
     "uqr": "^0.1.2",
-    "ws": "^8.19.0",
+    "ws": "^8.21.0",
     "yaml": "^2.8.3",
     "youtubei.js": "^16.0.1",
     "zod": "^4.3.6"
@@ -181,6 +181,7 @@
     "serialize-javascript": "^7.0.4",
     "node-forge": "^1.4.0",
     "srvx": "^0.11.13",
-    "protobufjs": "^7.6.2"
+    "protobufjs": "^7.6.2",
+    "ws": "$ws"
   }
 }

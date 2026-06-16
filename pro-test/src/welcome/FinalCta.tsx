@@ -1,6 +1,7 @@
 import { motion } from 'motion/react';
 import { ArrowRight } from 'lucide-react';
 import { t } from '../i18n';
+import { DASHBOARD_PATH } from '../routes';
 
 export const FinalCta = () => (
   <section className="py-28 px-6 border-t border-wm-border relative overflow-hidden">
@@ -16,7 +17,7 @@ export const FinalCta = () => (
       <p className="text-wm-muted mt-4">{t('welcome.cta.subtitle')}</p>
       <div className="mt-9">
         <a
-          href="/?ref=welcome-final"
+          href={`${DASHBOARD_PATH}?ref=welcome-final`}
           className="bg-wm-green text-wm-bg px-10 py-4 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-2"
         >
           {t('welcome.cta.button')} <ArrowRight className="w-4 h-4" aria-hidden="true" />

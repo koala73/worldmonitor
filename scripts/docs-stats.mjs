@@ -24,6 +24,7 @@ const dirsIn = (p) =>
   readdirSync(join(ROOT, p), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
 const filesIn = (p) =>
   readdirSync(join(ROOT, p), { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
+const entriesIn = (p) => readdirSync(join(ROOT, p), { withFileTypes: true }).map((e) => e.name);
 
 function walk(rel, out = []) {
   for (const e of readdirSync(join(ROOT, rel), { withFileTypes: true })) {
@@ -45,6 +46,14 @@ function computeStats() {
   for (const m of variantBlock.matchAll(/(\w+):\s*\[([^\]]*)\]/g)) {
     variantLayers[m[1]] = (m[2].match(/'[^']+'/g) || []).length;
   }
+  const variantCount = Object.keys(variantLayers).length;
+
+  // ---- Root app directories used by AGENTS.md and CONTRIBUTING.md ----
+  const componentTopLevelTsFiles = filesIn('src/components').filter((f) => f.endsWith('.ts')).length;
+  const serviceTopLevelEntries = entriesIn('src/services').length;
+  const apiEndpointEntries = entriesIn('api').filter(
+    (f) => !f.startsWith('_') && !/\.test\./.test(f) && !/\.d\.ts$/.test(f) && !/\.json$/.test(f),
+  ).length;
 
   // ---- Protos & services (proto/**) ----
   const protoFiles = walk('proto').filter((f) => f.endsWith('.proto'));
@@ -124,6 +133,10 @@ function computeStats() {
     _generated: 'scripts/docs-stats.mjs — do not edit by hand; run `npm run docs:stats`',
     layerDefinitions,
     variantLayers,
+    variantCount,
+    componentTopLevelTsFiles,
+    serviceTopLevelEntries,
+    apiEndpointEntries,
     protoFiles: protoFiles.length,
     protoServices,
     protoDomainFolders,
@@ -160,6 +173,19 @@ function claims(s) {
     { file: 'README.md', re: /(\d+)\+\s+curated news feeds/, value: s.feedDefinitions, min: true },
     { file: 'README.md', re: /(\d+)\s+stock exchanges/, value: s.stockExchangeCount },
     { file: 'docs/overview.mdx', re: /(\d+)\+\s+curated news feeds/, value: s.feedDefinitions, min: true },
+
+    // ---- Root contributor/agent docs ----
+    { file: 'AGENTS.md', re: /with (\d+)\s+top-level TypeScript component files/, value: s.componentTopLevelTsFiles },
+    { file: 'AGENTS.md', re: /(\d+)\+\s+Vercel Edge API endpoint entries/, value: s.apiEndpointEntries, min: true },
+    { file: 'AGENTS.md', re: /(\d+)\s+freshness-tracked source groups/, value: s.freshnessSources },
+    { file: 'AGENTS.md', re: /components\/\s+# (\d+)\s+top-level TypeScript component files/, value: s.componentTopLevelTsFiles },
+    { file: 'AGENTS.md', re: /services\/\s+# Business logic \((\d+)\s+service modules and domain directories\)/, value: s.serviceTopLevelEntries },
+    { file: 'CONTRIBUTING.md', re: /Service and message definitions across (\d+)\s+domains/, value: s.protoDomainFolders },
+    { file: 'CONTRIBUTING.md', re: /produces (\d+)\s+app variants/, value: s.variantCount },
+    { file: 'CONTRIBUTING.md', re: /UI components — (\d+)\s+top-level TypeScript component files/, value: s.componentTopLevelTsFiles },
+    { file: 'CONTRIBUTING.md', re: /i18n JSON files \((\d+)\s+languages\)/, value: s.locales },
+    { file: 'CONTRIBUTING.md', re: /Sebuf handler implementations for all (\d+)\s+server handler domains/, value: s.serverDomains },
+    { file: 'CONTRIBUTING.md', re: /expand our (\d+)\+\s+feed collection/, value: s.feedDefinitions, min: true },
 
     { file: 'docs/architecture.mdx', re: /(\d+)\s+service domains, and (?:\d+)\s+map layers/, value: s.protoServices },
     { file: 'docs/architecture.mdx', re: /(\d+)\s+map layers\./, value: s.layerDefinitions },

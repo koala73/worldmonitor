@@ -59,8 +59,8 @@ World Monitor uses public or documented feeds including ACLED, UCDP, AISStream, 
 
 ## Relevant Pages
 
-- Main dashboard: https://www.worldmonitor.app/
-- Welcome page: https://www.worldmonitor.app/welcome
+- Welcome page: https://www.worldmonitor.app/
+- Main dashboard: https://www.worldmonitor.app/dashboard
 - World Monitor Pro: https://www.worldmonitor.app/pro
 - Finance Monitor: https://finance.worldmonitor.app/
 - Commodity Monitor: https://commodity.worldmonitor.app/

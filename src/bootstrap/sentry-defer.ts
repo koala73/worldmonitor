@@ -469,7 +469,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /Can't find variable: caches/,
       /crypto\.randomUUID is not a function/,
       /ucapi is not defined/,
-      /Identifier '(?:script|reportPage|element|Shop|change_ua)' has already been declared/, // change_ua: User-Agent-changer browser extension injecting same script twice — WORLDMONITOR-2D (88 events / 26 users)
+      /Identifier '(?:script|reportPage|element|Shop|change_ua|originalPrompt)' has already been declared/, // change_ua: User-Agent-changer browser extension injecting same script twice — WORLDMONITOR-2D (88 events / 26 users). originalPrompt: extension hooking window.prompt double-injected — WORLDMONITOR-TE (not in our bundle; build would fail on a duplicate top-level const)
       /getAttribute is not a function.*getAttribute\("role"\)/,
       /SCDynimacBridge/,
       /errTimes is not defined/,
@@ -837,6 +837,15 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
           // "let NetworkError through" caution predated the KM provenance
           // refinement (WORLDMONITOR-RK).
           || /^(?:TypeError: )?NetworkError when attempting to fetch resource\.?$/.test(msg)
+          // `.postMessage` on null with no first-party frame = an in-app webview
+          // JS bridge / injected extension script posting to a null message
+          // target (observed on ancient Mobile Safari 13 in-app browsers —
+          // WORLDMONITOR-TE/TF). A genuine first-party `worker.postMessage` /
+          // iframe-bridge bug keeps a source-mapped .ts frame (hasFirstParty →
+          // preserved), so a no-first-party occurrence is bridge/extension noise.
+          // This is the WebKit phrasing; the V8 `reading 'postMessage'` variant is
+          // already suppressed via the ignoreErrors entry above.
+          || /null is not an object \(evaluating '[^']*\.postMessage'\)/.test(msg)
         )
       ) return null;
       if (hasAnyStack && !hasFirstParty && (
