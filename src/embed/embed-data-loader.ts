@@ -1,4 +1,4 @@
-import type { MapComponent } from '@/components/Map';
+import type { MapContainer } from '@/components/MapContainer';
 import type { MapLayers } from '@/types';
 import { fetchEarthquakes } from '@/services/earthquakes';
 import { fetchNaturalEvents } from '@/services/eonet';
@@ -16,7 +16,7 @@ export class EmbedDataLoader {
   private refreshLoop: SmartPollLoopHandle | null = null;
 
   constructor(
-    private readonly map: MapComponent,
+    private readonly map: MapContainer,
     private readonly activeLayerIds: readonly EmbedLayerId[],
   ) {}
 
@@ -55,10 +55,17 @@ export class EmbedDataLoader {
       case 'weather':
         await this.loadWeather();
         return;
+      default:
+        return;
     }
   }
 
   private async loadConflicts(): Promise<void> {
+    if (!this.map.supportsLiveConflictEvents()) {
+      this.map.setLayerReady('conflicts', true);
+      return;
+    }
+
     await this.withLayerState('conflicts', async () => {
       const end = Date.now();
       const start = end - CONFLICT_WINDOW_MS;

@@ -64,6 +64,7 @@ import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
 export interface GlobeMapOptions {
   onInitError?: (error: unknown) => void;
+  chrome?: boolean;
 }
 
 const SAT_COUNTRY_COLORS: Record<string, string> = { CN: '#ff2020', RU: '#ff8800', US: '#4488ff', EU: '#44cc44', KR: '#aa66ff', IN: '#ff66aa', TR: '#ff4466', OTHER: '#ccccff' };
@@ -558,6 +559,7 @@ export class GlobeMap {
   private tooltipEl: HTMLElement | null = null;
   private tooltipHideTimer: ReturnType<typeof setTimeout> | null = null;
   private satHoverStyle: HTMLStyleElement | null = null;
+  private readonly chrome: boolean;
 
   // Callbacks
   private onLayerChangeCb: ((layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void) | null = null;
@@ -575,6 +577,7 @@ export class GlobeMap {
 
   constructor(container: HTMLElement, initialState: MapContainerState, options: GlobeMapOptions = {}) {
     this.container = container;
+    this.chrome = options.chrome ?? true;
     this.popup = new MapPopup(this.container);
     this.layers = { ...initialState.layers };
     this.timeRange = initialState.timeRange;
@@ -902,8 +905,10 @@ export class GlobeMap {
     this.applyPerformanceProfile(resolvePerformanceProfile(initialScale));
 
     // Add overlay UI (zoom controls + layer panel)
-    this.createControls();
-    this.createLayerToggles();
+    if (this.chrome) {
+      this.createControls();
+      this.createLayerToggles();
+    }
 
     // Load static datasets
     this.setHotspots(INTEL_HOTSPOTS);
