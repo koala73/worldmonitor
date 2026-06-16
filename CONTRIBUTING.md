@@ -115,7 +115,7 @@ The dev server runs at `http://localhost:3000`. Run `make help` to see all avail
 
 For full functionality, copy `.env.example` to `.env.local` and fill in the API keys you need. The app runs without any API keys — external data sources will simply be unavailable.
 
-See the [API dependencies docs](https://www.worldmonitor.app/docs/data-sources) for the full list.
+See the [API dependencies docs](https://www.worldmonitor.app/docs/getting-started#api-dependencies) for the full list.
 
 ## How to Contribute
 
