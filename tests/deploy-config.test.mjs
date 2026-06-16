@@ -55,6 +55,8 @@ const getInlineScriptHashTokens = (htmlSource) => {
     .map((body) => `'sha256-${createHash('sha256').update(body).digest('base64')}'`);
 };
 
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const getVariantHosts = () => {
   const variantMetaSource = readFileSync(resolve(__dirname, '../src/config/variant-meta.ts'), 'utf-8');
   return [...variantMetaSource.matchAll(/url:\s*'https:\/\/([^/']+)\//g)]
@@ -218,6 +220,26 @@ describe('welcome landing page routing', () => {
         new URL(url).pathname,
         '/dashboard',
         `${variant} canonical must point at /dashboard while the root serves welcome`
+      );
+    }
+  });
+
+  it('keeps variant crawler-stub canonicals aligned with variant metadata', () => {
+    const variantUrls = getVariantUrls();
+    const nonFullUrls = Object.entries(variantUrls).filter(([variant]) => variant !== 'full');
+
+    for (const [variant, url] of nonFullUrls) {
+      assert.match(
+        middlewareSource,
+        new RegExp(`\\b${variant}:\\s*\\{[\\s\\S]*?url:\\s*'${escapeRegExp(url)}'`),
+        `${variant} crawler-stub OG/canonical URL must match variant-meta.ts`
+      );
+    }
+
+    for (const variant of ['full', 'tech', 'finance', 'commodity', 'happy']) {
+      assert.ok(
+        middlewareSource.includes(`href="${variantUrls[variant]}"`),
+        `AI crawler body must link ${variant} to its dashboard canonical`
       );
     }
   });
