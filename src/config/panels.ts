@@ -1208,8 +1208,9 @@ export function isPanelEntitled(key: string, config: PanelConfig, isPro = false)
  * truth for the count limit so App boot, the settings/search add paths, and
  * the dashboard-tab add/switch/load paths all enforce the SAME ceiling.
  *
- * Returns a NEW map; the input is never mutated. Pro users are returned the
- * input untouched. For free users: cw-* custom-widget panels are a pro
+ * Returns a NEW map; the input is never mutated. Pro users get the same
+ * panel eligibility, but still receive a copied map. For free users: cw-*
+ * custom-widget panels are a pro
  * feature and are always disabled, then among the remaining enabled panels
  * the lowest-priority ones past FREE_MAX_PANELS are disabled (priority asc,
  * key tiebreak — identical ordering to App.enforceFreeTierLimits).
@@ -1221,12 +1222,12 @@ export function enforceFreePanelLimit(
   panelSettings: Record<string, PanelConfig>,
   isPro: boolean,
 ): Record<string, PanelConfig> {
-  if (isPro) return panelSettings;
-
   const next: Record<string, PanelConfig> = {};
   for (const [key, config] of Object.entries(panelSettings)) {
-    next[key] = config;
+    next[key] = { ...config };
   }
+
+  if (isPro) return next;
 
   // cw-* custom widgets are pro-only — never enabled on the free tier.
   for (const key of Object.keys(next)) {

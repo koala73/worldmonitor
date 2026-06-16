@@ -28,6 +28,7 @@ export class PanelTabBar {
     this.element.className = 'dashboard-tabs-bar';
     this.element.setAttribute('role', 'tablist');
     this.element.setAttribute('aria-label', t('dashboardTabs.ariaLabel'));
+    this.element.addEventListener('keydown', (e) => this.handleKeyDown(e));
 
     // Delegate dblclick at the container (attached ONCE, survives re-renders).
     // A per-label listener breaks for inactive tabs: the first click switches
@@ -38,7 +39,8 @@ export class PanelTabBar {
     this.element.addEventListener('dblclick', (e) => {
       const target = e.target as HTMLElement;
       if (target.closest('.dashboard-tab-close')) return; // don't rename on delete dblclick
-      const tabEl = target.closest('.dashboard-tab') as HTMLElement | null;
+      const tabEl = (target.closest('.dashboard-tab') ??
+        document.elementFromPoint(e.clientX, e.clientY)?.closest('.dashboard-tab')) as HTMLElement | null;
       if (!tabEl) return;
       const tabId = tabEl.dataset.tabId;
       if (!tabId) return;
@@ -67,6 +69,7 @@ export class PanelTabBar {
     for (const tab of tabs) {
       this.element.appendChild(this.renderTab(tab, tab.id === activeTabId, tabs.length > 1));
     }
+    this.updateControlledPanel(activeTabId);
     const addBtn = document.createElement('button');
     addBtn.className = 'dashboard-tab-add';
     addBtn.title = t('dashboardTabs.addTabTitle');
@@ -83,8 +86,10 @@ export class PanelTabBar {
 
     const label = document.createElement('button');
     label.className = 'dashboard-tab-label';
+    label.id = this.getTabButtonId(tab.id);
     label.setAttribute('role', 'tab');
     label.setAttribute('aria-selected', String(isActive));
+    label.tabIndex = isActive ? 0 : -1;
     // ARIA tab contract: a role="tab" must point at the tabpanel it controls.
     // All tabs drive the same panel grid (only its contents swap on switch).
     label.setAttribute('aria-controls', 'panelsGrid');
@@ -110,6 +115,48 @@ export class PanelTabBar {
       el.appendChild(close);
     }
     return el;
+  }
+
+  private handleKeyDown(e: KeyboardEvent): void {
+    if (!(e.target instanceof HTMLElement)) return;
+    if (e.target.classList.contains('dashboard-tab-rename')) return;
+    const tabs = this.getTabButtons();
+    const currentIndex = tabs.indexOf(e.target.closest('[role="tab"]') as HTMLButtonElement);
+    if (currentIndex === -1) return;
+
+    let nextIndex: number | null = null;
+    if (e.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabs.length;
+    else if (e.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+    else if (e.key === 'Home') nextIndex = 0;
+    else if (e.key === 'End') nextIndex = tabs.length - 1;
+    else return;
+
+    e.preventDefault();
+    const next = tabs[nextIndex];
+    const tabId = next?.closest('.dashboard-tab')?.getAttribute('data-tab-id');
+    if (!next || !tabId) return;
+
+    if (tabId !== this.getState().activeTabId) {
+      this.callbacks.onSelect(tabId);
+      requestAnimationFrame(() => document.getElementById(this.getTabButtonId(tabId))?.focus());
+      return;
+    }
+    next.focus();
+  }
+
+  private getTabButtons(): HTMLButtonElement[] {
+    return Array.from(this.element.querySelectorAll<HTMLButtonElement>('.dashboard-tab-label[role="tab"]'));
+  }
+
+  private getTabButtonId(tabId: string): string {
+    return `dashboard-tab-${tabId.replace(/[^A-Za-z0-9_-]/g, '-')}`;
+  }
+
+  private updateControlledPanel(activeTabId: string): void {
+    const panel = document.getElementById('panelsGrid');
+    if (!panel) return;
+    panel.setAttribute('role', 'tabpanel');
+    panel.setAttribute('aria-labelledby', this.getTabButtonId(activeTabId));
   }
 
   private startRename(tabEl: HTMLElement, tab: PanelTab): void {

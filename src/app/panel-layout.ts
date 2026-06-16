@@ -709,7 +709,7 @@ export class PanelLayoutManager implements AppModule {
           <div class="map-bottom-grid" id="mapBottomGrid"></div>
         </div>
         <div class="map-width-resize-handle" id="mapWidthResizeHandle"></div>
-        <div class="panels-grid" id="panelsGrid"></div>
+        <div class="panels-grid" id="panelsGrid" role="tabpanel"></div>
         <button class="search-mobile-fab" id="searchMobileFab" aria-label="Search">\u{1F50D}</button>
       </div>
       <footer class="site-footer">
@@ -769,9 +769,15 @@ export class PanelLayoutManager implements AppModule {
       // an over-cap layout when the user later switches to it. applyTabPanelState
       // re-clamps on apply too; this keeps the persisted store self-healing.
       const pro = isProUser();
+      let healedSnapshots = false;
       for (const tab of state.tabs) {
-        tab.panelSettings = enforceFreePanelLimit(tab.panelSettings, pro);
+        const clamped = enforceFreePanelLimit(tab.panelSettings, pro);
+        if (this.panelSettingsEnabledStateChanged(tab.panelSettings, clamped)) {
+          healedSnapshots = true;
+        }
+        tab.panelSettings = clamped;
       }
+      if (healedSnapshots) saveTabsState(state);
     }
     this.tabsState = state;
 
@@ -782,6 +788,17 @@ export class PanelLayoutManager implements AppModule {
       onDelete: (id) => this.deleteTab(id),
     });
     mount.appendChild(this.panelTabBar.getElement());
+  }
+
+  private panelSettingsEnabledStateChanged(
+    before: Record<string, PanelConfig>,
+    after: Record<string, PanelConfig>,
+  ): boolean {
+    const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+    for (const key of keys) {
+      if (before[key]?.enabled !== after[key]?.enabled) return true;
+    }
+    return false;
   }
 
   /** Capture the live panel state (settings + order) for a tab snapshot. */
