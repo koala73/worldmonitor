@@ -339,6 +339,28 @@ export async function fetchDividendProfile(symbol: string, currentPrice: number)
         const byInterval = paymentsPerYearFromInterval(entries);
         paymentsPerYear = byInterval > 0 ? byInterval : recentDivs.length;
       }
+    } else {
+      // recentDivs.length === 0: no payment in the trailing 365 days. This is
+      // EITHER a suspended program OR a low-frequency payer (annual / semi-
+      // annual) observed BETWEEN scheduled payments — its last payment fell
+      // just outside the 365-day window and the next one is still pending.
+      // Distinguish the two by recency relative to the payer's OWN historical
+      // cadence: a last payment within ~1.5x its median interval is between
+      // payments, not suspended. Quarterly/monthly payers with a >365-day gap
+      // have skipped many payments, so they blow past 1.5x their (much
+      // shorter) interval and correctly stay '' (see the suspended-program
+      // test). Without this, annual payers collapse to '' for the weeks each
+      // year after their payment anniversary — the trailing-year window is
+      // empty even though the program is healthy.
+      const byInterval = paymentsPerYearFromInterval(entries);
+      if (byInterval > 0) {
+        const expectedGapDays = 365.25 / byInterval;
+        const daysSinceLast =
+          (now / 1000 - (entries[entries.length - 1]!.date ?? 0)) / (24 * 3600);
+        if (daysSinceLast <= expectedGapDays * 1.5) {
+          paymentsPerYear = byInterval;
+        }
+      }
     }
 
     const latestEntry = entries[entries.length - 1]!;
