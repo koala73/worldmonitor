@@ -148,6 +148,17 @@ describe('fetchDividendProfile', () => {
       profile.dividendCagr > 0,
       `annual payer should have non-zero CAGR; got ${profile.dividendCagr}`,
     );
+    // Coherence: an 'Annual' badge must not ship alongside a $0 rate / 0% yield.
+    // The trailing-12-month window is empty here, so rate/yield must be
+    // backfilled from the indicated annual rate (the most recent payment).
+    assert.ok(
+      profile.trailingAnnualDividendRate > 0,
+      `Annual badge must carry a non-zero rate; got ${profile.trailingAnnualDividendRate}`,
+    );
+    assert.ok(
+      profile.dividendYield > 0,
+      `Annual badge must carry a non-zero yield; got ${profile.dividendYield}`,
+    );
   });
 
   it('identifies monthly frequency', async () => {
