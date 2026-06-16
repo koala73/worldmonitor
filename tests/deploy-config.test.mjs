@@ -8,10 +8,11 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const vercelConfig = JSON.parse(readFileSync(resolve(__dirname, '../vercel.json'), 'utf-8'));
 const viteConfigSource = readFileSync(resolve(__dirname, '../vite.config.ts'), 'utf-8');
+const middlewareSource = readFileSync(resolve(__dirname, '../middleware.ts'), 'utf-8');
 const dockerfileSource = readFileSync(resolve(__dirname, '../Dockerfile'), 'utf-8');
 const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|oauth|assets|blog|docs|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html).*)';
-const FULL_SITE_ROOT_HOST_PATTERN = '^(www\\.)?worldmonitor\\.app$';
+const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
 const GLOBAL_CSP_INLINE_SCRIPT_HTML_FILES = [
   'index.html',
   'settings.html',
@@ -161,9 +162,10 @@ const DASHBOARD_HTML_DESTINATION = '/dashboard.html';
 
 // Root marketing landing page — a second HTML entry in the pro-test bundle
 // (vite rollupOptions.input), served from public/pro/welcome.html on the full
-// site host only. Variant subdomain roots must keep falling through to the
-// dashboard catch-all because all variants share this one Vercel deployment and
-// the app selects the variant at runtime from location.hostname.
+// site and app variant roots. Variant dashboards live at /dashboard so the root
+// welcome route is consistent across worldmonitor.app, finance.worldmonitor.app,
+// tech.worldmonitor.app, commodity.worldmonitor.app, happy.worldmonitor.app, and
+// energy.worldmonitor.app.
 // The dashboard source template remains index.html, but the web build renames
 // its output to dashboard.html so Vercel's filesystem cannot shadow the /
 // rewrite. /welcome and /index.html redirect to root so crawlers and humans do
@@ -181,16 +183,16 @@ describe('welcome landing page routing', () => {
     return getSpaCatchAllRewrite()?.destination ?? null;
   };
 
-  it('declares / as the full-site welcome rewrite after moving dashboard HTML off root index', () => {
+  it('declares / as the app-root welcome rewrite after moving dashboard HTML off root index', () => {
     const rewrite = vercelConfig.rewrites.find((r) => r.source === '/');
     assert.ok(rewrite, 'expected a rewrite for /');
     assert.equal(rewrite.destination, '/pro/welcome.html');
     assert.deepEqual(rewrite.has, [
-      { type: 'host', value: FULL_SITE_ROOT_HOST_PATTERN },
+      { type: 'host', value: APP_ROOT_HOST_PATTERN },
     ]);
   });
 
-  it('routes only full-site roots to welcome and leaves variant roots on the dashboard', () => {
+  it('routes app roots to welcome and leaves non-app roots on the dashboard catch-all', () => {
     assert.equal(rootDestinationForHost('worldmonitor.app'), '/pro/welcome.html');
     assert.equal(rootDestinationForHost('www.worldmonitor.app'), '/pro/welcome.html');
     assert.equal(rootDestinationForHost('worldmonitor.app.evil.example'), DASHBOARD_HTML_DESTINATION);
@@ -199,13 +201,13 @@ describe('welcome landing page routing', () => {
     for (const host of variantHosts) {
       assert.equal(
         rootDestinationForHost(host),
-        DASHBOARD_HTML_DESTINATION,
-        `${host}/ must fall through to the dashboard catch-all, not the full-site welcome page`
+        '/pro/welcome.html',
+        `${host}/ must serve the welcome page; the variant dashboard route is /dashboard`
       );
     }
   });
 
-  it('keeps variant canonicals aligned with the root dashboard routing strategy', () => {
+  it('keeps variant canonicals aligned with the /dashboard routing strategy', () => {
     const variantUrls = getVariantUrls();
     assert.equal(variantUrls.full, 'https://www.worldmonitor.app/dashboard');
 
@@ -214,10 +216,33 @@ describe('welcome landing page routing', () => {
     for (const [variant, url] of nonFullUrls) {
       assert.equal(
         new URL(url).pathname,
-        '/',
-        `${variant} canonical must remain root while variant roots serve dashboards`
+        '/dashboard',
+        `${variant} canonical must point at /dashboard while the root serves welcome`
       );
     }
+  });
+
+  it('redirects legacy root map-state deep links to /dashboard before welcome routing', () => {
+    assert.match(
+      middlewareSource,
+      /LEGACY_DASHBOARD_ROOT_QUERY_KEYS = \['lat', 'lon', 'zoom', 'view', 'timeRange', 'layers'\]/,
+      'middleware must list dashboard URL-state params that bypass the root welcome page',
+    );
+    assert.match(
+      middlewareSource,
+      /path === '\/' && hasLegacyDashboardRootState\(url\.searchParams\)/,
+      'middleware must detect legacy dashboard state on root requests',
+    );
+    assert.match(
+      middlewareSource,
+      /dashboardUrl\.pathname = '\/dashboard'/,
+      'middleware must move legacy dashboard-state root links to /dashboard',
+    );
+    assert.match(
+      middlewareSource,
+      /Response\.redirect\(dashboardUrl\.toString\(\), 307\)/,
+      'middleware must redirect, preserving the original query string',
+    );
   });
 
   it('rewrites /dashboard to the existing SPA shell', () => {
@@ -292,12 +317,18 @@ describe('welcome landing page routing', () => {
     assert.match(viteConfigSource, /start_url:\s*'\/dashboard'/);
   });
 
-  it('sitemap lists /dashboard and does not list legacy /welcome', () => {
+  it('sitemap lists dashboard routes and does not list legacy /welcome', () => {
     const sitemap = readFileSync(resolve(__dirname, '../public/sitemap.xml'), 'utf-8');
     assert.ok(
       sitemap.includes('<loc>https://www.worldmonitor.app/dashboard</loc>'),
       'public/sitemap.xml must list https://www.worldmonitor.app/dashboard'
     );
+    for (const host of ['tech', 'finance', 'commodity', 'happy', 'energy']) {
+      assert.ok(
+        sitemap.includes(`<loc>https://${host}.worldmonitor.app/dashboard</loc>`),
+        `public/sitemap.xml must list https://${host}.worldmonitor.app/dashboard`
+      );
+    }
     assert.ok(
       !sitemap.includes('<loc>https://www.worldmonitor.app/welcome</loc>'),
       'public/sitemap.xml must not list legacy https://www.worldmonitor.app/welcome'
@@ -342,15 +373,26 @@ describe('welcome landing page routing', () => {
 
     const generatedWelcomeAsset = readFileSync(resolve(__dirname, '../public/pro', welcomeAssetPath), 'utf-8');
     const rootWelcomeLaunchLink = /href\s*[:=]\s*["'`]\/\?ref=welcome-/;
+    const variantRootWelcomeLaunchLink = /https:\/\/(?:tech|finance|commodity|happy|energy)\.worldmonitor\.app\/\?ref=welcome-/;
     assert.doesNotMatch(
       welcomeMomentsSource,
       rootWelcomeLaunchLink,
       'welcome source must not route launch CTAs back to the root welcome page'
     );
     assert.doesNotMatch(
+      welcomeMomentsSource,
+      variantRootWelcomeLaunchLink,
+      'welcome source must not route variant launch CTAs back to variant root welcome pages'
+    );
+    assert.doesNotMatch(
       generatedWelcomeAsset,
       rootWelcomeLaunchLink,
       'generated welcome JS must not route launch CTAs back to the root welcome page'
+    );
+    assert.doesNotMatch(
+      generatedWelcomeAsset,
+      variantRootWelcomeLaunchLink,
+      'generated welcome JS must not route variant launch CTAs back to variant root welcome pages'
     );
   });
 

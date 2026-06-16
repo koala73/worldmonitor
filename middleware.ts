@@ -11,6 +11,7 @@ const AI_CRAWLER_UA =
   /gptbot|claudebot|ccbot|google-extended|perplexitybot|anthropic-ai|bytespider|cohere-ai|youbot|applebot-extended|amazonbot/i;
 
 const SOCIAL_PREVIEW_PATHS = new Set(['/api/story', '/api/og-story']);
+const LEGACY_DASHBOARD_ROOT_QUERY_KEYS = ['lat', 'lon', 'zoom', 'view', 'timeRange', 'layers'] as const;
 
 // Paths that bypass bot/script UA filtering below. Each must carry its own
 // auth (API key, shared secret, or intentionally-public semantics) because
@@ -110,6 +111,10 @@ function isAllowedHost(host: string): boolean {
   return ALLOWED_HOSTS.has(host) || VERCEL_PREVIEW_RE.test(host);
 }
 
+function hasLegacyDashboardRootState(searchParams: URLSearchParams): boolean {
+  return LEGACY_DASHBOARD_ROOT_QUERY_KEYS.some((key) => searchParams.has(key));
+}
+
 // HTML-escape a string for safe interpolation into BOTH text content and
 // double-quoted attribute values. Required because VARIANT_OG values are
 // hand-edited prose and a future double-quote, ampersand, or angle bracket
@@ -128,6 +133,12 @@ export default function middleware(request: Request) {
   const ua = request.headers.get('user-agent') ?? '';
   const path = url.pathname;
   const host = normalizeHost(request.headers.get('host') ?? url.hostname);
+
+  if (path === '/' && hasLegacyDashboardRootState(url.searchParams)) {
+    const dashboardUrl = new URL(request.url);
+    dashboardUrl.pathname = '/dashboard';
+    return Response.redirect(dashboardUrl.toString(), 307);
+  }
 
   // Variant-aware crawlable stub for social preview bots AND AI crawlers
   // (GPTBot, ClaudeBot, PerplexityBot, etc.) when hitting variant subdomain

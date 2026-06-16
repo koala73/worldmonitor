@@ -15,6 +15,20 @@ const EMPTY_LAYERS = {
 };
 
 describe('parseMapUrlState expanded param', () => {
+  it('parses legacy root dashboard deep links with disabled layers', () => {
+    const state = parseMapUrlState(
+      '?lat=24.5564&lon=11.9743&zoom=2.65&view=global&timeRange=7d&layers=none',
+      EMPTY_LAYERS,
+    );
+    assert.equal(state.lat, 24.5564);
+    assert.equal(state.lon, 11.9743);
+    assert.equal(state.zoom, 2.65);
+    assert.equal(state.view, 'global');
+    assert.equal(state.timeRange, '7d');
+    assert.ok(state.layers);
+    assert.ok(Object.values(state.layers).every((enabled) => enabled === false));
+  });
+
   it('parses expanded=1 as true', () => {
     const state = parseMapUrlState('?country=IR&expanded=1', EMPTY_LAYERS);
     assert.equal(state.country, 'IR');
