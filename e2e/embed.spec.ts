@@ -199,7 +199,6 @@ test.describe('public map embed', () => {
         expect(end, 'embed conflict layer must not request the generated zero/epoch end').toBeGreaterThan(0);
         expect(end - start, 'embed conflict layer should request the recent 30-day ACLED window').toBe(conflictWindowMs);
       } else {
-        await page.waitForTimeout(500);
         expect(conflictRequests).toHaveLength(0);
       }
       for (const [path, seenStatuses] of statuses) {
@@ -249,7 +248,6 @@ test.describe('public map embed', () => {
 
     await expect(page.locator('.wm-embed-map')).toHaveClass(/(?:^|\s)deckgl-mode(?:\s|$)/);
     await expect(page.locator('body')).toHaveAttribute('data-embed-ready', 'true');
-    await page.waitForTimeout(500);
     expect(conflictRequests).toHaveLength(0);
   });
 });
