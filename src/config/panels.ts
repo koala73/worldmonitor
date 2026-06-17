@@ -1203,6 +1203,51 @@ export function isPanelEntitled(key: string, config: PanelConfig, isPro = false)
   return true;
 }
 
+/**
+ * Clamp a panel-settings map to the free-tier panel cap. Single source of
+ * truth for the count limit so App boot, the settings/search add paths, and
+ * the dashboard-tab add/switch/load paths all enforce the SAME ceiling.
+ *
+ * Returns a NEW map; the input is never mutated. Pro users get the same
+ * panel eligibility, but still receive a copied map. For free users: cw-*
+ * custom-widget panels are a pro
+ * feature and are always disabled, then among the remaining enabled panels
+ * the lowest-priority ones past FREE_MAX_PANELS are disabled (priority asc,
+ * key tiebreak — identical ordering to App.enforceFreeTierLimits).
+ *
+ * `isPro` is passed in (rather than read here) to keep this a pure config
+ * helper with no service-state dependency, matching isPanelEntitled above.
+ */
+export function enforceFreePanelLimit(
+  panelSettings: Record<string, PanelConfig>,
+  isPro: boolean,
+): Record<string, PanelConfig> {
+  const next: Record<string, PanelConfig> = {};
+  for (const [key, config] of Object.entries(panelSettings)) {
+    next[key] = { ...config };
+  }
+
+  if (isPro) return next;
+
+  // cw-* custom widgets are pro-only — never enabled on the free tier.
+  for (const key of Object.keys(next)) {
+    if (key.startsWith('cw-') && next[key]?.enabled) {
+      next[key] = { ...next[key]!, enabled: false };
+    }
+  }
+
+  const enabledKeys = Object.entries(next)
+    .filter(([k, v]) => v.enabled && !k.startsWith('cw-'))
+    .sort(([ka, a], [kb, b]) => (a.priority ?? 99) - (b.priority ?? 99) || ka.localeCompare(kb))
+    .map(([k]) => k);
+
+  for (const key of enabledKeys.slice(FREE_MAX_PANELS)) {
+    next[key] = { ...next[key]!, enabled: false };
+  }
+
+  return next;
+}
+
 // ============================================
 // VARIANT-AWARE EXPORTS
 // ============================================
