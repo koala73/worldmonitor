@@ -11,6 +11,18 @@ import type { EmbedLayerId } from './embed-url';
 const REFRESH_MS = 10 * 60 * 1000;
 const CONFLICT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const conflictClient = new ConflictServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const STATIC_LAYER_READY_BY_EMBED_ID: Partial<Record<EmbedLayerId, keyof MapLayers>> = {
+  cables: 'cables',
+  pipelines: 'pipelines',
+  waterways: 'waterways',
+  tradeRoutes: 'tradeRoutes',
+  economic: 'economic',
+  stockExchanges: 'stockExchanges',
+  financialCenters: 'financialCenters',
+  centralBanks: 'centralBanks',
+  commodityHubs: 'commodityHubs',
+  gulfInvestments: 'gulfInvestments',
+};
 
 export class EmbedDataLoader {
   private refreshLoop: SmartPollLoopHandle | null = null;
@@ -56,8 +68,14 @@ export class EmbedDataLoader {
         await this.loadWeather();
         return;
       default:
+        this.markStaticLayerReady(id);
         return;
     }
+  }
+
+  private markStaticLayerReady(id: EmbedLayerId): void {
+    const layer = STATIC_LAYER_READY_BY_EMBED_ID[id];
+    if (layer) this.map.setLayerReady(layer, true);
   }
 
   private async loadConflicts(): Promise<void> {
