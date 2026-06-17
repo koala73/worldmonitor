@@ -8,13 +8,18 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
 describe('embed entry boundary', () => {
-  it('keeps the public embed boot out of the authenticated app shell', () => {
+  it('boots the shared map container while staying out of the authenticated app shell', () => {
     const files = [
       'src/embed-main.ts',
       'src/embed/embed-data-loader.ts',
       'src/embed/embed-url.ts',
     ];
     const source = files.map((file) => readFileSync(resolve(root, file), 'utf-8')).join('\n');
+    assert.ok(
+      source.includes('@/components/MapContainer'),
+      'embed entry should use the shared current map container rather than booting a legacy map directly',
+    );
+
     const forbidden = [
       '@/App',
       '@/app/panel-layout',
@@ -23,7 +28,6 @@ describe('embed entry boundary', () => {
       '@/services/cloud-preferences',
       '@/services/push-notifications',
       '@/services/runtime',
-      '@/components/MapContainer',
     ];
     for (const token of forbidden) {
       assert.ok(!source.includes(token), `embed entry must not import ${token}`);
