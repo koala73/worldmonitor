@@ -459,6 +459,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /nmhCrx is not defined/,
       /\bcrusoe is not defined\b/, // WORLDMONITOR-R3 — injected userscript reference, anonymous-frames-only stack
       /\bvc_request_action is not defined\b/, // WORLDMONITOR-RB — Samsung Internet / Tizen smart-view-cast global injection
+      /\bmainWorldSdk is not defined\b/, // WORLDMONITOR-TG — browser extension SDK injected into the page main world references its global before define; not in our bundle (Edge 148/Windows, anonymous-frames-only stack)
       /navigationPerformanceLoggerJavascriptInterface/,
       /jQuery is not defined/,
       /illegal UTF-16 sequence/,
