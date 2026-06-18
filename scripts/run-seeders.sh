@@ -52,16 +52,41 @@ if [ -f "$OVERRIDE" ]; then
   . "$_env_tmp"
   rm -f "$_env_tmp"
 fi
-ok=0 fail=0 skip=0
+# Per-seeder wall-clock cap. The seeders run sequentially, so a single
+# upstream that hangs (e.g. a slow NOAA/NSIDC fetch that doesn't honour its
+# own AbortSignal and keeps the node process alive for an hour) would burn
+# the rest of the window and starve every later seeder — under a wrapping
+# systemd/cron job timeout it drops everything after the hung one. Capping
+# each seeder bounds that blast radius. Default 1800s (30min) sits well above
+# the slowest legitimate seeder observed (~18min) yet far below the hangs
+# (60min+), so it kills only pathological runs; override with
+# SEED_TIMEOUT=<seconds>, or SEED_TIMEOUT=0 to disable.
+SEED_TIMEOUT="${SEED_TIMEOUT:-1800}"
+
+run_seed() {
+  if command -v timeout >/dev/null 2>&1 && [ "$SEED_TIMEOUT" -gt 0 ] 2>/dev/null; then
+    # -k: if it ignores SIGTERM, SIGKILL it 30s later so the run can move on.
+    timeout -k 30 "$SEED_TIMEOUT" node "$1" 2>&1
+  else
+    node "$1" 2>&1
+  fi
+}
+
+ok=0 fail=0 skip=0 timedout=0
 
 for f in "$SCRIPT_DIR"/seed-*.mjs; do
   name="$(basename "$f")"
   printf "→ %s ... " "$name"
-  output=$(node "$f" 2>&1)
+  output=$(run_seed "$f")
   rc=$?
   last=$(echo "$output" | tail -1)
 
-  if echo "$last" | grep -qi "skip\|not set\|missing.*key\|not found"; then
+  # timeout(1) exits 124 when it had to terminate the child, or 128+signal
+  # (137 = SIGKILL after the -k grace) when SIGTERM was ignored.
+  if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+    printf "TIMEOUT (killed after %ss)\n" "$SEED_TIMEOUT"
+    timedout=$((timedout + 1))
+  elif echo "$last" | grep -qi "skip\|not set\|missing.*key\|not found"; then
     printf "SKIP (%s)\n" "$last"
     skip=$((skip + 1))
   elif [ $rc -eq 0 ]; then
@@ -74,4 +99,4 @@ for f in "$SCRIPT_DIR"/seed-*.mjs; do
 done
 
 echo ""
-echo "Done: $ok ok, $skip skipped, $fail failed"
+echo "Done: $ok ok, $skip skipped, $fail failed, $timedout timed out"
