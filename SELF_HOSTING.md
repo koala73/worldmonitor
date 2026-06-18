@@ -73,7 +73,7 @@ services:
 
       # ✈️ Aviation
       AVIATIONSTACK_API: ""       # https://aviationstack.com (free tier)
-
+      TRAVELPAYOUTS_API_TOKEN: "" # https://travelpayouts.com (flight price search — optional)
       # 🚢 Maritime
       AISSTREAM_API_KEY: ""       # https://aisstream.io (free)
 
