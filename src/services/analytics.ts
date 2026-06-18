@@ -1,13 +1,27 @@
 /**
  * Analytics facade — wired to Umami.
  *
- * All functions use window.umami?.track() so they are safe to call
- * even if the Umami script has not loaded yet (e.g. ad blockers, SSR).
+ * Dashboard analytics load after first paint; calls made before the script
+ * arrives are kept in a small bounded queue and replayed on script load.
  */
 
+import { scheduleAfterFirstPaint } from '@/bootstrap/secondary-startup';
 import { subscribeAuthState, type AuthSession } from './auth-state';
 import { onSubscriptionChange, type SubscriptionInfo } from './billing';
 import { getClerkUserCreatedAt } from './clerk';
+
+const UMAMI_SCRIPT_SRC = 'https://abacus.worldmonitor.app/script.js';
+const UMAMI_WEBSITE_ID = 'e8800335-c853-46a8-8497-c993ed2f58bc';
+const UMAMI_DOMAINS = 'worldmonitor.app,happy.worldmonitor.app';
+const UMAMI_QUEUE_LIMIT = 50;
+
+type QueuedUmamiCall =
+  | { kind: 'track'; event: UmamiEvent; data?: Record<string, unknown> }
+  | { kind: 'identify'; data: Record<string, unknown> };
+
+const pendingUmamiCalls: QueuedUmamiCall[] = [];
+let umamiLoadScheduled = false;
+let umamiLoadStarted = false;
 
 // ---------------------------------------------------------------------------
 // Type-safe event catalog — every event name lives here.
@@ -79,13 +93,67 @@ const EVENTS = {
 
 export type UmamiEvent = keyof typeof EVENTS;
 
+function queueUmamiCall(call: QueuedUmamiCall): void {
+  if (pendingUmamiCalls.length >= UMAMI_QUEUE_LIMIT) {
+    pendingUmamiCalls.shift();
+  }
+  pendingUmamiCalls.push(call);
+}
+
+function sendUmamiCall(call: QueuedUmamiCall): boolean {
+  if (typeof window === 'undefined') return false;
+  const umami = window.umami;
+  if (!umami) return false;
+  try {
+    if (call.kind === 'track') {
+      umami.track(call.event, call.data);
+    } else {
+      umami.identify(call.data);
+    }
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+function flushPendingUmamiCalls(): void {
+  if (pendingUmamiCalls.length === 0) return;
+  if (typeof window === 'undefined' || !window.umami) return;
+  const calls = pendingUmamiCalls.splice(0, pendingUmamiCalls.length);
+  for (const call of calls) sendUmamiCall(call);
+}
+
+function loadUmamiScript(): void {
+  if (umamiLoadStarted || typeof document === 'undefined') return;
+  if (document.querySelector(`script[src="${UMAMI_SCRIPT_SRC}"]`)) {
+    flushPendingUmamiCalls();
+    return;
+  }
+
+  umamiLoadStarted = true;
+  const script = document.createElement('script');
+  script.async = true;
+  script.src = UMAMI_SCRIPT_SRC;
+  script.dataset.websiteId = UMAMI_WEBSITE_ID;
+  script.dataset.domains = UMAMI_DOMAINS;
+  script.addEventListener('load', flushPendingUmamiCalls, { once: true });
+  script.addEventListener('error', () => {
+    umamiLoadStarted = false;
+  }, { once: true });
+  document.head.appendChild(script);
+}
+
 /** Type-safe Umami wrapper. Safe to call even if the script hasn't loaded. */
 export function track(event: UmamiEvent, data?: Record<string, unknown>): void {
-  window.umami?.track(event, data);
+  if (!sendUmamiCall({ kind: 'track', event, data })) {
+    queueUmamiCall({ kind: 'track', event, data });
+  }
 }
 
 export async function initAnalytics(): Promise<void> {
-  // No-op: Umami initialises itself via the script tag in index.html.
+  if (umamiLoadScheduled || typeof window === 'undefined' || typeof document === 'undefined') return;
+  umamiLoadScheduled = true;
+  scheduleAfterFirstPaint(loadUmamiScript, 3000);
 }
 
 // ---------------------------------------------------------------------------
@@ -99,16 +167,21 @@ export function identifyUser(
   subStatus?: SubscriptionInfo['status'] | null,
   planKey?: string | null,
 ): void {
-  window.umami?.identify({
+  const data = {
     userId,
     plan,
     ...(subStatus != null && { subStatus }),
     ...(planKey != null && { planKey }),
-  });
+  };
+  if (!sendUmamiCall({ kind: 'identify', data })) {
+    queueUmamiCall({ kind: 'identify', data });
+  }
 }
 
 export function clearIdentity(): void {
-  window.umami?.identify({});
+  if (!sendUmamiCall({ kind: 'identify', data: {} })) {
+    queueUmamiCall({ kind: 'identify', data: {} });
+  }
 }
 
 let _unsubAuth: (() => void) | null = null;
