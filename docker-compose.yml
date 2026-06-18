@@ -54,6 +54,14 @@ services:
     #   - FRED_API_KEY
     #   - NASA_FIRMS_API_KEY
     #   - LLM_API_KEY
+    # Override the image healthcheck: it probes `localhost`, which resolves to IPv6
+    # ::1 where nginx isn't listening → false "unhealthy". 127.0.0.1 forces IPv4.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
     depends_on:
       redis-rest:
         condition: service_started
