@@ -139,9 +139,9 @@ describe('renderNativeHlsPlayer safety', () => {
       'Must set cooldown timestamp on failure');
   });
 
-  it('checks activeChannel identity before fallback', () => {
-    assert.match(liveNewsSrc, /this\.activeChannel\.id\s*===\s*failedChannel\.id/,
-      'Must verify channel hasn\'t changed before falling back');
+  it('checks current live media session before fallback', () => {
+    assert.match(liveNewsSrc, /this\.ownsLiveMediaSession\(failedChannel\.id,\s*sessionToken\)/,
+      'Must verify the HLS callback still belongs to the active media session before falling back');
   });
 
   it('explicitly stops video element on error', () => {
@@ -174,17 +174,70 @@ describe('getDirectHlsUrl cooldown', () => {
 // ── 5. Player decision tree ordering ──
 
 describe('player decision tree', () => {
-  it('switchChannel checks direct HLS before videoId validation', () => {
+  it('switchChannel defers media resolution until playback is active or requested', () => {
     const switchMethod = liveNewsSrc.slice(
       liveNewsSrc.indexOf('private async switchChannel'),
       liveNewsSrc.indexOf('private showOfflineMessage'),
     );
-    const hlsPos = switchMethod.indexOf('getDirectHlsUrl(channel.id)');
-    const videoIdPos = switchMethod.indexOf("!/^[\\w-]{10,12}$/.test(channel.videoId)");
-    assert.ok(hlsPos > 0, 'getDirectHlsUrl not found in switchChannel');
-    assert.ok(videoIdPos > 0, 'videoId validation not found in switchChannel');
-    assert.ok(hlsPos < videoIdPos,
-      'Direct HLS check must come BEFORE videoId validation in switchChannel');
+    const shouldStartPos = switchMethod.indexOf('const shouldStartMedia');
+    const previewOnlyPos = switchMethod.indexOf('if (!shouldStartMedia)');
+    const placeholderPos = switchMethod.indexOf('this.renderPlaceholder()');
+    const resolvePos = switchMethod.indexOf('await this.resolveChannelVideo(channel)');
+    const requestPos = switchMethod.indexOf('this.requestPlaybackForActiveChannel()');
+    assert.ok(shouldStartPos > 0, 'switchChannel must compute whether media should start');
+    assert.ok(previewOnlyPos > shouldStartPos, 'switchChannel must branch on shouldStartMedia');
+    assert.ok(placeholderPos > previewOnlyPos, 'switchChannel preview-only branch must render the placeholder');
+    assert.ok(resolvePos > placeholderPos, 'switchChannel must not resolve live media before preview-only return');
+    assert.ok(requestPos > resolvePos, 'switchChannel must request playback only after resolving the selected channel');
+  });
+
+  it('switchChannel re-checks playback intent after async channel resolution', () => {
+    const switchMethod = liveNewsSrc.slice(
+      liveNewsSrc.indexOf('private async switchChannel'),
+      liveNewsSrc.indexOf('private showOfflineMessage'),
+    );
+    const resolvePos = switchMethod.indexOf('await this.resolveChannelVideo(channel)');
+    const intentRecheckPos = switchMethod.indexOf('if (!this.hasPlaybackIntent())');
+    const requestPos = switchMethod.indexOf('this.requestPlaybackForActiveChannel()');
+    assert.ok(resolvePos > 0, 'switchChannel must resolve the selected channel');
+    assert.ok(intentRecheckPos > resolvePos, 'switchChannel must re-check playback intent after async resolution');
+    assert.ok(intentRecheckPos < requestPos, 'switchChannel must re-check intent before requesting playback');
+  });
+
+  it('YouTube player callbacks are guarded by the current media session', () => {
+    const initMethod = liveNewsSrc.slice(
+      liveNewsSrc.indexOf('private async initializePlayer'),
+      liveNewsSrc.indexOf('private startBotCheckTimeout'),
+    );
+    assert.match(initMethod, /const playerSessionToken\s*=\s*this\.liveMediaSessionToken/,
+      'initializePlayer must capture the current media session before registering YouTube callbacks');
+    assert.match(initMethod, /onReady:\s*\(\)\s*=>\s*\{\s*if \(!this\.ownsLiveMediaSession\(playerChannelId,\s*playerSessionToken\)\) return;/,
+      'YouTube onReady callback must be guarded by current media session ownership');
+    assert.match(initMethod, /onError:\s*\(event\)\s*=>\s*\{\s*if \(!this\.ownsLiveMediaSession\(playerChannelId,\s*playerSessionToken\)\) return;/,
+      'YouTube onError callback must be guarded by current media session ownership');
+  });
+
+  it('desktop embed bridge messages are guarded by the current media session', () => {
+    const bridgeMethod = liveNewsSrc.slice(
+      liveNewsSrc.indexOf('private setupBridgeMessageListener'),
+      liveNewsSrc.indexOf('private static resolveYouTubeOrigin'),
+    );
+    const desktopEmbedMethod = liveNewsSrc.slice(
+      liveNewsSrc.indexOf('private async renderDesktopEmbedAsync'),
+      liveNewsSrc.indexOf('private async renderNativeHlsPlayer'),
+    );
+    const destroyMethod = liveNewsSrc.slice(
+      liveNewsSrc.indexOf('private destroyPlayer'),
+      liveNewsSrc.indexOf('private resumeFromIdle'),
+    );
+    assert.match(bridgeMethod, /const session\s*=\s*this\.desktopEmbedSession/,
+      'desktop bridge handler must capture the iframe session before processing messages');
+    assert.match(bridgeMethod, /this\.ownsLiveMediaSession\(session\.channelId,\s*session\.sessionToken\)/,
+      'desktop bridge handler must ignore stale iframe messages after ownership changes');
+    assert.match(desktopEmbedMethod, /this\.desktopEmbedSession\s*=\s*\{\s*iframe,\s*channelId,\s*sessionToken\s*\}/,
+      'desktop embed creation must record channel and session ownership');
+    assert.match(destroyMethod, /this\.desktopEmbedSession\s*=\s*null/,
+      'destroyPlayer must clear desktop embed session ownership');
   });
 
   it('initializePlayer checks direct HLS before videoId validation', () => {

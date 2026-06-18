@@ -758,7 +758,9 @@
         "americas": "अमेरिका",
         "asia": "एशिया",
         "space": "अंतरिक्ष"
-      }
+      },
+      "play": "चलाएं",
+      "previewStatus": "लाइव पूर्वावलोकन"
     },
     "pinnedWebcams": {
       "pinFromMap": "मैप से वेबकैम पिन करें"
@@ -1413,8 +1415,8 @@
       "analysisFrameworksFromAgentskills": "agentskills.io से",
       "analysisFrameworksPasteJson": "JSON चिपकाएँ",
       "analysisFrameworksSaveToLibrary": "पुस्तकालय में सहेजें",
-      "streamAlwaysOnLabel": "लाइव स्ट्रीम हमेशा चालू रखें",
-      "streamAlwaysOnDesc": "आपके निष्क्रिय होने पर लाइव कैम और न्यूज को स्वचालित रूप से न रोकें। दूसरे मॉनिटर या वॉलबोर्ड के लिए अनुशंसित। CPU/बैंडविड्थ बचाने के लिए अक्षम करें।",
+      "streamAlwaysOnLabel": "डैशबोर्ड पर लाइव स्ट्रीम अपने-आप चलाएं",
+      "streamAlwaysOnDesc": "Live News और Live Webcams दिखाई देने पर अपने-आप शुरू करता है। वीडियो को केवल Play क्लिक करने के बाद लोड करने के लिए इसे बंद रखें.",
       "frameworkNote": "केवल क्लाइंट-जनित विश्लेषण पर लागू",
       "loadingServerInsights": "सर्वर इंटेलिजेंस लोड हो रहा है...",
       "usingCachedBrief": "कैश्ड संक्षिप्त उपयोग हो रहा है...",
@@ -1997,7 +1999,9 @@
       "invalidHandle": "सही YouTube हैंडल दर्ज करें (जैसे @ChannelName)",
       "verifying": "सत्यापित कर रहे हैं…",
       "hlsUrl": "HLS स्ट्रीम URL (वैकल्पिक)",
-      "invalidHlsUrl": "वैध HLS स्ट्रीम URL दर्ज करें (.m3u8)"
+      "invalidHlsUrl": "वैध HLS स्ट्रीम URL दर्ज करें (.m3u8)",
+      "playLiveFeed": "लाइव फ़ीड चलाएं",
+      "readyStatus": "आप तैयार हों तो तैयार"
     },
     "map": {
       "showMap": "मानचित्र दिखाएं",

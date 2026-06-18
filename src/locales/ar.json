@@ -690,7 +690,9 @@
         "space": "الفضاء"
       },
       "paused": "كاميرات الويب متوقفة",
-      "pausedIdle": "كاميرات الويب متوقفة — حرّك الماوس للاستئناف"
+      "pausedIdle": "كاميرات الويب متوقفة — حرّك الماوس للاستئناف",
+      "play": "تشغيل",
+      "previewStatus": "معاينة مباشرة"
     },
     "monitor": {
       "placeholder": "كلمات مفتاحية (مفصولة بفواصل)",
@@ -1214,8 +1216,8 @@
       "badgeAnimDesc": "تحريك شارات التحديث في رؤوس اللوحات",
       "headlineMemoryLabel": "ذاكرة العناوين",
       "headlineMemoryDesc": "تذكر العناوين المشاهدة لتمييز الجديدة",
-      "streamAlwaysOnLabel": "إبقاء البث المباشر قيد التشغيل",
-      "streamAlwaysOnDesc": "يمنع إيقاف Live Cams وLive News تلقائيًا عند الخمول. يُنصح به لاستخدام الشاشة الثانية / لوحة المراقبة. عطّله (Eco) لتوفير CPU/النطاق الترددي.",
+      "streamAlwaysOnLabel": "التشغيل التلقائي للبث المباشر على لوحة المعلومات",
+      "streamAlwaysOnDesc": "يبدأ Live News و Live Webcams تلقائيا عند ظهورهما. اتركه متوقفا لتحميل الفيديو فقط بعد النقر على تشغيل.",
       "globeRenderScaleOptions": {
         "1": "اقتصادي (1x)",
         "2": "4K (2x)",
@@ -1660,7 +1662,9 @@
       "verifying": "جارٍ التحقق…",
       "noResults": "لم يُعثر على قنوات تطابق \"{{term}}\"",
       "hlsUrl": "رابط بث HLS (اختياري)",
-      "invalidHlsUrl": "أدخل رابط بث HLS صالحًا (.m3u8)"
+      "invalidHlsUrl": "أدخل رابط بث HLS صالحًا (.m3u8)",
+      "playLiveFeed": "تشغيل البث المباشر",
+      "readyStatus": "جاهز عندما تكون مستعدا"
     },
     "securityAdvisories": {
       "loading": "جاري جلب التحذيرات الأمنية...",

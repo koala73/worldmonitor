@@ -465,6 +465,7 @@ export class EventHandlerManager implements AppModule {
         return;
       }
 
+      (this.ctx.panels[panelId] as { stopLiveMediaForClose?: () => void } | undefined)?.stopLiveMediaForClose?.();
       const config = this.ctx.panelSettings[panelId];
       if (!config) return;
       config.enabled = false;
@@ -2086,7 +2087,14 @@ export class EventHandlerManager implements AppModule {
         return;
       }
       const panel = this.ctx.panels[key];
+      const liveMediaPanel = panel as { stopLiveMediaForClose?: () => void; resumeLiveMediaForShow?: () => void } | undefined;
+      if (!config.enabled) {
+        liveMediaPanel?.stopLiveMediaForClose?.();
+      }
       panel?.toggle(config.enabled);
+      if (config.enabled) {
+        liveMediaPanel?.resumeLiveMediaForShow?.();
+      }
     });
   }
 }

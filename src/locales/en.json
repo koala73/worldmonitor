@@ -751,6 +751,8 @@
     "webcams": {
       "paused": "Webcams paused",
       "pausedIdle": "Webcams paused — move mouse to resume",
+      "play": "Play",
+      "previewStatus": "Live preview",
       "regions": {
         "all": "ALL",
         "mideast": "MIDEAST",
@@ -1413,8 +1415,8 @@
       "analysisFrameworksFromAgentskills": "From agentskills.io",
       "analysisFrameworksPasteJson": "Paste JSON",
       "analysisFrameworksSaveToLibrary": "Save to Library",
-      "streamAlwaysOnLabel": "Keep live streams running",
-      "streamAlwaysOnDesc": "Prevents Live Cams and Live News from auto-pausing when you are idle. Recommended for second-monitor / wallboard usage. Disable (Eco) to save CPU/bandwidth.",
+      "streamAlwaysOnLabel": "Auto-play live streams on dashboard",
+      "streamAlwaysOnDesc": "Starts Live News and Live Webcams automatically when visible. Leave off to load video only after you click Play.",
       "frameworkNote": "Applies to client-generated analysis only",
       "loadingServerInsights": "Loading server insights...",
       "usingCachedBrief": "Using cached brief...",
@@ -1977,6 +1979,8 @@
       "botCheck": "YouTube is requesting sign-in to play {{name}}",
       "signInToYouTube": "Sign in to YouTube",
       "openOnYouTube": "Open on YouTube",
+      "playLiveFeed": "Play live feed",
+      "readyStatus": "Ready when you are",
       "manage": "Manage channels",
       "addChannel": "Add channel",
       "remove": "Remove",

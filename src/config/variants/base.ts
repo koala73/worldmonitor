@@ -5,9 +5,7 @@ import type { PanelConfig, MapLayers } from '@/types';
 export { SECTORS, COMMODITIES, MARKET_SYMBOLS } from '../markets';
 export { UNDERSEA_CABLES } from '../geo';
 export { AI_DATA_CENTERS } from '../ai-datacenters';
-
-// Idle pause duration - shared across map and stream panels (5 minutes)
-export const IDLE_PAUSE_MS = 5 * 60 * 1000;
+export { IDLE_PAUSE_MS } from '../idle';
 
 // Refresh intervals (ms) - shared across all variants
 export const REFRESH_INTERVALS = {
