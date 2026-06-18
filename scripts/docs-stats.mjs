@@ -26,6 +26,12 @@ const filesIn = (p) =>
   readdirSync(join(ROOT, p), { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
 const entriesIn = (p) => readdirSync(join(ROOT, p), { withFileTypes: true }).map((e) => e.name);
 
+function makefileVar(text, name) {
+  const match = text.match(new RegExp(`^${name}\\s*:=\\s*(\\S+)`, 'm'));
+  if (!match) throw new Error(`docs-stats: could not find ${name} in Makefile`);
+  return match[1];
+}
+
 function walk(rel, out = []) {
   for (const e of readdirSync(join(ROOT, rel), { withFileTypes: true })) {
     const child = `${rel}/${e.name}`;
@@ -36,6 +42,8 @@ function walk(rel, out = []) {
 }
 
 function computeStats() {
+  const makefile = read('Makefile');
+
   // ---- Map layers (src/config/map-layer-definitions.ts) ----
   const mld = read('src/config/map-layer-definitions.ts');
   const registryBlock = mld.slice(mld.indexOf('LAYER_REGISTRY'), mld.indexOf('VARIANT_LAYER_ORDER'));
@@ -155,6 +163,7 @@ function computeStats() {
     telegramFullTierCounts,
     leaderNames,
     populationPriorityCountries,
+    sebufVersion: makefileVar(makefile, 'SEBUF_VERSION'),
   };
 }
 
@@ -180,11 +189,13 @@ function claims(s) {
     { file: 'AGENTS.md', re: /(\d+)\s+freshness-tracked source groups/, value: s.freshnessSources },
     { file: 'AGENTS.md', re: /components\/\s+# (\d+)\s+top-level TypeScript component files/, value: s.componentTopLevelTsFiles },
     { file: 'AGENTS.md', re: /services\/\s+# Business logic \((\d+)\s+service modules and domain directories\)/, value: s.serviceTopLevelEntries },
+    { file: 'AGENTS.md', re: /requires buf \+ sebuf (v\d+\.\d+\.\d+) plugins/, value: s.sebufVersion },
     { file: 'CONTRIBUTING.md', re: /Service and message definitions across (\d+)\s+domains/, value: s.protoDomainFolders },
     { file: 'CONTRIBUTING.md', re: /produces (\d+)\s+app variants/, value: s.variantCount },
     { file: 'CONTRIBUTING.md', re: /UI components — (\d+)\s+top-level TypeScript component files/, value: s.componentTopLevelTsFiles },
     { file: 'CONTRIBUTING.md', re: /i18n JSON files \((\d+)\s+languages\)/, value: s.locales },
     { file: 'CONTRIBUTING.md', re: /Sebuf handler implementations for all (\d+)\s+server handler domains/, value: s.serverDomains },
+    { file: 'CONTRIBUTING.md', re: /currently \*\*(v\d+\.\d+\.\d+)\*\*/, value: s.sebufVersion },
     { file: 'CONTRIBUTING.md', re: /expand our (\d+)\+\s+feed collection/, value: s.feedDefinitions, min: true },
 
     { file: 'docs/architecture.mdx', re: /(\d+)\s+service domains, and (?:\d+)\s+map layers/, value: s.protoServices },
@@ -225,6 +236,7 @@ function claims(s) {
     { file: 'docs/data-sources.mdx', re: /\*\*Tier 1\*\* \| (\d+)\s+\|/, value: s.telegramFullTierCounts['1'] },
     { file: 'docs/data-sources.mdx', re: /\*\*Tier 2\*\* \| (\d+)\s+\|/, value: s.telegramFullTierCounts['2'] },
     { file: 'docs/data-sources.mdx', re: /\*\*Tier 3\*\* \| (\d+)\s+\|/, value: s.telegramFullTierCounts['3'] },
+    { file: 'SECURITY.md', re: /All (\d+)\s+domain APIs are served through Sebuf/, value: s.serverDomains },
     { file: 'docs/algorithms.mdx', re: /local (\d+)-country priority population table/, value: s.populationPriorityCountries },
     { file: 'docs/algorithms.mdx', re: /and (\d+)\s+tracked world-leader names/, value: s.leaderNames },
 
@@ -281,8 +293,8 @@ function main() {
       failures.push(`${c.file}: claim pattern ${c.re} not found (expected ${c.value})`);
       continue;
     }
-    const found = Number(m[1]);
-    const ok = c.min ? found <= c.value : found === c.value;
+    const found = typeof c.value === 'number' ? Number(m[1]) : m[1];
+    const ok = c.min ? Number(found) <= c.value : found === c.value;
     if (!ok) {
       failures.push(
         `${c.file}: doc says ${found}, code says ${c.value}${c.min ? ' (floor)' : ''} — pattern ${c.re}`,

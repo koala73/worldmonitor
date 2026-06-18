@@ -50,5 +50,6 @@
     "3": 30
   },
   "leaderNames": 16,
-  "populationPriorityCountries": 20
+  "populationPriorityCountries": 20,
+  "sebufVersion": "v0.11.1"
 }
