@@ -21,6 +21,40 @@ body {
   inset: 0;
 }
 
+.wm-embed-map.map-renderer-shell {
+  contain: layout paint;
+  background:
+    radial-gradient(circle at 52% 48%, color-mix(in srgb, var(--map-stroke, #5ea7d7) 46%, transparent) 0 1px, transparent 2px),
+    linear-gradient(180deg, color-mix(in srgb, var(--map-grid, #6da9cc) 40%, transparent), transparent 46%),
+    var(--map-bg, #06111f);
+}
+
+.wm-embed-map .map-renderer-shell-surface {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% 54%, color-mix(in srgb, var(--map-country, #446f8a) 82%, transparent) 0 28%, transparent 29%),
+    linear-gradient(90deg, transparent 0 23%, color-mix(in srgb, var(--map-grid, #6da9cc) 48%, transparent) 24% 24.5%, transparent 25% 49%, color-mix(in srgb, var(--map-grid, #6da9cc) 48%, transparent) 50% 50.5%, transparent 51% 74%, color-mix(in srgb, var(--map-grid, #6da9cc) 48%, transparent) 75% 75.5%, transparent 76%),
+    linear-gradient(0deg, transparent 0 23%, color-mix(in srgb, var(--map-grid, #6da9cc) 48%, transparent) 24% 24.5%, transparent 25% 49%, color-mix(in srgb, var(--map-grid, #6da9cc) 48%, transparent) 50% 50.5%, transparent 51% 74%, color-mix(in srgb, var(--map-grid, #6da9cc) 48%, transparent) 75% 75.5%, transparent 76%);
+  opacity: 0.9;
+}
+
+.wm-embed-map .map-renderer-shell-surface::before,
+.wm-embed-map .map-renderer-shell-surface::after {
+  content: '';
+  position: absolute;
+  inset: 18% 12%;
+  border: 1px solid color-mix(in srgb, var(--map-stroke, #5ea7d7) 62%, transparent);
+  border-radius: 50%;
+}
+
+.wm-embed-map .map-renderer-shell-surface::after {
+  inset: 28% 4%;
+  border-color: color-mix(in srgb, var(--map-grid, #6da9cc) 58%, transparent);
+}
+
 .wm-embed-map .map-wrapper {
   width: 100%;
   height: 100%;

@@ -50,7 +50,7 @@ describe('default map mode', () => {
     );
   });
 
-  it('routes the default flat preference to DeckGL when supported, not the SVG fallback', () => {
+  it('routes the default desktop flat preference to DeckGL when supported, not the SVG fallback', () => {
     const mapContainer = readSrc('src/components/MapContainer.ts');
 
     assert.match(
@@ -60,8 +60,13 @@ describe('default map mode', () => {
     );
     assert.match(
       mapContainer,
-      /else if \(this\.useDeckGL\)[\s\S]*Initializing deck\.gl map \(desktop mode\)/,
-      'DeckGL should be the primary non-globe renderer',
+      /createDeckGLMap\(token: number\)[\s\S]*Initializing deck\.gl map \(desktop mode\)[\s\S]*await loadMapLibreCss\(\)[\s\S]*await import\('\.\/DeckGLMap'\)/,
+      'DeckGL should be the primary non-globe desktop renderer and load its runtime on demand',
+    );
+    assert.match(
+      mapContainer,
+      /else if \(this\.useDeckGL\)\s*{\s*await this\.createDeckGLMap\(token\);/m,
+      'flat desktop mode should route through the deferred DeckGL initializer',
     );
     assert.match(
       mapContainer,
