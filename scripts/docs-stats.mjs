@@ -183,7 +183,7 @@ function claims(s) {
     { file: 'README.md', re: /(\d+)\s+stock exchanges/, value: s.stockExchangeCount },
     { file: 'docs/overview.mdx', re: /(\d+)\+\s+curated news feeds/, value: s.feedDefinitions, min: true },
 
-    // ---- Root contributor/agent docs ----
+    // ---- Root contributor/agent/security docs ----
     { file: 'AGENTS.md', re: /with (\d+)\s+top-level TypeScript component files/, value: s.componentTopLevelTsFiles },
     { file: 'AGENTS.md', re: /(\d+)\+\s+Vercel Edge API endpoint entries/, value: s.apiEndpointEntries, min: true },
     { file: 'AGENTS.md', re: /(\d+)\s+freshness-tracked source groups/, value: s.freshnessSources },
@@ -197,6 +197,7 @@ function claims(s) {
     { file: 'CONTRIBUTING.md', re: /Sebuf handler implementations for all (\d+)\s+server handler domains/, value: s.serverDomains },
     { file: 'CONTRIBUTING.md', re: /currently \*\*(v\d+\.\d+\.\d+)\*\*/, value: s.sebufVersion },
     { file: 'CONTRIBUTING.md', re: /expand our (\d+)\+\s+feed collection/, value: s.feedDefinitions, min: true },
+    { file: 'SECURITY.md', re: /All (\d+)\s+domain APIs are served through Sebuf/, value: s.serverDomains },
 
     { file: 'docs/architecture.mdx', re: /(\d+)\s+service domains, and (?:\d+)\s+map layers/, value: s.protoServices },
     { file: 'docs/architecture.mdx', re: /(\d+)\s+map layers\./, value: s.layerDefinitions },
@@ -236,7 +237,6 @@ function claims(s) {
     { file: 'docs/data-sources.mdx', re: /\*\*Tier 1\*\* \| (\d+)\s+\|/, value: s.telegramFullTierCounts['1'] },
     { file: 'docs/data-sources.mdx', re: /\*\*Tier 2\*\* \| (\d+)\s+\|/, value: s.telegramFullTierCounts['2'] },
     { file: 'docs/data-sources.mdx', re: /\*\*Tier 3\*\* \| (\d+)\s+\|/, value: s.telegramFullTierCounts['3'] },
-    { file: 'SECURITY.md', re: /All (\d+)\s+domain APIs are served through Sebuf/, value: s.serverDomains },
     { file: 'docs/algorithms.mdx', re: /local (\d+)-country priority population table/, value: s.populationPriorityCountries },
     { file: 'docs/algorithms.mdx', re: /and (\d+)\s+tracked world-leader names/, value: s.leaderNames },
 
@@ -293,8 +293,12 @@ function main() {
       failures.push(`${c.file}: claim pattern ${c.re} not found (expected ${c.value})`);
       continue;
     }
+    if (c.min && typeof c.value !== 'number') {
+      failures.push(`${c.file}: min claims must use numeric expected values — pattern ${c.re}`);
+      continue;
+    }
     const found = typeof c.value === 'number' ? Number(m[1]) : m[1];
-    const ok = c.min ? Number(found) <= c.value : found === c.value;
+    const ok = c.min ? found <= c.value : found === c.value;
     if (!ok) {
       failures.push(
         `${c.file}: doc says ${found}, code says ${c.value}${c.min ? ' (floor)' : ''} — pattern ${c.re}`,
