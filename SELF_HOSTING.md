@@ -66,7 +66,9 @@ services:
       EIA_API_KEY: ""             # https://www.eia.gov/opendata/ (free)
 
       # ⚔️ Conflict & Unrest
-      ACLED_ACCESS_TOKEN: ""      # https://acleddata.com (free for researchers)
+      ACLED_EMAIL: ""             # https://acleddata.com (free for researchers)
+      ACLED_PASSWORD: ""          # OAuth flow — tokens auto-refresh (preferred over ACLED_ACCESS_TOKEN)
+      ACLED_ACCESS_TOKEN: ""      # Alternative: static token (expires every 24h)
 
       # 🛰️ Earth Observation
       NASA_FIRMS_API_KEY: ""      # REQUIRED for seed-fire-detections.mjs — https://firms.modaps.eosdis.nasa.gov (free)
