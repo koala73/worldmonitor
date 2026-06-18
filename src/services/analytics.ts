@@ -14,6 +14,8 @@ const UMAMI_SCRIPT_SRC = 'https://abacus.worldmonitor.app/script.js';
 const UMAMI_WEBSITE_ID = 'e8800335-c853-46a8-8497-c993ed2f58bc';
 const UMAMI_DOMAINS = 'worldmonitor.app,happy.worldmonitor.app';
 const UMAMI_QUEUE_LIMIT = 50;
+const UMAMI_LOAD_ATTEMPT_LIMIT = 2;
+const UMAMI_LOAD_RETRY_DELAY_MS = 5_000;
 
 type QueuedUmamiCall =
   | { kind: 'track'; event: UmamiEvent; data?: Record<string, unknown> }
@@ -22,6 +24,7 @@ type QueuedUmamiCall =
 const pendingUmamiCalls: QueuedUmamiCall[] = [];
 let umamiLoadScheduled = false;
 let umamiLoadStarted = false;
+let umamiLoadAttempts = 0;
 
 // ---------------------------------------------------------------------------
 // Type-safe event catalog — every event name lives here.
@@ -125,12 +128,15 @@ function flushPendingUmamiCalls(): void {
 
 function loadUmamiScript(): void {
   if (umamiLoadStarted || typeof document === 'undefined') return;
-  if (document.querySelector(`script[src="${UMAMI_SCRIPT_SRC}"]`)) {
+  const existing = document.querySelector<HTMLScriptElement>(`script[src="${UMAMI_SCRIPT_SRC}"]`);
+  if (existing) {
+    existing.addEventListener('load', flushPendingUmamiCalls, { once: true });
     flushPendingUmamiCalls();
     return;
   }
 
   umamiLoadStarted = true;
+  umamiLoadAttempts += 1;
   const script = document.createElement('script');
   script.async = true;
   script.src = UMAMI_SCRIPT_SRC;
@@ -139,6 +145,10 @@ function loadUmamiScript(): void {
   script.addEventListener('load', flushPendingUmamiCalls, { once: true });
   script.addEventListener('error', () => {
     umamiLoadStarted = false;
+    script.remove();
+    if (umamiLoadAttempts < UMAMI_LOAD_ATTEMPT_LIMIT) {
+      setTimeout(loadUmamiScript, UMAMI_LOAD_RETRY_DELAY_MS);
+    }
   }, { once: true });
   document.head.appendChild(script);
 }

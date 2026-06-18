@@ -79,17 +79,32 @@ describe('secondary dashboard startup', () => {
 
 describe('deferred Umami loader', () => {
   it('queues dashboard analytics calls and flushes them after the deferred script loads', async () => {
-    const appendedScripts: Array<Record<string, unknown>> = [];
-    const scriptListeners = new Map<string, () => void>();
+    const appendedScripts: Array<{
+      async: boolean;
+      src: string;
+      dataset: Record<string, string>;
+      removed: boolean;
+      listeners: Map<string, () => void>;
+      addEventListener: (type: string, cb: () => void) => void;
+      remove: () => void;
+    }> = [];
     const calls: Array<{ kind: string; name?: string; data: Record<string, unknown> | undefined }> = [];
 
-    const fakeScript = {
-      async: false,
-      src: '',
-      dataset: {} as Record<string, string>,
-      addEventListener: (type: string, cb: () => void) => {
-        scriptListeners.set(type, cb);
-      },
+    const makeFakeScript = () => {
+      const script = {
+        async: false,
+        src: '',
+        dataset: {} as Record<string, string>,
+        removed: false,
+        listeners: new Map<string, () => void>(),
+        addEventListener: (type: string, cb: () => void) => {
+          script.listeners.set(type, cb);
+        },
+        remove: () => {
+          script.removed = true;
+        },
+      };
+      return script;
     };
     const fakeWindow = {
       requestAnimationFrame: (cb: () => void) => {
@@ -106,15 +121,16 @@ describe('deferred Umami loader', () => {
       querySelector: () => null,
       createElement: (tag: string) => {
         assert.equal(tag, 'script');
-        return fakeScript;
+        return makeFakeScript();
       },
       head: {
-        appendChild: (script: Record<string, unknown>) => {
+        appendChild: (script: (typeof appendedScripts)[number]) => {
           appendedScripts.push(script);
           return script;
         },
       },
     };
+    const originalSetTimeout = globalThis.setTimeout;
 
     Object.defineProperty(globalThis, 'window', {
       configurable: true,
@@ -128,6 +144,13 @@ describe('deferred Umami loader', () => {
       configurable: true,
       value: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
     });
+    Object.defineProperty(globalThis, 'setTimeout', {
+      configurable: true,
+      value: (cb: () => void) => {
+        cb();
+        return 1;
+      },
+    });
 
     try {
       const analytics = await import('../src/services/analytics.ts');
@@ -136,11 +159,15 @@ describe('deferred Umami loader', () => {
       await analytics.initAnalytics();
 
       assert.equal(appendedScripts.length, 1);
-      assert.equal(fakeScript.async, true);
-      assert.equal(fakeScript.src, 'https://abacus.worldmonitor.app/script.js');
-      assert.equal(fakeScript.dataset.websiteId, 'e8800335-c853-46a8-8497-c993ed2f58bc');
-      assert.equal(fakeScript.dataset.domains, 'worldmonitor.app,happy.worldmonitor.app');
+      const firstScript = appendedScripts[0]!;
+      assert.equal(firstScript.async, true);
+      assert.equal(firstScript.src, 'https://abacus.worldmonitor.app/script.js');
+      assert.equal(firstScript.dataset.websiteId, 'e8800335-c853-46a8-8497-c993ed2f58bc');
+      assert.equal(firstScript.dataset.domains, 'worldmonitor.app,happy.worldmonitor.app');
       assert.deepEqual(calls, []);
+      firstScript.listeners.get('error')?.();
+      assert.equal(firstScript.removed, true);
+      assert.equal(appendedScripts.length, 2, 'failed Umami script load should schedule one retry');
 
       Object.defineProperty(fakeWindow, 'umami', {
         configurable: true,
@@ -149,7 +176,7 @@ describe('deferred Umami loader', () => {
           identify: (data: Record<string, unknown>) => calls.push({ kind: 'identify', data }),
         },
       });
-      scriptListeners.get('load')?.();
+      appendedScripts[1]!.listeners.get('load')?.();
 
       assert.deepEqual(calls, [
         { kind: 'track', name: 'search-open', data: { source: 'desktop' } },
@@ -159,6 +186,10 @@ describe('deferred Umami loader', () => {
       delete (globalThis as { window?: unknown }).window;
       delete (globalThis as { document?: unknown }).document;
       delete (globalThis as { localStorage?: unknown }).localStorage;
+      Object.defineProperty(globalThis, 'setTimeout', {
+        configurable: true,
+        value: originalSetTimeout,
+      });
     }
   });
 });

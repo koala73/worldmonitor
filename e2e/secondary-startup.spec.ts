@@ -24,7 +24,7 @@ test.describe('secondary startup work', () => {
     });
   });
 
-  test('does not request secondary analytics, auth, fonts, or YouTube before idle startup runs', async ({ page }) => {
+  test('defers secondary startup requests until idle startup runs', async ({ page }) => {
     const secondaryRequests: string[] = [];
     page.on('request', (request) => {
       const url = request.url();
@@ -36,5 +36,11 @@ test.describe('secondary startup work', () => {
     await page.waitForTimeout(250);
 
     expect(secondaryRequests).toEqual([]);
+
+    await page.evaluate(() => {
+      (window as unknown as { __wmRunDeferredIdle?: () => void }).__wmRunDeferredIdle?.();
+    });
+    await expect.poll(() => secondaryRequests.some((url) => url.includes('abacus.worldmonitor.app/script.js'))).toBe(true);
+    expect(secondaryRequests.some((url) => url.includes('www.youtube.com/iframe_api'))).toBe(false);
   });
 });
