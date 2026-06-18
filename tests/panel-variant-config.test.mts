@@ -10,6 +10,7 @@ import {
   countFreePanelCapUsage,
   enforceFreePanelLimit,
   getEffectivePanelConfig,
+  isFreePanelCapCounted,
   restoreFreeMapPanelAccess,
 } from '../src/config/panels.ts';
 
@@ -81,18 +82,36 @@ describe('variant panel config resolution', () => {
     assert.equal(countFreePanelCapUsage(clamped), FREE_MAX_PANELS);
   });
 
-  it('restores stale cap-filled free layouts where the old cap disabled the map', () => {
+  it('restores stale over-cap free layouts where the cap disabled the map', () => {
     const fullDefaults = Object.fromEntries(
       VARIANT_DEFAULTS.full.map((key) => [key, { ...getEffectivePanelConfig(key, 'full') }]),
     );
     const stale = enforceFreePanelLimit(fullDefaults, false);
     stale.map = { ...stale.map!, enabled: false };
+    const disabledCapPanel = Object.entries(fullDefaults).find(([key, panel]) =>
+      isFreePanelCapCounted(key) && panel.enabled && !stale[key]?.enabled
+    );
+    assert.ok(disabledCapPanel, 'fixture should include a disabled over-cap panel');
+    stale[disabledCapPanel[0]] = { ...disabledCapPanel[1], enabled: true };
 
     const restored = restoreFreeMapPanelAccess(stale);
 
     assert.equal(stale.map.enabled, false);
     assert.equal(restored.map?.enabled, true);
-    assert.equal(countFreePanelCapUsage(restored), FREE_MAX_PANELS);
+    assert.equal(countFreePanelCapUsage(restored), FREE_MAX_PANELS + 1);
+  });
+
+  it('does not force-enable a manually hidden map when the free layout is exactly at cap', () => {
+    const fullDefaults = Object.fromEntries(
+      VARIANT_DEFAULTS.full.map((key) => [key, { ...getEffectivePanelConfig(key, 'full') }]),
+    );
+    const atCap = enforceFreePanelLimit(fullDefaults, false);
+    atCap.map = { ...atCap.map!, enabled: false };
+
+    const restored = restoreFreeMapPanelAccess(atCap);
+
+    assert.equal(countFreePanelCapUsage(atCap), FREE_MAX_PANELS);
+    assert.equal(restored.map?.enabled, false);
   });
 
   it('does not force-enable a manually hidden map when the free layout is under cap', () => {

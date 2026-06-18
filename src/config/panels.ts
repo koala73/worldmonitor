@@ -1203,7 +1203,7 @@ export function restoreFreeMapPanelAccess(
     next[key] = { ...config };
   }
 
-  if (next.map?.enabled === false && countFreePanelCapUsage(next) >= FREE_MAX_PANELS) {
+  if (next.map?.enabled === false && countFreePanelCapUsage(next) > FREE_MAX_PANELS) {
     next.map = { ...next.map, enabled: true };
   }
 
