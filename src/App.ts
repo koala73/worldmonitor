@@ -128,6 +128,7 @@ import {
 import type { CorrelationPanel } from '@/components/CorrelationPanel';
 
 const CYBER_LAYER_ENABLED = import.meta.env.VITE_ENABLE_CYBER_LAYER === 'true';
+const FREE_MAP_PANEL_ACCESS_KEY = 'worldmonitor-free-map-panel-access-v1';
 
 export type { CountryBriefSignals } from '@/app/app-context';
 
@@ -1442,7 +1443,6 @@ export class App {
     // already short-circuited pro users.
     let panelSettings = loadFromStorage<Record<string, PanelConfig>>(STORAGE_KEYS.panels, {});
     let panelsChanged = false;
-    const FREE_MAP_PANEL_ACCESS_KEY = 'worldmonitor-free-map-panel-access-v1';
     if (!localStorage.getItem(FREE_MAP_PANEL_ACCESS_KEY)) {
       const restoredPanels = restoreFreeMapPanelAccess(panelSettings);
       if (panelSettings.map?.enabled !== restoredPanels.map?.enabled) {
