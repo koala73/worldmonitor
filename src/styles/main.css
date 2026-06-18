@@ -1459,12 +1459,19 @@ canvas,
   display: none;
 }
 
+:root {
+  --dashboard-panel-row-min: 200px;
+  --dashboard-panel-row-max: 380px;
+  --dashboard-grid-gap: 4px;
+  --dashboard-first-grid-reservation: calc(var(--dashboard-panel-row-min) + var(--dashboard-panel-row-min) + var(--dashboard-grid-gap));
+}
+
 .panels-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   grid-auto-flow: row dense;
-  grid-auto-rows: minmax(200px, 380px);
-  gap: 4px;
+  grid-auto-rows: minmax(var(--dashboard-panel-row-min), var(--dashboard-panel-row-max));
+  gap: var(--dashboard-grid-gap);
   padding: 4px;
   align-content: start;
   align-items: stretch;
@@ -1472,6 +1479,10 @@ canvas,
   position: relative;
   z-index: 1;
   /* This ensures panels scroll UNDER the pinned map (z-index: 100) */
+}
+
+.panels-grid:empty {
+  min-height: var(--dashboard-first-grid-reservation);
 }
 
 .site-footer {
@@ -1572,7 +1583,7 @@ canvas,
 
 .panel.span-2 {
   grid-row: span 2 !important;
-  min-height: 400px !important;
+  min-height: var(--dashboard-first-grid-reservation) !important;
 }
 
 .panel.span-3 {
@@ -2291,7 +2302,7 @@ body.panel-resize-active iframe {
 .panel-wide {
   grid-column: span 2;
   grid-row: span 2;
-  min-height: 350px;
+  min-height: var(--dashboard-first-grid-reservation);
   max-height: none;
 }
 
@@ -20907,7 +20918,7 @@ body.map-width-resizing {
     grid-row: 1;
     min-height: 0;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    grid-auto-rows: minmax(200px, 380px);
+    grid-auto-rows: minmax(var(--dashboard-panel-row-min), var(--dashboard-panel-row-max));
     align-content: start;
     overflow-y: auto;
   }
@@ -20957,7 +20968,7 @@ body.map-width-resizing {
   grid-row: 1;
   min-height: 0;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  grid-auto-rows: minmax(200px, 380px);
+  grid-auto-rows: minmax(var(--dashboard-panel-row-min), var(--dashboard-panel-row-max));
   align-content: start;
   overflow-y: auto;
 }
@@ -24678,6 +24689,7 @@ body.map-width-resizing {
 
 .dashboard-tabs-mount {
   flex-shrink: 0;
+  min-height: 36px;
 }
 
 .dashboard-tabs-bar {
@@ -24687,6 +24699,8 @@ body.map-width-resizing {
   padding: 5px 10px 0;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
+  box-sizing: border-box;
+  min-height: 36px;
   overflow-x: auto;
   scrollbar-width: thin;
 }

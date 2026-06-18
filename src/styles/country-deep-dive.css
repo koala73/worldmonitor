@@ -11,8 +11,15 @@
   transition: right 0.28s ease;
 }
 
+.country-deep-dive[aria-hidden="true"] {
+  transition: right 0.28s ease, visibility 0s linear 0.28s;
+  visibility: hidden;
+}
+
 .country-deep-dive.active {
   right: 0;
+  transition: right 0.28s ease;
+  visibility: visible;
 }
 
 .country-deep-dive.maximized {

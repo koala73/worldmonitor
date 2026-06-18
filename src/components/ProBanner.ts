@@ -23,6 +23,11 @@ let bannerContainer: HTMLElement | null = null;
 const DISMISS_KEY = 'wm-pro-banner-launched-dismissed';
 const LEGACY_DISMISS_KEY = 'wm-pro-banner-dismissed';
 const DISMISS_MS = 7 * 24 * 60 * 60 * 1000;
+const RESERVATION_CLASS = 'wm-pro-banner-reserved';
+
+function setReservation(active: boolean): void {
+  document.documentElement.classList.toggle(RESERVATION_CLASS, active);
+}
 
 function isDismissed(): boolean {
   localStorage.removeItem(LEGACY_DISMISS_KEY);
@@ -41,6 +46,7 @@ function dismiss(): void {
   setTimeout(() => {
     bannerEl?.remove();
     bannerEl = null;
+    setReservation(false);
   }, 300);
   localStorage.setItem(DISMISS_KEY, String(Date.now()));
 }
@@ -52,14 +58,26 @@ export function showProBanner(container: HTMLElement): void {
   // free" and "initially premium then downgrade" trajectories.
   bannerContainer = container;
 
+  if (bannerEl && !bannerEl.isConnected) {
+    bannerEl = null;
+  }
   if (bannerEl) return;
-  if (window.self !== window.top) return;
-  if (isDismissed()) return;
+  if (window.self !== window.top) {
+    setReservation(false);
+    return;
+  }
+  if (isDismissed()) {
+    setReservation(false);
+    return;
+  }
   // Don't pitch Pro to users who already have it. hasPremiumAccess() is the
   // authoritative signal — unions API key, tester key, Clerk pro role, AND
   // Convex Dodo entitlement (panel-gating.ts:11-27). A paying user shouldn't
   // see "Upgrade to Pro" at the top of every dashboard refresh.
-  if (hasPremiumAccess()) return;
+  if (hasPremiumAccess()) {
+    setReservation(false);
+    return;
+  }
   // Defer the initial mount when entitlement state hasn't loaded yet for a
   // signed-in user. App.ts:923 calls showProBanner() synchronously during
   // init Phase 1, but App.ts:868's `void initEntitlementSubscription()` is
@@ -77,6 +95,7 @@ export function showProBanner(container: HTMLElement): void {
   if (getCurrentClerkUser() && getEntitlementState() === null) return;
 
   trackGateHit('pro-banner');
+  setReservation(true);
 
   const banner = document.createElement('div');
   banner.className = 'pro-banner';
@@ -94,8 +113,11 @@ export function showProBanner(container: HTMLElement): void {
     dismiss();
   });
 
+  const slot = container.querySelector<HTMLElement>('#proBannerSlot');
   const header = container.querySelector('.header');
-  if (header) {
+  if (slot) {
+    slot.replaceChildren(banner);
+  } else if (header) {
     header.before(banner);
   } else {
     container.prepend(banner);
@@ -106,11 +128,15 @@ export function showProBanner(container: HTMLElement): void {
 }
 
 export function hideProBanner(): void {
-  if (!bannerEl) return;
+  if (!bannerEl) {
+    setReservation(false);
+    return;
+  }
   bannerEl.classList.add('pro-banner-out');
   setTimeout(() => {
     bannerEl?.remove();
     bannerEl = null;
+    setReservation(false);
   }, 300);
 }
 
@@ -136,11 +162,16 @@ export function isProBannerVisible(): boolean {
 //       so we can never surface a banner the user has already ✕'d this week.
 onEntitlementChange(() => {
   const premium = hasPremiumAccess();
-  if (premium && bannerEl) {
+  if (premium) {
+    if (!bannerEl) {
+      setReservation(false);
+      return;
+    }
     bannerEl.classList.add('pro-banner-out');
     setTimeout(() => {
       bannerEl?.remove();
       bannerEl = null;
+      setReservation(false);
     }, 300);
     return;
   }
