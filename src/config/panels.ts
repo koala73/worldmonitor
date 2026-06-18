@@ -1185,6 +1185,31 @@ export function isPanelInVariantDefaults(key: string): boolean {
 export const FREE_MAX_PANELS = 40;
 export const FREE_MAX_SOURCES = 80;
 
+export function isFreePanelCapCounted(key: string): boolean {
+  return key !== 'map' && !key.startsWith('cw-');
+}
+
+export function countFreePanelCapUsage(panelSettings: Record<string, PanelConfig>): number {
+  return Object.entries(panelSettings).filter(([key, panel]) =>
+    panel.enabled && isFreePanelCapCounted(key)
+  ).length;
+}
+
+export function restoreFreeMapPanelAccess(
+  panelSettings: Record<string, PanelConfig>,
+): Record<string, PanelConfig> {
+  const next: Record<string, PanelConfig> = {};
+  for (const [key, config] of Object.entries(panelSettings)) {
+    next[key] = { ...config };
+  }
+
+  if (next.map?.enabled === false && countFreePanelCapUsage(next) >= FREE_MAX_PANELS) {
+    next.map = { ...next.map, enabled: true };
+  }
+
+  return next;
+}
+
 /**
  * Returns true if the current user is entitled to enable/view this panel.
  * Mirrors the entitlement checks in panel-layout.ts (single source of truth).
@@ -1211,7 +1236,8 @@ export function isPanelEntitled(key: string, config: PanelConfig, isPro = false)
  * Returns a NEW map; the input is never mutated. Pro users get the same
  * panel eligibility, but still receive a copied map. For free users: cw-*
  * custom-widget panels are a pro
- * feature and are always disabled, then among the remaining enabled panels
+ * feature and are always disabled. The map is free baseline infrastructure
+ * and never consumes a capped panel slot. Among the remaining enabled panels
  * the lowest-priority ones past FREE_MAX_PANELS are disabled (priority asc,
  * key tiebreak — identical ordering to App.enforceFreeTierLimits).
  *
@@ -1237,7 +1263,7 @@ export function enforceFreePanelLimit(
   }
 
   const enabledKeys = Object.entries(next)
-    .filter(([k, v]) => v.enabled && !k.startsWith('cw-'))
+    .filter(([k, v]) => v.enabled && isFreePanelCapCounted(k))
     .sort(([ka, a], [kb, b]) => (a.priority ?? 99) - (b.priority ?? 99) || ka.localeCompare(kb))
     .map(([k]) => k);
 
