@@ -182,6 +182,7 @@
     "node-forge": "^1.4.0",
     "srvx": "^0.11.13",
     "protobufjs": "^7.6.2",
-    "ws": "$ws"
+    "ws": "$ws",
+    "shell-quote": "^1.8.4"
   }
 }
