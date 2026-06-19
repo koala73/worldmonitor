@@ -2211,6 +2211,22 @@
   z-index: 5;
 }
 
+.map-bottom-grid:empty {
+  flex: 0 0 0;
+  min-height: 0;
+  padding: 0;
+  border-top: 0;
+  overflow: hidden;
+}
+
+body.panel-drag-active .map-bottom-grid:empty {
+  flex: 0 0 120px;
+  min-height: 120px;
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  overflow-y: auto;
+}
+
 /* Base state for placeholder */
 .map-bottom-grid::after {
   content: 'Drop panels here to move them below the map';
@@ -2233,6 +2249,14 @@
   opacity: 0.4;
   pointer-events: none;
   transition: opacity 0.2s;
+}
+
+.map-bottom-grid:empty::after {
+  opacity: 0;
+}
+
+body.panel-drag-active .map-bottom-grid:empty::after {
+  opacity: 0.4;
 }
 
 /* Hide placeholder if there are panels */
