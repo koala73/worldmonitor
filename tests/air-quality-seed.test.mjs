@@ -242,6 +242,14 @@ describe('air quality main graceful failure behavior', () => {
     const preloadPath = join(tempDir, 'preload.mjs');
     const redisUrl = 'https://fake-upstash.local';
     writeFileSync(preloadPath, `
+// Collapse withRetry's exponential backoff sleeps (1s+2s per exhausted OpenAQ
+// page) so the graceful-failure path runs without the wall-clock wait. Retry
+// counts, the exit code, TTL extension, and log lines are unchanged — only the
+// dead time between retries. AbortSignal.timeout uses a separate timer and is
+// untouched. The child runs the script directly (no test framework), so
+// overriding the global timer here is side-effect free.
+const __origSetTimeout = globalThis.setTimeout;
+globalThis.setTimeout = (fn, ms, ...rest) => __origSetTimeout(fn, typeof ms === 'number' && ms > 25 ? 0 : ms, ...rest);
 process.env.UPSTASH_REDIS_REST_URL = ${JSON.stringify(redisUrl)};
 process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
 process.env.OPENAQ_API_KEY = 'fake-openaq-key';
