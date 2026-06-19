@@ -1,7 +1,8 @@
 import { DEFAULT_MAP_MODE, STORAGE_KEYS, type MapModePreference } from '@/config/variants/base';
 
 export function normalizeMapModePreference(value: string | null | undefined): MapModePreference {
-  return value === 'flat' ? 'flat' : 'globe';
+  if (value === 'flat' || value === 'globe') return value;
+  return DEFAULT_MAP_MODE;
 }
 
 function loadMapModeFromStorage<T>(key: string, fallback: T): T {

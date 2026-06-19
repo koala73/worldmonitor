@@ -111,7 +111,7 @@ export const STORAGE_KEYS = {
 } as const;
 
 export type MapModePreference = 'flat' | 'globe';
-export const DEFAULT_MAP_MODE: MapModePreference = 'globe';
+export const DEFAULT_MAP_MODE: MapModePreference = 'flat';
 
 // Type definitions for variant configs
 export interface VariantConfig {

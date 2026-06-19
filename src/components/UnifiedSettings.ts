@@ -1,6 +1,16 @@
 import '@/styles/settings-window.css';
 import { CANONICAL_FEEDS, INTEL_SOURCES, SOURCE_REGION_MAP } from '@/config/feeds';
-import { PANEL_CATEGORY_MAP, ALL_PANELS, VARIANT_DEFAULTS, getEffectivePanelConfig, getVariantPanelCategories, isPanelEntitled, FREE_MAX_PANELS } from '@/config/panels';
+import {
+  PANEL_CATEGORY_MAP,
+  ALL_PANELS,
+  VARIANT_DEFAULTS,
+  getEffectivePanelConfig,
+  getVariantPanelCategories,
+  isPanelEntitled,
+  FREE_MAX_PANELS,
+  countFreePanelCapUsage,
+  isFreePanelCapCounted,
+} from '@/config/panels';
 import { isProUser } from '@/services/widget-store';
 import { SITE_VARIANT } from '@/config/variant';
 import { t } from '@/services/i18n';
@@ -780,8 +790,8 @@ export class UnifiedSettings {
     // collapse to getEffectivePanelConfig's disabled synthetic fallback.
     const resolvedPanel = ALL_PANELS[key] ? getEffectivePanelConfig(key, SITE_VARIANT) : panel;
     if (!panel.enabled && !isPanelEntitled(key, resolvedPanel, isProUser())) return;
-    if (!panel.enabled && !isProUser()) {
-      const enabledCount = Object.entries(this.draftPanelSettings).filter(([k, p]) => p.enabled && !k.startsWith('cw-')).length;
+    if (!panel.enabled && !isProUser() && isFreePanelCapCounted(key)) {
+      const enabledCount = countFreePanelCapUsage(this.draftPanelSettings);
       if (enabledCount >= FREE_MAX_PANELS) {
         showToast(t('modals.settingsWindow.freePanelLimit', { max: String(FREE_MAX_PANELS) }));
         return;

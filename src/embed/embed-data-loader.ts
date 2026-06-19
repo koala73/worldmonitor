@@ -1,4 +1,4 @@
-import type { MapComponent } from '@/components/Map';
+import type { MapContainer } from '@/components/MapContainer';
 import type { MapLayers } from '@/types';
 import { fetchEarthquakes } from '@/services/earthquakes';
 import { fetchNaturalEvents } from '@/services/eonet';
@@ -11,12 +11,24 @@ import type { EmbedLayerId } from './embed-url';
 const REFRESH_MS = 10 * 60 * 1000;
 const CONFLICT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const conflictClient = new ConflictServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const STATIC_LAYER_READY_BY_EMBED_ID: Partial<Record<EmbedLayerId, keyof MapLayers>> = {
+  cables: 'cables',
+  pipelines: 'pipelines',
+  waterways: 'waterways',
+  tradeRoutes: 'tradeRoutes',
+  economic: 'economic',
+  stockExchanges: 'stockExchanges',
+  financialCenters: 'financialCenters',
+  centralBanks: 'centralBanks',
+  commodityHubs: 'commodityHubs',
+  gulfInvestments: 'gulfInvestments',
+};
 
 export class EmbedDataLoader {
   private refreshLoop: SmartPollLoopHandle | null = null;
 
   constructor(
-    private readonly map: MapComponent,
+    private readonly map: MapContainer,
     private readonly activeLayerIds: readonly EmbedLayerId[],
   ) {}
 
@@ -55,10 +67,23 @@ export class EmbedDataLoader {
       case 'weather':
         await this.loadWeather();
         return;
+      default:
+        this.markStaticLayerReady(id);
+        return;
     }
   }
 
+  private markStaticLayerReady(id: EmbedLayerId): void {
+    const layer = STATIC_LAYER_READY_BY_EMBED_ID[id];
+    if (layer) this.map.setLayerReady(layer, true);
+  }
+
   private async loadConflicts(): Promise<void> {
+    if (!this.map.supportsLiveConflictEvents()) {
+      this.map.setLayerReady('conflicts', true);
+      return;
+    }
+
     await this.withLayerState('conflicts', async () => {
       const end = Date.now();
       const start = end - CONFLICT_WINDOW_MS;

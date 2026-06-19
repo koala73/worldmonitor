@@ -5,6 +5,16 @@ export const EMBEDDABLE_LAYERS = [
   { id: 'earthquakes', mapLayer: 'natural', label: 'Earthquakes' },
   { id: 'protests', mapLayer: 'protests', label: 'Protests' },
   { id: 'weather', mapLayer: 'weather', label: 'Weather' },
+  { id: 'cables', mapLayer: 'cables', label: 'Undersea Cables' },
+  { id: 'pipelines', mapLayer: 'pipelines', label: 'Pipelines' },
+  { id: 'waterways', mapLayer: 'waterways', label: 'Chokepoints' },
+  { id: 'tradeRoutes', mapLayer: 'tradeRoutes', label: 'Trade Routes' },
+  { id: 'economic', mapLayer: 'economic', label: 'Economic Centers' },
+  { id: 'stockExchanges', mapLayer: 'stockExchanges', label: 'Stock Exchanges' },
+  { id: 'financialCenters', mapLayer: 'financialCenters', label: 'Financial Centers' },
+  { id: 'centralBanks', mapLayer: 'centralBanks', label: 'Central Banks' },
+  { id: 'commodityHubs', mapLayer: 'commodityHubs', label: 'Commodity Hubs' },
+  { id: 'gulfInvestments', mapLayer: 'gulfInvestments', label: 'GCC Investments' },
 ] as const;
 
 export type EmbedLayerId = typeof EMBEDDABLE_LAYERS[number]['id'];
@@ -32,15 +42,41 @@ export const DEFAULT_EMBED_THEME: EmbedTheme = 'dark';
 export const DEFAULT_EMBED_VARIANT: EmbedVariant = 'full';
 
 const EMBED_LAYER_BY_ID = new Map<string, (typeof EMBEDDABLE_LAYERS)[number]>(
-  EMBEDDABLE_LAYERS.map((layer) => [layer.id, layer]),
+  EMBEDDABLE_LAYERS.map((layer) => [layer.id.toLowerCase(), layer]),
 );
 
-const EMBED_LAYER_ALIASES = new Map<string, EmbedLayerId>([
+const EMBED_LAYER_ALIASES = new Map<string, EmbedLayerId>(([
   ['natural', 'earthquakes'],
   ['earthquake', 'earthquakes'],
   ['conflict', 'conflicts'],
   ['protest', 'protests'],
-]);
+  ['cable', 'cables'],
+  ['pipeline', 'pipelines'],
+  ['chokepoints', 'waterways'],
+  ['chokepoint', 'waterways'],
+  ['waterway', 'waterways'],
+  ['trade-routes', 'tradeRoutes'],
+  ['trade-routes-layer', 'tradeRoutes'],
+  ['tradeRoute', 'tradeRoutes'],
+  ['trade-route', 'tradeRoutes'],
+  ['economy', 'economic'],
+  ['stock-exchanges', 'stockExchanges'],
+  ['stockExchange', 'stockExchanges'],
+  ['stock-exchange', 'stockExchanges'],
+  ['financial-centers', 'financialCenters'],
+  ['financialCenter', 'financialCenters'],
+  ['financial-center', 'financialCenters'],
+  ['central-banks', 'centralBanks'],
+  ['centralBank', 'centralBanks'],
+  ['central-bank', 'centralBanks'],
+  ['commodity-hubs', 'commodityHubs'],
+  ['commodityHub', 'commodityHubs'],
+  ['commodity-hub', 'commodityHubs'],
+  ['gcc-investments', 'gulfInvestments'],
+  ['gulf-investments', 'gulfInvestments'],
+  ['gulfInvestment', 'gulfInvestments'],
+  ['gulf-investment', 'gulfInvestments'],
+] as const).map(([alias, id]) => [alias.toLowerCase(), id]));
 
 const VALID_THEMES = new Set<EmbedTheme>(['dark', 'light']);
 const VALID_VARIANTS = new Set<EmbedVariant>(['full', 'tech', 'finance', 'commodity', 'happy', 'energy']);
@@ -109,7 +145,7 @@ export function createBlankMapLayers(): MapLayers {
 export function mapLayersFromEmbedIds(layerIds: readonly EmbedLayerId[]): MapLayers {
   const layers = createBlankMapLayers();
   for (const id of layerIds) {
-    const layer = EMBED_LAYER_BY_ID.get(id);
+    const layer = EMBED_LAYER_BY_ID.get(id.toLowerCase());
     if (layer) layers[layer.mapLayer] = true;
   }
   return layers;
@@ -121,9 +157,7 @@ export function parseEmbedLayerIds(value: string | null): EmbedLayerId[] {
   for (const rawPart of value.split(',')) {
     const normalized = rawPart.trim().toLowerCase();
     if (!normalized || normalized === 'none') continue;
-    const id = (EMBED_LAYER_BY_ID.has(normalized)
-      ? normalized
-      : EMBED_LAYER_ALIASES.get(normalized)) as EmbedLayerId | undefined;
+    const id = EMBED_LAYER_BY_ID.get(normalized)?.id ?? EMBED_LAYER_ALIASES.get(normalized);
     if (id) seen.add(id);
   }
   return [...seen];

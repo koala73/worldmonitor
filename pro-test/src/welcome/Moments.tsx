@@ -14,9 +14,9 @@ interface MomentConfig {
 }
 
 const MOMENTS: MomentConfig[] = [
-  { key: 'm1', twoLineTitle: true, signals: ['RISK', 'FLOW', 'MACRO', 'PRICE'], chips: ['free', 'free', 'pro', 'pro'], href: 'https://finance.worldmonitor.app/?ref=welcome-m1' },
-  { key: 'm2', twoLineTitle: true, signals: ['AIS', 'WEATHER', 'SUPPLY', 'SPREAD'], chips: ['free', 'free', 'pro', 'pro'], href: 'https://commodity.worldmonitor.app/?ref=welcome-m2' },
-  { key: 'm3', twoLineTitle: true, signals: ['AI', 'GRID', 'CLIMATE', 'MARKET'], chips: ['free', 'free', 'pro', 'pro'], href: 'https://tech.worldmonitor.app/?ref=welcome-m3' },
+  { key: 'm1', twoLineTitle: true, signals: ['RISK', 'FLOW', 'MACRO', 'PRICE'], chips: ['free', 'free', 'pro', 'pro'], href: 'https://finance.worldmonitor.app/dashboard?ref=welcome-m1' },
+  { key: 'm2', twoLineTitle: true, signals: ['AIS', 'WEATHER', 'SUPPLY', 'SPREAD'], chips: ['free', 'free', 'pro', 'pro'], href: 'https://commodity.worldmonitor.app/dashboard?ref=welcome-m2' },
+  { key: 'm3', twoLineTitle: true, signals: ['AI', 'GRID', 'CLIMATE', 'MARKET'], chips: ['free', 'free', 'pro', 'pro'], href: 'https://tech.worldmonitor.app/dashboard?ref=welcome-m3' },
   { key: 'm4', twoLineTitle: false, signals: ['CABLE', 'BGP', 'PORTS', 'RISK'], chips: ['free', 'free', 'free', 'free'], href: `${DASHBOARD_PATH}?ref=welcome-m4` },
 ];
 

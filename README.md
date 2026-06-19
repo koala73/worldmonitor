@@ -84,6 +84,7 @@ npm run dev:tech       # tech.worldmonitor.app
 npm run dev:finance    # finance.worldmonitor.app
 npm run dev:commodity  # commodity.worldmonitor.app
 npm run dev:happy      # happy.worldmonitor.app
+npm run dev:energy     # energy.worldmonitor.app
 ```
 
 See the **[self-hosting guide](https://www.worldmonitor.app/docs/getting-started)** for deployment options (Vercel, Docker, static).

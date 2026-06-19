@@ -464,7 +464,10 @@ test.describe('desktop runtime routing guardrails', () => {
           options?: unknown
         ) {
           if (contextId === 'webgl2') {
-            return {} as WebGL2RenderingContext;
+            return {
+              getExtension: () => null,
+              getParameter: () => null,
+            } as unknown as WebGL2RenderingContext;
           }
           return originalGetContext.call(this, contextId, options as never);
         }) as typeof HTMLCanvasElement.prototype.getContext;
@@ -474,7 +477,7 @@ test.describe('desktop runtime routing guardrails', () => {
           id: string
         ): HTMLElement | null {
           if (id === 'deckgl-basemap') {
-            return null;
+            throw new Error('forced DeckGL init failure');
           }
           return originalGetElementById.call(this, id);
         }) as typeof Document.prototype.getElementById;
@@ -497,6 +500,69 @@ test.describe('desktop runtime routing guardrails', () => {
       } finally {
         HTMLCanvasElement.prototype.getContext = originalGetContext;
         Document.prototype.getElementById = originalGetElementById;
+        map?.destroy();
+        mapHost.remove();
+      }
+    });
+
+    expect(result.isDeckGLMode).toBe(false);
+    expect(result.hasSvgModeClass).toBe(true);
+    expect(result.hasDeckModeClass).toBe(false);
+    expect(result.deckWrapperCount).toBe(0);
+    expect(result.svgWrapperCount).toBe(1);
+  });
+
+  test('MapContainer falls back to SVG for software WebGL renderers', async ({ page }) => {
+    await page.goto('/tests/runtime-harness.html');
+
+    const result = await page.evaluate(async () => {
+      const { DEFAULT_MAP_LAYERS } = await import('/src/config/index.ts');
+      const { initI18n } = await import('/src/services/i18n.ts');
+      await initI18n();
+      const { MapContainer } = await import('/src/components/MapContainer.ts');
+
+      const mapHost = document.createElement('div');
+      mapHost.className = 'map-container';
+      mapHost.style.width = '1200px';
+      mapHost.style.height = '720px';
+      document.body.appendChild(mapHost);
+
+      const originalGetContext = HTMLCanvasElement.prototype.getContext;
+      let map: InstanceType<typeof MapContainer> | null = null;
+
+      try {
+        const rendererInfo = { UNMASKED_RENDERER_WEBGL: 0x9246 };
+        HTMLCanvasElement.prototype.getContext = (function (
+          this: HTMLCanvasElement,
+          contextId: string,
+          options?: unknown
+        ) {
+          if (contextId === 'webgl2') {
+            return {
+              getExtension: (name: string) => name === 'WEBGL_debug_renderer_info' ? rendererInfo : null,
+              getParameter: (param: number) => param === rendererInfo.UNMASKED_RENDERER_WEBGL ? 'Google SwiftShader' : null,
+            } as unknown as WebGL2RenderingContext;
+          }
+          return originalGetContext.call(this, contextId, options as never);
+        }) as typeof HTMLCanvasElement.prototype.getContext;
+
+        map = new MapContainer(mapHost, {
+          zoom: 1,
+          pan: { x: 0, y: 0 },
+          view: 'global',
+          layers: { ...DEFAULT_MAP_LAYERS },
+          timeRange: '7d',
+        });
+
+        return {
+          isDeckGLMode: map.isDeckGLMode(),
+          hasSvgModeClass: mapHost.classList.contains('svg-mode'),
+          hasDeckModeClass: mapHost.classList.contains('deckgl-mode'),
+          deckWrapperCount: mapHost.querySelectorAll('.deckgl-map-wrapper').length,
+          svgWrapperCount: mapHost.querySelectorAll('.map-wrapper').length,
+        };
+      } finally {
+        HTMLCanvasElement.prototype.getContext = originalGetContext;
         map?.destroy();
         mapHost.remove();
       }
