@@ -45,7 +45,7 @@ async function readWideLayoutMetrics(page: Page) {
 
 test.describe('dashboard wide display layout', () => {
   test('empty map drop zone does not consume the map column and stays collapsed after resize', async ({ page }) => {
-    test.setTimeout(150_000);
+    test.setTimeout(60_000);
 
     await setupDashboard(page, { width: 2537, height: 1270 });
     const initial = await readWideLayoutMetrics(page);
@@ -56,11 +56,10 @@ test.describe('dashboard wide display layout', () => {
     expect(initial.mapHeight).toBeGreaterThan(initial.sectionHeight * 0.85);
 
     await page.setViewportSize({ width: 1920, height: 1080 });
-    await expect.poll(() => readWideLayoutMetrics(page)).toMatchObject({
-      bottomChildren: 0,
-    });
+    await expect.poll(async () => (await readWideLayoutMetrics(page)).bottomHeight).toBeLessThanOrEqual(4);
     const resized = await readWideLayoutMetrics(page);
 
+    expect(resized.bottomChildren).toBe(0);
     expect(resized.scrollWidth).toBeLessThanOrEqual(resized.viewportWidth + 1);
     expect(resized.bottomHeight).toBeLessThanOrEqual(4);
     expect(resized.mapHeight).toBeGreaterThan(resized.sectionHeight * 0.85);
