@@ -3,8 +3,10 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 
-const root = resolve(new URL('..', import.meta.url).pathname);
-const read = (rel) => readFileSync(resolve(root, rel), 'utf8');
+import { fileURLToPath } from 'node:url';
+
+const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
+const read = (rel) => readFileSync(resolve(root, rel), 'utf8').replace(/\r\n/g, '\n');
 
 function parseNumericConst(source, name) {
   const match = source.match(new RegExp(`const ${name} = ([0-9.]+);`));

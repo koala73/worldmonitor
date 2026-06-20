@@ -300,7 +300,7 @@ function extractStoryTrackWriterFields(src) {
 }
 
 function extractDocStoryTrackHashFields(text) {
-  const match = text.match(/The story-track hash fields written today are:\n\n([\s\S]*?)\n\n/);
+  const match = text.match(/The story-track hash fields written today are:\r?\n\r?\n([\s\S]*?)\r?\n\r?\n/);
   assert.ok(match, 'failed to locate documented story-track hash field list');
   return [...match[1].matchAll(/`([A-Za-z][A-Za-z0-9]*)`/g)]
     .map((m) => m[1])
@@ -316,7 +316,7 @@ function openApiDescription(schemaName, propertyName, nestedPropertyName) {
 }
 
 function extractYamlSchemaBlock(yamlText, schemaName) {
-  const lines = yamlText.split('\n');
+  const lines = yamlText.split(/\r?\n/);
   const start = lines.findIndex((line) => line === `        ${schemaName}:`);
   assert.notEqual(start, -1, `failed to locate YAML schema ${schemaName}`);
 

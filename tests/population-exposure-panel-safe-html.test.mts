@@ -4,11 +4,11 @@ import { after, describe, it } from 'node:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { createBrowserEnvironment } from './helpers/runtime-config-panel-harness.mjs';
 
-const repoRoot = resolve(dirname(new URL(import.meta.url).pathname), '..');
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const tempDir = mkdtempSync(join(tmpdir(), 'wm-population-exposure-panel-'));
 const outfile = join(tempDir, 'PopulationExposurePanel.bundle.mjs');
 

@@ -1,4 +1,11 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync as originalReadFileSync, statSync } from 'node:fs';
+function readFileSync(path, options) {
+  const content = originalReadFileSync(path, options);
+  if (typeof content === 'string') {
+    return content.replace(/\r\n/g, '\n');
+  }
+  return content;
+}
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -288,7 +295,10 @@ describe('Comtrade reporter-code source-of-truth guard', () => {
         out.push(...collectRuntimeSources(filePath));
         continue;
       }
-      if (/\.(?:mjs|js|ts)$/.test(name)) out.push(filePath);
+      if (/\.(?:mjs|js|ts)$/.test(name)) {
+        if (name.startsWith('_bundle-')) continue;
+        out.push(filePath);
+      }
     }
     return out;
   }

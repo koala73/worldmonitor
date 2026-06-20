@@ -7,7 +7,7 @@ import { transformSync } from 'esbuild';
 const root = resolve(import.meta.dirname, '..');
 
 function readSrc(path: string): string {
-  return readFileSync(resolve(root, path), 'utf8');
+  return readFileSync(resolve(root, path), 'utf8').replace(/\r\n/g, '\n');
 }
 
 function extractMethod(src: string, signature: string): string {

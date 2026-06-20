@@ -1451,7 +1451,7 @@ function extractIndicatorWeightsForMarkedTable(
 }
 
 function extractIndicatorSourceBlock(text: string, indicatorId: string): string {
-  const blockRe = new RegExp(`^- indicator: ${escapeRegex(indicatorId)}\\n[\\s\\S]*?(?=\\n- indicator: |\\n# [A-Z]|\\n$)`, 'm');
+  const blockRe = new RegExp(`^- indicator: ${escapeRegex(indicatorId)}\\r?\\n[\\s\\S]*?(?=\\r?\\n- indicator: |\\r?\\n# [A-Z]|\\r?\\n$)`, 'm');
   const match = blockRe.exec(text);
   assert.ok(match, `indicator-sources.yaml row for "${indicatorId}" not found.`);
   return match[0];

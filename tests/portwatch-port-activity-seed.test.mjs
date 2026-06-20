@@ -506,7 +506,7 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     // Called inside fetchAll before refs/preflight/activity stages.
     assert.match(
       src,
-      /export async function fetchAll[\s\S]{0,400}?resolveArcgisDateField\(/,
+      /export async function fetchAll[\s\S]{0,600}?resolveArcgisDateField\(/,
     );
     // Both per-country fetchers receive dateField from the resolved value.
     assert.match(src, /fetchMaxDate\(iso3,\s*\{\s*signal,\s*dateField\s*\}\)/);

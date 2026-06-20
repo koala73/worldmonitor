@@ -1,9 +1,16 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFileSync, existsSync, readdirSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync as originalReadFileSync, existsSync, readdirSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+function readFileSync(path, options) {
+  const content = originalReadFileSync(path, options);
+  if (typeof content === 'string') {
+    return content.replace(/\r\n/g, '\n');
+  }
+  return content;
+}
 import { fileURLToPath } from 'node:url';
 import {
   CONTENT_CORPUS_PREFIXES,

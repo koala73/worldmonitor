@@ -88,6 +88,7 @@ function ucdpRedisWriterPaths() {
           || new RegExp(`\\[\\s*['"]SET['"]\\s*,\\s*${keyVar}\\b`).test(text)
       ));
     })
+    .map((path) => path.replace(/\\/g, '/'))
     .sort();
 }
 

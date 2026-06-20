@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -74,7 +74,7 @@ describe('scripts/shared/ stays in sync with shared/', () => {
 
 describe('Edge Function shared helpers resolve', () => {
   it('_rss-allowed-domains.js re-exports shared domain list', async () => {
-    const mod = await import(join(apiDir, '_rss-allowed-domains.js'));
+    const mod = await import(pathToFileURL(join(apiDir, '_rss-allowed-domains.js')).href);
     const domains = mod.default;
     assert.ok(Array.isArray(domains), 'Expected default export to be an array');
     assert.ok(domains.length > 200, `Expected 200+ domains, got ${domains.length}`);

@@ -9,9 +9,10 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { GRACEFUL_FETCH_FAILURE_EXIT_CODE } from '../scripts/_seed-utils.mjs';
 
-const SCRIPTS_DIR = new URL('../scripts/', import.meta.url).pathname;
+const SCRIPTS_DIR = fileURLToPath(new URL('../scripts/', import.meta.url));
 
 function runBundleWith(sections, opts = {}) {
   const runPath = join(SCRIPTS_DIR, '_bundle-runner-test-run.mjs');
@@ -95,14 +96,18 @@ test('timeout emits terminal reason BEFORE SIGTERM/SIGKILL grace (survives conta
     // SIGTERM send, not after SIGKILL — this is what survives a container kill
     // landing inside the 10s grace window.
     const failIdx = combined.indexOf('Failed after');
-    const sigkillIdx = combined.indexOf('SIGKILL');
     assert.ok(failIdx >= 0, 'must emit Failed line');
-    assert.ok(sigkillIdx > failIdx, 'Failed line must precede SIGKILL escalation');
+    if (process.platform !== 'win32') {
+      const sigkillIdx = combined.indexOf('SIGKILL');
+      assert.ok(sigkillIdx > failIdx, 'Failed line must precede SIGKILL escalation');
+    }
     // Match the timeout-seconds value loosely so a future bump doesn't
     // require a coordinated regex update — the assertion's purpose is
     // "Failed line names the timeout-after-N pattern", not the literal N.
     assert.match(combined, /Failed after .*s: timeout after \d+s — sending SIGTERM/);
-    assert.match(combined, /Did not exit on SIGTERM.*SIGKILL/);
+    if (process.platform !== 'win32') {
+      assert.match(combined, /Did not exit on SIGTERM.*SIGKILL/);
+    }
     // timeout + 10s SIGTERM grace + overhead; cap well above that to avoid flake.
     assert.ok(elapsedMs < 20_000, `timeout escalation took ${elapsedMs}ms — too slow`);
   } finally {

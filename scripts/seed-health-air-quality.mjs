@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { pathToFileURL } from 'node:url';
 import {
   acquireLockSafely,
   CHROME_UA,
@@ -607,7 +608,7 @@ async function main() {
   }
 }
 
-const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^file:\/\//, ''));
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   main().catch((error) => {
     const cause = error?.cause ? ` (cause: ${error.cause.message || error.cause.code || error.cause})` : '';

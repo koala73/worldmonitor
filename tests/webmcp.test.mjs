@@ -299,7 +299,7 @@ describe('webmcp App.ts binding: readiness + teardown', () => {
     // would stop at the first such closing brace and silently shrink
     // the slice we search for the pre-await pattern.
     const initBody = appSrc.match(
-      /public async init\(\): Promise<void> \{([\s\S]*?)\n {2}\}(?=\n\n {2}(?:public|private) )/,
+      /public async init\(\): Promise<void> \{([\s\S]*?)\r?\n {2}\}(?=\r?\n\r?\n {2}(?:public|private) )/,
     );
     assert.ok(initBody, 'could not locate init() body (anchor to next class member missing)');
     const preAwait = initBody[1].split(/\n\s+await\s/, 2)[0];
@@ -405,7 +405,7 @@ describe('webmcp App.ts binding: readiness + teardown', () => {
     // Same anchoring as init() — end at the next class member so an
     // intermediate 2-space-indent close brace can't truncate the capture.
     const destroyBody = appSrc.match(
-      /public destroy\(\): void \{([\s\S]*?)\n {2}\}(?=\n\n {2}(?:public|private) )/,
+      /public destroy\(\): void \{([\s\S]*?)\r?\n {2}\}(?=\r?\n\r?\n {2}(?:public|private) )/,
     );
     assert.ok(destroyBody, 'could not locate destroy() body (anchor to next class member missing)');
     assert.match(
