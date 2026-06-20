@@ -1,0 +1,16 @@
+{
+  "_comment": "Cloudflare WAF Custom Rule — exempt /mcp from Bot Fight Mode.",
+  "_issue": "https://github.com/koala73/worldmonitor/issues/4348",
+  "rules": [
+    {
+      "description": "Skip Bot Fight Mode for /mcp — allow MCP client connections (issue #4348)",
+      "expression": "(http.request.uri.path eq \"/mcp\" or starts_with(http.request.uri.path, \"/mcp/\"))",
+      "action": "skip",
+      "action_parameters": {
+        "products": ["botFight", "bic"],
+        "ruleset": "current"
+      },
+      "enabled": true
+    }
+  ]
+}
