@@ -406,6 +406,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /evaluating '[^']*\.luma/,
       /translateNotifyError/,
       /GM_getValue/,
+      /gm_menus/, // WORLDMONITOR-TJ — Greasemonkey/Violentmonkey internal (GUID-keyed window['<uuid>'].gm_menus userscript-menu registry); never in our bundle, sibling of GM_getValue
       /^InvalidStateError:|The object is in an invalid state/,
       /Could not establish connection\. Receiving end does not exist/,
       /webkitCurrentPlaybackTargetIsWireless/,
