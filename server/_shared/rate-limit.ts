@@ -3,6 +3,16 @@ import { Redis } from '@upstash/redis';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../api/_sentry-edge.js';
 
+// @upstash/redis defaults to 5 retries with exponential backoff (~4.3s total)
+// before surfacing an unreachable-Redis error. The node test runner sets
+// NODE_TEST_CONTEXT in the child that executes each file; in that context the
+// fail-open / fail-closed rate-limit tests point UPSTASH_REDIS_REST_URL at a
+// fake host and would otherwise burn that full backoff on every limiter call.
+// Skip retries under the test runner only — production (env unset) keeps the
+// resilient default untouched. Mirrors the retry:false already shipped on the
+// MCP limiter to unblock the suite (PR #3963).
+const REDIS_TEST_RETRY_OPTS: { retry?: false } = process.env.NODE_TEST_CONTEXT ? { retry: false } : {};
+
 let ratelimit: Ratelimit | null = null;
 
 function getRatelimit(): Ratelimit | null {
@@ -12,7 +22,7 @@ function getRatelimit(): Ratelimit | null {
   if (!url || !token) return null;
 
   ratelimit = new Ratelimit({
-    redis: new Redis({ url, token }),
+    redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
     limiter: Ratelimit.slidingWindow(600, '60 s'),
     prefix: 'rl',
     analytics: false,
@@ -216,7 +226,7 @@ function getEndpointRatelimit(pathname: string): Ratelimit | null {
   if (!url || !token) return null;
 
   const rl = new Ratelimit({
-    redis: new Redis({ url, token }),
+    redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
     limiter: Ratelimit.slidingWindow(policy.limit, policy.window),
     prefix: 'rl:ep',
     analytics: false,
@@ -283,7 +293,7 @@ function getScopedRatelimit(scope: string, limit: number, window: Duration): Rat
   if (!url || !token) return null;
 
   const rl = new Ratelimit({
-    redis: new Redis({ url, token }),
+    redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
     limiter: Ratelimit.slidingWindow(limit, window),
     prefix: 'rl:scope',
     analytics: false,
