@@ -3,6 +3,14 @@ import { Redis } from '@upstash/redis';
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
 
+// @upstash/redis defaults to 5 retries with exponential backoff (~4.3s total)
+// before surfacing an unreachable-Redis error. Under the node test runner
+// (NODE_TEST_CONTEXT is set) skip retries so fail-open / fail-closed tests that
+// point UPSTASH_REDIS_REST_URL at a fake host degrade immediately instead of
+// stalling. Production (env unset) keeps the resilient default. Mirrors
+// REDIS_TEST_RETRY_OPTS in server/_shared/rate-limit.ts and PR #3963.
+const REDIS_TEST_RETRY_OPTS = process.env.NODE_TEST_CONTEXT ? { retry: false } : {};
+
 let ratelimit = null;
 
 function getRatelimit() {
@@ -13,7 +21,7 @@ function getRatelimit() {
   if (!url || !token) return null;
 
   ratelimit = new Ratelimit({
-    redis: new Redis({ url, token }),
+    redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
     limiter: Ratelimit.slidingWindow(600, '60 s'),
     prefix: 'rl',
     analytics: false,

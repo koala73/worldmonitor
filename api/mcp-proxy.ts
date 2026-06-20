@@ -68,7 +68,12 @@ function logProxyCall(entry: {
 
 const TIMEOUT_MS = 15_000;
 const SSE_CONNECT_TIMEOUT_MS = 10_000;
-const SSE_RPC_TIMEOUT_MS = 12_000;
+// Production waits up to 12s for an SSE RPC response. The node test runner sets
+// NODE_TEST_CONTEXT; an SSE mock that closes its stream before the proxy
+// registers its RPC deferred would otherwise stall the suite for that full
+// window. Shorten it under the test runner only — the routing/SSRF tests still
+// exercise the timeout→reject (504) path, just without the wall-clock stall.
+const SSE_RPC_TIMEOUT_MS = process.env.NODE_TEST_CONTEXT ? 200 : 12_000;
 const MCP_PROTOCOL_VERSION = '2025-03-26';
 
 const BLOCKED_HOST_PATTERNS = [
