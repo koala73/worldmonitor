@@ -12,8 +12,8 @@ const seedSrc = readFileSync('scripts/seed-cross-source-signals.mjs', 'utf8');
 
 const pureSrc = seedSrc
   .replace(/^import\s.*$/gm, '')
-  .replace(/loadEnvFile\([^)]+\);\n/, '')
-  .replace(/async function readAllSourceKeys[\s\S]*?\n}\n\n\/\/ ── Signal extractors/m, '// readAllSourceKeys removed for unit test\n\n// ── Signal extractors')
+  .replace(/loadEnvFile\([^)]+\);\r?\n/, '')
+  .replace(/async function readAllSourceKeys[\s\S]*?\r?\n}\r?\n\r?\n\/\/ ── Signal extractors/m, '// readAllSourceKeys removed for unit test\n\n// ── Signal extractors')
   .replace(/runSeed\('intelligence'[\s\S]*$/m, '')
   // Contract migration added `export function declareRecords`; vm.runInContext
   // cannot execute ESM export syntax. Strip the keyword so the function

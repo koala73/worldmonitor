@@ -44,8 +44,8 @@ describe('App.destroy lifecycle cleanup contract', () => {
   });
 
   it('restarts flight and vessel history cleanup on same-document re-init', () => {
-    assert.match(appSrc, /startFlightHistoryCleanup,\n\s+startVesselHistoryCleanup,/);
-    assert.match(appSrc, /await initDB\(\);\n\s+startFlightHistoryCleanup\(\);\n\s+startVesselHistoryCleanup\(\);/);
+    assert.match(appSrc, /startFlightHistoryCleanup,\r?\n\s+startVesselHistoryCleanup,/);
+    assert.match(appSrc, /await initDB\(\);\r?\n\s+startFlightHistoryCleanup\(\);\r?\n\s+startVesselHistoryCleanup\(\);/);
     assert.match(militaryFlightsSrc, /export function startFlightHistoryCleanup\(\): void \{[\s\S]*?historyCleanupIntervalId = setInterval\(cleanupFlightHistory, HISTORY_CLEANUP_INTERVAL\);[\s\S]*?\}/);
     assert.match(militaryFlightsSrc, /startFlightHistoryCleanup\(\);/);
     assert.match(militaryVesselsSrc, /export function startVesselHistoryCleanup\(\): void \{[\s\S]*?historyCleanupIntervalId = setInterval\(cleanup, HISTORY_CLEANUP_INTERVAL\);[\s\S]*?\}/);

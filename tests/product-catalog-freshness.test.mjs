@@ -8,8 +8,8 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 
@@ -156,29 +156,68 @@ describe('Product catalog freshness', () => {
 
 describe('Product ID guard', () => {
   it('no raw pdt_ strings outside allowed paths', () => {
-    // Allowed paths: catalog, generated files, tests, built assets
-    const result = execSync(
-      `grep -rn 'pdt_' --include='*.ts' --include='*.tsx' --include='*.mjs' --include='*.js' . ` +
-      `| grep -v node_modules ` +
-      `| grep -v '.claude/worktrees/' ` +
-      `| grep -v 'convex/_generated/' ` +
-      `| grep -v 'convex/config/productCatalog' ` +
-      `| grep -v 'api/product-catalog' ` +
-      `| grep -v 'api/_product-fallback-prices' ` +
-      `| grep -v 'src/config/products.generated' ` +
-      `| grep -v 'pro-test/src/generated/' ` +
-      `| grep -v 'public/pro/' ` +
-      `| grep -v 'tests/' ` +
-      `| grep -v 'convex/__tests__/' ` +
-      `| grep -v 'scripts/generate-product-config' ` +
-      `| grep -v '.test.' ` +
-      `|| true`,
-      { cwd: ROOT, encoding: 'utf8' },
-    ).trim();
+    const allowedExtensions = ['.ts', '.tsx', '.mjs', '.js'];
+    const excludePatterns = [
+      'node_modules',
+      '.git',
+      '.claude/worktrees/',
+      'convex/_generated/',
+      'convex/config/productCatalog',
+      'api/product-catalog',
+      'api/_product-fallback-prices',
+      'src/config/products.generated',
+      'pro-test/src/generated/',
+      'public/pro/',
+      'tests/',
+      'convex/__tests__/',
+      'scripts/generate-product-config'
+    ];
 
-    if (result) {
+    const results = [];
+
+    function walk(currentDir) {
+      const entries = readdirSync(currentDir);
+      for (const entry of entries) {
+        const fullPath = join(currentDir, entry);
+        const relPath = relative(ROOT, fullPath).replace(/\\/g, '/');
+        
+        const isDir = statSync(fullPath).isDirectory();
+        const checkPath = isDir ? relPath + '/' : relPath;
+
+        let isExcluded = false;
+        for (const pattern of excludePatterns) {
+          if (checkPath.includes(pattern)) {
+            isExcluded = true;
+            break;
+          }
+        }
+        if (isExcluded) continue;
+
+        if (isDir) {
+          walk(fullPath);
+        } else {
+          const extIdx = entry.lastIndexOf('.');
+          const ext = extIdx !== -1 ? entry.substring(extIdx) : '';
+          if (allowedExtensions.includes(ext) && !entry.includes('.test.')) {
+            const content = readFileSync(fullPath, 'utf8');
+            if (content.includes('pdt_')) {
+              const lines = content.split(/\r?\n/);
+              lines.forEach((line, index) => {
+                if (line.includes('pdt_')) {
+                  results.push(`${relPath}:${index + 1}:${line}`);
+                }
+              });
+            }
+          }
+        }
+      }
+    }
+
+    walk(ROOT);
+
+    if (results.length > 0) {
       assert.fail(
-        `Found pdt_ strings outside allowed paths. These should import from the catalog:\n${result}`,
+        `Found pdt_ strings outside allowed paths. These should import from the catalog:\n${results.join('\n')}`,
       );
     }
   });

@@ -1,5 +1,12 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync as originalReadFileSync } from 'node:fs';
+function readFileSync(path: any, options?: any): any {
+  const content = originalReadFileSync(path, options);
+  if (typeof content === 'string') {
+    return content.replace(/\r\n/g, '\n');
+  }
+  return content;
+}
 import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { transformSync } from 'esbuild';

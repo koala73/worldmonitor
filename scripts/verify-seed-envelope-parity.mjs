@@ -13,7 +13,7 @@
 // Exit 1 with a diff on drift.
 
 import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -178,7 +178,7 @@ async function main() {
 // import this module to exercise extractFunctions/scanBalanced in isolation,
 // and running main() on import would trigger process.exit from the test
 // process.
-const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^file:\/\//, ''));
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   main().catch((err) => {
     console.error('verify-seed-envelope-parity: unexpected error', err);

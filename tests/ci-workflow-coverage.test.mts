@@ -11,13 +11,15 @@ const packageJson = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8
   scripts?: Record<string, string>;
 };
 const packageScripts = packageJson.scripts ?? {};
-const deployGateWorkflow = readFileSync(resolve(workflowsDir, 'deploy-gate.yml'), 'utf8');
-const securityAuditWorkflow = readFileSync(resolve(workflowsDir, 'security-audit.yml'), 'utf8');
-const securityAuditScript = readFileSync(resolve(root, '.github/scripts/audit-production-dependencies.mjs'), 'utf8');
-const testWorkflow = readFileSync(resolve(workflowsDir, 'test.yml'), 'utf8');
+const read = (p: string) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
+
+const deployGateWorkflow = read(resolve(workflowsDir, 'deploy-gate.yml'));
+const securityAuditWorkflow = read(resolve(workflowsDir, 'security-audit.yml'));
+const securityAuditScript = read(resolve(root, '.github/scripts/audit-production-dependencies.mjs'));
+const testWorkflow = read(resolve(workflowsDir, 'test.yml'));
 const workflowText = readdirSync(workflowsDir)
   .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
-  .map((name) => readFileSync(resolve(workflowsDir, name), 'utf8'))
+  .map((name) => read(resolve(workflowsDir, name)))
   .join('\n');
 
 const REQUIRED_PR_SCRIPTS = [
