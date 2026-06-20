@@ -192,6 +192,10 @@ interface DeckMapState {
   timeRange: TimeRange;
 }
 
+interface DeckGLMapOptions {
+  chrome?: boolean;
+}
+
 interface HotspotWithBreaking extends Hotspot {
   hasBreaking?: boolean;
 }
@@ -670,6 +674,7 @@ export class DeckGLMap {
   private renderPending = false;
   private webglLost = false;
   private usedFallbackStyle = false;
+  private readonly chrome: boolean;
   private styleLoadTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private tileMonitorGeneration = 0;
 
@@ -720,8 +725,9 @@ export class DeckGLMap {
   private lastAircraftFetchZoom = -1;
   private aircraftFetchSeq = 0;
 
-  constructor(container: HTMLElement, initialState: DeckMapState) {
+  constructor(container: HTMLElement, initialState: DeckMapState, options: DeckGLMapOptions = {}) {
     this.container = container;
+    this.chrome = options.chrome ?? true;
     this.state = {
       ...initialState,
       pan: { ...initialState.pan },
@@ -774,10 +780,12 @@ export class DeckGLMap {
       this.render();
     });
 
-    this.createControls();
-    this.createTimeSlider();
-    this.createLayerToggles();
-    this.createLegend();
+    if (this.chrome) {
+      this.createControls();
+      this.createTimeSlider();
+      this.createLayerToggles();
+      this.createLegend();
+    }
 
     // Start day/night timer only if layer is initially enabled
     if (this.state.layers.dayNight) {
@@ -7070,6 +7078,18 @@ export class DeckGLMap {
             'fill-opacity': 0,
           },
         });
+        if (!this.chrome) {
+          this.maplibreMap.addLayer({
+            id: 'country-embed-outline',
+            type: 'line',
+            source: 'country-boundaries',
+            paint: {
+              'line-color': getCurrentTheme() === 'light' ? '#334155' : '#94a3b8',
+              'line-width': 0.8,
+              'line-opacity': getCurrentTheme() === 'light' ? 0.26 : 0.32,
+            },
+          });
+        }
         this.maplibreMap.addLayer({
           id: 'country-hover-fill',
           type: 'fill',
@@ -7336,6 +7356,10 @@ export class DeckGLMap {
     this.maplibreMap.setPaintProperty('country-hover-fill',   'fill-opacity', hoverFillOpacity);
     this.maplibreMap.setPaintProperty('country-hover-border', 'line-opacity', hoverBorderOpacity);
     this.maplibreMap.setPaintProperty('country-highlight-fill', 'fill-opacity', highlightOpacity);
+    if (this.maplibreMap.getLayer('country-embed-outline')) {
+      this.maplibreMap.setPaintProperty('country-embed-outline', 'line-color', theme === 'light' ? '#334155' : '#94a3b8');
+      this.maplibreMap.setPaintProperty('country-embed-outline', 'line-opacity', theme === 'light' ? 0.26 : 0.32);
+    }
   }
 
   public destroy(): void {

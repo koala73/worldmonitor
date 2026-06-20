@@ -6,14 +6,13 @@
  */
 
 import * as Sentry from '@sentry/react';
-import type { Clerk } from '@clerk/clerk-js';
 import type { CheckoutEvent } from 'dodopayments-checkout';
+import { ensureClerk, type LoadedClerk } from './clerk';
+export { ensureClerk } from './clerk';
 
 const API_BASE = 'https://api.worldmonitor.app/api';
 const DODO_PORTAL_FALLBACK_URL = 'https://customer.dodopayments.com';
 const ACTIVE_SUBSCRIPTION_EXISTS = 'ACTIVE_SUBSCRIPTION_EXISTS';
-
-const MONO_FONT = "'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace";
 
 import {
   parseCheckoutIntentFromSearch,
@@ -21,10 +20,9 @@ import {
   buildCheckoutReturnUrl,
 } from './checkout-intent-url';
 import { createEntitlementWatchdog, type EntitlementWatchdog } from './entitlement-watchdog';
+import { DASHBOARD_CHECKOUT_SUCCESS_URL } from '../routes';
 
-let clerk: InstanceType<typeof Clerk> | null = null;
 let checkoutInFlight = false;
-let clerkLoadPromise: Promise<InstanceType<typeof Clerk>> | null = null;
 
 /**
  * Phase machine for the checkout flow. Only `creating_checkout` drives
@@ -59,65 +57,6 @@ export function subscribeCheckoutPhase(cb: (phase: CheckoutPhase) => void): () =
   phaseSubscribers.add(cb);
   cb(_phase);
   return () => { phaseSubscribers.delete(cb); };
-}
-
-export async function ensureClerk(): Promise<InstanceType<typeof Clerk>> {
-  if (clerk) return clerk;
-  if (clerkLoadPromise) return clerkLoadPromise;
-  clerkLoadPromise = _loadClerk().catch((err) => {
-    clerkLoadPromise = null;
-    throw err;
-  });
-  return clerkLoadPromise;
-}
-
-async function _loadClerk(): Promise<InstanceType<typeof Clerk>> {
-  const { Clerk: C } = await import('@clerk/clerk-js');
-  const key = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-  if (!key) throw new Error('VITE_CLERK_PUBLISHABLE_KEY not set');
-  const instance = new C(key);
-  await instance.load({
-    appearance: {
-      variables: {
-        colorBackground: '#0f0f0f',
-        colorInputBackground: '#141414',
-        colorInputText: '#e8e8e8',
-        colorText: '#e8e8e8',
-        colorTextSecondary: '#aaaaaa',
-        colorPrimary: '#44ff88',
-        colorNeutral: '#e8e8e8',
-        colorDanger: '#ff4444',
-        borderRadius: '4px',
-        fontFamily: MONO_FONT,
-        fontFamilyButtons: MONO_FONT,
-      },
-      elements: {
-        card: { backgroundColor: '#111111', border: '1px solid #2a2a2a', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' },
-        formButtonPrimary: { color: '#000000', fontWeight: '600' },
-        footerActionLink: { color: '#44ff88' },
-        socialButtonsBlockButton: { borderColor: '#2a2a2a', color: '#e8e8e8', backgroundColor: '#141414' },
-      },
-    },
-  });
-
-  // Only publish the instance after load() succeeds, so a failed load
-  // doesn't wedge ensureClerk()'s `if (clerk) return clerk;` short-circuit
-  // and bypass the retry path.
-  clerk = instance;
-
-  // NO addListener-based auto-resume. That was the source of the
-  // surprise-purchase bug: any sign-in event (checkout-initiated OR
-  // generic "Sign In" CTA on /pro) would fire the listener; with
-  // module-scoped pendingProductId the stale intent from a dismissed
-  // checkout modal would run when the user signed in later for
-  // unrelated reasons.
-  //
-  // Intent is bound to the specific sign-in attempt via Clerk's
-  // afterSignInUrl / afterSignUpUrl (see startCheckout). On dismissal
-  // there's no redirect; only successful sign-in FROM OUR openSignIn
-  // call navigates to a URL carrying the intent params. Generic sign-
-  // in paths don't set these URLs, so they can't trigger resume.
-  return clerk;
 }
 
 /**
@@ -219,10 +158,10 @@ export function initOverlay(onSuccess?: () => void): void {
       // status endpoint is authoritative for the entitlement; the
       // URL params are informational at this point.
       if (reason === 'event-redirect') {
-        window.location.href = redirectTo || 'https://worldmonitor.app/?wm_checkout=success';
+        window.location.href = redirectTo || DASHBOARD_CHECKOUT_SUCCESS_URL;
       } else {
         safeCloseOverlay();
-        window.location.href = 'https://worldmonitor.app/?wm_checkout=success';
+        window.location.href = DASHBOARD_CHECKOUT_SUCCESS_URL;
       }
     };
 
@@ -322,7 +261,7 @@ export async function startCheckout(
 ): Promise<boolean> {
   if (checkoutInFlight) return false;
 
-  let c: InstanceType<typeof Clerk>;
+  let c: LoadedClerk;
   try {
     c = await ensureClerk();
   } catch (err) {
@@ -361,7 +300,7 @@ export async function tryResumeCheckoutFromUrl(): Promise<boolean> {
   const cleanUrl = window.location.pathname + cleanSearch + window.location.hash;
   window.history.replaceState({}, '', cleanUrl);
 
-  let c: InstanceType<typeof Clerk>;
+  let c: LoadedClerk;
   try {
     c = await ensureClerk();
   } catch {
@@ -417,7 +356,7 @@ async function doCheckout(
       },
       body: JSON.stringify({
         productId,
-        returnUrl: 'https://worldmonitor.app/?wm_checkout=success',
+        returnUrl: DASHBOARD_CHECKOUT_SUCCESS_URL,
         discountCode: options.discountCode,
         referralCode: options.referralCode,
       }),
@@ -614,12 +553,15 @@ function showCheckoutLoadingToast(): void {
 }
 
 async function getAuthToken(): Promise<string | null> {
-  let token = await clerk?.session?.getToken({ template: 'convex' }).catch(() => null)
-    ?? await clerk?.session?.getToken().catch(() => null);
+  const c = await ensureClerk().catch(() => null);
+  if (!c) return null;
+
+  let token = await c.session?.getToken({ template: 'convex' }).catch(() => null)
+    ?? await c.session?.getToken().catch(() => null);
   if (!token) {
     await new Promise((r) => setTimeout(r, 2000));
-    token = await clerk?.session?.getToken({ template: 'convex' }).catch(() => null)
-      ?? await clerk?.session?.getToken().catch(() => null);
+    token = await c.session?.getToken({ template: 'convex' }).catch(() => null)
+      ?? await c.session?.getToken().catch(() => null);
   }
   return token;
 }

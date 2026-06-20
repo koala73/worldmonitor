@@ -69,7 +69,7 @@
     "test:e2e:variant-smoke:happy": "cross-env VITE_VARIANT=happy playwright test e2e/variant-live-smoke.spec.ts",
     "test:e2e:variant-smoke": "npm run test:e2e:variant-smoke:full && npm run test:e2e:variant-smoke:tech && npm run test:e2e:variant-smoke:finance && npm run test:e2e:variant-smoke:commodity && npm run test:e2e:variant-smoke:energy && npm run test:e2e:variant-smoke:happy",
     "test:e2e": "npm run test:e2e:runtime && npm run test:e2e:full && npm run test:e2e:tech && npm run test:e2e:finance && npm run test:e2e:energy",
-    "test:data": "tsx --test tests/*.test.mjs tests/*.test.mts api/security/report.test.mjs",
+    "test:data": "tsx --test --test-concurrency=16 tests/*.test.mjs tests/*.test.mts api/security/report.test.mjs",
     "test:resilience-validation-smoke": "tsx --test tests/resilience-validation-artifacts-schema.test.mts tests/benchmark-resilience-external.test.mjs tests/backtest-resilience-outcomes.test.mjs tests/resilience-sensitivity-v2.test.mts tests/seed-bundle-resilience-validation.test.mjs",
     "dryrun:resilience": "node --import tsx/esm scripts/dry-run-resilience-rebalance.mjs",
     "test:feeds": "node scripts/validate-rss-feeds.mjs",
@@ -168,7 +168,7 @@
     "telegram": "^2.26.22",
     "topojson-client": "^3.1.0",
     "uqr": "^0.1.2",
-    "ws": "^8.19.0",
+    "ws": "^8.21.0",
     "yaml": "^2.8.3",
     "youtubei.js": "^16.0.1",
     "zod": "^4.3.6"
@@ -181,6 +181,8 @@
     "serialize-javascript": "^7.0.4",
     "node-forge": "^1.4.0",
     "srvx": "^0.11.13",
-    "protobufjs": "^7.6.2"
+    "protobufjs": "^7.6.2",
+    "ws": "$ws",
+    "shell-quote": "^1.8.4"
   }
 }

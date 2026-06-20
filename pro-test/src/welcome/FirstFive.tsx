@@ -1,6 +1,7 @@
 import { motion } from 'motion/react';
 import { ArrowRight } from 'lucide-react';
 import { t } from '../i18n';
+import { DASHBOARD_PATH } from '../routes';
 import { SectionHeading } from './SectionHeading';
 
 const STEPS = [
@@ -39,7 +40,7 @@ export const FirstFive = () => (
       </motion.div>
       <div className="text-center mt-10">
         <a
-          href="/?ref=welcome-f5m"
+          href={`${DASHBOARD_PATH}?ref=welcome-f5m`}
           className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-2"
         >
           {t('welcome.firstFive.cta')} <ArrowRight className="w-4 h-4" aria-hidden="true" />

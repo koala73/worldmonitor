@@ -4,7 +4,7 @@ Agent entry point for WorldMonitor. Read this first, then follow links for depth
 
 ## What This Project Is
 
-Real-time global intelligence dashboard. TypeScript SPA (Vite + Preact) with 86 panel components, 60+ Vercel Edge API endpoints, a Tauri desktop app with Node.js sidecar, and a Railway relay service. Aggregates 30+ external data sources (geopolitics, military, finance, climate, cyber, maritime, aviation).
+Real-time global intelligence dashboard. TypeScript SPA (Vite + Preact) with 155 top-level TypeScript component files, 80+ Vercel Edge API endpoint entries, a Tauri desktop app with Node.js sidecar, and a Railway relay service. Aggregates geopolitics, military, finance, climate, cyber, maritime, and aviation data across 35 freshness-tracked source groups.
 
 ## Repository Map
 
@@ -12,9 +12,9 @@ Real-time global intelligence dashboard. TypeScript SPA (Vite + Preact) with 86 
 .
 ├── src/                    # Browser SPA (TypeScript, class-based components)
 │   ├── app/                # App orchestration (data-loader, refresh-scheduler, panel-layout)
-│   ├── components/         # 86 UI panels + map components (Panel subclasses)
+│   ├── components/         # 155 top-level TypeScript component files
 │   ├── config/             # Variant configs, panel/layer definitions, market symbols
-│   ├── services/           # Business logic (120+ service files, organized by domain)
+│   ├── services/           # Business logic (185 service modules and domain directories)
 │   ├── types/              # TypeScript type definitions
 │   ├── utils/              # Shared utilities (circuit-breaker, theme, URL state, DOM)
 │   ├── workers/            # Web Workers (analysis, ML/ONNX, vector DB)
@@ -58,7 +58,7 @@ npm run typecheck:api    # Typecheck API layer separately
 npm run test:data        # Run unit/integration tests
 npm run test:sidecar     # Run sidecar + API handler tests
 npm run test:e2e         # Run all Playwright E2E tests
-make generate            # Regenerate proto stubs + per-service & unified OpenAPI specs (requires buf + sebuf v0.11.0 plugins)
+make generate            # Regenerate proto stubs + per-service & unified OpenAPI specs (requires buf + sebuf v0.11.1 plugins)
 npm run worktree:bootstrap          # Fresh worktree: link local env files + npm ci with tmp cache
 npm run worktree:bootstrap:test-only # Fresh docs/test worktree: same, but npm ci --ignore-scripts
 npm run worktree:env                # Link ignored local env files only

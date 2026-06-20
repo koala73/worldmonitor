@@ -24671,3 +24671,112 @@ body.map-width-resizing {
     flex-basis: 100%;
   }
 }
+
+/* ==========================================================================
+   Panel Tabs — named, persistent dashboard workspaces
+   ========================================================================== */
+
+.dashboard-tabs-mount {
+  flex-shrink: 0;
+}
+
+.dashboard-tabs-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  padding: 5px 10px 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.dashboard-tab {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: var(--bg);
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.dashboard-tab:hover {
+  background: var(--surface-hover);
+}
+
+.dashboard-tab.active {
+  background: var(--surface-hover);
+  border-color: var(--green);
+}
+
+.dashboard-tab-label {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  letter-spacing: 0.3px;
+  padding: 6px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dashboard-tab:hover .dashboard-tab-label {
+  color: var(--text);
+}
+
+.dashboard-tab.active .dashboard-tab-label {
+  color: var(--green);
+}
+
+.dashboard-tab-close {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 7px 3px 1px;
+  cursor: pointer;
+}
+
+.dashboard-tab-close:hover {
+  color: var(--red);
+}
+
+.dashboard-tab-rename {
+  background: var(--bg);
+  border: 1px solid var(--green);
+  border-radius: 3px;
+  color: var(--text);
+  font-size: 11px;
+  font-family: inherit;
+  padding: 4px 6px;
+  margin: 1px 4px 2px;
+  width: 120px;
+  outline: none;
+}
+
+.dashboard-tab-add {
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 5px;
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 9px 6px;
+  margin: 0 0 4px 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.dashboard-tab-add:hover {
+  color: var(--green);
+  border-color: var(--green);
+}

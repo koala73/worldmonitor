@@ -918,3 +918,31 @@ describe('SyntaxError via deck.gl/maplibre init path (WORLDMONITOR-SP)', () => {
       'non-SyntaxError with a map frame must not be swept up by the SP gate');
   });
 });
+
+// ─── WORLDMONITOR-TG: mainWorldSdk extension-global ReferenceError ─────────
+//
+// A browser-extension SDK injected into the page's main world references its
+// `mainWorldSdk` global before defining it (Edge 148 / Windows, anonymous-
+// frames-only stack). `mainWorldSdk` is nowhere in our bundle, so the message
+// can never originate from our own code — it goes in ignoreErrors alongside the
+// other named extension/webview globals (crusoe, vc_request_action, nmhCrx).
+describe('ignoreErrors — mainWorldSdk extension global (WORLDMONITOR-TG)', () => {
+  const PROD_MSG = 'mainWorldSdk is not defined';
+  const pattern = ignoreErrors.find(p => p instanceof RegExp && /mainWorldSdk/.test(p.source));
+
+  it('defines a mainWorldSdk ignore pattern', () => {
+    assert.ok(pattern, 'a /mainWorldSdk/ ignoreErrors pattern must exist');
+  });
+
+  it('suppresses the production "mainWorldSdk is not defined" message', () => {
+    assert.ok(isIgnored(PROD_MSG), `ignoreErrors must drop: ${PROD_MSG}`);
+  });
+
+  it('is scoped so a longer first-party identifier still surfaces', () => {
+    // The literal " is not defined" suffix must follow `mainWorldSdk` directly,
+    // so a real "mainWorldSdkLoader is not defined" bug from our own code is not
+    // swallowed by this pattern.
+    assert.ok(!isIgnored('mainWorldSdkLoader is not defined'),
+      'pattern must not swallow a longer identifier with the same prefix');
+  });
+});
