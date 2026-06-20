@@ -7,8 +7,7 @@
       "expression": "(http.request.uri.path eq \"/mcp\" or starts_with(http.request.uri.path, \"/mcp/\"))",
       "action": "skip",
       "action_parameters": {
-        "products": ["botFight", "bic"],
-        "ruleset": "current"
+        "products": ["botFight", "bic"]
       },
       "enabled": true
     }

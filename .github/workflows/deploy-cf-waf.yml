@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: jq empty deploy/cloudflare/waf-mcp-bot-exempt.json && echo OK
       - env: {CLOUDFLARE_API_TOKEN: dry, CLOUDFLARE_ZONE_ID: dry, DRY_RUN: "1"}
-        run: bash deploy/cloudflare/apply-waf-rules.sh 2>&1 || true
+        run: bash deploy/cloudflare/apply-waf-rules.sh
   apply:
     needs: dry-run
     runs-on: ubuntu-latest
@@ -35,5 +35,7 @@ jobs:
       - run: |
           S=$(curl -s -o /tmp/b.txt -w "%{http_code}" -H "User-Agent: mcp-client/1.0" https://worldmonitor.app/mcp)
           echo "HTTP $S"; head -c 200 /tmp/b.txt
-          [[ "$S" == "403" ]] && grep -qi "cloudflare\|ray id" /tmp/b.txt && { echo FAIL; exit 1; }
-          echo "OK"
+          if [[ "$S" != "200" && "$S" != "401" && "$S" != "405" ]]; then
+            echo "FAIL: unexpected status $S — /mcp may still be blocked"; exit 1
+          fi
+          echo "OK — /mcp reachable (HTTP $S)"
