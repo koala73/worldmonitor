@@ -40,55 +40,27 @@ function findLoadAllDataMethod(): ts.MethodDeclaration {
   return match;
 }
 
-function isTasksMapTaskCall(node: ts.Node): boolean {
-  if (!ts.isCallExpression(node)) {
-    return false;
-  }
-
-  const expression = node.expression;
-  if (
-    !ts.isPropertyAccessExpression(expression) ||
-    !ts.isIdentifier(expression.expression) ||
-    expression.expression.text !== 'tasks' ||
-    expression.name.text !== 'map'
-  ) {
-    return false;
-  }
-
-  const callback = node.arguments[0];
-  if (!callback || !ts.isArrowFunction(callback) || callback.parameters.length !== 1) {
-    return false;
-  }
-
-  const parameter = callback.parameters[0]!.name;
-  return (
-    ts.isIdentifier(parameter) &&
-    ts.isPropertyAccessExpression(callback.body) &&
-    ts.isIdentifier(callback.body.expression) &&
-    callback.body.expression.text === parameter.text &&
-    callback.body.name.text === 'task'
-  );
-}
-
-function isPromiseAllSettledCall(node: ts.Node): node is ts.CallExpression {
+function isRunHydrationTasksCall(node: ts.Node): node is ts.CallExpression {
   return (
     ts.isCallExpression(node) &&
     ts.isPropertyAccessExpression(node.expression) &&
-    ts.isIdentifier(node.expression.expression) &&
-    node.expression.expression.text === 'Promise' &&
-    node.expression.name.text === 'allSettled'
+    ts.isThis(node.expression.expression) &&
+    node.expression.name.text === 'runHydrationTasks'
   );
 }
 
-function hasAwaitedAllTasksSettle(node: ts.Node): boolean {
+function hasAwaitedHydrationRunner(node: ts.Node): boolean {
   let found = false;
 
   visitDescendants(node, child => {
     if (
       ts.isAwaitExpression(child) &&
-      isPromiseAllSettledCall(child.expression) &&
-      child.expression.arguments.length === 1 &&
-      isTasksMapTaskCall(child.expression.arguments[0]!)
+      isRunHydrationTasksCall(child.expression) &&
+      child.expression.arguments.length === 2 &&
+      ts.isIdentifier(child.expression.arguments[0]!) &&
+      child.expression.arguments[0]!.text === 'tasks' &&
+      ts.isIdentifier(child.expression.arguments[1]!) &&
+      child.expression.arguments[1]!.text === 'forceAll'
     ) {
       found = true;
     }
@@ -147,10 +119,10 @@ describe('loadAllData scheduler', () => {
     );
   });
 
-  it('awaits the scheduled guarded load promises together', () => {
+  it('awaits the prioritized hydration scheduler for guarded load tasks', () => {
     assert.ok(
-      hasAwaitedAllTasksSettle(loadAllDataMethod),
-      'loadAllData should settle the task promises without artificial inter-batch waits',
+      hasAwaitedHydrationRunner(loadAllDataMethod),
+      'loadAllData should delegate guarded task execution to the prioritized hydration scheduler',
     );
   });
 });

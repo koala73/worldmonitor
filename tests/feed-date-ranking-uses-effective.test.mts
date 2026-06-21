@@ -90,11 +90,6 @@ const ALLOW_LIST: AllowEntry[] = [
     line: 390,
     reason: 'publishedAt record-keeping in headline registry; not a freshness comparator.',
   },
-  {
-    file: 'src/app/data-loader.ts',
-    line: 3385,
-    reason: 'Cache serialization step — wraps pubDate.getTime() into the persisted entry payload, not a comparator.',
-  },
 ];
 
 // Match three shapes that all flow item.pubDate into a comparator:
