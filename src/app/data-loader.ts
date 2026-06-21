@@ -3481,7 +3481,10 @@ export class DataLoaderManager implements AppModule {
 
     setPersistentCache(
       DataLoaderManager.HAPPY_ITEMS_CACHE_KEY,
-      this.ctx.happyAllItems.map(item => ({ ...item, pubDate: effectivePubDateMs(item) }))
+      this.ctx.happyAllItems.map(item => ({
+        ...item,
+        pubDate: item.pubDateMissing === true ? undefined : effectivePubDateMs(item),
+      }))
     ).catch(() => {});
   }
 

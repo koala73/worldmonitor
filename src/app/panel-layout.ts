@@ -1923,6 +1923,13 @@ export class PanelLayoutManager implements AppModule {
     }
   }
 
+  private cancelScheduledLoadAllIdle(): void {
+    if (this.scheduledLoadAllIdle === null || typeof window === 'undefined') return;
+    const cancelIdle = window.cancelIdleCallback as ((handle: number) => void) | undefined;
+    cancelIdle?.(this.scheduledLoadAllIdle);
+    this.scheduledLoadAllIdle = null;
+  }
+
   private scheduleLoadAllData(phase: HydrationSchedulePhase = 'near'): void {
     if (typeof window === 'undefined') {
       void this.callbacks.loadAllData();
@@ -1944,12 +1951,16 @@ export class PanelLayoutManager implements AppModule {
         }, { timeout: 300 });
         return;
       }
-    } else if (this.scheduledLoadAllRaf !== null) {
+    } else {
+      this.cancelScheduledLoadAllIdle();
+      if (this.scheduledLoadAllRaf !== null) return;
+    }
+    if (this.scheduledLoadAllRaf !== null) {
       return;
     }
     this.scheduledLoadAllRaf = window.requestAnimationFrame(() => {
       this.scheduledLoadAllRaf = null;
-      mark('wm:hydration:visible-trigger');
+      mark(`wm:hydration:${phase}-trigger`);
       void this.callbacks.loadAllData();
     });
   }
