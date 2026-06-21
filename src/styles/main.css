@@ -16812,7 +16812,7 @@ a.prediction-link:hover {
   border-radius: 4px;
   font-size: 11px;
   color: var(--text);
-  max-width: 250px;
+  max-width: 300px;
   pointer-events: none;
 }
 

@@ -559,6 +559,8 @@ export const CONFLICT_ZONES: ConflictZone[] = [
     location: 'Eastern Ukraine (Donetsk, Luhansk)',
     description: 'Full-scale Russian invasion of Ukraine. Active frontlines in Donetsk, Luhansk, Zaporizhzhia, and Kherson oblasts. Heavy artillery, drone warfare, and trench combat.',
     keyDevelopments: ['Battle of Bakhmut', 'Kursk incursion', 'Black Sea drone strikes', 'Infrastructure attacks'],
+    peaceAgreements: ['Minsk I (2014, failed)', 'Minsk II (2015, failed)'],
+    totalFatalities: '500,000+',
   },
   {
     id: 'gaza',
@@ -574,6 +576,8 @@ export const CONFLICT_ZONES: ConflictZone[] = [
     location: 'Gaza Strip, Palestinian Territories',
     description: 'Israeli military operations in Gaza following October 7 attacks. Ground invasion, aerial bombardment. Humanitarian crisis. Regional escalation with Hezbollah.',
     keyDevelopments: ['Rafah ground operation', 'Humanitarian crisis', 'Hostage negotiations', 'Iran-backed attacks'],
+    peaceAgreements: ['Oslo Accords (1993, undermined)'],
+    totalFatalities: '40,000+',
   },
   {
     id: 'south_lebanon',
@@ -589,6 +593,8 @@ export const CONFLICT_ZONES: ConflictZone[] = [
     location: 'Southern Lebanon / Northern Israel',
     description: 'Cross-border artillery and rocket fire. Targeted assassinations. High risk of full-scale escalation.',
     keyDevelopments: ['Daily rocket fire', 'IDF airstrikes', 'Buffer zone evacuation', 'Litani River tensions'],
+    peaceAgreements: ['UNSC Resolution 1701 (2006)'],
+    totalFatalities: '1,500+',
   },
   {
     id: 'yemen_redsea',
@@ -640,6 +646,8 @@ export const CONFLICT_ZONES: ConflictZone[] = [
     location: 'Red Sea & Gulf of Aden, Yemen',
     description: 'Houthi maritime campaign against commercial shipping. US/UK airstrikes on Houthi targets. Ongoing blockade attempts.',
     keyDevelopments: ['Ship hijackings', 'US airstrikes', 'Cable cuts', 'Sinking of Rubymar'],
+    peaceAgreements: ['Stockholm Agreement (2018, partial)'],
+    totalFatalities: '150,000+ (Yemen Civil War)',
   },
   {
     id: 'sudan',
@@ -662,6 +670,7 @@ export const CONFLICT_ZONES: ConflictZone[] = [
     location: 'Sudan (nationwide)',
     description: 'Power struggle between SAF and RSF paramilitary has engulfed the entire country. RSF controls most of Darfur and Khartoum; SAF holds Port Sudan and eastern regions. World\'s largest displacement crisis. Famine conditions in multiple states.',
     keyDevelopments: ['Khartoum destruction', 'Darfur ethnic massacres', 'El Fasher siege', 'Wad Madani fall to RSF', 'Famine declared in North Darfur', 'SAF counter-offensives', 'Regional proxy involvement (UAE, Egypt)'],
+    totalFatalities: '150,000+',
   },
   {
     id: 'myanmar',
@@ -694,6 +703,8 @@ export const CONFLICT_ZONES: ConflictZone[] = [
     startDate: 'Jul 27, 1953',
     location: 'Korean Peninsula (MDL)',
     description: '250km-long, 4km-wide buffer zone along the Military Demarcation Line established by the 1953 Korean Armistice Agreement. Despite its name, one of the most heavily militarized borders in the world.',
+    peaceAgreements: ['Korean Armistice Agreement (Jul 27, 1953)'],
+    totalFatalities: '2,500,000+ (Korean War)',
     center: [127.27, 38.14],
     coords: [
       [126.0955, 37.7876],
@@ -3188,7 +3199,7 @@ export const NUCLEAR_FACILITIES: NuclearFacility[] = [
   // --- HU ---
   { id: 'paks', name: 'Paks Nuclear Power Plant', lat: 46.57, lon: 18.85, type: 'plant', status: 'active', operator: 'HU' },
   // --- IL ---
-  { id: 'negev', name: 'Negev Nuclear Research Center', lat: 31.0, lon: 35.15, type: 'weapons', status: 'active', operator: 'IL' },
+  { id: 'negev', name: 'Negev Nuclear Research Center', lat: 31.0, lon: 35.15, type: 'weapons', status: 'active', operator: 'IL', operationalSince: '1963', treaties: [], iaeaStatus: 'No IAEA access (non-NPT)', keyEvents: ['1986: Mordechai Vanunu revealed weapons program', '2020s: US intelligence reports suspected expansion'] },
   { id: 'soreq', name: 'Soreq Nuclear Research Center', lat: 31.9, lon: 34.7, type: 'research', status: 'active', operator: 'IL' },
   // --- IN ---
   { id: 'gorakhpur', name: 'Gorakhpur Nuclear Power Plant', lat: 29.45, lon: 75.68, type: 'plant', status: 'construction', operator: 'IN' },
@@ -3202,10 +3213,10 @@ export const NUCLEAR_FACILITIES: NuclearFacility[] = [
   { id: 'tarapur', name: 'Tarapur Atomic Power Station', lat: 19.83, lon: 72.66, type: 'plant', status: 'active', operator: 'IN' },
   { id: 'kalpakkam', name: 'Kalpakkam PFBR', lat: 12.56, lon: 80.17, type: 'plant', status: 'construction', operator: 'IN' },
   // --- IR ---
-  { id: 'arak', name: 'Arak Nuclear Complex', lat: 34.37, lon: 49.24, type: 'research', status: 'active', operator: 'IR' },
-  { id: 'bushehr', name: 'Bushehr Nuclear Power Plant', lat: 28.83, lon: 50.89, type: 'plant', status: 'active', operator: 'IR' },
-  { id: 'fordow', name: 'Fordow Uranium Enrichment Plant', lat: 34.89, lon: 51.0, type: 'enrichment', status: 'active', operator: 'IR' },
-  { id: 'natanz', name: 'Natanz nuclear facility', lat: 33.73, lon: 51.73, type: 'enrichment', status: 'active', operator: 'IR' },
+  { id: 'arak', name: 'Arak Nuclear Complex', lat: 34.37, lon: 49.24, type: 'research', status: 'active', operator: 'IR', operationalSince: '2006', treaties: ['NPT (1970)', 'JCPOA (2015)'], iaeaStatus: 'Limited access', keyEvents: ['2020: Reactor redesign per JCPOA', '2023: Heavy water production continued'] },
+  { id: 'bushehr', name: 'Bushehr Nuclear Power Plant', lat: 28.83, lon: 50.89, type: 'plant', status: 'active', operator: 'IR', operationalSince: '2011', treaties: ['NPT (1970)', 'JCPOA (2015)'], iaeaStatus: 'Limited access', keyEvents: ['2021: IAEA access restricted', '2022: JCPOA talks stalled'] },
+  { id: 'fordow', name: 'Fordow Uranium Enrichment Plant', lat: 34.89, lon: 51.0, type: 'enrichment', status: 'active', operator: 'IR', operationalSince: '2011', treaties: ['NPT (1970)', 'JCPOA (2015)'], iaeaStatus: 'Under safeguards', keyEvents: ['2019: Enrichment resumed post-JCPOA', '2023: 60% enrichment reported'] },
+  { id: 'natanz', name: 'Natanz nuclear facility', lat: 33.73, lon: 51.73, type: 'enrichment', status: 'active', operator: 'IR', operationalSince: '2003', treaties: ['NPT (1970)'], iaeaStatus: 'Inspections suspended', keyEvents: ['2021: Sabotage incident at centrifuge hall', '2023: Advanced IR-6 centrifuges installed'] },
   // --- IT ---
   { id: 'caorso', name: 'Caorso Nuclear Power Plant', lat: 45.07, lon: 9.87, type: 'plant', status: 'decommissioned', operator: 'IT' },
   { id: 'enrico_fermi', name: 'Enrico Fermi Nuclear Power Plant', lat: 45.18, lon: 8.28, type: 'plant', status: 'decommissioned', operator: 'IT' },
@@ -3214,7 +3225,7 @@ export const NUCLEAR_FACILITIES: NuclearFacility[] = [
   { id: 'latina', name: 'Latina Nuclear Power Plant', lat: 41.43, lon: 12.81, type: 'plant', status: 'decommissioned', operator: 'IT' },
   // --- JP ---
   { id: 'fugen', name: 'Fugen Nuclear Power Plant', lat: 35.75, lon: 136.02, type: 'plant', status: 'decommissioned', operator: 'JP' },
-  { id: 'fukushima_daiichi', name: 'Fukushima Daiichi Nuclear Power Plant', lat: 37.42, lon: 141.03, type: 'plant', status: 'decommissioned', operator: 'JP' },
+  { id: 'fukushima_daiichi', name: 'Fukushima Daiichi Nuclear Power Plant', lat: 37.42, lon: 141.03, type: 'plant', status: 'decommissioned', operator: 'JP', operationalSince: '1971', treaties: ['NPT (1970)'], iaeaStatus: 'Under decommissioning oversight', keyEvents: ['Mar 11, 2011: Tsunami-triggered meltdown (INES level 7)', '2023: ALPS treated water release approved by IAEA'] },
   { id: 'fukushima_daini', name: 'Fukushima Daini Nuclear Power Plant', lat: 37.32, lon: 141.02, type: 'plant', status: 'decommissioned', operator: 'JP' },
   { id: 'genkai', name: 'Genkai Nuclear Power Plant', lat: 33.52, lon: 129.84, type: 'plant', status: 'active', operator: 'JP' },
   { id: 'hamaoka', name: 'Hamaoka Nuclear Power Plant', lat: 34.62, lon: 138.14, type: 'plant', status: 'active', operator: 'JP' },
@@ -3236,9 +3247,9 @@ export const NUCLEAR_FACILITIES: NuclearFacility[] = [
   { id: 'oma', name: 'Ōma Nuclear Power Plant', lat: 41.51, lon: 140.91, type: 'plant', status: 'construction', operator: 'JP' },
   // --- KP ---
   { id: 'kumho', name: 'Kŭmho Nuclear Power Plant', lat: 40.1, lon: 128.34, type: 'plant', status: 'construction', operator: 'KP' },
-  { id: 'punggye_ri', name: 'Punggye-ri Nuclear Test Site', lat: 41.28, lon: 129.09, type: 'test-site', status: 'active', operator: 'KP' },
+  { id: 'punggye_ri', name: 'Punggye-ri Nuclear Test Site', lat: 41.28, lon: 129.09, type: 'test-site', status: 'active', operator: 'KP', treaties: ['NPT (withdrew 2003)'], iaeaStatus: 'No access', keyEvents: ['2006: 1st nuclear test', '2017: 6th nuclear test (est. 250kt)', '2018: Tunnels demolished (incomplete)'] },
   { id: 'taechon', name: 'Taechon nuclear facility', lat: 39.93, lon: 125.57, type: 'research', status: 'active', operator: 'KP' },
-  { id: 'yongbyon', name: 'Yongbyon Nuclear Scientific Research Center', lat: 39.8, lon: 125.75, type: 'weapons', status: 'active', operator: 'KP' },
+  { id: 'yongbyon', name: 'Yongbyon Nuclear Scientific Research Center', lat: 39.8, lon: 125.75, type: 'weapons', status: 'active', operator: 'KP', operationalSince: '1964', treaties: ['NPT (withdrew 2003)'], iaeaStatus: 'No access since 2009', keyEvents: ['2003: DPRK withdrew from NPT', '2017: 5MW reactor restart confirmed', '2021: IAEA reports reactor reactivated'] },
   // --- KR ---
   { id: 'hanbit', name: 'Hanbit Nuclear Power Plant', lat: 35.41, lon: 126.42, type: 'plant', status: 'active', operator: 'KR' },
   { id: 'hanul', name: 'Hanul Nuclear Power Plant', lat: 37.08, lon: 129.39, type: 'plant', status: 'active', operator: 'KR' },
@@ -3311,12 +3322,12 @@ export const NUCLEAR_FACILITIES: NuclearFacility[] = [
   { id: 'longmen', name: 'Longmen Nuclear Power Plant', lat: 25.04, lon: 121.92, type: 'plant', status: 'construction', operator: 'TW' },
   { id: 'maanshan', name: 'Maanshan Nuclear Power Plant', lat: 21.96, lon: 120.75, type: 'plant', status: 'active', operator: 'TW' },
   // --- UA ---
-  { id: 'chernobyl', name: 'Chernobyl Nuclear Power Plant', lat: 51.39, lon: 30.1, type: 'plant', status: 'decommissioned', operator: 'UA' },
+  { id: 'chernobyl', name: 'Chernobyl Nuclear Power Plant', lat: 51.39, lon: 30.1, type: 'plant', status: 'decommissioned', operator: 'UA', operationalSince: '1977', treaties: ['NPT (1994, via Soviet succession)'], iaeaStatus: 'Exclusion zone monitoring', keyEvents: ['Apr 26, 1986: Reactor 4 explosion (INES level 7)', '2000: Final reactor shutdown', 'Feb 2022: Briefly occupied by Russian forces'] },
   { id: 'khmelnytskyi', name: 'Khmelnytskyi Nuclear Power Plant', lat: 50.3, lon: 26.64, type: 'plant', status: 'active', operator: 'UA' },
   { id: 'main_storage_of_spent_nuclear_fuel', name: 'Main storage of spent nuclear fuel', lat: 51.27, lon: 30.22, type: 'research', status: 'decommissioned', operator: 'UA' },
   { id: 'rivne', name: 'Rivne Nuclear Power Plant', lat: 51.33, lon: 25.89, type: 'plant', status: 'active', operator: 'UA' },
   { id: 'south_ukraine', name: 'South Ukraine Nuclear Power Plant', lat: 47.82, lon: 31.22, type: 'plant', status: 'active', operator: 'UA' },
-  { id: 'zaporizhzhia', name: 'Zaporizhzhia Nuclear Power Plant', lat: 47.51, lon: 34.59, type: 'plant', status: 'contested', operator: 'UA' },
+  { id: 'zaporizhzhia', name: 'Zaporizhzhia Nuclear Power Plant', lat: 47.51, lon: 34.59, type: 'plant', status: 'contested', operator: 'UA', operationalSince: '1984', treaties: ['NPT (1994, Ukraine)'], iaeaStatus: 'IAEA monitoring mission active', keyEvents: ['Mar 4, 2022: Russian forces seized plant', 'Sep 2022: IAEA permanent monitoring mission established', '2023: Reactors in cold shutdown'] },
   // --- US ---
   { id: 'ames', name: 'Ames National Laboratory', lat: 42.03, lon: -93.65, type: 'research', status: 'active', operator: 'US' },
   { id: 'area', name: 'Area 2', lat: 37.14, lon: -116.07, type: 'test-site', status: 'decommissioned', operator: 'US' },

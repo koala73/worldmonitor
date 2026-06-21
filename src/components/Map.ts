@@ -1594,6 +1594,7 @@ export class MapComponent {
             x: e.clientX - rect.left,
             y: e.clientY - rect.top,
           });
+          this.popup.loadConflictHistory(zone);
         });
 
         this.overlays.appendChild(clickArea);
@@ -3644,6 +3645,7 @@ export class MapComponent {
       x: pos[0],
       y: pos[1],
     });
+    this.popup.loadConflictHistory(conflict);
   }
 
   public triggerBaseClick(id: string): void {

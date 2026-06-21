@@ -828,6 +828,14 @@ export class MapPopup {
             </details>
           </div>
         ` : ''}
+        <div class="popup-section">
+          <details class="conflict-history-details">
+            <summary>📜 HISTORICAL PROFILE</summary>
+            <div class="conflict-history-content">
+              <div class="popup-loading">Loading…</div>
+            </div>
+          </details>
+        </div>
       </div>
     `;
   }
@@ -1083,6 +1091,72 @@ export class MapPopup {
         `, "legacy direct innerHTML migration"));
       }
     }
+  }
+
+  public loadConflictHistory(conflict: ConflictZone): void {
+    if (!this.popup) return;
+    const details = this.popup.querySelector<HTMLDetailsElement>('.conflict-history-details');
+    const content = this.popup.querySelector('.conflict-history-content');
+    if (!details || !content) return;
+
+    let loaded = false;
+
+    const onToggle = async () => {
+      if (!details.open || loaded) return;
+      loaded = true;
+
+      try {
+        const { fetchUcdpEvents } = await import('@/services/conflict');
+        const resp = await fetchUcdpEvents();
+
+        if (!this.popup || !content.isConnected) return;
+
+        const [cLon, cLat] = conflict.center;
+        const nearby = resp.data.filter(e => {
+          const dLat = e.latitude - cLat;
+          const dLon = e.longitude - cLon;
+          return Math.sqrt(dLat * dLat + dLon * dLon) < 3;
+        });
+
+        const totalDeaths = nearby.reduce((s, e) => s + (e.deaths_best ?? 0), 0);
+        const earliest = nearby
+          .map(e => e.date_start)
+          .filter(Boolean)
+          .sort()[0];
+        const conflictSince = earliest ? earliest.substring(0, 4) : null;
+
+        const rows = [
+          conflictSince
+            ? `<div class="popup-stat"><span class="stat-label">CONFLICT SINCE</span><span class="stat-value">${escapeHtml(conflictSince)}</span></div>`
+            : '',
+          conflict.peaceAgreements?.length
+            ? `<div class="popup-stat"><span class="stat-label">PEACE AGREEMENTS</span><span class="stat-value">${conflict.peaceAgreements.map(escapeHtml).join('<br>')}</span></div>`
+            : '',
+          totalDeaths > 0
+            ? `<div class="popup-stat"><span class="stat-label">RECORDED FATALITIES</span><span class="stat-value">~${totalDeaths.toLocaleString()}</span></div>`
+            : conflict.totalFatalities
+            ? `<div class="popup-stat"><span class="stat-label">TOTAL FATALITIES</span><span class="stat-value">${escapeHtml(conflict.totalFatalities)}</span></div>`
+            : '',
+        ].filter(Boolean).join('');
+
+        setTrustedHtml(
+          content,
+          trustedHtml(
+            rows || `<div class="popup-loading">No historical data available.</div>`,
+            'legacy direct innerHTML migration'
+          )
+        );
+      } catch {
+        if (content.isConnected) {
+          setTrustedHtml(
+            content,
+            trustedHtml(`<div class="popup-loading">Could not load history.</div>`, 'legacy direct innerHTML migration')
+          );
+        }
+      }
+    };
+
+    details.addEventListener('toggle', onToggle);
   }
 
   public async loadWingbitsLiveFlight(hexCode: string): Promise<void> {
@@ -1809,6 +1883,34 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
           </div>
         </div>
         <p class="popup-description">${t('popups.nuclear.description')}</p>
+        ${(facility.operationalSince || facility.treaties?.length || facility.iaeaStatus || facility.keyEvents?.length) ? `
+        <div class="popup-section">
+          <details>
+            <summary>📜 HISTORICAL PROFILE</summary>
+            <div class="popup-section-content">
+              ${facility.operationalSince ? `
+              <div class="popup-stat">
+                <span class="stat-label">OPERATIONAL SINCE</span>
+                <span class="stat-value">${escapeHtml(facility.operationalSince)}</span>
+              </div>` : ''}
+              ${facility.treaties?.length ? `
+              <div class="popup-stat">
+                <span class="stat-label">TREATIES</span>
+                <span class="stat-value">${facility.treaties.map(escapeHtml).join(', ')}</span>
+              </div>` : ''}
+              ${facility.iaeaStatus ? `
+              <div class="popup-stat">
+                <span class="stat-label">IAEA STATUS</span>
+                <span class="stat-value">${escapeHtml(facility.iaeaStatus)}</span>
+              </div>` : ''}
+              ${facility.keyEvents?.length ? `
+              <div class="popup-stat">
+                <span class="stat-label">KEY EVENTS</span>
+                <span class="stat-value">${facility.keyEvents.map(escapeHtml).join('<br>')}</span>
+              </div>` : ''}
+            </div>
+          </details>
+        </div>` : ''}
       </div>
     `;
   }
