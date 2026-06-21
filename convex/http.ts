@@ -108,7 +108,12 @@ http.route({
       });
     }
 
-    if (typeof body.userId !== "string" || body.userId.length === 0) {
+    if (
+      typeof body.userId !== "string" ||
+      body.userId.length === 0 ||
+      body.userId.length > 256 ||
+      !/^[a-zA-Z0-9_]+$/.test(body.userId)
+    ) {
       return new Response(JSON.stringify({ error: "MISSING_USER_ID" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
