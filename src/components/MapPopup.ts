@@ -1122,7 +1122,7 @@ export class MapPopup {
         const earliest = nearby
           .map(e => e.date_start)
           .filter(Boolean)
-          .sort()[0];
+          .sort((a, b) => a.localeCompare(b))[0];
         const conflictSince = earliest ? earliest.substring(0, 4) : null;
 
         const rows = [
