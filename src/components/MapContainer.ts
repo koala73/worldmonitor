@@ -135,9 +135,9 @@ export class MapContainer {
   private destroyed = false;
   private pendingCenter: PendingCenter | null = null;
   private pendingViewportActions: PendingViewportAction[] = [];
-  private pendingHiddenLayerToggles = new Set<keyof MapLayers>();
-  private pendingLayerLoading = new Map<keyof MapLayers, boolean>();
-  private pendingLayerReady = new Map<keyof MapLayers, boolean>();
+  private hiddenLayerToggles = new Set<keyof MapLayers>();
+  private layerLoadingState = new Map<keyof MapLayers, boolean>();
+  private layerReadyState = new Map<keyof MapLayers, boolean>();
   private cachedScenarioState: ScenarioVisualState | null | undefined;
   private escalationGettersRequested = false;
 
@@ -210,7 +210,8 @@ export class MapContainer {
       this.initialState = { ...this.initialState, layers: { ...this.initialState.layers, resilienceScore: false } };
     }
 
-    this.startResizeObserver();
+    // init() attaches the resize observer synchronously (before its first await),
+    // so the constructor does not need to start it separately.
     void this.init();
   }
 
@@ -371,6 +372,9 @@ export class MapContainer {
     const token = ++this.rendererInitToken;
     this.showRendererShell(this.getPendingRendererKind());
     this.startResizeObserver();
+    // requestAnimationFrame is paused while the tab is hidden, so the heavy
+    // renderer load deferred behind afterFirstPaint() intentionally waits until
+    // the tab becomes visible — the lightweight shell is shown until then.
     await afterFirstPaint();
     if (!this.isCurrentRendererInit(token)) return;
 
@@ -478,8 +482,8 @@ export class MapContainer {
       else if (this.useDeckGL) this.deckGLMap?.setWebcams(this.cachedWebcams);
       else this.svgMap?.setWebcams(this.cachedWebcams);
     }
-    for (const [layer, loading] of this.pendingLayerLoading) this.setLayerLoading(layer, loading);
-    for (const [layer, hasData] of this.pendingLayerReady) this.setLayerReady(layer, hasData);
+    for (const [layer, loading] of this.layerLoadingState) this.setLayerLoading(layer, loading);
+    for (const [layer, hasData] of this.layerReadyState) this.setLayerReady(layer, hasData);
     if (this.cachedScenarioState !== undefined) this.applyScenarioState(this.cachedScenarioState);
     const pendingViewportActions = this.pendingViewportActions.splice(0);
     for (const action of pendingViewportActions) {
@@ -491,7 +495,7 @@ export class MapContainer {
       this.pendingCenter = null;
       this.setCenter(pendingCenter.lat, pendingCenter.lon, pendingCenter.zoom);
     }
-    for (const layer of this.pendingHiddenLayerToggles) this.hideLayerToggle(layer);
+    for (const layer of this.hiddenLayerToggles) this.hideLayerToggle(layer);
   }
 
   public isGlobeMode(): boolean {
@@ -565,7 +569,7 @@ export class MapContainer {
   }
 
   public setCenter(lat: number, lon: number, zoom?: number): void {
-    if (!this.globeMap && !this.deckGLMap && !this.svgMap) {
+    if (!this.hasActiveRenderer()) {
       this.pendingCenter = { lat, lon, zoom };
       if (zoom != null) this.initialState = { ...this.initialState, zoom };
       return;
@@ -1028,7 +1032,7 @@ export class MapContainer {
 
   // UI visibility methods
   public hideLayerToggle(layer: keyof MapLayers): void {
-    this.pendingHiddenLayerToggles.add(layer);
+    this.hiddenLayerToggles.add(layer);
     if (this.useGlobe) { this.globeMap?.hideLayerToggle(layer); return; }
     if (this.useDeckGL) {
       this.deckGLMap?.hideLayerToggle(layer);
@@ -1038,7 +1042,7 @@ export class MapContainer {
   }
 
   public setLayerLoading(layer: keyof MapLayers, loading: boolean): void {
-    this.pendingLayerLoading.set(layer, loading);
+    this.layerLoadingState.set(layer, loading);
     if (this.useGlobe) { this.globeMap?.setLayerLoading(layer, loading); return; }
     if (this.useDeckGL) {
       this.deckGLMap?.setLayerLoading(layer, loading);
@@ -1048,7 +1052,7 @@ export class MapContainer {
   }
 
   public setLayerReady(layer: keyof MapLayers, hasData: boolean): void {
-    this.pendingLayerReady.set(layer, hasData);
+    this.layerReadyState.set(layer, hasData);
     if (this.useGlobe) { this.globeMap?.setLayerReady(layer, hasData); return; }
     if (this.useDeckGL) {
       this.deckGLMap?.setLayerReady(layer, hasData);
@@ -1329,9 +1333,9 @@ export class MapContainer {
     this.cachedChokepointData = undefined;
     this.pendingCenter = null;
     this.pendingViewportActions = [];
-    this.pendingHiddenLayerToggles.clear();
-    this.pendingLayerLoading.clear();
-    this.pendingLayerReady.clear();
+    this.hiddenLayerToggles.clear();
+    this.layerLoadingState.clear();
+    this.layerReadyState.clear();
     this.cachedScenarioState = undefined;
     this.escalationGettersRequested = false;
   }
