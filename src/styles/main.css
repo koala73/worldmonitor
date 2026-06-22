@@ -2049,18 +2049,38 @@ body.panel-resize-active iframe {
 }
 
 .panel-data-badge {
+  align-items: center;
+  display: inline-flex;
   font-size: 9px;
   letter-spacing: 0.4px;
   padding: 2px 6px;
   border-radius: 10px;
   border: 1px solid transparent;
   color: var(--text);
+  position: relative;
+  transition: none;
 }
 
 .panel-data-badge.live {
   color: var(--status-live);
   border-color: rgba(86, 217, 130, 0.45);
   background: rgba(86, 217, 130, 0.12);
+  padding-left: 16px;
+}
+
+.panel-data-badge.live::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  transform: translateY(-50%);
+  opacity: 1;
+  animation: live-badge-dot-pulse 1.8s ease-in-out infinite;
+  will-change: opacity, transform;
 }
 
 .panel-data-badge.cached {
@@ -3030,8 +3050,8 @@ body.panel-resize-active iframe {
   height: 7px;
   border-radius: 50%;
   background: var(--red);
-  box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.5);
   animation: live-pulse-ring 1.6s ease-out infinite;
+  will-change: opacity, transform;
 }
 
 .live-media-shell-title {
@@ -3074,15 +3094,18 @@ body.panel-resize-active iframe {
 
 @keyframes live-pulse-ring {
   0% {
-    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.5);
+    opacity: 1;
+    transform: scale(1);
   }
 
   70% {
-    box-shadow: 0 0 0 10px rgba(220, 38, 38, 0);
+    opacity: 0.2;
+    transform: scale(1.6);
   }
 
   100% {
-    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0);
+    opacity: 0;
+    transform: scale(1.85);
   }
 }
 
@@ -15001,6 +15024,8 @@ a.prediction-link:hover {
   cursor: pointer;
   transition: all 0.2s;
   position: relative;
+  isolation: isolate;
+  overflow: visible;
 }
 
 .intel-findings-badge:hover {
@@ -15015,6 +15040,12 @@ a.prediction-link:hover {
 
 .intel-findings-badge .findings-icon {
   font-size: 12px;
+}
+
+.intel-findings-badge .findings-icon,
+.intel-findings-badge .findings-count {
+  position: relative;
+  z-index: 1;
 }
 
 .intel-findings-badge .findings-count {
@@ -15047,7 +15078,26 @@ a.prediction-link:hover {
 
 .intel-findings-badge.status-high {
   border-color: rgba(255, 149, 0, 0.5);
-  animation: findings-pulse 2s infinite;
+}
+
+.intel-findings-badge.status-high::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background:
+    radial-gradient(
+      circle,
+      rgba(255, 149, 0, 0.28) 0%,
+      rgba(255, 149, 0, 0.16) 55%,
+      rgba(255, 149, 0, 0) 100%
+    );
+  opacity: 0;
+  transform: scale(1);
+  transform-origin: center;
+  pointer-events: none;
+  animation: findings-pulse 2s ease-out infinite;
+  will-change: opacity, transform;
 }
 
 .intel-findings-badge.status-high .findings-count {
@@ -15060,14 +15110,27 @@ a.prediction-link:hover {
 }
 
 @keyframes findings-pulse {
+  0% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
 
+  100% {
+    opacity: 0;
+    transform: scale(1.4);
+  }
+}
+
+@keyframes live-badge-dot-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(255, 149, 0, 0);
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
   }
 
   50% {
-    box-shadow: 0 0 8px 2px rgba(255, 149, 0, 0.3);
+    opacity: 0.35;
+    transform: translateY(-50%) scale(1.18);
   }
 }
 
