@@ -2215,7 +2215,7 @@
   flex: 0 0 0;
   min-height: 0;
   padding: 0;
-  border-top: 0;
+  border-top: none;
   overflow: hidden;
 }
 
