@@ -111,8 +111,7 @@ http.route({
     if (
       typeof body.userId !== "string" ||
       body.userId.length === 0 ||
-      body.userId.length > 256 ||
-      !/^[a-zA-Z0-9_]+$/.test(body.userId)
+      body.userId.length > 256
     ) {
       return new Response(JSON.stringify({ error: "MISSING_USER_ID" }), {
         status: 400,
