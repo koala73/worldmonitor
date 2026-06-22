@@ -26,6 +26,7 @@
   },
   "overrides": {
     "esbuild": "0.28.1",
+    "undici": "$undici",
     "ws": "$ws"
   },
   "engines": {

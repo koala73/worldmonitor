@@ -12,6 +12,14 @@ import { getClerkUserCreatedAt } from './clerk';
 
 const UMAMI_SCRIPT_SRC = 'https://abacus.worldmonitor.app/script.js';
 const UMAMI_WEBSITE_ID = 'e8800335-c853-46a8-8497-c993ed2f58bc';
+// data-domains is temporarily reduced to worldmonitor.app + happy.worldmonitor.app
+// while upstream Umami issue #4183 (https://github.com/umami-software/umami/issues/4183)
+// is open — v3.1.0 has a race in prisma.sessionData.updateMany() that returns HTTP 500
+// from /api/send for 4-8% of requests across all listed hosts. Self-hosted Umami has no
+// fix tag yet (master since 2026-04-17 has 22 commits but none touch sessionData). The
+// tracker self-disables when the current hostname isn't in data-domains — the same
+// mechanism that keeps energy.worldmonitor.app silent. Restore tech, finance, and
+// commodity once #4183 ships in a tagged release.
 const UMAMI_DOMAINS = 'worldmonitor.app,happy.worldmonitor.app';
 const UMAMI_QUEUE_LIMIT = 50;
 const UMAMI_LOAD_ATTEMPT_LIMIT = 2;
@@ -130,8 +138,17 @@ function loadUmamiScript(): void {
   if (umamiLoadStarted || typeof document === 'undefined') return;
   const existing = document.querySelector<HTMLScriptElement>(`script[src="${UMAMI_SCRIPT_SRC}"]`);
   if (existing) {
-    existing.addEventListener('load', flushPendingUmamiCalls, { once: true });
-    flushPendingUmamiCalls();
+    // A script tag already exists (e.g. re-entry after a soft navigation).
+    // Mark load as started so the guard above short-circuits future calls.
+    // If Umami already initialised, flush now; otherwise wait for its load
+    // event. Flushing unconditionally before window.umami is set is a no-op
+    // and a dead {once:true} listener if load already fired.
+    umamiLoadStarted = true;
+    if (typeof window !== 'undefined' && window.umami) {
+      flushPendingUmamiCalls();
+    } else {
+      existing.addEventListener('load', flushPendingUmamiCalls, { once: true });
+    }
     return;
   }
 
@@ -160,7 +177,7 @@ export function track(event: UmamiEvent, data?: Record<string, unknown>): void {
   }
 }
 
-export async function initAnalytics(): Promise<void> {
+export function initAnalytics(): void {
   if (umamiLoadScheduled || typeof window === 'undefined' || typeof document === 'undefined') return;
   umamiLoadScheduled = true;
   scheduleAfterFirstPaint(loadUmamiScript, 3000);
@@ -369,6 +386,18 @@ export function isLikelyFreshSignup(
 
 export function trackSignOut(): void {
   track('sign-out');
+}
+
+/**
+ * Test-only: reset module-level deferred-load state so each test starts from
+ * a clean slate. The queue and load guards are module singletons that persist
+ * across the shared module import in tests/secondary-startup.test.mts.
+ */
+export function resetAnalyticsForTesting(): void {
+  pendingUmamiCalls.length = 0;
+  umamiLoadScheduled = false;
+  umamiLoadStarted = false;
+  umamiLoadAttempts = 0;
 }
 
 export function trackGateHit(feature: string): void {

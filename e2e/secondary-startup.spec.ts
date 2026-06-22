@@ -33,8 +33,20 @@ test.describe('secondary startup work', () => {
 
     await page.goto('/');
     await page.locator('.auth-signin-btn, .panel').first().waitFor({ timeout: 20000 });
-    await page.waitForTimeout(250);
+    // Anchor the pre-idle assertion to a deterministic app-readiness signal
+    // rather than a fixed wall-clock wait (flaky on starved CI): once event
+    // handlers are wired, any eager (non-deferred) secondary request would
+    // already have fired.
+    await page.waitForFunction(
+      () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+      undefined,
+      { timeout: 20000 },
+    );
 
+    // The pre-idle assertion validates the FULL deferral contract:
+    // SECONDARY_STARTUP_REQUEST matches Umami, Google Fonts, Clerk, Sentry
+    // ingest, Cloudflare/Vercel analytics, and the YouTube iframe API — none
+    // may fire before idle startup runs.
     expect(secondaryRequests).toEqual([]);
 
     await page.evaluate(() => {
