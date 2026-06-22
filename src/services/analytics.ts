@@ -115,7 +115,7 @@ function sendUmamiCall(call: QueuedUmamiCall): boolean {
     }
     return true;
   } catch {
-    return true;
+    return false;
   }
 }
 

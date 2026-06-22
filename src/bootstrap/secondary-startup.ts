@@ -57,7 +57,7 @@ export function buildDashboardFontStylesheetHref(context: DashboardFontContext =
   const families: string[] = [];
 
   if (variant === 'happy') {
-    families.push('family=Nunito:wght@400;600;700');
+    families.push('family=Nunito:ital,wght@0,400;0,600;0,700;1,400');
   }
   if (dir === 'rtl' || lang === 'ar') {
     families.push('family=Tajawal:wght@400;500;700');

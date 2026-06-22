@@ -55,9 +55,9 @@ describe('secondary dashboard startup', () => {
 
   it('narrows happy dashboard fonts to the weights the UI uses', () => {
     const href = buildDashboardFontStylesheetHref({ variant: 'happy', lang: 'en', dir: '' });
-    assert.equal(href, 'https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap');
+    assert.equal(href, 'https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400;0,600;0,700;1,400&display=swap');
     assert.equal(href?.includes('300'), false);
-    assert.equal(href?.includes('ital'), false);
+    assert.equal(href?.includes('ital'), true);
   });
 
   it('narrows Arabic dashboard fonts without loading happy fonts by default', () => {
@@ -72,7 +72,7 @@ describe('secondary dashboard startup', () => {
   it('combines only the needed families for the Arabic happy dashboard', () => {
     assert.equal(
       buildDashboardFontStylesheetHref({ variant: 'happy', lang: 'ar', dir: 'rtl' }),
-      'https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&family=Tajawal:wght@400;500;700&display=swap',
+      'https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400;0,600;0,700;1,400&family=Tajawal:wght@400;500;700&display=swap',
     );
   });
 });
