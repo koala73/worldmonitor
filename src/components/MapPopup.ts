@@ -1156,7 +1156,7 @@ export class MapPopup {
       }
     };
 
-    details.addEventListener('toggle', onToggle);
+    details.addEventListener('toggle', onToggle, { once: true });
   }
 
   public async loadWingbitsLiveFlight(hexCode: string): Promise<void> {
