@@ -205,15 +205,14 @@
     <!-- Critical CSS: inline skeleton visible before JS boots -->
     <style>
       :root{--wm-pro-banner-slot-height:40px;--dashboard-panel-row-min:200px;--dashboard-panel-row-max:380px;--dashboard-grid-gap:4px;--dashboard-first-grid-reservation:calc(var(--dashboard-panel-row-min) + var(--dashboard-panel-row-min) + var(--dashboard-grid-gap))}
-      @media (max-width:768px){:root{--wm-pro-banner-slot-height:96px}}
       html,body{margin:0;height:100%;width:100%;overflow:hidden;background:#0a0a0a}
       html.wm-pro-banner-reserved #app::before{content:'';display:block;height:var(--wm-pro-banner-slot-height);flex:0 0 var(--wm-pro-banner-slot-height);background:#141414;border-bottom:1px solid #2a2a2a;box-sizing:border-box}
       html.wm-pro-banner-reserved.wm-layout-hydrated #app::before{content:none;display:none}
       .pro-banner-slot{flex:0 0 auto;min-height:0;box-sizing:border-box}
       html.wm-pro-banner-reserved .pro-banner-slot{min-height:var(--wm-pro-banner-slot-height)}
       .pro-banner-slot .pro-banner{box-sizing:border-box;min-height:var(--wm-pro-banner-slot-height);width:100%}
-      #country-deep-dive-panel.country-deep-dive{position:fixed;top:0;right:-460px;width:430px;height:100vh;visibility:hidden;z-index:5000;box-sizing:border-box}
-      @media (max-width:767px){#country-deep-dive-panel.country-deep-dive{right:-100vw;width:100vw}}
+      #country-deep-dive-panel.country-deep-dive[aria-hidden="true"]{position:fixed;top:0;right:-460px;width:430px;height:100vh;visibility:hidden;z-index:5000;box-sizing:border-box}
+      @media (max-width:767px){#country-deep-dive-panel.country-deep-dive[aria-hidden="true"]{right:-100vw;width:100vw}}
       [data-theme="light"].wm-pro-banner-reserved #app::before{background:#fff;border-bottom-color:#d4d4d4}
       [data-variant="happy"].wm-pro-banner-reserved #app::before{background:#fff;border-bottom-color:#DDD9CF}
       [data-variant="happy"][data-theme="dark"].wm-pro-banner-reserved #app::before{background:#222E3E;border-bottom-color:#344050}

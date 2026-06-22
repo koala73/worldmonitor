@@ -1472,7 +1472,7 @@ canvas,
   grid-auto-flow: row dense;
   grid-auto-rows: minmax(var(--dashboard-panel-row-min), var(--dashboard-panel-row-max));
   gap: var(--dashboard-grid-gap);
-  padding: 4px;
+  padding: var(--dashboard-grid-gap);
   align-content: start;
   align-items: stretch;
   min-height: 0;
@@ -1578,7 +1578,7 @@ canvas,
 /* Row span classes for resizable panels */
 .panel.span-1 {
   grid-row: span 1 !important;
-  min-height: 200px !important;
+  min-height: var(--dashboard-panel-row-min) !important;
 }
 
 .panel.span-2 {
@@ -16603,11 +16603,9 @@ a.prediction-link:hover {
     font-size: 11px;
     gap: 8px;
     padding: 6px 32px 6px 10px;
-    flex-wrap: wrap;
   }
 
   .pro-banner-text {
-    white-space: normal;
     flex: 1 1 0;
     min-width: 0;
   }

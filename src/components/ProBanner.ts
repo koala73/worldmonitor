@@ -175,7 +175,7 @@ onEntitlementChange(() => {
     }, 300);
     return;
   }
-  if (!premium && !bannerEl && bannerContainer) {
+  if (!bannerEl && bannerContainer) {
     showProBanner(bannerContainer);
   }
 });
