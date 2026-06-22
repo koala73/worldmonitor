@@ -7,7 +7,7 @@ import { IDLE_PAUSE_MS, STORAGE_KEYS, SITE_VARIANT } from '@/config';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 
 import { getStreamQuality } from '@/services/ai-flow-settings';
-import { enforceExclusiveLiveMediaPlayback, getActiveLiveMedia, releaseLiveMediaPlayback, requestLiveMediaPlayback, stopLiveMediaPlayback, type LiveMediaStopReason } from '@/services/live-media-controller';
+import { getActiveLiveMedia, releaseLiveMediaPlayback, requestLiveMediaPlayback, stopLiveMediaPlayback, type LiveMediaStopReason } from '@/services/live-media-controller';
 import { getLiveStreamsAlwaysOn, subscribeLiveStreamsSettingsChange } from '@/services/live-stream-settings';
 import { track } from '@/services/analytics';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
@@ -436,14 +436,13 @@ export class LiveNewsPanel extends Panel {
       this.applyIdleMode();
       if (wasAlwaysOn && !alwaysOn) {
         // Cancel any pending lazy-init so leaving always-on cannot auto-start playback without intent.
+        // Anything already playing keeps running — feeds coexist; eco-idle (re-armed below) will pause it.
         if (this.lazyObserver) { this.lazyObserver.disconnect(); this.lazyObserver = null; }
         if (this.idleCallbackId !== null) {
           if ('cancelIdleCallback' in window) (window as any).cancelIdleCallback(this.idleCallbackId);
           else clearTimeout(this.idleCallbackId as ReturnType<typeof setTimeout>);
           this.idleCallbackId = null;
         }
-        // Deterministically keep Live News when leaving always-on (stable priority over webcams).
-        enforceExclusiveLiveMediaPlayback('live-news');
       }
       if (alwaysOn && !this.deferredInit && this.isPanelVisible()) {
         this.startAlwaysOnPlaybackIfVisible();
@@ -541,7 +540,6 @@ export class LiveNewsPanel extends Panel {
       streamId,
       () => this.startPlaybackForActiveChannel(),
       (reason) => this.stopPlaybackFromController(reason),
-      { exclusive: !this.alwaysOn },
     );
   }
 

@@ -77,7 +77,7 @@ async function setPanelEnabledViaStoredSettings(page: Page, panelId: string, ena
 }
 
 test.describe('live media intent gating', () => {
-  test('keeps live media transports idle until click, then keeps one active stream', async ({ page }) => {
+  test('keeps live media transports idle until click, then lets played feeds coexist as a wall', async ({ page }) => {
     await installCleanLiveMediaPrefs(page);
     const mediaRequests: string[] = [];
     page.on('request', (request) => {
@@ -100,9 +100,15 @@ test.describe('live media intent gating', () => {
     await liveNews.getByRole('button', { name: /play live feed/i }).click();
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
 
+    // Playing a webcam tile must NOT stop Live News — explicitly played feeds coexist.
     await webcams.locator('.webcam-preview-tile').first().getByRole('button', { name: /^play$/i }).click();
     await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBe(1);
-    await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(0);
+    await expect.poll(() => liveNewsTransportCount(page), { timeout: 5_000 }).toBe(1);
+
+    // Playing a second tile builds the wall — both webcams run alongside Live News.
+    await webcams.locator('.webcam-preview-tile').first().getByRole('button', { name: /^play$/i }).click();
+    await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBe(2);
+    await expect.poll(() => liveNewsTransportCount(page), { timeout: 5_000 }).toBe(1);
   });
 
   test('renders stored single webcam mode as a preview before play intent', async ({ page }) => {
@@ -231,7 +237,8 @@ test.describe('live media intent gating', () => {
 
     await liveNews.scrollIntoViewIfNeeded();
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
-    await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBe(1);
+    // Always-on grid auto-starts the whole wall, so more than one webcam can be live.
+    await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBeGreaterThanOrEqual(1);
 
     await page.evaluate(() => {
       Object.defineProperty(Document.prototype, 'hidden', { configurable: true, get: () => true });
@@ -245,10 +252,10 @@ test.describe('live media intent gating', () => {
       document.dispatchEvent(new Event('visibilitychange'));
     });
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
-    await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBe(1);
+    await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBeGreaterThanOrEqual(1);
   });
 
-  test('turning always-on off restores one active live stream', async ({ page }) => {
+  test('turning always-on off keeps already-playing feeds running', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 220 });
     await installAlwaysOnLiveMediaPrefs(page);
 
@@ -258,7 +265,7 @@ test.describe('live media intent gating', () => {
 
     await liveNews.scrollIntoViewIfNeeded();
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
-    await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBe(1);
+    await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBeGreaterThanOrEqual(1);
 
     await page.evaluate(() => {
       localStorage.setItem('wm-live-streams-always-on', 'false');
@@ -266,11 +273,10 @@ test.describe('live media intent gating', () => {
         detail: { alwaysOn: false },
       }));
     });
-    await expect.poll(async () => {
-      const liveNewsCount = await liveNewsTransportCount(page);
-      const webcamCount = await webcamTransportCount(page);
-      return liveNewsCount + webcamCount;
-    }, { timeout: 10_000 }).toBe(1);
+    // Leaving always-on must NOT collapse the wall — feeds already playing stay (eco-idle pauses later).
+    await page.waitForTimeout(1500);
+    expect(await liveNewsTransportCount(page)).toBe(1);
+    expect(await webcamTransportCount(page)).toBeGreaterThanOrEqual(1);
   });
 
   test('always-on live news restarts after disable and re-enable through stored settings', async ({ page }) => {
