@@ -173,16 +173,11 @@
     </script>
 
     <!--
-      Umami Analytics — async (not defer): defer blocks DOMContentLoaded if abacus is slow/down (15s observed when origin 502s).
-      data-domains is temporarily reduced to worldmonitor.app + happy.worldmonitor.app while upstream Umami issue #4183
-      (https://github.com/umami-software/umami/issues/4183) is open — v3.1.0 has a race in
-      prisma.sessionData.updateMany() that returns HTTP 500 from /api/send for 4-8% of requests
-      across all listed hosts. Self-hosted Umami has no fix tag yet (master since 2026-04-17 has
-      22 commits but none touch sessionData). Tracker self-disables when current hostname isn't in
-      data-domains — same mechanism that keeps energy.worldmonitor.app silent. Restore tech, finance,
-      and commodity once #4183 ships in a tagged release.
+      Umami Analytics loads from the SPA after first paint/idle (not the document
+      head) so a slow/down abacus origin cannot contend with the initial dashboard
+      shell. Script src, website id, and the #4183 data-domains workaround now live
+      in src/services/analytics.ts (UMAMI_DOMAINS) — the single source of truth.
     -->
-    <script async src="https://abacus.worldmonitor.app/script.js" data-website-id="e8800335-c853-46a8-8497-c993ed2f58bc" data-domains="worldmonitor.app,happy.worldmonitor.app"></script>
 
     <!-- Favicons -->
     <link rel="icon" type="image/x-icon" href="/favico/favicon.ico" />
@@ -288,20 +283,15 @@
          api.worldmonitor.app: credentialed CORS (runtime.ts defaults
          credentials: 'include') — must use `use-credentials` so the
          pre-opened socket lands in the same connection pool as the
-         credentialed fetches.
-         Sentry ingest: anonymous (DSN key in headers, no cookies). -->
+         credentialed fetches. Sentry and Clerk are deferred by their
+         runtime loaders, so they intentionally do not get head preconnects. -->
     <link rel="preconnect" href="https://api.worldmonitor.app" crossorigin="use-credentials">
-    <link rel="preconnect" href="https://o4509927897890816.ingest.us.sentry.io" crossorigin>
-    <link rel="dns-prefetch" href="https://clerk.worldmonitor.app">
 
     <!-- Preconnect: map tiles + assets -->
     <link rel="preconnect" href="https://maps.worldmonitor.app" crossorigin>
     <link rel="dns-prefetch" href="https://protomaps.github.io">
 
-    <!-- Google Fonts (Nunito for happy variant, Tajawal for Arabic) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,300;0,400;0,600;0,700;1,400&family=Tajawal:wght@200;300;400;500;700;800;900&display=swap" rel="stylesheet">
+    <!-- Variant/locale fonts are narrowed and loaded after the dashboard paints. -->
   </head>
   <body>
     <!--

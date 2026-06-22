@@ -1,7 +1,7 @@
 import './styles/base-layer.css';
 import './styles/happy-theme.css';
 import { enqueueSentryCall, installPreInitErrorQueue, scheduleSentryInit } from '@/bootstrap/sentry-defer';
-import { inject } from '@vercel/analytics';
+import { initVercelAnalytics } from '@/bootstrap/secondary-startup';
 import { App } from './App';
 import { installUtmInterceptor } from './utils/utm';
 
@@ -252,6 +252,7 @@ import { installRuntimeFetchPatch, installWebApiRedirect } from '@/services/runt
 import { loadDesktopSecrets } from '@/services/runtime-config';
 import { applyStoredTheme } from '@/utils/theme-manager';
 import { applyFont } from '@/services/font-settings';
+import { initAnalytics } from '@/services/analytics';
 import { SITE_VARIANT } from '@/config/variant';
 import { clearChunkReloadGuard, installChunkReloadGuard } from '@/bootstrap/chunk-reload';
 import { installStaleBundleCheck } from '@/bootstrap/stale-bundle-check';
@@ -260,10 +261,9 @@ import { installSwUpdateHandler } from '@/bootstrap/sw-update';
 // Auto-reload on stale chunk 404s after deployment (Vite fires this for modulepreload failures).
 const chunkReloadStorageKey = installChunkReloadGuard(__APP_VERSION__);
 
-// Initialize Vercel Analytics (10% sampling to reduce costs)
-inject({
-  beforeSend: (event) => (Math.random() > 0.1 ? null : event),
-});
+// Analytics are secondary startup work: schedule loaders after first paint.
+void initAnalytics();
+initVercelAnalytics();
 
 // Initialize dynamic meta tags for sharing
 initMetaTags();
