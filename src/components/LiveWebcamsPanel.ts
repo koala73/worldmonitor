@@ -142,9 +142,10 @@ export class LiveWebcamsPanel extends Panel {
       this.alwaysOn = alwaysOn;
       this.applyIdleMode();
       if (wasAlwaysOn && !alwaysOn) {
-        enforceExclusiveLiveMediaPlayback();
+        // Deterministically keep Live News when leaving always-on (stable priority over webcams).
+        enforceExclusiveLiveMediaPlayback('live-news');
       }
-      if (alwaysOn && this.isVisible && !this.activeIframeFeedId) {
+      if (alwaysOn && this.isVisible && !document.hidden && !this.activeIframeFeedId) {
         this.requestPlayback(this.activeFeed, 'settings');
       }
     });
@@ -393,6 +394,7 @@ export class LiveWebcamsPanel extends Panel {
   }
 
   private isPanelVisible(): boolean {
+    if (!this.element.isConnected) return false;
     const rect = this.element.getBoundingClientRect();
     return rect.width > 0 &&
       rect.height > 0 &&
@@ -411,7 +413,8 @@ export class LiveWebcamsPanel extends Panel {
     this.resumeFeedAfterIdleId = reason === 'idle' ? this.activeIframeFeedId : null;
     this.activeIframeFeedId = null;
     this.destroyIframes();
-    if (this.isVisible && !this.isIdle && this.element.isConnected) {
+    // Don't rebuild DOM for a backgrounded tab; the visibility handler re-renders on return.
+    if (this.isVisible && !this.isIdle && this.element.isConnected && !document.hidden) {
       this.render();
     }
   }
@@ -789,6 +792,7 @@ export class LiveWebcamsPanel extends Panel {
 
   public stopLiveMediaForClose(): void {
     this.resumeFeedAfterIdleId = null;
+    if (this.idleTimeout) { clearTimeout(this.idleTimeout); this.idleTimeout = null; }
     stopLiveMediaPlayback('live-webcams', 'destroyed');
     this.activeIframeFeedId = null;
     this.destroyIframes();
@@ -804,6 +808,9 @@ export class LiveWebcamsPanel extends Panel {
   }
 
   public destroy(): void {
+    // Disconnect the IntersectionObserver FIRST so a scroll-driven callback can't
+    // re-render / re-create iframes (with leaked ready-timeouts) mid-teardown.
+    this.observer?.disconnect();
     releaseLiveMediaPlayback('live-webcams');
     if (this.idleTimeout) {
       clearTimeout(this.idleTimeout);
@@ -816,7 +823,6 @@ export class LiveWebcamsPanel extends Panel {
       document.removeEventListener(event, this.boundIdleResetHandler);
     });
     if (this.isFullscreen) this.toggleFullscreen();
-    this.observer?.disconnect();
     this.unsubscribeStreamSettings?.();
     this.unsubscribeStreamSettings = null;
     this.destroyIframes();

@@ -435,7 +435,15 @@ export class LiveNewsPanel extends Panel {
       this.alwaysOn = alwaysOn;
       this.applyIdleMode();
       if (wasAlwaysOn && !alwaysOn) {
-        enforceExclusiveLiveMediaPlayback();
+        // Cancel any pending lazy-init so leaving always-on cannot auto-start playback without intent.
+        if (this.lazyObserver) { this.lazyObserver.disconnect(); this.lazyObserver = null; }
+        if (this.idleCallbackId !== null) {
+          if ('cancelIdleCallback' in window) (window as any).cancelIdleCallback(this.idleCallbackId);
+          else clearTimeout(this.idleCallbackId as ReturnType<typeof setTimeout>);
+          this.idleCallbackId = null;
+        }
+        // Deterministically keep Live News when leaving always-on (stable priority over webcams).
+        enforceExclusiveLiveMediaPlayback('live-news');
       }
       if (alwaysOn && !this.deferredInit && this.isPanelVisible()) {
         this.startAlwaysOnPlaybackIfVisible();
@@ -447,6 +455,7 @@ export class LiveNewsPanel extends Panel {
   }
 
   private isPanelVisible(): boolean {
+    if (!this.element.isConnected) return false;
     const rect = this.element.getBoundingClientRect();
     return rect.width > 0 &&
       rect.height > 0 &&
@@ -515,6 +524,7 @@ export class LiveNewsPanel extends Panel {
 
   private triggerInit(): void {
     if (this.deferredInit) return;
+    this.deferredInit = true;
     if (this.lazyObserver) { this.lazyObserver.disconnect(); this.lazyObserver = null; }
     if (this.idleCallbackId !== null) {
       if ('cancelIdleCallback' in window) (window as any).cancelIdleCallback(this.idleCallbackId);
@@ -585,7 +595,8 @@ export class LiveNewsPanel extends Panel {
     this.wasPlayingBeforeIdle = shouldResumeAfterIdle;
     this.updateLiveIndicator();
     this.destroyPlayer();
-    this.renderPlaceholder();
+    // Skip DOM work on a detached panel; destroy() already runs destroyPlayer().
+    if (this.element.isConnected) this.renderPlaceholder();
   }
 
   private saveChannels(): void {
@@ -725,8 +736,10 @@ export class LiveNewsPanel extends Panel {
   }
 
   private pauseForIdle(): void {
+    // Arm idle-resume only when actually playing; otherwise a stale flag could
+    // resurrect media the user never started (or paused) when the stop fires.
+    this.wasPlayingBeforeIdle = this.isPlaying;
     if (this.isPlaying) {
-      this.wasPlayingBeforeIdle = true;
       this.isPlaying = false;
       this.updateLiveIndicator();
     }
@@ -799,6 +812,7 @@ export class LiveNewsPanel extends Panel {
   }
 
   private resumeFromIdle(): void {
+    if (this.ownsActiveLiveMedia()) return;
     if (this.wasPlayingBeforeIdle && !this.isPlaying) {
       this.requestPlaybackForActiveChannel();
     }
@@ -1092,6 +1106,12 @@ export class LiveNewsPanel extends Panel {
     channel.hlsUrl = (!hlsCooldownActive && info.hlsUrl) ? info.hlsUrl : undefined;
   }
 
+  private clearChannelLoadingState(): void {
+    this.channelSwitcher?.querySelectorAll('.live-channel-btn.loading').forEach(btn => {
+      (btn as HTMLElement).classList.remove('loading');
+    });
+  }
+
   private async switchChannel(channel: LiveChannel): Promise<void> {
     if (channel.id === this.activeChannel.id) return;
 
@@ -1118,12 +1138,16 @@ export class LiveNewsPanel extends Panel {
 
     await this.resolveChannelVideo(channel);
     if (!this.element?.isConnected) return;
-    if (this.activeChannel.id !== channel.id) return;
+    // Every early return below bails after the loading spinner was set; clear it
+    // so an interrupted/aborted switch doesn't leave a button spinning forever.
+    if (this.activeChannel.id !== channel.id) { this.clearChannelLoadingState(); return; }
     if (hadLiveNewsOwnership && !this.ownsLiveNewsMedia()) {
+      this.clearChannelLoadingState();
       this.renderPlaceholder();
       return;
     }
     if (!this.hasPlaybackIntent()) {
+      this.clearChannelLoadingState();
       this.renderPlaceholder();
       return;
     }
@@ -1765,6 +1789,7 @@ export class LiveNewsPanel extends Panel {
   public stopLiveMediaForClose(): void {
     this.liveMediaSessionToken += 1;
     this.wasPlayingBeforeIdle = false;
+    if (this.idleTimeout) { clearTimeout(this.idleTimeout); this.idleTimeout = null; }
     stopLiveMediaPlayback('live-news', 'destroyed');
     if (this.player || this.desktopEmbedIframe || this.nativeVideoElement) {
       this.isPlaying = false;

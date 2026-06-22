@@ -102,6 +102,62 @@ describe('live media controller', () => {
     ]);
   });
 
+  it('keeps the preferred panel (live-news) after always-on is disabled, regardless of insertion order', () => {
+    const events: string[] = [];
+
+    // Webcams registered FIRST, news SECOND. Without a preference the no-arg form
+    // keeps the last-inserted entry (webcams). The panels pass 'live-news', so the
+    // surviving stream is deterministic instead of insertion-order dependent.
+    requestLiveMediaPlayback(
+      'live-webcams',
+      'jerusalem',
+      () => events.push('start:live-webcams:jerusalem'),
+      (reason) => events.push(`stop:live-webcams:${reason}`),
+      { exclusive: false },
+    );
+    requestLiveMediaPlayback(
+      'live-news',
+      'bloomberg',
+      () => events.push('start:live-news:bloomberg'),
+      (reason) => events.push(`stop:live-news:${reason}`),
+      { exclusive: false },
+    );
+
+    enforceExclusiveLiveMediaPlayback('live-news');
+
+    assert.deepEqual(getActiveLiveMedia('live-news'), {
+      panelId: 'live-news',
+      streamId: 'bloomberg',
+    });
+    assert.equal(getActiveLiveMedia('live-webcams'), null);
+    assert.deepEqual(events, [
+      'start:live-webcams:jerusalem',
+      'start:live-news:bloomberg',
+      'stop:live-webcams:replaced',
+    ]);
+  });
+
+  it('falls back to keeping the latest stream when the preferred panel is not active', () => {
+    const events: string[] = [];
+
+    requestLiveMediaPlayback(
+      'live-webcams',
+      'jerusalem',
+      () => events.push('start:live-webcams:jerusalem'),
+      (reason) => events.push(`stop:live-webcams:${reason}`),
+      { exclusive: false },
+    );
+
+    // 'live-news' is not active, so the preference is ignored and webcams survives.
+    enforceExclusiveLiveMediaPlayback('live-news');
+
+    assert.deepEqual(getActiveLiveMedia('live-webcams'), {
+      panelId: 'live-webcams',
+      streamId: 'jerusalem',
+    });
+    assert.deepEqual(events, ['start:live-webcams:jerusalem']);
+  });
+
   it('keeps the most recently requested stream after always-on mode is disabled', () => {
     const events: string[] = [];
 
