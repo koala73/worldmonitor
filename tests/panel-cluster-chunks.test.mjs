@@ -87,6 +87,14 @@ function hasSpreadOfArray(name, spreadName) {
   ));
 }
 
+function hasStringElement(name, value) {
+  const declaration = findVariableDeclaration(viteConfigAst, name);
+  assert.ok(declaration.initializer && ts.isAsExpression(declaration.initializer), `${name} must use "as const".`);
+  const expression = declaration.initializer.expression;
+  assert.ok(ts.isArrayLiteralExpression(expression), `${name} must be an array literal.`);
+  return expression.elements.some((element) => ts.isStringLiteral(element) && element.text === value);
+}
+
 function hasCall(ast, calleeName) {
   let found = false;
   function visit(node) {
@@ -288,7 +296,44 @@ function builtDashboardLazyPreloadOffenders() {
   const html = readFileSync(htmlPath, 'utf8');
   const preloadHrefs = [...html.matchAll(/<link\b[^>]*\brel=["']modulepreload["'][^>]*\bhref=["']([^"']+)["'][^>]*>/g)]
     .map((match) => match[1]);
-  return preloadHrefs.filter((href) => /\/assets\/(?:panels-[a-z]+|panel-support)-[A-Za-z0-9_-]+\.js$/.test(href));
+  return preloadHrefs.filter((href) => /\/assets\/(?:panels-[a-z]+|panel-support|UnifiedSettings|settings-window|checkout)-[A-Za-z0-9_-]+\.js$/.test(href));
+}
+
+function startupSecondaryFlowImportOffenders() {
+  const blockedSpecifiers = new Set([
+    '@/components/UnifiedSettings',
+  ]);
+  const offenders = [];
+  for (const filePath of startupModulePaths) {
+    const ast = astForPath(filePath);
+    const relativePath = filePath.slice(repoRoot.length + 1);
+    for (const statement of ast.statements) {
+      if (!ts.isImportDeclaration(statement)) continue;
+      const importClause = statement.importClause;
+      if (!importClause || importClause.isTypeOnly) continue;
+      const specifier = stringValue(statement.moduleSpecifier);
+      if (specifier && blockedSpecifiers.has(specifier)) {
+        offenders.push(`${relativePath}:${lineForPosition(ast, statement.getStart(ast))} imports ${specifier}`);
+      }
+    }
+  }
+  return offenders;
+}
+
+function checkoutSdkValueImportOffenders() {
+  const filePath = resolve(repoRoot, 'src/services/checkout.ts');
+  const ast = astForPath(filePath);
+  const offenders = [];
+  for (const statement of ast.statements) {
+    if (!ts.isImportDeclaration(statement)) continue;
+    const importClause = statement.importClause;
+    if (!importClause || importClause.isTypeOnly) continue;
+    const specifier = stringValue(statement.moduleSpecifier);
+    if (specifier === 'dodopayments-checkout') {
+      offenders.push(`src/services/checkout.ts:${lineForPosition(ast, statement.getStart(ast))} imports ${specifier}`);
+    }
+  }
+  return offenders;
 }
 
 describe('panel cluster chunk guardrails', () => {
@@ -387,6 +432,26 @@ describe('panel cluster chunk guardrails', () => {
       startupPanelValueImportOffenders(panelCluster),
       [],
       'Startup modules must use dynamic imports or type-only imports for panel chunks.',
+    );
+  });
+
+  it('keeps secondary settings and checkout chunks off the eager startup path', () => {
+    for (const chunkName of ['UnifiedSettings', 'settings-window', 'checkout']) {
+      assert.equal(
+        hasStringElement('LAZY_HTML_PRELOAD_CHUNKS', chunkName),
+        true,
+        `${chunkName} must stay in the HTML preload exclusion list.`,
+      );
+    }
+    assert.deepEqual(
+      startupSecondaryFlowImportOffenders(),
+      [],
+      'Startup modules must use dynamic imports for the UnifiedSettings modal.',
+    );
+    assert.deepEqual(
+      checkoutSdkValueImportOffenders(),
+      [],
+      'Checkout must dynamically import dodopayments-checkout so the SDK stays out of main.',
     );
   });
 });

@@ -58,7 +58,18 @@ type PanelManualChunkName = PanelChunkName | PanelSupportChunkName;
 //   - maplibre, deck-stack: heavy WebGL deps, only reachable via MapContainer
 //   - MapContainer: the dynamic-import target itself
 //   - panels-*: panel domain chunks; keep them out of the entry HTML preload
-const LAZY_HTML_PRELOAD_CHUNKS = ['maplibre', 'deck-stack', 'MapContainer', ...PANEL_CHUNK_NAMES, ...PANEL_SUPPORT_CHUNK_NAMES] as const;
+//   - UnifiedSettings, settings-window, checkout: secondary interaction flows;
+//     first paint only needs their header buttons and cheap event wiring
+const LAZY_HTML_PRELOAD_CHUNKS = [
+  'maplibre',
+  'deck-stack',
+  'MapContainer',
+  'UnifiedSettings',
+  'settings-window',
+  'checkout',
+  ...PANEL_CHUNK_NAMES,
+  ...PANEL_SUPPORT_CHUNK_NAMES,
+] as const;
 const LAZY_HTML_PRELOAD_RE = new RegExp(
   `/(${LAZY_HTML_PRELOAD_CHUNKS.join('|')})-[A-Za-z0-9_-]+\\.js$`,
 );
