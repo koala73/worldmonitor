@@ -103,12 +103,37 @@ function collectStaticGraph(entryRelPath) {
   return seen;
 }
 
+function linkAttributes(linkTag) {
+  const attrs = new Map();
+  for (const match of linkTag.matchAll(/\s([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g)) {
+    attrs.set(match[1].toLowerCase(), match[2] ?? match[3] ?? match[4] ?? '');
+  }
+  return attrs;
+}
+
 function stylesheetHrefs(html) {
-  return [...html.matchAll(/<link\b[^>]*\brel=["']stylesheet["'][^>]*\bhref=["']([^"']+\.css)["'][^>]*>/g)]
-    .map((match) => match[1]);
+  const hrefs = [];
+  for (const match of html.matchAll(/<link\b[^>]*>/gi)) {
+    const attrs = linkAttributes(match[0]);
+    const rels = (attrs.get('rel') ?? '').toLowerCase().split(/\s+/);
+    const href = attrs.get('href');
+    if (href?.endsWith('.css') && rels.includes('stylesheet')) hrefs.push(href);
+  }
+  return hrefs;
 }
 
 describe('dashboard critical CSS graph', () => {
+  it('extracts stylesheet links regardless of link attribute order', () => {
+    assert.deepEqual(
+      stylesheetHrefs(`
+        <link rel="stylesheet" href="/assets/main.css">
+        <link href="/assets/settings.css" rel="preload stylesheet">
+        <link href="/assets/ignored.css" rel="preload">
+      `),
+      ['/assets/main.css', '/assets/settings.css'],
+    );
+  });
+
   it('keeps standalone settings window CSS out of the in-dashboard settings module', () => {
     const unifiedSettingsImports = staticModuleSpecifiers('src/components/UnifiedSettings.ts');
 
