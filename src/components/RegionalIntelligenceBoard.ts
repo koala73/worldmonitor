@@ -144,6 +144,11 @@ export class RegionalIntelligenceBoard extends Panel {
   }
 
   private async loadCurrent(): Promise<void> {
+    if (!this.element.isConnected) {
+      this.runWhenConnected(() => { void this.loadCurrent(); });
+      return;
+    }
+
     // Skip premium RPCs when this app instance is running inside the /pro
     // marketing page's live-preview iframe — no Clerk session carries across
     // that boundary, so every call would 401. The breaker + renderEmpty path

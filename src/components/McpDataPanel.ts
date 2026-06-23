@@ -72,6 +72,10 @@ export class McpDataPanel extends Panel {
 
   private scheduleRefresh(immediate = false): void {
     this.clearRefreshTimer();
+    if (!this.element.isConnected) {
+      this.runWhenConnected(() => this.scheduleRefresh(immediate));
+      return;
+    }
     if (immediate) {
       void this.fetchData();
     }
@@ -88,6 +92,10 @@ export class McpDataPanel extends Panel {
   }
 
   async fetchData(): Promise<void> {
+    if (!this.element.isConnected) {
+      this.runWhenConnected(() => { void this.fetchData(); });
+      return;
+    }
     this.showLoading();
     try {
       // premiumFetch attaches the Clerk Pro Bearer for normal web Pro

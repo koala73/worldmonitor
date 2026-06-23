@@ -86,6 +86,10 @@ async function loadMinimalPanel() {
         const wrapper = h('div', { className: MinimalConstructorOnlyPanel.MARKER_CLASS }, input);
         replaceChildren(this.content, wrapper);
       }
+
+      publicRunWhenConnected(callback) {
+        return this.runWhenConnected(callback);
+      }
     }
 
     export class FreshnessMappedPanel extends Panel {

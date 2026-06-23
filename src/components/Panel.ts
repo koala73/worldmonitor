@@ -198,6 +198,8 @@ export class Panel {
   private _collapseBtn: HTMLButtonElement | null = null;
   private viewportObserver: IntersectionObserver | null = null;
   private viewportObserverRegistered = false;
+  private connectedObserver: MutationObserver | null = null;
+  private connectedCallbacks: Array<() => void> = [];
 
   constructor(options: PanelOptions) {
     this.panelId = options.id;
@@ -748,6 +750,42 @@ export class Panel {
       && !this._collapsed;
   }
 
+  protected runWhenConnected(callback: () => void): boolean {
+    if (this.element.isConnected) {
+      callback();
+      return true;
+    }
+
+    this.connectedCallbacks.push(callback);
+    if (this.connectedObserver) return false;
+
+    const flush = (): void => {
+      if (!this.element.isConnected) return;
+      const callbacks = this.connectedCallbacks.splice(0);
+      this.connectedObserver?.disconnect();
+      this.connectedObserver = null;
+      for (const cb of callbacks) cb();
+    };
+
+    if (typeof MutationObserver !== 'undefined') {
+      const target = document.body ?? document.documentElement;
+      if (target) {
+        this.connectedObserver = new MutationObserver(flush);
+        this.connectedObserver.observe(target, { childList: true, subtree: true });
+        return false;
+      }
+    }
+
+    const scheduleFrame = typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame
+      : (cb: FrameRequestCallback): number => {
+          globalThis.setTimeout(() => cb(Date.now()), 0);
+          return 0;
+        };
+    scheduleFrame(flush);
+    return false;
+  }
+
   /**
    * Fire `callback` once when this panel's element scrolls within
    * `marginPx` of the viewport. Uses IntersectionObserver where
@@ -1206,6 +1244,9 @@ export class Panel {
     this.abortController.abort();
     this.clearRetryCountdown();
     this.unobserveViewport();
+    this.connectedObserver?.disconnect();
+    this.connectedObserver = null;
+    this.connectedCallbacks = [];
     if (this.freshnessUnsubscribe) {
       this.freshnessUnsubscribe();
       this.freshnessUnsubscribe = null;
