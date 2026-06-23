@@ -1,0 +1,210 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, extname, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(__dirname, '..');
+
+function src(relPath) {
+  return readFileSync(resolve(repoRoot, relPath), 'utf8');
+}
+
+function toRepoPath(absPath) {
+  return relative(repoRoot, absPath).replaceAll('\\', '/');
+}
+
+function sourceScriptKind(relPath) {
+  if (relPath.endsWith('.tsx')) return ts.ScriptKind.TSX;
+  if (relPath.endsWith('.jsx')) return ts.ScriptKind.JSX;
+  if (relPath.endsWith('.js') || relPath.endsWith('.mjs')) return ts.ScriptKind.JS;
+  return ts.ScriptKind.TS;
+}
+
+function staticModuleSpecifiers(relPath) {
+  const sourceText = src(relPath);
+  const ast = ts.createSourceFile(
+    relPath,
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+    sourceScriptKind(relPath),
+  );
+
+  const specifiers = [];
+  for (const statement of ast.statements) {
+    if (ts.isImportDeclaration(statement)) {
+      if (statement.importClause?.isTypeOnly) continue;
+      if (ts.isStringLiteral(statement.moduleSpecifier)) specifiers.push(statement.moduleSpecifier.text);
+      continue;
+    }
+    if (ts.isExportDeclaration(statement)) {
+      if (statement.isTypeOnly) continue;
+      if (statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier)) specifiers.push(statement.moduleSpecifier.text);
+    }
+  }
+  return specifiers;
+}
+
+function stripSpecifierSuffix(specifier) {
+  return specifier.replace(/[?#].*$/, '');
+}
+
+function resolveCandidate(absBase) {
+  const ext = extname(absBase);
+  if (ext) return existsSync(absBase) ? toRepoPath(absBase) : null;
+
+  for (const suffix of ['.ts', '.tsx', '.js', '.mjs', '.mts', '.css', '.json']) {
+    const withSuffix = `${absBase}${suffix}`;
+    if (existsSync(withSuffix)) return toRepoPath(withSuffix);
+  }
+
+  for (const suffix of ['.ts', '.tsx', '.js', '.mjs', '.css']) {
+    const indexPath = resolve(absBase, `index${suffix}`);
+    if (existsSync(indexPath)) return toRepoPath(indexPath);
+  }
+
+  return null;
+}
+
+function resolveImport(fromRelPath, rawSpecifier) {
+  const specifier = stripSpecifierSuffix(rawSpecifier);
+  if (specifier.startsWith('@/')) return resolveCandidate(resolve(repoRoot, 'src', specifier.slice(2)));
+  if (specifier.startsWith('.')) return resolveCandidate(resolve(repoRoot, dirname(fromRelPath), specifier));
+  return null;
+}
+
+function cssImportSpecifiers(relPath) {
+  return [...src(relPath).matchAll(/@import\s+(?:url\()?["']([^"')]+)["']\)?/g)]
+    .map((match) => match[1]);
+}
+
+function staticDependencies(relPath) {
+  if (relPath.endsWith('.css')) return cssImportSpecifiers(relPath).map((specifier) => resolveImport(relPath, specifier)).filter(Boolean);
+  if (!/\.[cm]?[jt]sx?$/.test(relPath)) return [];
+  return staticModuleSpecifiers(relPath).map((specifier) => resolveImport(relPath, specifier)).filter(Boolean);
+}
+
+function collectStaticGraph(entryRelPath) {
+  const seen = new Set();
+  const stack = [entryRelPath];
+
+  while (stack.length > 0) {
+    const relPath = stack.pop();
+    if (!relPath || seen.has(relPath)) continue;
+    seen.add(relPath);
+    for (const dep of staticDependencies(relPath)) {
+      if (!seen.has(dep)) stack.push(dep);
+    }
+  }
+
+  return seen;
+}
+
+function stylesheetHrefs(html) {
+  return [...html.matchAll(/<link\b[^>]*\brel=["']stylesheet["'][^>]*\bhref=["']([^"']+\.css)["'][^>]*>/g)]
+    .map((match) => match[1]);
+}
+
+describe('dashboard critical CSS graph', () => {
+  it('keeps standalone settings window CSS out of the in-dashboard settings module', () => {
+    const unifiedSettingsImports = staticModuleSpecifiers('src/components/UnifiedSettings.ts');
+
+    assert.equal(
+      unifiedSettingsImports.includes('@/styles/settings-window.css'),
+      false,
+      'UnifiedSettings renders inside the dashboard and must not pull standalone settings CSS onto the dashboard critical path.',
+    );
+
+    assert.equal(
+      staticModuleSpecifiers('src/settings-main.ts').includes('./styles/settings-window.css'),
+      true,
+      'The standalone settings entry must keep importing its own settings-window stylesheet.',
+    );
+  });
+
+  it('keeps standalone settings CSS out of the dashboard static import graph', () => {
+    const dashboardGraph = collectStaticGraph('src/main.ts');
+    const settingsGraph = collectStaticGraph('src/settings-main.ts');
+
+    assert.equal(
+      dashboardGraph.has('src/components/UnifiedSettings.ts'),
+      true,
+      'sanity check: the dashboard graph should still include the in-dashboard UnifiedSettings module.',
+    );
+    assert.equal(
+      dashboardGraph.has('src/styles/settings-window.css'),
+      false,
+      'The dashboard static graph must not reach the standalone settings-window stylesheet.',
+    );
+    assert.equal(
+      settingsGraph.has('src/styles/settings-window.css'),
+      true,
+      'The standalone settings entry should still reach settings-window.css.',
+    );
+  });
+
+  it('keeps dashboard preferences content on dashboard-owned button styles', () => {
+    const preferencesContent = src('src/services/preferences-content.ts');
+    const mainCss = src('src/styles/main.css');
+
+    assert.doesNotMatch(
+      preferencesContent,
+      /\bsettings-btn(?:-(?:primary|secondary))?\b/,
+      'Dashboard preference controls must not rely on settings-window.css-only button classes.',
+    );
+    assert.match(mainCss, /\.btn\s*\{/);
+    assert.match(mainCss, /\.btn-primary\s*\{/);
+    assert.match(mainCss, /\.btn-secondary\s*\{/);
+  });
+
+  it('does not link or merge the settings-only stylesheet into built dashboard.html', { skip: !existsSync(resolve(repoRoot, 'dist/dashboard.html')) }, () => {
+    const dashboardHtml = src('dist/dashboard.html');
+    const hrefs = stylesheetHrefs(dashboardHtml);
+    const settingsStylesheets = hrefs.filter((href) =>
+      /\/assets\/settings(?:-(?:persistence|window))?-[A-Za-z0-9_-]+\.css$/.test(href)
+    );
+
+    assert.deepEqual(
+      settingsStylesheets,
+      [],
+      'Built dashboard.html must not render-block on the settings-only stylesheet.',
+    );
+
+    const standaloneSettingsSelectors = [
+      '.settings-shell',
+      '.settings-sidebar',
+      '.settings-main',
+      '.settings-content',
+      '.settings-titlebar',
+    ];
+    const dashboardCss = hrefs
+      .map((href) => src(`dist/${href.replace(/^\//, '')}`))
+      .join('\n');
+    for (const selector of standaloneSettingsSelectors) {
+      assert.equal(
+        dashboardCss.includes(selector),
+        false,
+        `Built dashboard stylesheets must not include standalone settings selector ${selector}.`,
+      );
+    }
+
+    if (existsSync(resolve(repoRoot, 'dist/settings.html'))) {
+      const settingsHrefs = stylesheetHrefs(src('dist/settings.html'));
+      assert.ok(
+        settingsHrefs.some((href) => /\/assets\/settings(?:-(?:persistence|window))?-[A-Za-z0-9_-]+\.css$/.test(href)),
+        'Built settings.html should still link the settings-only stylesheet for the standalone settings window.',
+      );
+      const settingsCss = settingsHrefs
+        .map((href) => src(`dist/${href.replace(/^\//, '')}`))
+        .join('\n');
+      assert.equal(
+        standaloneSettingsSelectors.every((selector) => settingsCss.includes(selector)),
+        true,
+        'Built settings.html stylesheets should still include standalone settings selectors.',
+      );
+    }
+  });
+});

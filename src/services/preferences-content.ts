@@ -281,7 +281,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
 
   // Import button
   html += `<div class="fw-import-row">
-    <button type="button" class="settings-btn settings-btn-secondary fw-import-btn" id="fwImportBtn">${t('components.insights.analysisFrameworksImportBtn')}</button>
+    <button type="button" class="btn btn-secondary fw-import-btn" id="fwImportBtn">${t('components.insights.analysisFrameworksImportBtn')}</button>
   </div>`;
 
   // Import modal (hidden by default)
@@ -300,11 +300,11 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           <label class="fw-import-label">agentskills.io URL or ID</label>
           <input type="text" class="fw-import-input" id="fwAgentskillsUrl" placeholder="https://agentskills.io/skills/..." />
         </div>
-        <button type="button" class="settings-btn settings-btn-secondary" id="fwFetchBtn">Fetch</button>
+        <button type="button" class="btn btn-secondary" id="fwFetchBtn">Fetch</button>
         <div class="fw-import-preview" id="fwAgentskillsPreview" style="display:none">
           <div class="fw-import-preview-name" id="fwPreviewName"></div>
           <div class="fw-import-preview-desc" id="fwPreviewDesc"></div>
-          <button type="button" class="settings-btn settings-btn-primary fw-save-btn" id="fwAgentskillsSaveBtn">${t('components.insights.analysisFrameworksSaveToLibrary')}</button>
+          <button type="button" class="btn btn-primary fw-save-btn" id="fwAgentskillsSaveBtn">${t('components.insights.analysisFrameworksSaveToLibrary')}</button>
         </div>
         <div class="fw-import-error" id="fwAgentskillsError" style="display:none"></div>
       </div>
@@ -314,7 +314,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           <textarea class="fw-import-textarea" id="fwJsonInput" rows="6" placeholder='{ "name": "...", "instructions": "..." }'></textarea>
         </div>
         <div class="fw-import-error" id="fwJsonError" style="display:none"></div>
-        <button type="button" class="settings-btn settings-btn-primary fw-save-btn" id="fwJsonSaveBtn">${t('components.insights.analysisFrameworksSaveToLibrary')}</button>
+        <button type="button" class="btn btn-primary fw-save-btn" id="fwJsonSaveBtn">${t('components.insights.analysisFrameworksSaveToLibrary')}</button>
       </div>
     </div>
   </div>`;
@@ -373,7 +373,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
         <span class="wm-sync-status-label" id="usSyncLabel">${SYNC_STATE_LABELS[syncState] ?? 'Unknown'}</span>
         <span class="wm-sync-status-time" id="usSyncTime">Last synced: ${escapeHtml(lastSyncStr)}</span>
       </div>
-      <button type="button" class="settings-btn settings-btn-secondary wm-sync-now-btn" id="usSyncNowBtn">Sync now</button>
+      <button type="button" class="btn btn-secondary wm-sync-now-btn" id="usSyncNowBtn">Sync now</button>
     </div>`;
     html += `</div></details>`;
   }
@@ -384,8 +384,8 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   html += `<div class="wm-pref-group-content">`;
   html += `
     <div class="us-data-mgmt">
-      <button type="button" class="settings-btn settings-btn-secondary" id="usExportBtn">${t('components.settings.exportSettings')}</button>
-      <button type="button" class="settings-btn settings-btn-secondary" id="usImportBtn">${t('components.settings.importSettings')}</button>
+      <button type="button" class="btn btn-secondary" id="usExportBtn">${t('components.settings.exportSettings')}</button>
+      <button type="button" class="btn btn-secondary" id="usImportBtn">${t('components.settings.importSettings')}</button>
       <input type="file" id="usImportInput" accept=".json" class="us-hidden-input" />
     </div>
     <div class="us-data-mgmt-toast" id="usDataMgmtToast"></div>

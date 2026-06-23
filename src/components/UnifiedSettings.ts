@@ -1,4 +1,3 @@
-import '@/styles/settings-window.css';
 import { CANONICAL_FEEDS, INTEL_SOURCES, SOURCE_REGION_MAP } from '@/config/feeds';
 import {
   PANEL_CATEGORY_MAP,
