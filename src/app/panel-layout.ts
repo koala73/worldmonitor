@@ -517,6 +517,7 @@ export class PanelLayoutManager implements AppModule {
     document.documentElement.classList.add('wm-layout-hydrated');
     setTrustedHtml(this.ctx.container, trustedHtml(`
       ${this.ctx.isDesktopApp ? '<div class="tauri-titlebar" data-tauri-drag-region></div>' : ''}
+      <a href="#main" class="skip-link">Skip to main content</a>
       <div id="proBannerSlot" class="pro-banner-slot" aria-live="polite"></div>
       <div class="header">
         <div class="header-left">
@@ -599,7 +600,7 @@ export class PanelLayoutManager implements AppModule {
             <span>${t('header.live')}</span>
           </div>
           <div class="region-selector">
-            <select id="regionSelect" class="region-select">
+            <select id="regionSelect" class="region-select" aria-label="${t('header.selectRegion')}">
               <option value="global">${t('components.deckgl.views.global')}</option>
               <option value="america">${t('components.deckgl.views.americas')}</option>
               <option value="mena">${t('components.deckgl.views.mena')}</option>
@@ -705,7 +706,7 @@ export class PanelLayoutManager implements AppModule {
       ).join('')}
       </div>
       <div class="dashboard-tabs-mount" id="panelTabsMount"></div>
-      <div class="main-content${this.ctx.isDesktopApp ? ' desktop-grid' : ''}">
+      <main id="main" tabindex="-1" class="main-content${this.ctx.isDesktopApp ? ' desktop-grid' : ''}">
         <div class="map-section" id="mapSection">
           <div class="panel-header">
             <div class="panel-header-left">
@@ -735,7 +736,7 @@ export class PanelLayoutManager implements AppModule {
         <div class="map-width-resize-handle" id="mapWidthResizeHandle"></div>
         <div class="panels-grid" id="panelsGrid" role="tabpanel"></div>
         <button class="search-mobile-fab" id="searchMobileFab" aria-label="Search">\u{1F50D}</button>
-      </div>
+      </main>
       <footer class="site-footer">
         <div class="site-footer-brand">
           <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" class="site-footer-icon" />
@@ -757,6 +758,19 @@ export class PanelLayoutManager implements AppModule {
         <span class="site-footer-copy">&copy; ${new Date().getFullYear()} World Monitor</span>
       </footer>
     `, "legacy direct innerHTML migration"));
+
+    // Skip link: explicitly move focus to <main> on activation. Native
+    // fragment focus on a tabindex="-1" target is inconsistent across
+    // browsers, so drive it directly to guarantee keyboard users land in the
+    // main content (WCAG 2.4.1).
+    this.ctx.container.querySelector('.skip-link')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      const main = document.getElementById('main');
+      if (main) {
+        main.focus();
+        main.scrollIntoView({ block: 'start' });
+      }
+    });
 
     await this.createPanels();
 

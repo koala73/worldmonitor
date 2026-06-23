@@ -110,6 +110,10 @@
 
   /* Legacy color aliases (used by existing var() references) */
   --red: #ff4444;
+  /* Darker red for white-text "active/live" pills: #fff on --red is only
+     3.4:1, on --red-strong it clears WCAG AA (≈5:1). Theme-independent (the
+     pill is red in both themes). */
+  --red-strong: #d62b2b;
   --green: #44ff88;
   --yellow: #ffaa00;
 }
@@ -271,6 +275,43 @@ canvas,
   left: 0;
   right: 0;
   bottom: 0;
+}
+
+/* Keyboard bypass affordance (WCAG 2.4.1). Off-screen until focused, then
+   slides in over the header so a keyboard user can jump straight to <main>. */
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 100000;
+  padding: 10px 16px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--green);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  opacity: 0;
+  transform: translateY(-150%);
+  pointer-events: none;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.skip-link:focus,
+.skip-link:focus-visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+/* The skip-link moves focus to <main> (tabindex="-1"). Suppress the
+   full-width focus ring on the container itself; the next Tab lands on a
+   real control with its own visible focus. */
+#main.main-content:focus {
+  outline: none;
 }
 
 .header {
@@ -1540,8 +1581,10 @@ canvas,
 .site-footer-copy {
   font-family: var(--font-mono, monospace);
   font-size: 10px;
+  /* No opacity: 0.6 fade — it dropped --text-dim (#888) to an effective
+     #5a5a5a on the #141414 footer (2.67:1). At full strength #888 clears
+     4.5:1 (≈5.2:1) for WCAG AA, matching the footer nav links. */
   color: var(--text-dim);
-  opacity: 0.6;
 }
 
 @media (max-width: 768px) {
@@ -2406,8 +2449,8 @@ body.panel-resize-active iframe {
 }
 
 .live-channel-btn.active {
-  background: var(--red);
-  border-color: var(--red);
+  background: var(--red-strong);
+  border-color: var(--red-strong);
   color: white;
 }
 
@@ -3387,14 +3430,14 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
 }
 
 .webcam-region-btn.active {
-  background: var(--red);
-  border-color: var(--red);
+  background: var(--red-strong);
+  border-color: var(--red-strong);
   color: white;
 }
 
 .webcam-view-btn.active {
-  background: var(--red);
-  border-color: var(--red);
+  background: var(--red-strong);
+  border-color: var(--red-strong);
   color: white;
 }
 
@@ -3594,8 +3637,8 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
 }
 
 .webcam-feed-btn.active {
-  background: var(--red);
-  border-color: var(--red);
+  background: var(--red-strong);
+  border-color: var(--red-strong);
   color: white;
 }
 
@@ -5134,8 +5177,9 @@ body.playback-mode .status-dot {
 }
 
 .layer-help-btn {
-  width: 20px;
-  height: 20px;
+  /* WCAG 2.5.8: ≥24×24 hit area (was 20×20). */
+  width: 24px;
+  height: 24px;
   padding: 0;
   background: var(--bg);
   border: 1px solid var(--border);
@@ -16371,6 +16415,13 @@ a.prediction-link:hover {
   font-size: 10px;
   cursor: pointer;
   transition: all 0.2s ease;
+  /* WCAG 2.5.8: ≥24×24 hit area (was ~36×23.5). */
+  box-sizing: border-box;
+  min-width: 24px;
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .deckgl-time-slider .time-btn:hover {
@@ -17867,7 +17918,7 @@ a.prediction-link:hover {
 }
 
 .focal-point-urgency.critical {
-  background: var(--red);
+  background: var(--red-strong);
   color: white;
 }
 
@@ -24976,6 +25027,15 @@ body.map-width-resizing {
   min-height: 36px;
   overflow-x: auto;
   scrollbar-width: thin;
+}
+
+/* Inner tablist holds only the tabs; the "+" add button is a sibling in the
+   bar so the tablist owns no non-tab children (ARIA aria-required-children). */
+.dashboard-tablist {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  flex-shrink: 0;
 }
 
 .dashboard-tab {

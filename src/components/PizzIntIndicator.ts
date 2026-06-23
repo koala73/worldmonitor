@@ -79,7 +79,9 @@ export class PizzIntIndicator {
     const color = DEFCON_COLORS[this.status.defconLevel] || '#888';
     defconEl.textContent = t('components.pizzint.defcon', { level: String(this.status.defconLevel) });
     defconEl.style.background = color;
-    defconEl.style.color = this.status.defconLevel <= 3 ? '#000' : '#fff';
+    // Black on every DEFCON hue clears WCAG AA 4.5:1 (green #2d8a6e→4.97:1,
+    // blue #00aaff→8.2:1); white failed on levels 4–5 (4.22:1 / 2.56:1).
+    defconEl.style.color = '#000';
 
     scoreEl.textContent = `${this.status.aggregateActivity}%`;
     labelEl.textContent = this.getDefconLabel(this.status.defconLevel);
