@@ -7,7 +7,7 @@ import { IDLE_PAUSE_MS, STORAGE_KEYS, SITE_VARIANT } from '@/config';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 
 import { getStreamQuality } from '@/services/ai-flow-settings';
-import { getActiveLiveMedia, releaseLiveMediaPlayback, requestLiveMediaPlayback, stopLiveMediaPlayback, type LiveMediaStopReason } from '@/services/live-media-controller';
+import { getActiveLiveMedia, playAllLiveMedia, registerLiveMediaStarter, releaseLiveMediaPlayback, requestLiveMediaPlayback, stopLiveMediaPlayback, unregisterLiveMediaStarter, type LiveMediaStopReason } from '@/services/live-media-controller';
 import { getLiveStreamsAlwaysOn, subscribeLiveStreamsSettingsChange } from '@/services/live-stream-settings';
 import { track } from '@/services/analytics';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
@@ -412,6 +412,10 @@ export class LiveNewsPanel extends Panel {
   private deferredInit = false;
   private lazyObserver: IntersectionObserver | null = null;
   private idleCallbackId: number | ReturnType<typeof setTimeout> | null = null;
+  // Play-all cascade: start this panel's channel, but never revive a panel the user disabled.
+  private readonly boundPlayAllStarter = () => {
+    if (!this.element.classList.contains('hidden')) this.triggerInit();
+  };
 
   constructor() {
     super({ id: 'live-news', title: t('panels.liveNews'), className: 'panel-wide', closable: true, collapsible: true });
@@ -450,6 +454,7 @@ export class LiveNewsPanel extends Panel {
         this.setupLazyInit();
       }
     });
+    registerLiveMediaStarter('live-news', this.boundPlayAllStarter);
     document.addEventListener('keydown', this.boundFullscreenEscHandler);
   }
 
@@ -489,13 +494,13 @@ export class LiveNewsPanel extends Panel {
     playBtn.textContent = t('components.liveNews.playLiveFeed') || 'Play live feed';
     playBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.triggerInit();
+      playAllLiveMedia();
     });
 
     container.appendChild(status);
     container.appendChild(label);
     container.appendChild(playBtn);
-    container.addEventListener('click', () => this.triggerInit());
+    container.addEventListener('click', () => playAllLiveMedia());
     this.content.appendChild(container);
   }
 
@@ -1808,6 +1813,7 @@ export class LiveNewsPanel extends Panel {
 
   public destroy(): void {
     this.liveMediaSessionToken += 1;
+    unregisterLiveMediaStarter('live-news', this.boundPlayAllStarter);
     releaseLiveMediaPlayback('live-news');
     this.destroyPlayer();
     this.unsubscribeStreamSettings?.();

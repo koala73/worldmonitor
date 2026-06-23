@@ -6,7 +6,7 @@ import { t } from '../services/i18n';
 import { track, trackWebcamSelected, trackWebcamRegionFiltered } from '@/services/analytics';
 import { getStreamQuality, subscribeStreamQualityChange } from '@/services/ai-flow-settings';
 import { isMobileDevice, loadFromStorage, saveToStorage } from '@/utils';
-import { type LiveMediaStopReason } from '@/services/live-media-controller';
+import { playAllLiveMedia, registerLiveMediaStarter, unregisterLiveMediaStarter, type LiveMediaStopReason } from '@/services/live-media-controller';
 import { getLiveStreamsAlwaysOn, subscribeLiveStreamsSettingsChange } from '@/services/live-stream-settings';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
@@ -117,6 +117,10 @@ export class LiveWebcamsPanel extends Panel {
   private alwaysOn = getLiveStreamsAlwaysOn();
   private unsubscribeStreamSettings: (() => void) | null = null;
   private resumeFeedAfterIdleIds: string[] = [];
+  // Play-all cascade: start the whole webcam wall, but never revive a panel the user disabled.
+  private readonly boundPlayAllStarter = () => {
+    if (!this.element.classList.contains('hidden')) this.playAllFeeds();
+  };
 
   // UI
   private fullscreenBtn: HTMLButtonElement | null = null;
@@ -150,6 +154,7 @@ export class LiveWebcamsPanel extends Panel {
     this.boundEmbedMessageHandler = (e) => this.handleEmbedMessage(e);
     window.addEventListener('message', this.boundEmbedMessageHandler);
     this.render();
+    registerLiveMediaStarter('live-webcams', this.boundPlayAllStarter);
     document.addEventListener('keydown', this.boundFullscreenEscHandler);
   }
 
@@ -438,6 +443,24 @@ export class LiveWebcamsPanel extends Panel {
     return true;
   }
 
+  /**
+   * Start the whole webcam wall (every grid tile, or the single feed in single view) regardless of
+   * always-on. Drives the "play all" cascade. Off-screen feeds are queued and render on visibility.
+   */
+  private playAllFeeds(): void {
+    const feeds = (this.viewMode === 'grid' && !this.forceSingleView) ? this.gridFeeds : [this.activeFeed];
+    let added = false;
+    for (const feed of feeds) {
+      if (!this.activeIframeFeedIds.has(feed.id)) {
+        this.activeIframeFeedIds.add(feed.id);
+        added = true;
+      }
+    }
+    if (!added) return;
+    this.isIdle = false;
+    if (this.isVisible && !document.hidden) this.render();
+  }
+
   /** Stop and forget every active tile without rebuilding the shell. */
   private clearActivePlayback(): void {
     this.activeIframeFeedIds.clear();
@@ -478,12 +501,19 @@ export class LiveWebcamsPanel extends Panel {
     playBtn.type = 'button';
     playBtn.className = 'offline-retry webcam-preview-play';
     playBtn.textContent = t('components.webcams.play') || 'Play';
+    // First play intent lights up everything (the wall + Live News), not just this tile.
+    const playAll = () => {
+      trackWebcamSelected(feed.id, feed.city, source);
+      this.activeFeed = feed;
+      this.savePrefs();
+      playAllLiveMedia();
+    };
     playBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.playFeed(feed, source);
+      playAll();
     });
 
-    preview.addEventListener('click', () => this.playFeed(feed, source));
+    preview.addEventListener('click', () => playAll());
     preview.append(status, title, meta, playBtn);
     container.appendChild(preview);
   }
@@ -838,6 +868,7 @@ export class LiveWebcamsPanel extends Panel {
     // Disconnect the IntersectionObserver FIRST so a scroll-driven callback can't
     // re-render / re-create iframes (with leaked ready-timeouts) mid-teardown.
     this.observer?.disconnect();
+    unregisterLiveMediaStarter('live-webcams', this.boundPlayAllStarter);
     if (this.idleTimeout) {
       clearTimeout(this.idleTimeout);
       this.idleTimeout = null;

@@ -3,15 +3,20 @@ import assert from 'node:assert/strict';
 
 import {
   getActiveLiveMedia,
+  playAllLiveMedia,
+  registerLiveMediaStarter,
   releaseLiveMediaPlayback,
   requestLiveMediaPlayback,
   stopLiveMediaPlayback,
+  unregisterLiveMediaStarter,
 } from '../src/services/live-media-controller';
 
 describe('live media controller', () => {
   afterEach(() => {
     stopLiveMediaPlayback('live-news', 'destroyed');
     stopLiveMediaPlayback('live-webcams', 'destroyed');
+    unregisterLiveMediaStarter('live-news');
+    unregisterLiveMediaStarter('live-webcams');
   });
 
   it('lets different panels play at the same time (no cross-panel eviction)', () => {
@@ -124,5 +129,41 @@ describe('live media controller', () => {
       panelId: 'live-news',
       streamId: 'bloomberg',
     });
+  });
+
+  it('playAllLiveMedia fires every registered starter (play-all cascade)', () => {
+    const fired: string[] = [];
+    registerLiveMediaStarter('live-news', () => fired.push('live-news'));
+    registerLiveMediaStarter('live-webcams', () => fired.push('live-webcams'));
+
+    playAllLiveMedia();
+
+    assert.deepEqual(fired.sort(), ['live-news', 'live-webcams']);
+  });
+
+  it('unregistering a starter stops it from firing on the next cascade', () => {
+    const fired: string[] = [];
+    const webcamStarter = () => fired.push('live-webcams');
+    registerLiveMediaStarter('live-news', () => fired.push('live-news'));
+    registerLiveMediaStarter('live-webcams', webcamStarter);
+
+    unregisterLiveMediaStarter('live-webcams', webcamStarter);
+    playAllLiveMedia();
+
+    assert.deepEqual(fired, ['live-news']);
+  });
+
+  it('unregister with a stale starter ref does not clobber a re-registered panel', () => {
+    const fired: string[] = [];
+    const oldStarter = () => fired.push('old');
+    const newStarter = () => fired.push('new');
+
+    // Simulate recreate-then-destroy-old: new instance registers, old instance's destroy runs after.
+    registerLiveMediaStarter('live-webcams', oldStarter);
+    registerLiveMediaStarter('live-webcams', newStarter);
+    unregisterLiveMediaStarter('live-webcams', oldStarter); // stale ref — must be ignored
+
+    playAllLiveMedia();
+    assert.deepEqual(fired, ['new']);
   });
 });

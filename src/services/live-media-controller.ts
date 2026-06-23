@@ -60,3 +60,23 @@ export function getActiveLiveMedia(panelId?: string): ActiveLiveMediaSnapshot | 
     streamId: active.streamId,
   };
 }
+
+// "Play all" cascade: each live panel registers a starter so the first play intent anywhere
+// (a webcam tile or Live News) lights up every live panel at once. Starters are idempotent.
+type LiveMediaStarter = () => void;
+const liveMediaStarters = new Map<string, LiveMediaStarter>();
+
+export function registerLiveMediaStarter(panelId: string, start: LiveMediaStarter): void {
+  liveMediaStarters.set(panelId, start);
+}
+
+export function unregisterLiveMediaStarter(panelId: string, start?: LiveMediaStarter): void {
+  // Only remove if it still points at this starter, so a recreate-then-destroy-old race
+  // can't clobber the freshly registered panel.
+  if (start && liveMediaStarters.get(panelId) !== start) return;
+  liveMediaStarters.delete(panelId);
+}
+
+export function playAllLiveMedia(): void {
+  for (const start of Array.from(liveMediaStarters.values())) start();
+}
