@@ -3170,8 +3170,10 @@ body.panel-resize-active iframe {
 
 .live-media-shell .offline-retry:hover,
 .webcam-preview-play:hover {
-  background: var(--red);
-  border-color: var(--red);
+  /* White (#fff, from the base rule) on --red is 3.41:1; --red-strong clears
+     AA (≈5:1). axe doesn't audit :hover, but this is the same defect class. */
+  background: var(--red-strong);
+  border-color: var(--red-strong);
 }
 
 .live-media-shell .offline-retry:focus-visible,

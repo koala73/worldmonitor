@@ -181,6 +181,8 @@ describe('color-contrast — live/webcam active pills', () => {
       '.webcam-view-btn.active',
       '.webcam-feed-btn.active',
       '.focal-point-urgency.critical',
+      // hover state: the base rule sets white text, this swaps to a red bg
+      '.webcam-preview-play:hover',
     ]) {
       const block = css.match(
         new RegExp(`${sel.replace(/[.]/g, '\\.')}\\s*\\{([^}]*)\\}`),
@@ -198,7 +200,9 @@ describe('color-contrast — live/webcam active pills', () => {
     const offenders = [];
     for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
       const body = m[2].replace(/\/\*[\s\S]*?\*\//g, '');
-      const whiteText = /color:\s*(white|#fff(f{0,3})?)\b/i.test(body);
+      const whiteText =
+        /color:\s*(white|#fff(f{0,3})?)\b/i.test(body) ||
+        /color:\s*rgb\(\s*255\s*,\s*255\s*,\s*255\s*\)/i.test(body);
       const redBg = /background(-color)?:\s*var\(--red\)\s*;/.test(body);
       if (whiteText && redBg) offenders.push(m[1].trim().slice(0, 60));
     }
