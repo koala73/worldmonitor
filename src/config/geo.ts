@@ -3469,8 +3469,8 @@ export const SANCTIONED_COUNTRIES_ALPHA2: Record<string, 'severe' | 'high' | 'mo
 };
 
 export const MAP_URLS = {
-  world: 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json',
-  us: 'https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json',
+  world: '/data/countries-50m.json',
+  us: '/data/states-10m.json',
 };
 
 // Global Economic Centers - Stock Exchanges, Central Banks, Financial Hubs

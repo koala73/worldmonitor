@@ -32,7 +32,7 @@ const WORLD_TOPOLOGY = {
 };
 
 async function stubWorldAtlas(page: Page): Promise<void> {
-  await page.route('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json', async (route) => {
+  await page.route('**/data/countries-50m.json', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
