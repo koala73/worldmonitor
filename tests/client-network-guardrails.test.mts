@@ -3,7 +3,9 @@ import { join } from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const repoRoot = new URL('..', import.meta.url).pathname;
+import { fileURLToPath } from 'node:url';
+
+const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const srcRoot = join(repoRoot, 'src');
 const githubApiUrlPattern = /https?:\/\/api\.github\.com\b/;
 

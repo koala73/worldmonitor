@@ -85,15 +85,15 @@ function extractH4Headings(source: string): string[] {
 
 function splitActiveMethodologyClaims(source: string): string[] {
   return source
-    .split(/\n{2,}/)
-    .flatMap((block) => block.trim().startsWith('|') ? block.split('\n') : [block])
+    .split(/(?:\r?\n){2,}/)
+    .flatMap((block) => block.trim().startsWith('|') ? block.split(/\r?\n/) : [block])
     .map((claim) => claim.trim())
     .filter(Boolean);
 }
 
 function splitClaimSegments(claim: string): string[] {
   return claim
-    .split(/\n|(?<=[.!?])\s+/)
+    .split(/\r?\n|(?<=[.!?])\s+/)
     .map((segment) => segment.trim())
     .filter(Boolean);
 }

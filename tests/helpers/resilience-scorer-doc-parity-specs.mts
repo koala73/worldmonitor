@@ -512,7 +512,7 @@ function splitTopLevel(source: string): string[] {
 
 function stripLineComments(source: string): string {
   return source
-    .split('\n')
+    .split(/\r?\n/)
     .map((line) => line.replace(/\/\/.*$/, ''))
     .join('\n');
 }

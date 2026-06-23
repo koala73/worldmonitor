@@ -13,6 +13,7 @@
  *   cronSchedule:  <none> (always-on long-running process)
  */
 
+import { pathToFileURL } from 'node:url';
 import { getRedisCredentials, loadEnvFile } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
@@ -437,7 +438,7 @@ async function runWorker() {
   console.log('[scenario-worker] shutdown complete (SIGTERM received)');
 }
 
-const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^file:\/\//, ''));
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   runWorker().catch(err => {
     console.error('[scenario-worker] fatal:', err);

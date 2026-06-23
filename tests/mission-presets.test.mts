@@ -4,7 +4,7 @@ import { build } from 'esbuild';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 
 import type { MapLayers, PanelConfig } from '../src/types/index.ts';
 import {
@@ -449,7 +449,7 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
   };
 
   const result = await build({
-    entryPoints: [new URL('../src/app/event-handlers.ts', import.meta.url).pathname],
+    entryPoints: [fileURLToPath(new URL('../src/app/event-handlers.ts', import.meta.url))],
     bundle: true,
     format: 'esm',
     platform: 'browser',

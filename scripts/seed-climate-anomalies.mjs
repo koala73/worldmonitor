@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { pathToFileURL } from 'node:url';
 import { loadEnvFile, runSeed, sleep, verifySeedKey } from './_seed-utils.mjs';
 import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 import { CLIMATE_ZONES, MIN_CLIMATE_ZONE_COUNT, hasRequiredClimateZones } from './_climate-zones.mjs';
@@ -185,7 +186,7 @@ function validate(data) {
     && hasRequiredClimateZones(data.anomalies, (zone) => zone.zone);
 }
 
-const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^file:\/\//, ''));
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 export function declareRecords(data) {
   return Array.isArray(data?.anomalies) ? data.anomalies.length : 0;
 }

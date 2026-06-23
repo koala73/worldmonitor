@@ -17,8 +17,8 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { resolve, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 
@@ -48,30 +48,60 @@ describe('classify cache prefix audit (U4)', () => {
     // Grep across .ts/.mjs/.cjs/.js/.json — same extensions the
     // cache-prefix-bump-propagation-scope learning calls out. Excludes
     // node_modules, local worktrees, and generated build outputs.
-    let grepOut = '';
-    try {
-      grepOut = execSync(
-        `grep -rnE "classify:sebuf:v[0-9]+" \
-          --include="*.ts" --include="*.mjs" --include="*.cjs" \
-          --include="*.js" --include="*.json" \
-          --exclude-dir=node_modules --exclude-dir=.git \
-          --exclude-dir=.claude \
-          --exclude-dir=dist --exclude-dir=build \
-          --exclude-dir=coverage --exclude-dir=target \
-          ${repoRoot}`,
-        { encoding: 'utf-8' },
-      );
-    } catch (err) {
-      // grep exit codes: 1 = no matches (a different, infra-broken failure);
-      // 2 = a file could not be read mid-walk. Under the parallel test runner
-      // (`--test-concurrency`), sibling tests create and delete short-lived
-      // fixtures (e.g. scripts/_bundle-fixture-env-*.mjs) that grep may list
-      // and then fail to open, exiting 2 even though every *stable* source
-      // file was scanned. The captured stdout still holds all matches from
-      // readable files, so tolerate 2 alongside 1; re-throw anything else.
-      if (err && err.status !== 1 && err.status !== 2) throw err;
-      grepOut = (err && err.stdout) ?? '';
+    const allowedExtensions = ['.ts', '.mjs', '.cjs', '.js', '.json'];
+    const excludePatterns = ['node_modules', '.git', '.claude', 'dist', 'build', 'coverage', 'target'];
+    const results = [];
+
+    function walk(currentDir) {
+      let entries;
+      try {
+        entries = readdirSync(currentDir);
+      } catch (err) {
+        return;
+      }
+      for (const entry of entries) {
+        const fullPath = resolve(currentDir, entry);
+        const relPath = relative(repoRoot, fullPath).replace(/\\/g, '/');
+        const parts = relPath.split('/');
+
+        if (parts.some((part) => excludePatterns.includes(part))) {
+          continue;
+        }
+
+        let stat;
+        try {
+          stat = statSync(fullPath);
+        } catch (err) {
+          continue;
+        }
+
+        if (stat.isDirectory()) {
+          walk(fullPath);
+        } else {
+          const extIdx = entry.lastIndexOf('.');
+          const ext = extIdx !== -1 ? entry.substring(extIdx) : '';
+          if (allowedExtensions.includes(ext)) {
+            let content;
+            try {
+              content = readFileSync(fullPath, 'utf8');
+            } catch (err) {
+              continue;
+            }
+            if (content.includes('classify:sebuf:v')) {
+              const lines = content.split(/\r?\n/);
+              lines.forEach((line, index) => {
+                if (/classify:sebuf:v[0-9]+/.test(line)) {
+                  results.push(`${fullPath.replace(/\\/g, '/')}:${index + 1}:${line}`);
+                }
+              });
+            }
+          }
+        }
+      }
     }
+
+    walk(repoRoot);
+    const grepOut = results.join('\n');
 
     // Sanity floor: the canonical writer (_shared.ts) must always appear in
     // the scan output. Guards against a silently-empty grep (e.g. a future
