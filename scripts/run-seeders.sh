@@ -52,23 +52,46 @@ if [ -f "$OVERRIDE" ]; then
   . "$_env_tmp"
   rm -f "$_env_tmp"
 fi
-# Per-seeder wall-clock cap. The seeders run sequentially, so a single
-# upstream that hangs (e.g. a slow NOAA/NSIDC fetch that doesn't honour its
-# own AbortSignal and keeps the node process alive for an hour) would burn
-# the rest of the window and starve every later seeder — under a wrapping
-# systemd/cron job timeout it drops everything after the hung one. Capping
-# each seeder bounds that blast radius. Default 1800s (30min) sits well above
-# the slowest legitimate seeder observed (~18min) yet far below the hangs
-# (60min+), so it kills only pathological runs; override with
-# SEED_TIMEOUT=<seconds>, or SEED_TIMEOUT=0 to disable.
+# Per-seeder wall-clock cap for STANDALONE seeders. They run sequentially, so a
+# single upstream that hangs (e.g. a slow NOAA/NSIDC fetch that doesn't honour its
+# own AbortSignal and keeps the node process alive for an hour) would burn the rest
+# of the window and starve every later seeder — under a wrapping systemd/cron job
+# timeout it drops everything after the hung one. Capping each seeder bounds that
+# blast radius. Default 1800s (30min): above any standalone seeder's real runtime
+# yet below the pathological hangs (60min+), so it kills only runaway runs.
+# Override with SEED_TIMEOUT=<seconds>, or SEED_TIMEOUT=0 to disable.
+#
+# Bundle seeders (seed-bundle-*.mjs) are EXEMPT from this cap: scripts/_bundle-runner.mjs
+# already hard-caps every section with its own wall-clock timer (SIGTERM→SIGKILL on
+# the section's child PID — immune to the DNS-hang blind spot) and runs sections
+# sequentially, so a bundle's *legitimate* total can exceed SEED_TIMEOUT (e.g.
+# resilience-recovery's Import-HHI section alone budgets 30min). Wrapping a bundle in
+# the outer cap would false-kill it mid-run and orphan the in-flight section child.
 SEED_TIMEOUT="${SEED_TIMEOUT:-1800}"
 
-using_timeout() {
-  command -v timeout >/dev/null 2>&1 && [ "$SEED_TIMEOUT" -gt 0 ] 2>/dev/null
+# Resolve once whether the outer cap is usable (timeout(1) present and a positive
+# numeric budget). Non-numeric/empty SEED_TIMEOUT → test errors → disabled (plain node).
+if command -v timeout >/dev/null 2>&1 && [ "${SEED_TIMEOUT:-0}" -gt 0 ] 2>/dev/null; then
+  timeout_enabled=true
+else
+  timeout_enabled=false
+fi
+
+# Bundle seeders self-bound per section — never wrap them in the outer cap.
+is_bundle() {
+  case "$1" in
+    *seed-bundle-*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Whether THIS seeder is wrapped by the outer timeout.
+caps_seed() {
+  [ "$timeout_enabled" = true ] && ! is_bundle "$1"
 }
 
 run_seed() {
-  if using_timeout; then
+  if caps_seed "$1"; then
     # -k: if it ignores SIGTERM, SIGKILL it 30s later so the run can move on.
     timeout -k 30 "$SEED_TIMEOUT" node "$1" 2>&1
   else
@@ -86,8 +109,9 @@ for f in "$SCRIPT_DIR"/seed-*.mjs; do
   last=$(echo "$output" | tail -1)
 
   # timeout(1) exits 124 when it had to terminate the child, or 128+signal
-  # (137 = SIGKILL after the -k grace) when SIGTERM was ignored.
-  if using_timeout && { [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; }; then
+  # (137 = SIGKILL after the -k grace) when SIGTERM was ignored. Only trust this
+  # classification for seeders we actually wrapped (bundles run unwrapped).
+  if caps_seed "$f" && { [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; }; then
     printf "TIMEOUT (killed after %ss)\n" "$SEED_TIMEOUT"
     timedout=$((timedout + 1))
   elif echo "$last" | grep -qi "skip\|not set\|missing.*key\|not found"; then
