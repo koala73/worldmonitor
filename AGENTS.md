@@ -42,7 +42,7 @@ Real-time global intelligence dashboard. TypeScript SPA (Vite + Preact) with 155
 │   ├── buf.yaml            # Buf configuration
 │   └── worldmonitor/       # Service definitions with HTTP annotations
 ├── shared/                 # Cross-platform data (JSON configs for markets, RSS domains)
-├── data/                   # Static data (telegram channels, OREF translations, gamma irradiators)
+├── data/                   # Static data (telegram channels, OREF threat translations, gamma irradiators)
 ├── public/                 # Static assets served as-is (favicons, textures, .well-known, llms.txt)
 ├── scripts/                # Seed scripts, build helpers, data fetchers
 ├── src-tauri/              # Tauri desktop shell (Rust + Node.js sidecar)

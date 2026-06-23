@@ -65,7 +65,7 @@ function computeStats() {
 
   // ---- Panel subclasses across src/components (ARCHITECTURE.md system diagram) ----
   const panelClasses = walk('src/components')
-    .filter((f) => f.endsWith('.ts'))
+    .filter((f) => f.endsWith('.ts') && !f.endsWith('.d.ts'))
     .reduce((n, f) => n + (read(f).match(/class\s+\w+\s+extends\s+Panel\b/g) || []).length, 0);
 
   // ---- Protos & services (proto/**) ----
