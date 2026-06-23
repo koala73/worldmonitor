@@ -78,7 +78,7 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import { BETA_MODE } from '@/config/beta';
 import { trackEvent, trackDeeplinkOpened, initAuthAnalytics } from '@/services/analytics';
 import { preloadCountryGeometry, getCountryNameByCode } from '@/services/country-geometry';
-import { initI18n, t } from '@/services/i18n';
+import { initI18n, t, I18N_RESOURCES_LOADED_EVENT, type I18nResourcesLoadedDetail } from '@/services/i18n';
 import { initDeferredDashboardFonts } from '@/bootstrap/secondary-startup';
 
 import { computeDefaultDisabledSources, getLocaleBoostedSources, getTotalFeedCount, FEEDS, INTEL_SOURCES } from '@/config/feeds';
@@ -187,7 +187,7 @@ export class App {
     this.updateConnectivityUi();
   };
   private readonly handleI18nResourcesLoaded = (ev: Event): void => {
-    const language = (ev as CustomEvent<{ language?: unknown }>).detail?.language;
+    const language = (ev as CustomEvent<I18nResourcesLoadedDetail>).detail?.language;
     if (language !== 'en') return;
     // Scope this to the app container: body-level modals are user-opened after
     // startup, by which point the full English bundle should already be loaded.
@@ -1011,7 +1011,7 @@ export class App {
       },
     });
 
-    window.addEventListener('wm:i18n:resources-loaded', this.handleI18nResourcesLoaded);
+    window.addEventListener(I18N_RESOURCES_LOADED_EVENT, this.handleI18nResourcesLoaded);
 
     await initDB();
     startFlightHistoryCleanup();
@@ -1530,7 +1530,7 @@ export class App {
     window.removeEventListener('resize', this.handleViewportPrime);
     window.removeEventListener('online', this.handleConnectivityChange);
     window.removeEventListener('offline', this.handleConnectivityChange);
-    window.removeEventListener('wm:i18n:resources-loaded', this.handleI18nResourcesLoaded);
+    window.removeEventListener(I18N_RESOURCES_LOADED_EVENT, this.handleI18nResourcesLoaded);
     window.removeEventListener(WM_FOLLOWED_COUNTRIES_CAP_DROP, this.handleFollowedCountriesCapDrop);
     window.removeEventListener(CLOUD_PREFS_APPLIED_EVENT, this.handleCloudPrefsApplied);
     if (this.visiblePanelPrimeRaf !== null) {

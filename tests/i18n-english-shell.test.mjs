@@ -1,11 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  replaceRawI18nKeyPlaceholderText,
-  replaceRawI18nKeyPlaceholders,
-  translateRawI18nKeyPlaceholder,
-} from '../src/app/i18n-raw-key-healer.ts';
+import { replaceRawI18nKeyPlaceholders } from '../src/app/i18n-raw-key-healer.ts';
 
 const I18N_SOURCE = 'src/services/i18n.ts';
 const APP_SOURCE = 'src/App.ts';
@@ -44,6 +40,7 @@ const SHELL_KEY_PREFIXES = [
   'countryBrief.trends.',
   'countryBrief.fallback.',
   'contextMenu.',
+  'dashboardTabs.',
   'components.deckgl.views.',
   'components.map.',
   'components.panel.',
@@ -84,6 +81,11 @@ function isShellKey(key) {
     || key.endsWith('.title');
 }
 
+// NOTE: eagerChromeKeys() only enforces keys whose namespace is in
+// SHELL_KEY_PREFIXES (via isShellKey). It cannot catch a first-paint key in an
+// un-listed namespace — keep `requiredPaths` below as the authoritative,
+// explicit allow-list of first-paint strings and EXTEND IT whenever a new
+// always-rendered string is added (e.g. panel placeholders, the tab bar).
 function eagerChromeKeys() {
   const keys = new Set();
   for (const file of EAGER_CHROME_FILES) {
@@ -92,6 +94,52 @@ function eagerChromeKeys() {
     }
   }
   return [...keys].sort();
+}
+
+// Minimal DOM doubles for exercising the healer without a real DOM.
+class FakeText {
+  constructor(value) {
+    this.nodeType = 3;
+    this.nodeValue = value;
+    this.childNodes = [];
+  }
+}
+
+class FakeElement {
+  constructor(attrs = {}, children = []) {
+    this.nodeType = 1;
+    this.childNodes = children;
+    this.attrs = { ...attrs };
+  }
+
+  getAttribute(name) {
+    return this.attrs[name] ?? null;
+  }
+
+  setAttribute(name, value) {
+    this.attrs[name] = value;
+  }
+
+  querySelectorAll() {
+    const elements = [];
+    const visit = (node) => {
+      if (node.nodeType !== 1) return;
+      if (['aria-label', 'title', 'placeholder'].some((attr) => node.getAttribute(attr))) {
+        elements.push(node);
+      }
+      for (const child of node.childNodes) visit(child);
+    };
+    for (const child of this.childNodes) visit(child);
+    return elements;
+  }
+}
+
+function healViaContainer(translations, { text, attrs = {} } = {}) {
+  const node = new FakeText(text ?? '');
+  const child = new FakeElement(attrs, [node]);
+  const root = new FakeElement({}, [child]);
+  replaceRawI18nKeyPlaceholders(root, (key) => translations.get(key) ?? key);
+  return { node, child };
 }
 
 describe('English i18n shell split', () => {
@@ -129,11 +177,19 @@ describe('English i18n shell split', () => {
       'full English preload should expose a browser event for resource-aware UI updates',
     );
 
+    // Producer and consumer share an exported constant rather than duplicating
+    // the magic string, so a rename can't silently break the heal wiring.
+    assert.match(
+      source,
+      /export const I18N_RESOURCES_LOADED_EVENT\s*=\s*'wm:i18n:resources-loaded'/,
+      'i18n should export the resources-loaded event name as a shared constant',
+    );
+
     const appSource = readFileSync(APP_SOURCE, 'utf8');
     assert.match(
       appSource,
-      /addEventListener\('wm:i18n:resources-loaded',\s*this\.handleI18nResourcesLoaded\)/,
-      'App should listen for full English preload completion',
+      /addEventListener\(I18N_RESOURCES_LOADED_EVENT,\s*this\.handleI18nResourcesLoaded\)/,
+      'App should listen for full English preload completion via the shared constant',
     );
     assert.match(
       appSource,
@@ -168,6 +224,16 @@ describe('English i18n shell split', () => {
       'countryBrief.levels',
       'countryBrief.trends',
       'countryBrief.fallback',
+      // Always-rendered panel placeholders / sort controls whose namespaces are
+      // NOT covered by SHELL_KEY_PREFIXES — listed explicitly so a regression
+      // that drops them from the shell fails here instead of shipping raw keys.
+      'components.liveNews.readyStatus',
+      'components.liveNews.playLiveFeed',
+      'components.newsPanel.sortBy',
+      'components.newsPanel.sortNewest',
+      'components.newsPanel.sortRelevance',
+      'components.webcams.previewStatus',
+      'dashboardTabs.defaultName',
       ...eagerChromeKeys(),
     ];
 
@@ -195,71 +261,32 @@ describe('English i18n shell split', () => {
   it('heals exact raw i18n placeholders without rewriting unresolved or prose-like text', () => {
     const translations = new Map([
       ['components.panel.addPanel', 'Add panel'],
-      ['header.live', 'Live'],
       ['common.search', 'Find $& $1 $$'],
     ]);
-    const translate = (key) => translations.get(key) ?? key;
 
+    // Exact raw key translates when the full dictionary has it.
     assert.equal(
-      translateRawI18nKeyPlaceholder('components.panel.addPanel', translate),
+      healViaContainer(translations, { text: 'components.panel.addPanel' }).node.nodeValue,
       'Add panel',
-      'exact raw keys should translate when the full English dictionary has the key',
     );
+    // Domain/version-like prose does not match the raw-key heuristic.
     assert.equal(
-      translateRawI18nKeyPlaceholder('domain/v1.2-like text', translate),
-      null,
-      'domain/version-like prose should not match the raw i18n key heuristic',
+      healViaContainer(translations, { text: 'domain/v1.2-like text' }).node.nodeValue,
+      'domain/v1.2-like text',
     );
+    // Unresolved keys (translate returns the key unchanged) stay untouched.
     assert.equal(
-      translateRawI18nKeyPlaceholder('forecast.deepMissingKey', translate),
-      null,
-      'unresolved i18n keys should remain untouched',
+      healViaContainer(translations, { text: 'forecast.deepMissingKey' }).node.nodeValue,
+      'forecast.deepMissingKey',
     );
+    // Outer whitespace is preserved and `$` sequences are treated literally.
     assert.equal(
-      replaceRawI18nKeyPlaceholderText('\n  common.search  \t', translate),
+      healViaContainer(translations, { text: '\n  common.search  \t' }).node.nodeValue,
       '\n  Find $& $1 $$  \t',
-      'replacement should preserve outer whitespace and treat $ literally',
     );
   });
 
   it('heals text nodes and translatable attributes inside a container', () => {
-    class FakeText {
-      constructor(value) {
-        this.nodeType = 3;
-        this.nodeValue = value;
-        this.childNodes = [];
-      }
-    }
-
-    class FakeElement {
-      constructor(attrs = {}, children = []) {
-        this.nodeType = 1;
-        this.childNodes = children;
-        this.attrs = { ...attrs };
-      }
-
-      getAttribute(name) {
-        return this.attrs[name] ?? null;
-      }
-
-      setAttribute(name, value) {
-        this.attrs[name] = value;
-      }
-
-      querySelectorAll() {
-        const elements = [];
-        const visit = (node) => {
-          if (node.nodeType !== 1) return;
-          if (['aria-label', 'title', 'placeholder'].some((attr) => node.getAttribute(attr))) {
-            elements.push(node);
-          }
-          for (const child of node.childNodes) visit(child);
-        };
-        for (const child of this.childNodes) visit(child);
-        return elements;
-      }
-    }
-
     const text = new FakeText('  components.panel.addPanel\n');
     const unresolved = new FakeText(' domain/v1.2-like text ');
     const child = new FakeElement({ 'aria-label': 'header.live', title: 'forecast.deepMissingKey' }, [

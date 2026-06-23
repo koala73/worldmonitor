@@ -709,6 +709,18 @@
     },
     "yieldCurve": {
       "infoTooltip": "<strong>Yield Curve &amp; Rates</strong> US Treasury yield curve (2Y, 5Y, 10Y, 30Y) and key rate spreads including the 10Y-2Y inversion indicator. Also shows Euro area rates (EURIBOR, ESTR). An inverted curve historically precedes recessions. Source: FRED."
+    },
+    "liveNews": {
+      "readyStatus": "Ready when you are",
+      "playLiveFeed": "Play live feed"
+    },
+    "newsPanel": {
+      "sortBy": "Sort by",
+      "sortNewest": "Newest",
+      "sortRelevance": "Relevance"
+    },
+    "webcams": {
+      "previewStatus": "Live preview"
     }
   },
   "modals": {
@@ -798,5 +810,18 @@
     "pipeline": {
       "title": "PIPELINE"
     }
+  },
+  "dashboardTabs": {
+    "ariaLabel": "Dashboard tabs",
+    "defaultName": "Main",
+    "newTabName": "New Tab",
+    "newTabCreated": "New tab created",
+    "tabDeleted": "Tab \"{{name}}\" deleted",
+    "addTab": "Add tab",
+    "addTabTitle": "New tab (starts with the default panels)",
+    "renameHint": "{{name}} — double-click to rename",
+    "deleteTab": "Delete tab",
+    "deleteTabAria": "Delete tab {{name}}",
+    "tabNameAria": "Tab name"
   }
 }
