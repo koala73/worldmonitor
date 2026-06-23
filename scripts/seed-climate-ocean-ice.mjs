@@ -49,7 +49,7 @@ function midYearMs(yearWithFraction) {
   return Math.round(yearStart + fraction * 365.2425 * 24 * 60 * 60 * 1000);
 }
 
-async function fetchText(url, label, { timeoutMs = 20_000 } = {}) {
+export async function fetchText(url, label, { timeoutMs = 20_000 } = {}) {
   // AbortSignal.timeout cancels the connect/read phase but NOT a hung DNS
   // lookup: getaddrinfo runs on libuv's threadpool and is uncancellable, so a
   // slow/flapping resolver sails straight past timeoutMs (measured: a dead

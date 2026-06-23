@@ -27,6 +27,7 @@ import {
   computeSeaIceMonthlyMedians,
   countIndicators,
   extractLatestOceanSeriesPath,
+  fetchText,
   parseOceanTemperatureRows,
   parseOhcYearlyRows,
   parseSeaIceClimatologyRows,
@@ -715,5 +716,55 @@ describe('climate-anomalies CACHE_TTL + maxStaleMin co-pinned to 3h cron cadence
       `climateAnomalies.maxStaleMin (${maxStale}) must be >= ${cronMin * 2.5} (2.5× cron cadence); ` +
       `tighter values flip to STALE_SEED on routine cron drift.`,
     );
+  });
+});
+
+describe('fetchText DNS wall-clock backstop', () => {
+  it('returns the body text on a 2xx response', async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => new Response('sea-ice-csv', { status: 200 });
+      assert.equal(await fetchText('https://x/ice.csv', 'ice'), 'sea-ice-csv');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('throws "<label> HTTP <status>" on a non-2xx response', async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => new Response('', { status: 503 });
+      await assert.rejects(fetchText('https://x/ice.csv', 'ice'), /ice HTTP 503/);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('propagates a real fetch error immediately, without waiting for the deadline', async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => { throw new TypeError('socket hang up'); };
+      const started = Date.now();
+      await assert.rejects(fetchText('https://x/ice.csv', 'ice', { timeoutMs: 5_000 }), /socket hang up/);
+      // The connection error must surface long before the timeoutMs+1000 deadline.
+      assert.ok(Date.now() - started < 1_000, 'real fetch errors must not wait for the DNS backstop');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('rejects with the DNS backstop deadline when the fetch hangs past timeoutMs+1000 (AbortSignal ignored)', async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      // Simulate a hung DNS lookup: the request never settles and ignores the
+      // AbortSignal — exactly the case AbortSignal.timeout cannot cancel.
+      globalThis.fetch = () => new Promise(() => {});
+      await assert.rejects(
+        fetchText('https://x/ice.csv', 'ice', { timeoutMs: 20 }),
+        /ice timed out after 1020ms \(DNS backstop\)/,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
