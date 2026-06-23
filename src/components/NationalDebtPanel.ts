@@ -114,6 +114,8 @@ export class NationalDebtPanel extends Panel {
   private tickerInterval: ReturnType<typeof setInterval> | null = null;
   private tickerElements = new Map<string, HTMLElement>();
   private lastTickerValues = new Map<string, string>();
+  private connectRefreshQueued = false;
+  private connectionObserver: MutationObserver | null = null;
   private readonly REFRESH_INTERVAL = 6 * 60 * 60 * 1000;
 
   constructor() {
@@ -157,6 +159,10 @@ export class NationalDebtPanel extends Panel {
   public async refresh(): Promise<void> {
     if (this.loading) return;
     if (Date.now() - this.lastFetch < this.REFRESH_INTERVAL && this.entries.length > 0) return;
+    if (!this.element?.isConnected) {
+      this.queueRefreshWhenConnected();
+      return;
+    }
 
     this.loading = true;
     this.showLoadingState();
@@ -164,10 +170,7 @@ export class NationalDebtPanel extends Panel {
     try {
       const data = await getNationalDebtData();
       if (!this.element?.isConnected) {
-        // Race condition: bootstrap data resolved synchronously before lazyPanel inserted
-        // the element into the DOM. Retry after the current paint cycle.
-        this.loading = false;
-        requestAnimationFrame(() => { void this.refresh(); });
+        this.queueRefreshWhenConnected();
         return;
       }
       this.entries = data.entries ?? [];
@@ -183,6 +186,43 @@ export class NationalDebtPanel extends Panel {
     } finally {
       this.loading = false;
     }
+  }
+
+  private queueRefreshWhenConnected(): void {
+    if (this.connectRefreshQueued) return;
+    this.connectRefreshQueued = true;
+
+    const refreshIfConnected = (): boolean => {
+      if (!this.element?.isConnected) return false;
+      this.connectRefreshQueued = false;
+      this.connectionObserver?.disconnect();
+      this.connectionObserver = null;
+      void this.refresh();
+      return true;
+    };
+
+    if (refreshIfConnected()) return;
+
+    if (typeof MutationObserver !== 'undefined') {
+      const target = document.body ?? document.documentElement;
+      if (target) {
+        const observer = new MutationObserver(() => { refreshIfConnected(); });
+        observer.observe(target, { childList: true, subtree: true });
+        this.connectionObserver = observer;
+        return;
+      }
+    }
+
+    const scheduleFrame = typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame
+      : (cb: FrameRequestCallback): number => {
+          globalThis.setTimeout(() => cb(Date.now()), 0);
+          return 0;
+        };
+    scheduleFrame(() => {
+      this.connectRefreshQueued = false;
+      if (this.element?.isConnected) void this.refresh();
+    });
   }
 
   private showLoadingState(): void {
@@ -357,7 +397,10 @@ export class NationalDebtPanel extends Panel {
     this.startTicker();
   }
 
-  public destroy(): void {
+  public override destroy(): void {
+    this.connectionObserver?.disconnect();
+    this.connectionObserver = null;
+    this.connectRefreshQueued = false;
     this.stopTicker();
     super.destroy();
   }
