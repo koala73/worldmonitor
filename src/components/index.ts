@@ -39,6 +39,7 @@ export * from './IntelligenceGapBadge';
 export * from './TechEventsPanel';
 export * from './ServiceStatusPanel';
 export * from './InternetDisruptionsPanel';
+export * from './SensorFusionPanel';
 export * from './RuntimeConfigPanel';
 export * from './InsightsPanel';
 export * from './ThreatTimelinePanel';

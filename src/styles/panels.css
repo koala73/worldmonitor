@@ -3027,6 +3027,120 @@ a.hub-top-story {
   text-align: center;
   color: var(--text-muted, #888);
   font-size: 12px;
+
+/* ----------------------------------------------------------
+   Sensor Fusion Deck (WorldView-inspired public OSINT fusion)
+   ---------------------------------------------------------- */
+.sensor-fusion-panel .panel-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sensor-fusion-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sensor-fusion-metric {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--bg-secondary);
+}
+
+.sensor-fusion-metric-value {
+  display: block;
+  color: var(--accent);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.sensor-fusion-metric-label {
+  color: var(--text-dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.sensor-fusion-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px;
+}
+
+.sensor-fusion-layer {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  background: linear-gradient(135deg, var(--bg-secondary), var(--bg));
+}
+
+.sensor-fusion-layer.live {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+.sensor-fusion-layer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sensor-fusion-layer-label {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sensor-fusion-status {
+  border-radius: 999px;
+  padding: 2px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  background: var(--overlay-subtle);
+}
+
+.sensor-fusion-status.live {
+  color: var(--accent);
+}
+
+.sensor-fusion-status.planned {
+  color: var(--text-muted);
+}
+
+.sensor-fusion-source,
+.sensor-fusion-note,
+.sensor-fusion-guardrail {
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.sensor-fusion-source {
+  margin-top: 4px;
+}
+
+.sensor-fusion-layer-count {
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.sensor-fusion-note {
+  margin: 4px 0 0;
+}
+
+.sensor-fusion-guardrail {
+  border-left: 2px solid var(--accent);
+  padding: 8px 10px;
+  background: var(--overlay-subtle);
+  border-radius: 6px;
 }
 
 /* ----------------------------------------------------------

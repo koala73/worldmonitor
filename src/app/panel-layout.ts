@@ -39,6 +39,7 @@ import {
   TechEventsPanel,
   ServiceStatusPanel,
   InternetDisruptionsPanel,
+  SensorFusionPanel,
   RuntimeConfigPanel,
   InsightsPanel,
   ThreatTimelinePanel,
@@ -1347,6 +1348,10 @@ export class PanelLayoutManager implements AppModule {
     }
 
     this.createPanel('cascade', () => new CascadePanel());
+    this.createPanel('sensor-fusion', () => new SensorFusionPanel(() => ({
+      cache: this.ctx.intelligenceCache,
+      mapLayers: this.ctx.mapLayers,
+    })));
     this.createPanel('satellite-fires', () => new SatelliteFiresPanel());
 
     this.createPanel('defense-patents', () => new DefensePatentsPanel());
