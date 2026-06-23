@@ -61,7 +61,7 @@ async function fetchText(url, label, { timeoutMs = 20_000 } = {}) {
   let deadlineId;
   const deadline = new Promise((_resolve, reject) => {
     deadlineId = setTimeout(
-      () => reject(new Error(`${label} timed out after ${timeoutMs}ms`)),
+      () => reject(new Error(`${label} timed out after ${timeoutMs + 1_000}ms (DNS backstop)`)),
       timeoutMs + 1_000,
     );
   });
