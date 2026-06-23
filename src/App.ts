@@ -38,7 +38,9 @@ import { startLearning } from '@/services/country-instability';
 import { loadFromStorage, parseMapUrlState, saveToStorage, isMobileDevice } from '@/utils';
 import { clearPanelSpans, invalidatePanelStorageCacheForKeys } from '@/utils/panel-storage';
 import type { ParsedMapUrlState } from '@/utils';
-import { SignalModal, IntelligenceGapBadge, BreakingNewsBanner } from '@/components';
+import { SignalModal } from '@/components/SignalModal';
+import { IntelligenceGapBadge } from '@/components/IntelligenceGapBadge';
+import { BreakingNewsBanner } from '@/components/BreakingNewsBanner';
 import { initBreakingNewsAlerts, destroyBreakingNewsAlerts } from '@/services/breaking-news-alerts';
 import type { ServiceStatusPanel } from '@/components/ServiceStatusPanel';
 import type { StablecoinPanel } from '@/components/StablecoinPanel';
@@ -1279,7 +1281,7 @@ export class App {
     // Phase 3: UI setup methods
     this.eventHandlers.startHeaderClock();
     this.eventHandlers.setupPlaybackControl();
-    this.eventHandlers.setupStatusPanel();
+    await this.eventHandlers.setupStatusPanel();
     this.eventHandlers.setupPizzIntIndicator();
     this.eventHandlers.setupLlmStatusIndicator();
     this.eventHandlers.setupExportPanel();
@@ -1321,7 +1323,7 @@ export class App {
     // Phase 4: SearchManager, MapLayerHandlers, CountryIntel
     this.searchManager.init();
     this.eventHandlers.setupMapLayerHandlers();
-    this.countryIntel.init();
+    await this.countryIntel.init();
     // Unblock any WebMCP tool invocations that arrived during startup.
     this.resolveUiReady();
 

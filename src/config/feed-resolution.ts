@@ -123,12 +123,18 @@ export function enabledNewsCategoryKeys(
   newsPanels: Record<string, unknown>,
   panels: Record<string, unknown>,
   panelSettings: Record<string, { enabled?: boolean } | undefined>,
+  configuredCategoryKeys: Iterable<string> = [],
 ): string[] {
-  const result: string[] = [];
+  const result = new Set<string>();
   for (const [key, newsPanel] of Object.entries(newsPanels)) {
     const collided = panels[key] !== undefined && panels[key] !== newsPanel;
     const panelKey = collided ? `${key}-news` : key;
-    if (panelSettings[panelKey]?.enabled === true) result.push(key);
+    if (panelSettings[panelKey]?.enabled === true) result.add(key);
   }
-  return result;
+  for (const key of configuredCategoryKeys) {
+    if (panelSettings[key]?.enabled === true || panelSettings[`${key}-news`]?.enabled === true) {
+      result.add(key);
+    }
+  }
+  return [...result];
 }

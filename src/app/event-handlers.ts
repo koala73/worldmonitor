@@ -13,17 +13,14 @@ import type { McpDataPanel } from '@/components/McpDataPanel';
 import { openMcpConnectModal } from '@/components/McpConnectModal';
 import { deleteMcpPanel, getMcpPanel, saveMcpPanel } from '@/services/mcp-store';
 import type { PanelConfig, MapLayers, MilitaryFlight } from '@/types';
-import type { MapView } from '@/components';
+import type { MapView } from '@/components/MapContainer';
 import type { PositionSample } from '@/services/aviation';
 import type { ClusteredEvent } from '@/types';
 import type { DashboardSnapshot } from '@/services/storage';
-import {
-  PlaybackControl,
-  StatusPanel,
-  PizzIntIndicator,
-  LlmStatusIndicator,
-  PredictionPanel,
-} from '@/components';
+import { PlaybackControl } from '@/components/PlaybackControl';
+import { PizzIntIndicator } from '@/components/PizzIntIndicator';
+import { LlmStatusIndicator } from '@/components/LlmStatusIndicator';
+import type { PredictionPanel } from '@/components/PredictionPanel';
 import {
   buildMapUrl,
   debounce,
@@ -1510,7 +1507,9 @@ export class EventHandlerManager implements AppModule {
     this.clockIntervalId = setInterval(tick, 1000);
   }
 
-  setupStatusPanel(): void {
+  async setupStatusPanel(): Promise<void> {
+    const { StatusPanel } = await import('@/components/StatusPanel');
+    if (this.ctx.isDestroyed) return;
     this.ctx.statusPanel = new StatusPanel();
   }
 
@@ -2073,7 +2072,7 @@ export class EventHandlerManager implements AppModule {
     const sources = new Set<string>();
     // Preset feeds + sources from any custom news panels the user added, so
     // the source manager stays in sync with what loadNews() actually fetches.
-    const categories = resolveNewsCategories(FEEDS, CANONICAL_FEEDS, enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings));
+    const categories = resolveNewsCategories(FEEDS, CANONICAL_FEEDS, enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings, Object.keys(CANONICAL_FEEDS)));
     categories.forEach(({ feeds }) => feeds.forEach(f => sources.add(f.name)));
     INTEL_SOURCES.forEach(f => sources.add(f.name));
     return Array.from(sources).sort((a, b) => a.localeCompare(b));

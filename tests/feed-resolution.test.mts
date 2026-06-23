@@ -160,6 +160,17 @@ describe('enabledNewsCategoryKeys', () => {
     );
   });
 
+  test('includes enabled configured categories before lazy news panels register', () => {
+    assert.deepStrictEqual(
+      enabledNewsCategoryKeys({}, {}, {
+        startups: { enabled: true },
+        'markets-news': { enabled: true },
+        markets: { enabled: true },
+      }, ['startups', 'markets']),
+      ['startups', 'markets'],
+    );
+  });
+
   // Collision case: `markets` key is occupied by a non-news DATA panel, so the
   // news panel registered under `markets-news`. Enablement must be read from
   // panelSettings['markets-news'] — NOT panelSettings['markets'] (the data panel).

@@ -2,15 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { describe, it } from 'node:test';
 
-// Regression coverage for WORLDMONITOR-R4: dynamic `import(...).then(({ Foo }) => new Foo(...))`
-// must guard against the destructured named export resolving to `undefined`, AND must pass an
-// onRejected handler as the SECOND argument to `.then(...)` so the import-promise rejection is
-// suppressed without swallowing synchronous throws from inside the .then() callback body
-// (panel construction, getElement, makeDraggable, etc.) — those must keep surfacing in Sentry.
-//
-// The two call sites at src/app/panel-layout.ts:1041 (DeductionPanel) and :1059
-// (RegionalIntelligenceBoard) are the only ones in the file that use the destructure-and-
-// construct pattern; any sibling that adopts the same shape should add the same guards.
+// Regression coverage for WORLDMONITOR-R4 adapted to the lazy panel registry:
+// DeductionPanel and RegionalIntelligenceBoard must stay demand-loaded through
+// `lazyPanel(...)`, and the shared lazy loader must treat failed chunk loads as
+// recoverable instead of letting an absent/offline async panel crash startup.
 
 // Note: we deliberately do NOT strip comments via a naive regex before grepping —
 // panel-layout.ts contains regex literals like `/\/\*.../` that would defeat a naive
@@ -118,17 +113,56 @@ function assertGuardedDynamicImport(source: string, modulePath: string, exportNa
   );
 }
 
-describe('panel-layout dynamic-import guard (WORLDMONITOR-R4)', () => {
+function assertLazyPanelRegistration(
+  source: string,
+  panelKey: string,
+  modulePath: string,
+  exportName: string,
+) {
+  const registration = new RegExp(
+    `this\\.lazyPanel\\(['"]${panelKey}['"],\\s*\\(\\)\\s*=>\\s*\\n?\\s*import\\(['"]${modulePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]\\)[\\s\\S]*?new\\s+${exportName}\\(`,
+  );
+  assert.match(source, registration, `${exportName} must be registered through lazyPanel(${panelKey})`);
+  assert.doesNotMatch(
+    source,
+    new RegExp(`^import\\s+\\{[^}]*${exportName}[^}]*\\}\\s+from\\s+['"]${modulePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]`, 'm'),
+    `${exportName} must not be eagerly imported into panel-layout.ts`,
+  );
+}
+
+function assertLazyLoaderHandlesFailedImports(source: string) {
+  const loadRegisteredPanel = source.match(/private async loadRegisteredPanel\([\s\S]*?\n\s*private makeDraggable/);
+  assert.ok(loadRegisteredPanel, 'loadRegisteredPanel helper not found');
+  assert.match(
+    loadRegisteredPanel[0],
+    /registration\.loading = registration\.load\(\)[\s\S]*?\.catch\(\(err\) => \{/,
+    'lazy panel chunk failures must be caught by the shared loader',
+  );
+  assert.match(
+    loadRegisteredPanel[0],
+    /registration\.loading = null;/,
+    'failed lazy panel loads must reset the in-flight promise so the panel can retry',
+  );
+  assert.match(
+    loadRegisteredPanel[0],
+    /return null;/,
+    'failed lazy panel loads must resolve to null instead of crashing startup',
+  );
+}
+
+describe('panel-layout lazy dynamic-import guard (WORLDMONITOR-R4)', () => {
   const filePath = new URL('../src/app/panel-layout.ts', import.meta.url);
 
-  it('RegionalIntelligenceBoard import has typeof guard + onRejected arg', async () => {
+  it('RegionalIntelligenceBoard is demand-loaded through lazyPanel', async () => {
     const source = await readFile(filePath, 'utf8');
-    assertGuardedDynamicImport(source, '@/components/RegionalIntelligenceBoard', 'RegionalIntelligenceBoard');
+    assertLazyPanelRegistration(source, 'regional-intelligence', '@/components/RegionalIntelligenceBoard', 'RegionalIntelligenceBoard');
+    assertLazyLoaderHandlesFailedImports(source);
   });
 
-  it('DeductionPanel import has typeof guard + onRejected arg', async () => {
+  it('DeductionPanel is demand-loaded through lazyPanel', async () => {
     const source = await readFile(filePath, 'utf8');
-    assertGuardedDynamicImport(source, '@/components/DeductionPanel', 'DeductionPanel');
+    assertLazyPanelRegistration(source, 'deduction', '@/components/DeductionPanel', 'DeductionPanel');
+    assertLazyLoaderHandlesFailedImports(source);
   });
 
   it('token-aware brace walker skips strings/templates/comments', () => {

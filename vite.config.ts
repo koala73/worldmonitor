@@ -35,6 +35,20 @@ if (CLERK_JS_VERSION.split('.')[0] !== '6') {
   throw new Error(`[vite] @clerk/clerk-js major is ${CLERK_JS_VERSION.split('.')[0]}, expected 6 — update CLERK_UI_VERSION in src/services/clerk.ts to the paired @clerk/ui major, then bump this guard.`);
 }
 
+const PANEL_CHUNK_NAMES = [
+  'panels-markets',
+  'panels-energy',
+  'panels-defense',
+  'panels-news',
+  'panels-economy',
+  'panels-intel',
+  'panels-risk',
+] as const;
+type PanelChunkName = typeof PANEL_CHUNK_NAMES[number];
+const PANEL_SUPPORT_CHUNK_NAMES = ['panel-support'] as const;
+type PanelSupportChunkName = typeof PANEL_SUPPORT_CHUNK_NAMES[number];
+type PanelManualChunkName = PanelChunkName | PanelSupportChunkName;
+
 // Single source of truth for chunk names that must NOT be hoisted into the
 // entry HTML's modulepreload list. Used by both `manualChunks` (return values
 // must literally match these strings) and `modulePreload.resolveDependencies`
@@ -43,7 +57,8 @@ if (CLERK_JS_VERSION.split('.')[0] !== '6') {
 // re-eagerises the WebGL stack without any build-time error.
 //   - maplibre, deck-stack: heavy WebGL deps, only reachable via MapContainer
 //   - MapContainer: the dynamic-import target itself
-const LAZY_HTML_PRELOAD_CHUNKS = ['maplibre', 'deck-stack', 'MapContainer'] as const;
+//   - panels-*: panel domain chunks; keep them out of the entry HTML preload
+const LAZY_HTML_PRELOAD_CHUNKS = ['maplibre', 'deck-stack', 'MapContainer', ...PANEL_CHUNK_NAMES, ...PANEL_SUPPORT_CHUNK_NAMES] as const;
 const LAZY_HTML_PRELOAD_RE = new RegExp(
   `/(${LAZY_HTML_PRELOAD_CHUNKS.join('|')})-[A-Za-z0-9_-]+\\.js$`,
 );
@@ -51,8 +66,9 @@ const LAZY_HTML_PRELOAD_RE = new RegExp(
 // Panel-cluster manualChunks map. Splits the previously monolithic ~2.3MB
 // `panels` chunk into per-domain chunks so cache invalidation is local to
 // the cluster a panel lives in and per-variant builds can prune unused
-// clusters. Unmapped panels fall through to a generic `panels` chunk.
-const PANEL_CLUSTER: Record<string, string> = {
+// clusters. New panel files must be assigned here before the build can split
+// them; otherwise they would silently fall back into an eager catch-all chunk.
+const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   // Markets / equities / crypto positioning
   AAIISentiment: 'panels-markets', CotPositioning: 'panels-markets',
   ETFFlows: 'panels-markets', EarningsCalendar: 'panels-markets',
@@ -94,7 +110,8 @@ const PANEL_CLUSTER: Record<string, string> = {
   // in this cluster — splitting them across clusters caused TDZ on init.
   ChatAnalyst: 'panels-intel', CII: 'panels-intel',
   Cascade: 'panels-intel', Correlation: 'panels-intel',
-  CountryBrief: 'panels-intel', CountryDeepDive: 'panels-intel',
+  CountryBrief: 'panels-intel', CountryBriefPage: 'panels-intel',
+  CountryDeepDive: 'panels-intel',
   CrossSourceSignals: 'panels-intel', CustomWidget: 'panels-intel',
   Deduction: 'panels-intel',
   DisasterCorrelation: 'panels-intel',
@@ -106,6 +123,7 @@ const PANEL_CLUSTER: Record<string, string> = {
   LiveWebcams: 'panels-intel', McpData: 'panels-intel',
   Monitor: 'panels-intel', PinnedWebcams: 'panels-intel',
   Prediction: 'panels-intel', ProgressCharts: 'panels-intel',
+  RegionalIntelligenceBoard: 'panels-intel',
   Regulation: 'panels-intel',
   // Disasters / climate / connectivity / society
   ClimateAnomaly: 'panels-risk', Counters: 'panels-risk',
@@ -116,10 +134,34 @@ const PANEL_CLUSTER: Record<string, string> = {
   RuntimeConfig: 'panels-risk', SatelliteFires: 'panels-risk',
   SecurityAdvisories: 'panels-risk', ServiceStatus: 'panels-risk',
   SocialVelocity: 'panels-risk', SpeciesComeback: 'panels-risk',
-  Status: 'panels-risk', TechEvents: 'panels-risk',
+  TechEvents: 'panels-risk',
+  ThreatTimeline: 'panels-risk',
   TechHubs: 'panels-risk', TechReadiness: 'panels-risk',
   WorldClock: 'panels-risk',
 };
+
+const PANEL_SUPPORT_CLUSTER: Record<string, PanelSupportChunkName> = {
+  Status: 'panel-support',
+};
+
+function panelKeyForComponentId(id: string): string | null {
+  if (!id.includes('/src/components/') || !id.endsWith('.ts')) return null;
+  const match = id.match(/\/([^/]+)\.ts$/);
+  if (!match) return null;
+  const fileBase = match[1];
+  if (fileBase === 'Panel') return null;
+  if (fileBase === 'CountryBriefPage' || fileBase === 'RegionalIntelligenceBoard') return fileBase;
+  if (fileBase.endsWith('Panel')) return fileBase.slice(0, -'Panel'.length);
+  return null;
+}
+
+function panelChunkForComponentId(id: string): PanelManualChunkName | null {
+  const panelKey = panelKeyForComponentId(id);
+  if (!panelKey) return null;
+  const chunkName = PANEL_SUPPORT_CLUSTER[panelKey] ?? PANEL_CLUSTER[panelKey];
+  if (chunkName) return chunkName;
+  throw new Error(`[manualChunks] Unassigned panel component ${panelKey}. Add it to PANEL_CLUSTER or PANEL_SUPPORT_CLUSTER in vite.config.ts.`);
+}
 
 function brotliPrecompressPlugin(): Plugin {
   return {
@@ -1012,6 +1054,7 @@ export default defineConfig(({ mode }) => {
           mcpGrant: resolve(__dirname, 'mcp-grant.html'),
         },
         output: {
+          onlyExplicitManualChunks: true,
           manualChunks(id) {
             if (id.includes('node_modules')) {
               if (id.includes('/@xenova/transformers/')) {
@@ -1045,7 +1088,7 @@ export default defineConfig(({ mode }) => {
               if (id.includes('/i18next')) {
                 return 'i18n';
               }
-              if (id.includes('/@sentry/')) {
+              if (id.includes('/@sentry/') || id.includes('/@sentry-internal/')) {
                 return 'sentry';
               }
               if (id.includes('/@clerk/clerk-js/')) {
@@ -1054,12 +1097,9 @@ export default defineConfig(({ mode }) => {
                 return 'clerk';
               }
             }
-            if (id.includes('/src/components/') && id.endsWith('Panel.ts')) {
-              // Cluster split (PANEL_CLUSTER) is staged but disabled: it exposes
-              // a systemic TDZ in panels with top-level `new XxxServiceClient(...)`
-              // singletons (~20+ panels). They each need lazy-init refactors
-              // before the cluster split can ship. See ce-doc-review followup.
-              return 'panels';
+            if (id.includes('/src/components/') && id.endsWith('.ts')) {
+              const panelChunk = panelChunkForComponentId(id);
+              if (panelChunk) return panelChunk;
             }
             // Give lazy-loaded locale chunks a recognizable prefix so the
             // service worker can exclude them from precache (en.json is

@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 import { SupplyChainServiceClient } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import type {
@@ -19,9 +19,9 @@ import {
   type RawFuelShortageRegistry,
 } from '@/shared/fuel-shortage-registry-store';
 
-const client = new SupplyChainServiceClient(getRpcBaseUrl(), {
-  fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
-});
+const getSupplyChainClient = createLazyClient(() => new SupplyChainServiceClient(getRpcBaseUrl(), {
+  fetch: rpcFetch,
+}));
 
 const SEVERITY_COLOR: Record<string, string> = {
   confirmed: '#e74c3c',
@@ -161,7 +161,7 @@ export class FuelShortagePanel extends Panel {
       if (hydrated) {
         this.data = hydrated;
         this.render();
-        void client.listFuelShortages({ country: '', product: '', severity: '' }).then(live => {
+        void getSupplyChainClient().listFuelShortages({ country: '', product: '', severity: '' }).then(live => {
           if (!this.element?.isConnected || !live?.shortages?.length) return;
           this.data = live;
           this.render();
@@ -176,7 +176,7 @@ export class FuelShortagePanel extends Panel {
         return;
       }
 
-      const live = await client.listFuelShortages({ country: '', product: '', severity: '' });
+      const live = await getSupplyChainClient().listFuelShortages({ country: '', product: '', severity: '' });
       if (!this.element?.isConnected) return;
       if (live.upstreamUnavailable || !live.shortages?.length) {
         this.showError('Fuel shortage registry unavailable', () => void this.fetchData());
@@ -203,7 +203,7 @@ export class FuelShortagePanel extends Panel {
     this.detailLoading = true;
     this.render();
     try {
-      const d = await client.getFuelShortageDetail({ shortageId });
+      const d = await getSupplyChainClient().getFuelShortageDetail({ shortageId });
       if (!this.element?.isConnected || this.selectedId !== shortageId) return;
       this.detail = d;
       this.detailLoading = false;

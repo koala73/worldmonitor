@@ -148,6 +148,7 @@ describe('loadAllData scheduler', () => {
 describe('viewport hydration scheduler lifecycle', () => {
   const destroyMethod = findMethod(PANEL_LAYOUT_SOURCE, 'destroy');
   const observeMethod = findMethod(PANEL_LAYOUT_SOURCE, 'observePanelsForViewport');
+  const observePanelMethod = findMethod(PANEL_LAYOUT_SOURCE, 'observePanelForHydration');
 
   it('cancels pending idle hydration during teardown', () => {
     assert.match(
@@ -158,7 +159,12 @@ describe('viewport hydration scheduler lifecycle', () => {
   });
 
   it('keeps the no-window viewport fallback before reading window.innerHeight', () => {
-    const text = observeMethod.getText(PANEL_LAYOUT_SOURCE);
+    assert.match(
+      observeMethod.getText(PANEL_LAYOUT_SOURCE),
+      /this\.observePanelForHydration\(panel\);/,
+      'observePanelsForViewport should delegate per-panel viewport handling to observePanelForHydration',
+    );
+    const text = observePanelMethod.getText(PANEL_LAYOUT_SOURCE);
     const guardIndex = text.indexOf("typeof window === 'undefined'");
     const innerHeightIndex = text.indexOf('window.innerHeight');
     assert.ok(guardIndex >= 0, 'observer should preserve an explicit no-window guard');

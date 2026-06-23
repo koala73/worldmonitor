@@ -3,7 +3,7 @@ import { getRpcBaseUrl } from '@/services/rpc-client';
 import { enqueuePanelCall } from '@/app/pending-panel-data';
 import type { NewsItem, MapLayers, SocialUnrestEvent } from '@/types';
 import type { MarketData } from '@/types';
-import type { TimeRange } from '@/components';
+import type { TimeRange } from '@/components/MapContainer';
 import {
   FEEDS,
   CANONICAL_FEEDS,
@@ -143,40 +143,39 @@ import { getHydratedData } from '@/services/bootstrap';
 import { ingestHeadlines } from '@/services/trending-keywords';
 import type { ListFeedDigestResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
 import type { GetSectorSummaryResponse, ListMarketQuotesResponse, ListCommodityQuotesResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
-import type { SectorValuation } from '@/components/MarketPanel';
+import type {
+  AiTokensPanel,
+  CommoditiesPanel,
+  CryptoHeatmapPanel,
+  CryptoPanel,
+  DefiTokensPanel,
+  HeatmapPanel,
+  MarketPanel,
+  OtherTokensPanel,
+  SectorValuation,
+} from '@/components/MarketPanel';
 import { mountCommunityWidget } from '@/components/CommunityWidget';
 import { ResearchServiceClient } from '@/generated/client/worldmonitor/research/v1/service_client';
-import {
-  MarketPanel,
-  StockAnalysisPanel,
-  StockBacktestPanel,
-  HeatmapPanel,
-  CommoditiesPanel,
-  CryptoPanel,
-  CryptoHeatmapPanel,
-  DefiTokensPanel,
-  AiTokensPanel,
-  OtherTokensPanel,
-  PredictionPanel,
-  MonitorPanel,
-  InsightsPanel,
-  ThreatTimelinePanel,
-  CIIPanel,
-  InternetDisruptionsPanel,
-  StrategicPosturePanel,
-  EconomicPanel,
-  EnergyComplexPanel,
-  TechReadinessPanel,
-  UcdpEventsPanel,
-  TradePolicyPanel,
-  SupplyChainPanel,
-  DiseaseOutbreaksPanel,
-  SocialVelocityPanel,
-  WsbTickerScannerPanel,
-  AAIISentimentPanel,
-  MarketBreadthPanel,
-} from '@/components';
-import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
+import type { StockAnalysisPanel } from '@/components/StockAnalysisPanel';
+import type { StockBacktestPanel } from '@/components/StockBacktestPanel';
+import type { PredictionPanel } from '@/components/PredictionPanel';
+import type { MonitorPanel } from '@/components/MonitorPanel';
+import type { InsightsPanel } from '@/components/InsightsPanel';
+import type { ThreatTimelinePanel } from '@/components/ThreatTimelinePanel';
+import type { InternetDisruptionsPanel } from '@/components/InternetDisruptionsPanel';
+import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
+import type { EconomicPanel } from '@/components/EconomicPanel';
+import type { EnergyComplexPanel } from '@/components/EnergyComplexPanel';
+import type { TechReadinessPanel } from '@/components/TechReadinessPanel';
+import type { UcdpEventsPanel } from '@/components/UcdpEventsPanel';
+import type { TradePolicyPanel } from '@/components/TradePolicyPanel';
+import type { SupplyChainPanel } from '@/components/SupplyChainPanel';
+import type { DiseaseOutbreaksPanel } from '@/components/DiseaseOutbreaksPanel';
+import type { SocialVelocityPanel } from '@/components/SocialVelocityPanel';
+import type { WsbTickerScannerPanel } from '@/components/WsbTickerScannerPanel';
+import type { AAIISentimentPanel } from '@/components/AAIISentimentPanel';
+import type { MarketBreadthPanel } from '@/components/MarketBreadthPanel';
+import type { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { classifyNewsItem } from '@/services/positive-classifier';
 import { fetchGivingSummary } from '@/services/giving';
 import { fetchProgressData } from '@/services/progress-data';
@@ -480,7 +479,7 @@ export class DataLoaderManager implements AppModule {
 
   private renderCachedCiiScores(cached: CachedRiskScores): void {
     this.cachedRiskScores = cached;
-    (this.ctx.panels['cii'] as CIIPanel)?.renderFromCached(cached);
+    this.callPanel('cii', 'renderFromCached', cached);
     this.applyCiiScoresToMap(cached.cii.map(toCountryScore));
   }
 
@@ -493,7 +492,7 @@ export class DataLoaderManager implements AppModule {
     }
 
     const shouldUseLocalFallback = forceLocal || !this.cachedRiskScores;
-    (this.ctx.panels['cii'] as CIIPanel)?.refresh(shouldUseLocalFallback);
+    this.callPanel('cii', 'refresh', shouldUseLocalFallback);
     this.callbacks.refreshOpenCountryBrief();
     const scores = calculateCII();
     this.applyCiiScoresToMap(scores);
@@ -1369,7 +1368,7 @@ export class DataLoaderManager implements AppModule {
     const categories = resolveNewsCategories(
       FEEDS,
       CANONICAL_FEEDS,
-      enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings),
+      enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings, Object.keys(CANONICAL_FEEDS)),
     );
 
     const maxCategoryConcurrency = SITE_VARIANT === 'tech' ? 4 : 5;

@@ -1,10 +1,10 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import type { SearchResult } from '@/components/SearchModal';
 import type { NewsItem, MapLayers } from '@/types';
-import type { MapView } from '@/components';
+import type { MapView, TimeRange } from '@/components/MapContainer';
 import type { Command } from '@/config/commands';
-import { SearchModal } from '@/components';
-import { CIIPanel } from '@/components';
+import { SearchModal } from '@/components/SearchModal';
+import type { CIIPanel } from '@/components/CIIPanel';
 import { SITE_VARIANT, STORAGE_KEYS, ALL_PANELS, getEffectivePanelConfig, isPanelEntitled } from '@/config';
 import { getAllowedLayerKeys, isLayerExecutable } from '@/config/map-layer-definitions';
 import type { MapRenderer } from '@/config/map-layer-definitions';
@@ -598,7 +598,7 @@ export class SearchManager implements AppModule {
         break;
 
       case 'time':
-        this.ctx.map?.setTimeRange(action as import('@/components').TimeRange);
+        this.ctx.map?.setTimeRange(action as TimeRange);
         break;
 
       case 'country': {

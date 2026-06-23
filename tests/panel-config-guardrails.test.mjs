@@ -150,15 +150,30 @@ describe('panel-config guardrails', () => {
   });
 
   it('reapplies panel settings after mounting the async deduction panel', () => {
-    const deductionMount = panelLayoutSrc.match(
-      /import\('@\/components\/DeductionPanel'\)\.then\(\(\{ DeductionPanel \}\) => \{([\s\S]*?)\n\s*\}\);/
+    assert.match(
+      panelLayoutSrc,
+      /this\.lazyPanel\('deduction',\s*\(\)\s*=>\s*\n?\s*import\('@\/components\/DeductionPanel'\)[\s\S]*?new DeductionPanel\(\(\) => this\.ctx\.allNews\)/,
+      'expected DeductionPanel to be registered through the lazy panel loader',
     );
 
-    assert.ok(deductionMount, 'expected async DeductionPanel mount block in panel-layout.ts');
+    const mountLazyPanel = panelLayoutSrc.match(
+      /private mountLazyPanel\([\s\S]*?\n\s*\}/
+    );
+    assert.ok(mountLazyPanel, 'expected mountLazyPanel helper in panel-layout.ts');
     assert.match(
-      deductionMount[1],
-      /this\.applyPanelSettings\(\);/,
-      'async DeductionPanel mount must replay saved panel settings after insertion',
+      mountLazyPanel[0],
+      /this\.afterPanelMounted\(key, panel\);/,
+      'lazy panel mounts must run afterPanelMounted so saved settings and hydration replay apply',
+    );
+
+    const afterPanelMounted = panelLayoutSrc.match(
+      /private afterPanelMounted\([\s\S]*?\n\s*\}/
+    );
+    assert.ok(afterPanelMounted, 'expected afterPanelMounted helper in panel-layout.ts');
+    assert.match(
+      afterPanelMounted[0],
+      /panel\.toggle\(config\.enabled\);/,
+      'lazy-mounted panels must replay the saved enabled/hidden state after insertion',
     );
   });
 
