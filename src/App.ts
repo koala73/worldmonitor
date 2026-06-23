@@ -1281,7 +1281,7 @@ export class App {
     // Phase 3: UI setup methods
     this.eventHandlers.startHeaderClock();
     this.eventHandlers.setupPlaybackControl();
-    await this.eventHandlers.setupStatusPanel();
+    this.eventHandlers.setupStatusPanel();
     this.eventHandlers.setupPizzIntIndicator();
     this.eventHandlers.setupLlmStatusIndicator();
     this.eventHandlers.setupExportPanel();

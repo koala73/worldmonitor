@@ -1507,10 +1507,15 @@ export class EventHandlerManager implements AppModule {
     this.clockIntervalId = setInterval(tick, 1000);
   }
 
-  async setupStatusPanel(): Promise<void> {
-    const { StatusPanel } = await import('@/components/StatusPanel');
-    if (this.ctx.isDestroyed) return;
-    this.ctx.statusPanel = new StatusPanel();
+  setupStatusPanel(): void {
+    void import('@/components/StatusPanel')
+      .then(({ StatusPanel }) => {
+        if (this.ctx.isDestroyed) return;
+        this.ctx.statusPanel = new StatusPanel();
+      })
+      .catch((err) => {
+        console.error('[status-panel] failed to lazy-load StatusPanel', err);
+      });
   }
 
   setupPizzIntIndicator(): void {

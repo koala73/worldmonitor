@@ -60,6 +60,8 @@ export interface ResolvedCategory {
   isCustom: boolean;
 }
 
+const COLLIDING_NEWS_CATEGORY_KEYS = new Set(['markets', 'crypto', 'economic']);
+
 /**
  * Resolve every news category that should be loaded for the current session:
  * the active variant's preset categories, PLUS any extra categories required
@@ -132,7 +134,14 @@ export function enabledNewsCategoryKeys(
     if (panelSettings[panelKey]?.enabled === true) result.add(key);
   }
   for (const key of configuredCategoryKeys) {
-    if (panelSettings[key]?.enabled === true || panelSettings[`${key}-news`]?.enabled === true) {
+    const remappedPanelKey = `${key}-news`;
+    const settingsKey = (
+      COLLIDING_NEWS_CATEGORY_KEYS.has(key)
+      || panelSettings[remappedPanelKey] !== undefined
+    )
+      ? remappedPanelKey
+      : key;
+    if (panelSettings[settingsKey]?.enabled === true) {
       result.add(key);
     }
   }

@@ -171,6 +171,16 @@ describe('enabledNewsCategoryKeys', () => {
     );
   });
 
+  test('configured colliding categories ignore enabled data panels before lazy news panels register', () => {
+    assert.deepStrictEqual(
+      enabledNewsCategoryKeys({}, {}, {
+        markets: { enabled: true },
+        'markets-news': { enabled: false },
+      }, ['markets']),
+      [],
+    );
+  });
+
   // Collision case: `markets` key is occupied by a non-news DATA panel, so the
   // news panel registered under `markets-news`. Enablement must be read from
   // panelSettings['markets-news'] — NOT panelSettings['markets'] (the data panel).
