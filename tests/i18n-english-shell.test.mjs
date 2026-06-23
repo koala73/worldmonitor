@@ -47,6 +47,7 @@ const SHELL_KEY_PREFIXES = [
   'components.deckgl.views.',
   'components.map.',
   'components.panel.',
+  'components.proBanner.',
   'components.settings.',
   'modals.runtimeConfig.',
   'modals.settingsWindow.',

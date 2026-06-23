@@ -428,6 +428,13 @@
       "openSettings": "Open Settings",
       "showMethodologyInfo": "Show methodology info"
     },
+    "proBanner": {
+      "badge": "PRO",
+      "headline": "Pro is launched",
+      "tagline": "More Signal, Less Noise. More AI Briefings. A Geopolitical & Equity Researcher just for you.",
+      "cta": "Upgrade to Pro →",
+      "dismiss": "Dismiss"
+    },
     "settings": {
       "exportSettings": "Export Settings",
       "importSettings": "Import Settings",
