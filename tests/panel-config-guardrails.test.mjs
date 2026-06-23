@@ -152,7 +152,7 @@ describe('panel-config guardrails', () => {
   it('reapplies panel settings after mounting the async deduction panel', () => {
     assert.match(
       panelLayoutSrc,
-      /this\.lazyPanel\('deduction',\s*\(\)\s*=>\s*\n?\s*import\('@\/components\/DeductionPanel'\)[\s\S]*?new DeductionPanel\(\(\) => this\.ctx\.allNews\)/,
+      /this\.lazyPanel\('deduction',\s*\(\)\s*=>\s*\n?\s*this\.importPanel\([\s\S]*?'@\/components\/DeductionPanel'[\s\S]*?new DeductionPanel\(\(\) => this\.ctx\.allNews\)/,
       'expected DeductionPanel to be registered through the lazy panel loader',
     );
 
@@ -175,6 +175,39 @@ describe('panel-config guardrails', () => {
       /panel\.toggle\(config\.enabled\);/,
       'lazy-mounted panels must replay the saved enabled/hidden state after insertion',
     );
+  });
+
+  it('runs dynamic custom and MCP panels through the mounted-panel hydration path', () => {
+    const helperStart = panelLayoutSrc.indexOf('private addDynamicPanel(');
+    assert.notEqual(helperStart, -1, 'expected addDynamicPanel helper in panel-layout.ts');
+    const helperEnd = panelLayoutSrc.indexOf('addCustomWidget(spec:', helperStart);
+    assert.ok(helperEnd > helperStart, 'expected addDynamicPanel helper boundary in panel-layout.ts');
+    const addDynamicPanel = panelLayoutSrc.slice(helperStart, helperEnd);
+    assert.match(
+      addDynamicPanel,
+      /this\.afterPanelMounted\(key, panel\);/,
+      'custom and MCP panels added after startup must run afterPanelMounted so initial hydration can be scheduled',
+    );
+
+    for (const methodName of ['addCustomWidget', 'addMcpPanel']) {
+      const methodStart = panelLayoutSrc.indexOf(`${methodName}(spec:`);
+      assert.notEqual(methodStart, -1, `expected ${methodName} method in panel-layout.ts`);
+      const methodEnd = methodName === 'addCustomWidget'
+        ? panelLayoutSrc.indexOf('addMcpPanel(spec:', methodStart)
+        : panelLayoutSrc.indexOf('private getSavedPanelOrder', methodStart);
+      assert.ok(methodEnd > methodStart, `expected ${methodName} method boundary in panel-layout.ts`);
+      const method = panelLayoutSrc.slice(methodStart, methodEnd);
+      assert.match(
+        method,
+        /this\.importPanel\(/,
+        `${methodName} must use the shared guarded import path`,
+      );
+      assert.match(
+        method,
+        /this\.addDynamicPanel\(spec\.id, panel\);/,
+        `${methodName} must insert through addDynamicPanel() so notifyConnected/afterPanelMounted run`,
+      );
+    }
   });
 
   it('every API-key-entitled premium panel is in WEB_PREMIUM_PANELS (anon lock-CTA invariant)', () => {

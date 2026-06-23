@@ -134,13 +134,7 @@ export function enabledNewsCategoryKeys(
     if (panelSettings[panelKey]?.enabled === true) result.add(key);
   }
   for (const key of configuredCategoryKeys) {
-    const remappedPanelKey = `${key}-news`;
-    const settingsKey = (
-      COLLIDING_NEWS_CATEGORY_KEYS.has(key)
-      || panelSettings[remappedPanelKey] !== undefined
-    )
-      ? remappedPanelKey
-      : key;
+    const settingsKey = COLLIDING_NEWS_CATEGORY_KEYS.has(key) ? `${key}-news` : key;
     if (panelSettings[settingsKey]?.enabled === true) {
       result.add(key);
     }

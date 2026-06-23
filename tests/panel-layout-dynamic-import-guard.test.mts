@@ -3,9 +3,10 @@ import { readFile } from 'node:fs/promises';
 import { describe, it } from 'node:test';
 
 // Regression coverage for WORLDMONITOR-R4 adapted to the lazy panel registry:
-// DeductionPanel and RegionalIntelligenceBoard must stay demand-loaded through
-// `lazyPanel(...)`, and the shared lazy loader must treat failed chunk loads as
-// recoverable instead of letting an absent/offline async panel crash startup.
+// split-risk panels must stay demand-loaded through `lazyPanel(...)`, and their
+// dynamic imports must route through the Safari-safe importPanel helper. The
+// shared lazy loader must also treat failed chunk loads as recoverable instead of
+// letting an absent/offline async panel crash startup.
 
 // Note: we deliberately do NOT strip comments via a naive regex before grepping —
 // panel-layout.ts contains regex literals like `/\/\*.../` that would defeat a naive
@@ -120,9 +121,9 @@ function assertLazyPanelRegistration(
   exportName: string,
 ) {
   const registration = new RegExp(
-    `this\\.lazyPanel\\(['"]${panelKey}['"],\\s*\\(\\)\\s*=>\\s*\\n?\\s*import\\(['"]${modulePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]\\)[\\s\\S]*?new\\s+${exportName}\\(`,
+    `this\\.lazyPanel\\(['"]${panelKey}['"],\\s*\\(\\)\\s*=>\\s*(?:\\n\\s*)?this\\.importPanel\\(\\s*['"]${panelKey}['"],\\s*\\(\\)\\s*=>\\s*import\\(['"]${modulePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]\\),\\s*['"]${exportName}['"]`,
   );
-  assert.match(source, registration, `${exportName} must be registered through lazyPanel(${panelKey})`);
+  assert.match(source, registration, `${exportName} must be registered through lazyPanel(${panelKey}) and importPanel()`);
   assert.doesNotMatch(
     source,
     new RegExp(`^import\\s+\\{[^}]*${exportName}[^}]*\\}\\s+from\\s+['"]${modulePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]`, 'm'),
@@ -150,18 +151,64 @@ function assertLazyLoaderHandlesFailedImports(source: string) {
   );
 }
 
+function assertSharedImportPanelGuard(source: string) {
+  const callback = findCallbackBody(source, /return\s+importer\(\)\.then\(\(module\)\s*=>\s*\{/);
+  assert.ok(callback, 'importPanel helper must call importer().then(onFulfilled, onRejected)');
+  assert.match(
+    callback.body,
+    /const PanelClass = module\[exportName\];/,
+    'importPanel helper must read the requested named export dynamically.',
+  );
+  assert.match(
+    callback.body,
+    /typeof\s+PanelClass\s*!==?\s*['"]function['"]/,
+    'importPanel helper must verify the named export is a constructor function before using it.',
+  );
+  const tail = source.slice(callback.afterIdx, callback.afterIdx + 200);
+  assert.match(
+    tail,
+    /^\s*,\s*\([^)]*\)\s*=>/,
+    'importPanel helper must use two-arg .then(onFulfilled, onRejected), not .then(...).catch(...).',
+  );
+  assert.doesNotMatch(
+    tail,
+    /^\s*\)\s*\.catch\(/,
+    'importPanel helper must not use .then(...).catch(...) for import failures.',
+  );
+}
+
+const SPLIT_RISK_PANEL_IMPORTS: Array<[string, string, string]> = [
+  ['pipeline-status', '@/components/PipelineStatusPanel', 'PipelineStatusPanel'],
+  ['storage-facility-map', '@/components/StorageFacilityMapPanel', 'StorageFacilityMapPanel'],
+  ['fuel-shortages', '@/components/FuelShortagePanel', 'FuelShortagePanel'],
+  ['energy-disruptions', '@/components/EnergyDisruptionsPanel', 'EnergyDisruptionsPanel'],
+  ['energy-risk-overview', '@/components/EnergyRiskOverviewPanel', 'EnergyRiskOverviewPanel'],
+  ['deduction', '@/components/DeductionPanel', 'DeductionPanel'],
+  ['regional-intelligence', '@/components/RegionalIntelligenceBoard', 'RegionalIntelligenceBoard'],
+  ['gulf-economies', '@/components/GulfEconomiesPanel', 'GulfEconomiesPanel'],
+  ['grocery-basket', '@/components/GroceryBasketPanel', 'GroceryBasketPanel'],
+  ['bigmac', '@/components/BigMacPanel', 'BigMacPanel'],
+  ['fuel-prices', '@/components/FuelPricesPanel', 'FuelPricesPanel'],
+  ['fao-food-price-index', '@/components/FaoFoodPriceIndexPanel', 'FaoFoodPriceIndexPanel'],
+  ['climate-news', '@/components/ClimateNewsPanel', 'ClimateNewsPanel'],
+  ['events', '@/components/TechEventsPanel', 'TechEventsPanel'],
+  ['macro-signals', '@/components/MacroSignalsPanel', 'MacroSignalsPanel'],
+];
+
 describe('panel-layout lazy dynamic-import guard (WORLDMONITOR-R4)', () => {
   const filePath = new URL('../src/app/panel-layout.ts', import.meta.url);
 
-  it('RegionalIntelligenceBoard is demand-loaded through lazyPanel', async () => {
+  it('shared importPanel helper uses Safari-safe dynamic import guards', async () => {
     const source = await readFile(filePath, 'utf8');
-    assertLazyPanelRegistration(source, 'regional-intelligence', '@/components/RegionalIntelligenceBoard', 'RegionalIntelligenceBoard');
+    assertSharedImportPanelGuard(source);
     assertLazyLoaderHandlesFailedImports(source);
   });
 
-  it('DeductionPanel is demand-loaded through lazyPanel', async () => {
+  it('split-risk panels are demand-loaded through the guarded helper', async () => {
     const source = await readFile(filePath, 'utf8');
-    assertLazyPanelRegistration(source, 'deduction', '@/components/DeductionPanel', 'DeductionPanel');
+    for (const [panelKey, modulePath, exportName] of SPLIT_RISK_PANEL_IMPORTS) {
+      assertLazyPanelRegistration(source, panelKey, modulePath, exportName);
+    }
     assertLazyLoaderHandlesFailedImports(source);
   });
 

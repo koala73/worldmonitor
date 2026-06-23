@@ -119,6 +119,56 @@ function hasTrueProperty(ast, propertyName) {
   return found;
 }
 
+function hasLazyHtmlModulePreloadFilter(ast) {
+  let found = false;
+  function visit(node) {
+    if (
+      ts.isPropertyAssignment(node)
+      && propertyNameText(node.name) === 'resolveDependencies'
+      && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
+    ) {
+      let hasHtmlHostGuard = false;
+      let hasDepsFilter = false;
+      let hasLazyChunkTest = false;
+      function inspect(bodyNode) {
+        if (
+          ts.isBinaryExpression(bodyNode)
+          && ts.isIdentifier(bodyNode.left)
+          && bodyNode.left.text === 'hostType'
+          && bodyNode.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken
+          && stringValue(bodyNode.right) === 'html'
+        ) {
+          hasHtmlHostGuard = true;
+        }
+        if (
+          ts.isCallExpression(bodyNode)
+          && ts.isPropertyAccessExpression(bodyNode.expression)
+          && bodyNode.expression.name.text === 'filter'
+          && ts.isIdentifier(bodyNode.expression.expression)
+          && bodyNode.expression.expression.text === 'deps'
+        ) {
+          hasDepsFilter = true;
+        }
+        if (
+          ts.isCallExpression(bodyNode)
+          && ts.isPropertyAccessExpression(bodyNode.expression)
+          && bodyNode.expression.name.text === 'test'
+          && ts.isIdentifier(bodyNode.expression.expression)
+          && bodyNode.expression.expression.text === 'LAZY_HTML_PRELOAD_RE'
+        ) {
+          hasLazyChunkTest = true;
+        }
+        ts.forEachChild(bodyNode, inspect);
+      }
+      inspect(node.initializer.body);
+      if (hasHtmlHostGuard && hasDepsFilter && hasLazyChunkTest) found = true;
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(ast);
+  return found;
+}
+
 function returnedStringLiterals(ast) {
   const values = [];
   function visit(node) {
@@ -300,8 +350,13 @@ describe('panel cluster chunk guardrails', () => {
       true,
       'PANEL_SUPPORT_CHUNK_NAMES must feed the HTML preload exclusion list.',
     );
+    assert.equal(
+      hasLazyHtmlModulePreloadFilter(viteConfigAst),
+      true,
+      'modulePreload.resolveDependencies must filter HTML deps through LAZY_HTML_PRELOAD_RE so panel chunks stay out of eager entry preloads even when this test runs without dist/.',
+    );
     const builtOffenders = builtDashboardLazyPreloadOffenders();
-    if (builtOffenders) {
+    if (builtOffenders !== null) {
       assert.deepEqual(
         builtOffenders,
         [],

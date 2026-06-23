@@ -181,6 +181,20 @@ describe('enabledNewsCategoryKeys', () => {
     );
   });
 
+  test('configured non-colliding categories ignore stale disabled ${key}-news settings', () => {
+    assert.deepStrictEqual(
+      enabledNewsCategoryKeys({}, {}, {
+        commodities: { enabled: true },
+        'commodities-news': { enabled: false },
+        climate: { enabled: true },
+        'climate-news': { enabled: false },
+        mining: { enabled: true },
+        'mining-news': { enabled: false },
+      }, ['commodities', 'climate', 'mining']),
+      ['commodities', 'climate', 'mining'],
+    );
+  });
+
   // Collision case: `markets` key is occupied by a non-news DATA panel, so the
   // news panel registered under `markets-news`. Enablement must be read from
   // panelSettings['markets-news'] — NOT panelSettings['markets'] (the data panel).
