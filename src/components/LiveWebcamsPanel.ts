@@ -446,6 +446,12 @@ export class LiveWebcamsPanel extends Panel {
   /**
    * Start the whole webcam wall (every grid tile, or the single feed in single view) regardless of
    * always-on. Drives the "play all" cascade. Off-screen feeds are queued and render on visibility.
+   *
+   * This intentionally uses a full render() rather than the per-tile activateGridCell() swap that
+   * playFeed() uses: the cascade is an all-at-once start. The only grid trigger is a preview-tile
+   * click, which only exists when the grid is fully stopped (no tiles playing), so the full render
+   * rebuilds from zero — no already-playing iframe is destroyed/reloaded. A future caller that adds
+   * feeds incrementally before calling this should switch to the surgical swap to avoid reload flashes.
    */
   private playAllFeeds(): void {
     const feeds = (this.viewMode === 'grid' && !this.forceSingleView) ? this.gridFeeds : [this.activeFeed];
