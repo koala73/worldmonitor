@@ -389,6 +389,7 @@ export class PanelLayoutManager implements AppModule {
     }
     this.panelDragCleanupHandlers.forEach((cleanup) => cleanup());
     this.panelDragCleanupHandlers = [];
+    this.cancelScheduledLoadAllIdle();
     if (this.scheduledLoadAllRaf !== null) {
       cancelAnimationFrame(this.scheduledLoadAllRaf);
       this.scheduledLoadAllRaf = null;
@@ -1969,6 +1970,10 @@ export class PanelLayoutManager implements AppModule {
     for (const panel of Object.values(this.ctx.panels)) {
       const observable = panel as { observeNearViewport?: (cb: () => void, marginPx?: number) => void };
       observable.observeNearViewport?.(() => {
+        if (typeof window === 'undefined') {
+          this.scheduleLoadAllData('near');
+          return;
+        }
         const rect = panel.getElement?.().getBoundingClientRect();
         const phase: HydrationSchedulePhase = rect && rect.top < window.innerHeight && rect.bottom > 0 ? 'visible' : 'near';
         this.scheduleLoadAllData(phase);

@@ -108,7 +108,7 @@ import {
   type StockAnalysisHistory,
 } from '@/services/stock-analysis-history';
 import { checkBatchForBreakingAlerts, dispatchOrefBreakingAlert } from '@/services/breaking-news-alerts';
-import { effectivePubDateMs } from '@/services/feed-date';
+import { displayPubDateMs, effectivePubDateMs } from '@/services/feed-date';
 import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid } from '@/services/clustering';
 import { ingestProtests, ingestFlights, ingestVessels, ingestEarthquakes, detectGeoConvergence, geoConvergenceToSignal } from '@/services/geo-convergence';
@@ -345,6 +345,9 @@ export class DataLoaderManager implements AppModule {
   private cachedSatRecs: SatRecEntry[] | null = null;
   private cachedRiskScores: CachedRiskScores | null = null;
   private preferLocalCii = false;
+  private loadAllDataPromise: Promise<void> | null = null;
+  private loadAllDataRerunRequested = false;
+  private loadAllDataQueuedForceAll = false;
 
   private digestBreaker = { state: 'closed' as 'closed' | 'open' | 'half-open', failures: 0, cooldownUntil: 0 };
   private readonly digestRequestTimeoutMs = 8000;
@@ -580,6 +583,34 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadAllData(forceAll = false): Promise<void> {
+    if (this.loadAllDataPromise) {
+      this.loadAllDataRerunRequested = true;
+      this.loadAllDataQueuedForceAll = this.loadAllDataQueuedForceAll || forceAll;
+      return this.loadAllDataPromise;
+    }
+
+    this.loadAllDataRerunRequested = true;
+    this.loadAllDataQueuedForceAll = forceAll;
+    this.loadAllDataPromise = this.drainLoadAllDataQueue();
+    return this.loadAllDataPromise;
+  }
+
+  private async drainLoadAllDataQueue(): Promise<void> {
+    try {
+      while (this.loadAllDataRerunRequested && !this.ctx.isDestroyed) {
+        const forceAll = this.loadAllDataQueuedForceAll;
+        this.loadAllDataRerunRequested = false;
+        this.loadAllDataQueuedForceAll = false;
+        await this.runLoadAllData(forceAll);
+      }
+    } finally {
+      this.loadAllDataPromise = null;
+      this.loadAllDataRerunRequested = false;
+      this.loadAllDataQueuedForceAll = false;
+    }
+  }
+
+  private async runLoadAllData(forceAll: boolean): Promise<void> {
     const runGuarded = async (name: string, fn: () => Promise<void>): Promise<void> => {
       if (this.ctx.isDestroyed || this.ctx.inFlight.has(name)) return;
       this.ctx.inFlight.add(name);
@@ -3406,14 +3437,14 @@ export class DataLoaderManager implements AppModule {
 
   async hydrateHappyPanelsFromCache(): Promise<void> {
     try {
-      type CachedItem = Omit<NewsItem, 'pubDate'> & { pubDate: number };
+      type CachedItem = Omit<NewsItem, 'pubDate'> & { pubDate?: number };
       const entry = await getPersistentCache<CachedItem[]>(DataLoaderManager.HAPPY_ITEMS_CACHE_KEY);
       if (!entry || !entry.data || entry.data.length === 0) return;
       if (Date.now() - entry.updatedAt > 24 * 60 * 60 * 1000) return;
 
       const items: NewsItem[] = entry.data.map(item => ({
         ...item,
-        pubDate: new Date(item.pubDate),
+        pubDate: new Date(displayPubDateMs(item)),
       }));
 
       const scienceSources = ['GNN Science', 'ScienceDaily', 'Nature News', 'Live Science', 'New Scientist', 'Singularity Hub', 'Human Progress', 'Greater Good (Berkeley)'];
@@ -3483,7 +3514,7 @@ export class DataLoaderManager implements AppModule {
       DataLoaderManager.HAPPY_ITEMS_CACHE_KEY,
       this.ctx.happyAllItems.map(item => ({
         ...item,
-        pubDate: item.pubDateMissing === true ? undefined : effectivePubDateMs(item),
+        pubDate: displayPubDateMs(item),
       }))
     ).catch(() => {});
   }
