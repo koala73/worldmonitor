@@ -699,7 +699,9 @@
         "space": "WELTRAUM"
       },
       "paused": "Webcams pausiert",
-      "pausedIdle": "Webcams pausiert — Maus bewegen zum Fortsetzen"
+      "pausedIdle": "Webcams pausiert — Maus bewegen zum Fortsetzen",
+      "play": "Abspielen",
+      "previewStatus": "Live-Vorschau"
     },
     "regulation": {
       "timeline": "Zeitleiste",
@@ -1557,8 +1559,8 @@
       "badgeAnimDesc": "Update-Badges in Panel-Kopfzeilen animieren",
       "headlineMemoryLabel": "Schlagzeilen-Speicher",
       "headlineMemoryDesc": "Gesehene Schlagzeilen merken, um neue hervorzuheben",
-      "streamAlwaysOnLabel": "Live-Streams weiterlaufen lassen",
-      "streamAlwaysOnDesc": "Verhindert, dass Live Cams und Live News bei Inaktivität automatisch pausieren. Empfohlen für Zweitmonitor-/Wallboard-Nutzung. Zum Sparen von CPU/Bandbreite deaktivieren (Eco).",
+      "streamAlwaysOnLabel": "Live-Streams im Dashboard automatisch abspielen",
+      "streamAlwaysOnDesc": "Startet Live News und Live Webcams automatisch, sobald sie sichtbar sind. Deaktiviert lassen, damit Videos erst nach Klick auf Abspielen geladen werden.",
       "globeRenderScaleOptions": {
         "1": "Eco (1x)",
         "2": "4K (2x)",
@@ -1720,7 +1722,9 @@
       "verifying": "Wird überprüft…",
       "noResults": "Keine Kanäle gefunden für \"{{term}}\"",
       "hlsUrl": "HLS-Stream-URL (optional)",
-      "invalidHlsUrl": "Geben Sie eine gültige HLS-Stream-URL ein (.m3u8)"
+      "invalidHlsUrl": "Geben Sie eine gültige HLS-Stream-URL ein (.m3u8)",
+      "playLiveFeed": "Live-Feed abspielen",
+      "readyStatus": "Bereit, wenn Sie es sind"
     },
     "securityAdvisories": {
       "loading": "Reisehinweise werden geladen...",

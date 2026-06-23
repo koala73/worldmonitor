@@ -690,7 +690,9 @@
         "americas": "АМЕРИКА",
         "asia": "АЗИЯ",
         "space": "КОСМОС"
-      }
+      },
+      "play": "Воспроизвести",
+      "previewStatus": "Предпросмотр в реальном времени"
     },
     "positiveNewsFeed": {
       "noStories": "Пока нет историй в этой категории"
@@ -1264,8 +1266,8 @@
       "badgeAnimDesc": "Анимировать значки обновлений в заголовках панелей",
       "headlineMemoryLabel": "Память заголовков",
       "headlineMemoryDesc": "Запоминать просмотренные заголовки для выделения новых",
-      "streamAlwaysOnLabel": "Не останавливать прямые трансляции",
-      "streamAlwaysOnDesc": "Предотвращает автопаузу Live Cams и Live News при бездействии. Рекомендуется для второго монитора / настенного дашборда. Отключите (Eco), чтобы экономить CPU/трафик.",
+      "streamAlwaysOnLabel": "Автоматически воспроизводить прямые трансляции на панели",
+      "streamAlwaysOnDesc": "Автоматически запускает Live News и Live Webcams, когда они видимы. Оставьте выключенным, чтобы видео загружалось только после нажатия Воспроизвести.",
       "analysisFrameworksLabel": "Аналитические рамки",
       "analysisFrameworksActivePerPanel": "Активные по панелям",
       "analysisFrameworksSkillLibrary": "Библиотека навыков",
@@ -1775,7 +1777,9 @@
       "invalidHandle": "Введите корректный YouTube-дескриптор (например, @ChannelName)",
       "verifying": "Проверка…",
       "hlsUrl": "URL HLS-потока (необязательно)",
-      "invalidHlsUrl": "Введите корректный URL HLS-потока (.m3u8)"
+      "invalidHlsUrl": "Введите корректный URL HLS-потока (.m3u8)",
+      "playLiveFeed": "Воспроизвести прямую трансляцию",
+      "readyStatus": "Готово, когда вы готовы"
     },
     "map": {
       "showMap": "Показать карту",

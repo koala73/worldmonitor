@@ -699,7 +699,9 @@
         "space": "KOSMOS"
       },
       "paused": "Kamery wstrzymane",
-      "pausedIdle": "Kamery wstrzymane — przesuń mysz, aby wznowić"
+      "pausedIdle": "Kamery wstrzymane — przesuń mysz, aby wznowić",
+      "play": "Odtwórz",
+      "previewStatus": "Podgląd na żywo"
     },
     "regulation": {
       "timeline": "Oś czasu",
@@ -1493,8 +1495,8 @@
       "badgeAnimDesc": "Animuj odznaki aktualizacji w nagłówkach paneli",
       "headlineMemoryLabel": "Pamięć nagłówków",
       "headlineMemoryDesc": "Zapamiętuj widziane nagłówki, aby wyróżnić nowe",
-      "streamAlwaysOnLabel": "Utrzymuj transmisje na żywo",
-      "streamAlwaysOnDesc": "Zapobiega automatycznemu wstrzymywaniu Live Cams i Live News podczas bezczynności. Zalecane do użycia na drugim monitorze / wallboardzie. Wyłącz (Eco), aby oszczędzać CPU/pasmo.",
+      "streamAlwaysOnLabel": "Automatycznie odtwarzaj transmisje na żywo na pulpicie",
+      "streamAlwaysOnDesc": "Automatycznie uruchamia Live News i Live Webcams, gdy są widoczne. Pozostaw wyłączone, aby wideo ładowało się dopiero po kliknięciu Odtwórz.",
       "globeRenderScaleOptions": {
         "1": "Eco (1x)",
         "2": "4K (2x)",
@@ -1658,7 +1660,9 @@
       "verifying": "Weryfikowanie…",
       "noResults": "Nie znaleziono kanałów pasujących do \"{{term}}\"",
       "hlsUrl": "URL strumienia HLS (opcjonalnie)",
-      "invalidHlsUrl": "Wprowadź prawidłowy URL strumienia HLS (.m3u8)"
+      "invalidHlsUrl": "Wprowadź prawidłowy URL strumienia HLS (.m3u8)",
+      "playLiveFeed": "Odtwórz transmisję na żywo",
+      "readyStatus": "Gotowe, gdy Ty jesteś gotowy"
     },
     "securityAdvisories": {
       "loading": "Ładowanie ostrzeżeń podróżnych...",

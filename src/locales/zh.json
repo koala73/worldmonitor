@@ -690,7 +690,9 @@
         "americas": "美洲",
         "asia": "亚洲",
         "space": "太空"
-      }
+      },
+      "play": "播放",
+      "previewStatus": "实时预览"
     },
     "positiveNewsFeed": {
       "noStories": "此类别暂无报道"
@@ -1264,8 +1266,8 @@
       "badgeAnimDesc": "在面板标题中显示更新徽章动画",
       "headlineMemoryLabel": "标题记忆",
       "headlineMemoryDesc": "记住已阅标题以突出显示新内容",
-      "streamAlwaysOnLabel": "保持实时流持续播放",
-      "streamAlwaysOnDesc": "防止 Live Cams 和 Live News 在你空闲时自动暂停。建议用于副屏 / 墙面看板场景。关闭（Eco）可节省 CPU/带宽。",
+      "streamAlwaysOnLabel": "在仪表板上自动播放直播流",
+      "streamAlwaysOnDesc": "当 Live News 和 Live Webcams 可见时自动启动。保持关闭则仅在点击“播放”后加载视频。",
       "analysisFrameworksLabel": "分析框架",
       "analysisFrameworksActivePerPanel": "每个面板激活",
       "analysisFrameworksSkillLibrary": "技能库",
@@ -1773,7 +1775,9 @@
       "invalidHandle": "请输入有效的YouTube用户名（例如 @ChannelName）",
       "verifying": "验证中…",
       "hlsUrl": "HLS流地址（可选）",
-      "invalidHlsUrl": "请输入有效的HLS流地址（.m3u8）"
+      "invalidHlsUrl": "请输入有效的HLS流地址（.m3u8）",
+      "playLiveFeed": "播放直播源",
+      "readyStatus": "准备就绪，随时可播"
     },
     "map": {
       "showMap": "显示地图",

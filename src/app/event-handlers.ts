@@ -473,6 +473,9 @@ export class EventHandlerManager implements AppModule {
       const config = this.ctx.panelSettings[panelId];
       if (!config) return;
       config.enabled = false;
+      // Live-media teardown is handled centrally by applyPanelSettings() below, which
+      // calls stopLiveMediaForClose() on every now-disabled panel. Calling it here too
+      // double-fired the lifecycle hook for live-news / live-webcams.
       trackPanelToggled(panelId, false);
       saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
       this.applyPanelSettings();
@@ -2091,7 +2094,14 @@ export class EventHandlerManager implements AppModule {
         return;
       }
       const panel = this.ctx.panels[key];
+      const liveMediaPanel = panel as { stopLiveMediaForClose?: () => void; resumeLiveMediaForShow?: () => void } | undefined;
+      if (!config.enabled) {
+        liveMediaPanel?.stopLiveMediaForClose?.();
+      }
       panel?.toggle(config.enabled);
+      if (config.enabled) {
+        liveMediaPanel?.resumeLiveMediaForShow?.();
+      }
     });
   }
 }

@@ -486,7 +486,9 @@
         "space": "RUIMTE"
       },
       "paused": "Webcams gepauzeerd",
-      "pausedIdle": "Webcams gepauzeerd — beweeg de muis om te hervatten"
+      "pausedIdle": "Webcams gepauzeerd — beweeg de muis om te hervatten",
+      "play": "Afspelen",
+      "previewStatus": "Livevoorbeeld"
     },
     "playback": {
       "live": "Live",
@@ -1229,8 +1231,8 @@
       "badgeAnimDesc": "Update-badges in paneelkoppen animeren",
       "headlineMemoryLabel": "Koptekstgeheugen",
       "headlineMemoryDesc": "Gezien koppen onthouden om nieuwe te markeren",
-      "streamAlwaysOnLabel": "Live streams actief houden",
-      "streamAlwaysOnDesc": "Voorkomt dat Live Cams en Live News automatisch pauzeren wanneer je inactief bent. Aanbevolen voor tweede monitor / wallboard-gebruik. Schakel uit (Eco) om CPU/bandbreedte te besparen.",
+      "streamAlwaysOnLabel": "Livestreams automatisch afspelen op het dashboard",
+      "streamAlwaysOnDesc": "Start Live News en Live Webcams automatisch wanneer ze zichtbaar zijn. Laat uit om video pas te laden nadat je op Afspelen klikt.",
       "globeRenderScaleOptions": {
         "1": "Eco (1x)",
         "2": "4K (2x)",
@@ -1443,7 +1445,9 @@
       "verifying": "Verifiëren…",
       "noResults": "Geen kanalen gevonden voor \"{{term}}\"",
       "hlsUrl": "HLS-stream-URL (optioneel)",
-      "invalidHlsUrl": "Voer een geldige HLS-stream-URL in (.m3u8)"
+      "invalidHlsUrl": "Voer een geldige HLS-stream-URL in (.m3u8)",
+      "playLiveFeed": "Livefeed afspelen",
+      "readyStatus": "Klaar wanneer jij dat bent"
     },
     "securityAdvisories": {
       "loading": "Reisadviezen laden...",

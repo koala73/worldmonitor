@@ -699,7 +699,9 @@
         "space": "ESPACIO"
       },
       "paused": "Cámaras en pausa",
-      "pausedIdle": "Cámaras en pausa — mueva el ratón para reanudar"
+      "pausedIdle": "Cámaras en pausa — mueva el ratón para reanudar",
+      "play": "Reproducir",
+      "previewStatus": "Vista previa en vivo"
     },
     "regulation": {
       "timeline": "Línea de tiempo",
@@ -1557,8 +1559,8 @@
       "badgeAnimDesc": "Animar insignias de actualización en encabezados de paneles",
       "headlineMemoryLabel": "Memoria de titulares",
       "headlineMemoryDesc": "Recordar titulares vistos para resaltar nuevos",
-      "streamAlwaysOnLabel": "Mantener transmisiones en vivo activas",
-      "streamAlwaysOnDesc": "Evita que Live Cams y Live News se pausen automáticamente cuando estás inactivo. Recomendado para uso en segundo monitor / panel mural. Desactívalo (Eco) para ahorrar CPU/ancho de banda.",
+      "streamAlwaysOnLabel": "Reproducir automáticamente transmisiones en vivo en el panel",
+      "streamAlwaysOnDesc": "Inicia Live News y Live Webcams automáticamente cuando están visibles. Déjalo desactivado para cargar video solo después de hacer clic en Reproducir.",
       "globeRenderScaleOptions": {
         "1": "Eco (1x)",
         "2": "4K (2x)",
@@ -1721,7 +1723,9 @@
       "verifying": "Verificando…",
       "noResults": "No se encontraron canales que coincidan con \"{{term}}\"",
       "hlsUrl": "URL de transmisión HLS (opcional)",
-      "invalidHlsUrl": "Introduzca una URL de transmisión HLS válida (.m3u8)"
+      "invalidHlsUrl": "Introduzca una URL de transmisión HLS válida (.m3u8)",
+      "playLiveFeed": "Reproducir transmisión en vivo",
+      "readyStatus": "Listo cuando quieras"
     },
     "securityAdvisories": {
       "loading": "Cargando alertas de viaje...",

@@ -2,6 +2,10 @@ import type { AppContext, AppModule } from '@/app/app-context';
 import { applyAgentBusAction } from '@/app/agent-bus-applier';
 import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
 import { replayPendingCalls, clearAllPendingCalls } from '@/app/pending-panel-data';
+import {
+  createDeferredPanelShell,
+  shouldDeferInitialPanelMount,
+} from '@/app/panel-mount-deferral';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
 import { effectivePubDateMs } from '@/services/feed-date';
 import type { ClusteredEvent, MapLayers, PanelConfig } from '@/types';
@@ -192,16 +196,27 @@ const WEB_CLERK_PRO_ONLY_PANELS = new Set([
 export interface PanelLayoutManagerCallbacks {
   openCountryStory: (code: string, name: string) => void;
   openCountryBrief: (code: string) => void;
-  loadAllData: () => Promise<void>;
+  loadAllData: (forceAll?: boolean) => Promise<void>;
   updateMonitorResults: () => void;
   loadSecurityAdvisories?: () => Promise<void>;
   applyMapLayerChange?: (layer: keyof MapLayers, enabled: boolean, source: 'programmatic') => void;
 }
 
+interface DeferredPanelMount {
+  panel: Panel;
+  placeholder: HTMLElement | null;
+  observer: IntersectionObserver | null;
+  mounted: boolean;
+}
+
+type HydrationSchedulePhase = 'visible' | 'near';
+
 export class PanelLayoutManager implements AppModule {
   private ctx: AppContext;
   private callbacks: PanelLayoutManagerCallbacks;
   private panelDragCleanupHandlers: Array<() => void> = [];
+  private deferredPanelMounts: Map<string, DeferredPanelMount> = new Map();
+  private initiallyMountedEnabledPanelCount = 0;
   private resolvedPanelOrder: string[] = [];
   private bottomSetMemory: Set<string> = new Set();
   private criticalBannerEl: HTMLElement | null = null;
@@ -218,6 +233,7 @@ export class PanelLayoutManager implements AppModule {
   private unsubscribeEntitlementChange: (() => void) | null = null;
   private unsubscribePaymentFailureBanner: (() => void) | null = null;
   private scheduledLoadAllRaf: number | null = null;
+  private scheduledLoadAllIdle: number | null = null;
 
   constructor(ctx: AppContext, callbacks: PanelLayoutManagerCallbacks) {
     this.ctx = ctx;
@@ -386,6 +402,12 @@ export class PanelLayoutManager implements AppModule {
     }
     this.panelDragCleanupHandlers.forEach((cleanup) => cleanup());
     this.panelDragCleanupHandlers = [];
+    for (const deferred of this.deferredPanelMounts.values()) {
+      deferred.observer?.disconnect();
+    }
+    this.deferredPanelMounts.clear();
+    this.initiallyMountedEnabledPanelCount = 0;
+    this.cancelScheduledLoadAllIdle();
     if (this.scheduledLoadAllRaf !== null) {
       cancelAnimationFrame(this.scheduledLoadAllRaf);
       this.scheduledLoadAllRaf = null;
@@ -492,8 +514,10 @@ export class PanelLayoutManager implements AppModule {
   async renderLayout(): Promise<void> {
     const isGlobeMode = getStoredMapModePreference() === 'globe';
 
+    document.documentElement.classList.add('wm-layout-hydrated');
     setTrustedHtml(this.ctx.container, trustedHtml(`
       ${this.ctx.isDesktopApp ? '<div class="tauri-titlebar" data-tauri-drag-region></div>' : ''}
+      <div id="proBannerSlot" class="pro-banner-slot" aria-live="polite"></div>
       <div class="header">
         <div class="header-left">
           <button class="hamburger-btn" id="hamburgerBtn" aria-label="Menu">
@@ -1065,8 +1089,25 @@ export class PanelLayoutManager implements AppModule {
         }
         return;
       }
+      const deferred = this.deferredPanelMounts.get(key);
+      const placeholderWasHidden = deferred?.placeholder?.classList.contains('hidden') ?? false;
+      let mountedFromDeferred = false;
+      if (config.enabled && deferred && !deferred.mounted && (!deferred.placeholder || placeholderWasHidden)) {
+        mountedFromDeferred = this.mountDeferredPanel(key);
+      } else if (deferred?.placeholder) {
+        deferred.placeholder.classList.toggle('hidden', !config.enabled);
+      }
       const panel = this.ctx.panels[key];
-      panel?.toggle(config.enabled);
+      const liveMediaPanel = panel as { stopLiveMediaForClose?: () => void; resumeLiveMediaForShow?: () => void } | undefined;
+      if (!config.enabled) {
+        liveMediaPanel?.stopLiveMediaForClose?.();
+      }
+      if (!mountedFromDeferred) {
+        panel?.toggle(config.enabled);
+      }
+      if (config.enabled) {
+        liveMediaPanel?.resumeLiveMediaForShow?.();
+      }
     });
     this.mobilePanelNav?.refresh();
   }
@@ -1135,8 +1176,130 @@ export class PanelLayoutManager implements AppModule {
     return panel;
   }
 
+  private shouldMountPanelImmediately(key: string): boolean {
+    const config = this.ctx.panelSettings[key];
+    if (!config?.enabled) return false;
+    if (shouldDeferInitialPanelMount({
+      enabled: config.enabled,
+      mountedEnabledCount: this.initiallyMountedEnabledPanelCount,
+      isMobile: this.ctx.isMobile,
+    })) {
+      return false;
+    }
+    this.initiallyMountedEnabledPanelCount += 1;
+    return true;
+  }
+
+  private insertInitialPanel(grid: HTMLElement, key: string, panel: Panel): void {
+    if (this.shouldMountPanelImmediately(key)) {
+      this.mountPanelElement(grid, key, panel);
+      return;
+    }
+
+    this.deferPanelMount(key, panel, grid, this.ctx.panelSettings[key]?.enabled === true);
+  }
+
+  private mountPanelElement(grid: HTMLElement, key: string, panel: Panel, placeholder?: HTMLElement | null): void {
+    const el = panel.getElement();
+    if (el.parentElement) return;
+    this.makeDraggable(el, key);
+    if (placeholder?.parentNode) {
+      placeholder.parentNode.replaceChild(el, placeholder);
+    } else {
+      this.insertByOrder(grid, el, key);
+    }
+    this.mobilePanelNav?.applyToNewPanel(el);
+  }
+
+  private deferPanelMount(key: string, panel: Panel, grid: HTMLElement | null, withShell: boolean): void {
+    const placeholder = withShell && grid
+      ? createDeferredPanelShell(key, this.ctx.panelSettings[key]?.name ?? key)
+      : null;
+    if (placeholder && grid) {
+      this.insertByOrder(grid, placeholder, key);
+      this.mobilePanelNav?.applyToNewPanel(placeholder);
+    }
+    const existing = this.deferredPanelMounts.get(key);
+    existing?.observer?.disconnect();
+    if (existing?.placeholder && existing.placeholder !== placeholder) {
+      existing.placeholder.remove();
+    }
+    const deferred: DeferredPanelMount = {
+      panel,
+      placeholder,
+      observer: null,
+      mounted: false,
+    };
+    this.deferredPanelMounts.set(key, deferred);
+    if (placeholder) {
+      this.observeDeferredPanelShell(key, deferred);
+    }
+  }
+
+  private observeDeferredPanelShell(key: string, deferred: DeferredPanelMount): void {
+    const { placeholder } = deferred;
+    if (!placeholder) return;
+    if (typeof window === 'undefined' || typeof IntersectionObserver === 'undefined') {
+      const ric = typeof window !== 'undefined'
+        ? (window as unknown as { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback
+        : undefined;
+      if (typeof ric === 'function') ric(() => this.mountDeferredPanel(key));
+      else setTimeout(() => this.mountDeferredPanel(key), 0);
+      return;
+    }
+
+    const rootMargin = this.ctx.isMobile ? '700px 0px' : '900px 0px';
+    deferred.observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        this.mountDeferredPanel(key);
+      }
+    }, { rootMargin });
+    deferred.observer.observe(placeholder);
+  }
+
+  private getPanelMountGrid(key: string): HTMLElement | null {
+    const bottomGrid = document.getElementById('mapBottomGrid');
+    if (bottomGrid && this.getEffectiveUltraWide() && this.bottomSetMemory.has(key)) {
+      return bottomGrid;
+    }
+    return document.getElementById('panelsGrid');
+  }
+
+  private mountDeferredPanel(key: string): boolean {
+    const deferred = this.deferredPanelMounts.get(key);
+    if (!deferred || deferred.mounted) return false;
+    const grid = this.getPanelMountGrid(key);
+    if (!grid && !deferred.placeholder?.parentNode) return false;
+
+    deferred.observer?.disconnect();
+    const panel = deferred.panel;
+    const placeholder = deferred.placeholder;
+    this.mountPanelElement(grid ?? (placeholder!.parentNode as HTMLElement), key, panel, placeholder);
+    deferred.mounted = true;
+    deferred.placeholder = null;
+    deferred.observer = null;
+    this.deferredPanelMounts.delete(key);
+
+    const config = this.ctx.panelSettings[key];
+    if (config) panel.toggle(config.enabled);
+    panel.observeNearViewport(() => this.scheduleLoadAllData(), 200);
+    if (config?.enabled) this.scheduleLoadAllData();
+    return true;
+  }
+
+  private getPanelElementForOrdering(key: string): HTMLElement | null {
+    const deferred = this.deferredPanelMounts.get(key);
+    if (deferred && !deferred.mounted) {
+      if (deferred.placeholder) return deferred.placeholder;
+      if (!this.ctx.panelSettings[key]?.enabled) return null;
+      this.mountDeferredPanel(key);
+    }
+    return this.ctx.panels[key]?.getElement() ?? null;
+  }
+
   private async createPanels(): Promise<void> {
     const panelsGrid = document.getElementById('panelsGrid')!;
+    this.initiallyMountedEnabledPanelCount = 0;
 
     const mapContainer = document.getElementById('mapContainer') as HTMLElement;
     const preferGlobe = getStoredMapModePreference() === 'globe';
@@ -1784,9 +1947,7 @@ export class PanelLayoutManager implements AppModule {
     sidebarOrder.forEach((key: string) => {
       const panel = this.ctx.panels[key];
       if (panel && !panel.getElement().parentElement) {
-        const el = panel.getElement();
-        this.makeDraggable(el, key);
-        panelsGrid.appendChild(el);
+        this.insertInitialPanel(panelsGrid, key, panel);
       }
     });
 
@@ -1886,9 +2047,7 @@ export class PanelLayoutManager implements AppModule {
       bottomOrder.forEach(key => {
         const panel = this.ctx.panels[key];
         if (panel && !panel.getElement().parentElement) {
-          const el = panel.getElement();
-          this.makeDraggable(el, key);
-          this.insertByOrder(bottomGrid, el, key);
+          this.insertInitialPanel(bottomGrid, key, panel);
         }
       });
     }
@@ -1920,14 +2079,44 @@ export class PanelLayoutManager implements AppModule {
     }
   }
 
-  private scheduleLoadAllData(): void {
-    if (this.scheduledLoadAllRaf !== null) return;
+  private cancelScheduledLoadAllIdle(): void {
+    if (this.scheduledLoadAllIdle === null || typeof window === 'undefined') return;
+    const cancelIdle = window.cancelIdleCallback as ((handle: number) => void) | undefined;
+    cancelIdle?.(this.scheduledLoadAllIdle);
+    this.scheduledLoadAllIdle = null;
+  }
+
+  private scheduleLoadAllData(phase: HydrationSchedulePhase = 'near'): void {
     if (typeof window === 'undefined') {
       void this.callbacks.loadAllData();
       return;
     }
+    const mark = (label: string) => {
+      if (typeof performance !== 'undefined' && typeof performance.mark === 'function') {
+        performance.mark(label);
+      }
+    };
+    if (phase === 'near') {
+      if (this.scheduledLoadAllIdle !== null || this.scheduledLoadAllRaf !== null) return;
+      const idle = window.requestIdleCallback as ((cb: IdleRequestCallback, opts?: IdleRequestOptions) => number) | undefined;
+      if (idle) {
+        this.scheduledLoadAllIdle = idle(() => {
+          this.scheduledLoadAllIdle = null;
+          mark('wm:hydration:near-trigger');
+          void this.callbacks.loadAllData();
+        }, { timeout: 300 });
+        return;
+      }
+    } else {
+      this.cancelScheduledLoadAllIdle();
+      if (this.scheduledLoadAllRaf !== null) return;
+    }
+    if (this.scheduledLoadAllRaf !== null) {
+      return;
+    }
     this.scheduledLoadAllRaf = window.requestAnimationFrame(() => {
       this.scheduledLoadAllRaf = null;
+      mark(`wm:hydration:${phase}-trigger`);
       void this.callbacks.loadAllData();
     });
   }
@@ -1935,7 +2124,15 @@ export class PanelLayoutManager implements AppModule {
   private observePanelsForViewport(): void {
     for (const panel of Object.values(this.ctx.panels)) {
       const observable = panel as { observeNearViewport?: (cb: () => void, marginPx?: number) => void };
-      observable.observeNearViewport?.(() => this.scheduleLoadAllData(), 200);
+      observable.observeNearViewport?.(() => {
+        if (typeof window === 'undefined') {
+          this.scheduleLoadAllData('near');
+          return;
+        }
+        const rect = panel.getElement?.().getBoundingClientRect();
+        const phase: HydrationSchedulePhase = rect && rect.top < window.innerHeight && rect.bottom > 0 ? 'visible' : 'near';
+        this.scheduleLoadAllData(phase);
+      }, 200);
     }
   }
 
@@ -2108,14 +2305,14 @@ export class PanelLayoutManager implements AppModule {
 
     const firstAddBlock = grid.querySelector('.add-panel-block');
     sidebarOrder.forEach((key) => {
-      const el = this.ctx.panels[key]?.getElement();
+      const el = this.getPanelElementForOrdering(key);
       if (!el) return;
       if (firstAddBlock) grid.insertBefore(el, firstAddBlock);
       else grid.appendChild(el);
     });
 
     bottomOrder.forEach((key) => {
-      const el = this.ctx.panels[key]?.getElement();
+      const el = this.getPanelElementForOrdering(key);
       if (el) bottomGrid.appendChild(el);
     });
   }
@@ -2362,28 +2559,28 @@ export class PanelLayoutManager implements AppModule {
         await replayPendingCalls(key, panel);
         if (setup) setup(panel);
       }
-      const el = panel.getElement();
-      this.makeDraggable(el, key);
-
-      const bottomGrid = document.getElementById('mapBottomGrid');
-      if (bottomGrid && this.getEffectiveUltraWide() && this.bottomSetMemory.has(key)) {
-        this.insertByOrder(bottomGrid, el, key);
-      } else {
-        const grid = document.getElementById('panelsGrid');
-        if (!grid) return;
-        this.insertByOrder(grid, el, key);
-      }
-
       // applyPanelSettings() already ran at startup before this lazy promise resolved.
       // If the user had this panel disabled, it must be hidden immediately after insertion
       // or it reappears until the next applyPanelSettings() call.
       const savedConfig = this.ctx.panelSettings[key];
       if (savedConfig && !savedConfig.enabled) {
+        this.deferPanelMount(key, panel as unknown as Panel, this.getPanelMountGrid(key), false);
         this.ctx.panels[key]?.hide();
+        return;
       }
-      // Same late-mount problem for the mobile category filter: the user may
-      // have picked a chip while this import was in flight.
-      this.mobilePanelNav?.applyToNewPanel(el);
+
+      const grid = this.getPanelMountGrid(key);
+      if (!grid) return;
+      if (shouldDeferInitialPanelMount({
+        enabled: savedConfig?.enabled === true,
+        mountedEnabledCount: this.initiallyMountedEnabledPanelCount,
+        isMobile: this.ctx.isMobile,
+      })) {
+        this.deferPanelMount(key, panel as unknown as Panel, grid, true);
+        return;
+      }
+      if (savedConfig?.enabled === true) this.initiallyMountedEnabledPanelCount += 1;
+      this.mountPanelElement(grid, key, panel as unknown as Panel);
     }).catch((err) => {
       console.error(`[panel] failed to lazy-load "${key}"`, err);
     });
@@ -2638,6 +2835,7 @@ export class PanelLayoutManager implements AppModule {
         dragStarted = true;
         
         // Initialize drag visualization
+        document.body.classList.add('panel-drag-active');
         el.classList.add('dragging-source');
         originalParent = el.parentElement as HTMLElement;
         originalIndex = Array.from(originalParent.children).indexOf(el);
@@ -2647,6 +2845,7 @@ export class PanelLayoutManager implements AppModule {
         onKeyDown = (e: KeyboardEvent) => {
           if (e.key === 'Escape') {
             // Cancel drag and restore original position
+            document.body.classList.remove('panel-drag-active');
             el.classList.remove('dragging-source');
             if (ghostEl) {
               ghostEl.style.opacity = '0';
@@ -2710,7 +2909,7 @@ export class PanelLayoutManager implements AppModule {
         const dropPos = findDropPosition(lastX, lastY);
         const moved = dropPos ? commitDrop(dropPos, lastX, lastY) : false;
         
-        // Clean up drag visualization
+        // Clean up drag visualization (panel-drag-active is cleared unconditionally below)
         el.classList.remove('dragging-source');
         if (ghostEl) {
           ghostEl.style.opacity = '0';
@@ -2740,6 +2939,7 @@ export class PanelLayoutManager implements AppModule {
         }
       }
       dragStarted = false;
+      document.body.classList.remove('panel-drag-active');
       originalRect = null;
       if (onKeyDown) {
         document.removeEventListener('keydown', onKeyDown);
@@ -2767,6 +2967,7 @@ export class PanelLayoutManager implements AppModule {
       if (dropIndicator) dropIndicator.remove();
       isDragging = false;
       dragStarted = false;
+      document.body.classList.remove('panel-drag-active');
       originalRect = null;
       el.classList.remove('dragging-source');
     });

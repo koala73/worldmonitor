@@ -951,6 +951,10 @@ export class DeckGLMap {
       container: basemapEl,
       style: primaryStyle,
       center: [preset.longitude, preset.latitude],
+      // Fresh-load default = view preset zoom. Any zoom set during the deferred
+      // renderer window is re-applied by MapContainer.rehydrateActiveMap() after
+      // mount, so seeding from this.state.zoom here only undershoots the preset
+      // on the default desktop view.
       zoom: preset.zoom,
       renderWorldCopies: false,
       attributionControl: false,
