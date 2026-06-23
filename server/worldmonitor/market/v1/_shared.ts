@@ -336,7 +336,7 @@ export async function fetchYahooQuote(
  * selected explicitly by which env var is set; Pro wins so existing Pro
  * deployments are unaffected, and no key falls back to the public endpoint.
  */
-export function coingeckoEndpoint(): { baseUrl: string; headers: Record<string, string> } {
+export function coingeckoEndpoint(): { baseUrl: string; headers: Record<string, string>; tier: 'pro' | 'demo' | 'keyless' } {
   const proKey = process.env.COINGECKO_API_KEY;
   const demoKey = process.env.COINGECKO_DEMO_API_KEY;
   const headers: Record<string, string> = {
@@ -345,10 +345,13 @@ export function coingeckoEndpoint(): { baseUrl: string; headers: Record<string, 
   };
   if (proKey) {
     headers['x-cg-pro-api-key'] = proKey;
-    return { baseUrl: 'https://pro-api.coingecko.com/api/v3', headers };
+    return { baseUrl: 'https://pro-api.coingecko.com/api/v3', headers, tier: 'pro' };
   }
-  if (demoKey) headers['x-cg-demo-api-key'] = demoKey;
-  return { baseUrl: 'https://api.coingecko.com/api/v3', headers };
+  if (demoKey) {
+    headers['x-cg-demo-api-key'] = demoKey;
+    return { baseUrl: 'https://api.coingecko.com/api/v3', headers, tier: 'demo' };
+  }
+  return { baseUrl: 'https://api.coingecko.com/api/v3', headers, tier: 'keyless' };
 }
 
 export async function fetchCoinGeckoMarkets(

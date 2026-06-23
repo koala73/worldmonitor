@@ -2454,13 +2454,27 @@ async function fetchCryptoCoinPaprika() {
   }));
 }
 
+// CoinGecko's free Demo and paid Pro plans share the `CG-` key prefix but use
+// different hosts + auth headers (a Demo key on the Pro host 400s). Resolve the
+// tier explicitly by which env var is set — Pro wins, else Demo, else keyless.
+// Mirrors scripts/_seed-utils.mjs `coingeckoEndpoint()`; this relay is CommonJS
+// and cannot import the .mjs helper, so the logic is duplicated.
+function coingeckoEndpoint() {
+  const proKey = process.env.COINGECKO_API_KEY;
+  const demoKey = process.env.COINGECKO_DEMO_API_KEY;
+  const headers = { Accept: 'application/json' };
+  if (proKey) {
+    headers['x-cg-pro-api-key'] = proKey;
+    return { base: 'https://pro-api.coingecko.com/api/v3', headers };
+  }
+  if (demoKey) headers['x-cg-demo-api-key'] = demoKey;
+  return { base: 'https://api.coingecko.com/api/v3', headers };
+}
+
 async function seedCryptoQuotes() {
   let data;
   try {
-    const apiKey = process.env.COINGECKO_API_KEY;
-    const base = apiKey ? 'https://pro-api.coingecko.com/api/v3' : 'https://api.coingecko.com/api/v3';
-    const headers = { Accept: 'application/json' };
-    if (apiKey) headers['x-cg-pro-api-key'] = apiKey;
+    const { base, headers } = coingeckoEndpoint();
     const url = `${base}/coins/markets?vs_currency=usd&ids=${CRYPTO_IDS.join(',')}&order=market_cap_desc&sparkline=true&price_change_percentage=24h`;
     data = await cyberHttpGetJson(url, headers, 15000);
     if (!Array.isArray(data) || data.length === 0) throw new Error('CoinGecko returned no data');
@@ -2517,10 +2531,7 @@ async function fetchStablecoinCoinPaprika() {
 async function seedStablecoinMarkets() {
   let data;
   try {
-    const apiKey = process.env.COINGECKO_API_KEY;
-    const base = apiKey ? 'https://pro-api.coingecko.com/api/v3' : 'https://api.coingecko.com/api/v3';
-    const headers = { Accept: 'application/json' };
-    if (apiKey) headers['x-cg-pro-api-key'] = apiKey;
+    const { base, headers } = coingeckoEndpoint();
     const url = `${base}/coins/markets?vs_currency=usd&ids=${STABLECOIN_IDS}&order=market_cap_desc&sparkline=false&price_change_percentage=7d`;
     data = await cyberHttpGetJson(url, headers, 15000);
     if (!Array.isArray(data) || data.length === 0) throw new Error('CoinGecko returned no data');
@@ -2553,10 +2564,7 @@ async function seedCryptoSectors() {
   const allIds = [...new Set(SECTORS_LIST.flatMap((s) => s.tokens))];
   let data;
   try {
-    const apiKey = process.env.COINGECKO_API_KEY;
-    const base = apiKey ? 'https://pro-api.coingecko.com/api/v3' : 'https://api.coingecko.com/api/v3';
-    const headers = { Accept: 'application/json' };
-    if (apiKey) headers['x-cg-pro-api-key'] = apiKey;
+    const { base, headers } = coingeckoEndpoint();
     const url = `${base}/coins/markets?vs_currency=usd&ids=${allIds.join(',')}&order=market_cap_desc&sparkline=false&price_change_percentage=24h`;
     data = await cyberHttpGetJson(url, headers, 15000);
     if (!Array.isArray(data) || data.length === 0) throw new Error('CoinGecko returned no data');
@@ -2626,10 +2634,7 @@ async function seedTokenPanels() {
   const allIds = [...new Set([..._defiCfg.ids, ..._aiCfg.ids, ..._otherCfg.ids])];
   let data;
   try {
-    const apiKey = process.env.COINGECKO_API_KEY;
-    const base = apiKey ? 'https://pro-api.coingecko.com/api/v3' : 'https://api.coingecko.com/api/v3';
-    const headers = { Accept: 'application/json' };
-    if (apiKey) headers['x-cg-pro-api-key'] = apiKey;
+    const { base, headers } = coingeckoEndpoint();
     const url = `${base}/coins/markets?vs_currency=usd&ids=${allIds.join(',')}&order=market_cap_desc&sparkline=false&price_change_percentage=24h,7d`;
     data = await cyberHttpGetJson(url, headers, 15000);
     if (!Array.isArray(data) || data.length === 0) throw new Error('CoinGecko returned no data');

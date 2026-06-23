@@ -47,7 +47,7 @@ const helpers: Array<{
   exposesTier: boolean;
 }> = [
   { name: "seed helper", resolve: () => seedCoingeckoEndpoint(), exposesTier: true },
-  { name: "server helper", resolve: () => serverCoingeckoEndpoint(), exposesTier: false },
+  { name: "server helper", resolve: () => serverCoingeckoEndpoint(), exposesTier: true },
 ];
 
 afterEach(() => {
