@@ -1,6 +1,16 @@
 import '@/styles/settings-window.css';
 import { CANONICAL_FEEDS, INTEL_SOURCES, SOURCE_REGION_MAP } from '@/config/feeds';
-import { PANEL_CATEGORY_MAP, ALL_PANELS, VARIANT_DEFAULTS, getEffectivePanelConfig, isPanelEntitled, FREE_MAX_PANELS } from '@/config/panels';
+import {
+  PANEL_CATEGORY_MAP,
+  ALL_PANELS,
+  VARIANT_DEFAULTS,
+  getEffectivePanelConfig,
+  getVariantPanelCategories,
+  isPanelEntitled,
+  FREE_MAX_PANELS,
+  countFreePanelCapUsage,
+  isFreePanelCapCounted,
+} from '@/config/panels';
 import { isProUser } from '@/services/widget-store';
 import { SITE_VARIANT } from '@/config/variant';
 import { t } from '@/services/i18n';
@@ -677,20 +687,11 @@ export class UnifiedSettings {
   }
 
   private getAvailablePanelCategories(): Array<{ key: string; label: string }> {
-    const settings = this.config.getPanelSettings();
-    const categories: Array<{ key: string; label: string }> = [
-      { key: 'all', label: t('header.sourceRegionAll') }
+    return [
+      { key: 'all', label: t('header.sourceRegionAll') },
+      ...getVariantPanelCategories(this.config.getPanelSettings(), SITE_VARIANT)
+        .map(({ key, labelKey }) => ({ key, label: t(labelKey) })),
     ];
-
-    for (const [catKey, catDef] of Object.entries(PANEL_CATEGORY_MAP)) {
-      if (!this.categoryMatchesVariant(catDef)) continue;
-      const hasEnabledPanel = catDef.panelKeys.some(pk => settings[pk]?.enabled);
-      if (hasEnabledPanel) {
-        categories.push({ key: catKey, label: t(catDef.labelKey) });
-      }
-    }
-
-    return categories;
   }
 
   private getVisiblePanelEntries(): Array<[string, PanelConfig]> {
@@ -740,15 +741,18 @@ export class UnifiedSettings {
     const pro = isProUser();
     const entries = this.getVisiblePanelEntries();
     setTrustedHtml(container, trustedHtml(entries.map(([key, panel]) => {
-      const entitled = isPanelEntitled(key, ALL_PANELS[key] ?? panel, pro);
+      // Preserve saved config for dynamic cw-* panels; unknown keys should not
+      // collapse to getEffectivePanelConfig's disabled synthetic fallback.
+      const resolvedPanel = ALL_PANELS[key] ? getEffectivePanelConfig(key, SITE_VARIANT) : panel;
+      const entitled = isPanelEntitled(key, resolvedPanel, pro);
       const locked = !entitled;
       const changed = !locked && savedSettings[key]?.enabled !== panel.enabled;
-      const displayName = this.config.getLocalizedPanelName(key, getEffectivePanelConfig(key, SITE_VARIANT).name ?? panel.name);
+      const displayName = this.config.getLocalizedPanelName(key, resolvedPanel.name ?? panel.name);
       return `
         <div class="panel-toggle-item ${panel.enabled && !locked ? 'active' : ''}${changed ? ' changed' : ''}${locked ? ' pro-locked' : ''}" data-panel="${escapeHtml(key)}" aria-pressed="${panel.enabled && !locked}" ${locked ? 'data-pro-locked="1"' : ''}>
           <div class="panel-toggle-checkbox">${panel.enabled && !locked ? '\u2713' : ''}${locked ? '\uD83D\uDD12' : ''}</div>
           <span class="panel-toggle-label">${escapeHtml(displayName)}</span>
-          ${(locked || (ALL_PANELS[key] ?? panel).premium) ? '<span class="panel-toggle-pro-badge">PRO</span>' : ''}
+          ${(locked || resolvedPanel.premium) ? '<span class="panel-toggle-pro-badge">PRO</span>' : ''}
         </div>
       `;
     }).join(''), "legacy direct innerHTML migration"));
@@ -782,9 +786,12 @@ export class UnifiedSettings {
   private toggleDraftPanel(key: string): void {
     const panel = this.draftPanelSettings[key];
     if (!panel) return;
-    if (!panel.enabled && !isPanelEntitled(key, ALL_PANELS[key] ?? panel, isProUser())) return;
-    if (!panel.enabled && !isProUser()) {
-      const enabledCount = Object.entries(this.draftPanelSettings).filter(([k, p]) => p.enabled && !k.startsWith('cw-')).length;
+    // Preserve saved config for dynamic cw-* panels; unknown keys should not
+    // collapse to getEffectivePanelConfig's disabled synthetic fallback.
+    const resolvedPanel = ALL_PANELS[key] ? getEffectivePanelConfig(key, SITE_VARIANT) : panel;
+    if (!panel.enabled && !isPanelEntitled(key, resolvedPanel, isProUser())) return;
+    if (!panel.enabled && !isProUser() && isFreePanelCapCounted(key)) {
+      const enabledCount = countFreePanelCapUsage(this.draftPanelSettings);
       if (enabledCount >= FREE_MAX_PANELS) {
         showToast(t('modals.settingsWindow.freePanelLimit', { max: String(FREE_MAX_PANELS) }));
         return;

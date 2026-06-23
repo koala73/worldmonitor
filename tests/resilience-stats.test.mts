@@ -8,6 +8,7 @@ import {
   exponentialSmoothing,
   minMaxNormalize,
   nrcForecast,
+  round,
 } from '../server/_shared/resilience-stats';
 
 test('cronbachAlpha returns the expected coefficient for a known matrix', () => {
@@ -45,6 +46,20 @@ test('detectTrend treats fewer than 3 values as stable', () => {
   assert.equal(detectTrend([10, 15]), 'stable');
 });
 
+test('round returns a finite safe default for non-finite values', () => {
+  assert.equal(round(12.345, 2), 12.35);
+  assert.equal(round(12.345, Number.NaN), 12.35);
+  assert.equal(round(Number.NaN), 0);
+  assert.equal(round(Number.POSITIVE_INFINITY), 0);
+  assert.equal(round(Number.NEGATIVE_INFINITY), 0);
+});
+
+test('detectTrend returns stable when a series contains non-finite values', () => {
+  assert.equal(detectTrend([10, 20, Number.NaN, 40]), 'stable');
+  assert.equal(detectTrend([10, Number.POSITIVE_INFINITY, 30, 40]), 'stable');
+  assert.equal(detectTrend([40, 30, Number.NEGATIVE_INFINITY, 10]), 'stable');
+});
+
 test('detectChangepoints finds a structural break in a bimodal series', () => {
   const changepoints = detectChangepoints([10, 11, 9, 10, 10, 50, 52, 48, 51, 49]);
   assert.ok(changepoints.some((index) => index >= 5), `expected changepoint at the break, got ${changepoints}`);
@@ -55,16 +70,31 @@ test('detectChangepoints returns [] for constant and short series', () => {
   assert.deepEqual(detectChangepoints([1, 2, 3, 4, 5]), []);
 });
 
+test('detectChangepoints returns [] when a series contains non-finite values', () => {
+  assert.deepEqual(detectChangepoints([10, 11, 9, Number.NaN, 10, 50, 52, 48]), []);
+  assert.deepEqual(detectChangepoints([10, 11, 9, Number.POSITIVE_INFINITY, 10, 50, 52, 48]), []);
+});
+
 test('minMaxNormalize handles empty input, identical values, and negatives', () => {
   assert.deepEqual(minMaxNormalize([]), []);
   assert.deepEqual(minMaxNormalize([7, 7, 7]), [0.5, 0.5, 0.5]);
   assert.deepEqual(minMaxNormalize([-10, 0, 10]), [0, 0.5, 1]);
 });
 
+test('minMaxNormalize returns finite values for non-finite input', () => {
+  assert.deepEqual(minMaxNormalize([Number.NaN, 0, 10]), [0, 0, 1]);
+  assert.deepEqual(minMaxNormalize([Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]), [0.5, 0.5]);
+});
+
 test('exponentialSmoothing smooths a noisy series without changing length', () => {
   const result = exponentialSmoothing([10, 20, 15, 25], 0.5);
   assert.equal(result.length, 4);
   assert.deepEqual(result.map((value) => Number(value.toFixed(2))), [10, 15, 15, 20]);
+});
+
+test('exponentialSmoothing returns finite values for non-finite input', () => {
+  const result = exponentialSmoothing([10, Number.NaN, 20, Number.POSITIVE_INFINITY], 0.5);
+  assert.deepEqual(result.map((value) => Number(value.toFixed(2))), [10, 5, 12.5, 6.25]);
 });
 
 test('nrcForecast returns the requested horizon with bounded confidence intervals', () => {
@@ -91,6 +121,19 @@ test('nrcForecast falls back to a flat 50/50 outlook for short history', () => {
     { lower: 79.2, upper: 96.8, level: 95 },
     { lower: 79.2, upper: 96.8, level: 95 },
     { lower: 79.2, upper: 96.8, level: 95 },
+  ]);
+  assert.equal(forecast.probabilityUp, 0.5);
+  assert.equal(forecast.probabilityDown, 0.5);
+});
+
+test('nrcForecast does not emit non-finite forecast values from non-finite history', () => {
+  const forecast = nrcForecast([Number.NaN, Number.POSITIVE_INFINITY], 3);
+
+  assert.deepEqual(forecast.values, [50, 50, 50]);
+  assert.deepEqual(forecast.confidenceIntervals, [
+    { lower: 45, upper: 55, level: 95 },
+    { lower: 45, upper: 55, level: 95 },
+    { lower: 45, upper: 55, level: 95 },
   ]);
   assert.equal(forecast.probabilityUp, 0.5);
   assert.equal(forecast.probabilityDown, 0.5);

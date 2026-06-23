@@ -40,8 +40,8 @@
 - **500+ curated news feeds** across 15 categories, AI-synthesized into briefs
 - **Dual map engine** — 3D globe (globe.gl) and WebGL flat map (deck.gl) with 56 map layer types
 - **Cross-stream correlation** — military, economic, disaster, and escalation signal convergence
-- **Country Intelligence Index** — composite risk scoring across 12 signal categories
-- **Finance radar** — 92 stock exchanges, commodities, crypto, and 7-signal market composite
+- **Country Instability Index (CII)** — server-authoritative CII v8 stress scoring for 31 Tier-1 countries
+- **Finance radar** — 29 stock exchanges, commodities, crypto, and 7-signal market composite
 - **Local AI** — run everything with Ollama, no API keys required
 - **6 site variants** from a single codebase (world, tech, finance, commodity, happy, energy)
 - **Native desktop app** (Tauri 2) for macOS, Windows, and Linux
@@ -73,7 +73,7 @@ npm install
 npm run dev
 ```
 
-Open [localhost:5173](http://localhost:5173). The app runs with no environment variables.
+Open [localhost:3000](http://localhost:3000). The app runs with no environment variables.
 
 Feature-specific data sources may require credentials — for example, the flight-price command (`fly LON DXB`) needs `TRAVELPAYOUTS_API_TOKEN` to return live quotes; without it the command shows a "credentials required" message rather than synthetic data. See `.env.example` for the full list.
 
@@ -84,6 +84,7 @@ npm run dev:tech       # tech.worldmonitor.app
 npm run dev:finance    # finance.worldmonitor.app
 npm run dev:commodity  # commodity.worldmonitor.app
 npm run dev:happy      # happy.worldmonitor.app
+npm run dev:energy     # energy.worldmonitor.app
 ```
 
 See the **[self-hosting guide](https://www.worldmonitor.app/docs/getting-started)** for deployment options (Vercel, Docker, static).

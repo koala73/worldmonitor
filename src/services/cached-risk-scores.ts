@@ -1,6 +1,7 @@
 import type { CountryScore, ComponentScores } from './country-instability';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { setHasCachedScores } from './country-instability';
+import { TIER1_COUNTRIES } from '@/config/countries';
 import {
   IntelligenceServiceClient,
   type GetRiskScoresResponse,
@@ -49,17 +50,11 @@ export interface CachedRiskScores {
   // Derived from max CII computedAt; null when no CII carries a real timestamp.
   computedAt: string | null;
   cached: boolean;
+  degraded: boolean;
+  stale: boolean;
 }
 
 // ---- Proto → legacy adapters ----
-
-const TIER1_NAMES: Record<string, string> = {
-  US: 'United States', RU: 'Russia', CN: 'China', UA: 'Ukraine', IR: 'Iran',
-  IL: 'Israel', TW: 'Taiwan', KP: 'North Korea', SA: 'Saudi Arabia', TR: 'Turkey',
-  PL: 'Poland', DE: 'Germany', FR: 'France', GB: 'United Kingdom', IN: 'India',
-  PK: 'Pakistan', SY: 'Syria', YE: 'Yemen', MM: 'Myanmar', VE: 'Venezuela',
-  CU: 'Cuba', MX: 'Mexico', BR: 'Brazil', AE: 'United Arab Emirates',
-};
 
 const TREND_REVERSE: Record<string, 'rising' | 'stable' | 'falling'> = {
   TREND_DIRECTION_RISING: 'rising',
@@ -86,7 +81,7 @@ function getScoreLevel(score: number): 'low' | 'normal' | 'elevated' | 'high' | 
 function toCachedCII(proto: CiiScore): CachedCIIScore {
   return {
     code: proto.region,
-    name: TIER1_NAMES[proto.region] || proto.region,
+    name: TIER1_COUNTRIES[proto.region] || proto.region,
     score: proto.combinedScore,
     level: getScoreLevel(proto.combinedScore),
     trend: TREND_REVERSE[proto.trend] || 'stable',
@@ -128,7 +123,7 @@ function toCachedStrategicRisk(
     contributors: (global?.factors ?? []).map((code) => {
       const cii = ciiMap.get(code);
       return {
-        country: TIER1_NAMES[code] || code,
+        country: TIER1_COUNTRIES[code] || code,
         code,
         score: cii?.combinedScore ?? 0,
         level: cii ? getScoreLevel(cii.combinedScore) : 'low',
@@ -145,17 +140,72 @@ export function toRiskScores(resp: GetRiskScoresResponse): CachedRiskScores {
     protestCount: 0,
     computedAt: derivedTimestamp,
     cached: true,
+    degraded: Boolean(resp.degraded),
+    stale: Boolean(resp.stale),
   };
 }
 
 // ---- Shape validator (localStorage is attacker-controlled) ----
 
 const VALID_LEVELS = new Set(['low', 'normal', 'elevated', 'high', 'critical']);
+const VALID_TRENDS = new Set(['rising', 'stable', 'falling']);
+const ISO2_RE = /^[A-Z]{2}$/;
+const COMPONENT_KEYS = ['unrest', 'conflict', 'security', 'information'] as const;
+const CACHED_CII_TIMESTAMP_MIN_MS = Date.UTC(2000, 0, 1);
+const CACHED_CII_TIMESTAMP_MAX_FUTURE_MS = 5 * 60 * 1000;
+
+function isFiniteInRange(value: unknown, min: number, max: number): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
+}
+
+function isKnownTier1Code(value: unknown): value is string {
+  return typeof value === 'string'
+    && ISO2_RE.test(value)
+    && Object.prototype.hasOwnProperty.call(TIER1_COUNTRIES, value);
+}
+
+function isValidComponents(value: unknown): value is ComponentScores {
+  if (!value || typeof value !== 'object') return false;
+  const components = value as Record<string, unknown>;
+  return COMPONENT_KEYS.every((key) => isFiniteInRange(components[key], 0, 100));
+}
+
+function isValidCachedCiiTimestamp(value: unknown): value is string | null {
+  if (value === null) return true;
+  if (typeof value !== 'string') return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp)
+    && timestamp >= CACHED_CII_TIMESTAMP_MIN_MS
+    && timestamp <= Date.now() + CACHED_CII_TIMESTAMP_MAX_FUTURE_MS;
+}
 
 function isValidCiiEntry(e: unknown): e is CachedCIIScore {
   if (!e || typeof e !== 'object') return false;
   const o = e as Record<string, unknown>;
-  return typeof o.code === 'string' && Number.isFinite(o.score) && VALID_LEVELS.has(o.level as string);
+  return isKnownTier1Code(o.code)
+    && typeof o.name === 'string'
+    && isFiniteInRange(o.score, 0, 100)
+    && VALID_LEVELS.has(o.level as string)
+    && VALID_TRENDS.has(o.trend as string)
+    && isFiniteInRange(o.change24h, -100, 100)
+    && isValidComponents(o.components)
+    && isValidCachedCiiTimestamp(o.lastUpdated);
+}
+
+function canonicalizeCachedCiiEntry(entry: CachedCIIScore): CachedCIIScore {
+  return {
+    ...entry,
+    name: TIER1_COUNTRIES[entry.code] ?? entry.code,
+  };
+}
+
+function canonicalizeCachedRiskScores(data: CachedRiskScores): CachedRiskScores {
+  return {
+    ...data,
+    cii: data.cii.map(canonicalizeCachedCiiEntry),
+    degraded: data.degraded === true,
+    stale: data.stale === true,
+  };
 }
 
 // ---- localStorage persistence (sync prime for getCachedScores) ----
@@ -180,7 +230,7 @@ function loadFromStorage(): CachedRiskScores | null {
       localStorage.removeItem(LS_KEY);
       return null;
     }
-    return data;
+    return canonicalizeCachedRiskScores(data);
   } catch { return null; }
 }
 
@@ -214,6 +264,8 @@ function emptyFallback(): CachedRiskScores {
     protestCount: 0,
     computedAt: null,
     cached: true,
+    degraded: true,
+    stale: true,
   };
 }
 
@@ -301,4 +353,24 @@ export function toCountryScore(cached: CachedCIIScore): CountryScore {
     components: cached.components,
     lastUpdated: cached.lastUpdated ? new Date(cached.lastUpdated) : null,
   };
+}
+
+export function normalizeCiiCountryCode(code: string): string {
+  return code.toUpperCase();
+}
+
+export function getCachedCountryScore(code: string): CountryScore | null {
+  const normalizedCode = normalizeCiiCountryCode(code);
+  const cached = getCachedScores()?.cii.find((score) => score.code === normalizedCode);
+  return cached ? toCountryScore(cached) : null;
+}
+
+export function getCachedCountryScoreValue(code: string): number | null {
+  return getCachedCountryScore(code)?.score ?? null;
+}
+
+export function getCachedCountryScores(): CountryScore[] {
+  const cached = getCachedScores();
+  if (!cached?.cii.length) return [];
+  return cached.cii.map(toCountryScore).sort((a, b) => b.score - a.score);
 }

@@ -10,7 +10,7 @@
     "seed-bundle-regional": "node seed-bundle-regional.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.82.0",
+    "@anthropic-ai/sdk": "^0.91.1",
     "@aws-sdk/client-s3": "^3.1009.0",
     "convex": "^1",
     "exceljs": "^4.4.0",
@@ -19,10 +19,15 @@
     "sax": "^1.6.0",
     "telegram": "^2.22.2",
     "tsx": "^4.21.0",
-    "undici": "^7.0.0",
+    "undici": "^7.28.0",
     "web-push": "^3.6.7",
-    "ws": "^8.18.0",
+    "ws": "^8.21.0",
     "yaml": "^2.8.3"
+  },
+  "overrides": {
+    "esbuild": "0.28.1",
+    "undici": "$undici",
+    "ws": "$ws"
   },
   "engines": {
     "node": ">=20"

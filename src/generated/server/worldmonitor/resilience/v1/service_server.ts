@@ -65,6 +65,11 @@ export interface GetResilienceRankingRequest {
 export interface GetResilienceRankingResponse {
   items: ResilienceRankingItem[];
   greyedOut: ResilienceRankingItem[];
+  fetchedAt: string;
+  scored: number;
+  total: number;
+  coverage: number;
+  partial: boolean;
 }
 
 export interface ResilienceRankingItem {
@@ -90,6 +95,8 @@ export interface GetResilienceRuntimeManifestResponse {
   flags: ResilienceRuntimeFlag[];
   cache?: ResilienceRuntimeCacheState;
   rankingCache?: ResilienceRankingCacheState;
+  constructVersions?: ResilienceRuntimeConstructVersions;
+  intervals?: ResilienceRuntimeIntervalState;
 }
 
 export interface ResilienceRuntimeFlag {
@@ -110,6 +117,17 @@ export interface ResilienceRankingCacheState {
   count: number;
   scored: number;
   total: number;
+}
+
+export interface ResilienceRuntimeConstructVersions {
+  energy: string;
+}
+
+export interface ResilienceRuntimeIntervalState {
+  available: boolean;
+  methodology: string;
+  sampleCountry: string;
+  lastObservedAt: string;
 }
 
 export interface FieldViolation {

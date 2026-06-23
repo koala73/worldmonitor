@@ -39,6 +39,8 @@ const TARGET = 'https://api.worldmonitor.app/api/sanctions/v1/list-sanctions-pre
 // A real PUBLIC path used to verify the path-gating bypass: hits below
 // fetch the same way but should NOT see Bearer attached.
 const PUBLIC_TARGET = 'https://api.worldmonitor.app/api/economic/v1/get-fred-series-batch';
+const PUBLIC_INSIDER_TRANSACTIONS_TARGET =
+  'https://api.worldmonitor.app/api/market/v1/get-insider-transactions?symbol=AAPL';
 
 // ---------------------------------------------------------------------------
 // Suite
@@ -200,6 +202,12 @@ describe('premiumFetch', () => {
     assert.equal(sentHeaders().get('X-WorldMonitor-Key'), null);
   });
 
+  it('public insider transactions path: Clerk JWT NOT attached', async () => {
+    setup({ testerKey: '', clerkToken: 'clerk-token-should-be-skipped' });
+    await premiumFetch(PUBLIC_INSIDER_TRANSACTIONS_TARGET);
+    assert.equal(sentHeaders().get('Authorization'), null);
+  });
+
   it('non-premium path: tester key still attached (works on any path)', async () => {
     setup({ testerKey: 'valid-key', clerkToken: 'clerk-token' });
     await premiumFetch(PUBLIC_TARGET);
@@ -220,5 +228,78 @@ describe('premiumFetch', () => {
     await premiumFetch(PUBLIC_TARGET, { headers: { Authorization: 'Bearer caller-supplied' } });
     assert.equal(sentHeaders().get('Authorization'), 'Bearer caller-supplied');
   });
-});
 
+  // ---------------------------------------------------------------------
+  // Boot-window token-generation race — regression for "Pro user 401s on
+  // analyze-stock / premium paths on first paint".
+  //
+  // getConvexClient() calls client.setAuth() at boot; Convex invokes the
+  // token callback (sometimes with forceRefreshToken) → clearClerkTokenCache()
+  // bumps _tokenGen. Concurrently the FINANCIAL panel fires analyzeStock per
+  // symbol → premiumFetch → getClerkToken(). A panel token fetch in-flight
+  // when the gen bumps is correctly abandoned to null (so a rotating user's
+  // stale JWT is never painted) — but premiumFetch used to treat that
+  // transient null as "no auth" and fire an unauthenticated request → 401.
+  //
+  // Fix: for a signed-in user, retry the token exactly once after the
+  // rotation settles. Anonymous users skip the retry entirely.
+
+  it('premium path: signed-in user retries the token once after a transient null (gen race)', async () => {
+    let tokenCalls = 0;
+    _setTestProviders({
+      getTesterKeys: () => [],
+      // First acquisition loses the boot-window gen race and abandons to
+      // null; the retry (after rotation settles) returns the real JWT.
+      getClerkToken: async () => (tokenCalls++ === 0 ? null : 'clerk-jwt-after-settle'),
+      isClerkUserSignedIn: () => true,
+    });
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() => Promise.resolve(fakeRes(200)));
+
+    const res = await premiumFetch(TARGET);
+    assert.equal(res.status, 200);
+    assert.equal(tokenCalls, 2, 'token acquisition must be retried exactly once');
+    assert.equal(fetchMock.mock.calls.length, 1, 'only the authenticated request is sent');
+    assert.equal(
+      sentHeaders().get('Authorization'),
+      'Bearer clerk-jwt-after-settle',
+      'the retried token must be attached so the request authenticates instead of 401ing',
+    );
+  });
+
+  it('premium path: anonymous user does NOT retry — single unauthenticated request', async () => {
+    let tokenCalls = 0;
+    _setTestProviders({
+      getTesterKeys: () => [],
+      getClerkToken: async () => { tokenCalls++; return null; },
+      isClerkUserSignedIn: () => false,
+    });
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() => Promise.resolve(fakeRes(200)));
+
+    const res = await premiumFetch(TARGET);
+    assert.equal(res.status, 200);
+    assert.equal(tokenCalls, 1, 'anonymous visitors must not pay the retry delay');
+    assert.equal(fetchMock.mock.calls.length, 1);
+    assert.equal(sentHeaders().get('Authorization'), null);
+  });
+
+  it('premium path: signed-in user with a still-null retry falls through unauthenticated', async () => {
+    // If the token is genuinely unavailable (not just mid-rotation), the
+    // single retry returns null too and we fall through — the gateway 401 is
+    // then correct, and we never loop.
+    let tokenCalls = 0;
+    _setTestProviders({
+      getTesterKeys: () => [],
+      getClerkToken: async () => { tokenCalls++; return null; },
+      isClerkUserSignedIn: () => true,
+    });
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() => Promise.resolve(fakeRes(200)));
+
+    const res = await premiumFetch(TARGET);
+    assert.equal(res.status, 200);
+    assert.equal(tokenCalls, 2, 'retried once, then gives up — no infinite loop');
+    assert.equal(sentHeaders().get('Authorization'), null);
+  });
+});

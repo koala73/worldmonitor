@@ -336,7 +336,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             Sensitivity lives OUTSIDE usRealtimeSection so digest-mode users can
             see and change it. The 'all' option is disabled when delivery mode is
             realtime — the (realtime, all) pair is forbidden by the server. See
-            plans/forbid-realtime-all-events.md §2a.
+            docs/archive/plans/forbid-realtime-all-events.md §2a.
           -->
           <div class="ai-flow-section-label" style="margin-top:8px">Sensitivity</div>
           <select class="unified-settings-select" id="usNotifSensitivity">
@@ -640,7 +640,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           // server never sees the forbidden pair. When switching AWAY, re-enable
           // 'all'. Save atomically via setNotificationConfig (the legacy
           // setDigestSettings call would race against the cross-field validator).
-          // See plans/forbid-realtime-all-events.md §2c, §2d.
+          // See docs/archive/plans/forbid-realtime-all-events.md §2c, §2d.
           const sensitivityEl = container.querySelector<HTMLSelectElement>('#usNotifSensitivity');
           const allOption = sensitivityEl?.querySelector<HTMLOptionElement>('option[value="all"]');
           const highOption = sensitivityEl?.querySelector<HTMLOptionElement>('option[value="high"]');

@@ -196,7 +196,9 @@
       "languages": "Nyelvek",
       "currencies": "Valuták",
       "area": "Terület"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "VILÁG",
@@ -275,7 +277,8 @@
     "panelCatMining": "Bányászat & Ellátási Lánc",
     "panelCatCommodityEcon": "Gazdaság & Kereskedelem",
     "panelCatHappyNews": "Jó Hírek",
-    "panelCatHappyPlanet": "Bolygó & Adományozás"
+    "panelCatHappyPlanet": "Bolygó & Adományozás",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "Élő Hírek",
@@ -524,7 +527,8 @@
       "flightMilitary": "Katonai · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Katonai · {{type}} · földön",
       "flightSearchHint": "Nyomj Enter-t vagy kattints az élő pozíció megjelenítéséhez",
-      "flightNotFound": "Nincs elérhető élő pozíció a {{callsign}} járathoz"
+      "flightNotFound": "Nincs elérhető élő pozíció a {{callsign}} járathoz",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "INTELLIGENCIA TALÁLAT",
@@ -754,7 +758,9 @@
         "americas": "AMERIKA",
         "asia": "ÁZSIA",
         "space": "VILÁGŰR"
-      }
+      },
+      "play": "Lejátszás",
+      "previewStatus": "Élő előnézet"
     },
     "pinnedWebcams": {
       "pinFromMap": "Rögzítsen egy webkamerát a térképről"
@@ -954,9 +960,23 @@
         "categories": "Kategóriák",
         "movers": "Mozgások",
         "spread": "Kereskedői terjedés",
-        "health": "Adatminőség"
+        "health": "Adatminőség",
+        "world": "World"
       },
-      "infoTooltip": "<strong>Fogyasztói árak</strong> Valós idejű kosár árkövetés:<ul><li><strong>Áttekintés</strong>: Alapvető árindex, értékkosár és heti változás</li><li><strong>Kategóriák</strong>: Kategóriánkénti ártrend 30 napos tartománnyal</li><li><strong>Mozgások</strong>: Az ezen a héten legnagyobb áremelkedések és -csökkenések</li><li><strong>Szórás</strong>: Áreltérések a kiskereskedők között azonos kosárra</li></ul>Az adatok élő kiskereskedői ár-scraping-ből származnak."
+      "infoTooltip": "<strong>Fogyasztói árak</strong> Valós idejű kosár árkövetés:<ul><li><strong>Áttekintés</strong>: Alapvető árindex, értékkosár és heti változás</li><li><strong>Kategóriák</strong>: Kategóriánkénti ártrend 30 napos tartománnyal</li><li><strong>Mozgások</strong>: Az ezen a héten legnagyobb áremelkedések és -csökkenések</li><li><strong>Szórás</strong>: Áreltérések a kiskereskedők között azonos kosárra</li></ul>Az adatok élő kiskereskedői ár-scraping-ből származnak.",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "gdelt": {
       "empty": "Nincs legutóbbi cikk erről a témáról"
@@ -1341,7 +1361,13 @@
       "noSignals": "Nincs instabilitási jelzés észlelve",
       "infoTooltip": "<strong>Módszertan</strong><ul><li><strong>U</strong> (Unrest): polgári rendzavarások és tüntetések</li><li><strong>C</strong> (Conflict): fegyveres konfliktus intenzitása</li><li><strong>S</strong> (Security): katonai járművek/hajók a terület felett</li><li><strong>I</strong> (Information): hírek sebessége és fókuszpont korrelációja</li><li>Fókuszpont közelségi növelés (stratégiai helyek)</li></ul><em>Az U:C:S:I értékek az összetevő pontszámait mutatják.</em> A Fókuszpont-detektálás korrelál a hírjellegzetességeket a térképi jelekkel a pontos pontozáshoz.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "Tartalmazza az országonkénti alapértéket + eseményszorzót — lásd /docs/methodology/cii-risk-scores a közzétett táblázathoz"
+      "methodologyLink": "Tartalmazza az országonkénti alapértéket + eseményszorzót — lásd /docs/methodology/cii-risk-scores a közzétett táblázathoz",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "insights": {
       "noStories": "Még nincsenek breaking vagy multi-forrásos történetek",
@@ -1389,8 +1415,8 @@
       "analysisFrameworksFromAgentskills": "Az agentskills.io-ból",
       "analysisFrameworksPasteJson": "JSON beillesztése",
       "analysisFrameworksSaveToLibrary": "Mentés a könyvtárba",
-      "streamAlwaysOnLabel": "Élő közvetítések folyamatosan futtatása",
-      "streamAlwaysOnDesc": "Megakadályozza, hogy az Élő kamerák és az Élő hírek automatikusan szüneteltessenek, ha inaktív vagy. Másodlagos monitor/falitábla használatához ajánlott. Letiltás (Ökö módban) a CPU-/sávszélesség-megtakarításhoz.",
+      "streamAlwaysOnLabel": "Élő streamek automatikus lejátszása az irányítópulton",
+      "streamAlwaysOnDesc": "Automatikusan elindítja a Live News és Live Webcams elemeket, amikor láthatók. Hagyja kikapcsolva, hogy a videó csak a Lejátszás gombra kattintás után töltődjön be.",
       "frameworkNote": "Csak az ügyfél által generált elemzésre vonatkozik",
       "loadingServerInsights": "Szerver insights betöltése...",
       "usingCachedBrief": "Gyorsítótározott összefoglalás használata...",
@@ -1460,9 +1486,8 @@
     "strategicRisk": {
       "noRisks": "Nem észleltek jelentős kockázatokat",
       "levels": {
-        "critical": "Kritikus",
-        "elevated": "Emelt",
-        "moderate": "Mérsékelt",
+        "high": "Magas",
+        "medium": "Mérsékelt",
         "low": "Alacsony"
       },
       "trend": "Tendencia",
@@ -1494,7 +1519,14 @@
         "minutesAgo": "{{count}}p ezzel ezelőtt",
         "hoursAgo": "{{count}}ó ezzel ezelőtt"
       },
-      "infoTooltip": "<strong>Módszertan</strong> Összetett pontszám (0–100) összevetítve:<ul><li>50% Országinstabilitás (top 5 súlyozva)</li><li>30% Földrajzi konvergencia zónák</li><li>20% Infrastruktúra incidensek</li></ul>Automatikus frissítés 5 percenként."
+      "infoTooltip": "<strong>Módszertan</strong> Összetett pontszám (0–100) összevetítve:<ul><li>50% Országinstabilitás (top 5 súlyozva)</li><li>30% Földrajzi konvergencia zónák</li><li>20% Infrastruktúra incidensek</li></ul>Automatikus frissítés 5 percenként.",
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "techEvents": {
       "infoTooltip": "<strong>Technológiai események</strong> Közelgő és közelmúltbeli technológiaesemények: konferenciák, termékbemutatók, szabályozási meghallgatások és eredményhirdetések. Az oficális eseménynaptárakból és az iparág forrásaiból összegyűjtve.",
@@ -1538,7 +1570,7 @@
       "noMatching": "Nincsenek szűrőnek megfelelő tanácsok",
       "critical": "Kritikus",
       "health": "Egészség",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
       "refresh": "Frissítés",
       "levels": {
         "doNotTravel": "Ne utazzon",
@@ -1553,7 +1585,7 @@
         "hoursAgo": "{{count}}ó ezelőtt",
         "daysAgo": "{{count}}n ezelőtt"
       },
-      "infoTooltip": "<strong>Biztonsági tanácsok</strong><br>Utazási tanácsok és biztonsági riasztások kormányzati külügyminisztériumoktól:<br><br><strong>Források:</strong><br>🇺🇸 US State Dept utazási tanácsok<br>🇦🇺 AU DFAT Smartraveller<br>🇬🇧 UK FCDO utazási tanácsok<br>🇳🇿 NZ MFAT SafeTravel<br><br><strong>Szintek:</strong><br>🟥 Ne utazzon<br>🟧 Gondolja át az utazást<br>🟨 Óvatossággal járjon el<br>🟩 Normális óvintézkedések"
+      "infoTooltip": "<strong>Biztonsági tanácsok</strong><br>Utazási tanácsok és biztonsági riasztások kormányzati külügyminisztériumoktól:<br><br><strong>Források:</strong><br>🇺🇸 US State Dept utazási tanácsok<br>🇦🇺 AU DFAT Smartraveller<br>🇬🇧 UK FCDO utazási tanácsok<br><br><strong>Szintek:</strong><br>🟥 Ne utazzon<br>🟧 Gondolja át az utazást<br>🟨 Óvatossággal járjon el<br>🟩 Normális óvintézkedések"
     },
     "orefSirens": {
       "checking": "Szirénariasztások ellenőrzése...",
@@ -1967,7 +1999,9 @@
       "invalidHandle": "Adjon meg érvényes YouTube-fogantyút (például @ChannelName)",
       "verifying": "Ellenőrzés alatt…",
       "hlsUrl": "HLS Stream URL (opcionális)",
-      "invalidHlsUrl": "Adjon meg érvényes HLS stream URL-t (.m3u8)"
+      "invalidHlsUrl": "Adjon meg érvényes HLS stream URL-t (.m3u8)",
+      "playLiveFeed": "Élő adás lejátszása",
+      "readyStatus": "Készen áll, amikor Ön is"
     },
     "map": {
       "showMap": "Térkép megjelenítése",
@@ -2334,6 +2368,45 @@
         "method": "Portwatch DWT + AIS kalibrálás",
         "sampleLabel": "AIS zavarási jelek",
         "creditName": "EIA World Oil Transit Chokepoints"
+      }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
+    },
+    "panelFreshness": {
+      "status": {
+        "fresh": "Fresh",
+        "stale": "Stale",
+        "veryStale": "Very stale",
+        "noData": "No data",
+        "disabled": "Disabled",
+        "error": "Error"
+      },
+      "labelWithAge": "{{status}} {{age}}",
+      "title": "Data freshness: {{status}}. {{sources}}",
+      "sourceDetail": "{{name}}: {{status}}, {{update}}",
+      "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
+      "lastUpdated": "last updated {{time}}",
+      "neverUpdated": "never updated",
+      "health": {
+        "partialCoverage": "partial coverage",
+        "contentStale": "content stale",
+        "seedStale": "seed stale",
+        "noSourceData": "no source data",
+        "sourceErrorReported": "source error reported",
+        "freshnessStoreUnavailable": "freshness store unavailable",
+        "freshnessStoreDegraded": "freshness store degraded"
+      },
+      "time": {
+        "never": "never",
+        "justNow": "just now",
+        "minutesAgo": "{{count}}m ago",
+        "hoursAgo": "{{count}}h ago",
+        "daysAgo": "{{count}}d ago",
+        "compactNow": "now",
+        "compactMinutes": "{{count}}m",
+        "compactHours": "{{count}}h",
+        "compactDays": "{{count}}d"
       }
     }
   },
@@ -3067,5 +3140,18 @@
     "or": "vagy adjon meg egyéni kiszolgálót",
     "generatingVisualization": "Vizualizáció készítése...",
     "visualizationFailed": "A vizualizáció sikertelen volt"
+  },
+  "dashboardTabs": {
+    "ariaLabel": "Dashboard tabs",
+    "defaultName": "Main",
+    "newTabName": "New Tab",
+    "newTabCreated": "New tab created",
+    "tabDeleted": "Tab \"{{name}}\" deleted",
+    "addTab": "Add tab",
+    "addTabTitle": "New tab (starts with the default panels)",
+    "renameHint": "{{name}} — double-click to rename",
+    "deleteTab": "Delete tab",
+    "deleteTabAria": "Delete tab {{name}}",
+    "tabNameAria": "Tab name"
   }
 }

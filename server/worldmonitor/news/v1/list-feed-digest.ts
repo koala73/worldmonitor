@@ -16,6 +16,7 @@ import { VARIANT_FEEDS, INTEL_SOURCES, type ServerFeed } from './_feeds';
 import { classifyByKeyword, hasHistoricalMarker, type ThreatLevel } from './_classifier';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
 import { classifyFeelGood } from '../../../_shared/feelgood-classifier.js';
+import { classifyEphemeralLiveCoverage } from '../../../../shared/ephemeral-live-classifier.js';
 import { buildClassifyCacheKey } from '../../intelligence/v1/_shared';
 import { getSourceTier } from '../../../_shared/source-tiers';
 import {
@@ -184,6 +185,11 @@ interface ParsedItem {
   // event. See docs/plans/2026-05-17-001-fix-feelgood-lifestyle-filter-plan.md
   // (Veterans-warplanes anchor case, May 17 0802 brief).
   isFeelGood: boolean;
+  // Ephemeral live-programming classification. "WATCH LIVE: ..." and
+  // live briefing/hearing previews are not durable event stories for a
+  // delayed digest/brief, even when conflict vocabulary makes them score high.
+  // Stamped here and re-classified by buildDigest for pre-stamp residue.
+  isEphemeralLiveCoverage: boolean;
 }
 
 const MAX_DESCRIPTION_LEN = 400;
@@ -383,26 +389,24 @@ async function fetchAndParseRss(
   variant: string,
   signal: AbortSignal,
 ): Promise<ParseResult> {
-  // v4 cache shape: identical struct to v3 but a new prefix invalidates
-  // every pre-fix entry on deploy. v3 entries cached pre-PR contain
-  // ParsedItems without the new isFeelGood field. If a cache hit
+  // v5 cache shape: identical struct to v4 but a new prefix invalidates
+  // every pre-fix entry on deploy. v4 entries cached pre-PR contain
+  // ParsedItems without the new isEphemeralLiveCoverage field. If a cache hit
   // returned one of those, buildStoryTrackHsetFields would write
-  // `'isFeelGood', undefined ? '1' : '0'` → '0' onto the story:track:v1
-  // row, and buildDigest's `stampMissing = typeof !== 'string' || length === 0`
-  // check would treat '0' as a genuine "not feel-good" verdict and
-  // skip the residue catch. Feel-good content could then silently slip
-  // through during the 1h healthy-cache rollout window. Bumping the
-  // prefix forces cold parseRssXml runs that stamp isFeelGood correctly.
+  // `'isEphemeralLiveCoverage', undefined ? '1' : '0'` → '0' onto the
+  // story:track:v1 row, and buildDigest's stampMissing check would treat
+  // '0' as a genuine "not ephemeral live" verdict and skip the residue catch.
+  // Live-programming teasers could then silently slip through during the 1h
+  // healthy-cache rollout window. Bumping the prefix forces cold parseRssXml
+  // runs that stamp isEphemeralLiveCoverage correctly.
   //
-  // (Same class of cache-prefix bump as v2→v3, which this codebase
+  // (Same class of cache-prefix bump as v2→v3 and v3→v4, which this codebase
   // already established as the correct cutover pattern for parsed-cache
-  // shape changes. The same bug exists latently in PR #3690's isOpinion
-  // path; a separate backport bumps the prefix once rather than for
-  // every sibling classifier — out of scope for this PR.)
-  const cacheKey = `rss:feed:v4:${variant}:${feed.url}`;
+  // shape changes.)
+  const cacheKey = `rss:feed:v5:${variant}:${feed.url}`;
 
   try {
-    // Read cache unconditionally — the v3 prefix guarantees pre-fix
+    // Read cache unconditionally — the v5 prefix guarantees pre-fix
     // poisoning can't reach this read, so we don't need a parsedTotal
     // bypass. Honoring cached zero-from-zero entries IS the throttle:
     // setCachedJson below writes them with CACHE_TTL_EMPTY_S, so the next
@@ -576,6 +580,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
       description,
       isOpinion: classifyOpinion({ title, link, description }),
       isFeelGood: classifyFeelGood({ title, link, description }),
+      isEphemeralLiveCoverage: classifyEphemeralLiveCoverage({ title, link, description }),
     });
   }
 
@@ -1086,6 +1091,11 @@ function buildStoryTrackHsetFields(
     // exclusion. Pre-stamp rows are re-classified by buildDigest from
     // title/link/description (residue catch).
     'isFeelGood', item.isFeelGood ? '1' : '0',
+    // Ephemeral live-programming flag (classifyEphemeralLiveCoverage).
+    // Same write semantics as the opinion/feel-good stamps: overwrite on
+    // every mention so a collapsed story row reflects the current headline
+    // verdict; buildDigest re-classifies pre-stamp rows for the TTL window.
+    'isEphemeralLiveCoverage', item.isEphemeralLiveCoverage ? '1' : '0',
     // Event category (classifyByKeyword EventCategory enum, possibly
     // overridden by enrichWithAiCache). Persisted so the brief's
     // threads card + magazine story-page + public-thread fallback
@@ -1211,7 +1221,7 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     }
 
     // U3 — hard freshness floor. Drop items older than NEWS_MAX_AGE_HOURS
-    // (default 48h) BEFORE corroboration counting so a stale duplicate of a
+    // (default 96h) BEFORE corroboration counting so a stale duplicate of a
     // fresh story can't inflate the cluster's source count. Runs after parse
     // (where U2 already dropped undated items) so every item here carries a
     // real publishedAt. See R3.

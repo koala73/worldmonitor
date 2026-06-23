@@ -1,5 +1,5 @@
 ---
-title: "AI-Powered Intelligence Without the Cloud: World Monitor's Privacy-First Approach"
+title: "Private AI Intelligence: World Monitor Without the Cloud"
 description: "Run AI-powered intelligence analysis on your own hardware. World Monitor supports Ollama, LM Studio, and in-browser ML for private geopolitical analysis."
 metaTitle: "Local AI Intelligence Analysis | World Monitor"
 keywords: "local LLM intelligence, private AI analysis, offline intelligence tool, Ollama OSINT, privacy-first AI dashboard"
@@ -138,7 +138,7 @@ Material non-public information (MNPI) requirements mean certain geopolitical an
 
 You don't have to take our word for the privacy claims. World Monitor is fully open source under AGPL-3.0. Every network call, every data flow, every AI prompt is in the codebase for you to audit. Developers can explore the full [typed API layer and proto-first architecture](/blog/posts/build-on-worldmonitor-developer-api-open-source/) to verify exactly how data flows through the system.
 
-The proto-first API architecture (92 proto files, 22 typed services) means even the API contracts are transparent. You can see exactly what data each endpoint expects and returns.
+The proto-first API architecture (276 proto files, 34 typed services) means even the API contracts are transparent. You can see exactly what data each endpoint expects and returns.
 
 ## Frequently Asked Questions
 

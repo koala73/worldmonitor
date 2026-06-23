@@ -14,7 +14,8 @@ message RunScenarioRequest {
     (buf.validate.field).string.max_len = 128
   ];
   // Optional 2-letter ISO country code to scope the impact computation.
-  // When absent, the worker computes for all countries with seeded exposure.
+  // When absent, v1 computes only the seeded reporter set:
+  // US, CN, RU, IR, IN, TW.
   string iso2 = 2 [
     (buf.validate.field).string.pattern = "^([A-Z]{2})?$"
   ];

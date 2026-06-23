@@ -39,6 +39,18 @@ describe('extractBillingErrorKind — structured-data path', () => {
     assert.equal(extractBillingErrorKind(err), 'USER_ID_REQUIRED');
   });
 
+  it('reads DODO_PORTAL_ERROR from err.data.kind', () => {
+    // WORLDMONITOR-ST: the Dodo portal-create call used to throw a plain
+    // Error, which Convex masked as an opaque `[Request ID: X] Server
+    // Error` (err.data === undefined → unclassified error-level capture).
+    // The action now re-throws `new ConvexError({ kind: 'DODO_PORTAL_ERROR' })`
+    // so the event buckets under a `billing_error_kind` Sentry tag.
+    const err = Object.assign(new Error('[Request ID: x] Server Error'), {
+      data: { kind: 'DODO_PORTAL_ERROR' },
+    });
+    assert.equal(extractBillingErrorKind(err), 'DODO_PORTAL_ERROR');
+  });
+
   it('returns null when err.data.kind is non-string', () => {
     const err = Object.assign(new Error(''), { data: { kind: 42 } });
     assert.equal(extractBillingErrorKind(err), null);

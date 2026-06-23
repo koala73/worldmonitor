@@ -4,7 +4,7 @@
 
 World Monitor is a real-time global intelligence dashboard that brings together news, markets, military activity, infrastructure data, and AI-powered analysis into a single, interactive map interface. Think of it as a situational awareness tool that was previously only available to government agencies and large corporations with six-figure OSINT budgets, now accessible to journalists, analysts, researchers, and curious citizens through a web browser or desktop app.
 
-The platform monitors over 200 countries using 500+ news feeds, 30+ live video streams, satellite tracking, military flight and naval vessel data, prediction markets, and dozens of specialized data layers. All of this is visualized on either a photorealistic 3D globe or a flat WebGL map, with AI summarization that distills thousands of headlines into actionable intelligence briefs.
+The platform monitors over 200 countries using 500+ news feeds, 8 live news streams, satellite tracking, military flight and naval vessel data, prediction markets, and dozens of specialized data layers. All of this is visualized on either a photorealistic 3D globe or a flat WebGL map, with AI summarization that distills thousands of headlines into actionable intelligence briefs.
 
 ---
 
@@ -14,11 +14,11 @@ The platform monitors over 200 countries using 500+ news feeds, 30+ live video s
 
 When a user opens World Monitor, they see a globe (or flat map) populated with live data points. Each point represents something happening in the world right now: a military flight over the Black Sea, an earthquake in Turkey, a protest in Nairobi, a cyberattack origin in Eastern Europe, or a spike in GPS jamming near a conflict zone.
 
-Users can toggle 45+ data layers on and off, zoom into regions, click on any event for details, and read AI-generated summaries that connect dots across multiple data streams. A command palette (Cmd+K) provides instant search across countries, layers, and intelligence categories.
+Users can toggle 56 map layer types on and off, zoom into regions, click on any event for details, and read AI-generated summaries that connect dots across multiple data streams. A command palette (Cmd+K) provides instant search across countries, layers, and intelligence categories.
 
-### Five Specialized Dashboards
+### Six Specialized Dashboards
 
-World Monitor runs five thematic variants from a single codebase, each tailored to a different audience:
+World Monitor runs six thematic variants from a single codebase, each tailored to a different audience:
 
 | Variant | Domain | Focus |
 |---------|--------|-------|
@@ -27,6 +27,7 @@ World Monitor runs five thematic variants from a single codebase, each tailored 
 | **Finance Monitor** | finance.worldmonitor.app | Markets, central banks, Gulf FDI, commodities |
 | **Commodity Monitor** | commodity.worldmonitor.app | Mining, metals, energy, critical minerals |
 | **Happy Monitor** | happy.worldmonitor.app | Good news, conservation, positive global trends |
+| **Energy Monitor** | energy.worldmonitor.app | Energy security, oil and gas, chokepoints, policy response |
 
 ### AI Intelligence Layer
 
@@ -38,7 +39,7 @@ World Monitor uses a multi-tier AI pipeline to process and summarize information
 4. **Threat Classification**: A three-stage pipeline automatically categorizes incoming news by severity and type.
 5. **Country Intelligence Briefs**: Full-page dossiers for any country, combining instability scores, AI analysis, event timelines, and prediction market data.
 
-All AI features can run entirely in the browser using lightweight ML models, with no data leaving the user's device. Cloud AI (via Groq, OpenRouter) is optional and used only when configured.
+Browser-side ML features can run locally using lightweight models, with no data leaving the user's device. Server-authoritative APIs publish CII/CRI scores, briefs, forecasts, MCP tools, and cached operational data; cloud AI providers such as Groq and OpenRouter are used only for the features that explicitly configure them.
 
 ---
 
@@ -49,8 +50,8 @@ World Monitor aggregates publicly available data from dozens of sources. No prop
 ### News & Media
 
 - **500+ RSS feeds** from Reuters, AP, BBC, Al Jazeera, CNN, The Guardian, and dozens of specialized outlets
-- **30+ live video streams** from major news networks
-- **22 live webcams** from geopolitical hotspots
+- **8 live news streams** from major news networks
+- **19 live webcams** from geopolitical hotspots
 - **26 Telegram OSINT channels** including BNO News, Aurora Intel, DeepState, and Bellingcat
 
 ### Geopolitical & Security
@@ -60,7 +61,7 @@ World Monitor aggregates publicly available data from dozens of sources. No prop
 - **GDELT** (Global Database of Events, Language, and Tone): Global event detection
 - **OREF** (Israel Home Front Command): Real-time rocket alert sirens
 - **LiveUAMap**: Conflict event mapping (Iran theater)
-- **Government travel advisories**: US State Department, UK FCDO, Australia DFAT, NZ MFAT
+- **Government travel advisories**: US State Department, UK FCDO, Australia DFAT
 - **13 US Embassy feeds** for country-specific security updates
 
 ### Military & Strategic
@@ -113,19 +114,19 @@ World Monitor aggregates publicly available data from dozens of sources. No prop
 | Metric | Value |
 |--------|-------|
 | News feeds monitored | 500+ |
-| Live video streams | 30+ |
-| Data layers on map | 45+ |
+| Live video streams | 8 |
+| Data layers on map | 56 layer types |
 | Countries monitored | 200+ |
-| Languages supported | 21 (including RTL) |
-| Military bases mapped | 210+ |
+| Languages supported | 24 (including RTL) |
+| Military bases mapped | 220+ |
 | AI datacenters mapped | 111 |
-| Stock exchanges mapped | 92 |
+| Stock exchanges mapped | 29 |
 | Strategic ports mapped | 83 |
 | Undersea cables tracked | 55+ |
 | Pipelines mapped | 88 |
 | Intelligence satellites tracked | 80-120 |
 | Telegram OSINT channels | 26 |
-| Airports monitored | 107 |
+| Airports monitored | 111 |
 | Prediction market events | 100+ |
 
 ---
@@ -151,7 +152,7 @@ World Monitor serves several audiences:
 | AI summarization | Yes (multi-tier LLM) | Rarely | Basic or none |
 | Military tracking | ADS-B + AIS + satellites | Specialized tools only | No |
 | Prediction markets | Integrated | No | No |
-| Multiple thematic variants | 5 dashboards | Usually single-focus | No |
+| Multiple thematic variants | 6 dashboards | Usually single-focus | No |
 | Browser-based ML | Yes (no data leaves device) | Server-dependent | No |
 | Desktop app | Yes (macOS, Windows, Linux) | Varies | Rarely |
 | Cost | Free tier available | $10K-100K+/year | Free but limited |
@@ -163,14 +164,26 @@ World Monitor serves several audiences:
 
 ### Country Instability Index (CII)
 
-Every country receives a real-time instability score from 0 to 100, calculated from four weighted components:
+The Country Instability Index publishes server-authoritative CII v8 stress
+scores from 0 to 100 for 31 Tier-1 countries. The score is directional
+situational awareness, not a prediction or a safety rating.
 
-- **Baseline risk** (40%): Historical conflict, governance, and fragility indicators
-- **Social unrest** (20%): Protest frequency, labor strikes, civil demonstrations
-- **Security events** (20%): Armed incidents, terrorism, military escalation
-- **Information velocity** (20%): Anomalous spikes in news volume relative to baseline
+- **Event score**: `unrest * 0.25 + conflict * 0.30 + security * 0.20 + information * 0.25`
+- **Headline score**: `baselineRisk * 0.4 + eventScore * 0.6`, then capped boosts and floors for climate, cyber, wildfires, advisories, OREF, displacement, news urgency, earthquakes, sanctions, AIS disruptions, UCDP conflict class, and State Department advisory level
+- **Provenance**: every score exposes `methodology_version`, component values, advisory provenance (`live`, `fallback`, or `absent`), and a signed 24-hour movement delta
 
-Scores are classified as: Low (0-20), Normal (21-40), Elevated (41-60), High (61-80), Critical (81-100).
+Scores are classified as: Low (0-30), Normal (31-50), Elevated (51-65),
+High (66-80), Critical (81-100). The full public methodology is
+`/docs/methodology/cii-risk-scores`.
+
+### Country Resilience Index (CRI)
+
+The Country Resilience Index scores the 196-country public rankable universe
+from 0 to 100 across 6 domains, 20 active dimensions, and 3 pillars. It uses
+official and authoritative sources, transparent goalposts, coverage tracking,
+and imputation taxonomy so analysts can see how much of each score is observed
+versus imputed. CRI complements CII: CII measures near-term stress; CRI measures
+shock-absorption and recovery capacity.
 
 ### Hotspot Detection
 
@@ -185,7 +198,7 @@ The system identifies emerging crises by blending news clustering, geographic co
 ## Privacy & Security
 
 - **No user accounts required** for the free tier. No tracking cookies, no personal data collection.
-- **All AI can run locally** in the browser using lightweight ML models. No headlines or queries are sent to external servers unless the user explicitly configures cloud AI.
+- **Local ML is available** in the browser using lightweight models. Server APIs are used for documented authoritative data products; headlines or queries are sent to cloud AI only for features that explicitly configure those providers.
 - **API keys are server-side only**. The browser never sees credentials for upstream data providers.
 - **Open source** under AGPL-3.0, meaning the code is publicly auditable.
 - **Rate limiting and bot protection** are enforced at the API layer.
@@ -199,7 +212,7 @@ The system identifies emerging crises by blending news clustering, geographic co
 - **Desktop**: Native apps for macOS, Windows, and Linux (via Tauri)
 - **PWA**: Installable as a progressive web app with offline map tile caching
 - **Mobile**: Mobile-optimized responsive layout with touch gestures
-- **Languages**: 21 languages including Arabic (RTL), Chinese, Japanese, Korean, Hindi, and major European languages
+- **Languages**: 24 languages including Arabic (RTL), Chinese, Japanese, Korean, Hindi, and major European languages
 
 ---
 
@@ -207,13 +220,13 @@ The system identifies emerging crises by blending news clustering, geographic co
 
 World Monitor is actively developed with planned expansions across several areas:
 
-### Pro Tier (Planned)
+### Pro And API Tiers
 
 - **Authenticated user accounts** with personalized dashboards
 - **Scheduled AI briefings** delivered via email, Slack, Telegram, Discord, or WhatsApp
 - **Advanced equity research** with financials, analyst targets, valuation metrics, and backtesting
 - **Custom alert rules** for specific countries, topics, or threshold triggers
-- **API access** for developers and organizations to integrate World Monitor data into their own tools
+- **API and MCP access** for developers and organizations to integrate World Monitor data into their own tools
 
 ### Enterprise Features (Planned)
 
@@ -236,7 +249,7 @@ World Monitor is actively developed with planned expansions across several areas
 ## Frequently Asked Questions
 
 **Q: Is World Monitor free?**
-A: Yes. The core dashboard with all map layers, news feeds, live streams, and AI features is free to use. A Pro tier with additional features is planned.
+A: Yes. The core dashboard with map layers, news feeds, live streams, and many AI features is free to use. Pro and API tiers add higher-value workflows, API keys, MCP access, and heavier operational use cases.
 
 **Q: Where does World Monitor get its data?**
 A: Exclusively from publicly available, open-source data. This includes government agencies (USGS, NASA, NOAA, EIA, FRED), academic institutions (ACLED, UCDP), open tracking networks (ADS-B, AIS), news RSS feeds, and public APIs. No classified or proprietary intelligence is used.
@@ -260,13 +273,13 @@ A: Yes. World Monitor is licensed under AGPL-3.0, meaning anyone can inspect, au
 A: World Monitor was created by Elie Habib. It is an independent project, not affiliated with any government, intelligence agency, or defense contractor.
 
 **Q: Can I embed World Monitor or use its data in my reporting?**
-A: The web interface can be referenced and linked in reporting. For data integration, an API tier is planned. Please attribute "World Monitor (worldmonitor.app)" when referencing the platform in published work.
+A: The web interface can be referenced and linked in reporting. For data integration, use the documented REST API, OpenAPI specs, or MCP server. Please attribute "World Monitor (worldmonitor.app)" when referencing the platform in published work.
 
 **Q: How is this different from Janes, Palantir, or Dataminr?**
 A: Those are enterprise products costing tens to hundreds of thousands of dollars per year, typically sold to governments and large corporations. World Monitor aims to democratize access to situational awareness by aggregating public data and using AI to make it digestible. It is open source, free to use, and designed for individual analysts and small teams, not just large organizations.
 
 **Q: What does "Country Instability Index" mean and how reliable is it?**
-A: The CII is a composite score (0-100) that combines baseline risk data, social unrest indicators, security events, and news volume anomalies. It provides a relative comparison between countries and a directional indicator of change. It is not a predictive model and should not be used as the sole basis for security or investment decisions. It is most useful for identifying countries experiencing unusual activity relative to their baseline.
+A: The CII is a documented composite stress score (0-100) for 31 Tier-1 countries. CII v8 combines baseline risk with unrest, conflict, security, information, and capped/floored live-signal terms, and emits methodology version plus provenance fields. It is not a predictive model and should not be used as the sole basis for security or investment decisions. It is most useful for identifying countries experiencing unusual activity relative to their baseline.
 
 **Q: How many people work on this?**
 A: World Monitor is primarily a solo project by its creator, with occasional open-source contributions from the community.

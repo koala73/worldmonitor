@@ -110,11 +110,11 @@ export async function dispatchToolsCall(
   const id = body.id ?? null;
   const p = body.params as { name?: string; arguments?: Record<string, unknown> } | null;
   if (!p || typeof p.name !== 'string') {
-    return rpcError(id, -32602, 'Invalid params: missing tool name');
+    return rpcError(id, -32602, 'Invalid params: missing tool name', corsHeaders);
   }
   const tool = TOOL_REGISTRY.find((t) => t.name === p.name);
   if (!tool) {
-    return rpcError(id, -32602, `Unknown tool: ${p.name}`);
+    return rpcError(id, -32602, `Unknown tool: ${p.name}`, corsHeaders);
   }
 
   // Pro-only INCR-first reservation. Both cache-only AND RPC tools count
@@ -266,6 +266,6 @@ export async function dispatchToolsCall(
       error_kind: isClient4xx ? 'client_4xx' : 'server_error',
       budget_exceeded: false,
     });
-    return rpcError(id, -32603, 'Internal error: data fetch failed');
+    return rpcError(id, -32603, 'Internal error: data fetch failed', corsHeaders);
   }
 }

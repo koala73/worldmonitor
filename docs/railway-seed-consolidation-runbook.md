@@ -27,6 +27,22 @@
 
 Each "bundle" is a single Railway cron service that replaces N individual services. The bundle script spawns each member seed sequentially via `child_process.execFile`, checking Redis `seed-meta:` timestamps to skip seeds that ran recently. Original seed scripts are unchanged.
 
+**Graceful fetch failures:** `runSeed` now treats transient upstream fetch
+failures as non-zero graceful failures after extending the last-good Redis TTL.
+This applies to bundled members and standalone `runSeed` cron seeders: Railway
+may mark that cron run failed, but `/api/health` and seed-contract probes still
+read the preserved `seed-meta:` freshness. Alerting should either tolerate these
+transient cron failures or key sustained data-health pages off those freshness
+checks. Bundle member logs use `status=GRACEFUL_FAIL`; external log consumers
+that match only `status=FAILED` should include `GRACEFUL_FAIL`. The bundle
+summary still reports these under `failed:N`, so use per-section status when
+distinguishing graceful upstream outages from hard failures.
+
+**Standalone follow-up:** `scripts/seed-military-flights.mjs` and
+`scripts/seed-service-statuses.mjs` still have manual graceful failure paths
+that exit `0`. Track those separately if the standalone graceful-failure
+contract needs to be made fully uniform beyond shared `runSeed` users.
+
 **Per-bundle migration:**
 
 1. Delete ONE old member first (to free a slot under the 100 limit)
@@ -299,6 +315,39 @@ All new services share these settings:
 
 ---
 
+## Registry-covered live resilience services
+
+These live Country Resilience services are not slot-saving consolidation
+migrations and should not be counted in the 35-slot savings plan above. They
+are listed here so their Railway start commands are first-class registry-covered
+entries.
+
+### seed-bundle-resilience-recovery
+
+| Setting | Value |
+|---|---|
+| **Service name** | `seed-bundle-resilience-recovery` |
+| **Start command** | `node scripts/seed-bundle-resilience-recovery.mjs` |
+| **Cron schedule** | Monthly recovery cadence; use the active Railway schedule for the existing service |
+| **Watch paths** | `scripts/**`, `shared/**` |
+| **Purpose** | Dedicated Country Resilience recovery inputs bundle |
+| **Members** | Fiscal Space, Reserve Adequacy, External Debt, Import HHI, Fuel Stocks, Re-export Share, Sovereign Wealth |
+| **Note** | This is the service referenced by the Import-HHI controls below. It is registry-covered so nixpacks packaging and start-command drift are tested. |
+
+### seed-bundle-resilience-energy-v2
+
+| Setting | Value |
+|---|---|
+| **Service name** | `seed-bundle-resilience-energy-v2` |
+| **Start command** | `node scripts/seed-bundle-resilience-energy-v2.mjs` |
+| **Cron schedule** | `0 6 * * *` (daily 06:00 UTC; per-slot interval gates real seeds to 7 days) |
+| **Watch paths** | `scripts/**`, `shared/**` |
+| **Purpose** | Dedicated Country Resilience energy-v2 input bundle |
+| **Members** | Low Carbon Generation, Fossil Electricity Share, Power Losses |
+| **Note** | Daily cron avoids the weekly dead window described in `scripts/seed-bundle-resilience-energy-v2.mjs`; the bundle's 7-day section intervals prevent unnecessary World Bank polling. |
+
+---
+
 ## Services that STAY unchanged (54 total)
 
 ### Infrastructure (4)
@@ -368,7 +417,7 @@ All new services share these settings:
 | 35 | seed-regulatory-actions | `249ae8df-5746-4cdb-9978-ec61dce9121f` | Financial regulator RSS |
 | 36 | seed-research | `ab850199-4d48-4af8-9681-aafbe2f31b8e` | arXiv + HN + GitHub |
 | 37 | seed-sanctions-pressure | `e1686cdf-980f-426d-b5f2-a7757729fe9b` | 120MB+ XML streaming |
-| 38 | seed-security-advisories | `8fb9c6b7-0ae9-441b-ae02-0f31baa3aed6` | 22 advisory feeds |
+| 38 | seed-security-advisories | `8fb9c6b7-0ae9-441b-ae02-0f31baa3aed6` | 24 advisory feeds |
 | 39 | seed-supply-chain-trade | `d7cc29f0-691b-40fd-84f2-ce8e8f12b567` | Already multi-section |
 | 40 | seed-thermal-escalation | `71d124d5-a4fb-42c3-9c5b-2fb0e5645e5b` | Derived from fire detections |
 | 41 | seed-trade-flows | `dd3097f7-df65-4b0e-89ca-86a5fac7d558` | UN Comtrade, 6 reporters |
@@ -376,6 +425,43 @@ All new services share these settings:
 | 43 | seed-webcams | `2bf93afa-1922-4f9c-936d-f5054051b8a5` | Paginated across 8 regions |
 
 **Inventory check:** 4 infra + 4 long-running + 3 consumer + 46 delete + 43 standalone = **100**
+
+---
+
+## Standalone seed crons added after this snapshot
+
+> These data seeds were added **after** the 2026-04-10 inventory above and each
+> runs as its own Railway nixpacks cron service (root directory `.`, start
+> command `node scripts/<file>`, watch paths `scripts/**`, `shared/**`). They
+> are intentionally **not** part of the 100-service inventory count above and
+> are not in `scripts/railway-services.json` (the registry only covers bundles,
+> Dockerfile services, and long-running workers — standalone crons live here in
+> the runbook, like the 43 above).
+>
+> **Cadence below is inferred from each seed's cache TTL** as a documentation
+> aid; confirm the live cron schedule and Service ID against the Railway
+> dashboard before relying on it.
+
+| Service | Start command | Inferred cadence | Domain |
+|---|---|---|---|
+| seed-aaii-sentiment | `node scripts/seed-aaii-sentiment.mjs` | weekly (7d TTL) | AAII bull/bear investor sentiment survey |
+| seed-market-quotes | `node scripts/seed-market-quotes.mjs` | ~30 min (30m TTL) | Equity index / stock bootstrap quotes (Yahoo + Finnhub + Alpha Vantage) |
+| seed-commodity-quotes | `node scripts/seed-commodity-quotes.mjs` | ~30 min (30m TTL) | Commodity + extended-gold bootstrap quotes |
+| seed-crypto-sectors | `node scripts/seed-crypto-sectors.mjs` | hourly (1h TTL) | CoinGecko crypto sector performance |
+| seed-market-breadth | `node scripts/seed-market-breadth.mjs` | daily (30d history window) | S&P 500 breadth (% above 20/50/200-day, Barchart) |
+| seed-weather-alerts | `node scripts/seed-weather-alerts.mjs` | ~15 min (15m TTL) | NWS active weather alerts |
+| seed-fx-yoy | `node scripts/seed-fx-yoy.mjs` | daily (25h TTL) | Wide-coverage FX YoY + 24m drawdown (resilience FX-stress inputs) |
+| seed-comtrade-bilateral-hs4 | `node scripts/seed-comtrade-bilateral-hs4.mjs` | periodic (72h TTL) | UN Comtrade bilateral HS4 trade flows |
+| seed-hs2-chokepoint-exposure | `node scripts/seed-hs2-chokepoint-exposure.mjs` | periodic (TTL-extended) | HS2 chokepoint trade-exposure (derived) |
+| seed-service-statuses | `node scripts/seed-service-statuses.mjs` | frequent (relay-fallback) | Service-status warm-ping; primary seeder is the AIS relay loop |
+
+**Not standalone services (documented here to avoid confusion):**
+
+- `scripts/seed-chokepoint-flows.mjs` — spawned in-process by the AIS relay
+  (`ais-relay.cjs`), not deployed as its own cron.
+- `scripts/seed-military-maritime-news.mjs` — this is the script behind the
+  existing `seed-military-maritime` standalone cron (USNI/NGA warm-ping) listed
+  in the inventory above.
 
 ---
 
@@ -448,6 +534,8 @@ Set these on the Railway service that runs `node scripts/seed-bundle-resilience-
 
 Reporter cohort splitting is the last resort. Prefer more `COMTRADE_API_KEYS`, then wider per-key delay, then lower concurrency. The import-HHI seeder fetches the watched #3979 reporters first when they are missing, so a replenished force-refresh should recover AE/RU/NO/CH before unrelated registry backfill can consume the hourly provider budget. Aggressive incident pacing such as `IMPORT_HHI_PER_KEY_DELAY_MS=15000` with `IMPORT_HHI_MAX_CONCURRENCY=1` can exceed the 30-minute bundle window; that mode intentionally relies on checkpoint/resume across ticks, not one-pass completion. Cohort splitting should only be used if a single full pass still exhausts the provider budget after the first three controls.
 
+The import-HHI publish gate requires AE/RU/NO/CH as well as the normal country-count floor. If one of those watched reporters is still absent, the seed run fails validation with `emptyDataIsFailure: true`, does not refresh seed-meta, and leaves the bundle eligible to retry instead of stranding a fresh-but-incomplete canonical payload for the full monthly interval.
+
 If a watched reporter is still missing and the seed log says `status=200 rows=0`, stop treating that reporter as a key-budget problem. Inspect Comtrade reporter metadata, data availability, and query-shape filters (`customsCode`, `motCode`, `cmdCode`) before considering any scoring change. The known non-M49 reporter-code exceptions are pinned in `scripts/shared/comtrade-reporter-overrides.json`; as of the #3979 follow-up this includes Norway (`NO=579`) and Switzerland (`CH=757`). Russia (`RU=643`) currently needs the seed-only stale period fallback (`Y-5..Y-8`) because Comtrade returns zero annual import rows for the standard `Y-1..Y-4` window but still exposes 2018 rows.
 
 ### Force-Refresh
@@ -461,8 +549,40 @@ IMPORT_HHI_VERBOSE=1 FORCE_RESEED=true node scripts/seed-recovery-import-hhi.mjs
 Then warm live scores so `importConcentration` reads the refreshed canonical key:
 
 ```bash
-WORLDMONITOR_API_KEY=<key> node scripts/seed-resilience-scores.mjs
+API_BASE_URL=https://api.worldmonitor.app \
+WORLDMONITOR_SEED_REFRESH_KEY=<seed-refresh-key> \
+WORLDMONITOR_API_KEY=<read-key> \
+node scripts/seed-resilience-scores.mjs
 ```
+
+`WORLDMONITOR_SEED_REFRESH_KEY` is required: the resilience score seeder uses it
+for the seed-only `get-resilience-ranking?refresh=1` recompute path. Keep
+`WORLDMONITOR_API_KEY` or `WORLDMONITOR_VALID_KEYS` available too so laggard
+per-country score warms can fall back to the normal premium read endpoint. In
+Railway, the service environment should already provide the Upstash Redis
+credentials; for a local force-run, export `UPSTASH_REDIS_REST_URL` and
+`UPSTASH_REDIS_REST_TOKEN` as well.
+
+If the run is fixing missing interval data, the success signal is the
+`seed_complete` log for `domain="resilience:scores"` with
+`intervalsWritten > 0` and no `status="ERROR"`. A failed interval recovery
+sets `status="ERROR"` plus `intervalFailureReason` and includes the diagnostic
+counts `intervalMissingScorePayloadCount`, `intervalStaleScorePayloadCount`,
+`intervalInvalidScorePayloadCount`, `intervalMalformedScorePayloadCount`,
+`intervalFormulaSkipCount`, and `intervalPayloadSkipCount`.
+
+Verify the public audit surfaces after the run:
+
+```bash
+curl -fsS https://api.worldmonitor.app/api/resilience/v1/get-runtime-manifest \
+  | jq '{formulaTag, rankingCache, constructVersions, intervals}'
+curl -fsS https://api.worldmonitor.app/api/health \
+  | jq '.checks.resilienceIntervals'
+```
+
+Pass condition for interval recovery: runtime manifest reports
+`intervals.available=true`, and `/api/health` reports
+`resilienceIntervals.status="OK"` with `records > 0`.
 
 ### Verification
 

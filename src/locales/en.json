@@ -75,6 +75,8 @@
     "closeBtn": "Close",
     "limitedCoverage": "Limited coverage",
     "instabilityIndex": "Instability Index",
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable.",
     "notTracked": "Not tracked — {{country}} is not in the CII tier-1 list",
     "intelBrief": "Intelligence Brief",
     "generatingBrief": "Generating intelligence brief...",
@@ -208,6 +210,7 @@
     "settings": "SETTINGS",
     "sources": "SOURCES",
     "copyLink": "Link",
+    "embed": "Embed",
     "downloadApp": "Download App",
     "fullscreen": "Fullscreen",
     "pinMap": "Pin map to top",
@@ -748,6 +751,8 @@
     "webcams": {
       "paused": "Webcams paused",
       "pausedIdle": "Webcams paused — move mouse to resume",
+      "play": "Play",
+      "previewStatus": "Live preview",
       "regions": {
         "all": "ALL",
         "mideast": "MIDEAST",
@@ -1356,6 +1361,10 @@
       "noSignals": "No instability signals detected",
       "sectionFollowing": "Following",
       "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
       "infoTooltip": "<strong>Methodology</strong><ul><li><strong>U</strong>nrest: civil disorder & protests</li><li><strong>C</strong>onflict: armed conflict intensity</li><li><strong>S</strong>ecurity: military flights/vessels over territory</li><li><strong>I</strong>nformation: news velocity and focal point correlation</li><li>Hotspot proximity boost (strategic locations)</li></ul><em>U:C:S:I values show component scores.</em> Focal Point Detection correlates news entities with map signals for accurate scoring.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "Includes per-country baseline + event multiplier — see /docs/methodology/cii-risk-scores for the published table"
@@ -1406,8 +1415,8 @@
       "analysisFrameworksFromAgentskills": "From agentskills.io",
       "analysisFrameworksPasteJson": "Paste JSON",
       "analysisFrameworksSaveToLibrary": "Save to Library",
-      "streamAlwaysOnLabel": "Keep live streams running",
-      "streamAlwaysOnDesc": "Prevents Live Cams and Live News from auto-pausing when you are idle. Recommended for second-monitor / wallboard usage. Disable (Eco) to save CPU/bandwidth.",
+      "streamAlwaysOnLabel": "Auto-play live streams on dashboard",
+      "streamAlwaysOnDesc": "Starts Live News and Live Webcams automatically when visible. Leave off to load video only after you click Play.",
       "frameworkNote": "Applies to client-generated analysis only",
       "loadingServerInsights": "Loading server insights...",
       "usingCachedBrief": "Using cached brief...",
@@ -1477,9 +1486,8 @@
     "strategicRisk": {
       "noRisks": "No significant risks detected",
       "levels": {
-        "critical": "Critical",
-        "elevated": "Elevated",
-        "moderate": "Moderate",
+        "high": "High",
+        "medium": "Medium",
         "low": "Low"
       },
       "trend": "Trend",
@@ -1493,6 +1501,11 @@
       "enableDataSources": "Enable data sources to begin monitoring.",
       "requiredDataSources": "Required Data Sources",
       "optionalSources": "Optional Sources",
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
       "enableCoreFeeds": "Enable Core Feeds",
       "waitingForData": "Waiting for data...",
       "refresh": "Refresh",
@@ -1557,7 +1570,7 @@
       "noMatching": "No advisories match this filter",
       "critical": "Critical",
       "health": "Health",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
       "refresh": "Refresh",
       "levels": {
         "doNotTravel": "Do Not Travel",
@@ -1572,7 +1585,7 @@
         "hoursAgo": "{{count}}h ago",
         "daysAgo": "{{count}}d ago"
       },
-      "infoTooltip": "<strong>Security Advisories</strong><br>Travel advisories and security alerts from government foreign affairs agencies:<br><br><strong>Sources:</strong><br>🇺🇸 US State Dept Travel Advisories<br>🇦🇺 AU DFAT Smartraveller<br>🇬🇧 UK FCDO Travel Advice<br>🇳🇿 NZ MFAT SafeTravel<br><br><strong>Levels:</strong><br>🟥 Do Not Travel<br>🟧 Reconsider Travel<br>🟨 Exercise Caution<br>🟩 Normal Precautions"
+      "infoTooltip": "<strong>Security Advisories</strong><br>Travel advisories and security alerts from government foreign affairs agencies:<br><br><strong>Sources:</strong><br>🇺🇸 US State Dept Travel Advisories<br>🇦🇺 AU DFAT Smartraveller<br>🇬🇧 UK FCDO Travel Advice<br><br><strong>Levels:</strong><br>🟥 Do Not Travel<br>🟧 Reconsider Travel<br>🟨 Exercise Caution<br>🟩 Normal Precautions"
     },
     "orefSirens": {
       "checking": "Checking siren alerts...",
@@ -1680,6 +1693,9 @@
       "sortBy": "Sort by",
       "sortNewest": "Newest",
       "sortRelevance": "Relevance"
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
     },
     "breakingNews": {
       "critical": "CRITICAL",
@@ -1963,6 +1979,8 @@
       "botCheck": "YouTube is requesting sign-in to play {{name}}",
       "signInToYouTube": "Sign in to YouTube",
       "openOnYouTube": "Open on YouTube",
+      "playLiveFeed": "Play live feed",
+      "readyStatus": "Ready when you are",
       "manage": "Manage channels",
       "addChannel": "Add channel",
       "remove": "Remove",
@@ -2353,6 +2371,42 @@
         "method": "Portwatch DWT + AIS calibration",
         "sampleLabel": "AIS disruption signals",
         "creditName": "EIA World Oil Transit Chokepoints"
+      }
+    },
+    "panelFreshness": {
+      "status": {
+        "fresh": "Fresh",
+        "stale": "Stale",
+        "veryStale": "Very stale",
+        "noData": "No data",
+        "disabled": "Disabled",
+        "error": "Error"
+      },
+      "labelWithAge": "{{status}} {{age}}",
+      "title": "Data freshness: {{status}}. {{sources}}",
+      "sourceDetail": "{{name}}: {{status}}, {{update}}",
+      "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
+      "lastUpdated": "last updated {{time}}",
+      "neverUpdated": "never updated",
+      "health": {
+        "partialCoverage": "partial coverage",
+        "contentStale": "content stale",
+        "seedStale": "seed stale",
+        "noSourceData": "no source data",
+        "sourceErrorReported": "source error reported",
+        "freshnessStoreUnavailable": "freshness store unavailable",
+        "freshnessStoreDegraded": "freshness store degraded"
+      },
+      "time": {
+        "never": "never",
+        "justNow": "just now",
+        "minutesAgo": "{{count}}m ago",
+        "hoursAgo": "{{count}}h ago",
+        "daysAgo": "{{count}}d ago",
+        "compactNow": "now",
+        "compactMinutes": "{{count}}m",
+        "compactHours": "{{count}}h",
+        "compactDays": "{{count}}d"
       }
     }
   },
@@ -3086,5 +3140,18 @@
     "or": "or enter a custom server",
     "generatingVisualization": "Building visualization...",
     "visualizationFailed": "Visualization failed"
+  },
+  "dashboardTabs": {
+    "ariaLabel": "Dashboard tabs",
+    "defaultName": "Main",
+    "newTabName": "New Tab",
+    "newTabCreated": "New tab created",
+    "tabDeleted": "Tab \"{{name}}\" deleted",
+    "addTab": "Add tab",
+    "addTabTitle": "New tab (starts with the default panels)",
+    "renameHint": "{{name}} — double-click to rename",
+    "deleteTab": "Delete tab",
+    "deleteTabAria": "Delete tab {{name}}",
+    "tabNameAria": "Tab name"
   }
 }

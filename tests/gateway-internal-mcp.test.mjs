@@ -172,6 +172,60 @@ async function buildSignedRequest({
 }
 
 // ===========================================================================
+// COLD-START CONFIG ASSERTIONS
+// ===========================================================================
+describe('gateway internal-MCP HMAC config — cold start', () => {
+  it('throws during gateway construction when Pro grant signing is configured without MCP_INTERNAL_HMAC_SECRET', () => {
+    process.env.MCP_PRO_GRANT_HMAC_SECRET = 'test-pro-grant-secret-32bytes-padding';
+    delete process.env.MCP_INTERNAL_HMAC_SECRET;
+
+    assert.throws(
+      () => makeGateway(),
+      /MCP_INTERNAL_HMAC_SECRET must be configured when MCP_PRO_GRANT_HMAC_SECRET is set/,
+    );
+  });
+
+  it('treats an empty MCP_INTERNAL_HMAC_SECRET as missing when Pro grant signing is configured', () => {
+    process.env.MCP_PRO_GRANT_HMAC_SECRET = 'test-pro-grant-secret-32bytes-padding';
+    process.env.MCP_INTERNAL_HMAC_SECRET = '';
+
+    assert.throws(
+      () => makeGateway(),
+      /MCP_INTERNAL_HMAC_SECRET must be configured when MCP_PRO_GRANT_HMAC_SECRET is set/,
+    );
+  });
+
+  it('treats a whitespace-only MCP_INTERNAL_HMAC_SECRET as missing when Pro grant signing is configured', () => {
+    process.env.MCP_PRO_GRANT_HMAC_SECRET = 'test-pro-grant-secret-32bytes-padding';
+    process.env.MCP_INTERNAL_HMAC_SECRET = '   ';
+
+    assert.throws(
+      () => makeGateway(),
+      /MCP_INTERNAL_HMAC_SECRET must be configured when MCP_PRO_GRANT_HMAC_SECRET is set/,
+    );
+  });
+
+  it('does not require either HMAC secret when Pro grant signing is not configured', () => {
+    delete process.env.MCP_PRO_GRANT_HMAC_SECRET;
+    delete process.env.MCP_INTERNAL_HMAC_SECRET;
+    assert.doesNotThrow(() => makeGateway());
+
+    process.env.MCP_PRO_GRANT_HMAC_SECRET = '';
+    assert.doesNotThrow(() => makeGateway());
+
+    process.env.MCP_PRO_GRANT_HMAC_SECRET = '   ';
+    assert.doesNotThrow(() => makeGateway());
+  });
+
+  it('allows gateway construction when both Pro grant signing and internal HMAC are configured', () => {
+    process.env.MCP_PRO_GRANT_HMAC_SECRET = 'test-pro-grant-secret-32bytes-padding';
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+
+    assert.doesNotThrow(() => makeGateway());
+  });
+});
+
+// ===========================================================================
 // HAPPY PATHS
 // ===========================================================================
 describe('gateway internal-MCP HMAC verify — happy paths', () => {
@@ -265,6 +319,87 @@ describe('gateway internal-MCP HMAC verify — happy paths', () => {
     });
     const res = await handler(req);
     assert.equal(res.status, 200, 'GET with empty body verified ok');
+  });
+
+  // -------------------------------------------------------------------------
+  // Vercel dynamic-route query injection (WORLDMONITOR-R1 / WORLDMONITOR-T8).
+  //
+  // In production every gateway domain is served by api/<domain>/v1/[rpc].ts;
+  // Vercel's filesystem router injects the matched segment into the function's
+  // request URL as ?rpc=<segment>. The signer never sees that param, so the
+  // verifier must strip the exact router echo before hashing — confirmed live:
+  // signing WITHOUT the param 401'd (invalid_internal_mcp_signature) while
+  // signing WITH it passed signature verify. These tests feed the verifier the
+  // REAL production request shape, which the original suite never did.
+  // -------------------------------------------------------------------------
+  it('Vercel-injected ?rpc=<last-segment> on the inbound URL still verifies (signer never saw it)', async () => {
+    const handler = makeGateway();
+    const signedUrl = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest?lang=en';
+    const inboundUrl = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest?lang=en&rpc=list-feed-digest';
+    const signed = await signInternalMcpRequest({ method: 'GET', url: signedUrl, body: null, userId: PRO_USER_ID, secret: HMAC_SECRET });
+    const req = new Request(inboundUrl, {
+      method: 'GET',
+      headers: {
+        [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+        [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+      },
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'router-injected rpc param MUST be stripped before hashing');
+  });
+
+  it('Vercel-injected ?rpc=<last-segment> with NO other query params still verifies', async () => {
+    const handler = makeGateway();
+    const signedUrl = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest';
+    const inboundUrl = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest?rpc=list-feed-digest';
+    const signed = await signInternalMcpRequest({ method: 'GET', url: signedUrl, body: null, userId: PRO_USER_ID, secret: HMAC_SECRET });
+    const req = new Request(inboundUrl, {
+      method: 'GET',
+      headers: {
+        [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+        [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+      },
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'router-injected rpc as the only param MUST be stripped');
+  });
+
+  it('caller-appended ?rpc with a value ≠ last path segment still breaks the signature → 401', async () => {
+    const handler = makeGateway();
+    const signedUrl = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest';
+    const inboundUrl = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest?rpc=evil-other-route';
+    const signed = await signInternalMcpRequest({ method: 'GET', url: signedUrl, body: null, userId: PRO_USER_ID, secret: HMAC_SECRET });
+    const req = new Request(inboundUrl, {
+      method: 'GET',
+      headers: {
+        [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+        [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+      },
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 401, 'non-echo rpc values MUST stay in the hash');
+    assert.deepEqual(await res.json(), { error: 'invalid_internal_mcp_signature' });
+  });
+
+  it('rpc=<last-segment> in the SIGNED URL fails verification — rpc is a reserved routing param', async () => {
+    // Both sides carry the param: verifier strips it from the inbound hash,
+    // but the signer's canonical string included it, so the hashes diverge
+    // and verification MUST fail (401). This pins the contract that `rpc`
+    // is a RESERVED routing param outbound tool URLs must never use — if a
+    // future endpoint legitimately needs a query param named rpc, the
+    // signer and verifier have to agree on new handling first.
+    const handler = makeGateway();
+    const url = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest?rpc=list-feed-digest';
+    const signed = await signInternalMcpRequest({ method: 'GET', url, body: null, userId: PRO_USER_ID, secret: HMAC_SECRET });
+    const req = new Request(url, {
+      method: 'GET',
+      headers: {
+        [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+        [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+      },
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 401, 'rpc is reserved for the router; signer URLs must not carry it');
   });
 });
 
@@ -366,17 +501,17 @@ describe('gateway internal-MCP HMAC verify — error paths', () => {
     assert.equal(res.status, 401, 'mutated body must 401');
   });
 
-  it('timestamp 31s in the past → 401', async () => {
+  it('timestamp 60s in the past → 401', async () => {
     const handler = makeGateway();
-    const past = Math.floor(Date.now() / 1000) - 31;
+    const past = Math.floor(Date.now() / 1000) - 60;
     const req = await buildSignedRequest({ now: past });
     const res = await handler(req);
     assert.equal(res.status, 401);
   });
 
-  it('timestamp 31s in the future → 401', async () => {
+  it('timestamp 60s in the future → 401', async () => {
     const handler = makeGateway();
-    const future = Math.floor(Date.now() / 1000) + 31;
+    const future = Math.floor(Date.now() / 1000) + 60;
     const req = await buildSignedRequest({ now: future });
     const res = await handler(req);
     assert.equal(res.status, 401);
@@ -449,6 +584,7 @@ describe('gateway internal-MCP HMAC verify — error paths', () => {
   });
 
   it('MCP_INTERNAL_HMAC_SECRET unset → 500 CONFIGURATION on the HMAC-attempt path', async () => {
+    delete process.env.MCP_PRO_GRANT_HMAC_SECRET;
     delete process.env.MCP_INTERNAL_HMAC_SECRET;
     const handler = makeGateway();
     const req = new Request('https://api.worldmonitor.app/api/news/v1/summarize-article', {
@@ -467,6 +603,7 @@ describe('gateway internal-MCP HMAC verify — error paths', () => {
   });
 
   it('legacy wm_ caller (no internal-MCP headers) → unaffected by missing MCP_INTERNAL_HMAC_SECRET', async () => {
+    delete process.env.MCP_PRO_GRANT_HMAC_SECRET;
     delete process.env.MCP_INTERNAL_HMAC_SECRET;
     const handler = makeGateway();
     // wm_-key flow: send a valid WORLDMONITOR_VALID_KEYS key on a non-tier-gated route.

@@ -68,7 +68,12 @@ function logProxyCall(entry: {
 
 const TIMEOUT_MS = 15_000;
 const SSE_CONNECT_TIMEOUT_MS = 10_000;
-const SSE_RPC_TIMEOUT_MS = 12_000;
+// Production waits up to 12s for an SSE RPC response. The node test runner sets
+// NODE_TEST_CONTEXT; an SSE mock that closes its stream before the proxy
+// registers its RPC deferred would otherwise stall the suite for that full
+// window. Shorten it under the test runner only — the routing/SSRF tests still
+// exercise the timeout→reject (504) path, just without the wall-clock stall.
+const SSE_RPC_TIMEOUT_MS = process.env.NODE_TEST_CONTEXT ? 200 : 12_000;
 const MCP_PROTOCOL_VERSION = '2025-03-26';
 
 const BLOCKED_HOST_PATTERNS = [
@@ -222,6 +227,8 @@ function makeDeferred() {
 class SseSession {
   constructor(sseUrl, headers) {
     this._sseUrl = sseUrl;
+    this._originHost = new URL(sseUrl).host;
+    this._originProtocol = new URL(sseUrl).protocol;
     this._headers = headers;
     this._endpointUrl = null;
     this._endpointDeferred = makeDeferred();
@@ -282,6 +289,15 @@ class SseSession {
                 }
                 if (BLOCKED_HOST_PATTERNS.some(p => p.test(resolved.hostname))) {
                   this._endpointDeferred.reject(new Error('SSE endpoint host is blocked'));
+                  return;
+                }
+                // Pin endpoint to the same host as the original SSE URL to
+                // prevent a malicious server from redirecting via the endpoint
+                // event to an internal host (DNS rebinding / SSRF).
+                if (resolved.host !== this._originHost || resolved.protocol !== this._originProtocol) {
+                  this._endpointDeferred.reject(
+                    new Error('SSE endpoint host or protocol does not match origin server'),
+                  );
                   return;
                 }
                 this._endpointUrl = resolved.toString();

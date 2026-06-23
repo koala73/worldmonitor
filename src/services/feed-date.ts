@@ -83,3 +83,20 @@ export function effectivePubDateMs(item: {
   const ms = new Date(item.pubDate).getTime();
   return Number.isFinite(ms) ? ms : 0;
 }
+
+export function displayPubDateMs(item: {
+  pubDate?: Date | string | number | null;
+}): number {
+  if (item.pubDate instanceof Date) {
+    const ms = item.pubDate.getTime();
+    return Number.isFinite(ms) ? ms : Date.now();
+  }
+  if (typeof item.pubDate === 'number') {
+    return Number.isFinite(item.pubDate) ? item.pubDate : Date.now();
+  }
+  if (typeof item.pubDate === 'string') {
+    const ms = new Date(item.pubDate).getTime();
+    return Number.isFinite(ms) ? ms : Date.now();
+  }
+  return Date.now();
+}

@@ -23,6 +23,12 @@ const LOCK_DOMAIN = 'supply_chain:portwatch-ports';
 // 60 min — covers the widest realistic run of this standalone service.
 const LOCK_TTL_MS = 60 * 60 * 1000;
 const TTL = 259_200; // 3 days — 6× the 12h cron interval
+// PortWatch currently has 174 ISO2-mapped countries with port references.
+// This is the issue #3613 health target. Runs below this count must stay
+// non-green in /api/health and /api/seed-health, but they still need to
+// advance seed-meta/canonical when they meet the recovery publish floor below
+// so fetchedAt does not freeze and incremental coverage gains reach consumers.
+export const PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES = 174;
 // Coverage gate for per-country WRITES. Lowered to 5 on 2026-05-18 (was
 // 50 → 25 → 20) so partial-success runs (6-10/30) can persist their fresh
 // per-country payloads to Redis. Below this floor, NOTHING is written.
@@ -31,10 +37,10 @@ const TTL = 259_200; // 3 days — 6× the 12h cron interval
 // writes through (so the cache-fresh rotation accumulates), but a
 // SEPARATE higher threshold gates the CANONICAL list + seed-meta advance.
 // This decoupling addresses Greptile PR #3760 P1: lowering this gate
-// alone would have let a 5-country run REPLACE the 174-country canonical
-// snapshot, exposing consumers to a 3% coverage canonical published as
-// fresh. Now the canonical stays at the prior version until coverage
-// genuinely recovers (see MIN_CANONICAL_PUBLISH).
+// alone would have let a 5-country run REPLACE the prior canonical snapshot,
+// exposing consumers to a 3% coverage canonical published as fresh. Now the
+// canonical stays at the prior version until coverage reaches the recovery
+// publish floor (see MIN_CANONICAL_PUBLISH).
 //
 // Floor at 5 matches MIN_FRESH_FETCH_FOR_CAP_BYPASS (the silent-loss
 // safety): cap-mode bypass still requires 5 fresh upstream contacts,
@@ -44,21 +50,22 @@ const TTL = 259_200; // 3 days — 6× the 12h cron interval
 // then 30 / 50 as upstream stabilises. Target review: 2026-05-25.
 const MIN_VALID_COUNTRIES = 5;
 // Minimum total countryData.size required to ADVANCE the canonical list
-// + seed-meta (the operator-facing healthy signal). Below this, the
+// + seed-meta (the operator-facing freshness signal). Below this, the
 // per-country fresh writes still go through (cache rotation accumulates),
 // but CANONICAL_KEY + META_KEY are extendExistingTtl-only — keeping the
-// prior 174-country list and the prior fetchedAt visible to consumers,
-// and keeping the operator-facing WARNING visible.
+// prior canonical list and prior fetchedAt visible to consumers.
 //
 // Greptile PR #3760 P1: addresses the failure mode where a 5-country
 // fresh-fetched run with no usable stale-served cache could pass
 // validateFn, earn the cap-mode bypass, advance seed-meta with a
-// 5-entry canonical list (3% coverage published as "healthy"). With
+// 5-entry canonical list (3% coverage published as fresh). With
 // this gate, the canonical only advances when coverage is meaningful.
 //
-// 50 chosen as a hold-over target — matches the historical pre-incident
-// gate. Bump to 100 / 174 as cache-rotation accumulates and the
-// expected steady-state coverage grows.
+// Keep this below the 174-country health target. /api/health and
+// /api/seed-health use PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES to report
+// partial recovery as non-green; this lower publish floor keeps cap-mode
+// recovery from freezing seed-meta fetchedAt or hiding incremental canonical
+// coverage improvements while still blocking tiny 5-country publishes.
 const MIN_CANONICAL_PUBLISH = 50;
 
 const EP3_BASE =
@@ -1175,7 +1182,12 @@ export async function fetchAll(progress, { signal } = {}) {
 }
 
 export function validateFn(data) {
-  return data && Array.isArray(data.countries) && data.countries.length >= MIN_VALID_COUNTRIES;
+  return !!(data && Array.isArray(data.countries) && data.countries.length >= MIN_VALID_COUNTRIES);
+}
+
+export function shouldAdvanceCanonical(countryCount, floor = MIN_CANONICAL_PUBLISH) {
+  const count = Number(countryCount);
+  return Number.isFinite(count) && count >= floor;
 }
 
 async function main() {
@@ -1310,8 +1322,8 @@ async function main() {
     // advance. Per-country writes always go through (cache-fresh rotation
     // accumulates), but CANONICAL + META only advance when total coverage
     // crosses MIN_CANONICAL_PUBLISH — protects consumers from seeing a
-    // 5-country canonical published as "healthy" during recovery.
-    const canonicalAdvances = countryData.size >= MIN_CANONICAL_PUBLISH;
+    // 5-country canonical published as fresh during recovery.
+    const canonicalAdvances = shouldAdvanceCanonical(countryData.size);
     const metaPayload = { fetchedAt: Date.now(), recordCount: countryData.size };
 
     const commands = [];
@@ -1324,24 +1336,24 @@ async function main() {
     } else {
       // Per-country fresh data persists, but canonical list + seed-meta
       // stay at the prior version. extendExistingTtl preserves the
-      // operator-facing WARNING — consumers reading CANONICAL see the
-      // prior 174-country list with their existing data (mostly stale
-      // for not-yet-rotated entries, fresh for the ones we just wrote).
+      // operator-facing state stable — consumers reading CANONICAL see the
+      // prior canonical list with their existing data (mostly stale for
+      // not-yet-rotated entries, fresh for the ones we just wrote).
       //
       // Greptile PR #3760 round 3 P1: prevCountryKeys MUST be extended
       // here too, mirroring the COVERAGE GATE / DEGRADATION GUARD
       // failure paths. Without it, untouched countries' per-country
       // payloads (TTL=3d) can expire during a multi-day partial
       // recovery while the canonical list still references them —
-      // contradicting the "consumers see the prior 174-country list
-      // with their existing data" claim. The keys we DO write in
+      // contradicting the "consumers see the prior canonical list with
+      // their existing data" claim. The keys we DO write in
       // `commands` below get their own SET ... EX TTL, so this only
       // affects the un-refreshed entries from the prior list.
       await extendExistingTtl([CANONICAL_KEY, META_KEY, ...prevCountryKeys], TTL).catch(() => {});
       console.warn(
         `  PARTIAL PERSIST: ${countryData.size}/${MIN_CANONICAL_PUBLISH} below canonical-publish floor — ` +
         `${countryData.size} per-country payload(s) written (cache rotation accumulates), ` +
-        `canonical + seed-meta + prior per-country keys preserved (operator WARNING remains visible).`,
+        `canonical + seed-meta + prior per-country keys preserved.`,
       );
     }
 

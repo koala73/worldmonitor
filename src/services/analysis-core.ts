@@ -82,6 +82,7 @@ function aggregateThreats(
 const TOPIC_BASELINE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const TOPIC_BASELINE_SPIKE_MULTIPLIER = 3;
 const TOPIC_HISTORY_MAX_POINTS = 1000;
+export const MAX_CLUSTER_NEWS_ITEMS = 1000;
 
 interface TopicVelocityPoint {
   timestamp: number;
@@ -219,7 +220,18 @@ export function clusterNewsCore(
 ): ClusteredEventCore[] {
   if (items.length === 0) return [];
 
-  const itemsWithTier: NewsItemWithTier[] = items.map(item => ({
+  const boundedItems = items.length > MAX_CLUSTER_NEWS_ITEMS
+    ? [...items]
+        .sort((a, b) =>
+          effectivePubDateMs(b) - effectivePubDateMs(a)
+          || a.source.localeCompare(b.source)
+          || a.title.localeCompare(b.title)
+          || a.link.localeCompare(b.link)
+        )
+        .slice(0, MAX_CLUSTER_NEWS_ITEMS)
+    : items;
+
+  const itemsWithTier: NewsItemWithTier[] = boundedItems.map(item => ({
     ...item,
     tier: item.tier ?? getSourceTier(item.source),
   }));

@@ -1,5 +1,5 @@
 ---
-title: "Cyber Threat Intelligence Meets Geopolitics: World Monitor for Security Teams"
+title: "Cyber Threat Intelligence with Geopolitical Context"
 description: "Track botnets, malware URLs, and internet outages with geopolitical context. Integrates Feodo Tracker, URLhaus, and AlienVault OTX on one map."
 metaTitle: "Cyber Threat Intelligence Dashboard | World Monitor"
 keywords: "cyber threat intelligence dashboard free, botnet tracking tool, malware monitoring dashboard, internet outage map, threat intelligence OSINT"

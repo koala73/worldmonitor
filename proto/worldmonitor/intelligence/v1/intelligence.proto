@@ -15,9 +15,10 @@ message CiiScore {
     (buf.validate.field).double.gte = 0,
     (buf.validate.field).double.lte = 100
   ];
-  // Dynamic real-time score (0-100).
+  // Approximate 24-hour score movement delta (-100 to 100). Positive means rising,
+  // negative means falling, and 0 means stable or no valid prior snapshot.
   double dynamic_score = 3 [
-    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.gte = -100,
     (buf.validate.field).double.lte = 100
   ];
   // Combined weighted score (0-100).
@@ -31,9 +32,9 @@ message CiiScore {
   CiiComponents components = 6;
   // Last computation time, as Unix epoch milliseconds.
   int64 computed_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
-  // Methodology version string for this score (e.g. "v1").
-  // Bumped whenever the editorial weights in CII_FORMULA_VERSION change so
-  // API clients can detect score drift. See docs/methodology/cii-risk-scores.mdx.
+  // Methodology version string for this score (for example, the current CII formula version).
+  // Bumped whenever CII_FORMULA_VERSION changes so API clients can detect
+  // score or movement-semantics drift. See docs/methodology/cii-risk-scores.mdx.
   string methodology_version = 8;
   // Editorial per-country event multiplier applied to live signals before
   // they roll into the composite score. Published for transparency — issue
@@ -48,26 +49,33 @@ message CiiScore {
     (buf.validate.field).double.gte = 0,
     (buf.validate.field).double.lte = 10
   ];
+  // Travel advisory level used by the score, when any advisory input applies.
+  // Empty means no live or fallback advisory level affected boosts/floors.
+  string advisory_level = 10;
+  // Provenance for advisory_level: "live" when sourced from the Redis advisory
+  // feed, "fallback" when using the embedded State Department fallback table,
+  // and "absent" when no advisory input affected this score.
+  string advisory_provenance = 11 [(buf.validate.field).string.pattern = "^(live|fallback|absent)$"];
 }
 
 // CiiComponents represents the contributing factors to a CII score.
 message CiiComponents {
-  // News activity signal contribution (0-100).
+  // Information-environment contribution from news urgency and threat-summary signals (0-100).
   double news_activity = 1 [
     (buf.validate.field).double.gte = 0,
     (buf.validate.field).double.lte = 100
   ];
-  // CII index contribution (0-100).
+  // Domestic unrest contribution from protests, riots, fatalities, severity, and outages (0-100).
   double cii_contribution = 2 [
     (buf.validate.field).double.gte = 0,
     (buf.validate.field).double.lte = 100
   ];
-  // Geographic convergence score (0-100).
+  // Armed-conflict contribution from ACLED events, fatalities, civilian violence, strikes, and OREF alerts (0-100).
   double geo_convergence = 3 [
     (buf.validate.field).double.gte = 0,
     (buf.validate.field).double.lte = 100
   ];
-  // Military activity contribution (0-100).
+  // Security-mobility contribution from military flights, military vessels, aviation disruption, and GPS interference (0-100).
   double military_activity = 4 [
     (buf.validate.field).double.gte = 0,
     (buf.validate.field).double.lte = 100

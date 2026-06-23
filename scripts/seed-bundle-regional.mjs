@@ -25,6 +25,7 @@
  *   GROQ_API_KEY and/or OPENROUTER_API_KEY (for narrative + brief LLM)
  */
 
+import { pathToFileURL } from 'node:url';
 import { loadEnvFile, getRedisCredentials } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { main as runSnapshots } from './seed-regional-snapshots.mjs';
@@ -36,9 +37,21 @@ const BRIEF_COOLDOWN_MS = 6.5 * 24 * 60 * 60 * 1000; // 6.5 days
 const BRIEF_META_KEY = 'seed-meta:intelligence:regional-briefs';
 
 /**
- * Check if the weekly brief seeder should run by reading its seed-meta
- * timestamp. Returns true when the last run was >6.5 days ago or the
- * meta key doesn't exist (first run).
+ * Check if the weekly brief seeder should run by reading its seed-meta.
+ * Returns true when:
+ *   - the last run was >6.5 days ago (normal weekly cadence), OR
+ *   - the meta key doesn't exist (first run), OR
+ *   - the LAST run FAILED coverage (recordCount === 0).
+ *
+ * The coverage-fail bypass is the self-healing path: seed-regional-briefs
+ * deliberately writes recordCount=0 when fewer than (expectedRegions-1)
+ * briefs generate (e.g. a transient OpenRouter-credits outage makes every
+ * region return an empty brief → skipped, failed===0, recordCount=0) so
+ * /api/health flips to EMPTY_DATA instead of hiding partial failure (PR
+ * #2989). Without this bypass the cooldown would pin that crit for ~5 more
+ * days even after credits are restored. recordCount lives in the bare-shape
+ * seed-meta and is exactly the field that drives /api/health, so it is the
+ * authoritative "last run failed coverage" signal.
  */
 async function shouldRunBriefs() {
   try {
@@ -55,6 +68,13 @@ async function shouldRunBriefs() {
     const age = Date.now() - lastRun;
     if (age >= BRIEF_COOLDOWN_MS) {
       console.log(`[bundle] briefs: last run ${(age / 86_400_000).toFixed(1)} days ago, running`);
+      return true;
+    }
+    // Bypass the cooldown when the last run failed coverage so a transient
+    // failure self-heals on the next 6h tick instead of staying a crit for
+    // the remainder of the cooldown window.
+    if (Number(meta?.recordCount ?? 0) === 0) {
+      console.log(`[bundle] briefs: last run ${(age / 86_400_000).toFixed(1)} days ago but failed coverage (recordCount=0), bypassing cooldown to retry`);
       return true;
     }
     console.log(`[bundle] briefs: last run ${(age / 86_400_000).toFixed(1)} days ago, skipping (cooldown ${(BRIEF_COOLDOWN_MS / 86_400_000).toFixed(1)}d)`);
@@ -114,7 +134,12 @@ async function main() {
   console.log(`[bundle] Done in ${elapsed}s`);
 }
 
-main().catch((err) => {
-  console.error('[bundle] Fatal:', err);
-  process.exit(1);
-});
+const isMain = import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
+  main().catch((err) => {
+    console.error('[bundle] Fatal:', err);
+    process.exit(1);
+  });
+}
+
+export { shouldRunBriefs, BRIEF_COOLDOWN_MS, BRIEF_META_KEY };

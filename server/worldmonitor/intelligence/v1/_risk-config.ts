@@ -13,19 +13,23 @@
 //   2. Update docs/methodology/cii-risk-scores.mdx (the public methodology
 //      note) in the same commit. Tests assert the doc lists every coefficient
 //      and every CURATED_COUNTRIES code.
-//   3. Note the change in CHANGELOG.md under the public-facing section so
-//      downstream users of the proto API see why combinedScore values may
-//      shift between deploys.
+//   3. Note the change in docs/changelog.mdx and CHANGELOG.md under the
+//      public-facing section so downstream users of the proto API see why score
+//      values or movement semantics may shift between deploys.
 //
-// Last reviewed: 2026-05-27 (CII calibration / bias reduction, v2→v3; lands on
-// top of the v2-stable CII weights source-of-truth refactor #3789).
+// Last reviewed: 2026-06-06 (v8 — fix dead UCDP conflict-floor attribution:
+// the scorer read non-existent `intensity_level`/`type_of_violence` fields, so
+// UCDP never applied a war/minor floor and never counted toward health coverage.
+// Now classifies via the cached feed's real `violenceType`/`deathsBest`/`dateStart`
+// fields using the frontend `deriveUcdpClassifications` heuristic).
 // ============================================================================
 
 /**
  * Formula version emitted on every CiiScore as `methodology_version`.
- * Bump on any coefficient change so API clients can detect score drift.
+ * Bump on coefficient or scoring-contract changes so API clients can detect
+ * score or movement-semantics drift.
  */
-export const CII_FORMULA_VERSION = 'v3';
+export const CII_FORMULA_VERSION = 'v8';
 
 /**
  * Conflict event activity log curve used before fatality/civilian/strike boosts.
@@ -41,8 +45,10 @@ export const CII_CONFLICT_ACTIVITY_PIVOT = 4000;
  * and a top-5 window, weights are [1.00, 0.85, 0.70, 0.55, 0.40].
  *
  * Rationale: gives the most-affected country full weight, lets the next four
- * contribute decreasing influence, and reaches zero weight at position 6 so
- * the slice size of 5 is naturally bounded.
+ * contribute decreasing influence, and keeps the roll-up focused on the
+ * published top-5 window. The next 1-based position 6 (0-based index 5) would
+ * still carry weight 0.25, so the window cap, not a zero-weight cutoff, bounds
+ * the slice.
  */
 export const STRATEGIC_RISK_POSITIONAL_DECAY = 0.15;
 
@@ -65,8 +71,8 @@ export const STRATEGIC_RISK_SCALE_FACTOR = 0.7;
 
 /**
  * Size of the top-N window used for the strategic-risk roll-up.
- * Tied to STRATEGIC_RISK_POSITIONAL_DECAY: with decay=0.15, position 6 hits
- * weight=0.10 (still contributing); we cap at 5 so the roll-up reflects the
- * "very top" of the dashboard rather than a long tail.
+ * Tied to STRATEGIC_RISK_POSITIONAL_DECAY: with decay=0.15, the next 1-based
+ * position 6 (0-based index 5) still has weight=0.25; we cap at 5 so the
+ * roll-up reflects the "very top" of the dashboard rather than a long tail.
  */
 export const STRATEGIC_RISK_TOP_N = 5;

@@ -9,7 +9,11 @@ import {
   readFreshnessMap,
   resolveSeedMetaKey,
 } from '../server/worldmonitor/resilience/v1/_dimension-freshness.ts';
-import { INDICATOR_REGISTRY } from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
+import {
+  INDICATOR_REGISTRY,
+  getIndicatorSourceKeys,
+} from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
+import { STANDALONE_SOURCE_META_MAX_STALE_MIN } from '../server/worldmonitor/resilience/v1/_standalone-source-thresholds.ts';
 import {
   AGING_MULTIPLIER,
   FRESH_MULTIPLIER,
@@ -23,6 +27,10 @@ import type { ResilienceDimensionId } from '../server/worldmonitor/resilience/v1
 // wiring) can consume the aggregated freshness with confidence.
 
 const NOW = 1_700_000_000_000;
+const RECOVERY_RESERVE_ADEQUACY_KEY = 'resilience:recovery:reserve-adequacy:v1';
+const RECOVERY_REEXPORT_SHARE_KEY = 'resilience:recovery:reexport-share:v1';
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
 
 function freshAt(cadenceKey: Parameters<typeof cadenceUnitMs>[0], factor = 0.5): number {
   // factor < FRESH_MULTIPLIER keeps the age in the fresh band.
@@ -40,11 +48,29 @@ function staleAt(cadenceKey: Parameters<typeof cadenceUnitMs>[0]): number {
   return NOW - cadenceUnitMs(cadenceKey) * (AGING_MULTIPLIER + 2);
 }
 
+function daysAgo(days: number): number {
+  return NOW - days * DAY_MS;
+}
+
+function freshSourceAt(
+  sourceKey: string,
+  cadenceKey: Parameters<typeof cadenceUnitMs>[0],
+  factor = 0.5,
+): number {
+  const maxStaleMin = STANDALONE_SOURCE_META_MAX_STALE_MIN[resolveSeedMetaKey(sourceKey)];
+  if (typeof maxStaleMin === 'number') {
+    return NOW - maxStaleMin * MINUTE_MS * factor;
+  }
+  return freshAt(cadenceKey, factor);
+}
+
 function buildAllFreshMap(dimensionId: ResilienceDimensionId): Map<string, number> {
   const map = new Map<string, number>();
   for (const indicator of INDICATOR_REGISTRY) {
     if (indicator.dimension !== dimensionId) continue;
-    map.set(indicator.sourceKey, freshAt(indicator.cadence));
+    for (const sourceKey of getIndicatorSourceKeys(indicator)) {
+      map.set(sourceKey, freshSourceAt(sourceKey, indicator.cadence));
+    }
   }
   return map;
 }
@@ -63,16 +89,19 @@ describe('classifyDimensionFreshness (T1.5 propagation pass)', () => {
   });
 
   it('one aging indicator + rest fresh returns aging and stays below stale', () => {
-    // Pick a dimension with multiple source keys so we can tip one to aging.
-    // socialCohesion has 3 indicators across 3 source keys.
-    const dimensionId: ResilienceDimensionId = 'socialCohesion';
+    // Pick a dimension with multiple source keys and tip a static source
+    // without a standalone seed-health SLA to aging. Source keys with
+    // explicit seed-health SLAs may jump directly from fresh to stale.
+    const dimensionId: ResilienceDimensionId = 'energy';
     const map = new Map<string, number>();
     const indicators = INDICATOR_REGISTRY.filter((i) => i.dimension === dimensionId);
     assert.ok(indicators.length >= 2);
-    map.set(indicators[0]!.sourceKey, agingAt(indicators[0]!.cadence));
-    for (let i = 1; i < indicators.length; i += 1) {
-      map.set(indicators[i]!.sourceKey, freshAt(indicators[i]!.cadence));
+    for (const indicator of indicators) {
+      for (const sourceKey of getIndicatorSourceKeys(indicator)) {
+        map.set(sourceKey, freshSourceAt(sourceKey, indicator.cadence));
+      }
     }
+    map.set('resilience:static:{ISO2}', agingAt('annual'));
     const result = classifyDimensionFreshness(dimensionId, map, NOW);
     assert.equal(result.staleness, 'aging', 'one aging + rest fresh should escalate to aging');
   });
@@ -97,6 +126,66 @@ describe('classifyDimensionFreshness (T1.5 propagation pass)', () => {
     assert.equal(result.lastObservedAtMs, 0, 'no data = lastObservedAtMs zero');
   });
 
+  it('liquidReserveAdequacy is stale when the re-export-share modifier is missing', () => {
+    const map = new Map<string, number>([
+      [RECOVERY_RESERVE_ADEQUACY_KEY, freshSourceAt(RECOVERY_RESERVE_ADEQUACY_KEY, 'annual')],
+    ]);
+
+    const result = classifyDimensionFreshness('liquidReserveAdequacy', map, NOW);
+
+    assert.equal(
+      result.staleness,
+      'stale',
+      'fresh reserve-adequacy alone must not mask missing re-export-share modifier freshness',
+    );
+  });
+
+  it('liquidReserveAdequacy is stale when the re-export-share modifier is stale', () => {
+    const map = new Map<string, number>([
+      [RECOVERY_RESERVE_ADEQUACY_KEY, freshSourceAt(RECOVERY_RESERVE_ADEQUACY_KEY, 'annual')],
+      [RECOVERY_REEXPORT_SHARE_KEY, staleAt('annual')],
+    ]);
+
+    const result = classifyDimensionFreshness('liquidReserveAdequacy', map, NOW);
+
+    assert.equal(
+      result.staleness,
+      'stale',
+      'stale re-export-share modifier freshness must dominate fresh reserve-adequacy freshness',
+    );
+  });
+
+  it('liquidReserveAdequacy is stale when re-export-share exceeds its seed-health SLA', () => {
+    const map = new Map<string, number>([
+      [RECOVERY_RESERVE_ADEQUACY_KEY, daysAgo(30)],
+      [RECOVERY_REEXPORT_SHARE_KEY, daysAgo(70)],
+    ]);
+
+    const result = classifyDimensionFreshness('liquidReserveAdequacy', map, NOW);
+
+    assert.equal(
+      result.staleness,
+      'stale',
+      '70-day-old re-export-share must stale the badge even though annual cadence alone would still be fresh',
+    );
+  });
+
+  it('liquidReserveAdequacy stays fresh when reserve adequacy and re-export-share are both fresh', () => {
+    const map = new Map<string, number>([
+      [RECOVERY_RESERVE_ADEQUACY_KEY, daysAgo(10)],
+      [RECOVERY_REEXPORT_SHARE_KEY, daysAgo(30)],
+    ]);
+
+    const result = classifyDimensionFreshness('liquidReserveAdequacy', map, NOW);
+
+    assert.equal(result.staleness, 'fresh');
+    assert.equal(
+      result.lastObservedAtMs,
+      map.get(RECOVERY_REEXPORT_SHARE_KEY),
+      'lastObservedAtMs should remain the oldest fresh liquid-reserve source',
+    );
+  });
+
   it('dimension with no registry indicators returns empty payload (defensive)', () => {
     // Cast forces the defensive branch; every real dimension has entries,
     // but we want to pin the behavior for the defensive path.
@@ -114,7 +203,7 @@ describe('classifyDimensionFreshness (T1.5 propagation pass)', () => {
     const dimensionId: ResilienceDimensionId = 'energy';
     const map = new Map<string, number>();
     const indicators = INDICATOR_REGISTRY.filter((i) => i.dimension === dimensionId);
-    const uniqueKeys = [...new Set(indicators.map((i) => i.sourceKey))];
+    const uniqueKeys = [...new Set(indicators.flatMap((i) => [...getIndicatorSourceKeys(i)]))];
     assert.ok(uniqueKeys.length >= 3, 'energy should have at least 3 unique source keys');
     // Give each unique source key a distinct fetchedAt, all within the
     // fresh band so staleness stays fresh and we can isolate the MIN
@@ -236,9 +325,9 @@ describe('readFreshnessMap (T1.5 propagation pass)', () => {
     };
     const map = await readFreshnessMap(reader);
 
-    const staticSourceKeys = INDICATOR_REGISTRY.filter((i) =>
-      /^resilience:static(:\{|:\*|$)/.test(i.sourceKey),
-    ).map((i) => i.sourceKey);
+    const staticSourceKeys = INDICATOR_REGISTRY.flatMap((i) =>
+      getIndicatorSourceKeys(i).filter((sourceKey) => /^resilience:static(:\{|:\*|$)/.test(sourceKey)),
+    );
     assert.ok(staticSourceKeys.length >= 10, 'registry should have many resilience:static:* entries');
     for (const sourceKey of staticSourceKeys) {
       assert.equal(
@@ -292,6 +381,42 @@ describe('readFreshnessMap (T1.5 propagation pass)', () => {
     );
   });
 
+  it('skips bare zero-record seed-meta unless the producer explicitly marks the zero as healthy', async () => {
+    const sourceKey = 'intelligence:social:reddit:v1';
+    const metaKey = resolveSeedMetaKey(sourceKey);
+
+    const bareZeroReader = async (key: string): Promise<unknown | null> => {
+      if (key === metaKey) return { fetchedAt: NOW, recordCount: 0 };
+      return null;
+    };
+    const bareZeroMap = await readFreshnessMap(bareZeroReader);
+    assert.ok(
+      !bareZeroMap.has(sourceKey),
+      'fresh fetchedAt + recordCount:0 without status/state must not mark the source fresh',
+    );
+
+    const okZeroReader = async (key: string): Promise<unknown | null> => {
+      if (key === metaKey) return { fetchedAt: NOW, recordCount: 0, status: 'ok' };
+      return null;
+    };
+    const okZeroMap = await readFreshnessMap(okZeroReader);
+    assert.equal(okZeroMap.get(sourceKey), NOW, 'status:ok explicitly allows zero-record freshness');
+
+    const stateZeroReader = async (key: string): Promise<unknown | null> => {
+      if (key === metaKey) return { fetchedAt: NOW, recordCount: 0, state: 'OK_ZERO' };
+      return null;
+    };
+    const stateZeroMap = await readFreshnessMap(stateZeroReader);
+    assert.equal(stateZeroMap.get(sourceKey), NOW, 'state:OK_ZERO explicitly allows zero-record freshness');
+
+    const stateOkZeroReader = async (key: string): Promise<unknown | null> => {
+      if (key === metaKey) return { fetchedAt: NOW, recordCount: 0, state: 'OK' };
+      return null;
+    };
+    const stateOkZeroMap = await readFreshnessMap(stateOkZeroReader);
+    assert.equal(stateOkZeroMap.get(sourceKey), NOW, 'state:OK explicitly allows zero-record freshness');
+  });
+
   it('healthPublicService classifies fresh when seed-meta:resilience:static is recent', async () => {
     // End-to-end integration for the P1 fix. healthPublicService has
     // three indicators, all sharing resilience:static:{ISO2} as their
@@ -336,6 +461,10 @@ describe('resolveSeedMetaKey (T1.5 propagation pass, P1 fix)', () => {
     assert.equal(resolveSeedMetaKey('infra:outages:v1'), 'seed-meta:infra:outages');
     assert.equal(resolveSeedMetaKey('unrest:events:v1'), 'seed-meta:unrest:events');
     assert.equal(resolveSeedMetaKey('intelligence:gpsjam:v2'), 'seed-meta:intelligence:gpsjam');
+    assert.equal(
+      resolveSeedMetaKey(RECOVERY_REEXPORT_SHARE_KEY),
+      'seed-meta:resilience:recovery:reexport-share',
+    );
     assert.equal(
       resolveSeedMetaKey('economic:national-debt:v1'),
       'seed-meta:economic:national-debt',
@@ -460,7 +589,7 @@ describe('INDICATOR_REGISTRY seed-meta coverage (T1.5 P1 regression lock)', () =
     }
 
     const unknownResolutions: { sourceKey: string; metaKey: string }[] = [];
-    const uniqueSourceKeys = [...new Set(INDICATOR_REGISTRY.map((i) => i.sourceKey))];
+    const uniqueSourceKeys = [...new Set(INDICATOR_REGISTRY.flatMap((i) => [...getIndicatorSourceKeys(i)]))];
     for (const sourceKey of uniqueSourceKeys) {
       const metaKey = resolveSeedMetaKey(sourceKey);
       if (!known.has(metaKey)) {

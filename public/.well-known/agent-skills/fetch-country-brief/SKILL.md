@@ -13,7 +13,7 @@ Use this skill when the user asks for a summary of the current geopolitical, eco
 Server-to-server callers (agents, scripts, SDKs) MUST present an API key in the `X-WorldMonitor-Key` header. `Authorization: Bearer …` is for MCP/OAuth or Clerk JWTs — **not** raw API keys.
 
 ```
-X-WorldMonitor-Key: wm_live_...
+X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567
 ```
 
 Browser requests from `worldmonitor.app` get a free pass via CORS Origin trust, but agents will never hit that path. Issue a key at https://www.worldmonitor.app/pro.

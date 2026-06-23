@@ -128,7 +128,9 @@
       "languages": "言語",
       "currencies": "通貨",
       "area": "面積"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "世界",
@@ -207,7 +209,8 @@
     "panelCatMining": "採掘・サプライチェーン",
     "panelCatCommodityEcon": "経済・貿易",
     "panelCatHappyNews": "ニュース",
-    "panelCatHappyPlanet": "地球・社会貢献"
+    "panelCatHappyPlanet": "地球・社会貢献",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "ライブニュース",
@@ -456,7 +459,8 @@
       "flightMilitary": "軍用機 · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "軍用機 · {{type}} · 地上",
       "flightSearchHint": "Enterキーを押すか、クリックしてライブ位置を検索",
-      "flightNotFound": "{{callsign}} のライブ位置が見つかりません"
+      "flightNotFound": "{{callsign}} のライブ位置が見つかりません",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "インテリジェンス所見",
@@ -686,7 +690,9 @@
         "americas": "アメリカ",
         "asia": "アジア",
         "space": "宇宙"
-      }
+      },
+      "play": "再生",
+      "previewStatus": "ライブプレビュー"
     },
     "positiveNewsFeed": {
       "noStories": "このカテゴリにはまだ記事がありません"
@@ -1215,7 +1221,13 @@
       "noSignals": "不安定性シグナル未検出",
       "infoTooltip": "<strong>方法論</strong><ul><li><strong>U</strong>nrest: 市民の騒乱・抗議活動</li><li><strong>C</strong>onflict: 武力紛争の強度</li><li><strong>S</strong>ecurity: 領土上の軍事飛行/艦艇</li><li><strong>I</strong>nformation: ニュース速度と焦点相関</li><li>ホットスポット近接ブースト（戦略的拠点）</li></ul><em>U:C:S:I値はコンポーネントスコアを表示。</em> 焦点検出はニュースエンティティとマップシグナルを相関させ正確なスコアリングを実現。",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "国別ベースライン + イベント乗数を含む — 公開表は /docs/methodology/cii-risk-scores を参照してください"
+      "methodologyLink": "国別ベースライン + イベント乗数を含む — 公開表は /docs/methodology/cii-risk-scores を参照してください",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "insights": {
       "noStories": "速報またはマルチソースストーリーはまだなし",
@@ -1254,8 +1266,8 @@
       "badgeAnimDesc": "パネルヘッダーの更新バッジをアニメーション表示",
       "headlineMemoryLabel": "ヘッドラインメモリ",
       "headlineMemoryDesc": "閲覧済みの見出しを記憶して新着を強調",
-      "streamAlwaysOnLabel": "ライブ配信を常に実行",
-      "streamAlwaysOnDesc": "アイドル時に Live Cams と Live News が自動一時停止されるのを防ぎます。セカンドモニター / 壁面ダッシュボード用途に推奨。CPU/帯域を節約するには（Eco）を無効にしてください。",
+      "streamAlwaysOnLabel": "ダッシュボードでライブストリームを自動再生",
+      "streamAlwaysOnDesc": "Live News と Live Webcams が表示されたときに自動的に開始します。動画を「再生」をクリックした後だけ読み込むにはオフのままにしてください。",
       "analysisFrameworksLabel": "分析フレームワーク",
       "analysisFrameworksActivePerPanel": "パネルごとのアクティブ",
       "analysisFrameworksSkillLibrary": "スキルライブラリ",
@@ -1334,9 +1346,8 @@
     "strategicRisk": {
       "noRisks": "重大なリスク未検出",
       "levels": {
-        "critical": "危機的",
-        "elevated": "上昇",
-        "moderate": "中程度",
+        "high": "高",
+        "medium": "中程度",
         "low": "低"
       },
       "trend": "トレンド",
@@ -1368,7 +1379,14 @@
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
       },
-      "infoTooltip": "<strong>方法論</strong> 複合スコア（0-100）の構成:<ul><li>50% 国家不安定性（上位5カ国加重）</li><li>30% 地理的収束地帯</li><li>20% インフラインシデント</li></ul>5分ごとに自動更新。"
+      "infoTooltip": "<strong>方法論</strong> 複合スコア（0-100）の構成:<ul><li>50% 国家不安定性（上位5カ国加重）</li><li>30% 地理的収束地帯</li><li>20% インフラインシデント</li></ul>5分ごとに自動更新。",
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "techEvents": {
       "loading": "テックイベントを読み込み中...",
@@ -1412,7 +1430,7 @@
       "noMatching": "該当する情報なし",
       "critical": "重大",
       "health": "健康",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
       "refresh": "更新",
       "levels": {
         "doNotTravel": "渡航中止",
@@ -1757,7 +1775,9 @@
       "invalidHandle": "有効なYouTubeハンドルを入力してください（例: @ChannelName）",
       "verifying": "確認中…",
       "hlsUrl": "HLSストリームURL（任意）",
-      "invalidHlsUrl": "有効なHLSストリームURL（.m3u8）を入力してください"
+      "invalidHlsUrl": "有効なHLSストリームURL（.m3u8）を入力してください",
+      "playLiveFeed": "ライブフィードを再生",
+      "readyStatus": "準備ができたら再生できます"
     },
     "map": {
       "showMap": "地図を表示",
@@ -1992,9 +2012,23 @@
         "categories": "カテゴリ",
         "movers": "値動き",
         "spread": "小売業者のスプレッド",
-        "health": "データヘルス"
+        "health": "データヘルス",
+        "world": "World"
       },
-      "infoTooltip": "<strong>消費者価格</strong> リアルタイムバスケット価格追跡:<ul><li><strong>概要</strong>: エッセンシャルズインデックス、バリューバスケット、前週比の変化</li><li><strong>カテゴリ</strong>: カテゴリ別価格トレンド(30日間レンジ付き)</li><li><strong>値動き</strong>: 今週の最大上昇・下降商品</li><li><strong>スプレッド</strong>: 同じバスケットにおける小売業者間の価格差</li></ul>データはライブ小売価格スクレイピングから取得しています。"
+      "infoTooltip": "<strong>消費者価格</strong> リアルタイムバスケット価格追跡:<ul><li><strong>概要</strong>: エッセンシャルズインデックス、バリューバスケット、前週比の変化</li><li><strong>カテゴリ</strong>: カテゴリ別価格トレンド(30日間レンジ付き)</li><li><strong>値動き</strong>: 今週の最大上昇・下降商品</li><li><strong>スプレッド</strong>: 同じバスケットにおける小売業者間の価格差</li></ul>データはライブ小売価格スクレイピングから取得しています。",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "marketImplications": {
       "infoTooltip": "<strong>AI市場インプリケーション</strong> 各フォアキャストサイクル後のライブ地政学、商品、マクロ状態から導出されるLLM生成トレードシグナル。<ul><li><strong>方向性</strong>: LONG / SHORT / HEDGE(信頼度レーティング付き)</li><li><strong>時間軸</strong>: 1W、2W、1M、または3M</li><li><strong>ドライバー</strong>: シグナルの主要な触媒</li><li><strong>リスク</strong>: 注意事項または無効化条件</li></ul><em>情報提供のみを目的としています。投資アドバイスではありません。</em>",
@@ -2266,6 +2300,45 @@
         "method": "Portwatch DWT + AIS較正",
         "sampleLabel": "AIS遮断信号",
         "creditName": "EIA World Oil Transit Chokepoints"
+      }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
+    },
+    "panelFreshness": {
+      "status": {
+        "fresh": "Fresh",
+        "stale": "Stale",
+        "veryStale": "Very stale",
+        "noData": "No data",
+        "disabled": "Disabled",
+        "error": "Error"
+      },
+      "labelWithAge": "{{status}} {{age}}",
+      "title": "Data freshness: {{status}}. {{sources}}",
+      "sourceDetail": "{{name}}: {{status}}, {{update}}",
+      "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
+      "lastUpdated": "last updated {{time}}",
+      "neverUpdated": "never updated",
+      "health": {
+        "partialCoverage": "partial coverage",
+        "contentStale": "content stale",
+        "seedStale": "seed stale",
+        "noSourceData": "no source data",
+        "sourceErrorReported": "source error reported",
+        "freshnessStoreUnavailable": "freshness store unavailable",
+        "freshnessStoreDegraded": "freshness store degraded"
+      },
+      "time": {
+        "never": "never",
+        "justNow": "just now",
+        "minutesAgo": "{{count}}m ago",
+        "hoursAgo": "{{count}}h ago",
+        "daysAgo": "{{count}}d ago",
+        "compactNow": "now",
+        "compactMinutes": "{{count}}m",
+        "compactHours": "{{count}}h",
+        "compactDays": "{{count}}d"
       }
     }
   },
@@ -3067,5 +3140,18 @@
     "or": "またはカスタムサーバーを入力",
     "generatingVisualization": "ビジュアライゼーションを生成中...",
     "visualizationFailed": "ビジュアライゼーションに失敗しました"
+  },
+  "dashboardTabs": {
+    "ariaLabel": "Dashboard tabs",
+    "defaultName": "Main",
+    "newTabName": "New Tab",
+    "newTabCreated": "New tab created",
+    "tabDeleted": "Tab \"{{name}}\" deleted",
+    "addTab": "Add tab",
+    "addTabTitle": "New tab (starts with the default panels)",
+    "renameHint": "{{name}} — double-click to rename",
+    "deleteTab": "Delete tab",
+    "deleteTabAria": "Delete tab {{name}}",
+    "tabNameAria": "Tab name"
   }
 }

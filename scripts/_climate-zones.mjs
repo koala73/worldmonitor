@@ -1,5 +1,7 @@
 export const CLIMATE_ZONES = [
   { name: 'Ukraine', lat: 48.4, lon: 31.2 },
+  { name: 'Europe', lat: 51.0, lon: 10.0 },
+  { name: 'East Asia', lat: 39.0, lon: 127.0 },
   { name: 'Middle East', lat: 33.0, lon: 44.0 },
   { name: 'Sahel', lat: 14.0, lon: 0.0 },
   { name: 'Horn of Africa', lat: 8.0, lon: 42.0 },
@@ -13,6 +15,7 @@ export const CLIMATE_ZONES = [
   { name: 'Central Africa', lat: 4.0, lon: 22.0 },
   { name: 'Southern Africa', lat: -25.0, lon: 28.0 },
   { name: 'Central Asia', lat: 42.0, lon: 65.0 },
+  { name: 'Latin America', lat: 7.0, lon: -66.0 },
   { name: 'Caribbean', lat: 19.0, lon: -72.0 },
   { name: 'Arctic', lat: 70.0, lon: 0.0 },
   { name: 'Greenland', lat: 72.0, lon: -42.0 },

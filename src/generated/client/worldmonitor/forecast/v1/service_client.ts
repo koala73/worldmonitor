@@ -9,6 +9,9 @@ export interface GetForecastsRequest {
 export interface GetForecastsResponse {
   forecasts: Forecast[];
   generatedAt: number;
+  degraded: boolean;
+  stale: boolean;
+  error: string;
 }
 
 export interface Forecast {

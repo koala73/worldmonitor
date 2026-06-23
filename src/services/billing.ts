@@ -9,7 +9,7 @@
  * Follows the same lazy reactive pattern as entitlements.ts.
  */
 
-import * as Sentry from '@sentry/browser';
+import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { getConvexClient, getConvexApi } from './convex-client';
 import { extractBillingErrorKind } from './_billing-error';
 
@@ -84,10 +84,11 @@ export async function initSubscriptionWatch(_userId?: string): Promise<void> {
   } catch (err) {
     console.error('[billing] Failed to initialize subscription watch:', err);
     // Do not rethrow -- billing service failure must not break the dashboard
-    Sentry.captureException(
-      normalizeCaughtError('initSubscriptionWatch', err),
+    const initErr = normalizeCaughtError('initSubscriptionWatch', err);
+    enqueueSentryCall((s) => s.captureException(
+      initErr,
       { tags: { component: 'dodo-billing', action: 'initSubscriptionWatch' } },
-    );
+    ));
   }
 }
 
@@ -215,17 +216,13 @@ export async function openBillingPortal(
     const level: 'warning' | 'error' = isNoCustomer ? 'warning' : 'error';
     const log = level === 'warning' ? console.warn : console.error;
     log('[billing] Failed to get customer portal URL:', err);
-    Sentry.captureException(
-      normalizeCaughtError('openBillingPortal', err),
-      {
-        tags: {
-          component: 'dodo-billing',
-          action: 'openBillingPortal',
-          ...(kind ? { billing_error_kind: kind } : {}),
-        },
-        level,
-      },
-    );
+    const portalErr = normalizeCaughtError('openBillingPortal', err);
+    const portalTags = {
+      component: 'dodo-billing',
+      action: 'openBillingPortal',
+      ...(kind ? { billing_error_kind: kind } : {}),
+    };
+    enqueueSentryCall((s) => s.captureException(portalErr, { tags: portalTags, level }));
     if (isNoCustomer) {
       closeReserved();
       return { outcome: 'no-customer' };

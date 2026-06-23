@@ -1,5 +1,14 @@
 import type { FreshnessCheck } from './types';
 
+function parseFiniteRecordCount(raw: unknown): number | null {
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
+  if (typeof raw === 'string' && raw.trim() !== '') {
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 export function evaluateFreshness(checks: FreshnessCheck[], metas: unknown[], now = Date.now()): { cached_at: string | null; stale: boolean } {
   let stale = false;
   let oldestFetchedAt = Number.POSITIVE_INFINITY;
@@ -21,6 +30,13 @@ export function evaluateFreshness(checks: FreshnessCheck[], metas: unknown[], no
     hasAnyValidMeta = true;
     oldestFetchedAt = Math.min(oldestFetchedAt, fetchedAt);
     stale ||= (now - fetchedAt) / 60_000 > check.maxStaleMin;
+
+    if (check.minRecordCount != null) {
+      const recordCount = meta && typeof meta === 'object' && 'recordCount' in meta
+        ? parseFiniteRecordCount((meta as { recordCount: unknown }).recordCount)
+        : null;
+      stale ||= recordCount == null || recordCount < check.minRecordCount;
+    }
   }
 
   return {

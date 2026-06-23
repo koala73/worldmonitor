@@ -99,7 +99,7 @@ Beyond raw data feeds, the dashboard provides synthesized intelligence panels:
 |-------|---------|
 | **AI Strategic Posture** | Theater-level military aggregation with strike capability analysis |
 | **Strategic Risk Overview** | Composite risk score combining all intelligence modules |
-| **Country Instability Index** | Real-time stability scores for 24 monitored countries |
+| **Country Instability Index** | Real-time CII v8 stability scores and signed 24-hour movement deltas for 31 Tier-1 countries |
 | **Infrastructure Cascade** | Dependency analysis for cables, pipelines, and chokepoints |
 | **Live Intelligence** | GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions) |
 | **Intel Feed** | Curated defense and security news sources |
@@ -109,7 +109,7 @@ Beyond raw data feeds, the dashboard provides synthesized intelligence panels:
 | **Displacement Tracking** | UN OCHA HAPI refugee, asylum seeker, and IDP data with origin/host country perspectives |
 | **Gulf Economies** | Indices, currencies, and oil data for 6 GCC countries (Saudi, UAE, Qatar, Kuwait, Bahrain, Oman) |
 | **WTO Trade Policy** | Active trade restrictions, tariff trends, bilateral trade flows, and SPS/TBT barriers |
-| **Central Banks & BIS** | Policy rates and monetary decisions from 13 central banks via BIS data |
+| **Central Banks, BIS & IMF** | Policy-rate and institutional finance signals from 14 central-bank and supranational finance institutions |
 | **Market Watchlist** | User-defined stock/commodity/crypto symbol lists (up to 50 symbols) |
 
 These panels transform raw signals into actionable intelligence by applying scoring algorithms, trend detection, and cross-source correlation.
@@ -245,8 +245,8 @@ Two full-screen, keyboard-first workflows complement the map + panels experience
 
 Two complementary country-scoring surfaces:
 
-- **[Country Instability Index](/country-instability-index)** — a high-frequency stress score that blends conflict, unrest, news velocity, and security signals for a curated country set.
-- **[Country Resilience Index](/methodology/country-resilience-index)** — a ~220-country, 0-100 resilience score across 6 domains and 20 active dimensions (grouped into 3 pillars: structural readiness, live shock exposure, recovery capacity; plus 2 retired dimensions kept for schema continuity), refreshed every 6 hours and sourced from official/authoritative providers with transparent imputation.
+- **[Country Instability Index](/country-instability-index)** — a high-frequency CII v8 stress score with signed 24-hour movement deltas, blending unrest, conflict, security, and information signals for 31 Tier-1 countries.
+- **[Country Resilience Index](/methodology/country-resilience-index)** — a 0-100 resilience score for the 196-country public rankable universe across 6 domains and 20 active dimensions (grouped into 3 pillars: structural readiness, live shock exposure, recovery capacity; plus 2 retired dimensions kept for schema continuity), refreshed every 6 hours and sourced from official/authoritative providers with transparent imputation.
 
 CII and CRI answer different questions and are not interchangeable: CII is short-horizon stress; CRI is structural resilience plus live shock exposure.
 
@@ -257,7 +257,7 @@ Universal command palette for navigating the entire application. Every panel, ma
 - **Map navigation**: jump to any region (Global, MENA, Europe, Asia-Pacific, Americas, Africa, Oceania)
 - **Layer presets and individual layers**: flip presets (Military, Finance, Infrastructure, Intel, All, None, Minimal) or toggle individual layers by name (AIS, flights, conflicts, cables, fires, GPS jamming, satellites, etc.)
 - **Panels by family**:
-  - **AI & intelligence**: [AI Forecasts](/panels/forecast), [Latest Brief](/panels/latest-brief), [WM Analyst](/panels/chat-analyst), [AI Market Implications](/panels/market-implications), [Deduct Situation](/panels/deduction), [Daily Market Brief](/panels/daily-market-brief), [Regional Intelligence](/panels/regional-intelligence), [AI Strategic Posture](/panels/strategic-posture)
+  - **AI & intelligence**: [AI Forecasts](/panels/forecast), [Latest Brief](/panels/latest-brief), [WM Analyst](/panels/chat-analyst), [AI Market Implications](/panels/market-implications), [Deduct Situation](/panels/deduction), [Daily Market Brief](/panels/daily-market-brief), [Regional Intelligence](/panels/regional-intelligence), [AI Strategic Posture](/panels/strategic-posture), [Threat Timeline](/panels/threat-timeline)
   - **Markets & trading**: [Premium Stock Analysis](/panels/stock-analysis), [Premium Backtesting](/panels/stock-backtest), [WSB Ticker Scanner](/panels/wsb-ticker-scanner), plus the [Indicators & Signals](/panels/indicators-and-signals) catalogue (Fear & Greed, Macro Tiles, Yield Curve, Earnings / Economic calendars, ETF flows, crypto sectors, etc.)
   - **Geopolitical & risk**: [Country Instability](/country-instability-index), [Country Resilience](/methodology/country-resilience-index), [Strategic Risk](/strategic-risk), [Infrastructure Cascade](/infrastructure-cascade)
   - **Trade & supply chain**: [Trade Policy](/panels/trade-policy), [Supply Chain](/panels/supply-chain), [Sanctions Pressure](/panels/sanctions-pressure), [Hormuz Trade Tracker](/panels/hormuz-tracker), [Energy Crisis Tracker](/panels/energy-crisis)
@@ -274,6 +274,7 @@ The full panel inventory lives in the app itself — Cmd+K surfaces what's avail
 ## Data Export
 
 - CSV and JSON export of current dashboard state
+- Country dossier evidence bundles as portable Markdown with source links and freshness notes where available
 - Historical playback from snapshots
 
 ---
@@ -637,6 +638,7 @@ These models run entirely in the browser via Web Workers, providing intelligence
 - **Click markers** - Show detailed popup with full context
 - **Hover markers** - Show tooltip with summary information
 - **Layer toggles** - Show/hide data layers
+- **Layer explanations** - Open compact cards from the layer picker to see a layer's purpose, source/provider, freshness expectation, confidence notes, limitations, and related panels
 
 ### Map Marker Design
 

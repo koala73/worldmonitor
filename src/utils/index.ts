@@ -19,7 +19,12 @@ export function formatTime(date: Date): string {
   }
 }
 
-export function formatPrice(price: number): string {
+export function formatPrice(price: number | null | undefined): string {
+  // Live feeds occasionally omit `price` (undefined) rather than sending null,
+  // and `null`/NaN slip through call-site `!` assertions on `number | null`
+  // fields. Guard here so a missing price renders the unavailable placeholder
+  // instead of throwing `undefined.toLocaleString()` (WORLDMONITOR-SH).
+  if (typeof price !== 'number' || !Number.isFinite(price)) return '--';
   if (price >= 1000) {
     return `$${price.toLocaleString(undefined, {
       minimumFractionDigits: 0,
@@ -122,7 +127,6 @@ export function loadFromStorage<T>(key: string, defaultValue: T): T {
 }
 
 export function saveToStorage<T>(key: string, value: T): void {
-  if (isStorageQuotaExceeded()) return;
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch (e) {
@@ -189,5 +193,5 @@ export { toFlagEmoji } from './country-flag';
 export { showToast } from './toast';
 
 import { getCurrentLanguage } from '../services/i18n';
-import { isStorageQuotaExceeded, isQuotaError, markStorageQuotaExceeded } from './storage-quota';
-export { isStorageQuotaExceeded, isQuotaError, markStorageQuotaExceeded };
+import { isQuotaError, markStorageQuotaExceeded } from './storage-quota';
+export { isStorageQuotaExceeded, isQuotaError, markStorageQuotaExceeded } from './storage-quota';

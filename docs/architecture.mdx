@@ -14,7 +14,7 @@ description: "Design principles, intelligence tradecraft, algorithmic decisions,
 | **Speed over perfection**           | Keyword classifier is instant; LLM refines asynchronously. Users never wait.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | **Assume failure**                  | Per-feed circuit breakers with 5-minute cooldowns. AI fallback chain: Ollama (local) → Groq → OpenRouter → browser-side T5. Redis cache failures degrade to in-memory fallback with stale-on-error. Negative caching (5-minute backoff after upstream failures) prevents hammering downed APIs. Every edge function returns stale cached data when upstream APIs are down. **Cache stampede prevention** — `cachedFetchJson` uses an in-flight promise map to coalesce concurrent cache misses into a single upstream fetch: the first request creates and registers a Promise, all concurrent requests for the same key await that same Promise rather than independently hitting the upstream. Rate-sensitive APIs (Yahoo Finance) use staggered sequential requests with 150ms inter-request delays to avoid 429 throttling. UCDP conflict data uses automatic version discovery (probing multiple API versions in parallel), discovered-version caching (1-hour TTL), and stale-on-error fallback. |
 | **Show what you can't see**         | Intelligence gap tracker explicitly reports data source outages rather than silently hiding them.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| **Browser-first compute**           | Analysis (clustering, instability scoring, surge detection) runs client-side — no backend compute dependency for core intelligence.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **Browser-first compute where appropriate** | Clustering, local ML, geolocation, surge detection, and offline fallbacks run client-side. Server-authoritative APIs publish CII/CRI scores, briefs, forecasts, MCP tools, and cached operational data with documented methodology and provenance.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | **Local-first geolocation**         | Country detection uses browser-side ray-casting against GeoJSON polygons rather than network reverse-geocoding. Sub-millisecond response, zero API dependency, works offline. Network geocoding is a fallback, not the primary path.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | **Multi-signal correlation**        | No single data source is trusted alone. Focal points require convergence across news + military + markets + protests before escalating to critical.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | **Geopolitical grounding**          | Hard-coded conflict zones, baseline country risk, and strategic chokepoints prevent statistical noise from generating false alerts in low-data regions.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
@@ -37,7 +37,7 @@ The dashboard's design draws from established intelligence analysis methodology,
 
 **Analysis of Competing Hypotheses (ACH)** — the multi-source corroboration requirement (news + military + markets + protests before escalating to critical) is an automated form of ACH. No single data stream can drive a critical alert alone — the system requires convergence across independent streams, reducing the impact of single-source reporting errors or propaganda campaigns.
 
-**Intelligence gap awareness** — professional intelligence assessments always note what they *don't* know. The data freshness tracker explicitly reports "what can't be seen" — 31 sources with status categorization (fresh, stale, very_stale, no_data, error, disabled). Two sources (GDELT, RSS) are flagged as `requiredForRisk`, meaning their absence directly degrades CII scoring quality. When a critical data source goes down, the system displays the gap prominently rather than silently omitting it, preventing false confidence from incomplete data.
+**Intelligence gap awareness** — professional intelligence assessments always note what they *don't* know. The data freshness tracker explicitly reports "what can't be seen" — 35 sources with status categorization (fresh, stale, very_stale, no_data, error, disabled). Two browser-tracker sources (GDELT, RSS) are flagged as `requiredForRisk`, meaning their absence can force the Strategic Risk panel into its hard insufficient-data state. That flag is narrower than the full CII scoring dependency graph: UCDP events, ACLED conflict, news summaries, cyber threats, and other score inputs are monitored through source-specific health plus `/api/health.riskScores` signal-density coverage. When a critical data source goes down, the system displays the gap prominently rather than silently omitting it, preventing false confidence from incomplete data.
 
 **Source credibility weighting** — the 4-tier source hierarchy (wire services → major outlets → specialty → aggregators) mirrors intelligence community source evaluation (A–F reliability, 1–6 confidence). State-affiliated sources are included for completeness but tagged with propaganda risk indicators, enabling analysts to factor in editorial bias. Higher-tier sources carry more weight in focal point detection and alert generation.
 
@@ -227,7 +227,7 @@ The `SmartPollLoop` is the core refresh orchestration primitive used by all data
 
 ### Railway Seed Data Pipeline
 
-21 Railway cron jobs continuously refresh the Redis cache with pre-computed data from external APIs. Seeds run on configurable schedules (typically every 5–15 minutes) and write both a canonical domain key (for RPC handler lookups) and a bootstrap key (for page-load hydration). This dual-key strategy ensures that bootstrap hydration and RPC handlers always agree on data format and freshness.
+21 Railway cron jobs continuously refresh the Redis cache with pre-computed data from external APIs. Seeds run on configurable schedules from minutes to daily cadence and write both a canonical domain key (for RPC handler lookups) and a bootstrap key (for page-load hydration). This dual-key strategy ensures that bootstrap hydration and RPC handlers always agree on data format and freshness.
 
 | Seed Script | Data Source | Update Frequency | Bootstrap Key |
 | --- | --- | --- | --- |
@@ -235,11 +235,11 @@ The `SmartPollLoop` is the core refresh orchestration primitive used by all data
 | `seed-market-quotes` | Yahoo Finance (staggered batches) | 5 min | `market:stocks-bootstrap:v1` |
 | `seed-commodity-quotes` | Yahoo Finance (WTI, Brent, metals) | 5 min | `market:commodities-bootstrap:v1` |
 | `seed-crypto-quotes` | CoinGecko (BTC, ETH, SOL, XRP+) | 5 min | `market:crypto:v1` |
-| `seed-cyber-threats` | Feodo, URLhaus, C2Intel, OTX, AbuseIPDB | 10 min | `cyber:threats-bootstrap:v2` |
+| `seed-cyber-threats` | Feodo, URLhaus, C2Intel, OTX, AbuseIPDB | 2 hours | `cyber:threats-bootstrap:v2` |
 | `seed-internet-outages` | Cloudflare Radar | 5 min | `infra:outages:v1` |
 | `seed-fire-detections` | NASA FIRMS VIIRS | 10 min | `wildfire:fires:v1` |
 | `seed-climate-anomalies` | Open-Meteo ERA5 | 15 min | `climate:anomalies:v2` |
-| `seed-natural-events` | USGS + GDACS + NASA EONET | 10 min | `natural:events:v1` |
+| `seed-natural-events` | USGS + GDACS + NASA EONET | 2 hours | `natural:events:v1` |
 | `seed-airport-delays` | FAA + AviationStack + ICAO NOTAM | 10 min | `aviation:delays-bootstrap:v1` |
 | `seed-insights` | Groq LLM world brief + top stories | 10 min | `news:insights:v1` |
 | `seed-prediction-markets` | Polymarket Gamma API | 10 min | `prediction:markets-bootstrap:v1` |
@@ -247,7 +247,7 @@ The `SmartPollLoop` is the core refresh orchestration primitive used by all data
 | `seed-stablecoin-markets` | CoinGecko (USDT, USDC, DAI+) | 10 min | `market:stablecoins:v1` |
 | `seed-gulf-quotes` | Yahoo Finance (Tadawul, DFM, ADX) | 10 min | `market:gulf-quotes:v1` |
 | `seed-unrest-events` | ACLED protests + GDELT | 45 min | `unrest:events:v1` |
-| `seed-ucdp-events` | UCDP GED API | 15 min | `conflict:ucdp-events:v1` |
+| `seed-ucdp-events` | UCDP GED API | 6 hours | `conflict:ucdp-events:v1` |
 | `seed-iran-events` | LiveUAMap geocoded events | 10 min | `conflict:iran-events:v1` |
 | `seed-displacement-summary` | UNHCR / IOM | 30 min | N/A |
 | `seed-military-bases` | Curated 210+ base database | Daily | N/A |
@@ -256,7 +256,7 @@ The `SmartPollLoop` is the core refresh orchestration primitive used by all data
 | `seed-conflict-intel` | ACLED + HAPI + PizzINT + GDELT | 15 min | `conflict:acled:v1:all:0:0` |
 | `seed-economy` | EIA energy + FRED macro + spending | 15 min | N/A (extra keys) |
 | `seed-supply-chain-trade` | FRED shipping + WTO + US Treasury | 6 hours | `supply_chain:shipping:v2` |
-| `seed-security-advisories` | 24 gov RSS feeds via relay proxy | 1 hour | `intelligence:advisories-bootstrap:v1` |
+| `seed-security-advisories` | 24 advisory RSS/Atom feeds via relay proxy | 1 hour | `intelligence:advisories-bootstrap:v1` |
 | `seed-usni-fleet` | USNI News WP-JSON (curl for JA3 bypass) | 6 hours | `usni-fleet:sebuf:v1` |
 | `seed-gdelt-intel` | GDELT 2.0 Doc API (8 topics) | 1 hour | `intelligence:gdelt-intel:v1` |
 | `seed-research` | arXiv + HN + tech events + GitHub | 6 hours | N/A (extra keys) |
@@ -280,7 +280,7 @@ World Monitor uses 60+ Vercel Edge Functions as a lightweight API layer, split i
 - **Market Intelligence** — macro signals, ETF flows, and stablecoin monitors compute derived analytics server-side (VWAP, SMA, peg deviation, flow estimates) and cache results in Redis
 - **Temporal Baseline** — Welford's algorithm state is persisted in Redis across requests, building statistical baselines without a traditional database
 - **Custom Scrapers** — sources without RSS feeds (FwdStart, GitHub Trending, tech events) are scraped and transformed into RSS-compatible formats
-- **Finance Geo Data** — stock exchanges (92), financial centers (19), central banks (13), and commodity hubs (10) are served as static typed datasets with market caps, GFCI rankings, trading hours, and commodity specializations
+- **Finance Geo Data** — stock exchanges (29), financial centers (19), central-bank and supranational finance institutions (14), and commodity hubs (10) are served as static typed datasets with market caps, GFCI rankings, trading hours, and commodity specializations
 - **BIS Integration** — policy rates, real effective exchange rates, and credit-to-GDP ratios from the Bank for International Settlements, cached with 30-minute TTL
 - **WTO Trade Policy** — trade restrictions, tariff trends, bilateral trade flows, and SPS/TBT barriers from the World Trade Organization
 - **Supply Chain Intelligence** — maritime chokepoint disruption scores (cross-referencing NGA warnings + AIS data), FRED shipping freight indices with spike detection, and critical mineral supply concentration via Herfindahl-Hirschman Index analysis
@@ -298,7 +298,7 @@ This was split into per-domain thin entry points — one per service domain — 
 
 ### Single-Deployment Variant Consolidation
 
-All five dashboard variants (World Monitor, Tech Monitor, Finance Monitor, Commodity Monitor, Happy Monitor) serve from a **single Vercel deployment**. The variant is determined at runtime by hostname detection:
+All six dashboard variants (World Monitor, Tech Monitor, Finance Monitor, Commodity Monitor, Happy Monitor, Energy Monitor) serve from a **single Vercel deployment**. The variant is determined at runtime by hostname detection:
 
 | Hostname | Variant |
 | --- | --- |
@@ -306,6 +306,7 @@ All five dashboard variants (World Monitor, Tech Monitor, Finance Monitor, Commo
 | `finance.worldmonitor.app` | `finance` |
 | `commodity.worldmonitor.app` | `commodity` |
 | `happy.worldmonitor.app` | `happy` |
+| `energy.worldmonitor.app` | `energy` |
 | `worldmonitor.app` (default) | `full` |
 
 On the desktop app, the variant is stored in `localStorage['worldmonitor-variant']` and can be switched without rebuilding. The variant selector in the header bar navigates between deployed domains on the web or toggles the localStorage value on desktop.
@@ -389,7 +390,9 @@ Countries GeoJSON is lazy-loaded from a shared `getCountriesGeoJson()` function,
 
 All 56 map layer toggle definitions — icon, localization key, fallback display label, and supported renderer types — are consolidated in a single shared registry (`src/config/map-layer-definitions.ts`). Each entry declares which map renderers support it via a `renderers: MapRenderer[]` field (e.g., `dayNight` is flat-only, `ciiChoropleth` is both flat and globe), preventing the two map components from showing inconsistent layer options.
 
-A `def()` factory function reduces per-entry boilerplate. Variant-specific layer ordering (`VARIANT_LAYER_ORDER`) defines the display sequence for each of the five dashboard variants without duplicating the definitions themselves. Adding a new map layer requires a single registry entry — both the flat map and 3D globe derive their toggle panels from this catalog automatically.
+A `def()` factory function reduces per-entry boilerplate. Variant-specific layer ordering (`VARIANT_LAYER_ORDER`) defines the display sequence for each of the six dashboard variants without duplicating the definitions themselves. Adding a new map layer requires a single registry entry — both the flat map and 3D globe derive their toggle panels from this catalog automatically.
+
+The same registry also carries the v1 layer-explanation catalog for high-adoption layers. Each curated explanation records purpose, provider/source, freshness expectations, confidence notes, limitations, related panels/actions, and grounding paths; unsupported layers intentionally fall back to a generic card so the UI never implies a fabricated freshness or confidence value.
 
 ---
 

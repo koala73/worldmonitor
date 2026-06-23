@@ -175,12 +175,24 @@ export default async function handler(
       // backs off rather than treating it as a permanent failure.
       const status = resp.status === 429 ? 503 : 502;
       console.warn(`[symbol-search] Finnhub HTTP ${resp.status} for q="${q}"`);
-      captureSilentError(new Error(`Finnhub search HTTP ${resp.status}`), {
-        tags: { route: 'api/symbol-search', step: 'finnhub_fetch' },
-        extra: { q, finnhubStatus: resp.status },
-        level: 'warning',
-        ctx,
-      });
+      // Upstream gateway transients (502/503/504) are Finnhub-side infra blips —
+      // not our bug, not our quota, not our auth. Like the 422 skip above, the
+      // client already receives a 502/503 and backs off, so capturing each one
+      // only pages at warning on an unactionable transient (WORLDMONITOR-RE). A
+      // sustained Finnhub outage surfaces via uptime monitoring on the 5xx the
+      // client sees. Auth failures (401/403 = our API key broke / Finnhub-side
+      // misconfig) and 429 (quota — actionable: bump the plan) still capture so a
+      // real regression isn't silently swallowed.
+      const isUpstreamGatewayTransient =
+        resp.status === 502 || resp.status === 503 || resp.status === 504;
+      if (!isUpstreamGatewayTransient) {
+        captureSilentError(new Error(`Finnhub search HTTP ${resp.status}`), {
+          tags: { route: 'api/symbol-search', step: 'finnhub_fetch' },
+          extra: { q, finnhubStatus: resp.status },
+          level: 'warning',
+          ctx,
+        });
+      }
       return jsonResponse({ error: 'SYMBOL_SEARCH_UNAVAILABLE' }, status, cors);
     }
     const data = (await resp.json()) as { result?: FinnhubSearchResult[] };

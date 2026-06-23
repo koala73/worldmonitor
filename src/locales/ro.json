@@ -128,7 +128,9 @@
       "languages": "Limbi",
       "currencies": "Monede",
       "area": "Suprafață"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "LUME",
@@ -207,7 +209,8 @@
     "panelCatMining": "Minerit și lanț de aprovizionare",
     "panelCatCommodityEcon": "Economie și comerț",
     "panelCatHappyNews": "Știri bune",
-    "panelCatHappyPlanet": "Planetă și donații"
+    "panelCatHappyPlanet": "Planetă și donații",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "Știri Live",
@@ -456,7 +459,8 @@
       "flightMilitary": "Militar · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Militar · {{type}} · pe sol",
       "flightSearchHint": "Apăsați Enter sau faceți clic pentru a căuta poziția live",
-      "flightNotFound": "Nu s-a găsit poziție live pentru {{callsign}}"
+      "flightNotFound": "Nu s-a găsit poziție live pentru {{callsign}}",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "DESCOPERIRE INFORMAȚII",
@@ -686,7 +690,9 @@
         "americas": "AMERICA",
         "asia": "ASIA",
         "space": "SPAȚIU"
-      }
+      },
+      "play": "Redă",
+      "previewStatus": "Previzualizare live"
     },
     "positiveNewsFeed": {
       "noStories": "Încă nu există povești în această categorie"
@@ -1215,7 +1221,13 @@
       "noSignals": "Nu au fost detectate semnale de instabilitate",
       "infoTooltip": "<strong>Metodologie</strong><ul><li><strong>U</strong>nrest: dezordine civilă și proteste</li><li><strong>C</strong>conflict: intensitatea conflictului armat</li><li><strong>S</strong>siguranță: zboruri/nave militare peste teritoriu</li><li><strong>I</strong>nformație: știri și proximitate punct focal știri și viteză de corelație (locații strategice)</li></ul><em>Valorile U:C:S:I arată scorurile componente.</em> Focal Point Detection corelează entitățile de știri cu semnalele hărții pentru scoruri precise.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "Include bază per-țară + multiplicator de evenimente — consultați /docs/methodology/cii-risk-scores pentru tabelul publicat"
+      "methodologyLink": "Include bază per-țară + multiplicator de evenimente — consultați /docs/methodology/cii-risk-scores pentru tabelul publicat",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "insights": {
       "noStories": "Încă nu există știri de ultimă oră sau din surse multiple",
@@ -1254,8 +1266,8 @@
       "badgeAnimDesc": "Animați insigne de actualizare pe anteturile panoului",
       "headlineMemoryLabel": "Memorie titlu",
       "headlineMemoryDesc": "Amintiți-vă titlurile văzute pentru a evidenția povești noi",
-      "streamAlwaysOnLabel": "Menține fluxurile live active",
-      "streamAlwaysOnDesc": "Împiedică oprirea automată a camerelor și știrilor live când nu interacționați. Recomandat pentru monitorizare continuă. Dezactivați (Eco) pentru a economisi CPU/lățime de bandă.",
+      "streamAlwaysOnLabel": "Redă automat fluxurile live în tabloul de bord",
+      "streamAlwaysOnDesc": "Pornește automat Live News și Live Webcams când sunt vizibile. Lasă dezactivat pentru a încărca video doar după ce dai clic pe Redă.",
       "analysisFrameworksLabel": "Cadre de Analiză",
       "analysisFrameworksActivePerPanel": "Activ per panou",
       "analysisFrameworksSkillLibrary": "Bibliotecă de Abilități",
@@ -1335,9 +1347,8 @@
     "strategicRisk": {
       "noRisks": "Nu au fost detectate riscuri semnificative",
       "levels": {
-        "critical": "Critic",
-        "elevated": "Ridicat",
-        "moderate": "Moderat",
+        "high": "Mare",
+        "medium": "Moderat",
         "low": "Scăzut"
       },
       "trend": "Tendință",
@@ -1369,7 +1380,14 @@
         "minutesAgo": "acum {{count}}m",
         "hoursAgo": "acum {{count}}h"
       },
-      "infoTooltip": "<strong>Metodologie</strong> Combinație scor compus (0-100):<ul><li>50% Instabilitatea țării (top 5 ponderat)</li><li>30% Zone de convergență geografică</li><li>20% Incidente de infrastructură</li></ul>Se actualizează automat la fiecare 5 minute."
+      "infoTooltip": "<strong>Metodologie</strong> Combinație scor compus (0-100):<ul><li>50% Instabilitatea țării (top 5 ponderat)</li><li>30% Zone de convergență geografică</li><li>20% Incidente de infrastructură</li></ul>Se actualizează automat la fiecare 5 minute.",
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "techEvents": {
       "loading": "Se încarcă evenimentele tehnice...",
@@ -1413,7 +1431,7 @@
       "noMatching": "Niciun aviz nu corespunde acestui filtru",
       "critical": "Critic",
       "health": "Sănătate",
-      "sources": "Departamentul de Stat al SUA, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, OMS, Ambasadele SUA",
+      "sources": "Departamentul de Stat al SUA, AU DFAT, UK FCDO, CDC, ECDC, OMS, Ambasadele SUA",
       "refresh": "Actualizează",
       "levels": {
         "doNotTravel": "Nu călători",
@@ -1428,7 +1446,7 @@
         "hoursAgo": "acum {{count}}h",
         "daysAgo": "{{count}}d acum"
       },
-      "infoTooltip": "<strong>Aviz de securitate</strong><br>Aviz de călătorie și alerte de securitate de la agențiile guvernamentale de afaceri externe:<br><br><strong>Surse:</strong><br>🇺🇸 Avizele de călătorie ale Departamentului de Stat al SUA<br>🇦🇺 AU DFAT Smartraveller<br>🇬🇧 Sfat de călătorie 🇬🇧 Marea Britanie SafeTravel<br><br><strong>Niveluri:</strong><br>🟥 Nu călătoriți<br>🟧 Reconsiderați călătoriile<br>🟨 Fiți atenți<br>🟩 Precauții normale"
+      "infoTooltip": "<strong>Aviz de securitate</strong><br>Aviz de călătorie și alerte de securitate de la agențiile guvernamentale de afaceri externe:<br><br><strong>Surse:</strong><br>🇺🇸 Avizele de călătorie ale Departamentului de Stat al SUA<br>🇦🇺 AU DFAT Smartraveller<br>🇬🇧 UK FCDO Travel Advice<br><br><strong>Niveluri:</strong><br>🟥 Nu călătoriți<br>🟧 Reconsiderați călătoriile<br>🟨 Fiți atenți<br>🟩 Precauții normale"
     },
     "orefSirens": {
       "checking": "Se verifică alertele sirenelor...",
@@ -1758,7 +1776,9 @@
       "invalidHandle": "Introduceți un handle YouTube valid (de exemplu, @ChannelName)",
       "verifying": "Se verifică...",
       "hlsUrl": "URL flux HLS (opțional)",
-      "invalidHlsUrl": "Introduceți un URL valid de flux HLS (.m3u8)"
+      "invalidHlsUrl": "Introduceți un URL valid de flux HLS (.m3u8)",
+      "playLiveFeed": "Redă fluxul live",
+      "readyStatus": "Gata când ești și tu"
     },
     "map": {
       "showMap": "Arată harta",
@@ -1998,9 +2018,23 @@
         "categories": "Categorii",
         "movers": "Modificări",
         "spread": "Diferență Retail",
-        "health": "Starea Datelor"
+        "health": "Starea Datelor",
+        "world": "World"
       },
-      "infoTooltip": "<strong>Prețuri pentru Consumatori</strong> Urmărire în timp real a prețurilor coșului:<ul><li><strong>Prezentare generală</strong>: Index produse esențiale, coș valoare și modificare săptămână la săptămână</li><li><strong>Categorii</strong>: Tendințe de preț per categorie cu interval de 30 de zile</li><li><strong>Modificări</strong>: Cele mai mari articole în creștere și scădere acestă săptămână</li><li><strong>Diferență</strong>: Variație de preț între retaileri pentru același coș</li></ul>Date provenind din extragerea directă a prețurilor de la retaileri."
+      "infoTooltip": "<strong>Prețuri pentru Consumatori</strong> Urmărire în timp real a prețurilor coșului:<ul><li><strong>Prezentare generală</strong>: Index produse esențiale, coș valoare și modificare săptămână la săptămână</li><li><strong>Categorii</strong>: Tendințe de preț per categorie cu interval de 30 de zile</li><li><strong>Modificări</strong>: Cele mai mari articole în creștere și scădere acestă săptămână</li><li><strong>Diferență</strong>: Variație de preț între retaileri pentru același coș</li></ul>Date provenind din extragerea directă a prețurilor de la retaileri.",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "marketImplications": {
       "infoTooltip": "<strong>Implicații AI pe Piață</strong> Semnale de tranzacționare generate de LLM derivate din starea geopoiitică, a mărfurilor și macro în timp real după fiecare ciclu de prognoză.<ul><li><strong>Direcție</strong>: LONG / SHORT / HEDGE cu rating de încredere</li><li><strong>Interval de timp</strong>: orizont de 1S, 2S, 1L sau 3L</li><li><strong>Catalizator</strong>: Catalizatorul cheie din spatele semnalului</li><li><strong>Risc</strong>: Avertisment sau condiție de invalidare</li></ul><em>Doar în scopuri informative. Nu constituie sfat de investiții.</em>",
@@ -2282,6 +2316,45 @@
         "method": "Calibrare Portwatch DWT + AIS",
         "sampleLabel": "Semnale de întrerupere AIS",
         "creditName": "Puncte strâmte de tranzit petrolier mondial EIA"
+      }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
+    },
+    "panelFreshness": {
+      "status": {
+        "fresh": "Fresh",
+        "stale": "Stale",
+        "veryStale": "Very stale",
+        "noData": "No data",
+        "disabled": "Disabled",
+        "error": "Error"
+      },
+      "labelWithAge": "{{status}} {{age}}",
+      "title": "Data freshness: {{status}}. {{sources}}",
+      "sourceDetail": "{{name}}: {{status}}, {{update}}",
+      "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
+      "lastUpdated": "last updated {{time}}",
+      "neverUpdated": "never updated",
+      "health": {
+        "partialCoverage": "partial coverage",
+        "contentStale": "content stale",
+        "seedStale": "seed stale",
+        "noSourceData": "no source data",
+        "sourceErrorReported": "source error reported",
+        "freshnessStoreUnavailable": "freshness store unavailable",
+        "freshnessStoreDegraded": "freshness store degraded"
+      },
+      "time": {
+        "never": "never",
+        "justNow": "just now",
+        "minutesAgo": "{{count}}m ago",
+        "hoursAgo": "{{count}}h ago",
+        "daysAgo": "{{count}}d ago",
+        "compactNow": "now",
+        "compactMinutes": "{{count}}m",
+        "compactHours": "{{count}}h",
+        "compactDays": "{{count}}d"
       }
     }
   },
@@ -3083,5 +3156,18 @@
     "or": "sau introduceți un server personalizat",
     "generatingVisualization": "Se construiește vizualizarea...",
     "visualizationFailed": "Vizualizarea a eșuat"
+  },
+  "dashboardTabs": {
+    "ariaLabel": "Dashboard tabs",
+    "defaultName": "Main",
+    "newTabName": "New Tab",
+    "newTabCreated": "New tab created",
+    "tabDeleted": "Tab \"{{name}}\" deleted",
+    "addTab": "Add tab",
+    "addTabTitle": "New tab (starts with the default panels)",
+    "renameHint": "{{name}} — double-click to rename",
+    "deleteTab": "Delete tab",
+    "deleteTabAria": "Delete tab {{name}}",
+    "tabNameAria": "Tab name"
   }
 }

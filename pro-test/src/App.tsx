@@ -3,7 +3,7 @@ import type { UserResource } from '@clerk/types';
 import * as Sentry from '@sentry/react';
 import { motion } from 'motion/react';
 import {
-  Globe, Activity, ShieldAlert, Zap, Terminal, Database,
+  Globe, ShieldAlert, Zap, Terminal, Database,
   Send, MessageCircle, Mail, MessageSquare, ChevronDown,
   ArrowRight, Check, Lock, Server, Cpu, Layers,
   Bell, Brain, Key, Plug, PanelTop, ExternalLink,
@@ -17,8 +17,17 @@ import { t } from './i18n';
 import { initOverlay, ensureClerk, tryResumeCheckoutFromUrl } from './services/checkout';
 import { PricingSection } from './components/PricingSection';
 import { SoonBadge } from './components/SoonBadge';
+import { Logo } from './components/Logo';
+import { WiredBadge } from './components/WiredBadge';
+import { Footer } from './components/Footer';
 import dashboardFallback from './assets/worldmonitor-7-mar-2026.jpg';
 import wiredLogo from './assets/wired-logo.svg';
+import {
+  DASHBOARD_CHECKOUT_SUCCESS_URL,
+  DASHBOARD_EMBED_PREVIEW_URL,
+  DASHBOARD_PATH,
+  DASHBOARD_URL,
+} from './routes';
 
 const API_BASE = 'https://api.worldmonitor.app/api';
 const TURNSTILE_SITE_KEY = '0x4AAAAAACnaYgHIyxclu8Tj';
@@ -245,19 +254,6 @@ const SlackIcon = () => (
   </svg>
 );
 
-const Logo = () => (
-  <a href="https://worldmonitor.app" className="flex items-center gap-2 hover:opacity-80 transition-opacity" aria-label="World Monitor — Home">
-    <div className="relative w-8 h-8 rounded-full bg-wm-card border border-wm-border flex items-center justify-center overflow-hidden">
-      <Globe className="w-5 h-5 text-wm-blue opacity-50 absolute" aria-hidden="true" />
-      <Activity className="w-6 h-6 text-wm-green absolute z-10" aria-hidden="true" />
-    </div>
-    <div className="flex flex-col">
-      <span className="font-display font-bold text-sm leading-none tracking-tight">WORLD MONITOR</span>
-      <span className="text-[9px] text-wm-muted font-mono uppercase tracking-widest leading-none mt-1">by Someone.ceo</span>
-    </div>
-  </a>
-);
-
 /* ─── 0. Navbar ─── */
 const Navbar = () => {
   const { user, isLoaded } = useClerkUser();
@@ -295,7 +291,7 @@ const Navbar = () => {
             ))}
           {showGoToDashboard ? (
             <a
-              href="https://worldmonitor.app"
+              href={DASHBOARD_URL}
               className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-1.5"
             >
               {t('nav.goToDashboard')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
@@ -312,17 +308,6 @@ const Navbar = () => {
 };
 
 /* ─── 1. Hero — Less noise, more signal ─── */
-const WiredBadge = () => (
-  <a
-    href="https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map"
-    target="_blank"
-    rel="noreferrer"
-    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-wm-border bg-wm-card/50 text-wm-muted text-xs font-mono hover:border-wm-green/30 hover:text-wm-text transition-colors"
-  >
-    {t('wired.asFeaturedIn')} <span className="text-wm-text font-bold">WIRED</span> <ExternalLink className="w-3 h-3" aria-hidden="true" />
-  </a>
-);
-
 const SignalBars = () => {
   const total = 60;
   const center = total / 2;
@@ -411,7 +396,7 @@ const Hero = () => {
 
           <div className="flex flex-col sm:flex-row gap-3 justify-center mt-8">
             {showGoToDashboard ? (
-              <a href="https://worldmonitor.app" className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
+              <a href={DASHBOARD_URL} className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
                 {t('hero.goToDashboard')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
               </a>
             ) : (
@@ -427,7 +412,7 @@ const Hero = () => {
           </div>
 
           <div className="flex items-center justify-center mt-4">
-            <a href={appendRefToUrl("https://worldmonitor.app", getRefCode())} className="text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1">
+            <a href={appendRefToUrl(DASHBOARD_URL, getRefCode())} className="text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1">
               {t('hero.tryFreeDashboard')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
             </a>
           </div>
@@ -598,7 +583,7 @@ const LivePreview = () => (
           </div>
           <span className="font-mono text-xs text-wm-muted ml-2">{t('livePreview.windowTitle')}</span>
           <a
-            href={appendRefToUrl("https://worldmonitor.app", getRefCode())}
+            href={appendRefToUrl(DASHBOARD_URL, getRefCode())}
             target="_blank"
             rel="noreferrer"
             className="ml-auto text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1"
@@ -619,7 +604,7 @@ const LivePreview = () => (
             // src/utils/embedded-preview.ts. Not a generic iframe gate —
             // enterprise white-label embeds without this marker keep
             // firing premium RPCs normally.
-            src="https://worldmonitor.app?embed=pro-preview"
+            src={DASHBOARD_EMBED_PREVIEW_URL}
             title={t('livePreview.iframeTitle')}
             className="relative w-full h-full border-0"
             loading="lazy"
@@ -628,7 +613,7 @@ const LivePreview = () => (
           <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-wm-bg/80 via-transparent to-transparent" />
           <div className="absolute bottom-4 left-0 right-0 text-center pointer-events-auto">
             <a
-              href={appendRefToUrl("https://worldmonitor.app", getRefCode())}
+              href={appendRefToUrl(DASHBOARD_URL, getRefCode())}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-2 bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors"
@@ -1081,31 +1066,6 @@ const FAQ = () => {
   );
 };
 
-/* ─── 13. Footer ─── */
-const Footer = () => (
-  <footer className="border-t border-wm-border bg-[#020202] pt-8 pb-12 px-6 text-center">
-    <div className="flex flex-col md:flex-row items-center justify-between max-w-7xl mx-auto text-xs text-wm-muted font-mono">
-      <div className="flex items-center gap-3 mb-4 md:mb-0">
-        <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" className="rounded-full" />
-        <div className="flex flex-col">
-          <span className="font-display font-bold text-sm leading-none tracking-tight text-wm-text">WORLD MONITOR</span>
-          <span className="text-[9px] uppercase tracking-[2px] opacity-60 mt-0.5">by Someone.ceo</span>
-        </div>
-      </div>
-      <div className="flex items-center gap-6">
-        <a href="/" className="hover:text-wm-text transition-colors">Dashboard</a>
-        <a href="https://www.worldmonitor.app/blog/" className="hover:text-wm-text transition-colors">Blog</a>
-        <a href="https://www.worldmonitor.app/docs" className="hover:text-wm-text transition-colors">Docs</a>
-        <a href="https://status.worldmonitor.app/" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Status</a>
-        <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">GitHub</a>
-        <a href="https://discord.gg/re63kWKxaz" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Discord</a>
-        <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X</a>
-      </div>
-      <span className="text-[10px] opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
-    </div>
-  </footer>
-);
-
 /* ─── Enterprise Page (dedicated /pro/#enterprise) ─── */
 const EnterprisePage = () => (
   <div className="min-h-screen selection:bg-wm-green/30 selection:text-wm-green">
@@ -1293,7 +1253,7 @@ const EnterprisePage = () => (
           </div>
         </div>
         <div className="flex items-center gap-6">
-          <a href="/" className="hover:text-wm-text transition-colors">Dashboard</a>
+          <a href={DASHBOARD_PATH} className="hover:text-wm-text transition-colors">Dashboard</a>
           <a href="https://www.worldmonitor.app/blog/" className="hover:text-wm-text transition-colors">Blog</a>
           <a href="https://www.worldmonitor.app/docs" className="hover:text-wm-text transition-colors">Docs</a>
           <a href="https://status.worldmonitor.app/" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Status</a>
@@ -1338,7 +1298,7 @@ export default function App() {
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px',
       });
 
-      const target = 'https://worldmonitor.app/?wm_checkout=success';
+      const target = DASHBOARD_CHECKOUT_SUCCESS_URL;
       let navigated = false;
       const goToDashboard = () => {
         if (navigated) return;

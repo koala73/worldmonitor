@@ -128,7 +128,9 @@
       "languages": "Diller",
       "currencies": "Para birimleri",
       "area": "Yüz ölçümü"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "DUNYA",
@@ -207,7 +209,8 @@
     "panelCatMining": "Madencilik & Tedarik Zinciri",
     "panelCatCommodityEcon": "Ekonomi & Ticaret",
     "panelCatHappyNews": "İyi Haberler",
-    "panelCatHappyPlanet": "Gezegen & Hayırseverlik"
+    "panelCatHappyPlanet": "Gezegen & Hayırseverlik",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "Canli Haberler",
@@ -456,7 +459,8 @@
       "flightMilitary": "Askeri · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Askeri · {{type}} · yerdeki",
       "flightSearchHint": "Canlı konumu sorgulamak için Enter tuşuna basın veya tıklayın",
-      "flightNotFound": "{{callsign}} için canlı konum bulunamadı"
+      "flightNotFound": "{{callsign}} için canlı konum bulunamadı",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "ISTIHBARAT BULGULARI",
@@ -686,7 +690,9 @@
         "americas": "AMERIKA",
         "asia": "ASYA",
         "space": "UZAY"
-      }
+      },
+      "play": "Oynat",
+      "previewStatus": "Canlı önizleme"
     },
     "positiveNewsFeed": {
       "noStories": "Bu kategoride henüz haber yok"
@@ -1215,7 +1221,13 @@
       "noSignals": "Istikrarsizlik sinyali tespit edilmedi",
       "infoTooltip": "<strong>Metodoloji</strong><ul><li><strong>H</strong>uzursuzluk: sivil duzensizlik ve protestolar</li><li><strong>C</strong>atisma: silahli catisma yogunlugu</li><li><strong>G</strong>uvenlik: toprak uzerindeki askeri ucuslar/gemiler</li><li><strong>B</strong>ilgi: haber hizi ve odak noktasi korelasyonu</li><li>Sicak nokta yakinligi artisi (stratejik konumlar)</li></ul><em>H:C:G:B degerleri bilesen puanlarini gosterir.</em> Odak Noktasi Tespiti, dogru puanlama icin haber varliklarini harita sinyalleriyle iliskilendirir.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "Ülke başına temel + olay çarpanını içerir — yayımlanmış tablo için /docs/methodology/cii-risk-scores bölümüne bakın"
+      "methodologyLink": "Ülke başına temel + olay çarpanını içerir — yayımlanmış tablo için /docs/methodology/cii-risk-scores bölümüne bakın",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "insights": {
       "noStories": "Henuz son dakika veya coklu kaynak haberi yok",
@@ -1254,8 +1266,8 @@
       "badgeAnimDesc": "Panel başlıklarındaki güncelleme rozetlerini canlandır",
       "headlineMemoryLabel": "Başlık hafızası",
       "headlineMemoryDesc": "Yenileri vurgulamak için görülen başlıkları hatırla",
-      "streamAlwaysOnLabel": "Canlı yayınları çalışır tut",
-      "streamAlwaysOnDesc": "Boştayken Live Cams ve Live News akışlarının otomatik duraklatılmasını engeller. İkinci monitör / wallboard kullanımı için önerilir. CPU/bant genişliği tasarrufu için (Eco) modunu kapatın.",
+      "streamAlwaysOnLabel": "Panoda canlı yayınları otomatik oynat",
+      "streamAlwaysOnDesc": "Görünür olduklarında Live News ve Live Webcams otomatik olarak başlar. Videoyu yalnızca Oynat’a tıkladıktan sonra yüklemek için kapalı bırakın.",
       "analysisFrameworksLabel": "Analiz Çerçeveleri",
       "analysisFrameworksActivePerPanel": "Panel başına etkin",
       "analysisFrameworksSkillLibrary": "Beceri kütüphanesi",
@@ -1334,9 +1346,8 @@
     "strategicRisk": {
       "noRisks": "Onemli risk tespit edilmedi",
       "levels": {
-        "critical": "Kritik",
-        "elevated": "Artmis",
-        "moderate": "Orta",
+        "high": "Yuksek",
+        "medium": "Orta",
         "low": "Dusuk"
       },
       "trend": "Egilim",
@@ -1368,7 +1379,14 @@
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
       },
-      "infoTooltip": "<strong>Metodoloji</strong> Bilesik puan (0-100) harmanlama:<ul><li>%50 Ulke Istikrarsizligi (ilk 5 agirlikli)</li><li>%30 Cografi yakinlasma bolgeleri</li><li>%20 Altyapi olaylari</li></ul>Her 5 dakikada otomatik yenilenir."
+      "infoTooltip": "<strong>Metodoloji</strong> Bilesik puan (0-100) harmanlama:<ul><li>%50 Ulke Istikrarsizligi (ilk 5 agirlikli)</li><li>%30 Cografi yakinlasma bolgeleri</li><li>%20 Altyapi olaylari</li></ul>Her 5 dakikada otomatik yenilenir.",
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "techEvents": {
       "loading": "Teknoloji etkinlikleri yukleniyor...",
@@ -1412,7 +1430,7 @@
       "noMatching": "Bu filtre için uyarı yok",
       "critical": "Kritik",
       "health": "Sağlık",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
       "refresh": "Yenile",
       "levels": {
         "doNotTravel": "Seyahat etmeyin",
@@ -1757,7 +1775,9 @@
       "invalidHandle": "Geçerli bir YouTube tanıtıcısı girin (örn. @KanalAdı)",
       "verifying": "Doğrulanıyor…",
       "hlsUrl": "HLS Akış URL (isteğe bağlı)",
-      "invalidHlsUrl": "Geçerli bir HLS akış URL'si girin (.m3u8)"
+      "invalidHlsUrl": "Geçerli bir HLS akış URL'si girin (.m3u8)",
+      "playLiveFeed": "Canlı yayını oynat",
+      "readyStatus": "Hazır olduğunuzda hazır"
     },
     "map": {
       "showMap": "Haritayı Göster",
@@ -1992,9 +2012,23 @@
         "categories": "Kategoriler",
         "movers": "Hareket Edenler",
         "spread": "Perakendeci Farkı",
-        "health": "Veri Sağlığı"
+        "health": "Veri Sağlığı",
+        "world": "World"
       },
-      "infoTooltip": "<strong>Tüketici Fiyatları</strong> Gerçek zamanlı sepet fiyat takibi:<ul><li><strong>Genel Bakış</strong>: Temel ihtiyaçlar endeksi, değer sepeti ve haftalık değişim</li><li><strong>Kategoriler</strong>: Kategori bazında fiyat eğilimleri ve 30 günlük aralık</li><li><strong>Hareket Edenler</strong>: Bu hafta en çok yükselen ve düşen ürünler</li><li><strong>Fark</strong>: Aynı sepet için perakendeciler arasındaki fiyat farkı</li></ul>Veriler canlı perakendeci fiyat kazıma kaynağından gelir."
+      "infoTooltip": "<strong>Tüketici Fiyatları</strong> Gerçek zamanlı sepet fiyat takibi:<ul><li><strong>Genel Bakış</strong>: Temel ihtiyaçlar endeksi, değer sepeti ve haftalık değişim</li><li><strong>Kategoriler</strong>: Kategori bazında fiyat eğilimleri ve 30 günlük aralık</li><li><strong>Hareket Edenler</strong>: Bu hafta en çok yükselen ve düşen ürünler</li><li><strong>Fark</strong>: Aynı sepet için perakendeciler arasındaki fiyat farkı</li></ul>Veriler canlı perakendeci fiyat kazıma kaynağından gelir.",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "marketImplications": {
       "infoTooltip": "<strong>AI Pazar Etkileri</strong> Her tahmin döngüsünün ardından canlı jeopolitik, emtia ve makro durumundan türetilen LLM tarafından oluşturulan ticaret sinyalleri.<ul><li><strong>Yön</strong>: LONG / SHORT / KORUMA güven derecesiyle</li><li><strong>Zaman Ufku</strong>: 1H, 2H, 1A veya 3A süresi</li><li><strong>Tetikleyici</strong>: Sinyalin arkasındaki ana katalizör</li><li><strong>Risk</strong>: Uyarı veya geçersizleştirme koşulu</li></ul><em>Yalnızca bilgilendirme amaçlıdır. Yatırım tavsiyesi değildir.</em>",
@@ -2266,6 +2300,45 @@
         "method": "Portwatch DWT + AIS kalibrasyonu",
         "sampleLabel": "AIS kesinti sinyalleri",
         "creditName": "EIA Dünya Petrol Transit Dar Boğazları"
+      }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
+    },
+    "panelFreshness": {
+      "status": {
+        "fresh": "Fresh",
+        "stale": "Stale",
+        "veryStale": "Very stale",
+        "noData": "No data",
+        "disabled": "Disabled",
+        "error": "Error"
+      },
+      "labelWithAge": "{{status}} {{age}}",
+      "title": "Data freshness: {{status}}. {{sources}}",
+      "sourceDetail": "{{name}}: {{status}}, {{update}}",
+      "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
+      "lastUpdated": "last updated {{time}}",
+      "neverUpdated": "never updated",
+      "health": {
+        "partialCoverage": "partial coverage",
+        "contentStale": "content stale",
+        "seedStale": "seed stale",
+        "noSourceData": "no source data",
+        "sourceErrorReported": "source error reported",
+        "freshnessStoreUnavailable": "freshness store unavailable",
+        "freshnessStoreDegraded": "freshness store degraded"
+      },
+      "time": {
+        "never": "never",
+        "justNow": "just now",
+        "minutesAgo": "{{count}}m ago",
+        "hoursAgo": "{{count}}h ago",
+        "daysAgo": "{{count}}d ago",
+        "compactNow": "now",
+        "compactMinutes": "{{count}}m",
+        "compactHours": "{{count}}h",
+        "compactDays": "{{count}}d"
       }
     }
   },
@@ -3067,5 +3140,18 @@
     "or": "ya da özel bir sunucu girin",
     "generatingVisualization": "Görselleştirme oluşturuluyor...",
     "visualizationFailed": "Görselleştirme başarısız"
+  },
+  "dashboardTabs": {
+    "ariaLabel": "Dashboard tabs",
+    "defaultName": "Main",
+    "newTabName": "New Tab",
+    "newTabCreated": "New tab created",
+    "tabDeleted": "Tab \"{{name}}\" deleted",
+    "addTab": "Add tab",
+    "addTabTitle": "New tab (starts with the default panels)",
+    "renameHint": "{{name}} — double-click to rename",
+    "deleteTab": "Delete tab",
+    "deleteTabAria": "Delete tab {{name}}",
+    "tabNameAria": "Tab name"
   }
 }

@@ -371,14 +371,25 @@ export function buildSentryContext(
     // WORLDMONITOR-PG: the JSON-cased variant was previously falling
     // through to 'unknown' because the `/UNAUTHENTICATED/` regex is
     // case-sensitive.
-    ?? (/UNAUTHENTICATED|"code":"Unauthenticated"/.test(msg) ? 'convex_auth_drift'
-      : /"code":"ServiceUnavailable"/.test(msg) ? 'convex_service_unavailable'
+    // The `"code":\s*"X"` forms tolerate the optional post-colon whitespace a
+    // non-default serializer may emit (`"code": "X"`), mirroring `hasConvexCode`
+    // in _convex-error.js so this Sentry bucket and the kind→503 mapping stay in
+    // lockstep — a with-whitespace body classifies identically on both sides.
+    ?? (/UNAUTHENTICATED|"code":\s*"Unauthenticated"/.test(msg) ? 'convex_auth_drift'
+      : /"code":\s*"ServiceUnavailable"/.test(msg) ? 'convex_service_unavailable'
       // Convex platform 500 — runtime can't recover the request. Same
       // 503-with-Retry-After remediation as ServiceUnavailable in
       // _convex-error.js, but kept as its own Sentry bucket so on-call can
       // tell internal-500s apart from genuine 503s when triaging
       // (WORLDMONITOR-PG/PH).
-      : /"code":"InternalServerError"/.test(msg) ? 'convex_internal_error'
+      : /"code":\s*"InternalServerError"/.test(msg) ? 'convex_internal_error'
+      // Convex platform worker saturation: `{"code":"WorkerOverloaded",
+      // "message":"There are no available workers to process the request"}`.
+      // Mapped to SERVICE_UNAVAILABLE (503 + Retry-After) in _convex-error.js,
+      // same as InternalServerError/ServiceUnavailable; kept as its own Sentry
+      // bucket so on-call can tell worker-saturation apart from internal-500s
+      // and genuine 503s when triaging (WORLDMONITOR-PG).
+      : /"code":\s*"WorkerOverloaded"/.test(msg) ? 'convex_worker_overloaded'
       : /\[Request ID:\s*[a-f0-9]+\]\s*Server Error/i.test(msg) ? 'convex_server_error'
       // Cloudflare edge error (520-527) fronting the Convex deployment — see
       // _convex-error.js. Mapped to SERVICE_UNAVAILABLE (503 + Retry-After)

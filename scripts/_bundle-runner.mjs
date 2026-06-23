@@ -24,7 +24,7 @@
 import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadEnvFile } from './_seed-utils.mjs';
+import { GRACEFUL_FETCH_FAILURE_EXIT_CODE, loadEnvFile } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -180,6 +180,13 @@ function spawnSeed(scriptPath, { timeoutMs, label, bundleStartedAtMs }) {
         settle({ elapsed, ok: false, reason: `timeout after ${Math.round(timeoutMs / 1000)}s (signal ${signal || 'SIGTERM'})`, alreadyLogged: true });
       } else if (code === 0) {
         settle({ elapsed, ok: true, seedComplete: lastSeedComplete });
+      } else if (code === GRACEFUL_FETCH_FAILURE_EXIT_CODE) {
+        settle({
+          elapsed,
+          ok: false,
+          status: 'GRACEFUL_FAIL',
+          reason: `graceful fetch failure (exit ${GRACEFUL_FETCH_FAILURE_EXIT_CODE})`,
+        });
       } else {
         settle({ elapsed, ok: false, reason: `exit ${code ?? 'null'}${signal ? ` (signal ${signal})` : ''}` });
       }
@@ -284,7 +291,8 @@ export async function runBundle(label, sections, opts = {}) {
       // appear before those stderr lines when consumers concatenate
       // stdout+stderr, breaking tests (and log readers) that rely on
       // signal-escalation ordering.
-      console.error(`[Bundle:${label}] section=${section.label} status=FAILED elapsed=${result.elapsed}s reason=${(result.reason || 'unknown').replace(/\s+/g, ' ')}`);
+      const status = result.status || 'FAILED';
+      console.error(`[Bundle:${label}] section=${section.label} status=${status} elapsed=${result.elapsed}s reason=${(result.reason || 'unknown').replace(/\s+/g, ' ')}`);
       failed++;
     }
   }

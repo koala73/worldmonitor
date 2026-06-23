@@ -1,6 +1,7 @@
 {
   "capturedAt": "2026-05-28",
   "source": "Live capture via https://api.worldmonitor.app/api/resilience/v1/get-resilience-ranking?refresh=1",
+  "snapshotNote": "Pre-P1-1 historical capture: pillar scores used the coverage-only member aggregation active on 2026-05-28, before domain design weights were applied inside pillar aggregation.",
   "commitSha": "aeaeb0286e0a312d7956ef03724accbd7858692f",
   "schemaVersion": "2.0",
   "methodologyFormula": "pillar-combined-penalized-v1",

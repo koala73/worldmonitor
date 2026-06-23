@@ -174,15 +174,14 @@ components:
                 headlineEligible:
                     type: boolean
                     description: |-
-                        Plan 2026-04-26-002 §U3 (PR 2) — eligibility flag for headline
-                         ranking inclusion. PR 2 introduces the field populated `true` for
-                         every country (no behavior change). PR 6 / §U7 swaps the population
-                         logic to coverage ≥ 0.65 AND (population ≥ 200k OR coverage ≥ 0.85)
-                         AND !lowConfidence; the headline ranking endpoint then filters by
-                         `headlineEligible: true`. Raw API endpoints keep returning the full
-                         set unfiltered. Widget consumes the field starting in PR 6 to show
-                         a "Low confidence — outside headline ranking" badge for
-                         `headlineEligible: false` countries on country detail pages.
+                        Current headline-ranking eligibility. True only when the country passes
+                         the headline gate: coverage >= 0.65 AND (population >= 200k OR
+                         coverage >= 0.85) AND !lowConfidence. GetResilienceRanking includes
+                         only eligible countries in items[]; scored but ineligible countries
+                         remain in greyedOut[]. Raw score endpoints still return the country
+                         score when available. Widget and country detail copy should show
+                         "Outside headline ranking" when false unless low-confidence is the more
+                         specific reason.
         ResilienceDomain:
             type: object
             properties:
@@ -265,7 +264,9 @@ components:
                 score:
                     type: number
                     format: double
-                    description: Pillar score in [0, 100], coverage-weighted mean of member domains.
+                    description: |-
+                        Pillar score in [0, 100], mean of member domains weighted by
+                         domain.weight * average_dimension_coverage.
                 weight:
                     type: number
                     format: double
@@ -284,8 +285,9 @@ components:
                  (economic, infrastructure, energy, social-governance, health-food,
                  recovery) into long-run capacity (structural-readiness), current shock
                  pressure (live-shock-exposure), and recovery capability (recovery-capacity).
-                 Pillar scores and coverage are real coverage-weighted aggregates computed
-                 from the constituent domains; see _pillar-membership.ts for the mapping.
+                 Pillar scores are real domain-weighted, coverage-scaled aggregates computed
+                 from the constituent domains; pillar coverage remains the mean of
+                 member-domain average dimension coverage. See _pillar-membership.ts for the mapping.
                  When RESILIENCE_SCHEMA_V2_ENABLED and RESILIENCE_PILLAR_COMBINE_ENABLED
                  are both true, the top-level overall_score on GetResilienceScoreResponse
                  uses the pillar-combined score with the min-pillar penalty term in
@@ -304,6 +306,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/ResilienceRankingItem'
+                fetchedAt:
+                    type: string
+                scored:
+                    type: integer
+                    format: int32
+                total:
+                    type: integer
+                    format: int32
+                coverage:
+                    type: number
+                    format: double
+                partial:
+                    type: boolean
         ResilienceRankingItem:
             type: object
             properties:
@@ -324,10 +339,11 @@ components:
                 headlineEligible:
                     type: boolean
                     description: |-
-                        Plan 2026-04-26-002 §U3 (PR 2) — eligibility flag for headline
-                         ranking. PR 2 populates `true` for every country; PR 6 / §U7 swaps
-                         to coverage-and-population logic and the headline endpoint then
-                         filters by this field.
+                        Current headline-ranking eligibility. True only when the country passes
+                         the headline gate: coverage >= 0.65 AND (population >= 200k OR
+                         coverage >= 0.85) AND !lowConfidence. GetResilienceRanking includes
+                         only eligible countries in items[]; scored but ineligible countries
+                         remain in greyedOut[].
         GetResilienceRuntimeManifestRequest:
             type: object
         GetResilienceRuntimeManifestResponse:
@@ -354,6 +370,10 @@ components:
                     $ref: '#/components/schemas/ResilienceRuntimeCacheState'
                 rankingCache:
                     $ref: '#/components/schemas/ResilienceRankingCacheState'
+                constructVersions:
+                    $ref: '#/components/schemas/ResilienceRuntimeConstructVersions'
+                intervals:
+                    $ref: '#/components/schemas/ResilienceRuntimeIntervalState'
         ResilienceRuntimeFlag:
             type: object
             properties:
@@ -388,3 +408,24 @@ components:
                 total:
                     type: integer
                     format: int32
+        ResilienceRuntimeConstructVersions:
+            type: object
+            properties:
+                energy:
+                    type: string
+                    description: 'Safe derived energy construct version. Valid values: "legacy" or "v2".'
+        ResilienceRuntimeIntervalState:
+            type: object
+            properties:
+                available:
+                    type: boolean
+                    description: True only when the public sample interval can be read for the active formula.
+                methodology:
+                    type: string
+                    description: Public methodology tag used to audit scoreInterval/rankStable semantics.
+                sampleCountry:
+                    type: string
+                    description: ISO2 country used for the public availability probe.
+                lastObservedAt:
+                    type: string
+                    description: Latest safe observed timestamp from interval seed-meta or sample payload.

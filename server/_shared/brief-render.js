@@ -1164,7 +1164,7 @@ const STYLE_BLOCK = `<style>
 
 /**
  * Inline share-button client. The hosted magazine route has already
- * derived the share URL server-side (it has the userId, issueDate,
+ * derived the share URL server-side (it has the userId, issueSlot,
  * and BRIEF_SHARE_SECRET — the same inputs the share-url endpoint
  * uses) and embedded it as `data-share-url` on the button. At click
  * time we just invoke navigator.share with a clipboard fallback.

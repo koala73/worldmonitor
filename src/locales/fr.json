@@ -128,7 +128,9 @@
       "languages": "Langues",
       "currencies": "Devises",
       "area": "Superficie"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "MONDE",
@@ -207,7 +209,8 @@
     "panelCatMining": "Exploitation & Chaîne d'approvisionnement",
     "panelCatCommodityEcon": "Économie & Commerce",
     "panelCatHappyNews": "Bonnes Nouvelles",
-    "panelCatHappyPlanet": "Planète & Solidarité"
+    "panelCatHappyPlanet": "Planète & Solidarité",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "Actualités en direct",
@@ -456,7 +459,8 @@
       "flightMilitary": "Militaire · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Militaire · {{type}} · au sol",
       "flightSearchHint": "Appuyez sur Entrée ou cliquez pour consulter la position en direct",
-      "flightNotFound": "Aucune position en direct trouvée pour {{callsign}}"
+      "flightNotFound": "Aucune position en direct trouvée pour {{callsign}}",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "DÉCOUVERTE RENSEIGNEMENT",
@@ -695,7 +699,9 @@
         "space": "ESPACE"
       },
       "paused": "Webcams en pause",
-      "pausedIdle": "Webcams en pause — bougez la souris pour reprendre"
+      "pausedIdle": "Webcams en pause — bougez la souris pour reprendre",
+      "play": "Lire",
+      "previewStatus": "Aperçu en direct"
     },
     "regulation": {
       "timeline": "Chronologie",
@@ -1172,7 +1178,13 @@
       "noSignals": "Aucun signal d'instabilité détecté",
       "infoTooltip": "<strong>Méthodologie</strong><ul><li><strong>U</strong>nrepos : troubles civils et manifestations</li><li><strong>C</strong>conflit : intensité du conflit armé</li><li><strong>S</strong>sécurité : vols/navires militaires au-dessus territoire</li><li><strong>I</strong>informations : vitesse des informations et corrélation des points focaux</li><li>Augmentation de la proximité des points d'accès (emplacements stratégiques)</li></ul><em>Les valeurs U:C:S:I affichent les scores des composants.</em> La détection du point focal corrèle les entités d'information avec les signaux cartographiques pour une notation précise.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "Inclut la référence par pays + multiplicateur d'événement — voir /docs/methodology/cii-risk-scores pour le tableau publié"
+      "methodologyLink": "Inclut la référence par pays + multiplicateur d'événement — voir /docs/methodology/cii-risk-scores pour le tableau publié",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "insights": {
       "noStories": "Aucune info de dernière minute pour l'instant",
@@ -1213,8 +1225,8 @@
       "analysisFrameworksFromAgentskills": "Depuis agentskills.io",
       "analysisFrameworksPasteJson": "Coller JSON",
       "analysisFrameworksSaveToLibrary": "Enregistrer dans la bibliothèque",
-      "streamAlwaysOnLabel": "Garder les flux en direct actifs",
-      "streamAlwaysOnDesc": "Empêche la mise en pause automatique de Live Cams et Live News lorsque vous êtes inactif. Recommandé pour un second écran / usage wallboard. Désactivez (Éco) pour économiser CPU/bande passante.",
+      "streamAlwaysOnLabel": "Lire automatiquement les flux en direct sur le tableau de bord",
+      "streamAlwaysOnDesc": "Lance automatiquement Live News et Live Webcams lorsqu’ils sont visibles. Laissez désactivé pour charger la vidéo seulement après avoir cliqué sur Lire.",
       "globeRenderScaleOptions": {
         "1": "Éco (1x)",
         "2": "4K (2x)",
@@ -1293,9 +1305,8 @@
       "noRisks": "Aucun risque significatif détecté",
       "infoTooltip": "<strong>Méthodologie</strong> Score composite (0-100) mélange :<ul><li>50 % d'instabilité du pays (5 premiers pondérés)</li><li>30 % Zones de convergence géographique</li><li>20 % Incidents d'infrastructure</li></ul>Actualisation automatique toutes les 5 minutes.",
       "levels": {
-        "critical": "Critique",
-        "elevated": "Élevé",
-        "moderate": "Modéré",
+        "high": "Élevé",
+        "medium": "Moyen",
         "low": "Faible"
       },
       "trend": "Tendance",
@@ -1326,7 +1337,14 @@
         "justNow": "à l'instant",
         "minutesAgo": "il y a {{count}}m",
         "hoursAgo": "il y a {{count}}h"
-      }
+      },
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "techEvents": {
       "loading": "Chargement des événements tech...",
@@ -1650,14 +1668,16 @@
       "verifying": "Vérification…",
       "noResults": "Aucune chaîne trouvée pour \"{{term}}\"",
       "hlsUrl": "URL du flux HLS (optionnel)",
-      "invalidHlsUrl": "Entrez une URL de flux HLS valide (.m3u8)"
+      "invalidHlsUrl": "Entrez une URL de flux HLS valide (.m3u8)",
+      "playLiveFeed": "Lire le flux en direct",
+      "readyStatus": "Prêt quand vous l’êtes"
     },
     "securityAdvisories": {
       "loading": "Chargement des avis de voyage...",
       "noMatching": "Aucun avis pour ce filtre",
       "critical": "Critique",
       "health": "Santé",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
       "refresh": "Actualiser",
       "levels": {
         "doNotTravel": "Ne pas voyager",
@@ -1998,9 +2018,23 @@
         "categories": "Catégories",
         "movers": "Mouvements",
         "spread": "Écart détaillant",
-        "health": "Santé des données"
+        "health": "Santé des données",
+        "world": "World"
       },
-      "infoTooltip": "<strong>Prix à la consommation</strong> Suivi en temps réel des prix du panier :<ul><li><strong>Aperçu</strong> : Indice des produits essentiels, panier valeur et variation semaine sur semaine</li><li><strong>Catégories</strong> : Tendances de prix par catégorie avec plage de 30 jours</li><li><strong>Mouvements</strong> : Plus grands articles à la hausse et à la baisse cette semaine</li><li><strong>Écart</strong> : Variance des prix entre détaillants pour le même panier</li></ul>Données provenant du scraping en direct des prix des détaillants."
+      "infoTooltip": "<strong>Prix à la consommation</strong> Suivi en temps réel des prix du panier :<ul><li><strong>Aperçu</strong> : Indice des produits essentiels, panier valeur et variation semaine sur semaine</li><li><strong>Catégories</strong> : Tendances de prix par catégorie avec plage de 30 jours</li><li><strong>Mouvements</strong> : Plus grands articles à la hausse et à la baisse cette semaine</li><li><strong>Écart</strong> : Variance des prix entre détaillants pour le même panier</li></ul>Données provenant du scraping en direct des prix des détaillants.",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "marketImplications": {
       "infoTooltip": "<strong>Implications du marché IA</strong> Signaux commerciaux générés par LLM découlant de l'état géopolitique, des matières premières et des données macro en direct après chaque cycle de prévision.<ul><li><strong>Direction</strong> : LONG / SHORT / HEDGE avec notation de confiance</li><li><strong>Horizon temporel</strong> : 1S, 2S, 1M ou 3M</li><li><strong>Moteur</strong> : Catalyseur clé derrière le signal</li><li><strong>Risque</strong> : Réserve ou condition d'invalidation</li></ul><em>À titre informatif uniquement. Ne constitue pas un conseil en investissement.</em>",
@@ -2282,6 +2316,45 @@
         "method": "Étalonnage Portwatch DWT + AIS",
         "sampleLabel": "Signaux de perturbation AIS",
         "creditName": "Points de contrôle du transit pétrolier mondial de l'EIA"
+      }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
+    },
+    "panelFreshness": {
+      "status": {
+        "fresh": "Fresh",
+        "stale": "Stale",
+        "veryStale": "Very stale",
+        "noData": "No data",
+        "disabled": "Disabled",
+        "error": "Error"
+      },
+      "labelWithAge": "{{status}} {{age}}",
+      "title": "Data freshness: {{status}}. {{sources}}",
+      "sourceDetail": "{{name}}: {{status}}, {{update}}",
+      "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
+      "lastUpdated": "last updated {{time}}",
+      "neverUpdated": "never updated",
+      "health": {
+        "partialCoverage": "partial coverage",
+        "contentStale": "content stale",
+        "seedStale": "seed stale",
+        "noSourceData": "no source data",
+        "sourceErrorReported": "source error reported",
+        "freshnessStoreUnavailable": "freshness store unavailable",
+        "freshnessStoreDegraded": "freshness store degraded"
+      },
+      "time": {
+        "never": "never",
+        "justNow": "just now",
+        "minutesAgo": "{{count}}m ago",
+        "hoursAgo": "{{count}}h ago",
+        "daysAgo": "{{count}}d ago",
+        "compactNow": "now",
+        "compactMinutes": "{{count}}m",
+        "compactHours": "{{count}}h",
+        "compactDays": "{{count}}d"
       }
     }
   },
@@ -3083,5 +3156,18 @@
     "or": "ou saisissez un serveur personnalisé",
     "generatingVisualization": "Construction de la visualisation...",
     "visualizationFailed": "Échec de la visualisation"
+  },
+  "dashboardTabs": {
+    "ariaLabel": "Dashboard tabs",
+    "defaultName": "Main",
+    "newTabName": "New Tab",
+    "newTabCreated": "New tab created",
+    "tabDeleted": "Tab \"{{name}}\" deleted",
+    "addTab": "Add tab",
+    "addTabTitle": "New tab (starts with the default panels)",
+    "renameHint": "{{name}} — double-click to rename",
+    "deleteTab": "Delete tab",
+    "deleteTabAria": "Delete tab {{name}}",
+    "tabNameAria": "Tab name"
   }
 }

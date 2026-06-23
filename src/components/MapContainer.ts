@@ -1,17 +1,13 @@
 /**
- * MapContainer - Conditional map renderer
+ * MapContainer - lightweight conditional map renderer
+ * Paints a stable shell first, then lazy-loads the selected renderer.
  * Renders DeckGLMap (WebGL) on desktop, fallback to D3/SVG MapComponent on mobile.
  * Supports an optional 3D globe mode (globe.gl) selectable from Settings.
  */
-// MapContainer is dynamic-imported from panel-layout, so this CSS rides into
-// the lazy chunk instead of blocking the entry HTML — it's 98% unused at first
-// paint anyway. Keep this import at the top of the file so Vite associates it
-// with this module's chunk, not whichever sibling pulls it in first.
-import 'maplibre-gl/dist/maplibre-gl.css';
 import { isMobileDevice } from '@/utils';
-import { MapComponent } from './Map';
-import { DeckGLMap, type DeckMapView, type CountryClickPayload } from './DeckGLMap';
-import { GlobeMap } from './GlobeMap';
+import type { MapComponent } from './Map';
+import type { DeckGLMap, DeckMapView, CountryClickPayload } from './DeckGLMap';
+import type { GlobeMap } from './GlobeMap';
 import type {
   MapLayers,
   Hotspot,
@@ -51,6 +47,7 @@ import type { IranEvent } from '@/services/conflict';
 import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
+import type { AcledConflictEvent } from '@/generated/client/worldmonitor/conflict/v1/service_client';
 import type { DiseaseOutbreakItem } from '@/services/disease-outbreaks';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import type { ScenarioVisualState, ScenarioResult } from '@/config/scenario-templates';
@@ -63,12 +60,40 @@ export type { ScenarioVisualState, ScenarioResult };
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
 
+type RendererKind = 'svg' | 'deck' | 'globe';
+type PendingCenter = { lat: number; lon: number; zoom?: number };
+type PendingViewportAction =
+  | { type: 'view'; view: MapView; zoom?: number }
+  | { type: 'zoom'; zoom: number };
+
+let mapLibreCssPromise: Promise<unknown> | null = null;
+
+function afterFirstPaint(): Promise<void> {
+  if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
+function loadMapLibreCss(): Promise<unknown> {
+  mapLibreCssPromise ??= import('maplibre-gl/dist/maplibre-gl.css');
+  return mapLibreCssPromise;
+}
+
 export interface MapContainerState {
   zoom: number;
   pan: { x: number; y: number };
   view: MapView;
   layers: MapLayers;
   timeRange: TimeRange;
+}
+
+export interface MapContainerOptions {
+  chrome?: boolean;
 }
 
 interface TechEventMarker {
@@ -102,8 +127,19 @@ export class MapContainer {
   private initialState: MapContainerState;
   private useDeckGL: boolean;
   private useGlobe: boolean;
+  private readonly chrome: boolean;
   private isResizingInternal = false;
   private resizeObserver: ResizeObserver | null = null;
+  private globeInitToken = 0;
+  private rendererInitToken = 0;
+  private destroyed = false;
+  private pendingCenter: PendingCenter | null = null;
+  private pendingViewportActions: PendingViewportAction[] = [];
+  private hiddenLayerToggles = new Set<keyof MapLayers>();
+  private layerLoadingState = new Map<keyof MapLayers, boolean>();
+  private layerReadyState = new Map<keyof MapLayers, boolean>();
+  private cachedScenarioState: ScenarioVisualState | null | undefined;
+  private escalationGettersRequested = false;
 
   // ─── Callback cache (survives map mode switches) ───────────────────────────
   private cachedOnStateChanged: ((state: MapContainerState) => void) | null = null;
@@ -116,6 +152,7 @@ export class MapContainer {
 
   // ─── Data cache (survives map mode switches) ───────────────────────────────
   private cachedEarthquakes: Earthquake[] | null = null;
+  private cachedConflictEvents: AcledConflictEvent[] | null = null;
   private cachedWeatherAlerts: WeatherAlert[] | null = null;
   private cachedOutages: InternetOutage[] | null = null;
   private cachedAisDisruptions: AisDisruptionEvent[] | null = null;
@@ -156,12 +193,16 @@ export class MapContainer {
   private cachedEscalationVessels: MilitaryVessel[] | null = null;
   private cachedImageryScenes: ImageryScene[] | null = null;
   private cachedWebcams: Array<WebcamEntry | WebcamCluster> | null = null;
+  private cachedTrafficAnomalies: ProtoTrafficAnomaly[] | null = null;
+  private cachedDdosLocations: DdosLocationHit[] | null = null;
+  private cachedChokepointData: GetChokepointStatusResponse | null | undefined;
 
-  constructor(container: HTMLElement, initialState: MapContainerState, preferGlobe = false) {
+  constructor(container: HTMLElement, initialState: MapContainerState, preferGlobe = false, options: MapContainerOptions = {}) {
     this.container = container;
     this.initialState = initialState;
+    this.chrome = options.chrome ?? true;
     this.isMobile = isMobileDevice();
-    this.useGlobe = preferGlobe && this.hasWebGLSupport();
+    this.useGlobe = preferGlobe && this.hasGlobeSupport();
 
     this.useDeckGL = !this.useGlobe && this.shouldUseDeckGL();
 
@@ -169,7 +210,9 @@ export class MapContainer {
       this.initialState = { ...this.initialState, layers: { ...this.initialState.layers, resilienceScore: false } };
     }
 
-    this.init();
+    // init() attaches the resize observer synchronously (before its first await),
+    // so the constructor does not need to start it separately.
+    void this.init();
   }
 
   private hasWebGLSupport(): boolean {
@@ -179,60 +222,169 @@ export class MapContainer {
       // Some Linux WebKitGTK builds expose only WebGL1, which can lead to
       // an empty/black render surface instead of a usable map.
       const gl2 = canvas.getContext('webgl2');
-      return !!gl2;
+      if (!gl2) return false;
+      const debugInfo = gl2.getExtension('WEBGL_debug_renderer_info');
+      if (debugInfo) {
+        const renderer = String(gl2.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) ?? '').toLowerCase();
+        if (renderer.includes('swiftshader') || renderer.includes('llvmpipe') || renderer.includes('softpipe') || renderer.includes('software rasterizer')) {
+          return false;
+        }
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private hasGlobeSupport(): boolean {
+    try {
+      const canvas = document.createElement('canvas');
+      return !!(
+        canvas.getContext('webgl2')
+        || canvas.getContext('webgl')
+        || canvas.getContext('experimental-webgl')
+      );
     } catch {
       return false;
     }
   }
 
   private shouldUseDeckGL(): boolean {
+    // Keep the default mobile path on the lightweight SVG renderer. High-end
+    // phones can still request globe mode explicitly via the persisted mode,
+    // but they should not pull Deck/MapLibre before first paint by default.
+    if (this.isMobile) return false;
     if (!this.hasWebGLSupport()) return false;
-    if (!this.isMobile) return true;
-    const mem = (navigator as any).deviceMemory;
-    if (mem !== undefined && mem < 3) return false;
     return true;
   }
 
-  private initSvgMap(logMessage: string): void {
+  private getPendingRendererKind(): RendererKind {
+    if (this.useGlobe) return 'globe';
+    if (this.useDeckGL) return 'deck';
+    return 'svg';
+  }
+
+  private showRendererShell(kind: RendererKind): void {
+    this.container.classList.remove('deckgl-mode', 'globe-mode', 'svg-mode');
+    this.container.classList.add('map-renderer-shell');
+    this.container.dataset.mapRendererPending = kind;
+    this.container.setAttribute('aria-busy', 'true');
+    this.container.textContent = '';
+    const shell = document.createElement('div');
+    shell.className = 'map-renderer-shell-surface';
+    shell.setAttribute('aria-hidden', 'true');
+    this.container.appendChild(shell);
+  }
+
+  private prepareRendererDom(modeClass: 'svg-mode' | 'deckgl-mode' | 'globe-mode'): void {
+    this.container.classList.remove('map-renderer-shell', 'deckgl-mode', 'globe-mode', 'svg-mode');
+    delete this.container.dataset.mapRendererPending;
+    this.container.removeAttribute('aria-busy');
+    this.container.textContent = '';
+    this.container.classList.add(modeClass);
+  }
+
+  private sanitizeNonDeckLayers(): void {
+    if (this.initialState.layers?.resilienceScore) {
+      this.initialState = { ...this.initialState, layers: { ...this.initialState.layers, resilienceScore: false } };
+    }
+  }
+
+  private isCurrentRendererInit(token: number): boolean {
+    return !this.destroyed && token === this.rendererInitToken;
+  }
+
+  private hasActiveRenderer(): boolean {
+    return Boolean(this.globeMap || this.deckGLMap || this.svgMap);
+  }
+
+  private startResizeObserver(): void {
+    if (this.resizeObserver || typeof ResizeObserver === 'undefined') return;
+    this.resizeObserver = new ResizeObserver(() => {
+      if (this.isResizingInternal) return;
+      this.resize();
+    });
+    this.resizeObserver.observe(this.container);
+  }
+
+  private async initSvgMap(logMessage: string, token: number): Promise<void> {
     console.log(logMessage);
     this.useDeckGL = false;
     this.deckGLMap = null;
-    this.container.classList.remove('deckgl-mode');
-    this.container.classList.add('svg-mode');
+    this.sanitizeNonDeckLayers();
+    const { MapComponent } = await import('./Map');
+    if (!this.isCurrentRendererInit(token)) return;
+    this.prepareRendererDom('svg-mode');
     // DeckGLMap mutates DOM early during construction. If initialization throws,
-    // clear partial deck.gl nodes before creating the SVG fallback.
-    this.container.innerHTML = '';
-    this.svgMap = new MapComponent(this.container, this.initialState);
+    // clear partial WebGL nodes before creating the SVG fallback.
+    this.svgMap = new MapComponent(this.container, this.initialState, { chrome: this.chrome });
+    this.rehydrateActiveMap();
   }
 
-  private init(): void {
+  private async createGlobeMap(rendererToken: number): Promise<void> {
+    const globeToken = ++this.globeInitToken;
+    try {
+      const { GlobeMap } = await import('./GlobeMap');
+      if (!this.isCurrentRendererInit(rendererToken)) return;
+      this.prepareRendererDom('globe-mode');
+      this.globeMap = new GlobeMap(this.container, this.initialState, {
+        onInitError: (error) => this.handleGlobeInitFailure(globeToken, error),
+        chrome: this.chrome,
+      });
+      this.rehydrateActiveMap();
+    } catch (error) {
+      this.handleGlobeInitFailure(globeToken, error);
+    }
+  }
+
+  private handleGlobeInitFailure(token: number, error: unknown): void {
+    if (token !== this.globeInitToken || !this.useGlobe) return;
+    console.warn('[MapContainer] Globe initialization failed, falling back to SVG map', error);
+    this.globeMap?.destroy();
+    this.globeMap = null;
+    this.useGlobe = false;
+    this.useDeckGL = false;
+    const fallbackToken = ++this.rendererInitToken;
+    this.showRendererShell('svg');
+    void this.initSvgMap('[MapContainer] Initializing SVG map (globe fallback mode)', fallbackToken);
+  }
+
+  private async createDeckGLMap(token: number): Promise<void> {
+    console.log('[MapContainer] Initializing deck.gl map (desktop mode)');
+    try {
+      await loadMapLibreCss();
+      const { DeckGLMap } = await import('./DeckGLMap');
+      if (!this.isCurrentRendererInit(token)) return;
+      this.prepareRendererDom('deckgl-mode');
+      this.deckGLMap = new DeckGLMap(this.container, {
+        ...this.initialState,
+        view: this.initialState.view as DeckMapView,
+      }, { chrome: this.chrome });
+      this.rehydrateActiveMap();
+    } catch (error) {
+      if (!this.isCurrentRendererInit(token)) return;
+      console.warn('[MapContainer] DeckGL initialization failed, falling back to SVG map', error);
+      await this.initSvgMap('[MapContainer] Initializing SVG map (DeckGL fallback mode)', token);
+    }
+  }
+
+  private async init(): Promise<void> {
+    const token = ++this.rendererInitToken;
+    this.showRendererShell(this.getPendingRendererKind());
+    this.startResizeObserver();
+    // requestAnimationFrame is paused while the tab is hidden, so the heavy
+    // renderer load deferred behind afterFirstPaint() intentionally waits until
+    // the tab becomes visible — the lightweight shell is shown until then.
+    await afterFirstPaint();
+    if (!this.isCurrentRendererInit(token)) return;
+
     if (this.useGlobe) {
       console.log('[MapContainer] Initializing 3D globe (globe.gl mode)');
-      this.globeMap = new GlobeMap(this.container, this.initialState);
+      await this.createGlobeMap(token);
     } else if (this.useDeckGL) {
-      console.log('[MapContainer] Initializing deck.gl map (desktop mode)');
-      try {
-        this.container.classList.add('deckgl-mode');
-        this.deckGLMap = new DeckGLMap(this.container, {
-          ...this.initialState,
-          view: this.initialState.view as DeckMapView,
-        });
-      } catch (error) {
-        console.warn('[MapContainer] DeckGL initialization failed, falling back to SVG map', error);
-        this.initSvgMap('[MapContainer] Initializing SVG map (DeckGL fallback mode)');
-      }
+      await this.createDeckGLMap(token);
     } else {
-      this.initSvgMap('[MapContainer] Initializing SVG map (mobile/fallback mode)');
-    }
-
-    // Automatic resize on container change (fixes gaps on load/layout shift)
-    if (typeof ResizeObserver !== 'undefined') {
-      this.resizeObserver = new ResizeObserver(() => {
-        // Skip if we are already handling resize manually via drag handlers
-        if (this.isResizingInternal) return;
-        this.resize();
-      });
-      this.resizeObserver.observe(this.container);
+      await this.initSvgMap('[MapContainer] Initializing SVG map (mobile/fallback mode)', token);
     }
   }
 
@@ -246,9 +398,9 @@ export class MapContainer {
     this.destroyFlatMap();
     this.useGlobe = true;
     this.useDeckGL = false;
-    this.globeMap = new GlobeMap(this.container, this.initialState);
-    this.restoreViewport(snapshot, center);
-    this.rehydrateActiveMap();
+    this.initialState = snapshot;
+    this.pendingCenter = center ? { ...center, zoom: snapshot.zoom } : null;
+    void this.init();
   }
 
   /** Reload basemap style (called when map provider changes in Settings). */
@@ -263,20 +415,16 @@ export class MapContainer {
     const center = this.getCenter();
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
+    this.globeInitToken++;
     this.globeMap?.destroy();
     this.globeMap = null;
     this.useGlobe = false;
     this.useDeckGL = this.shouldUseDeckGL();
-    this.init();
-    this.restoreViewport(snapshot, center);
-    this.rehydrateActiveMap();
-  }
-
-  private restoreViewport(snapshot: MapContainerState, center: { lat: number; lon: number } | null): void {
-    this.setLayers(snapshot.layers);
-    this.setTimeRange(snapshot.timeRange);
-    this.setView(snapshot.view);
-    if (center) this.setCenter(center.lat, center.lon, snapshot.zoom);
+    this.initialState = !this.useDeckGL && snapshot.layers.resilienceScore
+      ? { ...snapshot, layers: { ...snapshot.layers, resilienceScore: false } }
+      : snapshot;
+    this.pendingCenter = center ? { ...center, zoom: snapshot.zoom } : null;
+    void this.init();
   }
 
   private rehydrateActiveMap(): void {
@@ -288,9 +436,11 @@ export class MapContainer {
     if (this.cachedOnHotspotClicked) this.onHotspotClicked(this.cachedOnHotspotClicked);
     if (this.cachedOnAircraftPositionsUpdate) this.setOnAircraftPositionsUpdate(this.cachedOnAircraftPositionsUpdate);
     if (this.cachedOnMapContextMenu) this.onMapContextMenu(this.cachedOnMapContextMenu);
+    if (this.escalationGettersRequested) this.applyEscalationGetters();
 
     // 2. Re-push all cached data
     if (this.cachedEarthquakes) this.setEarthquakes(this.cachedEarthquakes);
+    if (this.cachedConflictEvents) this.setConflictEvents(this.cachedConflictEvents);
     if (this.cachedWeatherAlerts) this.setWeatherAlerts(this.cachedWeatherAlerts);
     if (this.cachedOutages) this.setOutages(this.cachedOutages);
     if (this.cachedAisDisruptions != null && this.cachedAisDensity != null) this.setAisData(this.cachedAisDisruptions, this.cachedAisDensity);
@@ -324,11 +474,28 @@ export class MapContainer {
     if (this.cachedHotspotActivity) this.updateHotspotActivity(this.cachedHotspotActivity);
     if (this.cachedEscalationFlights && this.cachedEscalationVessels) this.updateMilitaryForEscalation(this.cachedEscalationFlights, this.cachedEscalationVessels);
     if (this.cachedImageryScenes) this.setImageryScenes(this.cachedImageryScenes);
+    if (this.cachedTrafficAnomalies) this.setTrafficAnomalies(this.cachedTrafficAnomalies);
+    if (this.cachedDdosLocations) this.setDdosLocations(this.cachedDdosLocations);
+    if (this.cachedChokepointData !== undefined) this.setChokepointData(this.cachedChokepointData);
     if (this.cachedWebcams) {
       if (this.useGlobe) this.globeMap?.setWebcams(this.cachedWebcams);
       else if (this.useDeckGL) this.deckGLMap?.setWebcams(this.cachedWebcams);
       else this.svgMap?.setWebcams(this.cachedWebcams);
     }
+    for (const [layer, loading] of this.layerLoadingState) this.setLayerLoading(layer, loading);
+    for (const [layer, hasData] of this.layerReadyState) this.setLayerReady(layer, hasData);
+    if (this.cachedScenarioState !== undefined) this.applyScenarioState(this.cachedScenarioState);
+    const pendingViewportActions = this.pendingViewportActions.splice(0);
+    for (const action of pendingViewportActions) {
+      if (action.type === 'view') this.setView(action.view, action.zoom);
+      else this.setZoom(action.zoom);
+    }
+    if (this.pendingCenter) {
+      const pendingCenter = this.pendingCenter;
+      this.pendingCenter = null;
+      this.setCenter(pendingCenter.lat, pendingCenter.lon, pendingCenter.zoom);
+    }
+    for (const layer of this.hiddenLayerToggles) this.hideLayerToggle(layer);
   }
 
   public isGlobeMode(): boolean {
@@ -339,13 +506,19 @@ export class MapContainer {
     return this.useDeckGL;
   }
 
+  public supportsLiveConflictEvents(): boolean {
+    return !this.useGlobe && !this.useDeckGL;
+  }
+
   private destroyFlatMap(): void {
     this.deckGLMap?.destroy();
     this.deckGLMap = null;
     this.svgMap?.destroy();
     this.svgMap = null;
-    this.container.innerHTML = '';
-    this.container.classList.remove('deckgl-mode', 'svg-mode');
+    this.container.textContent = '';
+    this.container.classList.remove('deckgl-mode', 'svg-mode', 'map-renderer-shell');
+    delete this.container.dataset.mapRendererPending;
+    this.container.removeAttribute('aria-busy');
   }
 
   // ─── Unified public API - delegates to active map implementation ────────────
@@ -374,16 +547,33 @@ export class MapContainer {
   }
 
   public setView(view: MapView, zoom?: number): void {
+    this.initialState = zoom == null
+      ? { ...this.initialState, view }
+      : { ...this.initialState, view, zoom };
+    if (!this.hasActiveRenderer()) {
+      this.pendingViewportActions.push({ type: 'view', view, zoom });
+      return;
+    }
     if (this.useGlobe) { this.globeMap?.setView(view, zoom); return; }
     if (this.useDeckGL) { this.deckGLMap?.setView(view as DeckMapView, zoom); } else { this.svgMap?.setView(view, zoom); }
   }
 
   public setZoom(zoom: number): void {
+    this.initialState = { ...this.initialState, zoom };
+    if (!this.hasActiveRenderer()) {
+      this.pendingViewportActions.push({ type: 'zoom', zoom });
+      return;
+    }
     if (this.useGlobe) { this.globeMap?.setZoom(zoom); return; }
     if (this.useDeckGL) { this.deckGLMap?.setZoom(zoom); } else { this.svgMap?.setZoom(zoom); }
   }
 
   public setCenter(lat: number, lon: number, zoom?: number): void {
+    if (!this.hasActiveRenderer()) {
+      this.pendingCenter = { lat, lon, zoom };
+      if (zoom != null) this.initialState = { ...this.initialState, zoom };
+      return;
+    }
     if (this.useGlobe) { this.globeMap?.setCenter(lat, lon, zoom); return; }
     if (this.useDeckGL) {
       this.deckGLMap?.setCenter(lat, lon, zoom);
@@ -400,18 +590,24 @@ export class MapContainer {
   }
 
   public setTimeRange(range: TimeRange): void {
+    this.initialState = { ...this.initialState, timeRange: range };
+    if (!this.hasActiveRenderer()) {
+      this.cachedOnTimeRangeChanged?.(range);
+      return;
+    }
     if (this.useGlobe) { this.globeMap?.setTimeRange(range); return; }
     if (this.useDeckGL) { this.deckGLMap?.setTimeRange(range); } else { this.svgMap?.setTimeRange(range); }
   }
 
   public getTimeRange(): TimeRange {
-    if (this.useGlobe) return this.globeMap?.getTimeRange() ?? '7d';
-    if (this.useDeckGL) return this.deckGLMap?.getTimeRange() ?? '7d';
-    return this.svgMap?.getTimeRange() ?? '7d';
+    if (this.useGlobe) return this.globeMap?.getTimeRange() ?? this.initialState.timeRange;
+    if (this.useDeckGL) return this.deckGLMap?.getTimeRange() ?? this.initialState.timeRange;
+    return this.svgMap?.getTimeRange() ?? this.initialState.timeRange;
   }
 
   public setLayers(layers: MapLayers): void {
     const sanitized = !this.useDeckGL && layers.resilienceScore ? { ...layers, resilienceScore: false } : layers;
+    this.initialState = { ...this.initialState, layers: sanitized };
     if (this.useGlobe) { this.globeMap?.setLayers(sanitized); return; }
     if (this.useDeckGL) { this.deckGLMap?.setLayers(sanitized); } else { this.svgMap?.setLayers(sanitized); }
   }
@@ -431,6 +627,13 @@ export class MapContainer {
     this.cachedEarthquakes = earthquakes;
     if (this.useGlobe) { this.globeMap?.setEarthquakes(earthquakes); return; }
     if (this.useDeckGL) { this.deckGLMap?.setEarthquakes(earthquakes); } else { this.svgMap?.setEarthquakes(earthquakes); }
+  }
+
+  public setConflictEvents(events: AcledConflictEvent[]): void {
+    this.cachedConflictEvents = events;
+    if (!this.useGlobe && !this.useDeckGL) {
+      this.svgMap?.setConflictEvents(events);
+    }
   }
 
   public setImageryScenes(scenes: ImageryScene[]): void {
@@ -459,11 +662,13 @@ export class MapContainer {
   }
 
   public setTrafficAnomalies(anomalies: ProtoTrafficAnomaly[]): void {
+    this.cachedTrafficAnomalies = anomalies;
     if (this.useGlobe) { this.globeMap?.setTrafficAnomalies(anomalies); return; }
     if (this.useDeckGL) { this.deckGLMap?.setTrafficAnomalies(anomalies); }
   }
 
   public setDdosLocations(hits: DdosLocationHit[]): void {
+    this.cachedDdosLocations = hits;
     if (this.useGlobe) { this.globeMap?.setDdosLocations(hits); return; }
     if (this.useDeckGL) { this.deckGLMap?.setDdosLocations(hits); }
   }
@@ -680,6 +885,7 @@ export class MapContainer {
   }
 
   public setChokepointData(data: GetChokepointStatusResponse | null): void {
+    this.cachedChokepointData = data;
     if (this.useGlobe) { this.globeMap?.setChokepointData(data); return; }
     if (this.useDeckGL) { this.deckGLMap?.setChokepointData(data); return; }
     this.svgMap?.setChokepointData(data);
@@ -812,6 +1018,11 @@ export class MapContainer {
   }
 
   public initEscalationGetters(): void {
+    this.escalationGettersRequested = true;
+    this.applyEscalationGetters();
+  }
+
+  private applyEscalationGetters(): void {
     if (this.useDeckGL) {
       this.deckGLMap?.initEscalationGetters();
     } else {
@@ -821,6 +1032,7 @@ export class MapContainer {
 
   // UI visibility methods
   public hideLayerToggle(layer: keyof MapLayers): void {
+    this.hiddenLayerToggles.add(layer);
     if (this.useGlobe) { this.globeMap?.hideLayerToggle(layer); return; }
     if (this.useDeckGL) {
       this.deckGLMap?.hideLayerToggle(layer);
@@ -830,6 +1042,7 @@ export class MapContainer {
   }
 
   public setLayerLoading(layer: keyof MapLayers, loading: boolean): void {
+    this.layerLoadingState.set(layer, loading);
     if (this.useGlobe) { this.globeMap?.setLayerLoading(layer, loading); return; }
     if (this.useDeckGL) {
       this.deckGLMap?.setLayerLoading(layer, loading);
@@ -839,6 +1052,7 @@ export class MapContainer {
   }
 
   public setLayerReady(layer: keyof MapLayers, hasData: boolean): void {
+    this.layerReadyState.set(layer, hasData);
     if (this.useGlobe) { this.globeMap?.setLayerReady(layer, hasData); return; }
     if (this.useDeckGL) {
       this.deckGLMap?.setLayerReady(layer, hasData);
@@ -857,6 +1071,11 @@ export class MapContainer {
   // Layer enable/disable and trigger methods
   public enableLayer(layer: keyof MapLayers): void {
     if (layer === 'resilienceScore' && !this.useDeckGL) return;
+    this.initialState = {
+      ...this.initialState,
+      layers: { ...this.initialState.layers, [layer]: true },
+    };
+    if (!this.hasActiveRenderer()) return;
     if (this.useGlobe) { this.globeMap?.enableLayer(layer); return; }
     if (this.useDeckGL) {
       this.deckGLMap?.enableLayer(layer);
@@ -1012,6 +1231,12 @@ export class MapContainer {
    * @param scenarioId  Template ID from scenario-templates.ts
    * @param result      Computed result from the scenario worker
    */
+  private applyScenarioState(state: ScenarioVisualState | null): void {
+    this.deckGLMap?.setScenarioState(state);
+    this.svgMap?.setScenarioState(state);
+    this.globeMap?.setScenarioState(state);
+  }
+
   public activateScenario(scenarioId: string, result: ScenarioResult): void {
     if (!hasPremiumAccess(getAuthState())) {
       trackGateHit('scenario-engine');
@@ -1022,9 +1247,8 @@ export class MapContainer {
       disruptedChokepointIds: result.affectedChokepointIds,
       affectedIso2s: result.topImpactCountries.map((c: { iso2: string }) => c.iso2),
     };
-    this.deckGLMap?.setScenarioState(state);
-    this.svgMap?.setScenarioState(state);
-    this.globeMap?.setScenarioState(state);
+    this.cachedScenarioState = state;
+    this.applyScenarioState(state);
     this.supplyChainPanel?.showScenarioSummary(scenarioId, result);
   }
 
@@ -1032,9 +1256,8 @@ export class MapContainer {
    * Deactivate the current scenario and restore normal visual state.
    */
   public deactivateScenario(): void {
-    this.deckGLMap?.setScenarioState(null);
-    this.svgMap?.setScenarioState(null);
-    this.globeMap?.setScenarioState(null);
+    this.cachedScenarioState = null;
+    this.applyScenarioState(null);
     this.supplyChainPanel?.hideScenarioSummary();
   }
 
@@ -1048,7 +1271,10 @@ export class MapContainer {
   }
 
   public destroy(): void {
+    this.destroyed = true;
     this.resizeObserver?.disconnect();
+    this.globeInitToken++;
+    this.rendererInitToken++;
     this.globeMap?.destroy();
     this.deckGLMap?.destroy();
     this.svgMap?.destroy();
@@ -1064,6 +1290,7 @@ export class MapContainer {
     this.cachedOnAircraftPositionsUpdate = null;
     this.cachedOnMapContextMenu = null;
     this.cachedEarthquakes = null;
+    this.cachedConflictEvents = null;
     this.cachedWeatherAlerts = null;
     this.cachedOutages = null;
     this.cachedAisDisruptions = null;
@@ -1101,5 +1328,15 @@ export class MapContainer {
     this.cachedEscalationFlights = null;
     this.cachedEscalationVessels = null;
     this.cachedImageryScenes = null;
+    this.cachedTrafficAnomalies = null;
+    this.cachedDdosLocations = null;
+    this.cachedChokepointData = undefined;
+    this.pendingCenter = null;
+    this.pendingViewportActions = [];
+    this.hiddenLayerToggles.clear();
+    this.layerLoadingState.clear();
+    this.layerReadyState.clear();
+    this.cachedScenarioState = undefined;
+    this.escalationGettersRequested = false;
   }
 }

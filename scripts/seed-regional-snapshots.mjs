@@ -41,7 +41,7 @@ import { buildPreMeta, buildFinalMeta } from './regional-snapshot/snapshot-meta.
 import { diffRegionalSnapshot, inferTriggerReason } from './regional-snapshot/diff-snapshot.mjs';
 import { persistSnapshot, readLatestSnapshot } from './regional-snapshot/persist-snapshot.mjs';
 import { ALL_INPUT_KEYS, ALL_META_KEYS } from './regional-snapshot/freshness.mjs';
-import { generateSnapshotId } from './regional-snapshot/_helpers.mjs';
+import { generateSnapshotId, unwrapEnvelope } from './regional-snapshot/_helpers.mjs';
 import { generateRegionalNarrative, emptyNarrative } from './regional-snapshot/narrative.mjs';
 import { emitRegionalAlerts } from './regional-snapshot/alert-emitter.mjs';
 import { buildMobilityState } from './regional-snapshot/mobility.mjs';
@@ -77,14 +77,19 @@ async function readAllInputs() {
   const metaSources = {};
   for (let i = 0; i < keys.length; i += 1) {
     const key = keys[i];
-    const target = i < ALL_INPUT_KEYS.length ? sources : metaSources;
+    const isInput = i < ALL_INPUT_KEYS.length;
+    const target = isInput ? sources : metaSources;
     const raw = results[i]?.result;
     if (raw === null || raw === undefined) {
       target[key] = null;
       continue;
     }
     try {
-      target[key] = JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      // Input payloads written via the relay's envelopeWrite ({ _seed, data })
+      // must be unwrapped to their flat shape so compute modules read the right
+      // fields. seed-meta:* payloads are always flat and pass through untouched.
+      target[key] = isInput ? unwrapEnvelope(parsed) : parsed;
     } catch {
       target[key] = null;
     }

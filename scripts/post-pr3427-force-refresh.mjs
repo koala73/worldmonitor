@@ -56,5 +56,5 @@ if (failed > 0) {
 }
 
 console.log('[post-pr3427] All seeders refreshed. Now run:');
-console.log('  WORLDMONITOR_API_KEY=<key> node scripts/seed-resilience-scores.mjs');
+console.log('  API_BASE_URL=https://api.worldmonitor.app WORLDMONITOR_SEED_REFRESH_KEY=<seed-refresh-key> WORLDMONITOR_API_KEY=<read-key> node scripts/seed-resilience-scores.mjs');
 console.log('to bulk-warm the v15 score cache against the corrected seed data.');

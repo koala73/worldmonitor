@@ -86,6 +86,104 @@ test('classifyKey: present-but-stale seed → STALE_SEED (warn), data still pres
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 
+test('classifyKey: riskScores partial realtime family coverage → COVERAGE_PARTIAL', () => {
+  const entry = classifyKey('riskScores', BOOTSTRAP_KEYS.riskScores, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.riskScores]: 1234 },
+      metaValues: { 'seed-meta:intelligence:risk-scores': seedMeta({ recordCount: 1 }) },
+    }));
+
+  assert.equal(entry.status, 'COVERAGE_PARTIAL');
+  assert.equal(entry.records, 1);
+  assert.equal(entry.minRecordCount, 3);
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('classifyKey: portwatchPortActivity below 174 countries → COVERAGE_PARTIAL', () => {
+  const entry = classifyKey('portwatchPortActivity', STANDALONE_KEYS.portwatchPortActivity, { allowOnDemand: true },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.portwatchPortActivity]: 1234 },
+      metaValues: { 'seed-meta:supply_chain:portwatch-ports': seedMeta({ recordCount: 139 }) },
+    }));
+
+  assert.equal(entry.status, 'COVERAGE_PARTIAL');
+  assert.equal(entry.records, 139);
+  assert.equal(entry.minRecordCount, 174);
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('classifyKey: socialVelocity error seed-meta → SEED_ERROR while data is preserved', () => {
+  const entry = classifyKey('socialVelocity', BOOTSTRAP_KEYS.socialVelocity, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.socialVelocity]: 1234 },
+      metaValues: {
+        'seed-meta:intelligence:social-reddit': seedMeta({
+          status: 'error',
+          errorReason: 'empty_reddit_response: r/worldnews HTTP 403; r/geopolitics HTTP 403',
+        }),
+      },
+    }));
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+  assert.equal(entry.records, 1);
+});
+
+test('classifyKey: socialVelocity/wsbTickers tolerate the 3h cadence — fresh at 300min → OK', () => {
+  // Cadence dropped 1h→3h (ScrapeCreators), so maxStaleMin was raised 180→540.
+  // A healthy seed-meta aged 300min (5h, inside 540) must NOT false-alarm.
+  for (const [name, metaKey] of [
+    ['socialVelocity', 'seed-meta:intelligence:social-reddit'],
+    ['wsbTickers', 'seed-meta:intelligence:wsb-tickers'],
+  ]) {
+    const entry = classifyKey(name, BOOTSTRAP_KEYS[name], { allowOnDemand: false },
+      makeCtx({
+        strens: { [BOOTSTRAP_KEYS[name]]: 4096 },
+        metaValues: { [metaKey]: seedMeta({ fetchedAt: NOW - 300 * ONE_MIN_MS }) },
+      }));
+    assert.equal(entry.status, 'OK', `${name} at 300min should be OK`);
+  }
+});
+
+test('classifyKey: dead relay, data still present (9h–12h window) → STALE_SEED (warn)', () => {
+  // A dead relay stops refreshing seed-meta, but the data key lives for its full
+  // 12h TTL (> maxStaleMin=540min/9h), so 540–720min is a real present-but-stale
+  // window → STALE_SEED. This is reachable in production ONLY because the data-key
+  // TTL (43200s) STRICTLY exceeds maxStaleMin; at TTL==maxStaleMin the key would
+  // expire exactly when staleness begins and classifyKey would emit EMPTY instead.
+  for (const [name, metaKey] of [
+    ['socialVelocity', 'seed-meta:intelligence:social-reddit'],
+    ['wsbTickers', 'seed-meta:intelligence:wsb-tickers'],
+  ]) {
+    const entry = classifyKey(name, BOOTSTRAP_KEYS[name], { allowOnDemand: false },
+      makeCtx({
+        strens: { [BOOTSTRAP_KEYS[name]]: 4096 },
+        metaValues: { [metaKey]: seedMeta({ fetchedAt: NOW - 600 * ONE_MIN_MS }) },
+      }));
+    assert.equal(entry.status, 'STALE_SEED', `${name} at 600min (data present) should be STALE_SEED`);
+    assert.equal(STATUS_COUNTS[entry.status], 'warn');
+  }
+});
+
+test('classifyKey: dead relay past the 12h TTL, data key expired → EMPTY (crit) escalation', () => {
+  // Once the data key expires (after the 12h TTL on a fully-dead relay),
+  // hasData=false → classifyKey hits the !hasData branch (checked BEFORE seedStale,
+  // api/health.js) and returns EMPTY (crit), escalating from the earlier STALE_SEED
+  // warn. Verified shape: { status: 'EMPTY', records: 0 }.
+  for (const [name, metaKey] of [
+    ['socialVelocity', 'seed-meta:intelligence:social-reddit'],
+    ['wsbTickers', 'seed-meta:intelligence:wsb-tickers'],
+  ]) {
+    const entry = classifyKey(name, BOOTSTRAP_KEYS[name], { allowOnDemand: false },
+      makeCtx({
+        // no strens entry → data key absent (expired)
+        metaValues: { [metaKey]: seedMeta({ fetchedAt: NOW - 800 * ONE_MIN_MS }) },
+      }));
+    assert.equal(entry.status, 'EMPTY', `${name} with expired data should be EMPTY`);
+    assert.equal(STATUS_COUNTS[entry.status], 'crit');
+    assert.equal(entry.records, 0);
+  }
+});
+
 test('classifyKey: empty bootstrap key (no cascade) → EMPTY (crit)', () => {
   const entry = classifyKey('earthquakes', BOOTSTRAP_KEYS.earthquakes, { allowOnDemand: false },
     makeCtx({ metaValues: { 'seed-meta:seismology:earthquakes': seedMeta() } }));
@@ -97,6 +195,47 @@ test('classifyKey: empty on-demand standalone key → EMPTY_ON_DEMAND (warn)', (
   // minerals is in ON_DEMAND_KEYS and has no SEED_META entry.
   const entry = classifyKey('minerals', STANDALONE_KEYS.minerals, { allowOnDemand: true }, makeCtx({}));
   assert.equal(entry.status, 'EMPTY_ON_DEMAND');
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('classifyKey: webcams active pointer is registered with seed-meta freshness', () => {
+  const entry = classifyKey('webcams', STANDALONE_KEYS.webcams, { allowOnDemand: true },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.webcams]: 13 },
+      metaValues: { 'seed-meta:webcam:cameras:geo': seedMeta({ recordCount: 65000 }) },
+    }));
+
+  assert.equal(STANDALONE_KEYS.webcams, 'webcam:cameras:active');
+  assert.equal(entry.status, 'OK');
+  assert.equal(entry.records, 65000);
+  assert.equal(entry.maxStaleMin, 1440);
+});
+
+test('classifyKey: digestNotifications heartbeat goes stale when the cron stops', () => {
+  const entry = classifyKey('digestNotifications', STANDALONE_KEYS.digestNotifications, { allowOnDemand: true },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.digestNotifications]: 256 },
+      metaValues: {
+        'seed-meta:digest:last-run': seedMeta({
+          fetchedAt: NOW - 120 * ONE_MIN_MS,
+          sentCount: 0,
+        }),
+      },
+    }));
+
+  assert.equal(STANDALONE_KEYS.digestNotifications, 'digest:last-run');
+  assert.equal(entry.status, 'STALE_SEED');
+  assert.equal(entry.maxStaleMin, 90);
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('classifyKey: digestNotifications missing before first cron run is transitional warn', () => {
+  const entry = classifyKey('digestNotifications', STANDALONE_KEYS.digestNotifications, { allowOnDemand: true },
+    makeCtx({}));
+
+  assert.equal(entry.status, 'EMPTY_ON_DEMAND');
+  assert.equal(entry.records, 0);
+  assert.equal(entry.maxStaleMin, 90);
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 
@@ -148,6 +287,46 @@ test('classifyKey: suppressed retailer-spread that goes STALE still warns (publi
         'seed-meta:consumer-prices:retailer-spread:ae:essentials-ae':
           seedMeta({ recordCount: 0, fetchedAt: NOW - 2000 * ONE_MIN_MS }),
       },
+    }));
+  assert.equal(entry.status, 'STALE_SEED');
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+// ── CF Radar outages: sparse zeroIsValid feed (seed-internet-outages) ───────
+
+test('classifyKey: outages present key + 0 records while fresh → OK (sparse feed, not EMPTY_DATA)', () => {
+  // CF Radar curated outage annotations are sparse; most 28d windows publish an
+  // empty {outages:[]} envelope (hasData=true) with recordCount=0. With
+  // zeroIsValid the seeder refreshes seed-meta fresh, so this must classify OK,
+  // not EMPTY_DATA (crit) and not STALE_SEED.
+  const entry = classifyKey('outages', BOOTSTRAP_KEYS.outages, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.outages]: 149 }, // empty {outages:[]} envelope
+      metaValues: { 'seed-meta:infra:outages': seedMeta({ recordCount: 0 }) },
+    }));
+  assert.equal(entry.status, 'OK');
+  assert.equal(STATUS_COUNTS[entry.status], 'ok');
+});
+
+test('classifyKey: missing outages payload is still EMPTY even with fresh 0-record meta', () => {
+  // The zero-record exemption is NARROW: it only applies once Redis proves the
+  // payload exists. A missing canonical key means publish died and must alarm
+  // EMPTY (crit), not be hidden by the sparse-feed allowance.
+  const entry = classifyKey('outages', BOOTSTRAP_KEYS.outages, { allowOnDemand: false },
+    makeCtx({
+      metaValues: { 'seed-meta:infra:outages': seedMeta({ recordCount: 0 }) },
+    }));
+  assert.equal(entry.status, 'EMPTY');
+  assert.equal(STATUS_COUNTS[entry.status], 'crit');
+});
+
+test('classifyKey: outages present + 0 records that goes STALE still warns (cron stopped)', () => {
+  // The exemption must NOT mask a genuine cron outage: once seed-meta age
+  // exceeds maxStaleMin (30), 0 records degrades to STALE_SEED (warn), not OK.
+  const entry = classifyKey('outages', BOOTSTRAP_KEYS.outages, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.outages]: 149 },
+      metaValues: { 'seed-meta:infra:outages': seedMeta({ recordCount: 0, fetchedAt: NOW - 200 * ONE_MIN_MS }) },
     }));
   assert.equal(entry.status, 'STALE_SEED');
   assert.equal(STATUS_COUNTS[entry.status], 'warn');

@@ -196,4 +196,58 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
       `'logging' must remain in LOGGING_HAS_NO_REGISTRY — removing it requires editing this test deliberately`,
     );
   });
+
+  it('server-card daily-quota notes mirror metadata exemptions', () => {
+    const card = JSON.parse(
+      readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'),
+    );
+    assert.deepEqual(
+      card.rateLimits?.dailyByPlan,
+      {
+        pro: 50,
+        apiStarter: null,
+        apiBusiness: null,
+        enterprise: null,
+      },
+      'server-card must not advertise API-tier MCP daily caps that the handler does not enforce',
+    );
+    const notes = card.rateLimits?.notes;
+    assert.equal(typeof notes, 'string', 'server-card rateLimits.notes must be a string');
+    assert.match(notes, /Pro\/OAuth contexts only/i, 'notes must scope the hard daily reservation to Pro/OAuth contexts');
+    assert.match(notes, /API-key .* do not use this MCP daily reservation path/i,
+      'notes must disclose that env_key/API-key MCP callers do not use the daily reservation path');
+    assert.doesNotMatch(notes, /1,000|1000|10,000|10000/,
+      'notes must not publish API Starter/Business MCP daily caps that are not enforced');
+    for (const method of [
+      'initialize',
+      'tools/list',
+      'prompts/list',
+      'prompts/get',
+      'resources/list',
+      'logging/setLevel',
+      'notifications/initialized',
+      'ping',
+      'describe_tool',
+    ]) {
+      assert.ok(notes.includes(method), `${method} must be named in daily-quota notes`);
+    }
+    assert.match(notes, /Per-minute .* counts ALL methods/i, 'notes must distinguish per-minute from daily exemptions');
+  });
+
+});
+
+describe('docs/mcp-server.mdx — API-key quota contract', () => {
+  it('keeps API-key auth separate from the Pro/OAuth daily reservation path', () => {
+    const docs = readFileSync(new URL('../docs/mcp-server.mdx', import.meta.url), 'utf8');
+    assert.doesNotMatch(docs, /Both modes check the same PRO entitlement/i,
+      'docs must not claim API-key requests use the OAuth/Pro entitlement pre-check path');
+    assert.match(docs, /OAuth bearer requests re-check[\s\S]*active entitlement[\s\S]*before dispatch/i,
+      'docs must describe the OAuth entitlement re-check path');
+    assert.match(docs, /Direct `X-WorldMonitor-Key` requests[\s\S]*configured API key[\s\S]*per-key (?:rate )?limiter/i,
+      'docs must describe API-key MCP auth and per-key minute limiting without implying Pro daily quota reservation');
+    assert.match(docs, /REST\/API plan allowances[\s\S]*outside[\s\S]*Pro\/OAuth MCP daily reservation path/i,
+      'docs must keep REST/API plan allowances separate from MCP daily reservation semantics');
+    assert.match(docs, /`wm_…` MCP calls[\s\S]*no MCP daily reservation/i,
+      'docs must state that wm_ API-key MCP calls have no MCP daily reservation');
+  });
 });

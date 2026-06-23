@@ -128,7 +128,9 @@
       "languages": "Языки",
       "currencies": "Валюты",
       "area": "Площадь"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "МИР",
@@ -207,7 +209,8 @@
     "panelCatMining": "Добыча и цепь поставок",
     "panelCatCommodityEcon": "Экономика и торговля",
     "panelCatHappyNews": "Хорошие новости",
-    "panelCatHappyPlanet": "Планета и благотворительность"
+    "panelCatHappyPlanet": "Планета и благотворительность",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "Новости в реальном времени",
@@ -456,7 +459,8 @@
       "flightMilitary": "Военный · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Военный · {{type}} · на земле",
       "flightSearchHint": "Нажмите Enter или кликните для поиска текущей позиции",
-      "flightNotFound": "Текущая позиция не найдена для {{callsign}}"
+      "flightNotFound": "Текущая позиция не найдена для {{callsign}}",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "РАЗВЕДЫВАТЕЛЬНОЕ ОБНАРУЖЕНИЕ",
@@ -686,7 +690,9 @@
         "americas": "АМЕРИКА",
         "asia": "АЗИЯ",
         "space": "КОСМОС"
-      }
+      },
+      "play": "Воспроизвести",
+      "previewStatus": "Предпросмотр в реальном времени"
     },
     "positiveNewsFeed": {
       "noStories": "Пока нет историй в этой категории"
@@ -1215,7 +1221,13 @@
       "noSignals": "Сигналы нестабильности не обнаружены",
       "infoTooltip": "<strong>Методология</strong><ul><li><strong>Б</strong>еспорядки: гражданские волнения и протесты</li><li><strong>К</strong>онфликт: интенсивность вооружённого конфликта</li><li><strong>Б</strong>езопасность: военные рейсы/суда над территорией</li><li><strong>И</strong>нформация: скорость новостей и корреляция фокусных точек</li><li>Усиление при близости к горячим точкам (стратегические объекты)</li></ul><em>Б:К:Б:И показывают оценки компонентов.</em> Обнаружение фокусных точек коррелирует сущности новостей с сигналами на карте для точной оценки.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "Включает базовое значение по стране + множитель события — см. /docs/methodology/cii-risk-scores для опубликованной таблицы"
+      "methodologyLink": "Включает базовое значение по стране + множитель события — см. /docs/methodology/cii-risk-scores для опубликованной таблицы",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "insights": {
       "noStories": "Пока нет экстренных или мультиисточниковых сюжетов",
@@ -1254,8 +1266,8 @@
       "badgeAnimDesc": "Анимировать значки обновлений в заголовках панелей",
       "headlineMemoryLabel": "Память заголовков",
       "headlineMemoryDesc": "Запоминать просмотренные заголовки для выделения новых",
-      "streamAlwaysOnLabel": "Не останавливать прямые трансляции",
-      "streamAlwaysOnDesc": "Предотвращает автопаузу Live Cams и Live News при бездействии. Рекомендуется для второго монитора / настенного дашборда. Отключите (Eco), чтобы экономить CPU/трафик.",
+      "streamAlwaysOnLabel": "Автоматически воспроизводить прямые трансляции на панели",
+      "streamAlwaysOnDesc": "Автоматически запускает Live News и Live Webcams, когда они видимы. Оставьте выключенным, чтобы видео загружалось только после нажатия Воспроизвести.",
       "analysisFrameworksLabel": "Аналитические рамки",
       "analysisFrameworksActivePerPanel": "Активные по панелям",
       "analysisFrameworksSkillLibrary": "Библиотека навыков",
@@ -1336,9 +1348,8 @@
     "strategicRisk": {
       "noRisks": "Значительные риски не обнаружены",
       "levels": {
-        "critical": "Критический",
-        "elevated": "Повышенный",
-        "moderate": "Умеренный",
+        "high": "высокий",
+        "medium": "Умеренный",
         "low": "Низкий"
       },
       "trend": "Тренд",
@@ -1370,7 +1381,14 @@
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
       },
-      "infoTooltip": "<strong>Методология</strong> Составная оценка (0-100) на основе:<ul><li>50% Нестабильность стран (топ-5, взвешенные)</li><li>30% Географические зоны конвергенции</li><li>20% Инфраструктурные инциденты</li></ul>Автообновление каждые 5 минут."
+      "infoTooltip": "<strong>Методология</strong> Составная оценка (0-100) на основе:<ul><li>50% Нестабильность стран (топ-5, взвешенные)</li><li>30% Географические зоны конвергенции</li><li>20% Инфраструктурные инциденты</li></ul>Автообновление каждые 5 минут.",
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "techEvents": {
       "loading": "Загрузка технологических мероприятий...",
@@ -1414,7 +1432,7 @@
       "noMatching": "Нет предупреждений для этого фильтра",
       "critical": "Критический",
       "health": "Здоровье",
-      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
       "refresh": "Обновить",
       "levels": {
         "doNotTravel": "Не путешествовать",
@@ -1759,7 +1777,9 @@
       "invalidHandle": "Введите корректный YouTube-дескриптор (например, @ChannelName)",
       "verifying": "Проверка…",
       "hlsUrl": "URL HLS-потока (необязательно)",
-      "invalidHlsUrl": "Введите корректный URL HLS-потока (.m3u8)"
+      "invalidHlsUrl": "Введите корректный URL HLS-потока (.m3u8)",
+      "playLiveFeed": "Воспроизвести прямую трансляцию",
+      "readyStatus": "Готово, когда вы готовы"
     },
     "map": {
       "showMap": "Показать карту",
@@ -2004,9 +2024,23 @@
         "categories": "Категории",
         "movers": "Изменения цен",
         "spread": "Разброс розницы",
-        "health": "Качество данных"
+        "health": "Качество данных",
+        "world": "World"
       },
-      "infoTooltip": "<strong>Цены потребителей</strong> Отслеживание цен корзины товаров в реальном времени:<ul><li><strong>Обзор</strong>: индекс товаров первой необходимости, корзина экономных товаров и изменение неделя к неделе</li><li><strong>Категории</strong>: тренды цен по категориям с диапазоном за 30 дней</li><li><strong>Изменения</strong>: товары с наибольшим ростом и падением цен на этой неделе</li><li><strong>Разброс</strong>: разница цен у разных розничных продавцов для одной корзины</li></ul>Данные получены из прямого скрепинга цен у розничных продавцов."
+      "infoTooltip": "<strong>Цены потребителей</strong> Отслеживание цен корзины товаров в реальном времени:<ul><li><strong>Обзор</strong>: индекс товаров первой необходимости, корзина экономных товаров и изменение неделя к неделе</li><li><strong>Категории</strong>: тренды цен по категориям с диапазоном за 30 дней</li><li><strong>Изменения</strong>: товары с наибольшим ростом и падением цен на этой неделе</li><li><strong>Разброс</strong>: разница цен у разных розничных продавцов для одной корзины</li></ul>Данные получены из прямого скрепинга цен у розничных продавцов.",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "marketImplications": {
       "infoTooltip": "<strong>Рыночные последствия AI</strong> Торговые сигналы, созданные LLM на основе текущих геополитических, сырьевых и макроэкономических данных после каждого цикла прогноза.<ul><li><strong>Направление</strong>: LONG / SHORT / HEDGE с рейтингом уверенности</li><li><strong>Период</strong>: горизонт 1W, 2W, 1M или 3M</li><li><strong>Драйвер</strong>: ключевой катализатор сигнала</li><li><strong>Риск</strong>: оговорка или условие инвалидации</li></ul><em>Только в информационных целях. Не является инвестиционным советом.</em>",
@@ -2298,6 +2332,45 @@
         "method": "Калибровка Portwatch DWT + AIS",
         "sampleLabel": "Сигналы нарушения AIS",
         "creditName": "EIA World Oil Transit Chokepoints"
+      }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
+    },
+    "panelFreshness": {
+      "status": {
+        "fresh": "Fresh",
+        "stale": "Stale",
+        "veryStale": "Very stale",
+        "noData": "No data",
+        "disabled": "Disabled",
+        "error": "Error"
+      },
+      "labelWithAge": "{{status}} {{age}}",
+      "title": "Data freshness: {{status}}. {{sources}}",
+      "sourceDetail": "{{name}}: {{status}}, {{update}}",
+      "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
+      "lastUpdated": "last updated {{time}}",
+      "neverUpdated": "never updated",
+      "health": {
+        "partialCoverage": "partial coverage",
+        "contentStale": "content stale",
+        "seedStale": "seed stale",
+        "noSourceData": "no source data",
+        "sourceErrorReported": "source error reported",
+        "freshnessStoreUnavailable": "freshness store unavailable",
+        "freshnessStoreDegraded": "freshness store degraded"
+      },
+      "time": {
+        "never": "never",
+        "justNow": "just now",
+        "minutesAgo": "{{count}}m ago",
+        "hoursAgo": "{{count}}h ago",
+        "daysAgo": "{{count}}d ago",
+        "compactNow": "now",
+        "compactMinutes": "{{count}}m",
+        "compactHours": "{{count}}h",
+        "compactDays": "{{count}}d"
       }
     }
   },
@@ -3099,5 +3172,18 @@
     "or": "или введите пользовательский сервер",
     "generatingVisualization": "Создание визуализации...",
     "visualizationFailed": "Ошибка визуализации"
+  },
+  "dashboardTabs": {
+    "ariaLabel": "Dashboard tabs",
+    "defaultName": "Main",
+    "newTabName": "New Tab",
+    "newTabCreated": "New tab created",
+    "tabDeleted": "Tab \"{{name}}\" deleted",
+    "addTab": "Add tab",
+    "addTabTitle": "New tab (starts with the default panels)",
+    "renameHint": "{{name}} — double-click to rename",
+    "deleteTab": "Delete tab",
+    "deleteTabAria": "Delete tab {{name}}",
+    "tabNameAria": "Tab name"
   }
 }

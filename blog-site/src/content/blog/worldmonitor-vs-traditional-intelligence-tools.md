@@ -1,5 +1,5 @@
 ---
-title: "World Monitor vs. Traditional Intelligence Tools: Why Free and Open Source Wins"
+title: "World Monitor vs. Traditional Intelligence Tools"
 description: "Compare World Monitor to Bloomberg, Palantir, Dataminr, and Recorded Future. Free, open-source multi-domain intelligence vs. six-figure enterprise platforms."
 metaTitle: "World Monitor vs Bloomberg, Palantir, Dataminr"
 keywords: "Bloomberg Terminal alternative free, Palantir alternative open source, Dataminr alternative, intelligence platform comparison, free OSINT alternative"
@@ -158,7 +158,7 @@ Every scoring algorithm is auditable. Every data source is documented. Every API
 
 - **Security teams** can verify there are no backdoors or data exfiltration
 - **Researchers** can reproduce and cite the scoring methodologies
-- **Developers** can build custom integrations using the 22 typed API services
+- **Developers** can build custom integrations using the 34 typed API services
 - **Organizations** can self-host for complete control. See the [Developer API and Open Source guide](/blog/posts/build-on-worldmonitor-developer-api-open-source/) for integration details.
 
 The AGPL-3.0 license ensures that improvements to the core platform benefit everyone. Forks must also be open source. The commons stays common.

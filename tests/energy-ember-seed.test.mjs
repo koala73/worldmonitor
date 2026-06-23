@@ -38,14 +38,15 @@ function makeRow(overrides = {}) {
 /**
  * Build a minimal long-format CSV string from an array of row objects.
  * @param {Array<Record<string, string>>} rows
+ * @param {string} [eol] line terminator (default LF). Upstream switched to bare CR in June 2026.
  */
-function buildCsv(rows) {
+function buildCsv(rows, eol = '\n') {
   const headers = [ISO3_COL, DATE_COL, SERIES_COL, UNIT_COL, VALUE_COL, 'Category'];
   const lines = [headers.join(',')];
   for (const row of rows) {
     lines.push(headers.map((h) => row[h] ?? '').join(','));
   }
-  return lines.join('\n');
+  return lines.join(eol);
 }
 
 function threeCountryFixture() {
@@ -157,6 +158,76 @@ describe('parseEmberCsv', () => {
     const csv = buildCsv(rows);
     const result = parseEmberCsv(csv);
     assert.ok(!result.has('JP'), 'JP should be excluded when Total Generation is absent');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Upstream format regression (June 2026): Ember regenerated the monthly CSV
+// with (1) bare CR (\r) line endings instead of \n/\r\n, and (2) DD/MM/YYYY
+// dates instead of YYYY-MM-DD. Both broke seed-ember-electricity in prod
+// ("Ember CSV: no data rows"). These tests pin both formats.
+// ---------------------------------------------------------------------------
+
+describe('upstream line-ending changes (CR-only / CRLF)', () => {
+  it('parses a CR-only (\\r) CSV — the June 2026 regression', () => {
+    const csv = threeCountryFixture().replace(/\n/g, '\r');
+    assert.ok(!csv.includes('\n'), 'fixture must be CR-only to reproduce the bug');
+    const result = parseEmberCsv(csv);
+    assert.ok(result.has('US') && result.has('DE') && result.has('FR'), 'all 3 countries parse from CR-only CSV');
+  });
+
+  it('parses a CRLF (\\r\\n) CSV', () => {
+    const csv = threeCountryFixture().replace(/\n/g, '\r\n');
+    const result = parseEmberCsv(csv);
+    assert.ok(result.has('US'), 'US parses from CRLF CSV');
+  });
+});
+
+describe('upstream date-format change (DD/MM/YYYY)', () => {
+  it('extracts dataMonth from DD/MM/YYYY dates', () => {
+    const rows = [
+      makeRow({ [ISO3_COL]: 'USA', [DATE_COL]: '01/03/2026', [SERIES_COL]: 'Fossil',           [VALUE_COL]: '400' }),
+      makeRow({ [ISO3_COL]: 'USA', [DATE_COL]: '01/03/2026', [SERIES_COL]: 'Total Generation', [VALUE_COL]: '800' }),
+    ];
+    const result = parseEmberCsv(buildCsv(rows));
+    const us = result.get('US');
+    assert.ok(us != null, 'US entry missing');
+    assert.equal(us.dataMonth, '2026-03', 'DD/MM/YYYY 01/03/2026 should yield 2026-03');
+  });
+
+  it('selects the most recent month across YEARS with DD/MM/YYYY (no lexical-sort bug)', () => {
+    // Lexically "01/12/2025" > "01/01/2026", so naive string max picks the wrong (older) month.
+    const rows = [
+      makeRow({ [ISO3_COL]: 'GBR', [DATE_COL]: '01/12/2025', [SERIES_COL]: 'Fossil',           [VALUE_COL]: '100' }),
+      makeRow({ [ISO3_COL]: 'GBR', [DATE_COL]: '01/12/2025', [SERIES_COL]: 'Total Generation', [VALUE_COL]: '200' }),
+      makeRow({ [ISO3_COL]: 'GBR', [DATE_COL]: '01/01/2026', [SERIES_COL]: 'Fossil',           [VALUE_COL]: '80'  }),
+      makeRow({ [ISO3_COL]: 'GBR', [DATE_COL]: '01/01/2026', [SERIES_COL]: 'Total Generation', [VALUE_COL]: '210' }),
+    ];
+    const result = parseEmberCsv(buildCsv(rows));
+    const gb = result.get('GB');
+    assert.ok(gb != null, 'GB entry missing');
+    assert.equal(gb.dataMonth, '2026-01', 'should select Jan 2026, not Dec 2025');
+    assert.ok(Math.abs(gb.fossilShare - (80 / 210) * 100) < 0.01, 'shares come from the Jan 2026 month');
+  });
+
+  it('still parses legacy YYYY-MM-DD dates (backward compatible)', () => {
+    const result = parseEmberCsv(threeCountryFixture());
+    assert.equal(result.get('US').dataMonth, '2024-01');
+  });
+});
+
+describe('real-world combined format (CR-only + DD/MM/YYYY)', () => {
+  it('parses a CSV with both June-2026 upstream changes at once', () => {
+    const rows = [
+      makeRow({ [ISO3_COL]: 'USA', [DATE_COL]: '01/04/2026', [SERIES_COL]: 'Fossil',           [VALUE_COL]: '400' }),
+      makeRow({ [ISO3_COL]: 'USA', [DATE_COL]: '01/04/2026', [SERIES_COL]: 'Total Generation', [VALUE_COL]: '800' }),
+    ];
+    const csv = buildCsv(rows, '\r'); // CR-only + DD/MM/YYYY
+    const result = parseEmberCsv(csv);
+    const us = result.get('US');
+    assert.ok(us != null, 'US should parse from the real-world format');
+    assert.equal(us.dataMonth, '2026-04');
+    assert.ok(Math.abs(us.fossilShare - 50) < 0.01);
   });
 });
 

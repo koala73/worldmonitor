@@ -13,6 +13,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import wgiIndicatorKeys from '../shared/wgi-indicator-keys.json' with { type: 'json' };
 
 const scriptMod = await import('../scripts/compare-resilience-current-vs-proposed.mjs');
 const registryMod = await import('../server/worldmonitor/resilience/v1/_indicator-registry.ts');
@@ -93,7 +94,7 @@ test('core-tier indicator coverage meets a minimum floor', () => {
   // are those whose scorer inputs are genuinely global scalars
   // (shippingStress, transitDisruption, energyPriceStress) or require
   // unexported time-series helpers (fxVolatility, fxDeviation,
-  // aquastatWaterAvailability, householdDebtService, etc.).
+  // aquastatScore, householdDebtService, etc.).
   const plan = buildIndicatorExtractionPlan(INDICATOR_REGISTRY);
   const coreTotal = plan.filter((p) => p.tier === 'core').length;
   const coreImplemented = plan.filter((p) => p.tier === 'core' && p.extractionStatus === 'implemented').length;
@@ -136,17 +137,36 @@ test('applyExtractionRule — static-wgi reads .wgi.indicators[code].value', () 
   assert.equal(applyExtractionRule(rule, sources, 'DE'), 1.2);
 });
 
+test('WGI extraction rules stay aligned with the canonical shared key list', () => {
+  const wgiRegistryIds = [
+    'wgiVoiceAccountability',
+    'wgiPoliticalStability',
+    'wgiGovernmentEffectiveness',
+    'wgiRegulatoryQuality',
+    'wgiRuleOfLaw',
+    'wgiControlOfCorruption',
+  ];
+  const extractionCodes = wgiRegistryIds.map((id) => EXTRACTION_RULES[id]?.code);
+  assert.deepEqual(extractionCodes, wgiIndicatorKeys);
+});
+
 test('applyExtractionRule — static-wgi-mean averages all six WGI sub-pillars', () => {
   const rule = { type: 'static-wgi-mean' };
-  const sources = { staticRecord: { wgi: { indicators: {
-    'VA.EST': { value: 1.0 },
-    'PV.EST': { value: -1.0 },
-    'GE.EST': { value: 0.5 },
-    'RQ.EST': { value: -0.5 },
-    'RL.EST': { value: 2.0 },
-    'CC.EST': { value: 0.0 },
-  } } } };
-  assert.equal(applyExtractionRule(rule, sources, 'DE'), (1.0 + -1.0 + 0.5 + -0.5 + 2.0 + 0.0) / 6);
+  const values = [1.0, -1.0, 0.5, -0.5, 2.0, 0.0];
+  const indicators = Object.fromEntries(wgiIndicatorKeys.map((key, i) => [key, { value: values[i] }]));
+  const sources = { staticRecord: { wgi: { indicators } } };
+  assert.equal(applyExtractionRule(rule, sources, 'DE'), values.reduce((sum, value) => sum + value, 0) / wgiIndicatorKeys.length);
+});
+
+test('applyExtractionRule — static-wgi-mean ignores WGI keys outside the scorer contract', () => {
+  const rule = { type: 'static-wgi-mean' };
+  const values = [1.0, -1.0, 0.5, -0.5, 2.0, 0.0];
+  const indicators = {
+    ...Object.fromEntries(wgiIndicatorKeys.map((key, i) => [key, { value: values[i] }])),
+    'ROGUE.EST': { value: -2.5 },
+  };
+  const sources = { staticRecord: { wgi: { indicators } } };
+  assert.equal(applyExtractionRule(rule, sources, 'DE'), values.reduce((sum, value) => sum + value, 0) / wgiIndicatorKeys.length);
 });
 
 test('applyExtractionRule — missing values return null (pairwise-drop contract)', () => {
@@ -267,4 +287,15 @@ test('applyExtractionRule — aquastat stress vs availability gated by indicator
 
   // Missing value: null regardless of tag.
   assert.equal(applyExtractionRule(stressRule, missingCountry, 'XX'), null);
+});
+
+test('applyExtractionRule — aquastatScore returns scorer-normalized semantic score', () => {
+  const rule = { type: 'static-aquastat-score' };
+  const stressCountry = { staticRecord: { aquastat: { value: 42, indicator: 'Water stress (withdrawal/availability)' } } };
+  const availabilityCountry = { staticRecord: { aquastat: { value: 1500, indicator: 'Renewable water availability per capita' } } };
+  const unknownPercentCountry = { staticRecord: { aquastat: { value: 75, indicator: 'Some unrecognised tag' } } };
+
+  assert.ok(Math.abs(applyExtractionRule(rule, stressCountry, 'AE') - 58) < 1e-9);
+  assert.equal(applyExtractionRule(rule, availabilityCountry, 'DE'), 30);
+  assert.equal(applyExtractionRule(rule, unknownPercentCountry, 'XX'), 75);
 });

@@ -15,10 +15,20 @@ interface Props {
   heroImage?: string;
   slug?: string;
   rawBody?: string;
+  relatedPosts?: { title: string; description: string; href: string }[];
 }
 
-const { title, description, metaTitle, keywords, pubDate, modifiedDate, author, authorUrl, authorBio, audience, heroImage, slug, rawBody } = Astro.props;
-const ogImage = heroImage || (slug ? `https://www.worldmonitor.app/blog/images/blog/${slug}.jpg` : undefined);
+const { title, description, metaTitle, keywords, pubDate, modifiedDate, author, authorUrl, authorBio, audience, heroImage, slug, rawBody, relatedPosts = [] } = Astro.props;
+function toAbsoluteWorldMonitorUrl(pathOrUrl: string | undefined): string | undefined {
+  if (!pathOrUrl) return undefined;
+  if (/^https?:\/\//.test(pathOrUrl)) return pathOrUrl;
+  return new URL(pathOrUrl, 'https://www.worldmonitor.app').href;
+}
+
+const ogImage = toAbsoluteWorldMonitorUrl(heroImage || (slug ? `/blog/images/blog/${slug}.jpg` : undefined));
+const canonicalUrl = slug
+  ? `https://www.worldmonitor.app/blog/posts/${slug}/`
+  : new URL(Astro.url.pathname, 'https://www.worldmonitor.app').href;
 const formattedDate = pubDate.toLocaleDateString('en-US', {
   year: 'numeric',
   month: 'short',
@@ -38,6 +48,8 @@ const avatarSrc = authorName === DEFAULT_AUTHOR
   : '/favico/apple-touch-icon.png';
 const showUpdated = modifiedDate && modifiedDate.getTime() !== pubDate.getTime();
 const formattedModifiedDate = modifiedDate ? modifiedDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+const wordCount = rawBody ? rawBody.trim().split(/\s+/).filter(Boolean).length : undefined;
+const readingMinutes = wordCount ? Math.max(1, Math.ceil(wordCount / 220)) : undefined;
 
 const breadcrumbLd = {
   "@context": "https://schema.org",
@@ -52,7 +64,8 @@ const breadcrumbLd = {
     {
       "@type": "ListItem",
       "position": 2,
-      "name": title
+      "name": title,
+      "item": canonicalUrl
     }
   ]
 };
@@ -60,10 +73,17 @@ const breadcrumbLd = {
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "BlogPosting",
-  "headline": metaTitle || title,
+  "@id": `${canonicalUrl}#article`,
+  "headline": title,
+  ...(metaTitle && metaTitle !== title ? { "alternativeHeadline": metaTitle } : {}),
   "description": description,
   "datePublished": isoDate,
   "dateModified": isoModifiedDate,
+  "inLanguage": "en-US",
+  "isAccessibleForFree": true,
+  ...(audience ? { "articleSection": audience } : {}),
+  ...(wordCount ? { "wordCount": wordCount } : {}),
+  ...(readingMinutes ? { "timeRequired": `PT${readingMinutes}M` } : {}),
   "author": {
     "@type": "Person",
     "name": authorName,
@@ -72,7 +92,11 @@ const jsonLd = {
   "publisher": {
     "@type": "Organization",
     "name": "World Monitor",
-    "url": "https://worldmonitor.app",
+    "url": "https://www.worldmonitor.app",
+    "sameAs": [
+      "https://github.com/koala73/worldmonitor",
+      "https://x.com/worldmonitorai"
+    ],
     "logo": {
       "@type": "ImageObject",
       "url": "https://www.worldmonitor.app/favico/apple-touch-icon.png"
@@ -80,10 +104,10 @@ const jsonLd = {
   },
   "mainEntityOfPage": {
     "@type": "WebPage",
-    "@id": Astro.url.href
+    "@id": canonicalUrl
   },
   "image": ogImage || "https://www.worldmonitor.app/favico/og-image.png",
-  "url": Astro.url.href,
+  "url": canonicalUrl,
   ...(keywords ? { "keywords": keywords } : {})
 };
 
@@ -116,6 +140,8 @@ const faqLd = extractFaqLd(rawBody);
   keywords={keywords}
   ogType="article"
   ogImage={ogImage}
+  ogImageAlt={`${title} - World Monitor Blog`}
+  canonicalUrl={canonicalUrl}
   publishedTime={isoDate}
   modifiedTime={isoModifiedDate}
   author={authorName}
@@ -134,12 +160,26 @@ const faqLd = extractFaqLd(rawBody);
       </div>
     </div>
     {heroImage && (
-      <img src={heroImage} alt={title} class="hero-image" width="1200" height="630" />
+      <img src={heroImage} alt={title} class="hero-image" width="1200" height="630" fetchpriority="high" decoding="async" />
     )}
     <div class="article-content prose">
       <h1>{title}</h1>
       <slot />
     </div>
+    {relatedPosts.length > 0 && (
+      <nav class="related-posts" aria-labelledby="related-posts-title">
+        <h2 id="related-posts-title">Related Intelligence Guides</h2>
+        <div class="related-post-grid">
+          {relatedPosts.map((post) => (
+            <a href={post.href} class="related-post-card">
+              <span>Read Next</span>
+              <h3>{post.title}</h3>
+              <p>{post.description}</p>
+            </a>
+          ))}
+        </div>
+      </nav>
+    )}
     <div class="cta-banner">
       <h3>See the World in Real Time</h3>
       <p>Markets, geopolitics, conflicts, infrastructure. One dashboard. No login required.</p>
@@ -150,7 +190,7 @@ const faqLd = extractFaqLd(rawBody);
       <div class="author-info">
         <div class="author-name">
           {resolvedAuthorUrl
-            ? <a href={resolvedAuthorUrl} target="_blank" rel="noopener noreferrer">{authorName}</a>
+            ? <a href={resolvedAuthorUrl} target="_blank" rel="author noopener noreferrer">{authorName}</a>
             : <span>{authorName}</span>
           }
         </div>

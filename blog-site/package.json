@@ -13,15 +13,22 @@
     "astro": "astro"
   },
   "dependencies": {
-    "@astrojs/rss": "^4.0.16",
+    "@astrojs/rss": "^4.0.18",
     "@astrojs/sitemap": "^3.7.1",
-    "astro": "^6.0.0",
+    "astro": "^6.4.7",
     "gray-matter": "^4.0.3",
     "satori": "^0.25.0",
     "sharp": "^0.34.5"
   },
   "overrides": {
     "devalue": "^5.8.1",
-    "defu": "^6.1.5"
+    "defu": "^6.1.5",
+    "esbuild": "0.28.1",
+    "fast-xml-parser": "^5.8.0",
+    "h3": "^1.15.9",
+    "picomatch": "^4.0.4",
+    "postcss": "^8.5.10",
+    "smol-toml": "^1.6.1",
+    "vite": "^7.3.2"
   }
 }

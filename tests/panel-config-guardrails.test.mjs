@@ -322,6 +322,27 @@ describe('panel-config guardrails', () => {
       `  Stale PANEL_CATEGORY_MAP panelKeys (remove from panels.ts): ${staleCategory.join(', ') || '—'}`,
     );
   });
+
+  // Guards the convention that App.ts isDynamicPanel() relies on: the `cw-`
+  // (custom widget) and `mcp-` prefixes are reserved for runtime-created,
+  // user-owned panels. A *registered* built-in using either prefix would be
+  // misclassified as dynamic — surviving variant resets it should undergo and
+  // dodging enforceFreeTierLimits gating. The ALL_PANELS membership check in
+  // isDynamicPanel handles the collision at runtime; this locks the invariant
+  // at its source so a mis-prefixed registration fails CI instead.
+  it('no registered panel uses a reserved dynamic-panel prefix (cw-/mcp-)', () => {
+    const collisions = [...allRegistryPanelIds()]
+      .filter((id) => id.startsWith('cw-') || id.startsWith('mcp-'))
+      .sort();
+    assert.deepStrictEqual(
+      collisions,
+      [],
+      `Registered built-in panels using a reserved dynamic-panel prefix:\n  ${collisions.join(', ')}\n` +
+      `App.ts isDynamicPanel() treats cw-/mcp- keys as user-created widgets. A built-in with this\n` +
+      `prefix would be skipped on variant switches and bypass free-tier gating. Rename to a\n` +
+      `non-reserved prefix.`,
+    );
+  });
 });
 
 function levenshtein(a, b) {

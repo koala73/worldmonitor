@@ -187,7 +187,7 @@ async function redisPipelineGet(keys) {
 // ────────────────────────────────────────────────────────────────────────────
 
 /**
- * Compute the impact of a scenario across countries and HS2 sectors.
+ * Compute the impact of a scenario across countries, scoped by the template's HS2 chapters.
  *
  * Algorithm:
  * 1. Resolve the scenario template.
@@ -291,7 +291,7 @@ async function computeScenario(scenarioId, iso2) {
   const topImpactCountries = sorted.map(([countryIso2, totalImpact]) => ({
     iso2: countryIso2,
     totalImpact,
-    // Relative share of the worst-hit country, capped at 100
+    // Relative share of max(maxReturnedTotalImpact, 1), capped at 100.
     impactPct: Math.min(Math.round((totalImpact / maxImpact) * 100), 100),
   }));
 

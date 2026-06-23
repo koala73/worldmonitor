@@ -1,12 +1,12 @@
 name: Deploy Gate
 
-# Runs whenever Test or Typecheck completes on a PR/push.
+# Runs whenever Test, Typecheck, Lint Code, or Security Audit completes on a PR/push.
 # Checks whether all required PR smoke gates have passed for the same commit SHA.
 # Posts a commit status on the PR's head SHA so branch protection can see it.
 
 on:
   workflow_run:
-    workflows: ["Test", "Typecheck"]
+    workflows: ["Test", "Typecheck", "Lint Code", "Security Audit"]
     types: [completed]
 
 permissions:
@@ -22,11 +22,16 @@ jobs:
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          required='["unit","typecheck","sidecar","convex-tests","variant-smoke-full","resilience-validation-smoke"]'
+          required='["changes","docs-stats","unit","sidecar","convex-tests","variant-smoke-full","resilience-validation-smoke","digest-image","typecheck","biome","security-audit"]'
 
           # Poll check-runs for this SHA and find the latest result for each required job.
+          # Project to just the three fields the gate logic reads. A SHA can
+          # accumulate dozens of full check-run objects across re-runs; passing
+          # the un-projected JSON to python3 via the RUNS_JSON env var overflowed
+          # Linux's 128KB-per-arg/env limit (MAX_ARG_STRLEN) once it crossed
+          # ~131KB, failing the gate with "Argument list too long" (exit 126).
           runs=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" \
-            --jq ".check_runs | map(select(.name as \$name | $required | index(\$name)))")
+            --jq ".check_runs | map(select(.name as \$name | $required | index(\$name)) | {name, conclusion, completed_at})")
 
           status=$(RUNS_JSON="$runs" REQUIRED_JOBS="$required" python3 -c "
           import json

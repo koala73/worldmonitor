@@ -1,0 +1,56 @@
+{
+  "capturedAt": "2026-06-10",
+  "scoredAgainstCommitSha": "cb76656726fd8b8787c1418059777145b41f378d",
+  "source": "Live Redis (production Upstash, unprefixed keys) over the FULL scorable universe (listScorableCountries(), 196 countries). Each country was scored twice with the real production scorer path (scoreAllDimensions -> buildDimensionList -> buildDomainList -> buildPillarList -> penalizedPillarScore, alpha=0.5) under live production flags (RESILIENCE_ENERGY_V2_ENABLED=true, RESILIENCE_PILLAR_COMBINE_ENABLED=true, RESILIENCE_SCHEMA_V2_ENABLED=true). Run A read the live WB-composite low-carbon payload; Run B overrode ONLY resilience:low-carbon-generation:v1 with the freshly-parsed OWID share-electricity-low-carbon payload. Every other input was held identical from live Redis, so the delta is purely attributable to the source swap.",
+  "decisionContext": {
+    "question": "Does migrating lowCarbonGenerationShare from the WB NUCL+RNEW+HYRO composite (live, frozen at 2021) to OWID share-electricity-low-carbon (~2025) keep the overall resilience score within the published acceptance gates?",
+    "oldSource": "World Bank EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS + EG.ELC.HYRO.ZS, latest common component year per country (live max year 2021; 208 countries).",
+    "newSource": "OWID Grapher share-electricity-low-carbon (Ember / Energy Institute), pre-aggregated renewables+nuclear share (live max year 2025; 209 countries mapped to ISO2).",
+    "acceptanceGates": "Spearman vs baseline >= 0.85; no country moves > 15 points overall (methodology v2.1 plan section 6)."
+  },
+  "findings": {
+    "headline": "The source swap is well inside every acceptance gate. Overall rank order is almost perfectly preserved (Spearman 0.99758 across 196 countries) and the largest single-country overall move is 4.04 points (Taiwan); zero countries move more than 5 points. The swap ALSO corrects implausible WB-composite values: the WB feed reported many developing-country grids at ~75-100% low-carbon (Mali 100, Cambodia 100, Honduras 98.5) where OWID reports 19-55%. The large energy-DIMENSION moves are concentrated on exactly those over-counted countries, i.e. the migration fixes a data-quality defect in addition to refreshing the cadence.",
+    "rankPreservation": {
+      "spearmanRankCorrelation": 0.99758,
+      "interpretation": "0.99758 is far above the >= 0.85 gate; methodology changes in published composite indicators typically target Spearman >= 0.90 to be considered rank-stable.",
+      "universe": 196
+    },
+    "overallScoreImpact": {
+      "maxAbsDelta": 4.04,
+      "p99AbsDelta": 2.47,
+      "medianAbsDelta": 0.09,
+      "meanAbsDelta": 0.278,
+      "countMovedGt0_1": 94,
+      "countMovedGt1": 13,
+      "countMovedGt5": 0,
+      "countMovedGt10": 0,
+      "countMovedGt15": 0,
+      "interpretation": "Pillar/domain weighting plus the min-pillar penalty damp the 0.20-weight energy-dimension change down to a handful of <5-point overall moves. No country approaches the 15-point gate."
+    },
+    "energyDimensionImpact": {
+      "maxAbsDelta": 34,
+      "meanAbsDelta": 3.02,
+      "countMovedGt1": 84,
+      "countMovedGt10": 14,
+      "interpretation": "Dimension-level moves are larger (expected, since the change lands directly on a 0.20-weight indicator) but overwhelmingly downward for countries the WB composite had over-counted. Taiwan (energy 77->43) and Mali (94->72) are the largest; both reflect more credible OWID low-carbon shares."
+    },
+    "coverageDelta": {
+      "lostInOwid": ["AD", "FM", "MH", "PW", "TV"],
+      "gainedInOwid": ["TW", "MO"],
+      "note": "OWID is NOT a strict superset of the retired WB feed: 5 micro-states (Andorra + 4 Pacific micro-states) drop out and 2 (Taiwan, Macau) are gained. The 5 dropped micro-states see their energy dimension rise ~20 points (overall +1.4 to +1.8) because the low-carbon indicator's 0.20 weight redistributes when null. This coverage churn motivated lowering the seeder's MIN_COUNTRIES validation floor from 200 to 180 (a 200 floor left only a ~9-country margin against false STALE_SEED)."
+    },
+    "topMoversByOverallAbsDelta": [
+      { "cc": "TW", "wb": null, "owid": 13.37, "owidYr": 2025, "energyA": 77, "energyB": 43, "overallA": 57.13, "overallB": 53.09, "dOverall": -4.04 },
+      { "cc": "ML", "wb": 100.0, "owid": 19.46, "owidYr": 2024, "energyA": 94, "energyB": 72, "overallA": 36.98, "overallB": 34.51, "dOverall": -2.47 },
+      { "cc": "WS", "wb": 77.90, "owid": 43.75, "owidYr": 2024, "energyA": 91, "energyB": 79, "overallA": 68.02, "overallB": 65.77, "dOverall": -2.25 },
+      { "cc": "PW", "wb": 4.60, "owid": null, "owidYr": null, "energyA": 63, "energyB": 86, "overallA": 61.07, "overallB": 62.90, "dOverall": 1.83 },
+      { "cc": "MH", "wb": 2.43, "owid": null, "owidYr": null, "energyA": 62, "energyB": 86, "overallA": 58.78, "overallB": 60.43, "dOverall": 1.65 },
+      { "cc": "TZ", "wb": 70.89, "owid": 32.92, "owidYr": 2024, "energyA": 76, "energyB": 65, "overallA": 40.62, "overallB": 39.01, "dOverall": -1.61 },
+      { "cc": "MO", "wb": null, "owid": 30.77, "owidYr": 2024, "energyA": 77, "energyB": 55, "overallA": 66.18, "overallB": 64.69, "dOverall": -1.49 },
+      { "cc": "PG", "wb": 75.25, "owid": 23.68, "owidYr": 2024, "energyA": 88, "energyB": 70, "overallA": 52.43, "overallB": 51.05, "dOverall": -1.38 },
+      { "cc": "GH", "wb": 68.97, "owid": 36.22, "owidYr": 2024, "energyA": 81, "energyB": 72, "overallA": 44.25, "overallB": 42.89, "dOverall": -1.36 },
+      { "cc": "HN", "wb": 98.48, "owid": 55.45, "owidYr": 2024, "energyA": 60, "energyB": 53, "overallA": 46.40, "overallB": 45.16, "dOverall": -1.24 }
+    ]
+  },
+  "verdict": "PASS — both acceptance gates clear with large margin (Spearman 0.99758 >> 0.85; max overall move 4.04 << 15). Safe to migrate. The swap additionally corrects WB low-carbon over-counting for developing-country grids."
+}

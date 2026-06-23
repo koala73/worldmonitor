@@ -5,6 +5,11 @@ import {
   withRetry,
   parseRetryAfterMs,
   PERMANENT_4XX_STATUSES,
+  getResponseHeader,
+  isRetryableHttpStatus,
+  httpRetryError,
+  createLlmBudgetError,
+  isLlmBudgetError,
 } from '../scripts/_seed-utils.mjs';
 
 describe('PERMANENT_4XX_STATUSES classification', () => {
@@ -103,19 +108,28 @@ describe('withRetry', () => {
     // exponential backoff would have been ~1ms, we MUST sleep ≥200ms so the
     // upstream rate-limit hint is respected.
     let attempts = 0;
-    const t0 = Date.now();
-    await assert.rejects(
-      withRetry(async () => {
-        attempts++;
-        const err = new Error('rate limited');
-        if (attempts === 1) err.retryAfterMs = 200;  // hint only on first failure
-        throw err;
-      }, 1, 1),  // baseWait would otherwise be 1ms
-      /rate limited/,
-    );
-    const elapsed = Date.now() - t0;
-    assert.ok(elapsed >= 200, `expected ≥200ms (Retry-After hint), got ${elapsed}ms`);
-    assert.ok(elapsed < 1000, `expected <1000ms (cap respected), got ${elapsed}ms`);
+    const sleeps = [];
+    const originalSetTimeout = globalThis.setTimeout;
+    globalThis.setTimeout = (callback, ms, ...args) => {
+      sleeps.push(ms);
+      queueMicrotask(() => callback(...args));
+      return 0;
+    };
+    try {
+      await assert.rejects(
+        withRetry(async () => {
+          attempts++;
+          const err = new Error('rate limited');
+          if (attempts === 1) err.retryAfterMs = 200;  // hint only on first failure
+          throw err;
+        }, 1, 1),  // baseWait would otherwise be 1ms
+        /rate limited/,
+      );
+    } finally {
+      globalThis.setTimeout = originalSetTimeout;
+    }
+    assert.equal(attempts, 2, 'initial attempt + one retry');
+    assert.deepEqual(sleeps, [200], 'Retry-After hint must drive the backoff delay');
   });
 });
 
@@ -277,5 +291,85 @@ describe('atomicPublish retry-on-transient (WM 2026-05-10 incident fix)', () => 
     } finally {
       teardown();
     }
+  });
+});
+
+describe('getResponseHeader', () => {
+  it('reads from a fetch Headers-like object (case-insensitive .get)', () => {
+    const headers = { get: (n) => (n.toLowerCase() === 'retry-after' ? '5' : null) };
+    assert.equal(getResponseHeader(headers, 'Retry-After'), '5');
+  });
+
+  it('reads from a plain object case-insensitively', () => {
+    assert.equal(getResponseHeader({ 'retry-after': '7' }, 'Retry-After'), '7');
+    assert.equal(getResponseHeader({ 'Retry-After': '9' }, 'retry-after'), '9');
+  });
+
+  it('returns null for missing headers or missing key', () => {
+    assert.equal(getResponseHeader(null, 'Retry-After'), null);
+    assert.equal(getResponseHeader({}, 'Retry-After'), null);
+  });
+});
+
+describe('isRetryableHttpStatus', () => {
+  it('treats 408/429/5xx as retryable and everything else as permanent', () => {
+    for (const code of [408, 429, 500, 502, 503, 504, 599]) {
+      assert.equal(isRetryableHttpStatus(code), true, `expected ${code} retryable`);
+    }
+    for (const code of [200, 400, 401, 402, 403, 404, 410, 422, 451]) {
+      assert.equal(isRetryableHttpStatus(code), false, `expected ${code} permanent`);
+    }
+  });
+});
+
+describe('httpRetryError', () => {
+  it('tags permanent statuses nonRetryable with no retryAfterMs', () => {
+    const err = httpRetryError({ status: 402, headers: { get: () => null } });
+    assert.equal(err.status, 402);
+    assert.equal(err.nonRetryable, true);
+    assert.equal(err.retryAfterMs, undefined);
+  });
+
+  it('attaches a Retry-After hint for retryable statuses', () => {
+    const err = httpRetryError({ status: 429, headers: { get: (n) => (n.toLowerCase() === 'retry-after' ? '3' : null) } });
+    assert.equal(err.nonRetryable, false);
+    assert.equal(err.retryAfterMs, 3000);
+  });
+
+  it('caps the hint by maxRetryAfterMs (server ceiling)', () => {
+    const err = httpRetryError(
+      { status: 503, headers: { get: (n) => (n.toLowerCase() === 'retry-after' ? '30' : null) } },
+      { maxRetryAfterMs: 10_000 },
+    );
+    assert.equal(err.retryAfterMs, 10_000);
+  });
+
+  it('caps the hint by capMs (remaining budget) and turns nonRetryable when budget <= 0', () => {
+    const within = httpRetryError(
+      { status: 429, headers: { get: (n) => (n.toLowerCase() === 'retry-after' ? '30' : null) } },
+      { maxRetryAfterMs: 10_000, capMs: 4_000 },
+    );
+    assert.equal(within.retryAfterMs, 4_000);
+
+    const exhausted = httpRetryError(
+      { status: 429, headers: { get: (n) => (n.toLowerCase() === 'retry-after' ? '30' : null) } },
+      { maxRetryAfterMs: 10_000, capMs: 0 },
+    );
+    assert.equal(exhausted.retryAfterMs, undefined);
+    assert.equal(exhausted.nonRetryable, true);
+  });
+});
+
+describe('createLlmBudgetError / isLlmBudgetError', () => {
+  it('produces a nonRetryable, recognizable budget sentinel', () => {
+    const err = createLlmBudgetError('forecast budget spent');
+    assert.equal(err.nonRetryable, true);
+    assert.equal(isLlmBudgetError(err), true);
+    assert.match(err.message, /forecast budget spent/);
+  });
+
+  it('does not misclassify ordinary errors', () => {
+    assert.equal(isLlmBudgetError(new Error('boom')), false);
+    assert.equal(isLlmBudgetError(null), false);
   });
 });

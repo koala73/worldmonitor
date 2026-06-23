@@ -30,8 +30,8 @@ message GetResilienceScoreResponse {
   string data_version = 13;
   ScoreInterval score_interval = 14;
   // Phase 2 T2.1/T2.3: three-pillar schema. Populated with real
-  // coverage-weighted pillar scores when schema_version == "2.0" (the
-  // current default). Empty array when schema_version == "1.0", which is
+  // domain-weighted, coverage-scaled pillar scores when schema_version ==
+  // "2.0" (the current default). Empty array when schema_version == "1.0", which is
   // the legacy opt-out path retained for one release cycle via the
   // RESILIENCE_SCHEMA_V2_ENABLED env flag.
   repeated ResiliencePillar pillars = 15;
@@ -41,14 +41,13 @@ message GetResilienceScoreResponse {
   // release cycle. Controlled at response build time by the
   // RESILIENCE_SCHEMA_V2_ENABLED env flag (defaults to "true" → v2).
   string schema_version = 16;
-  // Plan 2026-04-26-002 §U3 (PR 2) — eligibility flag for headline
-  // ranking inclusion. PR 2 introduces the field populated `true` for
-  // every country (no behavior change). PR 6 / §U7 swaps the population
-  // logic to coverage ≥ 0.65 AND (population ≥ 200k OR coverage ≥ 0.85)
-  // AND !lowConfidence; the headline ranking endpoint then filters by
-  // `headlineEligible: true`. Raw API endpoints keep returning the full
-  // set unfiltered. Widget consumes the field starting in PR 6 to show
-  // a "Low confidence — outside headline ranking" badge for
-  // `headlineEligible: false` countries on country detail pages.
+  // Current headline-ranking eligibility. True only when the country passes
+  // the headline gate: coverage >= 0.65 AND (population >= 200k OR
+  // coverage >= 0.85) AND !lowConfidence. GetResilienceRanking includes
+  // only eligible countries in items[]; scored but ineligible countries
+  // remain in greyedOut[]. Raw score endpoints still return the country
+  // score when available. Widget and country detail copy should show
+  // "Outside headline ranking" when false unless low-confidence is the more
+  // specific reason.
   bool headline_eligible = 17;
 }

@@ -128,7 +128,9 @@
       "languages": "اللغات",
       "currencies": "العملات",
       "area": "المساحة"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "العالم",
@@ -207,7 +209,8 @@
     "panelCatMining": "التعدين وسلسلة الإمداد",
     "panelCatCommodityEcon": "الاقتصاد والتجارة",
     "panelCatHappyNews": "أخبار إيجابية",
-    "panelCatHappyPlanet": "الكوكب والعطاء"
+    "panelCatHappyPlanet": "الكوكب والعطاء",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "أخبار مباشرة",
@@ -456,7 +459,8 @@
       "flightMilitary": "عسكرية · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "عسكرية · {{type}} · على الأرض",
       "flightSearchHint": "اضغط Enter أو انقر للبحث عن الموقع الحالي",
-      "flightNotFound": "لم يتم العثور على موقع حالي لـ {{callsign}}"
+      "flightNotFound": "لم يتم العثور على موقع حالي لـ {{callsign}}",
+      "addPanel": "Add"
     },
     "signal": {
       "title": "نتيجة استخباراتية",
@@ -686,7 +690,9 @@
         "space": "الفضاء"
       },
       "paused": "كاميرات الويب متوقفة",
-      "pausedIdle": "كاميرات الويب متوقفة — حرّك الماوس للاستئناف"
+      "pausedIdle": "كاميرات الويب متوقفة — حرّك الماوس للاستئناف",
+      "play": "تشغيل",
+      "previewStatus": "معاينة مباشرة"
     },
     "monitor": {
       "placeholder": "كلمات مفتاحية (مفصولة بفواصل)",
@@ -1172,7 +1178,13 @@
       "noSignals": "لم يتم رصد إشارات عدم استقرار",
       "infoTooltip": "<strong>المنهجية</strong><ul><li><strong>U</strong> - الاضطرابات: الفوضى المدنية والاحتجاجات</li><li><strong>C</strong> - النزاع: شدة النزاع المسلح</li><li><strong>S</strong> - الأمن: الرحلات/السفن العسكرية فوق الإقليم</li><li><strong>I</strong> - المعلومات: سرعة الأخبار وارتباط النقاط المحورية</li><li>تعزيز قرب البؤر الساخنة (المواقع الاستراتيجية)</li></ul><em>قيم U:C:S:I تُظهر درجات المكونات.</em> كشف النقاط المحورية يربط كيانات الأخبار بإشارات الخريطة للتقييم الدقيق.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
-      "methodologyLink": "يتضمن خط الأساس حسب الدولة + مضاعف الحدث — انظر /docs/methodology/cii-risk-scores للجدول المنشور"
+      "methodologyLink": "يتضمن خط الأساس حسب الدولة + مضاعف الحدث — انظر /docs/methodology/cii-risk-scores للجدول المنشور",
+      "sectionFollowing": "Following",
+      "sectionAll": "All",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "insights": {
       "noStories": "لا توجد قصص عاجلة أو متعددة المصادر بعد",
@@ -1204,8 +1216,8 @@
       "badgeAnimDesc": "تحريك شارات التحديث في رؤوس اللوحات",
       "headlineMemoryLabel": "ذاكرة العناوين",
       "headlineMemoryDesc": "تذكر العناوين المشاهدة لتمييز الجديدة",
-      "streamAlwaysOnLabel": "إبقاء البث المباشر قيد التشغيل",
-      "streamAlwaysOnDesc": "يمنع إيقاف Live Cams وLive News تلقائيًا عند الخمول. يُنصح به لاستخدام الشاشة الثانية / لوحة المراقبة. عطّله (Eco) لتوفير CPU/النطاق الترددي.",
+      "streamAlwaysOnLabel": "التشغيل التلقائي للبث المباشر على لوحة المعلومات",
+      "streamAlwaysOnDesc": "يبدأ Live News و Live Webcams تلقائيا عند ظهورهما. اتركه متوقفا لتحميل الفيديو فقط بعد النقر على تشغيل.",
       "globeRenderScaleOptions": {
         "1": "اقتصادي (1x)",
         "2": "4K (2x)",
@@ -1286,9 +1298,8 @@
     "strategicRisk": {
       "noRisks": "لم يتم رصد مخاطر كبيرة",
       "levels": {
-        "critical": "حرج",
-        "elevated": "متصاعد",
-        "moderate": "معتدل",
+        "high": "مرتفع",
+        "medium": "معتدل",
         "low": "منخفض"
       },
       "trend": "الاتجاه",
@@ -1320,7 +1331,14 @@
         "justNow": "just now",
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
-      }
+      },
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      },
+      "dataFreshness": "Data Freshness",
+      "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "techEvents": {
       "loading": "جارٍ تحميل الفعاليات التقنية...",
@@ -1644,14 +1662,16 @@
       "verifying": "جارٍ التحقق…",
       "noResults": "لم يُعثر على قنوات تطابق \"{{term}}\"",
       "hlsUrl": "رابط بث HLS (اختياري)",
-      "invalidHlsUrl": "أدخل رابط بث HLS صالحًا (.m3u8)"
+      "invalidHlsUrl": "أدخل رابط بث HLS صالحًا (.m3u8)",
+      "playLiveFeed": "تشغيل البث المباشر",
+      "readyStatus": "جاهز عندما تكون مستعدا"
     },
     "securityAdvisories": {
       "loading": "جاري جلب التحذيرات الأمنية...",
       "noMatching": "لا توجد تحذيرات مطابقة لهذا الفلتر",
       "critical": "حرج",
       "health": "صحة",
-      "sources": "وزارة الخارجية الأمريكية، DFAT الأسترالية، FCDO البريطانية، MFAT النيوزيلندية, CDC, ECDC, WHO, US Embassies",
+      "sources": "وزارة الخارجية الأمريكية، DFAT الأسترالية، FCDO البريطانية, CDC, ECDC, WHO, US Embassies",
       "refresh": "تحديث",
       "levels": {
         "doNotTravel": "لا تسافر",
@@ -2016,9 +2036,23 @@
         "categories": "الفئات",
         "movers": "الحركات",
         "spread": "فرق تجزئة البيع",
-        "health": "صحة البيانات"
+        "health": "صحة البيانات",
+        "world": "World"
       },
-      "infoTooltip": "<strong>أسعار المستهلك</strong> تتبع أسعار السلة في الوقت الفعلي:<ul><li><strong>النظرة العامة</strong>: مؤشر الضروريات وسلة القيمة والتغيير من أسبوع لآخر</li><li><strong>الفئات</strong>: اتجاهات الأسعار حسب الفئة مع النطاق لمدة 30 يوماً</li><li><strong>محركات الأسعار</strong>: أكبر العناصر الصاعدة والهابطة هذا الأسبوع</li><li><strong>الفرق</strong>: تباين الأسعار بين بائعي التجزئة للسلة نفسها</li></ul>البيانات مستمدة من كشط أسعار بائعي التجزئة الحية."
+      "infoTooltip": "<strong>أسعار المستهلك</strong> تتبع أسعار السلة في الوقت الفعلي:<ul><li><strong>النظرة العامة</strong>: مؤشر الضروريات وسلة القيمة والتغيير من أسبوع لآخر</li><li><strong>الفئات</strong>: اتجاهات الأسعار حسب الفئة مع النطاق لمدة 30 يوماً</li><li><strong>محركات الأسعار</strong>: أكبر العناصر الصاعدة والهابطة هذا الأسبوع</li><li><strong>الفرق</strong>: تباين الأسعار بين بائعي التجزئة للسلة نفسها</li></ul>البيانات مستمدة من كشط أسعار بائعي التجزئة الحية.",
+      "world": {
+        "country": "Country",
+        "inflationYoY": "Inflation YoY",
+        "endOfPeriod": "End-of-Period",
+        "year": "Year",
+        "filterPlaceholder": "Filter countries…",
+        "loading": "Loading global inflation…",
+        "empty": "Inflation data not yet available",
+        "noMatches": "No matching countries",
+        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
+        "countSingular": "country",
+        "countPlural": "countries"
+      }
     },
     "marketImplications": {
       "infoTooltip": "<strong>آثار السوق بالذكاء الاصطناعي</strong> إشارات تداول يولدها النموذج اللغوي الكبير مشتقة من الحالة الجيوسياسية والسلع والاقتصادية الحية بعد كل دورة توقع.<ul><li><strong>الاتجاه</strong>: شراء / بيع / تحوط مع درجة ثقة</li><li><strong>الأفق الزمني</strong>: أسبوع أو أسبوعان أو شهر أو 3 أشهر</li><li><strong>المحرك</strong>: العامل الرئيسي وراء الإشارة</li><li><strong>المخاطرة</strong>: تحذير أو شرط إلغاء</li></ul><em>لأغراض إعلامية فقط. ليست نصيحة استثمارية.</em>",
@@ -2330,6 +2364,45 @@
         "method": "معايرة Portwatch DWT + AIS",
         "sampleLabel": "إشارات انقطاع AIS",
         "creditName": "نقاط عبور النفط العالمية بوكالة معلومات الطاقة"
+      }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
+    },
+    "panelFreshness": {
+      "status": {
+        "fresh": "Fresh",
+        "stale": "Stale",
+        "veryStale": "Very stale",
+        "noData": "No data",
+        "disabled": "Disabled",
+        "error": "Error"
+      },
+      "labelWithAge": "{{status}} {{age}}",
+      "title": "Data freshness: {{status}}. {{sources}}",
+      "sourceDetail": "{{name}}: {{status}}, {{update}}",
+      "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
+      "lastUpdated": "last updated {{time}}",
+      "neverUpdated": "never updated",
+      "health": {
+        "partialCoverage": "partial coverage",
+        "contentStale": "content stale",
+        "seedStale": "seed stale",
+        "noSourceData": "no source data",
+        "sourceErrorReported": "source error reported",
+        "freshnessStoreUnavailable": "freshness store unavailable",
+        "freshnessStoreDegraded": "freshness store degraded"
+      },
+      "time": {
+        "never": "never",
+        "justNow": "just now",
+        "minutesAgo": "{{count}}m ago",
+        "hoursAgo": "{{count}}h ago",
+        "daysAgo": "{{count}}d ago",
+        "compactNow": "now",
+        "compactMinutes": "{{count}}m",
+        "compactHours": "{{count}}h",
+        "compactDays": "{{count}}d"
       }
     }
   },
@@ -3131,5 +3204,18 @@
     "or": "أو أدخل خادماً مخصصاً",
     "generatingVisualization": "جاري بناء التصور...",
     "visualizationFailed": "فشل التصور"
+  },
+  "dashboardTabs": {
+    "ariaLabel": "Dashboard tabs",
+    "defaultName": "Main",
+    "newTabName": "New Tab",
+    "newTabCreated": "New tab created",
+    "tabDeleted": "Tab \"{{name}}\" deleted",
+    "addTab": "Add tab",
+    "addTabTitle": "New tab (starts with the default panels)",
+    "renameHint": "{{name}} — double-click to rename",
+    "deleteTab": "Delete tab",
+    "deleteTabAria": "Delete tab {{name}}",
+    "tabNameAria": "Tab name"
   }
 }

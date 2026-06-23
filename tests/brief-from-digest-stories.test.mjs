@@ -643,6 +643,46 @@ describe('composeBriefFromDigestStories — continued', () => {
     assert.deepEqual(env.data.stories.map((s) => s.headline), ['A', 'B']);
   });
 
+  it('drops WATCH LIVE programming teasers before they become brief cards', () => {
+    const drops = [];
+    const env = composeBriefFromDigestStories(
+      rule(),
+      [
+        digestStory({
+          title: "WATCH LIVE: White House briefing with Dr. Oz may address Pulte's new role, Iran war",
+          link: 'https://example.com/watch-live-white-house-briefing',
+          sources: ['CBS News'],
+          severity: 'high',
+        }),
+      ],
+      { clusters: 1, multiSource: 0 },
+      { nowMs: NOW, onDrop: (ev) => drops.push(ev) },
+    );
+    assert.equal(env, null);
+    assert.equal(drops.length, 1);
+    assert.equal(drops[0].reason, 'ephemeral_live');
+  });
+
+  it('drops Watch: live teasers even though display cleanup would strip Watch:', () => {
+    const drops = [];
+    const env = composeBriefFromDigestStories(
+      rule(),
+      [
+        digestStory({
+          title: 'Watch: Press conference live',
+          link: 'https://example.com/watch-press-conference-live',
+          sources: ['Reuters'],
+          severity: 'high',
+        }),
+      ],
+      { clusters: 1, multiSource: 0 },
+      { nowMs: NOW, onDrop: (ev) => drops.push(ev) },
+    );
+    assert.equal(env, null);
+    assert.equal(drops.length, 1);
+    assert.equal(drops[0].reason, 'ephemeral_live');
+  });
+
   it('caps at 12 stories per brief by default (env-tunable via DIGEST_MAX_STORIES_PER_USER)', () => {
     // Default kept at 12. Offline sweep harness against 2026-04-24
     // production replay showed cap=16 dropped visible_quality from

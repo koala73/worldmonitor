@@ -1,36 +1,37 @@
 ---
 title: "Authentication"
-description: "Three auth modes — browser origin, API key, and OAuth bearer — plus how server-side enforcement works."
+description: "Browser session, API key, OAuth bearer, and Clerk session modes — plus how server-side enforcement works."
 ---
 
-WorldMonitor has **three** authentication modes. Which one applies depends on how you're calling.
+WorldMonitor has four authentication modes. Which one applies depends on how you're calling.
 
 ## Auth matrix
 
 | Mode | Header | Used by | Trusted on which endpoints? |
 |------|--------|---------|------------------------------|
-| **Browser origin** | `Origin: https://www.worldmonitor.app` (browser-set) | Dashboard, desktop app | Most public endpoints — but **not** `forceKey: true` routes. |
-| **API key** | `X-WorldMonitor-Key: wm_live_...` | Server-to-server, scripts, SDKs | All endpoints, including `forceKey: true`. |
+| **Browser session** | `wm-session` HttpOnly cookie | Dashboard browser reads | Public endpoints that do not set `forceKey: true`. |
+| **API key** | `X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567` | Server-to-server, scripts, SDKs | User API keys cover entitled API access; operator-issued enterprise keys cover internal/partner access. |
 | **OAuth bearer** | `Authorization: Bearer <oauth-token>` | MCP clients (Claude, Cursor, Inspector) | `/api/mcp`. The handler also accepts a direct `X-WorldMonitor-Key` in lieu of an OAuth token — see [MCP](/mcp-server#authentication). |
 | **Clerk session JWT** | `Authorization: Bearer <clerk-jwt>` | Authenticated browser users | User-specific routes: `/api/latest-brief`, `/api/user-prefs`, `/api/notification-channels`, `/api/brief/share-url`, etc. |
 
-## `forceKey: true` — which endpoints ignore browser origin?
+## `forceKey: true` — which endpoints ignore browser session cookies?
 
-Some endpoints explicitly reject the "trusted browser origin" shortcut and require a real API key even from inside the dashboard:
+Some endpoints explicitly reject anonymous browser session cookies and require a user API key, enterprise API key, or Pro Clerk bearer even from inside the dashboard:
 
 - `/api/v2/shipping/route-intelligence`
 - `/api/v2/shipping/webhooks`
 - `/api/widget-agent`
 - Vendor / partner endpoints
 
-For these, you **must** send `X-WorldMonitor-Key`.
+For these, you **must** send an API key; `X-WorldMonitor-Key` is the canonical header.
 
-## Browser origin mode
+## Browser session mode
 
-CORS and `validateApiKey` together decide whether a given `Origin` is trusted. The allowlist is centralized in `api/_cors.js`.
+CORS decides whether a browser is allowed to read the response, but `Origin` is not authentication. Browser public reads authenticate with a short-lived `wms_` session token minted by `/api/wm-session` and carried in the `wm-session` HttpOnly cookie.
 
-- Allowed origins get `Access-Control-Allow-Origin: <echoed>` and pass the key check.
-- Disallowed origins get no CORS header (browser rejects) and fail the key check.
+- Allowed origins get `Access-Control-Allow-Origin: <echoed>` and can use credentialed browser cookies.
+- Disallowed origins are rejected by the edge function guard before the route body runs.
+- Requests with no `Origin` header, such as `curl` or server-to-server calls, are not blocked by CORS; they still need the route's normal credentials.
 
 See [CORS](/cors) for the origin patterns.
 
@@ -47,19 +48,22 @@ PRO subscribers get a key automatically on subscription. To rotate, contact supp
 ### Use it
 
 ```
-X-WorldMonitor-Key: wm_live_abcdef0123456789...
+X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567
 ```
 
-Minimum 16 characters. Keep keys out of client-side code — use a server-side proxy if you need to call from the browser to a `forceKey` endpoint.
+User-issued keys are exactly `wm_` followed by 40 lowercase hex characters. Enterprise keys are opaque operator-issued strings and are only distributed out of band. Keep keys out of client-side code — use a server-side proxy if you need to call from the browser to a `forceKey` endpoint.
+
+`X-WorldMonitor-Key` is the canonical header. API-key-authenticated endpoints also accept `X-Api-Key` as an alias for compatibility with generic API clients, including standalone edge functions that use `validateApiKey()` and gateway-backed routes.
 
 ### Server-side validation
 
 The edge function calls `validateApiKey(req, { forceKey?: boolean })`:
 
-1. If `forceKey` is false AND the origin is trusted → pass.
-2. Else, check `X-WorldMonitor-Key` against `WORLDMONITOR_VALID_KEYS` (env).
-3. Also check the caller's entitlement cache (`invalidate-user-api-key-cache` flushes this).
-4. If neither passes → 401.
+1. Desktop origins must send an enterprise key in `X-WorldMonitor-Key`.
+2. If `forceKey` is false, a valid `wms_` browser session cookie satisfies the anonymous/public gate.
+3. Enterprise keys are checked against `WORLDMONITOR_VALID_KEYS`.
+4. User keys with the `wm_` + 40-hex shape are validated by the gateway against the user-key table and entitlement cache (`invalidate-user-api-key-cache` flushes this).
+5. If none passes → 401.
 
 ## OAuth bearer (MCP only)
 
@@ -77,7 +81,7 @@ Server-side verification uses `jose` with a cached JWKS — no round-trip to Cle
 
 ## Entitlement / tier gating
 
-**Valid key ≠ PRO.** Authentication and entitlement are orthogonal. Every PRO-gated endpoint runs a separate `isCallerPremium(req)` check (`server/_shared/premium-check.ts`) that **does not** accept a trusted browser Origin as proof of PRO, even though it accepts Origin for anonymous/public access.
+**Valid key ≠ PRO.** Authentication and entitlement are orthogonal. Every PRO-gated endpoint runs a separate `isCallerPremium(req)` check (`server/_shared/premium-check.ts`) that **does not** accept `Origin` or an anonymous browser session as proof of PRO.
 
 `isCallerPremium` returns true only when one of these is present:
 

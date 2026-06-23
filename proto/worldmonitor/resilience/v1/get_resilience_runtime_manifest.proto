@@ -24,6 +24,22 @@ message ResilienceRankingCacheState {
   int32 total = 4;
 }
 
+message ResilienceRuntimeConstructVersions {
+  // Safe derived energy construct version. Valid values: "legacy" or "v2".
+  string energy = 1;
+}
+
+message ResilienceRuntimeIntervalState {
+  // True only when the public sample interval can be read for the active formula.
+  bool available = 1;
+  // Public methodology tag used to audit scoreInterval/rankStable semantics.
+  string methodology = 2;
+  // ISO2 country used for the public availability probe.
+  string sample_country = 3;
+  // Latest safe observed timestamp from interval seed-meta or sample payload.
+  string last_observed_at = 4;
+}
+
 message GetResilienceRuntimeManifestResponse {
   int32 manifest_version = 1;
   string generated_at = 2;
@@ -34,4 +50,9 @@ message GetResilienceRuntimeManifestResponse {
   repeated ResilienceRuntimeFlag flags = 7;
   ResilienceRuntimeCacheState cache = 8;
   ResilienceRankingCacheState ranking_cache = 9;
+  // Always populated by the runtime manifest handler; generated proto3 TypeScript
+  // types may still mark this message field optional.
+  ResilienceRuntimeConstructVersions construct_versions = 10;
+  // Always populated; exposes safe interval availability without raw cache keys.
+  ResilienceRuntimeIntervalState intervals = 11;
 }

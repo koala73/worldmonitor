@@ -5,12 +5,13 @@ import type { MapView } from '@/components';
 import type { Command } from '@/config/commands';
 import { SearchModal } from '@/components';
 import { CIIPanel } from '@/components';
-import { SITE_VARIANT, STORAGE_KEYS, ALL_PANELS, isPanelEntitled } from '@/config';
+import { SITE_VARIANT, STORAGE_KEYS, ALL_PANELS, getEffectivePanelConfig, isPanelEntitled } from '@/config';
 import { getAllowedLayerKeys, isLayerExecutable } from '@/config/map-layer-definitions';
 import type { MapRenderer } from '@/config/map-layer-definitions';
 import type { MapVariant } from '@/config/map-layer-definitions';
 import { LAYER_PRESETS, LAYER_KEY_MAP } from '@/config/commands';
 import { calculateCII, TIER1_COUNTRIES } from '@/services/country-instability';
+import { getCachedCountryScores } from '@/services/cached-risk-scores';
 import { CURATED_COUNTRIES } from '@/config/countries';
 import { getCountryBbox } from '@/services/country-geometry';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES, MILITARY_BASES, UNDERSEA_CABLES, NUCLEAR_FACILITIES } from '@/config/geo';
@@ -765,15 +766,20 @@ export class SearchManager implements AppModule {
     );
     this.ctx.searchModal.setAvailablePanels(
       Object.keys(this.ctx.panelSettings).filter((k) => {
-        const cfg = ALL_PANELS[k];
+        // Keep unregistered/dynamic keys out of search; the resolver would
+        // otherwise return a disabled synthetic fallback for unknown keys.
+        const cfg = ALL_PANELS[k] ? getEffectivePanelConfig(k, SITE_VARIANT) : undefined;
         return cfg ? isPanelEntitled(k, cfg, isPro) : false;
       })
     );
   }
 
   private buildCountrySearchItems(): { id: string; title: string; subtitle: string; data: { code: string; name: string } }[] {
+    const cachedScores = getCachedCountryScores();
     const panelScores = (this.ctx.panels.cii as CIIPanel | undefined)?.getScores() ?? [];
-    const scores = panelScores.length > 0 ? panelScores : calculateCII();
+    const scores = cachedScores.length > 0
+      ? cachedScores
+      : (panelScores.length > 0 ? panelScores : calculateCII());
     const ciiByCode = new Map(scores.map((score) => [score.code, score]));
     return Object.entries(TIER1_COUNTRIES).map(([code, name]) => {
       const score = ciiByCode.get(code);

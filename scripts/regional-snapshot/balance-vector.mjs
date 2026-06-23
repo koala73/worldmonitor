@@ -5,6 +5,7 @@
 
 import { clip, num, weightedAverage, percentile } from './_helpers.mjs';
 import { sanitizeEvidenceString } from './_sanitize.mjs';
+import { CII_RISK_SCORE_CACHE_KEYS } from '../_cii-risk-cache-keys.mjs';
 // Use scripts/shared mirror (not repo-root shared/): Railway service has
 // rootDirectory=scripts so ../../shared/ escapes the deploy root. See #2954.
 import {
@@ -19,7 +20,13 @@ import iso3ToIso2Raw from '../shared/iso3-to-iso2.json' with { type: 'json' };
 /** @type {Record<string, string>} */
 const ISO3_TO_ISO2 = iso3ToIso2Raw;
 
-const SCORING_VERSION = '1.0.0';
+// 1.1.0: balance vector now consumes the cross-source-signals, forecasts,
+// national-debt, and transit-summaries inputs that were silently dropped while
+// they were stored as { _seed, data } envelopes but read flat (coercive_pressure
+// scored 0 for every region → flat 'calm'). Fixed at the loader via
+// unwrapEnvelope; bumped so the scoring_version in snapshot meta makes the
+// resulting score shift traceable.
+const SCORING_VERSION = '1.1.0';
 
 export { SCORING_VERSION };
 
@@ -128,7 +135,7 @@ function computeCoercivePressure(region, sources, drivers) {
 }
 
 function computeDomesticFragility(countries, sources, drivers) {
-  const cii = sources['risk:scores:sebuf:stale:v3'];
+  const cii = sources[CII_RISK_SCORE_CACHE_KEYS.stale];
   const ciiScores = Array.isArray(cii?.ciiScores) ? cii.ciiScores : [];
   const inRegion = ciiScores.filter((s) => countries.has(String(s?.region ?? '')));
   if (!inRegion.length) return 0;

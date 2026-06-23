@@ -50,11 +50,11 @@
 # months in the 100s) from dominating the recovery pillar out of
 # proportion to their marginal resilience benefit.
 #
-# Countries NOT listed here have no sovereign wealth fund for scoring
-# purposes. Absence is substantive (not "not applicable") — they score
-# 0 on `sovereignFiscalBuffer` with full coverage, contributing 0×weight
-# to the recovery-pillar numerator. See plan §3.4 "What happens to no-
-# SWF countries."
+# Countries NOT listed here have no sovereign wealth fund in this
+# construct. When the SWF payload is present, scorer Path 3 treats that
+# absence as structurally not-applicable: score 0, coverage 0,
+# observedWeight 0, imputedWeight 0, imputationClass 'not-applicable'.
+# This is distinct from the IMPUTE fallback for a missing SWF seed key.
 #
 # Adding / removing a fund: open a PR that updates this manifest, cites
 # the source (annual report URL, IFSWF profile, LM index page), and

@@ -3,13 +3,16 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import wgiIndicatorKeys from '../shared/wgi-indicator-keys.json' with { type: 'json' };
 
 import {
   RESILIENCE_STATIC_INDEX_KEY,
   RESILIENCE_STATIC_META_KEY,
   RESILIENCE_STATIC_SOURCE_VERSION,
+  WGI_INDICATORS,
   buildFailureRefreshKeys,
   buildFaoAggregate,
+  buildFaoAggregateForPublish,
   buildManifest,
   buildTradeToGdpMap,
   countryRedisKey,
@@ -18,6 +21,7 @@ import {
   gpiUrlForYear,
   resolveGpiCsv,
   buildAquastatWbMap,
+  fetchEnergyDependencyDataset,
   parseEurostatEnergyDataset,
   parseFsinRows,
   parseGpiRows,
@@ -26,6 +30,7 @@ import {
   resolveIso2,
   shouldSkipSeedYear,
   transformWhoPhysicianDensity,
+  validateEurostatEnergyEuMemberFloor,
 } from '../scripts/seed-resilience-static.mjs';
 
 // Helpers for inline CSV construction
@@ -75,6 +80,12 @@ describe('resilience static seed country normalization', () => {
     assert.equal(resolveIso2({ iso3: 'YEM' }, resolvers), 'YE');
     assert.equal(resolveIso2({ name: 'Cape Verde' }, resolvers), 'CV');
     assert.equal(resolveIso2({ name: 'OECS' }, resolvers), null);
+  });
+});
+
+describe('resilience static seed WGI indicator contract', () => {
+  it('fetchWgiDataset uses the canonical shared WGI key list', () => {
+    assert.deepEqual(WGI_INDICATORS, wgiIndicatorKeys);
   });
 });
 
@@ -181,6 +192,22 @@ describe('resilience static seed CSV parsers', () => {
       assert.ok(result.has('YE'));
     });
 
+    it('falls back to Phase 4 + Phase 5 when Phase 3+ is blank or zero', () => {
+      const csv = csvRows(
+        'Country (ISO3),Phase 3+ #,Phase 4 #,Phase 5 #,Period',
+        [
+          'YEM,,6200000,161000,2025-03',
+          'SOM,0,3100000,0,2025-04',
+        ],
+      );
+      const result = parseFsinRows(csv);
+
+      assert.equal(result.get('YE')?.peopleInCrisis, 6361000);
+      assert.equal(result.get('YE')?.phase, 'IPC Phase 5');
+      assert.equal(result.get('SO')?.peopleInCrisis, 3100000);
+      assert.equal(result.get('SO')?.phase, 'IPC Phase 4');
+    });
+
     it('throws when no usable rows parsed', () => {
       const csv = csvRows('Country (ISO3),Phase 3+ #', ['UNKNOWN,100']);
       assert.throws(() => parseFsinRows(csv), /no usable rows/);
@@ -218,6 +245,20 @@ describe('resilience static seed CSV parsers', () => {
       assert.equal(aggregate.count, 1);
       assert.ok('SS' in aggregate.countries);
       assert.ok(!('KE' in aggregate.countries), 'Phase 2 country must be excluded');
+    });
+
+    it('excludes FAO entries outside the rankable/finalized country universe', () => {
+      const faoMap = new Map([
+        ['SS', { source: 'hdx-ipc', peopleInCrisis: 7700000, phase: 'IPC Phase 4' }],
+        ['PR', { source: 'hdx-ipc', peopleInCrisis: 500000, phase: 'IPC Phase 3' }],
+      ]);
+
+      const rankableAggregate = buildFaoAggregate(faoMap, seedYear, seededAt);
+      assert.deepEqual(Object.keys(rankableAggregate.countries), ['SS']);
+
+      const finalizedAggregate = buildFaoAggregate(faoMap, seedYear, seededAt, ['SS']);
+      assert.deepEqual(Object.keys(finalizedAggregate.countries), ['SS']);
+      assert.ok(!('PR' in finalizedAggregate.countries), 'aggregate must follow the finalized rankable country set');
     });
 
     it('skips entries with unparseable phase strings', () => {
@@ -361,7 +402,7 @@ describe('resilience static seed CSV parsers', () => {
 });
 
 describe('resilience static seed parsers', () => {
-  it('parses RSF ranking rows and skips aggregate entries', () => {
+  it('parses lower-is-better RSF abuse-index rows and skips aggregate entries', () => {
     const html = `
       <div class="field__item">|Rank|Country|Note|Differential|
       |3|Norway|6,52|-2 (1)|
@@ -381,6 +422,61 @@ describe('resilience static seed parsers', () => {
     });
     assert.equal(rows.get('US').rank, 32);
     assert.equal(rows.get('YE').score, 69.22);
+    assert.ok(
+      rows.get('NO').score < rows.get('YE').score,
+      'RSF parser must preserve feed direction: top-ranked country has lower raw RSF score than low-ranked country',
+    );
+  });
+
+  it('rejects inverted high-score top-ranked RSF feeds', () => {
+    const html = `
+      <div class="field__item">|Rank|Country|Note|Differential|
+      |1|Finland|93,62|+1 (2)|
+      |3|Norway|93,48|-2 (1)|
+      |169|Yemen|30,78|+2 (171)|</div>
+    `;
+
+    assert.throws(
+      () => parseRsfRanking(html),
+      /RSF ranking feed direction guard failed: top-ranked countries must have low lower-is-better abuse-index scores/,
+    );
+  });
+
+  it('rejects full RSF feeds when no top-ranked countries resolve', () => {
+    const countryNames = JSON.parse(readFileSync(resolve('shared/country-names.json'), 'utf8'));
+    const rows = [];
+    const seenIso2 = new Set();
+
+    for (const countryName of Object.keys(countryNames)) {
+      const iso2 = resolveIso2({ name: countryName });
+      if (!iso2 || seenIso2.has(iso2)) continue;
+      seenIso2.add(iso2);
+      rows.push(`|${rows.length + 11}|${countryName}|42,00|0 (${rows.length + 11})|`);
+      if (rows.length >= 100) break;
+    }
+
+    assert.equal(rows.length, 100, 'fixture must exercise the full-feed guard path');
+    const html = `<div class="field__item">|Rank|Country|Note|Differential|\n${rows.join('\n')}</div>`;
+
+    assert.throws(
+      () => parseRsfRanking(html),
+      /RSF ranking feed direction guard found no top-ranked countries/,
+    );
+  });
+
+  it('accepts current known RSF fixture shape with low top-ranked scores', () => {
+    const html = `
+      <div class="field__item">|Rank|Country|Note|Differential|
+      |1|Finland|6,38|+1 (2)|
+      |3|Norway|6,52|-2 (1)|
+      |32|United States|18,22|+15 (47)|</div>
+    `;
+
+    const rows = parseRsfRanking(html);
+    assert.equal(rows.get('FI')?.rank, 1);
+    assert.equal(rows.get('FI')?.score, 6.38);
+    assert.equal(rows.get('NO')?.rank, 3);
+    assert.equal(rows.get('NO')?.score, 6.52);
   });
 
   it('parses Eurostat energy dependency and keeps the latest TOTAL series value', () => {
@@ -413,6 +509,109 @@ describe('resilience static seed parsers', () => {
       },
     });
     assert.equal(parsed.get('US').energyImportDependency.value, 8.5);
+  });
+
+  it('fails the Eurostat EU-member floor before World Bank fallback can mask a parse collapse', () => {
+    const parsed = new Map([
+      ['NO', { energyImportDependency: { value: -13.3, year: 2024, source: 'eurostat' } }],
+      ['US', { energyImportDependency: { value: 8.5, year: 2024, source: 'eurostat' } }],
+      ['DE', { energyImportDependency: { value: 45.1, year: 2024, source: 'eurostat' } }],
+    ]);
+
+    assert.throws(
+      () => validateEurostatEnergyEuMemberFloor(parsed),
+      /parsed 1 EU member rows \(expected at least 24\)/,
+    );
+  });
+
+  it('fails energy dependency when Eurostat is unreachable instead of publishing World Bank-only data', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const href = String(url);
+      if (href.includes('ec.europa.eu/eurostat/')) {
+        throw Object.assign(new Error('Eurostat unavailable'), { nonRetryable: true });
+      }
+      if (href.includes('api.worldbank.org/')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            { pages: 1 },
+            [
+              {
+                country: { id: 'DE', value: 'Germany' },
+                countryiso3code: 'DEU',
+                date: '2024',
+                value: 63.2,
+              },
+            ],
+          ],
+        };
+      }
+      throw new Error(`Unexpected test URL: ${href}`);
+    };
+
+    try {
+      await assert.rejects(
+        () => fetchEnergyDependencyDataset(),
+        /Energy dependency: Eurostat fetch failed: Eurostat unavailable/,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('fails energy dependency when Eurostat parses below the EU floor even if World Bank has data', async () => {
+    const collapsedEurostatPayload = {
+      id: ['freq', 'siec', 'unit', 'geo', 'time'],
+      size: [1, 1, 1, 1, 1],
+      dimension: {
+        freq: { category: { index: { A: 0 } } },
+        siec: { category: { index: { TOTAL: 0 } } },
+        unit: { category: { index: { PC: 0 } } },
+        geo: { category: { index: { DE: 0 } } },
+        time: { category: { index: { 2024: 0 } } },
+      },
+      value: { 0: 63.2 },
+    };
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const href = String(url);
+      if (href.includes('ec.europa.eu/eurostat/')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => collapsedEurostatPayload,
+        };
+      }
+      if (href.includes('api.worldbank.org/')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            { pages: 1 },
+            [
+              {
+                country: { id: 'FR', value: 'France' },
+                countryiso3code: 'FRA',
+                date: '2024',
+                value: 44.1,
+              },
+            ],
+          ],
+        };
+      }
+      throw new Error(`Unexpected test URL: ${href}`);
+    };
+
+    try {
+      await assert.rejects(
+        () => fetchEnergyDependencyDataset(),
+        /Energy dependency: Eurostat parse\/floor check failed: Eurostat energy dependency parsed 1 EU member rows \(expected at least 24\)/,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 
@@ -479,6 +678,7 @@ describe('resilience static seed payload assembly', () => {
       countries: ['NO', 'US', 'YE'],
       recordCount: 3,
       failedDatasets: ['aquastat', 'gpi'],
+      recoveredDatasets: {},
       seedYear: 2026,
       seededAt: '2026-04-03T12:00:00.000Z',
       sourceVersion: RESILIENCE_STATIC_SOURCE_VERSION,
@@ -529,15 +729,39 @@ describe('recoverFailedDatasets', () => {
 
   it('injects prior fao values when FSIN fails and a prior snapshot exists', async () => {
     const maps = makeDatasetMaps();
-    await recoverFailedDatasets(maps, ['fao'], {
+    const recovery = await recoverFailedDatasets(maps, ['fao'], {
       readIndex: async () => ({ countries: ['YE', 'SO'] }),
       readPipeline: async () => [
-        { result: JSON.stringify({ fao: existingFao, wgi: { source: 'worldbank-wgi' } }) },
-        { result: JSON.stringify({ fao: existingSo, wgi: null }) },
+        { result: JSON.stringify({ seedYear: 2025, seededAt: '2025-10-02T00:00:00.000Z', fao: existingFao, wgi: { source: 'worldbank-wgi' } }) },
+        { result: JSON.stringify({ seedYear: 2025, seededAt: '2025-10-02T00:00:00.000Z', fao: existingSo, wgi: null }) },
       ],
     });
-    assert.deepEqual(maps.fao.get('YE'), existingFao, 'YE fao should be recovered');
-    assert.deepEqual(maps.fao.get('SO'), existingSo, 'SO fao should be recovered');
+    assert.deepEqual(
+      maps.fao.get('YE'),
+      {
+        ...existingFao,
+        _recovered: {
+          dataset: 'fao',
+          seedYear: 2025,
+          seededAt: '2025-10-02T00:00:00.000Z',
+          sourceYears: [2025],
+        },
+      },
+      'YE fao should be recovered with field-level provenance',
+    );
+    assert.deepEqual(
+      recovery.recoveredDatasets,
+      {
+        fao: {
+          recordCount: 2,
+          countries: ['SO', 'YE'],
+          seedYears: [2025],
+          seededAts: ['2025-10-02T00:00:00.000Z'],
+          sourceYears: [2025],
+        },
+      },
+      'manifest recovery summary should preserve prior seed/source-year provenance',
+    );
     // Verify recovered shape has the fields scoreFoodWater() reads.
     // If this fails, a FSIN failover would silently produce null for the crisis sub-metric.
     assert.ok(typeof maps.fao.get('YE').peopleInCrisis === 'number', 'recovered fao must have peopleInCrisis for scoreFoodWater()');
@@ -590,13 +814,47 @@ describe('recoverFailedDatasets', () => {
     await recoverFailedDatasets(maps, ['aquastat'], {
       readIndex: async () => ({ countries: ['DE'] }),
       readPipeline: async () => [
-        { result: JSON.stringify({ aquastat: existingAquastat }) },
+        { result: JSON.stringify({ seedYear: 2026, seededAt: '2026-10-02T00:00:00.000Z', aquastat: existingAquastat }) },
       ],
     });
     const de = maps.aquastat.get('DE');
-    assert.deepEqual(de, existingAquastat, 'DE aquastat should be recovered');
+    assert.deepEqual(de, {
+      ...existingAquastat,
+      _recovered: {
+        dataset: 'aquastat',
+        seedYear: 2026,
+        seededAt: '2026-10-02T00:00:00.000Z',
+        sourceYears: [2022],
+      },
+    }, 'DE aquastat should be recovered with provenance');
     assert.ok(typeof de.value === 'number', 'recovered aquastat must have numeric value for scoreAquastatValue()');
     assert.ok(typeof de.indicator === 'string', 'recovered aquastat must have indicator string for scoreAquastatValue()');
+  });
+
+  it('adds recovered dataset provenance to the manifest', () => {
+    const countryPayloads = new Map([
+      ['DE', { coverage: { availableDatasets: 1 } }],
+      ['YE', { coverage: { availableDatasets: 1 } }],
+    ]);
+    const manifest = buildManifest(countryPayloads, ['fao'], 2026, '2026-10-03T00:00:00.000Z', {
+      fao: {
+        recordCount: 2,
+        countries: ['YE', 'DE'],
+        seedYears: [2025],
+        seededAts: ['2025-10-02T00:00:00.000Z'],
+        sourceYears: [2024, 2025],
+      },
+    });
+
+    assert.deepEqual(manifest.recoveredDatasets, {
+      fao: {
+        recordCount: 2,
+        countries: ['DE', 'YE'],
+        seedYears: [2025],
+        seededAts: ['2025-10-02T00:00:00.000Z'],
+        sourceYears: [2024, 2025],
+      },
+    });
   });
 });
 
@@ -630,6 +888,66 @@ describe('resilience static health registrations', () => {
       /resilienceStaticFao:\s*\{\s*key:\s*'seed-meta:resilience:static'/,
       'resilienceStaticFao must appear in SEED_META pointing at seed-meta:resilience:static',
     );
+  });
+
+  it('builds the FAO aggregate for publish when FAO succeeds, including valid empty-crisis years', () => {
+    const aggregate = buildFaoAggregateForPublish(
+      { fao: new Map() },
+      [],
+      { recoveredDatasets: {} },
+      2026,
+      '2026-01-01T00:00:00.000Z',
+      ['SS'],
+    );
+
+    assert.deepEqual(aggregate, {
+      countries: {},
+      count: 0,
+      fetchedAt: '2026-01-01T00:00:00.000Z',
+      seedYear: 2026,
+      source: 'hdx-ipc',
+      status: 'ok',
+    });
+  });
+
+  it('builds the post-recovery FAO aggregate instead of leaving a stale aggregate key untouched', () => {
+    const aggregate = buildFaoAggregateForPublish(
+      {
+        fao: new Map([
+          ['SS', { phase: 'IPC Phase 4', peopleInCrisis: 1_200_000, year: 2026, source: 'hdx-ipc' }],
+        ]),
+      },
+      ['fao'],
+      { recoveredDatasets: { fao: { recordCount: 1 } } },
+      2026,
+      '2026-01-01T00:00:00.000Z',
+      ['SS'],
+    );
+
+    assert.equal(aggregate.count, 1);
+    assert.equal(aggregate.countries.SS.ipcPhase, 4);
+  });
+
+  it('publishes an explicit failed/empty FAO aggregate when FAO failed and recovery found no prior rows', () => {
+    const aggregate = buildFaoAggregateForPublish(
+      { fao: new Map() },
+      ['fao'],
+      { recoveredDatasets: {} },
+      2026,
+      '2026-01-01T00:00:00.000Z',
+      ['SS'],
+    );
+
+    assert.deepEqual(aggregate, {
+      countries: {},
+      count: 0,
+      fetchedAt: '2026-01-01T00:00:00.000Z',
+      seedYear: 2026,
+      source: 'hdx-ipc',
+      status: 'error',
+      failed: true,
+      failedDatasets: ['fao'],
+    });
   });
 
   it('registers annual seed-health monitoring for resilience static', () => {

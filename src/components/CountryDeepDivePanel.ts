@@ -9,7 +9,8 @@ import type { AssetType, NewsItem, RelatedAsset } from '@/types';
 import { sanitizeUrl, escapeHtml } from '@/utils/sanitize';
 import { computeAlternativeSuppliers, type ChokepointScoreMap, type EnrichedExporter } from '@/utils/supplier-route-risk';
 import { formatIntelBrief } from '@/utils/format-intel-brief';
-import { getCSSColor } from '@/utils';
+import { collectBriefSources, renderBriefSourcesFooter, type BriefSource } from '@/utils/brief-sources';
+import { getCSSColor, showToast } from '@/utils';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { PORTS } from '@/config/ports';
 import { getChokepointRoutes } from '@/config/trade-routes';
@@ -41,10 +42,11 @@ import type {
 } from '@/services/supply-chain';
 import { fetchMultiSectorCostShock, HS2_SHORT_LABELS } from '@/services/supply-chain';
 import type { MapContainer } from './MapContainer';
-import { ResilienceWidget } from './ResilienceWidget';
 import { dedupeHeadlines } from './CountryDeepDivePanel-news-utils';
 import { renderFollowButton } from '@/utils/follow-button';
 import { renderNotifyCountryLink } from '@/utils/notify-country-link';
+import { exportCountryEvidenceMarkdown } from '@/utils/export';
+import type { CountryEvidenceBundleInput } from '@/utils/export';
 
 const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
   DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL:   { text: 'Single Source',   cls: 'cdp-dep-critical' },
@@ -97,6 +99,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private closeButton: HTMLButtonElement;
   private currentCode: string | null = null;
   private currentName: string | null = null;
+  private currentScore: CountryScore | null = null;
+  private currentSignals: CountryBriefSignals | null = null;
+  private currentBrief: string | null = null;
+  private currentBriefGeneratedAt: string | number | null = null;
+  private currentBriefCached: boolean | null = null;
+  private currentHeadlines: NewsItem[] = [];
   private isMaximizedState = false;
   private onCloseCallback?: () => void;
   private onStateChangeCallback?: (state: { visible: boolean; maximized: boolean }) => void;
@@ -122,7 +130,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private timelineBody: HTMLElement | null = null;
   private scoreCard: HTMLElement | null = null;
   private factsBody: HTMLElement | null = null;
-  private resilienceWidget: ResilienceWidget | null = null;
+  private resilienceWidget: import('@/components/ResilienceWidget').ResilienceWidget | null = null;
+  private pendingResilienceEnergyMix: CountryEnergyProfileData | null = null;
+  private resilienceWidgetRequestId = 0;
   private energyBody: HTMLElement | null = null;
   private maritimeBody: HTMLElement | null = null;
   private tradeExposureBody: HTMLElement | null = null;
@@ -260,6 +270,13 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.abortController = new AbortController();
     this.currentCode = code;
     this.currentName = country;
+    this.currentScore = score;
+    this.currentSignals = signals;
+    this.currentBrief = null;
+    this.currentBriefGeneratedAt = null;
+    this.currentBriefCached = null;
+    this.currentHeadlines = [];
+    this.currentHeadlineCount = 0;
     this.economicIndicators = [];
     this.infrastructureByType.clear();
     this.renderSkeleton(country, code, score, signals);
@@ -279,6 +296,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.close();
     this.currentCode = null;
     this.currentName = null;
+    this.currentScore = null;
+    this.currentSignals = null;
+    this.currentBrief = null;
+    this.currentBriefGeneratedAt = null;
+    this.currentBriefCached = null;
+    this.currentHeadlines = [];
     this.onCloseCallback?.();
     this.onStateChangeCallback?.({ visible: false, maximized: false });
   }
@@ -336,6 +359,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   public updateNews(headlines: NewsItem[]): void {
     if (!this.newsBody) return;
     this.newsBody.replaceChildren();
+    this.currentHeadlines = [];
 
     const compare = (a: NewsItem, b: NewsItem) => {
       const sa = SEVERITY_ORDER[this.toThreatLevel(a.threat?.level)];
@@ -351,6 +375,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       .slice(0, 10);
 
     this.currentHeadlineCount = deduped.length;
+    this.currentHeadlines = deduped.map(({ item }) => item);
 
     if (deduped.length === 0) {
       this.newsBody.append(this.makeEmpty(t('countryBrief.noNews')));
@@ -893,6 +918,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   public updateEnergyProfile(data: CountryEnergyProfileData): void {
     if (!this.energyBody) return;
     this.renderEnergyProfile(data);
+    this.pendingResilienceEnergyMix = data;
     this.resilienceWidget?.setEnergyMix(data);
   }
 
@@ -2307,11 +2333,19 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.briefBody.replaceChildren();
 
     if (data.error || data.skipped || !data.brief) {
+      this.currentBrief = null;
+      this.currentBriefGeneratedAt = null;
+      this.currentBriefCached = null;
       this.briefBody.append(this.makeEmpty(data.error || data.reason || t('countryBrief.assessmentUnavailable')));
       return;
     }
 
-    const summaryHtml = this.formatBrief(this.summarizeBrief(data.brief), 0);
+    this.currentBrief = data.brief;
+    this.currentBriefGeneratedAt = data.generatedAt ?? null;
+    this.currentBriefCached = data.cached === true;
+
+    const briefSources = collectBriefSources(data.sources ?? [], 6);
+    const summaryHtml = this.formatBrief(this.summarizeBrief(data.brief), briefSources, 0);
     const text = this.el('div', 'cdp-assessment-text cdp-summary-only');
     setTrustedHtml(text, trustedHtml(summaryHtml, "legacy direct innerHTML migration"));
 
@@ -2321,11 +2355,22 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (data.generatedAt) metaTokens.push(`Updated ${new Date(data.generatedAt).toLocaleTimeString()}`);
     const meta = this.el('div', 'cdp-assessment-meta', metaTokens.join(' • '));
     this.briefBody.append(text, meta);
+    const sourcesFooter = renderBriefSourcesFooter(briefSources, { className: 'cdp-brief-sources' });
+    if (sourcesFooter) {
+      const summarySources = this.el('div', 'cdp-summary-only');
+      setTrustedHtml(summarySources, trustedHtml(sourcesFooter, "legacy direct innerHTML migration"));
+      this.briefBody.append(summarySources);
+    }
 
     const expandedBrief = this.el('div', 'cdp-expanded-only');
     const fullText = this.el('div', 'cdp-assessment-text');
-    setTrustedHtml(fullText, trustedHtml(this.formatBrief(data.brief, this.currentHeadlineCount), "legacy direct innerHTML migration"));
+    setTrustedHtml(fullText, trustedHtml(this.formatBrief(data.brief, briefSources, this.currentHeadlineCount), "legacy direct innerHTML migration"));
     expandedBrief.append(fullText);
+    if (sourcesFooter) {
+      const sources = this.el('div', 'cdp-expanded-only');
+      setTrustedHtml(sources, trustedHtml(sourcesFooter, "legacy direct innerHTML migration"));
+      expandedBrief.append(sources);
+    }
     this.briefBody.append(expandedBrief);
   }
 
@@ -2422,7 +2467,18 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         this.onExportImage(this.currentCode, this.currentName);
       }
     });
-    right.append(shareBtn, maxBtn, storyButton, exportButton);
+    const evidenceButton = this.el('button', 'cdp-action-btn cdp-evidence-export-btn', 'Evidence') as HTMLButtonElement;
+    evidenceButton.setAttribute('type', 'button');
+    evidenceButton.setAttribute('title', 'Export evidence bundle as Markdown (PRO)');
+    evidenceButton.addEventListener('click', () => {
+      if (!hasPremiumAccess(getAuthState())) {
+        trackGateHit('evidence-export');
+        showToast('Evidence export is available on Pro.');
+        return;
+      }
+      this.exportEvidenceBundle();
+    });
+    right.append(shareBtn, maxBtn, storyButton, exportButton, evidenceButton);
     header.append(left, right);
 
     const scoreCard = this.el('section', 'cdp-card cdp-score-card');
@@ -2445,9 +2501,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       scoreCard.append(this.makeEmpty(t('countryBrief.ciiUnavailable')));
     }
 
-    this.resilienceWidget = new ResilienceWidget(code);
     const summaryGrid = this.el('div', 'cdp-summary-grid');
-    summaryGrid.append(scoreCard, this.resilienceWidget.getElement());
+    summaryGrid.append(scoreCard, this.renderResilienceWidgetSlot(code));
 
     const bodyGrid = this.el('div', 'cdp-grid');
     const [signalsCard, signalBody] = this.sectionCard(t('countryBrief.activeSignals'));
@@ -2539,8 +2594,77 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   private destroyResilienceWidget(): void {
+    this.resilienceWidgetRequestId += 1;
     this.resilienceWidget?.destroy();
     this.resilienceWidget = null;
+    this.pendingResilienceEnergyMix = null;
+  }
+
+  private renderResilienceWidgetSlot(code: string): HTMLElement {
+    const slot = this.el('div', 'cdp-card resilience-widget');
+    slot.append(this.makeLoading(t('countryBrief.loadingResilienceScore')));
+    const requestId = ++this.resilienceWidgetRequestId;
+
+    const renderFallback = (error: unknown) => {
+      if (requestId !== this.resilienceWidgetRequestId) return;
+      this.resilienceWidget?.destroy();
+      this.resilienceWidget = null;
+      console.warn('[CountryDeepDivePanel] Failed to load resilience widget', error);
+      this.captureResilienceWidgetLoadFailure(error, code);
+      slot.replaceChildren(this.makeEmpty(t('countryBrief.resilienceScoreUnavailable')));
+    };
+
+    import('@/components/ResilienceWidget')
+      .then(({ ResilienceWidget }) => {
+        if (requestId !== this.resilienceWidgetRequestId) return;
+        if (typeof ResilienceWidget !== 'function') throw new Error('ResilienceWidget export is unavailable.');
+        const widget = new ResilienceWidget(code);
+        try {
+          if (this.pendingResilienceEnergyMix) {
+            widget.setEnergyMix(this.pendingResilienceEnergyMix);
+          }
+          this.replaceResilienceSlot(slot, widget.getElement());
+          this.resilienceWidget = widget;
+        } catch (error) {
+          widget.destroy();
+          throw error;
+        }
+      })
+      .catch(renderFallback);
+
+    return slot;
+  }
+
+  private captureResilienceWidgetLoadFailure(error: unknown, countryCode: string): void {
+    void import('@sentry/browser')
+      .then((Sentry) => {
+        Sentry.addBreadcrumb?.({
+          category: 'country-deep-dive',
+          level: 'warning',
+          message: 'Resilience widget lazy load failed',
+          data: { countryCode },
+        });
+        Sentry.captureException?.(error instanceof Error ? error : new Error(String(error)), {
+          tags: { surface: 'country-deep-dive', widget: 'resilience' },
+          extra: { countryCode },
+        });
+      })
+      .catch(() => {});
+  }
+
+  private replaceResilienceSlot(slot: HTMLElement, next: HTMLElement): void {
+    if (typeof slot.replaceWith === 'function') {
+      slot.replaceWith(next);
+      return;
+    }
+    if (typeof slot.parentNode?.replaceChild === 'function') {
+      slot.parentNode.replaceChild(next, slot);
+      return;
+    }
+    if (typeof slot.parentNode?.insertBefore === 'function' && typeof slot.parentNode?.removeChild === 'function') {
+      slot.parentNode.insertBefore(next, slot);
+      slot.parentNode.removeChild(slot);
+    }
   }
 
   private tearDownFollowButton(): void {
@@ -2844,8 +2968,76 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     return this.el('span', className, text);
   }
 
-  private formatBrief(text: string, headlineCount = 0): string {
-    return formatIntelBrief(text, headlineCount > 0 ? { count: headlineCount, hrefPrefix: '#cdp-news-' } : undefined);
+  private formatBrief(text: string, sources: BriefSource[] = [], headlineCount = 0): string {
+    return formatIntelBrief(
+      text,
+      sources.length > 0
+        ? { sources }
+        : headlineCount > 0
+          ? { count: headlineCount, hrefPrefix: '#cdp-news-' }
+          : undefined,
+    );
+  }
+
+  private exportEvidenceBundle(): void {
+    if (!this.currentCode || !this.currentName) return;
+    const exportedAt = new Date().toISOString();
+    const data: CountryEvidenceBundleInput = {
+      country: this.currentName,
+      code: this.currentCode,
+      context: 'Country dossier',
+      generatedAt: exportedAt,
+      exportedAt,
+    };
+
+    if (this.currentScore) {
+      data.score = this.currentScore.score;
+      data.level = this.currentScore.level;
+      data.trend = this.currentScore.trend;
+      data.components = this.currentScore.components;
+    }
+    if (this.currentSignals) {
+      data.signals = {
+        criticalNews: this.currentSignals.criticalNews,
+        protests: this.currentSignals.protests,
+        militaryFlights: this.currentSignals.militaryFlights,
+        militaryVessels: this.currentSignals.militaryVessels,
+        militaryFlightsInCountry: this.currentSignals.militaryFlightsInCountry,
+        militaryVesselsInCountry: this.currentSignals.militaryVesselsInCountry,
+        outages: this.currentSignals.outages,
+        aisDisruptions: this.currentSignals.aisDisruptions,
+        satelliteFires: this.currentSignals.satelliteFires,
+        radiationAnomalies: this.currentSignals.radiationAnomalies,
+        temporalAnomalies: this.currentSignals.temporalAnomalies,
+        cyberThreats: this.currentSignals.cyberThreats,
+        earthquakes: this.currentSignals.earthquakes,
+        displacementOutflow: this.currentSignals.displacementOutflow,
+        climateStress: this.currentSignals.climateStress,
+        conflictEvents: this.currentSignals.conflictEvents,
+        activeStrikes: this.currentSignals.activeStrikes,
+        orefSirens: this.currentSignals.orefSirens,
+        orefHistory24h: this.currentSignals.orefHistory24h,
+        aviationDisruptions: this.currentSignals.aviationDisruptions,
+        travelAdvisories: this.currentSignals.travelAdvisories,
+        travelAdvisoryMaxLevel: this.currentSignals.travelAdvisoryMaxLevel,
+        gpsJammingHexes: this.currentSignals.gpsJammingHexes,
+        thermalEscalations: this.currentSignals.thermalEscalations,
+        sanctionsDesignations: this.currentSignals.sanctionsDesignations,
+        sanctionsNewDesignations: this.currentSignals.sanctionsNewDesignations,
+      };
+    }
+    if (this.currentBrief) data.brief = this.currentBrief;
+    if (this.currentBriefGeneratedAt) data.briefGeneratedAt = new Date(this.currentBriefGeneratedAt).toISOString();
+    if (this.currentBriefCached != null) data.briefCached = this.currentBriefCached;
+    if (this.currentHeadlines.length > 0) {
+      data.headlines = this.currentHeadlines.map((headline) => ({
+        title: headline.title,
+        source: headline.source,
+        link: headline.link,
+        pubDate: headline.pubDate ? new Date(headline.pubDate).toISOString() : undefined,
+      }));
+    }
+    exportCountryEvidenceMarkdown(data);
   }
 
   private summarizeBrief(brief: string): string {

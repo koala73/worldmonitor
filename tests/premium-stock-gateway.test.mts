@@ -5,9 +5,30 @@ import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 
 import { createDomainGateway } from '../server/gateway.ts';
 import { issueSessionToken } from '../api/_session.js';
+import { createRedisFetch } from './helpers/fake-upstash-redis.mts';
 
 const originalKeys = process.env.WORLDMONITOR_VALID_KEYS;
 const originalSessionSecret = process.env.WM_SESSION_SECRET;
+const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
+const originalRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+const originalFetch = globalThis.fetch;
+
+function installRateLimitRedisFake(): void {
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+  const { fetchImpl } = createRedisFetch({});
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string'
+      ? input
+      : input instanceof URL
+        ? input.toString()
+        : input.url;
+    if (url.startsWith(process.env.UPSTASH_REDIS_REST_URL || '')) {
+      return fetchImpl(input, init);
+    }
+    return originalFetch(input, init);
+  }) as typeof fetch;
+}
 
 // Public routes now require a wms_ session token (issue #3541) — header-only
 // origin trust is gone. Mint one for tests that previously relied on
@@ -15,18 +36,30 @@ const originalSessionSecret = process.env.WM_SESSION_SECRET;
 process.env.WM_SESSION_SECRET = originalSessionSecret
   ?? 'test-secret-must-be-at-least-32-chars-long-xxx';
 let SESSION_TOKEN: string;
-before(async () => { SESSION_TOKEN = (await issueSessionToken()).token; });
+before(async () => {
+  installRateLimitRedisFake();
+  SESSION_TOKEN = (await issueSessionToken()).token;
+});
+
+after(() => {
+  globalThis.fetch = originalFetch;
+  if (originalRedisUrl == null) delete process.env.UPSTASH_REDIS_REST_URL;
+  else process.env.UPSTASH_REDIS_REST_URL = originalRedisUrl;
+  if (originalRedisToken == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  else process.env.UPSTASH_REDIS_REST_TOKEN = originalRedisToken;
+});
 
 afterEach(() => {
   if (originalKeys == null) delete process.env.WORLDMONITOR_VALID_KEYS;
   else process.env.WORLDMONITOR_VALID_KEYS = originalKeys;
+  installRateLimitRedisFake();
   // Keep the session secret stable across tests so SESSION_TOKEN stays valid.
   process.env.WM_SESSION_SECRET = originalSessionSecret
     ?? 'test-secret-must-be-at-least-32-chars-long-xxx';
 });
 
 describe('premium gateway API key enforcement', () => {
-  it('requires credentials for premium endpoints regardless of origin', async () => {
+  it('enforces premium credentials while allowing public market session auth', async () => {
     const handler = createDomainGateway([
       {
         method: 'GET',
@@ -48,6 +81,11 @@ describe('premium gateway API key enforcement', () => {
         path: '/api/market/v1/list-market-quotes',
         handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
       },
+      {
+        method: 'GET',
+        path: '/api/market/v1/get-insider-transactions',
+        handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      },
     ]);
 
     process.env.WORLDMONITOR_VALID_KEYS = 'real-key-123';
@@ -57,6 +95,7 @@ describe('premium gateway API key enforcement', () => {
       headers: { Origin: 'https://worldmonitor.app' },
     }));
     assert.equal(browserNoKey.status, 401);
+    assert.deepEqual(await browserNoKey.json(), { error: 'API key required' });
 
     const resilienceScoreNoKey = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=US', {
       headers: { Origin: 'https://worldmonitor.app' },
@@ -99,12 +138,17 @@ describe('premium gateway API key enforcement', () => {
     }));
     assert.equal(unknownNoKey.status, 403);
 
-    // Public endpoint — anonymous browsers authenticate via the wms_ session token
+    // Public endpoints — anonymous browsers authenticate via the wms_ session token
     // (issue #3541; previously this was a trusted-origin bypass).
     const publicAllowed = await handler(new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
       headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
     }));
     assert.equal(publicAllowed.status, 200);
+
+    const insiderTransactionsAllowed = await handler(new Request('https://worldmonitor.app/api/market/v1/get-insider-transactions?symbol=AAPL', {
+      headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
+    }));
+    assert.equal(insiderTransactionsAllowed.status, 200);
   });
 
   it('PR #3557 review: anonymous wms_ session token does NOT unlock premium endpoints', async () => {
@@ -178,7 +222,7 @@ describe('premium gateway API key enforcement', () => {
     process.env.CONVEX_SERVER_SHARED_SECRET = 'test-secret';
     process.env.WORLDMONITOR_VALID_KEYS = 'real-key-123';
 
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url =
         typeof input === 'string'
           ? input
@@ -209,7 +253,10 @@ describe('premium gateway API key enforcement', () => {
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         );
       }
-      return new Response('not-mocked', { status: 404 });
+      if (url.startsWith(process.env.CONVEX_SITE_URL || '')) {
+        return new Response('not-mocked', { status: 404 });
+      }
+      return originalFetch(input, init);
     }) as typeof fetch;
 
     try {

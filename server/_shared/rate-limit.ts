@@ -3,6 +3,16 @@ import { Redis } from '@upstash/redis';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../api/_sentry-edge.js';
 
+// @upstash/redis defaults to 5 retries with exponential backoff (~4.3s total)
+// before surfacing an unreachable-Redis error. The node test runner sets
+// NODE_TEST_CONTEXT in the child that executes each file; in that context the
+// fail-open / fail-closed rate-limit tests point UPSTASH_REDIS_REST_URL at a
+// fake host and would otherwise burn that full backoff on every limiter call.
+// Skip retries under the test runner only — production (env unset) keeps the
+// resilient default untouched. Mirrors the retry:false already shipped on the
+// MCP limiter to unblock the suite (PR #3963).
+const REDIS_TEST_RETRY_OPTS: { retry?: false } = process.env.NODE_TEST_CONTEXT ? { retry: false } : {};
+
 let ratelimit: Ratelimit | null = null;
 
 function getRatelimit(): Ratelimit | null {
@@ -12,7 +22,7 @@ function getRatelimit(): Ratelimit | null {
   if (!url || !token) return null;
 
   ratelimit = new Ratelimit({
-    redis: new Redis({ url, token }),
+    redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
     limiter: Ratelimit.slidingWindow(600, '60 s'),
     prefix: 'rl',
     analytics: false,
@@ -88,11 +98,7 @@ export function getClientIp(request: Request): string {
   return cf || xr || UNKNOWN_CLIENT_IP;
 }
 
-function tooManyRequestsResponse(
-  limit: number,
-  reset: number,
-  corsHeaders: Record<string, string>,
-): Response {
+function tooManyRequestsResponse(limit: number, reset: number, corsHeaders: Record<string, string>): Response {
   return new Response(JSON.stringify({ error: 'Too many requests' }), {
     status: 429,
     headers: {
@@ -107,17 +113,14 @@ function tooManyRequestsResponse(
 }
 
 function rateLimitDegradedResponse(corsHeaders: Record<string, string>): Response {
-  return new Response(
-    JSON.stringify({ error: 'Rate-limit service temporarily unavailable' }),
-    {
-      status: 503,
-      headers: {
-        'Content-Type': 'application/json',
-        ...RATE_LIMIT_DEGRADED_HEADERS,
-        ...corsHeaders,
-      },
+  return new Response(JSON.stringify({ error: 'Rate-limit service temporarily unavailable' }), {
+    status: 503,
+    headers: {
+      'Content-Type': 'application/json',
+      ...RATE_LIMIT_DEGRADED_HEADERS,
+      ...corsHeaders,
     },
-  );
+  });
 }
 
 export interface RateLimitOptions {
@@ -132,11 +135,7 @@ export interface RateLimitOptions {
   failClosed?: boolean;
 }
 
-export async function checkRateLimit(
-  request: Request,
-  corsHeaders: Record<string, string>,
-  opts: RateLimitOptions = {},
-): Promise<Response | null> {
+export async function checkRateLimit(request: Request, corsHeaders: Record<string, string>, opts: RateLimitOptions = {}): Promise<Response | null> {
   const rl = getRatelimit();
   if (!rl) {
     if (opts.failClosed) {
@@ -197,6 +196,9 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // = 6 req/min/IP base load. 60/min headroom covers tab refreshes + zoom
   // pans within a single user without flagging legitimate traffic.
   '/api/maritime/v1/get-vessel-snapshot': { limit: 60, window: '60 s' },
+  // Country Resilience ranking can synchronously warm the full country table
+  // on cold/stale cache paths; keep it well below the global 600/min fallback.
+  '/api/resilience/v1/get-resilience-ranking': { limit: 30, window: '60 s' },
   // #3805 / PR #3821: MCP proxy is a top-level Vercel Edge Function in
   // `api/mcp-proxy.ts` (registered as `external-protocol` in
   // api/api-route-exceptions.json — JSON-RPC shape dictated by the MCP spec),
@@ -224,7 +226,7 @@ function getEndpointRatelimit(pathname: string): Ratelimit | null {
   if (!url || !token) return null;
 
   const rl = new Ratelimit({
-    redis: new Redis({ url, token }),
+    redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
     limiter: Ratelimit.slidingWindow(policy.limit, policy.window),
     prefix: 'rl:ep',
     analytics: false,
@@ -237,22 +239,14 @@ export function hasEndpointRatePolicy(pathname: string): boolean {
   return pathname in ENDPOINT_RATE_POLICIES;
 }
 
-export async function checkEndpointRateLimit(
-  request: Request,
-  pathname: string,
-  corsHeaders: Record<string, string>,
-  opts: RateLimitOptions = {},
-): Promise<Response | null> {
+export async function checkEndpointRateLimit(request: Request, pathname: string, corsHeaders: Record<string, string>, opts: RateLimitOptions = {}): Promise<Response | null> {
   if (!hasEndpointRatePolicy(pathname)) return null;
 
   const rl = getEndpointRatelimit(pathname);
   if (!rl) {
     const failClosed = opts.failClosed ?? true;
     if (failClosed) {
-      logRateLimitDegraded(
-        `checkEndpointRateLimit:${pathname}:missing-config`,
-        new Error('Upstash Redis is not configured'),
-      );
+      logRateLimitDegraded(`checkEndpointRateLimit:${pathname}:missing-config`, new Error('Upstash Redis is not configured'));
       return rateLimitDegradedResponse(corsHeaders);
     }
     return null;
@@ -299,7 +293,7 @@ function getScopedRatelimit(scope: string, limit: number, window: Duration): Rat
   if (!url || !token) return null;
 
   const rl = new Ratelimit({
-    redis: new Redis({ url, token }),
+    redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
     limiter: Ratelimit.slidingWindow(limit, window),
     prefix: 'rl:scope',
     analytics: false,
@@ -330,12 +324,7 @@ export interface ScopedRateLimitResult {
  * (#3531). The Redis error itself is logged once per call so silent bypass
  * windows are visible in logs / Sentry.
  */
-export async function checkScopedRateLimit(
-  scope: string,
-  limit: number,
-  window: Duration,
-  identifier: string,
-): Promise<ScopedRateLimitResult> {
+export async function checkScopedRateLimit(scope: string, limit: number, window: Duration, identifier: string): Promise<ScopedRateLimitResult> {
   const rl = getScopedRatelimit(scope, limit, window);
   if (!rl) return { allowed: true, limit, reset: 0, degraded: true };
   try {

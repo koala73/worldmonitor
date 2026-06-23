@@ -10,7 +10,7 @@
  * exercised here too via a minimal re-implementation extracted from the
  * source. If the source diverges, this test will fail and force an update.
  *
- * See plans/forbid-realtime-all-events.md "Out of scope: Slot B".
+ * See docs/archive/plans/forbid-realtime-all-events.md "Out of scope: Slot B".
  *
  * Run: node --test tests/notification-relay-coalesce-key.test.mjs
  */

@@ -16,9 +16,14 @@
     "lint:unicode": "node scripts/check-unicode-safety.mjs",
     "lint:unicode:staged": "node scripts/check-unicode-safety.mjs --staged",
     "security:local-env-dumps": "node scripts/check-local-secret-dumps.mjs",
-    "lint:md": "markdownlint-cli2 '**/*.md' '!**/node_modules/**' '!.agent/**' '!.agents/**' '!.claude/**' '!.factory/**' '!.windsurf/**' '!skills/**' '!docs/internal/**' '!docs/Docs_To_Review/**' '!todos/**' '!docs/plans/**' '!docs/brainstorms/**' '!docs/ideation/**'",
+    "worktree:bootstrap": "node scripts/bootstrap-worktree.mjs",
+    "worktree:bootstrap:test-only": "node scripts/bootstrap-worktree.mjs --ignore-scripts",
+    "worktree:env": "node scripts/bootstrap-worktree.mjs --skip-install",
+    "lint:md": "markdownlint-cli2 '**/*.md' '!**/node_modules/**' '!.agent/**' '!.agents/**' '!.claude/**' '!.factory/**' '!.windsurf/**' '!skills/**' '!docs/internal/**' '!docs/Docs_To_Review/**' '!docs/archive/**' '!todos/**' '!docs/plans/**' '!docs/brainstorms/**' '!docs/ideation/**'",
     "version:sync": "node scripts/sync-desktop-version.mjs",
     "version:check": "node scripts/sync-desktop-version.mjs --check",
+    "sync:locales": "node scripts/sync-locale-keys.mjs",
+    "sync:locales:check": "node scripts/sync-locale-keys.mjs --check",
     "docs:stats": "node scripts/docs-stats.mjs",
     "docs:check": "node scripts/docs-stats.mjs --check",
     "dev": "vite",
@@ -29,7 +34,7 @@
     "dev:energy": "cross-env VITE_VARIANT=energy vite",
     "postinstall": "cd blog-site && npm ci --prefer-offline",
     "build:blog": "cd blog-site && npm run build && rm -rf ../public/blog && mkdir -p ../public/blog && cp -r dist/* ../public/blog/",
-    "build:pro": "cd pro-test && npm install && npm run build",
+    "build:pro": "cd pro-test && npm ci && npm run build",
     "build:openapi": "node -e \"require('fs').cpSync('docs/api/worldmonitor.openapi.yaml', 'public/openapi.yaml')\"",
     "build:agent-skills": "node scripts/build-agent-skills-index.mjs",
     "prebuild": "npm run build:openapi && npm run build:agent-skills",
@@ -64,7 +69,7 @@
     "test:e2e:variant-smoke:happy": "cross-env VITE_VARIANT=happy playwright test e2e/variant-live-smoke.spec.ts",
     "test:e2e:variant-smoke": "npm run test:e2e:variant-smoke:full && npm run test:e2e:variant-smoke:tech && npm run test:e2e:variant-smoke:finance && npm run test:e2e:variant-smoke:commodity && npm run test:e2e:variant-smoke:energy && npm run test:e2e:variant-smoke:happy",
     "test:e2e": "npm run test:e2e:runtime && npm run test:e2e:full && npm run test:e2e:tech && npm run test:e2e:finance && npm run test:e2e:energy",
-    "test:data": "tsx --test tests/*.test.mjs tests/*.test.mts api/security/report.test.mjs",
+    "test:data": "tsx --test --test-concurrency=16 tests/*.test.mjs tests/*.test.mts api/security/report.test.mjs",
     "test:resilience-validation-smoke": "tsx --test tests/resilience-validation-artifacts-schema.test.mts tests/benchmark-resilience-external.test.mjs tests/backtest-resilience-outcomes.test.mjs tests/resilience-sensitivity-v2.test.mts tests/seed-bundle-resilience-validation.test.mjs",
     "dryrun:resilience": "node --import tsx/esm scripts/dry-run-resilience-rebalance.mjs",
     "test:feeds": "node scripts/validate-rss-feeds.mjs",
@@ -112,7 +117,7 @@
     "@types/topojson-specification": "^1.0.5",
     "convex-test": "^0.0.43",
     "cross-env": "^10.1.0",
-    "esbuild": "^0.27.3",
+    "esbuild": "0.28.1",
     "exceljs": "^4.4.0",
     "h3-js": "^4.4.0",
     "markdownlint-cli2": "^0.21.0",
@@ -123,9 +128,9 @@
     "vitest": "^4.1.0"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.82.0",
+    "@anthropic-ai/sdk": "^0.91.1",
     "@aws-sdk/client-s3": "^3.1009.0",
-    "@clerk/clerk-js": "^5.56.0",
+    "@clerk/clerk-js": "^6.13.0",
     "@deck.gl/aggregation-layers": "^9.2.11",
     "@deck.gl/core": "^9.2.11",
     "@deck.gl/geo-layers": "^9.2.11",
@@ -145,7 +150,7 @@
     "deck.gl": "^9.2.11",
     "dodopayments-checkout": "^1.8.0",
     "dompurify": "^3.4.0",
-    "fast-xml-parser": "^5.3.7",
+    "fast-xml-parser": "^5.8.0",
     "globe.gl": "^2.45.0",
     "hls.js": "^1.6.15",
     "i18next": "^25.8.10",
@@ -154,7 +159,7 @@
     "jose": "^6.2.2",
     "maplibre-gl": "^5.16.0",
     "marked": "^17.0.3",
-    "onnxruntime-web": "^1.23.2",
+    "onnxruntime-web": "^1.26.0",
     "papaparse": "^5.5.3",
     "pmtiles": "^4.4.0",
     "preact": "^10.25.4",
@@ -163,15 +168,21 @@
     "telegram": "^2.26.22",
     "topojson-client": "^3.1.0",
     "uqr": "^0.1.2",
-    "ws": "^8.19.0",
+    "ws": "^8.21.0",
     "yaml": "^2.8.3",
-    "youtubei.js": "^16.0.1"
+    "youtubei.js": "^16.0.1",
+    "zod": "^4.3.6"
   },
   "overrides": {
-    "fast-xml-parser": "^5.3.7",
+    "convex": {
+      "esbuild": "0.28.1"
+    },
+    "fast-xml-parser": "^5.8.0",
     "serialize-javascript": "^7.0.4",
     "node-forge": "^1.4.0",
     "srvx": "^0.11.13",
-    "protobufjs": "^7.5.5"
+    "protobufjs": "^7.6.2",
+    "ws": "$ws",
+    "shell-quote": "^1.8.4"
   }
 }

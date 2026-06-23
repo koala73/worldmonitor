@@ -103,6 +103,10 @@ message Forecast {
   string time_horizon = 8;
   repeated ForecastSignal signals = 9;
   repeated CascadeEffect cascades = 10;
+  // Forecast trend direction. Current values are "rising", "falling", and
+  // "stable". The seeder compares probability against the prior forecast
+  // snapshot and uses a +/-0.05 deadband: deltas above +0.05 are rising,
+  // below -0.05 are falling, and everything inside the band is stable.
   string trend = 11;
   double prior_probability = 12;
   CalibrationInfo calibration = 13;

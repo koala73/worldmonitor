@@ -3,7 +3,17 @@
  * Loaded when the app is opened with ?settings=1 (e.g. from the main window's Settings button).
  */
 import type { PanelConfig } from '@/types';
-import { DEFAULT_PANELS, STORAGE_KEYS, ALL_PANELS, VARIANT_DEFAULTS, getEffectivePanelConfig, isPanelEntitled, FREE_MAX_PANELS } from '@/config';
+import {
+  DEFAULT_PANELS,
+  STORAGE_KEYS,
+  ALL_PANELS,
+  VARIANT_DEFAULTS,
+  getEffectivePanelConfig,
+  isPanelEntitled,
+  FREE_MAX_PANELS,
+  countFreePanelCapUsage,
+  isFreePanelCapCounted,
+} from '@/config';
 import { isProUser } from '@/services/widget-store';
 import { SITE_VARIANT } from '@/config/variant';
 import { loadFromStorage, saveToStorage } from '@/utils';
@@ -54,12 +64,17 @@ export function initSettingsWindow(): void {
     );
     const panelHtml = panelEntries
       .map(
-        ([key, panel]) => `
+        ([key, panel]) => {
+          // Preserve saved config for dynamic cw-* panels; unknown keys should
+          // not collapse to getEffectivePanelConfig's disabled synthetic fallback.
+          const resolvedPanel = ALL_PANELS[key] ? getEffectivePanelConfig(key, SITE_VARIANT) : panel;
+          return `
         <div class="panel-toggle-item ${panel.enabled ? 'active' : ''}" data-panel="${escapeHtml(key)}">
           <div class="panel-toggle-checkbox">${panel.enabled ? '✓' : ''}</div>
-          <span class="panel-toggle-label">${escapeHtml(getLocalizedPanelName(key, panel.name))}</span>
+          <span class="panel-toggle-label">${escapeHtml(getLocalizedPanelName(key, resolvedPanel.name ?? panel.name))}</span>
         </div>
-      `
+      `;
+        }
       )
       .join('');
 
@@ -71,9 +86,12 @@ export function initSettingsWindow(): void {
           const panelKey = (item as HTMLElement).dataset.panel!;
           const config = panelSettings[panelKey];
           if (config) {
-            if (!config.enabled && !isPanelEntitled(panelKey, ALL_PANELS[panelKey] ?? config, isProUser())) return;
-            if (!config.enabled && !isProUser()) {
-              const enabledCount = Object.entries(panelSettings).filter(([k, p]) => p.enabled && !k.startsWith('cw-')).length;
+            // Preserve saved config for dynamic cw-* panels; unknown keys should
+            // not collapse to getEffectivePanelConfig's disabled synthetic fallback.
+            const resolvedConfig = ALL_PANELS[panelKey] ? getEffectivePanelConfig(panelKey, SITE_VARIANT) : config;
+            if (!config.enabled && !isPanelEntitled(panelKey, resolvedConfig, isProUser())) return;
+            if (!config.enabled && !isProUser() && isFreePanelCapCounted(panelKey)) {
+              const enabledCount = countFreePanelCapUsage(panelSettings);
               if (enabledCount >= FREE_MAX_PANELS) return;
             }
             config.enabled = !config.enabled;

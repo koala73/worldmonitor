@@ -15,8 +15,16 @@ export interface ServerInsightStory {
   countryCode: string | null;
 }
 
+export interface ServerBriefSource {
+  title: string;
+  source: string;
+  url: string;
+  publishedAt?: string;
+}
+
 export interface ServerInsights {
   worldBrief: string;
+  worldBriefSources?: ServerBriefSource[];
   briefProvider: string;
   status: 'ok' | 'degraded';
   topStories: ServerInsightStory[];

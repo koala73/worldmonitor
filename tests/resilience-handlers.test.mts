@@ -76,4 +76,33 @@ describe('resilience handlers', () => {
     });
     assert.equal((sortedSets.get(`${RESILIENCE_HISTORY_KEY_PREFIX}US`) ?? []).length, history.length, 'cache hit must not append history');
   });
+
+  it('collapses legacy same-day history members to one current member per date and formula', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const todayScore = Number(today.replace(/-/g, ''));
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    delete process.env.VERCEL_ENV;
+
+    const { fetchImpl, sortedSets } = createRedisFetch(RESILIENCE_FIXTURES);
+    sortedSets.set(`${RESILIENCE_HISTORY_KEY_PREFIX}US`, [
+      { member: `${today}:40:d6`, score: todayScore },
+      { member: `${today}:41:d6`, score: todayScore },
+      { member: '2026-04-01:20:d6', score: 20260401 },
+    ]);
+    globalThis.fetch = fetchImpl;
+
+    await getResilienceScore({ request: new Request('https://example.com') } as never, {
+      countryCode: 'US',
+    });
+
+    const history = sortedSets.get(`${RESILIENCE_HISTORY_KEY_PREFIX}US`) ?? [];
+    const todaysEntries = history.filter((entry) => entry.member.startsWith(`${today}:`));
+    assert.equal(todaysEntries.length, 1, 'same-day history must have one member after append');
+    assert.equal(todaysEntries[0]?.member, `${today}:d6`, 'current member must be stable per date/formula, not per rounded score');
+    assert.ok(
+      (todaysEntries[0]?.score ?? 0) > todayScore && (todaysEntries[0]?.score ?? 0) < todayScore + 1,
+      'current history score should carry date ordering plus encoded score fraction',
+    );
+  });
 });

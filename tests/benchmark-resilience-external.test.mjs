@@ -11,6 +11,8 @@ import {
   benchmarkCliExitCode,
   isStrictValidationCli,
   runBenchmark,
+  currentCacheFormulaLocal,
+  currentMethodologyFormulaLocal,
 } from '../scripts/benchmark-resilience-external.mjs';
 
 describe('rankArray', () => {
@@ -237,6 +239,8 @@ describe('runBenchmark (mocked)', () => {
     });
 
     assert.ok(result.generatedAt > 0, 'missing generatedAt');
+    assert.equal(result._formula, currentCacheFormulaLocal());
+    assert.equal(result.methodologyFormula, currentMethodologyFormulaLocal());
     assert.ok(result.license, 'missing license note');
     assert.equal(result.hypotheses.length, 3, 'expected 3 hypotheses');
     assert.ok(result.correlations.INFORM, 'missing INFORM correlation');

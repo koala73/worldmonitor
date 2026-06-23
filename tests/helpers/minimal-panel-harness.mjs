@@ -53,9 +53,13 @@ async function loadMinimalPanel() {
   // exercises the actual unlock/restore code path.
   const panelImportPath = resolve(root, 'src/components/Panel.ts').replace(/\\/g, '/');
   const domUtilsPath = resolve(root, 'src/utils/dom-utils.ts').replace(/\\/g, '/');
+  const dataFreshnessPath = resolve(root, 'src/services/data-freshness.ts').replace(/\\/g, '/');
   const virtualEntrySource = `
     import { Panel } from '${panelImportPath}';
     import { h, replaceChildren } from '${domUtilsPath}';
+    import { dataFreshness } from '${dataFreshnessPath}';
+
+    export { dataFreshness };
 
     // Module-level counter so a test can prove the ctor (and thus the
     // initial DOM build) runs ONLY ONCE per panel instance — the whole
@@ -67,8 +71,14 @@ async function loadMinimalPanel() {
       static MARKER_CLASS = 'minimal-test-wrapper';
       static INPUT_CLASS = 'minimal-test-input';
 
-      constructor() {
-        super({ id: 'minimal-test', title: 'Minimal Test' });
+      constructor(options = {}) {
+        super({
+          id: options.id ?? 'minimal-test',
+          title: options.title ?? 'Minimal Test',
+          collapsible: options.collapsible,
+          defaultRowSpan: options.defaultRowSpan,
+          className: options.className,
+        });
         constructorRunCount += 1;
         // Build UI ONCE — no buildUI() method, no override of unlockPanel.
         // This mirrors DeductionPanel's shape (src/components/DeductionPanel.ts:30-77).
@@ -77,10 +87,28 @@ async function loadMinimalPanel() {
         replaceChildren(this.content, wrapper);
       }
     }
+
+    export class FreshnessMappedPanel extends Panel {
+      constructor() {
+        super({ id: 'polymarket', title: 'Mapped Freshness', showCount: true, closable: true, collapsible: true });
+      }
+
+      publicDataBadge(state, detail) {
+        this.setDataBadge(state, detail);
+      }
+    }
   `;
 
   const stubModules = new Map([
-    ['i18n-stub', `export function t() { return ''; }`],
+    ['i18n-stub', `
+      function interpolate(value, options = {}) {
+        return String(value).replace(/\\{\\{\\s*([\\w.]+)\\s*\\}\\}/g, (_, key) => String(options[key] ?? ''));
+      }
+      export function t(key, options = {}) {
+        if (typeof options.defaultValue === 'string') return interpolate(options.defaultValue, options);
+        return key;
+      }
+    `],
     ['runtime-stub', `export function isDesktopRuntime() { return false; }`],
     ['tauri-bridge-stub', `export function invokeTauri() { return Promise.reject(new Error('not wired in test')); }`],
     ['analytics-stub', `export function trackPanelResized() {}`],
@@ -95,6 +123,7 @@ async function loadMinimalPanel() {
     `],
     ['checkout-stub', `export function startCheckout() {}`],
     ['products-stub', `export const DEFAULT_UPGRADE_PRODUCT = 'pro';`],
+    ['theme-colors-stub', `export function getCSSColor() { return '#000'; }`],
     ['virtual-entry', virtualEntrySource],
   ]);
 
@@ -111,6 +140,7 @@ async function loadMinimalPanel() {
     ['@/services/panel-gating', 'panel-gating-stub'],
     ['@/services/checkout', 'checkout-stub'],
     ['@/config/products', 'products-stub'],
+    ['@/utils/theme-colors', 'theme-colors-stub'],
     ['virtual:minimal-entry', 'virtual-entry'],
   ]);
 
@@ -145,6 +175,8 @@ async function loadMinimalPanel() {
   const mod = await import(`${pathToFileURL(outfile).href}?t=${Date.now()}`);
   return {
     MinimalConstructorOnlyPanel: mod.MinimalConstructorOnlyPanel,
+    FreshnessMappedPanel: mod.FreshnessMappedPanel,
+    dataFreshness: mod.dataFreshness,
     getConstructorRunCount: () => mod.constructorRunCount,
     resetConstructorRunCount: mod.resetConstructorRunCount,
     cleanupBundle() {
@@ -179,12 +211,16 @@ export async function createMinimalPanelHarness() {
   defineGlobal('Node', MiniNode);
 
   let MinimalConstructorOnlyPanel;
+  let FreshnessMappedPanel;
+  let dataFreshness;
   let getConstructorRunCount;
   let resetConstructorRunCount;
   let cleanupBundle;
   try {
     ({
       MinimalConstructorOnlyPanel,
+      FreshnessMappedPanel,
+      dataFreshness,
       getConstructorRunCount,
       resetConstructorRunCount,
       cleanupBundle,
@@ -204,7 +240,11 @@ export async function createMinimalPanelHarness() {
 
   return {
     document: browserEnvironment.document,
-    createPanel: () => new MinimalConstructorOnlyPanel(),
+    window: browserEnvironment.window,
+    localStorage: browserEnvironment.localStorage,
+    createPanel: (options) => new MinimalConstructorOnlyPanel(options),
+    createFreshnessPanel: () => new FreshnessMappedPanel(),
+    dataFreshness,
     getConstructorRunCount,
     resetConstructorRunCount,
     cleanup() {

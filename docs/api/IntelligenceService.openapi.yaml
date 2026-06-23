@@ -963,6 +963,16 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/StrategicRisk'
+                degraded:
+                    type: boolean
+                    description: |-
+                        True when upstream scoring inputs failed and the response is served from
+                         a stale cache or from the baseline-only cold fallback.
+                stale:
+                    type: boolean
+                    description: |-
+                        True when degraded=true because a stale cached score payload was served.
+                         Baseline-only cold fallback sets degraded=true and stale=false.
             description: GetRiskScoresResponse contains composite risk scores and strategic assessments.
         CiiScore:
             type: object
@@ -979,9 +989,11 @@ components:
                 dynamicScore:
                     type: number
                     maximum: 100
-                    minimum: 0
+                    minimum: -100
                     format: double
-                    description: Dynamic real-time score (0-100).
+                    description: |-
+                        Approximate 24-hour score movement delta (-100 to 100). Positive means rising,
+                         negative means falling, and 0 means stable or no valid prior snapshot.
                 combinedScore:
                     type: number
                     maximum: 100
@@ -1007,9 +1019,9 @@ components:
                 methodologyVersion:
                     type: string
                     description: |-
-                        Methodology version string for this score (e.g. "v1").
-                         Bumped whenever the editorial weights in CII_FORMULA_VERSION change so
-                         API clients can detect score drift. See docs/methodology/cii-risk-scores.mdx.
+                        Methodology version string for this score (for example, the current CII formula version).
+                         Bumped whenever CII_FORMULA_VERSION changes so API clients can detect
+                         score or movement-semantics drift. See docs/methodology/cii-risk-scores.mdx.
                 eventMultiplier:
                     type: number
                     maximum: 10
@@ -1025,6 +1037,18 @@ components:
                          future weight changes while still catching obviously-wrong inputs (e.g.
                          a runaway computation producing 1e6 or NaN-coerced values). Added in
                          PR #3780 review.
+                advisoryLevel:
+                    type: string
+                    description: |-
+                        Travel advisory level used by the score, when any advisory input applies.
+                         Empty means no live or fallback advisory level affected boosts/floors.
+                advisoryProvenance:
+                    type: string
+                    pattern: ^(live|fallback|absent)$
+                    description: |-
+                        Provenance for advisory_level: "live" when sourced from the Redis advisory
+                         feed, "fallback" when using the embedded State Department fallback table,
+                         and "absent" when no advisory input affected this score.
             description: CiiScore represents a Composite Instability Index score for a region or country.
         CiiComponents:
             type: object
@@ -1034,25 +1058,25 @@ components:
                     maximum: 100
                     minimum: 0
                     format: double
-                    description: News activity signal contribution (0-100).
+                    description: Information-environment contribution from news urgency and threat-summary signals (0-100).
                 ciiContribution:
                     type: number
                     maximum: 100
                     minimum: 0
                     format: double
-                    description: CII index contribution (0-100).
+                    description: Domestic unrest contribution from protests, riots, fatalities, severity, and outages (0-100).
                 geoConvergence:
                     type: number
                     maximum: 100
                     minimum: 0
                     format: double
-                    description: Geographic convergence score (0-100).
+                    description: Armed-conflict contribution from ACLED events, fatalities, civilian violence, strikes, and OREF alerts (0-100).
                 militaryActivity:
                     type: number
                     maximum: 100
                     minimum: 0
                     format: double
-                    description: Military activity contribution (0-100).
+                    description: Security-mobility contribution from military flights, military vessels, aviation disruption, and GPS interference (0-100).
             description: CiiComponents represents the contributing factors to a CII score.
         StrategicRisk:
             type: object
@@ -1336,7 +1360,9 @@ components:
                 fetchedAt:
                     type: integer
                     format: int64
-                    description: 'Data freshness timestamp derived from CII computedAt, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        Data freshness timestamp derived from CII computedAt, as Unix epoch milliseconds.
+                         0 means the CII computation time is unknown, including no CII score for this country. Warning: Values > 2^53 may lose precision in JavaScript
                 upstreamUnavailable:
                     type: boolean
                     description: True when all upstream Redis keys were unavailable. Signals CDN cache bypass.
@@ -1373,7 +1399,27 @@ components:
                     type: integer
                     format: int64
                     description: 'Brief generation time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                sources:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BriefSource'
             description: GetCountryIntelBriefResponse contains an AI-generated intelligence brief for a country.
+        BriefSource:
+            type: object
+            properties:
+                title:
+                    type: string
+                    description: Source article headline.
+                source:
+                    type: string
+                    description: Source outlet or feed label.
+                url:
+                    type: string
+                    description: Absolute http(s) source article URL.
+                publishedAt:
+                    type: string
+                    description: Article publication time, when available.
+            description: BriefSource describes one article used to ground an AI-generated brief.
         SearchGdeltDocumentsRequest:
             type: object
             properties:

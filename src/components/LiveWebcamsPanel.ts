@@ -6,6 +6,7 @@ import { t } from '../services/i18n';
 import { track, trackWebcamSelected, trackWebcamRegionFiltered } from '@/services/analytics';
 import { getStreamQuality, subscribeStreamQualityChange } from '@/services/ai-flow-settings';
 import { isMobileDevice, loadFromStorage, saveToStorage } from '@/utils';
+import { playAllLiveMedia, registerLiveMediaStarter, unregisterLiveMediaStarter, type LiveMediaStopReason } from '@/services/live-media-controller';
 import { getLiveStreamsAlwaysOn, subscribeLiveStreamsSettingsChange } from '@/services/live-stream-settings';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
@@ -102,6 +103,9 @@ export class LiveWebcamsPanel extends Panel {
   private toolbar: HTMLElement | null = null;
   private iframes: HTMLIFrameElement[] = [];
   private iframeTrackers = new Map<HTMLIFrameElement, WebcamIframeTracker>();
+  // Feeds the user has explicitly started. The grid is a "wall" — multiple tiles play at once;
+  // single view keeps one. Tiles coexist and are only torn down by scroll-away/hidden/idle/close.
+  private activeIframeFeedIds = new Set<string>();
   private observer: IntersectionObserver | null = null;
   private isVisible = false;
   // Stream lifecycle
@@ -112,6 +116,11 @@ export class LiveWebcamsPanel extends Panel {
   private isIdle = false;
   private alwaysOn = getLiveStreamsAlwaysOn();
   private unsubscribeStreamSettings: (() => void) | null = null;
+  private resumeFeedAfterIdleIds: string[] = [];
+  // Play-all cascade: start the whole webcam wall, but never start a disabled or collapsed panel.
+  private readonly boundPlayAllStarter = () => {
+    if (this.canHostLiveMedia()) this.playAllFeeds();
+  };
 
   // UI
   private fullscreenBtn: HTMLButtonElement | null = null;
@@ -137,10 +146,15 @@ export class LiveWebcamsPanel extends Panel {
     this.unsubscribeStreamSettings = subscribeLiveStreamsSettingsChange((alwaysOn) => {
       this.alwaysOn = alwaysOn;
       this.applyIdleMode();
+      // Leaving always-on keeps whatever is playing; eco-idle (re-armed by applyIdleMode) pauses it later.
+      if (alwaysOn && this.isVisible && !document.hidden) {
+        this.startAlwaysOnPlayback();
+      }
     });
     this.boundEmbedMessageHandler = (e) => this.handleEmbedMessage(e);
     window.addEventListener('message', this.boundEmbedMessageHandler);
     this.render();
+    registerLiveMediaStarter('live-webcams', this.boundPlayAllStarter);
     document.addEventListener('keydown', this.boundFullscreenEscHandler);
   }
 
@@ -261,6 +275,8 @@ export class LiveWebcamsPanel extends Panel {
     this.toolbar?.querySelectorAll('.webcam-region-btn').forEach(btn => {
       (btn as HTMLElement).classList.toggle('active', (btn as HTMLElement).dataset.region === filter);
     });
+    // Region change swaps the entire feed set — stop the current wall and start fresh from previews.
+    this.clearActivePlayback();
     const feeds = this.filteredFeeds;
     if (feeds.length > 0 && !feeds.includes(this.activeFeed)) {
       this.activeFeed = feeds[0]!;
@@ -273,11 +289,18 @@ export class LiveWebcamsPanel extends Panel {
     if (this.forceSingleView && mode === 'grid') return;
     if (mode === this.viewMode) return;
     this.viewMode = mode;
+    // Switching layout resets the wall to the selected feed; the user rebuilds it by clicking tiles.
+    const keepActive = this.activeIframeFeedIds.has(this.activeFeed.id);
+    this.activeIframeFeedIds.clear();
+    if (keepActive) this.activeIframeFeedIds.add(this.activeFeed.id);
     this.savePrefs();
     this.toolbar?.querySelectorAll('.webcam-view-btn').forEach(btn => {
       (btn as HTMLElement).classList.toggle('active', (btn as HTMLElement).dataset.mode === mode);
     });
-    this.render();
+    // In always-on, let startAlwaysOnPlayback own the render so the wall isn't built then immediately rebuilt.
+    if (!this.startAlwaysOnPlayback()) {
+      this.render();
+    }
   }
 
   private buildEmbedUrl(videoId: string): string {
@@ -353,6 +376,152 @@ export class LiveWebcamsPanel extends Panel {
     // can block YouTube JS API postMessage while the video plays fine.
     iframe.addEventListener('load', () => this.markIframeReady(iframe), { once: true });
     tracker.timeout = setTimeout(() => this.markIframeBlocked(iframe), this.EMBED_READY_TIMEOUT_MS);
+  }
+
+  private playFeed(feed: WebcamFeed, source: 'grid' | 'single' | 'settings'): void {
+    if (source !== 'settings') {
+      trackWebcamSelected(feed.id, feed.city, source);
+    }
+    this.activeFeed = feed;
+    this.isIdle = false;
+    const alreadyActive = this.activeIframeFeedIds.has(feed.id);
+    this.activeIframeFeedIds.add(feed.id);
+    this.savePrefs();
+    if (!this.isVisible || document.hidden) return;
+    // Grid is a wall: swap just the clicked tile into a live iframe so sibling streams keep playing.
+    if (this.viewMode === 'grid' && !this.forceSingleView && !alreadyActive && this.activateGridCell(feed)) {
+      return;
+    }
+    this.render();
+  }
+
+  /** Swap a single grid preview tile into a live iframe in place, leaving sibling streams untouched. */
+  private activateGridCell(feed: WebcamFeed): boolean {
+    const grid = this.content.querySelector('.webcam-grid');
+    if (!grid) return false;
+    const preview = grid.querySelector<HTMLElement>(`.webcam-preview-tile[data-feed-id="${CSS.escape(feed.id)}"]`);
+    const cell = preview?.closest('.webcam-cell') as HTMLElement | null;
+    if (!cell) return false;
+    setTrustedHtml(cell, trustedHtml('', "legacy direct innerHTML migration"));
+    const iframe = this.createIframe(feed);
+    cell.appendChild(iframe);
+    this.iframes.push(iframe);
+    this.trackIframe(iframe, feed, cell);
+    const label = document.createElement('div');
+    label.className = 'webcam-cell-label';
+    setTrustedHtml(label, trustedHtml(`<span class="webcam-live-dot"></span><span class="webcam-city">${escapeHtml(feed.city.toUpperCase())}</span>`, "legacy direct innerHTML migration"));
+    cell.appendChild(label);
+    return true;
+  }
+
+  private isPanelVisible(): boolean {
+    if (!this.element.isConnected) return false;
+    const rect = this.element.getBoundingClientRect();
+    return rect.width > 0 &&
+      rect.height > 0 &&
+      rect.bottom > 0 &&
+      rect.right > 0 &&
+      rect.top < window.innerHeight &&
+      rect.left < window.innerWidth;
+  }
+
+  /** Ensure the always-on feed(s) are in the active set. Returns true if it rendered (so callers don't double-render). */
+  private startAlwaysOnPlayback(): boolean {
+    if (!this.alwaysOn || document.hidden || !this.element.isConnected || !this.isVisible) return false;
+    // In grid view auto-start the whole wall; single view auto-starts only the selected feed.
+    const feeds = (this.viewMode === 'grid' && !this.forceSingleView) ? this.gridFeeds : [this.activeFeed];
+    let added = false;
+    for (const feed of feeds) {
+      if (!this.activeIframeFeedIds.has(feed.id)) {
+        this.activeIframeFeedIds.add(feed.id);
+        added = true;
+      }
+    }
+    if (!added) return false;
+    this.isIdle = false;
+    this.render();
+    return true;
+  }
+
+  /**
+   * Start the whole webcam wall (every grid tile, or the single feed in single view) regardless of
+   * always-on. Drives the "play all" cascade. Off-screen feeds are queued and render on visibility.
+   *
+   * This intentionally uses a full render() rather than the per-tile activateGridCell() swap that
+   * playFeed() uses: the cascade is an all-at-once start. The only grid trigger is a preview-tile
+   * click, which only exists when the grid is fully stopped (no tiles playing), so the full render
+   * rebuilds from zero — no already-playing iframe is destroyed/reloaded. A future caller that adds
+   * feeds incrementally before calling this should switch to the surgical swap to avoid reload flashes.
+   */
+  private playAllFeeds(): void {
+    const feeds = (this.viewMode === 'grid' && !this.forceSingleView) ? this.gridFeeds : [this.activeFeed];
+    let added = false;
+    for (const feed of feeds) {
+      if (!this.activeIframeFeedIds.has(feed.id)) {
+        this.activeIframeFeedIds.add(feed.id);
+        added = true;
+      }
+    }
+    if (!added) return;
+    this.isIdle = false;
+    if (this.isVisible && !document.hidden) this.render();
+  }
+
+  /** Stop and forget every active tile without rebuilding the shell. */
+  private clearActivePlayback(): void {
+    this.activeIframeFeedIds.clear();
+    this.destroyIframes();
+  }
+
+  private teardownPlayback(reason: LiveMediaStopReason): void {
+    this.resumeFeedAfterIdleIds = reason === 'idle' ? Array.from(this.activeIframeFeedIds) : [];
+    this.clearActivePlayback();
+    // Don't rebuild DOM for a backgrounded tab; the visibility handler re-renders on return.
+    if (this.isVisible && !this.isIdle && this.element.isConnected && !document.hidden) {
+      this.render();
+    }
+  }
+
+  private renderPreviewTile(container: HTMLElement, feed: WebcamFeed, source: 'grid' | 'single'): void {
+    const preview = document.createElement('div');
+    preview.className = 'webcam-preview-tile';
+    preview.dataset.feedId = feed.id;
+
+    const status = document.createElement('div');
+    status.className = 'webcam-preview-status';
+    const dot = document.createElement('span');
+    dot.className = 'webcam-live-dot';
+    const statusText = document.createElement('span');
+    statusText.textContent = t('components.webcams.previewStatus') || 'Live preview';
+    status.append(dot, statusText);
+
+    const title = document.createElement('div');
+    title.className = 'webcam-preview-title';
+    title.textContent = feed.city;
+
+    const meta = document.createElement('div');
+    meta.className = 'webcam-preview-meta';
+    meta.textContent = `${feed.country} · ${feed.region.replace('-', ' ')}`;
+
+    const playBtn = document.createElement('button');
+    playBtn.type = 'button';
+    playBtn.className = 'offline-retry webcam-preview-play';
+    playBtn.textContent = t('components.webcams.play') || 'Play';
+    // First play intent lights up everything (the wall + Live News), not just this tile.
+    const playAll = () => {
+      trackWebcamSelected(feed.id, feed.city, source);
+      this.activeFeed = feed;
+      this.savePrefs();
+      playAllLiveMedia();
+    };
+    playBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      playAll();
+    });
+
+    preview.addEventListener('click', () => playAll());
+    preview.append(status, title, meta, playBtn);
+    container.appendChild(preview);
   }
 
   private retryIframe(oldIframe: HTMLIFrameElement): void {
@@ -494,56 +663,26 @@ export class LiveWebcamsPanel extends Panel {
     grid.className = 'webcam-grid';
 
     const feeds = this.gridFeeds;
-    const desktop = isDesktopRuntime();
 
-    feeds.forEach((feed, i) => {
+    feeds.forEach((feed) => {
       const cell = document.createElement('div');
       cell.className = 'webcam-cell';
 
-      const label = document.createElement('div');
-      label.className = 'webcam-cell-label';
-      setTrustedHtml(label, trustedHtml(`<span class="webcam-live-dot"></span><span class="webcam-city">${escapeHtml(feed.city.toUpperCase())}</span>`, "legacy direct innerHTML migration"));
-
-      if (desktop) {
-        // On desktop, clicks pass through label (pointer-events:none in CSS)
-        // to YouTube iframe so users click play directly. Add expand button.
-        const expandBtn = document.createElement('button');
-        expandBtn.className = 'webcam-expand-btn';
-        expandBtn.title = t('webcams.expand') || 'Expand';
-        setTrustedHtml(expandBtn, trustedHtml('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>', "legacy direct innerHTML migration"));
-        expandBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          trackWebcamSelected(feed.id, feed.city, 'grid');
-          this.activeFeed = feed;
-          this.setViewMode('single');
-        });
-        label.appendChild(expandBtn);
-      } else {
-        cell.addEventListener('click', () => {
-          trackWebcamSelected(feed.id, feed.city, 'grid');
-          this.activeFeed = feed;
-          this.setViewMode('single');
-        });
-      }
-
-      cell.appendChild(label);
-      grid.appendChild(cell);
-
-      if (desktop && i > 0) {
-        // Stagger iframe creation on desktop — WKWebView throttles concurrent autoplay.
-        setTimeout(() => {
-          if (!this.isVisible || this.isIdle) return;
-          const iframe = this.createIframe(feed);
-          cell.insertBefore(iframe, label);
-          this.iframes.push(iframe);
-          this.trackIframe(iframe, feed, cell);
-        }, i * 800);
-      } else {
+      if (this.activeIframeFeedIds.has(feed.id)) {
         const iframe = this.createIframe(feed);
-        cell.insertBefore(iframe, label);
+        cell.appendChild(iframe);
         this.iframes.push(iframe);
         this.trackIframe(iframe, feed, cell);
+
+        const label = document.createElement('div');
+        label.className = 'webcam-cell-label';
+        setTrustedHtml(label, trustedHtml(`<span class="webcam-live-dot"></span><span class="webcam-city">${escapeHtml(feed.city.toUpperCase())}</span>`, "legacy direct innerHTML migration"));
+        cell.appendChild(label);
+      } else {
+        this.renderPreviewTile(cell, feed, 'grid');
       }
+
+      grid.appendChild(cell);
     });
 
     this.content.appendChild(grid);
@@ -556,10 +695,14 @@ export class LiveWebcamsPanel extends Panel {
     const wrapper = document.createElement('div');
     wrapper.className = 'webcam-single';
 
-    const iframe = this.createIframe(this.activeFeed);
-    wrapper.appendChild(iframe);
-    this.iframes.push(iframe);
-    this.trackIframe(iframe, this.activeFeed, wrapper);
+    if (this.activeIframeFeedIds.has(this.activeFeed.id)) {
+      const iframe = this.createIframe(this.activeFeed);
+      wrapper.appendChild(iframe);
+      this.iframes.push(iframe);
+      this.trackIframe(iframe, this.activeFeed, wrapper);
+    } else {
+      this.renderPreviewTile(wrapper, this.activeFeed, 'single');
+    }
 
     const switcher = document.createElement('div');
     switcher.className = 'webcam-switcher';
@@ -577,10 +720,17 @@ export class LiveWebcamsPanel extends Panel {
       btn.className = `webcam-feed-btn${feed.id === this.activeFeed.id ? ' active' : ''}`;
       btn.textContent = feed.city;
       btn.addEventListener('click', () => {
-        trackWebcamSelected(feed.id, feed.city, 'single');
+        if (feed.id === this.activeFeed.id) return;
+        // Single view shows one feed at a time — switching keeps playing if a stream was active.
+        const wasPlaying = this.activeIframeFeedIds.size > 0;
+        this.activeIframeFeedIds.clear();
         this.activeFeed = feed;
         this.savePrefs();
-        this.render();
+        if ((this.alwaysOn || wasPlaying) && this.isVisible && !document.hidden) {
+          this.playFeed(feed, 'single');
+        } else {
+          this.render();
+        }
       });
       switcher.appendChild(btn);
     });
@@ -611,9 +761,10 @@ export class LiveWebcamsPanel extends Panel {
         const wasVisible = this.isVisible;
         this.isVisible = entries.some(e => e.isIntersecting);
         if (this.isVisible && !wasVisible && !this.isIdle) {
-          this.render();
+          // startAlwaysOnPlayback renders the wall when always-on; otherwise render the previews once.
+          if (!this.startAlwaysOnPlayback()) this.render();
         } else if (!this.isVisible && wasVisible) {
-          this.destroyIframes();
+          this.teardownPlayback('scroll-away');
         }
       },
       { threshold: 0.1 }
@@ -633,10 +784,11 @@ export class LiveWebcamsPanel extends Panel {
         });
         this.idleDetectionEnabled = false;
       }
+      this.resumeFeedAfterIdleIds = [];
       if (this.isIdle && !document.hidden) {
         this.isIdle = false;
-        if (this.isVisible) this.render();
       }
+      this.startAlwaysOnPlayback();
       return;
     }
 
@@ -654,8 +806,9 @@ export class LiveWebcamsPanel extends Panel {
     // Background: always suspend when the document is hidden.
     this.boundVisibilityHandler = () => {
       if (document.hidden) {
-        // Suspend idle timer so background playback isn't killed.
+        // Tear down live media when the tab is hidden; the preview shell can resume on return.
         if (this.idleTimeout) clearTimeout(this.idleTimeout);
+        this.teardownPlayback('hidden');
         return;
       }
 
@@ -675,11 +828,20 @@ export class LiveWebcamsPanel extends Panel {
       if (this.idleTimeout) clearTimeout(this.idleTimeout);
       if (this.isIdle) {
         this.isIdle = false;
-        if (this.isVisible) this.render();
+        if (this.isVisible) {
+          // Restore the whole wall that was paused for idle.
+          const resumeIds = this.resumeFeedAfterIdleIds;
+          this.resumeFeedAfterIdleIds = [];
+          for (const id of resumeIds) {
+            if (WEBCAM_FEEDS.some(feed => feed.id === id)) this.activeIframeFeedIds.add(id);
+          }
+          this.render();
+        }
       }
       this.idleTimeout = setTimeout(() => {
+        // Set isIdle before teardown so teardownPlayback skips its re-render; the placeholder is written below.
         this.isIdle = true;
-        this.destroyIframes();
+        this.teardownPlayback('idle');
         setTrustedHtml(this.content, trustedHtml(`<div class="webcam-placeholder">${escapeHtml(t('components.webcams.pausedIdle'))}</div>`, "legacy direct innerHTML migration"));
       }, ECO_IDLE_PAUSE_MS);
     };
@@ -693,7 +855,26 @@ export class LiveWebcamsPanel extends Panel {
     }
   }
 
+  public stopLiveMediaForClose(): void {
+    this.resumeFeedAfterIdleIds = [];
+    if (this.idleTimeout) { clearTimeout(this.idleTimeout); this.idleTimeout = null; }
+    this.clearActivePlayback();
+    if (this.isVisible && !this.isIdle && this.element.isConnected) {
+      this.render();
+    }
+  }
+
+  public resumeLiveMediaForShow(): void {
+    if (!this.alwaysOn || document.hidden) return;
+    this.isVisible = this.isVisible || this.isPanelVisible();
+    this.startAlwaysOnPlayback();
+  }
+
   public destroy(): void {
+    // Disconnect the IntersectionObserver FIRST so a scroll-driven callback can't
+    // re-render / re-create iframes (with leaked ready-timeouts) mid-teardown.
+    this.observer?.disconnect();
+    unregisterLiveMediaStarter('live-webcams', this.boundPlayAllStarter);
     if (this.idleTimeout) {
       clearTimeout(this.idleTimeout);
       this.idleTimeout = null;
@@ -705,7 +886,6 @@ export class LiveWebcamsPanel extends Panel {
       document.removeEventListener(event, this.boundIdleResetHandler);
     });
     if (this.isFullscreen) this.toggleFullscreen();
-    this.observer?.disconnect();
     this.unsubscribeStreamSettings?.();
     this.unsubscribeStreamSettings = null;
     this.destroyIframes();

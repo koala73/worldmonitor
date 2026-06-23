@@ -196,7 +196,9 @@
       "languages": "भाषाएं",
       "currencies": "मुद्राएं",
       "area": "क्षेत्रफल"
-    }
+    },
+    "loadingResilienceScore": "Loading resilience score…",
+    "resilienceScoreUnavailable": "Resilience score unavailable."
   },
   "header": {
     "world": "दुनिया",
@@ -275,7 +277,8 @@
     "panelCatMining": "खनन और सप्लाई चेन",
     "panelCatCommodityEcon": "अर्थव्यवस्था और व्यापार",
     "panelCatHappyNews": "अच्छी खबरें",
-    "panelCatHappyPlanet": "प्लैनेट और दान"
+    "panelCatHappyPlanet": "प्लैनेट और दान",
+    "embed": "Embed"
   },
   "panels": {
     "liveNews": "ताजा खबरें",
@@ -755,7 +758,9 @@
         "americas": "अमेरिका",
         "asia": "एशिया",
         "space": "अंतरिक्ष"
-      }
+      },
+      "play": "चलाएं",
+      "previewStatus": "लाइव पूर्वावलोकन"
     },
     "pinnedWebcams": {
       "pinFromMap": "मैप से वेबकैम पिन करें"
@@ -1358,7 +1363,11 @@
       "sectionAll": "सभी",
       "infoTooltip": "<strong>प्रणाली</strong><ul><li><strong>U</strong>nrest: नागरिक अशांति और प्रदर्शन</li><li><strong>C</strong>onflict: सशस्त्र संघर्ष की तीव्रता</li><li><strong>S</strong>ecurity: सैन्य उड़ान/जहाज गतिविधि क्षेत्र पर</li><li><strong>I</strong>nformation: समाचार गति और फोकल पॉइंट सम्बन्ध</li><li>हॉटस्पॉट नजदीकी बूस्ट (रणनीतिक स्थान)</li></ul><em>U:C:S:I मान घटक स्कोर दिखाते हैं।</em> फोकल पॉइंट डिटेक्शन खबरों को मानचित्र संकेतों से जोड़ता है।",
       "_methodologyLink_translatorNote": "अनुवाद की आवश्यकता (#3725): methodologyLink स्थानीयकरण करें। अंग्रेजी मान सभी भाषाओं में भेजा जाता है ताकि methodology लिंक मौजूद रहे। स्वतंत्र रूप से अनुवादित करें।",
-      "methodologyLink": "प्रति-देश आधार + घटना गुणक शामिल — /docs/methodology/cii-risk-scores देखें"
+      "methodologyLink": "प्रति-देश आधार + घटना गुणक शामिल — /docs/methodology/cii-risk-scores देखें",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "insights": {
       "noStories": "कोई ब्रेकिंग या मल्टी-स्रोत कहानियाँ अभी तक नहीं",
@@ -1406,8 +1415,8 @@
       "analysisFrameworksFromAgentskills": "agentskills.io से",
       "analysisFrameworksPasteJson": "JSON चिपकाएँ",
       "analysisFrameworksSaveToLibrary": "पुस्तकालय में सहेजें",
-      "streamAlwaysOnLabel": "लाइव स्ट्रीम हमेशा चालू रखें",
-      "streamAlwaysOnDesc": "आपके निष्क्रिय होने पर लाइव कैम और न्यूज को स्वचालित रूप से न रोकें। दूसरे मॉनिटर या वॉलबोर्ड के लिए अनुशंसित। CPU/बैंडविड्थ बचाने के लिए अक्षम करें।",
+      "streamAlwaysOnLabel": "डैशबोर्ड पर लाइव स्ट्रीम अपने-आप चलाएं",
+      "streamAlwaysOnDesc": "Live News और Live Webcams दिखाई देने पर अपने-आप शुरू करता है। वीडियो को केवल Play क्लिक करने के बाद लोड करने के लिए इसे बंद रखें.",
       "frameworkNote": "केवल क्लाइंट-जनित विश्लेषण पर लागू",
       "loadingServerInsights": "सर्वर इंटेलिजेंस लोड हो रहा है...",
       "usingCachedBrief": "कैश्ड संक्षिप्त उपयोग हो रहा है...",
@@ -1477,9 +1486,8 @@
     "strategicRisk": {
       "noRisks": "कोई महत्वपूर्ण जोखिम नहीं पाया गया",
       "levels": {
-        "critical": "गंभीर",
-        "elevated": "ऊँचा",
-        "moderate": "मध्यम",
+        "high": "उच्च",
+        "medium": "मध्यम",
         "low": "निम्न"
       },
       "trend": "रुझान",
@@ -1513,7 +1521,12 @@
         "minutesAgo": "{{count}} मिनट पहले",
         "hoursAgo": "{{count}} घंटे पहले"
       },
-      "infoTooltip": "<strong>विधि</strong> मिश्रित स्कोर (0-100) इन संकेतों को मिलाता है:<ul><li>50% देश अस्थिरता (शीर्ष 5 भारित)</li><li>30% भौगोलिक संगम क्षेत्र</li><li>20% इन्फ्रास्ट्रक्चर घटनाएं</li></ul>हर 5 मिनट में स्वचालित रिफ्रेश।"
+      "infoTooltip": "<strong>विधि</strong> मिश्रित स्कोर (0-100) इन संकेतों को मिलाता है:<ul><li>50% देश अस्थिरता (शीर्ष 5 भारित)</li><li>30% भौगोलिक संगम क्षेत्र</li><li>20% इन्फ्रास्ट्रक्चर घटनाएं</li></ul>हर 5 मिनट में स्वचालित रिफ्रेश।",
+      "cachedCiiStatus": "Cached CII {{states}}",
+      "sourceStates": {
+        "degraded": "degraded",
+        "stale": "stale"
+      }
     },
     "techEvents": {
       "infoTooltip": "<strong>टेक ईवेंट्स</strong> आने वाले और हाल के तकनीकी आयोजन: कॉन्फ्रेंस, उत्पाद लॉन्च, नियामक सुनवाई, और आय कॉल। आधिकारिक कार्यक्रम कैलेंडर और उद्योग स्रोतों से संकलित।",
@@ -1557,7 +1570,7 @@
       "noMatching": "इस फ़िल्टर से कोई सलाह मेल नहीं खाती",
       "critical": "गंभीर",
       "health": "स्वास्थ्य",
-      "sources": "यूएस स्टेट डिपार्टमेंट, ऑस्ट्रेलिया DFAT, UK FCDO, न्यूजीलैंड MFAT, CDC, ECDC, WHO, US दूतावास",
+      "sources": "यूएस स्टेट डिपार्टमेंट, ऑस्ट्रेलिया DFAT, UK FCDO, CDC, ECDC, WHO, US दूतावास",
       "refresh": "रिफ्रेश",
       "levels": {
         "doNotTravel": "यात्रा न करें",
@@ -1572,7 +1585,7 @@
         "hoursAgo": "{{count}} घंटे पहले",
         "daysAgo": "{{count}} दिन पहले"
       },
-      "infoTooltip": "<strong>सुरक्षा सलाह</strong><br>सरकारी विदेश मंत्रालयों से यात्रा और सुरक्षा अलर्ट:<br><br><strong>स्रोत:</strong><br>🇺🇸 US स्टेट डिपार्टमेंट यात्रा सलाह<br>🇦🇺 ऑस्ट्रेलिया DFAT स्मार्टट्रेवलर<br>🇬🇧 यूके FCDO यात्रा सलाह<br>🇳🇿 न्यूजीलैंड MFAT सेफट्रैवल<br><br><strong>स्तर:</strong><br>🔴 यात्रा न करें<br>🟠 यात्रा पर पुनर्विचार करें<br>🟡 सावधानी बरतें<br>🟢 सामान्य सुरक्षा"
+      "infoTooltip": "<strong>सुरक्षा सलाह</strong><br>सरकारी विदेश मंत्रालयों से यात्रा और सुरक्षा अलर्ट:<br><br><strong>स्रोत:</strong><br>🇺🇸 US स्टेट डिपार्टमेंट यात्रा सलाह<br>🇦🇺 ऑस्ट्रेलिया DFAT स्मार्टट्रेवलर<br>🇬🇧 यूके FCDO यात्रा सलाह<br><br><strong>स्तर:</strong><br>🔴 यात्रा न करें<br>🟠 यात्रा पर पुनर्विचार करें<br>🟡 सावधानी बरतें<br>🟢 सामान्य सुरक्षा"
     },
     "orefSirens": {
       "checking": "सायरन अलर्ट जांच रहे हैं...",
@@ -1986,7 +1999,9 @@
       "invalidHandle": "सही YouTube हैंडल दर्ज करें (जैसे @ChannelName)",
       "verifying": "सत्यापित कर रहे हैं…",
       "hlsUrl": "HLS स्ट्रीम URL (वैकल्पिक)",
-      "invalidHlsUrl": "वैध HLS स्ट्रीम URL दर्ज करें (.m3u8)"
+      "invalidHlsUrl": "वैध HLS स्ट्रीम URL दर्ज करें (.m3u8)",
+      "playLiveFeed": "लाइव फ़ीड चलाएं",
+      "readyStatus": "आप तैयार हों तो तैयार"
     },
     "map": {
       "showMap": "मानचित्र दिखाएं",
@@ -2353,6 +2368,45 @@
         "method": "Portwatch DWT + AIS कैलिब्रेशन",
         "sampleLabel": "AIS व्यवधान संकेत",
         "creditName": "EIA विश्व तेल पारगमन चोकपॉइंट"
+      }
+    },
+    "mobileNav": {
+      "panelCategories": "Panel categories"
+    },
+    "panelFreshness": {
+      "status": {
+        "fresh": "Fresh",
+        "stale": "Stale",
+        "veryStale": "Very stale",
+        "noData": "No data",
+        "disabled": "Disabled",
+        "error": "Error"
+      },
+      "labelWithAge": "{{status}} {{age}}",
+      "title": "Data freshness: {{status}}. {{sources}}",
+      "sourceDetail": "{{name}}: {{status}}, {{update}}",
+      "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
+      "lastUpdated": "last updated {{time}}",
+      "neverUpdated": "never updated",
+      "health": {
+        "partialCoverage": "partial coverage",
+        "contentStale": "content stale",
+        "seedStale": "seed stale",
+        "noSourceData": "no source data",
+        "sourceErrorReported": "source error reported",
+        "freshnessStoreUnavailable": "freshness store unavailable",
+        "freshnessStoreDegraded": "freshness store degraded"
+      },
+      "time": {
+        "never": "never",
+        "justNow": "just now",
+        "minutesAgo": "{{count}}m ago",
+        "hoursAgo": "{{count}}h ago",
+        "daysAgo": "{{count}}d ago",
+        "compactNow": "now",
+        "compactMinutes": "{{count}}m",
+        "compactHours": "{{count}}h",
+        "compactDays": "{{count}}d"
       }
     }
   },
@@ -3086,5 +3140,18 @@
     "or": "या कस्टम सर्वर दर्ज करें",
     "generatingVisualization": "विज़ुअलाइज़ेशन बना रहे हैं...",
     "visualizationFailed": "विज़ुअलाइज़ेशन असफल"
+  },
+  "dashboardTabs": {
+    "ariaLabel": "Dashboard tabs",
+    "defaultName": "Main",
+    "newTabName": "New Tab",
+    "newTabCreated": "New tab created",
+    "tabDeleted": "Tab \"{{name}}\" deleted",
+    "addTab": "Add tab",
+    "addTabTitle": "New tab (starts with the default panels)",
+    "renameHint": "{{name}} — double-click to rename",
+    "deleteTab": "Delete tab",
+    "deleteTabAria": "Delete tab {{name}}",
+    "tabNameAria": "Tab name"
   }
 }

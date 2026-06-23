@@ -224,11 +224,12 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
     };
 
     try {
-      const { data, source } = await redis.cachedFetchJsonWithMeta('meta:test:miss', 60, async () => {
+      const { data, source, leader } = await redis.cachedFetchJsonWithMeta('meta:test:miss', 60, async () => {
         return { value: 'fresh-data' };
       });
 
       assert.equal(source, 'fresh', 'should report source=fresh on cache miss');
+      assert.equal(leader, true, 'cache miss caller that runs the fetcher should be marked leader');
       assert.deepEqual(data, { value: 'fresh-data' });
     } finally {
       globalThis.fetch = originalFetch;
@@ -236,7 +237,7 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
     }
   });
 
-  it('reports source=fresh for ALL coalesced concurrent callers', async () => {
+  it('reports source=fresh for all coalesced callers but marks only the fetch leader', async () => {
     const redis = await importRedisFresh();
     const restoreEnv = withEnv({
       UPSTASH_REDIS_REST_URL: 'https://redis.test',
@@ -271,6 +272,7 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
       assert.equal(a.source, 'fresh', 'leader should report fresh');
       assert.equal(b.source, 'fresh', 'follower 1 should report fresh (not cache)');
       assert.equal(c.source, 'fresh', 'follower 2 should report fresh (not cache)');
+      assert.equal([a, b, c].filter((r) => r.leader).length, 1, 'only one coalesced caller should be the write leader');
       assert.deepEqual(a.data, { value: 'coalesced' });
       assert.deepEqual(b.data, { value: 'coalesced' });
       assert.deepEqual(c.data, { value: 'coalesced' });
@@ -791,6 +793,119 @@ describe('cachedFetchJson inflight timeout (#3539)', { concurrency: 1 }, () => {
     } finally {
       redis.__resetFetcherTimeoutForTests();
       globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+});
+
+describe('country risk freshness behavior', { concurrency: 1 }, () => {
+  async function importCountryRisk() {
+    return importPatchedTsModule('server/worldmonitor/intelligence/v1/get-country-risk.ts', {
+      './_shared': resolve(root, 'server/worldmonitor/intelligence/v1/_shared.ts'),
+      '../../../_shared/redis': resolve(root, 'server/_shared/redis.ts'),
+      '../../../_shared/cache-keys': resolve(root, 'server/_shared/cache-keys.ts'),
+    });
+  }
+
+  function parseGetKey(rawUrl) {
+    return decodeURIComponent(rawUrl.split('/get/').pop() || '');
+  }
+
+  function withMockedNow(nowMs) {
+    const originalDateNow = Date.now;
+    Date.now = () => nowMs;
+    return () => {
+      Date.now = originalDateNow;
+    };
+  }
+
+  it('returns fetchedAt=0 for missing country code instead of fabricating request time', async () => {
+    const { module, cleanup } = await importCountryRisk();
+    const restoreNow = withMockedNow(1_777_000_000_000);
+    const originalFetch = globalThis.fetch;
+    let fetchCalls = 0;
+    globalThis.fetch = async () => {
+      fetchCalls += 1;
+      return jsonResponse({ result: undefined });
+    };
+
+    try {
+      const result = await module.getCountryRisk({}, { countryCode: '' });
+      assert.equal(result.fetchedAt, 0);
+      assert.equal(result.upstreamUnavailable, false);
+      assert.equal(fetchCalls, 0, 'missing-code path must not hit Redis');
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreNow();
+    }
+  });
+
+  it('returns fetchedAt=0 when upstream Redis keys are unavailable', async () => {
+    const { module, cleanup } = await importCountryRisk();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+    });
+    const restoreNow = withMockedNow(1_777_000_000_000);
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const result = await module.getCountryRisk({}, { countryCode: 'US' });
+      assert.equal(result.fetchedAt, 0);
+      assert.equal(result.upstreamUnavailable, true);
+      assert.equal(result.cii, undefined);
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreNow();
+      restoreEnv();
+    }
+  });
+
+  it('returns fetchedAt=0 for untracked countries with no CII score', async () => {
+    const { module, cleanup } = await importCountryRisk();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+    });
+    const restoreNow = withMockedNow(1_777_000_000_000);
+    const originalFetch = globalThis.fetch;
+    const redisValues = new Map([
+      ['risk:scores:sebuf:stale:v8', JSON.stringify({
+        ciiScores: [{ region: 'US', combinedScore: 10, computedAt: 1_700_000_000_000 }],
+      })],
+      ['intelligence:advisories:v1', JSON.stringify({
+        byCountry: { ZZ: 'caution' },
+        byCountryName: { ZZ: 'Untracked Testland' },
+      })],
+      ['sanctions:country-counts:v1', JSON.stringify({ ZZ: 2 })],
+    ]);
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: redisValues.get(parseGetKey(raw)) });
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const result = await module.getCountryRisk({}, { countryCode: 'ZZ' });
+      assert.equal(result.countryName, 'Untracked Testland');
+      assert.equal(result.cii, undefined);
+      assert.equal(result.fetchedAt, 0);
+      assert.equal(result.upstreamUnavailable, false);
+      assert.equal(result.sanctionsActive, true);
+      assert.equal(result.sanctionsCount, 2);
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreNow();
       restoreEnv();
     }
   });
@@ -1414,3 +1529,50 @@ describe('setCachedJson wire shape and failure reporting', { concurrency: 1 }, (
     }
   });
 });
+
+describe('getHashFieldsBatch empty-string handling (#3530)', { concurrency: 1 }, () => {
+  it('preserves empty-string values, omits null/missing, and retains real strings', async () => {
+    // Regression: getHashFieldsBatch used a truthy check (`if (values[i])`) that
+    // dropped valid empty-string hash values. Real Redis hash values are
+    // allowed to be the empty string, so a caller that round-trips "" will
+    // silently lose it. The fix switches to a null/undefined check so "" is
+    // preserved.
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    let pipelineCalls = 0;
+    globalThis.fetch = async (_url, init = {}) => {
+      pipelineCalls += 1;
+      const pipeline = JSON.parse(String(init.body));
+      assert.equal(pipeline.length, 1);
+      assert.equal(pipeline[0][0], 'HMGET');
+      assert.deepEqual(pipeline[0].slice(2), ['name', 'empty', 'missing', 'real']);
+      // Upstash HMGET returns an array of (string | null) in field order:
+      //   - real value  -> "alice"
+      //   - valid ""    -> ""
+      //   - missing key -> null
+      //   - real value  -> "ok"
+      return jsonResponse([{ result: ['alice', '', null, 'ok'] }]);
+    };
+
+    try {
+      const map = await redis.getHashFieldsBatch('user:42', ['name', 'empty', 'missing', 'real']);
+      assert.equal(pipelineCalls, 1, 'should batch into one HMGET pipeline call');
+      assert.equal(map.get('name'), 'alice', 'non-empty value is kept');
+      assert.equal(map.get('empty'), '', 'empty-string value must be preserved (this is the bug)');
+      assert.equal(map.has('missing'), false, 'null entries are omitted');
+      assert.equal(map.get('real'), 'ok', 'non-empty value is kept');
+      assert.equal(map.size, 3, 'map should contain only the three resolvable fields');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+});
+

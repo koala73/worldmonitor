@@ -12,7 +12,7 @@ Across the composite:
 - **Shipping-stress header** — a composite-stress score (0–100) with a tinted gauge, colour-bucketed by level (`critical` / `elevated` / `moderate` / `normal`).
 - **Carrier / ETF / index rows** — per-symbol price, per-cent change (`▲`/`▼` arrow with bullish/bearish tint), a compact sparkline, and a type badge (`ETF` / `IDX` / `CARR`).
 - **Critical minerals rows** — per-mineral top-3 producer concentration, HHI, and risk rating (`critical` / `high` / `moderate` / `low`).
-- **Scenario Engine trigger cards** — per-scenario trigger buttons (`sc-scenario-trigger` / `sc-scenario-btn`) that dispatch a template id to the scenario worker. Free users see the buttons but hit the PRO gate at activation. See [Scenario Engine](/scenario-engine) for the full workflow.
+- **Scenario Engine trigger cards** — per-scenario trigger buttons (`sc-scenario-trigger` / `sc-scenario-btn`) that dispatch a template id to the scenario worker. Free users see the buttons but hit the PRO gate at activation. Scope-all scenario runs use the v1 seeded reporter set (`US`, `CN`, `RU`, `IR`, `IN`, `TW`). See [Scenario Engine](/scenario-engine) for the full workflow.
 - **Active-scenario banner** (when a scenario is running) — icon, scenario name, optional params chip (duration + cost bump), top impacted countries, dismiss ×. When template parameters are populated, an additional "Simulating …" tagline renders. Banner construction lives in `renderScenarioBanner()` in `src/components/SupplyChainPanel.ts`.
 
 Panel id is `supply-chain`; canonical component is `src/components/SupplyChainPanel.ts`. Title per variant: "Supply Chain" (full/finance) or "Supply Chain & Logistics" (commodity).

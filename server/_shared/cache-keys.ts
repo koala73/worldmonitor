@@ -1,6 +1,12 @@
 // ── Story persistence tracking keys (E3) ─────────────────────────────────────
-// Hash: firstSeen, lastSeen, mentionCount, sourceCount, currentScore, peakScore,
-//       title, link, severity, lang, description, isOpinion, isFeelGood, category
+// Hash: firstSeen, lastSeen, mentionCount, currentScore,
+//       title, link, severity, lang, description, publishedAt,
+//       entityCorroborationCount, isOpinion, isFeelGood,
+//       isEphemeralLiveCoverage, category
+// sourceCount is not a hash field for current rows: distinct feed names live in
+// story:sources:v1 and should be counted from the Set. peakScore is held in
+// story:peak:v1's ZSet; the hash-side peakScore reader remains a reserved
+// placeholder for future score-history support.
 // description is authoritative per-mention: written unconditionally on every
 // HSET (empty string when the current mention has no body), so an earlier
 // mention's body never silently grounds LLMs for the current mention.
@@ -16,7 +22,7 @@ export const DIGEST_ACCUMULATOR_KEY_PREFIX = 'digest:accumulator:v1:';
  * Story tracking keys — written by list-feed-digest.ts, read by digest cron (E2).
  * All keys use 32-char SHA-256 hex prefix of the normalised title as ${titleHash}.
  *
- *   story:track:v1:${titleHash}     Hash   firstSeen/lastSeen/title/link/severity/mentionCount/currentScore/lang/description/isOpinion/isFeelGood/category (always-written)
+ *   story:track:v1:${titleHash}     Hash   firstSeen/lastSeen/title/link/severity/mentionCount/currentScore/lang/description/publishedAt/entityCorroborationCount/isOpinion/isFeelGood/isEphemeralLiveCoverage/category (always-written)
  *   story:sources:v1:${titleHash}   Set    feed IDs (SADD per appearance)
  *   story:peak:v1:${titleHash}      ZSet   single member "peak", score = highest importanceScore (ZADD GT)
  *   digest:accumulator:v1:${variant}:${lang} ZSet  member=titleHash, score=lastSeen_ms (updated every appearance)
@@ -55,6 +61,16 @@ export const DIGEST_ACCUMULATOR_TTL = 172800; // 48h — lookback window for dig
 export const SIMULATION_OUTCOME_LATEST_KEY = 'forecast:simulation-outcome:latest';
 export const SIMULATION_PACKAGE_LATEST_KEY = 'forecast:simulation-package:latest';
 export const REGULATORY_ACTIONS_KEY = 'regulatory:actions:v1';
+
+/**
+ * CII risk-score payload key family. Keep runtime-local mirrors in
+ * api/_cii-risk-cache-keys.js and scripts/_cii-risk-cache-keys.mjs aligned.
+ */
+export const CII_RISK_SCORE_CACHE_KEYS = {
+  live: 'risk:scores:sebuf:v8',
+  stale: 'risk:scores:sebuf:stale:v8',
+  trendHistoryPrefix: 'risk:scores:sebuf:trend-history:v8',
+} as const;
 export const CLIMATE_ANOMALIES_KEY = 'climate:anomalies:v2';
 export const CLIMATE_AIR_QUALITY_KEY = 'climate:air-quality:v1';
 export const CLIMATE_ZONE_NORMALS_KEY = 'climate:zone-normals:v1';
@@ -173,7 +189,7 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   renewableEnergy:  'economic:worldbank-renewable:v1',
   positiveGeoEvents: 'positive_events:geo-bootstrap:v1',
   theaterPosture:   'theater_posture:sebuf:stale:v1',
-  riskScores:       'risk:scores:sebuf:stale:v3',
+  riskScores:       CII_RISK_SCORE_CACHE_KEYS.stale,
   naturalEvents:    'natural:events:v1',
   flightDelays:     'aviation:delays-bootstrap:v2',
   insights:         'news:insights:v1',

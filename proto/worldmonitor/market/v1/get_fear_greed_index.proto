@@ -46,9 +46,15 @@ message GetFearGreedIndexResponse {
   double aaii_bear = 23;
   string fed_rate = 24;
   bool unavailable = 25;
+  // Bespoke Fear & Greed header stress ratio, not the KCFSI/ECB FSI panel
+  // composite. Formula: (HYG / TLT) / (VIX * HY OAS / 100).
   double fsi_value = 26;
+  // Label for fsi_value: Low Stress (>=1.5), Moderate Stress (>=0.8),
+  // Elevated Stress (>=0.3), otherwise High Stress.
   string fsi_label = 27;
+  // Latest HYG ETF price used in the Fear & Greed header stress ratio.
   double hyg_price = 28;
+  // Latest TLT ETF price used in the Fear & Greed header stress ratio.
   double tlt_price = 29;
   repeated FearGreedSectorPerformance sector_performance = 30;
 }

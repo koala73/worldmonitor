@@ -9,6 +9,10 @@
     "commodity": 18,
     "energy": 18
   },
+  "variantCount": 6,
+  "componentTopLevelTsFiles": 155,
+  "serviceTopLevelEntries": 186,
+  "apiEndpointEntries": 80,
   "protoFiles": 276,
   "protoServices": 34,
   "protoDomainFolders": 35,
@@ -27,12 +31,25 @@
     "lint.yml",
     "pro-bundle-freshness.yml",
     "proto-check.yml",
+    "security-audit.yml",
     "test-linux-app.yml",
     "test.yml",
     "typecheck.yml"
   ],
-  "workflowCount": 14,
+  "workflowCount": 15,
   "freshnessSources": 35,
   "freshnessRequiredForRisk": 2,
-  "feedDefinitions": 567
+  "feedDefinitions": 567,
+  "airportCount": 111,
+  "stockExchangeCount": 29,
+  "centralBankInstitutionCount": 14,
+  "telegramFullEnabledChannels": 56,
+  "telegramFullTierCounts": {
+    "1": 3,
+    "2": 23,
+    "3": 30
+  },
+  "leaderNames": 16,
+  "populationPriorityCountries": 20,
+  "sebufVersion": "v0.11.1"
 }

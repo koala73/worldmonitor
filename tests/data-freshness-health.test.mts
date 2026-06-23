@@ -260,21 +260,19 @@ describe('health freshness ingestion', () => {
     assert.equal(bls?.lastUpdate?.toISOString(), new Date(checkedAtMs - 90 * 60_000).toISOString());
   });
 
-  it('keeps health freshness failures debounced by updating the timestamp in finally', () => {
+  it('polls health freshness from the app scheduler instead of StrategicRiskPanel', () => {
+    const appSrc = readFileSync(resolve(repoRoot, 'src/App.ts'), 'utf8');
     const panelSrc = readFileSync(resolve(repoRoot, 'src/components/StrategicRiskPanel.ts'), 'utf8');
-    const methodMatch = panelSrc.match(/private async refreshHealthFreshness\(\): Promise<void> \{[\s\S]*?\n {2}\}/);
-    assert.ok(methodMatch, 'StrategicRiskPanel.refreshHealthFreshness method should exist');
 
-    const methodSrc = methodMatch[0];
     assert.doesNotMatch(
       panelSrc,
-      /void this\.refreshHealthFreshness\(\)\.catch\(/,
-      'refreshHealthFreshness swallows internally, so refresh() should not add a dead outer catch',
+      /refreshDataFreshnessFromHealth|refreshHealthFreshness|lastHealthFreshnessRefreshAt/,
+      'StrategicRiskPanel must not own /api/health freshness polling',
     );
     assert.match(
-      methodSrc,
-      /finally\s*\{[\s\S]*this\.lastHealthFreshnessRefreshAt\s*=\s*Date\.now\(\);[\s\S]*\}/,
-      'lastHealthFreshnessRefreshAt should update in finally so failed health fetches are debounced',
+      appSrc,
+      /scheduleRefresh\(\s*['"]health-freshness['"][\s\S]*refreshDataFreshnessFromHealth\(\)[\s\S]*REFRESH_INTERVALS\.healthFreshness[\s\S]*runImmediately:\s*true/,
+      'App scheduler should poll /api/health freshness immediately and on an interval, independent of panel visibility',
     );
   });
 });

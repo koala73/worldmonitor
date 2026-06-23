@@ -62,11 +62,25 @@ describe('classify cache prefix audit (U4)', () => {
         { encoding: 'utf-8' },
       );
     } catch (err) {
-      // grep exits non-zero when no matches; that's a different failure
-      // (audit infrastructure broken, not a prefix mismatch).
-      if (err && err.status !== 1) throw err;
+      // grep exit codes: 1 = no matches (a different, infra-broken failure);
+      // 2 = a file could not be read mid-walk. Under the parallel test runner
+      // (`--test-concurrency`), sibling tests create and delete short-lived
+      // fixtures (e.g. scripts/_bundle-fixture-env-*.mjs) that grep may list
+      // and then fail to open, exiting 2 even though every *stable* source
+      // file was scanned. The captured stdout still holds all matches from
+      // readable files, so tolerate 2 alongside 1; re-throw anything else.
+      if (err && err.status !== 1 && err.status !== 2) throw err;
       grepOut = (err && err.stdout) ?? '';
     }
+
+    // Sanity floor: the canonical writer (_shared.ts) must always appear in
+    // the scan output. Guards against a silently-empty grep (e.g. a future
+    // path/flag change) passing the offenders check vacuously and masking a
+    // real prefix mismatch.
+    assert.ok(
+      grepOut.includes('intelligence/v1/_shared.ts'),
+      'classify-prefix scan returned no _shared.ts hit — the audit grep did not run over the source tree',
+    );
 
     const lines = grepOut.split('\n').filter((l) => l.length > 0);
     const offenders = [];
