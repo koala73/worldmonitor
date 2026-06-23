@@ -148,6 +148,25 @@ describe('color-contrast — footer copyright', () => {
     assert.ok(contrastRatio(fg, bg) >= 4.5,
       `footer copy ${fg} on ${bg} must clear 4.5:1`);
   });
+
+  it('.site-footer-copy also clears AA in light theme', () => {
+    // cssToken() returns the first (dark/:root) value, so the light theme is
+    // unguarded otherwise — and #6b6b6b on #fff is only ~4.84:1, close enough
+    // that a token tweak could silently regress it.
+    const lightBlock = [...css.matchAll(/\[data-theme="light"\][^{]*\{([^}]*)\}/g)]
+      .map((m) => m[1])
+      .find((b) => /--text-dim:/.test(b) && /--surface:/.test(b));
+    assert.ok(lightBlock, 'light theme token block must define --text-dim and --surface');
+    const lightToken = (name) => {
+      const m = lightBlock.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{3,8})`));
+      assert.ok(m, `light theme --${name} must be a hex value`);
+      return m[1];
+    };
+    const fg = lightToken('text-dim');
+    const bg = lightToken('surface');
+    assert.ok(contrastRatio(fg, bg) >= 4.5,
+      `light-theme footer copy ${fg} on ${bg} must clear 4.5:1`);
+  });
 });
 
 // --- 5. DEFCON badge contrast ----------------------------------------------
