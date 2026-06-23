@@ -336,7 +336,7 @@ export async function fetchYahooQuote(
  * selected explicitly by which env var is set; Pro wins so existing Pro
  * deployments are unaffected, and no key falls back to the public endpoint.
  */
-function coingeckoEndpoint(): { baseUrl: string; headers: Record<string, string> } {
+export function coingeckoEndpoint(): { baseUrl: string; headers: Record<string, string> } {
   const proKey = process.env.COINGECKO_API_KEY;
   const demoKey = process.env.COINGECKO_DEMO_API_KEY;
   const headers: Record<string, string> = {
