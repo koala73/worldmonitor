@@ -116,6 +116,11 @@ export class NationalDebtPanel extends Panel {
   private lastTickerValues = new Map<string, string>();
   private connectRefreshQueued = false;
   private connectionObserver: MutationObserver | null = null;
+  private connectRetryFrames = 0;
+  // Bounds the MutationObserver-less fallback retry so a never-connected panel
+  // cannot spin. Browsers always have MutationObserver, so this only caps the
+  // non-browser/SSR/test path.
+  private static readonly MAX_CONNECT_RETRY_FRAMES = 8;
   private readonly REFRESH_INTERVAL = 6 * 60 * 60 * 1000;
 
   constructor() {
@@ -195,6 +200,7 @@ export class NationalDebtPanel extends Panel {
     const refreshIfConnected = (): boolean => {
       if (!this.element?.isConnected) return false;
       this.connectRefreshQueued = false;
+      this.connectRetryFrames = 0;
       this.connectionObserver?.disconnect();
       this.connectionObserver = null;
       void this.refresh();
@@ -203,6 +209,12 @@ export class NationalDebtPanel extends Panel {
 
     if (refreshIfConnected()) return;
 
+    // The element is created detached and inserted later by panel-layout
+    // (mountPanelElement / deferPanelMount) into a grid this panel does not know
+    // up front — and the mount can be deferred arbitrarily late. A document-level
+    // observer is the only way to catch that connection without coupling the panel
+    // to specific grid ids (which would fail silently if a mount went elsewhere).
+    // It self-disconnects on the first connected callback.
     if (typeof MutationObserver !== 'undefined') {
       const target = document.body ?? document.documentElement;
       if (target) {
@@ -213,6 +225,9 @@ export class NationalDebtPanel extends Panel {
       }
     }
 
+    // Fallback for environments without MutationObserver (non-browser/SSR/tests):
+    // poll on a bounded number of animation frames so a late insertion is still
+    // caught, but a never-connected panel can never loop forever.
     const scheduleFrame = typeof requestAnimationFrame === 'function'
       ? requestAnimationFrame
       : (cb: FrameRequestCallback): number => {
@@ -221,7 +236,17 @@ export class NationalDebtPanel extends Panel {
         };
     scheduleFrame(() => {
       this.connectRefreshQueued = false;
-      if (this.element?.isConnected) void this.refresh();
+      if (this.element?.isConnected) {
+        this.connectRetryFrames = 0;
+        void this.refresh();
+        return;
+      }
+      if (this.connectRetryFrames >= NationalDebtPanel.MAX_CONNECT_RETRY_FRAMES) {
+        this.connectRetryFrames = 0;
+        return;
+      }
+      this.connectRetryFrames += 1;
+      this.queueRefreshWhenConnected();
     });
   }
 
@@ -401,6 +426,7 @@ export class NationalDebtPanel extends Panel {
     this.connectionObserver?.disconnect();
     this.connectionObserver = null;
     this.connectRefreshQueued = false;
+    this.connectRetryFrames = 0;
     this.stopTicker();
     super.destroy();
   }

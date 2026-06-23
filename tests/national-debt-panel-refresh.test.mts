@@ -49,6 +49,33 @@ async function waitForPanelContentDebounce(): Promise<void> {
   await new Promise(resolve => setTimeout(resolve, 180));
 }
 
+function makeMutationObserverStub() {
+  class StubMutationObserver {
+    callback: () => void;
+    disconnectCount = 0;
+    observeArgs: Array<{ target: unknown; options: unknown }> = [];
+    constructor(cb: () => void) {
+      this.callback = cb;
+      instances.push(this);
+    }
+    observe(target: unknown, options: unknown): void {
+      this.observeArgs.push({ target, options });
+    }
+    disconnect(): void {
+      this.disconnectCount += 1;
+    }
+    takeRecords(): [] {
+      return [];
+    }
+    // Simulate the browser delivering a mutation notification.
+    trigger(): void {
+      this.callback();
+    }
+  }
+  const instances: StubMutationObserver[] = [];
+  return { instances, Ctor: StubMutationObserver };
+}
+
 async function loadNationalDebtPanel() {
   const tempDir = mkdtempSync(join(tmpdir(), 'wm-national-debt-panel-'));
   const outfile = join(tempDir, 'NationalDebtPanel.bundle.mjs');
@@ -207,6 +234,7 @@ describe('NationalDebtPanel detached refresh', () => {
       'HTMLButtonElement',
       'Node',
       'fetch',
+      'MutationObserver',
     ]) {
       originalGlobals[name] = snapshotGlobal(name);
     }
@@ -263,7 +291,7 @@ describe('NationalDebtPanel detached refresh', () => {
     }
   });
 
-  it('does not flood /api/bootstrap?keys=nationalDebt while detached', async () => {
+  it('retries on a bounded number of frames while detached without ever fetching', async () => {
     const loaded = await loadNationalDebtPanel();
     cleanupBundle = loaded.cleanupBundle;
     const panel = new loaded.NationalDebtPanel();
@@ -271,19 +299,20 @@ describe('NationalDebtPanel detached refresh', () => {
     assert.equal(panel.getElement().isConnected, false, 'precondition: panel starts detached');
     await panel.refresh();
 
-    for (let i = 0; i < 5; i++) {
+    // Drain well past the retry cap; the element never connects.
+    let framesRun = 0;
+    for (let i = 0; i < 20; i++) {
       const callbacks = rafQueue.splice(0);
       for (const cb of callbacks) {
+        framesRun += 1;
         cb(performance.now());
       }
       await Promise.resolve();
     }
 
-    assert.ok(
-      fetchCount <= 1,
-      `detached refresh should issue at most one nationalDebt bootstrap request; saw ${fetchCount}`,
-    );
-    assert.equal(rafQueue.length, 0, 'detached refresh must not keep scheduling RAF retries');
+    assert.equal(fetchCount, 0, 'a detached refresh must never hit the network');
+    assert.ok(framesRun > 1, 'fallback should retry across frames, not give up after a single frame');
+    assert.equal(rafQueue.length, 0, 'bounded retry must stop scheduling once the cap is reached (no infinite loop)');
 
     panel.destroy();
   });
@@ -316,5 +345,50 @@ describe('NationalDebtPanel detached refresh', () => {
     } finally {
       panel.destroy();
     }
+  });
+
+  it('refreshes once via MutationObserver when the element connects, then disconnects', async () => {
+    const { instances, Ctor } = makeMutationObserverStub();
+    defineGlobal('MutationObserver', Ctor);
+
+    const loaded = await loadNationalDebtPanel();
+    cleanupBundle = loaded.cleanupBundle;
+    const panel = new loaded.NationalDebtPanel();
+
+    await panel.refresh();
+    assert.equal(instances.length, 1, 'a connection observer is registered while detached');
+    assert.equal(instances[0].observeArgs.length, 1, 'observer begins observing for the connection');
+    assert.equal(fetchCount, 0, 'no fetch while the element is detached');
+
+    document.body.appendChild(panel.getElement());
+    instances[0].trigger();
+    await flushAsyncWork();
+    await waitForPanelContentDebounce();
+
+    assert.equal(fetchCount, 1, 'connecting triggers exactly one nationalDebt fetch via the observer');
+    assert.equal(instances[0].disconnectCount, 1, 'observer disconnects itself after the element connects');
+
+    instances[0].trigger();
+    await flushAsyncWork();
+    assert.equal(fetchCount, 1, 'a later mutation does not refetch (freshness guard holds)');
+
+    panel.destroy();
+  });
+
+  it('disconnects the connection observer on destroy() while still detached', async () => {
+    const { instances, Ctor } = makeMutationObserverStub();
+    defineGlobal('MutationObserver', Ctor);
+
+    const loaded = await loadNationalDebtPanel();
+    cleanupBundle = loaded.cleanupBundle;
+    const panel = new loaded.NationalDebtPanel();
+
+    await panel.refresh();
+    assert.equal(instances.length, 1, 'observer registered while detached');
+    assert.equal(instances[0].disconnectCount, 0, 'observer stays active until connect or destroy');
+
+    panel.destroy();
+    assert.equal(instances[0].disconnectCount, 1, 'destroy() disconnects the active connection observer');
+    assert.equal(fetchCount, 0, 'destroying a detached panel never fetches');
   });
 });
