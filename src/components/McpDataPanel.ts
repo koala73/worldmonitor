@@ -111,7 +111,7 @@ export class McpDataPanel extends Panel {
           toolArgs: this.spec.toolArgs,
           customHeaders: this.spec.customHeaders,
         }),
-        signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.any([this.destroyController.signal, AbortSignal.timeout(20_000)]),
       });
       const data = await resp.json() as { result?: McpResult; error?: string };
       if (!resp.ok || data.error) throw new Error(data.error || `HTTP ${resp.status}`);

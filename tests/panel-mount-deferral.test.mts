@@ -133,4 +133,16 @@ describe('panel mount deferral', () => {
       'applyPanelSettings must skip its own toggle when mountDeferredPanel already toggled',
     );
   });
+
+  it('signals queued panel work after replacing a deferred shell with the real panel', async () => {
+    const source = await readFile(new URL('../src/app/panel-layout.ts', import.meta.url), 'utf8');
+    const mountPanelElement = source.match(/private\s+mountPanelElement[\s\S]*?\n  \}/);
+
+    assert.ok(mountPanelElement, 'mountPanelElement method not found');
+    assert.match(
+      mountPanelElement[0],
+      /panel\.notifyConnected\(\);/,
+      'mountPanelElement must flush runWhenConnected callbacks after inserting the panel element',
+    );
+  });
 });

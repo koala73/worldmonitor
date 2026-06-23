@@ -1209,6 +1209,7 @@ export class PanelLayoutManager implements AppModule {
       this.insertByOrder(grid, el, key);
     }
     this.mobilePanelNav?.applyToNewPanel(el);
+    panel.notifyConnected();
   }
 
   private deferPanelMount(key: string, panel: Panel, grid: HTMLElement | null, withShell: boolean): void {
@@ -1462,6 +1463,7 @@ export class PanelLayoutManager implements AppModule {
         } else {
           grid.appendChild(el);
         }
+        deductionPanel.notifyConnected();
       }
       this.applyPanelSettings();
       this.updatePanelGating(getAuthState());
@@ -1484,6 +1486,7 @@ export class PanelLayoutManager implements AppModule {
         } else {
           grid.appendChild(el);
         }
+        regionalBoard.notifyConnected();
       }
       this.applyPanelSettings();
       this.updatePanelGating(getAuthState());

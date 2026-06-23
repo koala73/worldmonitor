@@ -90,6 +90,10 @@ async function loadMinimalPanel() {
       publicRunWhenConnected(callback) {
         return this.runWhenConnected(callback);
       }
+
+      publicNotifyConnected() {
+        this.notifyConnected();
+      }
     }
 
     export class FreshnessMappedPanel extends Panel {

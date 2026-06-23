@@ -198,8 +198,9 @@ export class Panel {
   private _collapseBtn: HTMLButtonElement | null = null;
   private viewportObserver: IntersectionObserver | null = null;
   private viewportObserverRegistered = false;
-  private connectedObserver: MutationObserver | null = null;
   private connectedCallbacks: Array<() => void> = [];
+  private connectedFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+  private destroyed = false;
 
   constructor(options: PanelOptions) {
     this.panelId = options.id;
@@ -751,39 +752,59 @@ export class Panel {
   }
 
   protected runWhenConnected(callback: () => void): boolean {
+    if (this.destroyed) return false;
     if (this.element.isConnected) {
       callback();
       return true;
     }
 
     this.connectedCallbacks.push(callback);
-    if (this.connectedObserver) return false;
+    this.scheduleConnectedFallbackIfNeeded();
+    return false;
+  }
 
-    const flush = (): void => {
-      if (!this.element.isConnected) return;
-      const callbacks = this.connectedCallbacks.splice(0);
-      this.connectedObserver?.disconnect();
-      this.connectedObserver = null;
-      for (const cb of callbacks) cb();
-    };
+  public notifyConnected(): void {
+    this.flushConnectedCallbacks();
+  }
 
-    if (typeof MutationObserver !== 'undefined') {
-      const target = document.body ?? document.documentElement;
-      if (target) {
-        this.connectedObserver = new MutationObserver(flush);
-        this.connectedObserver.observe(target, { childList: true, subtree: true });
-        return false;
+  private scheduleConnectedFallbackIfNeeded(): void {
+    // Modern dashboard mounts call notifyConnected() from panel-layout. The timer is
+    // only for old/no-MutationObserver environments where that signal may not exist.
+    if (this.connectedFallbackTimer !== null || typeof MutationObserver !== 'undefined') return;
+    this.connectedFallbackTimer = globalThis.setTimeout(() => {
+      this.connectedFallbackTimer = null;
+      if (this.destroyed || this.connectedCallbacks.length === 0) return;
+      if (this.element.isConnected) {
+        this.flushConnectedCallbacks();
+        return;
       }
+      this.scheduleConnectedFallbackIfNeeded();
+    }, 50);
+  }
+
+  private flushConnectedCallbacks(): void {
+    if (this.destroyed || !this.element.isConnected || this.connectedCallbacks.length === 0) return;
+    const callbacks = this.connectedCallbacks.splice(0);
+    if (this.connectedFallbackTimer !== null) {
+      clearTimeout(this.connectedFallbackTimer);
+      this.connectedFallbackTimer = null;
     }
 
-    const scheduleFrame = typeof requestAnimationFrame === 'function'
-      ? requestAnimationFrame
-      : (cb: FrameRequestCallback): number => {
-          globalThis.setTimeout(() => cb(Date.now()), 0);
-          return 0;
-        };
-    scheduleFrame(flush);
-    return false;
+    const errors: unknown[] = [];
+    for (const cb of callbacks) {
+      try {
+        cb();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (errors.length === 1) {
+      globalThis.setTimeout(() => { throw errors[0]; }, 0);
+    } else if (errors.length > 1) {
+      const error = new Error('Panel connected callbacks failed') as Error & { errors?: unknown[] };
+      error.errors = errors;
+      globalThis.setTimeout(() => { throw error; }, 0);
+    }
   }
 
   /**
@@ -1241,11 +1262,14 @@ export class Panel {
   }
 
   public destroy(): void {
+    this.destroyed = true;
     this.abortController.abort();
     this.clearRetryCountdown();
     this.unobserveViewport();
-    this.connectedObserver?.disconnect();
-    this.connectedObserver = null;
+    if (this.connectedFallbackTimer !== null) {
+      clearTimeout(this.connectedFallbackTimer);
+      this.connectedFallbackTimer = null;
+    }
     this.connectedCallbacks = [];
     if (this.freshnessUnsubscribe) {
       this.freshnessUnsubscribe();
