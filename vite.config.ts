@@ -1054,6 +1054,14 @@ export default defineConfig(({ mode }) => {
           mcpGrant: resolve(__dirname, 'mcp-grant.html'),
         },
         output: {
+          // onlyExplicitManualChunks keeps the panel clusters from forming
+          // cross-chunk cycles. Its side effect: a manual chunk's unmatched
+          // static deps get pulled into the importer chunk — which created a
+          // circular DeckGLMap -> deck-stack -> DeckGLMap chunk (runtime TDZ
+          // "Cannot access 'X' before initialization" that crashed the WebGL map
+          // into the SVG fallback). Fixed by co-locating the DeckGLMap renderer
+          // into the 'deck-stack' chunk below so deck deps never split across the
+          // DeckGLMap boundary.
           onlyExplicitManualChunks: true,
           manualChunks(id) {
             if (id.includes('node_modules')) {
@@ -1096,6 +1104,13 @@ export default defineConfig(({ mode }) => {
                 // lets Workbox keep the large auth SDK out of precache.
                 return 'clerk';
               }
+            }
+            // Co-locate the deck.gl renderer with the deck vendor chunk so
+            // onlyExplicitManualChunks cannot split deck's transitive deps
+            // across the DeckGLMap boundary (which formed a circular chunk →
+            // runtime TDZ that crashed the WebGL map into the SVG fallback).
+            if (id.endsWith('/src/components/DeckGLMap.ts')) {
+              return 'deck-stack';
             }
             if (id.includes('/src/components/') && id.endsWith('.ts')) {
               const panelChunk = panelChunkForComponentId(id);

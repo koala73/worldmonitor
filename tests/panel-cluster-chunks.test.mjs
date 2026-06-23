@@ -335,7 +335,7 @@ describe('panel cluster chunk guardrails', () => {
     assert.equal(
       hasTrueProperty(viteConfigAst, 'onlyExplicitManualChunks'),
       true,
-      'Rollup must keep manual chunk dependencies explicit so app-shared modules do not make main import panel chunks.',
+      'Rollup must keep manual chunk dependencies explicit so app-shared modules do not make main import panel chunks. (DeckGLMap is co-located into the deck-stack chunk to avoid the circular-chunk TDZ this flag otherwise caused on the WebGL map.)',
     );
   });
 
