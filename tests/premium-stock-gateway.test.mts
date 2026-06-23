@@ -217,9 +217,11 @@ describe('premium gateway API key enforcement', () => {
 
     const originalSiteUrl = process.env.CONVEX_SITE_URL;
     const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    const originalUserIdSigningSecret = process.env.CONVEX_INTERNAL_ENTITLEMENTS_USER_ID_SIGNING_SECRET;
     const originalFetch = globalThis.fetch;
     process.env.CONVEX_SITE_URL = 'https://test.convex.site';
     process.env.CONVEX_SERVER_SHARED_SECRET = 'test-secret';
+    process.env.CONVEX_INTERNAL_ENTITLEMENTS_USER_ID_SIGNING_SECRET = 'test-user-id-signing-secret';
     process.env.WORLDMONITOR_VALID_KEYS = 'real-key-123';
 
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -279,6 +281,8 @@ describe('premium gateway API key enforcement', () => {
       else process.env.CONVEX_SITE_URL = originalSiteUrl;
       if (originalSecret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
       else process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+      if (originalUserIdSigningSecret === undefined) delete process.env.CONVEX_INTERNAL_ENTITLEMENTS_USER_ID_SIGNING_SECRET;
+      else process.env.CONVEX_INTERNAL_ENTITLEMENTS_USER_ID_SIGNING_SECRET = originalUserIdSigningSecret;
     }
   });
 });
