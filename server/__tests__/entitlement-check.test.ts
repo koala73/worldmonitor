@@ -162,6 +162,7 @@ describe("gateway entitlement check", () => {
     // Mock Convex fallback to return the post-U10 merged shape.
     const originalSiteUrl = process.env.CONVEX_SITE_URL;
     const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    const originalUserIdSigningSecret = process.env.CONVEX_INTERNAL_ENTITLEMENTS_USER_ID_SIGNING_SECRET;
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify(makeEntitlements(1, "pro_monthly")), {
         status: 200,
@@ -170,6 +171,7 @@ describe("gateway entitlement check", () => {
     );
     process.env.CONVEX_SITE_URL = "https://example-deployment.convex.site";
     process.env.CONVEX_SERVER_SHARED_SECRET = "test-secret";
+    process.env.CONVEX_INTERNAL_ENTITLEMENTS_USER_ID_SIGNING_SECRET = "test-user-id-signing-secret";
     vi.stubGlobal("fetch", fetchMock);
 
     try {
@@ -180,8 +182,21 @@ describe("gateway entitlement check", () => {
       expect(result).toBeNull();
       expect(fetchMock).toHaveBeenCalledTimes(1);
     } finally {
-      process.env.CONVEX_SITE_URL = originalSiteUrl;
-      process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+      if (originalSiteUrl === undefined) {
+        delete process.env.CONVEX_SITE_URL;
+      } else {
+        process.env.CONVEX_SITE_URL = originalSiteUrl;
+      }
+      if (originalSecret === undefined) {
+        delete process.env.CONVEX_SERVER_SHARED_SECRET;
+      } else {
+        process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+      }
+      if (originalUserIdSigningSecret === undefined) {
+        delete process.env.CONVEX_INTERNAL_ENTITLEMENTS_USER_ID_SIGNING_SECRET;
+      } else {
+        process.env.CONVEX_INTERNAL_ENTITLEMENTS_USER_ID_SIGNING_SECRET = originalUserIdSigningSecret;
+      }
       vi.unstubAllGlobals();
     }
   });
@@ -209,6 +224,7 @@ describe("gateway entitlement check", () => {
 
     const originalSiteUrl = process.env.CONVEX_SITE_URL;
     const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    const originalUserIdSigningSecret = process.env.CONVEX_INTERNAL_ENTITLEMENTS_USER_ID_SIGNING_SECRET;
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify(makeEntitlements(2, "api_starter")), {
         status: 200,
@@ -218,6 +234,7 @@ describe("gateway entitlement check", () => {
 
     process.env.CONVEX_SITE_URL = "https://example-deployment.convex.site";
     process.env.CONVEX_SERVER_SHARED_SECRET = "test-secret";
+    process.env.CONVEX_INTERNAL_ENTITLEMENTS_USER_ID_SIGNING_SECRET = "test-user-id-signing-secret";
     vi.stubGlobal("fetch", fetchMock);
 
     try {
@@ -229,6 +246,7 @@ describe("gateway entitlement check", () => {
           method: "POST",
           headers: expect.objectContaining({
             "x-convex-shared-secret": "test-secret",
+            "x-convex-user-id-signature": expect.stringMatching(/^[a-f0-9]{64}$/),
           }),
         }),
       );
@@ -242,6 +260,11 @@ describe("gateway entitlement check", () => {
         delete process.env.CONVEX_SERVER_SHARED_SECRET;
       } else {
         process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+      }
+      if (originalUserIdSigningSecret === undefined) {
+        delete process.env.CONVEX_INTERNAL_ENTITLEMENTS_USER_ID_SIGNING_SECRET;
+      } else {
+        process.env.CONVEX_INTERNAL_ENTITLEMENTS_USER_ID_SIGNING_SECRET = originalUserIdSigningSecret;
       }
       vi.unstubAllGlobals();
     }

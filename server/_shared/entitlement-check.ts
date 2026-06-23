@@ -63,7 +63,10 @@ const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
 };
 
 const CONVEX_INTERNAL_ENTITLEMENTS_PATH = '/api/internal-entitlements';
+const CONVEX_INTERNAL_ENTITLEMENTS_USER_ID_SIGNATURE_HEADER = 'x-convex-user-id-signature';
+const CONVEX_INTERNAL_ENTITLEMENTS_USER_ID_SIGNATURE_PREFIX = 'internal-entitlements:';
 let _didWarnMissingConvexSharedSecret = false;
+let _didWarnMissingConvexUserIdSigningSecret = false;
 
 function getConvexSharedSecret(): string {
   const secret = process.env.CONVEX_SERVER_SHARED_SECRET ?? '';
@@ -72,6 +75,36 @@ function getConvexSharedSecret(): string {
     console.warn('[entitlement-check] CONVEX_SERVER_SHARED_SECRET not set; Convex fallback disabled');
   }
   return secret;
+}
+
+function getConvexUserIdSigningSecret(): string {
+  const secret = process.env.CONVEX_INTERNAL_ENTITLEMENTS_USER_ID_SIGNING_SECRET ?? '';
+  if (!secret && !_didWarnMissingConvexUserIdSigningSecret) {
+    _didWarnMissingConvexUserIdSigningSecret = true;
+    console.warn('[entitlement-check] CONVEX_INTERNAL_ENTITLEMENTS_USER_ID_SIGNING_SECRET not set; Convex fallback disabled');
+  }
+  return secret;
+}
+
+function bytesToHex(bytes: ArrayBuffer): string {
+  return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function hmacSha256Hex(secret: string, payload: string): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(payload));
+  return bytesToHex(sig);
+}
+
+async function signInternalEntitlementsUserId(userId: string, secret: string): Promise<string> {
+  return hmacSha256Hex(secret, `${CONVEX_INTERNAL_ENTITLEMENTS_USER_ID_SIGNATURE_PREFIX}${userId}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -155,7 +188,10 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
     // Convex fallback on cache miss or expired cache
     const convexSiteUrl = process.env.CONVEX_SITE_URL;
     const convexSharedSecret = getConvexSharedSecret();
-    if (!convexSiteUrl || !convexSharedSecret) return null;
+    const convexUserIdSigningSecret = getConvexUserIdSigningSecret();
+    if (!convexSiteUrl || !convexSharedSecret || !convexUserIdSigningSecret) return null;
+
+    const userIdSignature = await signInternalEntitlementsUserId(userId, convexUserIdSigningSecret);
 
     const response = await fetch(`${convexSiteUrl}${CONVEX_INTERNAL_ENTITLEMENTS_PATH}`, {
       method: 'POST',
@@ -163,6 +199,7 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
         'Content-Type': 'application/json',
         'User-Agent': 'worldmonitor-gateway/1.0',
         'x-convex-shared-secret': convexSharedSecret,
+        [CONVEX_INTERNAL_ENTITLEMENTS_USER_ID_SIGNATURE_HEADER]: userIdSignature,
       },
       body: JSON.stringify({ userId }),
     });
