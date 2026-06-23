@@ -2283,6 +2283,39 @@ body.panel-resize-active iframe {
   padding: 8px;
   min-width: 0;
   user-select: none;
+  content-visibility: auto;
+  contain-intrinsic-size: 260px;
+}
+
+.panel-deferred-shell {
+  cursor: default;
+  pointer-events: none;
+  content-visibility: auto;
+  contain-intrinsic-size: var(--dashboard-panel-row-min, 260px);
+}
+
+.panel-deferred-content {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.panel-deferred-skeleton {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--surface-alt), var(--border), var(--surface-alt));
+  opacity: 0.65;
+}
+
+.panel-deferred-skeleton:nth-child(2) {
+  width: 72%;
+}
+
+.panel-deferred-skeleton:nth-child(3) {
+  width: 48%;
 }
 
 .panel-content::-webkit-scrollbar {
