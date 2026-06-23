@@ -26,6 +26,7 @@ import { describe, it } from 'node:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { displayPubDateMs, effectivePubDateMs } from '../src/services/feed-date';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -61,6 +62,16 @@ const ALLOW_LIST: AllowEntry[] = [
     reason: 'effectivePubDateMs implementation — string-input branch reconstructs Date and reads getTime; covered by NaN/Infinity guard immediately below.',
   },
   {
+    file: 'src/services/feed-date.ts',
+    line: 91,
+    reason: 'displayPubDateMs implementation — preserves display timestamps for cache serialization; not used as a freshness comparator.',
+  },
+  {
+    file: 'src/services/feed-date.ts',
+    line: 98,
+    reason: 'displayPubDateMs implementation — string-input branch reconstructs a display timestamp; not used as a freshness comparator.',
+  },
+  {
     file: 'src/services/analysis-core.ts',
     line: 208,
     reason: 'generateClusterId sort produces a stable identity string from earliest pubDate; not a freshness comparator.',
@@ -89,11 +100,6 @@ const ALLOW_LIST: AllowEntry[] = [
     file: 'src/services/trending-keywords.ts',
     line: 390,
     reason: 'publishedAt record-keeping in headline registry; not a freshness comparator.',
-  },
-  {
-    file: 'src/app/data-loader.ts',
-    line: 3385,
-    reason: 'Cache serialization step — wraps pubDate.getTime() into the persisted entry payload, not a comparator.',
   },
 ];
 
@@ -136,6 +142,22 @@ function isAllowed(file: string, line: number): boolean {
 }
 
 describe('feed-date freshness guardrail — effectivePubDateMs usage', () => {
+  it('keeps missing-date display timestamps valid while ranking them as stale', () => {
+    const displayDate = new Date('2024-01-02T03:04:05.000Z');
+    const item = { pubDate: displayDate, pubDateMissing: true };
+
+    assert.equal(displayPubDateMs(item), displayDate.getTime());
+    assert.equal(effectivePubDateMs(item), 0);
+  });
+
+  it('happy cache serialization stores the display timestamp, not the effective ranking timestamp', () => {
+    assert.match(
+      readFileSync(resolve(repoRoot, 'src/app/data-loader.ts'), 'utf8'),
+      /pubDate:\s*displayPubDateMs\(item\)/,
+      'happy-panel cache writes must preserve a valid display Date even when pubDateMissing sorts the item as stale',
+    );
+  });
+
   it('every .pubDate.getTime() in src/services + src/app is helper-routed or explicitly allow-listed', () => {
     const violations: Array<{ file: string; line: number; text: string }> = [];
 

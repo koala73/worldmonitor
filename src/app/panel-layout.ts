@@ -196,7 +196,7 @@ const WEB_CLERK_PRO_ONLY_PANELS = new Set([
 export interface PanelLayoutManagerCallbacks {
   openCountryStory: (code: string, name: string) => void;
   openCountryBrief: (code: string) => void;
-  loadAllData: () => Promise<void>;
+  loadAllData: (forceAll?: boolean) => Promise<void>;
   updateMonitorResults: () => void;
   loadSecurityAdvisories?: () => Promise<void>;
   applyMapLayerChange?: (layer: keyof MapLayers, enabled: boolean, source: 'programmatic') => void;
@@ -208,6 +208,8 @@ interface DeferredPanelMount {
   observer: IntersectionObserver | null;
   mounted: boolean;
 }
+
+type HydrationSchedulePhase = 'visible' | 'near';
 
 export class PanelLayoutManager implements AppModule {
   private ctx: AppContext;
@@ -231,6 +233,7 @@ export class PanelLayoutManager implements AppModule {
   private unsubscribeEntitlementChange: (() => void) | null = null;
   private unsubscribePaymentFailureBanner: (() => void) | null = null;
   private scheduledLoadAllRaf: number | null = null;
+  private scheduledLoadAllIdle: number | null = null;
 
   constructor(ctx: AppContext, callbacks: PanelLayoutManagerCallbacks) {
     this.ctx = ctx;
@@ -404,6 +407,7 @@ export class PanelLayoutManager implements AppModule {
     }
     this.deferredPanelMounts.clear();
     this.initiallyMountedEnabledPanelCount = 0;
+    this.cancelScheduledLoadAllIdle();
     if (this.scheduledLoadAllRaf !== null) {
       cancelAnimationFrame(this.scheduledLoadAllRaf);
       this.scheduledLoadAllRaf = null;
@@ -2075,14 +2079,44 @@ export class PanelLayoutManager implements AppModule {
     }
   }
 
-  private scheduleLoadAllData(): void {
-    if (this.scheduledLoadAllRaf !== null) return;
+  private cancelScheduledLoadAllIdle(): void {
+    if (this.scheduledLoadAllIdle === null || typeof window === 'undefined') return;
+    const cancelIdle = window.cancelIdleCallback as ((handle: number) => void) | undefined;
+    cancelIdle?.(this.scheduledLoadAllIdle);
+    this.scheduledLoadAllIdle = null;
+  }
+
+  private scheduleLoadAllData(phase: HydrationSchedulePhase = 'near'): void {
     if (typeof window === 'undefined') {
       void this.callbacks.loadAllData();
       return;
     }
+    const mark = (label: string) => {
+      if (typeof performance !== 'undefined' && typeof performance.mark === 'function') {
+        performance.mark(label);
+      }
+    };
+    if (phase === 'near') {
+      if (this.scheduledLoadAllIdle !== null || this.scheduledLoadAllRaf !== null) return;
+      const idle = window.requestIdleCallback as ((cb: IdleRequestCallback, opts?: IdleRequestOptions) => number) | undefined;
+      if (idle) {
+        this.scheduledLoadAllIdle = idle(() => {
+          this.scheduledLoadAllIdle = null;
+          mark('wm:hydration:near-trigger');
+          void this.callbacks.loadAllData();
+        }, { timeout: 300 });
+        return;
+      }
+    } else {
+      this.cancelScheduledLoadAllIdle();
+      if (this.scheduledLoadAllRaf !== null) return;
+    }
+    if (this.scheduledLoadAllRaf !== null) {
+      return;
+    }
     this.scheduledLoadAllRaf = window.requestAnimationFrame(() => {
       this.scheduledLoadAllRaf = null;
+      mark(`wm:hydration:${phase}-trigger`);
       void this.callbacks.loadAllData();
     });
   }
@@ -2090,7 +2124,15 @@ export class PanelLayoutManager implements AppModule {
   private observePanelsForViewport(): void {
     for (const panel of Object.values(this.ctx.panels)) {
       const observable = panel as { observeNearViewport?: (cb: () => void, marginPx?: number) => void };
-      observable.observeNearViewport?.(() => this.scheduleLoadAllData(), 200);
+      observable.observeNearViewport?.(() => {
+        if (typeof window === 'undefined') {
+          this.scheduleLoadAllData('near');
+          return;
+        }
+        const rect = panel.getElement?.().getBoundingClientRect();
+        const phase: HydrationSchedulePhase = rect && rect.top < window.innerHeight && rect.bottom > 0 ? 'visible' : 'near';
+        this.scheduleLoadAllData(phase);
+      }, 200);
     }
   }
 
