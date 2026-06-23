@@ -292,9 +292,9 @@ export class LiveWebcamsPanel extends Panel {
     this.toolbar?.querySelectorAll('.webcam-view-btn').forEach(btn => {
       (btn as HTMLElement).classList.toggle('active', (btn as HTMLElement).dataset.mode === mode);
     });
-    this.render();
-    if (this.alwaysOn && this.isVisible && !document.hidden) {
-      this.startAlwaysOnPlayback();
+    // In always-on, let startAlwaysOnPlayback own the render so the wall isn't built then immediately rebuilt.
+    if (!this.startAlwaysOnPlayback()) {
+      this.render();
     }
   }
 
@@ -420,8 +420,9 @@ export class LiveWebcamsPanel extends Panel {
       rect.left < window.innerWidth;
   }
 
-  private startAlwaysOnPlayback(): void {
-    if (!this.alwaysOn || document.hidden || !this.element.isConnected || !this.isVisible) return;
+  /** Ensure the always-on feed(s) are in the active set. Returns true if it rendered (so callers don't double-render). */
+  private startAlwaysOnPlayback(): boolean {
+    if (!this.alwaysOn || document.hidden || !this.element.isConnected || !this.isVisible) return false;
     // In grid view auto-start the whole wall; single view auto-starts only the selected feed.
     const feeds = (this.viewMode === 'grid' && !this.forceSingleView) ? this.gridFeeds : [this.activeFeed];
     let added = false;
@@ -431,9 +432,10 @@ export class LiveWebcamsPanel extends Panel {
         added = true;
       }
     }
-    if (!added) return;
+    if (!added) return false;
     this.isIdle = false;
     this.render();
+    return true;
   }
 
   /** Stop and forget every active tile without rebuilding the shell. */
@@ -723,8 +725,8 @@ export class LiveWebcamsPanel extends Panel {
         const wasVisible = this.isVisible;
         this.isVisible = entries.some(e => e.isIntersecting);
         if (this.isVisible && !wasVisible && !this.isIdle) {
-          this.render();
-          if (this.alwaysOn) this.startAlwaysOnPlayback();
+          // startAlwaysOnPlayback renders the wall when always-on; otherwise render the previews once.
+          if (!this.startAlwaysOnPlayback()) this.render();
         } else if (!this.isVisible && wasVisible) {
           this.teardownPlayback('scroll-away');
         }
