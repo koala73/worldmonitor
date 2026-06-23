@@ -39,7 +39,6 @@ const TIER1_NO_MCP_USER_ID = 'user_pro_legacy';
 
 const CONVEX_SITE = 'https://fake.convex.site';
 const CONVEX_SECRET = 'fake-convex-shared-secret';
-const USER_ID_SIGNING_SECRET = 'fake-convex-user-id-signing-secret';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_ENV = { ...process.env };
@@ -133,7 +132,6 @@ beforeEach(() => {
   process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
   process.env.CONVEX_SITE_URL = CONVEX_SITE;
   process.env.CONVEX_SERVER_SHARED_SECRET = CONVEX_SECRET;
-  process.env.CONVEX_INTERNAL_ENTITLEMENTS_USER_ID_SIGNING_SECRET = USER_ID_SIGNING_SECRET;
   // Disable Upstash so rate-limit / cache paths are no-ops.
   delete process.env.UPSTASH_REDIS_REST_URL;
   delete process.env.UPSTASH_REDIS_REST_TOKEN;

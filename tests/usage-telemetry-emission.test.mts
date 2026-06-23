@@ -298,7 +298,6 @@ describe('gateway telemetry payload — bearer identity propagation', () => {
     process.env.AXIOM_API_TOKEN = 'test-token';
     process.env.CONVEX_SITE_URL = 'https://convex.test';
     process.env.CONVEX_SERVER_SHARED_SECRET = 'test-shared-secret';
-    process.env.CONVEX_INTERNAL_ENTITLEMENTS_USER_ID_SIGNING_SECRET = 'test-user-id-signing-secret';
 
     const fakeEntitlements = {
       planKey: 'api_starter',
@@ -341,7 +340,6 @@ describe('gateway telemetry payload — bearer identity propagation', () => {
     spy.restore();
     delete process.env.CONVEX_SITE_URL;
     delete process.env.CONVEX_SERVER_SHARED_SECRET;
-    delete process.env.CONVEX_INTERNAL_ENTITLEMENTS_USER_ID_SIGNING_SECRET;
 
     assert.equal(spy.events.length, 1);
     const ev = spy.events[0]!;

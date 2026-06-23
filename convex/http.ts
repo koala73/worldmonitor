@@ -10,9 +10,6 @@ const TRUSTED = [
   "http://localhost:3000",
 ];
 
-const INTERNAL_ENTITLEMENTS_USER_ID_SIGNATURE_HEADER = "x-convex-user-id-signature";
-const INTERNAL_ENTITLEMENTS_USER_ID_SIGNATURE_PREFIX = "internal-entitlements:";
-
 function matchOrigin(origin: string, pattern: string): boolean {
   if (pattern.startsWith("*.")) {
     return origin.endsWith(pattern.slice(1));
@@ -53,35 +50,6 @@ async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
   let diff = 0;
   for (let i = 0; i < aArr.length; i++) diff |= aArr[i]! ^ bArr[i]!;
   return diff === 0;
-}
-
-function bytesToHex(bytes: ArrayBuffer): string {
-  return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-async function hmacSha256Hex(secret: string, payload: string): Promise<string> {
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(payload));
-  return bytesToHex(sig);
-}
-
-async function verifyInternalEntitlementsUserIdSignature(
-  userId: string,
-  providedSignature: string,
-  signingSecret: string,
-): Promise<boolean> {
-  const expectedSignature = await hmacSha256Hex(
-    signingSecret,
-    `${INTERNAL_ENTITLEMENTS_USER_ID_SIGNATURE_PREFIX}${userId}`,
-  );
-  return timingSafeEqualStrings(providedSignature, expectedSignature);
 }
 
 /**
@@ -147,18 +115,6 @@ http.route({
     ) {
       return new Response(JSON.stringify({ error: "MISSING_USER_ID" }), {
         status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    const providedUserIdSignature = request.headers.get(INTERNAL_ENTITLEMENTS_USER_ID_SIGNATURE_HEADER) ?? "";
-    const userIdSigningSecret = process.env.CONVEX_INTERNAL_ENTITLEMENTS_USER_ID_SIGNING_SECRET ?? "";
-    if (
-      !userIdSigningSecret ||
-      !(await verifyInternalEntitlementsUserIdSignature(body.userId, providedUserIdSignature, userIdSigningSecret))
-    ) {
-      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
-        status: 401,
         headers: { "Content-Type": "application/json" },
       });
     }
