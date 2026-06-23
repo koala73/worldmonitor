@@ -212,7 +212,9 @@
       [data-variant="happy"].wm-pro-banner-reserved #app::before{background:#fff;border-bottom-color:#DDD9CF}
       [data-variant="happy"][data-theme="dark"].wm-pro-banner-reserved #app::before{background:#222E3E;border-bottom-color:#344050}
       html:not(.js),html:not(.js) body{height:auto;min-height:100%;overflow:auto}
+      html:not(.js) body > .app-heading{display:none}
       html:not(.js) #app .skeleton-shell{display:none}
+      .app-heading{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
 
       /* ---------- skeleton shell (dark default) ---------- */
       .skeleton-shell{display:flex;flex-direction:column;height:100vh;background:#0a0a0a;font-family:'SF Mono','Monaco','Cascadia Code','Fira Code','DejaVu Sans Mono','Liberation Mono',monospace;overflow:hidden}
@@ -375,6 +377,7 @@
     <!-- Variant/locale fonts are narrowed and loaded after the dashboard paints. -->
   </head>
   <body>
+    <h1 class="app-heading">World Monitor — Real-Time Global Intelligence Dashboard</h1>
     <!--
       Canonical English crawler content. The SPA is multilingual (21 locales) but
       this prerender block is the indexable surface — language-specific content
@@ -429,7 +432,7 @@
       <div class="skeleton-shell" aria-busy="true" aria-label="World Monitor dashboard loading">
         <div class="skeleton-header">
           <div class="skeleton-header-left">
-            <h1 class="skeleton-brand"><span class="skeleton-brand-mark" aria-hidden="true">W</span><span>World Monitor</span></h1>
+            <div class="skeleton-brand"><span class="skeleton-brand-mark" aria-hidden="true">W</span><span>World Monitor</span></div>
             <span class="skeleton-kicker">Dashboard shell loading</span>
             <span class="skeleton-dot" aria-hidden="true"></span>
           </div>
@@ -451,7 +454,7 @@
                 <p class="skeleton-map-eyebrow">Preparing dashboard</p>
                 <h2 class="skeleton-map-title skeleton-lcp-copy" data-shell-lcp>Dashboard is loading</h2>
                 <p class="skeleton-map-copy">Map layers, panels, alerts, and analysis will appear here as soon as the app finishes loading.</p>
-                <div class="skeleton-map-badges" aria-label="Dashboard sections preparing">
+                <div class="skeleton-map-badges">
                   <span class="skeleton-chip">Map</span>
                   <span class="skeleton-chip">Panels</span>
                   <span class="skeleton-chip">Alerts</span>

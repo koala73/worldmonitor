@@ -138,6 +138,8 @@ test.describe('pre-hydration dashboard shell', () => {
       const preHydration = await page.evaluate(() => {
         const shell = document.querySelector<HTMLElement>('.skeleton-shell');
         const candidate = document.querySelector<HTMLElement>('.skeleton-lcp-copy');
+        const appHeading = document.querySelector<HTMLElement>('body > h1.app-heading');
+        const badgeGroup = document.querySelector<HTMLElement>('.skeleton-map-badges');
         if (!shell || !candidate) {
           throw new Error('missing pre-hydration shell content');
         }
@@ -152,6 +154,10 @@ test.describe('pre-hydration dashboard shell', () => {
         return {
           ariaBusy: shell.getAttribute('aria-busy'),
           ariaHidden: shell.getAttribute('aria-hidden'),
+          appHeadingAriaHidden: appHeading?.getAttribute('aria-hidden') ?? null,
+          appHeadingText: appHeading?.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+          appHeadingTag: appHeading?.tagName ?? '',
+          badgeAriaLabel: badgeGroup?.getAttribute('aria-label') ?? null,
           candidateRect: {
             height: rect.height,
             width: rect.width,
@@ -173,6 +179,10 @@ test.describe('pre-hydration dashboard shell', () => {
       expect(preHydration.hydrated).toBe(false);
       expect(preHydration.ariaHidden).toBeNull();
       expect(preHydration.ariaBusy).toBe('true');
+      expect(preHydration.appHeadingTag).toBe('H1');
+      expect(preHydration.appHeadingAriaHidden).toBeNull();
+      expect(preHydration.appHeadingText).toContain('World Monitor');
+      expect(preHydration.badgeAriaLabel).toBeNull();
       expect(preHydration.focusableCount).toBe(0);
       expect(preHydration.shellText).toContain('World Monitor');
       expect(preHydration.shellText).toContain(SHELL_LCP_TEXT);
@@ -196,6 +206,7 @@ test.describe('pre-hydration dashboard shell', () => {
 
       await expect(page.locator('.header')).toBeVisible({ timeout: 30000 });
       await expect(page.locator('.skeleton-shell')).toHaveCount(0);
+      await expect(page.locator('body > h1.app-heading')).toContainText('World Monitor');
       await expect.poll(async () => page.evaluate(() => (
         document.documentElement.classList.contains('wm-layout-hydrated')
       ))).toBe(true);
@@ -296,6 +307,7 @@ test.describe('dashboard shell without JavaScript', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     await expect(page.locator('.skeleton-shell')).toBeHidden();
+    await expect(page.locator('body > h1.app-heading')).toBeHidden();
     await expect(page.locator('#seo-prerender')).toBeVisible();
     await expect(page.locator('body')).toContainText('World Monitor Pro');
 
