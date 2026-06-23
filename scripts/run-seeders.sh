@@ -63,8 +63,12 @@ fi
 # SEED_TIMEOUT=<seconds>, or SEED_TIMEOUT=0 to disable.
 SEED_TIMEOUT="${SEED_TIMEOUT:-1800}"
 
+using_timeout() {
+  command -v timeout >/dev/null 2>&1 && [ "$SEED_TIMEOUT" -gt 0 ] 2>/dev/null
+}
+
 run_seed() {
-  if command -v timeout >/dev/null 2>&1 && [ "$SEED_TIMEOUT" -gt 0 ] 2>/dev/null; then
+  if using_timeout; then
     # -k: if it ignores SIGTERM, SIGKILL it 30s later so the run can move on.
     timeout -k 30 "$SEED_TIMEOUT" node "$1" 2>&1
   else
@@ -83,7 +87,7 @@ for f in "$SCRIPT_DIR"/seed-*.mjs; do
 
   # timeout(1) exits 124 when it had to terminate the child, or 128+signal
   # (137 = SIGKILL after the -k grace) when SIGTERM was ignored.
-  if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+  if using_timeout && { [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; }; then
     printf "TIMEOUT (killed after %ss)\n" "$SEED_TIMEOUT"
     timedout=$((timedout + 1))
   elif echo "$last" | grep -qi "skip\|not set\|missing.*key\|not found"; then
