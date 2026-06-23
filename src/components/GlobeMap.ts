@@ -227,6 +227,7 @@ interface ConflictZoneMarker extends BaseMarker {
   parties: string[];
   casualties?: string;
   center: [number, number];
+  startDate?: string;
   peaceAgreements?: string[];
   totalFatalities?: string;
 }
@@ -1626,28 +1627,19 @@ export class GlobeMap {
         details.addEventListener('toggle', async () => {
           if (!details.open || loaded) return;
           loaded = true;
-          if (this.tooltipHideTimer) {
-            clearTimeout(this.tooltipHideTimer);
-            this.tooltipHideTimer = null;
-          }
+          // Auto-dismiss stays governed by hover: mouseenter already clears the
+          // hide timer while the cursor is over the tooltip, so don't permanently
+          // cancel it here — doing so left the tooltip stuck open forever.
           try {
-            const { fetchUcdpEvents } = await import('@/services/conflict');
+            const { fetchUcdpEvents, deriveConflictHistory } = await import('@/services/conflict');
             const resp = await fetchUcdpEvents();
             if (!el.isConnected || !content.isConnected) return;
-            const [cLon, cLat] = d.center;
-            const nearby = resp.data.filter(e => {
-              const dLat = e.latitude - cLat;
-              const dLon = e.longitude - cLon;
-              return Math.sqrt(dLat * dLat + dLon * dLon) < 3;
-            });
-            const totalDeaths = nearby.reduce((s, e) => s + (e.deaths_best ?? 0), 0);
-            const earliest = nearby.map(e => e.date_start).filter(Boolean).sort()[0];
-            const conflictSince = earliest ? earliest.substring(0, 4) : null;
+            const { conflictSince, recordedFatalities } = deriveConflictHistory(d, resp.data);
             const rows = [
               conflictSince ? `<div style="display:flex;justify-content:space-between;gap:8px;font-size:10px;margin:2px 0;"><span style="opacity:.5;">CONFLICT SINCE</span><span>${esc(conflictSince)}</span></div>` : '',
               d.peaceAgreements?.length ? `<div style="font-size:10px;margin:2px 0;"><span style="opacity:.5;display:block;margin-bottom:1px;">PEACE AGREEMENTS</span>${d.peaceAgreements.map(a => `<div style="opacity:.7;">· ${esc(a)}</div>`).join('')}</div>` : '',
-              totalDeaths > 0
-                ? `<div style="display:flex;justify-content:space-between;gap:8px;font-size:10px;margin:2px 0;"><span style="opacity:.5;">RECORDED FATALITIES</span><span>~${totalDeaths.toLocaleString()}</span></div>`
+              recordedFatalities > 0
+                ? `<div style="display:flex;justify-content:space-between;gap:8px;font-size:10px;margin:2px 0;"><span style="opacity:.5;">RECORDED FATALITIES</span><span>~${recordedFatalities.toLocaleString()}</span></div>`
                 : d.totalFatalities ? `<div style="display:flex;justify-content:space-between;gap:8px;font-size:10px;margin:2px 0;"><span style="opacity:.5;">TOTAL FATALITIES</span><span>${esc(d.totalFatalities)}</span></div>` : '',
             ].filter(Boolean).join('');
             setTrustedHtml(content, trustedHtml(rows || '<span style="opacity:.5;font-size:10px;">No UCDP data found.</span>', 'legacy direct innerHTML migration'));
@@ -2284,6 +2276,7 @@ export class GlobeMap {
       parties: z.parties ?? [],
       casualties: z.casualties,
       center: z.center,
+      startDate: z.startDate,
       peaceAgreements: z.peaceAgreements,
       totalFatalities: z.totalFatalities,
     }));

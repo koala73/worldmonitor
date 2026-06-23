@@ -122,3 +122,40 @@ describe('frontend UCDP classification date guard', () => {
     }
   });
 });
+
+async function loadDeriveConflictHistory() {
+  const mod = (await loadUcdpDeriver()) as unknown as {
+    deriveConflictHistory: (
+      zone: { center: [number, number]; startDate?: string },
+      events: Array<{ latitude: number; longitude: number; deaths_best?: number }>,
+    ) => { conflictSince: string | null; recordedFatalities: number };
+  };
+  return mod.deriveConflictHistory;
+}
+
+describe('deriveConflictHistory', () => {
+  it('takes CONFLICT SINCE from the static startDate year, not the UCDP trailing window', async () => {
+    const deriveConflictHistory = await loadDeriveConflictHistory();
+    // UCDP feed is only a ~1yr trailing slice, so a 2026 event must NOT become "since".
+    const events = [{ latitude: 48.5, longitude: 31, deaths_best: 100, date_start: '2026-01-01' }];
+    const result = deriveConflictHistory({ center: [31, 48.5], startDate: 'Feb 24, 2022' }, events);
+    assert.equal(result.conflictSince, '2022');
+    assert.equal(result.recordedFatalities, 100);
+  });
+
+  it('returns null conflictSince when the zone has no startDate', async () => {
+    const deriveConflictHistory = await loadDeriveConflictHistory();
+    const result = deriveConflictHistory({ center: [31, 48.5] }, []);
+    assert.equal(result.conflictSince, null);
+    assert.equal(result.recordedFatalities, 0);
+  });
+
+  it('applies a cos(latitude) correction so the radius is isotropic in real distance', async () => {
+    const deriveConflictHistory = await loadDeriveConflictHistory();
+    // At 60°N, cos(lat)=0.5: an event 4° east is ~2° in real distance (inside the
+    // 3° radius) and MUST be counted. A raw degree filter would wrongly exclude it.
+    const events = [{ latitude: 60, longitude: 4, deaths_best: 50, date_start: '2024-01-01' }];
+    const result = deriveConflictHistory({ center: [0, 60], startDate: 'Jan 1, 2020' }, events);
+    assert.equal(result.recordedFatalities, 50);
+  });
+});

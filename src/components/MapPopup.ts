@@ -1106,24 +1106,12 @@ export class MapPopup {
       loaded = true;
 
       try {
-        const { fetchUcdpEvents } = await import('@/services/conflict');
+        const { fetchUcdpEvents, deriveConflictHistory } = await import('@/services/conflict');
         const resp = await fetchUcdpEvents();
 
         if (!this.popup || !content.isConnected) return;
 
-        const [cLon, cLat] = conflict.center;
-        const nearby = resp.data.filter(e => {
-          const dLat = e.latitude - cLat;
-          const dLon = e.longitude - cLon;
-          return Math.sqrt(dLat * dLat + dLon * dLon) < 3;
-        });
-
-        const totalDeaths = nearby.reduce((s, e) => s + (e.deaths_best ?? 0), 0);
-        const earliest = nearby
-          .map(e => e.date_start)
-          .filter(Boolean)
-          .sort((a, b) => a.localeCompare(b))[0];
-        const conflictSince = earliest ? earliest.substring(0, 4) : null;
+        const { conflictSince, recordedFatalities } = deriveConflictHistory(conflict, resp.data);
 
         const rows = [
           conflictSince
@@ -1132,8 +1120,8 @@ export class MapPopup {
           conflict.peaceAgreements?.length
             ? `<div class="popup-stat"><span class="stat-label">PEACE AGREEMENTS</span><span class="stat-value">${conflict.peaceAgreements.map(escapeHtml).join('<br>')}</span></div>`
             : '',
-          totalDeaths > 0
-            ? `<div class="popup-stat"><span class="stat-label">RECORDED FATALITIES</span><span class="stat-value">~${totalDeaths.toLocaleString()}</span></div>`
+          recordedFatalities > 0
+            ? `<div class="popup-stat"><span class="stat-label">RECORDED FATALITIES</span><span class="stat-value">~${recordedFatalities.toLocaleString()}</span></div>`
             : conflict.totalFatalities
             ? `<div class="popup-stat"><span class="stat-label">TOTAL FATALITIES</span><span class="stat-value">${escapeHtml(conflict.totalFatalities)}</span></div>`
             : '',

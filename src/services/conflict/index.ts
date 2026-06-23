@@ -402,6 +402,34 @@ export function deduplicateAgainstAcled(
   });
 }
 
+const CONFLICT_HISTORY_RADIUS_DEG = 3;
+
+/**
+ * Derive the figures shown in a conflict zone's "Historical Profile" popup.
+ *
+ * `conflictSince` is taken from the zone's static `startDate` — the UCDP feed is
+ * only a ~1-year trailing window (scripts/seed-ucdp-events.mjs), so its earliest
+ * event is NOT the conflict's inception and must not be used for "CONFLICT SINCE".
+ * `recordedFatalities` sums `deaths_best` for events within ~3° of the zone
+ * centre, applying a cos(latitude) correction so the radius is roughly isotropic
+ * in real distance (a raw degree radius is ~24% too narrow E–W at 40°N).
+ */
+export function deriveConflictHistory(
+  zone: { center: [number, number]; startDate?: string },
+  events: UcdpGeoEvent[],
+): { conflictSince: string | null; recordedFatalities: number } {
+  const [cLon, cLat] = zone.center;
+  const cosLat = Math.cos((cLat * Math.PI) / 180);
+  const recordedFatalities = events.reduce((sum, e) => {
+    const dLat = e.latitude - cLat;
+    const dLon = (e.longitude - cLon) * cosLat;
+    if (Math.sqrt(dLat * dLat + dLon * dLon) >= CONFLICT_HISTORY_RADIUS_DEG) return sum;
+    return sum + (e.deaths_best ?? 0);
+  }, 0);
+  const conflictSince = zone.startDate?.match(/\b(\d{4})\b/)?.[1] ?? null;
+  return { conflictSince, recordedFatalities };
+}
+
 export function groupByCountry(events: UcdpGeoEvent[]): Map<string, UcdpGeoEvent[]> {
   const map = new Map<string, UcdpGeoEvent[]>();
   for (const e of events) {
