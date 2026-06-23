@@ -117,9 +117,9 @@ export class LiveWebcamsPanel extends Panel {
   private alwaysOn = getLiveStreamsAlwaysOn();
   private unsubscribeStreamSettings: (() => void) | null = null;
   private resumeFeedAfterIdleIds: string[] = [];
-  // Play-all cascade: start the whole webcam wall, but never revive a panel the user disabled.
+  // Play-all cascade: start the whole webcam wall, but never start a disabled or collapsed panel.
   private readonly boundPlayAllStarter = () => {
-    if (!this.element.classList.contains('hidden')) this.playAllFeeds();
+    if (this.canHostLiveMedia()) this.playAllFeeds();
   };
 
   // UI

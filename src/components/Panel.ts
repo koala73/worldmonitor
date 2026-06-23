@@ -738,6 +738,17 @@ export class Panel {
   }
 
   /**
+   * True when this panel can host live media right now: attached, enabled (not hidden via the
+   * disable path), and expanded (not collapsed). The play-all cascade gates on this so a
+   * collapsed or disabled panel never creates/queues media work inside a hidden content area.
+   */
+  public canHostLiveMedia(): boolean {
+    return this.element.isConnected
+      && !this.element.classList.contains('hidden')
+      && !this._collapsed;
+  }
+
+  /**
    * Fire `callback` once when this panel's element scrolls within
    * `marginPx` of the viewport. Uses IntersectionObserver where
    * available; falls back to an idle-callback tick when not (Node/SSR

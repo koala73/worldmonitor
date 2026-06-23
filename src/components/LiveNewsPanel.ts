@@ -412,9 +412,9 @@ export class LiveNewsPanel extends Panel {
   private deferredInit = false;
   private lazyObserver: IntersectionObserver | null = null;
   private idleCallbackId: number | ReturnType<typeof setTimeout> | null = null;
-  // Play-all cascade: start this panel's channel, but never revive a panel the user disabled.
+  // Play-all cascade: start this panel's channel, but never start a disabled or collapsed panel.
   private readonly boundPlayAllStarter = () => {
-    if (!this.element.classList.contains('hidden')) this.triggerInit();
+    if (this.canHostLiveMedia()) this.triggerInit();
   };
 
   constructor() {

@@ -103,6 +103,35 @@ test.describe('live media intent gating', () => {
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
   });
 
+  test('the play-all cascade does not start media in a collapsed live panel', async ({ page }) => {
+    await installCleanLiveMediaPrefs(page);
+
+    await page.goto('/dashboard?liveMediaCollapsedCascade=1', { waitUntil: 'domcontentloaded' });
+    const liveNews = page.locator('.panel[data-panel="live-news"]');
+    const webcams = page.locator('.panel[data-panel="live-webcams"]');
+    await expect(liveNews).toBeVisible({ timeout: 60_000 });
+
+    // Collapse Live News (content hidden, but the panel is NOT disabled).
+    await liveNews.locator('.panel-collapse-btn').click();
+    await expect(liveNews).toHaveClass(/panel-collapsed/);
+
+    // Fire the cascade from the webcams panel.
+    await webcams.scrollIntoViewIfNeeded();
+    await expect(webcams.locator('.webcam-preview-tile').first()).toBeVisible({ timeout: 60_000 });
+    await webcams.locator('.webcam-preview-tile').first().getByRole('button', { name: /^play$/i }).click();
+
+    // Webcams play, but the collapsed Live News must NOT create a hidden transport.
+    await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBeGreaterThanOrEqual(1);
+    await page.waitForTimeout(2500);
+    expect(await liveNewsTransportCount(page)).toBe(0);
+
+    // Expanding then explicitly playing still works.
+    await liveNews.locator('.panel-collapse-btn').click();
+    await expect(liveNews).not.toHaveClass(/panel-collapsed/);
+    await liveNews.getByRole('button', { name: /play live feed/i }).click();
+    await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
+  });
+
   test('renders stored single webcam mode as a preview before play intent', async ({ page }) => {
     await installCleanLiveMediaPrefs(page, {
       regionFilter: 'all',
