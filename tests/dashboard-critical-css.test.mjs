@@ -12,6 +12,15 @@ function src(relPath) {
   return readFileSync(resolve(repoRoot, relPath), 'utf8');
 }
 
+function builtSrc(relPath) {
+  const absPath = resolve(repoRoot, relPath);
+  assert.ok(
+    existsSync(absPath),
+    `${relPath} must exist before running built-output CSS assertions. Run VITE_VARIANT=full vite build first.`,
+  );
+  return readFileSync(absPath, 'utf8');
+}
+
 function toRepoPath(absPath) {
   return relative(repoRoot, absPath).replaceAll('\\', '/');
 }
@@ -158,9 +167,10 @@ function renderBlockingStylesheetHrefs(html) {
     const attrs = linkAttributes(match[0]);
     const rels = (attrs.get('rel') ?? '').toLowerCase().split(/\s+/);
     const href = attrs.get('href');
-    const media = (attrs.get('media') ?? 'all').trim().toLowerCase();
+    const rawMedia = attrs.get('media');
+    const media = rawMedia === undefined ? 'all' : rawMedia.trim().toLowerCase();
     if (!href?.endsWith('.css') || !rels.includes('stylesheet')) continue;
-    if (media === '' || media === 'all' || media === 'screen') hrefs.push(href);
+    if (media === 'all' || media === 'screen') hrefs.push(href);
   }
   return hrefs;
 }
@@ -181,10 +191,12 @@ describe('dashboard critical CSS graph', () => {
     assert.deepEqual(
       renderBlockingStylesheetHrefs(`
         <link rel="stylesheet" href="/assets/main.css">
+        <link rel="stylesheet" media="screen" href="/assets/screen.css">
         <link rel="stylesheet" media="print" href="/assets/deferred.css">
+        <link rel="stylesheet" media="" href="/assets/empty-media.css">
         <noscript><link rel="stylesheet" href="/assets/nojs.css"></noscript>
       `),
-      ['/assets/main.css'],
+      ['/assets/main.css', '/assets/screen.css'],
     );
   });
 
@@ -278,8 +290,8 @@ describe('dashboard critical CSS graph', () => {
     );
   });
 
-  it('does not link or merge the settings-only stylesheet into built dashboard.html', { skip: !existsSync(resolve(repoRoot, 'dist/dashboard.html')) }, () => {
-    const dashboardHtml = src('dist/dashboard.html');
+  it('does not link or merge the settings-only stylesheet into built dashboard.html', () => {
+    const dashboardHtml = builtSrc('dist/dashboard.html');
     const hrefs = stylesheetHrefs(dashboardHtml);
     const settingsStylesheets = hrefs.filter((href) =>
       /\/assets\/settings(?:-(?:persistence|window))?-[A-Za-z0-9_-]+\.css$/.test(href)
@@ -299,7 +311,7 @@ describe('dashboard critical CSS graph', () => {
       '.settings-titlebar',
     ];
     const dashboardCss = hrefs
-      .map((href) => src(`dist/${href.replace(/^\//, '')}`))
+      .map((href) => builtSrc(`dist/${href.replace(/^\//, '')}`))
       .join('\n');
     for (const selector of standaloneSettingsSelectors) {
       assert.equal(
@@ -315,13 +327,13 @@ describe('dashboard critical CSS graph', () => {
     );
 
     if (existsSync(resolve(repoRoot, 'dist/settings.html'))) {
-      const settingsHrefs = stylesheetHrefs(src('dist/settings.html'));
+      const settingsHrefs = stylesheetHrefs(builtSrc('dist/settings.html'));
       assert.ok(
         settingsHrefs.some((href) => /\/assets\/settings(?:-(?:persistence|window))?-[A-Za-z0-9_-]+\.css$/.test(href)),
         'Built settings.html should still link the settings-only stylesheet for the standalone settings window.',
       );
       const settingsCss = settingsHrefs
-        .map((href) => src(`dist/${href.replace(/^\//, '')}`))
+        .map((href) => builtSrc(`dist/${href.replace(/^\//, '')}`))
         .join('\n');
       assert.equal(
         standaloneSettingsSelectors.every((selector) => settingsCss.includes(selector)),
@@ -331,8 +343,8 @@ describe('dashboard critical CSS graph', () => {
     }
   });
 
-  it('keeps large dashboard CSS off the render-blocking stylesheet path', { skip: !existsSync(resolve(repoRoot, 'dist/dashboard.html')) }, () => {
-    const dashboardHtml = src('dist/dashboard.html');
+  it('keeps large dashboard CSS off the render-blocking stylesheet path', () => {
+    const dashboardHtml = builtSrc('dist/dashboard.html');
     const blockingHrefs = renderBlockingStylesheetHrefs(dashboardHtml);
 
     assert.deepEqual(
