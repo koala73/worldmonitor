@@ -25,7 +25,10 @@ function ensureDatacenterIndex(): void {
     .then(({ AI_DATA_CENTERS }) => {
       datacenterIndex = AI_DATA_CENTERS.map(dc => ({ id: dc.id, name: dc.name, lat: dc.lat, lon: dc.lon }));
     })
-    .catch(() => { datacenterIndex = []; })
+    // On failure leave datacenterIndex null (NOT []) so the next datacenter query
+    // retries the load — a transient chunk-load error must not permanently
+    // suppress datacenter results for the session. (#4404 review / cf #4397)
+    .catch(() => { /* keep null → retryable */ })
     .finally(() => { datacenterIndexLoading = false; });
 }
 
