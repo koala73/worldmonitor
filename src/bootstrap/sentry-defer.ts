@@ -757,18 +757,37 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // (WORLDMONITOR-NJ).
       if (/Cannot read properties of undefined \(reading 'fetchToken'\)/.test(msg)
           && frames.some(f => /tryToReauthenticate/.test(f.function ?? ''))) return null;
+      // Dynamic-import chunk-load failures whose browser-emitted message names one of
+      // our own hashed `/assets/*.js` chunks. These FETCH-failure phrasings (Chrome
+      // `Failed to fetch dynamically imported module: <url>`, Firefox `error loading
+      // dynamically imported module: <url>`) are deploy-skew (a stale hashed filename
+      // 404s after a deploy) or a transient network blip — never a first-party logic
+      // bug: our compiled code can't synthesize the string, the URL is always one of
+      // our chunks, and the load itself failed (a chunk that fetches then throws during
+      // evaluation rejects with the underlying error, not this wrapper). Unlike the
+      // zero-frame variant below, the `import()` call site here is first-party
+      // (MapContainer.initDeck, lazy panel/video loaders), so the rejection rides a
+      // first-party frame and the `!hasFirstParty` gate misses it (WORLDMONITOR-TN: Map
+      // chunk, WORLDMONITOR-S1: hls chunk). Match the asset URL in the message instead
+      // of the stack.
+      if (/(?:Failed to fetch|error loading) dynamically imported module/i.test(msg)
+          && /\/assets\/[A-Za-z0-9_-]+\.js/.test(msg)) return null;
       // Stale-chunk-after-deploy: modulepreload / dynamic import failures arrive with no
       // stack trace because the browser fires them as synthetic TypeErrors at fetch time,
       // not at any first-party call site. The chunk-reload guard auto-reloads the page,
       // so the user is unaffected — but the Sentry event is still captured. Drop these
       // even when frames.length === 0 (WORLDMONITOR-Q / WORLDMONITOR-15). The phrases
       // are runtime-emitted only — our shipped code cannot synthesize them. Browser
-      // variants: Chrome/Edge `Failed to fetch dynamically imported module: <url>`,
-      // Safari `Importing a module script failed.`, Firefox `error loading dynamically
-      // imported module`.
+      // variants: Chrome/Edge `Failed to fetch dynamically imported module` (no URL /
+      // modulepreload), Safari `Importing a module script failed.`, Firefox `error
+      // loading dynamically imported module`. `Importing binding name '<x>' is not
+      // found.` (Safari) is the module-LINK counterpart: a chunk imports a named export
+      // a sibling chunk no longer provides after a deploy — a built bundle always links
+      // consistently, so at runtime this is version skew, never a code defect, and it
+      // throws at link time with zero first-party frames (WORLDMONITOR-TM).
       if (
         !hasFirstParty
-        && /(?:Failed to fetch|error loading) dynamically imported module|Importing a module script failed/i.test(msg)
+        && /(?:Failed to fetch|error loading) dynamically imported module|Importing a module script failed|Importing binding name '[^']*' is not found/i.test(msg)
       ) return null;
       // Zero-frame async-rejection patterns: AbortSignal.timeout() rejections
       // and DOMException(NotSupportedError) bubble up via

@@ -236,27 +236,61 @@ describe('empty-stack network/timeout errors are NOT suppressed', () => {
 // (WORLDMONITOR-Q / WORLDMONITOR-15).
 
 describe('dynamic-module-import failures (stale chunk after deploy)', () => {
-  const dynamicImportErrors = [
+  // URL-bearing FETCH-failure phrasings whose message names one of our own
+  // hashed `/assets/*.js` chunks are deploy-skew / transient-network — never a
+  // first-party logic bug. The `import()` call site is ALWAYS first-party
+  // (MapContainer.initDeck, lazy panel/video loaders), so these ride a
+  // first-party frame; matching the asset URL suppresses them regardless of
+  // stack (WORLDMONITOR-TN: Map chunk, WORLDMONITOR-S1: hls chunk — both leaked
+  // because the old `!hasFirstParty`-only gate let first-party-framed ones
+  // through).
+  const assetUrlImportErrors = [
     'Failed to fetch dynamically imported module: https://worldmonitor.app/assets/panels-abc.js',
     'Failed to fetch dynamically imported module: https://www.worldmonitor.app/assets/index-DSkSc57y.js',
+    'error loading dynamically imported module: https://www.worldmonitor.app/assets/Map-eKJvyIxN.js',
+    'error loading dynamically imported module: https://www.worldmonitor.app/assets/hls-jw_vZdHi.js',
+  ];
+
+  for (const msg of assetUrlImportErrors) {
+    for (const [label, frames] of [
+      ['empty stack', []],
+      ['confirmed third-party stack', [extensionFrame()]],
+      ['first-party stack', [firstPartyFrame()]],
+    ]) {
+      it(`suppresses "${msg.slice(0, 55)}..." with ${label}`, () => {
+        const event = makeEvent(msg, 'TypeError', frames);
+        assert.equal(beforeSend(event), null, `asset-URL chunk-load failure should be suppressed regardless of stack (${label})`);
+      });
+    }
+  }
+
+  // No-URL phrasings (Safari `Importing a module script failed.`, bare Firefox
+  // `error loading dynamically imported module`, and the module-LINK export
+  // mismatch `Importing binding name '<x>' is not found.` — WORLDMONITOR-TM)
+  // throw at fetch/link time with no first-party call site, so they're gated on
+  // `!hasFirstParty`: suppressed with an empty or third-party stack, preserved
+  // when a genuine first-party frame is present.
+  const noUrlImportErrors = [
     'Importing a module script failed.',
     'TypeError: Importing a module script failed.',
     'error loading dynamically imported module',
+    "Importing binding name 'f' is not found.",
   ];
 
-  for (const msg of dynamicImportErrors) {
-    it(`suppresses "${msg.slice(0, 60)}..." with empty stack`, () => {
-      const event = makeEvent(msg, 'TypeError', []);
-      assert.equal(beforeSend(event), null, `"${msg}" with empty stack should be suppressed (chunk-reload guard handles it)`);
+  for (const msg of noUrlImportErrors) {
+    const type = msg.startsWith('Importing binding name') ? 'SyntaxError' : 'TypeError';
+    it(`suppresses "${msg.slice(0, 55)}..." with empty stack`, () => {
+      const event = makeEvent(msg, type, []);
+      assert.equal(beforeSend(event), null, `"${msg}" with empty stack should be suppressed (chunk-reload guard / deploy-skew)`);
     });
 
-    it(`suppresses "${msg.slice(0, 60)}..." with confirmed third-party stack`, () => {
-      const event = makeEvent(msg, 'TypeError', [extensionFrame()]);
+    it(`suppresses "${msg.slice(0, 55)}..." with confirmed third-party stack`, () => {
+      const event = makeEvent(msg, type, [extensionFrame()]);
       assert.equal(beforeSend(event), null);
     });
 
-    it(`lets through "${msg.slice(0, 60)}..." with first-party stack`, () => {
-      const event = makeEvent(msg, 'TypeError', [firstPartyFrame()]);
+    it(`lets through "${msg.slice(0, 55)}..." with first-party stack`, () => {
+      const event = makeEvent(msg, type, [firstPartyFrame()]);
       assert.ok(beforeSend(event) !== null, `"${msg}" with first-party stack should NOT be suppressed`);
     });
   }
