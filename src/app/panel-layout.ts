@@ -1469,6 +1469,14 @@ export class PanelLayoutManager implements AppModule {
     for (const key of Object.keys(CANONICAL_FEEDS)) {
       if (this.ctx.newsPanels[key]) continue;
       if (!Array.isArray((CANONICAL_FEEDS as Record<string, unknown>)[key])) continue;
+      // 'live-news' is the dedicated LiveNewsPanel (24/7 video) key, registered
+      // lazily below — NOT a generic RSS feed panel. CANONICAL_FEEDS['live-news']
+      // exists only to feed the energy variant's headlines; if we let it spawn a
+      // NewsPanel here it registers first and lazyPanel()'s dedup guard then
+      // blocks the real video panel (regression #4382 → "LIVE NEWS / No items in
+      // the last 7 days" on the live dashboard). Skip it so the video panel owns
+      // the key on every variant (happy has no 'live-news' panel at all).
+      if (key === 'live-news') continue;
       const panelKey = COLLIDING_NEWS_PANEL_KEYS.has(key) && !this.ctx.newsPanels[key] ? `${key}-news` : key;
       if (this.ctx.panels[panelKey]) continue;
       // Gate on panelKey, NOT key. When `key` collided with a non-news data
