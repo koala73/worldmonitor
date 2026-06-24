@@ -366,11 +366,16 @@ describe('dashboard critical CSS graph', () => {
     }
     assert.ok(deferredHrefs.length > 0, 'Built dashboard.html should still request app CSS on a deferred stylesheet path.');
 
+    const noscriptLinkTags = [...dashboardHtml.matchAll(/<noscript>\s*(<link\b[^>]*>)\s*<\/noscript>/gi)].map((m) => m[1]);
     for (const href of deferredHrefs) {
-      assert.match(
-        dashboardHtml,
-        new RegExp(`<noscript><link\\b[^>]*rel=["']stylesheet["'][^>]*href=["']${href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*></noscript>`),
-        `Deferred dashboard stylesheet ${href} must keep a no-JS stylesheet fallback.`,
+      const hasFallback = noscriptLinkTags.some((tag) => {
+        const attrs = linkAttributes(tag);
+        const rels = (attrs.get('rel') ?? '').toLowerCase().split(/\s+/);
+        return attrs.get('href') === href && rels.includes('stylesheet');
+      });
+      assert.ok(
+        hasFallback,
+        `Deferred dashboard stylesheet ${href} must keep a no-JS stylesheet fallback (rel=stylesheet, any attribute order).`,
       );
     }
   });

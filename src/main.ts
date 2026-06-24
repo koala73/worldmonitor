@@ -5,6 +5,16 @@ import { initVercelAnalytics } from '@/bootstrap/secondary-startup';
 import { App } from './App';
 import { installUtmInterceptor } from './utils/utm';
 
+// Activate the deferred dashboard app stylesheet. The build
+// (deferDashboardStylesheetLinks in vite.config.ts) emits the large dashboard
+// CSS as <link media="print" data-wm-deferred-style="dashboard"> + a <noscript>
+// blocking copy, so it does not block first paint; flipping media to "all" here
+// applies it once main.js runs. The selector below MUST stay in lockstep with
+// the attribute/value the build writes (data-wm-deferred-style="dashboard" +
+// media="print"). No-JS users get the <noscript> fallback; if main.js fails to
+// execute (e.g. an /assets 404 after a redeploy) the wm-sw-nuke handler in
+// index.html reloads. Kept as the first body statement so it runs before the
+// rest of startup.
 function activateDeferredDashboardStyles(): void {
   document
     .querySelectorAll<HTMLLinkElement>('link[data-wm-deferred-style="dashboard"][media="print"]')
