@@ -84,6 +84,10 @@ function loadMapLibreCss(): Promise<unknown> {
   return mapLibreCssPromise;
 }
 
+const DECK_RENDERER_VISIBLE_IDLE_DELAY_MS = 3_500;
+const DECK_RENDERER_IDLE_TIMEOUT_MS = 5_000;
+const DECK_RENDERER_NO_OBSERVER_DELAY_MS = 4_500;
+
 export interface MapContainerState {
   zoom: number;
   pan: { x: number; y: number };
@@ -130,6 +134,7 @@ export class MapContainer {
   private readonly chrome: boolean;
   private isResizingInternal = false;
   private resizeObserver: ResizeObserver | null = null;
+  private rendererDemandCleanup: (() => void) | null = null;
   private globeInitToken = 0;
   private rendererInitToken = 0;
   private destroyed = false;
@@ -307,6 +312,127 @@ export class MapContainer {
     this.resizeObserver.observe(this.container);
   }
 
+  private isContainerInViewport(): boolean {
+    const rect = this.container.getBoundingClientRect();
+    return rect.bottom > 0
+      && rect.right > 0
+      && rect.top < window.innerHeight
+      && rect.left < window.innerWidth;
+  }
+
+  private waitForDeckRendererDemand(token: number): Promise<boolean> {
+    if (typeof window === 'undefined') return Promise.resolve(true);
+
+    this.rendererDemandCleanup?.();
+    this.rendererDemandCleanup = null;
+
+    return new Promise((resolve) => {
+      let resolved = false;
+      let observer: IntersectionObserver | null = null;
+      let visibleDelayId: number | null = null;
+      let fallbackDelayId: number | null = null;
+      let idleCallbackId: number | null = null;
+      let cancelDemand: (() => void) | null = null;
+
+      const clearVisibleDelay = (): void => {
+        if (visibleDelayId !== null) {
+          window.clearTimeout(visibleDelayId);
+          visibleDelayId = null;
+        }
+        if (idleCallbackId !== null && typeof window.cancelIdleCallback === 'function') {
+          window.cancelIdleCallback(idleCallbackId);
+          idleCallbackId = null;
+        }
+      };
+
+      const cleanup = (): void => {
+        clearVisibleDelay();
+        if (fallbackDelayId !== null) {
+          window.clearTimeout(fallbackDelayId);
+          fallbackDelayId = null;
+        }
+        observer?.disconnect();
+        observer = null;
+        this.container.removeEventListener('pointerdown', finishFromSignal);
+        this.container.removeEventListener('wheel', finishFromSignal);
+        this.container.removeEventListener('touchstart', finishFromSignal);
+        this.container.removeEventListener('keydown', finishFromSignal);
+        if (this.rendererDemandCleanup === cancelDemand) this.rendererDemandCleanup = null;
+      };
+
+      const settle = (shouldLoadDeck: boolean): void => {
+        if (resolved) return;
+        resolved = true;
+        cleanup();
+        resolve(shouldLoadDeck);
+      };
+
+      const finish = (): void => {
+        settle(true);
+      };
+
+      const cancel = (): void => {
+        settle(false);
+      };
+
+      const finishIfCurrent = (): void => {
+        if (this.isCurrentRendererInit(token)) {
+          finish();
+        } else {
+          cancel();
+        }
+      };
+
+      function finishFromSignal(): void {
+        finishIfCurrent();
+      }
+
+      const requestIdle = (): void => {
+        if (idleCallbackId !== null) return;
+        if (typeof window.requestIdleCallback === 'function') {
+          idleCallbackId = window.requestIdleCallback(() => {
+            idleCallbackId = null;
+            finishIfCurrent();
+          }, { timeout: DECK_RENDERER_IDLE_TIMEOUT_MS });
+        } else {
+          idleCallbackId = window.setTimeout(() => {
+            idleCallbackId = null;
+            finishIfCurrent();
+          }, 1);
+        }
+      };
+
+      const scheduleVisibleIdle = (): void => {
+        if (visibleDelayId !== null || idleCallbackId !== null) return;
+        visibleDelayId = window.setTimeout(() => {
+          visibleDelayId = null;
+          requestIdle();
+        }, DECK_RENDERER_VISIBLE_IDLE_DELAY_MS);
+      };
+
+      cancelDemand = cancel;
+      this.rendererDemandCleanup = cancelDemand;
+      this.container.addEventListener('pointerdown', finishFromSignal, { once: true, passive: true });
+      this.container.addEventListener('wheel', finishFromSignal, { once: true, passive: true });
+      this.container.addEventListener('touchstart', finishFromSignal, { once: true, passive: true });
+      this.container.addEventListener('keydown', finishFromSignal, { once: true });
+
+      if (typeof IntersectionObserver === 'function') {
+        observer = new IntersectionObserver((entries) => {
+          if (entries.some((entry) => entry.isIntersecting)) {
+            scheduleVisibleIdle();
+          } else {
+            clearVisibleDelay();
+          }
+        }, { threshold: 0.15 });
+        observer.observe(this.container);
+        if (this.isContainerInViewport()) scheduleVisibleIdle();
+      } else {
+        fallbackDelayId = window.setTimeout(finishIfCurrent, DECK_RENDERER_NO_OBSERVER_DELAY_MS);
+      }
+    });
+  }
+
   private async initSvgMap(logMessage: string, token: number): Promise<void> {
     console.log(logMessage);
     this.useDeckGL = false;
@@ -382,6 +508,8 @@ export class MapContainer {
       console.log('[MapContainer] Initializing 3D globe (globe.gl mode)');
       await this.createGlobeMap(token);
     } else if (this.useDeckGL) {
+      const shouldLoadDeck = await this.waitForDeckRendererDemand(token);
+      if (!shouldLoadDeck || !this.isCurrentRendererInit(token)) return;
       await this.createDeckGLMap(token);
     } else {
       await this.initSvgMap('[MapContainer] Initializing SVG map (mobile/fallback mode)', token);
@@ -511,6 +639,8 @@ export class MapContainer {
   }
 
   private destroyFlatMap(): void {
+    this.rendererDemandCleanup?.();
+    this.rendererDemandCleanup = null;
     this.deckGLMap?.destroy();
     this.deckGLMap = null;
     this.svgMap?.destroy();
@@ -1273,6 +1403,8 @@ export class MapContainer {
   public destroy(): void {
     this.destroyed = true;
     this.resizeObserver?.disconnect();
+    this.rendererDemandCleanup?.();
+    this.rendererDemandCleanup = null;
     this.globeInitToken++;
     this.rendererInitToken++;
     this.globeMap?.destroy();
