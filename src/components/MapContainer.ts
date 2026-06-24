@@ -87,6 +87,11 @@ function loadMapLibreCss(): Promise<unknown> {
 const DECK_RENDERER_VISIBLE_IDLE_DELAY_MS = 3_500;
 const DECK_RENDERER_IDLE_TIMEOUT_MS = 5_000;
 const DECK_RENDERER_NO_OBSERVER_DELAY_MS = 4_500;
+// Absolute upper bound for the demand gate when an IntersectionObserver is
+// available: longer than VISIBLE_IDLE + IDLE_TIMEOUT so the visible-idle path
+// wins for on-screen maps, but guarantees an off-screen / partially-visible /
+// deferred-mounted map still loads instead of hanging on the shell forever.
+const DECK_RENDERER_MAX_WAIT_MS = 12_000;
 
 export interface MapContainerState {
   zoom: number;
@@ -312,14 +317,6 @@ export class MapContainer {
     this.resizeObserver.observe(this.container);
   }
 
-  private isContainerInViewport(): boolean {
-    const rect = this.container.getBoundingClientRect();
-    return rect.bottom > 0
-      && rect.right > 0
-      && rect.top < window.innerHeight
-      && rect.left < window.innerWidth;
-  }
-
   private waitForDeckRendererDemand(token: number): Promise<boolean> {
     if (typeof window === 'undefined') return Promise.resolve(true);
 
@@ -422,7 +419,19 @@ export class MapContainer {
       this.container.addEventListener('touchstart', finishFromSignal, { once: true, passive: true });
       this.container.addEventListener('keydown', finishFromSignal, { once: true });
 
-      if (typeof IntersectionObserver === 'function') {
+      const hasIntersectionObserver = typeof IntersectionObserver === 'function';
+
+      // Absolute backstop so the renderer always loads even when the container
+      // never reaches the visibility threshold and no interaction fires (e.g.
+      // below-fold, only 1-14% visible, deferred-mount, or a hidden map panel).
+      // With an IntersectionObserver the visible-idle path resolves first; this
+      // longer timer is purely the safety net that prevents a permanent shell.
+      fallbackDelayId = window.setTimeout(
+        finishIfCurrent,
+        hasIntersectionObserver ? DECK_RENDERER_MAX_WAIT_MS : DECK_RENDERER_NO_OBSERVER_DELAY_MS,
+      );
+
+      if (hasIntersectionObserver) {
         observer = new IntersectionObserver((entries) => {
           if (entries.some((entry) => entry.isIntersecting)) {
             scheduleVisibleIdle();
@@ -431,9 +440,6 @@ export class MapContainer {
           }
         }, { threshold: 0.15 });
         observer.observe(this.container);
-        if (this.isContainerInViewport()) scheduleVisibleIdle();
-      } else {
-        fallbackDelayId = window.setTimeout(finishIfCurrent, DECK_RENDERER_NO_OBSERVER_DELAY_MS);
       }
     });
   }
@@ -557,6 +563,11 @@ export class MapContainer {
       ? { ...snapshot, layers: { ...snapshot.layers, resilienceScore: false } }
       : snapshot;
     this.pendingCenter = center ? { ...center, zoom: snapshot.zoom } : null;
+    // Cancel any pending deck demand gate from a prior flat init before
+    // re-initializing, mirroring destroyFlatMap(), so a stale gate can't abort
+    // the new init during the afterFirstPaint() window.
+    this.rendererDemandCleanup?.();
+    this.rendererDemandCleanup = null;
     void this.init();
   }
 

@@ -157,5 +157,10 @@ describe('map renderer deferral boundary', () => {
       /idleFallbackDelayId[\s\S]*window\.clearTimeout\(idleFallbackDelayId\)/,
       'requestIdleCallback fallback timers should be canceled when the demand wait is cleaned up',
     );
+    assert.match(
+      demandBody,
+      /fallbackDelayId\s*=\s*window\.setTimeout\([\s\S]*DECK_RENDERER_MAX_WAIT_MS/,
+      'demand gate must arm a universal backstop timer (not only when IntersectionObserver is absent) so an off-screen / partially-visible / deferred-mounted map always loads instead of hanging on the shell',
+    );
   });
 });
