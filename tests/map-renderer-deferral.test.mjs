@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
@@ -21,6 +21,45 @@ function staticValueImports(sourceFile) {
     .map((statement) => statement.moduleSpecifier)
     .filter(ts.isStringLiteral)
     .map((specifier) => specifier.text);
+}
+
+function resolveRelativeSource(fromFileName, specifier) {
+  if (!specifier.startsWith('.')) return null;
+  const base = resolve(dirname(fromFileName), specifier);
+  const candidates = [
+    base,
+    `${base}.ts`,
+    `${base}.tsx`,
+    `${base}.mts`,
+    `${base}.js`,
+    `${base}.mjs`,
+    resolve(base, 'index.ts'),
+    resolve(base, 'index.tsx'),
+    resolve(base, 'index.js'),
+    resolve(base, 'index.mjs'),
+  ];
+  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+}
+
+function staticValueImportGraph(entryRelPath) {
+  const visited = new Set();
+  const imports = new Set();
+
+  const visit = (relOrAbsPath) => {
+    const fileName = relOrAbsPath.startsWith(root) ? relOrAbsPath : resolve(root, relOrAbsPath);
+    if (visited.has(fileName)) return;
+    visited.add(fileName);
+    const sourceFile = parseSource(fileName);
+
+    for (const specifier of staticValueImports(sourceFile)) {
+      imports.add(specifier);
+      const resolved = resolveRelativeSource(sourceFile.fileName, specifier);
+      if (resolved) visit(resolved);
+    }
+  };
+
+  visit(entryRelPath);
+  return imports;
 }
 
 function dynamicImportSpecifiers(sourceFile) {
@@ -96,6 +135,22 @@ describe('map renderer deferral boundary', () => {
     assert.ok(imports.has('./DeckGLMap'), 'DeckGL renderer should be loaded on demand');
     assert.ok(imports.has('./GlobeMap'), 'Globe renderer should be loaded on demand');
     assert.ok(imports.has('maplibre-gl/dist/maplibre-gl.css'), 'MapLibre CSS should load with the DeckGL renderer');
+  });
+
+  it('keeps optional deck.gl specialty packages out of the base WebGL renderer chunk', () => {
+    const imports = staticValueImportGraph('src/components/DeckGLMap.ts');
+    const forbidden = [
+      '@deck.gl/aggregation-layers',
+      '@deck.gl/geo-layers',
+      '@deck.gl/extensions',
+    ];
+
+    for (const specifier of forbidden) {
+      assert.ok(
+        !imports.has(specifier),
+        `DeckGLMap import graph must avoid static optional deck package ${specifier}`,
+      );
+    }
   });
 
   it('caches renderer data calls that can arrive before the deferred renderer exists', () => {

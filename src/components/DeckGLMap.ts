@@ -54,9 +54,7 @@ import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';
 import type { RadiationObservation } from '@/services/radiation';
 import { ArcLayer } from '@deck.gl/layers';
-import { HeatmapLayer } from '@deck.gl/aggregation-layers';
-import { H3HexagonLayer, TripsLayer } from '@deck.gl/geo-layers';
-import { PathStyleExtension } from '@deck.gl/extensions';
+import { cellToBoundary } from 'h3-js';
 import type { WeatherAlert } from '@/services/weather';
 import { escapeHtml } from '@/utils/sanitize';
 import {
@@ -389,7 +387,7 @@ const ROUTE_WAYPOINTS_MAP = new Map<string, string[]>(
 
 interface TripData {
   path: [number, number][];
-  timestamps: number[];
+  phase: number;
   color: [number, number, number, number];
   width: number;
 }
@@ -428,8 +426,22 @@ function interpolateGreatCircle(
   return points;
 }
 
+function positionAlongPath(path: [number, number][], progress: number): [number, number] {
+  if (path.length === 0) return [0, 0];
+  if (path.length === 1) return path[0]!;
+  const clamped = Math.max(0, Math.min(1, progress));
+  const scaled = clamped * (path.length - 1);
+  const index = Math.min(path.length - 2, Math.floor(scaled));
+  const fraction = scaled - index;
+  const [lonA, latA] = path[index]!;
+  const [lonB, latB] = path[index + 1]!;
+  return [
+    lonA + (lonB - lonA) * fraction,
+    latA + (latB - latA) * fraction,
+  ];
+}
+
 const TRADE_ANIMATION_CYCLE = 1000;
-const TRADE_TRAIL_LENGTH = 200;
 const TRADE_ANIMATION_SPEED = 0.3;
 const TRADE_GC_INTERPOLATION_POINTS = 20;
 const CHOKEPOINT_PULSE_FREQ = 0.01;
@@ -2935,10 +2947,7 @@ export class DeckGLMap {
         getColor: [255, 100, 100, 200],
         getWidth: 2,
         widthUnits: 'pixels' as const,
-        getDashArray: [6, 4],
-        dashJustified: true,
         pickable: true,
-        extensions: [new PathStyleExtension({ dash: true })],
       }));
     }
 
@@ -3260,16 +3269,15 @@ export class DeckGLMap {
     }
   }
 
-  private createGpsJammingLayer(): H3HexagonLayer {
-    return new H3HexagonLayer({
+  private createGpsJammingLayer(): PolygonLayer<GpsJamHex> {
+    return new PolygonLayer<GpsJamHex>({
       id: 'gps-jamming-layer',
       data: this.gpsJammingHexes,
-      getHexagon: (d: GpsJamHex) => d.h3,
+      getPolygon: (d: GpsJamHex) => cellToBoundary(d.h3, true) as [number, number][],
       getFillColor: (d: GpsJamHex) => {
         if (d.level === 'high') return [255, 80, 80, 180] as [number, number, number, number];
         return [255, 180, 50, 140] as [number, number, number, number];
       },
-      getElevation: 0,
       extruded: false,
       filled: true,
       stroked: true,
@@ -3409,10 +3417,7 @@ export class DeckGLMap {
       getColor: (d) => { const [r, g, b] = altitudeToColor(d.altitude); return [r, g, b, 140] as [number, number, number, number]; },
       getWidth: 2,
       widthUnits: 'pixels' as const,
-      getDashArray: [6, 4],
-      dashJustified: true,
       pickable: false,
-      extensions: [new PathStyleExtension({ dash: true })],
     });
   }
 
@@ -5831,24 +5836,22 @@ export class DeckGLMap {
     });
   }
 
-  private createClimateHeatmapLayer(): HeatmapLayer<ClimateAnomaly> {
-    return new HeatmapLayer<ClimateAnomaly>({
+  private createClimateHeatmapLayer(): ScatterplotLayer<ClimateAnomaly> {
+    return new ScatterplotLayer<ClimateAnomaly>({
       id: 'climate-heatmap-layer',
       data: this.climateAnomalies,
       getPosition: (d) => [d.lon, d.lat],
-      getWeight: (d) => Math.abs(d.tempDelta) + Math.abs(d.precipDelta) * 0.1,
-      radiusPixels: 40,
-      intensity: 0.6,
-      threshold: 0.15,
-      opacity: 0.45,
-      colorRange: [
-        [68, 136, 255],
-        [100, 200, 255],
-        [255, 255, 100],
-        [255, 200, 50],
-        [255, 100, 50],
-        [255, 50, 50],
-      ],
+      getRadius: (d) => 14_000 + Math.min(80_000, (Math.abs(d.tempDelta) + Math.abs(d.precipDelta) * 0.1) * 18_000),
+      getFillColor: (d) => {
+        const weight = Math.abs(d.tempDelta) + Math.abs(d.precipDelta) * 0.1;
+        if (weight >= 4) return [255, 50, 50, 120] as [number, number, number, number];
+        if (weight >= 2.5) return [255, 140, 50, 110] as [number, number, number, number];
+        if (weight >= 1.25) return [255, 220, 80, 95] as [number, number, number, number];
+        return [100, 200, 255, 85] as [number, number, number, number];
+      },
+      radiusMinPixels: 12,
+      radiusMaxPixels: 72,
+      stroked: false,
       pickable: false,
     });
   }
@@ -5957,6 +5960,7 @@ export class DeckGLMap {
     }
 
     const trips: TripData[] = [];
+    let routeIndex = 0;
     for (const [, segments] of routeGroups) {
       const sorted = segments.sort((a, b) => a.segmentIndex - b.segmentIndex);
       const fullPath: [number, number][] = [];
@@ -5974,39 +5978,36 @@ export class DeckGLMap {
         }
       }
 
-      const timestamps: number[] = [];
-      for (let i = 0; i < fullPath.length; i++) {
-        timestamps.push((i / (fullPath.length - 1)) * TRADE_ANIMATION_CYCLE);
-      }
-
       const first = sorted[0]!;
 
       trips.push({
         path: fullPath,
-        timestamps,
+        phase: (routeIndex / Math.max(1, routeGroups.size)) * TRADE_ANIMATION_CYCLE,
         color: colorForRoute(first.routeId, first.status),
         width: widthFor(first.category),
       });
+      routeIndex++;
     }
     this.tradeTrips = trips;
   }
 
-  private createTradeRouteTripsLayer(): TripsLayer<TripData> | null {
+  private createTradeRouteTripsLayer(): ScatterplotLayer<TripData> | null {
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (prefersReducedMotion) return null;
 
     if (this.tradeTrips.length === 0) this.buildTradeTrips();
 
-    return new TripsLayer<TripData>({
+    return new ScatterplotLayer<TripData>({
       id: 'trade-route-trips-layer',
       data: this.tradeTrips,
-      getPath: (d: TripData) => d.path,
-      getTimestamps: (d: TripData) => d.timestamps,
-      getColor: (d: TripData) => d.color,
-      getWidth: (d: TripData) => d.width,
-      widthMinPixels: 2,
-      currentTime: this.tradeAnimationTime,
-      trailLength: TRADE_TRAIL_LENGTH,
+      getPosition: (d: TripData) => positionAlongPath(
+        d.path,
+        ((this.tradeAnimationTime + d.phase) % TRADE_ANIMATION_CYCLE) / TRADE_ANIMATION_CYCLE,
+      ),
+      getFillColor: (d: TripData) => d.color,
+      getRadius: (d: TripData) => d.width * 20_000,
+      radiusMinPixels: 3,
+      radiusMaxPixels: 9,
       pickable: false,
     });
   }
