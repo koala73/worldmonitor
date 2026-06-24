@@ -332,5 +332,20 @@ describe('checkout overlay lifecycle', () => {
       0,
       'a destroyed session must not write the post-checkout marker',
     );
+
+    // The headline cross-session hazard: a late checkout.redirect_requested from
+    // the destroyed session's orphaned iframe must NOT navigate — otherwise
+    // session A's redirect_to could hijack session B's tab.
+    const win = (globalThis as unknown as { window: { location: { href: string } } }).window;
+    const hrefBefore = win.location.href;
+    harness.handlers[0]({
+      event_type: 'checkout.redirect_requested',
+      data: { message: { redirect_to: 'https://attacker.example/stolen' } },
+    });
+    assert.equal(
+      win.location.href,
+      hrefBefore,
+      'a destroyed session must not navigate via a late redirect_requested',
+    );
   });
 });
