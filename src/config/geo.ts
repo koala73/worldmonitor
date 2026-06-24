@@ -3470,7 +3470,6 @@ export const SANCTIONED_COUNTRIES_ALPHA2: Record<string, 'severe' | 'high' | 'mo
 
 export const MAP_URLS = {
   world: '/data/countries-50m.json',
-  us: '/data/states-10m.json',
 };
 
 // Global Economic Centers - Stock Exchanges, Central Banks, Financial Hubs
