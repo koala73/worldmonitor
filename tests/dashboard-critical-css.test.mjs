@@ -48,6 +48,32 @@ function staticModuleSpecifiers(relPath) {
   return specifiers;
 }
 
+function dynamicModuleSpecifiers(relPath) {
+  const sourceText = src(relPath);
+  const ast = ts.createSourceFile(
+    relPath,
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+    sourceScriptKind(relPath),
+  );
+
+  const specifiers = [];
+  const visit = (node) => {
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments.length === 1 &&
+      ts.isStringLiteral(node.arguments[0])
+    ) {
+      specifiers.push(node.arguments[0].text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(ast);
+  return specifiers;
+}
+
 function stripSpecifierSuffix(specifier) {
   return specifier.replace(/[?#].*$/, '');
 }
@@ -152,17 +178,33 @@ describe('dashboard critical CSS graph', () => {
 
   it('keeps standalone settings CSS out of the dashboard static import graph', () => {
     const dashboardGraph = collectStaticGraph('src/main.ts');
+    const unifiedSettingsGraph = collectStaticGraph('src/components/UnifiedSettings.ts');
     const settingsGraph = collectStaticGraph('src/settings-main.ts');
 
     assert.equal(
       dashboardGraph.has('src/components/UnifiedSettings.ts'),
+      false,
+      'The dashboard static graph must keep the in-dashboard UnifiedSettings modal on the lazy interaction path.',
+    );
+    assert.equal(
+      dashboardGraph.has('src/app/event-handlers.ts'),
       true,
-      'sanity check: the dashboard graph should still include the in-dashboard UnifiedSettings module.',
+      'sanity check: the dashboard static graph must still reach the lazy settings controller owner.',
+    );
+    assert.equal(
+      dynamicModuleSpecifiers('src/app/event-handlers.ts').includes('@/components/UnifiedSettings'),
+      true,
+      'sanity check: the dashboard still reaches UnifiedSettings through the lazy settings controller.',
     );
     assert.equal(
       dashboardGraph.has('src/styles/settings-window.css'),
       false,
       'The dashboard static graph must not reach the standalone settings-window stylesheet.',
+    );
+    assert.equal(
+      unifiedSettingsGraph.has('src/styles/settings-window.css'),
+      false,
+      'The lazy in-dashboard settings chunk must not reach the standalone settings-window stylesheet.',
     );
     assert.equal(
       settingsGraph.has('src/styles/settings-window.css'),
