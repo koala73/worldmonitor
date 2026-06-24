@@ -23,7 +23,7 @@ describe('eager chunk budget: lazy-only config data tables stay off the entry', 
   const html = readFileSync(dashboardHtml, 'utf-8');
   const assetsDir = resolve(distDir, 'assets');
   const assets = existsSync(assetsDir) ? readdirSync(assetsDir) : [];
-  const mainFile = assets.find((f) => /^main-[A-Za-z0-9_]+\.js$/.test(f));
+  const mainFile = assets.find((f) => /^main-[A-Za-z0-9_-]+\.js$/.test(f));
   const mainJs = mainFile ? readFileSync(resolve(assetsDir, mainFile), 'utf-8') : '';
 
   for (const chunk of DEFERRED_TABLE_CHUNKS) {
@@ -47,7 +47,7 @@ describe('eager chunk budget: lazy-only config data tables stay off the entry', 
       // The bare filename also appears in Vite's dynamic-import preload manifest
       // (`"assets/<chunk>-hash.js"` inside an array) — that's expected for a lazy
       // chunk and must NOT fail the guard, so match the static-import form only.
-      const staticImportRe = new RegExp(`(?:from|import)"\\./${chunk}-[A-Za-z0-9_]+\\.js"`);
+      const staticImportRe = new RegExp(`(?:from|import)"\\./${chunk}-[A-Za-z0-9_-]+\\.js"`);
       assert.ok(
         !staticImportRe.test(mainJs),
         `${chunk} must not be statically imported by ${mainFile} (dynamic preload-manifest references are fine)`,
