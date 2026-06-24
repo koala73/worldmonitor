@@ -1174,6 +1174,10 @@ test.describe('desktop runtime routing guardrails', () => {
           layers: { ...DEFAULT_MAP_LAYERS },
           timeRange: '7d',
         });
+        await new Promise<void>((resolve) => requestAnimationFrame(() => {
+          requestAnimationFrame(() => window.setTimeout(resolve, 0));
+        }));
+        mapHost.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
         await waitForRenderer();
 
         return {
