@@ -202,17 +202,40 @@ describe('trade-route animation loop lifecycle', () => {
     );
   });
 
-  it('stops the trade rAF while render is paused and restarts it on resume when enabled', () => {
+  it('cancels the trade rAF inside the pause branch and restarts it only on resume', () => {
     const setRenderPaused = methodSource('public setRenderPaused');
-    assert.match(
-      setRenderPaused,
-      /if\s*\(paused\)[\s\S]*this\.stopTradeAnimation\(\)/,
+    const pauseIdx = setRenderPaused.indexOf('if (paused)');
+    assert.ok(pauseIdx >= 0, 'setRenderPaused must have an if (paused) branch');
+    const pauseBraceStart = setRenderPaused.indexOf('{', pauseIdx);
+    const pauseBlockEnd = findMatchingBrace(setRenderPaused, pauseBraceStart);
+    const pauseBlock = setRenderPaused.slice(pauseBraceStart, pauseBlockEnd);
+    const resumePath = setRenderPaused.slice(pauseBlockEnd);
+
+    assert.ok(
+      /this\.stopTradeAnimation\(\)/.test(pauseBlock),
       'pause branch must cancel trade animation frames',
     );
+    assert.ok(
+      !/this\.stopTradeAnimation\(\)/.test(resumePath),
+      'stopTradeAnimation must live inside the pause branch, not the resume path',
+    );
+    assert.ok(
+      !/this\.startTradeAnimation\(\)/.test(pauseBlock),
+      'pause branch must not start the trade animation',
+    );
     assert.match(
-      setRenderPaused,
+      resumePath,
       /if\s*\(this\.state\.layers\.tradeRoutes\)\s*this\.startTradeAnimation\(\)/,
-      'resume branch must restart trade animation only when the layer is enabled',
+      'resume path must restart trade animation only when the layer is enabled',
+    );
+  });
+
+  it('guards startTradeAnimation against running while render is paused', () => {
+    const startTradeAnimation = methodSource('private startTradeAnimation');
+    assert.match(
+      startTradeAnimation,
+      /if\s*\(this\.renderPaused\s*\|\|\s*this\.prefersReducedTradeMotion\(\)\)\s*return/,
+      'startTradeAnimation must bail when render is paused or reduced motion is preferred',
     );
   });
 
@@ -235,6 +258,55 @@ describe('trade-route animation loop lifecycle', () => {
       createTradeRouteTripsLayer,
       /updateTriggers:\s*{\s*getPosition:\s*\[\s*this\.tradeAnimationTime\s*\]\s*}/,
       'trade trip layer must keep getPosition live as deck.gl preserves state by layer id',
+    );
+  });
+
+  it('resets the frame counter on stop so restart parity is deterministic', () => {
+    const stopTradeAnimation = methodSource('private stopTradeAnimation');
+    assert.match(
+      stopTradeAnimation,
+      /this\.tradeAnimationFrameCount\s*=\s*0/,
+      'stopTradeAnimation must reset tradeAnimationFrameCount so the every-other-frame render gate restarts deterministically',
+    );
+  });
+
+  it('bails out of an in-flight animation frame once the map is destroyed', () => {
+    const startTradeAnimation = methodSource('private startTradeAnimation');
+    assert.match(
+      startTradeAnimation,
+      /if\s*\(this\.destroyed\)\s*{\s*this\.tradeAnimationFrame\s*=\s*null;\s*return;/,
+      'the animate loop must stop rescheduling once destroyed',
+    );
+  });
+
+  it('reacts to live prefers-reduced-motion changes', () => {
+    const handler = methodSource('private readonly handleTradeMotionPreferenceChange');
+    assert.match(
+      handler,
+      /if\s*\(this\.prefersReducedTradeMotion\(\)\)\s*{\s*this\.stopTradeAnimation\(\)/,
+      'handler must stop the animation when reduced motion becomes preferred',
+    );
+    assert.match(
+      handler,
+      /else if\s*\(this\.state\.layers\.tradeRoutes\s*&&\s*!this\.renderPaused\)\s*{\s*this\.startTradeAnimation\(\)/,
+      'handler must restart the animation only when the layer is enabled and render is not paused',
+    );
+    assert.ok(
+      /this\.render\(\)/.test(handler),
+      'handler must re-render so the trips layer is added/removed for the new preference',
+    );
+  });
+
+  it('removes the prefers-reduced-motion listener on destroy', () => {
+    const destroy = methodSource('public destroy');
+    assert.match(
+      destroy,
+      /this\.tradeReducedMotionMedia\?\.removeEventListener\(\s*'change'\s*,\s*this\.handleTradeMotionPreferenceChange\s*\)/,
+      'destroy must remove the prefers-reduced-motion change listener to avoid a zombie handler',
+    );
+    assert.ok(
+      /this\.tradeReducedMotionMedia\s*=\s*null/.test(destroy),
+      'destroy must drop the cached MediaQueryList reference',
     );
   });
 });

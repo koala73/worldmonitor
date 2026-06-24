@@ -450,6 +450,7 @@ function positionAlongPath(path: [number, number][], progress: number): [number,
   return [lon, latA + (latB - latA) * fraction];
 }
 
+const PREFERS_REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 const TRADE_ANIMATION_CYCLE = 1000;
 const TRADE_ANIMATION_SPEED = 0.3;
 const TRADE_ANIMATION_MAX_DELTA_MS = 100;
@@ -816,7 +817,7 @@ export class DeckGLMap {
       void this.switchBasemap();
     };
     window.addEventListener('map-theme-changed', this.handleMapThemeChange);
-    this.tradeReducedMotionMedia = window.matchMedia('(prefers-reduced-motion: reduce)');
+    this.tradeReducedMotionMedia = window.matchMedia(PREFERS_REDUCED_MOTION_QUERY);
     this.tradeReducedMotionMedia.addEventListener('change', this.handleTradeMotionPreferenceChange);
 
     this.initPromise = this.initMapLibre();
@@ -6095,7 +6096,7 @@ export class DeckGLMap {
   }
 
   private prefersReducedTradeMotion(): boolean {
-    return this.tradeReducedMotionMedia?.matches ?? window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    return this.tradeReducedMotionMedia?.matches ?? window.matchMedia(PREFERS_REDUCED_MOTION_QUERY).matches;
   }
 
   private startTradeAnimation(): void {
@@ -6104,6 +6105,10 @@ export class DeckGLMap {
 
     let lastTime = performance.now();
     const animate = (now: number) => {
+      if (this.destroyed) {
+        this.tradeAnimationFrame = null;
+        return;
+      }
       const delta = Math.min(now - lastTime, TRADE_ANIMATION_MAX_DELTA_MS);
       lastTime = now;
       this.tradeAnimationTime = (this.tradeAnimationTime + delta * TRADE_ANIMATION_SPEED) % TRADE_ANIMATION_CYCLE;
@@ -6119,6 +6124,9 @@ export class DeckGLMap {
       cancelAnimationFrame(this.tradeAnimationFrame);
       this.tradeAnimationFrame = null;
     }
+    // Reset so the every-other-frame render gate restarts at a deterministic
+    // parity; otherwise a stop/start cycle can delay the first repaint a frame.
+    this.tradeAnimationFrameCount = 0;
   }
 
   private createTradeChokepointsLayer(): ScatterplotLayer {
