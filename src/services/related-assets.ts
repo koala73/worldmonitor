@@ -10,26 +10,38 @@ import {
   PIPELINES,
 } from '@/config';
 
+type AssetIndexEntry = { id: string; name: string; lat: number; lon: number };
+
 // The ~86KB ai-datacenters table is lazy-loaded (not statically imported) so it
-// stays off the eager dashboard critical path — related-assets is reached eagerly
+// stays off the eager dashboard critical path; related-assets is reached eagerly
 // via country-intel, which would otherwise pin the table to the entry chunk.
-// The datacenter index populates on first datacenter query and is cached; until
-// it resolves, datacenter lookups return [] (a country brief re-renders with them
-// on the next data tick). (#4404)
-let datacenterIndex: Array<{ id: string; name: string; lat: number; lon: number }> | null = null;
-let datacenterIndexLoading = false;
+let datacenterIndex: AssetIndexEntry[] | null = null;
+let datacenterIndexPromise: Promise<void> | null = null;
+
+export function preloadDatacenterIndex(): Promise<void> {
+  if (datacenterIndex !== null) return Promise.resolve();
+  if (!datacenterIndexPromise) {
+    datacenterIndexPromise = import('@/config/ai-datacenters')
+      .then(({ AI_DATA_CENTERS }) => {
+        datacenterIndex = AI_DATA_CENTERS.map(dc => ({ id: dc.id, name: dc.name, lat: dc.lat, lon: dc.lon }));
+      })
+      .catch((error) => {
+        datacenterIndexPromise = null;
+        throw error;
+      });
+  }
+  return datacenterIndexPromise;
+}
+
+export function preloadRelatedAssetTables(titles: string[]): Promise<boolean> {
+  if (!detectAssetTypes(titles).includes('datacenter') || datacenterIndex !== null) {
+    return Promise.resolve(false);
+  }
+  return preloadDatacenterIndex().then(() => true);
+}
+
 function ensureDatacenterIndex(): void {
-  if (datacenterIndex !== null || datacenterIndexLoading) return;
-  datacenterIndexLoading = true;
-  void import('@/config/ai-datacenters')
-    .then(({ AI_DATA_CENTERS }) => {
-      datacenterIndex = AI_DATA_CENTERS.map(dc => ({ id: dc.id, name: dc.name, lat: dc.lat, lon: dc.lon }));
-    })
-    // On failure leave datacenterIndex null (NOT []) so the next datacenter query
-    // retries the load — a transient chunk-load error must not permanently
-    // suppress datacenter results for the session. (#4404 review / cf #4397)
-    .catch(() => { /* keep null → retryable */ })
-    .finally(() => { datacenterIndexLoading = false; });
+  void preloadDatacenterIndex().catch(() => {});
 }
 
 const MAX_DISTANCE_KM = 300;
