@@ -150,14 +150,37 @@ describe('map renderer deferral boundary', () => {
       '@deck.gl/aggregation-layers',
       '@deck.gl/geo-layers',
       '@deck.gl/extensions',
+      'pmtiles',
+      '@protomaps/basemaps',
+      'h3-js',
     ];
 
     for (const specifier of forbidden) {
       assert.ok(
         !imports.has(specifier),
-        `DeckGLMap import graph must avoid static optional deck package ${specifier}`,
+        `DeckGLMap import graph must avoid static optional WebGL package ${specifier}`,
       );
     }
+  });
+
+  it('keeps provider-specific PMTiles deps out of the emitted MapLibre manual chunk', () => {
+    const viteConfig = readFileSync(resolve(root, 'vite.config.ts'), 'utf-8');
+
+    assert.match(
+      viteConfig,
+      /id\.includes\('\/pmtiles\/'\)[\s\S]*id\.includes\('\/@protomaps\/basemaps\/'\)[\s\S]*return 'protomaps'/,
+      'PMTiles and Protomaps must share a provider-specific lazy chunk',
+    );
+    assert.doesNotMatch(
+      viteConfig,
+      /if\s*\([^{]*id\.includes\('\/pmtiles\/'\)[^{]*\)\s*\{\s*return 'maplibre'/,
+      'MapLibre manual chunk must not include PMTiles provider code',
+    );
+    assert.doesNotMatch(
+      viteConfig,
+      /if\s*\([^{]*id\.includes\('\/@protomaps\/basemaps\/'\)[^{]*\)\s*\{\s*return 'maplibre'/,
+      'MapLibre manual chunk must not include Protomaps basemap code',
+    );
   });
 
   it('caches renderer data calls that can arrive before the deferred renderer exists', () => {

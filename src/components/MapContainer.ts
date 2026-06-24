@@ -602,7 +602,7 @@ export class MapContainer {
     if (this.cachedDisplacementFlows) this.setDisplacementFlows(this.cachedDisplacementFlows);
     if (this.cachedClimateAnomalies) this.setClimateAnomalies(this.cachedClimateAnomalies);
     if (this.cachedRadiationObservations) this.setRadiationObservations(this.cachedRadiationObservations);
-    if (this.cachedGpsJamming) this.setGpsJamming(this.cachedGpsJamming);
+    if (this.cachedGpsJamming) void this.setGpsJamming(this.cachedGpsJamming);
     if (this.cachedSatellites) this.setSatellites(this.cachedSatellites);
     if (this.cachedDiseaseOutbreaks) this.setDiseaseOutbreaks(this.cachedDiseaseOutbreaks);
     if (this.cachedCyberThreats) this.setCyberThreats(this.cachedCyberThreats);
@@ -954,11 +954,11 @@ export class MapContainer {
     }
   }
 
-  public setGpsJamming(hexes: GpsJamHex[]): void {
+  public async setGpsJamming(hexes: GpsJamHex[]): Promise<void> {
     this.cachedGpsJamming = hexes;
     if (this.useGlobe) { this.globeMap?.setGpsJamming(hexes); return; }
     if (this.useDeckGL) {
-      this.deckGLMap?.setGpsJamming(hexes);
+      await this.deckGLMap?.setGpsJamming(hexes);
     }
   }
 

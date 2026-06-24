@@ -1,11 +1,11 @@
-// maplibre-, pmtiles-, @protomaps/basemaps-using parts of basemap.ts.
+// maplibre-using parts of basemap.ts.
 // Split out so `preferences-content.ts` (which only needs the preference
 // getters/setters) does NOT pull maplibre into the main bundle. Only
 // imported by `DeckGLMap.ts`, which is itself dynamically imported when
-// the map panel mounts — so maplibre + deck.gl now load lazily.
-import { Protocol } from 'pmtiles';
+// the map panel mounts — so maplibre + deck.gl now load lazily. PMTiles and
+// Protomaps stay behind provider-specific dynamic imports below so CARTO /
+// OpenFreeMap users do not download the self-hosted basemap stack.
 import maplibregl from 'maplibre-gl';
-import { layers, namedFlavor } from '@protomaps/basemaps';
 import type { StyleSpecification } from 'maplibre-gl';
 import {
   R2_BASE,
@@ -19,16 +19,28 @@ import {
 } from '@/config/basemap';
 
 let registered = false;
+let registerPromise: Promise<void> | null = null;
 
-export function registerPMTilesProtocol(): void {
+export async function registerPMTilesProtocol(): Promise<void> {
   if (registered) return;
-  registered = true;
-  const protocol = new Protocol();
-  maplibregl.addProtocol('pmtiles', protocol.tile);
+  registerPromise ??= (async () => {
+    try {
+      const { Protocol } = await import('pmtiles');
+      if (registered) return;
+      const protocol = new Protocol();
+      maplibregl.addProtocol('pmtiles', protocol.tile);
+      registered = true;
+    } catch (err) {
+      registerPromise = null;
+      throw err;
+    }
+  })();
+  await registerPromise;
 }
 
-export function buildPMTilesStyle(flavor: PMTilesTheme): StyleSpecification | null {
+export async function buildPMTilesStyle(flavor: PMTilesTheme): Promise<StyleSpecification | null> {
   if (!hasPMTilesUrl) return null;
+  const { layers, namedFlavor } = await import('@protomaps/basemaps');
   const spriteName = ['light', 'white'].includes(flavor) ? 'light' : 'dark';
   return {
     version: 8,
@@ -55,11 +67,23 @@ const CARTO_STYLES: Record<string, string> = {
   'positron': CARTO_POSITRON,
 };
 
-export function getStyleForProvider(provider: MapProvider, mapTheme: string): StyleSpecification | string {
+async function tryBuildRegisteredPMTilesStyle(flavor: PMTilesTheme): Promise<StyleSpecification | null> {
+  try {
+    const style = await buildPMTilesStyle(flavor);
+    if (!style) return null;
+    await registerPMTilesProtocol();
+    return style;
+  } catch (err) {
+    console.warn('[basemap] PMTiles style unavailable, using fallback:', (err as Error)?.message);
+    return null;
+  }
+}
+
+export async function getStyleForProvider(provider: MapProvider, mapTheme: string): Promise<StyleSpecification | string> {
   const lightFallback = isLightMapTheme(mapTheme);
   switch (provider) {
     case 'pmtiles': {
-      const style = buildPMTilesStyle(asPMTilesTheme(mapTheme));
+      const style = await tryBuildRegisteredPMTilesStyle(asPMTilesTheme(mapTheme));
       if (style) return style;
       return lightFallback ? FALLBACK_LIGHT_STYLE : FALLBACK_DARK_STYLE;
     }
@@ -68,7 +92,7 @@ export function getStyleForProvider(provider: MapProvider, mapTheme: string): St
     case 'carto':
       return CARTO_STYLES[mapTheme] ?? CARTO_DARK;
     default: {
-      const pmtiles = buildPMTilesStyle(asPMTilesTheme(mapTheme));
+      const pmtiles = await tryBuildRegisteredPMTilesStyle(asPMTilesTheme(mapTheme));
       return pmtiles ?? (lightFallback ? FALLBACK_LIGHT_STYLE : FALLBACK_DARK_STYLE);
     }
   }

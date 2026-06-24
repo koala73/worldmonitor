@@ -7,8 +7,9 @@ import { MapboxOverlay } from '@deck.gl/mapbox';
 import type { Layer, LayersList, PickingInfo } from '@deck.gl/core';
 import { GeoJsonLayer, ScatterplotLayer, PathLayer, IconLayer, TextLayer, PolygonLayer } from '@deck.gl/layers';
 import maplibregl from 'maplibre-gl';
-import { FALLBACK_DARK_STYLE, FALLBACK_LIGHT_STYLE, getMapProvider, getMapTheme, isLightMapTheme } from '@/config/basemap';
-import { registerPMTilesProtocol, getStyleForProvider } from '@/config/basemap-styles';
+import type { StyleSpecification } from 'maplibre-gl';
+import { FALLBACK_DARK_STYLE, FALLBACK_LIGHT_STYLE, getMapProvider, getMapTheme, isLightMapTheme, type MapProvider } from '@/config/basemap';
+import { getStyleForProvider } from '@/config/basemap-styles';
 import Supercluster from 'supercluster';
 import type {
   MapLayers,
@@ -54,7 +55,6 @@ import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';
 import type { RadiationObservation } from '@/services/radiation';
 import { ArcLayer } from '@deck.gl/layers';
-import { cellToBoundary } from 'h3-js';
 import type { WeatherAlert } from '@/services/weather';
 import { escapeHtml } from '@/utils/sanitize';
 import {
@@ -570,6 +570,7 @@ export class DeckGLMap {
   private ucdpEvents: UcdpGeoEvent[] = [];
   private displacementFlows: DisplacementFlow[] = [];
   private gpsJammingHexes: GpsJamHexWithPolygon[] = [];
+  private gpsJammingLoadSeq = 0;
   private climateAnomalies: ClimateAnomaly[] = [];
   private radiationObservations: RadiationObservation[] = [];
   private diseaseOutbreaks: DiseaseOutbreakItem[] = [];
@@ -728,6 +729,7 @@ export class DeckGLMap {
   // setTiles back-to-back. Idempotent today but wasteful.
   private radarIdlePending = false;
   private readonly startupTime = Date.now();
+  private basemapSwitchSeq = 0;
   private lastCableHighlightSignature = '';
   private lastCableHealthSignature = '';
   private lastPipelineHighlightSignature = '';
@@ -775,7 +777,7 @@ export class DeckGLMap {
 
     this.handleThemeChange = () => {
       if (isHappyVariant) {
-        this.switchBasemap();
+        void this.switchBasemap();
         return;
       }
       const provider = getMapProvider();
@@ -787,19 +789,11 @@ export class DeckGLMap {
     window.addEventListener('theme-changed', this.handleThemeChange);
 
     this.handleMapThemeChange = () => {
-      this.switchBasemap();
+      void this.switchBasemap();
     };
     window.addEventListener('map-theme-changed', this.handleMapThemeChange);
 
-    this.initMapLibre();
-
-    this.maplibreMap?.on('load', () => {
-      localizeMapLabels(this.maplibreMap);
-      this.initDeck();
-      this.loadCountryBoundaries();
-      this.fetchServerBases();
-      this.render();
-    });
+    void this.initMapLibre();
 
     if (this.chrome) {
       this.createControls();
@@ -943,7 +937,7 @@ export class DeckGLMap {
     this.container.appendChild(wrapper);
   }
 
-  private initMapLibre(): void {
+  private async initMapLibre(): Promise<void> {
     if (maplibregl.getRTLTextPluginStatus() === 'unavailable') {
       maplibregl.setRTLTextPlugin(
         '/mapbox-gl-rtl-text.min.js',
@@ -951,14 +945,9 @@ export class DeckGLMap {
       );
     }
 
-    const initialProvider = isHappyVariant ? 'openfreemap' as const : getMapProvider();
-    if (initialProvider === 'pmtiles' || initialProvider === 'auto') registerPMTilesProtocol();
+    const { mapTheme: initialMapTheme, style: primaryStyle } = await this.resolveInitialBasemapStyle();
 
     const preset = VIEW_PRESETS[this.state.view];
-    const initialMapTheme = getMapTheme(initialProvider);
-    const primaryStyle = isHappyVariant
-      ? (getCurrentTheme() === 'light' ? HAPPY_LIGHT_STYLE : HAPPY_DARK_STYLE)
-      : getStyleForProvider(initialProvider, initialMapTheme);
     if (!isHappyVariant && typeof primaryStyle === 'string' && !primaryStyle.includes('pmtiles')) {
       this.usedFallbackStyle = true;
       const attr = this.container.querySelector('.map-attribution');
@@ -1029,6 +1018,14 @@ export class DeckGLMap {
         this.render();
       });
     };
+
+    this.maplibreMap.on('load', () => {
+      localizeMapLabels(this.maplibreMap);
+      this.initDeck();
+      this.loadCountryBoundaries();
+      this.fetchServerBases();
+      this.render();
+    });
 
     let tileLoadOk = false;
     let tileErrorCount = 0;
@@ -1181,6 +1178,28 @@ export class DeckGLMap {
       }
     } else {
       this.savedTopLat = null;
+    }
+  }
+
+  private async resolveInitialBasemapStyle(): Promise<{ provider: MapProvider; mapTheme: string; style: StyleSpecification | string }> {
+    if (isHappyVariant) {
+      const mapTheme = getCurrentTheme();
+      return {
+        provider: 'openfreemap',
+        mapTheme,
+        style: mapTheme === 'light' ? HAPPY_LIGHT_STYLE : HAPPY_DARK_STYLE,
+      };
+    }
+
+    while (true) {
+      const provider = getMapProvider();
+      const mapTheme = getMapTheme(provider);
+      const style = await getStyleForProvider(provider, mapTheme);
+      const currentProvider = getMapProvider();
+      const currentMapTheme = getMapTheme(currentProvider);
+      if (provider === currentProvider && mapTheme === currentMapTheme) {
+        return { provider, mapTheme, style };
+      }
     }
   }
 
@@ -6458,14 +6477,31 @@ export class DeckGLMap {
     this.render();
   }
 
-  public setGpsJamming(hexes: GpsJamHex[]): void {
-    // Precompute each hex boundary once per data refresh (every ~5 min) instead
-    // of calling cellToBoundary per hex on every buildLayers()/render (#4396).
-    this.gpsJammingHexes = hexes.map(h => ({
-      ...h,
-      polygon: cellToBoundary(h.h3, true) as [number, number][],
-    }));
-    this.render();
+  public async setGpsJamming(hexes: GpsJamHex[]): Promise<void> {
+    const seq = ++this.gpsJammingLoadSeq;
+    if (hexes.length === 0) {
+      this.gpsJammingHexes = [];
+      this.render();
+      return;
+    }
+
+    try {
+      const { cellToBoundary } = await import('h3-js');
+      if (seq !== this.gpsJammingLoadSeq) return;
+      // Precompute each hex boundary once per data refresh (every ~5 min)
+      // instead of calling cellToBoundary per hex on every buildLayers()/render.
+      this.gpsJammingHexes = hexes.map(h => ({
+        ...h,
+        polygon: cellToBoundary(h.h3, true) as [number, number][],
+      }));
+      this.render();
+    } catch (err) {
+      if (seq !== this.gpsJammingLoadSeq) return;
+      this.gpsJammingHexes = [];
+      this.render();
+      console.warn('[DeckGLMap] failed to prepare GPS jamming polygons:', (err as Error)?.message);
+      throw err;
+    }
   }
 
   public setDiseaseOutbreaks(outbreaks: DiseaseOutbreakItem[]): void {
@@ -7278,19 +7314,22 @@ export class DeckGLMap {
     this.countryPulseRaf = requestAnimationFrame(step);
   }
 
-  private switchBasemap(): void {
-    if (!this.maplibreMap) return;
+  private async switchBasemap(): Promise<void> {
+    const map = this.maplibreMap;
+    if (!map) return;
+    const seq = ++this.basemapSwitchSeq;
     const provider = getMapProvider();
     const mapTheme = getMapTheme(provider);
     const style = isHappyVariant
       ? (getCurrentTheme() === 'light' ? HAPPY_LIGHT_STYLE : HAPPY_DARK_STYLE)
       : (this.usedFallbackStyle && provider === 'auto')
         ? (isLightMapTheme(mapTheme) ? FALLBACK_LIGHT_STYLE : FALLBACK_DARK_STYLE)
-        : getStyleForProvider(provider, mapTheme);
+        : await getStyleForProvider(provider, mapTheme);
+    if (this.maplibreMap !== map || seq !== this.basemapSwitchSeq) return;
     if (this.countryPulseRaf) { cancelAnimationFrame(this.countryPulseRaf); this.countryPulseRaf = null; }
     this.countryGeoJsonLoaded = false;
-    this.maplibreMap.setStyle(style, { diff: false });
-    this.maplibreMap.once('style.load', () => {
+    map.setStyle(style, { diff: false });
+    map.once('style.load', () => {
       localizeMapLabels(this.maplibreMap);
       this.loadCountryBoundaries();
       if (this.radarActive) this.applyRadarLayer();
@@ -7364,11 +7403,10 @@ export class DeckGLMap {
   }
 
   public reloadBasemap(): void {
+    this.basemapSwitchSeq++;
     if (!this.maplibreMap) return;
-    const provider = getMapProvider();
-    if (provider === 'pmtiles' || provider === 'auto') registerPMTilesProtocol();
     this.usedFallbackStyle = false;
-    this.switchBasemap();
+    void this.switchBasemap();
   }
 
   private updateCountryLayerPaint(theme: 'dark' | 'light'): void {
