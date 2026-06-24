@@ -602,7 +602,11 @@ export class MapContainer {
     if (this.cachedDisplacementFlows) this.setDisplacementFlows(this.cachedDisplacementFlows);
     if (this.cachedClimateAnomalies) this.setClimateAnomalies(this.cachedClimateAnomalies);
     if (this.cachedRadiationObservations) this.setRadiationObservations(this.cachedRadiationObservations);
-    if (this.cachedGpsJamming) void this.setGpsJamming(this.cachedGpsJamming);
+    if (this.cachedGpsJamming) {
+      void this.setGpsJamming(this.cachedGpsJamming).catch(err => {
+        console.warn('[MapContainer] GPS jamming re-init failed:', (err as Error)?.message);
+      });
+    }
     if (this.cachedSatellites) this.setSatellites(this.cachedSatellites);
     if (this.cachedDiseaseOutbreaks) this.setDiseaseOutbreaks(this.cachedDiseaseOutbreaks);
     if (this.cachedCyberThreats) this.setCyberThreats(this.cachedCyberThreats);

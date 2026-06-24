@@ -1191,7 +1191,7 @@ export class DeckGLMap {
       };
     }
 
-    while (true) {
+    for (let attempt = 0; attempt < 10; attempt++) {
       const provider = getMapProvider();
       const mapTheme = getMapTheme(provider);
       const style = await getStyleForProvider(provider, mapTheme);
@@ -1201,6 +1201,17 @@ export class DeckGLMap {
         return { provider, mapTheme, style };
       }
     }
+
+    const provider = getMapProvider();
+    const mapTheme = getMapTheme(provider);
+    console.warn('[DeckGLMap] Map provider changed repeatedly during startup; using latest provider state');
+    return {
+      provider,
+      mapTheme,
+      style: provider === 'carto'
+        ? await getStyleForProvider(provider, mapTheme)
+        : (isLightMapTheme(mapTheme) ? FALLBACK_LIGHT_STYLE : FALLBACK_DARK_STYLE),
+    };
   }
 
   public resize(): void {
