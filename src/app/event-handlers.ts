@@ -200,7 +200,7 @@ export class EventHandlerManager implements AppModule {
   private boundMapWidthResizeMoveHandler: ((e: MouseEvent) => void) | null = null;
   private boundMapWidthEndResizeHandler: (() => void) | null = null;
   private boundMapFullscreenEscHandler: ((e: KeyboardEvent) => void) | null = null;
-  private searchButtonsInitialized = false;
+  private readonly registeredSearchButtons = new Set<string>();
   private boundSearchKeyHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundMobileMenuKeyHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundPanelCloseHandler: ((e: Event) => void) | null = null;
@@ -458,30 +458,29 @@ export class EventHandlerManager implements AppModule {
   }
 
   setupSearchControls(): void {
-    const openSearch = () => {
-      this.callbacks.openSearch();
+    // Wire each button independently and idempotently. setupSearchControls() is
+    // called across several init phases (buttons are injected at different
+    // times); tracking registered IDs in a Set means a button absent at an
+    // early call still gets wired when it appears, instead of being permanently
+    // skipped by a single latched boolean. (#4403 review)
+    const wireSearchButton = (id: string, source: string) => {
+      if (this.registeredSearchButtons.has(id)) return;
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('click', () => {
+        track('search-open', { source });
+        this.callbacks.openSearch();
+      });
+      this.registeredSearchButtons.add(id);
     };
-    if (!this.searchButtonsInitialized) {
-      const searchBtn = document.getElementById('searchBtn');
-      const mobileSearchBtn = document.getElementById('mobileSearchBtn');
-      const searchMobileFab = document.getElementById('searchMobileFab');
-      searchBtn?.addEventListener('click', () => {
-        track('search-open', { source: 'desktop' });
-        openSearch();
-      });
-      mobileSearchBtn?.addEventListener('click', () => {
-        track('search-open', { source: 'mobile' });
-        openSearch();
-      });
-      searchMobileFab?.addEventListener('click', () => {
-        track('search-open', { source: 'fab' });
-        openSearch();
-      });
-      this.searchButtonsInitialized = Boolean(searchBtn || mobileSearchBtn || searchMobileFab);
-    }
+    wireSearchButton('searchBtn', 'desktop');
+    wireSearchButton('mobileSearchBtn', 'mobile');
+    wireSearchButton('searchMobileFab', 'fab');
     if (!this.boundSearchKeyHandler) {
       this.boundSearchKeyHandler = (e: KeyboardEvent) => {
-        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        // !e.shiftKey so Cmd/Ctrl+Shift+K (e.g. Firefox web console) doesn't
+        // also toggle search; .toLowerCase() still tolerates CapsLock. (#4403)
+        if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'k') {
           e.preventDefault();
           this.callbacks.openSearch({ toggle: true });
         }

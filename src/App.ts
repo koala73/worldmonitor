@@ -35,7 +35,7 @@ import { isProUser } from '@/services/widget-store';
 import { mlWorker } from '@/services/ml-worker';
 import { getAiFlowSettings, subscribeAiFlowChange, isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { startLearning } from '@/services/country-instability';
-import { loadFromStorage, parseMapUrlState, saveToStorage, isMobileDevice } from '@/utils';
+import { loadFromStorage, parseMapUrlState, saveToStorage, isMobileDevice, showToast } from '@/utils';
 import { clearPanelSpans, invalidatePanelStorageCacheForKeys } from '@/utils/panel-storage';
 import type { ParsedMapUrlState } from '@/utils';
 import { SignalModal } from '@/components/SignalModal';
@@ -147,8 +147,11 @@ export class App {
   private eventHandlers: EventHandlerManager;
   private searchManager: SearchManager | null = null;
   private searchManagerLoad: Promise<SearchManager> | null = null;
-  private pendingSearchToggleLoad: Promise<SearchManager> | null = null;
-  private pendingSearchToggleShouldOpen = false;
+  // Monotonic epoch: every openSearch() call supersedes earlier in-flight ones.
+  // searchToggleDesiredOpen accumulates the net intent of rapid Cmd+K presses
+  // while the lazy chunk loads (XOR: odd → open, even → cancel). (#4403 review)
+  private openSearchEpoch = 0;
+  private searchToggleDesiredOpen = false;
   private latestSearchAdsb: Parameters<SearchManager['updateFlightSource']>[0] = [];
   private latestSearchMilitary: Parameters<SearchManager['updateFlightSource']>[1] = [];
   private countryIntel: CountryIntelManager;
@@ -1026,34 +1029,35 @@ export class App {
   }
 
   private async openSearch(options: { toggle?: boolean; throwOnFailure?: boolean } = {}): Promise<void> {
+    // Concurrency model: each press registers its intent, then claims a
+    // monotonic epoch. After the lazy load resolves, only the latest epoch acts
+    // — superseded presses bail. This yields one deterministic modal.open() for
+    // any Cmd+K / button interleaving during the first load (replacing the prior
+    // two-field pending-toggle bookkeeping), while preserving net-toggle parity:
+    // the XOR flip happens BEFORE the epoch claim so every rapid Cmd+K still
+    // counts (odd → open, even → cancel), even the ones that get superseded.
+    let epoch = this.openSearchEpoch;
     try {
       await this.waitForUiReady();
+
       const existingModal = this.state.searchModal;
       if (options.toggle && existingModal?.isOpen()) {
         existingModal.close();
         return;
       }
 
-      if (options.toggle && !this.searchManager) {
-        this.pendingSearchToggleShouldOpen = !this.pendingSearchToggleShouldOpen;
-        const pendingLoad = this.ensureSearchManager();
-        this.pendingSearchToggleLoad = pendingLoad;
-        const manager = await pendingLoad;
-        if (this.pendingSearchToggleLoad !== pendingLoad) return;
-
-        const shouldOpen = this.pendingSearchToggleShouldOpen;
-        this.pendingSearchToggleLoad = null;
-        this.pendingSearchToggleShouldOpen = false;
-        if (!shouldOpen) return;
-
-        manager.updateSearchIndex();
-        const modal = this.state.searchModal;
-        if (!modal) throw new Error('Search modal is not initialised');
-        modal.open();
-        return;
+      const togglingBeforeLoad = Boolean(options.toggle) && !this.searchManager;
+      if (togglingBeforeLoad) {
+        this.searchToggleDesiredOpen = !this.searchToggleDesiredOpen;
       }
 
+      epoch = ++this.openSearchEpoch;
       const manager = await this.ensureSearchManager();
+      if (this.openSearchEpoch !== epoch) return;
+
+      const wantOpen = togglingBeforeLoad ? this.searchToggleDesiredOpen : true;
+      if (!wantOpen) return;
+
       manager.updateSearchIndex();
       const modal = this.state.searchModal;
       if (!modal) throw new Error('Search modal is not initialised');
@@ -1061,10 +1065,12 @@ export class App {
     } catch (error) {
       if (!this.state.isDestroyed) {
         console.warn('[search] Failed to load search manager:', error);
+        if (!options.throwOnFailure) showToast('Search failed to load. Please try again.');
       }
-      this.pendingSearchToggleLoad = null;
-      this.pendingSearchToggleShouldOpen = false;
       if (options.throwOnFailure) throw error;
+    } finally {
+      // Reset the toggle accumulator once the latest press settles.
+      if (this.openSearchEpoch === epoch) this.searchToggleDesiredOpen = false;
     }
   }
 
@@ -1089,15 +1095,11 @@ export class App {
       },
       resolveCountryName: (code) => CountryIntelManager.resolveCountryName(code),
       openSearch: async () => {
-        await this.waitForUiReady();
-        const searchOpenOptions = { throwOnFailure: true };
-        await this.openSearch(searchOpenOptions);
-        if (!this.state.searchModal) {
-          throw new Error('Search modal is not initialised');
-        }
-        if (!this.state.searchModal.isOpen()) {
-          throw new Error('Search modal did not open');
-        }
+        // openSearch() awaits UI readiness internally and throws on failure when
+        // throwOnFailure is set, so the agent receives a real success/failure.
+        // (Re-checking searchModal here would spuriously throw if a concurrent
+        // Cmd+K closed it between open and the check — #4403 review ADV-4.)
+        await this.openSearch({ throwOnFailure: true });
       },
     });
 
