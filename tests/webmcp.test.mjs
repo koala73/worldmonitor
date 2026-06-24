@@ -168,6 +168,29 @@ describe('webmcp App.ts binding: readiness + teardown', () => {
     );
   });
 
+  it('first-load search toggles track pending intent instead of a stale pre-import snapshot', () => {
+    assert.match(
+      appSrc,
+      /private pendingSearchToggleLoad: Promise<SearchManager> \| null = null;/,
+      'App must track the lazy search load associated with pending toggle intent',
+    );
+    assert.match(
+      appSrc,
+      /private pendingSearchToggleShouldOpen = false;/,
+      'App must track first-load toggle parity while the search chunk loads',
+    );
+    assert.match(
+      appSrc,
+      /this\.pendingSearchToggleShouldOpen = !this\.pendingSearchToggleShouldOpen;[\s\S]+?const pendingLoad = this\.ensureSearchManager\(\);[\s\S]+?this\.pendingSearchToggleLoad = pendingLoad;[\s\S]+?if \(this\.pendingSearchToggleLoad !== pendingLoad\) return;[\s\S]+?if \(!shouldOpen\) return;[\s\S]+?modal\.open\(\);/,
+      'openSearch(toggle) must flip pending intent during first lazy load and apply the final parity after import',
+    );
+    assert.doesNotMatch(
+      appSrc,
+      /const wasOpen = this\.state\.searchModal\?\.isOpen\(\) === true;/,
+      'openSearch must not capture searchModal state before awaiting UI readiness/import',
+    );
+  });
+
   it('uiReady is resolved after Phase-4 UI modules initialise', () => {
     // waitForUiReady() hangs forever if nothing ever resolves uiReady.
     // The resolve must live right after countryIntel.init() so that all

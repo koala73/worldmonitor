@@ -147,6 +147,8 @@ export class App {
   private eventHandlers: EventHandlerManager;
   private searchManager: SearchManager | null = null;
   private searchManagerLoad: Promise<SearchManager> | null = null;
+  private pendingSearchToggleLoad: Promise<SearchManager> | null = null;
+  private pendingSearchToggleShouldOpen = false;
   private latestSearchAdsb: Parameters<SearchManager['updateFlightSource']>[0] = [];
   private latestSearchMilitary: Parameters<SearchManager['updateFlightSource']>[1] = [];
   private countryIntel: CountryIntelManager;
@@ -1024,13 +1026,33 @@ export class App {
   }
 
   private async openSearch(options: { toggle?: boolean; throwOnFailure?: boolean } = {}): Promise<void> {
-    const wasOpen = this.state.searchModal?.isOpen() === true;
     try {
       await this.waitForUiReady();
-      if (options.toggle && wasOpen) {
-        this.state.searchModal?.close();
+      const existingModal = this.state.searchModal;
+      if (options.toggle && existingModal?.isOpen()) {
+        existingModal.close();
         return;
       }
+
+      if (options.toggle && !this.searchManager) {
+        this.pendingSearchToggleShouldOpen = !this.pendingSearchToggleShouldOpen;
+        const pendingLoad = this.ensureSearchManager();
+        this.pendingSearchToggleLoad = pendingLoad;
+        const manager = await pendingLoad;
+        if (this.pendingSearchToggleLoad !== pendingLoad) return;
+
+        const shouldOpen = this.pendingSearchToggleShouldOpen;
+        this.pendingSearchToggleLoad = null;
+        this.pendingSearchToggleShouldOpen = false;
+        if (!shouldOpen) return;
+
+        manager.updateSearchIndex();
+        const modal = this.state.searchModal;
+        if (!modal) throw new Error('Search modal is not initialised');
+        modal.open();
+        return;
+      }
+
       const manager = await this.ensureSearchManager();
       manager.updateSearchIndex();
       const modal = this.state.searchModal;
@@ -1040,6 +1062,8 @@ export class App {
       if (!this.state.isDestroyed) {
         console.warn('[search] Failed to load search manager:', error);
       }
+      this.pendingSearchToggleLoad = null;
+      this.pendingSearchToggleShouldOpen = false;
       if (options.throwOnFailure) throw error;
     }
   }
