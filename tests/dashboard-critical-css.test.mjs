@@ -187,6 +187,11 @@ describe('dashboard critical CSS graph', () => {
       'The dashboard static graph must keep the in-dashboard UnifiedSettings modal on the lazy interaction path.',
     );
     assert.equal(
+      dashboardGraph.has('src/app/event-handlers.ts'),
+      true,
+      'sanity check: the dashboard static graph must still reach the lazy settings controller owner.',
+    );
+    assert.equal(
       dynamicModuleSpecifiers('src/app/event-handlers.ts').includes('@/components/UnifiedSettings'),
       true,
       'sanity check: the dashboard still reaches UnifiedSettings through the lazy settings controller.',
