@@ -15,12 +15,19 @@ function parseSource(relPath) {
 }
 
 function staticValueImports(sourceFile) {
-  return sourceFile.statements
-    .filter(ts.isImportDeclaration)
-    .filter((statement) => !statement.importClause?.isTypeOnly)
-    .map((statement) => statement.moduleSpecifier)
-    .filter(ts.isStringLiteral)
-    .map((specifier) => specifier.text);
+  const specifiers = [];
+  for (const statement of sourceFile.statements) {
+    if (ts.isImportDeclaration(statement) && !statement.importClause?.isTypeOnly) {
+      if (ts.isStringLiteral(statement.moduleSpecifier)) {
+        specifiers.push(statement.moduleSpecifier.text);
+      }
+    } else if (ts.isExportDeclaration(statement) && !statement.isTypeOnly) {
+      if (statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier)) {
+        specifiers.push(statement.moduleSpecifier.text);
+      }
+    }
+  }
+  return specifiers;
 }
 
 function resolveRelativeSource(fromFileName, specifier) {

@@ -6004,6 +6004,7 @@ export class DeckGLMap {
         d.path,
         ((this.tradeAnimationTime + d.phase) % TRADE_ANIMATION_CYCLE) / TRADE_ANIMATION_CYCLE,
       ),
+      updateTriggers: { getPosition: [this.tradeAnimationTime] },
       getFillColor: (d: TripData) => d.color,
       getRadius: (d: TripData) => d.width * 20_000,
       radiusMinPixels: 3,
