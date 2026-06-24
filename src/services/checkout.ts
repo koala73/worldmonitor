@@ -193,9 +193,10 @@ function safeCloseOverlay(): void {
 
 /**
  * Register the checkout success callback. The Dodo overlay SDK itself is
- * initialized lazily on first checkout open so it stays off the startup path.
+ * initialized lazily on first checkout open (see ensureCheckoutOverlayInitialized)
+ * so it stays off the startup path — this call no longer initializes anything.
  */
-export function initCheckoutOverlay(onSuccess?: () => void): void {
+export function registerCheckoutSuccessCallback(onSuccess?: () => void): void {
   if (onSuccess) {
     onSuccessCallback = onSuccess;
   }
@@ -654,7 +655,7 @@ export async function openCheckout(checkoutUrl: string): Promise<void> {
   await ensureCheckoutOverlayInitialized();
   // Reset the per-session successFired flag so a prior session's
   // terminal state can't leak into this one. (The flag lives in a
-  // closure inside initCheckoutOverlay's event handler; this resets
+  // closure inside ensureCheckoutOverlayInitialized's event handler; this resets
   // it.)
   _resetOverlaySession?.();
 

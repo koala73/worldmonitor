@@ -299,6 +299,20 @@ function builtDashboardLazyPreloadOffenders() {
   return preloadHrefs.filter((href) => /\/assets\/(?:panels-[a-z]+|panel-support|UnifiedSettings|settings-window|checkout)-[A-Za-z0-9_-]+\.js$/.test(href));
 }
 
+// When a build is present, confirm each secondary flow actually emitted its own
+// lazy chunk. Without this, builtDashboardLazyPreloadOffenders passes vacuously
+// if the split regresses and a module folds back into the eager entry (the
+// #4382 onlyExplicitManualChunks failure mode): a chunk that no longer exists
+// can never appear in the modulepreload list.
+function builtSecondaryLazyChunksMissing() {
+  const assetsDir = resolve(repoRoot, 'dist/assets');
+  if (!existsSync(assetsDir)) return null;
+  const files = readdirSync(assetsDir);
+  return ['UnifiedSettings', 'settings-window', 'checkout'].filter(
+    (name) => !files.some((file) => new RegExp(`^${name}-[A-Za-z0-9_-]+\\.js$`).test(file)),
+  );
+}
+
 function startupSecondaryFlowImportOffenders() {
   const blockedSpecifiers = new Set([
     '@/components/UnifiedSettings',
@@ -453,5 +467,13 @@ describe('panel cluster chunk guardrails', () => {
       [],
       'Checkout must dynamically import dodopayments-checkout so the SDK stays out of main.',
     );
+    const missingLazyChunks = builtSecondaryLazyChunksMissing();
+    if (missingLazyChunks) {
+      assert.deepEqual(
+        missingLazyChunks,
+        [],
+        `Secondary flows must build into their own lazy chunks (split regressed): ${missingLazyChunks.join(', ')}`,
+      );
+    }
   });
 });

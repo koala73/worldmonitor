@@ -96,8 +96,7 @@ import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { escapeHtml } from '@/utils/sanitize';
 import { buildEmbedIframeSnippet, buildEmbedMapUrl, type EmbedVariant } from '@/embed/embed-url';
-
-const SETTINGS_GEAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
+import { createSettingsButton } from '@/components/settings-button';
 
 type RealUnifiedSettings = import('@/components/UnifiedSettings').UnifiedSettings;
 
@@ -108,12 +107,7 @@ class LazyUnifiedSettings implements UnifiedSettingsController {
   private destroyed = false;
 
   constructor(private readonly config: UnifiedSettingsConfig) {
-    this.button = document.createElement('button');
-    this.button.className = 'unified-settings-btn';
-    this.button.id = 'unifiedSettingsBtn';
-    this.button.setAttribute('aria-label', t('header.settings'));
-    setTrustedHtml(this.button, trustedHtml(SETTINGS_GEAR_SVG, "legacy direct innerHTML migration"));
-    this.button.addEventListener('click', () => this.open());
+    this.button = createSettingsButton(() => this.open());
   }
 
   getButton(): HTMLButtonElement {
@@ -124,6 +118,9 @@ class LazyUnifiedSettings implements UnifiedSettingsController {
     void this.load().then((settings) => {
       if (!this.destroyed) settings.open(tab);
     }).catch((error) => {
+      // A rejection because the controller was torn down mid-load is a
+      // deliberate unmount, not a failure the user should be toasted about.
+      if (this.destroyed) return;
       console.warn('[settings] Failed to load settings window:', error);
       showToast(t('common.error'));
     });

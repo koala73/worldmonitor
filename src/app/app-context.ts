@@ -8,7 +8,8 @@ import type { Earthquake } from '@/services/earthquakes';
 
 export type { CountryBriefSignals } from '@/types';
 
-export type UnifiedSettingsTabId = 'settings' | 'panels' | 'sources' | 'notifications' | 'api-keys' | 'mcp-clients';
+import type { UnifiedSettingsTabId } from '@/components/settings-types';
+export type { UnifiedSettingsTabId };
 
 export interface UnifiedSettingsController {
   open(tab?: UnifiedSettingsTabId): void;

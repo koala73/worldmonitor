@@ -42,7 +42,7 @@ import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitled
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
 import { initPaymentFailureBanner } from '@/components/payment-failure-banner';
 import { handleCheckoutReturn } from '@/services/checkout-return';
-import { initCheckoutOverlay, destroyCheckoutOverlay, showCheckoutSuccess, consumePostCheckoutFlag, clearCheckoutAttempt } from '@/services/checkout';
+import { registerCheckoutSuccessCallback, destroyCheckoutOverlay, showCheckoutSuccess, consumePostCheckoutFlag, clearCheckoutAttempt } from '@/services/checkout';
 import { showCheckoutFailureBanner } from '@/components/checkout-failure-banner';
 import { openMcpConnectModal } from '@/components/McpConnectModal';
 import { PanelTabBar } from '@/components/PanelTabBar';
@@ -250,7 +250,7 @@ export class PanelLayoutManager implements AppModule {
     // email lazily at fire-time (not at register-time) so a just-signed-
     // in buyer who completes checkout in the same session still sees
     // the receipt acknowledgement.
-    initCheckoutOverlay(() => showCheckoutSuccess({
+    registerCheckoutSuccessCallback(() => showCheckoutSuccess({
       waitForEntitlement: true,
       email: getAuthState().user?.email ?? null,
     }));
