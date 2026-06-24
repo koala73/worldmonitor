@@ -498,9 +498,18 @@ export class MapContainer {
         view: this.initialState.view as DeckMapView,
       }, { chrome: this.chrome });
       this.rehydrateActiveMap();
+      // DeckGLMap defers MapLibre construction behind an async init. Await it so
+      // a WebGL/map-construction throw still reaches this catch and degrades to
+      // SVG, instead of becoming an unhandled rejection behind a blank map.
+      await this.deckGLMap.whenReady();
+      if (!this.isCurrentRendererInit(token)) return;
     } catch (error) {
       if (!this.isCurrentRendererInit(token)) return;
       console.warn('[MapContainer] DeckGL initialization failed, falling back to SVG map', error);
+      // Tear down the half-built deck map so its listeners, timers and WebGL
+      // context do not leak; initSvgMap then nulls the reference and flips
+      // useDeckGL off.
+      this.deckGLMap?.destroy();
       await this.initSvgMap('[MapContainer] Initializing SVG map (DeckGL fallback mode)', token);
     }
   }

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
@@ -181,6 +181,56 @@ describe('map renderer deferral boundary', () => {
       /if\s*\([^{]*id\.includes\('\/@protomaps\/basemaps\/'\)[^{]*\)\s*\{\s*return 'maplibre'/,
       'MapLibre manual chunk must not include Protomaps basemap code',
     );
+  });
+
+  // Real bundle-output guard. The static import-graph and vite.config text checks
+  // above cannot prove the split actually happened: staticValueImportGraph does not
+  // follow @/-aliased imports into basemap-styles.ts (where pmtiles/@protomaps/basemaps
+  // live), and a config-text regex says nothing about the emitted bundle. When a build
+  // is present, assert the split survived in dist — the #4382 onlyExplicitManualChunks
+  // fold-back stays green in source-level tests and only surfaces in the real output.
+  it('emits provider-specific WebGL vendor chunks that stay lazy in the real build', () => {
+    const assetsDir = resolve(root, 'dist/assets');
+    if (!existsSync(assetsDir)) return; // no build present — runs meaningfully post-build (CI)
+
+    const assets = readdirSync(assetsDir);
+    const findChunk = (name) => assets.find((file) => new RegExp(`^${name}-[A-Za-z0-9_-]+\\.js$`).test(file));
+
+    const maplibre = findChunk('maplibre');
+    const deckStack = findChunk('deck-stack');
+    const protomaps = findChunk('protomaps');
+    const h3 = findChunk('h3-js');
+
+    // Fold-back guard: if pmtiles/@protomaps/basemaps or h3-js regress back into the
+    // shared vendor chunks, their dedicated chunks disappear (the #4382 failure mode).
+    assert.ok(maplibre, 'maplibre vendor chunk must be emitted');
+    assert.ok(deckStack, 'deck-stack vendor chunk must be emitted');
+    assert.ok(protomaps, 'protomaps (pmtiles + @protomaps/basemaps) chunk must be emitted');
+    assert.ok(h3, 'h3-js chunk must be emitted');
+
+    // The whole point of the split: the maplibre chunk must not reference the
+    // provider-specific chunks at all (neither static nor dynamic).
+    const maplibreSrc = readFileSync(resolve(assetsDir, maplibre), 'utf-8');
+    assert.doesNotMatch(maplibreSrc, /protomaps-[A-Za-z0-9_-]+\.js/, 'maplibre chunk must not reference the protomaps chunk');
+    assert.doesNotMatch(maplibreSrc, /h3-js-[A-Za-z0-9_-]+\.js/, 'maplibre chunk must not reference the h3-js chunk');
+
+    // deck-stack may reach h3-js, but only via dynamic import() so it stays lazy —
+    // never a static `import"./h3-js-…"` / `from"./h3-js-…"`.
+    const deckStackSrc = readFileSync(resolve(assetsDir, deckStack), 'utf-8');
+    assert.doesNotMatch(
+      deckStackSrc,
+      /(?:import|from)\s*["']\.\/h3-js-[A-Za-z0-9_-]+\.js["']/,
+      'deck-stack must load h3-js lazily (dynamic import), never as a static import',
+    );
+
+    // None of the WebGL chunks may be modulepreloaded by the dashboard entry HTML.
+    const dashboard = resolve(root, 'dist/dashboard.html');
+    if (existsSync(dashboard)) {
+      const html = readFileSync(dashboard, 'utf-8');
+      const preloads = [...html.matchAll(/<link\b[^>]*\brel=["']modulepreload["'][^>]*\bhref=["']([^"']+)["'][^>]*>/g)].map((match) => match[1]);
+      const offenders = preloads.filter((href) => /\/assets\/(?:maplibre|deck-stack|protomaps|h3-js)-[A-Za-z0-9_-]+\.js$/.test(href));
+      assert.deepEqual(offenders, [], `WebGL vendor chunks must not be modulepreloaded by dashboard.html: ${offenders.join(', ')}`);
+    }
   });
 
   it('caches renderer data calls that can arrive before the deferred renderer exists', () => {

@@ -8,7 +8,7 @@ import type { Layer, LayersList, PickingInfo } from '@deck.gl/core';
 import { GeoJsonLayer, ScatterplotLayer, PathLayer, IconLayer, TextLayer, PolygonLayer } from '@deck.gl/layers';
 import maplibregl from 'maplibre-gl';
 import type { StyleSpecification } from 'maplibre-gl';
-import { FALLBACK_DARK_STYLE, FALLBACK_LIGHT_STYLE, getMapProvider, getMapTheme, isLightMapTheme, type MapProvider } from '@/config/basemap';
+import { FALLBACK_DARK_STYLE, FALLBACK_LIGHT_STYLE, getMapProvider, getMapTheme, isLightMapTheme } from '@/config/basemap';
 import { getStyleForProvider } from '@/config/basemap-styles';
 import Supercluster from 'supercluster';
 import type {
@@ -695,8 +695,10 @@ export class DeckGLMap {
   private renderPaused = false;
   private renderPending = false;
   private webglLost = false;
+  private destroyed = false;
   private usedFallbackStyle = false;
   private readonly chrome: boolean;
+  private initPromise: Promise<void> = Promise.resolve();
   private styleLoadTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private tileMonitorGeneration = 0;
 
@@ -793,7 +795,7 @@ export class DeckGLMap {
     };
     window.addEventListener('map-theme-changed', this.handleMapThemeChange);
 
-    void this.initMapLibre();
+    this.initPromise = this.initMapLibre();
 
     if (this.chrome) {
       this.createControls();
@@ -937,6 +939,18 @@ export class DeckGLMap {
     this.container.appendChild(wrapper);
   }
 
+  /**
+   * Resolves once the initial MapLibre construction has settled (success, or a
+   * guarded teardown that bailed before constructing the map). Rejects if map
+   * construction throws (e.g. a WebGL init failure), letting
+   * MapContainer.createDeckGLMap fall back to the SVG renderer — the failure
+   * path that the fire-and-forget `void this.initMapLibre()` would otherwise
+   * swallow into an unhandled rejection + blank map.
+   */
+  public whenReady(): Promise<void> {
+    return this.initPromise;
+  }
+
   private async initMapLibre(): Promise<void> {
     if (maplibregl.getRTLTextPluginStatus() === 'unavailable') {
       maplibregl.setRTLTextPlugin(
@@ -946,6 +960,11 @@ export class DeckGLMap {
     }
 
     const { mapTheme: initialMapTheme, style: primaryStyle } = await this.resolveInitialBasemapStyle();
+    // The component can be torn down (renderer switch) while the style import
+    // above is in flight; bail before constructing a MapLibre map that destroy()
+    // can no longer reach — it would orphan a live WebGL context, its listeners
+    // and the 10s styleLoadTimeoutId.
+    if (this.destroyed) return;
 
     const preset = VIEW_PRESETS[this.state.view];
     if (!isHappyVariant && typeof primaryStyle === 'string' && !primaryStyle.includes('pmtiles')) {
@@ -1181,11 +1200,10 @@ export class DeckGLMap {
     }
   }
 
-  private async resolveInitialBasemapStyle(): Promise<{ provider: MapProvider; mapTheme: string; style: StyleSpecification | string }> {
+  private async resolveInitialBasemapStyle(): Promise<{ mapTheme: string; style: StyleSpecification | string }> {
     if (isHappyVariant) {
       const mapTheme = getCurrentTheme();
       return {
-        provider: 'openfreemap',
         mapTheme,
         style: mapTheme === 'light' ? HAPPY_LIGHT_STYLE : HAPPY_DARK_STYLE,
       };
@@ -1198,7 +1216,7 @@ export class DeckGLMap {
       const currentProvider = getMapProvider();
       const currentMapTheme = getMapTheme(currentProvider);
       if (provider === currentProvider && mapTheme === currentMapTheme) {
-        return { provider, mapTheme, style };
+        return { mapTheme, style };
       }
     }
 
@@ -1206,7 +1224,6 @@ export class DeckGLMap {
     const mapTheme = getMapTheme(provider);
     console.warn('[DeckGLMap] Map provider changed repeatedly during startup; using latest provider state');
     return {
-      provider,
       mapTheme,
       style: provider === 'carto'
         ? await getStyleForProvider(provider, mapTheme)
@@ -7436,6 +7453,7 @@ export class DeckGLMap {
   }
 
   public destroy(): void {
+    this.destroyed = true;
     this.stopTradeAnimation();
     this.activeFlightTrails.clear();
     this.clearTrailsBtn = null;
