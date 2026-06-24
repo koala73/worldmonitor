@@ -92,7 +92,7 @@ import { DesktopUpdater } from '@/app/desktop-updater';
 import { CountryIntelManager } from '@/app/country-intel';
 import { registerWebMcpTools } from '@/services/webmcp';
 import { refreshDataFreshnessFromHealth } from '@/services/health-freshness';
-import { SearchManager } from '@/app/search-manager';
+import type { SearchManager } from '@/app/search-manager';
 import { RefreshScheduler } from '@/app/refresh-scheduler';
 import { PanelLayoutManager } from '@/app/panel-layout';
 import { DataLoaderManager } from '@/app/data-loader';
@@ -145,7 +145,10 @@ export class App {
   private panelLayout: PanelLayoutManager;
   private dataLoader: DataLoaderManager;
   private eventHandlers: EventHandlerManager;
-  private searchManager: SearchManager;
+  private searchManager: SearchManager | null = null;
+  private searchManagerLoad: Promise<SearchManager> | null = null;
+  private latestSearchAdsb: Parameters<SearchManager['updateFlightSource']>[0] = [];
+  private latestSearchMilitary: Parameters<SearchManager['updateFlightSource']>[1] = [];
   private countryIntel: CountryIntelManager;
   private refreshScheduler: RefreshScheduler;
   private desktopUpdater: DesktopUpdater;
@@ -154,9 +157,9 @@ export class App {
   private unsubAiFlow: (() => void) | null = null;
   private unsubFreeTier: (() => void) | null = null;
   private unsubEntitlementPremiumLoaders: (() => void) | null = null;
-  // Resolves once Phase-4 UI modules (searchManager, countryIntel) have
-  // initialised so WebMCP bindings can await readiness before touching
-  // the nullable UI targets. Avoids the startup race where an agent
+  // Resolves once Phase-4 UI modules have initialised so WebMCP bindings can
+  // await readiness before touching nullable UI targets. Avoids the startup
+  // race where an agent
   // discovers a tool via early registerTool and invokes it before the
   // target panel exists.
   private uiReady!: Promise<void>;
@@ -883,6 +886,7 @@ export class App {
       newsByCategory: {},
       latestMarkets: [],
       latestPredictions: [],
+      latestTechEvents: [],
       latestClusters: [],
       intelligenceCache: {},
       cyberThreatsCache: null,
@@ -936,11 +940,6 @@ export class App {
       refreshOpenCountryBrief: () => this.countryIntel.refreshOpenBrief(),
     });
 
-    this.searchManager = new SearchManager(this.state, {
-      openCountryBriefByCode: (code, country) => this.countryIntel.openCountryBriefByCode(code, country),
-      enablePanel: (panelId) => this.eventHandlers.enablePanelById(panelId),
-    });
-
     this.panelLayout = new PanelLayoutManager(this.state, {
       openCountryStory: (code, name) => this.countryIntel.openCountryStory(code, name),
       openCountryBrief: (code) => {
@@ -954,7 +953,8 @@ export class App {
     });
 
     this.eventHandlers = new EventHandlerManager(this.state, {
-      updateSearchIndex: () => this.searchManager.updateSearchIndex(),
+      openSearch: (options) => { void this.openSearch(options); },
+      updateSearchIndex: () => this.updateSearchIndexIfReady(),
       loadAllData: () => this.dataLoader.loadAllData(),
       flushStaleRefreshes: () => this.refreshScheduler.flushStaleRefreshes(),
       setHiddenSince: (ts) => this.refreshScheduler.setHiddenSince(ts),
@@ -966,22 +966,82 @@ export class App {
       refreshCiiAfterFocalPointsReady: () => this.dataLoader.refreshCiiAfterFocalPointsReady(),
       stopLayerActivity: (layer) => this.dataLoader.stopLayerActivity(layer),
       mountLiveNewsIfReady: () => this.panelLayout.mountLiveNewsIfReady(),
-      updateFlightSource: (adsb, military) => this.searchManager.updateFlightSource(adsb, military),
+      updateFlightSource: (adsb, military) => this.updateFlightSourceIfReady(adsb, military),
     });
 
     // Wire cross-module callback: DataLoader → SearchManager
-    this.dataLoader.updateSearchIndex = () => this.searchManager.updateSearchIndex();
+    this.dataLoader.updateSearchIndex = () => this.updateSearchIndexIfReady();
 
     // Track destroy order (reverse of init)
     this.modules = [
       this.desktopUpdater,
       this.panelLayout,
       this.countryIntel,
-      this.searchManager,
       this.dataLoader,
       this.refreshScheduler,
       this.eventHandlers,
     ];
+  }
+
+  private ensureSearchManager(): Promise<SearchManager> {
+    if (this.searchManager) return Promise.resolve(this.searchManager);
+    if (this.searchManagerLoad) return this.searchManagerLoad;
+
+    this.searchManagerLoad = import('@/app/search-manager')
+      .then(({ SearchManager }) => {
+        if (this.state.isDestroyed) {
+          throw new Error('App destroyed before search manager loaded');
+        }
+
+        const manager = new SearchManager(this.state, {
+          openCountryBriefByCode: (code, country) => this.countryIntel.openCountryBriefByCode(code, country),
+          enablePanel: (panelId) => this.eventHandlers.enablePanelById(panelId),
+        });
+        manager.init();
+        manager.updateFlightSource(this.latestSearchAdsb, this.latestSearchMilitary);
+        this.searchManager = manager;
+        this.modules.push(manager);
+        return manager;
+      })
+      .finally(() => {
+        this.searchManagerLoad = null;
+      });
+
+    return this.searchManagerLoad;
+  }
+
+  private updateSearchIndexIfReady(): void {
+    this.searchManager?.updateSearchIndex();
+  }
+
+  private updateFlightSourceIfReady(
+    adsb: Parameters<SearchManager['updateFlightSource']>[0],
+    military: Parameters<SearchManager['updateFlightSource']>[1],
+  ): void {
+    this.latestSearchAdsb = adsb;
+    this.latestSearchMilitary = military;
+    this.searchManager?.updateFlightSource(adsb, military);
+  }
+
+  private async openSearch(options: { toggle?: boolean; throwOnFailure?: boolean } = {}): Promise<void> {
+    const wasOpen = this.state.searchModal?.isOpen() === true;
+    try {
+      await this.waitForUiReady();
+      if (options.toggle && wasOpen) {
+        this.state.searchModal?.close();
+        return;
+      }
+      const manager = await this.ensureSearchManager();
+      manager.updateSearchIndex();
+      const modal = this.state.searchModal;
+      if (!modal) throw new Error('Search modal is not initialised');
+      modal.open();
+    } catch (error) {
+      if (!this.state.isDestroyed) {
+        console.warn('[search] Failed to load search manager:', error);
+      }
+      if (options.throwOnFailure) throw error;
+    }
   }
 
   public async init(): Promise<void> {
@@ -1006,10 +1066,14 @@ export class App {
       resolveCountryName: (code) => CountryIntelManager.resolveCountryName(code),
       openSearch: async () => {
         await this.waitForUiReady();
+        const searchOpenOptions = { throwOnFailure: true };
+        await this.openSearch(searchOpenOptions);
         if (!this.state.searchModal) {
           throw new Error('Search modal is not initialised');
         }
-        this.state.searchModal.open();
+        if (!this.state.searchModal.isOpen()) {
+          throw new Error('Search modal did not open');
+        }
       },
     });
 
@@ -1241,6 +1305,7 @@ export class App {
     // init() is async so the dynamic MapContainer import can resolve before
     // downstream code (e.g. mobileGeoCoords→state.map.setCenter) reads ctx.map.
     await this.panelLayout.init();
+    this.eventHandlers.setupSearchControls();
     showProBanner(this.state.container);
     this.updateConnectivityUi();
     window.addEventListener('online', this.handleConnectivityChange);
@@ -1285,6 +1350,7 @@ export class App {
     this.eventHandlers.setupPizzIntIndicator();
     this.eventHandlers.setupLlmStatusIndicator();
     this.eventHandlers.setupExportPanel();
+    this.eventHandlers.setupSearchControls();
 
     // Correlation engine
     const correlationEngine = new CorrelationEngine();
@@ -1320,8 +1386,8 @@ export class App {
       });
     }
 
-    // Phase 4: SearchManager, MapLayerHandlers, CountryIntel
-    this.searchManager.init();
+    // Phase 4: MapLayerHandlers, CountryIntel. SearchManager is lazy-loaded
+    // on first CMD+K/search-button open so its modal catalog stays off startup.
     this.eventHandlers.setupMapLayerHandlers();
     await this.countryIntel.init();
     // Unblock any WebMCP tool invocations that arrived during startup.
@@ -1637,8 +1703,8 @@ export class App {
     window.requestAnimationFrame(() => toast.classList.add('visible'));
   }
 
-  // Waits for Phase-4 UI modules (searchManager + countryIntel) to finish
-  // initialising. WebMCP bindings call this before touching nullable UI
+  // Waits for Phase-4 UI modules to finish initialising. WebMCP bindings call
+  // this before touching nullable UI
   // state so a tool invoked during startup waits rather than throwing;
   // the timeout guards against a genuinely broken init path hanging the
   // agent forever.

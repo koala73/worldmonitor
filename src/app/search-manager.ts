@@ -42,7 +42,6 @@ export interface SearchManagerCallbacks {
 export class SearchManager implements AppModule {
   private ctx: AppContext;
   private callbacks: SearchManagerCallbacks;
-  private boundKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private highlightTimers = new WeakMap<Element, ReturnType<typeof setTimeout>>();
 
   constructor(ctx: AppContext, callbacks: SearchManagerCallbacks) {
@@ -54,12 +53,7 @@ export class SearchManager implements AppModule {
     this.setupSearchModal();
   }
 
-  destroy(): void {
-    if (this.boundKeydownHandler) {
-      document.removeEventListener('keydown', this.boundKeydownHandler);
-      this.boundKeydownHandler = null;
-    }
-  }
+  destroy(): void {}
 
   private setupSearchModal(): void {
     const searchOptions = SITE_VARIANT === 'tech'
@@ -265,18 +259,6 @@ export class SearchManager implements AppModule {
       }).catch(() => {/* silent — show no results */});
     });
 
-    this.boundKeydownHandler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        if (this.ctx.searchModal?.isOpen()) {
-          this.ctx.searchModal.close();
-        } else {
-          this.updateSearchIndex();
-          this.ctx.searchModal?.open();
-        }
-      }
-    };
-    document.addEventListener('keydown', this.boundKeydownHandler);
   }
 
   private handleSearchResult(result: SearchResult): void {
@@ -745,6 +727,15 @@ export class SearchManager implements AppModule {
         title: `${m.symbol} - ${m.name}`,
         subtitle: `$${m.price?.toFixed(2) || 'N/A'}`,
         data: m,
+      })));
+    }
+
+    if (SITE_VARIANT === 'tech') {
+      this.ctx.searchModal.registerSource('techevent', this.ctx.latestTechEvents.map((e) => ({
+        id: e.id,
+        title: e.title,
+        subtitle: `${e.location} • ${new Date(e.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
+        data: e,
       })));
     }
   }
