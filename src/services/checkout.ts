@@ -130,6 +130,14 @@ interface PendingCheckoutIntent {
  */
 const PENDING_INTENT_TTL_MS = 15 * 60 * 1000;
 
+// Overlay lifecycle state. The two init flags below have DIFFERENT reset
+// semantics — keep them distinct or the #4387 double-Initialize bug returns:
+//   - `initialized`: UI/overlay session lifecycle. RESET to false in
+//     destroyCheckoutOverlay() so a remount re-runs ensureCheckoutOverlayInitialized.
+//   - `dodoPaymentsInitialized` (below): SDK singleton guard. NEVER reset.
+//     DodoPayments.Initialize must run exactly once per page load (it registers
+//     a page-lifetime postMessage listener); the per-session event handler is
+//     swapped via `currentCheckoutEventHandler`, never by re-Initializing.
 let initialized = false;
 let checkoutOverlayGeneration = 0;
 let overlayInitPromise: Promise<void> | null = null;
@@ -228,8 +236,8 @@ async function ensureCheckoutOverlayInitialized(): Promise<void> {
     // onEvent callback forwards into this per-session handler. ONE session's
     // state must reset when a new overlay opens, so destroy/reopen replaces
     // the forwarded handler without registering a second SDK handler.
-    // `openCheckout` resets this flag via the exported `resetOverlaySessionState()`
-    // helper below.
+    // `openCheckout` resets these per-session flags by invoking the
+    // module-level `_resetOverlaySession` closure assigned just below.
     let successFired = false;
     let navigationFired = false;
     let watchdog: EntitlementWatchdog | null = null;
@@ -449,6 +457,16 @@ export function destroyCheckoutOverlay(): void {
   _resetOverlaySession?.();
   _resetOverlaySession = null;
   currentCheckoutEventHandler = null;
+  // Tear down the Dodo iframe itself. The SDK registers ONE page-lifetime
+  // message listener at Initialize and never removes it on close(); an iframe
+  // left mounted by a destroy-mid-checkout would otherwise (a) make the next
+  // openCheckout's Checkout.open() a silent no-op (the SDK ignores open() while
+  // an iframe already exists, so the reopened overlay never appears) and
+  // (b) emit a late terminal event from the orphaned iframe into the NEXT
+  // session's handler via the stable onEvent forwarder. The handler is nulled
+  // first so this teardown can't re-enter session cleanup — we intentionally
+  // preserve PENDING_CHECKOUT_KEY for auto-resume after a remount.
+  safeCloseOverlay();
   initialized = false;
   overlayInitPromise = null;
   onSuccessCallback = null;

@@ -10,6 +10,8 @@ interface HarnessState {
   sentryBreadcrumbs: Array<{ message?: string }>;
   watchdogs: Array<{ stopCalls: number }>;
   storageWrites: string[];
+  closeCalls: number;
+  silentNoOpOpens: number;
 }
 
 declare global {
@@ -73,6 +75,8 @@ function resetHarness(): void {
     sentryBreadcrumbs: [],
     watchdogs: [],
     storageWrites: [],
+    closeCalls: 0,
+    silentNoOpOpens: 0,
   };
   installBrowserGlobals();
 }
@@ -88,15 +92,28 @@ const stubSources: Record<string, string> = {
     }
   `,
   'dodopayments-checkout': `
+    // Models the real SDK: Initialize registers ONE page-lifetime listener;
+    // open() is a silent no-op while an iframe is already mounted; close()
+    // tears the iframe down. A destroy that never calls close() therefore makes
+    // the next open() vanish — which is exactly what this harness can now catch.
+    let _overlayOpen = false;
     export const DodoPayments = {
       Initialize(options) {
         globalThis.__checkoutOverlayHarness.initializeCalls += 1;
         globalThis.__checkoutOverlayHarness.handlers.push(options.onEvent);
       },
       Checkout: {
-        isOpen: () => false,
-        close: () => {},
+        isOpen: () => _overlayOpen,
+        close: () => {
+          _overlayOpen = false;
+          globalThis.__checkoutOverlayHarness.closeCalls += 1;
+        },
         open(options) {
+          if (_overlayOpen) {
+            globalThis.__checkoutOverlayHarness.silentNoOpOpens += 1;
+            return;
+          }
+          _overlayOpen = true;
           globalThis.__checkoutOverlayHarness.openedUrls.push(options.checkoutUrl);
         },
       },
@@ -270,5 +287,50 @@ describe('checkout overlay lifecycle', () => {
 
     checkout.destroyCheckoutOverlay();
     assert.equal(harness.watchdogs[0].stopCalls, 1, 'destroy should stop the reopened session watchdog');
+  });
+
+  it('closes the overlay on destroy so a reopen is not a silent no-op', async () => {
+    resetHarness();
+    const checkout = await loadCheckoutModule();
+
+    await checkout.openCheckout('https://checkout.example/first');
+    checkout.destroyCheckoutOverlay();
+
+    const harness = globalThis.__checkoutOverlayHarness;
+    assert.equal(harness.closeCalls, 1, 'destroy must close the open Dodo overlay');
+
+    await checkout.openCheckout('https://checkout.example/second');
+    assert.equal(harness.silentNoOpOpens, 0, 'reopen must not be swallowed by an orphaned iframe');
+    assert.deepEqual(
+      harness.openedUrls,
+      ['https://checkout.example/first', 'https://checkout.example/second'],
+      'the reopened overlay must actually open',
+    );
+  });
+
+  it('silences events from a destroyed session before the overlay is reopened', async () => {
+    resetHarness();
+    const checkout = await loadCheckoutModule();
+
+    checkout.registerCheckoutSuccessCallback(() => {
+      globalThis.__checkoutOverlayHarness.successCalls += 1;
+    });
+    await checkout.openCheckout('https://checkout.example/first');
+    checkout.destroyCheckoutOverlay();
+
+    // A late terminal event arriving through the stable SDK forwarder after
+    // destroy (and before any reopen) must be a no-op — the per-session handler
+    // was nulled, so no success side effects or storage writes may fire.
+    const harness = globalThis.__checkoutOverlayHarness;
+    harness.handlers[0]({
+      event_type: 'checkout.status',
+      data: { message: { status: 'succeeded' } },
+    });
+    assert.equal(harness.successCalls, 0, 'a destroyed session must not run success side effects');
+    assert.equal(
+      harness.storageWrites.filter((key) => key === 'wm-post-checkout').length,
+      0,
+      'a destroyed session must not write the post-checkout marker',
+    );
   });
 });
