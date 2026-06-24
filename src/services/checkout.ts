@@ -441,6 +441,8 @@ export function destroyCheckoutOverlay(): void {
   _resetOverlaySession = null;
   initialized = false;
   overlayInitPromise = null;
+  dodoPayments = null;
+  dodoPaymentsPromise = null;
   onSuccessCallback = null;
   if (_escapeHandler) {
     window.removeEventListener('keydown', _escapeHandler);
