@@ -185,6 +185,29 @@ describe('dashboard critical CSS graph', () => {
     assert.match(mainCss, /\.btn-secondary\s*\{/);
   });
 
+  it('keeps in-dashboard notification channel styles on dashboard-owned CSS', () => {
+    // notifications-settings.ts renders inside the dashboard UnifiedSettings modal, which no
+    // longer imports settings-window.css. Any class it emits that is styled ONLY by
+    // settings-window.css would render unstyled on the dashboard — its rules must live in
+    // dashboard-owned main.css. (Guards the P1 that the original split introduced.)
+    const notif = src('src/services/notifications-settings.ts');
+    const mainCss = src('src/styles/main.css');
+    const settingsWindowCss = src('src/styles/settings-window.css');
+
+    const emitted = [...new Set([...notif.matchAll(/\bus-notif-[a-z0-9-]+/g)].map((m) => m[0]))];
+    assert.ok(emitted.length > 0, 'sanity: notifications-settings.ts should emit us-notif-* classes');
+
+    const unstyledOnDashboard = emitted.filter((cls) => {
+      const selector = new RegExp(`\\.${cls}\\b`);
+      return selector.test(settingsWindowCss) && !selector.test(mainCss);
+    });
+    assert.deepEqual(
+      unstyledOnDashboard,
+      [],
+      `Notification channel classes rendered on the dashboard are styled only by settings-window.css (unstyled after the critical-CSS split): ${unstyledOnDashboard.join(', ')}`,
+    );
+  });
+
   it('does not link or merge the settings-only stylesheet into built dashboard.html', { skip: !existsSync(resolve(repoRoot, 'dist/dashboard.html')) }, () => {
     const dashboardHtml = src('dist/dashboard.html');
     const hrefs = stylesheetHrefs(dashboardHtml);
@@ -215,6 +238,11 @@ describe('dashboard critical CSS graph', () => {
         `Built dashboard stylesheets must not include standalone settings selector ${selector}.`,
       );
     }
+
+    assert.ok(
+      dashboardCss.includes('.us-notif-ch-row'),
+      'Built dashboard stylesheets must include the in-modal notification channel styles (relocated to main.css).',
+    );
 
     if (existsSync(resolve(repoRoot, 'dist/settings.html'))) {
       const settingsHrefs = stylesheetHrefs(src('dist/settings.html'));
