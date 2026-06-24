@@ -152,5 +152,10 @@ describe('map renderer deferral boundary', () => {
     assert.match(demandBody, /pointerdown/, 'first map pointer interaction should release the demand gate');
     assert.match(demandBody, /wheel/, 'first map wheel interaction should release the demand gate');
     assert.match(demandBody, /touchstart/, 'first touch interaction should release the demand gate');
+    assert.match(
+      demandBody,
+      /idleFallbackDelayId[\s\S]*window\.clearTimeout\(idleFallbackDelayId\)/,
+      'requestIdleCallback fallback timers should be canceled when the demand wait is cleaned up',
+    );
   });
 });

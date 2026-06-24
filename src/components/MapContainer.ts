@@ -332,6 +332,7 @@ export class MapContainer {
       let visibleDelayId: number | null = null;
       let fallbackDelayId: number | null = null;
       let idleCallbackId: number | null = null;
+      let idleFallbackDelayId: number | null = null;
       let cancelDemand: (() => void) | null = null;
 
       const clearVisibleDelay = (): void => {
@@ -342,6 +343,10 @@ export class MapContainer {
         if (idleCallbackId !== null && typeof window.cancelIdleCallback === 'function') {
           window.cancelIdleCallback(idleCallbackId);
           idleCallbackId = null;
+        }
+        if (idleFallbackDelayId !== null) {
+          window.clearTimeout(idleFallbackDelayId);
+          idleFallbackDelayId = null;
         }
       };
 
@@ -388,22 +393,22 @@ export class MapContainer {
       }
 
       const requestIdle = (): void => {
-        if (idleCallbackId !== null) return;
+        if (idleCallbackId !== null || idleFallbackDelayId !== null) return;
         if (typeof window.requestIdleCallback === 'function') {
           idleCallbackId = window.requestIdleCallback(() => {
             idleCallbackId = null;
             finishIfCurrent();
           }, { timeout: DECK_RENDERER_IDLE_TIMEOUT_MS });
         } else {
-          idleCallbackId = window.setTimeout(() => {
-            idleCallbackId = null;
+          idleFallbackDelayId = window.setTimeout(() => {
+            idleFallbackDelayId = null;
             finishIfCurrent();
           }, 1);
         }
       };
 
       const scheduleVisibleIdle = (): void => {
-        if (visibleDelayId !== null || idleCallbackId !== null) return;
+        if (visibleDelayId !== null || idleCallbackId !== null || idleFallbackDelayId !== null) return;
         visibleDelayId = window.setTimeout(() => {
           visibleDelayId = null;
           requestIdle();
