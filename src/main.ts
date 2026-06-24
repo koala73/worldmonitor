@@ -5,6 +5,16 @@ import { initVercelAnalytics } from '@/bootstrap/secondary-startup';
 import { App } from './App';
 import { installUtmInterceptor } from './utils/utm';
 
+function activateDeferredDashboardStyles(): void {
+  document
+    .querySelectorAll<HTMLLinkElement>('link[data-wm-deferred-style="dashboard"][media="print"]')
+    .forEach((link) => {
+      link.media = 'all';
+    });
+}
+
+activateDeferredDashboardStyles();
+
 // perf G — defer @sentry/browser off the critical path (#3994).
 // The eager `Sentry.init({...})` previously ran here cost ~1.96 s of pre-LCP
 // CPU. Install a lightweight error-buffering queue synchronously so any error

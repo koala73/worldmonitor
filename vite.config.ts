@@ -287,9 +287,20 @@ function dashboardHtmlOutputPlugin(): Plugin {
       const [bundleKey, dashboardHtml] = dashboardEntry;
       delete bundle[bundleKey];
       dashboardHtml.fileName = 'dashboard.html';
+      if (typeof dashboardHtml.source === 'string') {
+        dashboardHtml.source = deferDashboardStylesheetLinks(dashboardHtml.source);
+      }
       bundle['dashboard.html'] = dashboardHtml;
     },
   };
+}
+
+function deferDashboardStylesheetLinks(html: string): string {
+  return html.replace(/<link\b(?=[^>]*\brel=["']stylesheet["'])(?=[^>]*\bhref=["'][^"']+\.css["'])[^>]*>/gi, (tag) => {
+    if (/\bdata-wm-deferred-style=/.test(tag) || /\bmedia=/.test(tag)) return tag;
+    const deferredTag = tag.replace(/\s*\/?>$/, ' media="print" data-wm-deferred-style="dashboard">');
+    return `${deferredTag}\n    <noscript>${tag}</noscript>`;
+  });
 }
 
 function polymarketPlugin(): Plugin {

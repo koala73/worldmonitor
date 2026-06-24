@@ -148,6 +148,23 @@ function stylesheetHrefs(html) {
   return hrefs;
 }
 
+function stripNoscript(html) {
+  return html.replace(/<noscript\b[\s\S]*?<\/noscript>/gi, '');
+}
+
+function renderBlockingStylesheetHrefs(html) {
+  const hrefs = [];
+  for (const match of stripNoscript(html).matchAll(/<link\b[^>]*>/gi)) {
+    const attrs = linkAttributes(match[0]);
+    const rels = (attrs.get('rel') ?? '').toLowerCase().split(/\s+/);
+    const href = attrs.get('href');
+    const media = (attrs.get('media') ?? 'all').trim().toLowerCase();
+    if (!href?.endsWith('.css') || !rels.includes('stylesheet')) continue;
+    if (media === '' || media === 'all' || media === 'screen') hrefs.push(href);
+  }
+  return hrefs;
+}
+
 describe('dashboard critical CSS graph', () => {
   it('extracts stylesheet links regardless of link attribute order', () => {
     assert.deepEqual(
@@ -157,6 +174,17 @@ describe('dashboard critical CSS graph', () => {
         <link href="/assets/ignored.css" rel="preload">
       `),
       ['/assets/main.css', '/assets/settings.css'],
+    );
+  });
+
+  it('identifies only screen-blocking stylesheet links outside noscript fallbacks', () => {
+    assert.deepEqual(
+      renderBlockingStylesheetHrefs(`
+        <link rel="stylesheet" href="/assets/main.css">
+        <link rel="stylesheet" media="print" href="/assets/deferred.css">
+        <noscript><link rel="stylesheet" href="/assets/nojs.css"></noscript>
+      `),
+      ['/assets/main.css'],
     );
   });
 
@@ -299,6 +327,38 @@ describe('dashboard critical CSS graph', () => {
         standaloneSettingsSelectors.every((selector) => settingsCss.includes(selector)),
         true,
         'Built settings.html stylesheets should still include standalone settings selectors.',
+      );
+    }
+  });
+
+  it('keeps large dashboard CSS off the render-blocking stylesheet path', { skip: !existsSync(resolve(repoRoot, 'dist/dashboard.html')) }, () => {
+    const dashboardHtml = src('dist/dashboard.html');
+    const blockingHrefs = renderBlockingStylesheetHrefs(dashboardHtml);
+
+    assert.deepEqual(
+      blockingHrefs,
+      [],
+      `Built dashboard.html must not render-block on app CSS; found ${blockingHrefs.join(', ')}`,
+    );
+
+    const deferredHrefs = [];
+    for (const match of stripNoscript(dashboardHtml).matchAll(/<link\b[^>]*>/gi)) {
+      const attrs = linkAttributes(match[0]);
+      if (
+        attrs.get('data-wm-deferred-style') === 'dashboard' &&
+        attrs.get('media') === 'print' &&
+        attrs.get('href')?.endsWith('.css')
+      ) {
+        deferredHrefs.push(attrs.get('href'));
+      }
+    }
+    assert.ok(deferredHrefs.length > 0, 'Built dashboard.html should still request app CSS on a deferred stylesheet path.');
+
+    for (const href of deferredHrefs) {
+      assert.match(
+        dashboardHtml,
+        new RegExp(`<noscript><link\\b[^>]*rel=["']stylesheet["'][^>]*href=["']${href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*></noscript>`),
+        `Deferred dashboard stylesheet ${href} must keep a no-JS stylesheet fallback.`,
       );
     }
   });
