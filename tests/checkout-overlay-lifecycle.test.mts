@@ -96,17 +96,29 @@ const stubSources: Record<string, string> = {
     // open() is a silent no-op while an iframe is already mounted; close()
     // tears the iframe down. A destroy that never calls close() therefore makes
     // the next open() vanish — which is exactly what this harness can now catch.
+    //
+    // close() also re-emits checkout.closed SYNCHRONOUSLY through the same onEvent
+    // forwarder, in the same call stack — mirroring the real SDK (fn b -> g('checkout.closed')
+    // -> config.onEvent). That synchronous re-entry is what makes destroyCheckoutOverlay's
+    // "null currentCheckoutEventHandler BEFORE safeCloseOverlay()" ordering load-bearing:
+    // reverse it and the re-entrant checkout.closed wipes the pending-intent.
     let _overlayOpen = false;
+    let _onEvent = null;
     export const DodoPayments = {
       Initialize(options) {
         globalThis.__checkoutOverlayHarness.initializeCalls += 1;
+        _onEvent = options.onEvent;
         globalThis.__checkoutOverlayHarness.handlers.push(options.onEvent);
       },
       Checkout: {
         isOpen: () => _overlayOpen,
         close: () => {
+          const wasOpen = _overlayOpen;
           _overlayOpen = false;
           globalThis.__checkoutOverlayHarness.closeCalls += 1;
+          if (wasOpen) {
+            _onEvent?.({ event_type: 'checkout.closed', data: { message: 'Checkout closed manually' } });
+          }
         },
         open(options) {
           if (_overlayOpen) {
@@ -346,6 +358,34 @@ describe('checkout overlay lifecycle', () => {
       win.location.href,
       hrefBefore,
       'a destroyed session must not navigate via a late redirect_requested',
+    );
+  });
+
+  it('preserves the pending-checkout intent across destroy (pins the null-handler-before-close ordering)', async () => {
+    resetHarness();
+    const checkout = await loadCheckoutModule();
+
+    await checkout.openCheckout('https://checkout.example/first');
+
+    // A saved auto-resume intent that an unmount-driven destroy must NOT wipe.
+    const pending = JSON.stringify({ productId: 'prod_1', savedByUserId: null, savedAt: 1 });
+    globalThis.sessionStorage.setItem('wm-pending-checkout', pending);
+
+    checkout.destroyCheckoutOverlay();
+
+    // The stub's close() re-emits checkout.closed synchronously through the stable
+    // forwarder, exactly as the real SDK does. destroyCheckoutOverlay nulls
+    // currentCheckoutEventHandler BEFORE calling safeCloseOverlay(), so that re-entrant
+    // checkout.closed lands on a null handler and the handler's
+    // `if (!successFired) clearPendingCheckoutIntent()` branch never runs — the intent
+    // survives for auto-resume after a remount. Reversing those two lines (close before
+    // null) routes checkout.closed into the still-live session handler and wipes the
+    // intent, failing this assertion. This is the property the other destroy tests do
+    // NOT pin, since they fire events manually after destroy has already returned.
+    assert.equal(
+      globalThis.sessionStorage.getItem('wm-pending-checkout'),
+      pending,
+      'destroy must preserve the pending-checkout intent (handler nulled before close)',
     );
   });
 });
