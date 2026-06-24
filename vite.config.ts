@@ -1170,6 +1170,11 @@ export default defineConfig(({ mode }) => {
             if (id.endsWith('/src/config/tech-geo.ts')) {
               return 'tech-geo-data';
             }
+            // airports table (~14KB) — only consumer is the lazy AviationCommandBar
+            // (imports directly); kept off the eager @/config barrel above. (#4404)
+            if (id.endsWith('/src/config/airports.ts')) {
+              return 'airports-data';
+            }
             // Co-locate the deck.gl renderer with the deck vendor chunk so
             // onlyExplicitManualChunks cannot split deck's transitive deps
             // across the DeckGLMap boundary (which formed a circular chunk →

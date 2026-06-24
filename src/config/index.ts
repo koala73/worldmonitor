@@ -94,7 +94,9 @@ export { APT_GROUPS } from './apt-groups';
 export { GAMMA_IRRADIATORS } from './irradiators';
 export { PIPELINES, PIPELINE_COLORS } from './pipelines';
 export { PORTS } from './ports';
-export { MONITORED_AIRPORTS, FAA_AIRPORTS } from './airports';
+// MONITORED_AIRPORTS/FAA_AIRPORTS are NOT re-exported on the eager @/config
+// barrel — that pulls the airports table onto the critical path. The only
+// consumer (AviationCommandBar, lazy) imports directly from '@/config/airports'. (#4404)
 export {
   ENTITY_REGISTRY,
   getEntityById,
