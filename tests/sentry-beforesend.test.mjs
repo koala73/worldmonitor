@@ -264,6 +264,24 @@ describe('dynamic-module-import failures (stale chunk after deploy)', () => {
     }
   }
 
+  it('lets through off-origin /assets dynamic-import failures even with first-party stack', () => {
+    const event = makeEvent(
+      'Failed to fetch dynamically imported module: https://cdn.example.com/assets/vendor-abc.js',
+      'TypeError',
+      [firstPartyFrame()],
+    );
+    assert.ok(beforeSend(event) !== null, 'off-origin asset URL must not be treated as WorldMonitor deploy skew');
+  });
+
+  it('lets through non-hashed /assets dynamic-import failures even on owned origins', () => {
+    const event = makeEvent(
+      'Failed to fetch dynamically imported module: https://worldmonitor.app/assets/runtime.js',
+      'TypeError',
+      [firstPartyFrame()],
+    );
+    assert.ok(beforeSend(event) !== null, 'non-hashed asset URL must not be treated as a stale Vite chunk');
+  });
+
   // No-URL phrasings (Safari `Importing a module script failed.`, bare Firefox
   // `error loading dynamically imported module`, and the module-LINK export
   // mismatch `Importing binding name '<x>' is not found.` — WORLDMONITOR-TM)

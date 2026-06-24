@@ -762,16 +762,37 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // `Failed to fetch dynamically imported module: <url>`, Firefox `error loading
       // dynamically imported module: <url>`) are deploy-skew (a stale hashed filename
       // 404s after a deploy) or a transient network blip — never a first-party logic
-      // bug: our compiled code can't synthesize the string, the URL is always one of
-      // our chunks, and the load itself failed (a chunk that fetches then throws during
-      // evaluation rejects with the underlying error, not this wrapper). Unlike the
+      // bug: our compiled code can't synthesize the string, the URL is one of our
+      // owned hashed chunks, and the load itself failed (a chunk that fetches
+      // then throws during evaluation rejects with the underlying error, not
+      // this wrapper). Unlike the
       // zero-frame variant below, the `import()` call site here is first-party
       // (MapContainer.initDeck, lazy panel/video loaders), so the rejection rides a
       // first-party frame and the `!hasFirstParty` gate misses it (WORLDMONITOR-TN: Map
-      // chunk, WORLDMONITOR-S1: hls chunk). Match the asset URL in the message instead
-      // of the stack.
+      // chunk, WORLDMONITOR-S1: hls chunk). Match the owned, hashed asset URL in
+      // the message instead of the stack.
+      const dynamicImportAssetUrlMatch = msg.match(
+        /(?:https?:\/\/[^\s'")]+)?\/assets\/[A-Za-z0-9_-]+-[A-Za-z0-9_-]+\.js/i,
+      );
+      let isOwnedDynamicImportAssetUrl = false;
+      if (dynamicImportAssetUrlMatch) {
+        const assetUrl = dynamicImportAssetUrlMatch[0];
+        if (assetUrl.startsWith('/')) {
+          isOwnedDynamicImportAssetUrl = true;
+        } else {
+          try {
+            const host = new URL(assetUrl).hostname;
+            const currentHost = typeof location !== 'undefined' ? location.hostname : '';
+            isOwnedDynamicImportAssetUrl = host === 'worldmonitor.app'
+              || host.endsWith('.worldmonitor.app')
+              || (currentHost.endsWith('.vercel.app') && host === currentHost);
+          } catch {
+            isOwnedDynamicImportAssetUrl = false;
+          }
+        }
+      }
       if (/(?:Failed to fetch|error loading) dynamically imported module/i.test(msg)
-          && /\/assets\/[A-Za-z0-9_-]+\.js/.test(msg)) return null;
+          && isOwnedDynamicImportAssetUrl) return null;
       // Stale-chunk-after-deploy: modulepreload / dynamic import failures arrive with no
       // stack trace because the browser fires them as synthetic TypeErrors at fetch time,
       // not at any first-party call site. The chunk-reload guard auto-reloads the page,
