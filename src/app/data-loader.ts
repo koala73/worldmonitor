@@ -208,7 +208,9 @@ import { fetchDiseaseOutbreaks } from '@/services/disease-outbreaks';
 import { fetchSocialVelocity } from '@/services/social-velocity';
 import { fetchShippingStress } from '@/services/supply-chain';
 import { getTopActiveGeoHubs } from '@/services/geo-activity';
-import { getTopActiveHubs } from '@/services/tech-activity';
+// getTopActiveHubs is lazy-imported at its call sites (applyTechHubActivities) so
+// the tech-activity → tech-hub-index → ~62KB tech-geo chain stays off the eager
+// dashboard critical path (#4404).
 import type { GeoHubsPanel } from '@/components/GeoHubsPanel';
 import type { TechHubsPanel } from '@/components/TechHubsPanel';
 
@@ -1436,8 +1438,7 @@ export class DataLoaderManager implements AppModule {
 
       (this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined)
         ?.setActivities(getTopActiveGeoHubs(this.ctx.latestClusters));
-      (this.ctx.panels['tech-hubs'] as TechHubsPanel | undefined)
-        ?.setActivities(getTopActiveHubs(this.ctx.latestClusters));
+      this.applyTechHubActivities();
 
       const geoLocated = this.ctx.latestClusters
         .filter((c): c is typeof c & { lat: number; lon: number } => c.lat != null && c.lon != null)
@@ -3292,6 +3293,19 @@ export class DataLoaderManager implements AppModule {
     monitorPanel?.renderResults(this.ctx.allNews);
   }
 
+  // Lazy-load the tech-activity service (→ tech-hub-index → the ~62KB tech-geo
+  // table) only when the lazy tech-hubs panel is mounted, so the table stays off
+  // the eager dashboard critical path. Non-critical panel data — degrade silently
+  // on load failure. (#4404)
+  private applyTechHubActivities(): void {
+    const techHubsPanel = this.ctx.panels['tech-hubs'] as TechHubsPanel | undefined;
+    if (!techHubsPanel) return;
+    const clusters = this.ctx.latestClusters;
+    void import('@/services/tech-activity')
+      .then(({ getTopActiveHubs }) => techHubsPanel.setActivities(getTopActiveHubs(clusters)))
+      .catch(() => { /* non-critical */ });
+  }
+
   async runCorrelationAnalysis(): Promise<void> {
     try {
       if (this.ctx.latestClusters.length === 0 && this.ctx.allNews.length > 0) {
@@ -3306,8 +3320,7 @@ export class DataLoaderManager implements AppModule {
         this.refreshCiiAndBrief();
         (this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined)
           ?.setActivities(getTopActiveGeoHubs(this.ctx.latestClusters));
-        (this.ctx.panels['tech-hubs'] as TechHubsPanel | undefined)
-          ?.setActivities(getTopActiveHubs(this.ctx.latestClusters));
+        this.applyTechHubActivities();
       }
 
       const signals = await analysisWorker.analyzeCorrelations(

@@ -113,11 +113,11 @@ export {
   getUpcomingDeadlines,
   getRecentActions,
 } from './ai-regulations';
+// Value re-exports of the tech-geo tables are intentionally NOT on the eager
+// @/config barrel — they pull the ~62KB tech-geo chunk onto the dashboard
+// critical path. Every consumer (search/map/globe/tech-hub services) imports
+// directly from '@/config/tech-geo'. Type re-exports are erased, no edge. (#4404)
 export {
-  STARTUP_HUBS,
-  ACCELERATORS,
-  TECH_HQS,
-  CLOUD_REGIONS,
   type StartupHub,
   type Accelerator,
   type TechHQ,
