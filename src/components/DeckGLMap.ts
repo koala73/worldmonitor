@@ -460,7 +460,10 @@ const CHOKEPOINT_PULSE_AMP = 0.3;
 function stableTradeRoutePhase(routeId: string): number {
   let hash = 2166136261;
   for (let i = 0; i < routeId.length; i++) {
-    hash ^= routeId.charCodeAt(i);
+    const codeUnit = routeId.charCodeAt(i);
+    hash ^= codeUnit & 0xff;
+    hash = Math.imul(hash, 16777619);
+    hash ^= (codeUnit >> 8) & 0xff;
     hash = Math.imul(hash, 16777619);
   }
   return ((hash >>> 0) / 0x100000000) * TRADE_ANIMATION_CYCLE;

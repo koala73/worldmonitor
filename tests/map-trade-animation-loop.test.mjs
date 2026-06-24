@@ -7,20 +7,110 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const deckGlMapSrc = readFileSync(resolve(__dirname, '../src/components/DeckGLMap.ts'), 'utf-8');
 
+function previousSignificantChar(source, index) {
+  for (let i = index - 1; i >= 0; i--) {
+    const ch = source[i];
+    if (!/\s/.test(ch)) return ch;
+  }
+  return '';
+}
+
+function canStartRegex(source, index) {
+  return !/[)\]\w$]/.test(previousSignificantChar(source, index));
+}
+
+function findMatchingBrace(source, braceStart) {
+  let depth = 0;
+  let state = 'code';
+  let regexCharClass = false;
+
+  for (let i = braceStart; i < source.length; i++) {
+    const ch = source[i];
+    const next = source[i + 1];
+
+    if (state === 'line-comment') {
+      if (ch === '\n') state = 'code';
+      continue;
+    }
+
+    if (state === 'block-comment') {
+      if (ch === '*' && next === '/') {
+        state = 'code';
+        i++;
+      }
+      continue;
+    }
+
+    if (state === 'single-quote' || state === 'double-quote' || state === 'template') {
+      if (ch === '\\') {
+        i++;
+        continue;
+      }
+      if (
+        (state === 'single-quote' && ch === "'") ||
+        (state === 'double-quote' && ch === '"') ||
+        (state === 'template' && ch === '`')
+      ) {
+        state = 'code';
+      }
+      continue;
+    }
+
+    if (state === 'regex') {
+      if (ch === '\\') {
+        i++;
+        continue;
+      }
+      if (ch === '[') regexCharClass = true;
+      else if (ch === ']') regexCharClass = false;
+      else if (ch === '/' && !regexCharClass) state = 'code';
+      continue;
+    }
+
+    if (ch === '/' && next === '/') {
+      state = 'line-comment';
+      i++;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      state = 'block-comment';
+      i++;
+      continue;
+    }
+    if (ch === "'") {
+      state = 'single-quote';
+      continue;
+    }
+    if (ch === '"') {
+      state = 'double-quote';
+      continue;
+    }
+    if (ch === '`') {
+      state = 'template';
+      continue;
+    }
+    if (ch === '/' && canStartRegex(source, i)) {
+      state = 'regex';
+      regexCharClass = false;
+      continue;
+    }
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return i + 1;
+    }
+  }
+
+  return -1;
+}
+
 function methodSource(name) {
   const start = deckGlMapSrc.indexOf(name);
   assert.ok(start >= 0, `${name} must exist`);
   const braceStart = deckGlMapSrc.indexOf('{', start);
   assert.ok(braceStart > start, `${name} must have a body`);
-  let depth = 0;
-  for (let i = braceStart; i < deckGlMapSrc.length; i++) {
-    const ch = deckGlMapSrc[i];
-    if (ch === '{') depth++;
-    else if (ch === '}') {
-      depth--;
-      if (depth === 0) return deckGlMapSrc.slice(start, i + 1);
-    }
-  }
+  const end = findMatchingBrace(deckGlMapSrc, braceStart);
+  if (end > braceStart) return deckGlMapSrc.slice(start, end);
   assert.fail(`${name} body must have balanced braces`);
 }
 
@@ -36,16 +126,58 @@ function extractStableTradeRoutePhase() {
   return new Function(`${js}\nreturn { stableTradeRoutePhase, TRADE_ANIMATION_CYCLE };`)();
 }
 
+function referenceStableTradeRoutePhase(routeId, cycle) {
+  let hash = 2166136261;
+  for (let i = 0; i < routeId.length; i++) {
+    const codeUnit = routeId.charCodeAt(i);
+    hash ^= codeUnit & 0xff;
+    hash = Math.imul(hash, 16777619);
+    hash ^= (codeUnit >> 8) & 0xff;
+    hash = Math.imul(hash, 16777619);
+  }
+  return ((hash >>> 0) / 0x100000000) * cycle;
+}
+
+describe('source extraction helper', () => {
+  it('ignores braces inside comments, strings, templates, and regex literals', () => {
+    const source = `
+      function sample() {
+        const a = '{';
+        const b = "}";
+        const c = \`template \${value} still has braces\`;
+        const d = /[{}]/;
+        /* } */
+        // {
+        if (a) { return d; }
+      }
+      function after() { return false; }
+    `;
+    const start = source.indexOf('function sample');
+    const braceStart = source.indexOf('{', start);
+    const end = findMatchingBrace(source, braceStart);
+    const extracted = source.slice(start, end);
+
+    assert.ok(extracted.includes('return d;'), 'must include the full target method body');
+    assert.ok(!extracted.includes('function after'), 'must stop at the target method closing brace');
+  });
+});
+
 describe('trade-route animation phase stability', () => {
   it('derives each dot phase deterministically from route id', () => {
     const { stableTradeRoutePhase, TRADE_ANIMATION_CYCLE } = extractStableTradeRoutePhase();
     const phaseA = stableTradeRoutePhase('asia-europe-container');
     const phaseB = stableTradeRoutePhase('asia-europe-container');
     const phaseC = stableTradeRoutePhase('gulf-energy-route');
+    const unicodeRouteId = 'são-tomé-route';
 
     assert.equal(phaseA, phaseB, 'same route id must keep the same phase across rebuilds');
     assert.ok(phaseA >= 0 && phaseA < TRADE_ANIMATION_CYCLE, 'phase must stay inside the animation cycle');
     assert.notEqual(phaseA, phaseC, 'different route ids should not collapse to the same phase');
+    assert.equal(
+      stableTradeRoutePhase(unicodeRouteId),
+      referenceStableTradeRoutePhase(unicodeRouteId, TRADE_ANIMATION_CYCLE),
+      'route phase hash must process each UTF-16 code unit as bytes',
+    );
   });
 
   it('does not recompute phase from route order or current group count', () => {
