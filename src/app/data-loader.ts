@@ -2238,20 +2238,15 @@ export class DataLoaderManager implements AppModule {
         daysUntil: Math.ceil((new Date(e.startDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
       }));
 
+      this.ctx.latestTechEvents = mapEvents;
       this.ctx.map?.setTechEvents(mapEvents);
       this.ctx.map?.setLayerReady('techEvents', mapEvents.length > 0);
       this.ctx.statusPanel?.updateFeed('Tech Events', { status: 'ok', itemCount: mapEvents.length });
 
-      if (SITE_VARIANT === 'tech' && this.ctx.searchModal) {
-        this.ctx.searchModal.registerSource('techevent', mapEvents.map((e: { id: string; title: string; location: string; startDate: string }) => ({
-          id: e.id,
-          title: e.title,
-          subtitle: `${e.location} • ${new Date(e.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
-          data: e,
-        })));
-      }
+      this.updateSearchIndex();
     } catch (error) {
       console.error('[App] Failed to load tech events:', error);
+      this.ctx.latestTechEvents = [];
       this.ctx.map?.setTechEvents([]);
       this.ctx.map?.setLayerReady('techEvents', false);
       this.ctx.statusPanel?.updateFeed('Tech Events', { status: 'error', errorMessage: String(error) });
@@ -2547,7 +2542,7 @@ export class DataLoaderManager implements AppModule {
           }
           ingestGpsJammingForCII(data.hexes);
           if (this.ctx.mapLayers.gpsJamming) {
-            this.ctx.map?.setGpsJamming(data.hexes);
+            await this.ctx.map?.setGpsJamming(data.hexes);
             this.ctx.map?.setLayerReady('gpsJamming', data.hexes.length > 0);
           }
           this.ctx.statusPanel?.updateFeed('GPS Jam', { status: 'ok', itemCount: data.hexes.length });

@@ -163,6 +163,7 @@ class LazyUnifiedSettings implements UnifiedSettingsController {
 
 
 export interface EventHandlerCallbacks {
+  openSearch: (options?: { toggle?: boolean }) => void;
   updateSearchIndex: () => void;
   updateFlightSource?: (adsb: PositionSample[], military: MilitaryFlight[]) => void;
   loadAllData: () => Promise<void>;
@@ -199,6 +200,8 @@ export class EventHandlerManager implements AppModule {
   private boundMapWidthResizeMoveHandler: ((e: MouseEvent) => void) | null = null;
   private boundMapWidthEndResizeHandler: (() => void) | null = null;
   private boundMapFullscreenEscHandler: ((e: KeyboardEvent) => void) | null = null;
+  private readonly registeredSearchButtons = new Set<string>();
+  private boundSearchKeyHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundMobileMenuKeyHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundPanelCloseHandler: ((e: Event) => void) | null = null;
   private boundWidgetModifyHandler: ((e: Event) => void) | null = null;
@@ -234,6 +237,7 @@ export class EventHandlerManager implements AppModule {
   }
 
   init(): void {
+    this.setupSearchControls();
     this.setupEventListeners();
     this.setupIdleDetection();
     this.setupTvMode();
@@ -409,6 +413,10 @@ export class EventHandlerManager implements AppModule {
       document.removeEventListener('keydown', this.boundMapFullscreenEscHandler);
       this.boundMapFullscreenEscHandler = null;
     }
+    if (this.boundSearchKeyHandler) {
+      document.removeEventListener('keydown', this.boundSearchKeyHandler);
+      this.boundSearchKeyHandler = null;
+    }
     if (this.boundMobileMenuKeyHandler) {
       document.removeEventListener('keydown', this.boundMobileMenuKeyHandler);
       this.boundMobileMenuKeyHandler = null;
@@ -449,24 +457,39 @@ export class EventHandlerManager implements AppModule {
     this.ctx.authModal = null;
   }
 
-  private setupEventListeners(): void {
-    const openSearch = () => {
-      this.callbacks.updateSearchIndex();
-      this.ctx.searchModal?.open();
+  setupSearchControls(): void {
+    // Wire each button independently and idempotently. setupSearchControls() is
+    // called across several init phases (buttons are injected at different
+    // times); tracking registered IDs in a Set means a button absent at an
+    // early call still gets wired when it appears, instead of being permanently
+    // skipped by a single latched boolean. (#4403 review)
+    const wireSearchButton = (id: string, source: string) => {
+      if (this.registeredSearchButtons.has(id)) return;
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('click', () => {
+        track('search-open', { source });
+        this.callbacks.openSearch();
+      });
+      this.registeredSearchButtons.add(id);
     };
-    document.getElementById('searchBtn')?.addEventListener('click', () => {
-      track('search-open', { source: 'desktop' });
-      openSearch();
-    });
-    document.getElementById('mobileSearchBtn')?.addEventListener('click', () => {
-      track('search-open', { source: 'mobile' });
-      openSearch();
-    });
-    document.getElementById('searchMobileFab')?.addEventListener('click', () => {
-      track('search-open', { source: 'fab' });
-      openSearch();
-    });
+    wireSearchButton('searchBtn', 'desktop');
+    wireSearchButton('mobileSearchBtn', 'mobile');
+    wireSearchButton('searchMobileFab', 'fab');
+    if (!this.boundSearchKeyHandler) {
+      this.boundSearchKeyHandler = (e: KeyboardEvent) => {
+        // !e.shiftKey so Cmd/Ctrl+Shift+K (e.g. Firefox web console) doesn't
+        // also toggle search; .toLowerCase() still tolerates CapsLock. (#4403)
+        if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'k') {
+          e.preventDefault();
+          this.callbacks.openSearch({ toggle: true });
+        }
+      };
+      document.addEventListener('keydown', this.boundSearchKeyHandler);
+    }
+  }
 
+  private setupEventListeners(): void {
     document.getElementById('copyLinkBtn')?.addEventListener('click', async () => {
       const shareUrl = this.getShareUrl();
       if (!shareUrl) return;

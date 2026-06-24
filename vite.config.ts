@@ -56,7 +56,7 @@ type PanelManualChunkName = PanelChunkName | PanelSupportChunkName;
 // (filter regex is built from this list). Keeping them tied prevents the
 // silent-breakage failure mode where renaming a chunk in `manualChunks`
 // re-eagerises the WebGL stack without any build-time error.
-//   - maplibre, deck-stack: heavy WebGL deps, only reachable via MapContainer
+//   - maplibre, deck-stack, protomaps: heavy WebGL deps, only reachable via MapContainer
 //   - MapContainer: the dynamic-import target itself
 //   - panels-*: panel domain chunks; keep them out of the entry HTML preload
 //   - UnifiedSettings, settings-window, checkout: secondary interaction flows;
@@ -64,6 +64,8 @@ type PanelManualChunkName = PanelChunkName | PanelSupportChunkName;
 const LAZY_HTML_PRELOAD_CHUNKS = [
   'maplibre',
   'deck-stack',
+  'protomaps',
+  'h3-js',
   'MapContainer',
   'UnifiedSettings',
   'settings-window',
@@ -1125,15 +1127,20 @@ export default defineConfig(({ mode }) => {
               // (top of file). The resolveDependencies filter relies on this string
               // identity; renaming here without updating the constant silently
               // re-eagerises the WebGL stack into the entry HTML's modulepreload list.
-              if (id.includes('/maplibre-gl/') || id.includes('/pmtiles/') || id.includes('/@protomaps/basemaps/')) {
+              if (id.includes('/maplibre-gl/')) {
                 return 'maplibre';
+              }
+              if (id.includes('/pmtiles/') || id.includes('/@protomaps/basemaps/')) {
+                return 'protomaps';
+              }
+              if (id.includes('/h3-js/')) {
+                return 'h3-js';
               }
               if (
                 id.includes('/@deck.gl/')
                 || id.includes('/@luma.gl/')
                 || id.includes('/@loaders.gl/')
                 || id.includes('/@math.gl/')
-                || id.includes('/h3-js/')
               ) {
                 return 'deck-stack';
               }

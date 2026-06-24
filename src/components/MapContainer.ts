@@ -498,9 +498,18 @@ export class MapContainer {
         view: this.initialState.view as DeckMapView,
       }, { chrome: this.chrome });
       this.rehydrateActiveMap();
+      // DeckGLMap defers MapLibre construction behind an async init. Await it so
+      // a WebGL/map-construction throw still reaches this catch and degrades to
+      // SVG, instead of becoming an unhandled rejection behind a blank map.
+      await this.deckGLMap.whenReady();
+      if (!this.isCurrentRendererInit(token)) return;
     } catch (error) {
       if (!this.isCurrentRendererInit(token)) return;
       console.warn('[MapContainer] DeckGL initialization failed, falling back to SVG map', error);
+      // Tear down the half-built deck map so its listeners, timers and WebGL
+      // context do not leak; initSvgMap then nulls the reference and flips
+      // useDeckGL off.
+      this.deckGLMap?.destroy();
       await this.initSvgMap('[MapContainer] Initializing SVG map (DeckGL fallback mode)', token);
     }
   }
@@ -602,7 +611,11 @@ export class MapContainer {
     if (this.cachedDisplacementFlows) this.setDisplacementFlows(this.cachedDisplacementFlows);
     if (this.cachedClimateAnomalies) this.setClimateAnomalies(this.cachedClimateAnomalies);
     if (this.cachedRadiationObservations) this.setRadiationObservations(this.cachedRadiationObservations);
-    if (this.cachedGpsJamming) this.setGpsJamming(this.cachedGpsJamming);
+    if (this.cachedGpsJamming) {
+      void this.setGpsJamming(this.cachedGpsJamming).catch(err => {
+        console.warn('[MapContainer] GPS jamming re-init failed:', (err as Error)?.message);
+      });
+    }
     if (this.cachedSatellites) this.setSatellites(this.cachedSatellites);
     if (this.cachedDiseaseOutbreaks) this.setDiseaseOutbreaks(this.cachedDiseaseOutbreaks);
     if (this.cachedCyberThreats) this.setCyberThreats(this.cachedCyberThreats);
@@ -954,11 +967,11 @@ export class MapContainer {
     }
   }
 
-  public setGpsJamming(hexes: GpsJamHex[]): void {
+  public async setGpsJamming(hexes: GpsJamHex[]): Promise<void> {
     this.cachedGpsJamming = hexes;
     if (this.useGlobe) { this.globeMap?.setGpsJamming(hexes); return; }
     if (this.useDeckGL) {
-      this.deckGLMap?.setGpsJamming(hexes);
+      await this.deckGLMap?.setGpsJamming(hexes);
     }
   }
 

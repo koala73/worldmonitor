@@ -51,6 +51,7 @@ export interface AppContext {
   newsByCategory: Record<string, NewsItem[]>;
   latestMarkets: MarketData[];
   latestPredictions: import('@/services/prediction').PredictionMarket[];
+  latestTechEvents: Array<{ id: string; title: string; location: string; startDate: string; [key: string]: unknown }>;
   latestClusters: ClusteredEvent[];
   intelligenceCache: IntelligenceCache;
   cyberThreatsCache: CyberThreat[] | null;
