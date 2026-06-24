@@ -136,7 +136,7 @@ describe('panel mount deferral', () => {
 
   it('signals queued panel work after replacing a deferred shell with the real panel', async () => {
     const source = await readFile(new URL('../src/app/panel-layout.ts', import.meta.url), 'utf8');
-    const mountPanelElement = source.match(/private\s+mountPanelElement[\s\S]*?\n  \}/);
+    const mountPanelElement = source.match(/private\s+mountPanelElement[\s\S]*?\n {2}\}/);
 
     assert.ok(mountPanelElement, 'mountPanelElement method not found');
     assert.match(
