@@ -207,7 +207,7 @@ async function ensureCheckoutOverlayInitialized(): Promise<void> {
 
   const generation = checkoutOverlayGeneration;
 
-  overlayInitPromise = (async () => {
+  const thisInitPromise = (async () => {
     const DodoPayments = await loadDodoPayments();
     if (generation !== checkoutOverlayGeneration) {
       throw new Error('Checkout overlay initialization cancelled');
@@ -412,10 +412,14 @@ async function ensureCheckoutOverlayInitialized(): Promise<void> {
     initialized = true;
   })();
 
+  overlayInitPromise = thisInitPromise;
+
   try {
-    await overlayInitPromise;
+    await thisInitPromise;
   } finally {
-    overlayInitPromise = null;
+    if (overlayInitPromise === thisInitPromise) {
+      overlayInitPromise = null;
+    }
   }
 }
 
