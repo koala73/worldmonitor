@@ -394,6 +394,9 @@ interface TripData {
 
 type HighlightedMarker = { id: string; lon: number; lat: number; name: string; score: number };
 
+/** GpsJamHex with its H3 cell boundary precomputed once at ingestion (see setGpsJamming). */
+type GpsJamHexWithPolygon = GpsJamHex & { polygon: [number, number][] };
+
 interface BypassArcDatum {
   source: [number, number];
   target: [number, number];
@@ -435,10 +438,16 @@ function positionAlongPath(path: [number, number][], progress: number): [number,
   const fraction = scaled - index;
   const [lonA, latA] = path[index]!;
   const [lonB, latB] = path[index + 1]!;
-  return [
-    lonA + (lonB - lonA) * fraction,
-    latA + (latB - latA) * fraction,
-  ];
+  // Unwrap longitude across the antimeridian so the lerp takes the short way:
+  // great-circle samples can straddle ±180 (e.g. 176 → -176), and a raw lerp
+  // would sweep the dot across the whole map to ~0°E for that segment (#4396).
+  let deltaLon = lonB - lonA;
+  if (deltaLon > 180) deltaLon -= 360;
+  else if (deltaLon < -180) deltaLon += 360;
+  let lon = lonA + deltaLon * fraction;
+  if (lon > 180) lon -= 360;
+  else if (lon < -180) lon += 360;
+  return [lon, latA + (latB - latA) * fraction];
 }
 
 const TRADE_ANIMATION_CYCLE = 1000;
@@ -560,7 +569,7 @@ export class DeckGLMap {
   private newsLocationFirstSeen = new Map<string, number>();
   private ucdpEvents: UcdpGeoEvent[] = [];
   private displacementFlows: DisplacementFlow[] = [];
-  private gpsJammingHexes: GpsJamHex[] = [];
+  private gpsJammingHexes: GpsJamHexWithPolygon[] = [];
   private climateAnomalies: ClimateAnomaly[] = [];
   private radiationObservations: RadiationObservation[] = [];
   private diseaseOutbreaks: DiseaseOutbreakItem[] = [];
@@ -3269,12 +3278,12 @@ export class DeckGLMap {
     }
   }
 
-  private createGpsJammingLayer(): PolygonLayer<GpsJamHex> {
-    return new PolygonLayer<GpsJamHex>({
+  private createGpsJammingLayer(): PolygonLayer<GpsJamHexWithPolygon> {
+    return new PolygonLayer<GpsJamHexWithPolygon>({
       id: 'gps-jamming-layer',
       data: this.gpsJammingHexes,
-      getPolygon: (d: GpsJamHex) => cellToBoundary(d.h3, true) as [number, number][],
-      getFillColor: (d: GpsJamHex) => {
+      getPolygon: (d: GpsJamHexWithPolygon) => d.polygon,
+      getFillColor: (d: GpsJamHexWithPolygon) => {
         if (d.level === 'high') return [255, 80, 80, 180] as [number, number, number, number];
         return [255, 180, 50, 140] as [number, number, number, number];
       },
@@ -6450,7 +6459,12 @@ export class DeckGLMap {
   }
 
   public setGpsJamming(hexes: GpsJamHex[]): void {
-    this.gpsJammingHexes = hexes;
+    // Precompute each hex boundary once per data refresh (every ~5 min) instead
+    // of calling cellToBoundary per hex on every buildLayers()/render (#4396).
+    this.gpsJammingHexes = hexes.map(h => ({
+      ...h,
+      polygon: cellToBoundary(h.h3, true) as [number, number][],
+    }));
     this.render();
   }
 
