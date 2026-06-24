@@ -7,9 +7,27 @@ import {
   MILITARY_BASES,
   UNDERSEA_CABLES,
   NUCLEAR_FACILITIES,
-  AI_DATA_CENTERS,
   PIPELINES,
 } from '@/config';
+
+// The ~86KB ai-datacenters table is lazy-loaded (not statically imported) so it
+// stays off the eager dashboard critical path — related-assets is reached eagerly
+// via country-intel, which would otherwise pin the table to the entry chunk.
+// The datacenter index populates on first datacenter query and is cached; until
+// it resolves, datacenter lookups return [] (a country brief re-renders with them
+// on the next data tick). (#4404)
+let datacenterIndex: Array<{ id: string; name: string; lat: number; lon: number }> | null = null;
+let datacenterIndexLoading = false;
+function ensureDatacenterIndex(): void {
+  if (datacenterIndex !== null || datacenterIndexLoading) return;
+  datacenterIndexLoading = true;
+  void import('@/config/ai-datacenters')
+    .then(({ AI_DATA_CENTERS }) => {
+      datacenterIndex = AI_DATA_CENTERS.map(dc => ({ id: dc.id, name: dc.name, lat: dc.lat, lon: dc.lon }));
+    })
+    .catch(() => { datacenterIndex = []; })
+    .finally(() => { datacenterIndexLoading = false; });
+}
 
 const MAX_DISTANCE_KM = 300;
 const MAX_ASSETS_PER_TYPE = 3;
@@ -100,7 +118,8 @@ function buildAssetIndex(type: AssetType): Array<{ id: string; name: string; lat
         return { id: cable.id, name: cable.name, lat: mid.lat, lon: mid.lon };
       });
     case 'datacenter':
-      return AI_DATA_CENTERS.map(dc => ({ id: dc.id, name: dc.name, lat: dc.lat, lon: dc.lon }));
+      ensureDatacenterIndex();
+      return datacenterIndex ?? [];
     case 'base':
       return MILITARY_BASES.map(base => ({ id: base.id, name: base.name, lat: base.lat, lon: base.lon }));
     case 'nuclear':

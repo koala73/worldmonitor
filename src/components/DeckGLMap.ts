@@ -89,7 +89,6 @@ import {
   PIPELINE_COLORS,
   STRATEGIC_WATERWAYS,
   ECONOMIC_CENTERS,
-  AI_DATA_CENTERS,
   SITE_VARIANT,
   PORTS,
   SPACEPORTS,
@@ -104,9 +103,10 @@ import {
   COMMODITY_PORTS as COMMODITY_GEO_PORTS,
   SANCTIONED_COUNTRIES_ALPHA2,
 } from '@/config';
-// Tech tables imported directly so the ~62KB tech-geo chunk stays off the eager
-// @/config barrel and loads only with this lazy renderer (#4404).
+// Tech-geo + ai-datacenters tables imported directly so their chunks stay off the
+// eager @/config barrel and load only with this lazy renderer (#4404).
 import { STARTUP_HUBS, ACCELERATORS, TECH_HQS, CLOUD_REGIONS } from '@/config/tech-geo';
+import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
 import type { GulfInvestment } from '@/types';
 import { resolveTradeRouteSegments, TRADE_ROUTES as TRADE_ROUTES_LIST, type TradeRouteSegment, type TradeRouteStatus } from '@/config/trade-routes';
 import type { ScenarioVisualState } from '@/config/scenario-templates';

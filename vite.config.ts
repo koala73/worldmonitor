@@ -1175,6 +1175,12 @@ export default defineConfig(({ mode }) => {
             if (id.endsWith('/src/config/airports.ts')) {
               return 'airports-data';
             }
+            // ai-datacenters table (~86KB) — consumers (map/globe/search) import
+            // directly and are lazy; related-assets lazy-imports it. Kept off the
+            // eager @/config barrel above. (#4404)
+            if (id.endsWith('/src/config/ai-datacenters.ts')) {
+              return 'ai-datacenters-data';
+            }
             // Co-locate the deck.gl renderer with the deck vendor chunk so
             // onlyExplicitManualChunks cannot split deck's transitive deps
             // across the DeckGLMap boundary (which formed a circular chunk →

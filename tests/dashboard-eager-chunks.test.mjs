@@ -17,7 +17,7 @@ const dashboardHtml = resolve(distDir, 'dashboard.html');
 //
 // Dist-gated: skips when dist/dashboard.html is absent. CI builds the dashboard
 // before `npm run test:data` (the step added in #4393), so this runs in CI.
-const DEFERRED_TABLE_CHUNKS = ['tech-geo-data', 'airports-data'];
+const DEFERRED_TABLE_CHUNKS = ['tech-geo-data', 'airports-data', 'ai-datacenters-data'];
 
 describe('eager chunk budget: lazy-only config data tables stay off the entry', { skip: !existsSync(dashboardHtml) }, () => {
   const html = readFileSync(dashboardHtml, 'utf-8');

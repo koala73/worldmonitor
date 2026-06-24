@@ -13,7 +13,6 @@ import {
   PIPELINES,
   STRATEGIC_WATERWAYS,
   ECONOMIC_CENTERS,
-  AI_DATA_CENTERS,
   PORTS,
   SPACEPORTS,
   APT_GROUPS,
@@ -26,8 +25,9 @@ import {
   PROCESSING_PLANTS,
   COMMODITY_PORTS,
 } from '../config';
-// Tech tables imported directly so tech-geo stays off the eager @/config barrel (#4404).
+// Tech-geo + ai-datacenters tables imported directly so they stay off the eager @/config barrel (#4404).
 import { STARTUP_HUBS, ACCELERATORS, TECH_HQS, CLOUD_REGIONS } from '../config/tech-geo';
+import { AI_DATA_CENTERS } from '../config/ai-datacenters';
 import type { PositiveGeoEvent } from '../services/positive-events-geo';
 import type { KindnessPoint } from '../services/kindness-data';
 import type { SpeciesRecovery } from '../services/conservation-data';

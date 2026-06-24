@@ -28,7 +28,6 @@ import {
   SANCTIONED_COUNTRIES,
   STRATEGIC_WATERWAYS,
   ECONOMIC_CENTERS,
-  AI_DATA_CENTERS,
   PORTS,
   SPACEPORTS,
   CRITICAL_MINERALS,
@@ -39,9 +38,10 @@ import {
   CENTRAL_BANKS,
   COMMODITY_HUBS,
 } from '@/config';
-// Tech tables imported directly so the ~62KB tech-geo chunk stays off the eager
-// @/config barrel and loads only with this lazy renderer (#4404).
+// Tech-geo + ai-datacenters tables imported directly so their chunks stay off the
+// eager @/config barrel and load only with this lazy renderer (#4404).
 import { STARTUP_HUBS, ACCELERATORS, TECH_HQS, CLOUD_REGIONS } from '@/config/tech-geo';
+import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
 import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import { tokenizeForMatch, matchKeyword, findMatchingKeywords } from '@/utils/keyword-match';

@@ -22,8 +22,10 @@ export { SECTORS, COMMODITIES, MARKET_SYMBOLS, CRYPTO_MAP } from './markets';
 // Geo data (shared base)
 export { UNDERSEA_CABLES, MAP_URLS } from './geo';
 
-// AI Datacenters (shared)
-export { AI_DATA_CENTERS } from './ai-datacenters';
+// AI Datacenters: NOT re-exported on the eager @/config barrel — the ~86KB table
+// is dragged onto the critical path via this re-export. Consumers (map/globe/
+// search) import directly from '@/config/ai-datacenters'; related-assets lazy-
+// loads it. (#4404)
 
 // Feeds configuration (shared functions, variant-specific data)
 export {
