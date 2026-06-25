@@ -1962,7 +1962,7 @@ body.panel-resize-active iframe {
   0% {
     transform: scale(1);
     background: var(--border);
-    color: var(--text-dim);
+    color: var(--text-secondary);
   }
 
   40% {
@@ -1974,7 +1974,7 @@ body.panel-resize-active iframe {
   100% {
     transform: scale(1);
     background: var(--border);
-    color: var(--text-dim);
+    color: var(--text-secondary);
   }
 }
 
