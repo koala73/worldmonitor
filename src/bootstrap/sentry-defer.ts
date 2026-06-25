@@ -23,8 +23,9 @@
  *      otherwise buffers until drain.
  *
  * `scheduleSentryInit()` schedules the actual `import('@sentry/browser')`
- * via `requestIdleCallback` (Safari fallback: setTimeout off the `load`
- * event), mirroring the pattern in `services/clerk.ts:scheduleClerkLoad`.
+ * behind a hard post-audit delay, then uses `requestIdleCallback` when
+ * available so the delayed import still prefers idle time. Browsers without
+ * `requestIdleCallback` load immediately after the post-audit delay.
  *
  * The init options block (the giant `ignoreErrors` regex array, `beforeSend`
  * suppression logic, allowlists) lives in `sentry-init.ts`, loaded by dynamic
