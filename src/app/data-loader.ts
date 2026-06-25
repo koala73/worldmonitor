@@ -905,7 +905,14 @@ export class DataLoaderManager implements AppModule {
     this.stopSatellitePropagation();
     const data = await fetchSatelliteTLEs();
     if (!data || data.length === 0) return;
-    this.cachedSatRecs = await initSatRecs(data);
+    try {
+      this.cachedSatRecs = await initSatRecs(data);
+    } catch (err) {
+      console.error('[satellites] failed to initialize satellite propagation', err);
+      this.cachedSatRecs = [];
+      this.ctx.map?.setSatellites([]);
+      return;
+    }
     const positions = propagatePositions(this.cachedSatRecs);
     this.ctx.map?.setSatellites(positions);
     this.satellitePropagationCleanup = startPropagationLoop(this.cachedSatRecs, (pos) => {

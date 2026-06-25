@@ -31,6 +31,61 @@ const DEFERRED_AGENT_BUS_CHUNKS = ['agent-bus-actions'];
 // Re-adding a static `import` of either would re-eagerise it into main and fail this.
 const DEFERRED_NPM_LIB_CHUNKS = ['satellite.es', 'confetti.module'];
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function loadDashboardBuild() {
+  const html = readFileSync(dashboardHtml, 'utf-8');
+  const assetsDir = resolve(distDir, 'assets');
+  const assets = existsSync(assetsDir) ? readdirSync(assetsDir) : [];
+  const mainFile = assets.find((f) => /^main-[A-Za-z0-9_-]+\.js$/.test(f));
+  const mainJs = mainFile ? readFileSync(resolve(assetsDir, mainFile), 'utf-8') : '';
+  const modulepreloadHrefs = [...html.matchAll(/<link\b[^>]*>/g)]
+    .map((match) => match[0])
+    .filter((tag) => /\brel=["']modulepreload["']/.test(tag))
+    .map((tag) => tag.match(/\bhref=["']([^"']+)["']/)?.[1])
+    .filter(Boolean);
+  return { html, assets, mainFile, mainJs, modulepreloadHrefs };
+}
+
+function hasModulepreloadForChunk(modulepreloadHrefs, chunk) {
+  const escaped = escapeRegExp(chunk);
+  const hrefRe = new RegExp(`(?:^|/)assets/${escaped}-[A-Za-z0-9_-]+\\.js$`);
+  return modulepreloadHrefs.some((href) => hrefRe.test(href));
+}
+
+function registerDeferredChunkAssertions(chunks, options) {
+  const { assets, mainFile, mainJs, modulepreloadHrefs } = loadDashboardBuild();
+
+  for (const chunk of chunks) {
+    const escaped = escapeRegExp(chunk);
+
+    it(`${chunk}: built as its own isolated chunk`, () => {
+      assert.ok(
+        assets.some((f) => f.startsWith(`${chunk}-`) && f.endsWith('.js')),
+        options.missingMessage(chunk),
+      );
+    });
+
+    it(`${chunk}: absent from dashboard.html modulepreload`, () => {
+      assert.ok(
+        !hasModulepreloadForChunk(modulepreloadHrefs, chunk),
+        options.preloadMessage(chunk),
+      );
+    });
+
+    it(`${chunk}: not statically imported by the main entry chunk`, () => {
+      assert.ok(mainFile, 'main-*.js entry chunk should exist in dist/assets');
+      const staticImportRe = new RegExp(`(?:from|import)"\\./${escaped}-[A-Za-z0-9_-]+\\.js"`);
+      assert.ok(
+        !staticImportRe.test(mainJs),
+        `${chunk} must not be statically imported by ${mainFile} (dynamic preload-manifest references are fine)`,
+      );
+    });
+  }
+}
+
 describe('eager chunk budget: lazy-only config data tables stay off the entry', { skip: !existsSync(dashboardHtml) }, () => {
   const html = readFileSync(dashboardHtml, 'utf-8');
   const assetsDir = resolve(distDir, 'assets');
@@ -103,70 +158,15 @@ describe('eager chunk budget: Sentry stays behind the deferred scheduler', { ski
 });
 
 describe('eager chunk budget: opt-in npm libs stay off the entry', { skip: !existsSync(dashboardHtml) }, () => {
-  const html = readFileSync(dashboardHtml, 'utf-8');
-  const assetsDir = resolve(distDir, 'assets');
-  const assets = existsSync(assetsDir) ? readdirSync(assetsDir) : [];
-  const mainFile = assets.find((f) => /^main-[A-Za-z0-9_-]+\.js$/.test(f));
-  const mainJs = mainFile ? readFileSync(resolve(assetsDir, mainFile), 'utf-8') : '';
-
-  for (const chunk of DEFERRED_NPM_LIB_CHUNKS) {
-    const escaped = chunk.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    it(`${chunk}: built as its own isolated chunk`, () => {
-      assert.ok(
-        assets.some((f) => f.startsWith(`${chunk}-`) && f.endsWith('.js')),
-        `${chunk}-*.js chunk should exist — if missing, the lib was inlined into another chunk by a static import`,
-      );
-    });
-
-    it(`${chunk}: absent from dashboard.html modulepreload`, () => {
-      const modulepreloadRe = new RegExp(`<link\\b[^>]+rel=["']modulepreload["'][^>]+href=["']/assets/${escaped}-[A-Za-z0-9_-]+\\.js["']`);
-      assert.ok(
-        !modulepreloadRe.test(html),
-        `${chunk} must not be eagerly modulepreloaded — it loads on demand`,
-      );
-    });
-
-    it(`${chunk}: not statically imported by the main entry chunk`, () => {
-      assert.ok(mainFile, 'main-*.js entry chunk should exist in dist/assets');
-      const staticImportRe = new RegExp(`(?:from|import)"\\./${escaped}-[A-Za-z0-9_-]+\\.js"`);
-      assert.ok(
-        !staticImportRe.test(mainJs),
-        `${chunk} must not be statically imported by ${mainFile} (dynamic preload-manifest references are fine)`,
-      );
-    });
-  }
+  registerDeferredChunkAssertions(DEFERRED_NPM_LIB_CHUNKS, {
+    missingMessage: (chunk) => `${chunk}-*.js chunk should exist — if missing, the lib was inlined into another chunk by a static import`,
+    preloadMessage: (chunk) => `${chunk} must not be eagerly modulepreloaded — it loads on demand`,
+  });
 });
 
 describe('eager chunk budget: agent-bus + zod stay behind the lazy chat-analyst panel', { skip: !existsSync(dashboardHtml) }, () => {
-  const html = readFileSync(dashboardHtml, 'utf-8');
-  const assetsDir = resolve(distDir, 'assets');
-  const assets = existsSync(assetsDir) ? readdirSync(assetsDir) : [];
-  const mainFile = assets.find((f) => /^main-[A-Za-z0-9_-]+\.js$/.test(f));
-  const mainJs = mainFile ? readFileSync(resolve(assetsDir, mainFile), 'utf-8') : '';
-
-  for (const chunk of DEFERRED_AGENT_BUS_CHUNKS) {
-    it(`${chunk}: built as its own isolated chunk (not inlined into main)`, () => {
-      assert.ok(
-        assets.some((f) => f.startsWith(`${chunk}-`) && f.endsWith('.js')),
-        `${chunk}-*.js chunk should exist — if it was inlined into main, a static import re-eagerised agent-bus-applier (and zod)`,
-      );
-    });
-
-    it(`${chunk}: absent from dashboard.html modulepreload`, () => {
-      const modulepreloadRe = new RegExp(`<link\\b[^>]+rel=["']modulepreload["'][^>]+href=["']/assets/${chunk}-[A-Za-z0-9_-]+\\.js["']`);
-      assert.ok(
-        !modulepreloadRe.test(html),
-        `${chunk} must not be eagerly modulepreloaded — agent-bus loads through the lazy chat-analyst panel`,
-      );
-    });
-
-    it(`${chunk}: not statically imported by the main entry chunk`, () => {
-      assert.ok(mainFile, 'main-*.js entry chunk should exist in dist/assets');
-      const staticImportRe = new RegExp(`(?:from|import)"\\./${chunk}-[A-Za-z0-9_-]+\\.js"`);
-      assert.ok(
-        !staticImportRe.test(mainJs),
-        `${chunk} must not be statically imported by ${mainFile} (dynamic preload-manifest references are fine)`,
-      );
-    });
-  }
+  registerDeferredChunkAssertions(DEFERRED_AGENT_BUS_CHUNKS, {
+    missingMessage: (chunk) => `${chunk}-*.js chunk should exist — if it was inlined into main, a static import re-eagerised agent-bus-applier (and zod)`,
+    preloadMessage: (chunk) => `${chunk} must not be eagerly modulepreloaded — agent-bus loads through the lazy chat-analyst panel`,
+  });
 });

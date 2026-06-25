@@ -1633,19 +1633,23 @@ export class PanelLayoutManager implements AppModule {
 
     this.lazyPanel('chat-analyst', () =>
       // agent-bus-applier (and its zod-backed shared/agent-bus-actions schemas, ~69KB)
-      // is only reachable through this lazy panel's action handler — co-load it here so
-      // it ships in the chat-analyst chunk instead of the eager main entry.
-      Promise.all([
-        import('@/components/ChatAnalystPanel'),
-        import('@/app/agent-bus-applier'),
-      ]).then(([m, { applyAgentBusAction }]) => {
+      // is only reachable through this lazy panel's action handler. Start loading it
+      // here so it stays off the eager main entry, but do not make plain chat depend
+      // on the optional dashboard-control chunk being available.
+      import('@/components/ChatAnalystPanel').then(m => {
         const panel = new m.ChatAnalystPanel();
-        panel.setDashboardActionHandler((action) => applyAgentBusAction(this.ctx, action, {
-          getPanelConfig: (panelId) => getEffectivePanelConfig(panelId, SITE_VARIANT),
-          isPanelAllowed: (panelId, config) => isPanelEntitled(panelId, config, hasPremiumAccess(getAuthState())),
-          hasPremiumAccess: () => hasPremiumAccess(getAuthState()),
-          applyLayerChange: this.callbacks.applyMapLayerChange,
-        }));
+        void import('@/app/agent-bus-applier')
+          .then(({ applyAgentBusAction }) => {
+            panel.setDashboardActionHandler((action) => applyAgentBusAction(this.ctx, action, {
+              getPanelConfig: (panelId) => getEffectivePanelConfig(panelId, SITE_VARIANT),
+              isPanelAllowed: (panelId, config) => isPanelEntitled(panelId, config, hasPremiumAccess(getAuthState())),
+              hasPremiumAccess: () => hasPremiumAccess(getAuthState()),
+              applyLayerChange: this.callbacks.applyMapLayerChange,
+            }));
+          })
+          .catch((err) => {
+            console.error('[panel] failed to lazy-load "chat-analyst" dashboard action handler', err);
+          });
         return panel;
       }),
     );

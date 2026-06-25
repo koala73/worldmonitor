@@ -112,6 +112,7 @@ function findTasksSliceCalls(node: ts.Node): string[] {
 describe('loadAllData scheduler', () => {
   const loadAllDataMethod = findMethod(DATA_LOADER_SOURCE, 'loadAllData');
   const runLoadAllDataMethod = findMethod(DATA_LOADER_SOURCE, 'runLoadAllData');
+  const loadSatellitesMethod = findMethod(DATA_LOADER_SOURCE, 'loadSatellites');
 
   it('does not add a blanket inter-batch startup delay', () => {
     const batchIdentifiers = findBlockedBatchIdentifiers(runLoadAllDataMethod);
@@ -142,6 +143,30 @@ describe('loadAllData scheduler', () => {
     assert.match(text, /this\.loadAllDataRerunRequested\s*=\s*true/);
     assert.match(text, /this\.loadAllDataQueuedForceAll\s*=\s*this\.loadAllDataQueuedForceAll\s*\|\|\s*forceAll/);
     assert.match(text, /return\s+this\.loadAllDataPromise/);
+  });
+
+  it('keeps satellite.js chunk failures local to the satellite layer', () => {
+    const text = loadSatellitesMethod.getText(DATA_LOADER_SOURCE);
+    assert.match(
+      text,
+      /try\s*\{[\s\S]*?this\.cachedSatRecs\s*=\s*await\s+initSatRecs\(data\);[\s\S]*?\}\s*catch\s*\(err\)\s*\{/,
+      'loadSatellites must catch lazy satellite.js import/init failures locally',
+    );
+    assert.match(
+      text,
+      /this\.cachedSatRecs\s*=\s*\[\];/,
+      'failed satellite initialization should clear cached satellite records',
+    );
+    assert.match(
+      text,
+      /this\.ctx\.map\?\.setSatellites\(\[\]\);/,
+      'failed satellite initialization should clear the rendered satellite layer',
+    );
+    assert.match(
+      text,
+      /return;/,
+      'failed satellite initialization should return without starting propagation',
+    );
   });
 });
 
