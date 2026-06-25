@@ -2,6 +2,7 @@ import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import type { ConvergenceCard, CorrelationDomain } from '@/services/correlation-engine';
 import { h, replaceChildren } from '@/utils/dom-utils';
+import { readableTextColor } from '@/utils/contrast';
 import { getHydratedData } from '@/services/bootstrap';
 
 let correlationBootstrap: Record<string, ConvergenceCard[]> | null | undefined;
@@ -12,9 +13,10 @@ function getCorrelationBootstrap(): Record<string, ConvergenceCard[]> | null {
   return correlationBootstrap;
 }
 
-// These are used as the score-badge BACKGROUND with white (#fff) text.
-// `low` darkened from #888888 → #6f6f6f so white text clears WCAG AA (4.5:1):
-// white-on-#888888 was 3.54, white-on-#6f6f6f is ~5.0. (See #4418.)
+// Score-badge BACKGROUND colors. Badge text color is chosen per-background via
+// readableTextColor() so it clears WCAG AA on each: white on the dark `low`
+// badge, dark text on the light/mid critical/high/medium hues (white was 3.41 /
+// 2.39 / 1.51 on those). `low` was also darkened #888888 → #6f6f6f. (#4418/#4421)
 const SCORE_COLORS = {
   critical: '#ff4444',
   high: '#ff8800',
@@ -113,7 +115,7 @@ export class CorrelationPanel extends Panel {
       style: 'display:flex;align-items:center;gap:6px;cursor:pointer;padding:8px;',
     },
       h('span', {
-        style: `display:inline-block;min-width:28px;text-align:center;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:700;color:#fff;background:${scoreColor};`,
+        style: `display:inline-block;min-width:28px;text-align:center;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:700;color:${readableTextColor(scoreColor)};background:${scoreColor};`,
       }, String(card.score)),
       h('span', {
         style: 'flex:1;font-size:11px;line-height:1.3;',
