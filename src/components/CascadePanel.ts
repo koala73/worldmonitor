@@ -7,6 +7,7 @@ import {
   calculateCascade,
   getGraphStats,
   clearGraphCache,
+  preloadCables,
   type DependencyGraph,
 } from '@/services/infrastructure-cascade';
 import type { CascadeResult, CascadeImpactLevel, InfrastructureNode } from '@/types';
@@ -37,6 +38,7 @@ export class CascadePanel extends Panel {
   private async init(): Promise<void> {
     this.showLoading();
     try {
+      await preloadCables();
       this.graph = buildDependencyGraph();
       const stats = getGraphStats();
       this.setCount(stats.nodes);

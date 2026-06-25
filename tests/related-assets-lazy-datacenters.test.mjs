@@ -26,16 +26,68 @@ describe('related-assets lazy datacenter table contract', () => {
     );
   });
 
-  it('refreshes one-shot related-asset renderers after the datacenter chunk resolves', () => {
+  it('refreshes one-shot related-asset renderers after the lazy infrastructure chunks resolve', () => {
     assert.match(
       countryIntelSrc,
-      /preloadDatacenterIndex\(\)\s*[\r\n\s.]+then\(\(\) => \{[\s\S]*?countryBriefPage\.updateInfrastructure\(code\)/,
-      'country brief infrastructure should re-render after the lazy datacenter table resolves',
+      /preloadInfrastructureTables\(\)\s*[\r\n\s.]+then\(\(\) => \{[\s\S]*?countryBriefPage\.updateInfrastructure\(code\)/,
+      'country brief infrastructure should re-render after the lazy datacenter/cable/nuclear tables resolve',
     );
     assert.match(
       newsPanelSrc,
       /preloadRelatedAssetTables\(titles\)\s*[\r\n\s.]+then\(\(shouldRefresh\) => \{[\s\S]*?if \(shouldRefresh && this\.lastRawClusters\)/,
       'clustered news related assets should re-render only when a lazy table actually loaded',
+    );
+  });
+});
+
+describe('geo-map lazy table contract (#4404)', () => {
+  const infraCascadeSrc = readFileSync(resolve(root, 'src/services/infrastructure-cascade.ts'), 'utf8');
+  const cableActivitySrc = readFileSync(resolve(root, 'src/services/cable-activity.ts'), 'utf8');
+
+  it('lazy-loads UNDERSEA_CABLES + NUCLEAR_FACILITIES from geo-map, not the eager barrel', () => {
+    for (const re of [
+      /import\(['"]@\/config\/geo-map['"]\)[\s\S]*?UNDERSEA_CABLES/,
+      /import\(['"]@\/config\/geo-map['"]\)[\s\S]*?NUCLEAR_FACILITIES/,
+    ]) {
+      assert.match(relatedAssetsSrc, re, 'related-assets must dynamic-import cable/nuclear tables from geo-map');
+    }
+    assert.ok(
+      !/import\s*\{[^}]*\b(UNDERSEA_CABLES|NUCLEAR_FACILITIES)\b[^}]*\}\s*from\s*['"]@\/config(\/geo)?['"]/s.test(relatedAssetsSrc),
+      'related-assets must not statically import the moved tables from the eager barrel',
+    );
+  });
+
+  it('keeps failed geo-map imports retryable (no permanently-empty cache)', () => {
+    assert.match(
+      relatedAssetsSrc,
+      /cableIndexPromise = null;\s*throw error;/s,
+      'a failed cable import must clear the in-flight promise so a later query retries',
+    );
+    assert.match(
+      relatedAssetsSrc,
+      /nuclearFacilitiesPromise = null;\s*throw error;/s,
+      'a failed nuclear import must clear the in-flight promise so a later query retries',
+    );
+  });
+
+  it('infrastructure-cascade + cable-activity lazy-load cables and clear the graph cache on load', () => {
+    assert.ok(
+      !/import\s*\{[^}]*\bUNDERSEA_CABLES\b[^}]*\}\s*from\s*['"]@\/config(\/geo)?['"]/s.test(infraCascadeSrc),
+      'infrastructure-cascade must not statically import UNDERSEA_CABLES',
+    );
+    assert.match(
+      infraCascadeSrc,
+      /import\(['"]@\/config\/geo-map['"]\)[\s\S]*?UNDERSEA_CABLES[\s\S]*?clearGraphCache\(\)/,
+      'infrastructure-cascade must lazy-import cables and rebuild the graph once they resolve',
+    );
+    assert.ok(
+      !/import\s*\{[^}]*\bUNDERSEA_CABLES\b[^}]*\}\s*from\s*['"]@\/config(\/geo)?['"]/s.test(cableActivitySrc),
+      'cable-activity must not statically import UNDERSEA_CABLES',
+    );
+    assert.match(
+      cableActivitySrc,
+      /import\(['"]@\/config\/geo-map['"]\)/,
+      'cable-activity must lazy-import cables from geo-map',
     );
   });
 });

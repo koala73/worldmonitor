@@ -49,7 +49,7 @@ import {
   collectBriefSources,
   type BriefSource,
 } from '@/utils/brief-sources';
-import { getNearbyInfrastructure, preloadDatacenterIndex } from '@/services/related-assets';
+import { getNearbyInfrastructure, preloadInfrastructureTables } from '@/services/related-assets';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { iso2ToIso3, iso2ToComtradeReporterCode } from '@/utils/country-codes';
 import { buildDependencyGraph } from '@/services/infrastructure-cascade';
@@ -327,7 +327,7 @@ export class CountryIntelManager implements AppModule {
     page.updateNews(filteredNews.slice(0, 10));
 
     page.updateInfrastructure(code);
-    void preloadDatacenterIndex()
+    void preloadInfrastructureTables()
       .then(() => {
         if (this.ctx.countryBriefPage?.getCode() === code) {
           this.ctx.countryBriefPage.updateInfrastructure(code);

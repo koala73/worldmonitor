@@ -7,16 +7,11 @@ import {
   INTEL_HOTSPOTS,
   CONFLICT_ZONES,
   MILITARY_BASES,
-  UNDERSEA_CABLES,
-  NUCLEAR_FACILITIES,
   GAMMA_IRRADIATORS,
   PIPELINES,
   STRATEGIC_WATERWAYS,
-  ECONOMIC_CENTERS,
   PORTS,
-  SPACEPORTS,
   APT_GROUPS,
-  CRITICAL_MINERALS,
   STOCK_EXCHANGES,
   FINANCIAL_CENTERS,
   CENTRAL_BANKS,
@@ -25,9 +20,10 @@ import {
   PROCESSING_PLANTS,
   COMMODITY_PORTS,
 } from '../config';
-// Tech-geo + ai-datacenters tables imported directly so they stay off the eager @/config barrel (#4404).
+// Tech-geo + ai-datacenters + geo-map tables imported directly so they stay off the eager @/config barrel (#4404).
 import { STARTUP_HUBS, ACCELERATORS, TECH_HQS, CLOUD_REGIONS } from '../config/tech-geo';
 import { AI_DATA_CENTERS } from '../config/ai-datacenters';
+import { UNDERSEA_CABLES, NUCLEAR_FACILITIES, ECONOMIC_CENTERS, SPACEPORTS, CRITICAL_MINERALS } from '../config/geo-map';
 import type { PositiveGeoEvent } from '../services/positive-events-geo';
 import type { KindnessPoint } from '../services/kindness-data';
 import type { SpeciesRecovery } from '../services/conservation-data';

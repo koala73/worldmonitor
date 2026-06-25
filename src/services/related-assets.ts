@@ -1,12 +1,10 @@
-import type { ClusteredEvent, RelatedAsset, AssetType, RelatedAssetContext } from '@/types';
+import type { ClusteredEvent, RelatedAsset, AssetType, RelatedAssetContext, NuclearFacility } from '@/types';
 import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
 import { t } from '@/services/i18n';
 import {
   INTEL_HOTSPOTS,
   CONFLICT_ZONES,
   MILITARY_BASES,
-  UNDERSEA_CABLES,
-  NUCLEAR_FACILITIES,
   PIPELINES,
 } from '@/config';
 
@@ -42,6 +40,68 @@ export function preloadRelatedAssetTables(titles: string[]): Promise<boolean> {
 
 function ensureDatacenterIndex(): void {
   void preloadDatacenterIndex().catch(() => {});
+}
+
+// UNDERSEA_CABLES (~130KB) + NUCLEAR_FACILITIES (~25KB) live in the lazy geo-map
+// chunk for the same reason as the datacenter table above: related-assets is
+// reached eagerly via country-intel, so a static import would pin them to the
+// entry chunk. Lazy-cache + return empty until loaded; a failed import leaves the
+// cache null so the next query retries (no permanent suppression).
+let cableIndex: AssetIndexEntry[] | null = null;
+let cableIndexPromise: Promise<void> | null = null;
+
+export function preloadCableIndex(): Promise<void> {
+  if (cableIndex !== null) return Promise.resolve();
+  if (!cableIndexPromise) {
+    cableIndexPromise = import('@/config/geo-map')
+      .then(({ UNDERSEA_CABLES }) => {
+        cableIndex = UNDERSEA_CABLES.map((cable) => {
+          const mid = midpoint(cable.points);
+          return mid ? { id: cable.id, name: cable.name, lat: mid.lat, lon: mid.lon } : null;
+        }).filter((entry): entry is AssetIndexEntry => entry !== null);
+      })
+      .catch((error) => {
+        cableIndexPromise = null;
+        throw error;
+      });
+  }
+  return cableIndexPromise;
+}
+
+function ensureCableIndex(): void {
+  void preloadCableIndex().catch(() => {});
+}
+
+let nuclearFacilities: NuclearFacility[] | null = null;
+let nuclearFacilitiesPromise: Promise<void> | null = null;
+
+export function preloadNuclearFacilities(): Promise<void> {
+  if (nuclearFacilities !== null) return Promise.resolve();
+  if (!nuclearFacilitiesPromise) {
+    nuclearFacilitiesPromise = import('@/config/geo-map')
+      .then(({ NUCLEAR_FACILITIES }) => {
+        nuclearFacilities = NUCLEAR_FACILITIES;
+      })
+      .catch((error) => {
+        nuclearFacilitiesPromise = null;
+        throw error;
+      });
+  }
+  return nuclearFacilitiesPromise;
+}
+
+function ensureNuclearFacilities(): void {
+  void preloadNuclearFacilities().catch(() => {});
+}
+
+// Warm all lazy infrastructure tables together so a country brief re-render picks
+// up datacenters, cables, and nuclear facilities in a single refresh pass.
+export function preloadInfrastructureTables(): Promise<void> {
+  return Promise.all([
+    preloadDatacenterIndex().catch(() => {}),
+    preloadCableIndex().catch(() => {}),
+    preloadNuclearFacilities().catch(() => {}),
+  ]).then(() => {});
 }
 
 const MAX_DISTANCE_KM = 300;
@@ -127,18 +187,16 @@ function buildAssetIndex(type: AssetType): Array<{ id: string; name: string; lat
         return { id: pipeline.id, name: pipeline.name, lat: mid.lat, lon: mid.lon };
       });
     case 'cable':
-      return UNDERSEA_CABLES.map(cable => {
-        const mid = midpoint(cable.points);
-        if (!mid) return null;
-        return { id: cable.id, name: cable.name, lat: mid.lat, lon: mid.lon };
-      });
+      ensureCableIndex();
+      return cableIndex ?? [];
     case 'datacenter':
       ensureDatacenterIndex();
       return datacenterIndex ?? [];
     case 'base':
       return MILITARY_BASES.map(base => ({ id: base.id, name: base.name, lat: base.lat, lon: base.lon }));
     case 'nuclear':
-      return NUCLEAR_FACILITIES.map(site => ({ id: site.id, name: site.name, lat: site.lat, lon: site.lon }));
+      ensureNuclearFacilities();
+      return (nuclearFacilities ?? []).map(site => ({ id: site.id, name: site.name, lat: site.lat, lon: site.lon }));
     default:
       return [];
   }
@@ -208,7 +266,8 @@ export function getCountryInfrastructure(
     let countryAssets: RelatedAsset[] = [];
 
     if (type === 'nuclear') {
-      const byOperator = NUCLEAR_FACILITIES
+      ensureNuclearFacilities();
+      const byOperator = (nuclearFacilities ?? [])
         .filter(f => f.operator?.toLowerCase() === codeLower)
         .map(f => ({ id: f.id, name: f.name, type, distanceKm: haversineDistanceKm(lat, lon, f.lat, f.lon) }));
       if (byOperator.length > 0) {

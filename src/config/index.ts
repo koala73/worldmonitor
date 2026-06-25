@@ -19,8 +19,8 @@ export {
 // Market data (shared)
 export { SECTORS, COMMODITIES, MARKET_SYMBOLS, CRYPTO_MAP } from './markets';
 
-// Geo data (shared base)
-export { UNDERSEA_CABLES, MAP_URLS } from './geo';
+// Geo data (shared base). UNDERSEA_CABLES + MAP_URLS moved to the lazy geo-map
+// chunk (#4404) — import them directly from '@/config/geo-map', not via this barrel.
 
 // AI Datacenters: NOT re-exported on the eager @/config barrel — the ~86KB table
 // is dragged onto the critical path via this re-export. Consumers (map/globe/
@@ -83,13 +83,7 @@ export {
   CONFLICT_ZONES,
 
   MILITARY_BASES,
-  NUCLEAR_FACILITIES,
   STRATEGIC_WATERWAYS,
-  ECONOMIC_CENTERS,
-  SANCTIONED_COUNTRIES,
-  SANCTIONED_COUNTRIES_ALPHA2,
-  SPACEPORTS,
-  CRITICAL_MINERALS,
 } from './geo';
 
 export { APT_GROUPS } from './apt-groups';

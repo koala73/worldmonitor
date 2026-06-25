@@ -1181,6 +1181,14 @@ export default defineConfig(({ mode }) => {
             if (id.endsWith('/src/config/ai-datacenters.ts')) {
               return 'ai-datacenters-data';
             }
+            // geo-map table bulk (~150KB: UNDERSEA_CABLES + NUCLEAR_FACILITIES +
+            // ECONOMIC_CENTERS/SPACEPORTS/CRITICAL_MINERALS/SANCTIONED_*/MAP_URLS).
+            // Map/globe/search consumers import directly (lazy); the eager
+            // related-assets/infrastructure-cascade/cable-activity chains
+            // lazy-cache it. Kept off the eager @/config barrel above. (#4404)
+            if (id.endsWith('/src/config/geo-map.ts')) {
+              return 'geo-map-data';
+            }
             // Co-locate the deck.gl renderer with the deck vendor chunk so
             // onlyExplicitManualChunks cannot split deck's transitive deps
             // across the DeckGLMap boundary (which formed a circular chunk →
