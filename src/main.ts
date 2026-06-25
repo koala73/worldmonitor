@@ -1,5 +1,6 @@
 import './styles/base-layer.css';
 import './styles/happy-theme.css';
+import './bootstrap/zod-csp';
 import { enqueueSentryCall, installPreInitErrorQueue, scheduleSentryInit } from '@/bootstrap/sentry-defer';
 import { initVercelAnalytics } from '@/bootstrap/secondary-startup';
 import { App } from './App';
@@ -60,12 +61,11 @@ function shouldSuppressCspViolation(
       if (new URL(blockedURI).protocol === 'https:') return true;
     } catch { /* scheme-only values like "blob" fall through */ }
   }
-  // media-src + HTTPS: HLS / live-stream media-element loads. Our media-src
-  // policy allows the `https:` scheme (`media-src 'self' data: blob: https:` in
-  // BOTH the index.html meta tag and the vercel.json header), so an *enforced*
-  // https: media-src block means a corporate proxy / privacy extension stripped
-  // `https:` from the user's effective media-src — the same environmental policy
-  // mutation as the connect-src case above. The HLS *manifest* fetch is
+  // media-src + HTTPS: HLS / live-stream media-element loads. Our header CSP
+  // allows the `https:` scheme (`media-src 'self' data: blob: https:`), so an
+  // *enforced* https: media-src block means a corporate proxy / privacy extension
+  // stripped `https:` from the user's effective media-src — the same environmental
+  // policy mutation as the connect-src case above. The HLS *manifest* fetch is
   // connect-src (already suppressed via the foxnews-style rule); this covers the
   // media element load of that same stream. Built-in and user-added custom HLS
   // channels (LiveNewsPanel) both hit this — WORLDMONITOR-HV (bloomberg.com
@@ -201,33 +201,24 @@ function shouldSuppressCspViolation(
   if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(blockedURI)) return true;
   return false;
 }
-// Detect once whether BOTH the meta tag and HTTP header CSP allow https: in connect-src.
-// Browsers enforce both independently — the effective policy is the intersection.
-// Only suppress HTTPS connect-src violations when both policies allow https:.
-// The HTTP header CSP isn't directly readable from JS, so we check the meta tag and
-// also parse the vercel.json-derived header value baked into the build.
+// Detect once whether the effective dashboard CSP allows https: in connect-src.
+// The dashboard policy now ships as an HTTP header only; older/stale documents
+// may still carry a meta CSP, so if one exists, honor it as the stricter local
+// signal. Otherwise the deployed header is the source of truth.
 const _cspAllowsHttps = (() => {
   const metaEl = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
-  const metaCsp = metaEl?.getAttribute('content') ?? '';
+  if (!metaEl) return true;
+  const metaCsp = metaEl.getAttribute('content') ?? '';
   const metaConnectSrc = metaCsp.match(/connect-src\s+([^;]*)/)?.[1] ?? '';
-  const metaAllows = /\bhttps:\b/.test(metaConnectSrc);
-  // If no meta CSP exists, we can't confirm both policies allow https:.
-  // Be conservative: only suppress if the meta tag explicitly has it.
-  if (!metaEl) return false;
-  return metaAllows;
+  return metaConnectSrc.split(/\s+/).includes('https:');
 })();
-// media-src counterpart of `_cspAllowsHttps`. Detect whether the meta-tag CSP
-// allows the `https:` scheme in media-src so the filter only suppresses https:
-// media-src blocks when our own policy actually permits them (the block then
-// being an environmental policy mutation, not a real regression). Browsers
-// enforce meta + header independently; our header media-src also carries
-// `https:`, so the meta check is a sufficient (conservative) proxy.
+// media-src counterpart of `_cspAllowsHttps`.
 const _cspMediaSrcAllowsHttps = (() => {
   const metaEl = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
-  if (!metaEl) return false;
+  if (!metaEl) return true;
   const metaCsp = metaEl.getAttribute('content') ?? '';
   const metaMediaSrc = metaCsp.match(/media-src\s+([^;]*)/)?.[1] ?? '';
-  return /\bhttps:\b/.test(metaMediaSrc);
+  return metaMediaSrc.split(/\s+/).includes('https:');
 })();
 // Resolve our configured Convex deployment hostname once. Convex is multi-tenant —
 // the CSP filter must scope its first-party suppression to OUR specific hostname,
