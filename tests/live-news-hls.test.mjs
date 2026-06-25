@@ -13,7 +13,17 @@ const liveNewsSrc = readSrc('src/components/LiveNewsPanel.ts');
 const liveNewsSvc = readSrc('src/services/live-news.ts');
 const youtubeApi = readSrc('api/youtube/live.js');
 const sidecarSrc = readSrc('src-tauri/sidecar/local-api-server.mjs');
-const indexHtml = readSrc('index.html');
+const vercelConfig = JSON.parse(readSrc('vercel.json'));
+const tauriConfig = JSON.parse(readSrc('src-tauri/tauri.conf.json'));
+
+const globalCsp = vercelConfig.headers
+  .find((entry) => entry.source.includes('?!docs|embed'))
+  ?.headers
+  ?.find((header) => header.key === 'Content-Security-Policy')
+  ?.value ?? '';
+const tauriCsp = tauriConfig.app.security.csp;
+const getCspDirective = (csp, directive) =>
+  csp.match(new RegExp(`${directive}\\s+([^;]+)`))?.[1]?.split(/\s+/) ?? [];
 
 // ── Extract channel IDs and DIRECT_HLS_MAP keys from source ──
 
@@ -433,16 +443,29 @@ describe('optional channels fallback coverage', () => {
   });
 });
 
-// ── 11. CSP allows sidecar iframe ──
+// ── 11. CSP allows HLS media and desktop sidecar iframe ──
 
 describe('CSP configuration', () => {
-  it('frame-src allows http://127.0.0.1:*', () => {
-    assert.match(indexHtml, /frame-src[^;]*http:\/\/127\.0\.0\.1:\*/,
-      'CSP frame-src must allow sidecar localhost origin for YouTube embed iframe');
+  it('web header media-src allows https: for CDN HLS streams', () => {
+    assert.ok(getCspDirective(globalCsp, 'media-src').includes('https:'),
+      'web CSP media-src must allow HTTPS for direct HLS CDN streams');
   });
 
-  it('media-src allows https: for CDN HLS streams', () => {
-    assert.match(indexHtml, /media-src[^;]*https:/,
-      'CSP media-src must allow HTTPS for direct HLS CDN streams');
+  it('Tauri CSP frame-src allows localhost sidecar iframe origins', () => {
+    const frameSrc = getCspDirective(tauriCsp, 'frame-src');
+    assert.ok(frameSrc.includes('http://127.0.0.1:*'),
+      'Tauri CSP frame-src must allow 127.0.0.1 sidecar iframe origins');
+    assert.ok(frameSrc.includes('http://localhost:*'),
+      'Tauri CSP frame-src must allow localhost sidecar iframe origins');
+  });
+
+  it('Tauri CSP media-src allows localhost sidecar and HTTPS HLS media', () => {
+    const mediaSrc = getCspDirective(tauriCsp, 'media-src');
+    assert.ok(mediaSrc.includes('https:'),
+      'Tauri CSP media-src must allow HTTPS for direct HLS CDN streams');
+    assert.ok(mediaSrc.includes('http://127.0.0.1:*'),
+      'Tauri CSP media-src must allow 127.0.0.1 sidecar media origins');
+    assert.ok(mediaSrc.includes('http://localhost:*'),
+      'Tauri CSP media-src must allow localhost sidecar media origins');
   });
 });
