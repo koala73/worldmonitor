@@ -19,6 +19,17 @@ const dashboardHtml = resolve(distDir, 'dashboard.html');
 // before `npm run test:data` (the step added in #4393), so this runs in CI.
 const DEFERRED_TABLE_CHUNKS = ['tech-geo-data', 'airports-data', 'ai-datacenters-data', 'geo-map-data'];
 const DEFERRED_SENTRY_CHUNKS = ['sentry-init', 'sentry'];
+// agent-bus-applier + shared/agent-bus-actions pull in zod (~69KB raw). They are
+// only reachable through the lazy chat-analyst panel's action handler, so they
+// must ship in the chat-analyst graph (agent-bus-actions chunk), NOT eager main.
+// Re-adding a static `import { applyAgentBusAction }` to panel-layout would inline
+// the subtree (and zod) into main — collapsing this chunk and failing the guard.
+const DEFERRED_AGENT_BUS_CHUNKS = ['agent-bus-actions'];
+// npm libs only needed by opt-in/non-boot features, lazy-loaded off the eager entry:
+//   satellite.es  — satellite.js, loaded by the satellite layer (ensureSatelliteLib)
+//   confetti.module — canvas-confetti, loaded on the first milestone celebration
+// Re-adding a static `import` of either would re-eagerise it into main and fail this.
+const DEFERRED_NPM_LIB_CHUNKS = ['satellite.es', 'confetti.module'];
 
 describe('eager chunk budget: lazy-only config data tables stay off the entry', { skip: !existsSync(dashboardHtml) }, () => {
   const html = readFileSync(dashboardHtml, 'utf-8');
@@ -77,6 +88,75 @@ describe('eager chunk budget: Sentry stays behind the deferred scheduler', { ski
       assert.ok(
         !modulepreloadRe.test(html),
         `${chunk} must not be eagerly modulepreloaded in dashboard.html — Sentry must load through the deferred scheduler`,
+      );
+    });
+
+    it(`${chunk}: not statically imported by the main entry chunk`, () => {
+      assert.ok(mainFile, 'main-*.js entry chunk should exist in dist/assets');
+      const staticImportRe = new RegExp(`(?:from|import)"\\./${chunk}-[A-Za-z0-9_-]+\\.js"`);
+      assert.ok(
+        !staticImportRe.test(mainJs),
+        `${chunk} must not be statically imported by ${mainFile} (dynamic preload-manifest references are fine)`,
+      );
+    });
+  }
+});
+
+describe('eager chunk budget: opt-in npm libs stay off the entry', { skip: !existsSync(dashboardHtml) }, () => {
+  const html = readFileSync(dashboardHtml, 'utf-8');
+  const assetsDir = resolve(distDir, 'assets');
+  const assets = existsSync(assetsDir) ? readdirSync(assetsDir) : [];
+  const mainFile = assets.find((f) => /^main-[A-Za-z0-9_-]+\.js$/.test(f));
+  const mainJs = mainFile ? readFileSync(resolve(assetsDir, mainFile), 'utf-8') : '';
+
+  for (const chunk of DEFERRED_NPM_LIB_CHUNKS) {
+    const escaped = chunk.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    it(`${chunk}: built as its own isolated chunk`, () => {
+      assert.ok(
+        assets.some((f) => f.startsWith(`${chunk}-`) && f.endsWith('.js')),
+        `${chunk}-*.js chunk should exist — if missing, the lib was inlined into another chunk by a static import`,
+      );
+    });
+
+    it(`${chunk}: absent from dashboard.html modulepreload`, () => {
+      const modulepreloadRe = new RegExp(`<link\\b[^>]+rel=["']modulepreload["'][^>]+href=["']/assets/${escaped}-[A-Za-z0-9_-]+\\.js["']`);
+      assert.ok(
+        !modulepreloadRe.test(html),
+        `${chunk} must not be eagerly modulepreloaded — it loads on demand`,
+      );
+    });
+
+    it(`${chunk}: not statically imported by the main entry chunk`, () => {
+      assert.ok(mainFile, 'main-*.js entry chunk should exist in dist/assets');
+      const staticImportRe = new RegExp(`(?:from|import)"\\./${escaped}-[A-Za-z0-9_-]+\\.js"`);
+      assert.ok(
+        !staticImportRe.test(mainJs),
+        `${chunk} must not be statically imported by ${mainFile} (dynamic preload-manifest references are fine)`,
+      );
+    });
+  }
+});
+
+describe('eager chunk budget: agent-bus + zod stay behind the lazy chat-analyst panel', { skip: !existsSync(dashboardHtml) }, () => {
+  const html = readFileSync(dashboardHtml, 'utf-8');
+  const assetsDir = resolve(distDir, 'assets');
+  const assets = existsSync(assetsDir) ? readdirSync(assetsDir) : [];
+  const mainFile = assets.find((f) => /^main-[A-Za-z0-9_-]+\.js$/.test(f));
+  const mainJs = mainFile ? readFileSync(resolve(assetsDir, mainFile), 'utf-8') : '';
+
+  for (const chunk of DEFERRED_AGENT_BUS_CHUNKS) {
+    it(`${chunk}: built as its own isolated chunk (not inlined into main)`, () => {
+      assert.ok(
+        assets.some((f) => f.startsWith(`${chunk}-`) && f.endsWith('.js')),
+        `${chunk}-*.js chunk should exist — if it was inlined into main, a static import re-eagerised agent-bus-applier (and zod)`,
+      );
+    });
+
+    it(`${chunk}: absent from dashboard.html modulepreload`, () => {
+      const modulepreloadRe = new RegExp(`<link\\b[^>]+rel=["']modulepreload["'][^>]+href=["']/assets/${chunk}-[A-Za-z0-9_-]+\\.js["']`);
+      assert.ok(
+        !modulepreloadRe.test(html),
+        `${chunk} must not be eagerly modulepreloaded — agent-bus loads through the lazy chat-analyst panel`,
       );
     });
 

@@ -1,5 +1,4 @@
 import type { AppContext, AppModule } from '@/app/app-context';
-import { applyAgentBusAction } from '@/app/agent-bus-applier';
 import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
 import { replayPendingCalls, clearAllPendingCalls } from '@/app/pending-panel-data';
 import {
@@ -1633,7 +1632,13 @@ export class PanelLayoutManager implements AppModule {
     // reactively by updatePanelGating() via auth state subscription (all in WEB_PREMIUM_PANELS).
 
     this.lazyPanel('chat-analyst', () =>
-      import('@/components/ChatAnalystPanel').then(m => {
+      // agent-bus-applier (and its zod-backed shared/agent-bus-actions schemas, ~69KB)
+      // is only reachable through this lazy panel's action handler — co-load it here so
+      // it ships in the chat-analyst chunk instead of the eager main entry.
+      Promise.all([
+        import('@/components/ChatAnalystPanel'),
+        import('@/app/agent-bus-applier'),
+      ]).then(([m, { applyAgentBusAction }]) => {
         const panel = new m.ChatAnalystPanel();
         panel.setDashboardActionHandler((action) => applyAgentBusAction(this.ctx, action, {
           getPanelConfig: (panelId) => getEffectivePanelConfig(panelId, SITE_VARIANT),
