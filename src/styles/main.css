@@ -5178,6 +5178,9 @@ body.playback-mode .status-dot {
 }
 
 .layer-help-btn {
+  /* WCAG 2.5.8 / issue #3112: 48x48 hit area. margin:-12px 0 keeps the box
+     flush with its toggle-header siblings while ::before (inset:12px) renders
+     the visible 24px circle centred inside the 48px clickable target. */
   position: relative;
   width: 48px;
   height: 48px;
@@ -16417,6 +16420,9 @@ a.prediction-link:hover {
 
 .deckgl-time-slider .time-options {
   display: flex;
+  /* Wrap instead of overflowing the viewport: six 48px touch targets (issue
+     #3112) exceed the narrowest phone widths on a single row. */
+  flex-wrap: wrap;
   gap: 2px;
 }
 
