@@ -38,6 +38,29 @@ describe('related-assets lazy datacenter table contract', () => {
       'clustered news related assets should re-render only when a lazy table actually loaded',
     );
   });
+
+  it('preloads every detected lazy related-asset table before the one-shot refresh', () => {
+    assert.match(
+      relatedAssetsSrc,
+      /types\.includes\(['"]datacenter['"]\)[\s\S]*?preloadDatacenterIndex\(\)/,
+      'datacenter-related clusters should preload the datacenter table before refreshing',
+    );
+    assert.match(
+      relatedAssetsSrc,
+      /types\.includes\(['"]cable['"]\)[\s\S]*?preloadCableIndex\(\)/,
+      'cable-related clusters should preload the cable table before refreshing',
+    );
+    assert.match(
+      relatedAssetsSrc,
+      /types\.includes\(['"]nuclear['"]\)[\s\S]*?preloadNuclearFacilities\(\)/,
+      'nuclear-related clusters should preload the nuclear table before refreshing',
+    );
+    assert.match(
+      relatedAssetsSrc,
+      /Promise\.allSettled\(preloadTasks\)[\s\S]*?status === ['"]fulfilled['"]/,
+      'mixed lazy table preloads should still refresh when at least one table resolves',
+    );
+  });
 });
 
 describe('geo-map lazy table contract (#4404)', () => {
@@ -88,6 +111,16 @@ describe('geo-map lazy table contract (#4404)', () => {
       cableActivitySrc,
       /import\(['"]@\/config\/geo-map['"]\)/,
       'cable-activity must lazy-import cables from geo-map',
+    );
+    assert.match(
+      cableActivitySrc,
+      /let cablesDataPromise: Promise<void> \| null = null;/,
+      'cable-activity should keep a shared in-flight cable table import promise',
+    );
+    assert.match(
+      cableActivitySrc,
+      /if \(!cablesDataPromise\) \{[\s\S]*?import\(['"]@\/config\/geo-map['"]\)[\s\S]*?cablesDataPromise = null;\s*throw error;/,
+      'cable-activity should coalesce concurrent imports while keeping failed imports retryable',
     );
   });
 });

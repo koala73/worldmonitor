@@ -6,10 +6,21 @@ import { MaritimeServiceClient, type NavigationalWarning } from '@/generated/cli
 // reached eagerly via data-loader, so it loads the table on demand inside the
 // async fetch path rather than statically importing it onto the eager graph.
 let cablesData: UnderseaCable[] = [];
+let cablesDataPromise: Promise<void> | null = null;
 async function ensureCablesData(): Promise<void> {
   if (cablesData.length > 0) return;
+  if (!cablesDataPromise) {
+    cablesDataPromise = import('@/config/geo-map')
+      .then(({ UNDERSEA_CABLES }) => {
+        cablesData = UNDERSEA_CABLES;
+      })
+      .catch((error) => {
+        cablesDataPromise = null;
+        throw error;
+      });
+  }
   try {
-    cablesData = (await import('@/config/geo-map')).UNDERSEA_CABLES;
+    await cablesDataPromise;
   } catch {
     /* keep empty → retried on the next fetch */
   }

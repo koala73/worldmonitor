@@ -32,10 +32,32 @@ export function preloadDatacenterIndex(): Promise<void> {
 }
 
 export function preloadRelatedAssetTables(titles: string[]): Promise<boolean> {
-  if (!detectAssetTypes(titles).includes('datacenter') || datacenterIndex !== null) {
+  const types = detectAssetTypes(titles);
+  const preloadTasks: Promise<void>[] = [];
+
+  if (types.includes('datacenter') && datacenterIndex === null) {
+    preloadTasks.push(preloadDatacenterIndex());
+  }
+  if (types.includes('cable') && cableIndex === null) {
+    preloadTasks.push(preloadCableIndex());
+  }
+  if (types.includes('nuclear') && nuclearFacilities === null) {
+    preloadTasks.push(preloadNuclearFacilities());
+  }
+
+  if (preloadTasks.length === 0) {
     return Promise.resolve(false);
   }
-  return preloadDatacenterIndex().then(() => true);
+
+  return Promise.allSettled(preloadTasks).then((results) => {
+    if (results.some(result => result.status === 'fulfilled')) {
+      return true;
+    }
+
+    const rejected = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+    if (rejected) throw rejected.reason;
+    return false;
+  });
 }
 
 function ensureDatacenterIndex(): void {
