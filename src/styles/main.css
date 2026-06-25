@@ -2465,7 +2465,6 @@ body.panel-resize-active iframe {
 }
 
 .live-channel-btn.offline {
-  opacity: 0.5;
   border-style: dashed;
 }
 
@@ -5179,9 +5178,8 @@ body.playback-mode .status-dot {
 }
 
 .layer-help-btn {
-  /* WCAG 2.5.8: ≥24×24 hit area (was 20×20). */
-  width: 24px;
-  height: 24px;
+  width: 48px;
+  height: 48px;
   padding: 0;
   background: var(--bg);
   border: 1px solid var(--border);
@@ -16417,10 +16415,10 @@ a.prediction-link:hover {
   font-size: 10px;
   cursor: pointer;
   transition: all 0.2s ease;
-  /* WCAG 2.5.8: ≥24×24 hit area (was ~36×23.5). */
+  /* Issue #3112 requires a 48x48 touch target. */
   box-sizing: border-box;
-  min-width: 24px;
-  min-height: 24px;
+  min-width: 48px;
+  min-height: 48px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
