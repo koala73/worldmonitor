@@ -438,16 +438,17 @@ describe('welcome landing page routing', () => {
     );
   });
 
-  it('redirects signed-in welcome visitors to /dashboard client-side', () => {
+  it('redirects signed-in welcome visitors to /dashboard client-side without loading the Clerk SDK', () => {
     const welcomeApp = readFileSync(resolve(__dirname, '../pro-test/src/WelcomeApp.tsx'), 'utf-8');
-    assert.ok(welcomeApp.includes("import('./services/clerk')"));
+    // The 3MB Clerk SDK must NOT be on the welcome critical path (issue #4428):
+    // the redirect is decided from the live __session JWT alone.
+    assert.ok(!welcomeApp.includes("import('./services/clerk')"));
     assert.ok(!welcomeApp.includes("import('./services/checkout')"));
-    assert.ok(welcomeApp.includes('mayHaveClerkSession()'));
-    assert.ok(welcomeApp.includes('hasLikelyLiveClerkSession(document.cookie)'));
+    assert.ok(welcomeApp.includes('hasLiveSessionJwt(document.cookie)'));
     assert.ok(welcomeApp.includes("import { DASHBOARD_PATH } from './routes';"));
     assert.ok(welcomeApp.includes('function dashboardRedirectTarget(): string'));
     assert.ok(welcomeApp.includes('`${DASHBOARD_PATH}${window.location.search}${window.location.hash}`'));
-    assert.ok(welcomeApp.includes('if (!cancelled && clerk.user) window.location.replace(dashboardRedirectTarget());'));
+    assert.ok(welcomeApp.includes('window.location.replace(dashboardRedirectTarget());'));
   });
 });
 
