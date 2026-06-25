@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { dashboardFontFamilies, scheduleAfterFirstPaint } from '../src/bootstrap/secondary-startup.ts';
+import { dashboardFontFamilies } from '../src/bootstrap/secondary-startup.ts';
+import { scheduleAfterFirstPaint } from '../src/utils/after-paint.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');

@@ -15,7 +15,7 @@ import type { WeatherAlert } from '@/services/weather';
 import type { RadiationObservation } from '@/services/radiation';
 import { getSeverityColor } from '@/services/weather';
 import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/smart-poll-loop';
-import { scheduleAfterFirstPaint } from '@/bootstrap/secondary-startup';
+import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 import {
   INTEL_HOTSPOTS,
   CONFLICT_ZONES,
@@ -1175,10 +1175,12 @@ export class MapComponent {
       if (!this.initialDynamicScheduled) {
         this.initialDynamicScheduled = true;
         scheduleAfterFirstPaint(() => {
+          if (this.destroyed) return;
           this.initialDynamicRendered = true;
           this.render();
         });
       }
+      this.applyTransform();
       return;
     }
 

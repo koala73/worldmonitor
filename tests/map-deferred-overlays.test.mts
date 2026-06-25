@@ -17,7 +17,7 @@ describe('mobile SVG map: defer dynamic overlays off first paint (#4429)', () =>
   it('imports the first-paint scheduler and declares the one-time flags', () => {
     assert.match(
       mapSrc,
-      /import \{ scheduleAfterFirstPaint \} from '@\/bootstrap\/secondary-startup'/,
+      /import \{ scheduleAfterFirstPaint \} from '@\/utils\/after-paint'/,
       'Map.ts must import scheduleAfterFirstPaint for the deferral',
     );
     assert.match(mapSrc, /private initialDynamicRendered = false/);
@@ -51,6 +51,19 @@ describe('mobile SVG map: defer dynamic overlays off first paint (#4429)', () =>
       mapSrc,
       /public render\(\): void \{\s*\n\s*if \(this\.destroyed\) return;/,
       'render() must early-return when destroyed so the deferred first-paint callback cannot run on a torn-down instance',
+    );
+    assert.match(
+      mapSrc,
+      /scheduleAfterFirstPaint\(\(\) => \{\s*\n\s*if \(this\.destroyed\) return;\s*\n\s*this\.initialDynamicRendered = true;/,
+      'the deferred callback must not mutate render state after destroy()',
+    );
+  });
+
+  it('applies the current map transform before returning from the first-paint gate', () => {
+    assert.match(
+      mapSrc,
+      /if \(!this\.initialDynamicRendered\) \{[\s\S]*?scheduleAfterFirstPaint\(\(\) => \{[\s\S]*?if \(this\.destroyed\) return;[\s\S]*?this\.render\(\);[\s\S]*?\}\);\s*\n\s*\}\s*\n\s*this\.applyTransform\(\);\s*\n\s*return;\s*\n\s*\}/,
+      'applyTransform must run immediately before the first-paint gate returns',
     );
   });
 
