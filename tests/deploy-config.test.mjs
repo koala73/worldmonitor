@@ -874,6 +874,26 @@ describe('security header guardrails', () => {
     assert.ok(!nginxScriptSrc.includes("'unsafe-inline'"), "nginx script-src must not contain 'unsafe-inline' to maintain CSP parity with Vercel.");
   });
 
+  it('CSP payment frame and form directives stay in sync between Vercel and docker/nginx', () => {
+    const headerCsp = getHeaderValue('Content-Security-Policy');
+    const nginxCsp = getNginxHeaderValue('Content-Security-Policy');
+    assert.ok(nginxCsp, 'nginx-security-headers.conf must have a Content-Security-Policy header');
+
+    for (const directive of ['frame-src', 'form-action']) {
+      const headerTokens = getCspDirectiveTokens(headerCsp, directive);
+      const nginxTokens = getCspDirectiveTokens(nginxCsp, directive);
+      const onlyHeader = headerTokens.filter((token) => !nginxTokens.includes(token));
+      const onlyNginx = nginxTokens.filter((token) => !headerTokens.includes(token));
+
+      assert.deepEqual(onlyHeader, [],
+        `${directive} tokens in vercel.json but missing from nginx-security-headers.conf: ${onlyHeader.join(', ')}. ` +
+        'Payment/auth iframe and form targets must stay deploy-surface identical.');
+      assert.deepEqual(onlyNginx, [],
+        `${directive} tokens in nginx-security-headers.conf but missing from vercel.json: ${onlyNginx.join(', ')}. ` +
+        'Payment/auth iframe and form targets must stay deploy-surface identical.');
+    }
+  });
+
   it('security.txt exists in public/.well-known/', () => {
     const secTxt = readFileSync(resolve(__dirname, '../public/.well-known/security.txt'), 'utf-8');
     assert.match(secTxt, /^Contact:/m, 'security.txt must have a Contact field');
