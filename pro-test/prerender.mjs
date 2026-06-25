@@ -15,6 +15,7 @@ import { createServer } from 'vite';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const en = JSON.parse(readFileSync(resolve(__dirname, 'src/locales/en.json'), 'utf-8'));
+const DASHBOARD_SCREENSHOT_BASENAME = 'worldmonitor-7-mar-2026';
 
 async function renderWelcomeRoot() {
   const server = await createServer({
@@ -44,8 +45,16 @@ function builtAssetHref(filenamePrefix, extension) {
 }
 
 function rewriteBuiltAssetUrls(markup) {
-  const dashboardScreenshotHref = builtAssetHref('worldmonitor-7-mar-2026', '.jpg');
-  return markup.replaceAll('/pro/src/assets/worldmonitor-7-mar-2026.jpg', dashboardScreenshotHref);
+  const dashboardScreenshotHref = builtAssetHref(DASHBOARD_SCREENSHOT_BASENAME, '.jpg');
+  const sourceAssetPattern = new RegExp(
+    `(?:/pro/src/assets/|/@fs/[^"'<>\\s]*/)${DASHBOARD_SCREENSHOT_BASENAME}\\.jpg`,
+    'g',
+  );
+  if (!markup.match(sourceAssetPattern)) {
+    console.error(`[prerender] ERROR: Could not find SSR asset URL for ${DASHBOARD_SCREENSHOT_BASENAME}.jpg in welcome markup.`);
+    process.exit(1);
+  }
+  return markup.replace(sourceAssetPattern, dashboardScreenshotHref);
 }
 
 // Hides the prerender block from assistive tech once JS runs (the CSS in <head>

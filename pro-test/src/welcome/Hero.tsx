@@ -14,7 +14,7 @@ const HERO_PROOF_STATS = [
 
 const HeroProofRail = () => (
   <motion.div
-    initial={{ opacity: 0, y: 16 }}
+    initial={false}
     animate={{ opacity: 1, y: 0 }}
     transition={{ duration: 0.6, delay: 0.28 }}
     className="mt-8 mx-auto grid w-full max-w-[22rem] sm:max-w-3xl grid-cols-2 sm:grid-cols-4 overflow-hidden rounded-sm border border-wm-border bg-wm-card/70 text-left backdrop-blur-sm"
@@ -33,7 +33,7 @@ const HeroProofRail = () => (
 
 const ConsoleFrame = () => (
   <motion.div
-    initial={{ opacity: 0, y: 32 }}
+    initial={false}
     animate={{ opacity: 1, y: 0 }}
     transition={{ duration: 0.7, delay: 0.35 }}
     className="relative max-w-5xl mx-auto mt-10 sm:mt-14"
@@ -93,7 +93,7 @@ export const Hero = () => (
       </motion.div>
 
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={false}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.15 }}
         className="mt-9 mx-auto flex max-w-[22rem] sm:max-w-none flex-col sm:flex-row items-stretch sm:items-center justify-center gap-4"
@@ -112,7 +112,7 @@ export const Hero = () => (
         </a>
       </motion.div>
       <motion.div
-        initial={{ opacity: 0 }}
+        initial={false}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.6, delay: 0.25 }}
         className="mt-3 font-mono text-[11px] uppercase tracking-widest text-wm-muted"
@@ -122,7 +122,7 @@ export const Hero = () => (
       <HeroProofRail />
 
       <motion.div
-        initial={{ opacity: 0 }}
+        initial={false}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.6, delay: 0.3 }}
         className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-xs font-mono text-wm-muted"
