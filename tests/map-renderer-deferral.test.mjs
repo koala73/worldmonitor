@@ -66,42 +66,37 @@ function tsconfigPathMappings() {
   ));
 }
 
-const pathMappings = tsconfigPathMappings();
+let cachedPathMappings = null;
+
+function pathMappings() {
+  cachedPathMappings ??= tsconfigPathMappings();
+  return cachedPathMappings;
+}
+
+function matchPathPattern(specifier, pattern) {
+  const wildcardIndex = pattern.indexOf('*');
+  if (wildcardIndex === -1) {
+    return specifier === pattern ? '' : null;
+  }
+
+  const prefix = pattern.slice(0, wildcardIndex);
+  const suffix = pattern.slice(wildcardIndex + 1);
+  if (!specifier.startsWith(prefix) || !specifier.endsWith(suffix)) return null;
+
+  return specifier.slice(prefix.length, specifier.length - suffix.length);
+}
 
 function resolvePathMappedSource(specifier) {
   let matchedPath = false;
-  for (const { pattern, target } of pathMappings) {
-    const wildcardIndex = pattern.indexOf('*');
-    if (wildcardIndex === -1) {
-      if (specifier !== pattern) continue;
-      matchedPath = true;
-      const resolved = sourcePathCandidate(resolve(root, target));
-      if (resolved) return resolved;
-      continue;
-    }
-
-    const prefix = pattern.slice(0, wildcardIndex);
-    const suffix = pattern.slice(wildcardIndex + 1);
-    if (!specifier.startsWith(prefix) || !specifier.endsWith(suffix)) continue;
-
+  for (const { pattern, target } of pathMappings()) {
+    const matched = matchPathPattern(specifier, pattern);
+    if (matched === null) continue;
     matchedPath = true;
-    const matched = specifier.slice(prefix.length, specifier.length - suffix.length);
     const targetBase = target.replace('*', matched);
     const resolved = sourcePathCandidate(resolve(root, targetBase));
-    if (resolved) return resolved;
+    if (resolved) return { matched: true, fileName: resolved };
   }
-  if (matchedPath) return null;
-  return null;
-}
-
-function matchesTsconfigPath(specifier) {
-  return pathMappings.some(({ pattern }) => {
-    const wildcardIndex = pattern.indexOf('*');
-    if (wildcardIndex === -1) return specifier === pattern;
-    const prefix = pattern.slice(0, wildcardIndex);
-    const suffix = pattern.slice(wildcardIndex + 1);
-    return specifier.startsWith(prefix) && specifier.endsWith(suffix);
-  });
+  return { matched: matchedPath, fileName: null };
 }
 
 function resolveInRepoSpecifier(fromFileName, specifier) {
@@ -115,7 +110,7 @@ function resolveInRepoSpecifier(fromFileName, specifier) {
   }
 
   const resolved = resolvePathMappedSource(specifier);
-  if (resolved || !matchesTsconfigPath(specifier)) return resolved;
+  if (resolved.fileName || !resolved.matched) return resolved.fileName;
 
   assert.fail(`Static path alias import ${specifier} from ${rootRelative(fromFileName)} must resolve to a real file`);
 }
