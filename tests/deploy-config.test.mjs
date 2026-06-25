@@ -658,6 +658,38 @@ describe('security header guardrails', () => {
     assert.ok(!connectSrc.includes('http://localhost'), 'CSP connect-src must not contain http://localhost in production');
   });
 
+  it('dashboard CSP font and style sources are first-party across deploy surfaces', () => {
+    const indexHtml = readFileSync(resolve(__dirname, '../index.html'), 'utf-8');
+    const headerCsp = getHeaderValue('Content-Security-Policy');
+    const metaMatch = indexHtml.match(/http-equiv="Content-Security-Policy"\s+content="([^"]*)"/i);
+    assert.ok(metaMatch, 'index.html must have a CSP meta tag');
+    const nginxCsp = getNginxHeaderValue('Content-Security-Policy');
+    assert.ok(nginxCsp, 'nginx-security-headers.conf must have a Content-Security-Policy header');
+
+    const surfaces = [
+      ['vercel', headerCsp],
+      ['index.html', metaMatch[1]],
+      ['docker/nginx', nginxCsp],
+    ];
+
+    for (const directive of ['style-src', 'font-src']) {
+      const baseline = getCspDirectiveTokens(headerCsp, directive);
+      for (const [label, csp] of surfaces) {
+        const tokens = getCspDirectiveTokens(csp, directive);
+        assert.deepEqual(
+          tokens,
+          baseline,
+          `${directive} tokens in ${label} must match vercel.json: ${tokens.join(', ')}`
+        );
+        assert.ok(!tokens.includes('https:'), `${label} ${directive} must not allow all HTTPS origins`);
+        assert.ok(
+          !tokens.some((token) => token.includes('fonts.googleapis.com') || token.includes('fonts.gstatic.com')),
+          `${label} ${directive} must not allow Google Fonts after the dashboard self-hosts fonts`
+        );
+      }
+    }
+  });
+
   it('CSP script-src includes wasm-unsafe-eval for WebAssembly support', () => {
     const csp = getHeaderValue('Content-Security-Policy');
     const scriptSrc = csp.match(/script-src\s+([^;]+)/)?.[1] ?? '';

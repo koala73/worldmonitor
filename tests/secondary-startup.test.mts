@@ -44,6 +44,7 @@ describe('secondary dashboard startup', () => {
     assert.match(indexHtml, /script-src[^;]*https:\/\/abacus\.worldmonitor\.app/);
     assert.doesNotMatch(indexHtml, /style-src[^;]*https:\/\/fonts\.googleapis\.com/);
     assert.match(indexHtml, /font-src[^;]*'self'/);
+    assert.doesNotMatch(indexHtml, /font-src[^;]*https:/);
   });
 
   it('does not load any web font for the default English dashboard', () => {
