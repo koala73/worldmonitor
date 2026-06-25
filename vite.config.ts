@@ -1013,23 +1013,6 @@ export default defineConfig(({ mode }) => {
               },
             },
             {
-              urlPattern: /^https:\/\/fonts\.googleapis\.com\//,
-              handler: 'StaleWhileRevalidate',
-              options: {
-                cacheName: 'google-fonts-css',
-                expiration: { maxEntries: 10, maxAgeSeconds: 365 * 24 * 60 * 60 },
-              },
-            },
-            {
-              urlPattern: /^https:\/\/fonts\.gstatic\.com\//,
-              handler: 'CacheFirst',
-              options: {
-                cacheName: 'google-fonts-woff',
-                expiration: { maxEntries: 30, maxAgeSeconds: 365 * 24 * 60 * 60 },
-                cacheableResponse: { statuses: [0, 200] },
-              },
-            },
-            {
               urlPattern: /\/assets\/locale-.*\.js$/i,
               handler: 'CacheFirst',
               options: {

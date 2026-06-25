@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { buildDashboardFontStylesheetHref, scheduleAfterFirstPaint } from '../src/bootstrap/secondary-startup.ts';
+import { dashboardFontFamilies, scheduleAfterFirstPaint } from '../src/bootstrap/secondary-startup.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -40,40 +40,26 @@ describe('secondary dashboard startup', () => {
     );
   });
 
-  it('retains CSP permission for the deferred loaders', () => {
+  it('no longer needs the Google Fonts CSP allowance — dashboard fonts are self-hosted', () => {
     assert.match(indexHtml, /script-src[^;]*https:\/\/abacus\.worldmonitor\.app/);
-    assert.match(indexHtml, /style-src[^;]*https:\/\/fonts\.googleapis\.com/);
-    assert.match(indexHtml, /font-src[^;]*https:/);
+    assert.doesNotMatch(indexHtml, /style-src[^;]*https:\/\/fonts\.googleapis\.com/);
+    assert.match(indexHtml, /font-src[^;]*'self'/);
   });
 
-  it('does not request dashboard fonts for the default English dashboard', () => {
-    assert.equal(
-      buildDashboardFontStylesheetHref({ variant: 'full', lang: 'en', dir: '' }),
-      null,
-    );
+  it('does not load any web font for the default English dashboard', () => {
+    assert.deepEqual(dashboardFontFamilies({ variant: 'full', lang: 'en', dir: '' }), []);
   });
 
-  it('narrows happy dashboard fonts to the weights the UI uses', () => {
-    const href = buildDashboardFontStylesheetHref({ variant: 'happy', lang: 'en', dir: '' });
-    assert.equal(href, 'https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400;0,600;0,700;1,400&display=swap');
-    assert.equal(href?.includes('300'), false);
-    assert.equal(href?.includes('ital'), true);
+  it('loads only Nunito for the happy dashboard', () => {
+    assert.deepEqual(dashboardFontFamilies({ variant: 'happy', lang: 'en', dir: '' }), ['nunito']);
   });
 
-  it('narrows Arabic dashboard fonts without loading happy fonts by default', () => {
-    const href = buildDashboardFontStylesheetHref({ variant: 'full', lang: 'ar', dir: 'rtl' });
-    assert.equal(href, 'https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
-    assert.equal(href?.includes('Nunito'), false);
-    assert.equal(href?.includes('200'), false);
-    assert.equal(href?.includes('800'), false);
-    assert.equal(href?.includes('900'), false);
+  it('loads only Tajawal for the Arabic dashboard, not happy fonts', () => {
+    assert.deepEqual(dashboardFontFamilies({ variant: 'full', lang: 'ar', dir: 'rtl' }), ['tajawal']);
   });
 
-  it('combines only the needed families for the Arabic happy dashboard', () => {
-    assert.equal(
-      buildDashboardFontStylesheetHref({ variant: 'happy', lang: 'ar', dir: 'rtl' }),
-      'https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400;0,600;0,700;1,400&family=Tajawal:wght@400;500;700&display=swap',
-    );
+  it('combines Nunito + Tajawal for the Arabic happy dashboard', () => {
+    assert.deepEqual(dashboardFontFamilies({ variant: 'happy', lang: 'ar', dir: 'rtl' }), ['nunito', 'tajawal']);
   });
 });
 

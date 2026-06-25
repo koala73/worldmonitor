@@ -1,8 +1,6 @@
 type IdleCallback = () => void;
 type RequestIdleCallback = (cb: IdleCallback, opts?: { timeout: number }) => number;
 
-const DASHBOARD_FONT_LINK_ATTR = 'data-wm-deferred-dashboard-fonts';
-
 let vercelAnalyticsScheduled = false;
 let dashboardFontsScheduled = false;
 
@@ -50,22 +48,40 @@ export interface DashboardFontContext {
   dir?: string | null;
 }
 
-export function buildDashboardFontStylesheetHref(context: DashboardFontContext = {}): string | null {
+export type DashboardFontFamily = 'nunito' | 'tajawal';
+
+// Which web-font families the dashboard actually needs for a given variant/locale.
+// The default (full variant, LTR/non-Arabic) needs none — its body font is the
+// system/mono stack — so those users download zero web fonts.
+export function dashboardFontFamilies(context: DashboardFontContext = {}): DashboardFontFamily[] {
   const variant = (context.variant || 'full').toLowerCase();
   const lang = (context.lang || 'en').split('-')[0]?.toLowerCase() || 'en';
   const dir = (context.dir || '').toLowerCase();
-  const families: string[] = [];
+  const families: DashboardFontFamily[] = [];
 
-  if (variant === 'happy') {
-    families.push('family=Nunito:ital,wght@0,400;0,600;0,700;1,400');
-  }
-  if (dir === 'rtl' || lang === 'ar') {
-    families.push('family=Tajawal:wght@400;500;700');
-  }
+  if (variant === 'happy') families.push('nunito');             // happy theme body font
+  if (dir === 'rtl' || lang === 'ar') families.push('tajawal'); // Arabic body font
 
-  if (families.length === 0) return null;
-  return `https://fonts.googleapis.com/css2?${families.join('&')}&display=swap`;
+  return families;
 }
+
+// Self-hosted @fontsource loaders — Vite bundles these to hashed /assets/*.woff2,
+// served immutable (vercel.json) and therefore cached at the CDN/Cloudflare edge
+// (unlike fonts.gstatic.com, a third-party origin). Each family pulls only the
+// weights the UI actually uses.
+const DASHBOARD_FONT_LOADERS: Record<DashboardFontFamily, () => Promise<unknown>> = {
+  nunito: () => Promise.all([
+    import('@fontsource/nunito/400.css'),
+    import('@fontsource/nunito/600.css'),
+    import('@fontsource/nunito/700.css'),
+    import('@fontsource/nunito/400-italic.css'),
+  ]),
+  tajawal: () => Promise.all([
+    import('@fontsource/tajawal/400.css'),
+    import('@fontsource/tajawal/500.css'),
+    import('@fontsource/tajawal/700.css'),
+  ]),
+};
 
 function getBuildVariant(): string {
   try {
@@ -75,23 +91,23 @@ function getBuildVariant(): string {
   }
 }
 
+let dashboardFontsLoaded = false;
+
 function loadDeferredDashboardFonts(): void {
-  if (typeof document === 'undefined') return;
-  if (document.querySelector(`link[${DASHBOARD_FONT_LINK_ATTR}]`)) return;
+  if (typeof document === 'undefined' || dashboardFontsLoaded) return;
 
   const root = document.documentElement;
-  const href = buildDashboardFontStylesheetHref({
+  const families = dashboardFontFamilies({
     variant: root.dataset.variant || getBuildVariant(),
     lang: root.lang || 'en',
     dir: root.dir || '',
   });
-  if (!href) return;
+  if (families.length === 0) return;
 
-  const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = href;
-  link.setAttribute(DASHBOARD_FONT_LINK_ATTR, 'true');
-  document.head.appendChild(link);
+  dashboardFontsLoaded = true;
+  void Promise.all(families.map((family) => DASHBOARD_FONT_LOADERS[family]())).catch(() => {
+    // Self-hosted fonts are best-effort; the system fallback stack covers failures.
+  });
 }
 
 export function initDeferredDashboardFonts(): void {
