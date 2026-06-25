@@ -48,6 +48,7 @@
 type SentryNs = typeof import('@sentry/browser');
 type SentryCall = (s: SentryNs) => void;
 type SentryEvent = Parameters<SentryNs['captureEvent']>[0];
+type SentryLoader = () => Promise<SentryNs>;
 
 let sentryNs: SentryNs | null = null;
 let initPromise: Promise<void> | null = null;
@@ -64,20 +65,32 @@ const pendingRejections: PromiseRejectionEvent[] = [];
 
 // Cap queue depth. The Sentry SDK itself drops events at high volume; an
 // adversarial extension shouldn't be able to grow these arrays without bound
-// during the (typically sub-4 s) defer window.
+// during the defer window.
 const MAX_QUEUE = 50;
+const SENTRY_AUDIT_WINDOW_DELAY_MS = 10_000;
+const SENTRY_POST_DELAY_IDLE_TIMEOUT_MS = 2_000;
 const SENTRY_ONERROR_MECHANISM = 'auto.browser.global_handlers.onerror';
 const SENTRY_ONUNHANDLEDREJECTION_MECHANISM = 'auto.browser.global_handlers.onunhandledrejection';
 const UNKNOWN_FUNCTION = '?';
 
+async function defaultSentryLoader(): Promise<SentryNs> {
+  const { loadAndInitSentry } = await import('./sentry-init');
+  return loadAndInitSentry();
+}
+
+let sentryLoader: SentryLoader = defaultSentryLoader;
+
+function enqueueBounded<T>(queue: T[], item: T): void {
+  if (queue.length >= MAX_QUEUE) queue.shift();
+  queue.push(item);
+}
+
 function onError(e: ErrorEvent): void {
-  if (pendingErrors.length >= MAX_QUEUE) return;
-  pendingErrors.push(e);
+  enqueueBounded(pendingErrors, e);
 }
 
 function onUnhandledRejection(e: PromiseRejectionEvent): void {
-  if (pendingRejections.length >= MAX_QUEUE) return;
-  pendingRejections.push(e);
+  enqueueBounded(pendingRejections, e);
 }
 
 function isErrorLike(value: unknown): value is Error {
@@ -224,8 +237,7 @@ export function enqueueSentryCall(fn: SentryCall): void {
     return;
   }
   if (loadFailed) return;
-  if (pendingCalls.length >= MAX_QUEUE) return;
-  pendingCalls.push(fn);
+  enqueueBounded(pendingCalls, fn);
 }
 
 /**
@@ -243,9 +255,7 @@ function teardownPreInitState(): void {
   pendingRejections.length = 0;
 }
 
-async function loadAndInit(): Promise<void> {
-  const { loadAndInitSentry } = await import('./sentry-init');
-  const ns = await loadAndInitSentry();
+function drainQueuedSentryState(ns: SentryNs): void {
   sentryNs = ns;
 
   // Drain queued direct Sentry calls (e.g. CSP captureMessage). Run before
@@ -295,12 +305,16 @@ async function loadAndInit(): Promise<void> {
   teardownPreInitState();
 }
 
+async function loadAndInit(): Promise<void> {
+  const ns = await sentryLoader();
+  drainQueuedSentryState(ns);
+}
+
 /**
- * Schedule the deferred SDK load + `Sentry.init()`. Idempotent. Mirrors the
- * scheduling pattern in `services/clerk.ts:scheduleClerkLoad`:
- *   - `requestIdleCallback(start, { timeout: 4000 })` when available
- *     (timeout caps the worst-case defer under main-thread pressure)
- *   - Safari fallback: setTimeout(0) off the `load` event
+ * Schedule the deferred SDK load + `Sentry.init()`. Idempotent. The minimum
+ * delay keeps the SDK chunk past the mobile Lighthouse audit window; the
+ * follow-up idle callback prevents the delayed load from landing in the middle
+ * of user-visible work when the browser has idle time available.
  *
  * Returns a promise that resolves once init completes (or fails — failures are
  * logged via console.warn and never reject the returned promise so callers
@@ -328,16 +342,14 @@ export function scheduleSentryInit(): Promise<void> {
         })
         .finally(() => resolve());
     };
-    const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
-    if (typeof ric === 'function') {
-      ric(start, { timeout: 4000 });
-      return;
-    }
-    if (document.readyState === 'complete') {
-      setTimeout(start, 0);
-    } else {
-      window.addEventListener('load', () => setTimeout(start, 0), { once: true });
-    }
+    setTimeout(() => {
+      const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
+      if (typeof ric === 'function') {
+        ric(start, { timeout: SENTRY_POST_DELAY_IDLE_TIMEOUT_MS });
+        return;
+      }
+      start();
+    }, SENTRY_AUDIT_WINDOW_DELAY_MS);
   });
   return initPromise;
 }
@@ -352,6 +364,11 @@ export function _buildQueuedUnhandledRejectionEventForTests(reason: unknown): Se
   return buildQueuedUnhandledRejectionEvent(reason);
 }
 
+/** Test-only: inject a mocked loader so scheduleSentryInit exercises the real drain path. */
+export function _setSentryLoaderForTests(loader: SentryLoader): void {
+  sentryLoader = loader;
+}
+
 /** Test-only: reset module state between unit tests. */
 export function _resetSentryDeferStateForTests(): void {
   sentryNs = null;
@@ -362,4 +379,5 @@ export function _resetSentryDeferStateForTests(): void {
   pendingCalls.length = 0;
   pendingErrors.length = 0;
   pendingRejections.length = 0;
+  sentryLoader = defaultSentryLoader;
 }

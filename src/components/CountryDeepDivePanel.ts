@@ -20,6 +20,7 @@ import { getAuthState } from '@/services/auth-state';
 import { trackGateHit } from '@/services/analytics';
 import { fetchBypassOptions, fetchChokepointStatus } from '@/services/supply-chain';
 import { haversineDistanceKm } from '@/services/related-assets';
+import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import type {
   CountryBriefPanel,
   CountryIntelData,
@@ -2636,20 +2637,18 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   private captureResilienceWidgetLoadFailure(error: unknown, countryCode: string): void {
-    void import('@sentry/browser')
-      .then((Sentry) => {
-        Sentry.addBreadcrumb?.({
-          category: 'country-deep-dive',
-          level: 'warning',
-          message: 'Resilience widget lazy load failed',
-          data: { countryCode },
-        });
-        Sentry.captureException?.(error instanceof Error ? error : new Error(String(error)), {
-          tags: { surface: 'country-deep-dive', widget: 'resilience' },
-          extra: { countryCode },
-        });
-      })
-      .catch(() => {});
+    enqueueSentryCall((Sentry) => {
+      Sentry.addBreadcrumb?.({
+        category: 'country-deep-dive',
+        level: 'warning',
+        message: 'Resilience widget lazy load failed',
+        data: { countryCode },
+      });
+      Sentry.captureException?.(error instanceof Error ? error : new Error(String(error)), {
+        tags: { surface: 'country-deep-dive', widget: 'resilience' },
+        extra: { countryCode },
+      });
+    });
   }
 
   private replaceResilienceSlot(slot: HTMLElement, next: HTMLElement): void {

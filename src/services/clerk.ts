@@ -22,6 +22,7 @@
  */
 
 import type { Clerk } from '@clerk/clerk-js';
+import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 
 type ClerkInstance = Clerk;
 
@@ -306,19 +307,16 @@ export function getClerk(): ClerkInstance | null {
 // other browser, so the load-failure capture keeps its value.
 const CN_INAPP_BROWSER_RE = /MicroMessenger|Weibo|QQBrowser|UCBrowser|baiduboxapp/i;
 
-// Report a Clerk UI-open failure as a single handled Sentry event. Lazy
-// import keeps @sentry/browser off this module's static graph (clerk.ts is
-// imported by Node test files where the browser SDK is unwanted) and makes
-// telemetry strictly best-effort — it must never throw into a click handler.
+// Report a Clerk UI-open failure as a single handled Sentry event. The deferred
+// Sentry queue keeps @sentry/browser behind the shared scheduler, and telemetry
+// stays strictly best-effort — it must never throw into a click handler.
 function captureClerkSurfaceFailure(action: string, err: unknown, reason: string): void {
   if (reason === 'clerk-load-failed' && typeof navigator !== 'undefined' && CN_INAPP_BROWSER_RE.test(navigator.userAgent)) return;
-  void import('@sentry/browser')
-    .then((Sentry) => {
-      Sentry.captureException(err instanceof Error ? err : new Error(String(err)), {
-        tags: { surface: 'clerk', action, reason },
-      });
-    })
-    .catch(() => {});
+  enqueueSentryCall((Sentry) => {
+    Sentry.captureException(err instanceof Error ? err : new Error(String(err)), {
+      tags: { surface: 'clerk', action, reason },
+    });
+  });
 }
 
 function scheduleNextFrame(cb: () => void): void {

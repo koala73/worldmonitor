@@ -190,19 +190,23 @@ async function loadCountryDeepDivePanel(options = {}) {
       export function getAuthState() { return { user: null }; }
     `],
     ['resilience-widget-stub', resilienceWidgetStub],
-    ['sentry-browser-stub', `
+    ['sentry-defer-stub', `
       const state = globalThis.__wmCountryDeepDiveTestState;
-      export function addBreadcrumb(breadcrumb) {
-        state.sentryBreadcrumbs.push(breadcrumb);
-      }
-      export function captureException(error, context) {
-        state.sentryExceptions.push({ error, context });
-      }
-      export function captureMessage(message, context) {
-        state.sentryMessages.push({ message, context });
-      }
-      export function setUser(user) {
-        state.sentryUser = user;
+      export function enqueueSentryCall(fn) {
+        fn({
+          addBreadcrumb(breadcrumb) {
+            state.sentryBreadcrumbs.push(breadcrumb);
+          },
+          captureException(error, context) {
+            state.sentryExceptions.push({ error, context });
+          },
+          captureMessage(message, context) {
+            state.sentryMessages.push({ message, context });
+          },
+          setUser(user) {
+            state.sentryUser = user;
+          },
+        });
       }
     `],
   ]);
@@ -230,7 +234,7 @@ async function loadCountryDeepDivePanel(options = {}) {
     ['@/generated/client/worldmonitor/intelligence/v1/service_client', 'intelligence-client-stub'],
     ['@/services/panel-gating', 'panel-gating-stub'],
     ['@/services/auth-state', 'auth-state-stub'],
-    ['@sentry/browser', 'sentry-browser-stub'],
+    ['@/bootstrap/sentry-defer', 'sentry-defer-stub'],
   ]);
 
   const plugin = {
