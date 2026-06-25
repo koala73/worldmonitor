@@ -169,6 +169,16 @@ function shouldSuppressCspViolation(
   if (/manifest\.webmanifest$/.test(blockedURI)) return true;
   // Third-party injectors: Google Translate, Facebook Pixel.
   if (/gstatic\.com\/_\/translate/.test(blockedURI) || /facebook\.net/.test(blockedURI)) return true;
+  // Google Fonts font files from stale or injected stylesheets. The dashboard now
+  // self-hosts its own fonts and the deploy/config tests keep Google Fonts out of
+  // dashboard CSP/source surfaces; if a user's browser still tries
+  // fonts.gstatic.com/s/*.woff2, the strict font-src block is expected noise.
+  if (directive === 'font-src') {
+    try {
+      const url = new URL(blockedURI);
+      if (url.protocol === 'https:' && url.hostname === 'fonts.gstatic.com' && /^\/s\/.+\.woff2(?:$|\?)/.test(url.pathname + url.search)) return true;
+    } catch { /* scheme-only values fall through */ }
+  }
   // YouTube live stream manifests.
   if (/googlevideo\.com|youtube\.com\/generate_204/.test(blockedURI)) return true;
   // Corporate/school content filter injections.

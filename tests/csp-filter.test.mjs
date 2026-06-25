@@ -193,6 +193,18 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       assert.ok(suppress('enforce', 'connect-src', 'https://translate.gstatic.com/_/translate_http', '', false));
     });
 
+    it('suppresses Google Fonts font files from stale or injected stylesheets', () => {
+      assert.ok(suppress('enforce', 'font-src', 'https://fonts.gstatic.com/s/mulish/v18/1Ptvg83HX_SGhgqk2wotcqA.woff2', '', false));
+    });
+
+    it('does NOT suppress arbitrary third-party font-src hosts', () => {
+      assert.ok(!suppress('enforce', 'font-src', 'https://fonts.evil.example/s/mulish/v18/font.woff2', '', false));
+    });
+
+    it('does NOT suppress Google Fonts under unrelated directives', () => {
+      assert.ok(!suppress('enforce', 'script-src', 'https://fonts.gstatic.com/s/mulish/v18/1Ptvg83HX_SGhgqk2wotcqA.woff2', '', false));
+    });
+
     it('suppresses Facebook Pixel', () => {
       assert.ok(suppress('enforce', 'connect-src', 'https://connect.facebook.net/en_US/fbevents.js', '', false));
     });
