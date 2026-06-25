@@ -176,7 +176,7 @@ function shouldSuppressCspViolation(
   if (directive === 'font-src') {
     try {
       const url = new URL(blockedURI);
-      if (url.protocol === 'https:' && url.hostname === 'fonts.gstatic.com' && /^\/s\/.+\.woff2(?:$|\?)/.test(url.pathname + url.search)) return true;
+      if (url.protocol === 'https:' && url.hostname === 'fonts.gstatic.com' && /^\/s\/.+\.woff2$/.test(url.pathname)) return true;
     } catch { /* scheme-only values fall through */ }
   }
   // YouTube live stream manifests.
