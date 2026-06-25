@@ -1945,7 +1945,9 @@ body.panel-resize-active iframe {
 
 .panel-count {
   font-size: 10px;
-  color: var(--text-dim);
+  /* --text-dim (#888) on --border fails WCAG AA (4.04:1 on #2a2a2a / 3.6:1 light);
+     --text-secondary is tuned per-theme and clears 4.5:1 on every theme's --border. */
+  color: var(--text-secondary);
   background: var(--border);
   padding: 2px 6px;
   border-radius: 2px;

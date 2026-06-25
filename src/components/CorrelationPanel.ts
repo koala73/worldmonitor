@@ -12,11 +12,14 @@ function getCorrelationBootstrap(): Record<string, ConvergenceCard[]> | null {
   return correlationBootstrap;
 }
 
+// These are used as the score-badge BACKGROUND with white (#fff) text.
+// `low` darkened from #888888 → #6f6f6f so white text clears WCAG AA (4.5:1):
+// white-on-#888888 was 3.54, white-on-#6f6f6f is ~5.0. (See #4418.)
 const SCORE_COLORS = {
   critical: '#ff4444',
   high: '#ff8800',
   medium: '#ffcc00',
-  low: '#888888',
+  low: '#6f6f6f',
 };
 
 const TREND_ICONS: Record<string, { symbol: string; color: string }> = {
