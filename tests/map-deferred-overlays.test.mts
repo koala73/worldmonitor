@@ -44,6 +44,16 @@ describe('mobile SVG map: defer dynamic overlays off first paint (#4429)', () =>
     );
   });
 
+  it('guards render() against running on a destroyed instance (deferred callback safety)', () => {
+    assert.match(mapSrc, /private destroyed = false/);
+    assert.match(mapSrc, /public destroy\(\): void \{\s*\n\s*this\.destroyed = true;/);
+    assert.match(
+      mapSrc,
+      /public render\(\): void \{\s*\n\s*if \(this\.destroyed\) return;/,
+      'render() must early-return when destroyed so the deferred first-paint callback cannot run on a torn-down instance',
+    );
+  });
+
   it('defers the heavy dynamic layers — they run AFTER the gate', () => {
     const gateIdx = mapSrc.indexOf('if (!this.initialDynamicRendered)');
     for (const marker of [
