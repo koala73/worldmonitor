@@ -15,6 +15,7 @@ import type { WeatherAlert } from '@/services/weather';
 import type { RadiationObservation } from '@/services/radiation';
 import { getSeverityColor } from '@/services/weather';
 import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/smart-poll-loop';
+import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 import {
   INTEL_HOTSPOTS,
   CONFLICT_ZONES,
@@ -190,6 +191,14 @@ export class MapComponent {
   private lastRenderTime = 0;
   private readonly MIN_RENDER_INTERVAL_MS = 100;
   private healthCheckLoop: SmartPollLoopHandle | null = null;
+  // First render paints the base map (countries) synchronously for LCP, then defers the
+  // heavy dynamic-overlay pass off the first-paint critical path (#4429). Mobile uses this
+  // SVG renderer and its synchronous overlay build was the #1 boot-scripting cost (~1.3s).
+  private initialDynamicRendered = false;
+  private initialDynamicScheduled = false;
+  // Set in destroy(); guards render() (incl. the deferred first-paint callback and the
+  // resize/visibility rAF callbacks) from running on a torn-down instance.
+  private destroyed = false;
 
   constructor(container: HTMLElement, initialState: MapState, options: MapComponentOptions = {}) {
     this.container = container;
@@ -291,6 +300,7 @@ export class MapComponent {
   }
 
   public destroy(): void {
+    this.destroyed = true;
     window.removeEventListener('theme-changed', this.handleThemeChange);
     document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
     if (this.resizeObserver) {
@@ -1067,6 +1077,7 @@ export class MapComponent {
   }
 
   public render(): void {
+    if (this.destroyed) return;
     const now = performance.now();
     if (now - this.lastRenderTime < this.MIN_RENDER_INTERVAL_MS) {
       this.scheduleRender();
@@ -1153,6 +1164,24 @@ export class MapComponent {
       // Countries
       this.renderCountries(this.baseLayerGroup, basePath);
       this.baseRendered = true;
+    }
+
+    // Defer the first dynamic-overlay pass off the first-paint critical path. The base map
+    // (countries) above is enough for LCP; the dynamic layer below (cables/pipelines/
+    // conflicts/AIS/cluster markers/overlays) is the heavy synchronous cost (#4429 — ~1.3s
+    // of mobile boot scripting, the #1 mobile-TBT contributor since mobile uses this SVG
+    // renderer). After first paint, render fully so interactions update overlays immediately.
+    if (!this.initialDynamicRendered) {
+      if (!this.initialDynamicScheduled) {
+        this.initialDynamicScheduled = true;
+        scheduleAfterFirstPaint(() => {
+          if (this.destroyed) return;
+          this.initialDynamicRendered = true;
+          this.render();
+        });
+      }
+      this.applyTransform();
+      return;
     }
 
     // Always rebuild dynamic layer - use native DOM clear for reliability
