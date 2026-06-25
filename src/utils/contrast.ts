@@ -22,9 +22,11 @@ export function contrastRatio(a: string, b: string): number {
 
 /**
  * Pick the higher-contrast foreground text color (white or near-black) for a
- * solid hex background, so badge/chip text clears WCAG AA. Returns whichever of
- * `#ffffff` / `#1a1a1a` has the greater contrast ratio against `bgHex` — e.g.
- * white on dark badges, dark on light/mid badges (yellow, orange).
+ * solid hex background. Returns whichever of `#ffffff` / `#1a1a1a` has the
+ * greater contrast ratio against `bgHex` — e.g. white on dark badges, dark on
+ * light/mid badges (yellow, orange). The four CorrelationPanel score-badge
+ * backgrounds clear WCAG AA with the chosen color; arbitrary mid-gray inputs
+ * may still need a different palette to reach 4.5:1.
  */
 export function readableTextColor(bgHex: string): '#ffffff' | '#1a1a1a' {
   return contrastRatio('#ffffff', bgHex) >= contrastRatio('#1a1a1a', bgHex)
