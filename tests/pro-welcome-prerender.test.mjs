@@ -8,7 +8,7 @@ test('built welcome page ships the real hero in #root before JavaScript', () => 
   assert.ok(rootMatch?.groups, 'welcome page should contain #root before body close');
 
   const { attrs, content } = rootMatch.groups;
-  const rootContent = content.split('<noscript>')[0] ?? content;
+  const rootContent = content.split('<noscript>')[0];
   assert.match(attrs, /data-wm-prerendered="welcome"/);
   assert.match(attrs, /data-wm-prerender-lang="en"/);
   assert.doesNotMatch(rootContent, /id="seo-prerender"/);

@@ -54,7 +54,16 @@ function rewriteBuiltAssetUrls(markup) {
     console.error(`[prerender] ERROR: Could not find SSR asset URL for ${DASHBOARD_SCREENSHOT_BASENAME}.jpg in welcome markup.`);
     process.exit(1);
   }
-  return markup.replace(sourceAssetPattern, dashboardScreenshotHref);
+  const rewritten = markup.replace(sourceAssetPattern, dashboardScreenshotHref);
+  // Catch any OTHER dev-only asset URL — a newly added asset import the rewrite
+  // map above doesn't cover would otherwise ship a broken /pro/src/assets or
+  // /@fs path into the static HTML and break hydration on the hashed client URL.
+  const leaked = rewritten.match(/(?:\/pro\/src\/assets\/|\/@fs\/)[^"'<>\s]+/);
+  if (leaked) {
+    console.error(`[prerender] ERROR: Unrewritten dev asset URL in welcome markup: ${leaked[0]}. Extend rewriteBuiltAssetUrls() to cover it.`);
+    process.exit(1);
+  }
+  return rewritten;
 }
 
 // Hides the prerender block from assistive tech once JS runs (the CSS in <head>
