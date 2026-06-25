@@ -5178,11 +5178,13 @@ body.playback-mode .status-dot {
 }
 
 .layer-help-btn {
+  position: relative;
   width: 48px;
   height: 48px;
+  margin: -12px 0;
   padding: 0;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: transparent;
+  border: 0;
   border-radius: 50%;
   color: var(--text-dim);
   font-family: inherit;
@@ -5195,10 +5197,22 @@ body.playback-mode .status-dot {
   justify-content: center;
 }
 
+.layer-help-btn::before {
+  content: '';
+  position: absolute;
+  inset: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
 .layer-help-btn:hover {
   color: var(--accent);
+}
+
+.layer-help-btn:hover::before {
   border-color: var(--accent);
-  background: var(--bg);
 }
 
 .layer-help-popup {

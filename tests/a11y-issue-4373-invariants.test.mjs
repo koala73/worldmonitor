@@ -255,7 +255,11 @@ describe('target-size — small map controls', () => {
     assert.ok(block, '.layer-help-btn rule must exist');
     assert.match(block[1], /width:\s*48px/);
     assert.match(block[1], /height:\s*48px/);
-    assert.match(deckglMap, /class="layer-help-btn"[^>]*aria-label=/,
+    const line = deckglMap
+      .split('\n')
+      .find((l) => l.includes('class="layer-help-btn"'));
+    assert.ok(line, 'DeckGL layer help button must exist');
+    assert.ok(line.includes('aria-label='),
       'DeckGL layer help button must expose an accessible name');
   });
 });
