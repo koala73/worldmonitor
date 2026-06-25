@@ -100,6 +100,25 @@ export async function initI18n(options?: { metaPrefix?: string }): Promise<void>
   applyMetaTags(metaPrefix);
 }
 
+export async function initStaticI18n(): Promise<void> {
+  if (i18next.isInitialized) {
+    if ((i18next.language || 'en').split('-')[0] !== 'en') {
+      await i18next.changeLanguage('en');
+    }
+    return;
+  }
+  await i18next.init({
+    resources: { en: { translation: en as TranslationDictionary } },
+    lng: 'en',
+    fallbackLng: 'en',
+    interpolation: { escapeValue: false },
+  });
+}
+
+export function currentLanguageBase(): string {
+  return (i18next.language || 'en').split('-')[0] || 'en';
+}
+
 export function t(key: string, options?: Record<string, unknown>): string {
   return i18next.t(key, options);
 }

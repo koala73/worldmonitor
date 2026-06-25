@@ -74,7 +74,7 @@ export const Hero = () => (
   <section className="pt-28 sm:pt-32 pb-16 px-4 sm:px-6 relative overflow-hidden">
     <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(74,222,128,0.10)_0%,transparent_55%)] pointer-events-none" aria-hidden="true" />
     <div className="max-w-5xl mx-auto text-center relative z-10">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
+      <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
         <div className="inline-flex max-w-full flex-wrap items-center justify-center gap-2 font-mono text-[11px] uppercase tracking-[4px] text-wm-green mb-5 px-3 py-1.5 rounded-full border border-wm-green/30 bg-wm-green/10 leading-relaxed">
           <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-wm-green opacity-60" />
