@@ -1,12 +1,17 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { dirname, extname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
+const sourceExtensions = new Set(['.ts', '.tsx', '.mts', '.js', '.mjs']);
+
+function rootRelative(fileName) {
+  return relative(root, fileName) || '.';
+}
 
 function parseSource(relPath) {
   const fileName = resolve(root, relPath);
@@ -30,9 +35,7 @@ function staticValueImports(sourceFile) {
   return specifiers;
 }
 
-function resolveRelativeSource(fromFileName, specifier) {
-  if (!specifier.startsWith('.')) return null;
-  const base = resolve(dirname(fromFileName), specifier);
+function sourcePathCandidate(base) {
   const candidates = [
     base,
     `${base}.ts`,
@@ -45,7 +48,76 @@ function resolveRelativeSource(fromFileName, specifier) {
     resolve(base, 'index.js'),
     resolve(base, 'index.mjs'),
   ];
-  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+  return candidates.find((candidate) => existsSync(candidate) && statSync(candidate).isFile()) ?? null;
+}
+
+function isSourceFile(fileName) {
+  return sourceExtensions.has(extname(fileName));
+}
+
+function tsconfigPathMappings() {
+  const configPath = resolve(root, 'tsconfig.json');
+  const source = readFileSync(configPath, 'utf-8');
+  const parsed = ts.parseConfigFileTextToJson(configPath, source);
+  assert.ifError(parsed.error ? new Error(ts.flattenDiagnosticMessageText(parsed.error.messageText, '\n')) : null);
+  const paths = parsed.config?.compilerOptions?.paths ?? {};
+  return Object.entries(paths).flatMap(([pattern, targets]) => (
+    (Array.isArray(targets) ? targets : []).map((target) => ({ pattern, target }))
+  ));
+}
+
+const pathMappings = tsconfigPathMappings();
+
+function resolvePathMappedSource(specifier) {
+  let matchedPath = false;
+  for (const { pattern, target } of pathMappings) {
+    const wildcardIndex = pattern.indexOf('*');
+    if (wildcardIndex === -1) {
+      if (specifier !== pattern) continue;
+      matchedPath = true;
+      const resolved = sourcePathCandidate(resolve(root, target));
+      if (resolved) return resolved;
+      continue;
+    }
+
+    const prefix = pattern.slice(0, wildcardIndex);
+    const suffix = pattern.slice(wildcardIndex + 1);
+    if (!specifier.startsWith(prefix) || !specifier.endsWith(suffix)) continue;
+
+    matchedPath = true;
+    const matched = specifier.slice(prefix.length, specifier.length - suffix.length);
+    const targetBase = target.replace('*', matched);
+    const resolved = sourcePathCandidate(resolve(root, targetBase));
+    if (resolved) return resolved;
+  }
+  if (matchedPath) return null;
+  return null;
+}
+
+function matchesTsconfigPath(specifier) {
+  return pathMappings.some(({ pattern }) => {
+    const wildcardIndex = pattern.indexOf('*');
+    if (wildcardIndex === -1) return specifier === pattern;
+    const prefix = pattern.slice(0, wildcardIndex);
+    const suffix = pattern.slice(wildcardIndex + 1);
+    return specifier.startsWith(prefix) && specifier.endsWith(suffix);
+  });
+}
+
+function resolveInRepoSpecifier(fromFileName, specifier) {
+  if (specifier.startsWith('.')) {
+    const resolved = sourcePathCandidate(resolve(dirname(fromFileName), specifier));
+    assert.ok(
+      resolved,
+      `Static import ${specifier} from ${rootRelative(fromFileName)} must resolve to a real file`,
+    );
+    return resolved;
+  }
+
+  const resolved = resolvePathMappedSource(specifier);
+  if (resolved || !matchesTsconfigPath(specifier)) return resolved;
+
+  assert.fail(`Static path alias import ${specifier} from ${rootRelative(fromFileName)} must resolve to a real file`);
 }
 
 function staticValueImportGraph(entryRelPath) {
@@ -60,8 +132,8 @@ function staticValueImportGraph(entryRelPath) {
 
     for (const specifier of staticValueImports(sourceFile)) {
       imports.add(specifier);
-      const resolved = resolveRelativeSource(sourceFile.fileName, specifier);
-      if (resolved) visit(resolved);
+      const resolved = resolveInRepoSpecifier(sourceFile.fileName, specifier);
+      if (resolved && isSourceFile(resolved)) visit(resolved);
     }
   };
 
@@ -161,6 +233,30 @@ describe('map renderer deferral boundary', () => {
         `DeckGLMap import graph must avoid static optional WebGL package ${specifier}`,
       );
     }
+  });
+
+  it('walks tsconfig path aliases in the DeckGLMap static import graph', () => {
+    const imports = staticValueImportGraph('src/components/DeckGLMap.ts');
+
+    assert.ok(
+      imports.has('@/services/bootstrap'),
+      'DeckGLMap graph should traverse @/-aliased transitive imports, not only direct relative imports',
+    );
+    assert.ok(
+      imports.has('./feeds'),
+      'DeckGLMap graph should resolve @/config and traverse its relative re-export edges',
+    );
+  });
+
+  it('fails loudly when an in-repo static import edge cannot be resolved', () => {
+    assert.throws(
+      () => resolveInRepoSpecifier(resolve(root, 'src/components/DeckGLMap.ts'), '@/missing/deckgl-test-fixture'),
+      /must resolve to a real file/,
+    );
+    assert.throws(
+      () => resolveInRepoSpecifier(resolve(root, 'src/components/DeckGLMap.ts'), './missing-deckgl-test-fixture'),
+      /must resolve to a real file/,
+    );
   });
 
   it('keeps provider-specific PMTiles deps out of the emitted MapLibre manual chunk', () => {
