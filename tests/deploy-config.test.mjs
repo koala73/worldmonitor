@@ -584,13 +584,9 @@ describe('security header guardrails', () => {
     const expectedDisabled = [
       'camera=()',
       'microphone=()',
-      'accelerometer=()',
-      'bluetooth=()',
       'display-capture=()',
-      'gyroscope=()',
       'hid=()',
       'idle-detection=()',
-      'magnetometer=()',
       'midi=()',
       'payment=(self "https://checkout.dodopayments.com" "https://test.checkout.dodopayments.com" "https://pay.google.com" "https://hooks.stripe.com" "https://js.stripe.com")',
       'screen-wake-lock=()',
@@ -600,6 +596,26 @@ describe('security header guardrails', () => {
     ];
     for (const directive of expectedDisabled) {
       assert.ok(policy.includes(directive), `Permissions-Policy missing: ${directive}`);
+    }
+  });
+
+  it('Permissions-Policy delegates fraud-stack sensors so the Dodo overlay 3DS can run (#4449)', () => {
+    // DIAGNOSTIC (#4449): Dodo's overlay-checkout runs a nested fraud/3DS stack
+    // (Hyperswitch → Airwallex → Sardine) that needs device sensors. The prior
+    // `accelerometer=()` etc. (empty = blocked for the whole frame tree) starved
+    // it and the payment hung at "Processing…". These are opened to `*` because
+    // the sensors are used by DEEPLY NESTED cross-origin frames
+    // (static.airwallex.com / *.sardine.ai) that a scoped origin allowlist can't
+    // reliably reach. If redirect mode (#4449) is adopted instead, REVERT to `()`.
+    const policy = getHeaderValue('Permissions-Policy');
+    for (const directive of [
+      'accelerometer=*',
+      'bluetooth=*',
+      'gyroscope=*',
+      'magnetometer=*',
+      'picture-in-picture=*',
+    ]) {
+      assert.ok(policy.includes(directive), `Permissions-Policy missing fraud-stack delegation: ${directive}`);
     }
   });
 
@@ -618,11 +634,11 @@ describe('security header guardrails', () => {
       policy.includes('geolocation=(self)'),
       'Permissions-Policy should delegate geolocation to self'
     );
-    // picture-in-picture delegates to self + YouTube + Turnstile
-    assert.match(
-      policy,
-      /picture-in-picture=\(self "https:\/\/www\.youtube\.com" "https:\/\/www\.youtube-nocookie\.com" "https:\/\/challenges\.cloudflare\.com"\)/,
-      'Permissions-Policy should delegate picture-in-picture to YouTube + Turnstile origins'
+    // picture-in-picture is delegated to all origins (`*`) for the Dodo overlay
+    // fraud stack (#4449) — see the dedicated fraud-stack delegation test above.
+    assert.ok(
+      policy.includes('picture-in-picture=*'),
+      'Permissions-Policy should delegate picture-in-picture to the checkout fraud stack'
     );
   });
 
