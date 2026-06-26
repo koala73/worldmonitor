@@ -1,7 +1,7 @@
 /**
  * Post-checkout redirect detection and URL cleanup.
  *
- * Three success signals land on the dashboard after a purchase:
+ * Four checkout signals land on the dashboard after a purchase:
  *
  *   1. Dodo full-page redirect: `?subscription_id=...&status=active`
  *      (historical path; Dodo-owned URL shape)
@@ -14,6 +14,11 @@
  *      itself doesn't write any URL params. The marker is a WorldMonitor-
  *      namespaced param (not `?success=`) to avoid collision with
  *      unrelated query strings and to make the origin intent-explicit.
+ *   4. Dashboard full-page return bridge: `?wm_checkout=return` — set
+ *      as the merchant return URL for Dodo sessions so 3DS returns land
+ *      on the dashboard route instead of `/`, which is now the public
+ *      welcome page. This marker only triggers the post-checkout
+ *      reconciliation path when a local checkout attempt exists.
  *
  * This module inspects those params, cleans them from the URL, and
  * returns a discriminated union so callers can branch on success vs
@@ -22,6 +27,8 @@
  * payments — a Dodo return with status=failed looked identical to "no
  * checkout here, render normal dashboard."
  */
+
+import { loadCheckoutAttempt } from './checkout-attempt';
 
 export type CheckoutReturnResult =
   | { kind: 'none' }
@@ -34,6 +41,7 @@ const FAILED_STATUSES = new Set(['failed', 'declined', 'cancelled', 'canceled'])
 /** WorldMonitor-namespaced marker written by /pro overlay-success. */
 const WM_MARKER_PARAM = 'wm_checkout';
 const WM_MARKER_SUCCESS = 'success';
+const WM_MARKER_RETURN = 'return';
 
 /**
  * Inspect current URL for Dodo return params. If found, cleans them
@@ -54,6 +62,7 @@ export function handleCheckoutReturn(): CheckoutReturnResult {
   const hasDodoParams = Boolean(subscriptionId || paymentId);
   const hasAnyWmMarker = wmMarker !== null;
   const hasWmSuccess = wmMarker === WM_MARKER_SUCCESS;
+  const hasWmReturn = wmMarker === WM_MARKER_RETURN;
 
   // Early return when nothing checkout-related is present. Note we
   // enter cleanup below when ANY wm_checkout value is present (even
@@ -98,6 +107,9 @@ export function handleCheckoutReturn(): CheckoutReturnResult {
     if (FAILED_STATUSES.has(status)) return { kind: 'failed', rawStatus: status };
   }
   if (hasWmSuccess) return { kind: 'success' };
+  if (!hasDodoParams && hasWmReturn && !status && loadCheckoutAttempt()) {
+    return { kind: 'success' };
+  }
   if (hasDodoParams && status) return { kind: 'failed', rawStatus: status };
   return { kind: 'none' };
 }

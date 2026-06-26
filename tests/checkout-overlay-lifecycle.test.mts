@@ -10,6 +10,7 @@ interface HarnessState {
   sentryBreadcrumbs: Array<{ message?: string }>;
   watchdogs: Array<{ stopCalls: number }>;
   storageWrites: string[];
+  fetchBodies: unknown[];
   closeCalls: number;
   silentNoOpOpens: number;
 }
@@ -64,6 +65,18 @@ function installBrowserGlobals(): void {
       history: { replaceState: () => {} },
     },
   });
+  Object.defineProperty(globalThis, 'fetch', {
+    configurable: true,
+    value: async (_input: string, init?: RequestInit) => {
+      const body = typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body;
+      globalThis.__checkoutOverlayHarness.fetchBodies.push(body);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ checkout_url: 'https://checkout.example/session' }),
+      };
+    },
+  });
 }
 
 function resetHarness(): void {
@@ -75,6 +88,7 @@ function resetHarness(): void {
     sentryBreadcrumbs: [],
     watchdogs: [],
     storageWrites: [],
+    fetchBodies: [],
     closeCalls: 0,
     silentNoOpOpens: 0,
   };
@@ -214,6 +228,7 @@ const checkoutHarnessPlugin: Plugin = {
 async function loadCheckoutModule(): Promise<{
   registerCheckoutSuccessCallback: (onSuccess?: () => void) => void;
   openCheckout: (checkoutUrl: string) => Promise<void>;
+  startCheckout: (productId: string) => Promise<boolean>;
   destroyCheckoutOverlay: () => void;
 }> {
   const result = await build({
@@ -223,6 +238,7 @@ async function loadCheckoutModule(): Promise<{
         export {
           registerCheckoutSuccessCallback,
           openCheckout,
+          startCheckout,
           destroyCheckoutOverlay,
         } from './src/services/checkout.ts';
       `,
@@ -245,6 +261,21 @@ async function loadCheckoutModule(): Promise<{
 }
 
 describe('checkout overlay lifecycle', () => {
+  it('sends Dodo full-page returns back to the dashboard checkout-return handler', async () => {
+    resetHarness();
+    const checkout = await loadCheckoutModule();
+
+    assert.equal(await checkout.startCheckout('prod_monthly'), true);
+
+    const harness = globalThis.__checkoutOverlayHarness;
+    assert.equal(harness.fetchBodies.length, 1);
+    assert.deepEqual(harness.fetchBodies[0], {
+      productId: 'prod_monthly',
+      returnUrl: 'https://worldmonitor.app/dashboard?wm_checkout=return',
+    });
+    assert.deepEqual(harness.openedUrls, ['https://checkout.example/session']);
+  });
+
   it('keeps one SDK handler while refreshing per-session side effects after destroy+reopen', async () => {
     resetHarness();
     const checkout = await loadCheckoutModule();

@@ -42,6 +42,7 @@ import { loadActiveReferral } from './referral-capture';
 import { showDuplicateSubscriptionDialog } from './checkout-duplicate-dialog';
 import { resolvePlanDisplayName } from './checkout-plan-names';
 import { createEntitlementWatchdog, type EntitlementWatchdog } from './entitlement-watchdog';
+import { buildDashboardCheckoutReturnUrl } from './checkout-return-url';
 
 export {
   EXTENDED_UNLOCK_TIMEOUT_MS,
@@ -808,7 +809,7 @@ export async function startCheckout(
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
         productId,
-        returnUrl: window.location.origin,
+        returnUrl: buildDashboardCheckoutReturnUrl(window.location.origin),
         discountCode: options?.discountCode,
         referralCode: effectiveReferral,
       }),
