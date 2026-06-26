@@ -52,10 +52,14 @@ interface DodoPaymentData {
 }
 
 // The payment/refund webhook event types we route to handlePaymentOrRefundEvent
-// — a mirror of the case group in webhookMutations.ts. Typed as a closed union
-// so the exhaustive switch below fails to COMPILE if a routed event is added
-// without a status mapping (no silent fallback that could re-introduce a
-// mislabel).
+// — kept in sync with the case group in webhookMutations.ts. Two drift guards,
+// with DIFFERENT enforcement (the call site casts `eventType as
+// RoutedPaymentEvent`, so cross-file drift is not type-checked):
+//   • Intra-file: omit a `case` for a union member below and the `never`
+//     default fails to COMPILE — this file's exhaustiveness guarantee.
+//   • Cross-file: a NEW webhookMutations.ts case not added to this union is NOT
+//     a compile error (the cast launders it); it is caught at RUNTIME by the
+//     `never`-default throw — loud, never a silent succeeded/failed mislabel.
 //
 // IMPORTANT: `payment.requires_customer_action` is NOT a Dodo webhook event
 // type. Dodo's payment event types are succeeded | failed | processing |
