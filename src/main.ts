@@ -177,6 +177,13 @@ function shouldSuppressCspViolation(
     try {
       const url = new URL(blockedURI);
       if (url.protocol === 'https:' && url.hostname === 'fonts.gstatic.com' && /^\/s\/.+\.woff2$/.test(url.pathname)) return true;
+      // Perplexity's Comet browser / extension injects its own UI webfont
+      // (frontend-cdn.perplexity.ai/_agi_assets/fonts/*.woff2) into every page.
+      // We never load it; the block is the overlay's font failing regardless of
+      // our code. Allowlisted by exact host like gstatic above — NOT a blanket
+      // third-party suppression, so an unexpected font injection from any other
+      // host still surfaces (WORLDMONITOR-TR: 1065 events / 83 users).
+      if (url.protocol === 'https:' && url.hostname === 'frontend-cdn.perplexity.ai' && /\.woff2?$/.test(url.pathname)) return true;
     } catch { /* scheme-only values fall through */ }
   }
   // YouTube live stream manifests.

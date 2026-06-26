@@ -91,9 +91,19 @@ export default async function handler(req, ctx) {
     return jsonResponse({ error: 'Missing url parameter' }, 400, corsHeaders);
   }
 
+  // A malformed `url` param is a client error, not a server fault. Parse it up
+  // front and return 400 WITHOUT a Sentry capture — otherwise `new URL()` throws
+  // "Invalid URL string." inside the try below, which the catch reports as an
+  // error-level exception and answers with a 502 (WORLDMONITOR-TT: 21 events from
+  // malformed/double-encoded feed params).
+  let parsedUrl;
   try {
-    const parsedUrl = new URL(feedUrl);
+    parsedUrl = new URL(feedUrl);
+  } catch {
+    return jsonResponse({ error: 'Invalid url parameter' }, 400, corsHeaders);
+  }
 
+  try {
     // Security: Check if domain is allowed (normalize www prefix)
     const hostname = parsedUrl.hostname;
     if (!isAllowedDomain(hostname)) {
