@@ -14,7 +14,7 @@ import {
   Landmark, Fuel
 } from 'lucide-react';
 import { t } from './i18n';
-import { initOverlay, ensureClerk, tryResumeCheckoutFromUrl } from './services/checkout';
+import { ensureClerk, tryResumeCheckoutFromUrl } from './services/checkout';
 import { PricingSection } from './components/PricingSection';
 import { SoonBadge } from './components/SoonBadge';
 import { Logo } from './components/Logo';
@@ -23,7 +23,6 @@ import { Footer } from './components/Footer';
 import dashboardFallback from './assets/worldmonitor-7-mar-2026.jpg';
 import wiredLogo from './assets/wired-logo.svg';
 import {
-  DASHBOARD_CHECKOUT_SUCCESS_URL,
   DASHBOARD_EMBED_PREVIEW_URL,
   DASHBOARD_PATH,
   DASHBOARD_URL,
@@ -1287,51 +1286,11 @@ export default function App() {
   //      extended-unlock banner from PR-4, instead of rendering a
   //      default dashboard with no context.
   useEffect(() => {
-    initOverlay(() => {
-      const banner = document.createElement('div');
-      Object.assign(banner.style, {
-        position: 'fixed', top: '0', left: '0', right: '0', zIndex: '99999',
-        padding: '14px 20px', background: 'linear-gradient(135deg, #16a34a, #22c55e)',
-        color: '#fff', fontWeight: '600', fontSize: '14px', textAlign: 'center',
-        boxShadow: '0 2px 12px rgba(0,0,0,0.3)', transition: 'opacity 0.4s ease, transform 0.4s ease',
-        transform: 'translateY(-100%)', opacity: '0',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px',
-      });
-
-      const target = DASHBOARD_CHECKOUT_SUCCESS_URL;
-      let navigated = false;
-      const goToDashboard = () => {
-        if (navigated) return;
-        navigated = true;
-        window.location.href = target;
-      };
-
-      const message = document.createElement('span');
-      message.textContent = 'Payment received! Unlocking your premium features…';
-
-      const cta = document.createElement('button');
-      cta.type = 'button';
-      cta.textContent = 'Go to dashboard now →';
-      Object.assign(cta.style, {
-        background: '#ffffff',
-        color: '#16a34a',
-        border: 'none',
-        borderRadius: '4px',
-        padding: '6px 12px',
-        fontSize: '12px',
-        fontWeight: '700',
-        cursor: 'pointer',
-        whiteSpace: 'nowrap',
-      });
-      cta.addEventListener('click', goToDashboard);
-
-      banner.appendChild(message);
-      banner.appendChild(cta);
-      document.body.appendChild(banner);
-      requestAnimationFrame(() => { banner.style.transform = 'translateY(0)'; banner.style.opacity = '1'; });
-
-      setTimeout(goToDashboard, 1500);
-    });
+    // #4449: the Dodo overlay is no longer used — checkout redirects top-level
+    // to the hosted page (see startCheckout). We no longer call initOverlay(),
+    // which dynamically imported the heavy Dodo overlay SDK on /pro mount and
+    // registered a success banner that can never fire (after payment the buyer
+    // lands on the dashboard, not /pro — handleCheckoutReturn owns that UX).
     // Consume checkout intent from URL (set by afterSignInUrl on the
     // checkout-initiated sign-in). No-op for any other /pro entry
     // point; strips params before any await so a reload can't re-fire.

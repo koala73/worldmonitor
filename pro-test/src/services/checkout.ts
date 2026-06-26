@@ -422,7 +422,15 @@ async function doCheckout(
     const result = await resp.json();
     const hostedCheckoutUrl = safeHostedCheckoutUrl(result?.checkout_url);
     if (!hostedCheckoutUrl) {
+      // 200 OK but no usable checkout_url (missing, or an untrusted/unparseable
+      // origin rejected by safeHostedCheckoutUrl). Report to Sentry for parity
+      // with the dashboard's missing-checkout-url path — otherwise this
+      // server-contract violation is invisible (was console.error only).
       console.error('[checkout] No usable checkout_url in response');
+      Sentry.captureMessage('Checkout returned 200 without a usable checkout_url', {
+        level: 'error',
+        tags: { surface: 'pro-marketing', code: 'missing_checkout_url' },
+      });
       return false;
     }
 
