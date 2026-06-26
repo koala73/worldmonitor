@@ -1,12 +1,17 @@
 /**
- * Checkout overlay orchestration service.
+ * Checkout orchestration service (vanilla TS dashboard).
  *
- * Manages the full checkout lifecycle in the vanilla TS dashboard:
- * - Lazy-initializes the Dodo Payments overlay SDK
- * - Creates checkout sessions via the Convex createCheckout action
- * - Opens the overlay with dark-theme styling matching the dashboard
- * - Stores pending checkout intents for /pro handoff flows
- * - Handles overlay events (success, error, close)
+ * ACTIVE FLOW — redirect mode (#4449): `startCheckout(productId)` creates a Dodo
+ * checkout session via the Convex createCheckout action and then navigates the
+ * top window to Dodo's HOSTED checkout (`window.location.assign`). The overlay
+ * iframe could not host Dodo's nested 3DS/fraud stack, so card payments hung at
+ * "Processing…"; redirect runs 3DS/fraud unconstrained and #4447 returns the
+ * buyer to `/dashboard?wm_checkout=return` to reconcile.
+ *
+ * DORMANT — the Dodo overlay SDK machinery below (ensureCheckoutOverlayInitialized,
+ * the onEvent handler, the entitlement watchdog, openCheckout) is no longer on
+ * any live path (openCheckout has zero callers) and is kept pending removal. Do
+ * NOT assume the overlay is the checkout path when reading the handlers below.
  *
  * UI code calls startCheckout(productId) -- everything else is internal.
  */
@@ -17,6 +22,7 @@ import { openBillingPortal, prereserveBillingPortalTab } from './billing';
 import { getCurrentClerkUser, getClerkToken, openSignIn } from './clerk';
 import { subscribeAuthState } from './auth-state';
 import { saveCheckoutAttempt, clearCheckoutAttempt } from './checkout-attempt';
+import { safeHostedCheckoutUrl } from './hosted-checkout-url';
 import {
   classifyHttpCheckoutError,
   classifySyntheticCheckoutError,
@@ -722,28 +728,6 @@ export async function openCheckout(checkoutUrl: string): Promise<void> {
       },
     },
   });
-}
-
-// Dodo's hosted-checkout origins. Redirect mode (#4449) navigates the top
-// window to the hosted checkout, so validate the server-provided `checkout_url`
-// before `window.location.assign` — an open-redirect guard in case the checkout
-// endpoint ever returns an unexpected origin (a `javascript:` URL, a third-party
-// host, etc.). Mirrors the Dodo SDK's own checkout-URL host check.
-const HOSTED_CHECKOUT_HOSTS = new Set([
-  'checkout.dodopayments.com',
-  'test.checkout.dodopayments.com',
-]);
-
-function safeHostedCheckoutUrl(raw: unknown): string | null {
-  if (typeof raw !== 'string') return null;
-  try {
-    const url = new URL(raw);
-    if (url.protocol !== 'https:') return null;
-    if (!HOSTED_CHECKOUT_HOSTS.has(url.hostname)) return null;
-    return url.toString();
-  } catch {
-    return null;
-  }
 }
 
 let _checkoutInFlight = false;

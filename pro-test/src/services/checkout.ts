@@ -1,7 +1,12 @@
 /**
  * Checkout service for the /pro marketing page.
  *
- * Handles: Clerk sign-in → edge endpoint → Dodo overlay.
+ * ACTIVE FLOW (#4449): Clerk sign-in → edge endpoint → top-level redirect to
+ * Dodo's HOSTED checkout (`window.location.assign`). The overlay iframe could
+ * not host Dodo's nested 3DS/fraud stack (it hung at "Processing…"), so we
+ * navigate full-page; the buyer returns to the dashboard via the guarded
+ * `?wm_checkout=return` contract. The Dodo overlay SDK Initialize/onEvent
+ * machinery below is DORMANT, pending removal.
  * No Convex client needed — the edge endpoint handles relay.
  */
 
@@ -20,7 +25,7 @@ import {
   buildCheckoutReturnUrl,
 } from './checkout-intent-url';
 import { createEntitlementWatchdog, type EntitlementWatchdog } from './entitlement-watchdog';
-import { DASHBOARD_CHECKOUT_SUCCESS_URL } from '../routes';
+import { DASHBOARD_CHECKOUT_SUCCESS_URL, DASHBOARD_CHECKOUT_RETURN_URL } from '../routes';
 
 let checkoutInFlight = false;
 
@@ -228,11 +233,11 @@ export function initOverlay(onSuccess?: () => void): void {
         }
         if (event.event_type === 'checkout.redirect_requested') {
           const redirectTo = msg?.redirect_to as string | undefined;
-          // Dodo builds redirect_to from the return_url we sent, appending
-          // payment_id/subscription_id/status/license_key/email per
-          // changelog v1.84.0. Our return_url carries `?wm_checkout=success`
-          // so the dashboard bridge (src/services/checkout-return.ts) fires
-          // regardless of Dodo's appended params.
+          // DORMANT (#4449): this overlay handler no longer runs — checkout now
+          // redirects top-level to the hosted page (see startCheckout). The
+          // live return_url is the GUARDED `?wm_checkout=return` marker, which
+          // reconciles success only against authoritative Dodo evidence; it does
+          // NOT fire regardless of Dodo's appended params. Kept pending removal.
           fireTerminalSuccess('event-redirect', redirectTo);
         }
         if (event.event_type === 'checkout.closed') {
@@ -356,7 +361,13 @@ async function doCheckout(
       },
       body: JSON.stringify({
         productId,
-        returnUrl: DASHBOARD_CHECKOUT_SUCCESS_URL,
+        // #4449 review: use the GUARDED return contract, not the bare
+        // `?wm_checkout=success` marker. With hosted redirect now the primary
+        // flow, Dodo sends the buyer to this URL for EVERY outcome (success,
+        // failure, cancel, pending) — `?wm_checkout=success` would false-succeed
+        // a failed/pending/no-ID return. `?wm_checkout=return` only reconciles
+        // success against authoritative Dodo evidence. See checkout-return.ts.
+        returnUrl: DASHBOARD_CHECKOUT_RETURN_URL,
         discountCode: options.discountCode,
         referralCode: options.referralCode,
       }),
