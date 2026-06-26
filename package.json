@@ -149,7 +149,7 @@
     "d3": "^7.9.0",
     "deck.gl": "^9.2.11",
     "dodopayments-checkout": "^1.8.0",
-    "dompurify": "^3.4.0",
+    "dompurify": "^3.4.11",
     "fast-xml-parser": "^5.8.0",
     "globe.gl": "^2.45.0",
     "hls.js": "^1.6.15",
