@@ -724,6 +724,28 @@ export async function openCheckout(checkoutUrl: string): Promise<void> {
   });
 }
 
+// Dodo's hosted-checkout origins. Redirect mode (#4449) navigates the top
+// window to the hosted checkout, so validate the server-provided `checkout_url`
+// before `window.location.assign` — an open-redirect guard in case the checkout
+// endpoint ever returns an unexpected origin (a `javascript:` URL, a third-party
+// host, etc.). Mirrors the Dodo SDK's own checkout-URL host check.
+const HOSTED_CHECKOUT_HOSTS = new Set([
+  'checkout.dodopayments.com',
+  'test.checkout.dodopayments.com',
+]);
+
+function safeHostedCheckoutUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:') return null;
+    if (!HOSTED_CHECKOUT_HOSTS.has(url.hostname)) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 let _checkoutInFlight = false;
 
 /**
@@ -889,12 +911,24 @@ export async function startCheckout(
     }
 
     const result = await resp.json();
-    if (result?.checkout_url) {
-      await openCheckout(result.checkout_url);
+    // #4449: navigate the top window to Dodo's HOSTED checkout instead of
+    // opening the overlay iframe. The overlay cannot host Dodo's nested 3DS/
+    // fraud stack (Hyperswitch → Airwallex → Sardine): our Permissions-Policy
+    // plus the Dodo SDK's own iframe `allow` attribute block the device sensors
+    // it needs two frames deep, so card payments requiring 3DS hung forever at
+    // "Processing…" (HAR-confirmed — see #4449/#4450). Dodo documents redirect
+    // as the primary flow; 3DS/fraud run unconstrained top-level and #4447
+    // returns the customer to /dashboard?wm_checkout=return to reconcile. The
+    // overlay machinery (openCheckout / ensureCheckoutOverlayInitialized / the
+    // event handler / watchdog) is left dormant pending removal.
+    const hostedCheckoutUrl = safeHostedCheckoutUrl(result?.checkout_url);
+    if (hostedCheckoutUrl) {
+      window.location.assign(hostedCheckoutUrl);
       return true;
     }
-    // 200 OK but no checkout_url is a server contract violation (the
-    // edge relayer returned success but the payload is unusable). Used
+    // 200 OK but no usable checkout_url — missing, or an untrusted/unparseable
+    // origin rejected by safeHostedCheckoutUrl — is a server contract violation
+    // (the edge relayer returned success but the payload is unusable). Used
     // to silently `return false` — the user saw nothing happen and the
     // bug was invisible in Sentry. Classify as service_unavailable
     // (closest accurate user-facing copy) and tag action so engineers
@@ -904,7 +938,7 @@ export async function startCheckout(
     const missingUrlError: CheckoutError = {
       code: 'service_unavailable',
       userMessage: 'Checkout is temporarily unavailable. Please try again in a moment.',
-      serverMessage: 'Server returned 200 without a checkout_url',
+      serverMessage: 'Server returned 200 without a usable checkout_url',
       httpStatus: resp.status,
       retryable: true,
     };

@@ -409,50 +409,20 @@ async function doCheckout(
     }
 
     const result = await resp.json();
-    if (!result?.checkout_url) {
-      console.error('[checkout] No checkout_url in response');
+    const hostedCheckoutUrl = safeHostedCheckoutUrl(result?.checkout_url);
+    if (!hostedCheckoutUrl) {
+      console.error('[checkout] No usable checkout_url in response');
       return false;
     }
 
-    const { DodoPayments } = await import('dodopayments-checkout');
-    DodoPayments.Checkout.open({
-      checkoutUrl: result.checkout_url,
-      options: {
-        // manualRedirect: true — Dodo emits `checkout.redirect_requested`
-        // with the final redirect URL and the MERCHANT performs the
-        // navigation. Reverting PR #3298's `false`: that mode disables
-        // both `checkout.status` and `checkout.redirect_requested` events
-        // (docs: "only when manualRedirect is enabled") and depends on
-        // the SDK's internal redirect, which fails for Safari users
-        // (stuck on a spinner with an orphaned about:blank tab). The
-        // correct flow per docs is manualRedirect:true + a
-        // checkout.redirect_requested handler — see onEvent above.
-        manualRedirect: true,
-        themeConfig: {
-          dark: {
-            bgPrimary: '#0d0d0d',
-            bgSecondary: '#1a1a1a',
-            borderPrimary: '#323232',
-            textPrimary: '#ffffff',
-            textSecondary: '#909090',
-            buttonPrimary: '#22c55e',
-            buttonPrimaryHover: '#16a34a',
-            buttonTextPrimary: '#0d0d0d',
-          },
-          light: {
-            bgPrimary: '#ffffff',
-            bgSecondary: '#f8f9fa',
-            borderPrimary: '#d4d4d4',
-            textPrimary: '#1a1a1a',
-            textSecondary: '#555555',
-            buttonPrimary: '#16a34a',
-            buttonPrimaryHover: '#15803d',
-            buttonTextPrimary: '#ffffff',
-          },
-          radius: '4px',
-        },
-      },
-    });
+    // #4449: navigate the top window to Dodo's HOSTED checkout instead of the
+    // overlay iframe. The overlay cannot host Dodo's nested 3DS/fraud stack
+    // (Hyperswitch → Airwallex → Sardine) — the device sensors it needs are
+    // blocked two frames deep, so card payments requiring 3DS hung forever at
+    // "Processing…" (HAR-confirmed; see #4449/#4450). Dodo documents redirect as
+    // the primary flow. The overlay Initialize/onEvent machinery above is left
+    // dormant pending removal.
+    window.location.assign(hostedCheckoutUrl);
 
     return true;
   } catch (err) {
@@ -462,6 +432,27 @@ async function doCheckout(
     checkoutInFlight = false;
     unmountCheckoutInterstitial();
     setPhase({ kind: 'idle' });
+  }
+}
+
+// Dodo's hosted-checkout origins. Redirect mode (#4449) navigates the top
+// window to the hosted checkout, so validate the server-provided `checkout_url`
+// before `window.location.assign` (open-redirect guard against an unexpected
+// origin / `javascript:` URL).
+const HOSTED_CHECKOUT_HOSTS = new Set([
+  'checkout.dodopayments.com',
+  'test.checkout.dodopayments.com',
+]);
+
+function safeHostedCheckoutUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:') return null;
+    if (!HOSTED_CHECKOUT_HOSTS.has(url.hostname)) return null;
+    return url.toString();
+  } catch {
+    return null;
   }
 }
 

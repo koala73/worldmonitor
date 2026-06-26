@@ -6,6 +6,7 @@ interface HarnessState {
   initializeCalls: number;
   handlers: Array<(event: unknown) => void>;
   openedUrls: string[];
+  assignedUrls: string[];
   successCalls: number;
   sentryBreadcrumbs: Array<{ message?: string }>;
   watchdogs: Array<{ stopCalls: number }>;
@@ -60,7 +61,9 @@ function installBrowserGlobals(): void {
         pathname: '/dashboard',
         search: '',
         hash: '',
-        assign: () => {},
+        assign: (url: string) => {
+          globalThis.__checkoutOverlayHarness.assignedUrls.push(url);
+        },
       },
       history: { replaceState: () => {} },
     },
@@ -73,7 +76,7 @@ function installBrowserGlobals(): void {
       return {
         ok: true,
         status: 200,
-        json: async () => ({ checkout_url: 'https://checkout.example/session' }),
+        json: async () => ({ checkout_url: 'https://checkout.dodopayments.com/session/cks_redirecttest000000000' }),
       };
     },
   });
@@ -84,6 +87,7 @@ function resetHarness(): void {
     initializeCalls: 0,
     handlers: [],
     openedUrls: [],
+    assignedUrls: [],
     successCalls: 0,
     sentryBreadcrumbs: [],
     watchdogs: [],
@@ -273,7 +277,12 @@ describe('checkout overlay lifecycle', () => {
       productId: 'prod_monthly',
       returnUrl: 'https://worldmonitor.app/dashboard?wm_checkout=return',
     });
-    assert.deepEqual(harness.openedUrls, ['https://checkout.example/session']);
+    // #4449: redirect mode navigates the top window to Dodo's hosted checkout
+    // (3DS/fraud run unconstrained) instead of opening the overlay iframe
+    // (which cannot host the nested 3DS/fraud stack). #4447 returns the
+    // customer to /dashboard?wm_checkout=return to reconcile.
+    assert.deepEqual(harness.assignedUrls, ['https://checkout.dodopayments.com/session/cks_redirecttest000000000']);
+    assert.deepEqual(harness.openedUrls, []);
   });
 
   it('keeps one SDK handler while refreshing per-session side effects after destroy+reopen', async () => {
