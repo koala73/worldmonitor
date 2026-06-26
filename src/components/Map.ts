@@ -1239,10 +1239,10 @@ export class MapComponent {
     steps.push(() => this.renderClusterLayer(projection));
     steps.push(() => this.renderOverlays(projection));
 
-    for (const step of steps) {
+    for (let i = 0; i < steps.length; i++) {
       if (chunk && (this.destroyed || token !== this.dynamicRenderToken)) return;
-      step();
-      if (chunk) await yieldToMain();
+      steps[i]?.();
+      if (chunk && i < steps.length - 1) await yieldToMain();
     }
   }
 

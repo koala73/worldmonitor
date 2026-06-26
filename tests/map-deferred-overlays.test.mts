@@ -40,8 +40,8 @@ describe('mobile SVG map: defer + chunk dynamic overlays off first paint (#4429/
     assert.match(mapSrc, /private async renderDynamicLayers\(width: number, height: number, chunk = false\): Promise<void>/);
     assert.match(
       mapSrc,
-      /if \(chunk && \(this\.destroyed \|\| token !== this\.dynamicRenderToken\)\) return;[\s\S]*?step\(\);[\s\S]*?if \(chunk\) await yieldToMain\(\);/,
-      'the layer loop must yield between steps when chunking and bail on token mismatch / destroy',
+      /for \(let i = 0; i < steps\.length; i\+\+\) \{[\s\S]*?if \(chunk && \(this\.destroyed \|\| token !== this\.dynamicRenderToken\)\) return;[\s\S]*?steps\[i\]\?\.\(\);[\s\S]*?if \(chunk && i < steps\.length - 1\) await yieldToMain\(\);/,
+      'the layer loop must yield between steps when chunking, skip the final yield, and bail on token mismatch / destroy',
     );
   });
 
