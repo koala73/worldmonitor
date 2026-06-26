@@ -45,23 +45,70 @@ interface DodoPaymentData {
   currency?: string;
   subscription_id?: string;
   metadata?: Record<string, string>;
+  // Dodo's payment IntentStatus (succeeded | failed | cancelled | processing |
+  // requires_customer_action | …). On `payment.processing` this is where the
+  // 3DS/SCA-pending state is surfaced. See derivePaymentEventStatus.
+  status?: string;
 }
 
-// Maps Dodo payment/refund webhook event types to our `paymentEvents.status`
-// (schema.ts `paymentEventStatus`). Keys are the exact events routed to
-// handlePaymentOrRefundEvent in webhookMutations.ts. `processing` /
-// `requires_customer_action` are non-terminal (3DS/SCA in flight) — persisting
-// them is the pending-payment signal (#4436). Dispute events use a separate
-// handler and are not listed here.
-const PAYMENT_EVENT_STATUS: Record<string, "succeeded" | "failed" | "processing" | "requires_customer_action" | "cancelled"> = {
-  "payment.succeeded": "succeeded",
-  "payment.failed": "failed",
-  "payment.processing": "processing",
-  "payment.requires_customer_action": "requires_customer_action",
-  "payment.cancelled": "cancelled",
-  "refund.succeeded": "succeeded",
-  "refund.failed": "failed",
-};
+// The payment/refund webhook event types we route to handlePaymentOrRefundEvent
+// — a mirror of the case group in webhookMutations.ts. Typed as a closed union
+// so the exhaustive switch below fails to COMPILE if a routed event is added
+// without a status mapping (no silent fallback that could re-introduce a
+// mislabel).
+//
+// IMPORTANT: `payment.requires_customer_action` is NOT a Dodo webhook event
+// type. Dodo's payment event types are succeeded | failed | processing |
+// cancelled (SDK `WebhookEventType`); the 3DS/SCA-pending state is delivered as
+// a `payment.processing` event whose payload `data.status` (IntentStatus) is
+// `requires_customer_action`.
+type RoutedPaymentEvent =
+  | "payment.succeeded"
+  | "payment.failed"
+  | "payment.processing"
+  | "payment.cancelled"
+  | "refund.succeeded"
+  | "refund.failed";
+
+type PaymentEventStatusValue =
+  | "succeeded"
+  | "failed"
+  | "processing"
+  | "requires_customer_action"
+  | "cancelled";
+
+// Derives the persisted `paymentEvents.status` from the event type and, for the
+// non-terminal `payment.processing` event, the payload IntentStatus — that is
+// where Dodo surfaces the 3DS/SCA-pending `requires_customer_action` state
+// (#4436). Throws on an unrouted event rather than silently mislabeling it.
+function derivePaymentEventStatus(
+  eventType: RoutedPaymentEvent,
+  data: DodoPaymentData,
+): PaymentEventStatusValue {
+  switch (eventType) {
+    case "payment.succeeded":
+    case "refund.succeeded":
+      return "succeeded";
+    case "payment.failed":
+    case "refund.failed":
+      return "failed";
+    case "payment.cancelled":
+      return "cancelled";
+    case "payment.processing":
+      // Plain in-flight vs. 3DS/SCA-pending. Other non-terminal IntentStatus
+      // values (requires_payment_method, etc.) collapse to `processing` — never
+      // to a terminal succeeded/failed.
+      return data.status === "requires_customer_action"
+        ? "requires_customer_action"
+        : "processing";
+    default: {
+      const _exhaustive: never = eventType;
+      throw new Error(
+        `[webhook] derivePaymentEventStatus: unrouted event ${String(_exhaustive)}`,
+      );
+    }
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -912,13 +959,14 @@ export async function handlePaymentOrRefundEvent(
   );
 
   const type = eventType.startsWith("refund.") ? "refund" : "charge";
-  // Map the Dodo event to our paymentEvents status. Non-terminal payment
-  // states (processing, requires_customer_action / 3DS-SCA) are persisted so
-  // the app has a pending-payment signal for duplicate-prevention (#4438) and
-  // reconciliation (#4439); `cancelled` is terminal-but-uncharged. The prior
-  // binary `endsWith(".succeeded") ? … : "failed"` mislabeled every one of
-  // these as a failed charge. Refund events only ever succeed/fail.
-  const status = PAYMENT_EVENT_STATUS[eventType] ?? "failed";
+  // Non-terminal payment states (processing, requires_customer_action / 3DS-SCA)
+  // are persisted so the app has a pending-payment signal for duplicate-
+  // prevention (#4438) and reconciliation (#4439); `cancelled` is terminal-but-
+  // uncharged. The prior binary `endsWith(".succeeded") ? … : "failed"`
+  // mislabeled every one of these as a failed charge. The cast is safe: every
+  // caller is gated by the webhook switch's routed-event cases, and an
+  // unexpected value throws (loudly) in derivePaymentEventStatus.
+  const status = derivePaymentEventStatus(eventType as RoutedPaymentEvent, data);
 
   await ctx.db.insert("paymentEvents", {
     userId,

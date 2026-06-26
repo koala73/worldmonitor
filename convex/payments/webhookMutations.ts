@@ -104,13 +104,15 @@ export const processWebhookEvent = internalMutation({
         break;
       case "payment.succeeded":
       case "payment.failed":
-      // Non-terminal/abandoned payment states (3DS/SCA). Persisting them gives
-      // the app a pending-payment signal for duplicate-prevention (#4438) and
-      // reconciliation (#4439); previously they fell through to `default` and
-      // were silently dropped while the payment sat in "requires_customer_action"
-      // on Dodo's dashboard. See convex/payments/subscriptionHelpers.ts.
+      // `payment.processing` is Dodo's only non-terminal payment event; its
+      // payload `data.status` carries the 3DS/SCA-pending `requires_customer_action`
+      // state. `payment.cancelled` is terminal-but-uncharged. Persisting these
+      // gives the app a pending-payment signal for duplicate-prevention (#4438)
+      // and reconciliation (#4439); previously they fell through to `default`
+      // and were dropped while the payment sat in "Requires customer action" on
+      // Dodo's dashboard. (`payment.requires_customer_action` is NOT a Dodo event
+      // type — see derivePaymentEventStatus in subscriptionHelpers.ts.)
       case "payment.processing":
-      case "payment.requires_customer_action":
       case "payment.cancelled":
       case "refund.succeeded":
       case "refund.failed":
