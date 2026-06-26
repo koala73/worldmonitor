@@ -29,6 +29,7 @@
  */
 
 import { loadCheckoutAttempt } from './checkout-attempt';
+import { CHECKOUT_RETURN_PARAM, CHECKOUT_RETURN_MARKER } from './checkout-return-url';
 
 export type CheckoutReturnResult =
   | { kind: 'none' }
@@ -38,10 +39,13 @@ export type CheckoutReturnResult =
 const SUCCESS_STATUSES = new Set(['active', 'succeeded']);
 const FAILED_STATUSES = new Set(['failed', 'declined', 'cancelled', 'canceled']);
 
-/** WorldMonitor-namespaced marker written by /pro overlay-success. */
-const WM_MARKER_PARAM = 'wm_checkout';
+/**
+ * Marker param/values share `checkout-return-url.ts` as the single
+ * source of truth (`CHECKOUT_RETURN_PARAM` / `CHECKOUT_RETURN_MARKER`).
+ * `WM_MARKER_SUCCESS` is the only value owned solely by this consumer —
+ * the /pro overlay-success bridge that no producer module writes.
+ */
 const WM_MARKER_SUCCESS = 'success';
-const WM_MARKER_RETURN = 'return';
 
 /**
  * Inspect current URL for Dodo return params. If found, cleans them
@@ -57,12 +61,12 @@ export function handleCheckoutReturn(): CheckoutReturnResult {
   const subscriptionId = params.get('subscription_id');
   const paymentId = params.get('payment_id');
   const status = params.get('status') ?? '';
-  const wmMarker = params.get(WM_MARKER_PARAM);
+  const wmMarker = params.get(CHECKOUT_RETURN_PARAM);
 
   const hasDodoParams = Boolean(subscriptionId || paymentId);
   const hasAnyWmMarker = wmMarker !== null;
   const hasWmSuccess = wmMarker === WM_MARKER_SUCCESS;
-  const hasWmReturn = wmMarker === WM_MARKER_RETURN;
+  const hasWmReturn = wmMarker === CHECKOUT_RETURN_MARKER;
 
   // Early return when nothing checkout-related is present. Note we
   // enter cleanup below when ANY wm_checkout value is present (even
@@ -83,7 +87,7 @@ export function handleCheckoutReturn(): CheckoutReturnResult {
     'status',
     'email',
     'license_key',
-    WM_MARKER_PARAM,
+    CHECKOUT_RETURN_PARAM,
   ];
   for (const key of paramsToRemove) {
     params.delete(key);
