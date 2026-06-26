@@ -33,7 +33,12 @@ function makeSubscriptionPayload(overrides: Record<string, unknown> = {}) {
 }
 
 function makePaymentPayload(
-  eventType: "payment.succeeded" | "payment.failed",
+  eventType:
+    | "payment.succeeded"
+    | "payment.failed"
+    | "payment.processing"
+    | "payment.requires_customer_action"
+    | "payment.cancelled",
   overrides: Record<string, unknown> = {},
 ) {
   return {
@@ -428,6 +433,71 @@ describe("webhook processWebhookEvent", () => {
     });
     expect(paymentEvents).toHaveLength(1);
     expect(paymentEvents[0].status).toBe("failed");
+  });
+
+  // #4436 — non-terminal/abandoned payment states (3DS/SCA) must be persisted
+  // so the app has a pending-payment signal for duplicate-prevention (#4438)
+  // and reconciliation (#4439). Before the fix these hit the `default` branch
+  // and were silently dropped (no paymentEvents row).
+  test.each([
+    ["payment.processing", "processing"],
+    ["payment.requires_customer_action", "requires_customer_action"],
+    ["payment.cancelled", "cancelled"],
+  ] as const)(
+    "%s persists a paymentEvents row with status %s",
+    async (eventType, expectedStatus) => {
+      const t = convexTest(schema, modules);
+
+      const payload = makePaymentPayload(eventType);
+      const webhookId = `wh_${eventType.replace(/\./g, "_")}`;
+      await processEvent(t, webhookId, eventType, payload, BASE_TIMESTAMP);
+
+      const paymentEvents = await t.run(async (ctx) =>
+        ctx.db.query("paymentEvents").collect(),
+      );
+      expect(paymentEvents).toHaveLength(1);
+      expect(paymentEvents[0].status).toBe(expectedStatus);
+      expect(paymentEvents[0].type).toBe("charge");
+      expect(paymentEvents[0].dodoPaymentId).toBe("pay_test_001");
+    },
+  );
+
+  // #4436 correction (validated): dedup is by webhookId ONLY. A later DISTINCT
+  // transition (new webhookId, same payment_id) must still process — it is not
+  // blocked by the earlier requires_customer_action webhook being recorded.
+  test("requires_customer_action then a distinct succeeded webhook both persist", async () => {
+    const t = convexTest(schema, modules);
+
+    await processEvent(
+      t,
+      "wh_3ds_pending",
+      "payment.requires_customer_action",
+      makePaymentPayload("payment.requires_customer_action"),
+      BASE_TIMESTAMP,
+    );
+    await processEvent(
+      t,
+      "wh_3ds_succeeded",
+      "payment.succeeded",
+      makePaymentPayload("payment.succeeded"),
+      BASE_TIMESTAMP + 5000,
+    );
+
+    const paymentEvents = await t.run(async (ctx) =>
+      ctx.db
+        .query("paymentEvents")
+        .withIndex("by_dodoPaymentId", (q) => q.eq("dodoPaymentId", "pay_test_001"))
+        .collect(),
+    );
+    expect(paymentEvents.map((e) => e.status).sort()).toEqual([
+      "requires_customer_action",
+      "succeeded",
+    ]);
+
+    const webhookEvents = await t.run(async (ctx) =>
+      ctx.db.query("webhookEvents").collect(),
+    );
+    expect(webhookEvents).toHaveLength(2);
   });
 
   test("duplicate webhook-id is deduplicated", async () => {

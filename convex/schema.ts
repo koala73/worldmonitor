@@ -10,10 +10,17 @@ const subscriptionStatus = v.union(
   v.literal("expired"),
 );
 
-// Payment event status enum — covers charge outcomes and dispute lifecycle
+// Payment event status enum — covers charge outcomes and dispute lifecycle.
+// `processing` / `requires_customer_action` are NON-terminal states (3DS/SCA
+// in flight); persisting them gives the app a pending-payment signal for
+// duplicate-prevention (#4438) and reconciliation (#4439). `cancelled` is a
+// terminal-but-uncharged outcome. See convex/payments/webhookMutations.ts.
 const paymentEventStatus = v.union(
   v.literal("succeeded"),
   v.literal("failed"),
+  v.literal("processing"),
+  v.literal("requires_customer_action"),
+  v.literal("cancelled"),
   v.literal("dispute_opened"),
   v.literal("dispute_won"),
   v.literal("dispute_lost"),

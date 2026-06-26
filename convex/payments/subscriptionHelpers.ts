@@ -47,6 +47,22 @@ interface DodoPaymentData {
   metadata?: Record<string, string>;
 }
 
+// Maps Dodo payment/refund webhook event types to our `paymentEvents.status`
+// (schema.ts `paymentEventStatus`). Keys are the exact events routed to
+// handlePaymentOrRefundEvent in webhookMutations.ts. `processing` /
+// `requires_customer_action` are non-terminal (3DS/SCA in flight) — persisting
+// them is the pending-payment signal (#4436). Dispute events use a separate
+// handler and are not listed here.
+const PAYMENT_EVENT_STATUS: Record<string, "succeeded" | "failed" | "processing" | "requires_customer_action" | "cancelled"> = {
+  "payment.succeeded": "succeeded",
+  "payment.failed": "failed",
+  "payment.processing": "processing",
+  "payment.requires_customer_action": "requires_customer_action",
+  "payment.cancelled": "cancelled",
+  "refund.succeeded": "succeeded",
+  "refund.failed": "failed",
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -896,7 +912,13 @@ export async function handlePaymentOrRefundEvent(
   );
 
   const type = eventType.startsWith("refund.") ? "refund" : "charge";
-  const status = eventType.endsWith(".succeeded") ? "succeeded" : "failed";
+  // Map the Dodo event to our paymentEvents status. Non-terminal payment
+  // states (processing, requires_customer_action / 3DS-SCA) are persisted so
+  // the app has a pending-payment signal for duplicate-prevention (#4438) and
+  // reconciliation (#4439); `cancelled` is terminal-but-uncharged. The prior
+  // binary `endsWith(".succeeded") ? … : "failed"` mislabeled every one of
+  // these as a failed charge. Refund events only ever succeed/fail.
+  const status = PAYMENT_EVENT_STATUS[eventType] ?? "failed";
 
   await ctx.db.insert("paymentEvents", {
     userId,
