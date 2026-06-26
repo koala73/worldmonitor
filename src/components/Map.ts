@@ -113,6 +113,12 @@ interface WorldTopology extends Topology {
   };
 }
 
+// Yield to the main thread (ends the current task) so a long render can be split into
+// sub-50ms tasks — lowers TBT, which deferral alone does not (#4442).
+function yieldToMain(): Promise<void> {
+  return new Promise((resolve) => { setTimeout(resolve, 0); });
+}
+
 export class MapComponent {
   private static readonly LAYER_ZOOM_THRESHOLDS: Partial<
     Record<keyof MapLayers, { minZoom: number; showLabels?: number }>
@@ -196,6 +202,9 @@ export class MapComponent {
   // SVG renderer and its synchronous overlay build was the #1 boot-scripting cost (~1.3s).
   private initialDynamicRendered = false;
   private initialDynamicScheduled = false;
+  // Bumped on every dynamic-layer build; lets the chunked first-paint pass bail mid-yield
+  // when a newer (synchronous) render has superseded it (#4442 re-entrancy guard).
+  private dynamicRenderToken = 0;
   // Set in destroy(); guards render() (incl. the deferred first-paint callback and the
   // resize/visibility rAF callbacks) from running on a torn-down instance.
   private destroyed = false;
@@ -1174,50 +1183,18 @@ export class MapComponent {
     if (!this.initialDynamicRendered) {
       if (!this.initialDynamicScheduled) {
         this.initialDynamicScheduled = true;
-        scheduleAfterFirstPaint(() => {
-          if (this.destroyed) return;
-          this.initialDynamicRendered = true;
-          this.render();
-        });
+        // First paint: build the dynamic layers off the critical path AND chunked into
+        // sub-50ms tasks (#4442), so the overlay build is neither blocking nor one long task.
+        scheduleAfterFirstPaint(() => { void this.renderInitialDynamicPass(); });
       }
       this.applyTransform();
       return;
     }
 
-    // Always rebuild dynamic layer - use native DOM clear for reliability
-    const dynamicNode = this.dynamicLayerGroup.node()!;
-    while (dynamicNode.firstChild) dynamicNode.removeChild(dynamicNode.firstChild);
-    // Create overlays-svg group for SVG-based overlays (military tracks, etc.)
-    this.dynamicLayerGroup.append('g').attr('class', 'overlays-svg');
-
-    // Setup projection for dynamic elements
-    const projection = this.getProjection(width, height);
-
-    // Update country fills (sanctions toggle without rebuilding geometry)
-    this.updateCountryFills();
-
-    // Render dynamic map layers
-    if (this.state.layers.cables) {
-      this.renderCables(projection);
-    }
-
-    if (this.state.layers.pipelines) {
-      this.renderPipelines(projection);
-    }
-
-    if (this.state.layers.conflicts) {
-      this.renderConflicts(projection);
-    }
-
-    if (this.state.layers.ais) {
-      this.renderAisDensity(projection);
-    }
-
-    // GPU-accelerated cluster markers (LOD)
-    this.renderClusterLayer(projection);
-
-    // Overlays
-    this.renderOverlays(projection);
+    // Steady state (post first-paint): build the dynamic layers synchronously so interactions
+    // (zoom/pan/toggle/theme) update overlays immediately. renderDynamicLayers takes no await
+    // when chunk=false, so this runs to completion before returning.
+    void this.renderDynamicLayers(width, height);
 
     // POST-RENDER VERIFICATION: Ensure base layer actually rendered
     // This catches silent failures where d3 operations didn't stick
@@ -1233,6 +1210,52 @@ export class MapComponent {
     }
 
     this.applyTransform();
+  }
+
+  // Builds the dynamic overlay layers (cables/pipelines/conflicts/AIS/cluster/overlays).
+  // When `chunk` is true, yields between layers so the build runs as several sub-50ms tasks
+  // instead of one long task (#4442). Steady-state callers pass chunk=false → no await is
+  // reached, so it runs synchronously. The re-entrancy token lets a chunked pass bail once a
+  // newer render (which bumps the token and rebuilds) has superseded it.
+  private async renderDynamicLayers(width: number, height: number, chunk = false): Promise<void> {
+    const dynamicGroup = this.dynamicLayerGroup;
+    const dynamicNode = dynamicGroup?.node();
+    if (!dynamicGroup || !dynamicNode) return;
+    const token = ++this.dynamicRenderToken;
+
+    // Rebuild dynamic layer - native DOM clear for reliability
+    while (dynamicNode.firstChild) dynamicNode.removeChild(dynamicNode.firstChild);
+    dynamicGroup.append('g').attr('class', 'overlays-svg');
+
+    const projection = this.getProjection(width, height);
+    // Update country fills (sanctions toggle without rebuilding geometry)
+    this.updateCountryFills();
+
+    const steps: Array<() => void> = [];
+    if (this.state.layers.cables) steps.push(() => this.renderCables(projection));
+    if (this.state.layers.pipelines) steps.push(() => this.renderPipelines(projection));
+    if (this.state.layers.conflicts) steps.push(() => this.renderConflicts(projection));
+    if (this.state.layers.ais) steps.push(() => this.renderAisDensity(projection));
+    steps.push(() => this.renderClusterLayer(projection));
+    steps.push(() => this.renderOverlays(projection));
+
+    for (const step of steps) {
+      if (chunk && (this.destroyed || token !== this.dynamicRenderToken)) return;
+      step();
+      if (chunk) await yieldToMain();
+    }
+  }
+
+  // First-paint dynamic pass: the base map is already painted, so build the overlays chunked
+  // (off the critical path + split into sub-50ms tasks). Steady-state renders run synchronously.
+  private async renderInitialDynamicPass(): Promise<void> {
+    if (this.destroyed || !this.svg) return;
+    this.initialDynamicRendered = true;
+    const width = this.container.clientWidth;
+    const height = this.container.clientHeight;
+    if (width === 0 || height === 0) return; // next real render handles it
+    await this.renderDynamicLayers(width, height, true);
+    if (!this.destroyed) this.applyTransform();
   }
 
   private renderGrid(
