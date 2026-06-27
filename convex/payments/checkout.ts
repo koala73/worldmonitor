@@ -131,10 +131,22 @@ async function getCheckoutBlockingPendingPayment(
   userId: string,
   productId: string,
 ): Promise<BlockingPendingPaymentInfo | null> {
-  return ctx.runQuery(
-    internal.payments.billing.getBlockingPendingPayment,
-    { userId, productId },
-  );
+  // Fail OPEN on any infrastructure error (DB error, OCC, timeout). The guard's
+  // documented contract (billing.ts) is that a false block — locking a paying
+  // user out — is worse than a missed dedup; that intent must hold for infra
+  // throws too, not just the business-logic (unresolvable planKey) path. Without
+  // this, a transient query error would propagate → relay 500 → edge 502 and the
+  // customer could not check out at all (#4438 review).
+  try {
+    return await ctx.runQuery(
+      internal.payments.billing.getBlockingPendingPayment,
+      { userId, productId },
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[checkout] pending-payment guard query failed (failing open): ${msg}`);
+    return null;
+  }
 }
 
 async function _createCheckoutSession(
@@ -242,15 +254,27 @@ export const createCheckout = action({
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
     const identity = await resolveUserIdentity(ctx);
-    const blocking = await getCheckoutBlockingSubscription(ctx, userId, args.productId);
+    if (args.bypassPendingGuard) {
+      // Audit trail: the user confirmed "start a new checkout anyway" past a
+      // pending-payment block. Logged server-side so a future double-charge
+      // investigation has the bypass record (#4438 review — the original
+      // incident was undetected stacked payments).
+      console.info(`[checkout] pending-payment guard bypassed user=${userId} product=${args.productId}`);
+    }
+    // Run both guards concurrently — they share no data, so serial awaits only
+    // add a Convex round-trip to every checkout (#4438 review). Subscription
+    // block still WINS (evaluated first); bypass skips the pending query.
+    const [blocking, pending] = await Promise.all([
+      getCheckoutBlockingSubscription(ctx, userId, args.productId),
+      args.bypassPendingGuard
+        ? Promise.resolve(null)
+        : getCheckoutBlockingPendingPayment(ctx, userId, args.productId),
+    ]);
     if (blocking) {
       throw new ConvexError(buildBlockedCheckoutPayload(blocking));
     }
-    if (!args.bypassPendingGuard) {
-      const pending = await getCheckoutBlockingPendingPayment(ctx, userId, args.productId);
-      if (pending) {
-        throw new ConvexError(buildPendingBlockedPayload(pending));
-      }
+    if (pending) {
+      throw new ConvexError(buildPendingBlockedPayload(pending));
     }
 
     const customerName = identity
@@ -286,15 +310,23 @@ export const internalCreateCheckout = internalAction({
     if (!args.userId) {
       throw new ConvexError("userId is required");
     }
-    const blocking = await getCheckoutBlockingSubscription(ctx, args.userId, args.productId);
+    if (args.bypassPendingGuard) {
+      // See createCheckout — audit the pending-guard bypass (#4438 review).
+      console.info(`[checkout] pending-payment guard bypassed user=${args.userId} product=${args.productId}`);
+    }
+    // Both guards concurrently (no shared data); subscription block still wins,
+    // bypass skips the pending query (#4438 review).
+    const [blocking, pending] = await Promise.all([
+      getCheckoutBlockingSubscription(ctx, args.userId, args.productId),
+      args.bypassPendingGuard
+        ? Promise.resolve(null)
+        : getCheckoutBlockingPendingPayment(ctx, args.userId, args.productId),
+    ]);
     if (blocking) {
       return buildBlockedCheckoutResponse(blocking);
     }
-    if (!args.bypassPendingGuard) {
-      const pending = await getCheckoutBlockingPendingPayment(ctx, args.userId, args.productId);
-      if (pending) {
-        return buildPendingBlockedResponse(pending);
-      }
+    if (pending) {
+      return buildPendingBlockedResponse(pending);
     }
     return _createCheckoutSession(
       ctx,

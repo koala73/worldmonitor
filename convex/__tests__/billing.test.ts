@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import schema from "../schema";
 import { internal } from "../_generated/api";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
+import { PENDING_PAYMENT_BLOCK_WINDOW_MS } from "../payments/billing";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -285,7 +286,9 @@ describe("payments pending-payment dedup guard", () => {
     await seedPaymentEvent(t, {
       status: "requires_customer_action",
       planKey: "pro_monthly",
-      occurredAt: NOW - 20 * MIN_MS,
+      // Anchored to the real window so a retune of PENDING_PAYMENT_BLOCK_WINDOW_MS
+      // can't silently flip this "stale" case to within-window and pass falsely.
+      occurredAt: NOW - (PENDING_PAYMENT_BLOCK_WINDOW_MS + 5 * MIN_MS),
       suffix: "pending_stale",
     });
 
@@ -361,6 +364,48 @@ describe("payments pending-payment dedup guard", () => {
     );
 
     expect(result).toMatchObject({ planKey: "api_starter" });
+  });
+
+  test("does NOT block an api_business checkout when the pending payment is api_starter (distinct tier groups)", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedPaymentEvent(t, {
+      status: "processing",
+      planKey: "api_starter",
+      occurredAt: NOW - 3 * MIN_MS,
+      suffix: "pending_api_starter_vs_business",
+    });
+
+    const result = await t.query(
+      internal.payments.billing.getBlockingPendingPayment,
+      {
+        userId: TEST_USER_ID,
+        productId: PRODUCT_CATALOG.api_business.dodoProductId!,
+      },
+    );
+
+    expect(result).toBeNull();
+  });
+
+  test("fails open: a pending row whose planKey is absent from PRODUCT_CATALOG never blocks", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedPaymentEvent(t, {
+      status: "requires_customer_action",
+      planKey: "legacy_plan_no_longer_in_catalog",
+      occurredAt: NOW - 2 * MIN_MS,
+      suffix: "pending_unknown_plankey",
+    });
+
+    const result = await t.query(
+      internal.payments.billing.getBlockingPendingPayment,
+      {
+        userId: TEST_USER_ID,
+        productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      },
+    );
+
+    expect(result).toBeNull();
   });
 
   // paymentEvents is append-only: a 3DS payment that goes processing -> failed
