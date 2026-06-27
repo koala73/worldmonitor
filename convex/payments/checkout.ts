@@ -143,6 +143,10 @@ async function getCheckoutBlockingPendingPayment(
       { userId, productId },
     );
   } catch (err) {
+    // sentry-coverage-ok: structured console.error is forwarded by Convex
+    // auto-Sentry, so on-call still sees guard-query failures. We deliberately
+    // do NOT re-throw — failing open (return null) is the whole point (#4438):
+    // a transient DB/OCC/timeout error must not block a paying customer's checkout.
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[checkout] pending-payment guard query failed (failing open): ${msg}`);
     return null;
