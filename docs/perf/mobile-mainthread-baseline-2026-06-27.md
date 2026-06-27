@@ -46,15 +46,33 @@ From #4443 — prod mobile Lighthouse, 2026-06-26, ×3 median (post #4425 + #443
 Per-script `bootup-time` (mobile, #4443): `Map-*.js` ~880 ms · `main.js` ~650–1200 ms ·
 `panel-gating` (= `createPanels` serialization in `panel-layout`, not `panel-gating.ts`) ~447 ms.
 
-> **Re-take a fresh PSI median-of-3 at `pagespeed.web.dev` before starting Phase B/C** so the
-> umbrella comparison reflects current prod (which now also has #4442/#4448 — map-render `<50ms`
-> chunking — landed since the 2026-06-26 baseline). Paste the numbers below when taken.
+> **PSI mobile is blocked (2026-06-27):** the unkeyed PageSpeed API is quota-exhausted (429) and
+> the repo `GOOGLE_API_KEY` is expired (400). Re-take a fresh PSI mobile median-of-3 at
+> `pagespeed.web.dev` (or renew the key) before Phase B/C and paste it here:
 >
 > | Metric | PSI mobile (median-of-3, date) |
 > |---|---|
-> | TBT | _to fill_ |
-> | `mainthread-work` | _to fill_ |
-> | `bootup-time` | _to fill_ |
+> | TBT | _pending PSI_ |
+> | `mainthread-work` | _pending PSI_ |
+> | `bootup-time` | _pending PSI_ |
+
+**Interim desktop-Lighthouse baseline** (2026-06-27, current prod = post #4442/#4448, before the
+Phase A/B/C PRs land; `npx lighthouse@12 --preset=desktop`, median-of-3). Per KTD1, local *desktop*
+Lighthouse is the reliable fallback when PSI mobile is unavailable; mobile TBT is extrapolated as
+desktop × ~4. **These runs were host-contended** (score swung 51–77), so treat absolute TBT as
+directional:
+
+| Metric | Desktop median (range) | Mobile estimate (×4) |
+|---|---|---|
+| Perf score | 62 (51–77) | — |
+| TBT | 562 ms (287–696) | ~2.2 s |
+| `mainthread-work` | 10.1 s (8.1–11.1) | — |
+| `bootup-time` | 1.8 s (1.3–1.9) | — |
+| FCP / LCP | 1.1 s | — |
+
+Reading: `mainthread-work` ~10 s and `bootup-time` ~1.8 s remain the dominant budget (paint is fine
+at ~1.1 s) — consistent with the script-execution-bound finding above. Desktop TBT is noisy under
+contention; the authoritative mobile TBT still needs a clean PSI run.
 
 ## Harness capture — 2026-06-27 (prod, post #4442/#4448)
 
