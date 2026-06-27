@@ -1252,6 +1252,7 @@ http.route({
       returnUrl?: string;
       discountCode?: string;
       referralCode?: string;
+      bypassPendingGuard?: boolean;
     };
     try {
       body = await request.json() as typeof body;
@@ -1280,6 +1281,7 @@ http.route({
           returnUrl: body.returnUrl,
           discountCode: body.discountCode,
           referralCode: body.referralCode,
+          bypassPendingGuard: body.bypassPendingGuard,
         },
       );
       if (
@@ -1288,17 +1290,20 @@ http.route({
         "blocked" in result &&
         result.blocked === true
       ) {
-        return new Response(
-          JSON.stringify({
-            error: result.code,
-            message: result.message,
-            subscription: result.subscription,
-          }),
-          {
-            status: 409,
-            headers: { "Content-Type": "application/json" },
-          },
-        );
+        // Both blocked shapes share { code, message }; the duplicate-subscription
+        // block carries `subscription`, the pending-payment block (#4438) carries
+        // `pendingPayment`. Forward whichever is present so the client dialog can
+        // render. Both return 409 — the client discriminates on `error` (code).
+        const blockedBody: Record<string, unknown> = {
+          error: result.code,
+          message: result.message,
+        };
+        if ("subscription" in result) blockedBody.subscription = result.subscription;
+        if ("pendingPayment" in result) blockedBody.pendingPayment = result.pendingPayment;
+        return new Response(JSON.stringify(blockedBody), {
+          status: 409,
+          headers: { "Content-Type": "application/json" },
+        });
       }
       return new Response(JSON.stringify(result), {
         status: 200,

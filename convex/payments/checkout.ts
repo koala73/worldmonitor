@@ -18,6 +18,7 @@ import { signUserId } from "../lib/identitySigning";
 import { resolveProductToPlan } from "../config/productCatalog";
 
 const ACTIVE_SUBSCRIPTION_EXISTS = "ACTIVE_SUBSCRIPTION_EXISTS";
+const PAYMENT_IN_PROGRESS = "PAYMENT_IN_PROGRESS";
 
 // ---------------------------------------------------------------------------
 // Shared checkout session creation logic
@@ -88,6 +89,52 @@ async function getCheckoutBlockingSubscription(
     currentPeriodEnd: result.currentPeriodEnd,
     dodoSubscriptionId: result.dodoSubscriptionId,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Pending-payment guard (#4438) — blocks a duplicate checkout when a recent
+// pending 3DS payment exists in the same tier group. Distinct from the
+// subscription guard above; runs AFTER it (the subscription block wins) and is
+// skippable via `bypassPendingGuard` so the block stays confirmation friction,
+// not a hard lock.
+// ---------------------------------------------------------------------------
+
+interface BlockingPendingPaymentInfo {
+  planKey: string;
+  displayName: string;
+  occurredAt: number;
+}
+
+function buildPendingBlockedPayload(pending: BlockingPendingPaymentInfo) {
+  return {
+    code: PAYMENT_IN_PROGRESS,
+    message:
+      `A ${pending.displayName} payment is already in progress for this account. ` +
+      `It may still be completing — finish it, or start a new checkout.`,
+    pendingPayment: {
+      planKey: pending.planKey,
+      displayName: pending.displayName,
+      occurredAt: pending.occurredAt,
+    },
+  };
+}
+
+function buildPendingBlockedResponse(pending: BlockingPendingPaymentInfo) {
+  return {
+    blocked: true,
+    ...buildPendingBlockedPayload(pending),
+  };
+}
+
+async function getCheckoutBlockingPendingPayment(
+  ctx: ActionCtx,
+  userId: string,
+  productId: string,
+): Promise<BlockingPendingPaymentInfo | null> {
+  return ctx.runQuery(
+    internal.payments.billing.getBlockingPendingPayment,
+    { userId, productId },
+  );
 }
 
 async function _createCheckoutSession(
@@ -188,6 +235,9 @@ export const createCheckout = action({
     returnUrl: v.optional(v.string()),
     discountCode: v.optional(v.string()),
     referralCode: v.optional(v.string()),
+    // "Start a new checkout anyway" — skips ONLY the pending-payment guard
+    // (#4438). The subscription guard still applies.
+    bypassPendingGuard: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -195,6 +245,12 @@ export const createCheckout = action({
     const blocking = await getCheckoutBlockingSubscription(ctx, userId, args.productId);
     if (blocking) {
       throw new ConvexError(buildBlockedCheckoutPayload(blocking));
+    }
+    if (!args.bypassPendingGuard) {
+      const pending = await getCheckoutBlockingPendingPayment(ctx, userId, args.productId);
+      if (pending) {
+        throw new ConvexError(buildPendingBlockedPayload(pending));
+      }
     }
 
     const customerName = identity
@@ -223,6 +279,8 @@ export const internalCreateCheckout = internalAction({
     returnUrl: v.optional(v.string()),
     discountCode: v.optional(v.string()),
     referralCode: v.optional(v.string()),
+    // See createCheckout — skips only the pending-payment guard (#4438).
+    bypassPendingGuard: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     if (!args.userId) {
@@ -231,6 +289,12 @@ export const internalCreateCheckout = internalAction({
     const blocking = await getCheckoutBlockingSubscription(ctx, args.userId, args.productId);
     if (blocking) {
       return buildBlockedCheckoutResponse(blocking);
+    }
+    if (!args.bypassPendingGuard) {
+      const pending = await getCheckoutBlockingPendingPayment(ctx, args.userId, args.productId);
+      if (pending) {
+        return buildPendingBlockedResponse(pending);
+      }
     }
     return _createCheckoutSession(
       ctx,

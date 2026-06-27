@@ -70,6 +70,7 @@ export default async function handler(
     returnUrl?: string;
     discountCode?: string;
     referralCode?: string;
+    bypassPendingGuard?: boolean;
   };
   try {
     body = await req.json() as typeof body;
@@ -101,6 +102,7 @@ export default async function handler(
         returnUrl: body.returnUrl,
         discountCode: body.discountCode,
         referralCode: body.referralCode,
+        bypassPendingGuard: body.bypassPendingGuard,
       }),
       signal: AbortSignal.timeout(15_000),
     });
@@ -109,10 +111,14 @@ export default async function handler(
     if (!resp.ok) {
       console.error('[create-checkout] Relay error:', resp.status, data);
       if (resp.status === 409) {
+        // Two distinct blocks share 409; the client discriminates on `error`
+        // (ACTIVE_SUBSCRIPTION_EXISTS vs PAYMENT_IN_PROGRESS, #4438). Forward
+        // whichever context object the relay attached.
         return json({
           error: data?.error || 'ACTIVE_SUBSCRIPTION_EXISTS',
           message: data?.message || 'An active subscription already exists for this account.',
           subscription: data?.subscription,
+          pendingPayment: data?.pendingPayment,
         }, 409, cors);
       }
       return json({ error: data?.error || 'Checkout creation failed' }, 502, cors);
