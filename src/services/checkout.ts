@@ -30,7 +30,6 @@ import {
   parseCheckoutErrorBody,
   snapshotUpstreamResponse,
   type CheckoutError,
-  type CheckoutErrorBody,
   type CheckoutErrorCode,
   type UpstreamSnapshot,
 } from './checkout-errors';
@@ -851,8 +850,7 @@ export async function startCheckout(
       if (error.code === 'duplicate_subscription') {
         clearPendingCheckoutIntent();
         clearCheckoutAttempt('duplicate');
-        const planKey = (body as CheckoutErrorBody & { subscription?: { planKey?: unknown } })
-          ?.subscription?.planKey;
+        const planKey = body?.subscription?.planKey;
         const planDisplayName = resolvePlanDisplayName(planKey);
         showDuplicateSubscriptionDialog({
           planDisplayName,
@@ -877,8 +875,7 @@ export async function startCheckout(
       // bypassPendingGuard so the backend skips this guard and the redirect
       // proceeds. Dialog content uses only the whitelisted plan name.
       if (error.code === 'payment_in_progress') {
-        const pendingPlanKey = (body as CheckoutErrorBody & { pendingPayment?: { planKey?: unknown } })
-          ?.pendingPayment?.planKey;
+        const pendingPlanKey = body?.pendingPayment?.planKey;
         const planDisplayName = resolvePlanDisplayName(pendingPlanKey);
         showCheckoutPendingDialog({
           planDisplayName,

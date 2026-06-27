@@ -766,6 +766,7 @@ function showProPendingPaymentDialog(options: ProDuplicateDialogOptions): void {
   backdrop.id = PRO_PENDING_DIALOG_ID;
   backdrop.setAttribute('role', 'dialog');
   backdrop.setAttribute('aria-modal', 'true');
+  backdrop.setAttribute('aria-labelledby', `${PRO_PENDING_DIALOG_ID}-title`);
   Object.assign(backdrop.style, {
     position: 'fixed',
     inset: '0',
@@ -792,7 +793,7 @@ function showProPendingPaymentDialog(options: ProDuplicateDialogOptions): void {
   });
 
   card.innerHTML = `
-    <h2 style="font-size:16px;font-weight:600;margin:0 0 10px 0;color:#fff;">Payment in progress</h2>
+    <h2 id="${PRO_PENDING_DIALOG_ID}-title" style="font-size:16px;font-weight:600;margin:0 0 10px 0;color:#fff;">Payment in progress</h2>
     <p style="font-size:13px;line-height:1.5;margin:0 0 18px 0;color:#c8c8c8;">
       You have a ${escapeHtml(options.planDisplayName)} payment in progress. It may still be completing — if it does and you're charged twice, contact support and we'll refund the duplicate. Start a new checkout anyway?
     </p>

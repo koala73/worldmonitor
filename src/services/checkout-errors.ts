@@ -63,6 +63,14 @@ export interface CheckoutErrorBody {
   error?: string;
   message?: string;
   code?: string;
+  /**
+   * Context object on a 409 block. The two block shapes share the route and are
+   * discriminated by `error`: `ACTIVE_SUBSCRIPTION_EXISTS` carries `subscription`,
+   * `PAYMENT_IN_PROGRESS` carries `pendingPayment` (#4438). Both are partial —
+   * the body is parsed defensively (`parseCheckoutErrorBody`) and may be absent.
+   */
+  subscription?: { planKey?: string };
+  pendingPayment?: { planKey?: string };
 }
 
 function pickUserMessage(code: CheckoutErrorCode): string {
