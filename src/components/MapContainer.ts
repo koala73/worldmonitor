@@ -454,7 +454,7 @@ export class MapContainer {
     this.prepareRendererDom('svg-mode');
     // DeckGLMap mutates DOM early during construction. If initialization throws,
     // clear partial WebGL nodes before creating the SVG fallback.
-    this.svgMap = new MapComponent(this.container, this.initialState, { chrome: this.chrome });
+    this.svgMap = new MapComponent(this.container, this.initialState, { chrome: this.chrome, isMobile: this.isMobile });
     this.rehydrateActiveMap();
   }
 

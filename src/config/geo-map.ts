@@ -2649,7 +2649,17 @@ export const SANCTIONED_COUNTRIES_ALPHA2: Record<string, 'severe' | 'high' | 'mo
 
 export const MAP_URLS = {
   world: '/data/countries-50m.json',
+  // Mobile uses the lower-resolution 110m topology (~86% fewer arc points) to cut
+  // styleLayout. It omits 64 micro-state/territory base-map outlines (e.g. Bahrain,
+  // Singapore, Hong Kong); event overlays are positioned by lat/lon and unaffected
+  // (#4443 U6 — accepted tradeoff).
+  worldMobile: '/data/countries-110m.json',
 };
+
+/** Country topology URL — mobile gets the lighter 110m topology, desktop the full 50m. */
+export function worldTopologyUrl(isMobile: boolean): string {
+  return isMobile ? MAP_URLS.worldMobile : MAP_URLS.world;
+}
 
 // Global Economic Centers - Stock Exchanges, Central Banks, Financial Hubs
 export const ECONOMIC_CENTERS: EconomicCenter[] = [
