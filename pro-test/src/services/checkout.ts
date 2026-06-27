@@ -18,6 +18,7 @@ export { ensureClerk } from './clerk';
 const API_BASE = 'https://api.worldmonitor.app/api';
 const DODO_PORTAL_FALLBACK_URL = 'https://customer.dodopayments.com';
 const ACTIVE_SUBSCRIPTION_EXISTS = 'ACTIVE_SUBSCRIPTION_EXISTS';
+const PAYMENT_IN_PROGRESS = 'PAYMENT_IN_PROGRESS';
 
 import {
   parseCheckoutIntentFromSearch,
@@ -262,7 +263,7 @@ export function initOverlay(onSuccess?: () => void): void {
 
 export async function startCheckout(
   productId: string,
-  options?: { referralCode?: string; discountCode?: string },
+  options?: { referralCode?: string; discountCode?: string; bypassPendingGuard?: boolean },
 ): Promise<boolean> {
   if (checkoutInFlight) return false;
 
@@ -318,7 +319,7 @@ export async function tryResumeCheckoutFromUrl(): Promise<boolean> {
 
 async function doCheckout(
   productId: string,
-  options: { referralCode?: string; discountCode?: string },
+  options: { referralCode?: string; discountCode?: string; bypassPendingGuard?: boolean },
 ): Promise<boolean> {
   if (checkoutInFlight) return false;
   checkoutInFlight = true;
@@ -370,6 +371,9 @@ async function doCheckout(
         returnUrl: DASHBOARD_CHECKOUT_RETURN_URL,
         discountCode: options.discountCode,
         referralCode: options.referralCode,
+        // #4438: only set when the user confirmed "start a new checkout anyway"
+        // from the pending-payment dialog. Skips the backend pending guard.
+        ...(options.bypassPendingGuard ? { bypassPendingGuard: true } : {}),
       }),
       signal: AbortSignal.timeout(15_000),
     });
@@ -413,6 +417,25 @@ async function doCheckout(
         Sentry.captureMessage('Duplicate subscription checkout attempt', {
           level: 'info',
           tags: { surface: 'pro-marketing', code: 'duplicate_subscription' },
+          extra: { serverMessage: err?.message },
+        });
+      } else if (resp.status === 409 && err?.error === PAYMENT_IN_PROGRESS) {
+        // #4438: a recent same-tier 3DS payment is still pending. Confirm before
+        // stacking a duplicate — the pending one may still be completing. On
+        // confirm, re-run with bypassPendingGuard so the backend skips the guard
+        // and the redirect proceeds. Inline dialog (no shared component — /pro is
+        // a separate build); whitelisted plan name only, raw message to Sentry.
+        const planKey = err?.pendingPayment?.planKey;
+        showProPendingPaymentDialog({
+          planDisplayName: resolveProPlanDisplayName(planKey),
+          onConfirm: () => {
+            void doCheckout(productId, { ...options, bypassPendingGuard: true });
+          },
+          onDismiss: () => { /* stay on /pro; pending payment may still complete */ },
+        });
+        Sentry.captureMessage('Pending-payment checkout attempt', {
+          level: 'info',
+          tags: { surface: 'pro-marketing', code: 'payment_in_progress' },
           extra: { serverMessage: err?.message },
         });
       }
@@ -727,6 +750,85 @@ function showProDuplicateSubscriptionDialog(options: ProDuplicateDialogOptions):
     options.onConfirm();
   });
   document.getElementById(`${PRO_DUP_DIALOG_ID}-dismiss`)?.addEventListener('click', dismiss);
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) dismiss(); });
+  document.addEventListener('keydown', keyHandler, true);
+}
+
+// Pending-payment dialog (inline to /pro — separate build from main app). Same
+// shape + styling as the duplicate-subscription dialog; different copy + action
+// (#4438). Confirm → start a new checkout with the pending guard bypassed.
+const PRO_PENDING_DIALOG_ID = 'wm-pro-pending-payment-dialog';
+
+function showProPendingPaymentDialog(options: ProDuplicateDialogOptions): void {
+  if (document.getElementById(PRO_PENDING_DIALOG_ID)) return;
+
+  const backdrop = document.createElement('div');
+  backdrop.id = PRO_PENDING_DIALOG_ID;
+  backdrop.setAttribute('role', 'dialog');
+  backdrop.setAttribute('aria-modal', 'true');
+  Object.assign(backdrop.style, {
+    position: 'fixed',
+    inset: '0',
+    zIndex: '99990',
+    background: 'rgba(10, 10, 10, 0.72)',
+    backdropFilter: 'blur(4px)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '24px',
+  });
+
+  const card = document.createElement('div');
+  Object.assign(card.style, {
+    background: '#141414',
+    border: '1px solid #2a2a2a',
+    borderRadius: '8px',
+    padding: '20px 22px',
+    maxWidth: '440px',
+    width: '100%',
+    color: '#e8e8e8',
+    fontFamily: "'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace",
+    boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+  });
+
+  card.innerHTML = `
+    <h2 style="font-size:16px;font-weight:600;margin:0 0 10px 0;color:#fff;">Payment in progress</h2>
+    <p style="font-size:13px;line-height:1.5;margin:0 0 18px 0;color:#c8c8c8;">
+      You have a ${escapeHtml(options.planDisplayName)} payment in progress. It may still be completing — starting a new checkout will not charge you twice for the same plan. Start a new checkout anyway?
+    </p>
+    <div style="display:flex;justify-content:flex-end;gap:10px;">
+      <button id="${PRO_PENDING_DIALOG_ID}-dismiss" type="button" style="background:transparent;color:#aaa;border:1px solid #2a2a2a;border-radius:4px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">Cancel</button>
+      <button id="${PRO_PENDING_DIALOG_ID}-confirm" type="button" style="background:#44ff88;color:#0a0a0a;border:none;border-radius:4px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">Start new checkout</button>
+    </div>
+  `;
+
+  backdrop.appendChild(card);
+  // MUST append to document BEFORE attaching listeners via getElementById,
+  // otherwise the ID lookups return null and the buttons are dead.
+  document.body.appendChild(backdrop);
+
+  let resolved = false;
+  const keyHandler = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') dismiss();
+  };
+  const close = () => {
+    document.removeEventListener('keydown', keyHandler, true);
+    backdrop.remove();
+  };
+  const dismiss = () => {
+    if (resolved) return;
+    resolved = true;
+    close();
+    options.onDismiss();
+  };
+
+  document.getElementById(`${PRO_PENDING_DIALOG_ID}-confirm`)?.addEventListener('click', () => {
+    if (resolved) return;
+    resolved = true;
+    close();
+    options.onConfirm();
+  });
+  document.getElementById(`${PRO_PENDING_DIALOG_ID}-dismiss`)?.addEventListener('click', dismiss);
   backdrop.addEventListener('click', (e) => { if (e.target === backdrop) dismiss(); });
   document.addEventListener('keydown', keyHandler, true);
 }
