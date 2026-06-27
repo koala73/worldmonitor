@@ -76,7 +76,7 @@ export function showCheckoutPendingDialog(options: CheckoutPendingDialogOptions)
   });
 
   const body = document.createElement('p');
-  body.textContent = `You have a ${options.planDisplayName} payment in progress. It may still be completing — starting a new checkout will not charge you twice for the same plan. Start a new checkout anyway?`;
+  body.textContent = `You have a ${options.planDisplayName} payment in progress. It may still be completing — if it does and you're charged twice, contact support and we'll refund the duplicate. Start a new checkout anyway?`;
   Object.assign(body.style, {
     fontSize: '13px',
     lineHeight: '1.5',

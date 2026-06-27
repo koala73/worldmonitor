@@ -850,16 +850,39 @@ export const getBlockingPendingPayment = internalQuery({
 
     const windowStart = Date.now() - PENDING_PAYMENT_BLOCK_WINDOW_MS;
 
-    const blocking = (await ctx.db
+    // Time-bounded read: only rows within the staleness window. `paymentEvents`
+    // is append-only and carries full `rawPayload`, so collecting a user's whole
+    // history would grow unbounded and could throw (rejecting the checkout =
+    // fail-CLOSED). A terminal row always post-dates its own pending row, so any
+    // resolution of a recent pending payment is also within the window — this
+    // slice is sufficient to detect it.
+    const recent = await ctx.db
       .query("paymentEvents")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .collect())
+      .withIndex("by_userId_occurredAt", (q) =>
+        q.eq("userId", args.userId).gt("occurredAt", windowStart),
+      )
+      .collect();
+
+    // `paymentEvents` never patches/reconciles — a 3DS payment that went
+    // processing -> succeeded/failed leaves BOTH rows. A payment is only still
+    // "in progress" if its dodoPaymentId has NO terminal (non-pending) charge
+    // row. Without this, a failed/succeeded payment's lingering
+    // `requires_customer_action` row would falsely block the retry path for the
+    // whole window — degrading the exact flow this guard is meant to smooth.
+    const isPending = (status: string) =>
+      status === "processing" || status === "requires_customer_action";
+    const resolvedPaymentIds = new Set<string>();
+    for (const ev of recent) {
+      if (ev.type === "charge" && !isPending(ev.status)) {
+        resolvedPaymentIds.add(ev.dodoPaymentId);
+      }
+    }
+
+    const blocking = recent
       .filter((ev) => {
         if (ev.type !== "charge") return false;
-        if (ev.status !== "processing" && ev.status !== "requires_customer_action") {
-          return false;
-        }
-        if (ev.occurredAt <= windowStart) return false;
+        if (!isPending(ev.status)) return false;
+        if (resolvedPaymentIds.has(ev.dodoPaymentId)) return false;
         // Fail open when the tier group is unresolvable.
         if (!ev.planKey) return false;
         const entry = PRODUCT_CATALOG[ev.planKey];

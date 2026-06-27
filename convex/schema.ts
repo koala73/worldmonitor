@@ -634,7 +634,12 @@ export default defineSchema({
     occurredAt: v.number(),
   })
     .index("by_userId", ["userId"])
-    .index("by_dodoPaymentId", ["dodoPaymentId"]),
+    .index("by_dodoPaymentId", ["dodoPaymentId"])
+    // Time-bounded read for the duplicate-payment guard (#4438): it only needs
+    // recent rows (within the staleness window), so it queries this index with a
+    // range on occurredAt instead of collecting the user's whole (unbounded,
+    // rawPayload-carrying) payment history — keeps the guard fail-open.
+    .index("by_userId_occurredAt", ["userId", "occurredAt"]),
 
   productPlans: defineTable({
     dodoProductId: v.string(),

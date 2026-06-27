@@ -199,12 +199,15 @@ async function seedPaymentEvent(
     suffix: string;
     type?: "charge" | "refund";
     userId?: string;
+    // Override to model the append-only history of ONE payment (same Dodo
+    // payment id transitioning processing -> succeeded/failed across rows).
+    dodoPaymentId?: string;
   },
 ) {
   await t.run(async (ctx) => {
     await ctx.db.insert("paymentEvents", {
       userId: opts.userId ?? TEST_USER_ID,
-      dodoPaymentId: `pay_billing_${opts.suffix}`,
+      dodoPaymentId: opts.dodoPaymentId ?? `pay_billing_${opts.suffix}`,
       type: opts.type ?? "charge",
       amount: 3999,
       currency: "USD",
@@ -358,6 +361,99 @@ describe("payments pending-payment dedup guard", () => {
     );
 
     expect(result).toMatchObject({ planKey: "api_starter" });
+  });
+
+  // paymentEvents is append-only: a 3DS payment that goes processing -> failed
+  // (or -> succeeded) leaves BOTH rows. The guard must not block on the lingering
+  // pending row once the SAME dodoPaymentId reached a terminal state — otherwise
+  // the failure-retry path this feature exists to smooth gets falsely blocked.
+  test("does not block when the same payment later FAILED (append-only terminal row)", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedPaymentEvent(t, {
+      status: "requires_customer_action",
+      planKey: "pro_monthly",
+      occurredAt: NOW - 5 * MIN_MS,
+      suffix: "appendonly_pending",
+      dodoPaymentId: "pay_appendonly_001",
+    });
+    await seedPaymentEvent(t, {
+      status: "failed",
+      planKey: "pro_monthly",
+      occurredAt: NOW - 4 * MIN_MS,
+      suffix: "appendonly_failed",
+      dodoPaymentId: "pay_appendonly_001",
+    });
+
+    const result = await t.query(
+      internal.payments.billing.getBlockingPendingPayment,
+      {
+        userId: TEST_USER_ID,
+        productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      },
+    );
+
+    expect(result).toBeNull();
+  });
+
+  test("does not block when the same payment later SUCCEEDED (append-only terminal row)", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedPaymentEvent(t, {
+      status: "processing",
+      planKey: "pro_monthly",
+      occurredAt: NOW - 5 * MIN_MS,
+      suffix: "appendonly_pending2",
+      dodoPaymentId: "pay_appendonly_002",
+    });
+    await seedPaymentEvent(t, {
+      status: "succeeded",
+      planKey: "pro_monthly",
+      occurredAt: NOW - 3 * MIN_MS,
+      suffix: "appendonly_succeeded",
+      dodoPaymentId: "pay_appendonly_002",
+    });
+
+    const result = await t.query(
+      internal.payments.billing.getBlockingPendingPayment,
+      {
+        userId: TEST_USER_ID,
+        productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      },
+    );
+
+    expect(result).toBeNull();
+  });
+
+  // A genuinely-pending payment (no terminal row for its dodoPaymentId) must
+  // still block, even when an UNRELATED payment has a terminal row.
+  test("still blocks a genuinely-pending payment alongside an unrelated terminal payment", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedPaymentEvent(t, {
+      status: "failed",
+      planKey: "pro_monthly",
+      occurredAt: NOW - 6 * MIN_MS,
+      suffix: "unrelated_failed",
+      dodoPaymentId: "pay_unrelated_terminal",
+    });
+    await seedPaymentEvent(t, {
+      status: "requires_customer_action",
+      planKey: "pro_monthly",
+      occurredAt: NOW - 2 * MIN_MS,
+      suffix: "genuinely_pending",
+      dodoPaymentId: "pay_genuinely_pending",
+    });
+
+    const result = await t.query(
+      internal.payments.billing.getBlockingPendingPayment,
+      {
+        userId: TEST_USER_ID,
+        productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      },
+    );
+
+    expect(result).toMatchObject({ planKey: "pro_monthly" });
   });
 
   test("returns the most recent matching pending payment", async () => {
