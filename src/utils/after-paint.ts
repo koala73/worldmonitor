@@ -37,3 +37,11 @@ export function scheduleAfterFirstPaint(task: () => void, timeoutMs = 3000): voi
     window.addEventListener('load', afterPaint, { once: true });
   }
 }
+
+/**
+ * Yield to the main thread (ends the current task) so a long render can be split into
+ * sub-50ms tasks — lowers TBT, which deferral alone does not (#4442).
+ */
+export function yieldToMain(): Promise<void> {
+  return new Promise((resolve) => { setTimeout(resolve, 0); });
+}

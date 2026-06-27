@@ -15,7 +15,7 @@ import type { WeatherAlert } from '@/services/weather';
 import type { RadiationObservation } from '@/services/radiation';
 import { getSeverityColor } from '@/services/weather';
 import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/smart-poll-loop';
-import { scheduleAfterFirstPaint } from '@/utils/after-paint';
+import { scheduleAfterFirstPaint, yieldToMain } from '@/utils/after-paint';
 import {
   INTEL_HOTSPOTS,
   CONFLICT_ZONES,
@@ -111,12 +111,6 @@ interface WorldTopology extends Topology {
   objects: {
     countries: GeometryCollection;
   };
-}
-
-// Yield to the main thread (ends the current task) so a long render can be split into
-// sub-50ms tasks — lowers TBT, which deferral alone does not (#4442).
-function yieldToMain(): Promise<void> {
-  return new Promise((resolve) => { setTimeout(resolve, 0); });
 }
 
 export class MapComponent {
