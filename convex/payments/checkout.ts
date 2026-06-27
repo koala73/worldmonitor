@@ -15,6 +15,7 @@ import { internal } from "../_generated/api";
 import { checkout } from "../lib/dodo";
 import { requireUserId, resolveUserIdentity } from "../lib/auth";
 import { signUserId } from "../lib/identitySigning";
+import { resolveProductToPlan } from "../config/productCatalog";
 
 const ACTIVE_SUBSCRIPTION_EXISTS = "ACTIVE_SUBSCRIPTION_EXISTS";
 
@@ -128,6 +129,15 @@ async function _createCheckoutSession(
   const metadata: Record<string, string> = {};
   metadata.wm_user_id = user.userId;
   metadata.wm_user_id_sig = await signUserId(user.userId);
+  // Tier-group bridge for the duplicate-payment guard (#4438): the pending
+  // `payment.processing` webhook echoes `data.metadata.wm_plan_key` and persists
+  // it on the `paymentEvents` row, so a later checkout can resolve a pending
+  // payment to its PRODUCT_CATALOG tierGroup. `resolveProductToPlan` maps the
+  // Dodo product id → planKey (null for unknown products, which we simply skip).
+  const planKey = resolveProductToPlan(args.productId);
+  if (planKey) {
+    metadata.wm_plan_key = planKey;
+  }
   if (args.referralCode) {
     // `affonso_referral` is the Dodo ↔ Affonso vendor-contracted metadata
     // key — Dodo forwards values on this exact key to Affonso's referral-

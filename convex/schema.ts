@@ -624,6 +624,12 @@ export default defineSchema({
     currency: v.string(),
     status: paymentEventStatus,
     dodoSubscriptionId: v.optional(v.string()),
+    // Plan key (e.g. "pro_monthly") threaded through the checkout-session
+    // metadata bridge (metadata.wm_plan_key) so a pending 3DS payment row can be
+    // resolved to its PRODUCT_CATALOG tierGroup for the duplicate-payment guard
+    // (#4438). Optional: legacy rows and sessions created before the bridge
+    // shipped simply have none (the guard fails open for those — see #4438 plan).
+    planKey: v.optional(v.string()),
     rawPayload: v.any(),
     occurredAt: v.number(),
   })

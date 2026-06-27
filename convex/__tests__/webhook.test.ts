@@ -461,6 +461,43 @@ describe("webhook processWebhookEvent", () => {
     },
   );
 
+  // #4438 — the pending-payment dedup guard needs to resolve a pending row to a
+  // tier group. The session-create metadata bridge carries `wm_plan_key` the
+  // same way it carries `wm_user_id`; the webhook persists it on the
+  // `paymentEvents` row so a later checkout can read PRODUCT_CATALOG[planKey].
+  test("payment.processing persists planKey from data.metadata.wm_plan_key", async () => {
+    const t = convexTest(schema, modules);
+
+    const payload = makePaymentPayload("payment.processing", {
+      status: "requires_customer_action",
+      metadata: { wm_user_id: "test-user-001", wm_plan_key: "pro_monthly" },
+    });
+    await processEvent(t, "wh_plankey_proc", "payment.processing", payload, BASE_TIMESTAMP);
+
+    const paymentEvents = await t.run(async (ctx) =>
+      ctx.db.query("paymentEvents").collect(),
+    );
+    expect(paymentEvents).toHaveLength(1);
+    expect(paymentEvents[0].status).toBe("requires_customer_action");
+    expect(paymentEvents[0].planKey).toBe("pro_monthly");
+  });
+
+  // Backward-compat: a session created before this shipped carries no
+  // `wm_plan_key`. The row must still persist (planKey simply undefined) — never
+  // throw — and the guard fails open for that legacy pending payment.
+  test("payment.processing without wm_plan_key persists row with undefined planKey", async () => {
+    const t = convexTest(schema, modules);
+
+    const payload = makePaymentPayload("payment.processing", { status: "processing" });
+    await processEvent(t, "wh_no_plankey", "payment.processing", payload, BASE_TIMESTAMP);
+
+    const paymentEvents = await t.run(async (ctx) =>
+      ctx.db.query("paymentEvents").collect(),
+    );
+    expect(paymentEvents).toHaveLength(1);
+    expect(paymentEvents[0].planKey).toBeUndefined();
+  });
+
   test("payment.cancelled persists a cancelled paymentEvents row", async () => {
     const t = convexTest(schema, modules);
 

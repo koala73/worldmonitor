@@ -980,6 +980,11 @@ export async function handlePaymentOrRefundEvent(
     currency: data.currency ?? "USD",
     status,
     dodoSubscriptionId: data.subscription_id ?? undefined,
+    // Carried from the checkout-session metadata bridge (set in
+    // convex/payments/checkout.ts). Lets the duplicate-payment guard resolve a
+    // pending row to its tierGroup (#4438). Undefined for sessions created
+    // before the bridge shipped or events that drop session metadata.
+    planKey: data.metadata?.wm_plan_key,
     rawPayload: data,
     occurredAt: eventTimestamp,
   });
