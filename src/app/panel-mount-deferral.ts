@@ -1,5 +1,9 @@
 export const INITIAL_PANEL_MOUNT_BUDGET_DESKTOP = 8;
-export const INITIAL_PANEL_MOUNT_BUDGET_MOBILE = 4;
+// Mobile mounts fewer panels eagerly; the rest get IntersectionObserver shells (700px
+// lookahead) and mount before they scroll into view. Lowered 4→3 to trim boot DOM /
+// main-thread work on mobile (#4460 / #4443 U4); the typically 1–2 above-the-fold panels
+// still mount eagerly, so no added skeleton flash.
+export const INITIAL_PANEL_MOUNT_BUDGET_MOBILE = 3;
 
 export interface PanelMountDeferralInput {
   enabled: boolean;

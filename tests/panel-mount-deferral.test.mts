@@ -73,11 +73,13 @@ afterEach(() => {
 describe('panel mount deferral', () => {
   it('uses a smaller initial real-panel budget on mobile', () => {
     assert.equal(getInitialPanelMountBudget(false), 8);
-    assert.equal(getInitialPanelMountBudget(true), 4);
+    assert.equal(getInitialPanelMountBudget(true), 3);
     assert.equal(shouldDeferInitialPanelMount({ enabled: false, mountedEnabledCount: 100, isMobile: false }), false);
     assert.equal(shouldDeferInitialPanelMount({ enabled: true, mountedEnabledCount: 7, isMobile: false }), false);
     assert.equal(shouldDeferInitialPanelMount({ enabled: true, mountedEnabledCount: 8, isMobile: false }), true);
-    assert.equal(shouldDeferInitialPanelMount({ enabled: true, mountedEnabledCount: 4, isMobile: true }), true);
+    // Mobile budget is 3: the first 3 enabled panels mount immediately; the 4th defers.
+    assert.equal(shouldDeferInitialPanelMount({ enabled: true, mountedEnabledCount: 2, isMobile: true }), false);
+    assert.equal(shouldDeferInitialPanelMount({ enabled: true, mountedEnabledCount: 3, isMobile: true }), true);
   });
 
   it('creates inert shells with panel identity but no startup controls', () => {
