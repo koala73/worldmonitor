@@ -59,6 +59,7 @@ import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import type { AuthSession } from '@/services/auth-state';
 import { PanelGateReason, getPanelGateReason, hasPremiumAccess } from '@/services/panel-gating';
 import type { Panel } from '@/components/Panel';
+import type { SupplyChainPanel } from '@/components/SupplyChainPanel';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
 
@@ -1339,12 +1340,13 @@ export class PanelLayoutManager implements AppModule {
     // U3 (#4459): kick off the map chunk fetch HERE but await it only after the ~730
     // lines of panel registration below, so registration runs concurrently with the
     // fetch instead of serialized behind it. This is the restructure the prior canary
-    // comment called for: panel registration is closure-only and every ctx.map use in
-    // it is `?.`-guarded (those run at mount/click, by which point ctx.map exists);
+    // comment called for: panel setup is map-tolerant: callback uses are `?.`-guarded,
+    // and the one eager bridge (SupplyChainPanel -> MapContainer) is replayed below.
     // ctx.currentTimeRange already defaults to '7d' (App.ts:899). The map's direct
-    // uses — construction, the resilienceScore tweak, initEscalationGetters/getTimeRange
-    // and onTimeRangeChanged — are grouped together after the registration block (just
-    // before the onTimeRangeChanged wiring). Failed-fetch reload guard: src/main.ts:690-758.
+    // uses — construction, the supply-chain bridge replay, the resilienceScore tweak,
+    // initEscalationGetters/getTimeRange and onTimeRangeChanged — are grouped together
+    // after the registration block (just before the onTimeRangeChanged wiring).
+    // Failed-fetch reload guard: src/main.ts:690-758.
     const mapModulePromise = import('@/components/MapContainer');
 
     this.createNewsPanel('politics', 'panels.politics');
@@ -2090,6 +2092,11 @@ export class PanelLayoutManager implements AppModule {
       layers: this.ctx.mapLayers,
       timeRange: '7d',
     }, preferGlobe);
+
+    const eagerSupplyChainPanel = this.ctx.panels['supply-chain'] as SupplyChainPanel | undefined;
+    if (eagerSupplyChainPanel) {
+      this.ctx.map.setSupplyChainPanel(eagerSupplyChainPanel);
+    }
 
     if (this.ctx.mapLayers.resilienceScore && !this.ctx.map.isDeckGLActive?.()) {
       this.ctx.mapLayers = { ...this.ctx.mapLayers, resilienceScore: false };
