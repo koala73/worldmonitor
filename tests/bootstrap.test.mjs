@@ -250,10 +250,19 @@ describe('Frontend hydration (src/services/bootstrap.ts)', () => {
     assert.ok(src.includes('catch'), 'Missing error handling — panels should fall through to individual calls');
   });
 
-  it('fetches both tiers in parallel', () => {
-    assert.ok(src.includes('Promise.all'), 'Missing Promise.all for parallel tier fetches');
+  it('awaits only the fast tier; backgrounds the slow tier (#4488 — slow off the boot critical path)', () => {
     assert.ok(src.includes("'slow'"), 'Missing slow tier fetch');
     assert.ok(src.includes("'fast'"), 'Missing fast tier fetch');
+    // The ~410KB slow tier must NOT block first paint: the boot must not await both tiers
+    // together. A regression to `await Promise.all([fetchTier('slow'), fetchTier('fast')])`
+    // re-introduces the LCP-blocking boot this deferral removed.
+    assert.ok(
+      !/await\s+Promise\.all\(\s*\[\s*fetchTier\('slow'/.test(src),
+      'slow tier must not be awaited via Promise.all — background it so it stays off the first-paint critical path',
+    );
+    // Slow tier is fired un-awaited (void); the boot awaits only the fast tier.
+    assert.ok(/void\s+fetchTier\('slow'/.test(src), "slow tier should be fired un-awaited: void fetchTier('slow', …)");
+    assert.ok(/await\s+fetchTier\('fast'/.test(src), "boot should await the fast tier: await fetchTier('fast', …)");
   });
 });
 
@@ -274,6 +283,12 @@ describe('Panel hydration consumers', () => {
   }
 });
 
+// The slow tier is fetched in the BACKGROUND (off the boot critical path, #4488), so any
+// slow-tier consumer that read its hydration WITHOUT an on-demand fetch fallback would break
+// (empty panel). This guard enforces the greppable half — every bootstrap key (incl. all
+// SLOW_KEYS) has a getHydratedData consumer or is allow-listed below. The fetch-on-absence
+// half is a manual audit (a getHydratedData call alone can't prove the adjacent RPC is the
+// fallback); the #4488 audit confirmed every slow-key consumer is hydrated-else-fetch.
 describe('Bootstrap key hydration coverage', () => {
   it('every bootstrap key has a getHydratedData consumer in src/', () => {
     const bootstrapSrc = readFileSync(join(root, 'api', 'bootstrap.js'), 'utf-8');

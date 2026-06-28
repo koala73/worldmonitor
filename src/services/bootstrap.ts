@@ -154,7 +154,21 @@ async function fetchTier(tier: 'fast' | 'slow', signal: AbortSignal): Promise<Bo
   return tierState;
 }
 
-export async function fetchBootstrapData(): Promise<void> {
+/**
+ * Hydrate the in-memory cache from the bootstrap endpoint.
+ *
+ * The boot awaits ONLY the small fast tier — the ~410 KB slow tier is fetched in the
+ * BACKGROUND so it no longer blocks first paint (#4488; it was the largest item on the
+ * boot critical path and a primary driver of the field LCP failure). Slow-tier consumers
+ * read `getHydratedData()` and fall back to an on-demand fetch when a key is absent, so
+ * deferring the slow batch only shifts more reads onto that existing fallback — no
+ * consumer depends on slow hydration being present at boot.
+ *
+ * `onSlowSettled` lets the caller (App.ts) re-snapshot the hydration state and refresh
+ * the connectivity indicator when the background slow tier lands — `getBootstrapHydrationState`
+ * is read via a one-shot snapshot, with no reactive emitter, so a passive update is invisible.
+ */
+export async function fetchBootstrapData(onSlowSettled?: () => void): Promise<void> {
   hydrationCache.clear();
   lastHydrationState = {
     source: 'none',
@@ -179,21 +193,32 @@ export async function fetchBootstrapData(): Promise<void> {
   const fastTimeout = setTimeout(() => fastCtrl.abort(), desktop ? 5_000 : 1_200);
   const slowTimeout = setTimeout(() => slowCtrl.abort(), desktop ? 8_000 : 3_000);
 
-  try {
-    const [slowState, fastState] = await Promise.all([
-      fetchTier('slow', slowCtrl.signal),
-      fetchTier('fast', fastCtrl.signal),
-    ]);
+  // Background slow tier: owns its OWN timeout cleanup (NOT the fast `finally` below) so the
+  // 3 s/8 s abort survives this function returning after the fast tier. Both updates do a
+  // read-merge-write of `lastHydrationState` (single-threaded microtasks, so no torn state),
+  // so they compose regardless of which tier resolves first.
+  void fetchTier('slow', slowCtrl.signal)
+    .then((slowState) => {
+      lastHydrationState = {
+        source: combineHydrationSources([lastHydrationState.tiers.fast, slowState]),
+        tiers: { fast: lastHydrationState.tiers.fast, slow: slowState },
+      };
+    })
+    .catch(() => {
+      // Background failure: leave the slow keys un-hydrated; consumers refetch on demand.
+    })
+    .finally(() => {
+      clearTimeout(slowTimeout);
+      onSlowSettled?.();
+    });
 
+  try {
+    const fastState = await fetchTier('fast', fastCtrl.signal);
     lastHydrationState = {
-      source: combineHydrationSources([fastState, slowState]),
-      tiers: {
-        fast: fastState,
-        slow: slowState,
-      },
+      source: combineHydrationSources([fastState, lastHydrationState.tiers.slow]),
+      tiers: { fast: fastState, slow: lastHydrationState.tiers.slow },
     };
   } finally {
     clearTimeout(fastTimeout);
-    clearTimeout(slowTimeout);
   }
 }

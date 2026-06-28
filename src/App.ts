@@ -1207,8 +1207,13 @@ export class App {
       await ensureWmSession();
     }
 
-    // Hydrate in-memory cache from bootstrap endpoint (before panels construct and fetch)
-    await fetchBootstrapData();
+    // Hydrate in-memory cache from bootstrap endpoint. Awaits only the fast tier; the slow
+    // tier loads in the background (off the first-paint critical path, #4488) and calls back
+    // when it lands so the connectivity indicator re-snapshots (no reactive emitter exists).
+    await fetchBootstrapData(() => {
+      this.bootstrapHydrationState = getBootstrapHydrationState();
+      this.updateConnectivityUi();
+    });
     this.bootstrapHydrationState = getBootstrapHydrationState();
 
     // Verify OAuth OTT and hydrate auth session BEFORE any UI subscribes to auth state
