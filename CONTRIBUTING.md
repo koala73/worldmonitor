@@ -245,6 +245,14 @@ make install-plugins   # Install sebuf protoc-gen plugins (requires Go)
 
 The pinned sebuf version is set by `SEBUF_VERSION` in the `Makefile` (currently **v0.11.1**). All three plugins — `protoc-gen-ts-client`, `protoc-gen-ts-server`, `protoc-gen-openapiv3` — must be installed from the same sebuf release. If you see codegen drift after pulling, rerun `make install-plugins` to resync.
 
+### Generated Artifacts in Pull Requests
+
+`make generate` writes generated files under `src/generated/` and `docs/api/`. These files remain committed to the repository, but they should never be edited by hand.
+
+For pull requests created from branches in this repository, CI runs `make generate` on the PR branch and automatically pushes a `chore(proto): update generated artifacts` commit when generated files drift. A follow-up CI job then checks the pull request merge result so generated files cannot be stale relative to the current base branch.
+
+For pull requests created from forks, CI does not execute the fork's `Makefile`, `buf.gen.yaml`, or code generator configuration. In that case, run `make generate` locally and commit any changes under `src/generated/` and `docs/api/` yourself before requesting review. Maintainers can run the full freshness check from an internal branch when needed.
+
 ### OpenAPI Output
 
 `make generate` (i.e. `cd proto && buf generate`) produces:
