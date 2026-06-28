@@ -10,6 +10,7 @@ const panelsSrc = readFileSync(resolve(__dirname, '../src/config/panels.ts'), 'u
 const commandsSrc = readFileSync(resolve(__dirname, '../src/config/commands.ts'), 'utf-8');
 
 const VARIANT_FILES = ['full', 'tech', 'finance', 'commodity', 'energy', 'happy'];
+const PANEL_WIDE_CLASS_RE = /className:\s*['"][^'"]*\bpanel-wide\b/;
 
 // Depth-aware extraction of the TOP-LEVEL keys of a `const X_PANELS = { ... }`
 // object literal — i.e. the panel ids, not nested config keys like
@@ -191,7 +192,7 @@ function naturalDeferredPanelFootprints() {
       const id = body.match(/id:\s*['"]([^'"]+)['"]/);
       if (!id) continue;
       const rowSpan = body.match(/defaultRowSpan:\s*([2-4])/);
-      const panelWide = /className:\s*['"][^'"]*\bpanel-wide\b/.test(body);
+      const panelWide = PANEL_WIDE_CLASS_RE.test(body);
       if (!rowSpan && !panelWide) continue;
       footprints.set(id[1], { file, rowSpan: rowSpan ? rowSpan[1] : null, panelWide });
     }
@@ -311,7 +312,7 @@ describe('panel-config guardrails', () => {
       if (footprint.rowSpan && !entry.includes('rowSpan: ' + footprint.rowSpan)) {
         mismatches.push(panelId + ' (' + footprint.file + ') missing rowSpan: ' + footprint.rowSpan);
       }
-      if (footprint.panelWide && !entry.includes('className: \'panel-wide\'')) {
+      if (footprint.panelWide && !PANEL_WIDE_CLASS_RE.test(entry)) {
         mismatches.push(panelId + ' (' + footprint.file + ') missing panel-wide className');
       }
     }
@@ -326,7 +327,7 @@ describe('panel-config guardrails', () => {
       if (registeredRowSpan && registeredRowSpan[1] !== footprint.rowSpan) {
         mismatches.push(panelId + ' registry rowSpan ' + registeredRowSpan[1] + ' does not match constructor footprint');
       }
-      const registeredPanelWide = entry.includes('className: \'panel-wide\'');
+      const registeredPanelWide = PANEL_WIDE_CLASS_RE.test(entry);
       if (registeredPanelWide !== footprint.panelWide) {
         mismatches.push(panelId + ' registry panel-wide className does not match constructor footprint');
       }

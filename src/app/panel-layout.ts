@@ -4,6 +4,7 @@ import { replayPendingCalls, clearAllPendingCalls } from '@/app/pending-panel-da
 import {
   createDeferredPanelShell,
   getDeferredPanelShellFootprint as resolveDeferredPanelShellFootprint,
+  reconcileDeferredPanelShellColSpan,
   shouldDeferInitialPanelMount,
   type DeferredPanelShellFootprint,
 } from '@/app/panel-mount-deferral';
@@ -1251,6 +1252,7 @@ export class PanelLayoutManager implements AppModule {
       : null;
     if (placeholder && grid) {
       this.insertByOrder(grid, placeholder, key);
+      reconcileDeferredPanelShellColSpan(placeholder);
       this.mobilePanelNav?.applyToNewPanel(placeholder);
     }
     const existing = this.deferredPanelMounts.get(key);

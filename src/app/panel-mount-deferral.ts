@@ -24,6 +24,7 @@ export interface DeferredPanelShellFootprintInput {
   savedColSpans?: Readonly<Record<string, number>>;
 }
 
+const PANELS_GRID_MIN_TRACK_PX = 280;
 const CONTROL_SELECTOR = [
   'button',
   'input',
@@ -48,6 +49,46 @@ function addClassTokens(element: HTMLElement, className: string | undefined): vo
   for (const token of className.split(/\s+/)) {
     if (token) element.classList.add(token);
   }
+}
+
+function getColSpanClass(element: HTMLElement): number | undefined {
+  if (element.classList.contains('col-span-3')) return 3;
+  if (element.classList.contains('col-span-2')) return 2;
+  if (element.classList.contains('col-span-1')) return 1;
+  return undefined;
+}
+
+function setColSpanClass(element: HTMLElement, span: number): void {
+  element.classList.remove('col-span-1', 'col-span-2', 'col-span-3');
+  element.classList.add('col-span-' + span);
+}
+
+function getGridColumnCount(element: HTMLElement): number {
+  const grid = (element.closest('.panels-grid') || element.closest('.map-bottom-grid')) as HTMLElement | null;
+  if (!grid || typeof window === 'undefined') return 3;
+  const style = window.getComputedStyle(grid);
+  const template = style.gridTemplateColumns;
+  if (!template || template === 'none') return 3;
+
+  if (template.includes('repeat(')) {
+    const repeatCountMatch = template.match(/repeat\(\s*(\d+)\s*,/i);
+    if (repeatCountMatch) {
+      const parsed = Number.parseInt(repeatCountMatch[1] ?? '0', 10);
+      if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
+
+    const autoRepeatMatch = template.match(/repeat\(\s*auto-(fill|fit)\s*,/i);
+    if (autoRepeatMatch) {
+      const gap = Number.parseFloat(style.columnGap || '0') || 0;
+      const width = grid.getBoundingClientRect().width;
+      if (width > 0) {
+        return Math.max(1, Math.floor((width + gap) / (PANELS_GRID_MIN_TRACK_PX + gap)));
+      }
+    }
+  }
+
+  const columns = template.trim().split(/\s+/).filter(Boolean);
+  return columns.length > 0 ? columns.length : 3;
 }
 
 export function getInitialPanelMountBudget(isMobile: boolean): number {
@@ -122,6 +163,17 @@ export function createDeferredPanelShell(
   shell.appendChild(header);
   shell.appendChild(content);
   return shell;
+}
+
+export function reconcileDeferredPanelShellColSpan(shell: HTMLElement): void {
+  const currentSpan = getColSpanClass(shell);
+  if (currentSpan === undefined) return;
+
+  const maxSpan = Math.max(1, Math.min(3, getGridColumnCount(shell)));
+  const clampedSpan = Math.max(1, Math.min(maxSpan, currentSpan));
+  if (clampedSpan !== currentSpan) {
+    setColSpanClass(shell, clampedSpan);
+  }
 }
 
 export function countInteractiveControls(root: ParentNode): number {
