@@ -24,13 +24,32 @@ const EAGER_SERVICE_FILES = [
   'src/services/satellites.ts',
 ];
 
-// Matches an eager module/function-scope assignment `… = new IntelligenceServiceClient(`.
-// The lazy factory form `createLazyClient(() => new IntelligenceServiceClient(` does NOT
-// match: the char before `new` there is `>` (from `=>`), not `=` + whitespace.
-const EAGER_CONSTRUCTION = /=\s*new IntelligenceServiceClient\(/;
+// Matches a direct eager assignment without crossing string-literal quotes.
+const EAGER_CONSTRUCTION = /^[^'"`\n]*=\s*new IntelligenceServiceClient\(/m;
 const LAZY_FACTORY = /createLazyClient\(\(\)\s*=>\s*new IntelligenceServiceClient\(/;
 
+function stripComments(src) {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\n]*/g, '');
+}
+
 describe('main.js eager diet — service clients are lazy-initialized', () => {
+  it('does not flag line-commented examples of the eager pattern', () => {
+    const commentedExample = '// was: const client = new IntelligenceServiceClient(getRpcBaseUrl(), {})';
+    assert.doesNotMatch(stripComments(commentedExample), EAGER_CONSTRUCTION);
+  });
+
+  it('does not flag string-literal examples of the eager pattern', () => {
+    const stringExample = 'const example = "was: = new IntelligenceServiceClient(getRpcBaseUrl(), {})";';
+    assert.doesNotMatch(stripComments(stringExample), EAGER_CONSTRUCTION);
+  });
+
+  it('still flags direct eager client declarations', () => {
+    const eagerDeclaration = 'const client: IntelligenceServiceClient = new IntelligenceServiceClient(getRpcBaseUrl(), {})';
+    assert.match(stripComments(eagerDeclaration), EAGER_CONSTRUCTION);
+  });
+
   for (const rel of EAGER_SERVICE_FILES) {
     const source = readFileSync(resolve(repoRoot, rel), 'utf8');
 
@@ -52,7 +71,7 @@ describe('main.js eager diet — service clients are lazy-initialized', () => {
 
     it(`${rel} has no module-scope eager "new IntelligenceServiceClient"`, () => {
       assert.doesNotMatch(
-        source,
+        stripComments(source),
         EAGER_CONSTRUCTION,
         `${rel} must not assign "new IntelligenceServiceClient(...)" directly — that runs the constructor at boot`,
       );
