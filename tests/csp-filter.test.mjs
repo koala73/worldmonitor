@@ -96,6 +96,26 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
     });
   });
 
+  describe('media-src tts.baidu.com extension injection — WORLDMONITOR-TW', () => {
+    // Baidu read-aloud / TTS extensions inject `<audio src="http://tts.baidu.com/
+    // text2audio?...&text=...">` to speak page content. http: mixed-content the
+    // CSP correctly blocks; we never load tts.baidu.com, so it is third-party
+    // noise. Host-pinned (not protocol-gated) — works even with cspMediaSrcAllowsHttps
+    // false because the http: block can never originate from our own bundle.
+    it('suppresses http: media-src for tts.baidu.com regardless of policy detection', () => {
+      assert.ok(suppress('enforce', 'media-src', 'http://tts.baidu.com/text2audio?lan=en&text=hello', '', false, null, false));
+      assert.ok(suppress('enforce', 'media-src', 'http://tts.baidu.com/text2audio?lan=en&text=hello', '', false, null, true));
+    });
+
+    it('does NOT suppress a tts.baidu.com.evil.com lookalike host', () => {
+      assert.ok(!suppress('enforce', 'media-src', 'http://tts.baidu.com.evil.com/text2audio?text=x', '', false, null, true));
+    });
+
+    it('does NOT suppress http: media-src for an unrelated host (real mixed-content)', () => {
+      assert.ok(!suppress('enforce', 'media-src', 'http://insecure.example.com/stream.m3u8', '', false, null, true));
+    });
+  });
+
   describe('default-src HTTP mixed-content suppression — WORLDMONITOR-S0', () => {
     // Browser link-prefetch / extension fetching a feed-supplied http article
     // URL; falls to the default-src fallback (no prefetch-src set). HTTPS-only

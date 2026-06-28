@@ -77,6 +77,23 @@ function shouldSuppressCspViolation(
       if (new URL(blockedURI).protocol === 'https:') return true;
     } catch { /* scheme-only values fall through */ }
   }
+  // Baidu read-aloud / TTS browser extensions (common in the Chinese market)
+  // inject an `<audio src="http://tts.baidu.com/text2audio?...&text=<selected
+  // text>">` element to speak page content when the user clicks/selects it. We
+  // never load tts.baidu.com (it appears nowhere in src) and our media-src
+  // allows only `'self' data: blob: https:`, so this http: load is third-party
+  // mixed-content the CSP correctly blocks — the audio never plays regardless of
+  // our code. UNLIKE the https: media-src rule above this is NOT protocol-gated
+  // on policy detection: it is host-pinned to an exact third-party hostname we
+  // provably never reference, so suppressing its http: block cannot mask a
+  // first-party mixed-content regression (we ship no http:// media). Parsed
+  // hostname match (not substring) so a `tts.baidu.com.evil.com` lookalike still
+  // surfaces (WORLDMONITOR-TW — map-popup description read-aloud, 1 user).
+  if (directive === 'media-src') {
+    try {
+      if (new URL(blockedURI).hostname === 'tts.baidu.com') return true;
+    } catch { /* scheme-only values fall through */ }
+  }
   // default-src + HTTP: mixed-content block on a fetch type we set no explicit
   // directive for — i.e. browser link-prefetch ("Preload pages" speculation) or
   // an extension article-prefetcher. News article links render as plain

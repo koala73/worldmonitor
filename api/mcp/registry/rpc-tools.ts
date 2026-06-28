@@ -279,7 +279,21 @@ export const RPC_TOOLS: ToolDef[] = [
         body: briefBody,
         signal: AbortSignal.timeout(22_000),
       });
-      if (!res.ok) throw new Error(`get-country-intel-brief HTTP ${res.status}`);
+      if (!res.ok) {
+        // Surface the gateway's error code in the thrown message so Sentry
+        // groups the failure by ROOT CAUSE, not just status. This is the only
+        // tool that appends its own `?context=` query param to the signed URL,
+        // so a residual internal-HMAC drift (canonicalisation / URL-length
+        // truncation in transit) surfaces as `invalid_internal_mcp_signature`,
+        // while an expired/free caller surfaces as `insufficient_entitlement`
+        // — previously indistinguishable from the bare `HTTP 401`
+        // (WORLDMONITOR-T8 — recurred after the 2026-06-12 ?rpc-echo fix). Body
+        // read is best-effort; a read failure must not mask the status.
+        const detail = await res.text().catch(() => '');
+        let code = '';
+        try { code = String((JSON.parse(detail) as { error?: unknown }).error ?? ''); } catch { code = detail.slice(0, 120); }
+        throw new Error(`get-country-intel-brief HTTP ${res.status}${code ? `: ${code}` : ''}`);
+      }
       const result = await res.json() as Record<string, unknown>;
       const resultSources = collectMcpBriefSources(Array.isArray(result.sources) ? result.sources as DigestItemForBrief[] : [], 6);
       return { ...result, sources: resultSources.length > 0 ? resultSources : sources };
