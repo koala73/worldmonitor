@@ -85,7 +85,14 @@ import { initDeferredDashboardFonts } from '@/bootstrap/secondary-startup';
 
 import { computeDefaultDisabledSources, getLocaleBoostedSources, getTotalFeedCount, FEEDS, INTEL_SOURCES } from '@/config/feeds';
 import { selectSourcesUnderCap, findFullyDisabledCategories } from '@/services/source-cap';
-import { fetchBootstrapData, getBootstrapHydrationState, markBootstrapAsLive, type BootstrapHydrationState } from '@/services/bootstrap';
+import {
+  cancelBootstrapSlowTier,
+  fetchBootstrapData,
+  getBootstrapHydrationState,
+  markBootstrapAsLive,
+  waitForBootstrapSlowTier,
+  type BootstrapHydrationState,
+} from '@/services/bootstrap';
 import { ensureWmSession, installWmSessionFetchInterceptor } from '@/services/wm-session';
 import { describeFreshness } from '@/services/persistent-cache';
 import { DesktopUpdater } from '@/app/desktop-updater';
@@ -1211,6 +1218,7 @@ export class App {
     // tier loads in the background (off the first-paint critical path, #4488) and calls back
     // when it lands so the connectivity indicator re-snapshots (no reactive emitter exists).
     await fetchBootstrapData(() => {
+      if (this.state.isDestroyed) return;
       this.bootstrapHydrationState = getBootstrapHydrationState();
       this.updateConnectivityUi();
     });
@@ -1448,6 +1456,10 @@ export class App {
     // Phase 6: Data loading
     this.dataLoader.syncDataFreshnessWithLayers();
     await preloadCountryGeometry();
+    await waitForBootstrapSlowTier(isDesktopRuntime() ? 8_500 : 3_500);
+    if (this.state.isDestroyed) return;
+    this.bootstrapHydrationState = getBootstrapHydrationState();
+    this.updateConnectivityUi();
     // Prime panel-specific data concurrently with bulk loading.
     // primeVisiblePanelData owns ETF, Stablecoins, Gulf Economies, etc. that
     // are NOT part of loadAllData. Running them in parallel prevents those
@@ -1625,6 +1637,7 @@ export class App {
 
   public destroy(): void {
     this.state.isDestroyed = true;
+    cancelBootstrapSlowTier();
     window.removeEventListener('scroll', this.handleViewportPrime);
     window.removeEventListener('resize', this.handleViewportPrime);
     window.removeEventListener('online', this.handleConnectivityChange);

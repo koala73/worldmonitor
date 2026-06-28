@@ -232,7 +232,7 @@ describe('Frontend hydration (src/services/bootstrap.ts)', () => {
       .map((m) => parseInt(m[1].replace(/_/g, ''), 10))
       .filter((n) => n === 1200 || n === 3000);
     assert.deepEqual(
-      timeouts,
+      timeouts.toSorted((a, b) => a - b),
       [1200, 3000],
       `Expected web bootstrap timeouts (fast=1200, slow=3000) — slow tier was bumped from 1.8s to 3.0s to avoid hydration-cascade aborts`,
     );
@@ -260,9 +260,38 @@ describe('Frontend hydration (src/services/bootstrap.ts)', () => {
       !/await\s+Promise\.all\(\s*\[\s*fetchTier\('slow'/.test(src),
       'slow tier must not be awaited via Promise.all — background it so it stays off the first-paint critical path',
     );
-    // Slow tier is fired un-awaited (void); the boot awaits only the fast tier.
-    assert.ok(/void\s+fetchTier\('slow'/.test(src), "slow tier should be fired un-awaited: void fetchTier('slow', …)");
+    // Slow tier is scheduled only after the fast state is committed.
+    assert.ok(src.includes('scheduleSlowTierFetch'), 'slow tier should be scheduled through the deferred slow-tier helper');
+    assert.ok(src.includes('slowTierSettled = scheduleSlowTierFetch'), 'fetchBootstrapData should expose the background slow-tier checkpoint');
     assert.ok(/await\s+fetchTier\('fast'/.test(src), "boot should await the fast tier: await fetchTier('fast', …)");
+  });
+
+  it('guards stale slow-tier generations before committing cache or hydration state', () => {
+    assert.ok(src.includes('bootstrapGeneration'), 'Missing bootstrap generation guard');
+    assert.ok(src.includes('isCurrentGeneration'), 'Missing current-generation predicate');
+    assert.ok(src.includes('fetchTier(') && src.includes('shouldCommit'), 'fetchTier should receive a commit guard');
+  });
+});
+
+describe('App bootstrap slow-tier lifecycle', () => {
+  const appSrc = readFileSync(join(root, 'src', 'App.ts'), 'utf-8');
+
+  it('does not update connectivity UI from a slow callback after destroy', () => {
+    assert.match(
+      appSrc,
+      /fetchBootstrapData\(\(\) => \{\s*if \(this\.state\.isDestroyed\) return;\s*this\.bootstrapHydrationState = getBootstrapHydrationState\(\);\s*this\.updateConnectivityUi\(\);/s,
+      'slow-tier callback should bail out after App.destroy()',
+    );
+    assert.ok(appSrc.includes('cancelBootstrapSlowTier();'), 'App.destroy() should cancel pending slow bootstrap work');
+  });
+
+  it('waits for the slow-tier checkpoint before visible data fan-out', () => {
+    const preloadIndex = appSrc.indexOf('await preloadCountryGeometry();');
+    const waitIndex = appSrc.indexOf('await waitForBootstrapSlowTier');
+    const fanoutIndex = appSrc.indexOf('this.dataLoader.loadAllData()', waitIndex);
+    assert.ok(preloadIndex >= 0, 'Missing preloadCountryGeometry checkpoint');
+    assert.ok(waitIndex > preloadIndex, 'slow-tier wait should run after non-render-blocking geometry preload');
+    assert.ok(fanoutIndex > waitIndex, 'visible data fan-out should wait for slow bootstrap settle/timeout');
   });
 });
 
