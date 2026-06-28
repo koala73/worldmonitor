@@ -16,11 +16,11 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@fastify/cors": "^9.0.1",
+    "@fastify/cors": "^11.2.0",
     "dotenv": "^16.4.5",
     "exa-js": "^1.7.0",
-    "fastify": "^4.28.1",
-    "js-yaml": "^4.1.0",
+    "fastify": "^5.8.5",
+    "js-yaml": "^4.3.0",
     "jsdom": "^25.0.1",
     "pg": "^8.13.1",
     "pino": "^9.4.0",
