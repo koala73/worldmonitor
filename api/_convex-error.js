@@ -118,6 +118,13 @@ export function extractConvexErrorKind(err, msg) {
   // classifier tags these `convex_worker_overloaded` so they stay queryable
   // apart from genuine ServiceUnavailable 503s and InternalServerError 500s.
   if (hasConvexCode(msg, 'WorkerOverloaded')) return 'SERVICE_UNAVAILABLE';
+  // Convex generic platform/internal 5xx: when the SDK receives only an
+  // opaque request-id wrapper (`[Request ID: X] Server Error`) with no
+  // machine-readable `code` JSON and no structured ConvexError data, treat
+  // it like the recognized Convex platform 5xx family above. Keep the
+  // matcher exact-ish so unrelated free-form server errors still fall
+  // through to the unknown/500 path.
+  if (/^\[Request ID:\s*[a-f0-9]+\]\s*Server Error$/i.test(msg)) return 'SERVICE_UNAVAILABLE';
   if (msg.includes('CONFLICT')) return 'CONFLICT';
   if (msg.includes('BLOB_TOO_LARGE')) return 'BLOB_TOO_LARGE';
   if (msg.includes('UNAUTHENTICATED')) return 'UNAUTHENTICATED';
