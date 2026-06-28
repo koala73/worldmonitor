@@ -451,7 +451,7 @@ async function handleCallTool(req: Request, cors: Record<string, string>, meta: 
   const result = isSseTransport(serverUrl)
     ? await mcpCallToolSse(serverUrl, toolName, toolArgs || {}, customHeaders || {})
     : await mcpCallTool(serverUrl, toolName, toolArgs || {}, customHeaders || {});
-  return jsonResponse({ result }, 200, { ...cors, 'Cache-Control': 'no-store' });
+  return jsonResponse({ result }, 200, cors);
 }
 
 export default async function handler(req) {
@@ -519,14 +519,14 @@ export default async function handler(req) {
       }),
       {
         status: 429,
-        headers: {
+        headers: withProxyNoStore({
           'Content-Type': 'application/json',
           'X-RateLimit-Limit': String(scoped.limit),
           'X-RateLimit-Remaining': '0',
           'X-RateLimit-Reset': String(scoped.reset),
           'Retry-After': String(retryAfter),
           ...cors,
-        },
+        }),
       },
     );
   }

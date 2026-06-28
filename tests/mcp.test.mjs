@@ -177,6 +177,24 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assertNoStore(invalidMethod, 'JSON-RPC error');
   });
 
+  it('SSE-upgraded success carries no-store, no-transform and preserves the session id', async () => {
+    // Accept: text/event-stream makes maybeStreamJsonRpcResponse upgrade the 200
+    // initialize reply to an SSE stream. The streamed reply (which carries the
+    // tool/resource result data on tools/call) must keep no-transform for framing
+    // AND now carry no-store so the payload is not cached, and still expose the
+    // Mcp-Session-Id through the SSE envelope.
+    const res = await handler(makeReq('POST', initBody(40), { Accept: 'text/event-stream' }));
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('Content-Type') ?? '', /text\/event-stream/, 'must upgrade to an SSE stream');
+    assert.equal(
+      res.headers.get('Cache-Control'),
+      'no-store, no-transform',
+      'SSE success must be no-store (payload not cached) + no-transform (SSE framing preserved)',
+    );
+    assert.ok(res.headers.get('mcp-session-id'), 'Mcp-Session-Id must survive the SSE envelope');
+    await res.body?.cancel();
+  });
+
   // --- logging/setLevel ---
 
   it('logging/setLevel with valid level returns success', async () => {

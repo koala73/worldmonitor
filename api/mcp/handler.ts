@@ -122,7 +122,10 @@ function replayEventsAfter(sessionId: string, lastEventId: string): StoredSseEve
 function sseHeadersFrom(headers: Headers): Headers {
   const out = new Headers(headers);
   out.set('Content-Type', SSE_CONTENT_TYPE);
-  out.set('Cache-Control', 'no-cache, no-transform');
+  // no-store forbids storing the (sensitive Pro tool-result) payload, matching the
+  // no-store the JSON branches carry; no-transform stays load-bearing for SSE (it
+  // blocks proxy gzip/buffering that would corrupt the event-stream framing).
+  out.set('Cache-Control', 'no-store, no-transform');
   return out;
 }
 
@@ -187,7 +190,9 @@ function handleSseReplay(req: Request, corsHeaders: Record<string, string>): Res
 
   return new Response(createSseStream(events), {
     status: 200,
-    headers: { 'Content-Type': SSE_CONTENT_TYPE, 'Cache-Control': 'no-cache, no-transform', ...corsHeaders },
+    // no-store, no-transform: the replay carries previously-streamed tool-result
+    // data; no-store forbids caching it, no-transform preserves SSE framing.
+    headers: { 'Content-Type': SSE_CONTENT_TYPE, 'Cache-Control': 'no-store, no-transform', ...corsHeaders },
   });
 }
 
