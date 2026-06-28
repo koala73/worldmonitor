@@ -84,7 +84,12 @@ type SignalAggregator = typeof import('@/services/signal-aggregator').signalAggr
 let signalAggregatorPromise: Promise<SignalAggregator> | null = null;
 
 function getSignalAggregator(): Promise<SignalAggregator> {
-  signalAggregatorPromise ??= import('@/services/signal-aggregator').then(module => module.signalAggregator);
+  signalAggregatorPromise ??= import('@/services/signal-aggregator')
+    .then(module => module.signalAggregator)
+    .catch((err) => {
+      signalAggregatorPromise = null;
+      throw err;
+    });
   return signalAggregatorPromise;
 }
 
@@ -185,7 +190,10 @@ export class CountryIntelManager implements AppModule {
     this.ctx.countryBriefPage = new CountryDeepDivePanel(this.ctx.map);
     this.ctx.countryBriefPage.setShareStoryHandler((code, name) => {
       this.ctx.countryBriefPage?.hide();
-      void this.openCountryStory(code, name);
+      void this.openCountryStory(code, name).catch((err) => {
+        console.error('[CountryStory] Failed to open story:', err);
+        this.showToast('Country story failed to open. Please try again.');
+      });
     });
     this.ctx.countryBriefPage.setExportImageHandler(async (code, name) => {
       try {

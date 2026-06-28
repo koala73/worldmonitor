@@ -40,6 +40,13 @@ const COUNTRY_INTEL_DEFERRED_SERVICE_IMPORTS = [
   '@/services/signal-aggregator',
 ];
 
+const DATA_LOADER_LAZY_PROMISE_SLOTS = [
+  'dailyMarketBriefModulePromise',
+  'rssModulePromise',
+  'signalAggregatorPromise',
+  'ingestHeadlinesPromise',
+];
+
 // Matches a direct eager assignment without crossing string-literal quotes.
 const EAGER_CONSTRUCTION = /^[^'"`\n]*=\s*new IntelligenceServiceClient\(/m;
 const LAZY_FACTORY = /createLazyClient\(\(\)\s*=>\s*new IntelligenceServiceClient\(/;
@@ -139,6 +146,15 @@ describe('main.js eager diet — data-loader service tail is lazy-loaded', () =>
       'RSS fallback exports pull rss.ts and its enrichment imports into the eager data-loader graph; use getRssModule() instead',
     );
   });
+
+  it('clears cached lazy-load promises on rejection so later calls can retry', () => {
+    for (const slot of DATA_LOADER_LAZY_PROMISE_SLOTS) {
+      assert.ok(
+        withoutComments.includes(`${slot} = null;`),
+        `${slot} should be reset in its import().catch() path`,
+      );
+    }
+  });
 });
 
 describe('main.js eager diet — country-intel service tail is lazy-loaded', () => {
@@ -160,5 +176,12 @@ describe('main.js eager diet — country-intel service tail is lazy-loaded', () 
         `country-intel should lazy-load ${specifier} with import()`,
       );
     }
+  });
+
+  it('clears the cached signal-aggregator promise on rejection so later country actions can retry', () => {
+    assert.ok(
+      withoutComments.includes('signalAggregatorPromise = null;'),
+      'country-intel signalAggregatorPromise should be reset in its import().catch() path',
+    );
   });
 });

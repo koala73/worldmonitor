@@ -279,22 +279,38 @@ let signalAggregatorPromise: Promise<SignalAggregator> | null = null;
 let ingestHeadlinesPromise: Promise<(headlines: TrendingHeadlineInput[]) => void> | null = null;
 
 function getDailyMarketBriefModule(): Promise<DailyMarketBriefModule> {
-  dailyMarketBriefModulePromise ??= import('@/services/daily-market-brief');
+  dailyMarketBriefModulePromise ??= import('@/services/daily-market-brief').catch((err) => {
+    dailyMarketBriefModulePromise = null;
+    throw err;
+  });
   return dailyMarketBriefModulePromise;
 }
 
 function getRssModule(): Promise<RssModule> {
-  rssModulePromise ??= import('@/services/rss');
+  rssModulePromise ??= import('@/services/rss').catch((err) => {
+    rssModulePromise = null;
+    throw err;
+  });
   return rssModulePromise;
 }
 
 function getSignalAggregator(): Promise<SignalAggregator> {
-  signalAggregatorPromise ??= import('@/services/signal-aggregator').then(module => module.signalAggregator);
+  signalAggregatorPromise ??= import('@/services/signal-aggregator')
+    .then(module => module.signalAggregator)
+    .catch((err) => {
+      signalAggregatorPromise = null;
+      throw err;
+    });
   return signalAggregatorPromise;
 }
 
 async function ingestTrendingHeadlines(headlines: TrendingHeadlineInput[]): Promise<void> {
-  ingestHeadlinesPromise ??= import('@/services/trending-keywords').then(module => module.ingestHeadlines);
+  ingestHeadlinesPromise ??= import('@/services/trending-keywords')
+    .then(module => module.ingestHeadlines)
+    .catch((err) => {
+      ingestHeadlinesPromise = null;
+      throw err;
+    });
   const ingestHeadlines = await ingestHeadlinesPromise;
   ingestHeadlines(headlines);
 }
@@ -2422,8 +2438,9 @@ export class DataLoaderManager implements AppModule {
         ingestFlights(flightData.flights);
         ingestVessels(vesselData.vessels);
         ingestMilitaryForCII(flightData.flights, vesselData.vessels);
-        (await getSignalAggregator()).ingestFlights(flightData.flights);
-        (await getSignalAggregator()).ingestVessels(vesselData.vessels);
+        const aggregator = await getSignalAggregator();
+        aggregator.ingestFlights(flightData.flights);
+        aggregator.ingestVessels(vesselData.vessels);
         dataFreshness.recordUpdate('opensky', flightData.flights.length);
         updateAndCheck([
           { type: 'military_flights', region: 'global', count: flightData.flights.length },
@@ -2950,8 +2967,9 @@ export class DataLoaderManager implements AppModule {
       ingestFlights(flightData.flights);
       ingestVessels(vesselData.vessels);
       ingestMilitaryForCII(flightData.flights, vesselData.vessels);
-      (await getSignalAggregator()).ingestFlights(flightData.flights);
-      (await getSignalAggregator()).ingestVessels(vesselData.vessels);
+      const aggregator = await getSignalAggregator();
+      aggregator.ingestFlights(flightData.flights);
+      aggregator.ingestVessels(vesselData.vessels);
       updateAndCheck([
         { type: 'military_flights', region: 'global', count: flightData.flights.length },
         { type: 'vessels', region: 'global', count: vesselData.vessels.length },

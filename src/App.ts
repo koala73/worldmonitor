@@ -949,7 +949,12 @@ export class App {
     });
 
     this.panelLayout = new PanelLayoutManager(this.state, {
-      openCountryStory: (code, name) => { void this.countryIntel.openCountryStory(code, name); },
+      openCountryStory: (code, name) => {
+        void this.countryIntel.openCountryStory(code, name).catch((err) => {
+          console.error('[CountryStory] Failed to open story:', err);
+          showToast('Country story failed to open. Please try again.');
+        });
+      },
       openCountryBrief: (code) => {
         const name = CountryIntelManager.resolveCountryName(code);
         void this.countryIntel.openCountryBriefByCode(code, name);
