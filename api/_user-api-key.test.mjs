@@ -82,7 +82,7 @@ async function withMockedConvex(fn, options = {}) {
     }
 
     if (url.endsWith('/api/internal-validate-api-key')) {
-      return new Response(JSON.stringify({ id: 'key_1', userId: 'user_api_owner', name: 'pipeline' }), {
+      return new Response(JSON.stringify({ keyId: 'key_1', userId: 'user_api_owner', name: 'pipeline' }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -142,6 +142,10 @@ test('valid user key validation posts only a SHA-256 hash to Convex', async () =
     assert.ok(cacheWrite);
     assert.match(cacheWrite.body, /user-api-key:[a-f0-9]{64}/);
     assert.doesNotMatch(cacheWrite.body, new RegExp(USER_KEY));
+    // Caches the full gateway-shared shape so the gateway never reads back
+    // keyId/name as undefined when bootstrap won the cache race.
+    const setCommand = JSON.parse(cacheWrite.body).find((cmd) => cmd[0] === 'SET');
+    assert.deepEqual(JSON.parse(setCommand[2]), { userId: 'user_api_owner', keyId: 'key_1', name: 'pipeline' });
   });
 });
 
@@ -196,19 +200,63 @@ test('null Convex validation response fails closed as invalid', async () => {
   });
 });
 
-test('missing Convex config fails closed without leaking secrets', async () => {
+test('missing Convex config fails closed as retryable 503 without leaking secrets', async () => {
   const restoreEnv = snapshotEnv(['CONVEX_SITE_URL', 'CONVEX_SERVER_SHARED_SECRET']);
   delete process.env.CONVEX_SITE_URL;
   delete process.env.CONVEX_SERVER_SHARED_SECRET;
   try {
     const result = await validateBootstrapUserApiKey(USER_KEY);
 
+    // Validation could not be performed -> retryable 503, not a misleading 401.
     assert.equal(result.ok, false);
-    assert.equal(result.status, 401);
-    assert.equal(result.error, 'Invalid API key');
+    assert.equal(result.status, 503);
+    assert.equal(result.error, 'Service temporarily unavailable');
+    assert.equal(result.headers['Retry-After'], '5');
+    assert.doesNotMatch(JSON.stringify(result), /shared-secret|CONVEX|keyHash/i);
   } finally {
     restoreEnv();
   }
+});
+
+test('transient Convex HTTP 5xx on key validation is a retryable 503, not 401, and writes no negative cache', async () => {
+  await withMockedConvex(async (calls) => {
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const body = typeof init?.body === 'string' ? init.body : '';
+      calls.push({ url, init, body });
+      if (url.startsWith('https://upstash.test')) {
+        // cache GET miss; SET would only happen on a negative-cache write
+        return new Response(JSON.stringify([{ result: null }]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ error: 'boom' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const result = await validateBootstrapUserApiKey(USER_KEY);
+
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 503);
+    assert.equal(result.unavailable, true);
+    assert.equal(result.error, 'Service temporarily unavailable');
+    // A transient outage must NOT poison the shared negative cache.
+    assert.equal(calls.some((call) => call.url.startsWith('https://upstash.test') && call.body.includes('"SET"')), false);
+  });
+});
+
+test('revoked key served from negative sentinel cache returns 401 without contacting Convex', async () => {
+  const keyHash = await sha256HexForTest(USER_KEY);
+  await withMockedConvex(async (calls) => {
+    const result = await validateBootstrapUserApiKey(USER_KEY);
+
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 401);
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-validate-api-key')), false);
+  }, { redisCache: { [`user-api-key:${keyHash}`]: '__WM_NEG__' } });
 });
 
 test('current apiAccess entitlement is required', async () => {
@@ -288,6 +336,64 @@ test('malformed entitlement response fails closed with 403 posture', async () =>
     assert.equal(result.ok, false);
     assert.equal(result.status, 403);
   });
+});
+
+test('stale cached entitlement (past validUntil) re-validates against Convex', async () => {
+  await withMockedConvex(async (calls) => {
+    const result = await validateBootstrapUserApiAccess('user_api_owner');
+
+    // Cache holds an expired entry -> the validUntil>=now guard fails, code
+    // falls through to Convex (which returns an active entitlement) -> ok.
+    assert.equal(result.ok, true);
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-entitlements')), true);
+  }, {
+    redisCache: {
+      'entitlements:test:user_api_owner': {
+        planKey: 'api_starter',
+        validUntil: Date.now() - 1,
+        features: { apiAccess: true },
+      },
+    },
+  });
+});
+
+test('transient Convex HTTP 5xx on entitlement check is a retryable 503, not 403', async () => {
+  await withMockedConvex(async (calls) => {
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const body = typeof init?.body === 'string' ? init.body : '';
+      calls.push({ url, init, body });
+      if (url.startsWith('https://upstash.test')) {
+        return new Response(JSON.stringify([{ result: null }]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ error: 'boom' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const result = await validateBootstrapUserApiAccess('user_api_owner');
+
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 503);
+    assert.equal(result.unavailable, true);
+    assert.equal(result.error, 'Service temporarily unavailable');
+  });
+});
+
+test('rate limit accepts a request landing in the final sub-second of the window (ttl=0)', async () => {
+  await withMockedConvex(async () => {
+    const req = new Request('https://api.worldmonitor.app/api/bootstrap', {
+      headers: { 'cf-connecting-ip': '203.0.113.7' },
+    });
+    const result = await checkBootstrapUserApiKeyRateLimit(req);
+
+    // count under limit, TTL=0 (window expiring this second) must NOT 503.
+    assert.equal(result.ok, true);
+  }, { redisResults: [{ result: 42 }, { result: 0 }, { result: 0 }] });
 });
 
 test('user-key validation rate limit uses IP-scoped keys and never raw API key material', async () => {

@@ -333,3 +333,47 @@ test('missing credentials remain a non-cacheable 401', async () => {
     assert.equal(resp.headers.get('cache-control'), 'no-store');
   });
 });
+
+test('Convex validation outage returns a retryable non-cacheable 503, not a misleading 401', async () => {
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement(), userKeyResponse: 'error' }, async () => {
+    const resp = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': USER_KEY }));
+    const body = await resp.json();
+
+    assert.equal(resp.status, 503);
+    assert.equal(resp.headers.get('cache-control'), 'no-store');
+    assert.equal(resp.headers.get('retry-after'), '5');
+    assert.equal(body.error, 'Service temporarily unavailable');
+    // A transient outage must not leak as "Invalid API key" or expose internals.
+    assert.notEqual(body.error, 'Invalid API key');
+    assert.doesNotMatch(JSON.stringify(body), /gateway validation|Convex|keyHash/i);
+  });
+});
+
+test('key-auth response with an empty cache batch stays no-store (never shared-cacheable)', async () => {
+  // The mocked GET pipeline returns no data, so getCachedJsonBatch yields an
+  // all-missing bundle. Under key auth that empty 200 must be no-store and emit
+  // no CDN cache headers, or a CDN could cache an authenticated empty response.
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+    const resp = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': USER_KEY }));
+    const body = await resp.json();
+
+    assert.equal(resp.status, 200);
+    assert.deepEqual(body, { data: {}, missing: ['marketQuotes'] });
+    assert.equal(resp.headers.get('cache-control'), 'no-store');
+    assert.equal(resp.headers.get('cdn-cache-control'), null);
+  });
+});
+
+test('anonymous weather-only bootstrap (no key header) keeps the shared public cache posture', async () => {
+  // Guards the inverse of the no-store path: a no-credential weather request
+  // must stay publicly cacheable. A regression flipping the isKeyAuth predicate
+  // would either break this or, worse, make a key-auth response shared-cacheable.
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+    const resp = await handler(makeWeatherBootstrapRequest());
+
+    assert.equal(resp.status, 200);
+    assert.match(resp.headers.get('cache-control') || '', /\bpublic\b/);
+    assert.match(resp.headers.get('cache-control') || '', /s-maxage/);
+    assert.ok(resp.headers.get('cdn-cache-control'));
+  });
+});

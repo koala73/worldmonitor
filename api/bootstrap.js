@@ -257,10 +257,12 @@ async function getCachedJsonBatch(keys) {
 }
 
 function authFailure(body, status, cors, extraHeaders = {}) {
+  // no-store is spread last so a caller-supplied Cache-Control in extraHeaders
+  // can never weaken the non-cacheable posture of an auth-failure response.
   return jsonResponse(body, status, {
     ...cors,
-    'Cache-Control': 'no-store',
     ...extraHeaders,
+    'Cache-Control': 'no-store',
   });
 }
 
@@ -296,11 +298,20 @@ async function validateBootstrapAuth(req, cors) {
       };
     }
 
+    // Propagate the validation result's status/error/headers (all generic,
+    // leak-free strings) rather than hardcoding 401/403: a Convex outage surfaces
+    // as a retryable 503 + Retry-After (status 503, unavailable:true) instead of
+    // a misleading "Invalid API key" 401, mirroring the rate-limit path above.
     const userKeyResult = await validateBootstrapUserApiKey(headerKey);
     if (!userKeyResult.ok) {
       return {
         ok: false,
-        response: authFailure({ error: 'Invalid API key' }, 401, cors),
+        response: authFailure(
+          { error: userKeyResult.error },
+          userKeyResult.status,
+          cors,
+          userKeyResult.headers,
+        ),
       };
     }
 
@@ -308,7 +319,12 @@ async function validateBootstrapAuth(req, cors) {
     if (!entitlementResult.ok) {
       return {
         ok: false,
-        response: authFailure({ error: 'API access subscription required' }, 403, cors),
+        response: authFailure(
+          { error: entitlementResult.error },
+          entitlementResult.status,
+          cors,
+          entitlementResult.headers,
+        ),
       };
     }
 
@@ -372,11 +388,12 @@ export default async function handler(req) {
   try {
     cached = await getCachedJsonBatch(keys);
   } catch {
-    const fallbackHeaders = successCacheHeaders(tier, auth.kind, cors);
-    if (fallbackHeaders['Cache-Control'] === 'no-store') {
-      return jsonResponse({ data: {}, missing: names }, 200, fallbackHeaders);
-    }
-    return jsonResponse({ data: {}, missing: names }, 200, { ...cors, 'Cache-Control': 'no-cache' });
+    // Read auth.kind directly (not the output of successCacheHeaders) so a
+    // key-authenticated empty fallback always stays no-store and can never be
+    // shared-cached by a CDN to another caller.
+    const isKeyAuth = auth.kind === 'enterprise' || auth.kind === 'user';
+    const cacheControl = isKeyAuth ? 'no-store' : 'no-cache';
+    return jsonResponse({ data: {}, missing: names }, 200, { ...cors, 'Cache-Control': cacheControl });
   }
 
   const data = {};

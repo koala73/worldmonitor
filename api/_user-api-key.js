@@ -61,6 +61,23 @@ function validationUnavailable(stage, detail = '') {
   return { ok: false, unavailable: true };
 }
 
+// Returned when key/entitlement validation cannot be performed (Convex
+// unreachable, timed out, 5xx, or unconfigured). A 503 + Retry-After is the
+// honest retryable signal — distinct from a genuinely invalid key (401) or a
+// lapsed subscription (403). Mirrors the rate-limiter's fail-closed posture so
+// the bootstrap caller can propagate status/headers uniformly. The error string
+// is generic and leaks no infrastructure detail.
+const VALIDATION_RETRY_AFTER_SECONDS = 5;
+function serviceUnavailable() {
+  return {
+    ok: false,
+    status: 503,
+    error: 'Service temporarily unavailable',
+    unavailable: true,
+    headers: noStoreHeaders({ 'Retry-After': String(VALIDATION_RETRY_AFTER_SECONDS) }),
+  };
+}
+
 function cacheUnavailable(stage) {
   console.warn(`[bootstrap-user-api-key] auth-cache unavailable stage=${stage}`);
 }
@@ -123,7 +140,11 @@ export async function checkBootstrapUserApiKeyRateLimit(req) {
   }
 
   const ttl = Number(result[2]?.result ?? -1);
-  if (!Number.isFinite(ttl) || ttl <= 0) {
+  // Redis TTL returns -1 (no expiry / immortal counter) or -2 (key gone) on the
+  // genuine missing-expiry failure. A TTL of 0 is the normal sub-second tail of
+  // an active fixed window (counter still exists, about to reset), so accept it
+  // rather than fail-closing a valid under-limit request with a spurious 503.
+  if (!Number.isFinite(ttl) || ttl < 0) {
     return rateLimitUnavailable('missing-expiry');
   }
 
@@ -191,7 +212,7 @@ async function validateBootstrapUserApiKeyHash(keyHash) {
 
   const result = await postConvexJson(CONVEX_VALIDATE_PATH, { keyHash });
   if (!result.ok) {
-    return { ok: false, status: 401, error: 'Invalid API key', reason: 'unavailable' };
+    return serviceUnavailable();
   }
 
   const value = result.value;
@@ -200,7 +221,16 @@ async function validateBootstrapUserApiKeyHash(keyHash) {
     return { ok: false, status: 401, error: 'Invalid API key', reason: 'invalid' };
   }
 
-  await writeCachedJson(cacheKey, { userId: value.userId }, USER_KEY_CACHE_TTL_SECONDS);
+  // Cache the full gateway-shared shape ({ userId, keyId, name }) so the
+  // gateway's validateUserApiKey (server/_shared/user-api-key.ts) — which reads
+  // and writes the same `user-api-key:<hash>` key typed as UserKeyResult — never
+  // reads back a value with keyId/name undefined when bootstrap won the cache
+  // race. keyId/name come straight from internal-validate-api-key.
+  await writeCachedJson(
+    cacheKey,
+    { userId: value.userId, keyId: value.keyId, name: value.name },
+    USER_KEY_CACHE_TTL_SECONDS,
+  );
   return {
     ok: true,
     userId: value.userId,
@@ -234,7 +264,7 @@ async function validateBootstrapUserApiAccessUncached(userId) {
 
   const result = await postConvexJson(CONVEX_ENTITLEMENTS_PATH, { userId });
   if (!result.ok) {
-    return { ok: false, status: 403, error: 'API access subscription required', reason: 'unavailable' };
+    return serviceUnavailable();
   }
 
   if (result.value && typeof result.value === 'object') {

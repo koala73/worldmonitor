@@ -55,7 +55,7 @@ User-issued keys are exactly `wm_` followed by 40 lowercase hex characters. Ente
 
 `X-WorldMonitor-Key` is the canonical header. API-key-authenticated endpoints also accept `X-Api-Key` as an alias for compatibility with generic API clients, including standalone edge functions that use `validateApiKey()` and gateway-backed routes. Do not send user API keys as bearer tokens or query-string parameters unless an endpoint explicitly documents that form.
 
-For `/api/bootstrap`, server-side callers should use `https://api.worldmonitor.app/api/bootstrap` with one of these API-key headers. There is no separate gateway host, token-exchange step, activation step, or IP allow-list requirement for standard server-to-server access.
+For `/api/bootstrap`, server-side callers should use `https://api.worldmonitor.app/api/bootstrap` with one of these API-key headers. There is no separate gateway host, token-exchange step, activation step, or IP allow-list requirement for standard server-to-server access. The endpoint's anonymous weather path (`?keys=weatherAlerts`) is public **only when no key header is sent** — once you attach `X-WorldMonitor-Key`/`X-Api-Key`, the request is validated even for weather, so a key without current API access returns `403` rather than falling back to anonymous data.
 
 ### Server-side validation
 
