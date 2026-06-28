@@ -1176,6 +1176,15 @@ export default defineConfig(({ mode }) => {
             if (id.endsWith('/src/config/geo-map.ts')) {
               return 'geo-map-data';
             }
+            // Military-bases bulk (~48KB MILITARY_BASES_EXPANDED + merged
+            // MILITARY_BASES). geo.ts no longer imports it; eager consumers
+            // (country-intel, related-assets, data-loader→military-surge)
+            // lazy-load it via dynamic import. Kept off the eager @/config
+            // barrel. Co-chunk both files so the merged list and its raw data
+            // ship together off the entry chunk. (#4478)
+            if (id.endsWith('/src/config/military-bases.ts') || id.endsWith('/src/config/bases-expanded.ts')) {
+              return 'military-bases-data';
+            }
             // Co-locate the deck.gl renderer with the deck vendor chunk so
             // onlyExplicitManualChunks cannot split deck's transitive deps
             // across the DeckGLMap boundary (which formed a circular chunk →

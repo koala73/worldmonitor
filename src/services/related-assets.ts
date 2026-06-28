@@ -4,7 +4,6 @@ import { t } from '@/services/i18n';
 import {
   INTEL_HOTSPOTS,
   CONFLICT_ZONES,
-  MILITARY_BASES,
   PIPELINES,
 } from '@/config';
 
@@ -43,6 +42,9 @@ export function preloadRelatedAssetTables(titles: string[]): Promise<boolean> {
   }
   if (types.includes('nuclear') && nuclearFacilities === null) {
     preloadTasks.push(preloadNuclearFacilities());
+  }
+  if (types.includes('base') && baseIndex === null) {
+    preloadTasks.push(preloadBaseIndex());
   }
 
   if (preloadTasks.length === 0) {
@@ -116,6 +118,31 @@ function ensureNuclearFacilities(): void {
   void preloadNuclearFacilities().catch(() => {});
 }
 
+// MILITARY_BASES (~48KB via bases-expanded) is lazy-loaded for the same reason as
+// the tables above — related-assets is reached eagerly via country-intel, so a
+// static import would pin bases-expanded to the entry chunk (#4478).
+let baseIndex: AssetIndexEntry[] | null = null;
+let baseIndexPromise: Promise<void> | null = null;
+
+export function preloadBaseIndex(): Promise<void> {
+  if (baseIndex !== null) return Promise.resolve();
+  if (!baseIndexPromise) {
+    baseIndexPromise = import('@/config/military-bases')
+      .then(({ MILITARY_BASES }) => {
+        baseIndex = MILITARY_BASES.map(base => ({ id: base.id, name: base.name, lat: base.lat, lon: base.lon }));
+      })
+      .catch((error) => {
+        baseIndexPromise = null;
+        throw error;
+      });
+  }
+  return baseIndexPromise;
+}
+
+function ensureBaseIndex(): void {
+  void preloadBaseIndex().catch(() => {});
+}
+
 // Warm all lazy infrastructure tables together so a country brief re-render picks
 // up datacenters, cables, and nuclear facilities in a single refresh pass.
 export function preloadInfrastructureTables(): Promise<void> {
@@ -123,6 +150,7 @@ export function preloadInfrastructureTables(): Promise<void> {
     preloadDatacenterIndex().catch(() => {}),
     preloadCableIndex().catch(() => {}),
     preloadNuclearFacilities().catch(() => {}),
+    preloadBaseIndex().catch(() => {}),
   ]).then(() => {});
 }
 
@@ -215,7 +243,8 @@ function buildAssetIndex(type: AssetType): Array<{ id: string; name: string; lat
       ensureDatacenterIndex();
       return datacenterIndex ?? [];
     case 'base':
-      return MILITARY_BASES.map(base => ({ id: base.id, name: base.name, lat: base.lat, lon: base.lon }));
+      ensureBaseIndex();
+      return baseIndex ?? [];
     case 'nuclear':
       ensureNuclearFacilities();
       return (nuclearFacilities ?? []).map(site => ({ id: site.id, name: site.name, lat: site.lat, lon: site.lon }));

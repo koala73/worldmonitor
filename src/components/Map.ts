@@ -16,10 +16,10 @@ import type { RadiationObservation } from '@/services/radiation';
 import { getSeverityColor } from '@/services/weather';
 import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/smart-poll-loop';
 import { scheduleAfterFirstPaint, yieldToMain } from '@/utils/after-paint';
+import { MILITARY_BASES } from '@/config/military-bases';
 import {
   INTEL_HOTSPOTS,
   CONFLICT_ZONES,
-  MILITARY_BASES,
   GAMMA_IRRADIATORS,
   PIPELINES,
   PIPELINE_COLORS,

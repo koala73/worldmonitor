@@ -78,11 +78,12 @@ export {
 // can resolve its feeds. See src/config/feed-resolution.ts.
 export { CANONICAL_FEEDS } from './feeds';
 
+// MILITARY_BASES moved to the lazy military-bases chunk (#4478) — import it
+// directly from '@/config/military-bases', not via this barrel, so the ~48KB
+// bases-expanded table stays off the eager boot graph.
 export {
   INTEL_HOTSPOTS,
   CONFLICT_ZONES,
-
-  MILITARY_BASES,
   STRATEGIC_WATERWAYS,
 } from './geo';
 

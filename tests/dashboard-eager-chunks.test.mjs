@@ -17,7 +17,7 @@ const dashboardHtml = resolve(distDir, 'dashboard.html');
 //
 // Dist-gated: skips when dist/dashboard.html is absent. CI builds the dashboard
 // before `npm run test:data` (the step added in #4393), so this runs in CI.
-const DEFERRED_TABLE_CHUNKS = ['tech-geo-data', 'airports-data', 'ai-datacenters-data', 'geo-map-data'];
+const DEFERRED_TABLE_CHUNKS = ['tech-geo-data', 'airports-data', 'ai-datacenters-data', 'geo-map-data', 'military-bases-data'];
 const DEFERRED_SENTRY_CHUNKS = ['sentry-init', 'sentry'];
 // agent-bus-applier + shared/agent-bus-actions pull in zod (~69KB raw). They are
 // only reachable through the lazy chat-analyst panel's action handler, so they

@@ -77,11 +77,10 @@ import { t } from '@/services/i18n';
 import { debounce, rafSchedule, getCurrentTheme } from '@/utils/index';
 import { showLayerWarning } from '@/utils/layer-warning';
 import { localizeMapLabels } from '@/utils/map-locale';
+import { MILITARY_BASES } from '@/config/military-bases';
 import {
   INTEL_HOTSPOTS,
   CONFLICT_ZONES,
-
-  MILITARY_BASES,
   GAMMA_IRRADIATORS,
   PIPELINES,
   PIPELINE_COLORS,
