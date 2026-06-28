@@ -1,4 +1,4 @@
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { createLazyClient, getRpcBaseUrl } from '@/services/rpc-client';
 import { getHydratedData } from '@/services/bootstrap';
 import { dataFreshness } from './data-freshness';
 import {
@@ -22,7 +22,7 @@ export interface SecurityAdvisoriesFetchResult {
   cachedAt?: string;
 }
 
-const client = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+const getClient = createLazyClient(() => new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) }));
 
 function normalizeAdvisories(
   raw: ListSecurityAdvisoriesResponse | { advisories: Array<{ title: string; link: string; pubDate: string; source: string; sourceCountry: string; level: string; country: string }>; byCountry: Record<string, string> },
@@ -59,7 +59,7 @@ export async function loadAdvisoriesFromServer(): Promise<SecurityAdvisoriesFetc
   }
 
   try {
-    const resp = await client.listSecurityAdvisories({});
+    const resp = await getClient().listSecurityAdvisories({});
     const advisories = normalizeAdvisories(resp);
     cachedResult = advisories;
     lastFetch = now;

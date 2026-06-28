@@ -1,4 +1,4 @@
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { createLazyClient, getRpcBaseUrl } from '@/services/rpc-client';
 import {
   IntelligenceServiceClient,
   type GetSocialVelocityResponse,
@@ -8,7 +8,7 @@ import { getHydratedData } from '@/services/bootstrap';
 
 export type { GetSocialVelocityResponse, SocialVelocityPost };
 
-const client = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+const getClient = createLazyClient(() => new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) }));
 
 const emptyVelocity: GetSocialVelocityResponse = { posts: [], fetchedAt: 0 };
 
@@ -17,7 +17,7 @@ export async function fetchSocialVelocity(): Promise<GetSocialVelocityResponse> 
   if (hydrated?.posts?.length) return hydrated;
 
   try {
-    return await client.getSocialVelocity({});
+    return await getClient().getSocialVelocity({});
   } catch {
     return emptyVelocity;
   }
