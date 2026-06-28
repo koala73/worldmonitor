@@ -11,6 +11,19 @@ export interface PanelMountDeferralInput {
   isMobile: boolean;
 }
 
+export interface DeferredPanelShellFootprint {
+  className?: string;
+  rowSpan?: number;
+  colSpan?: number;
+}
+
+export interface DeferredPanelShellFootprintInput {
+  panelId: string;
+  naturalFootprints?: Readonly<Record<string, DeferredPanelShellFootprint>>;
+  savedRowSpans?: Readonly<Record<string, number>>;
+  savedColSpans?: Readonly<Record<string, number>>;
+}
+
 const CONTROL_SELECTOR = [
   'button',
   'input',
@@ -24,6 +37,19 @@ const CONTROL_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
 
+function clampSpan(value: number | undefined, max: number): number | undefined {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return undefined;
+  if (value < 1 || value > max) return undefined;
+  return value;
+}
+
+function addClassTokens(element: HTMLElement, className: string | undefined): void {
+  if (!className) return;
+  for (const token of className.split(/\s+/)) {
+    if (token) element.classList.add(token);
+  }
+}
+
 export function getInitialPanelMountBudget(isMobile: boolean): number {
   return isMobile ? INITIAL_PANEL_MOUNT_BUDGET_MOBILE : INITIAL_PANEL_MOUNT_BUDGET_DESKTOP;
 }
@@ -36,12 +62,41 @@ export function shouldDeferInitialPanelMount({
   return enabled && mountedEnabledCount >= getInitialPanelMountBudget(isMobile);
 }
 
-export function createDeferredPanelShell(panelId: string, title: string): HTMLElement {
+export function getDeferredPanelShellFootprint({
+  panelId,
+  naturalFootprints = {},
+  savedRowSpans = {},
+  savedColSpans = {},
+}: DeferredPanelShellFootprintInput): DeferredPanelShellFootprint {
+  const natural = naturalFootprints[panelId] ?? {};
+  return {
+    className: natural.className,
+    rowSpan: clampSpan(savedRowSpans[panelId], 4) ?? clampSpan(natural.rowSpan, 4),
+    colSpan: clampSpan(savedColSpans[panelId], 3) ?? clampSpan(natural.colSpan, 3),
+  };
+}
+
+export function createDeferredPanelShell(
+  panelId: string,
+  title: string,
+  footprint: DeferredPanelShellFootprint = {},
+): HTMLElement {
   const shell = document.createElement('div');
   shell.className = 'panel panel-deferred-shell';
   shell.dataset.panel = panelId;
   shell.dataset.deferredPanel = 'true';
   shell.setAttribute('aria-hidden', 'true');
+  addClassTokens(shell, footprint.className);
+
+  const rowSpan = clampSpan(footprint.rowSpan, 4);
+  if (rowSpan !== undefined) {
+    shell.classList.add(`span-${rowSpan}`);
+  }
+
+  const colSpan = clampSpan(footprint.colSpan, 3);
+  if (colSpan !== undefined) {
+    shell.classList.add(`col-span-${colSpan}`);
+  }
 
   const header = document.createElement('div');
   header.className = 'panel-header panel-deferred-header';

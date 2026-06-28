@@ -3,7 +3,9 @@ import { normalizeExclusiveChoropleths } from '@/components/resilience-choroplet
 import { replayPendingCalls, clearAllPendingCalls } from '@/app/pending-panel-data';
 import {
   createDeferredPanelShell,
+  getDeferredPanelShellFootprint as resolveDeferredPanelShellFootprint,
   shouldDeferInitialPanelMount,
+  type DeferredPanelShellFootprint,
 } from '@/app/panel-mount-deferral';
 import {
   addResponsiveZoneListener,
@@ -66,6 +68,7 @@ import { PanelGateReason, getPanelGateReason, hasPremiumAccess } from '@/service
 import type { Panel } from '@/components/Panel';
 import type { SupplyChainPanel } from '@/components/SupplyChainPanel';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { loadPanelColSpans, loadPanelSpans } from '@/utils/panel-storage';
 
 
 /**
@@ -116,6 +119,34 @@ const WEB_CLERK_PRO_ONLY_PANELS = new Set([
 ]);
 
 const COLLIDING_NEWS_PANEL_KEYS = new Set(['markets', 'crypto', 'economic']);
+
+const DEFERRED_PANEL_NATURAL_FOOTPRINTS: Readonly<Record<string, DeferredPanelShellFootprint>> = {
+  cii: { rowSpan: 2 },
+  'chat-analyst': { rowSpan: 2 },
+  'consumer-prices': { rowSpan: 2 },
+  displacement: { rowSpan: 2 },
+  economic: { rowSpan: 2 },
+  'energy-complex': { rowSpan: 2 },
+  'energy-crisis': { rowSpan: 2 },
+  'energy-disruptions': { rowSpan: 2 },
+  'fuel-shortages': { rowSpan: 2 },
+  'gdelt-intel': { rowSpan: 2 },
+  'internet-disruptions': { rowSpan: 2 },
+  'live-news': { className: 'panel-wide' },
+  'live-webcams': { className: 'panel-wide' },
+  'oil-inventories': { rowSpan: 2 },
+  'pipeline-status': { rowSpan: 2 },
+  'sanctions-pressure': { rowSpan: 2 },
+  'security-advisories': { rowSpan: 2 },
+  'storage-facility-map': { rowSpan: 2 },
+  'strategic-posture': { rowSpan: 2 },
+  'supply-chain': { rowSpan: 2 },
+  'telegram-intel': { rowSpan: 2 },
+  'threat-timeline': { rowSpan: 2 },
+  'trade-policy': { rowSpan: 2 },
+  'ucdp-events': { rowSpan: 2 },
+  'windy-webcams': { className: 'panel-wide' },
+};
 
 export interface PanelLayoutManagerCallbacks {
   openCountryStory: (code: string, name: string) => void;
@@ -1205,9 +1236,18 @@ export class PanelLayoutManager implements AppModule {
     return true;
   }
 
+  private getDeferredPanelShellFootprint(key: string): DeferredPanelShellFootprint {
+    return resolveDeferredPanelShellFootprint({
+      panelId: key,
+      naturalFootprints: DEFERRED_PANEL_NATURAL_FOOTPRINTS,
+      savedRowSpans: loadPanelSpans(),
+      savedColSpans: loadPanelColSpans(),
+    });
+  }
+
   private deferPanelMount(key: string, panel: Panel | null, grid: HTMLElement | null, withShell: boolean): void {
     const placeholder = withShell && grid
-      ? createDeferredPanelShell(key, this.ctx.panelSettings[key]?.name ?? key)
+      ? createDeferredPanelShell(key, this.ctx.panelSettings[key]?.name ?? key, this.getDeferredPanelShellFootprint(key))
       : null;
     if (placeholder && grid) {
       this.insertByOrder(grid, placeholder, key);

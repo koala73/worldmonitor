@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -100,6 +100,40 @@ function parsePanelKeys(variant) {
   return keys;
 }
 
+function naturalDeferredPanelFootprints() {
+  const componentsDir = resolve(__dirname, '../src/components');
+  const footprints = new Map();
+  for (const file of readdirSync(componentsDir)) {
+    if (!file.endsWith('.ts')) continue;
+    const src = readFileSync(resolve(componentsDir, file), 'utf-8');
+    for (const match of src.matchAll(/super\(\s*\{([\s\S]*?)\}\s*\)/g)) {
+      const body = match[1];
+      const id = body.match(/id:\s*['"]([^'"]+)['"]/);
+      if (!id) continue;
+      const rowSpan = body.match(/defaultRowSpan:\s*([2-4])/);
+      const panelWide = /className:\s*['"][^'"]*\bpanel-wide\b/.test(body);
+      if (!rowSpan && !panelWide) continue;
+      footprints.set(id[1], { file, rowSpan: rowSpan ? rowSpan[1] : null, panelWide });
+    }
+  }
+  return footprints;
+}
+
+function deferredPanelFootprintRegistryEntry(panelId) {
+  const registry = panelLayoutSrc.match(/const DEFERRED_PANEL_NATURAL_FOOTPRINTS:[\s\S]*?= \{([\s\S]*?)\n\};/);
+  assert.ok(registry, 'DEFERRED_PANEL_NATURAL_FOOTPRINTS registry not found');
+  const body = registry[1];
+  const quoted = '\'' + panelId + '\':';
+  const bare = panelId + ':';
+  let start = body.indexOf(quoted);
+  if (start === -1) start = body.indexOf(bare);
+  if (start === -1) return null;
+  const open = body.indexOf('{', start);
+  const close = body.indexOf('}', open);
+  if (open === -1 || close === -1) return null;
+  return body.slice(open + 1, close);
+}
+
 describe('panel-config guardrails', () => {
   it('every variant config includes "map"', () => {
     for (const v of VARIANT_FILES) {
@@ -174,6 +208,29 @@ describe('panel-config guardrails', () => {
       afterPanelMounted[0],
       /panel\.toggle\(config\.enabled\);/,
       'lazy-mounted panels must replay the saved enabled/hidden state after insertion',
+    );
+  });
+
+  it('reserves deferred shells for natural wide/tall panel footprints', () => {
+    const missing = [];
+    for (const [panelId, footprint] of naturalDeferredPanelFootprints()) {
+      const entry = deferredPanelFootprintRegistryEntry(panelId);
+      if (!entry) {
+        missing.push(panelId + ' (' + footprint.file + ') missing registry entry');
+        continue;
+      }
+      if (footprint.rowSpan && !entry.includes('rowSpan: ' + footprint.rowSpan)) {
+        missing.push(panelId + ' (' + footprint.file + ') missing rowSpan: ' + footprint.rowSpan);
+      }
+      if (footprint.panelWide && !entry.includes('className: \'panel-wide\'')) {
+        missing.push(panelId + ' (' + footprint.file + ') missing panel-wide className');
+      }
+    }
+
+    assert.deepStrictEqual(
+      missing,
+      [],
+      'Panels with constructor-level defaultRowSpan/panel-wide must reserve matching deferred-shell footprints:\n' + missing.join('\n'),
     );
   });
 
