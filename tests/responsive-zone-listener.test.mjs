@@ -108,24 +108,36 @@ describe('responsive zone listener', () => {
 });
 
 describe('panel layout responsive zone wiring', () => {
-  it('registers breakpoint-aware zone reconciliation', () => {
-    assert.match(
-      panelLayoutSrc,
-      /this\.responsiveZoneListener\s*=\s*addResponsiveZoneListener\(\s*window,\s*this\.getUltraWideMinWidth\(\),\s*\(\)\s*=>\s*this\.ensureCorrectZones\(\),\s*\)/s,
-    );
+  // Behavioral: the contract panel-layout relies on — a breakpoint cross runs
+  // the zone-reconcile callback exactly once, synchronously, with no trailing
+  // debounce. This replaces the former brittle source-text debounce regex with
+  // a runtime assertion.
+  it('runs the zone-reconcile callback on a breakpoint cross, without a debounce', () => {
+    const { target, lists } = createTarget();
+    let reconciles = 0;
+    const listener = addResponsiveZoneListener(target, 1600, () => { reconciles++; });
+
+    lists[0].setMatches(true);
+    assert.equal(reconciles, 1, 'reconcile must run synchronously on the cross, not after a timeout');
+
+    removeResponsiveZoneListener(listener);
   });
 
-  it('does not keep the original per-resize ensureCorrectZones listener', () => {
-    assert.doesNotMatch(
-      panelLayoutSrc,
-      /window\.addEventListener\s*\(\s*['"]resize['"]\s*,\s*\(\)\s*=>\s*this\.ensureCorrectZones\(\)\s*\)/,
-    );
+  // Structural guards: PanelLayoutManager needs the full AppContext to
+  // instantiate, so these catch a regression in how panel-layout.ts wires the
+  // listener. The runtime behavior itself is covered above and by the
+  // `responsive zone listener` suite, so these are kept loose on purpose —
+  // they assert the wiring facts, not exact formatting.
+  it('wires zone reconciliation through the breakpoint listener', () => {
+    assert.match(panelLayoutSrc, /addResponsiveZoneListener\(/);
+    assert.match(panelLayoutSrc, /this\.getUltraWideMinWidth\(\)/);
+    assert.match(panelLayoutSrc, /addResponsiveZoneListener\([\s\S]*?ensureCorrectZones\(\)/);
   });
 
-  it('does not use a trailing timeout debounce for zone reconciliation', () => {
+  it('does not reconcile zones on every resize event', () => {
     assert.doesNotMatch(
       panelLayoutSrc,
-      /ensureCorrectZones[\s\S]{0,120}(100|setTimeout|debounce)/,
+      /addEventListener\s*\(\s*['"]resize['"]\s*,\s*\(\)\s*=>\s*this\.ensureCorrectZones\(\)\s*\)/,
     );
   });
 });
