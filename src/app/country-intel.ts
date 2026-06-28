@@ -36,7 +36,6 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { showMapContextMenu } from '@/components/MapContextMenu';
 import { BETA_MODE } from '@/config/beta';
-import type { MilitaryBase } from '@/types';
 import { mlWorker } from '@/services/ml-worker';
 import { isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { t, getCurrentLanguage } from '@/services/i18n';
@@ -50,27 +49,13 @@ import {
   type BriefSource,
 } from '@/utils/brief-sources';
 import { getNearbyInfrastructure, preloadInfrastructureTables } from '@/services/related-assets';
+import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { iso2ToIso3, iso2ToComtradeReporterCode } from '@/utils/country-codes';
 import { buildDependencyGraph } from '@/services/infrastructure-cascade';
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
 import { fetchMultiSectorExposure, fetchCountryProducts, fetchMultiSectorCostShock } from '@/services/supply-chain';
 import { getImfCountryBundle, buildImfEconomicIndicators, type ImfCountryBundle } from '@/services/imf-country-data';
-
-// MILITARY_BASES (~48KB via bases-expanded) is lazy-loaded off the eager boot
-// graph (#4478). Cached on first preload; the nearby-base country lookup below
-// reads it synchronously and degrades to an undefined country until it resolves.
-let militaryBasesCache: MilitaryBase[] | null = null;
-let militaryBasesPromise: Promise<void> | null = null;
-function preloadMilitaryBasesForIntel(): Promise<void> {
-  if (militaryBasesCache !== null) return Promise.resolve();
-  if (!militaryBasesPromise) {
-    militaryBasesPromise = import('@/config/military-bases')
-      .then(({ MILITARY_BASES }) => { militaryBasesCache = MILITARY_BASES; })
-      .catch((error) => { militaryBasesPromise = null; throw error; });
-  }
-  return militaryBasesPromise;
-}
 
 type IntlDisplayNamesCtor = new (
   locales: string | string[],
@@ -342,11 +327,14 @@ export class CountryIntelManager implements AppModule {
     page.updateNews(filteredNews.slice(0, 10));
 
     page.updateInfrastructure(code);
-    void preloadMilitaryBasesForIntel().catch(() => {});
-    void preloadInfrastructureTables()
+    void Promise.all([
+      preloadMilitaryBases().catch(() => []),
+      preloadInfrastructureTables().catch(() => {}),
+    ])
       .then(() => {
         if (this.ctx.countryBriefPage?.getCode() === code) {
           this.ctx.countryBriefPage.updateInfrastructure(code);
+          this.ctx.countryBriefPage.updateMilitaryActivity?.(this.buildMilitarySummary(code, country));
         }
       })
       .catch(() => {});
@@ -1291,7 +1279,7 @@ export class CountryIntelManager implements AppModule {
         id: base.id,
         name: base.name,
         distanceKm: base.distanceKm,
-        country: (militaryBasesCache ?? []).find((entry) => entry.id === base.id)?.country,
+        country: getCachedMilitaryBases().find((entry) => entry.id === base.id)?.country,
       }))
       : [];
 

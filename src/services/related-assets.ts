@@ -6,6 +6,7 @@ import {
   CONFLICT_ZONES,
   PIPELINES,
 } from '@/config';
+import { preloadMilitaryBases } from '@/services/military-base-config';
 
 type AssetIndexEntry = { id: string; name: string; lat: number; lon: number };
 
@@ -127,9 +128,9 @@ let baseIndexPromise: Promise<void> | null = null;
 export function preloadBaseIndex(): Promise<void> {
   if (baseIndex !== null) return Promise.resolve();
   if (!baseIndexPromise) {
-    baseIndexPromise = import('@/config/military-bases')
-      .then(({ MILITARY_BASES }) => {
-        baseIndex = MILITARY_BASES.map(base => ({ id: base.id, name: base.name, lat: base.lat, lon: base.lon }));
+    baseIndexPromise = preloadMilitaryBases()
+      .then((bases) => {
+        baseIndex = bases.map(base => ({ id: base.id, name: base.name, lat: base.lat, lon: base.lon }));
       })
       .catch((error) => {
         baseIndexPromise = null;
