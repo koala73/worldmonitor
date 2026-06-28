@@ -24,6 +24,22 @@ const EAGER_SERVICE_FILES = [
   'src/services/satellites.ts',
 ];
 
+const DATA_LOADER_DEFERRED_SERVICE_IMPORTS = [
+  '@/services/rss',
+  '@/services/signal-aggregator',
+  '@/services/trending-keywords',
+  '@/services/daily-market-brief',
+];
+
+const DATA_LOADER_DEFERRED_BARREL_EXPORTS = [
+  'fetchCategoryFeeds',
+  'getFeedFailures',
+];
+
+const COUNTRY_INTEL_DEFERRED_SERVICE_IMPORTS = [
+  '@/services/signal-aggregator',
+];
+
 // Matches a direct eager assignment without crossing string-literal quotes.
 const EAGER_CONSTRUCTION = /^[^'"`\n]*=\s*new IntelligenceServiceClient\(/m;
 const LAZY_FACTORY = /createLazyClient\(\(\)\s*=>\s*new IntelligenceServiceClient\(/;
@@ -32,6 +48,20 @@ function stripComments(src) {
   return src
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/\/\/[^\n]*/g, '');
+}
+
+function valueImportSpecifiers(src) {
+  const specifiers = [];
+  const re = /\bimport\s+(?!type\b)[\s\S]*?\s+from\s+['"]([^'"]+)['"]/g;
+  let match;
+  while ((match = re.exec(src)) !== null) {
+    specifiers.push(match[1]);
+  }
+  return specifiers;
+}
+
+function servicesBarrelValueImportBlock(src) {
+  return src.match(/\bimport\s+\{([\s\S]*?)\}\s+from\s+['"]@\/services['"]/)?.[1] ?? '';
 }
 
 describe('main.js eager diet — service clients are lazy-initialized', () => {
@@ -77,4 +107,58 @@ describe('main.js eager diet — service clients are lazy-initialized', () => {
       );
     });
   }
+});
+
+describe('main.js eager diet — data-loader service tail is lazy-loaded', () => {
+  const source = readFileSync(resolve(repoRoot, 'src/app/data-loader.ts'), 'utf8');
+  const withoutComments = stripComments(source);
+
+  it('keeps post-paint service modules behind dynamic imports', () => {
+    const valueSpecifiers = valueImportSpecifiers(withoutComments);
+    const directOffenders = DATA_LOADER_DEFERRED_SERVICE_IMPORTS.filter((specifier) => valueSpecifiers.includes(specifier));
+    assert.deepEqual(
+      directOffenders,
+      [],
+      'data-loader must not statically import RSS/trending/signal/daily-brief services; load them through cached import() helpers after first paint',
+    );
+
+    for (const specifier of DATA_LOADER_DEFERRED_SERVICE_IMPORTS) {
+      assert.ok(
+        withoutComments.includes(`import('${specifier}')`),
+        `data-loader should lazy-load ${specifier} with import()`,
+      );
+    }
+  });
+
+  it('does not pull RSS fallback exports through the eager services barrel', () => {
+    const servicesImportBlock = servicesBarrelValueImportBlock(withoutComments);
+    const offenders = DATA_LOADER_DEFERRED_BARREL_EXPORTS.filter((name) => new RegExp(`\\b${name}\\b`).test(servicesImportBlock));
+    assert.deepEqual(
+      offenders,
+      [],
+      'RSS fallback exports pull rss.ts and its enrichment imports into the eager data-loader graph; use getRssModule() instead',
+    );
+  });
+});
+
+describe('main.js eager diet — country-intel service tail is lazy-loaded', () => {
+  const source = readFileSync(resolve(repoRoot, 'src/app/country-intel.ts'), 'utf8');
+  const withoutComments = stripComments(source);
+
+  it('keeps signal aggregation behind a dynamic import', () => {
+    const valueSpecifiers = valueImportSpecifiers(withoutComments);
+    const directOffenders = COUNTRY_INTEL_DEFERRED_SERVICE_IMPORTS.filter((specifier) => valueSpecifiers.includes(specifier));
+    assert.deepEqual(
+      directOffenders,
+      [],
+      'country-intel is part of the eager App graph; signal aggregation must load through import() on country-brief/story actions',
+    );
+
+    for (const specifier of COUNTRY_INTEL_DEFERRED_SERVICE_IMPORTS) {
+      assert.ok(
+        withoutComments.includes(`import('${specifier}')`),
+        `country-intel should lazy-load ${specifier} with import()`,
+      );
+    }
+  });
 });

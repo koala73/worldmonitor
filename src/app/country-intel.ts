@@ -22,7 +22,6 @@ import {
 } from '@/services/country-geometry';
 import { calculateCII, getCountryData, TIER1_COUNTRIES, type CountryScore } from '@/services/country-instability';
 import { getCachedCountryScore, normalizeCiiCountryCode } from '@/services/cached-risk-scores';
-import { signalAggregator } from '@/services/signal-aggregator';
 import { dataFreshness } from '@/services/data-freshness';
 import { fetchCountryMarkets } from '@/services/prediction';
 import { collectStoryData } from '@/services/story-data';
@@ -80,6 +79,14 @@ type CountryIntelBriefResult = {
   generatedAt?: string | number;
   cached?: boolean;
 };
+
+type SignalAggregator = typeof import('@/services/signal-aggregator').signalAggregator;
+let signalAggregatorPromise: Promise<SignalAggregator> | null = null;
+
+function getSignalAggregator(): Promise<SignalAggregator> {
+  signalAggregatorPromise ??= import('@/services/signal-aggregator').then(module => module.signalAggregator);
+  return signalAggregatorPromise;
+}
 
 export class CountryIntelManager implements AppModule {
   private ctx: AppContext;
@@ -178,13 +185,14 @@ export class CountryIntelManager implements AppModule {
     this.ctx.countryBriefPage = new CountryDeepDivePanel(this.ctx.map);
     this.ctx.countryBriefPage.setShareStoryHandler((code, name) => {
       this.ctx.countryBriefPage?.hide();
-      this.openCountryStory(code, name);
+      void this.openCountryStory(code, name);
     });
     this.ctx.countryBriefPage.setExportImageHandler(async (code, name) => {
       try {
-        const signals = this.getCountrySignals(code, name);
-        const cluster = signalAggregator.getCountryClusters().find(c => c.country === code);
-        const regional = signalAggregator.getRegionalConvergence().filter(r => r.countries.includes(code));
+        const aggregator = await getSignalAggregator();
+        const signals = await this.getCountrySignals(code, name);
+        const cluster = aggregator.getCountryClusters().find(c => c.country === code);
+        const regional = aggregator.getRegionalConvergence().filter(r => r.countries.includes(code));
         const convergence = cluster ? {
           score: cluster.convergenceScore,
           signalTypes: [...cluster.signalTypes],
@@ -254,7 +262,7 @@ export class CountryIntelManager implements AppModule {
     const scoreCode = normalizeCiiCountryCode(code);
     const score = getCachedCountryScore(scoreCode) ?? calculateCII().find((s) => s.code === scoreCode) ?? null;
 
-    const signals = this.getCountrySignals(code, country);
+    const signals = await this.getCountrySignals(code, country);
 
     page.show(country, code, score, signals);
     this.ctx.map?.highlightCountry(code);
@@ -268,7 +276,7 @@ export class CountryIntelManager implements AppModule {
         }
       });
     }
-    page.updateSignalDetails?.(this.buildSignalDetails(code));
+    page.updateSignalDetails?.(await this.buildSignalDetails(code));
     page.updateMilitaryActivity?.(this.buildMilitarySummary(code, country));
     page.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, null));
 
@@ -545,13 +553,14 @@ export class CountryIntelManager implements AppModule {
       }
       Object.assign(context, signals);
 
-      const countryCluster = signalAggregator.getCountryClusters().find((c) => c.country === code);
+      const aggregator = await getSignalAggregator();
+      const countryCluster = aggregator.getCountryClusters().find((c) => c.country === code);
       if (countryCluster) {
         context.convergenceScore = countryCluster.convergenceScore;
         context.signalTypes = [...countryCluster.signalTypes];
       }
 
-      const convergences = signalAggregator.getRegionalConvergence()
+      const convergences = aggregator.getRegionalConvergence()
         .filter((r) => r.countries.includes(code));
       if (convergences.length) {
         context.regionalConvergence = convergences.map((r) => r.description);
@@ -796,8 +805,11 @@ export class CountryIntelManager implements AppModule {
     const name = TIER1_COUNTRIES[code] ?? CountryIntelManager.resolveCountryName(code);
     const scoreCode = normalizeCiiCountryCode(code);
     const score = getCachedCountryScore(scoreCode) ?? calculateCII().find((s) => s.code === scoreCode) ?? null;
-    const signals = this.getCountrySignals(code, name);
-    page.updateScore?.(score, signals);
+    void this.getCountrySignals(code, name)
+      .then((signals) => {
+        if (page.isVisible() && page.getCode() === code) page.updateScore?.(score, signals);
+      })
+      .catch(() => {});
   }
 
   private async fetchCountryIntelBrief(code: string, contextSnapshot: string, framework = ''): Promise<CountryIntelBriefResult> {
@@ -1052,10 +1064,10 @@ export class CountryIntelManager implements AppModule {
     this.ctx.countryTimeline.render(events.filter(e => e.timestamp >= sevenDaysAgo));
   }
 
-  getCountrySignals(code: string, country: string): CountryBriefSignals {
+  async getCountrySignals(code: string, country: string): Promise<CountryBriefSignals> {
     const countryLower = country.toLowerCase();
     const hasGeoShape = hasCountryGeometry(code) || !!CountryIntelManager.COUNTRY_BOUNDS[code];
-    const clusters = signalAggregator.getCountryClusters();
+    const clusters = (await getSignalAggregator()).getCountryClusters();
     const countryCluster = clusters.find(c => c.country === code);
     const globalCluster = clusters.find(c => c.country === 'XX');
     const signalTypeCounts = {
@@ -1222,8 +1234,8 @@ export class CountryIntelManager implements AppModule {
     return 1;
   }
 
-  private buildSignalDetails(code: string): CountryDeepDiveSignalDetails {
-    const cluster = signalAggregator.getCountryClusters().find((entry) => entry.country === code);
+  private async buildSignalDetails(code: string): Promise<CountryDeepDiveSignalDetails> {
+    const cluster = (await getSignalAggregator()).getCountryClusters().find((entry) => entry.country === code);
     if (!cluster) {
       return { critical: 0, high: 0, medium: 0, low: 0, recentHigh: [] };
     }
@@ -1403,16 +1415,17 @@ export class CountryIntelManager implements AppModule {
     return 'low';
   }
 
-  openCountryStory(code: string, name: string): void {
+  async openCountryStory(code: string, name: string): Promise<void> {
     if (!dataFreshness.hasSufficientData() || this.ctx.latestClusters.length === 0) {
       this.showToast('Data still loading — try again in a moment');
       return;
     }
     const posturePanel = this.ctx.panels['strategic-posture'] as StrategicPosturePanel | undefined;
     const postures = posturePanel?.getPostures() || [];
-    const signals = this.getCountrySignals(code, name);
-    const cluster = signalAggregator.getCountryClusters().find(c => c.country === code);
-    const regional = signalAggregator.getRegionalConvergence().filter(r => r.countries.includes(code));
+    const aggregator = await getSignalAggregator();
+    const signals = await this.getCountrySignals(code, name);
+    const cluster = aggregator.getCountryClusters().find(c => c.country === code);
+    const regional = aggregator.getRegionalConvergence().filter(r => r.countries.includes(code));
     const convergence = cluster ? {
       score: cluster.convergenceScore,
       signalTypes: [...cluster.signalTypes],

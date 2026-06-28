@@ -949,7 +949,7 @@ export class App {
     });
 
     this.panelLayout = new PanelLayoutManager(this.state, {
-      openCountryStory: (code, name) => this.countryIntel.openCountryStory(code, name),
+      openCountryStory: (code, name) => { void this.countryIntel.openCountryStory(code, name); },
       openCountryBrief: (code) => {
         const name = CountryIntelManager.resolveCountryName(code);
         void this.countryIntel.openCountryBriefByCode(code, name);
