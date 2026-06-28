@@ -630,6 +630,19 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
           // safety as the `Failed to fetch` / `signal timed out` blocks above
           // (WORLDMONITOR-RF).
           || /^(?:SyntaxError: )?Unexpected EOF$/.test(msg)
+          // `Unexpected token '<'` with zero captured frames = HTML served
+          // where JS was expected: a stale hashed chunk after a deploy (the
+          // SPA index.html fallback starts with `<!DOCTYPE html>`), or a
+          // captive-portal / proxy / ISP HTML interstitial intercepting a
+          // `<script>` / dynamic-import fetch. The `<` is dispositive — our
+          // already-parsed, build-time-validated first-party bundle cannot
+          // emit a parse error on its own source, and a genuine first-party
+          // SyntaxError carries a source-mapped .ts frame (hasFirstParty →
+          // preserved). The `hasAnyStack`-gated `Unexpected token/keyword`
+          // gate below misses this zero-frame variant. `(?:SyntaxError: )?`
+          // mirrors the EOF gate above: some engines embed the type in the
+          // `value` field (WORLDMONITOR-TY).
+          || /^(?:SyntaxError: )?Unexpected token '<'/.test(msg)
           // Firefox's wording for a failed `fetch()` — the engine-emitted
           // equivalent of Chrome's bare `Failed to fetch` (above) and Safari's
           // `Load failed`. Surfaces via `onunhandledrejection` with zero captured
