@@ -11,7 +11,7 @@
 // - Historical Pass Log: which sats passed over a location in the last 24h
 //   (useful for identifying imaging windows after events)
 
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { createLazyClient, getRpcBaseUrl } from '@/services/rpc-client';
 import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import type { SatRec } from 'satellite.js';
 
@@ -31,7 +31,7 @@ async function ensureSatelliteLib(): Promise<SatelliteLib> {
   return satLibPromise;
 }
 
-const intelligenceClient = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+const getIntelligenceClient = createLazyClient(() => new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) }));
 
 export interface SatelliteTLE {
   noradId: string;
@@ -79,7 +79,7 @@ export async function fetchSatelliteTLEs(): Promise<SatelliteTLE[] | null> {
     const timeoutId = setTimeout(() => controller.abort(), 20_000);
     let resp;
     try {
-      resp = await intelligenceClient.listSatellites({ country: '' }, { signal: controller.signal });
+      resp = await getIntelligenceClient().listSatellites({ country: '' }, { signal: controller.signal });
     } finally {
       clearTimeout(timeoutId);
     }

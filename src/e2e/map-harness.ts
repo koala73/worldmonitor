@@ -2,11 +2,11 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import '../styles/main.css';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { DeckGLMap } from '../components/DeckGLMap';
+import { MILITARY_BASES } from '@/config/military-bases';
 import {
   SITE_VARIANT,
   INTEL_HOTSPOTS,
   CONFLICT_ZONES,
-  MILITARY_BASES,
   GAMMA_IRRADIATORS,
   PIPELINES,
   STRATEGIC_WATERWAYS,

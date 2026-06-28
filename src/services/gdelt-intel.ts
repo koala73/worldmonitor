@@ -1,5 +1,5 @@
 import type { Hotspot } from '@/types';
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { createLazyClient, getRpcBaseUrl } from '@/services/rpc-client';
 import { t } from '@/services/i18n';
 import {
   IntelligenceServiceClient,
@@ -133,7 +133,7 @@ export function getIntelTopics(): IntelTopic[] {
 
 // ---- Sebuf client ----
 
-const client = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+const getClient = createLazyClient(() => new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) }));
 const gdeltBreaker = createCircuitBreaker<SearchGdeltDocumentsResponse>({ name: 'GDELT Intelligence', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 const positiveGdeltBreaker = createCircuitBreaker<SearchGdeltDocumentsResponse>({ name: 'GDELT Positive', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 
@@ -149,7 +149,7 @@ export async function fetchTopicTimeline(topicId: string): Promise<TopicTimeline
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) return cached.data;
 
   try {
-    const resp = await client.getGdeltTopicTimeline({ topic: topicId });
+    const resp = await getClient().getGdeltTopicTimeline({ topic: topicId });
     if (resp.error || (resp.tone.length === 0 && resp.vol.length === 0)) return null;
     const data: TopicTimeline = { tone: resp.tone, vol: resp.vol, fetchedAt: resp.fetchedAt };
     timelineCache.set(topicId, { data, timestamp: Date.now() });
@@ -185,7 +185,7 @@ export async function fetchGdeltArticles(
   }
 
   const resp = await gdeltBreaker.execute(async () => {
-    return client.searchGdeltDocuments({
+    return getClient().searchGdeltDocuments({
       query,
       maxRecords: maxrecords,
       timespan,
@@ -309,7 +309,7 @@ export async function fetchPositiveGdeltArticles(
   }
 
   const resp = await positiveGdeltBreaker.execute(async () => {
-    return client.searchGdeltDocuments({
+    return getClient().searchGdeltDocuments({
       query,
       maxRecords: maxrecords,
       timespan,

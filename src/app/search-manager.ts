@@ -1,6 +1,6 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import type { SearchResult } from '@/components/SearchModal';
-import type { NewsItem, MapLayers } from '@/types';
+import type { NewsItem, MapLayers, MilitaryBase, MilitaryFlight } from '@/types';
 import type { MapView, TimeRange } from '@/components/MapContainer';
 import type { Command } from '@/config/commands';
 import { SearchModal } from '@/components/SearchModal';
@@ -14,7 +14,8 @@ import { calculateCII, TIER1_COUNTRIES } from '@/services/country-instability';
 import { getCachedCountryScores } from '@/services/cached-risk-scores';
 import { CURATED_COUNTRIES } from '@/config/countries';
 import { getCountryBbox } from '@/services/country-geometry';
-import { INTEL_HOTSPOTS, CONFLICT_ZONES, MILITARY_BASES } from '@/config/geo';
+import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
+import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
 import { UNDERSEA_CABLES, NUCLEAR_FACILITIES } from '@/config/geo-map';
 import { PIPELINES } from '@/config/pipelines';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
@@ -30,7 +31,6 @@ import { saveToStorage, setTheme } from '@/utils';
 import { CountryIntelManager } from '@/app/country-intel';
 import type { PositionSample } from '@/services/aviation';
 import { fetchAircraftPositions } from '@/services/aviation';
-import type { MilitaryFlight } from '@/types';
 import { isProUser } from '@/services/widget-store';
 import { getAuthState } from '@/services/auth-state';
 
@@ -132,12 +132,7 @@ export class SearchManager implements AppModule {
         data: c,
       })));
 
-      this.ctx.searchModal.registerSource('base', MILITARY_BASES.map(b => ({
-        id: b.id,
-        title: b.name,
-        subtitle: `${b.type} ${b.description || ''}`.trim(),
-        data: b,
-      })));
+      this.registerBaseSearchSource();
 
       this.ctx.searchModal.registerSource('pipeline', PIPELINES.map(p => ({
         id: p.id,
@@ -262,6 +257,21 @@ export class SearchManager implements AppModule {
 
   }
 
+  private registerBaseSearchSource(): void {
+    const register = (bases: MilitaryBase[]) => {
+      this.ctx.searchModal?.registerSource('base', bases.map(b => ({
+        id: b.id,
+        title: b.name,
+        subtitle: `${b.type} ${b.description || ''}`.trim(),
+        data: b,
+      })));
+    };
+
+    const cached = getCachedMilitaryBases();
+    if (cached.length > 0) register(cached);
+    void preloadMilitaryBases().then(register).catch(() => {});
+  }
+
   private handleSearchResult(result: SearchResult): void {
     trackSearchResultSelected(result.type);
     switch (result.type) {
@@ -304,7 +314,7 @@ export class SearchManager implements AppModule {
         break;
       }
       case 'base': {
-        const base = result.data as typeof MILITARY_BASES[0];
+        const base = result.data as MilitaryBase;
         this.ctx.map?.setView('global');
         setTimeout(() => { this.ctx.map?.triggerBaseClick(base.id); }, 300);
         break;

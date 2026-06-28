@@ -16,6 +16,7 @@ const RATE_LIMIT_REDIS_TIMEOUT_MS = 1_000;
 const USER_KEY_CACHE_TTL_SECONDS = 60;
 const USER_KEY_NEGATIVE_CACHE_TTL_SECONDS = 60;
 const USER_KEY_CACHE_PREFIX = 'user-api-key:';
+const BOOTSTRAP_USER_KEY_NEGATIVE_CACHE_PREFIX = 'bootstrap-user-api-key-invalid:';
 const ENTITLEMENT_CACHE_TTL_SECONDS = 900;
 const ENTITLEMENT_ENV_PREFIX = process.env.DODO_PAYMENTS_ENVIRONMENT === 'live_mode' ? 'live' : 'test';
 const NEG_SENTINEL = '__WM_NEG__';
@@ -32,6 +33,10 @@ function getServerRedisKeyPrefix() {
 
 function userApiKeyCacheKey(keyHash) {
   return `${getServerRedisKeyPrefix()}${USER_KEY_CACHE_PREFIX}${keyHash}`;
+}
+
+function bootstrapUserApiKeyNegativeCacheKey(keyHash) {
+  return `${getServerRedisKeyPrefix()}${BOOTSTRAP_USER_KEY_NEGATIVE_CACHE_PREFIX}${keyHash}`;
 }
 
 function convexConfig() {
@@ -208,12 +213,18 @@ async function validateBootstrapUserApiKeyHash(keyHash) {
   const cacheKey = userApiKeyCacheKey(keyHash);
   const cached = await readCachedJson(cacheKey);
   if (cached.status === 'hit') {
-    if (cached.value === NEG_SENTINEL) {
-      return { ok: false, status: 401, error: 'Invalid API key', reason: 'cached-invalid' };
-    }
     if (cached.value && typeof cached.value === 'object' && typeof cached.value.userId === 'string' && cached.value.userId.length > 0) {
       return { ok: true, userId: cached.value.userId };
     }
+  }
+
+  // The gateway also owns user-api-key:<hash> and represents both invalid keys
+  // and some validator failures with the shared NEG_SENTINEL. Treat that
+  // sentinel as a cache miss here so bootstrap can preserve retryable 503s.
+  const negativeCacheKey = bootstrapUserApiKeyNegativeCacheKey(keyHash);
+  const cachedNegative = await readCachedJson(negativeCacheKey);
+  if (cachedNegative.status === 'hit' && cachedNegative.value === NEG_SENTINEL) {
+    return { ok: false, status: 401, error: 'Invalid API key', reason: 'cached-invalid' };
   }
 
   const result = await postConvexJson(CONVEX_VALIDATE_PATH, { keyHash });
@@ -223,7 +234,7 @@ async function validateBootstrapUserApiKeyHash(keyHash) {
 
   const value = result.value;
   if (!value || typeof value !== 'object' || typeof value.userId !== 'string' || value.userId.length === 0) {
-    await writeCachedJson(cacheKey, NEG_SENTINEL, USER_KEY_NEGATIVE_CACHE_TTL_SECONDS);
+    await writeCachedJson(negativeCacheKey, NEG_SENTINEL, USER_KEY_NEGATIVE_CACHE_TTL_SECONDS);
     return { ok: false, status: 401, error: 'Invalid API key', reason: 'invalid' };
   }
 

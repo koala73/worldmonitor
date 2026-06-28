@@ -17,7 +17,7 @@ const dashboardHtml = resolve(distDir, 'dashboard.html');
 //
 // Dist-gated: skips when dist/dashboard.html is absent. CI builds the dashboard
 // before `npm run test:data` (the step added in #4393), so this runs in CI.
-const DEFERRED_TABLE_CHUNKS = ['tech-geo-data', 'airports-data', 'ai-datacenters-data', 'geo-map-data'];
+const DEFERRED_TABLE_CHUNKS = ['tech-geo-data', 'airports-data', 'ai-datacenters-data', 'geo-map-data', 'military-bases-data'];
 const DEFERRED_SENTRY_CHUNKS = ['sentry-init', 'sentry'];
 // agent-bus-applier + shared/agent-bus-actions pull in zod (~69KB raw). They are
 // only reachable through the lazy chat-analyst panel's action handler, so they
@@ -30,6 +30,14 @@ const DEFERRED_AGENT_BUS_CHUNKS = ['agent-bus-actions'];
 //   confetti.module — canvas-confetti, loaded on the first milestone celebration
 // Re-adding a static `import` of either would re-eagerise it into main and fail this.
 const DEFERRED_NPM_LIB_CHUNKS = ['satellite.es', 'confetti.module'];
+const MILITARY_BASE_DIRECT_IMPORT_FORBIDDEN = [
+  'src/app/country-intel.ts',
+  'src/app/search-manager.ts',
+  'src/components/DeckGLMap.ts',
+  'src/components/GlobeMap.ts',
+  'src/components/Map.ts',
+  'src/services/related-assets.ts',
+];
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -121,6 +129,39 @@ describe('eager chunk budget: lazy-only config data tables stay off the entry', 
       );
     });
   }
+});
+
+describe('eager chunk budget: military base data stays behind its lazy loader', () => {
+  it('runtime consumers do not statically import the military-bases data chunk', () => {
+    for (const sourcePath of MILITARY_BASE_DIRECT_IMPORT_FORBIDDEN) {
+      const src = readFileSync(resolve(repoRoot, sourcePath), 'utf-8');
+      assert.ok(
+        !src.includes("from '@/config/military-bases'") && !src.includes('from "@/config/military-bases"'),
+        `${sourcePath} must use src/services/military-base-config.ts instead of directly importing the base data chunk`,
+      );
+    }
+  });
+
+  it('military surge analysis remains isolated from the broad military fetch catch', () => {
+    const src = readFileSync(resolve(repoRoot, 'src/app/data-loader.ts'), 'utf-8');
+    const importMatches = src.match(/import\('@\/services\/military-surge'\)/g) ?? [];
+    assert.equal(importMatches.length, 1, 'military-surge should be imported only inside the non-fatal helper');
+    assert.match(src, /private async runMilitarySurgeAnalysis\(flights: MilitaryFlight\[\]\): Promise<void>/);
+    assert.match(src, /\[Intelligence\] Military surge analysis skipped/);
+  });
+
+  it('country brief refreshes the military card after lazy base data loads', () => {
+    const src = readFileSync(resolve(repoRoot, 'src/app/country-intel.ts'), 'utf-8');
+    const start = src.indexOf('void Promise.all([', src.indexOf('page.updateInfrastructure(code);'));
+    assert.notEqual(start, -1, 'country brief should preload lazy infrastructure/base tables after first render');
+    const end = src.indexOf('const intelClient', start);
+    assert.notEqual(end, -1, 'country brief preload block should precede intelligence client setup');
+    const block = src.slice(start, end);
+    assert.match(block, /preloadMilitaryBases\(\)/);
+    assert.match(block, /preloadInfrastructureTables\(\)/);
+    assert.match(block, /updateInfrastructure\(code\)/);
+    assert.match(block, /updateMilitaryActivity\?\.\(this\.buildMilitarySummary\(code, country\)\)/);
+  });
 });
 
 describe('eager chunk budget: Sentry stays behind the deferred scheduler', { skip: !existsSync(dashboardHtml) }, () => {

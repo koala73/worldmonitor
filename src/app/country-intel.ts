@@ -36,7 +36,6 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { showMapContextMenu } from '@/components/MapContextMenu';
 import { BETA_MODE } from '@/config/beta';
-import { MILITARY_BASES } from '@/config';
 import { mlWorker } from '@/services/ml-worker';
 import { isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { t, getCurrentLanguage } from '@/services/i18n';
@@ -50,6 +49,7 @@ import {
   type BriefSource,
 } from '@/utils/brief-sources';
 import { getNearbyInfrastructure, preloadInfrastructureTables } from '@/services/related-assets';
+import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { iso2ToIso3, iso2ToComtradeReporterCode } from '@/utils/country-codes';
 import { buildDependencyGraph } from '@/services/infrastructure-cascade';
@@ -327,10 +327,14 @@ export class CountryIntelManager implements AppModule {
     page.updateNews(filteredNews.slice(0, 10));
 
     page.updateInfrastructure(code);
-    void preloadInfrastructureTables()
+    void Promise.all([
+      preloadMilitaryBases().catch(() => []),
+      preloadInfrastructureTables().catch(() => {}),
+    ])
       .then(() => {
         if (this.ctx.countryBriefPage?.getCode() === code) {
           this.ctx.countryBriefPage.updateInfrastructure(code);
+          this.ctx.countryBriefPage.updateMilitaryActivity?.(this.buildMilitarySummary(code, country));
         }
       })
       .catch(() => {});
@@ -1275,7 +1279,7 @@ export class CountryIntelManager implements AppModule {
         id: base.id,
         name: base.name,
         distanceKm: base.distanceKm,
-        country: MILITARY_BASES.find((entry) => entry.id === base.id)?.country,
+        country: getCachedMilitaryBases().find((entry) => entry.id === base.id)?.country,
       }))
       : [];
 

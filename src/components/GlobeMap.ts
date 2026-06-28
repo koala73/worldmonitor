@@ -17,7 +17,8 @@
 import Globe from 'globe.gl';
 import { isDesktopRuntime } from '@/services/runtime';
 import type { GlobeInstance, ConfigOptions } from 'globe.gl';
-import { INTEL_HOTSPOTS, CONFLICT_ZONES, MILITARY_BASES, STRATEGIC_WATERWAYS } from '@/config/geo';
+import { INTEL_HOTSPOTS, CONFLICT_ZONES, STRATEGIC_WATERWAYS } from '@/config/geo';
+import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
 import { NUCLEAR_FACILITIES, SPACEPORTS, ECONOMIC_CENTERS, CRITICAL_MINERALS, UNDERSEA_CABLES } from '@/config/geo-map';
 import { PIPELINES } from '@/config/pipelines';
 import { t } from '@/services/i18n';
@@ -514,6 +515,7 @@ export class GlobeMap {
   private techMarkers: TechMarker[] = [];
   private conflictZoneMarkers: ConflictZoneMarker[] = [];
   private milBaseMarkers: MilBaseMarker[] = [];
+  private milBaseMarkersLoadPending = false;
   private nuclearSiteMarkers: NuclearSiteMarker[] = [];
   private irradiatorSiteMarkers: IrradiatorSiteMarker[] = [];
   private spaceportSiteMarkers: SpaceportSiteMarker[] = [];
@@ -2294,15 +2296,8 @@ export class GlobeMap {
     switch (layer) {
       case 'bases':
         if (!this.milBaseMarkers.length) {
-          this.milBaseMarkers = (MILITARY_BASES as MilitaryBase[]).map(b => ({
-            _kind: 'milbase' as const,
-            _lat: b.lat,
-            _lng: b.lon,
-            id: b.id,
-            name: b.name,
-            type: b.type,
-            country: b.country ?? '',
-          }));
+          this.setMilitaryBaseMarkers(getCachedMilitaryBases());
+          if (!this.milBaseMarkers.length) this.requestMilitaryBaseMarkers();
         }
         break;
       case 'nuclear':
@@ -2437,6 +2432,34 @@ export class GlobeMap {
         }
         break;
     }
+  }
+
+  private setMilitaryBaseMarkers(bases: MilitaryBase[]): void {
+    this.milBaseMarkers = bases.map(b => ({
+      _kind: 'milbase' as const,
+      _lat: b.lat,
+      _lng: b.lon,
+      id: b.id,
+      name: b.name,
+      type: b.type,
+      country: b.country ?? '',
+    }));
+  }
+
+  private requestMilitaryBaseMarkers(): void {
+    if (this.milBaseMarkersLoadPending) return;
+    this.milBaseMarkersLoadPending = true;
+    void preloadMilitaryBases()
+      .then((bases) => {
+        this.milBaseMarkersLoadPending = false;
+        if (this.destroyed) return;
+        this.setMilitaryBaseMarkers(bases);
+        this.flushMarkers();
+      })
+      .catch((error) => {
+        this.milBaseMarkersLoadPending = false;
+        console.warn('[GlobeMap] Military base config unavailable:', error);
+      });
   }
 
   public setMilitaryFlights(flights: MilitaryFlight[]): void {

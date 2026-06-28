@@ -82,8 +82,11 @@ async function withMockedConvex(fn, options = {}) {
     }
 
     if (url.endsWith('/api/internal-validate-api-key')) {
-      return new Response(JSON.stringify({ keyId: 'key_1', userId: 'user_api_owner', name: 'pipeline' }), {
-        status: 200,
+      const value = Object.hasOwn(options, 'validateResponse')
+        ? options.validateResponse
+        : { keyId: 'key_1', userId: 'user_api_owner', name: 'pipeline' };
+      return new Response(JSON.stringify(value), {
+        status: options.validateStatus ?? 200,
         headers: { 'Content-Type': 'application/json' },
       });
     }
@@ -182,22 +185,17 @@ test('preview deploy user-key cache matches server Redis prefix for invalidation
 
 test('null Convex validation response fails closed as invalid', async () => {
   await withMockedConvex(async (calls) => {
-    globalThis.fetch = async (input, init) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      const body = typeof init?.body === 'string' ? init.body : '';
-      calls.push({ url, init, body });
-      return new Response(JSON.stringify(null), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    };
-
     const result = await validateBootstrapUserApiKey(USER_KEY);
 
     assert.equal(result.ok, false);
     assert.equal(result.status, 401);
     assert.equal(Object.hasOwn(result, 'keyHash'), false);
-  });
+    const cacheWrite = calls.find((call) => call.url.startsWith('https://upstash.test') && call.body.includes('"SET"'));
+    assert.ok(cacheWrite);
+    const setCommand = JSON.parse(cacheWrite.body).find((cmd) => cmd[0] === 'SET');
+    assert.match(setCommand[1], /^bootstrap-user-api-key-invalid:[a-f0-9]{64}$/);
+    assert.doesNotMatch(setCommand[1], /^user-api-key:/);
+  }, { validateResponse: null });
 });
 
 test('missing Convex config fails closed as retryable 503 without leaking secrets', async () => {
@@ -250,7 +248,18 @@ test('transient Convex HTTP 5xx on key validation is a retryable 503, not 401, a
   });
 });
 
-test('revoked key served from negative sentinel cache returns 401 without contacting Convex', async () => {
+test('shared gateway negative sentinel is revalidated instead of hard-failing bootstrap', async () => {
+  const keyHash = await sha256HexForTest(USER_KEY);
+  await withMockedConvex(async (calls) => {
+    const result = await validateBootstrapUserApiKey(USER_KEY);
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result, { ok: true, userId: 'user_api_owner' });
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-validate-api-key')), true);
+  }, { redisCache: { [`user-api-key:${keyHash}`]: '__WM_NEG__' } });
+});
+
+test('revoked key served from bootstrap negative sentinel cache returns 401 without contacting Convex', async () => {
   const keyHash = await sha256HexForTest(USER_KEY);
   await withMockedConvex(async (calls) => {
     const result = await validateBootstrapUserApiKey(USER_KEY);
@@ -258,7 +267,7 @@ test('revoked key served from negative sentinel cache returns 401 without contac
     assert.equal(result.ok, false);
     assert.equal(result.status, 401);
     assert.equal(calls.some((call) => call.url.endsWith('/api/internal-validate-api-key')), false);
-  }, { redisCache: { [`user-api-key:${keyHash}`]: '__WM_NEG__' } });
+  }, { redisCache: { [`bootstrap-user-api-key-invalid:${keyHash}`]: '__WM_NEG__' } });
 });
 
 test('current apiAccess entitlement is required', async () => {

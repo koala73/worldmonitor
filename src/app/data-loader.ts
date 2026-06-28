@@ -1,7 +1,7 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { enqueuePanelCall } from '@/app/pending-panel-data';
-import type { NewsItem, MapLayers, SocialUnrestEvent } from '@/types';
+import type { NewsItem, MapLayers, SocialUnrestEvent, MilitaryFlight } from '@/types';
 import type { MarketData } from '@/types';
 import type { TimeRange } from '@/components/MapContainer';
 import {
@@ -115,7 +115,7 @@ import { ingestProtests, ingestFlights, ingestVessels, ingestEarthquakes, detect
 import { signalAggregator } from '@/services/signal-aggregator';
 import { updateAndCheck, consumeServerAnomalies, fetchLiveAnomalies } from '@/services/temporal-baseline';
 import { fetchAllFires, flattenFires, computeRegionStats, toMapFires } from '@/services/wildfires';
-import { analyzeFlightsForSurge, surgeAlertToSignal, detectForeignMilitaryPresence, foreignPresenceToSignal, type TheaterPostureSummary } from '@/services/military-surge';
+import type { TheaterPostureSummary } from '@/services/military-surge';
 import { fetchCachedTheaterPosture } from '@/services/cached-theater-posture';
 import { ingestProtestsForCII, ingestMilitaryForCII, ingestNewsForCII, ingestOutagesForCII, ingestConflictsForCII, ingestUcdpForCII, ingestHapiForCII, ingestDisplacementForCII, ingestClimateForCII, ingestStrikesForCII, ingestOrefForCII, ingestAviationForCII, ingestAdvisoriesForCII, ingestGpsJammingForCII, ingestAisDisruptionsForCII, ingestSatelliteFiresForCII, ingestCyberThreatsForCII, ingestTemporalAnomaliesForCII, ingestEarthquakesForCII, ingestSanctionsForCII, isInLearningMode, resetHotspotActivity, calculateCII, type CountryScore } from '@/services/country-instability';
 import { fetchGpsInterference } from '@/services/gps-interference';
@@ -2417,18 +2417,7 @@ export class DataLoaderManager implements AppModule {
           });
         }
         if (!isInLearningMode()) {
-          const surgeAlerts = analyzeFlightsForSurge(flightData.flights);
-          if (surgeAlerts.length > 0) {
-            const surgeSignals = surgeAlerts.map(surgeAlertToSignal);
-            addToSignalHistory(surgeSignals);
-            if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(surgeSignals);
-          }
-          const foreignAlerts = detectForeignMilitaryPresence(flightData.flights);
-          if (foreignAlerts.length > 0) {
-            const foreignSignals = foreignAlerts.map(foreignPresenceToSignal);
-            addToSignalHistory(foreignSignals);
-            if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(foreignSignals);
-          }
+          await this.runMilitarySurgeAnalysis(flightData.flights);
         }
       } catch (error) {
         console.error('[Intelligence] Military fetch failed:', error);
@@ -2947,18 +2936,7 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.updateMilitaryForEscalation(flightData.flights, vesselData.vessels);
       this.refreshCiiAndBrief();
       if (!isInLearningMode()) {
-        const surgeAlerts = analyzeFlightsForSurge(flightData.flights);
-        if (surgeAlerts.length > 0) {
-          const surgeSignals = surgeAlerts.map(surgeAlertToSignal);
-          addToSignalHistory(surgeSignals);
-          if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(surgeSignals);
-        }
-        const foreignAlerts = detectForeignMilitaryPresence(flightData.flights);
-        if (foreignAlerts.length > 0) {
-          const foreignSignals = foreignAlerts.map(foreignPresenceToSignal);
-          addToSignalHistory(foreignSignals);
-          if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(foreignSignals);
-        }
+        await this.runMilitarySurgeAnalysis(flightData.flights);
       }
 
       this.loadCachedPosturesForBanner();
@@ -2980,6 +2958,28 @@ export class DataLoaderManager implements AppModule {
       this.ctx.statusPanel?.updateFeed('Military', { status: 'error', errorMessage: String(error) });
       this.ctx.statusPanel?.updateApi('OpenSky', { status: 'error' });
       dataFreshness.recordError('opensky', String(error));
+    }
+  }
+
+  private async runMilitarySurgeAnalysis(flights: MilitaryFlight[]): Promise<void> {
+    try {
+      // military-surge pulls bases-expanded, so keep it off the eager boot graph
+      // and make its optional enrichment non-fatal to the military fetch path.
+      const { analyzeFlightsForSurge, surgeAlertToSignal, detectForeignMilitaryPresence, foreignPresenceToSignal } = await import('@/services/military-surge');
+      const surgeAlerts = analyzeFlightsForSurge(flights);
+      if (surgeAlerts.length > 0) {
+        const surgeSignals = surgeAlerts.map(surgeAlertToSignal);
+        addToSignalHistory(surgeSignals);
+        if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(surgeSignals);
+      }
+      const foreignAlerts = detectForeignMilitaryPresence(flights);
+      if (foreignAlerts.length > 0) {
+        const foreignSignals = foreignAlerts.map(foreignPresenceToSignal);
+        addToSignalHistory(foreignSignals);
+        if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(foreignSignals);
+      }
+    } catch (error) {
+      console.warn('[Intelligence] Military surge analysis skipped:', error);
     }
   }
 

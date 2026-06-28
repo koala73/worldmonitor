@@ -4,7 +4,7 @@ import { escapeHtml } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
 import type { Topology, GeometryCollection } from 'topojson-specification';
 import type { Feature, Geometry } from 'geojson';
-import type { MapLayers, Hotspot, NewsItem, InternetOutage, RelatedAsset, AssetType, AisDisruptionEvent, AisDensityZone, CableAdvisory, RepairShip, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, CyberThreat, CableHealthRecord } from '@/types';
+import type { MapLayers, Hotspot, NewsItem, InternetOutage, RelatedAsset, AssetType, AisDisruptionEvent, AisDensityZone, CableAdvisory, RepairShip, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, CyberThreat, CableHealthRecord, MilitaryBase } from '@/types';
 import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import type { Earthquake } from '@/services/earthquakes';
 import { type IranEvent, getIranEventCssColor, getIranEventSize } from '@/services/conflict';
@@ -16,10 +16,10 @@ import type { RadiationObservation } from '@/services/radiation';
 import { getSeverityColor } from '@/services/weather';
 import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/smart-poll-loop';
 import { scheduleAfterFirstPaint, yieldToMain } from '@/utils/after-paint';
+import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
 import {
   INTEL_HOTSPOTS,
   CONFLICT_ZONES,
-  MILITARY_BASES,
   GAMMA_IRRADIATORS,
   PIPELINES,
   PIPELINE_COLORS,
@@ -200,6 +200,7 @@ export class MapComponent {
   // Bumped on every dynamic-layer build; lets the chunked first-paint pass bail mid-yield
   // when a newer (synchronous) render has superseded it (#4442 re-entrancy guard).
   private dynamicRenderToken = 0;
+  private militaryBasesLoadPending = false;
   // Set in destroy(); guards render() (incl. the deferred first-paint callback and the
   // resize/visibility rAF callbacks) from running on a torn-down instance.
   private destroyed = false;
@@ -267,6 +268,26 @@ export class MapComponent {
     if (this.state.layers.cyberThreats && SITE_VARIANT !== 'tech' && SITE_VARIANT !== 'happy') {
       this.loadAptGroups();
     }
+  }
+
+  private getMilitaryBasesForRender(): MilitaryBase[] {
+    const bases = getCachedMilitaryBases();
+    if (bases.length === 0) this.requestMilitaryBasesRender();
+    return bases;
+  }
+
+  private requestMilitaryBasesRender(): void {
+    if (this.militaryBasesLoadPending) return;
+    this.militaryBasesLoadPending = true;
+    void preloadMilitaryBases()
+      .then(() => {
+        this.militaryBasesLoadPending = false;
+        if (!this.destroyed) this.render();
+      })
+      .catch((error) => {
+        this.militaryBasesLoadPending = false;
+        console.warn('[Map] Military base config unavailable:', error);
+      });
   }
 
   private setupResizeObserver(): void {
@@ -1713,7 +1734,7 @@ export class MapComponent {
 
     // Military bases (always HTML - nation colors matter)
     if (this.state.layers.bases) {
-      MILITARY_BASES.forEach((base) => {
+      this.getMilitaryBasesForRender().forEach((base) => {
         const pos = projection([base.lon, base.lat]);
         if (!pos) return;
 
@@ -3691,8 +3712,17 @@ export class MapComponent {
   }
 
   public triggerBaseClick(id: string): void {
-    const base = MILITARY_BASES.find(b => b.id === id);
-    if (!base) return;
+    const base = getCachedMilitaryBases().find(b => b.id === id);
+    if (!base) {
+      void preloadMilitaryBases()
+        .then(() => {
+          if (!this.destroyed) this.triggerBaseClick(id);
+        })
+        .catch((error) => {
+          console.warn('[Map] Military base config unavailable:', error);
+        });
+      return;
+    }
 
     const width = this.container.clientWidth;
     const height = this.container.clientHeight;

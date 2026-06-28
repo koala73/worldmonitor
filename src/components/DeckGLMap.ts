@@ -77,11 +77,10 @@ import { t } from '@/services/i18n';
 import { debounce, rafSchedule, getCurrentTheme } from '@/utils/index';
 import { showLayerWarning } from '@/utils/layer-warning';
 import { localizeMapLabels } from '@/utils/map-locale';
+import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
 import {
   INTEL_HOTSPOTS,
   CONFLICT_ZONES,
-
-  MILITARY_BASES,
   GAMMA_IRRADIATORS,
   PIPELINES,
   PIPELINE_COLORS,
@@ -566,6 +565,7 @@ export class DeckGLMap {
   private serverBases: MilitaryBaseEnriched[] = [];
   private serverBaseClusters: ServerBaseCluster[] = [];
   private serverBasesLoaded = false;
+  private baseConfigLoadPending = false;
   private naturalEvents: NaturalEvent[] = [];
   private firmsFireData: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }> = [];
   private techEvents: TechEventMarker[] = [];
@@ -2658,7 +2658,24 @@ export class DeckGLMap {
 
 
   private getBasesData(): MilitaryBaseEnriched[] {
-    return this.serverBasesLoaded ? this.serverBases : MILITARY_BASES as MilitaryBaseEnriched[];
+    if (this.serverBasesLoaded) return this.serverBases;
+    const bases = getCachedMilitaryBases() as MilitaryBaseEnriched[];
+    if (bases.length === 0) this.requestBaseConfigRender();
+    return bases;
+  }
+
+  private requestBaseConfigRender(): void {
+    if (this.baseConfigLoadPending) return;
+    this.baseConfigLoadPending = true;
+    void preloadMilitaryBases()
+      .then(() => {
+        this.baseConfigLoadPending = false;
+        if (!this.destroyed) this.render();
+      })
+      .catch((error) => {
+        this.baseConfigLoadPending = false;
+        console.warn('[DeckGLMap] Military base config unavailable:', error);
+      });
   }
 
   private createBasesLayer(): IconLayer {
@@ -7031,11 +7048,13 @@ export class DeckGLMap {
   }
 
   public triggerBaseClick(id: string): void {
-    const base = this.serverBases.find(b => b.id === id) || MILITARY_BASES.find(b => b.id === id);
+    const base = this.serverBases.find(b => b.id === id) || getCachedMilitaryBases().find(b => b.id === id);
     if (base) {
       const screenPos = this.projectToScreen(base.lat, base.lon);
       const { x, y } = screenPos || this.getContainerCenter();
       this.popup.show({ type: 'base', data: base, x, y });
+    } else {
+      this.requestBaseConfigRender();
     }
   }
 
