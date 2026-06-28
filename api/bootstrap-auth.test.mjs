@@ -342,6 +342,7 @@ test('Convex validation outage returns a retryable non-cacheable 503, not a misl
     assert.equal(resp.status, 503);
     assert.equal(resp.headers.get('cache-control'), 'no-store');
     assert.equal(resp.headers.get('retry-after'), '5');
+    assert.equal(resp.headers.get('x-validation-mode'), 'degraded');
     assert.equal(body.error, 'Service temporarily unavailable');
     // A transient outage must not leak as "Invalid API key" or expose internals.
     assert.notEqual(body.error, 'Invalid API key');

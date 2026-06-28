@@ -74,7 +74,13 @@ function serviceUnavailable() {
     status: 503,
     error: 'Service temporarily unavailable',
     unavailable: true,
-    headers: noStoreHeaders({ 'Retry-After': String(VALIDATION_RETRY_AFTER_SECONDS) }),
+    // X-Validation-Mode mirrors the rate-limiter's X-RateLimit-Mode: degraded
+    // marker so observability can correlate validation-service outages without
+    // parsing the body; Retry-After signals the failure is transient.
+    headers: noStoreHeaders({
+      'Retry-After': String(VALIDATION_RETRY_AFTER_SECONDS),
+      'X-Validation-Mode': 'degraded',
+    }),
   };
 }
 

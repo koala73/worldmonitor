@@ -212,6 +212,7 @@ test('missing Convex config fails closed as retryable 503 without leaking secret
     assert.equal(result.status, 503);
     assert.equal(result.error, 'Service temporarily unavailable');
     assert.equal(result.headers['Retry-After'], '5');
+    assert.equal(result.headers['X-Validation-Mode'], 'degraded');
     assert.doesNotMatch(JSON.stringify(result), /shared-secret|CONVEX|keyHash/i);
   } finally {
     restoreEnv();
@@ -243,6 +244,7 @@ test('transient Convex HTTP 5xx on key validation is a retryable 503, not 401, a
     assert.equal(result.status, 503);
     assert.equal(result.unavailable, true);
     assert.equal(result.error, 'Service temporarily unavailable');
+    assert.equal(result.headers['X-Validation-Mode'], 'degraded');
     // A transient outage must NOT poison the shared negative cache.
     assert.equal(calls.some((call) => call.url.startsWith('https://upstash.test') && call.body.includes('"SET"')), false);
   });
