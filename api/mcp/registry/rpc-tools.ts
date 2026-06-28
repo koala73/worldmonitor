@@ -291,7 +291,12 @@ export const RPC_TOOLS: ToolDef[] = [
         // read is best-effort; a read failure must not mask the status.
         const detail = await res.text().catch(() => '');
         let code = '';
-        try { code = String((JSON.parse(detail) as { error?: unknown }).error ?? ''); } catch { code = detail.slice(0, 120); }
+        // `error` is a string today (e.g. `invalid_internal_mcp_signature`,
+        // `insufficient_entitlement`), but JSON.stringify any non-string shape so
+        // an object envelope renders readable JSON instead of `[object Object]`,
+        // which would defeat the whole point of surfacing the code. Bound BOTH
+        // shapes so the Sentry title can't bloat on a long body.
+        try { const e = (JSON.parse(detail) as { error?: unknown }).error ?? ''; code = (typeof e === 'string' ? e : JSON.stringify(e)).slice(0, 120); } catch { code = detail.slice(0, 120); }
         throw new Error(`get-country-intel-brief HTTP ${res.status}${code ? `: ${code}` : ''}`);
       }
       const result = await res.json() as Record<string, unknown>;
