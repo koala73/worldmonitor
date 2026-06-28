@@ -76,6 +76,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const res = await handler(req);
     assert.equal(res.status, 401);
     assert.ok(res.headers.get('www-authenticate')?.includes('Bearer realm="worldmonitor"'), 'must include WWW-Authenticate header');
+    assert.match(res.headers.get('cache-control') || '', /\bno-store\b/i);
     const body = await res.json();
     assert.equal(body.error?.code, -32001);
   });
@@ -98,6 +99,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const res = await handler(req);
     assert.equal(res.status, 204);
     assert.ok(res.headers.get('access-control-allow-methods'));
+    assert.match(res.headers.get('cache-control') || '', /\bno-store\b/i);
   });
 
   it('initialize returns protocol version and Mcp-Session-Id header', async () => {

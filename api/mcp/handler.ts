@@ -28,9 +28,18 @@ type StoredSseEvent = {
 };
 
 const SSE_CONTENT_TYPE = 'text/event-stream; charset=utf-8';
+const MCP_CACHE_CONTROL = 'no-store, no-cache, no-transform';
 const MAX_SSE_SESSIONS = 500;
 const MAX_SSE_STREAMS_PER_SESSION = 25;
 const mcpSseStreamsBySession = new Map<string, Map<string, StoredSseEvent[]>>();
+
+function getMcpCorsHeaders(methods = 'POST, GET, OPTIONS'): Record<string, string> {
+  return {
+    ...getPublicCorsHeaders(methods),
+    'Cache-Control': MCP_CACHE_CONTROL,
+    Pragma: 'no-cache',
+  };
+}
 
 function clientAcceptsSse(req: Request): boolean {
   const accept = req.headers.get('accept') ?? '';
@@ -122,7 +131,8 @@ function replayEventsAfter(sessionId: string, lastEventId: string): StoredSseEve
 function sseHeadersFrom(headers: Headers): Headers {
   const out = new Headers(headers);
   out.set('Content-Type', SSE_CONTENT_TYPE);
-  out.set('Cache-Control', 'no-cache, no-transform');
+  out.set('Cache-Control', MCP_CACHE_CONTROL);
+  out.set('Pragma', 'no-cache');
   return out;
 }
 
@@ -187,7 +197,7 @@ function handleSseReplay(req: Request, corsHeaders: Record<string, string>): Res
 
   return new Response(createSseStream(events), {
     status: 200,
-    headers: { 'Content-Type': SSE_CONTENT_TYPE, 'Cache-Control': 'no-cache, no-transform', ...corsHeaders },
+    headers: { 'Content-Type': SSE_CONTENT_TYPE, ...corsHeaders },
   });
 }
 
@@ -200,7 +210,7 @@ export async function mcpHandler(
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
 ): Promise<Response> {
   // MCP is a public API endpoint secured by API key — allow all origins (claude.ai, Claude Desktop, custom agents)
-  const corsHeaders = getPublicCorsHeaders('POST, GET, OPTIONS');
+  const corsHeaders = getMcpCorsHeaders();
 
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
