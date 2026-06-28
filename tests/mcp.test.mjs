@@ -2775,6 +2775,95 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.equal(await verifyInternalMcpRequest(tamperedReq, HMAC_SECRET), null, 'same signature must not verify if context is moved back into the URL');
   });
 
+  it('edge: Pro get_country_brief surfaces gateway error detail for Sentry grouping', async () => {
+    const scenarios = [
+      {
+        name: 'structured HMAC 401',
+        expectedLog: 'warn',
+        makeResponse: () => new Response(
+          JSON.stringify({ error: 'invalid_internal_mcp_signature' }),
+          { status: 401, headers: { 'Content-Type': 'application/json' } },
+        ),
+        assertMessage: (message) => {
+          assert.equal(message, 'get-country-intel-brief HTTP 401: invalid_internal_mcp_signature');
+        },
+      },
+      {
+        name: 'HTML CDN 503',
+        expectedLog: 'error',
+        makeResponse: () => new Response(
+          '<!DOCTYPE html><html><head><title>Bad Gateway</title></head><body>Cloudflare outage</body></html>',
+          { status: 503, headers: { 'Content-Type': 'text/html' } },
+        ),
+        assertMessage: (message) => {
+          assert.equal(message, 'get-country-intel-brief HTTP 503: Bad Gateway Cloudflare outage');
+          assert.doesNotMatch(message, /<[^>]*>/, 'HTML tags must not leak into the Sentry/log title');
+        },
+      },
+      {
+        name: 'unreadable body 503',
+        expectedLog: 'error',
+        makeResponse: () => ({ ok: false, status: 503, text: async () => { throw new Error('body locked'); } }),
+        assertMessage: (message) => {
+          assert.equal(message, 'get-country-intel-brief HTTP 503');
+        },
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      const { deps } = makeProDeps();
+      const warnCalls = [];
+      const errorCalls = [];
+      const origWarn = console.warn;
+      const origError = console.error;
+      console.warn = (...args) => { warnCalls.push(args); };
+      console.error = (...args) => { errorCalls.push(args); };
+      try {
+        globalThis.fetch = async (url) => {
+          const { pathname } = new URL(String(url));
+          if (pathname === '/api/news/v1/list-feed-digest') {
+            return new Response(JSON.stringify({
+              categories: {
+                world: {
+                  items: [{
+                    title: 'Iran headline for failing country brief',
+                    source: 'Context Wire',
+                    link: 'https://example.com/iran-failure',
+                    publishedAt: '2026-06-07T00:00:00.000Z',
+                    snippet: 'Iran context item used before the brief endpoint fails.',
+                  }],
+                },
+              },
+            }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+          }
+          if (pathname === '/api/intelligence/v1/get-country-intel-brief') {
+            return scenario.makeResponse();
+          }
+          return new Response('', { status: 200 });
+        };
+
+        const res = await mcpHandler(proReq('POST', callBody('get_country_brief', {
+          country_code: 'IR',
+          framework: 'PMESII-PT',
+        })), deps);
+        assert.equal(res.status, 200, `${scenario.name}: JSON-RPC tool errors stay HTTP 200`);
+        const rpc = await res.json();
+        assert.equal(rpc.error?.code, -32603, `${scenario.name}: tool failure should be a JSON-RPC internal error`);
+
+        const expectedCalls = scenario.expectedLog === 'warn' ? warnCalls : errorCalls;
+        const unexpectedCalls = scenario.expectedLog === 'warn' ? errorCalls : warnCalls;
+        const mcpLogs = expectedCalls.filter((args) => args[0] === '[mcp] tool execution error:');
+        assert.equal(mcpLogs.length, 1, `${scenario.name}: expected one MCP execution log`);
+        assert.equal(unexpectedCalls.some((args) => args[0] === '[mcp] tool execution error:'), false, `${scenario.name}: wrong console severity`);
+        const loggedError = mcpLogs[0][1];
+        scenario.assertMessage(loggedError instanceof Error ? loggedError.message : String(loggedError));
+      } finally {
+        console.warn = origWarn;
+        console.error = origError;
+      }
+    }
+  });
+
   it('edge: cache-only tool for Pro user goes through INCR/DECR path (counts toward 50/day)', async () => {
     const { deps, pipe } = makeProDeps();
     process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
