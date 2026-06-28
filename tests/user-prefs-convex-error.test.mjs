@@ -253,12 +253,33 @@ describe('extractConvexErrorKind — Convex client error → kind', () => {
     });
 
     it('maps opaque Convex request-id server errors to SERVICE_UNAVAILABLE', () => {
-      // Convex's generic platform/internal 5xx wrapper carries no JSON `code`
+      // Convex generic platform/internal 5xx wrapper carries no JSON `code`
       // field, but it has the same transient retry profile as the classified
       // platform 5xx shapes above. Map it to SERVICE_UNAVAILABLE so callers
       // return 503 + Retry-After instead of a hard 500.
-      const err = new Error('[Request ID: 9fee2a2bfa791253] Server Error');
-      assert.equal(extractConvexErrorKind(err, err.message), 'SERVICE_UNAVAILABLE');
+      const hits = [
+        '[Request ID: 9fee2a2bfa791253] Server Error',
+        '[Request ID: ABCdef_123-456] Server Error',
+      ];
+      for (const msg of hits) {
+        const err = new Error(msg);
+        assert.equal(extractConvexErrorKind(err, err.message), 'SERVICE_UNAVAILABLE');
+      }
+    });
+
+    it('does NOT match partial or decorated request-id server error variants', () => {
+      const misses = [
+        '[Request ID: 9fee2a2bfa791253] Server Error: extra details',
+        'prefix [Request ID: 9fee2a2bfa791253] Server Error',
+        '[Request ID: ] Server Error',
+      ];
+      for (const msg of misses) {
+        const err = new Error(msg);
+        assert.equal(
+          extractConvexErrorKind(err, err.message), null,
+          `expected null for: ${msg}`,
+        );
+      }
     });
   });
 

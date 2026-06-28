@@ -124,7 +124,7 @@ export function extractConvexErrorKind(err, msg) {
   // it like the recognized Convex platform 5xx family above. Keep the
   // matcher exact-ish so unrelated free-form server errors still fall
   // through to the unknown/500 path.
-  if (/^\[Request ID:\s*[a-f0-9]+\]\s*Server Error$/i.test(msg)) return 'SERVICE_UNAVAILABLE';
+  if (/^\[Request ID:\s*[\w-]+\]\s*Server Error$/i.test(msg)) return 'SERVICE_UNAVAILABLE';
   if (msg.includes('CONFLICT')) return 'CONFLICT';
   if (msg.includes('BLOB_TOO_LARGE')) return 'BLOB_TOO_LARGE';
   if (msg.includes('UNAUTHENTICATED')) return 'UNAUTHENTICATED';
