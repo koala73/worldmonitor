@@ -26,7 +26,9 @@ import { signalAggregator } from '@/services/signal-aggregator';
 import { dataFreshness } from '@/services/data-freshness';
 import { fetchCountryMarkets } from '@/services/prediction';
 import { collectStoryData } from '@/services/story-data';
-import { renderStoryToCanvas } from '@/services/story-renderer';
+// renderStoryToCanvas is dynamic-imported at its call site (#4486) so story-renderer
+// stays off the eager boot graph; this is one of its two eager edges (the other is
+// StoryModal). The export runs on user interaction (post-paint), already async.
 import { openStoryModal } from '@/components/StoryModal';
 import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
@@ -191,6 +193,7 @@ export class CountryIntelManager implements AppModule {
         const posturePanel = this.ctx.panels['strategic-posture'] as StrategicPosturePanel | undefined;
         const postures = posturePanel?.getPostures() || [];
         const data = collectStoryData(code, name, this.ctx.latestClusters, postures, this.ctx.latestPredictions, signals, convergence);
+        const { renderStoryToCanvas } = await import('@/services/story-renderer');
         const canvas = await renderStoryToCanvas(data);
         const dataUrl = canvas.toDataURL('image/png');
         const a = document.createElement('a');
