@@ -100,14 +100,94 @@ function parsePanelKeys(variant) {
   return keys;
 }
 
+function findMatchingBrace(src, openIndex) {
+  let depth = 0;
+  let quote = null;
+  let escaped = false;
+  let lineComment = false;
+  let blockComment = false;
+
+  for (let i = openIndex; i < src.length; i++) {
+    const char = src[i];
+    const next = src[i + 1];
+
+    if (lineComment) {
+      if (char === '\n') lineComment = false;
+      continue;
+    }
+    if (blockComment) {
+      if (char === '*' && next === '/') {
+        blockComment = false;
+        i++;
+      }
+      continue;
+    }
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (char === quote) quote = null;
+      continue;
+    }
+
+    if (char === '/' && next === '/') {
+      lineComment = true;
+      i++;
+      continue;
+    }
+    if (char === '/' && next === '*') {
+      blockComment = true;
+      i++;
+      continue;
+    }
+    if (char === '\'' || char === '"' || char === '`') {
+      quote = char;
+      continue;
+    }
+    if (char === '{') depth++;
+    else if (char === '}') {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+function superObjectBodies(src) {
+  const bodies = [];
+  let searchIndex = 0;
+  while (searchIndex < src.length) {
+    const superIndex = src.indexOf('super(', searchIndex);
+    if (superIndex === -1) break;
+    const open = src.indexOf('{', superIndex);
+    const closeParen = src.indexOf(')', superIndex);
+    if (open === -1 || (closeParen !== -1 && closeParen < open)) {
+      searchIndex = superIndex + 'super('.length;
+      continue;
+    }
+    const close = findMatchingBrace(src, open);
+    if (close === -1) {
+      searchIndex = open + 1;
+      continue;
+    }
+    bodies.push(src.slice(open + 1, close));
+    searchIndex = close + 1;
+  }
+  return bodies;
+}
+
 function naturalDeferredPanelFootprints() {
   const componentsDir = resolve(__dirname, '../src/components');
   const footprints = new Map();
   for (const file of readdirSync(componentsDir)) {
     if (!file.endsWith('.ts')) continue;
     const src = readFileSync(resolve(componentsDir, file), 'utf-8');
-    for (const match of src.matchAll(/super\(\s*\{([\s\S]*?)\}\s*\)/g)) {
-      const body = match[1];
+    for (const body of superObjectBodies(src)) {
       const id = body.match(/id:\s*['"]([^'"]+)['"]/);
       if (!id) continue;
       const rowSpan = body.match(/defaultRowSpan:\s*([2-4])/);
@@ -119,19 +199,25 @@ function naturalDeferredPanelFootprints() {
   return footprints;
 }
 
-function deferredPanelFootprintRegistryEntry(panelId) {
-  const registry = panelLayoutSrc.match(/const DEFERRED_PANEL_NATURAL_FOOTPRINTS:[\s\S]*?= \{([\s\S]*?)\n\};/);
-  assert.ok(registry, 'DEFERRED_PANEL_NATURAL_FOOTPRINTS registry not found');
-  const body = registry[1];
-  const quoted = '\'' + panelId + '\':';
-  const bare = panelId + ':';
-  let start = body.indexOf(quoted);
-  if (start === -1) start = body.indexOf(bare);
-  if (start === -1) return null;
-  const open = body.indexOf('{', start);
-  const close = body.indexOf('}', open);
-  if (open === -1 || close === -1) return null;
-  return body.slice(open + 1, close);
+function deferredPanelFootprintRegistryEntries() {
+  const decl = panelLayoutSrc.indexOf('DEFERRED_PANEL_NATURAL_FOOTPRINTS');
+  assert.notEqual(decl, -1, 'DEFERRED_PANEL_NATURAL_FOOTPRINTS registry not found');
+  const open = panelLayoutSrc.indexOf('{', panelLayoutSrc.indexOf('= {', decl));
+  const close = findMatchingBrace(panelLayoutSrc, open);
+  assert.ok(open !== -1 && close !== -1, 'DEFERRED_PANEL_NATURAL_FOOTPRINTS body not found');
+  const body = panelLayoutSrc.slice(open + 1, close);
+  const entries = new Map();
+  const entryRe = /(?:['"]([^'"]+)['"]|([a-zA-Z0-9_-]+))\s*:\s*\{/g;
+  let match;
+  while ((match = entryRe.exec(body))) {
+    const key = match[1] || match[2];
+    const entryOpen = body.indexOf('{', match.index);
+    const entryClose = findMatchingBrace(body, entryOpen);
+    assert.ok(entryClose !== -1, 'unclosed deferred footprint entry for ' + key);
+    entries.set(key, body.slice(entryOpen + 1, entryClose));
+    entryRe.lastIndex = entryClose + 1;
+  }
+  return entries;
 }
 
 describe('panel-config guardrails', () => {
@@ -212,25 +298,44 @@ describe('panel-config guardrails', () => {
   });
 
   it('reserves deferred shells for natural wide/tall panel footprints', () => {
-    const missing = [];
-    for (const [panelId, footprint] of naturalDeferredPanelFootprints()) {
-      const entry = deferredPanelFootprintRegistryEntry(panelId);
+    const mismatches = [];
+    const naturalFootprints = naturalDeferredPanelFootprints();
+    const registryEntries = deferredPanelFootprintRegistryEntries();
+
+    for (const [panelId, footprint] of naturalFootprints) {
+      const entry = registryEntries.get(panelId);
       if (!entry) {
-        missing.push(panelId + ' (' + footprint.file + ') missing registry entry');
+        mismatches.push(panelId + ' (' + footprint.file + ') missing registry entry');
         continue;
       }
       if (footprint.rowSpan && !entry.includes('rowSpan: ' + footprint.rowSpan)) {
-        missing.push(panelId + ' (' + footprint.file + ') missing rowSpan: ' + footprint.rowSpan);
+        mismatches.push(panelId + ' (' + footprint.file + ') missing rowSpan: ' + footprint.rowSpan);
       }
       if (footprint.panelWide && !entry.includes('className: \'panel-wide\'')) {
-        missing.push(panelId + ' (' + footprint.file + ') missing panel-wide className');
+        mismatches.push(panelId + ' (' + footprint.file + ') missing panel-wide className');
+      }
+    }
+
+    for (const [panelId, entry] of registryEntries) {
+      const footprint = naturalFootprints.get(panelId);
+      if (!footprint) {
+        mismatches.push(panelId + ' has stale registry entry with no natural wide/tall constructor footprint');
+        continue;
+      }
+      const registeredRowSpan = entry.match(/rowSpan:\s*([2-4])/);
+      if (registeredRowSpan && registeredRowSpan[1] !== footprint.rowSpan) {
+        mismatches.push(panelId + ' registry rowSpan ' + registeredRowSpan[1] + ' does not match constructor footprint');
+      }
+      const registeredPanelWide = entry.includes('className: \'panel-wide\'');
+      if (registeredPanelWide !== footprint.panelWide) {
+        mismatches.push(panelId + ' registry panel-wide className does not match constructor footprint');
       }
     }
 
     assert.deepStrictEqual(
-      missing,
+      mismatches,
       [],
-      'Panels with constructor-level defaultRowSpan/panel-wide must reserve matching deferred-shell footprints:\n' + missing.join('\n'),
+      'Deferred shell natural footprint registry mismatch:\n' + mismatches.join('\n'),
     );
   });
 
