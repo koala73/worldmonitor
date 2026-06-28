@@ -7,7 +7,7 @@ const ENTERPRISE_KEY = 'enterprise-test-key-123';
 process.env.WM_SESSION_SECRET = SECRET;
 process.env.WORLDMONITOR_VALID_KEYS = ENTERPRISE_KEY;
 
-const { validateApiKey } = await import('./_api-key.js');
+const { USER_API_KEY_GATEWAY_VALIDATION_ERROR, getHeaderApiKey, validateApiKey } = await import('./_api-key.js');
 const { issueSessionToken } = await import('./_session.js');
 
 function makeReq({ origin, referer, secFetchSite, key, cookie } = {}) {
@@ -172,6 +172,15 @@ test('wm_-prefixed user key returns required:true / valid:false so gateway can f
   const r = await validateApiKey(makeReq({ key: 'wm_user_abc123' }));
   assert.equal(r.required, true);
   assert.equal(r.valid, false);
+  assert.equal(r.error, USER_API_KEY_GATEWAY_VALIDATION_ERROR);
+});
+
+test('getHeaderApiKey centralizes X-WorldMonitor-Key and X-Api-Key aliases', () => {
+  assert.equal(getHeaderApiKey(makeReq({ key: 'canonical-key' })), 'canonical-key');
+  const req = new Request('https://api.worldmonitor.app/api/test', {
+    headers: { 'X-Api-Key': 'alias-key' },
+  });
+  assert.equal(getHeaderApiKey(req), 'alias-key');
 });
 
 test('REGRESSION: wm_-prefixed key in WORLDMONITOR_VALID_KEYS is honored as enterprise', async () => {
