@@ -134,6 +134,13 @@ describe('panel layout responsive zone wiring', () => {
     assert.match(panelLayoutSrc, /addResponsiveZoneListener\([\s\S]*?ensureCorrectZones\(\)/);
   });
 
+  it('does not register post-render listeners after destroy during async panel setup', () => {
+    assert.match(
+      panelLayoutSrc,
+      /await this\.renderLayout\(\);\s*if \(this\.ctx\.isDestroyed\) return;\s*\/\/ Subscribe to auth state/,
+    );
+  });
+
   it('does not reconcile zones on every resize event', () => {
     assert.doesNotMatch(
       panelLayoutSrc,
