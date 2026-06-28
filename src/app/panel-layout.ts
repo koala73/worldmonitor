@@ -1220,7 +1220,8 @@ export class PanelLayoutManager implements AppModule {
     }
     const existing = this.deferredPanelMounts.get(key);
     existing?.observer?.disconnect();
-    if (existing?.retryTimer !== null) clearTimeout(existing.retryTimer);
+    const retryTimer = existing?.retryTimer ?? null;
+    if (retryTimer !== null) clearTimeout(retryTimer);
     if (existing?.placeholder && existing.placeholder !== placeholder) {
       existing.placeholder.remove();
     }

@@ -1,4 +1,4 @@
-import { markLcpDebug, type LcpDebugDetail, type LcpMarkSnapshot } from '@/utils/lcp-debug';
+import { markLcpDebug, type LcpMarkSnapshot } from '@/utils/lcp-debug';
 
 type LcpElementSnapshot = {
   className: string;
@@ -133,7 +133,8 @@ function sanitizeResourceUrl(raw: string | undefined): string {
     const query = url.search ? '?[redacted]' : '';
     return `${url.origin}${url.pathname}${query}`;
   } catch {
-    return raw.split('?')[0].slice(0, 200);
+    const [withoutQuery = raw] = raw.split('?');
+    return withoutQuery.slice(0, 200);
   }
 }
 
