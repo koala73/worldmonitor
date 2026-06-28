@@ -285,13 +285,21 @@ describe('App bootstrap slow-tier lifecycle', () => {
     assert.ok(appSrc.includes('cancelBootstrapSlowTier();'), 'App.destroy() should cancel pending slow bootstrap work');
   });
 
-  it('waits for the slow-tier checkpoint before visible data fan-out', () => {
-    const preloadIndex = appSrc.indexOf('await preloadCountryGeometry();');
-    const waitIndex = appSrc.indexOf('await waitForBootstrapSlowTier');
-    const fanoutIndex = appSrc.indexOf('this.dataLoader.loadAllData()', waitIndex);
-    assert.ok(preloadIndex >= 0, 'Missing preloadCountryGeometry checkpoint');
-    assert.ok(waitIndex > preloadIndex, 'slow-tier wait should run after non-render-blocking geometry preload');
-    assert.ok(fanoutIndex > waitIndex, 'visible data fan-out should wait for slow bootstrap settle/timeout');
+  it('keeps slow-tier and country geometry waits off visible data fan-out (#4489)', () => {
+    const phase6Start = appSrc.indexOf('// Phase 6: Data loading');
+    const phase6End = appSrc.indexOf('// If bootstrap was served from cache', phase6Start);
+    const phase6 = appSrc.slice(phase6Start, phase6End);
+    const slowStartIndex = phase6.indexOf('const slowTierReady = this.waitForSlowBootstrapCheckpoint();');
+    const fanoutIndex = phase6.indexOf('this.dataLoader.loadAllData()');
+    const countryGeometryIndex = phase6.indexOf('const countryGeometryReady = this.preloadCountryGeometryForPostLcpWork();');
+
+    assert.ok(phase6Start >= 0 && phase6End > phase6Start, 'Missing Phase 6 data loading block');
+    assert.ok(slowStartIndex >= 0, 'slow-tier checkpoint should still start in the background');
+    assert.ok(fanoutIndex > slowStartIndex, 'visible data fan-out should start after kicking off slow-tier checkpoint');
+    assert.ok(countryGeometryIndex > fanoutIndex, 'country geometry preload should start after initial visible data fan-out');
+    assert.ok(phase6.includes('void slowTierReady;'), 'slow-tier checkpoint should not be awaited before fan-out');
+    assert.ok(appSrc.includes('this.startPostLcpIntelligence(countryGeometryReady);'), 'post-LCP intelligence should wait on background geometry');
+    assert.ok(appSrc.includes('this.dataLoader.refreshGeometryDependentCiiAfterCountryGeometry();'), 'post-geometry replay should restore CII country attribution without blocking fan-out');
   });
 });
 

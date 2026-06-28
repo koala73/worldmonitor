@@ -81,6 +81,34 @@ export function summarizeLongTasks(entries) {
  * Attribute DOM nodes across named sources (e.g. { total, mapSvg, panels }).
  * Returns the total plus per-source rows with share %, sorted by node count desc.
  */
+function summarizeLcpResources(resources) {
+  return (Array.isArray(resources) ? resources : []).map((resource) => ({
+    category: String(resource?.category || 'unknown'),
+    count: Number(resource?.count) || 0,
+    encodedBodySize: round(resource?.encodedBodySize),
+    transferSize: round(resource?.transferSize),
+  }));
+}
+
+/** Summarize the opt-in window.__wmLcpDebug snapshot captured by the app. */
+export function summarizeLcpDebug(snapshot) {
+  const entries = Array.isArray(snapshot?.entries) ? snapshot.entries : [];
+  const latest = entries.at(-1) || null;
+  return {
+    candidate: latest ? {
+      closest: latest.element?.closest || '',
+      selector: latest.element?.selector || '',
+      size: Number(latest.size) || 0,
+      startTime: round(latest.startTime),
+      tagName: latest.element?.tagName || '',
+      url: latest.url || '',
+    } : null,
+    context: snapshot?.context ?? latest?.context ?? null,
+    entryCount: entries.length,
+    resources: summarizeLcpResources(latest?.resources ?? snapshot?.resources),
+  };
+}
+
 export function attributeDomNodes(counts) {
   const entries = Object.entries(counts || {}).filter(([k]) => k !== 'total');
   const total =
@@ -133,6 +161,11 @@ async function measure(url, { cpu = 4, settle = 15000, device = 'iPhone 14 Pro M
       /* CDP throttle unavailable — continue at host speed */
     }
     await page.addInitScript(() => {
+      try {
+        localStorage.setItem('wm_lcp_debug', '1');
+      } catch {
+        /* storage unavailable */
+      }
       window.__longtasks = [];
       try {
         new PerformanceObserver((list) => {
@@ -157,6 +190,7 @@ async function measure(url, { cpu = 4, settle = 15000, device = 'iPhone 14 Pro M
     await page.goto(url, { waitUntil: 'load', timeout: 60000 });
     await page.waitForTimeout(settle);
     const longtasks = await page.evaluate(() => window.__longtasks || []);
+    const lcpDebug = await page.evaluate(() => window.__wmLcpDebug?.getSnapshot?.() ?? null);
     const nodeCounts = await page.evaluate(() => {
       // Count each element at most once. Summing per-match subtrees would double-count
       // a .panel nested inside another .panel; the `, sel *` union keeps it unique.
@@ -173,7 +207,7 @@ async function measure(url, { cpu = 4, settle = 15000, device = 'iPhone 14 Pro M
         panels: uniqueCount('.panel, .panel *'),
       };
     });
-    return { url, cpu, longtasks, nodeCounts };
+    return { url, cpu, longtasks, lcpDebug, nodeCounts };
   } finally {
     await browser.close();
   }
@@ -184,6 +218,7 @@ export function buildReport(result) {
   return {
     url: result?.url,
     cpu: result?.cpu,
+    lcp: summarizeLcpDebug(result?.lcpDebug),
     tasks: summarizeLongTasks(result?.longtasks),
     nodes: attributeDomNodes(result?.nodeCounts),
   };
