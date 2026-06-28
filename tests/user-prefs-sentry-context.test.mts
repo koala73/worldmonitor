@@ -57,6 +57,23 @@ describe('buildSentryContext — errorShapeOverride', () => {
     assert.equal(ctx.tags.error_shape, 'convex_server_error');
     assert.deepEqual(ctx.fingerprint, ['api/user-prefs', 'POST', 'convex_server_error']);
   });
+
+  it('shares opaque request-id server-error boundaries with the Convex classifier', () => {
+    const hit = new Error('[Request ID: ABCdef_123-456] Server Error');
+    const hitCtx = buildSentryContext(hit, hit.message, baseOpts);
+    assert.equal(hitCtx.tags.error_shape, 'convex_server_error');
+
+    const misses = [
+      '[Request ID: 9fee2a2bfa791253] Server Error: extra details',
+      'prefix [Request ID: 9fee2a2bfa791253] Server Error',
+      '[Request ID: ] Server Error',
+    ];
+    for (const msg of misses) {
+      const err = new Error(msg);
+      const ctx = buildSentryContext(err, err.message, baseOpts);
+      assert.equal(ctx.tags.error_shape, 'unknown', `expected unknown for: ${msg}`);
+    }
+  });
 });
 
 describe('buildSentryContext — extraTags', () => {

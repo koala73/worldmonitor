@@ -36,6 +36,24 @@ function hasConvexCode(msg, code) {
 }
 
 /**
+ * Match Convex opaque request-id server-error wrapper. The shape is ambiguous:
+ * it can represent platform/internal 5xxs or a deterministic function throw
+ * without structured ConvexError data. For /api/user-prefs, #4504 intentionally
+ * treats this exact wrapper as transient while Sentry keeps a distinct
+ * `convex_server_error` bucket for volume-based monitoring.
+ *
+ * Keep this helper shared between response classification and Sentry tagging so
+ * `SERVICE_UNAVAILABLE` responses never drift from the `convex_server_error`
+ * bucket.
+ *
+ * @param {string} msg
+ * @returns {boolean}
+ */
+export function isOpaqueConvexServerError(msg) {
+  return /^\[Request ID:\s*[\w-]+\]\s*Server Error$/i.test(msg);
+}
+
+/**
  * Extract the named-error `kind` from a Convex client throw. Prefers the
  * structured `err.data.kind` (server-side `ConvexError({ kind, ... })`),
  * falls back to substring-matching the legacy string-data error message
@@ -124,7 +142,7 @@ export function extractConvexErrorKind(err, msg) {
   // it like the recognized Convex platform 5xx family above. Keep the
   // matcher exact-ish so unrelated free-form server errors still fall
   // through to the unknown/500 path.
-  if (/^\[Request ID:\s*[\w-]+\]\s*Server Error$/i.test(msg)) return 'SERVICE_UNAVAILABLE';
+  if (isOpaqueConvexServerError(msg)) return 'SERVICE_UNAVAILABLE';
   if (msg.includes('CONFLICT')) return 'CONFLICT';
   if (msg.includes('BLOB_TOO_LARGE')) return 'BLOB_TOO_LARGE';
   if (msg.includes('UNAUTHENTICATED')) return 'UNAUTHENTICATED';

@@ -17,7 +17,7 @@ import { jsonResponse } from './_json-response.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from './_sentry-edge.js';
 // @ts-expect-error — JS module, no declaration file
-import { extractConvexErrorKind, readConvexErrorNumber } from './_convex-error.js';
+import { extractConvexErrorKind, isOpaqueConvexServerError, readConvexErrorNumber } from './_convex-error.js';
 import { ConvexHttpClient } from 'convex/browser';
 import { validateBearerToken } from '../server/auth-session';
 
@@ -390,7 +390,7 @@ export function buildSentryContext(
       // bucket so on-call can tell worker-saturation apart from internal-500s
       // and genuine 503s when triaging (WORLDMONITOR-PG).
       : /"code":\s*"WorkerOverloaded"/.test(msg) ? 'convex_worker_overloaded'
-      : /\[Request ID:\s*[a-f0-9]+\]\s*Server Error/i.test(msg) ? 'convex_server_error'
+      : isOpaqueConvexServerError(msg) ? 'convex_server_error'
       // Cloudflare edge error (520-527) fronting the Convex deployment — see
       // _convex-error.js. Mapped to SERVICE_UNAVAILABLE (503 + Retry-After)
       // there; kept as its own Sentry bucket so on-call can tell CDN-layer
