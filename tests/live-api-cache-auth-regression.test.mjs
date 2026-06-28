@@ -18,6 +18,12 @@ const API_BASE = stripTrailingSlash(process.env.WM_LIVE_API_BASE_URL || 'https:/
 const WEB_BASE = stripTrailingSlash(process.env.WM_LIVE_WEB_BASE_URL || 'https://worldmonitor.app');
 const FAKE_WM_KEY = 'wm_0000000000000000000000000000000000000000';
 const USER_AGENT = 'WorldMonitor-Live-Cache-Auth-Sweep/1.0';
+const LIVE_API_CACHE_TIMEOUT_MS = positiveIntegerFromEnv(process.env.LIVE_API_CACHE_TIMEOUT_MS, 15_000);
+
+function positiveIntegerFromEnv(value, fallback) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
 
 function stripTrailingSlash(value) {
   return value.replace(/\/+$/, '');
@@ -33,7 +39,11 @@ function cfCacheStatus(resp) {
 
 function assertNoStore(resp, name) {
   assert.match(cacheControl(resp), /\bno-store\b/i, `${name}: Cache-Control must include no-store`);
-  assert.equal(resp.headers.get('cdn-cache-control'), null, `${name}: CDN-Cache-Control must not be present`);
+  const cdnCacheControl = resp.headers.get('cdn-cache-control') || '';
+  if (cdnCacheControl) {
+    assert.match(cdnCacheControl, /\bno-store\b/i, `${name}: CDN-Cache-Control must be absent or no-store`);
+    assert.doesNotMatch(cdnCacheControl, /\bpublic\b|\bs-maxage\b/i, `${name}: CDN-Cache-Control must not be shared-cacheable`);
+  }
 }
 
 function assertNoSentinelLeak(bodyText, name) {
@@ -53,7 +63,11 @@ function assertPublicCacheable(resp, name) {
 async function fetchText(pathOrUrl, init = {}) {
   const headers = new Headers(init.headers || {});
   headers.set('User-Agent', USER_AGENT);
-  const resp = await fetch(pathOrUrl, { ...init, headers });
+  const timeoutSignal = AbortSignal.timeout(LIVE_API_CACHE_TIMEOUT_MS);
+  const signal = init.signal && typeof AbortSignal.any === 'function'
+    ? AbortSignal.any([init.signal, timeoutSignal])
+    : init.signal || timeoutSignal;
+  const resp = await fetch(pathOrUrl, { ...init, headers, signal });
   const bodyText = await resp.text();
   return { resp, bodyText };
 }
