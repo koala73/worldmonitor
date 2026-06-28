@@ -227,3 +227,31 @@ describe('eager chunk budget: post-paint enrichment services stay off the entry'
     preloadMessage: (chunk) => `${chunk} must not be eagerly modulepreloaded — it loads post-first-paint on demand`,
   });
 });
+
+describe('correlation-engine lazy boot failure handling', () => {
+  it('keeps the dynamic import locally handled', () => {
+    const src = readFileSync(resolve(repoRoot, 'src/App.ts'), 'utf-8');
+    const methodStart = src.indexOf('private async loadInitialCorrelationEngine(): Promise<void>');
+    assert.notEqual(methodStart, -1, 'App should isolate correlation-engine lazy boot in loadInitialCorrelationEngine');
+    const methodEnd = src.indexOf('public async init(): Promise<void>', methodStart);
+    assert.notEqual(methodEnd, -1, 'loadInitialCorrelationEngine should be declared before init()');
+    const method = src.slice(methodStart, methodEnd);
+
+    assert.ok(
+      method.includes("await import('@/services/correlation-engine')"),
+      'correlation-engine should still load through a dynamic import',
+    );
+    assert.ok(
+      method.includes('} catch (error) {'),
+      'correlation-engine lazy boot should catch chunk-load/run failures locally',
+    );
+    assert.ok(
+      method.includes("console.warn('[CorrelationEngine] Initial lazy load/run failed:', error);"),
+      'correlation-engine lazy boot failures should be logged for diagnosis',
+    );
+    assert.ok(
+      !src.includes("void import('@/services/correlation-engine').then("),
+      'correlation-engine lazy boot must not use an unhandled void import().then() chain',
+    );
+  });
+});

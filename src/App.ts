@@ -1070,6 +1070,35 @@ export class App {
     }
   }
 
+  private async loadInitialCorrelationEngine(): Promise<void> {
+    try {
+      const {
+        CorrelationEngine,
+        militaryAdapter,
+        escalationAdapter,
+        economicAdapter,
+        disasterAdapter,
+      } = await import('@/services/correlation-engine');
+
+      if (this.state.isDestroyed) return;
+      const engine = new CorrelationEngine();
+      engine.registerAdapter(militaryAdapter);
+      engine.registerAdapter(escalationAdapter);
+      engine.registerAdapter(economicAdapter);
+      engine.registerAdapter(disasterAdapter);
+      this.state.correlationEngine = engine;
+
+      await engine.run(this.state);
+      if (this.state.isDestroyed) return;
+      for (const domain of ['military', 'escalation', 'economic', 'disaster'] as const) {
+        const panel = this.state.panels[`${domain}-correlation`] as CorrelationPanel | undefined;
+        panel?.updateCards(engine.getCards(domain));
+      }
+    } catch (error) {
+      console.warn('[CorrelationEngine] Initial lazy load/run failed:', error);
+    }
+  }
+
   public async init(): Promise<void> {
     const initStart = performance.now();
 
@@ -1460,23 +1489,7 @@ export class App {
     // inside a dynamic import, so the engine graph loads off the eager boot path
     // (#4486). state.correlationEngine settles asynchronously; the refresh scheduler
     // and export getter that read it already null-guard.
-    void import('@/services/correlation-engine').then(
-      ({ CorrelationEngine, militaryAdapter, escalationAdapter, economicAdapter, disasterAdapter }) => {
-        if (this.state.isDestroyed) return;
-        const engine = new CorrelationEngine();
-        engine.registerAdapter(militaryAdapter);
-        engine.registerAdapter(escalationAdapter);
-        engine.registerAdapter(economicAdapter);
-        engine.registerAdapter(disasterAdapter);
-        this.state.correlationEngine = engine;
-        return engine.run(this.state).then(() => {
-          for (const domain of ['military', 'escalation', 'economic', 'disaster'] as const) {
-            const panel = this.state.panels[`${domain}-correlation`] as CorrelationPanel | undefined;
-            panel?.updateCards(engine.getCards(domain));
-          }
-        });
-      },
-    );
+    void this.loadInitialCorrelationEngine();
 
     startLearning();
 
