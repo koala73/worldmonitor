@@ -61,11 +61,15 @@ import { getImfCountryBundle, buildImfEconomicIndicators, type ImfCountryBundle 
 // graph (#4478). Cached on first preload; the nearby-base country lookup below
 // reads it synchronously and degrades to an undefined country until it resolves.
 let militaryBasesCache: MilitaryBase[] | null = null;
+let militaryBasesPromise: Promise<void> | null = null;
 function preloadMilitaryBasesForIntel(): Promise<void> {
   if (militaryBasesCache !== null) return Promise.resolve();
-  return import('@/config/military-bases')
-    .then(({ MILITARY_BASES }) => { militaryBasesCache = MILITARY_BASES; })
-    .catch(() => {});
+  if (!militaryBasesPromise) {
+    militaryBasesPromise = import('@/config/military-bases')
+      .then(({ MILITARY_BASES }) => { militaryBasesCache = MILITARY_BASES; })
+      .catch((error) => { militaryBasesPromise = null; throw error; });
+  }
+  return militaryBasesPromise;
 }
 
 type IntlDisplayNamesCtor = new (
@@ -338,7 +342,7 @@ export class CountryIntelManager implements AppModule {
     page.updateNews(filteredNews.slice(0, 10));
 
     page.updateInfrastructure(code);
-    void preloadMilitaryBasesForIntel();
+    void preloadMilitaryBasesForIntel().catch(() => {});
     void preloadInfrastructureTables()
       .then(() => {
         if (this.ctx.countryBriefPage?.getCode() === code) {
