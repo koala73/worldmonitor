@@ -97,6 +97,8 @@ export async function getCountryIntelBrief(
   let lang = 'en';
   try {
     const url = new URL(ctx.request.url);
+    // MCP sends `context` in the signed POST body; the gateway promotes scalar
+    // body fields into query params before this generated GET handler runs.
     const rawContextSnapshot = (url.searchParams.get('context') || '').trim().slice(0, 4000);
     sources = parseCountryBriefSources(rawContextSnapshot);
     contextSnapshot = sanitizeForPrompt(rawContextSnapshot);

@@ -2694,6 +2694,176 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.match(sig, /^\d{10}\.[A-Za-z0-9_-]+$/, 'signature must be <ts>.<base64url-sig>');
   });
 
+  it('edge: Pro get_country_brief signs a short URL and sends grounding context in the POST body', async () => {
+    const { deps } = makeProDeps();
+    const captured = [];
+    globalThis.fetch = async (url, init = {}) => {
+      const call = {
+        url: String(url),
+        method: init.method || 'GET',
+        headers: new Headers(init.headers),
+        body: typeof init.body === 'string' ? init.body : '',
+      };
+      captured.push(call);
+      const { pathname } = new URL(call.url);
+
+      if (pathname === '/api/news/v1/list-feed-digest') {
+        const items = Array.from({ length: 15 }, (_, index) => ({
+          title: `Iran ${index} ${'%'.repeat(300)}`,
+          source: 'Context Wire',
+          link: `https://example.com/iran-${index}`,
+          publishedAt: '2026-06-07T00:00:00.000Z',
+          snippet: 'Long Iran grounding item used to keep the MCP signed URL below proxy limits.',
+        }));
+        return new Response(JSON.stringify({ categories: { world: { items } } }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (pathname === '/api/intelligence/v1/get-country-intel-brief') {
+        return new Response(JSON.stringify({ brief: 'Grounded country brief.' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      throw new Error(`Unexpected fetch URL: ${call.url}`);
+    };
+
+    const res = await mcpHandler(proReq('POST', callBody('get_country_brief', {
+      country_code: 'IR',
+      framework: 'PMESII-PT',
+    })), deps);
+    assert.equal(res.status, 200);
+    const rpc = await res.json();
+    assert.ok(rpc.result?.content, 'tool call must return content');
+
+    const countryCall = captured.find((call) => new URL(call.url).pathname === '/api/intelligence/v1/get-country-intel-brief');
+    assert.ok(countryCall, 'country brief fetch must run');
+    const countryUrl = new URL(countryCall.url);
+    assert.equal(countryUrl.searchParams.has('context'), false, 'context must not be signed in the URL query');
+    assert.ok(countryCall.url.length < 200, `signed URL should stay short, got ${countryCall.url.length} chars`);
+
+    const body = JSON.parse(countryCall.body);
+    assert.equal(body.country_code, 'IR');
+    assert.equal(body.framework, 'PMESII-PT');
+    assert.match(body.context, /Brief source articles:/);
+    assert.match(body.context, /Headlines:/);
+    assert.match(body.context, /Iran/);
+    assert.ok(body.context.length > 1000, `expected large grounding context, got ${body.context.length} chars`);
+    assert.ok(body.context.length <= 4000, `grounding context should be bounded to 4000 chars, got ${body.context.length}`);
+
+    assert.ok(countryCall.headers.get('x-wm-mcp-internal'), 'X-WM-MCP-Internal must be set');
+    assert.equal(countryCall.headers.get('x-wm-mcp-user-id'), PRO_USER_ID);
+    assert.equal(countryCall.headers.get('x-worldmonitor-key'), null, 'X-WorldMonitor-Key must NOT be set for Pro');
+
+    const { verifyInternalMcpRequest } = await import(`../server/_shared/mcp-internal-hmac.ts?t=${Date.now()}`);
+    const signedReq = new Request(countryCall.url, {
+      method: 'POST',
+      headers: countryCall.headers,
+      body: countryCall.body,
+    });
+    assert.ok(await verifyInternalMcpRequest(signedReq, HMAC_SECRET), 'signature must verify for the short URL plus context body');
+
+    const tamperedUrl = `${countryCall.url}?context=${encodeURIComponent(body.context)}`;
+    const tamperedReq = new Request(tamperedUrl, {
+      method: 'POST',
+      headers: countryCall.headers,
+      body: countryCall.body,
+    });
+    assert.equal(await verifyInternalMcpRequest(tamperedReq, HMAC_SECRET), null, 'same signature must not verify if context is moved back into the URL');
+  });
+
+  it('edge: Pro get_country_brief surfaces gateway error detail for Sentry grouping', async () => {
+    const scenarios = [
+      {
+        name: 'structured HMAC 401',
+        expectedLog: 'warn',
+        makeResponse: () => new Response(
+          JSON.stringify({ error: 'invalid_internal_mcp_signature' }),
+          { status: 401, headers: { 'Content-Type': 'application/json' } },
+        ),
+        assertMessage: (message) => {
+          assert.equal(message, 'get-country-intel-brief HTTP 401: invalid_internal_mcp_signature');
+        },
+      },
+      {
+        name: 'HTML CDN 503',
+        expectedLog: 'error',
+        makeResponse: () => new Response(
+          '<!DOCTYPE html><html><head><title>Bad Gateway</title></head><body>Cloudflare outage</body></html>',
+          { status: 503, headers: { 'Content-Type': 'text/html' } },
+        ),
+        assertMessage: (message) => {
+          assert.equal(message, 'get-country-intel-brief HTTP 503: Bad Gateway Cloudflare outage');
+          assert.doesNotMatch(message, /<[^>]*>/, 'HTML tags must not leak into the Sentry/log title');
+        },
+      },
+      {
+        name: 'unreadable body 503',
+        expectedLog: 'error',
+        makeResponse: () => ({ ok: false, status: 503, text: async () => { throw new Error('body locked'); } }),
+        assertMessage: (message) => {
+          assert.equal(message, 'get-country-intel-brief HTTP 503');
+        },
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      const { deps } = makeProDeps();
+      const warnCalls = [];
+      const errorCalls = [];
+      const origWarn = console.warn;
+      const origError = console.error;
+      console.warn = (...args) => { warnCalls.push(args); };
+      console.error = (...args) => { errorCalls.push(args); };
+      try {
+        globalThis.fetch = async (url) => {
+          const { pathname } = new URL(String(url));
+          if (pathname === '/api/news/v1/list-feed-digest') {
+            return new Response(JSON.stringify({
+              categories: {
+                world: {
+                  items: [{
+                    title: 'Iran headline for failing country brief',
+                    source: 'Context Wire',
+                    link: 'https://example.com/iran-failure',
+                    publishedAt: '2026-06-07T00:00:00.000Z',
+                    snippet: 'Iran context item used before the brief endpoint fails.',
+                  }],
+                },
+              },
+            }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+          }
+          if (pathname === '/api/intelligence/v1/get-country-intel-brief') {
+            return scenario.makeResponse();
+          }
+          return new Response('', { status: 200 });
+        };
+
+        const res = await mcpHandler(proReq('POST', callBody('get_country_brief', {
+          country_code: 'IR',
+          framework: 'PMESII-PT',
+        })), deps);
+        assert.equal(res.status, 200, `${scenario.name}: JSON-RPC tool errors stay HTTP 200`);
+        const rpc = await res.json();
+        assert.equal(rpc.error?.code, -32603, `${scenario.name}: tool failure should be a JSON-RPC internal error`);
+
+        const expectedCalls = scenario.expectedLog === 'warn' ? warnCalls : errorCalls;
+        const unexpectedCalls = scenario.expectedLog === 'warn' ? errorCalls : warnCalls;
+        const mcpLogs = expectedCalls.filter((args) => args[0] === '[mcp] tool execution error:');
+        assert.equal(mcpLogs.length, 1, `${scenario.name}: expected one MCP execution log`);
+        assert.equal(unexpectedCalls.some((args) => args[0] === '[mcp] tool execution error:'), false, `${scenario.name}: wrong console severity`);
+        const loggedError = mcpLogs[0][1];
+        scenario.assertMessage(loggedError instanceof Error ? loggedError.message : String(loggedError));
+      } finally {
+        console.warn = origWarn;
+        console.error = origError;
+      }
+    }
+  });
+
   it('edge: cache-only tool for Pro user goes through INCR/DECR path (counts toward 50/day)', async () => {
     const { deps, pipe } = makeProDeps();
     process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
