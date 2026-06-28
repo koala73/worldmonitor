@@ -1,9 +1,9 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { enqueuePanelCall } from '@/app/pending-panel-data';
-import type { NewsItem, MapLayers, SocialUnrestEvent } from '@/types';
+import type { NewsItem, MapLayers, SocialUnrestEvent, MilitaryFlight } from '@/types';
 import type { MarketData } from '@/types';
-import type { TimeRange } from '@/components';
+import type { TimeRange } from '@/components/MapContainer';
 import {
   FEEDS,
   CANONICAL_FEEDS,
@@ -108,14 +108,14 @@ import {
   type StockAnalysisHistory,
 } from '@/services/stock-analysis-history';
 import { checkBatchForBreakingAlerts, dispatchOrefBreakingAlert } from '@/services/breaking-news-alerts';
-import { effectivePubDateMs } from '@/services/feed-date';
+import { displayPubDateMs, effectivePubDateMs } from '@/services/feed-date';
 import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid } from '@/services/clustering';
 import { ingestProtests, ingestFlights, ingestVessels, ingestEarthquakes, detectGeoConvergence, geoConvergenceToSignal } from '@/services/geo-convergence';
 import { signalAggregator } from '@/services/signal-aggregator';
 import { updateAndCheck, consumeServerAnomalies, fetchLiveAnomalies } from '@/services/temporal-baseline';
 import { fetchAllFires, flattenFires, computeRegionStats, toMapFires } from '@/services/wildfires';
-import { analyzeFlightsForSurge, surgeAlertToSignal, detectForeignMilitaryPresence, foreignPresenceToSignal, type TheaterPostureSummary } from '@/services/military-surge';
+import type { TheaterPostureSummary } from '@/services/military-surge';
 import { fetchCachedTheaterPosture } from '@/services/cached-theater-posture';
 import { ingestProtestsForCII, ingestMilitaryForCII, ingestNewsForCII, ingestOutagesForCII, ingestConflictsForCII, ingestUcdpForCII, ingestHapiForCII, ingestDisplacementForCII, ingestClimateForCII, ingestStrikesForCII, ingestOrefForCII, ingestAviationForCII, ingestAdvisoriesForCII, ingestGpsJammingForCII, ingestAisDisruptionsForCII, ingestSatelliteFiresForCII, ingestCyberThreatsForCII, ingestTemporalAnomaliesForCII, ingestEarthquakesForCII, ingestSanctionsForCII, isInLearningMode, resetHotspotActivity, calculateCII, type CountryScore } from '@/services/country-instability';
 import { fetchGpsInterference } from '@/services/gps-interference';
@@ -143,40 +143,39 @@ import { getHydratedData } from '@/services/bootstrap';
 import { ingestHeadlines } from '@/services/trending-keywords';
 import type { ListFeedDigestResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
 import type { GetSectorSummaryResponse, ListMarketQuotesResponse, ListCommodityQuotesResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
-import type { SectorValuation } from '@/components/MarketPanel';
+import type {
+  AiTokensPanel,
+  CommoditiesPanel,
+  CryptoHeatmapPanel,
+  CryptoPanel,
+  DefiTokensPanel,
+  HeatmapPanel,
+  MarketPanel,
+  OtherTokensPanel,
+  SectorValuation,
+} from '@/components/MarketPanel';
 import { mountCommunityWidget } from '@/components/CommunityWidget';
 import { ResearchServiceClient } from '@/generated/client/worldmonitor/research/v1/service_client';
-import {
-  MarketPanel,
-  StockAnalysisPanel,
-  StockBacktestPanel,
-  HeatmapPanel,
-  CommoditiesPanel,
-  CryptoPanel,
-  CryptoHeatmapPanel,
-  DefiTokensPanel,
-  AiTokensPanel,
-  OtherTokensPanel,
-  PredictionPanel,
-  MonitorPanel,
-  InsightsPanel,
-  ThreatTimelinePanel,
-  CIIPanel,
-  InternetDisruptionsPanel,
-  StrategicPosturePanel,
-  EconomicPanel,
-  EnergyComplexPanel,
-  TechReadinessPanel,
-  UcdpEventsPanel,
-  TradePolicyPanel,
-  SupplyChainPanel,
-  DiseaseOutbreaksPanel,
-  SocialVelocityPanel,
-  WsbTickerScannerPanel,
-  AAIISentimentPanel,
-  MarketBreadthPanel,
-} from '@/components';
-import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
+import type { StockAnalysisPanel } from '@/components/StockAnalysisPanel';
+import type { StockBacktestPanel } from '@/components/StockBacktestPanel';
+import type { PredictionPanel } from '@/components/PredictionPanel';
+import type { MonitorPanel } from '@/components/MonitorPanel';
+import type { InsightsPanel } from '@/components/InsightsPanel';
+import type { ThreatTimelinePanel } from '@/components/ThreatTimelinePanel';
+import type { InternetDisruptionsPanel } from '@/components/InternetDisruptionsPanel';
+import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
+import type { EconomicPanel } from '@/components/EconomicPanel';
+import type { EnergyComplexPanel } from '@/components/EnergyComplexPanel';
+import type { TechReadinessPanel } from '@/components/TechReadinessPanel';
+import type { UcdpEventsPanel } from '@/components/UcdpEventsPanel';
+import type { TradePolicyPanel } from '@/components/TradePolicyPanel';
+import type { SupplyChainPanel } from '@/components/SupplyChainPanel';
+import type { DiseaseOutbreaksPanel } from '@/components/DiseaseOutbreaksPanel';
+import type { SocialVelocityPanel } from '@/components/SocialVelocityPanel';
+import type { WsbTickerScannerPanel } from '@/components/WsbTickerScannerPanel';
+import type { AAIISentimentPanel } from '@/components/AAIISentimentPanel';
+import type { MarketBreadthPanel } from '@/components/MarketBreadthPanel';
+import type { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { classifyNewsItem } from '@/services/positive-classifier';
 import { fetchGivingSummary } from '@/services/giving';
 import { fetchProgressData } from '@/services/progress-data';
@@ -209,7 +208,9 @@ import { fetchDiseaseOutbreaks } from '@/services/disease-outbreaks';
 import { fetchSocialVelocity } from '@/services/social-velocity';
 import { fetchShippingStress } from '@/services/supply-chain';
 import { getTopActiveGeoHubs } from '@/services/geo-activity';
-import { getTopActiveHubs } from '@/services/tech-activity';
+// getTopActiveHubs is lazy-imported at its call sites (applyTechHubActivities) so
+// the tech-activity → tech-hub-index → ~62KB tech-geo chain stays off the eager
+// dashboard critical path (#4404).
 import type { GeoHubsPanel } from '@/components/GeoHubsPanel';
 import type { TechHubsPanel } from '@/components/TechHubsPanel';
 
@@ -269,6 +270,50 @@ export interface DataLoaderCallbacks {
   refreshOpenCountryBrief: () => void;
 }
 
+type HydrationTask = {
+  name: string;
+  task: () => Promise<void>;
+};
+
+type HydrationTier = 1 | 2 | 3 | 4;
+
+const HYDRATION_TIER_ONE = new Set(['news', 'markets', 'intelligence']);
+const HYDRATION_TIER_TWO = new Set([
+  'natural',
+  'firms',
+  'weather',
+  'ais',
+  'flights',
+  'cyberThreats',
+  'iranAttacks',
+  'techEvents',
+  'satellites',
+  'webcams',
+  'cables',
+  'cableHealth',
+  'diseaseOutbreaks',
+  'socialVelocity',
+  'economicStress',
+  'sanctions',
+  'resilienceRanking',
+  'radiation',
+]);
+const HYDRATION_TIER_FOUR = new Set([
+  'stockAnalysis',
+  'stockBacktest',
+  'dailyMarketBrief',
+  'predictions',
+  'forecasts',
+  'simulation-outcome',
+  'pizzint',
+  'marketImplications',
+  'wsbTickers',
+  'techReadiness',
+  'thermalEscalation',
+  'crossSourceSignals',
+]);
+const HYDRATION_TIERS: HydrationTier[] = [1, 2, 3, 4];
+
 export class DataLoaderManager implements AppModule {
   private ctx: AppContext;
   private callbacks: DataLoaderCallbacks;
@@ -301,6 +346,9 @@ export class DataLoaderManager implements AppModule {
   private cachedSatRecs: SatRecEntry[] | null = null;
   private cachedRiskScores: CachedRiskScores | null = null;
   private preferLocalCii = false;
+  private loadAllDataPromise: Promise<void> | null = null;
+  private loadAllDataRerunRequested = false;
+  private loadAllDataQueuedForceAll = false;
 
   private digestBreaker = { state: 'closed' as 'closed' | 'open' | 'half-open', failures: 0, cooldownUntil: 0 };
   private readonly digestRequestTimeoutMs = 8000;
@@ -315,6 +363,69 @@ export class DataLoaderManager implements AppModule {
   constructor(ctx: AppContext, callbacks: DataLoaderCallbacks) {
     this.ctx = ctx;
     this.callbacks = callbacks;
+  }
+
+  private getHydrationTier(name: string): HydrationTier {
+    if (HYDRATION_TIER_ONE.has(name)) return 1;
+    if (HYDRATION_TIER_TWO.has(name)) return 2;
+    if (HYDRATION_TIER_FOUR.has(name)) return 4;
+    return 3;
+  }
+
+  private markHydration(label: string): void {
+    if (typeof performance === 'undefined' || typeof performance.mark !== 'function') return;
+    performance.mark(label);
+  }
+
+  private async yieldHydrationFrame(): Promise<void> {
+    if (typeof window === 'undefined') return;
+    await new Promise<void>(resolve => {
+      const idle = window.requestIdleCallback as ((cb: IdleRequestCallback, opts?: IdleRequestOptions) => number) | undefined;
+      if (idle) {
+        idle(() => resolve(), { timeout: 250 });
+        return;
+      }
+      window.setTimeout(resolve, 16);
+    });
+  }
+
+  private async runHydrationTasks(tasks: HydrationTask[], forceAll: boolean): Promise<void> {
+    const prioritized = tasks
+      .map((task, order) => ({ ...task, order, tier: this.getHydrationTier(task.name) }))
+      .sort((a, b) => a.tier - b.tier || a.order - b.order);
+
+    const maxConcurrency = forceAll ? 6 : 3;
+    const failures: Array<{ name: string; reason: unknown }> = [];
+    let cursor = 0;
+
+    this.markHydration(`wm:hydration:${forceAll ? 'force' : 'viewport'}:start`);
+
+    for (const tier of HYDRATION_TIERS) {
+      const tierTasks = prioritized.filter(task => task.tier === tier);
+      if (tierTasks.length === 0) continue;
+
+      this.markHydration(`wm:hydration:tier-${tier}:start`);
+      cursor = 0;
+      while (cursor < tierTasks.length) {
+        const batch = tierTasks.slice(cursor, cursor + maxConcurrency);
+        const results = await Promise.allSettled(batch.map(item => item.task()));
+        results.forEach((result, idx) => {
+          if (result.status === 'rejected') {
+            failures.push({ name: batch[idx]?.name ?? 'unknown', reason: result.reason });
+          }
+        });
+
+        cursor += batch.length;
+        if (cursor < tierTasks.length) await this.yieldHydrationFrame();
+      }
+      this.markHydration(`wm:hydration:tier-${tier}:end`);
+      if (tier < 4 && prioritized.some(task => task.tier > tier)) await this.yieldHydrationFrame();
+    }
+
+    this.markHydration(`wm:hydration:${forceAll ? 'force' : 'viewport'}:end`);
+    failures.forEach(({ name, reason }) => {
+      console.error(`[App] ${name} load failed:`, reason);
+    });
   }
 
   init(): void {
@@ -370,7 +481,7 @@ export class DataLoaderManager implements AppModule {
 
   private renderCachedCiiScores(cached: CachedRiskScores): void {
     this.cachedRiskScores = cached;
-    (this.ctx.panels['cii'] as CIIPanel)?.renderFromCached(cached);
+    this.callPanel('cii', 'renderFromCached', cached);
     this.applyCiiScoresToMap(cached.cii.map(toCountryScore));
   }
 
@@ -383,7 +494,7 @@ export class DataLoaderManager implements AppModule {
     }
 
     const shouldUseLocalFallback = forceLocal || !this.cachedRiskScores;
-    (this.ctx.panels['cii'] as CIIPanel)?.refresh(shouldUseLocalFallback);
+    this.callPanel('cii', 'refresh', shouldUseLocalFallback);
     this.callbacks.refreshOpenCountryBrief();
     const scores = calculateCII();
     this.applyCiiScoresToMap(scores);
@@ -473,6 +584,34 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadAllData(forceAll = false): Promise<void> {
+    if (this.loadAllDataPromise) {
+      this.loadAllDataRerunRequested = true;
+      this.loadAllDataQueuedForceAll = this.loadAllDataQueuedForceAll || forceAll;
+      return this.loadAllDataPromise;
+    }
+
+    this.loadAllDataRerunRequested = true;
+    this.loadAllDataQueuedForceAll = forceAll;
+    this.loadAllDataPromise = this.drainLoadAllDataQueue();
+    return this.loadAllDataPromise;
+  }
+
+  private async drainLoadAllDataQueue(): Promise<void> {
+    try {
+      while (this.loadAllDataRerunRequested && !this.ctx.isDestroyed) {
+        const forceAll = this.loadAllDataQueuedForceAll;
+        this.loadAllDataRerunRequested = false;
+        this.loadAllDataQueuedForceAll = false;
+        await this.runLoadAllData(forceAll);
+      }
+    } finally {
+      this.loadAllDataPromise = null;
+      this.loadAllDataRerunRequested = false;
+      this.loadAllDataQueuedForceAll = false;
+    }
+  }
+
+  private async runLoadAllData(forceAll: boolean): Promise<void> {
     const runGuarded = async (name: string, fn: () => Promise<void>): Promise<void> => {
       if (this.ctx.isDestroyed || this.ctx.inFlight.has(name)) return;
       this.ctx.inFlight.add(name);
@@ -488,49 +627,49 @@ export class DataLoaderManager implements AppModule {
     const shouldLoad = (id: string): boolean => forceAll || this.isPanelNearViewport(id);
     const shouldLoadAny = (ids: string[]): boolean => forceAll || this.isAnyPanelNearViewport(ids);
 
-    const tasks: Array<{ name: string; task: Promise<void> }> = [
-      { name: 'news', task: runGuarded('news', () => this.loadNews()) },
+    const tasks: HydrationTask[] = [
+      { name: 'news', task: () => runGuarded('news', () => this.loadNews()) },
     ];
 
     // Happy variant only loads news data -- skip all geopolitical/financial/military data
     if (SITE_VARIANT !== 'happy') {
       if (shouldLoadAny(['markets', 'heatmap', 'commodities', 'crypto', 'energy-complex', 'crypto-heatmap', 'defi-tokens', 'ai-tokens', 'other-tokens'])) {
-        tasks.push({ name: 'markets', task: runGuarded('markets', () => this.loadMarkets()) });
+        tasks.push({ name: 'markets', task: () => runGuarded('markets', () => this.loadMarkets()) });
       }
       if (hasPremiumAccess() && shouldLoad('stock-analysis')) {
-        tasks.push({ name: 'stockAnalysis', task: runGuarded('stockAnalysis', () => this.loadStockAnalysis()) });
+        tasks.push({ name: 'stockAnalysis', task: () => runGuarded('stockAnalysis', () => this.loadStockAnalysis()) });
       }
       if (hasPremiumAccess() && shouldLoad('stock-backtest')) {
-        tasks.push({ name: 'stockBacktest', task: runGuarded('stockBacktest', () => this.loadStockBacktest()) });
+        tasks.push({ name: 'stockBacktest', task: () => runGuarded('stockBacktest', () => this.loadStockBacktest()) });
       }
       if (hasPremiumAccess() && shouldLoad('daily-market-brief')) {
-        tasks.push({ name: 'dailyMarketBrief', task: runGuarded('dailyMarketBrief', () => this.loadDailyMarketBrief()) });
+        tasks.push({ name: 'dailyMarketBrief', task: () => runGuarded('dailyMarketBrief', () => this.loadDailyMarketBrief()) });
       }
       if (shouldLoad('polymarket')) {
-        tasks.push({ name: 'predictions', task: runGuarded('predictions', () => this.loadPredictions()) });
+        tasks.push({ name: 'predictions', task: () => runGuarded('predictions', () => this.loadPredictions()) });
       }
       if (shouldLoad('forecast')) {
-        tasks.push({ name: 'forecasts', task: runGuarded('forecasts', () => this.loadForecasts()) });
-        tasks.push({ name: 'simulation-outcome', task: runGuarded('simulation-outcome', () => this.loadSimulationOutcome()) });
+        tasks.push({ name: 'forecasts', task: () => runGuarded('forecasts', () => this.loadForecasts()) });
+        tasks.push({ name: 'simulation-outcome', task: () => runGuarded('simulation-outcome', () => this.loadSimulationOutcome()) });
       }
-      if (SITE_VARIANT === 'full') tasks.push({ name: 'pizzint', task: runGuarded('pizzint', () => this.loadPizzInt()) });
+      if (SITE_VARIANT === 'full') tasks.push({ name: 'pizzint', task: () => runGuarded('pizzint', () => this.loadPizzInt()) });
       if (shouldLoad('economic')) {
-        tasks.push({ name: 'fred', task: runGuarded('fred', () => this.loadFredData()) });
-        tasks.push({ name: 'spending', task: runGuarded('spending', () => this.loadGovernmentSpending()) });
-        tasks.push({ name: 'bis', task: runGuarded('bis', () => this.loadBisData()) });
-        tasks.push({ name: 'bls', task: runGuarded('bls', () => this.loadBlsData()) });
+        tasks.push({ name: 'fred', task: () => runGuarded('fred', () => this.loadFredData()) });
+        tasks.push({ name: 'spending', task: () => runGuarded('spending', () => this.loadGovernmentSpending()) });
+        tasks.push({ name: 'bis', task: () => runGuarded('bis', () => this.loadBisData()) });
+        tasks.push({ name: 'bls', task: () => runGuarded('bls', () => this.loadBlsData()) });
       }
       if (shouldLoad('energy-complex')) {
-        tasks.push({ name: 'oil', task: runGuarded('oil', () => this.loadOilAnalytics()) });
+        tasks.push({ name: 'oil', task: () => runGuarded('oil', () => this.loadOilAnalytics()) });
       }
 
       // Trade policy + supply-chain data (FULL, FINANCE, COMMODITY, ENERGY variants use supply-chain surface)
       if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance' || SITE_VARIANT === 'commodity' || SITE_VARIANT === 'energy') {
         if (shouldLoad('trade-policy')) {
-          tasks.push({ name: 'tradePolicy', task: runGuarded('tradePolicy', () => this.loadTradePolicy()) });
+          tasks.push({ name: 'tradePolicy', task: () => runGuarded('tradePolicy', () => this.loadTradePolicy()) });
         }
         if (shouldLoad('supply-chain')) {
-          tasks.push({ name: 'supplyChain', task: runGuarded('supplyChain', () => this.loadSupplyChain()) });
+          tasks.push({ name: 'supplyChain', task: () => runGuarded('supplyChain', () => this.loadSupplyChain()) });
         }
       }
     }
@@ -540,25 +679,25 @@ export class DataLoaderManager implements AppModule {
       if (shouldLoad('progress')) {
         tasks.push({
           name: 'progress',
-          task: runGuarded('progress', () => this.loadProgressData()),
+          task: () => runGuarded('progress', () => this.loadProgressData()),
         });
       }
       if (shouldLoad('species')) {
         tasks.push({
           name: 'species',
-          task: runGuarded('species', () => this.loadSpeciesData()),
+          task: () => runGuarded('species', () => this.loadSpeciesData()),
         });
       }
       tasks.push({
         name: 'happinessMap',
-        task: runGuarded('happinessMap', async () => {
+        task: () => runGuarded('happinessMap', async () => {
           const data = await fetchHappinessScores();
           this.ctx.map?.setHappinessScores(data);
         }),
       });
       tasks.push({
         name: 'renewableMap',
-        task: runGuarded('renewableMap', async () => {
+        task: () => runGuarded('renewableMap', async () => {
           const installations = await fetchRenewableInstallations();
           this.ctx.map?.setRenewableInstallations(installations);
         }),
@@ -569,14 +708,14 @@ export class DataLoaderManager implements AppModule {
     if (shouldLoad('renewable')) {
       tasks.push({
         name: 'renewable',
-        task: runGuarded('renewable', () => this.loadRenewableData()),
+        task: () => runGuarded('renewable', () => this.loadRenewableData()),
       });
     }
 
     if (shouldLoad('giving')) {
       tasks.push({
         name: 'giving',
-        task: runGuarded('giving', async () => {
+        task: () => runGuarded('giving', async () => {
           const givingResult = await fetchGivingSummary();
           if (!givingResult.ok) {
             dataFreshness.recordError('giving', 'Giving data unavailable (retaining prior state)');
@@ -599,40 +738,40 @@ export class DataLoaderManager implements AppModule {
     }
     // Intelligence signals: run for any variant that shows these panels
     if (shouldLoadAny(['cii', 'strategic-risk', 'strategic-posture', 'climate', 'population-exposure', 'security-advisories', 'radiation-watch', 'displacement', 'ucdp-events', 'satellite-fires', 'oref-sirens'])) {
-      tasks.push({ name: 'intelligence', task: runGuarded('intelligence', () => this.loadIntelligenceSignals()) });
+      tasks.push({ name: 'intelligence', task: () => runGuarded('intelligence', () => this.loadIntelligenceSignals()) });
     }
 
     if (SITE_VARIANT === 'full' && (shouldLoad('satellite-fires') || this.ctx.mapLayers.natural)) {
-      tasks.push({ name: 'firms', task: runGuarded('firms', () => this.loadFirmsData()) });
+      tasks.push({ name: 'firms', task: () => runGuarded('firms', () => this.loadFirmsData()) });
     }
-    if (this.ctx.mapLayers.natural) tasks.push({ name: 'natural', task: runGuarded('natural', () => this.loadNatural()) });
-    if (this.ctx.mapLayers.diseaseOutbreaks || shouldLoad('disease-outbreaks')) tasks.push({ name: 'diseaseOutbreaks', task: runGuarded('diseaseOutbreaks', () => this.loadDiseaseOutbreaks()) });
-    if (shouldLoad('social-velocity')) tasks.push({ name: 'socialVelocity', task: runGuarded('socialVelocity', () => this.loadSocialVelocity()) });
-    if (hasPremiumAccess() && shouldLoad('wsb-ticker-scanner')) tasks.push({ name: 'wsbTickers', task: runGuarded('wsbTickers', () => this.loadWsbTickers()) });
-    if (shouldLoad('economic')) tasks.push({ name: 'economicStress', task: runGuarded('economicStress', () => this.loadEconomicStress()) });
-    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.weather) tasks.push({ name: 'weather', task: runGuarded('weather', () => this.loadWeatherAlerts()) });
-    if (SITE_VARIANT !== 'happy' && !isDesktopRuntime() && this.ctx.mapLayers.ais) tasks.push({ name: 'ais', task: runGuarded('ais', () => this.loadAisSignals()) });
-    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cables', task: runGuarded('cables', () => this.loadCableActivity()) });
-    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cableHealth', task: runGuarded('cableHealth', () => this.loadCableHealth()) });
-    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.flights) tasks.push({ name: 'flights', task: runGuarded('flights', () => this.loadFlightDelays()) });
-    if (SITE_VARIANT !== 'happy' && CYBER_LAYER_ENABLED && this.ctx.mapLayers.cyberThreats) tasks.push({ name: 'cyberThreats', task: runGuarded('cyberThreats', () => this.loadCyberThreats()) });
-    if (SITE_VARIANT !== 'happy' && !isDesktopRuntime() && (this.ctx.mapLayers.iranAttacks || shouldLoadAny(['cii', 'strategic-risk', 'strategic-posture']))) tasks.push({ name: 'iranAttacks', task: runGuarded('iranAttacks', () => this.loadIranEvents()) });
-    if (SITE_VARIANT !== 'happy' && (this.ctx.mapLayers.techEvents || SITE_VARIANT === 'tech')) tasks.push({ name: 'techEvents', task: runGuarded('techEvents', () => this.loadTechEvents()) });
-    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.satellites && this.ctx.map?.isGlobeMode?.()) tasks.push({ name: 'satellites', task: runGuarded('satellites', () => this.loadSatellites()) });
-    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.webcams) tasks.push({ name: 'webcams', task: runGuarded('webcams', () => this.loadWebcams()) });
+    if (this.ctx.mapLayers.natural) tasks.push({ name: 'natural', task: () => runGuarded('natural', () => this.loadNatural()) });
+    if (this.ctx.mapLayers.diseaseOutbreaks || shouldLoad('disease-outbreaks')) tasks.push({ name: 'diseaseOutbreaks', task: () => runGuarded('diseaseOutbreaks', () => this.loadDiseaseOutbreaks()) });
+    if (shouldLoad('social-velocity')) tasks.push({ name: 'socialVelocity', task: () => runGuarded('socialVelocity', () => this.loadSocialVelocity()) });
+    if (hasPremiumAccess() && shouldLoad('wsb-ticker-scanner')) tasks.push({ name: 'wsbTickers', task: () => runGuarded('wsbTickers', () => this.loadWsbTickers()) });
+    if (shouldLoad('economic')) tasks.push({ name: 'economicStress', task: () => runGuarded('economicStress', () => this.loadEconomicStress()) });
+    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.weather) tasks.push({ name: 'weather', task: () => runGuarded('weather', () => this.loadWeatherAlerts()) });
+    if (SITE_VARIANT !== 'happy' && !isDesktopRuntime() && this.ctx.mapLayers.ais) tasks.push({ name: 'ais', task: () => runGuarded('ais', () => this.loadAisSignals()) });
+    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cables', task: () => runGuarded('cables', () => this.loadCableActivity()) });
+    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cableHealth', task: () => runGuarded('cableHealth', () => this.loadCableHealth()) });
+    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.flights) tasks.push({ name: 'flights', task: () => runGuarded('flights', () => this.loadFlightDelays()) });
+    if (SITE_VARIANT !== 'happy' && CYBER_LAYER_ENABLED && this.ctx.mapLayers.cyberThreats) tasks.push({ name: 'cyberThreats', task: () => runGuarded('cyberThreats', () => this.loadCyberThreats()) });
+    if (SITE_VARIANT !== 'happy' && !isDesktopRuntime() && (this.ctx.mapLayers.iranAttacks || shouldLoadAny(['cii', 'strategic-risk', 'strategic-posture']))) tasks.push({ name: 'iranAttacks', task: () => runGuarded('iranAttacks', () => this.loadIranEvents()) });
+    if (SITE_VARIANT !== 'happy' && (this.ctx.mapLayers.techEvents || SITE_VARIANT === 'tech')) tasks.push({ name: 'techEvents', task: () => runGuarded('techEvents', () => this.loadTechEvents()) });
+    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.satellites && this.ctx.map?.isGlobeMode?.()) tasks.push({ name: 'satellites', task: () => runGuarded('satellites', () => this.loadSatellites()) });
+    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.webcams) tasks.push({ name: 'webcams', task: () => runGuarded('webcams', () => this.loadWebcams()) });
     if (SITE_VARIANT !== 'happy' && (shouldLoad('sanctions-pressure') || this.ctx.mapLayers.sanctions)) {
-      tasks.push({ name: 'sanctions', task: runGuarded('sanctions', () => this.loadSanctionsPressure()) });
+      tasks.push({ name: 'sanctions', task: () => runGuarded('sanctions', () => this.loadSanctionsPressure()) });
     }
     if (this.ctx.mapLayers.resilienceScore) {
       if (hasPremiumAccess()) {
-        tasks.push({ name: 'resilienceRanking', task: runGuarded('resilienceRanking', () => this.loadResilienceRanking()) });
+        tasks.push({ name: 'resilienceRanking', task: () => runGuarded('resilienceRanking', () => this.loadResilienceRanking()) });
       } else {
         this.ctx.map?.setResilienceRanking([]);
         this.ctx.map?.setLayerReady('resilienceScore', false);
       }
     }
     if (SITE_VARIANT !== 'happy' && (shouldLoad('radiation-watch') || this.ctx.mapLayers.radiationWatch)) {
-      tasks.push({ name: 'radiation', task: runGuarded('radiation', () => this.loadRadiationWatch()) });
+      tasks.push({ name: 'radiation', task: () => runGuarded('radiation', () => this.loadRadiationWatch()) });
     }
 
     // tech-readiness is only seeded on full + tech variants (api/bootstrap.js +
@@ -642,24 +781,16 @@ export class DataLoaderManager implements AppModule {
     // check via forceAll. Gate on variant defaults so this only fires where the
     // seed actually exists.
     if (isPanelInVariantDefaults('tech-readiness') && shouldLoad('tech-readiness')) {
-      tasks.push({ name: 'techReadiness', task: runGuarded('techReadiness', () => (this.ctx.panels['tech-readiness'] as TechReadinessPanel)?.refresh()) });
+      tasks.push({ name: 'techReadiness', task: () => runGuarded('techReadiness', () => (this.ctx.panels['tech-readiness'] as TechReadinessPanel)?.refresh()) });
     }
     if (SITE_VARIANT !== 'happy' && shouldLoad('thermal-escalation')) {
-      tasks.push({ name: 'thermalEscalation', task: runGuarded('thermalEscalation', () => this.loadThermalEscalations()) });
+      tasks.push({ name: 'thermalEscalation', task: () => runGuarded('thermalEscalation', () => this.loadThermalEscalations()) });
     }
     if (SITE_VARIANT !== 'happy' && shouldLoad('cross-source-signals')) {
-      tasks.push({ name: 'crossSourceSignals', task: runGuarded('crossSourceSignals', () => this.loadCrossSourceSignals()) });
+      tasks.push({ name: 'crossSourceSignals', task: () => runGuarded('crossSourceSignals', () => this.loadCrossSourceSignals()) });
     }
 
-    // Task promises are created above as soon as they are pushed. Await all
-    // guarded loads together; source-specific throttling belongs inside the
-    // individual loaders/services that actually touch constrained upstreams.
-    const results = await Promise.allSettled(tasks.map(t => t.task));
-    results.forEach((result, idx) => {
-      if (result.status === 'rejected') {
-        console.error(`[App] ${tasks[idx]?.name} load failed:`, result.reason);
-      }
-    });
+    await this.runHydrationTasks(tasks, forceAll);
 
     this.updateSearchIndex();
 
@@ -774,7 +905,14 @@ export class DataLoaderManager implements AppModule {
     this.stopSatellitePropagation();
     const data = await fetchSatelliteTLEs();
     if (!data || data.length === 0) return;
-    this.cachedSatRecs = initSatRecs(data);
+    try {
+      this.cachedSatRecs = await initSatRecs(data);
+    } catch (err) {
+      console.error('[satellites] failed to initialize satellite propagation', err);
+      this.cachedSatRecs = [];
+      this.ctx.map?.setSatellites([]);
+      return;
+    }
     const positions = propagatePositions(this.cachedSatRecs);
     this.ctx.map?.setSatellites(positions);
     this.satellitePropagationCleanup = startPropagationLoop(this.cachedSatRecs, (pos) => {
@@ -1239,7 +1377,7 @@ export class DataLoaderManager implements AppModule {
     const categories = resolveNewsCategories(
       FEEDS,
       CANONICAL_FEEDS,
-      enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings),
+      enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings, Object.keys(CANONICAL_FEEDS)),
     );
 
     const maxCategoryConcurrency = SITE_VARIANT === 'tech' ? 4 : 5;
@@ -1307,8 +1445,7 @@ export class DataLoaderManager implements AppModule {
 
       (this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined)
         ?.setActivities(getTopActiveGeoHubs(this.ctx.latestClusters));
-      (this.ctx.panels['tech-hubs'] as TechHubsPanel | undefined)
-        ?.setActivities(getTopActiveHubs(this.ctx.latestClusters));
+      this.applyTechHubActivities();
 
       const geoLocated = this.ctx.latestClusters
         .filter((c): c is typeof c & { lat: number; lon: number } => c.lat != null && c.lon != null)
@@ -2109,20 +2246,15 @@ export class DataLoaderManager implements AppModule {
         daysUntil: Math.ceil((new Date(e.startDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
       }));
 
+      this.ctx.latestTechEvents = mapEvents;
       this.ctx.map?.setTechEvents(mapEvents);
       this.ctx.map?.setLayerReady('techEvents', mapEvents.length > 0);
       this.ctx.statusPanel?.updateFeed('Tech Events', { status: 'ok', itemCount: mapEvents.length });
 
-      if (SITE_VARIANT === 'tech' && this.ctx.searchModal) {
-        this.ctx.searchModal.registerSource('techevent', mapEvents.map((e: { id: string; title: string; location: string; startDate: string }) => ({
-          id: e.id,
-          title: e.title,
-          subtitle: `${e.location} • ${new Date(e.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
-          data: e,
-        })));
-      }
+      this.updateSearchIndex();
     } catch (error) {
       console.error('[App] Failed to load tech events:', error);
+      this.ctx.latestTechEvents = [];
       this.ctx.map?.setTechEvents([]);
       this.ctx.map?.setLayerReady('techEvents', false);
       this.ctx.statusPanel?.updateFeed('Tech Events', { status: 'error', errorMessage: String(error) });
@@ -2285,18 +2417,7 @@ export class DataLoaderManager implements AppModule {
           });
         }
         if (!isInLearningMode()) {
-          const surgeAlerts = analyzeFlightsForSurge(flightData.flights);
-          if (surgeAlerts.length > 0) {
-            const surgeSignals = surgeAlerts.map(surgeAlertToSignal);
-            addToSignalHistory(surgeSignals);
-            if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(surgeSignals);
-          }
-          const foreignAlerts = detectForeignMilitaryPresence(flightData.flights);
-          if (foreignAlerts.length > 0) {
-            const foreignSignals = foreignAlerts.map(foreignPresenceToSignal);
-            addToSignalHistory(foreignSignals);
-            if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(foreignSignals);
-          }
+          await this.runMilitarySurgeAnalysis(flightData.flights);
         }
       } catch (error) {
         console.error('[Intelligence] Military fetch failed:', error);
@@ -2418,7 +2539,7 @@ export class DataLoaderManager implements AppModule {
           }
           ingestGpsJammingForCII(data.hexes);
           if (this.ctx.mapLayers.gpsJamming) {
-            this.ctx.map?.setGpsJamming(data.hexes);
+            await this.ctx.map?.setGpsJamming(data.hexes);
             this.ctx.map?.setLayerReady('gpsJamming', data.hexes.length > 0);
           }
           this.ctx.statusPanel?.updateFeed('GPS Jam', { status: 'ok', itemCount: data.hexes.length });
@@ -2815,18 +2936,7 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.updateMilitaryForEscalation(flightData.flights, vesselData.vessels);
       this.refreshCiiAndBrief();
       if (!isInLearningMode()) {
-        const surgeAlerts = analyzeFlightsForSurge(flightData.flights);
-        if (surgeAlerts.length > 0) {
-          const surgeSignals = surgeAlerts.map(surgeAlertToSignal);
-          addToSignalHistory(surgeSignals);
-          if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(surgeSignals);
-        }
-        const foreignAlerts = detectForeignMilitaryPresence(flightData.flights);
-        if (foreignAlerts.length > 0) {
-          const foreignSignals = foreignAlerts.map(foreignPresenceToSignal);
-          addToSignalHistory(foreignSignals);
-          if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(foreignSignals);
-        }
+        await this.runMilitarySurgeAnalysis(flightData.flights);
       }
 
       this.loadCachedPosturesForBanner();
@@ -2848,6 +2958,28 @@ export class DataLoaderManager implements AppModule {
       this.ctx.statusPanel?.updateFeed('Military', { status: 'error', errorMessage: String(error) });
       this.ctx.statusPanel?.updateApi('OpenSky', { status: 'error' });
       dataFreshness.recordError('opensky', String(error));
+    }
+  }
+
+  private async runMilitarySurgeAnalysis(flights: MilitaryFlight[]): Promise<void> {
+    try {
+      // military-surge pulls bases-expanded, so keep it off the eager boot graph
+      // and make its optional enrichment non-fatal to the military fetch path.
+      const { analyzeFlightsForSurge, surgeAlertToSignal, detectForeignMilitaryPresence, foreignPresenceToSignal } = await import('@/services/military-surge');
+      const surgeAlerts = analyzeFlightsForSurge(flights);
+      if (surgeAlerts.length > 0) {
+        const surgeSignals = surgeAlerts.map(surgeAlertToSignal);
+        addToSignalHistory(surgeSignals);
+        if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(surgeSignals);
+      }
+      const foreignAlerts = detectForeignMilitaryPresence(flights);
+      if (foreignAlerts.length > 0) {
+        const foreignSignals = foreignAlerts.map(foreignPresenceToSignal);
+        addToSignalHistory(foreignSignals);
+        if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(foreignSignals);
+      }
+    } catch (error) {
+      console.warn('[Intelligence] Military surge analysis skipped:', error);
     }
   }
 
@@ -3168,6 +3300,19 @@ export class DataLoaderManager implements AppModule {
     monitorPanel?.renderResults(this.ctx.allNews);
   }
 
+  // Lazy-load the tech-activity service (→ tech-hub-index → the ~62KB tech-geo
+  // table) only when the lazy tech-hubs panel is mounted, so the table stays off
+  // the eager dashboard critical path. Non-critical panel data — degrade silently
+  // on load failure. (#4404)
+  private applyTechHubActivities(): void {
+    const techHubsPanel = this.ctx.panels['tech-hubs'] as TechHubsPanel | undefined;
+    if (!techHubsPanel) return;
+    const clusters = this.ctx.latestClusters;
+    void import('@/services/tech-activity')
+      .then(({ getTopActiveHubs }) => techHubsPanel.setActivities(getTopActiveHubs(clusters)))
+      .catch(() => { /* non-critical */ });
+  }
+
   async runCorrelationAnalysis(): Promise<void> {
     try {
       if (this.ctx.latestClusters.length === 0 && this.ctx.allNews.length > 0) {
@@ -3182,8 +3327,7 @@ export class DataLoaderManager implements AppModule {
         this.refreshCiiAndBrief();
         (this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined)
           ?.setActivities(getTopActiveGeoHubs(this.ctx.latestClusters));
-        (this.ctx.panels['tech-hubs'] as TechHubsPanel | undefined)
-          ?.setActivities(getTopActiveHubs(this.ctx.latestClusters));
+        this.applyTechHubActivities();
       }
 
       const signals = await analysisWorker.analyzeCorrelations(
@@ -3307,14 +3451,14 @@ export class DataLoaderManager implements AppModule {
 
   async hydrateHappyPanelsFromCache(): Promise<void> {
     try {
-      type CachedItem = Omit<NewsItem, 'pubDate'> & { pubDate: number };
+      type CachedItem = Omit<NewsItem, 'pubDate'> & { pubDate?: number };
       const entry = await getPersistentCache<CachedItem[]>(DataLoaderManager.HAPPY_ITEMS_CACHE_KEY);
       if (!entry || !entry.data || entry.data.length === 0) return;
       if (Date.now() - entry.updatedAt > 24 * 60 * 60 * 1000) return;
 
       const items: NewsItem[] = entry.data.map(item => ({
         ...item,
-        pubDate: new Date(item.pubDate),
+        pubDate: new Date(displayPubDateMs(item)),
       }));
 
       const scienceSources = ['GNN Science', 'ScienceDaily', 'Nature News', 'Live Science', 'New Scientist', 'Singularity Hub', 'Human Progress', 'Greater Good (Berkeley)'];
@@ -3382,7 +3526,10 @@ export class DataLoaderManager implements AppModule {
 
     setPersistentCache(
       DataLoaderManager.HAPPY_ITEMS_CACHE_KEY,
-      this.ctx.happyAllItems.map(item => ({ ...item, pubDate: item.pubDate.getTime() }))
+      this.ctx.happyAllItems.map(item => ({
+        ...item,
+        pubDate: displayPubDateMs(item),
+      }))
     ).catch(() => {});
   }
 

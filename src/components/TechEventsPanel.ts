@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { t } from '@/services/i18n';
 import { sanitizeUrl } from '@/utils/sanitize';
 import { h, replaceChildren } from '@/utils/dom-utils';
@@ -12,7 +12,7 @@ import { getHydratedData } from '@/services/bootstrap';
 
 type ViewMode = 'upcoming' | 'conferences' | 'earnings' | 'all';
 
-const researchClient = new ResearchServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+const getResearchClient = createLazyClient(() => new ResearchServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
 
 export class TechEventsPanel extends Panel {
   private viewMode: ViewMode = 'upcoming';
@@ -44,7 +44,7 @@ export class TechEventsPanel extends Panel {
     // Fallback: single RPC call — listTechEvents reads from Redis seed,
     // retrying on empty returns the same stale result each time.
     try {
-      const data = await researchClient.listTechEvents({
+      const data = await getResearchClient().listTechEvents({
         type: '',
         mappable: false,
         days: 180,

@@ -31,6 +31,18 @@ describe('classifyHttpCheckoutError', () => {
     assert.equal(err.retryable, false);
   });
 
+  it('maps 409 with PAYMENT_IN_PROGRESS to payment_in_progress (#4438)', () => {
+    const err = classifyHttpCheckoutError(409, {
+      error: 'PAYMENT_IN_PROGRESS',
+      message: 'A Pro Monthly payment is already in progress for this account',
+    });
+    assert.equal(err.code, 'payment_in_progress');
+    // Not a network retry — the user confirms a dialog to start a new checkout.
+    assert.equal(err.retryable, false);
+    // Raw server string stays off-screen.
+    assert.notEqual(err.userMessage, err.serverMessage);
+  });
+
   it('maps 409 without known error code to invalid_product (4xx)', () => {
     const err = classifyHttpCheckoutError(409, { error: 'SOMETHING_ELSE' });
     assert.equal(err.code, 'invalid_product');

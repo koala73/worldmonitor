@@ -4,7 +4,7 @@ import type { NewsItem, ClusteredEvent, DeviationLevel, RelatedAsset, RelatedAss
 import { THREAT_PRIORITY } from '@/services/threat-classifier';
 import { formatTime, getCSSColor } from '@/utils';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
-import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTANCE_KM, activityTracker, generateSummary, translateText } from '@/services';
+import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTANCE_KM, activityTracker, generateSummary, translateText, preloadRelatedAssetTables } from '@/services';
 import { getSourcePropagandaRisk, getSourceTier, getSourceType } from '@/config/feeds';
 import { SITE_VARIANT } from '@/config';
 import { t, getCurrentLanguage } from '@/services/i18n';
@@ -47,6 +47,7 @@ export class NewsPanel extends Panel {
   private sortBtn: HTMLButtonElement | null = null;
   private lastRawClusters: ClusteredEvent[] | null = null;
   private lastRawItems: NewsItem[] | null = null;
+  private relatedAssetTableRefreshPending = false;
 
   // Panel summary feature
   private summaryBtn: HTMLButtonElement | null = null;
@@ -569,6 +570,23 @@ export class NewsPanel extends Panel {
         .join('');
       this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
     }
+    this.refreshRelatedAssetsAfterLazyTables(sorted);
+  }
+
+  private refreshRelatedAssetsAfterLazyTables(clusters: ClusteredEvent[]): void {
+    if (this.relatedAssetTableRefreshPending) return;
+    const titles = clusters.flatMap(cluster => cluster.allItems.map(item => item.title));
+    this.relatedAssetTableRefreshPending = true;
+    void preloadRelatedAssetTables(titles)
+      .then((shouldRefresh) => {
+        this.relatedAssetTableRefreshPending = false;
+        if (shouldRefresh && this.lastRawClusters) {
+          this.renderClusters(this.lastRawClusters);
+        }
+      })
+      .catch(() => {
+        this.relatedAssetTableRefreshPending = false;
+      });
   }
 
   private renderClusterHtmlSafely(

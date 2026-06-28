@@ -4,7 +4,7 @@ Agent entry point for WorldMonitor. Read this first, then follow links for depth
 
 ## What This Project Is
 
-Real-time global intelligence dashboard. TypeScript SPA (Vite + Preact) with 155 top-level TypeScript component files, 80+ Vercel Edge API endpoint entries, a Tauri desktop app with Node.js sidecar, and a Railway relay service. Aggregates geopolitics, military, finance, climate, cyber, maritime, and aviation data across 35 freshness-tracked source groups.
+Real-time global intelligence dashboard. TypeScript SPA (Vite + Preact) with 157 top-level TypeScript component files, 80+ Vercel Edge API endpoint entries, a Tauri desktop app with Node.js sidecar, and a Railway relay service. Aggregates geopolitics, military, finance, climate, cyber, maritime, and aviation data across 35 freshness-tracked source groups.
 
 ## Repository Map
 
@@ -12,9 +12,16 @@ Real-time global intelligence dashboard. TypeScript SPA (Vite + Preact) with 155
 .
 ├── src/                    # Browser SPA (TypeScript, class-based components)
 │   ├── app/                # App orchestration (data-loader, refresh-scheduler, panel-layout)
-│   ├── components/         # 155 top-level TypeScript component files
+│   ├── bootstrap/          # Startup/recovery (chunk reload, deferred Sentry, SW update)
+│   ├── components/         # 157 top-level TypeScript component files
 │   ├── config/             # Variant configs, panel/layer definitions, market symbols
-│   ├── services/           # Business logic (186 service modules and domain directories)
+│   ├── services/           # Business logic (191 service modules and domain directories)
+│   ├── shared/             # Cross-cutting helpers (premium paths, registries, staleness)
+│   ├── embed/              # Embeddable widget loader
+│   ├── styles/             # Global CSS (layers, themes, panel styles)
+│   ├── shims/              # Runtime shims (child-process for sidecar)
+│   ├── data/               # Static JSON datasets (conservation, renewable, happiness)
+│   ├── e2e/                # Map test harnesses (consumed by Playwright specs)
 │   ├── types/              # TypeScript type definitions
 │   ├── utils/              # Shared utilities (circuit-breaker, theme, URL state, DOM)
 │   ├── workers/            # Web Workers (analysis, ML/ONNX, vector DB)
@@ -35,14 +42,19 @@ Real-time global intelligence dashboard. TypeScript SPA (Vite + Preact) with 155
 │   ├── buf.yaml            # Buf configuration
 │   └── worldmonitor/       # Service definitions with HTTP annotations
 ├── shared/                 # Cross-platform data (JSON configs for markets, RSS domains)
+├── data/                   # Static data (telegram channels, OREF threat translations, gamma irradiators)
+├── public/                 # Static assets served as-is (favicons, textures, .well-known, llms.txt)
 ├── scripts/                # Seed scripts, build helpers, data fetchers
 ├── src-tauri/              # Tauri desktop shell (Rust + Node.js sidecar)
 │   └── sidecar/            # Node.js sidecar API server
+├── consumer-prices-core/   # Consumer-price scrapers (Playwright, per-country baskets; Railway/Docker)
+├── workers/                # Cloudflare Workers (edge CORS preflight for api.worldmonitor.app)
 ├── tests/                  # Unit/integration tests (node:test runner)
 ├── e2e/                    # Playwright E2E specs
+├── pro-test/               # Standalone Pro QA app (separate package)
 ├── docs/                   # Mintlify documentation site
 ├── docker/                 # Docker build for Railway services
-├── deploy/                 # Deployment configs
+├── deploy/                 # Deployment configs (nginx)
 └── blog-site/              # Static blog (built into public/blog/)
 ```
 

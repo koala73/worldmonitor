@@ -184,7 +184,7 @@ describe('frontend CII source of truth', () => {
     assert.match(refreshBody, /const cached = this\.getAuthoritativeCachedRiskScores\(forceLocal\);/);
     assert.match(refreshBody, /if \(cached\) \{[\s\S]*this\.renderCachedCiiScores\(cached\);[\s\S]*return;[\s\S]*\}/);
     assert.match(refreshBody, /const shouldUseLocalFallback = forceLocal \|\| !this\.cachedRiskScores;/);
-    assert.match(refreshBody, /\(this\.ctx\.panels\['cii'\] as CIIPanel\)\?\.refresh\(shouldUseLocalFallback\);/);
+    assert.match(refreshBody, /this\.callPanel\('cii', 'refresh', shouldUseLocalFallback\);/);
     assert.match(refreshBody, /const scores = calculateCII\(\);[\s\S]*this\.applyCiiScoresToMap\(scores\);/);
 
     assert.match(eventHandlersSrc, /refreshCiiAfterFocalPointsReady\?: \(\) => void;/);

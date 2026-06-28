@@ -4,7 +4,7 @@ import { escapeHtml } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
 import type { Topology, GeometryCollection } from 'topojson-specification';
 import type { Feature, Geometry } from 'geojson';
-import type { MapLayers, Hotspot, NewsItem, InternetOutage, RelatedAsset, AssetType, AisDisruptionEvent, AisDensityZone, CableAdvisory, RepairShip, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, CyberThreat, CableHealthRecord } from '@/types';
+import type { MapLayers, Hotspot, NewsItem, InternetOutage, RelatedAsset, AssetType, AisDisruptionEvent, AisDensityZone, CableAdvisory, RepairShip, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, CyberThreat, CableHealthRecord, MilitaryBase } from '@/types';
 import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import type { Earthquake } from '@/services/earthquakes';
 import { type IranEvent, getIranEventCssColor, getIranEventSize } from '@/services/conflict';
@@ -15,35 +15,28 @@ import type { WeatherAlert } from '@/services/weather';
 import type { RadiationObservation } from '@/services/radiation';
 import { getSeverityColor } from '@/services/weather';
 import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/smart-poll-loop';
+import { scheduleAfterFirstPaint, yieldToMain } from '@/utils/after-paint';
+import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
 import {
-  MAP_URLS,
   INTEL_HOTSPOTS,
   CONFLICT_ZONES,
-  MILITARY_BASES,
-  UNDERSEA_CABLES,
-  NUCLEAR_FACILITIES,
   GAMMA_IRRADIATORS,
   PIPELINES,
   PIPELINE_COLORS,
-  SANCTIONED_COUNTRIES,
   STRATEGIC_WATERWAYS,
-  ECONOMIC_CENTERS,
-  AI_DATA_CENTERS,
   PORTS,
-  SPACEPORTS,
-  CRITICAL_MINERALS,
   SITE_VARIANT,
-  // Tech variant data
-  STARTUP_HUBS,
-  ACCELERATORS,
-  TECH_HQS,
-  CLOUD_REGIONS,
   // Finance variant data
   STOCK_EXCHANGES,
   FINANCIAL_CENTERS,
   CENTRAL_BANKS,
   COMMODITY_HUBS,
 } from '@/config';
+// Tech-geo + ai-datacenters + geo-map tables imported directly so their chunks stay
+// off the eager @/config barrel and load only with this lazy renderer (#4404).
+import { STARTUP_HUBS, ACCELERATORS, TECH_HQS, CLOUD_REGIONS } from '@/config/tech-geo';
+import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
+import { worldTopologyUrl, UNDERSEA_CABLES, NUCLEAR_FACILITIES, SANCTIONED_COUNTRIES, ECONOMIC_CENTERS, SPACEPORTS, CRITICAL_MINERALS } from '@/config/geo-map';
 import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import { tokenizeForMatch, matchKeyword, findMatchingKeywords } from '@/utils/keyword-match';
@@ -95,6 +88,7 @@ export interface MapState {
 
 export interface MapComponentOptions {
   chrome?: boolean;
+  isMobile?: boolean;
 }
 
 interface HotspotWithBreaking extends Hotspot {
@@ -198,12 +192,27 @@ export class MapComponent {
   private lastRenderTime = 0;
   private readonly MIN_RENDER_INTERVAL_MS = 100;
   private healthCheckLoop: SmartPollLoopHandle | null = null;
+  // First render paints the base map (countries) synchronously for LCP, then defers the
+  // heavy dynamic-overlay pass off the first-paint critical path (#4429). Mobile uses this
+  // SVG renderer and its synchronous overlay build was the #1 boot-scripting cost (~1.3s).
+  private initialDynamicRendered = false;
+  private initialDynamicScheduled = false;
+  // Bumped on every dynamic-layer build; lets the chunked first-paint pass bail mid-yield
+  // when a newer (synchronous) render has superseded it (#4442 re-entrancy guard).
+  private dynamicRenderToken = 0;
+  private militaryBasesLoadPending = false;
+  // Set in destroy(); guards render() (incl. the deferred first-paint callback and the
+  // resize/visibility rAF callbacks) from running on a torn-down instance.
+  private destroyed = false;
+  // Mobile loads the lighter 110m country topology (U6); passed in from MapContainer.
+  private readonly isMobile: boolean;
 
   constructor(container: HTMLElement, initialState: MapState, options: MapComponentOptions = {}) {
     this.container = container;
     this.state = initialState;
     this.hotspots = [...INTEL_HOTSPOTS];
     const chrome = options.chrome ?? true;
+    this.isMobile = options.isMobile ?? false;
 
     this.wrapper = document.createElement('div');
     this.wrapper.className = 'map-wrapper';
@@ -261,6 +270,26 @@ export class MapComponent {
     }
   }
 
+  private getMilitaryBasesForRender(): MilitaryBase[] {
+    const bases = getCachedMilitaryBases();
+    if (bases.length === 0) this.requestMilitaryBasesRender();
+    return bases;
+  }
+
+  private requestMilitaryBasesRender(): void {
+    if (this.militaryBasesLoadPending) return;
+    this.militaryBasesLoadPending = true;
+    void preloadMilitaryBases()
+      .then(() => {
+        this.militaryBasesLoadPending = false;
+        if (!this.destroyed) this.render();
+      })
+      .catch((error) => {
+        this.militaryBasesLoadPending = false;
+        console.warn('[Map] Military base config unavailable:', error);
+      });
+  }
+
   private setupResizeObserver(): void {
     let lastWidth = 0;
     let lastHeight = 0;
@@ -299,6 +328,7 @@ export class MapComponent {
   }
 
   public destroy(): void {
+    this.destroyed = true;
     window.removeEventListener('theme-changed', this.handleThemeChange);
     document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
     if (this.resizeObserver) {
@@ -1027,7 +1057,7 @@ export class MapComponent {
 
   private async loadMapData(): Promise<void> {
     try {
-      const worldResponse = await fetch(MAP_URLS.world);
+      const worldResponse = await fetch(worldTopologyUrl(this.isMobile));
       this.worldData = await worldResponse.json();
       if (this.worldData) {
         const countries = topojson.feature(
@@ -1075,6 +1105,7 @@ export class MapComponent {
   }
 
   public render(): void {
+    if (this.destroyed) return;
     const now = performance.now();
     if (now - this.lastRenderTime < this.MIN_RENDER_INTERVAL_MS) {
       this.scheduleRender();
@@ -1163,40 +1194,26 @@ export class MapComponent {
       this.baseRendered = true;
     }
 
-    // Always rebuild dynamic layer - use native DOM clear for reliability
-    const dynamicNode = this.dynamicLayerGroup.node()!;
-    while (dynamicNode.firstChild) dynamicNode.removeChild(dynamicNode.firstChild);
-    // Create overlays-svg group for SVG-based overlays (military tracks, etc.)
-    this.dynamicLayerGroup.append('g').attr('class', 'overlays-svg');
-
-    // Setup projection for dynamic elements
-    const projection = this.getProjection(width, height);
-
-    // Update country fills (sanctions toggle without rebuilding geometry)
-    this.updateCountryFills();
-
-    // Render dynamic map layers
-    if (this.state.layers.cables) {
-      this.renderCables(projection);
+    // Defer the first dynamic-overlay pass off the first-paint critical path. The base map
+    // (countries) above is enough for LCP; the dynamic layer below (cables/pipelines/
+    // conflicts/AIS/cluster markers/overlays) is the heavy synchronous cost (#4429 — ~1.3s
+    // of mobile boot scripting, the #1 mobile-TBT contributor since mobile uses this SVG
+    // renderer). After first paint, render fully so interactions update overlays immediately.
+    if (!this.initialDynamicRendered) {
+      if (!this.initialDynamicScheduled) {
+        this.initialDynamicScheduled = true;
+        // First paint: build the dynamic layers off the critical path AND chunked into
+        // sub-50ms tasks (#4442), so the overlay build is neither blocking nor one long task.
+        scheduleAfterFirstPaint(() => { void this.renderInitialDynamicPass(); });
+      }
+      this.applyTransform();
+      return;
     }
 
-    if (this.state.layers.pipelines) {
-      this.renderPipelines(projection);
-    }
-
-    if (this.state.layers.conflicts) {
-      this.renderConflicts(projection);
-    }
-
-    if (this.state.layers.ais) {
-      this.renderAisDensity(projection);
-    }
-
-    // GPU-accelerated cluster markers (LOD)
-    this.renderClusterLayer(projection);
-
-    // Overlays
-    this.renderOverlays(projection);
+    // Steady state (post first-paint): build the dynamic layers synchronously so interactions
+    // (zoom/pan/toggle/theme) update overlays immediately. renderDynamicLayers takes no await
+    // when chunk=false, so this runs to completion before returning.
+    void this.renderDynamicLayers(width, height);
 
     // POST-RENDER VERIFICATION: Ensure base layer actually rendered
     // This catches silent failures where d3 operations didn't stick
@@ -1212,6 +1229,52 @@ export class MapComponent {
     }
 
     this.applyTransform();
+  }
+
+  // Builds the dynamic overlay layers (cables/pipelines/conflicts/AIS/cluster/overlays).
+  // When `chunk` is true, yields between layers so the build runs as several sub-50ms tasks
+  // instead of one long task (#4442). Steady-state callers pass chunk=false → no await is
+  // reached, so it runs synchronously. The re-entrancy token lets a chunked pass bail once a
+  // newer render (which bumps the token and rebuilds) has superseded it.
+  private async renderDynamicLayers(width: number, height: number, chunk = false): Promise<void> {
+    const dynamicGroup = this.dynamicLayerGroup;
+    const dynamicNode = dynamicGroup?.node();
+    if (!dynamicGroup || !dynamicNode) return;
+    const token = ++this.dynamicRenderToken;
+
+    // Rebuild dynamic layer - native DOM clear for reliability
+    while (dynamicNode.firstChild) dynamicNode.removeChild(dynamicNode.firstChild);
+    dynamicGroup.append('g').attr('class', 'overlays-svg');
+
+    const projection = this.getProjection(width, height);
+    // Update country fills (sanctions toggle without rebuilding geometry)
+    this.updateCountryFills();
+
+    const steps: Array<() => void> = [];
+    if (this.state.layers.cables) steps.push(() => this.renderCables(projection));
+    if (this.state.layers.pipelines) steps.push(() => this.renderPipelines(projection));
+    if (this.state.layers.conflicts) steps.push(() => this.renderConflicts(projection));
+    if (this.state.layers.ais) steps.push(() => this.renderAisDensity(projection));
+    steps.push(() => this.renderClusterLayer(projection));
+    steps.push(() => this.renderOverlays(projection));
+
+    for (let i = 0; i < steps.length; i++) {
+      if (chunk && (this.destroyed || token !== this.dynamicRenderToken)) return;
+      steps[i]?.();
+      if (chunk && i < steps.length - 1) await yieldToMain();
+    }
+  }
+
+  // First-paint dynamic pass: the base map is already painted, so build the overlays chunked
+  // (off the critical path + split into sub-50ms tasks). Steady-state renders run synchronously.
+  private async renderInitialDynamicPass(): Promise<void> {
+    if (this.destroyed || !this.svg) return;
+    this.initialDynamicRendered = true;
+    const width = this.container.clientWidth;
+    const height = this.container.clientHeight;
+    if (width === 0 || height === 0) return; // next real render handles it
+    await this.renderDynamicLayers(width, height, true);
+    if (!this.destroyed) this.applyTransform();
   }
 
   private renderGrid(
@@ -1594,6 +1657,7 @@ export class MapComponent {
             x: e.clientX - rect.left,
             y: e.clientY - rect.top,
           });
+          this.popup.loadConflictHistory(zone);
         });
 
         this.overlays.appendChild(clickArea);
@@ -1670,7 +1734,7 @@ export class MapComponent {
 
     // Military bases (always HTML - nation colors matter)
     if (this.state.layers.bases) {
-      MILITARY_BASES.forEach((base) => {
+      this.getMilitaryBasesForRender().forEach((base) => {
         const pos = projection([base.lon, base.lat]);
         if (!pos) return;
 
@@ -3644,11 +3708,21 @@ export class MapComponent {
       x: pos[0],
       y: pos[1],
     });
+    this.popup.loadConflictHistory(conflict);
   }
 
   public triggerBaseClick(id: string): void {
-    const base = MILITARY_BASES.find(b => b.id === id);
-    if (!base) return;
+    const base = getCachedMilitaryBases().find(b => b.id === id);
+    if (!base) {
+      void preloadMilitaryBases()
+        .then(() => {
+          if (!this.destroyed) this.triggerBaseClick(id);
+        })
+        .catch((error) => {
+          console.warn('[Map] Military base config unavailable:', error);
+        });
+      return;
+    }
 
     const width = this.container.clientWidth;
     const height = this.container.clientHeight;

@@ -2,11 +2,11 @@ import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { joinSafeHtml, safeHtml, safeUrlAttr, type SafeHtml } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { ClimateServiceClient } from '@/generated/client/worldmonitor/climate/v1/service_client';
 import type { ListClimateNewsResponse, ClimateNewsItem } from '@/generated/client/worldmonitor/climate/v1/service_client';
 
-const client = new ClimateServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
+const getClimateClient = createLazyClient(() => new ClimateServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
 
 function formatTimeAgo(epochMs: number): string {
   const diffMs = Date.now() - epochMs;
@@ -52,13 +52,13 @@ export class ClimateNewsPanel extends Panel {
       if (hydrated?.items?.length) {
         if (!this.element?.isConnected) return;
         this.renderNewsList(hydrated);
-        void client.listClimateNews({}).then(data => {
+        void getClimateClient().listClimateNews({}).then(data => {
           if (!this.element?.isConnected || !data.items?.length) return;
           this.renderNewsList(data);
         }).catch(() => {});
         return;
       }
-      const data = await client.listClimateNews({});
+      const data = await getClimateClient().listClimateNews({});
       if (!this.element?.isConnected) return;
       this.renderNewsList(data);
     } catch (err) {

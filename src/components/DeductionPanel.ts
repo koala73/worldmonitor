@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { createLazyClient, getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
 import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { h, replaceChildren, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
@@ -13,7 +13,7 @@ import { FrameworkSelector } from './FrameworkSelector';
 import { extractDeductionProbability } from './deduction-probability';
 
 // deduct-situation + list-market-implications are premium-gated.
-const client = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
+const getIntelligenceClient = createLazyClient(() => new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: premiumFetch }));
 
 const COOLDOWN_MS = 5_000;
 
@@ -250,7 +250,7 @@ export class DeductionPanel extends Panel {
         );
 
         try {
-            const resp = await client.deductSituation({
+            const resp = await getIntelligenceClient().deductSituation({
                 query,
                 geoContext,
                 framework: fw?.systemPromptAppend ?? '',

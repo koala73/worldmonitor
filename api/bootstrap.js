@@ -1,6 +1,16 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
-import { validateApiKey } from './_api-key.js';
+import {
+  USER_API_KEY_GATEWAY_VALIDATION_ERROR,
+  getHeaderApiKey,
+  validateApiKey,
+} from './_api-key.js';
 import { jsonResponse } from './_json-response.js';
+import {
+  checkBootstrapUserApiKeyRateLimit,
+  isCanonicalUserApiKey,
+  validateBootstrapUserApiAccess,
+  validateBootstrapUserApiKey,
+} from './_user-api-key.js';
 // @ts-expect-error — JS module, no declaration file
 import { redisPipeline } from './_upstash-json.js';
 import { unwrapEnvelope } from './_seed-envelope.js';
@@ -246,6 +256,107 @@ async function getCachedJsonBatch(keys) {
   return result;
 }
 
+function authFailure(body, status, cors, extraHeaders = {}) {
+  // no-store is spread last so a caller-supplied Cache-Control in extraHeaders
+  // can never weaken the non-cacheable posture of an auth-failure response.
+  return jsonResponse(body, status, {
+    ...cors,
+    ...extraHeaders,
+    'Cache-Control': 'no-store',
+  });
+}
+
+async function validateBootstrapAuth(req, cors) {
+  const headerKey = getHeaderApiKey(req);
+  if (!headerKey && isPublicWeatherBootstrapRequest(req)) {
+    return { ok: true, kind: 'public-weather' };
+  }
+
+  const apiKeyResult = await validateApiKey(req);
+  if (!apiKeyResult.required || apiKeyResult.valid) {
+    return { ok: true, kind: apiKeyResult.kind || 'unknown' };
+  }
+
+  if (apiKeyResult.error === USER_API_KEY_GATEWAY_VALIDATION_ERROR && headerKey.startsWith('wm_')) {
+    if (!isCanonicalUserApiKey(headerKey)) {
+      return {
+        ok: false,
+        response: authFailure({ error: 'Invalid API key' }, 401, cors),
+      };
+    }
+
+    const rateLimitResult = await checkBootstrapUserApiKeyRateLimit(req);
+    if (!rateLimitResult.ok) {
+      return {
+        ok: false,
+        response: authFailure(
+          { error: rateLimitResult.error },
+          rateLimitResult.status,
+          cors,
+          rateLimitResult.headers,
+        ),
+      };
+    }
+
+    // Propagate the validation result's status/error/headers (all generic,
+    // leak-free strings) rather than hardcoding 401/403: a Convex outage surfaces
+    // as a retryable 503 + Retry-After (status 503, unavailable:true) instead of
+    // a misleading "Invalid API key" 401, mirroring the rate-limit path above.
+    const userKeyResult = await validateBootstrapUserApiKey(headerKey);
+    if (!userKeyResult.ok) {
+      return {
+        ok: false,
+        response: authFailure(
+          { error: userKeyResult.error },
+          userKeyResult.status,
+          cors,
+          userKeyResult.headers,
+        ),
+      };
+    }
+
+    const entitlementResult = await validateBootstrapUserApiAccess(userKeyResult.userId);
+    if (!entitlementResult.ok) {
+      return {
+        ok: false,
+        response: authFailure(
+          { error: entitlementResult.error },
+          entitlementResult.status,
+          cors,
+          entitlementResult.headers,
+        ),
+      };
+    }
+
+    return { ok: true, kind: 'user' };
+  }
+
+  const error = apiKeyResult.error === USER_API_KEY_GATEWAY_VALIDATION_ERROR
+    ? 'Invalid API key'
+    : apiKeyResult.error;
+  return {
+    ok: false,
+    response: authFailure({ error }, 401, cors),
+  };
+}
+
+function successCacheHeaders(tier, authKind, cors) {
+  const isKeyAuth = authKind === 'enterprise' || authKind === 'user';
+  if (isKeyAuth) {
+    return {
+      ...cors,
+      'Cache-Control': 'no-store',
+    };
+  }
+
+  const cacheControl = (tier && TIER_CACHE[tier]) || 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900';
+  return {
+    ...cors,
+    'Cache-Control': cacheControl,
+    'CDN-Cache-Control': (tier && TIER_CDN_CACHE[tier]) || TIER_CDN_CACHE.fast,
+  };
+}
+
 export default async function handler(req) {
   if (isDisallowedOrigin(req))
     return new Response('Forbidden', { status: 403 });
@@ -254,11 +365,8 @@ export default async function handler(req) {
   if (req.method === 'OPTIONS')
     return new Response(null, { status: 204, headers: cors });
 
-  const apiKeyResult = isPublicWeatherBootstrapRequest(req)
-    ? { valid: true, required: false }
-    : await validateApiKey(req);
-  if (apiKeyResult.required && !apiKeyResult.valid)
-    return jsonResponse({ error: apiKeyResult.error }, 401, cors);
+  const auth = await validateBootstrapAuth(req, cors);
+  if (!auth.ok) return auth.response;
 
   const url = new URL(req.url);
   const tier = url.searchParams.get('tier');
@@ -280,7 +388,12 @@ export default async function handler(req) {
   try {
     cached = await getCachedJsonBatch(keys);
   } catch {
-    return jsonResponse({ data: {}, missing: names }, 200, { ...cors, 'Cache-Control': 'no-cache' });
+    // Read auth.kind directly (not the output of successCacheHeaders) so a
+    // key-authenticated empty fallback always stays no-store and can never be
+    // shared-cached by a CDN to another caller.
+    const isKeyAuth = auth.kind === 'enterprise' || auth.kind === 'user';
+    const cacheControl = isKeyAuth ? 'no-store' : 'no-cache';
+    return jsonResponse({ data: {}, missing: names }, 200, { ...cors, 'Cache-Control': cacheControl });
   }
 
   const data = {};
@@ -300,14 +413,8 @@ export default async function handler(req) {
     }
   }
 
-  const cacheControl = (tier && TIER_CACHE[tier]) || 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900';
-
   // The browser runtime sends API requests with credentials so session and
   // entitlement cookies can ride along. Credentialed requests cannot consume
   // ACAO: * responses, even for public bootstrap data.
-  return jsonResponse({ data, missing }, 200, {
-    ...cors,
-    'Cache-Control': cacheControl,
-    'CDN-Cache-Control': (tier && TIER_CDN_CACHE[tier]) || TIER_CDN_CACHE.fast,
-  });
+  return jsonResponse({ data, missing }, 200, successCacheHeaders(tier, auth.kind, cors));
 }

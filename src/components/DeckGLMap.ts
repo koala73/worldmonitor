@@ -7,8 +7,9 @@ import { MapboxOverlay } from '@deck.gl/mapbox';
 import type { Layer, LayersList, PickingInfo } from '@deck.gl/core';
 import { GeoJsonLayer, ScatterplotLayer, PathLayer, IconLayer, TextLayer, PolygonLayer } from '@deck.gl/layers';
 import maplibregl from 'maplibre-gl';
+import type { StyleSpecification } from 'maplibre-gl';
 import { FALLBACK_DARK_STYLE, FALLBACK_LIGHT_STYLE, getMapProvider, getMapTheme, isLightMapTheme } from '@/config/basemap';
-import { registerPMTilesProtocol, getStyleForProvider } from '@/config/basemap-styles';
+import { getStyleForProvider } from '@/config/basemap-styles';
 import Supercluster from 'supercluster';
 import type {
   MapLayers,
@@ -54,9 +55,6 @@ import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';
 import type { RadiationObservation } from '@/services/radiation';
 import { ArcLayer } from '@deck.gl/layers';
-import { HeatmapLayer } from '@deck.gl/aggregation-layers';
-import { H3HexagonLayer, TripsLayer } from '@deck.gl/geo-layers';
-import { PathStyleExtension } from '@deck.gl/extensions';
 import type { WeatherAlert } from '@/services/weather';
 import { escapeHtml } from '@/utils/sanitize';
 import {
@@ -79,27 +77,16 @@ import { t } from '@/services/i18n';
 import { debounce, rafSchedule, getCurrentTheme } from '@/utils/index';
 import { showLayerWarning } from '@/utils/layer-warning';
 import { localizeMapLabels } from '@/utils/map-locale';
+import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
 import {
   INTEL_HOTSPOTS,
   CONFLICT_ZONES,
-
-  MILITARY_BASES,
-  UNDERSEA_CABLES,
-  NUCLEAR_FACILITIES,
   GAMMA_IRRADIATORS,
   PIPELINES,
   PIPELINE_COLORS,
   STRATEGIC_WATERWAYS,
-  ECONOMIC_CENTERS,
-  AI_DATA_CENTERS,
   SITE_VARIANT,
-  STARTUP_HUBS,
-  ACCELERATORS,
-  TECH_HQS,
-  CLOUD_REGIONS,
   PORTS,
-  SPACEPORTS,
-  CRITICAL_MINERALS,
   STOCK_EXCHANGES,
   FINANCIAL_CENTERS,
   CENTRAL_BANKS,
@@ -108,8 +95,12 @@ import {
   MINING_SITES,
   PROCESSING_PLANTS,
   COMMODITY_PORTS as COMMODITY_GEO_PORTS,
-  SANCTIONED_COUNTRIES_ALPHA2,
 } from '@/config';
+// Tech-geo + ai-datacenters + geo-map tables imported directly so their chunks stay
+// off the eager @/config barrel and load only with this lazy renderer (#4404).
+import { STARTUP_HUBS, ACCELERATORS, TECH_HQS, CLOUD_REGIONS } from '@/config/tech-geo';
+import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
+import { UNDERSEA_CABLES, NUCLEAR_FACILITIES, ECONOMIC_CENTERS, SPACEPORTS, CRITICAL_MINERALS, SANCTIONED_COUNTRIES_ALPHA2 } from '@/config/geo-map';
 import type { GulfInvestment } from '@/types';
 import { resolveTradeRouteSegments, TRADE_ROUTES as TRADE_ROUTES_LIST, type TradeRouteSegment, type TradeRouteStatus } from '@/config/trade-routes';
 import type { ScenarioVisualState } from '@/config/scenario-templates';
@@ -389,12 +380,15 @@ const ROUTE_WAYPOINTS_MAP = new Map<string, string[]>(
 
 interface TripData {
   path: [number, number][];
-  timestamps: number[];
+  phase: number;
   color: [number, number, number, number];
   width: number;
 }
 
 type HighlightedMarker = { id: string; lon: number; lat: number; name: string; score: number };
+
+/** GpsJamHex with its H3 cell boundary precomputed once at ingestion (see setGpsJamming). */
+type GpsJamHexWithPolygon = GpsJamHex & { polygon: [number, number][] };
 
 interface BypassArcDatum {
   source: [number, number];
@@ -428,12 +422,46 @@ function interpolateGreatCircle(
   return points;
 }
 
+function positionAlongPath(path: [number, number][], progress: number): [number, number] {
+  if (path.length === 0) return [0, 0];
+  if (path.length === 1) return path[0]!;
+  const clamped = Math.max(0, Math.min(1, progress));
+  const scaled = clamped * (path.length - 1);
+  const index = Math.min(path.length - 2, Math.floor(scaled));
+  const fraction = scaled - index;
+  const [lonA, latA] = path[index]!;
+  const [lonB, latB] = path[index + 1]!;
+  // Unwrap longitude across the antimeridian so the lerp takes the short way:
+  // great-circle samples can straddle ±180 (e.g. 176 → -176), and a raw lerp
+  // would sweep the dot across the whole map to ~0°E for that segment (#4396).
+  let deltaLon = lonB - lonA;
+  if (deltaLon > 180) deltaLon -= 360;
+  else if (deltaLon < -180) deltaLon += 360;
+  let lon = lonA + deltaLon * fraction;
+  if (lon > 180) lon -= 360;
+  else if (lon < -180) lon += 360;
+  return [lon, latA + (latB - latA) * fraction];
+}
+
+const PREFERS_REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 const TRADE_ANIMATION_CYCLE = 1000;
-const TRADE_TRAIL_LENGTH = 200;
 const TRADE_ANIMATION_SPEED = 0.3;
+const TRADE_ANIMATION_MAX_DELTA_MS = 100;
 const TRADE_GC_INTERPOLATION_POINTS = 20;
 const CHOKEPOINT_PULSE_FREQ = 0.01;
 const CHOKEPOINT_PULSE_AMP = 0.3;
+
+function stableTradeRoutePhase(routeId: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < routeId.length; i++) {
+    const codeUnit = routeId.charCodeAt(i);
+    hash ^= codeUnit & 0xff;
+    hash = Math.imul(hash, 16777619);
+    hash ^= (codeUnit >> 8) & 0xff;
+    hash = Math.imul(hash, 16777619);
+  }
+  return ((hash >>> 0) / 0x100000000) * TRADE_ANIMATION_CYCLE;
+}
 
 // Process-wide guard so the window error listener for the deck.gl/maplibre
 // interleaved-mode render race is installed exactly once even if a hot-reload
@@ -537,6 +565,7 @@ export class DeckGLMap {
   private serverBases: MilitaryBaseEnriched[] = [];
   private serverBaseClusters: ServerBaseCluster[] = [];
   private serverBasesLoaded = false;
+  private baseConfigLoadPending = false;
   private naturalEvents: NaturalEvent[] = [];
   private firmsFireData: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }> = [];
   private techEvents: TechEventMarker[] = [];
@@ -548,7 +577,8 @@ export class DeckGLMap {
   private newsLocationFirstSeen = new Map<string, number>();
   private ucdpEvents: UcdpGeoEvent[] = [];
   private displacementFlows: DisplacementFlow[] = [];
-  private gpsJammingHexes: GpsJamHex[] = [];
+  private gpsJammingHexes: GpsJamHexWithPolygon[] = [];
+  private gpsJammingLoadSeq = 0;
   private climateAnomalies: ClimateAnomaly[] = [];
   private radiationObservations: RadiationObservation[] = [];
   private diseaseOutbreaks: DiseaseOutbreakItem[] = [];
@@ -557,6 +587,7 @@ export class DeckGLMap {
   private tradeAnimationTime = 0;
   private tradeAnimationFrame: number | null = null;
   private tradeAnimationFrameCount = 0;
+  private tradeReducedMotionMedia: MediaQueryList | null = null;
   private storedChokepointData: GetChokepointStatusResponse | null = null;
   private highlightedRouteIds: Set<string> = new Set();
   private highlightedMarkers: HighlightedMarker[] = [];
@@ -673,8 +704,10 @@ export class DeckGLMap {
   private renderPaused = false;
   private renderPending = false;
   private webglLost = false;
+  private destroyed = false;
   private usedFallbackStyle = false;
   private readonly chrome: boolean;
+  private initPromise: Promise<void> = Promise.resolve();
   private styleLoadTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private tileMonitorGeneration = 0;
 
@@ -707,6 +740,7 @@ export class DeckGLMap {
   // setTiles back-to-back. Idempotent today but wasteful.
   private radarIdlePending = false;
   private readonly startupTime = Date.now();
+  private basemapSwitchSeq = 0;
   private lastCableHighlightSignature = '';
   private lastCableHealthSignature = '';
   private lastPipelineHighlightSignature = '';
@@ -716,6 +750,14 @@ export class DeckGLMap {
   private rafUpdateLayers: (() => void) & { cancel(): void };
   private handleThemeChange: () => void;
   private handleMapThemeChange: () => void;
+  private readonly handleTradeMotionPreferenceChange = (): void => {
+    if (this.prefersReducedTradeMotion()) {
+      this.stopTradeAnimation();
+    } else if (this.state.layers.tradeRoutes && !this.renderPaused) {
+      this.startTradeAnimation();
+    }
+    this.render();
+  };
   private moveTimeoutId: ReturnType<typeof setTimeout> | null = null;
   /** Target center set eagerly by setView() so getCenter() returns the correct
    *  destination before moveend fires, preventing stale intermediate coords
@@ -754,7 +796,7 @@ export class DeckGLMap {
 
     this.handleThemeChange = () => {
       if (isHappyVariant) {
-        this.switchBasemap();
+        void this.switchBasemap();
         return;
       }
       const provider = getMapProvider();
@@ -766,19 +808,13 @@ export class DeckGLMap {
     window.addEventListener('theme-changed', this.handleThemeChange);
 
     this.handleMapThemeChange = () => {
-      this.switchBasemap();
+      void this.switchBasemap();
     };
     window.addEventListener('map-theme-changed', this.handleMapThemeChange);
+    this.tradeReducedMotionMedia = window.matchMedia(PREFERS_REDUCED_MOTION_QUERY);
+    this.tradeReducedMotionMedia.addEventListener('change', this.handleTradeMotionPreferenceChange);
 
-    this.initMapLibre();
-
-    this.maplibreMap?.on('load', () => {
-      localizeMapLabels(this.maplibreMap);
-      this.initDeck();
-      this.loadCountryBoundaries();
-      this.fetchServerBases();
-      this.render();
-    });
+    this.initPromise = this.initMapLibre();
 
     if (this.chrome) {
       this.createControls();
@@ -922,7 +958,19 @@ export class DeckGLMap {
     this.container.appendChild(wrapper);
   }
 
-  private initMapLibre(): void {
+  /**
+   * Resolves once the initial MapLibre construction has settled (success, or a
+   * guarded teardown that bailed before constructing the map). Rejects if map
+   * construction throws (e.g. a WebGL init failure), letting
+   * MapContainer.createDeckGLMap fall back to the SVG renderer — the failure
+   * path that the fire-and-forget `void this.initMapLibre()` would otherwise
+   * swallow into an unhandled rejection + blank map.
+   */
+  public whenReady(): Promise<void> {
+    return this.initPromise;
+  }
+
+  private async initMapLibre(): Promise<void> {
     if (maplibregl.getRTLTextPluginStatus() === 'unavailable') {
       maplibregl.setRTLTextPlugin(
         '/mapbox-gl-rtl-text.min.js',
@@ -930,14 +978,14 @@ export class DeckGLMap {
       );
     }
 
-    const initialProvider = isHappyVariant ? 'openfreemap' as const : getMapProvider();
-    if (initialProvider === 'pmtiles' || initialProvider === 'auto') registerPMTilesProtocol();
+    const { mapTheme: initialMapTheme, style: primaryStyle } = await this.resolveInitialBasemapStyle();
+    // The component can be torn down (renderer switch) while the style import
+    // above is in flight; bail before constructing a MapLibre map that destroy()
+    // can no longer reach — it would orphan a live WebGL context, its listeners
+    // and the 10s styleLoadTimeoutId.
+    if (this.destroyed) return;
 
     const preset = VIEW_PRESETS[this.state.view];
-    const initialMapTheme = getMapTheme(initialProvider);
-    const primaryStyle = isHappyVariant
-      ? (getCurrentTheme() === 'light' ? HAPPY_LIGHT_STYLE : HAPPY_DARK_STYLE)
-      : getStyleForProvider(initialProvider, initialMapTheme);
     if (!isHappyVariant && typeof primaryStyle === 'string' && !primaryStyle.includes('pmtiles')) {
       this.usedFallbackStyle = true;
       const attr = this.container.querySelector('.map-attribution');
@@ -1008,6 +1056,14 @@ export class DeckGLMap {
         this.render();
       });
     };
+
+    this.maplibreMap.on('load', () => {
+      localizeMapLabels(this.maplibreMap);
+      this.initDeck();
+      this.loadCountryBoundaries();
+      this.fetchServerBases();
+      this.render();
+    });
 
     let tileLoadOk = false;
     let tileErrorCount = 0;
@@ -1161,6 +1217,37 @@ export class DeckGLMap {
     } else {
       this.savedTopLat = null;
     }
+  }
+
+  private async resolveInitialBasemapStyle(): Promise<{ mapTheme: string; style: StyleSpecification | string }> {
+    if (isHappyVariant) {
+      const mapTheme = getCurrentTheme();
+      return {
+        mapTheme,
+        style: mapTheme === 'light' ? HAPPY_LIGHT_STYLE : HAPPY_DARK_STYLE,
+      };
+    }
+
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const provider = getMapProvider();
+      const mapTheme = getMapTheme(provider);
+      const style = await getStyleForProvider(provider, mapTheme);
+      const currentProvider = getMapProvider();
+      const currentMapTheme = getMapTheme(currentProvider);
+      if (provider === currentProvider && mapTheme === currentMapTheme) {
+        return { mapTheme, style };
+      }
+    }
+
+    const provider = getMapProvider();
+    const mapTheme = getMapTheme(provider);
+    console.warn('[DeckGLMap] Map provider changed repeatedly during startup; using latest provider state');
+    return {
+      mapTheme,
+      style: provider === 'carto'
+        ? await getStyleForProvider(provider, mapTheme)
+        : (isLightMapTheme(mapTheme) ? FALLBACK_LIGHT_STYLE : FALLBACK_DARK_STYLE),
+    };
   }
 
   public resize(): void {
@@ -2571,7 +2658,24 @@ export class DeckGLMap {
 
 
   private getBasesData(): MilitaryBaseEnriched[] {
-    return this.serverBasesLoaded ? this.serverBases : MILITARY_BASES as MilitaryBaseEnriched[];
+    if (this.serverBasesLoaded) return this.serverBases;
+    const bases = getCachedMilitaryBases() as MilitaryBaseEnriched[];
+    if (bases.length === 0) this.requestBaseConfigRender();
+    return bases;
+  }
+
+  private requestBaseConfigRender(): void {
+    if (this.baseConfigLoadPending) return;
+    this.baseConfigLoadPending = true;
+    void preloadMilitaryBases()
+      .then(() => {
+        this.baseConfigLoadPending = false;
+        if (!this.destroyed) this.render();
+      })
+      .catch((error) => {
+        this.baseConfigLoadPending = false;
+        console.warn('[DeckGLMap] Military base config unavailable:', error);
+      });
   }
 
   private createBasesLayer(): IconLayer {
@@ -2935,10 +3039,7 @@ export class DeckGLMap {
         getColor: [255, 100, 100, 200],
         getWidth: 2,
         widthUnits: 'pixels' as const,
-        getDashArray: [6, 4],
-        dashJustified: true,
         pickable: true,
-        extensions: [new PathStyleExtension({ dash: true })],
       }));
     }
 
@@ -3260,16 +3361,15 @@ export class DeckGLMap {
     }
   }
 
-  private createGpsJammingLayer(): H3HexagonLayer {
-    return new H3HexagonLayer({
+  private createGpsJammingLayer(): PolygonLayer<GpsJamHexWithPolygon> {
+    return new PolygonLayer<GpsJamHexWithPolygon>({
       id: 'gps-jamming-layer',
       data: this.gpsJammingHexes,
-      getHexagon: (d: GpsJamHex) => d.h3,
-      getFillColor: (d: GpsJamHex) => {
+      getPolygon: (d: GpsJamHexWithPolygon) => d.polygon,
+      getFillColor: (d: GpsJamHexWithPolygon) => {
         if (d.level === 'high') return [255, 80, 80, 180] as [number, number, number, number];
         return [255, 180, 50, 140] as [number, number, number, number];
       },
-      getElevation: 0,
       extruded: false,
       filled: true,
       stroked: true,
@@ -3409,10 +3509,7 @@ export class DeckGLMap {
       getColor: (d) => { const [r, g, b] = altitudeToColor(d.altitude); return [r, g, b, 140] as [number, number, number, number]; },
       getWidth: 2,
       widthUnits: 'pixels' as const,
-      getDashArray: [6, 4],
-      dashJustified: true,
       pickable: false,
-      extensions: [new PathStyleExtension({ dash: true })],
     });
   }
 
@@ -4975,6 +5072,9 @@ export class DeckGLMap {
       const icao24 = (data as { icao24?: string }).icao24;
       if (icao24) this.popup.loadWingbitsLiveFlight(icao24);
     }
+    if (popupType === 'conflict') {
+      this.popup.loadConflictHistory(data as import('@/types').ConflictZone);
+    }
   }
 
   private async showWebcamClickPopup(webcam: WebcamEntry, x: number, y: number): Promise<void> {
@@ -5157,7 +5257,7 @@ export class DeckGLMap {
     setTrustedHtml(toggles, trustedHtml(`
       <div class="toggle-header">
         <span>${t('components.deckgl.layersTitle')}</span>
-        <button class="layer-help-btn" title="${t('components.deckgl.layerGuide')}">?</button>
+        <button class="layer-help-btn" aria-label="${t('components.deckgl.layerGuide')}">?</button>
         <button class="toggle-collapse">&#9660;</button>
       </div>
       <input type="text" class="layer-search" placeholder="${t('components.deckgl.layerSearch')}" autocomplete="off" spellcheck="false" />
@@ -5172,7 +5272,7 @@ export class DeckGLMap {
               <span class="toggle-icon">${icon}</span>
               <span class="toggle-label">${label}${isLocked ? ' \uD83D\uDD12' : ''}${isEnhanced ? ' <span class="layer-pro-badge">PRO</span>' : ''}</span>
             </label>
-            <button type="button" class="layer-explain-btn${hasExplanation ? ' has-layer-explanation' : ''}" data-layer="${key}" aria-label="${explainLabel}" title="${explainLabel}">i</button>
+            <button type="button" class="layer-explain-btn${hasExplanation ? ' has-layer-explanation' : ''}" data-layer="${key}" aria-label="${explainLabel}">i</button>
           </div>`;
         }).join('')}
       </div>
@@ -5631,11 +5731,13 @@ export class DeckGLMap {
       }
       this.stopPulseAnimation();
       this.stopDayNightTimer();
+      this.stopTradeAnimation();
       return;
     }
 
     this.syncPulseAnimation();
     if (this.state.layers.dayNight) this.startDayNightTimer();
+    if (this.state.layers.tradeRoutes) this.startTradeAnimation();
     if (!paused && this.renderPending) {
       this.renderPending = false;
       this.render();
@@ -5828,24 +5930,22 @@ export class DeckGLMap {
     });
   }
 
-  private createClimateHeatmapLayer(): HeatmapLayer<ClimateAnomaly> {
-    return new HeatmapLayer<ClimateAnomaly>({
+  private createClimateHeatmapLayer(): ScatterplotLayer<ClimateAnomaly> {
+    return new ScatterplotLayer<ClimateAnomaly>({
       id: 'climate-heatmap-layer',
       data: this.climateAnomalies,
       getPosition: (d) => [d.lon, d.lat],
-      getWeight: (d) => Math.abs(d.tempDelta) + Math.abs(d.precipDelta) * 0.1,
-      radiusPixels: 40,
-      intensity: 0.6,
-      threshold: 0.15,
-      opacity: 0.45,
-      colorRange: [
-        [68, 136, 255],
-        [100, 200, 255],
-        [255, 255, 100],
-        [255, 200, 50],
-        [255, 100, 50],
-        [255, 50, 50],
-      ],
+      getRadius: (d) => 14_000 + Math.min(80_000, (Math.abs(d.tempDelta) + Math.abs(d.precipDelta) * 0.1) * 18_000),
+      getFillColor: (d) => {
+        const weight = Math.abs(d.tempDelta) + Math.abs(d.precipDelta) * 0.1;
+        if (weight >= 4) return [255, 50, 50, 120] as [number, number, number, number];
+        if (weight >= 2.5) return [255, 140, 50, 110] as [number, number, number, number];
+        if (weight >= 1.25) return [255, 220, 80, 95] as [number, number, number, number];
+        return [100, 200, 255, 85] as [number, number, number, number];
+      },
+      radiusMinPixels: 12,
+      radiusMaxPixels: 72,
+      stroked: false,
       pickable: false,
     });
   }
@@ -5971,16 +6071,11 @@ export class DeckGLMap {
         }
       }
 
-      const timestamps: number[] = [];
-      for (let i = 0; i < fullPath.length; i++) {
-        timestamps.push((i / (fullPath.length - 1)) * TRADE_ANIMATION_CYCLE);
-      }
-
       const first = sorted[0]!;
 
       trips.push({
         path: fullPath,
-        timestamps,
+        phase: stableTradeRoutePhase(first.routeId),
         color: colorForRoute(first.routeId, first.status),
         width: widthFor(first.category),
       });
@@ -5988,34 +6083,44 @@ export class DeckGLMap {
     this.tradeTrips = trips;
   }
 
-  private createTradeRouteTripsLayer(): TripsLayer<TripData> | null {
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (prefersReducedMotion) return null;
+  private createTradeRouteTripsLayer(): ScatterplotLayer<TripData> | null {
+    if (this.prefersReducedTradeMotion()) return null;
 
     if (this.tradeTrips.length === 0) this.buildTradeTrips();
 
-    return new TripsLayer<TripData>({
+    return new ScatterplotLayer<TripData>({
       id: 'trade-route-trips-layer',
       data: this.tradeTrips,
-      getPath: (d: TripData) => d.path,
-      getTimestamps: (d: TripData) => d.timestamps,
-      getColor: (d: TripData) => d.color,
-      getWidth: (d: TripData) => d.width,
-      widthMinPixels: 2,
-      currentTime: this.tradeAnimationTime,
-      trailLength: TRADE_TRAIL_LENGTH,
+      getPosition: (d: TripData) => positionAlongPath(
+        d.path,
+        ((this.tradeAnimationTime + d.phase) % TRADE_ANIMATION_CYCLE) / TRADE_ANIMATION_CYCLE,
+      ),
+      // deck.gl preserves layer state by id across new layer instances; the
+      // accessor closes over animation time, so this trigger keeps positions live.
+      updateTriggers: { getPosition: [this.tradeAnimationTime] },
+      getFillColor: (d: TripData) => d.color,
+      getRadius: (d: TripData) => d.width * 20_000,
+      radiusMinPixels: 3,
+      radiusMaxPixels: 9,
       pickable: false,
     });
   }
 
+  private prefersReducedTradeMotion(): boolean {
+    return this.tradeReducedMotionMedia?.matches ?? window.matchMedia(PREFERS_REDUCED_MOTION_QUERY).matches;
+  }
+
   private startTradeAnimation(): void {
     if (this.tradeAnimationFrame !== null) return;
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (prefersReducedMotion) return;
+    if (this.renderPaused || this.prefersReducedTradeMotion()) return;
 
     let lastTime = performance.now();
     const animate = (now: number) => {
-      const delta = now - lastTime;
+      if (this.destroyed) {
+        this.tradeAnimationFrame = null;
+        return;
+      }
+      const delta = Math.min(now - lastTime, TRADE_ANIMATION_MAX_DELTA_MS);
       lastTime = now;
       this.tradeAnimationTime = (this.tradeAnimationTime + delta * TRADE_ANIMATION_SPEED) % TRADE_ANIMATION_CYCLE;
       this.tradeAnimationFrame = requestAnimationFrame(animate);
@@ -6030,7 +6135,9 @@ export class DeckGLMap {
       cancelAnimationFrame(this.tradeAnimationFrame);
       this.tradeAnimationFrame = null;
     }
-    this.tradeAnimationTime = 0;
+    // Reset so the every-other-frame render gate restarts at a deterministic
+    // parity; otherwise a stop/start cycle can delay the first repaint a frame.
+    this.tradeAnimationFrameCount = 0;
   }
 
   private createTradeChokepointsLayer(): ScatterplotLayer {
@@ -6444,9 +6551,31 @@ export class DeckGLMap {
     this.render();
   }
 
-  public setGpsJamming(hexes: GpsJamHex[]): void {
-    this.gpsJammingHexes = hexes;
-    this.render();
+  public async setGpsJamming(hexes: GpsJamHex[]): Promise<void> {
+    const seq = ++this.gpsJammingLoadSeq;
+    if (hexes.length === 0) {
+      this.gpsJammingHexes = [];
+      this.render();
+      return;
+    }
+
+    try {
+      const { cellToBoundary } = await import('h3-js');
+      if (seq !== this.gpsJammingLoadSeq) return;
+      // Precompute each hex boundary once per data refresh (every ~5 min)
+      // instead of calling cellToBoundary per hex on every buildLayers()/render.
+      this.gpsJammingHexes = hexes.map(h => ({
+        ...h,
+        polygon: cellToBoundary(h.h3, true) as [number, number][],
+      }));
+      this.render();
+    } catch (err) {
+      if (seq !== this.gpsJammingLoadSeq) return;
+      this.gpsJammingHexes = [];
+      this.render();
+      console.warn('[DeckGLMap] failed to prepare GPS jamming polygons:', (err as Error)?.message);
+      throw err;
+    }
   }
 
   public setDiseaseOutbreaks(outbreaks: DiseaseOutbreakItem[]): void {
@@ -6914,15 +7043,18 @@ export class DeckGLMap {
       const screenPos = this.projectToScreen(conflict.center[1], conflict.center[0]);
       const { x, y } = screenPos || this.getContainerCenter();
       this.popup.show({ type: 'conflict', data: conflict, x, y });
+      this.popup.loadConflictHistory(conflict);
     }
   }
 
   public triggerBaseClick(id: string): void {
-    const base = this.serverBases.find(b => b.id === id) || MILITARY_BASES.find(b => b.id === id);
+    const base = this.serverBases.find(b => b.id === id) || getCachedMilitaryBases().find(b => b.id === id);
     if (base) {
       const screenPos = this.projectToScreen(base.lat, base.lon);
       const { x, y } = screenPos || this.getContainerCenter();
       this.popup.show({ type: 'base', data: base, x, y });
+    } else {
+      this.requestBaseConfigRender();
     }
   }
 
@@ -7258,19 +7390,22 @@ export class DeckGLMap {
     this.countryPulseRaf = requestAnimationFrame(step);
   }
 
-  private switchBasemap(): void {
-    if (!this.maplibreMap) return;
+  private async switchBasemap(): Promise<void> {
+    const map = this.maplibreMap;
+    if (!map) return;
+    const seq = ++this.basemapSwitchSeq;
     const provider = getMapProvider();
     const mapTheme = getMapTheme(provider);
     const style = isHappyVariant
       ? (getCurrentTheme() === 'light' ? HAPPY_LIGHT_STYLE : HAPPY_DARK_STYLE)
       : (this.usedFallbackStyle && provider === 'auto')
         ? (isLightMapTheme(mapTheme) ? FALLBACK_LIGHT_STYLE : FALLBACK_DARK_STYLE)
-        : getStyleForProvider(provider, mapTheme);
+        : await getStyleForProvider(provider, mapTheme);
+    if (this.maplibreMap !== map || seq !== this.basemapSwitchSeq) return;
     if (this.countryPulseRaf) { cancelAnimationFrame(this.countryPulseRaf); this.countryPulseRaf = null; }
     this.countryGeoJsonLoaded = false;
-    this.maplibreMap.setStyle(style, { diff: false });
-    this.maplibreMap.once('style.load', () => {
+    map.setStyle(style, { diff: false });
+    map.once('style.load', () => {
       localizeMapLabels(this.maplibreMap);
       this.loadCountryBoundaries();
       if (this.radarActive) this.applyRadarLayer();
@@ -7344,11 +7479,10 @@ export class DeckGLMap {
   }
 
   public reloadBasemap(): void {
+    this.basemapSwitchSeq++;
     if (!this.maplibreMap) return;
-    const provider = getMapProvider();
-    if (provider === 'pmtiles' || provider === 'auto') registerPMTilesProtocol();
     this.usedFallbackStyle = false;
-    this.switchBasemap();
+    void this.switchBasemap();
   }
 
   private updateCountryLayerPaint(theme: 'dark' | 'light'): void {
@@ -7367,6 +7501,7 @@ export class DeckGLMap {
   }
 
   public destroy(): void {
+    this.destroyed = true;
     this.stopTradeAnimation();
     this.activeFlightTrails.clear();
     this.clearTrailsBtn = null;
@@ -7376,6 +7511,8 @@ export class DeckGLMap {
     this._unsubscribeEntitlement = null;
     window.removeEventListener('theme-changed', this.handleThemeChange);
     window.removeEventListener('map-theme-changed', this.handleMapThemeChange);
+    this.tradeReducedMotionMedia?.removeEventListener('change', this.handleTradeMotionPreferenceChange);
+    this.tradeReducedMotionMedia = null;
     this.debouncedRebuildLayers.cancel();
     this.debouncedFetchBases.cancel();
     this.debouncedFetchAircraft.cancel();

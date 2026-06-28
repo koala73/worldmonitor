@@ -175,10 +175,11 @@ export class AirlineIntelPanel extends Panel {
             }
         });
 
-        void this.refresh();
-
-        // Auto-refresh every 5 min — refresh() loads ops + active tab
-        this.refreshTimer = setInterval(() => void this.refresh(), 5 * 60_000);
+        this.runWhenConnected(() => {
+            void this.refresh();
+            // Auto-refresh every 5 min — refresh() loads ops + active tab
+            this.refreshTimer = setInterval(() => void this.refresh(), 5 * 60_000);
+        });
     }
 
     toggle(visible: boolean): void {
@@ -293,8 +294,13 @@ export class AirlineIntelPanel extends Panel {
     }
 
     private async refresh(): Promise<void> {
+        const shouldLoadActiveTab = this.activeTab !== 'prices';
+        if (!this.element.isConnected) {
+            this.runWhenConnected(() => { void this.refresh(); });
+            return;
+        }
         if (this.activeTab !== 'ops') void this.loadOps();
-        if (this.activeTab !== 'prices') void this.loadTab(this.activeTab);
+        if (shouldLoadActiveTab) void this.loadTab(this.activeTab);
     }
 
     private async loadOps(): Promise<void> {

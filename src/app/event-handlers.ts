@@ -1,4 +1,10 @@
-import type { AppContext, AppModule } from '@/app/app-context';
+import type {
+  AppContext,
+  AppModule,
+  UnifiedSettingsController,
+  UnifiedSettingsTabId,
+} from '@/app/app-context';
+import type { UnifiedSettingsConfig } from '@/components/UnifiedSettings';
 import type { AirlineIntelPanel } from '@/components/AirlineIntelPanel';
 import type { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
 import { openWidgetChatModal } from '@/components/WidgetChatModal';
@@ -13,17 +19,14 @@ import type { McpDataPanel } from '@/components/McpDataPanel';
 import { openMcpConnectModal } from '@/components/McpConnectModal';
 import { deleteMcpPanel, getMcpPanel, saveMcpPanel } from '@/services/mcp-store';
 import type { PanelConfig, MapLayers, MilitaryFlight } from '@/types';
-import type { MapView } from '@/components';
+import type { MapView } from '@/components/MapContainer';
 import type { PositionSample } from '@/services/aviation';
 import type { ClusteredEvent } from '@/types';
 import type { DashboardSnapshot } from '@/services/storage';
-import {
-  PlaybackControl,
-  StatusPanel,
-  PizzIntIndicator,
-  LlmStatusIndicator,
-  PredictionPanel,
-} from '@/components';
+import { PlaybackControl } from '@/components/PlaybackControl';
+import { PizzIntIndicator } from '@/components/PizzIntIndicator';
+import { LlmStatusIndicator } from '@/components/LlmStatusIndicator';
+import type { PredictionPanel } from '@/components/PredictionPanel';
 import {
   buildMapUrl,
   debounce,
@@ -84,7 +87,6 @@ import { invokeTauri } from '@/services/tauri-bridge';
 import { getCachedGpsInterference } from '@/services/gps-interference';
 import { dataFreshness } from '@/services/data-freshness';
 import { mlWorker } from '@/services/ml-worker';
-import { UnifiedSettings } from '@/components/UnifiedSettings';
 import { WM_OPEN_NOTIFICATIONS_FOR_COUNTRY } from '@/utils/notify-country-link';
 import { AuthLauncher } from '@/components/AuthLauncher';
 import { AuthHeaderWidget } from '@/components/AuthHeaderWidget';
@@ -94,9 +96,74 @@ import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { escapeHtml } from '@/utils/sanitize';
 import { buildEmbedIframeSnippet, buildEmbedMapUrl, type EmbedVariant } from '@/embed/embed-url';
+import { createSettingsButton } from '@/components/settings-button';
+
+type RealUnifiedSettings = import('@/components/UnifiedSettings').UnifiedSettings;
+
+class LazyUnifiedSettings implements UnifiedSettingsController {
+  private readonly button: HTMLButtonElement;
+  private instance: RealUnifiedSettings | null = null;
+  private loadPromise: Promise<RealUnifiedSettings> | null = null;
+  private destroyed = false;
+
+  constructor(private readonly config: UnifiedSettingsConfig) {
+    this.button = createSettingsButton(() => this.open());
+  }
+
+  getButton(): HTMLButtonElement {
+    return this.button;
+  }
+
+  open(tab?: UnifiedSettingsTabId): void {
+    void this.load().then((settings) => {
+      if (!this.destroyed) settings.open(tab);
+    }).catch((error) => {
+      // A rejection because the controller was torn down mid-load is a
+      // deliberate unmount, not a failure the user should be toasted about.
+      if (this.destroyed) return;
+      console.warn('[settings] Failed to load settings window:', error);
+      showToast(t('common.error'));
+    });
+  }
+
+  refreshPanelToggles(): void {
+    this.instance?.refreshPanelToggles();
+  }
+
+  destroy(): void {
+    this.destroyed = true;
+    this.instance?.destroy();
+    this.instance = null;
+  }
+
+  private load(): Promise<RealUnifiedSettings> {
+    if (this.destroyed) {
+      return Promise.reject(new Error('Settings controller destroyed'));
+    }
+    if (this.instance) return Promise.resolve(this.instance);
+    if (this.loadPromise) return this.loadPromise;
+
+    this.loadPromise = import('@/components/UnifiedSettings')
+      .then(({ UnifiedSettings }) => {
+        const settings = new UnifiedSettings(this.config);
+        if (this.destroyed) {
+          settings.destroy();
+          throw new Error('Settings controller destroyed during load');
+        }
+        this.instance = settings;
+        return settings;
+      })
+      .finally(() => {
+        this.loadPromise = null;
+      });
+
+    return this.loadPromise;
+  }
+}
 
 
 export interface EventHandlerCallbacks {
+  openSearch: (options?: { toggle?: boolean }) => void;
   updateSearchIndex: () => void;
   updateFlightSource?: (adsb: PositionSample[], military: MilitaryFlight[]) => void;
   loadAllData: () => Promise<void>;
@@ -133,6 +200,8 @@ export class EventHandlerManager implements AppModule {
   private boundMapWidthResizeMoveHandler: ((e: MouseEvent) => void) | null = null;
   private boundMapWidthEndResizeHandler: (() => void) | null = null;
   private boundMapFullscreenEscHandler: ((e: KeyboardEvent) => void) | null = null;
+  private readonly registeredSearchButtons = new Set<string>();
+  private boundSearchKeyHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundMobileMenuKeyHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundPanelCloseHandler: ((e: Event) => void) | null = null;
   private boundWidgetModifyHandler: ((e: Event) => void) | null = null;
@@ -168,6 +237,7 @@ export class EventHandlerManager implements AppModule {
   }
 
   init(): void {
+    this.setupSearchControls();
     this.setupEventListeners();
     this.setupIdleDetection();
     this.setupTvMode();
@@ -343,6 +413,10 @@ export class EventHandlerManager implements AppModule {
       document.removeEventListener('keydown', this.boundMapFullscreenEscHandler);
       this.boundMapFullscreenEscHandler = null;
     }
+    if (this.boundSearchKeyHandler) {
+      document.removeEventListener('keydown', this.boundSearchKeyHandler);
+      this.boundSearchKeyHandler = null;
+    }
     if (this.boundMobileMenuKeyHandler) {
       document.removeEventListener('keydown', this.boundMobileMenuKeyHandler);
       this.boundMobileMenuKeyHandler = null;
@@ -383,24 +457,39 @@ export class EventHandlerManager implements AppModule {
     this.ctx.authModal = null;
   }
 
-  private setupEventListeners(): void {
-    const openSearch = () => {
-      this.callbacks.updateSearchIndex();
-      this.ctx.searchModal?.open();
+  setupSearchControls(): void {
+    // Wire each button independently and idempotently. setupSearchControls() is
+    // called across several init phases (buttons are injected at different
+    // times); tracking registered IDs in a Set means a button absent at an
+    // early call still gets wired when it appears, instead of being permanently
+    // skipped by a single latched boolean. (#4403 review)
+    const wireSearchButton = (id: string, source: string) => {
+      if (this.registeredSearchButtons.has(id)) return;
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('click', () => {
+        track('search-open', { source });
+        this.callbacks.openSearch();
+      });
+      this.registeredSearchButtons.add(id);
     };
-    document.getElementById('searchBtn')?.addEventListener('click', () => {
-      track('search-open', { source: 'desktop' });
-      openSearch();
-    });
-    document.getElementById('mobileSearchBtn')?.addEventListener('click', () => {
-      track('search-open', { source: 'mobile' });
-      openSearch();
-    });
-    document.getElementById('searchMobileFab')?.addEventListener('click', () => {
-      track('search-open', { source: 'fab' });
-      openSearch();
-    });
+    wireSearchButton('searchBtn', 'desktop');
+    wireSearchButton('mobileSearchBtn', 'mobile');
+    wireSearchButton('searchMobileFab', 'fab');
+    if (!this.boundSearchKeyHandler) {
+      this.boundSearchKeyHandler = (e: KeyboardEvent) => {
+        // !e.shiftKey so Cmd/Ctrl+Shift+K (e.g. Firefox web console) doesn't
+        // also toggle search; .toLowerCase() still tolerates CapsLock. (#4403)
+        if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'k') {
+          e.preventDefault();
+          this.callbacks.openSearch({ toggle: true });
+        }
+      };
+      document.addEventListener('keydown', this.boundSearchKeyHandler);
+    }
+  }
 
+  private setupEventListeners(): void {
     document.getElementById('copyLinkBtn')?.addEventListener('click', async () => {
       const shareUrl = this.getShareUrl();
       if (!shareUrl) return;
@@ -1511,7 +1600,14 @@ export class EventHandlerManager implements AppModule {
   }
 
   setupStatusPanel(): void {
-    this.ctx.statusPanel = new StatusPanel();
+    void import('@/components/StatusPanel')
+      .then(({ StatusPanel }) => {
+        if (this.ctx.isDestroyed) return;
+        this.ctx.statusPanel = new StatusPanel();
+      })
+      .catch((err) => {
+        console.error('[status-panel] failed to lazy-load StatusPanel', err);
+      });
   }
 
   setupPizzIntIndicator(): void {
@@ -1574,7 +1670,7 @@ export class EventHandlerManager implements AppModule {
   }
 
   setupUnifiedSettings(): void {
-    this.ctx.unifiedSettings = new UnifiedSettings({
+    this.ctx.unifiedSettings = new LazyUnifiedSettings({
       getPanelSettings: () => this.ctx.panelSettings,
       savePanelSettings: (panels: Record<string, PanelConfig>) => {
         Object.entries(panels).forEach(([key, nextConfig]) => {
@@ -2073,7 +2169,7 @@ export class EventHandlerManager implements AppModule {
     const sources = new Set<string>();
     // Preset feeds + sources from any custom news panels the user added, so
     // the source manager stays in sync with what loadNews() actually fetches.
-    const categories = resolveNewsCategories(FEEDS, CANONICAL_FEEDS, enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings));
+    const categories = resolveNewsCategories(FEEDS, CANONICAL_FEEDS, enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings, Object.keys(CANONICAL_FEEDS)));
     categories.forEach(({ feeds }) => feeds.forEach(f => sources.add(f.name)));
     INTEL_SOURCES.forEach(f => sources.add(f.name));
     return Array.from(sources).sort((a, b) => a.localeCompare(b));

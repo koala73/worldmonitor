@@ -60,6 +60,8 @@ export interface ResolvedCategory {
   isCustom: boolean;
 }
 
+const COLLIDING_NEWS_CATEGORY_KEYS = new Set(['markets', 'crypto', 'economic']);
+
 /**
  * Resolve every news category that should be loaded for the current session:
  * the active variant's preset categories, PLUS any extra categories required
@@ -123,12 +125,19 @@ export function enabledNewsCategoryKeys(
   newsPanels: Record<string, unknown>,
   panels: Record<string, unknown>,
   panelSettings: Record<string, { enabled?: boolean } | undefined>,
+  configuredCategoryKeys: Iterable<string> = [],
 ): string[] {
-  const result: string[] = [];
+  const result = new Set<string>();
   for (const [key, newsPanel] of Object.entries(newsPanels)) {
     const collided = panels[key] !== undefined && panels[key] !== newsPanel;
     const panelKey = collided ? `${key}-news` : key;
-    if (panelSettings[panelKey]?.enabled === true) result.push(key);
+    if (panelSettings[panelKey]?.enabled === true) result.add(key);
   }
-  return result;
+  for (const key of configuredCategoryKeys) {
+    const settingsKey = COLLIDING_NEWS_CATEGORY_KEYS.has(key) ? `${key}-news` : key;
+    if (panelSettings[settingsKey]?.enabled === true) {
+      result.add(key);
+    }
+  }
+  return [...result];
 }

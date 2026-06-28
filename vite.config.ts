@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import type { OutputBundle } from 'rollup';
 import { resolve, dirname, extname } from 'path';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { brotliCompress } from 'zlib';
@@ -12,6 +13,7 @@ import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
 
 const brotliCompressAsync = promisify(brotliCompress);
 const BROTLI_EXTENSIONS = new Set(['.js', '.mjs', '.css', '.html', '.svg', '.json', '.txt', '.xml', '.wasm']);
+const STATIC_SCRIPT_NONCE = 'wm-static-bootstrap';
 
 // @clerk/clerk-js is loaded as a UMD bundle from the Clerk Frontend API at
 // runtime (src/services/clerk.ts), not bundled. Resolve the version from
@@ -35,15 +37,43 @@ if (CLERK_JS_VERSION.split('.')[0] !== '6') {
   throw new Error(`[vite] @clerk/clerk-js major is ${CLERK_JS_VERSION.split('.')[0]}, expected 6 — update CLERK_UI_VERSION in src/services/clerk.ts to the paired @clerk/ui major, then bump this guard.`);
 }
 
+const PANEL_CHUNK_NAMES = [
+  'panels-markets',
+  'panels-energy',
+  'panels-defense',
+  'panels-news',
+  'panels-economy',
+  'panels-intel',
+  'panels-risk',
+] as const;
+type PanelChunkName = typeof PANEL_CHUNK_NAMES[number];
+const PANEL_SUPPORT_CHUNK_NAMES = ['panel-support'] as const;
+type PanelSupportChunkName = typeof PANEL_SUPPORT_CHUNK_NAMES[number];
+type PanelManualChunkName = PanelChunkName | PanelSupportChunkName;
+
 // Single source of truth for chunk names that must NOT be hoisted into the
 // entry HTML's modulepreload list. Used by both `manualChunks` (return values
 // must literally match these strings) and `modulePreload.resolveDependencies`
 // (filter regex is built from this list). Keeping them tied prevents the
 // silent-breakage failure mode where renaming a chunk in `manualChunks`
 // re-eagerises the WebGL stack without any build-time error.
-//   - maplibre, deck-stack: heavy WebGL deps, only reachable via MapContainer
+//   - maplibre, deck-stack, protomaps: heavy WebGL deps, only reachable via MapContainer
 //   - MapContainer: the dynamic-import target itself
-const LAZY_HTML_PRELOAD_CHUNKS = ['maplibre', 'deck-stack', 'MapContainer'] as const;
+//   - panels-*: panel domain chunks; keep them out of the entry HTML preload
+//   - UnifiedSettings, settings-window, checkout: secondary interaction flows;
+//     first paint only needs their header buttons and cheap event wiring
+const LAZY_HTML_PRELOAD_CHUNKS = [
+  'maplibre',
+  'deck-stack',
+  'protomaps',
+  'h3-js',
+  'MapContainer',
+  'UnifiedSettings',
+  'settings-window',
+  'checkout',
+  ...PANEL_CHUNK_NAMES,
+  ...PANEL_SUPPORT_CHUNK_NAMES,
+] as const;
 const LAZY_HTML_PRELOAD_RE = new RegExp(
   `/(${LAZY_HTML_PRELOAD_CHUNKS.join('|')})-[A-Za-z0-9_-]+\\.js$`,
 );
@@ -51,8 +81,9 @@ const LAZY_HTML_PRELOAD_RE = new RegExp(
 // Panel-cluster manualChunks map. Splits the previously monolithic ~2.3MB
 // `panels` chunk into per-domain chunks so cache invalidation is local to
 // the cluster a panel lives in and per-variant builds can prune unused
-// clusters. Unmapped panels fall through to a generic `panels` chunk.
-const PANEL_CLUSTER: Record<string, string> = {
+// clusters. New panel files must be assigned here before the build can split
+// them; otherwise they would silently fall back into an eager catch-all chunk.
+const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   // Markets / equities / crypto positioning
   AAIISentiment: 'panels-markets', CotPositioning: 'panels-markets',
   ETFFlows: 'panels-markets', EarningsCalendar: 'panels-markets',
@@ -94,7 +125,8 @@ const PANEL_CLUSTER: Record<string, string> = {
   // in this cluster — splitting them across clusters caused TDZ on init.
   ChatAnalyst: 'panels-intel', CII: 'panels-intel',
   Cascade: 'panels-intel', Correlation: 'panels-intel',
-  CountryBrief: 'panels-intel', CountryDeepDive: 'panels-intel',
+  CountryBrief: 'panels-intel', CountryBriefPage: 'panels-intel',
+  CountryDeepDive: 'panels-intel',
   CrossSourceSignals: 'panels-intel', CustomWidget: 'panels-intel',
   Deduction: 'panels-intel',
   DisasterCorrelation: 'panels-intel',
@@ -106,6 +138,7 @@ const PANEL_CLUSTER: Record<string, string> = {
   LiveWebcams: 'panels-intel', McpData: 'panels-intel',
   Monitor: 'panels-intel', PinnedWebcams: 'panels-intel',
   Prediction: 'panels-intel', ProgressCharts: 'panels-intel',
+  RegionalIntelligenceBoard: 'panels-intel',
   Regulation: 'panels-intel',
   // Disasters / climate / connectivity / society
   ClimateAnomaly: 'panels-risk', Counters: 'panels-risk',
@@ -116,10 +149,34 @@ const PANEL_CLUSTER: Record<string, string> = {
   RuntimeConfig: 'panels-risk', SatelliteFires: 'panels-risk',
   SecurityAdvisories: 'panels-risk', ServiceStatus: 'panels-risk',
   SocialVelocity: 'panels-risk', SpeciesComeback: 'panels-risk',
-  Status: 'panels-risk', TechEvents: 'panels-risk',
+  TechEvents: 'panels-risk',
+  ThreatTimeline: 'panels-risk',
   TechHubs: 'panels-risk', TechReadiness: 'panels-risk',
   WorldClock: 'panels-risk',
 };
+
+const PANEL_SUPPORT_CLUSTER: Record<string, PanelSupportChunkName> = {
+  Status: 'panel-support',
+};
+
+function panelKeyForComponentId(id: string): string | null {
+  if (!id.includes('/src/components/') || !id.endsWith('.ts')) return null;
+  const match = id.match(/\/([^/]+)\.ts$/);
+  if (!match) return null;
+  const fileBase = match[1];
+  if (fileBase === 'Panel') return null;
+  if (fileBase === 'CountryBriefPage' || fileBase === 'RegionalIntelligenceBoard') return fileBase;
+  if (fileBase.endsWith('Panel')) return fileBase.slice(0, -'Panel'.length);
+  return null;
+}
+
+function panelChunkForComponentId(id: string): PanelManualChunkName | null {
+  const panelKey = panelKeyForComponentId(id);
+  if (!panelKey) return null;
+  const chunkName = PANEL_SUPPORT_CLUSTER[panelKey] ?? PANEL_CLUSTER[panelKey];
+  if (chunkName) return chunkName;
+  throw new Error(`[manualChunks] Unassigned panel component ${panelKey}. Add it to PANEL_CLUSTER or PANEL_SUPPORT_CLUSTER in vite.config.ts.`);
+}
 
 function brotliPrecompressPlugin(): Plugin {
   return {
@@ -234,9 +291,47 @@ function dashboardHtmlOutputPlugin(): Plugin {
       const [bundleKey, dashboardHtml] = dashboardEntry;
       delete bundle[bundleKey];
       dashboardHtml.fileName = 'dashboard.html';
+      if (typeof dashboardHtml.source === 'string') {
+        dashboardHtml.source = deferDashboardStylesheetLinks(dashboardHtml.source, bundle);
+      }
       bundle['dashboard.html'] = dashboardHtml;
     },
   };
+}
+
+function shouldDeferDashboardStylesheet(tag: string, bundle: OutputBundle): boolean {
+  const href = tag.match(/\bhref=["']([^"']+\.css)["']/i)?.[1];
+  if (!href) return false;
+
+  const bundleKey = href.replace(/^\//, '');
+  const asset = bundle[bundleKey];
+  if (!asset || asset.type !== 'asset') return false;
+
+  const sourceLength = typeof asset.source === 'string'
+    ? Buffer.byteLength(asset.source)
+    : asset.source.byteLength;
+  return sourceLength >= 100 * 1024;
+}
+
+// Rewrite large render-blocking dashboard <link rel=stylesheet> tags into a
+// deferred form (media="print" + data-wm-deferred-style="dashboard") plus a
+// <noscript> copy of the original blocking link, so the ~492KB app CSS no
+// longer blocks first paint. src/main.ts activateDeferredDashboardStyles()
+// flips media -> "all" at startup; the attribute name + values written here MUST
+// stay in lockstep with that runtime selector. Only assets >=100KB are deferred
+// (shouldDeferDashboardStylesheet) so small stylesheets stay blocking; links
+// that already set media= (an intentionally print/screen-scoped sheet) or are
+// already deferred are skipped. NOTE: during the defer window only the UNLAYERED
+// inline critical CSS in index.html applies (the bundle is @layer base), so any
+// future *unconditional* inline rule will beat the bundle (see PR #4346) — keep
+// inline rules scoped to a transient/closed state.
+function deferDashboardStylesheetLinks(html: string, bundle: OutputBundle): string {
+  return html.replace(/<link\b(?=[^>]*\brel=["']stylesheet["'])(?=[^>]*\bhref=["'][^"']+\.css["'])[^>]*>/gi, (tag) => {
+    if (/\bdata-wm-deferred-style=/.test(tag) || /\bmedia=/.test(tag)) return tag;
+    if (!shouldDeferDashboardStylesheet(tag, bundle)) return tag;
+    const deferredTag = tag.replace(/\s*\/?>$/, ' media="print" data-wm-deferred-style="dashboard">');
+    return `${deferredTag}\n    <noscript>${tag}</noscript>`;
+  });
 }
 
 function polymarketPlugin(): Plugin {
@@ -791,6 +886,9 @@ export default defineConfig(({ mode }) => {
   const activeMeta = VARIANT_META[activeVariant] || VARIANT_META.full;
 
   return {
+    html: {
+      cspNonce: STATIC_SCRIPT_NONCE,
+    },
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version),
       // Resolved + build-time validated above (devDependencies fallback +
@@ -919,23 +1017,6 @@ export default defineConfig(({ mode }) => {
               },
             },
             {
-              urlPattern: /^https:\/\/fonts\.googleapis\.com\//,
-              handler: 'StaleWhileRevalidate',
-              options: {
-                cacheName: 'google-fonts-css',
-                expiration: { maxEntries: 10, maxAgeSeconds: 365 * 24 * 60 * 60 },
-              },
-            },
-            {
-              urlPattern: /^https:\/\/fonts\.gstatic\.com\//,
-              handler: 'CacheFirst',
-              options: {
-                cacheName: 'google-fonts-woff',
-                expiration: { maxEntries: 30, maxAgeSeconds: 365 * 24 * 60 * 60 },
-                cacheableResponse: { statuses: [0, 200] },
-              },
-            },
-            {
               urlPattern: /\/assets\/locale-.*\.js$/i,
               handler: 'CacheFirst',
               options: {
@@ -1012,6 +1093,15 @@ export default defineConfig(({ mode }) => {
           mcpGrant: resolve(__dirname, 'mcp-grant.html'),
         },
         output: {
+          // onlyExplicitManualChunks keeps the panel clusters from forming
+          // cross-chunk cycles. Its side effect: a manual chunk's unmatched
+          // static deps get pulled into the importer chunk — which created a
+          // circular DeckGLMap -> deck-stack -> DeckGLMap chunk (runtime TDZ
+          // "Cannot access 'X' before initialization" that crashed the WebGL map
+          // into the SVG fallback). Fixed by co-locating the DeckGLMap renderer
+          // into the 'deck-stack' chunk below so deck deps never split across the
+          // DeckGLMap boundary.
+          onlyExplicitManualChunks: true,
           manualChunks(id) {
             if (id.includes('node_modules')) {
               if (id.includes('/@xenova/transformers/')) {
@@ -1024,15 +1114,20 @@ export default defineConfig(({ mode }) => {
               // (top of file). The resolveDependencies filter relies on this string
               // identity; renaming here without updating the constant silently
               // re-eagerises the WebGL stack into the entry HTML's modulepreload list.
-              if (id.includes('/maplibre-gl/') || id.includes('/pmtiles/') || id.includes('/@protomaps/basemaps/')) {
+              if (id.includes('/maplibre-gl/')) {
                 return 'maplibre';
+              }
+              if (id.includes('/pmtiles/') || id.includes('/@protomaps/basemaps/')) {
+                return 'protomaps';
+              }
+              if (id.includes('/h3-js/')) {
+                return 'h3-js';
               }
               if (
                 id.includes('/@deck.gl/')
                 || id.includes('/@luma.gl/')
                 || id.includes('/@loaders.gl/')
                 || id.includes('/@math.gl/')
-                || id.includes('/h3-js/')
               ) {
                 return 'deck-stack';
               }
@@ -1045,7 +1140,7 @@ export default defineConfig(({ mode }) => {
               if (id.includes('/i18next')) {
                 return 'i18n';
               }
-              if (id.includes('/@sentry/')) {
+              if (id.includes('/@sentry/') || id.includes('/@sentry-internal/')) {
                 return 'sentry';
               }
               if (id.includes('/@clerk/clerk-js/')) {
@@ -1054,12 +1149,52 @@ export default defineConfig(({ mode }) => {
                 return 'clerk';
               }
             }
-            if (id.includes('/src/components/') && id.endsWith('Panel.ts')) {
-              // Cluster split (PANEL_CLUSTER) is staged but disabled: it exposes
-              // a systemic TDZ in panels with top-level `new XxxServiceClient(...)`
-              // singletons (~20+ panels). They each need lazy-init refactors
-              // before the cluster split can ship. See ce-doc-review followup.
-              return 'panels';
+            // Large static config DATA TABLE (~62KB) with only lazy consumers
+            // (search/map/globe/tech-hub services). Isolating it keeps it off the
+            // eager entry now that the @/config barrel no longer re-exports its
+            // values and data-loader lazy-loads the tech-activity chain. Pure
+            // data (type-only imports) → no unmatched-static-dep circular risk. (#4404)
+            if (id.endsWith('/src/config/tech-geo.ts')) {
+              return 'tech-geo-data';
+            }
+            // airports table (~14KB) — only consumer is the lazy AviationCommandBar
+            // (imports directly); kept off the eager @/config barrel above. (#4404)
+            if (id.endsWith('/src/config/airports.ts')) {
+              return 'airports-data';
+            }
+            // ai-datacenters table (~86KB) — consumers (map/globe/search) import
+            // directly and are lazy; related-assets lazy-imports it. Kept off the
+            // eager @/config barrel above. (#4404)
+            if (id.endsWith('/src/config/ai-datacenters.ts')) {
+              return 'ai-datacenters-data';
+            }
+            // geo-map table bulk (~150KB: UNDERSEA_CABLES + NUCLEAR_FACILITIES +
+            // ECONOMIC_CENTERS/SPACEPORTS/CRITICAL_MINERALS/SANCTIONED_*/MAP_URLS).
+            // Map/globe/search consumers import directly (lazy); the eager
+            // related-assets/infrastructure-cascade/cable-activity chains
+            // lazy-cache it. Kept off the eager @/config barrel above. (#4404)
+            if (id.endsWith('/src/config/geo-map.ts')) {
+              return 'geo-map-data';
+            }
+            // Military-bases bulk (~48KB MILITARY_BASES_EXPANDED + merged
+            // MILITARY_BASES). geo.ts no longer imports it; eager consumers
+            // (country-intel, related-assets, data-loader→military-surge)
+            // lazy-load it via dynamic import. Kept off the eager @/config
+            // barrel. Co-chunk both files so the merged list and its raw data
+            // ship together off the entry chunk. (#4478)
+            if (id.endsWith('/src/config/military-bases.ts') || id.endsWith('/src/config/bases-expanded.ts')) {
+              return 'military-bases-data';
+            }
+            // Co-locate the deck.gl renderer with the deck vendor chunk so
+            // onlyExplicitManualChunks cannot split deck's transitive deps
+            // across the DeckGLMap boundary (which formed a circular chunk →
+            // runtime TDZ that crashed the WebGL map into the SVG fallback).
+            if (id.endsWith('/src/components/DeckGLMap.ts')) {
+              return 'deck-stack';
+            }
+            if (id.includes('/src/components/') && id.endsWith('.ts')) {
+              const panelChunk = panelChunkForComponentId(id);
+              if (panelChunk) return panelChunk;
             }
             // Give lazy-loaded locale chunks a recognizable prefix so the
             // service worker can exclude them from precache (en.json is

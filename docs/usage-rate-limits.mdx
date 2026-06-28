@@ -3,7 +3,7 @@ title: "Rate Limits"
 description: "Per-endpoint, per-key, and per-IP rate limits across the WorldMonitor API surface."
 ---
 
-Rate limits are enforced at the Vercel Edge runtime using Upstash Redis sliding-window counters. All limits are **sliding 60-second windows** unless noted.
+Rate limits are enforced at the Vercel Edge runtime using Upstash Redis counters. All limits are **sliding 60-second windows** unless noted.
 
 ## Default public API rate limit
 
@@ -48,9 +48,9 @@ Other write endpoints (`/api/brief/share-url`, `/api/notification-channels`, `/a
 
 ## Bootstrap / health / version
 
-These have no custom limit beyond the default. Cache headers vary by endpoint:
+These mostly use the default public API limit. Cache headers vary by endpoint:
 
-- `GET /api/bootstrap` — default all-keys response uses `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` plus fast-tier `CDN-Cache-Control`; explicit `?tier=fast` / `?tier=slow` requests use browser `max-age=60` / `max-age=300` and CDN `s-maxage=600` / `s-maxage=7200`.
+- `GET /api/bootstrap` — browser/session responses keep the default cache policy: all-keys responses use `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` plus fast-tier `CDN-Cache-Control`; explicit `?tier=fast` / `?tier=slow` requests use browser `max-age=60` / `max-age=300` and CDN `s-maxage=600` / `s-maxage=7200`. Key-authenticated responses use `Cache-Control: no-store` and do not emit CDN cache headers. User API key validation also has a fail-closed fixed 60 s per-IP pre-validation limit of 600 attempts.
 - `GET /api/health` — `private, no-store, max-age=0` plus `CDN-Cache-Control: no-store`.
 - `GET /api/version` — `public, s-maxage=300, stale-while-revalidate=60, stale-if-error=3600`.
 

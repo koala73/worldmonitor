@@ -63,6 +63,11 @@ function computeStats() {
     (f) => !f.startsWith('_') && !/\.test\./.test(f) && !/\.d\.ts$/.test(f) && !/\.json$/.test(f),
   ).length;
 
+  // ---- Panel subclasses across src/components (ARCHITECTURE.md system diagram) ----
+  const panelClasses = walk('src/components')
+    .filter((f) => f.endsWith('.ts') && !f.endsWith('.d.ts'))
+    .reduce((n, f) => n + (read(f).match(/class\s+\w+\s+extends\s+Panel\b/g) || []).length, 0);
+
   // ---- Protos & services (proto/**) ----
   const protoFiles = walk('proto').filter((f) => f.endsWith('.proto'));
   const protoServices = protoFiles
@@ -76,8 +81,8 @@ function computeStats() {
   // ---- Server domain handlers (server/worldmonitor/*/) ----
   const serverDomains = dirsIn('server/worldmonitor').length;
 
-  // ---- Locales (src/locales/*.json) ----
-  const locales = filesIn('src/locales').filter((f) => f.endsWith('.json')).length;
+  // ---- User-facing locales (src/locales/*.json, excluding shell fragments) ----
+  const locales = filesIn('src/locales').filter((f) => f.endsWith('.json') && !f.endsWith('.shell.json')).length;
 
   // ---- CI workflows (.github/workflows/*.yml) ----
   const workflows = filesIn('.github/workflows').filter((f) => f.endsWith('.yml') || f.endsWith('.yaml')).sort();
@@ -145,6 +150,7 @@ function computeStats() {
     componentTopLevelTsFiles,
     serviceTopLevelEntries,
     apiEndpointEntries,
+    panelClasses,
     protoFiles: protoFiles.length,
     protoServices,
     protoDomainFolders,
@@ -190,6 +196,8 @@ function claims(s) {
     { file: 'AGENTS.md', re: /components\/\s+# (\d+)\s+top-level TypeScript component files/, value: s.componentTopLevelTsFiles },
     { file: 'AGENTS.md', re: /services\/\s+# Business logic \((\d+)\s+service modules and domain directories\)/, value: s.serviceTopLevelEntries },
     { file: 'AGENTS.md', re: /requires buf \+ sebuf (v\d+\.\d+\.\d+) plugins/, value: s.sebufVersion },
+
+    { file: 'ARCHITECTURE.md', re: /base class \((\d+)\s+classes\b/, value: s.panelClasses },
     { file: 'CONTRIBUTING.md', re: /Service and message definitions across (\d+)\s+domains/, value: s.protoDomainFolders },
     { file: 'CONTRIBUTING.md', re: /produces (\d+)\s+app variants/, value: s.variantCount },
     { file: 'CONTRIBUTING.md', re: /UI components — (\d+)\s+top-level TypeScript component files/, value: s.componentTopLevelTsFiles },

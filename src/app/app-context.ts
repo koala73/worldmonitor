@@ -8,6 +8,16 @@ import type { Earthquake } from '@/services/earthquakes';
 
 export type { CountryBriefSignals } from '@/types';
 
+import type { UnifiedSettingsTabId } from '@/components/settings-types';
+export type { UnifiedSettingsTabId };
+
+export interface UnifiedSettingsController {
+  open(tab?: UnifiedSettingsTabId): void;
+  refreshPanelToggles(): void;
+  getButton(): HTMLButtonElement;
+  destroy(): void;
+}
+
 export interface IntelligenceCache {
   flightDelays?: AirportDelayAlert[];
   thermalEscalation?: import('@/services/thermal-escalation').ThermalEscalationWatch;
@@ -41,6 +51,7 @@ export interface AppContext {
   newsByCategory: Record<string, NewsItem[]>;
   latestMarkets: MarketData[];
   latestPredictions: import('@/services/prediction').PredictionMarket[];
+  latestTechEvents: Array<{ id: string; title: string; location: string; startDate: string; [key: string]: unknown }>;
   latestClusters: ClusteredEvent[];
   intelligenceCache: IntelligenceCache;
   cyberThreatsCache: CyberThreat[] | null;
@@ -59,7 +70,7 @@ export interface AppContext {
   breakingBanner: import('@/components/BreakingNewsBanner').BreakingNewsBanner | null;
   playbackControl: import('@/components').PlaybackControl | null;
   exportPanel: import('@/utils').ExportPanel | null;
-  unifiedSettings: import('@/components/UnifiedSettings').UnifiedSettings | null;
+  unifiedSettings: UnifiedSettingsController | null;
   pizzintIndicator: import('@/components').PizzIntIndicator | null;
   correlationEngine: import('@/services/correlation-engine').CorrelationEngine | null;
   llmStatusIndicator: import('@/components').LlmStatusIndicator | null;

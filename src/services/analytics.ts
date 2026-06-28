@@ -5,7 +5,7 @@
  * arrives are kept in a small bounded queue and replayed on script load.
  */
 
-import { scheduleAfterFirstPaint } from '@/bootstrap/secondary-startup';
+import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 import { subscribeAuthState, type AuthSession } from './auth-state';
 import { onSubscriptionChange, type SubscriptionInfo } from './billing';
 import { getClerkUserCreatedAt } from './clerk';

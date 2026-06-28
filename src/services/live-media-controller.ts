@@ -5,16 +5,16 @@ export interface ActiveLiveMediaSnapshot {
   streamId: string;
 }
 
-interface LiveMediaPlaybackOptions {
-  exclusive?: boolean;
-}
-
 interface ActiveLiveMedia {
   panelId: string;
   streamId: string;
   stop: (reason: LiveMediaStopReason) => void;
 }
 
+// One entry per panel. A panel that owns a single player (Live News) registers here so
+// switching its stream replaces the previous one. Panels do NOT evict each other: explicitly
+// played feeds coexist (the dashboard "wall"), gated only by user intent. Multi-stream panels
+// (the webcam grid) track their own active set and stay out of this map.
 const activeLiveMedia = new Map<string, ActiveLiveMedia>();
 
 function stopActiveEntry(entry: ActiveLiveMedia, reason: LiveMediaStopReason): void {
@@ -27,23 +27,12 @@ export function requestLiveMediaPlayback(
   streamId: string,
   start: () => void,
   stop: (reason: LiveMediaStopReason) => void,
-  options: LiveMediaPlaybackOptions = {},
 ): void {
-  const exclusive = options.exclusive ?? true;
   const currentPanel = activeLiveMedia.get(panelId);
   if (currentPanel && currentPanel.streamId !== streamId) {
     stopActiveEntry(currentPanel, 'replaced');
   }
 
-  if (exclusive) {
-    for (const entry of Array.from(activeLiveMedia.values())) {
-      if (entry.panelId !== panelId) {
-        stopActiveEntry(entry, 'replaced');
-      }
-    }
-  }
-
-  activeLiveMedia.delete(panelId);
   activeLiveMedia.set(panelId, { panelId, streamId, stop });
   start();
 }
@@ -61,20 +50,6 @@ export function releaseLiveMediaPlayback(panelId: string, streamId?: string): vo
   activeLiveMedia.delete(panelId);
 }
 
-export function enforceExclusiveLiveMediaPlayback(preferredPanelId?: string): void {
-  const entries = Array.from(activeLiveMedia.values());
-  const latestEntry = entries[entries.length - 1];
-  const keepPanelId = preferredPanelId && activeLiveMedia.has(preferredPanelId)
-    ? preferredPanelId
-    : latestEntry?.panelId;
-  if (!keepPanelId) return;
-
-  for (const entry of entries) {
-    if (entry.panelId === keepPanelId) continue;
-    stopActiveEntry(entry, 'replaced');
-  }
-}
-
 export function getActiveLiveMedia(panelId?: string): ActiveLiveMediaSnapshot | null {
   const active = panelId
     ? activeLiveMedia.get(panelId)
@@ -84,4 +59,24 @@ export function getActiveLiveMedia(panelId?: string): ActiveLiveMediaSnapshot | 
     panelId: active.panelId,
     streamId: active.streamId,
   };
+}
+
+// "Play all" cascade: each live panel registers a starter so the first play intent anywhere
+// (a webcam tile or Live News) lights up every live panel at once. Starters are idempotent.
+type LiveMediaStarter = () => void;
+const liveMediaStarters = new Map<string, LiveMediaStarter>();
+
+export function registerLiveMediaStarter(panelId: string, start: LiveMediaStarter): void {
+  liveMediaStarters.set(panelId, start);
+}
+
+export function unregisterLiveMediaStarter(panelId: string, start?: LiveMediaStarter): void {
+  // Only remove if it still points at this starter, so a recreate-then-destroy-old race
+  // can't clobber the freshly registered panel.
+  if (start && liveMediaStarters.get(panelId) !== start) return;
+  liveMediaStarters.delete(panelId);
+}
+
+export function playAllLiveMedia(): void {
+  for (const start of Array.from(liveMediaStarters.values())) start();
 }

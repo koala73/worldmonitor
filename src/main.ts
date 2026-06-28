@@ -1,9 +1,30 @@
 import './styles/base-layer.css';
 import './styles/happy-theme.css';
+import './bootstrap/zod-csp';
 import { enqueueSentryCall, installPreInitErrorQueue, scheduleSentryInit } from '@/bootstrap/sentry-defer';
 import { initVercelAnalytics } from '@/bootstrap/secondary-startup';
 import { App } from './App';
 import { installUtmInterceptor } from './utils/utm';
+
+// Activate the deferred dashboard app stylesheet. The build
+// (deferDashboardStylesheetLinks in vite.config.ts) emits the large dashboard
+// CSS as <link media="print" data-wm-deferred-style="dashboard"> + a <noscript>
+// blocking copy, so it does not block first paint; flipping media to "all" here
+// applies it once main.js runs. The selector below MUST stay in lockstep with
+// the attribute/value the build writes (data-wm-deferred-style="dashboard" +
+// media="print"). No-JS users get the <noscript> fallback; if main.js fails to
+// execute (e.g. an /assets 404 after a redeploy) the wm-sw-nuke handler in
+// index.html reloads. Kept as the first body statement so it runs before the
+// rest of startup.
+function activateDeferredDashboardStyles(): void {
+  document
+    .querySelectorAll<HTMLLinkElement>('link[data-wm-deferred-style="dashboard"][media="print"]')
+    .forEach((link) => {
+      link.media = 'all';
+    });
+}
+
+activateDeferredDashboardStyles();
 
 // perf G — defer @sentry/browser off the critical path (#3994).
 // The eager `Sentry.init({...})` previously ran here cost ~1.96 s of pre-LCP
@@ -40,12 +61,11 @@ function shouldSuppressCspViolation(
       if (new URL(blockedURI).protocol === 'https:') return true;
     } catch { /* scheme-only values like "blob" fall through */ }
   }
-  // media-src + HTTPS: HLS / live-stream media-element loads. Our media-src
-  // policy allows the `https:` scheme (`media-src 'self' data: blob: https:` in
-  // BOTH the index.html meta tag and the vercel.json header), so an *enforced*
-  // https: media-src block means a corporate proxy / privacy extension stripped
-  // `https:` from the user's effective media-src — the same environmental policy
-  // mutation as the connect-src case above. The HLS *manifest* fetch is
+  // media-src + HTTPS: HLS / live-stream media-element loads. Our header CSP
+  // allows the `https:` scheme (`media-src 'self' data: blob: https:`), so an
+  // *enforced* https: media-src block means a corporate proxy / privacy extension
+  // stripped `https:` from the user's effective media-src — the same environmental
+  // policy mutation as the connect-src case above. The HLS *manifest* fetch is
   // connect-src (already suppressed via the foxnews-style rule); this covers the
   // media element load of that same stream. Built-in and user-added custom HLS
   // channels (LiveNewsPanel) both hit this — WORLDMONITOR-HV (bloomberg.com
@@ -149,6 +169,23 @@ function shouldSuppressCspViolation(
   if (/manifest\.webmanifest$/.test(blockedURI)) return true;
   // Third-party injectors: Google Translate, Facebook Pixel.
   if (/gstatic\.com\/_\/translate/.test(blockedURI) || /facebook\.net/.test(blockedURI)) return true;
+  // Google Fonts font files from stale or injected stylesheets. The dashboard now
+  // self-hosts its own fonts and the deploy/config tests keep Google Fonts out of
+  // dashboard CSP/source surfaces; if a user's browser still tries
+  // fonts.gstatic.com/s/*.woff2, the strict font-src block is expected noise.
+  if (directive === 'font-src') {
+    try {
+      const url = new URL(blockedURI);
+      if (url.protocol === 'https:' && url.hostname === 'fonts.gstatic.com' && /^\/s\/.+\.woff2$/.test(url.pathname)) return true;
+      // Perplexity's Comet browser / extension injects its own UI webfont
+      // (frontend-cdn.perplexity.ai/_agi_assets/fonts/*.woff2) into every page.
+      // We never load it; the block is the overlay's font failing regardless of
+      // our code. Allowlisted by exact host like gstatic above — NOT a blanket
+      // third-party suppression, so an unexpected font injection from any other
+      // host still surfaces (WORLDMONITOR-TR: 1065 events / 83 users).
+      if (url.protocol === 'https:' && url.hostname === 'frontend-cdn.perplexity.ai' && /\.woff2?$/.test(url.pathname)) return true;
+    } catch { /* scheme-only values fall through */ }
+  }
   // YouTube live stream manifests.
   if (/googlevideo\.com|youtube\.com\/generate_204/.test(blockedURI)) return true;
   // Corporate/school content filter injections.
@@ -157,9 +194,9 @@ function shouldSuppressCspViolation(
   if (/_vercel\/insights\/script\.js/.test(blockedURI)) return true;
   // Third-party stylesheet injection from public CDNs (browser extensions,
   // bookmarklets, "inspect element" UI tools loading antd/bootstrap/etc.).
-  // We legitimately load JSON + JS from `cdn.jsdelivr.net` (world-atlas /
-  // us-atlas TopoJSON, chart.js in widget-sanitizer iframe), but never
-  // CSS — so a `style-src*` block on jsDelivr is by definition third-party
+  // We legitimately load JS from `cdn.jsdelivr.net` (chart.js in the
+  // widget-sanitizer iframe), but never CSS — so a `style-src*` block on
+  // jsDelivr is by definition third-party
   // injection (WORLDMONITOR-J0 — antd@4 CSS injection, 270 events / 26
   // users on finance.worldmonitor.app).
   if (/^style-src(-elem)?$/.test(directive) && /^https:\/\/cdn\.jsdelivr\.net\//.test(blockedURI)) return true;
@@ -171,33 +208,24 @@ function shouldSuppressCspViolation(
   if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(blockedURI)) return true;
   return false;
 }
-// Detect once whether BOTH the meta tag and HTTP header CSP allow https: in connect-src.
-// Browsers enforce both independently — the effective policy is the intersection.
-// Only suppress HTTPS connect-src violations when both policies allow https:.
-// The HTTP header CSP isn't directly readable from JS, so we check the meta tag and
-// also parse the vercel.json-derived header value baked into the build.
+// Detect once whether the effective dashboard CSP allows https: in connect-src.
+// The dashboard policy now ships as an HTTP header only; older/stale documents
+// may still carry a meta CSP, so if one exists, honor it as the stricter local
+// signal. Otherwise the deployed header is the source of truth.
 const _cspAllowsHttps = (() => {
   const metaEl = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
-  const metaCsp = metaEl?.getAttribute('content') ?? '';
+  if (!metaEl) return true;
+  const metaCsp = metaEl.getAttribute('content') ?? '';
   const metaConnectSrc = metaCsp.match(/connect-src\s+([^;]*)/)?.[1] ?? '';
-  const metaAllows = /\bhttps:\b/.test(metaConnectSrc);
-  // If no meta CSP exists, we can't confirm both policies allow https:.
-  // Be conservative: only suppress if the meta tag explicitly has it.
-  if (!metaEl) return false;
-  return metaAllows;
+  return metaConnectSrc.split(/\s+/).includes('https:');
 })();
-// media-src counterpart of `_cspAllowsHttps`. Detect whether the meta-tag CSP
-// allows the `https:` scheme in media-src so the filter only suppresses https:
-// media-src blocks when our own policy actually permits them (the block then
-// being an environmental policy mutation, not a real regression). Browsers
-// enforce meta + header independently; our header media-src also carries
-// `https:`, so the meta check is a sufficient (conservative) proxy.
+// media-src counterpart of `_cspAllowsHttps`.
 const _cspMediaSrcAllowsHttps = (() => {
   const metaEl = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
-  if (!metaEl) return false;
+  if (!metaEl) return true;
   const metaCsp = metaEl.getAttribute('content') ?? '';
   const metaMediaSrc = metaCsp.match(/media-src\s+([^;]*)/)?.[1] ?? '';
-  return /\bhttps:\b/.test(metaMediaSrc);
+  return metaMediaSrc.split(/\s+/).includes('https:');
 })();
 // Resolve our configured Convex deployment hostname once. Convex is multi-tenant —
 // the CSP filter must scope its first-party suppression to OUR specific hostname,

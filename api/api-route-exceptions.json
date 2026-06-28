@@ -373,7 +373,7 @@
     {
       "path": "api/bootstrap.js",
       "category": "internal-helper",
-      "reason": "Dashboard-internal config bundle assembled at request time. Exposing as a user-facing API would implicitly commit us to its shape; keep it deliberately unversioned and out of the API surface.",
+      "reason": "Aggregate seeded-cache hydration bundle assembled at request time. Kept outside sebuf because the shape is intentionally unversioned and aggregate, not a typed domain RPC; the added user-API-key validation does not change that shape.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },

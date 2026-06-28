@@ -50,7 +50,7 @@ function applyMetaTags(prefix = 'meta'): void {
   const desc = i18next.t(`${prefix}.description`);
   const ogTitle = i18next.t(`${prefix}.ogTitle`);
   const ogDesc = i18next.t(`${prefix}.ogDescription`);
-  const base = (i18next.language || 'en').split('-')[0] || 'en';
+  const base = currentLanguageBase();
 
   document.title = title;
   const set = (sel: string, val: string) => {
@@ -98,6 +98,25 @@ export async function initI18n(options?: { metaPrefix?: string }): Promise<void>
   document.documentElement.setAttribute('lang', base === 'zh' ? 'zh-CN' : base);
   if (RTL_LANGUAGES.has(base)) document.documentElement.setAttribute('dir', 'rtl');
   applyMetaTags(metaPrefix);
+}
+
+export async function initStaticI18n(): Promise<void> {
+  if (i18next.isInitialized) {
+    if (currentLanguageBase() !== 'en') {
+      await i18next.changeLanguage('en');
+    }
+    return;
+  }
+  await i18next.init({
+    resources: { en: { translation: en as TranslationDictionary } },
+    lng: 'en',
+    fallbackLng: 'en',
+    interpolation: { escapeValue: false },
+  });
+}
+
+export function currentLanguageBase(): string {
+  return (i18next.language || 'en').split('-')[0] || 'en';
 }
 
 export function t(key: string, options?: Record<string, unknown>): string {

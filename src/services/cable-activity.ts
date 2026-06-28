@@ -1,7 +1,30 @@
 import type { CableAdvisory, RepairShip, UnderseaCable } from '@/types';
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import { UNDERSEA_CABLES } from '@/config';
 import { MaritimeServiceClient, type NavigationalWarning } from '@/generated/client/worldmonitor/maritime/v1/service_client';
+
+// UNDERSEA_CABLES (~130KB) lives in the lazy geo-map chunk; cable-activity is
+// reached eagerly via data-loader, so it loads the table on demand inside the
+// async fetch path rather than statically importing it onto the eager graph.
+let cablesData: UnderseaCable[] = [];
+let cablesDataPromise: Promise<void> | null = null;
+async function ensureCablesData(): Promise<void> {
+  if (cablesData.length > 0) return;
+  if (!cablesDataPromise) {
+    cablesDataPromise = import('@/config/geo-map')
+      .then(({ UNDERSEA_CABLES }) => {
+        cablesData = UNDERSEA_CABLES;
+      })
+      .catch((error) => {
+        cablesDataPromise = null;
+        throw error;
+      });
+  }
+  try {
+    await cablesDataPromise;
+  } catch {
+    /* keep empty → retried on the next fetch */
+  }
+}
 
 const maritimeClient = new MaritimeServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
@@ -111,7 +134,7 @@ function findNearestCable(lat: number, lon: number): UnderseaCable | null {
   let nearest: UnderseaCable | null = null;
   let minDist = Infinity;
 
-  for (const cable of UNDERSEA_CABLES) {
+  for (const cable of cablesData) {
     for (const point of cable.points) {
       const [cableLon, cableLat] = point;
       const dist = Math.sqrt((lat - cableLat) ** 2 + (lon - cableLon) ** 2);
@@ -283,6 +306,7 @@ function formatNgaDate(epochMs: number): string {
 
 export async function fetchCableActivity(): Promise<CableActivity> {
   try {
+    await ensureCablesData();
     const response = await maritimeClient.listNavigationalWarnings({ area: '', pageSize: 0, cursor: '' });
     const warnings: NgaWarning[] = response.warnings.map(protoToNgaWarning);
 

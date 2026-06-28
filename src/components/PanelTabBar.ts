@@ -18,6 +18,7 @@ export interface PanelTabBarCallbacks {
  */
 export class PanelTabBar {
   private element: HTMLElement;
+  private tablistEl: HTMLElement;
   private getState: () => TabsState;
   private callbacks: PanelTabBarCallbacks;
 
@@ -26,17 +27,24 @@ export class PanelTabBar {
     this.callbacks = callbacks;
     this.element = document.createElement('div');
     this.element.className = 'dashboard-tabs-bar';
-    this.element.setAttribute('role', 'tablist');
-    this.element.setAttribute('aria-label', t('dashboardTabs.ariaLabel'));
-    this.element.addEventListener('keydown', (e) => this.handleKeyDown(e));
 
-    // Delegate dblclick at the container (attached ONCE, survives re-renders).
+    // ARIA: a role="tablist" may only own role="tab"/"presentation" children.
+    // The trailing "+" button is an action, not a tab, so the tablist is an
+    // inner element holding ONLY the tabs and the add button sits beside it in
+    // the bar (see render()). This clears the aria-required-children violation.
+    this.tablistEl = document.createElement('div');
+    this.tablistEl.className = 'dashboard-tablist';
+    this.tablistEl.setAttribute('role', 'tablist');
+    this.tablistEl.setAttribute('aria-label', t('dashboardTabs.ariaLabel'));
+    this.tablistEl.addEventListener('keydown', (e) => this.handleKeyDown(e));
+
+    // Delegate dblclick at the tablist (attached ONCE, survives re-renders).
     // A per-label listener breaks for inactive tabs: the first click switches
     // tabs → render() → replaceChildren() swaps out the label node, so the two
     // clicks land on different elements and the browser dispatches dblclick on
     // their common ancestor (this container) rather than the new label.
     // Resolving the tab from the DOM here makes rename work on any tab.
-    this.element.addEventListener('dblclick', (e) => {
+    this.tablistEl.addEventListener('dblclick', (e) => {
       const target = e.target as HTMLElement;
       if (target.closest('.dashboard-tab-close')) return; // don't rename on delete dblclick
       const tabEl = (target.closest('.dashboard-tab') ??
@@ -64,10 +72,10 @@ export class PanelTabBar {
   }
 
   private render(): void {
-    this.element.replaceChildren();
+    this.tablistEl.replaceChildren();
     const { tabs, activeTabId } = this.getState();
     for (const tab of tabs) {
-      this.element.appendChild(this.renderTab(tab, tab.id === activeTabId, tabs.length > 1));
+      this.tablistEl.appendChild(this.renderTab(tab, tab.id === activeTabId, tabs.length > 1));
     }
     this.updateControlledPanel(activeTabId);
     const addBtn = document.createElement('button');
@@ -76,7 +84,8 @@ export class PanelTabBar {
     addBtn.setAttribute('aria-label', t('dashboardTabs.addTab'));
     addBtn.textContent = '+';
     addBtn.addEventListener('click', () => this.callbacks.onAdd());
-    this.element.appendChild(addBtn);
+    // The tablist owns only tabs; the add button is a sibling in the bar.
+    this.element.replaceChildren(this.tablistEl, addBtn);
   }
 
   private renderTab(tab: PanelTab, isActive: boolean, canDelete: boolean): HTMLElement {

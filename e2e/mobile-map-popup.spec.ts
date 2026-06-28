@@ -20,6 +20,12 @@ type HarnessWindow = Window & {
   };
   __mobileMapIntegrationHarness?: {
     ready: boolean;
+    pendingDeferredCallbacks: number;
+    flushDeferredCallbacks: () => void;
+    destroyMap: () => void;
+    getDynamicLayerChildCount: () => number;
+    getInitialDynamicRendered: () => boolean;
+    getWrapperTransform: () => string;
     getPopupRect: () => {
       left: number;
       top: number;
@@ -265,6 +271,53 @@ test.describe('Mobile SVG popup integration path', () => {
     await popup.locator('.popup-close').first().tap();
     await expect(page.locator('.map-popup')).toHaveCount(0);
 
+    expect(pageErrors).toEqual([]);
+  });
+
+  test('defers overlays while preserving transform and guarding destroy', async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+
+    await page.goto('/tests/mobile-map-integration-harness.html?defer-control=1');
+
+    await expect
+      .poll(async () => {
+        return await page.evaluate(() => document.querySelectorAll('.country').length);
+      }, { timeout: 30000 })
+      .toBeGreaterThan(0);
+
+    await expect
+      .poll(async () => {
+        return await page.evaluate(() => {
+          const w = window as HarnessWindow;
+          return w.__mobileMapIntegrationHarness?.pendingDeferredCallbacks ?? 0;
+        });
+      }, { timeout: 10000 })
+      .toBeGreaterThan(0);
+
+    const transformBeforeFlush = await page.evaluate(() => {
+      const w = window as HarnessWindow;
+      return w.__mobileMapIntegrationHarness?.getWrapperTransform() ?? '';
+    });
+    expect(transformBeforeFlush).toContain('scale(2.7)');
+
+    const dynamicBeforeFlush = await page.evaluate(() => {
+      const w = window as HarnessWindow;
+      return w.__mobileMapIntegrationHarness?.getDynamicLayerChildCount() ?? -1;
+    });
+    expect(dynamicBeforeFlush).toBe(0);
+
+    await page.evaluate(() => {
+      const w = window as HarnessWindow;
+      w.__mobileMapIntegrationHarness?.destroyMap();
+      w.__mobileMapIntegrationHarness?.flushDeferredCallbacks();
+    });
+
+    const initialDynamicRendered = await page.evaluate(() => {
+      const w = window as HarnessWindow;
+      return w.__mobileMapIntegrationHarness?.getInitialDynamicRendered() ?? true;
+    });
+    expect(initialDynamicRendered).toBe(false);
     expect(pageErrors).toEqual([]);
   });
 });

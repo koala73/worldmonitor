@@ -326,19 +326,39 @@ export async function fetchYahooQuote(
 // CoinGecko fetcher
 // ========================================================================
 
-export async function fetchCoinGeckoMarkets(
-  ids: string[],
-): Promise<CoinGeckoMarketItem[]> {
-  const apiKey = process.env.COINGECKO_API_KEY;
-  const baseUrl = apiKey
-    ? 'https://pro-api.coingecko.com/api/v3'
-    : 'https://api.coingecko.com/api/v3';
-  const url = `${baseUrl}/coins/markets?vs_currency=usd&ids=${ids.join(',')}&order=market_cap_desc&sparkline=true&price_change_percentage=24h`;
+/**
+ * Resolve the CoinGecko base URL + auth header for the configured key tier.
+ *
+ * CoinGecko's free Demo plan and paid Pro plan share the `CG-` key prefix but
+ * use different hosts and auth headers — a Demo key sent to the Pro host fails
+ * with HTTP 400 (error 10011: "change your root URL from pro-api.coingecko.com
+ * to api.coingecko.com"). The key string can't reveal the tier, so it is
+ * selected explicitly by which env var is set; Pro wins so existing Pro
+ * deployments are unaffected, and no key falls back to the public endpoint.
+ */
+export function coingeckoEndpoint(): { baseUrl: string; headers: Record<string, string>; tier: 'pro' | 'demo' | 'keyless' } {
+  const proKey = process.env.COINGECKO_API_KEY;
+  const demoKey = process.env.COINGECKO_DEMO_API_KEY;
   const headers: Record<string, string> = {
     Accept: 'application/json',
     'User-Agent': CHROME_UA,
   };
-  if (apiKey) headers['x-cg-pro-api-key'] = apiKey;
+  if (proKey) {
+    headers['x-cg-pro-api-key'] = proKey;
+    return { baseUrl: 'https://pro-api.coingecko.com/api/v3', headers, tier: 'pro' };
+  }
+  if (demoKey) {
+    headers['x-cg-demo-api-key'] = demoKey;
+    return { baseUrl: 'https://api.coingecko.com/api/v3', headers, tier: 'demo' };
+  }
+  return { baseUrl: 'https://api.coingecko.com/api/v3', headers, tier: 'keyless' };
+}
+
+export async function fetchCoinGeckoMarkets(
+  ids: string[],
+): Promise<CoinGeckoMarketItem[]> {
+  const { baseUrl, headers } = coingeckoEndpoint();
+  const url = `${baseUrl}/coins/markets?vs_currency=usd&ids=${ids.join(',')}&order=market_cap_desc&sparkline=true&price_change_percentage=24h`;
 
   const resp = await fetch(url, {
     headers,

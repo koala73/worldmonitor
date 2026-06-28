@@ -7,7 +7,7 @@ import { IDLE_PAUSE_MS, STORAGE_KEYS, SITE_VARIANT } from '@/config';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 
 import { getStreamQuality } from '@/services/ai-flow-settings';
-import { enforceExclusiveLiveMediaPlayback, getActiveLiveMedia, releaseLiveMediaPlayback, requestLiveMediaPlayback, stopLiveMediaPlayback, type LiveMediaStopReason } from '@/services/live-media-controller';
+import { getActiveLiveMedia, playAllLiveMedia, registerLiveMediaStarter, releaseLiveMediaPlayback, requestLiveMediaPlayback, stopLiveMediaPlayback, unregisterLiveMediaStarter, type LiveMediaStopReason } from '@/services/live-media-controller';
 import { getLiveStreamsAlwaysOn, subscribeLiveStreamsSettingsChange } from '@/services/live-stream-settings';
 import { track } from '@/services/analytics';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
@@ -412,6 +412,10 @@ export class LiveNewsPanel extends Panel {
   private deferredInit = false;
   private lazyObserver: IntersectionObserver | null = null;
   private idleCallbackId: number | ReturnType<typeof setTimeout> | null = null;
+  // Play-all cascade: start this panel's channel, but never start a disabled or collapsed panel.
+  private readonly boundPlayAllStarter = () => {
+    if (this.canHostLiveMedia()) this.triggerInit();
+  };
 
   constructor() {
     super({ id: 'live-news', title: t('panels.liveNews'), className: 'panel-wide', closable: true, collapsible: true });
@@ -436,14 +440,13 @@ export class LiveNewsPanel extends Panel {
       this.applyIdleMode();
       if (wasAlwaysOn && !alwaysOn) {
         // Cancel any pending lazy-init so leaving always-on cannot auto-start playback without intent.
+        // Anything already playing keeps running — feeds coexist; eco-idle (re-armed below) will pause it.
         if (this.lazyObserver) { this.lazyObserver.disconnect(); this.lazyObserver = null; }
         if (this.idleCallbackId !== null) {
           if ('cancelIdleCallback' in window) (window as any).cancelIdleCallback(this.idleCallbackId);
           else clearTimeout(this.idleCallbackId as ReturnType<typeof setTimeout>);
           this.idleCallbackId = null;
         }
-        // Deterministically keep Live News when leaving always-on (stable priority over webcams).
-        enforceExclusiveLiveMediaPlayback('live-news');
       }
       if (alwaysOn && !this.deferredInit && this.isPanelVisible()) {
         this.startAlwaysOnPlaybackIfVisible();
@@ -451,6 +454,7 @@ export class LiveNewsPanel extends Panel {
         this.setupLazyInit();
       }
     });
+    registerLiveMediaStarter('live-news', this.boundPlayAllStarter);
     document.addEventListener('keydown', this.boundFullscreenEscHandler);
   }
 
@@ -490,13 +494,13 @@ export class LiveNewsPanel extends Panel {
     playBtn.textContent = t('components.liveNews.playLiveFeed') || 'Play live feed';
     playBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.triggerInit();
+      playAllLiveMedia();
     });
 
     container.appendChild(status);
     container.appendChild(label);
     container.appendChild(playBtn);
-    container.addEventListener('click', () => this.triggerInit());
+    container.addEventListener('click', () => playAllLiveMedia());
     this.content.appendChild(container);
   }
 
@@ -541,7 +545,6 @@ export class LiveNewsPanel extends Panel {
       streamId,
       () => this.startPlaybackForActiveChannel(),
       (reason) => this.stopPlaybackFromController(reason),
-      { exclusive: !this.alwaysOn },
     );
   }
 
@@ -1810,6 +1813,7 @@ export class LiveNewsPanel extends Panel {
 
   public destroy(): void {
     this.liveMediaSessionToken += 1;
+    unregisterLiveMediaStarter('live-news', this.boundPlayAllStarter);
     releaseLiveMediaPlayback('live-news');
     this.destroyPlayer();
     this.unsubscribeStreamSettings?.();

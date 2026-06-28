@@ -32,7 +32,7 @@ const WORLD_TOPOLOGY = {
 };
 
 async function stubWorldAtlas(page: Page): Promise<void> {
-  await page.route('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json', async (route) => {
+  await page.route('**/data/countries-50m.json', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -110,12 +110,25 @@ test.describe('public map embed', () => {
 
   test('renders the map-only embed route with attribution', async ({ page }, testInfo) => {
     await stubWorldAtlas(page);
+
+    // Guard the self-hosting goal: the map atlas must load from same-origin
+    // /data/, never from cdn.jsdelivr.net. Catches a MAP_URLS regression back
+    // to the CDN (which stubWorldAtlas would not intercept).
+    const cdnAtlasRequests: string[] = [];
+    page.on('request', (request) => {
+      const url = request.url();
+      if (url.includes('cdn.jsdelivr.net') && /(?:world|us)-atlas/.test(url)) {
+        cdnAtlasRequests.push(url);
+      }
+    });
+
     await page.goto(embedPath);
 
     await expect(page.locator('.wm-embed-attribution')).toHaveText('Live map by World Monitor');
     await expectCurrentMapRenderer(page);
     await expect(page.locator('.map-controls, .time-slider, .layer-toggles, .map-legend')).toHaveCount(0);
     await expect(page.locator('body')).toHaveAttribute('data-embed-ready', 'true');
+    expect(cdnAtlasRequests, 'map atlas must be self-hosted, not fetched from cdn.jsdelivr.net').toHaveLength(0);
 
     const screenshotPath = testInfo.outputPath('embed-direct.png');
     await page.screenshot({ path: screenshotPath, fullPage: true });

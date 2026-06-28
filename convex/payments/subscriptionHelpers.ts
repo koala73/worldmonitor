@@ -45,6 +45,73 @@ interface DodoPaymentData {
   currency?: string;
   subscription_id?: string;
   metadata?: Record<string, string>;
+  // Dodo's payment IntentStatus (succeeded | failed | cancelled | processing |
+  // requires_customer_action | …). On `payment.processing` this is where the
+  // 3DS/SCA-pending state is surfaced. See derivePaymentEventStatus.
+  status?: string;
+}
+
+// The payment/refund webhook event types we route to handlePaymentOrRefundEvent
+// — kept in sync with the case group in webhookMutations.ts. Two drift guards,
+// with DIFFERENT enforcement (the call site casts `eventType as
+// RoutedPaymentEvent`, so cross-file drift is not type-checked):
+//   • Intra-file: omit a `case` for a union member below and the `never`
+//     default fails to COMPILE — this file's exhaustiveness guarantee.
+//   • Cross-file: a NEW webhookMutations.ts case not added to this union is NOT
+//     a compile error (the cast launders it); it is caught at RUNTIME by the
+//     `never`-default throw — loud, never a silent succeeded/failed mislabel.
+//
+// IMPORTANT: `payment.requires_customer_action` is NOT a Dodo webhook event
+// type. Dodo's payment event types are succeeded | failed | processing |
+// cancelled (SDK `WebhookEventType`); the 3DS/SCA-pending state is delivered as
+// a `payment.processing` event whose payload `data.status` (IntentStatus) is
+// `requires_customer_action`.
+type RoutedPaymentEvent =
+  | "payment.succeeded"
+  | "payment.failed"
+  | "payment.processing"
+  | "payment.cancelled"
+  | "refund.succeeded"
+  | "refund.failed";
+
+type PaymentEventStatusValue =
+  | "succeeded"
+  | "failed"
+  | "processing"
+  | "requires_customer_action"
+  | "cancelled";
+
+// Derives the persisted `paymentEvents.status` from the event type and, for the
+// non-terminal `payment.processing` event, the payload IntentStatus — that is
+// where Dodo surfaces the 3DS/SCA-pending `requires_customer_action` state
+// (#4436). Throws on an unrouted event rather than silently mislabeling it.
+function derivePaymentEventStatus(
+  eventType: RoutedPaymentEvent,
+  data: DodoPaymentData,
+): PaymentEventStatusValue {
+  switch (eventType) {
+    case "payment.succeeded":
+    case "refund.succeeded":
+      return "succeeded";
+    case "payment.failed":
+    case "refund.failed":
+      return "failed";
+    case "payment.cancelled":
+      return "cancelled";
+    case "payment.processing":
+      // Plain in-flight vs. 3DS/SCA-pending. Other non-terminal IntentStatus
+      // values (requires_payment_method, etc.) collapse to `processing` — never
+      // to a terminal succeeded/failed.
+      return data.status === "requires_customer_action"
+        ? "requires_customer_action"
+        : "processing";
+    default: {
+      const _exhaustive: never = eventType;
+      throw new Error(
+        `[webhook] derivePaymentEventStatus: unrouted event ${String(_exhaustive)}`,
+      );
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -896,7 +963,14 @@ export async function handlePaymentOrRefundEvent(
   );
 
   const type = eventType.startsWith("refund.") ? "refund" : "charge";
-  const status = eventType.endsWith(".succeeded") ? "succeeded" : "failed";
+  // Non-terminal payment states (processing, requires_customer_action / 3DS-SCA)
+  // are persisted so the app has a pending-payment signal for duplicate-
+  // prevention (#4438) and reconciliation (#4439); `cancelled` is terminal-but-
+  // uncharged. The prior binary `endsWith(".succeeded") ? … : "failed"`
+  // mislabeled every one of these as a failed charge. The cast is safe: every
+  // caller is gated by the webhook switch's routed-event cases, and an
+  // unexpected value throws (loudly) in derivePaymentEventStatus.
+  const status = derivePaymentEventStatus(eventType as RoutedPaymentEvent, data);
 
   await ctx.db.insert("paymentEvents", {
     userId,
@@ -906,6 +980,11 @@ export async function handlePaymentOrRefundEvent(
     currency: data.currency ?? "USD",
     status,
     dodoSubscriptionId: data.subscription_id ?? undefined,
+    // Carried from the checkout-session metadata bridge (set in
+    // convex/payments/checkout.ts). Lets the duplicate-payment guard resolve a
+    // pending row to its tierGroup (#4438). Undefined for sessions created
+    // before the bridge shipped or events that drop session metadata.
+    planKey: data.metadata?.wm_plan_key,
     rawPayload: data,
     occurredAt: eventTimestamp,
   });

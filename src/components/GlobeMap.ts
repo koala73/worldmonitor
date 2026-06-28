@@ -17,7 +17,9 @@
 import Globe from 'globe.gl';
 import { isDesktopRuntime } from '@/services/runtime';
 import type { GlobeInstance, ConfigOptions } from 'globe.gl';
-import { INTEL_HOTSPOTS, CONFLICT_ZONES, MILITARY_BASES, NUCLEAR_FACILITIES, SPACEPORTS, ECONOMIC_CENTERS, STRATEGIC_WATERWAYS, CRITICAL_MINERALS, UNDERSEA_CABLES } from '@/config/geo';
+import { INTEL_HOTSPOTS, CONFLICT_ZONES, STRATEGIC_WATERWAYS } from '@/config/geo';
+import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
+import { NUCLEAR_FACILITIES, SPACEPORTS, ECONOMIC_CENTERS, CRITICAL_MINERALS, UNDERSEA_CABLES } from '@/config/geo-map';
 import { PIPELINES } from '@/config/pipelines';
 import { t } from '@/services/i18n';
 import { SITE_VARIANT } from '@/config/variant';
@@ -226,6 +228,10 @@ interface ConflictZoneMarker extends BaseMarker {
   intensity: string;
   parties: string[];
   casualties?: string;
+  center: [number, number];
+  startDate?: string;
+  peaceAgreements?: string[];
+  totalFatalities?: string;
 }
 interface MilBaseMarker extends BaseMarker {
   _kind: 'milbase';
@@ -240,6 +246,10 @@ interface NuclearSiteMarker extends BaseMarker {
   name: string;
   type: string;
   status: string;
+  operationalSince?: string;
+  treaties?: string[];
+  iaeaStatus?: string;
+  keyEvents?: string[];
 }
 interface IrradiatorSiteMarker extends BaseMarker {
   _kind: 'irradiator';
@@ -505,6 +515,7 @@ export class GlobeMap {
   private techMarkers: TechMarker[] = [];
   private conflictZoneMarkers: ConflictZoneMarker[] = [];
   private milBaseMarkers: MilBaseMarker[] = [];
+  private milBaseMarkersLoadPending = false;
   private nuclearSiteMarkers: NuclearSiteMarker[] = [];
   private irradiatorSiteMarkers: IrradiatorSiteMarker[] = [];
   private spaceportSiteMarkers: SpaceportSiteMarker[] = [];
@@ -1485,7 +1496,9 @@ export class GlobeMap {
       const ic = d.intensity === 'high' ? '#ff3030' : d.intensity === 'medium' ? '#ff8800' : '#ffcc00';
       html = `<span style="color:${ic};font-weight:bold;">⚔ ${esc(d.name)}</span>` +
              (d.parties.length ? `<br><span style="opacity:.7;">${d.parties.map(esc).join(', ')}</span>` : '') +
-             (d.casualties ? `<br><span style="opacity:.5;">Casualties: ${esc(d.casualties)}</span>` : '');
+             (d.casualties ? `<br><span style="opacity:.5;">Casualties: ${esc(d.casualties)}</span>` : '') +
+             `<details class="conflict-history-details" style="margin-top:6px;"><summary style="cursor:pointer;font-size:9px;opacity:.6;list-style:none;user-select:none;padding:2px 0;">📜 HISTORICAL PROFILE</summary>` +
+             `<div class="conflict-history-content" style="margin-top:4px;"><span style="opacity:.5;font-size:10px;">Loading…</span></div></details>`;
     } else if (d._kind === 'milbase') {
       html = `<span style="color:#4488ff;font-weight:bold;">🏛 ${esc(d.name)}</span>` +
              `<br><span style="opacity:.7;">${esc(d.type)}${d.country ? ' · ' + esc(d.country) : ''}</span>`;
@@ -1493,6 +1506,15 @@ export class GlobeMap {
       const nc = d.status === 'active' ? '#ffd700' : d.status === 'construction' ? '#ff8800' : '#888888';
       html = `<span style="color:${nc};font-weight:bold;">☢ ${esc(d.name)}</span>` +
              `<br><span style="opacity:.7;">${esc(d.type)} · ${esc(d.status)}</span>`;
+      if (d.operationalSince || d.treaties?.length || d.iaeaStatus || d.keyEvents?.length) {
+        html += `<details style="margin-top:6px;"><summary style="cursor:pointer;font-size:9px;opacity:.6;list-style:none;user-select:none;padding:2px 0;">📜 HISTORICAL PROFILE</summary>` +
+          `<div style="margin-top:4px;">` +
+          (d.operationalSince ? `<div style="display:flex;justify-content:space-between;gap:8px;font-size:10px;margin:2px 0;"><span style="opacity:.5;">OPERATIONAL SINCE</span><span>${esc(d.operationalSince)}</span></div>` : '') +
+          (d.treaties?.length ? `<div style="display:flex;justify-content:space-between;gap:8px;font-size:10px;margin:2px 0;"><span style="opacity:.5;">TREATIES</span><span>${d.treaties.map(esc).join(', ')}</span></div>` : '') +
+          (d.iaeaStatus ? `<div style="display:flex;justify-content:space-between;gap:8px;font-size:10px;margin:2px 0;"><span style="opacity:.5;">IAEA STATUS</span><span>${esc(d.iaeaStatus)}</span></div>` : '') +
+          (d.keyEvents?.length ? `<div style="font-size:10px;margin:4px 0 2px;"><span style="opacity:.5;display:block;margin-bottom:2px;">KEY EVENTS</span>${d.keyEvents.map(e => `<div style="opacity:.7;">· ${esc(e)}</div>`).join('')}</div>` : '') +
+          `</div></details>`;
+      }
     } else if (d._kind === 'irradiator') {
       html = `<span style="color:#ff8800;font-weight:bold;">⚠ Gamma Irradiator</span>` +
              `<br><span style="opacity:.7;">${esc(d.city)}, ${esc(d.country)}</span>`;
@@ -1596,9 +1618,42 @@ export class GlobeMap {
       html = '';
     }
     setTrustedHtml(el, trustedHtml(`<div style="padding-right:16px;position:relative;">${closeBtn}${html}</div>`, "legacy direct innerHTML migration"));
-    const wideKinds = new Set(['satellite', 'flightDelay', 'conflictZone', 'cableAdvisory']);
+    const wideKinds = new Set(['satellite', 'flightDelay', 'conflictZone', 'cableAdvisory', 'nuclearSite']);
     if (wideKinds.has(d._kind)) el.style.maxWidth = '300px';
     el.querySelector('button')?.addEventListener('click', () => this.hideTooltip());
+
+    if (d._kind === 'conflictZone') {
+      const details = el.querySelector<HTMLDetailsElement>('.conflict-history-details');
+      const content = el.querySelector('.conflict-history-content');
+      if (details && content) {
+        let loaded = false;
+        details.addEventListener('toggle', async () => {
+          if (!details.open || loaded) return;
+          loaded = true;
+          // Auto-dismiss stays governed by hover: mouseenter already clears the
+          // hide timer while the cursor is over the tooltip, so don't permanently
+          // cancel it here — doing so left the tooltip stuck open forever.
+          try {
+            const { fetchUcdpEvents, deriveConflictHistory } = await import('@/services/conflict');
+            const resp = await fetchUcdpEvents();
+            if (!el.isConnected || !content.isConnected) return;
+            const { conflictSince, recordedFatalities } = deriveConflictHistory(d, resp.data);
+            const rows = [
+              conflictSince ? `<div style="display:flex;justify-content:space-between;gap:8px;font-size:10px;margin:2px 0;"><span style="opacity:.5;">CONFLICT SINCE</span><span>${esc(conflictSince)}</span></div>` : '',
+              d.peaceAgreements?.length ? `<div style="font-size:10px;margin:2px 0;"><span style="opacity:.5;display:block;margin-bottom:1px;">PEACE AGREEMENTS</span>${d.peaceAgreements.map(a => `<div style="opacity:.7;">· ${esc(a)}</div>`).join('')}</div>` : '',
+              recordedFatalities > 0
+                ? `<div style="display:flex;justify-content:space-between;gap:8px;font-size:10px;margin:2px 0;"><span style="opacity:.5;">RECORDED FATALITIES</span><span>~${recordedFatalities.toLocaleString()}</span></div>`
+                : d.totalFatalities ? `<div style="display:flex;justify-content:space-between;gap:8px;font-size:10px;margin:2px 0;"><span style="opacity:.5;">TOTAL FATALITIES</span><span>${esc(d.totalFatalities)}</span></div>` : '',
+            ].filter(Boolean).join('');
+            setTrustedHtml(content, trustedHtml(rows || '<span style="opacity:.5;font-size:10px;">No UCDP data found.</span>', 'legacy direct innerHTML migration'));
+          } catch {
+            if (el.isConnected && content.isConnected) {
+              setTrustedHtml(content, trustedHtml('<span style="opacity:.5;font-size:10px;">Could not load history.</span>', 'legacy direct innerHTML migration'));
+            }
+          }
+        });
+      }
+    }
 
     if (d._kind === 'webcam') {
       const wrapper = el.firstElementChild!;
@@ -1713,7 +1768,7 @@ export class GlobeMap {
 
     this.tooltipEl = el;
     if (this.tooltipHideTimer) clearTimeout(this.tooltipHideTimer);
-    const richKinds = new Set(['satellite', 'flightDelay', 'cableAdvisory', 'conflictZone', 'spaceport', 'economic', 'datacenter', 'imageryScene', 'repairShip', 'aisDisruption']);
+    const richKinds = new Set(['satellite', 'flightDelay', 'cableAdvisory', 'conflictZone', 'nuclearSite', 'spaceport', 'economic', 'datacenter', 'imageryScene', 'repairShip', 'aisDisruption']);
     const hideDelay = d._kind === 'webcam' ? 8000 : d._kind === 'webcam-cluster' ? 12000 : richKinds.has(d._kind) ? 6000 : 3500;
     this.tooltipHideTimer = setTimeout(() => this.hideTooltip(), hideDelay);
 
@@ -2223,6 +2278,10 @@ export class GlobeMap {
       intensity: z.intensity ?? 'low',
       parties: z.parties ?? [],
       casualties: z.casualties,
+      center: z.center,
+      startDate: z.startDate,
+      peaceAgreements: z.peaceAgreements,
+      totalFatalities: z.totalFatalities,
     }));
     this.flushMarkers();
   }
@@ -2237,15 +2296,8 @@ export class GlobeMap {
     switch (layer) {
       case 'bases':
         if (!this.milBaseMarkers.length) {
-          this.milBaseMarkers = (MILITARY_BASES as MilitaryBase[]).map(b => ({
-            _kind: 'milbase' as const,
-            _lat: b.lat,
-            _lng: b.lon,
-            id: b.id,
-            name: b.name,
-            type: b.type,
-            country: b.country ?? '',
-          }));
+          this.setMilitaryBaseMarkers(getCachedMilitaryBases());
+          if (!this.milBaseMarkers.length) this.requestMilitaryBaseMarkers();
         }
         break;
       case 'nuclear':
@@ -2260,6 +2312,10 @@ export class GlobeMap {
               name: f.name,
               type: f.type,
               status: f.status,
+              operationalSince: f.operationalSince,
+              treaties: f.treaties,
+              iaeaStatus: f.iaeaStatus,
+              keyEvents: f.keyEvents,
             }));
         }
         break;
@@ -2376,6 +2432,34 @@ export class GlobeMap {
         }
         break;
     }
+  }
+
+  private setMilitaryBaseMarkers(bases: MilitaryBase[]): void {
+    this.milBaseMarkers = bases.map(b => ({
+      _kind: 'milbase' as const,
+      _lat: b.lat,
+      _lng: b.lon,
+      id: b.id,
+      name: b.name,
+      type: b.type,
+      country: b.country ?? '',
+    }));
+  }
+
+  private requestMilitaryBaseMarkers(): void {
+    if (this.milBaseMarkersLoadPending) return;
+    this.milBaseMarkersLoadPending = true;
+    void preloadMilitaryBases()
+      .then((bases) => {
+        this.milBaseMarkersLoadPending = false;
+        if (this.destroyed) return;
+        this.setMilitaryBaseMarkers(bases);
+        this.flushMarkers();
+      })
+      .catch((error) => {
+        this.milBaseMarkersLoadPending = false;
+        console.warn('[GlobeMap] Military base config unavailable:', error);
+      });
   }
 
   public setMilitaryFlights(flights: MilitaryFlight[]): void {

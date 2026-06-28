@@ -110,6 +110,10 @@
 
   /* Legacy color aliases (used by existing var() references) */
   --red: #ff4444;
+  /* Darker red for white-text "active/live" pills: #fff on --red is only
+     3.4:1, on --red-strong it clears WCAG AA (≈5:1). Theme-independent (the
+     pill is red in both themes). */
+  --red-strong: #d62b2b;
   --green: #44ff88;
   --yellow: #ffaa00;
 }
@@ -271,6 +275,43 @@ canvas,
   left: 0;
   right: 0;
   bottom: 0;
+}
+
+/* Keyboard bypass affordance (WCAG 2.4.1). Off-screen until focused, then
+   slides in over the header so a keyboard user can jump straight to <main>. */
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 100000;
+  padding: 10px 16px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--green);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  opacity: 0;
+  transform: translateY(-150%);
+  pointer-events: none;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.skip-link:focus,
+.skip-link:focus-visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+/* The skip-link moves focus to <main> (tabindex="-1"). Suppress the
+   full-width focus ring on the container itself; the next Tab lands on a
+   real control with its own visible focus. */
+#main.main-content:focus {
+  outline: none;
 }
 
 .header {
@@ -1540,8 +1581,10 @@ canvas,
 .site-footer-copy {
   font-family: var(--font-mono, monospace);
   font-size: 10px;
+  /* No opacity: 0.6 fade — it dropped --text-dim (#888) to an effective
+     #5a5a5a on the #141414 footer (2.67:1). At full strength #888 clears
+     4.5:1 (≈5.2:1) for WCAG AA, matching the footer nav links. */
   color: var(--text-dim);
-  opacity: 0.6;
 }
 
 @media (max-width: 768px) {
@@ -1902,7 +1945,9 @@ body.panel-resize-active iframe {
 
 .panel-count {
   font-size: 10px;
-  color: var(--text-dim);
+  /* --text-dim (#888) on --border fails WCAG AA (4.04:1 on #2a2a2a / 3.6:1 light);
+     --text-secondary is tuned per-theme and clears 4.5:1 on every theme's --border. */
+  color: var(--text-secondary);
   background: var(--border);
   padding: 2px 6px;
   border-radius: 2px;
@@ -1917,7 +1962,7 @@ body.panel-resize-active iframe {
   0% {
     transform: scale(1);
     background: var(--border);
-    color: var(--text-dim);
+    color: var(--text-secondary);
   }
 
   40% {
@@ -1929,7 +1974,7 @@ body.panel-resize-active iframe {
   100% {
     transform: scale(1);
     background: var(--border);
-    color: var(--text-dim);
+    color: var(--text-secondary);
   }
 }
 
@@ -2049,18 +2094,38 @@ body.panel-resize-active iframe {
 }
 
 .panel-data-badge {
+  align-items: center;
+  display: inline-flex;
   font-size: 9px;
   letter-spacing: 0.4px;
   padding: 2px 6px;
   border-radius: 10px;
   border: 1px solid transparent;
   color: var(--text);
+  position: relative;
+  transition: none;
 }
 
 .panel-data-badge.live {
   color: var(--status-live);
   border-color: rgba(86, 217, 130, 0.45);
   background: rgba(86, 217, 130, 0.12);
+  padding-left: 16px;
+}
+
+.panel-data-badge.live::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  transform: translateY(-50%);
+  opacity: 1;
+  animation: live-badge-dot-pulse 1.8s ease-in-out infinite;
+  will-change: opacity, transform;
 }
 
 .panel-data-badge.cached {
@@ -2283,6 +2348,39 @@ body.panel-resize-active iframe {
   padding: 8px;
   min-width: 0;
   user-select: none;
+  content-visibility: auto;
+  contain-intrinsic-size: 260px;
+}
+
+.panel-deferred-shell {
+  cursor: default;
+  pointer-events: none;
+  content-visibility: auto;
+  contain-intrinsic-size: var(--dashboard-panel-row-min, 260px);
+}
+
+.panel-deferred-content {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.panel-deferred-skeleton {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--surface-alt), var(--border), var(--surface-alt));
+  opacity: 0.65;
+}
+
+.panel-deferred-skeleton:nth-child(2) {
+  width: 72%;
+}
+
+.panel-deferred-skeleton:nth-child(3) {
+  width: 48%;
 }
 
 .panel-content::-webkit-scrollbar {
@@ -2353,8 +2451,8 @@ body.panel-resize-active iframe {
 }
 
 .live-channel-btn.active {
-  background: var(--red);
-  border-color: var(--red);
+  background: var(--red-strong);
+  border-color: var(--red-strong);
   color: white;
 }
 
@@ -2369,7 +2467,6 @@ body.panel-resize-active iframe {
 }
 
 .live-channel-btn.offline {
-  opacity: 0.5;
   border-style: dashed;
 }
 
@@ -3026,12 +3123,24 @@ body.panel-resize-active iframe {
 }
 
 .live-media-shell-dot {
+  position: relative;
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: var(--red);
-  box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.5);
+}
+
+.live-media-shell-dot::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--red);
+  opacity: 0;
+  transform: scale(1);
+  pointer-events: none;
   animation: live-pulse-ring 1.6s ease-out infinite;
+  will-change: opacity, transform;
 }
 
 .live-media-shell-title {
@@ -3062,8 +3171,10 @@ body.panel-resize-active iframe {
 
 .live-media-shell .offline-retry:hover,
 .webcam-preview-play:hover {
-  background: var(--red);
-  border-color: var(--red);
+  /* White (#fff, from the base rule) on --red is 3.41:1; --red-strong clears
+     AA (≈5:1). axe doesn't audit :hover, but this is the same defect class. */
+  background: var(--red-strong);
+  border-color: var(--red-strong);
 }
 
 .live-media-shell .offline-retry:focus-visible,
@@ -3073,16 +3184,15 @@ body.panel-resize-active iframe {
 }
 
 @keyframes live-pulse-ring {
-  0% {
-    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.5);
-  }
-
-  70% {
-    box-shadow: 0 0 0 10px rgba(220, 38, 38, 0);
-  }
-
+  0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0);
+    opacity: 0;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.45;
+    transform: scale(1.9);
   }
 }
 
@@ -3323,14 +3433,14 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
 }
 
 .webcam-region-btn.active {
-  background: var(--red);
-  border-color: var(--red);
+  background: var(--red-strong);
+  border-color: var(--red-strong);
   color: white;
 }
 
 .webcam-view-btn.active {
-  background: var(--red);
-  border-color: var(--red);
+  background: var(--red-strong);
+  border-color: var(--red-strong);
   color: white;
 }
 
@@ -3530,8 +3640,8 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
 }
 
 .webcam-feed-btn.active {
-  background: var(--red);
-  border-color: var(--red);
+  background: var(--red-strong);
+  border-color: var(--red-strong);
   color: white;
 }
 
@@ -5070,11 +5180,16 @@ body.playback-mode .status-dot {
 }
 
 .layer-help-btn {
-  width: 20px;
-  height: 20px;
+  /* WCAG 2.5.8 / issue #3112: 48x48 hit area. margin:-12px 0 keeps the box
+     flush with its toggle-header siblings while ::before (inset:12px) renders
+     the visible 24px circle centred inside the 48px clickable target. */
+  position: relative;
+  width: 48px;
+  height: 48px;
+  margin: -12px 0;
   padding: 0;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: transparent;
+  border: 0;
   border-radius: 50%;
   color: var(--text-dim);
   font-family: inherit;
@@ -5087,10 +5202,22 @@ body.playback-mode .status-dot {
   justify-content: center;
 }
 
+.layer-help-btn::before {
+  content: '';
+  position: absolute;
+  inset: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
 .layer-help-btn:hover {
   color: var(--accent);
+}
+
+.layer-help-btn:hover::before {
   border-color: var(--accent);
-  background: var(--bg);
 }
 
 .layer-help-popup {
@@ -15001,6 +15128,8 @@ a.prediction-link:hover {
   cursor: pointer;
   transition: all 0.2s;
   position: relative;
+  isolation: isolate;
+  overflow: visible;
 }
 
 .intel-findings-badge:hover {
@@ -15015,6 +15144,12 @@ a.prediction-link:hover {
 
 .intel-findings-badge .findings-icon {
   font-size: 12px;
+}
+
+.intel-findings-badge .findings-icon,
+.intel-findings-badge .findings-count {
+  position: relative;
+  z-index: 1;
 }
 
 .intel-findings-badge .findings-count {
@@ -15047,7 +15182,26 @@ a.prediction-link:hover {
 
 .intel-findings-badge.status-high {
   border-color: rgba(255, 149, 0, 0.5);
-  animation: findings-pulse 2s infinite;
+}
+
+.intel-findings-badge.status-high::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background:
+    radial-gradient(
+      circle,
+      rgba(255, 149, 0, 0.28) 0%,
+      rgba(255, 149, 0, 0.16) 55%,
+      rgba(255, 149, 0, 0) 100%
+    );
+  opacity: 0;
+  transform: scale(1);
+  transform-origin: center;
+  pointer-events: none;
+  animation: findings-pulse 2s ease-out infinite;
+  will-change: opacity, transform;
 }
 
 .intel-findings-badge.status-high .findings-count {
@@ -15060,14 +15214,28 @@ a.prediction-link:hover {
 }
 
 @keyframes findings-pulse {
-
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(255, 149, 0, 0);
+    opacity: 0;
+    transform: scale(1);
   }
 
   50% {
-    box-shadow: 0 0 8px 2px rgba(255, 149, 0, 0.3);
+    opacity: 0.7;
+    transform: scale(1.4);
+  }
+}
+
+@keyframes live-badge-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+
+  50% {
+    opacity: 0.35;
+    transform: translateY(-50%) scale(1.18);
   }
 }
 
@@ -16254,6 +16422,9 @@ a.prediction-link:hover {
 
 .deckgl-time-slider .time-options {
   display: flex;
+  /* Wrap instead of overflowing the viewport: six 48px touch targets (issue
+     #3112) exceed the narrowest phone widths on a single row. */
+  flex-wrap: wrap;
   gap: 2px;
 }
 
@@ -16266,6 +16437,13 @@ a.prediction-link:hover {
   font-size: 10px;
   cursor: pointer;
   transition: all 0.2s ease;
+  /* Issue #3112 requires a 48x48 touch target. */
+  box-sizing: border-box;
+  min-width: 48px;
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .deckgl-time-slider .time-btn:hover {
@@ -16991,7 +17169,7 @@ a.prediction-link:hover {
   border-radius: 4px;
   font-size: 11px;
   color: var(--text);
-  max-width: 250px;
+  max-width: 300px;
   pointer-events: none;
 }
 
@@ -17762,7 +17940,7 @@ a.prediction-link:hover {
 }
 
 .focal-point-urgency.critical {
-  background: var(--red);
+  background: var(--red-strong);
   color: white;
 }
 
@@ -18218,7 +18396,7 @@ a.prediction-link:hover {
   padding: 0 16px 12px;
 }
 
-.us-data-mgmt .settings-btn {
+.us-data-mgmt .btn {
   flex: 1;
 }
 
@@ -24873,6 +25051,15 @@ body.map-width-resizing {
   scrollbar-width: thin;
 }
 
+/* Inner tablist holds only the tabs; the "+" add button is a sibling in the
+   bar so the tablist owns no non-tab children (ARIA aria-required-children). */
+.dashboard-tablist {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
 .dashboard-tab {
   display: flex;
   align-items: center;
@@ -24961,4 +25148,338 @@ body.map-width-resizing {
 .dashboard-tab-add:hover {
   color: var(--green);
   border-color: var(--green);
+}
+
+/* ── Notification channel cards (relocated from settings-window.css in PR #4385 follow-up) ──
+   Rendered by the in-dashboard UnifiedSettings modal (notifications-settings.ts), so these
+   rules + the --settings-* tokens they use must live on the dashboard entry, not in the
+   standalone settings-window.css. The standalone settings page resolves the same tokens
+   from .settings-shell; the dashboard modal resolves them from .unified-settings-modal. */
+.unified-settings-modal {
+  --settings-bg: var(--bg-secondary);
+  --settings-surface: var(--surface-hover);
+  --settings-surface-inset: var(--surface);
+  --settings-border: var(--overlay-medium);
+  --settings-border-strong: var(--overlay-heavy);
+  --settings-text: #e8eaed;
+  --settings-text-secondary: #9aa0a6;
+  --settings-accent: var(--semantic-info);
+  --settings-green: #34d399;
+  --settings-yellow: #fbbf24;
+  --settings-red: var(--semantic-critical);
+  --settings-blue: #60a5fa;
+}
+
+/* ── Notification channel cards ── */
+
+.us-notif-ch-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--settings-surface);
+  border: 1px solid var(--settings-border);
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.us-notif-ch-row.us-notif-ch-on {
+  background: rgba(52, 211, 153, 0.06);
+  border-color: rgba(52, 211, 153, 0.2);
+}
+
+.us-notif-ch-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.07);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--settings-text-secondary);
+}
+
+.us-notif-ch-on .us-notif-ch-icon {
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--settings-green);
+}
+
+.us-notif-ch-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.us-notif-ch-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--settings-text);
+  line-height: 1.2;
+}
+
+.us-notif-ch-sub {
+  font-size: 10px;
+  color: var(--settings-text-secondary);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.us-notif-ch-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.us-notif-ch-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--settings-green);
+  background: rgba(52, 211, 153, 0.12);
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.us-notif-ch-btn {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  border: 1px solid var(--settings-border-strong);
+  background: transparent;
+  color: var(--settings-text-secondary);
+  transition: background 0.15s, color 0.15s;
+}
+
+.us-notif-ch-btn:hover {
+  background: var(--overlay-subtle);
+  color: var(--settings-text);
+}
+
+.us-notif-ch-btn-primary {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--settings-border-strong);
+  color: var(--settings-text);
+}
+
+.us-notif-ch-btn-primary:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.us-notif-slack-wrap {
+  width: 100%;
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.us-notif-slack-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 10px;
+  padding: 5px 8px;
+  background: var(--settings-surface-inset);
+  border: 1px solid var(--settings-border);
+  border-radius: 5px;
+  color: var(--settings-text);
+}
+
+.us-notif-slack-input::placeholder {
+  color: var(--settings-text-secondary);
+  opacity: 0.7;
+}
+
+.us-notif-slack-input:focus {
+  outline: none;
+  border-color: var(--settings-accent);
+}
+
+.us-notif-error {
+  font-size: 10px;
+  color: var(--settings-red);
+  margin-top: 4px;
+  display: block;
+  width: 100%;
+}
+
+.us-notif-tg-link {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  background: var(--settings-accent);
+  border: 1px solid var(--settings-accent);
+  border-radius: 5px;
+  color: #fff;
+  text-decoration: none;
+  display: inline-block;
+  transition: background 0.15s;
+}
+
+.us-notif-tg-link:hover {
+  background: color-mix(in srgb, var(--settings-accent) 85%, white);
+}
+
+.us-notif-tg-inline-link {
+  color: var(--settings-accent);
+  text-decoration: none;
+}
+
+.us-notif-tg-inline-link:hover {
+  text-decoration: underline;
+}
+
+.us-notif-tg-pair-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.us-notif-tg-qr {
+  flex-shrink: 0;
+  width: 88px;
+  height: 88px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+  padding: 3px;
+  box-sizing: border-box;
+}
+
+.us-notif-tg-qr svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.us-notif-tg-cmd-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  justify-content: center;
+  min-width: 0;
+}
+
+.us-notif-tg-cmd-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.us-notif-tg-cmd {
+  font-family: monospace;
+  font-size: 11px;
+  background: var(--settings-bg-secondary, rgba(0,0,0,0.15));
+  border: 1px solid var(--settings-border, rgba(255,255,255,0.1));
+  border-radius: 4px;
+  padding: 2px 6px;
+  color: var(--settings-text-primary);
+  user-select: all;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.us-notif-tg-copy-btn {
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--settings-accent);
+  border-radius: 4px;
+  color: var(--settings-accent);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.us-notif-tg-copy-btn:hover {
+  background: var(--settings-accent);
+  color: #fff;
+}
+
+.us-notif-tg-expired {
+  color: var(--settings-text-secondary);
+  font-style: italic;
+}
+
+.us-notif-tg-countdown {
+  font-size: 10px;
+  color: var(--settings-text-secondary);
+  white-space: nowrap;
+}
+
+.us-notif-signin {
+  font-size: 12px;
+  color: var(--settings-text-secondary);
+  padding: 8px 0;
+}
+
+/* Slack OAuth button */
+.us-notif-slack-oauth {
+  display: inline-flex;
+  align-items: center;
+  background: #4a154b;
+  border: 1px solid #4a154b;
+  color: #fff;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.us-notif-slack-oauth:hover {
+  background: #611f69;
+  border-color: #611f69;
+}
+
+/* Discord OAuth button */
+.us-notif-discord-oauth {
+  display: inline-flex;
+  align-items: center;
+  background: #5865f2;
+  border: 1px solid #5865f2;
+  color: #fff;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.us-notif-discord-oauth:hover {
+  background: #4752c4;
+  border-color: #4752c4;
+}
+
+/* Manage in Slack link */
+.us-notif-manage-link {
+  font-size: 10px;
+  color: var(--settings-text-secondary);
+  text-decoration: none;
+  border: 1px solid var(--settings-border);
+  padding: 2px 7px;
+  border-radius: 4px;
+  margin-left: 4px;
+  white-space: nowrap;
+}
+
+.us-notif-manage-link:hover {
+  color: var(--settings-text);
+  border-color: var(--settings-border-strong);
 }

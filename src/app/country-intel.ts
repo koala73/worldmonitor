@@ -9,7 +9,6 @@ import type {
   CountryDeepDiveMilitarySummary,
   CountryDeepDiveSignalDetails,
 } from '@/components/CountryBriefPanel';
-import { CountryDeepDivePanel } from '@/components/CountryDeepDivePanel';
 import { reverseGeocode } from '@/utils/reverse-geocode';
 import { effectivePubDateMs } from '@/services/feed-date';
 import {
@@ -37,7 +36,6 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { showMapContextMenu } from '@/components/MapContextMenu';
 import { BETA_MODE } from '@/config/beta';
-import { MILITARY_BASES } from '@/config';
 import { mlWorker } from '@/services/ml-worker';
 import { isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { t, getCurrentLanguage } from '@/services/i18n';
@@ -50,7 +48,8 @@ import {
   collectBriefSources,
   type BriefSource,
 } from '@/utils/brief-sources';
-import { getNearbyInfrastructure } from '@/services/related-assets';
+import { getNearbyInfrastructure, preloadInfrastructureTables } from '@/services/related-assets';
+import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { iso2ToIso3, iso2ToComtradeReporterCode } from '@/utils/country-codes';
 import { buildDependencyGraph } from '@/services/infrastructure-cascade';
@@ -93,13 +92,14 @@ export class CountryIntelManager implements AppModule {
   // don't re-hammer fetchProSections.
   private authUnsubscribe: (() => void) | null = null;
   private lastHadPremium = false;
+  private countryBriefPageLoading: Promise<boolean> | null = null;
 
   constructor(ctx: AppContext) {
     this.ctx = ctx;
   }
 
-  init(): void {
-    this.setupCountryIntel();
+  async init(): Promise<void> {
+    await this.setupCountryIntel();
     this.frameworkUnsubscribe = subscribeFrameworkChange('country-brief', () => {
       const page = this.ctx.countryBriefPage;
       if (!page?.isVisible()) return;
@@ -130,14 +130,49 @@ export class CountryIntelManager implements AppModule {
     this.ctx.countryTimeline?.destroy();
     this.ctx.countryTimeline = null;
     this.ctx.countryBriefPage = null;
+    this.countryBriefPageLoading = null;
     this.frameworkUnsubscribe?.();
     this.frameworkUnsubscribe = null;
     this.authUnsubscribe?.();
     this.authUnsubscribe = null;
   }
 
-  private setupCountryIntel(): void {
+  private async setupCountryIntel(): Promise<void> {
     if (!this.ctx.map) return;
+    this.ctx.map.onCountryClicked((countryClick) => {
+      if (countryClick.code && countryClick.name) {
+        trackCountrySelected(countryClick.code, countryClick.name, 'map');
+        void this.openCountryBriefByCode(countryClick.code, countryClick.name);
+      } else {
+        void this.openCountryBrief(countryClick.lat, countryClick.lon);
+      }
+    });
+
+    this.ctx.map.onMapContextMenu((payload) => {
+      const items = [];
+      if (payload.countryCode && payload.countryName) {
+        items.push({ label: t('contextMenu.openCountryBrief'), action: () => void this.openCountryBriefByCode(payload.countryCode!, payload.countryName!) });
+      } else {
+        items.push({ label: t('contextMenu.openCountryBrief'), action: () => void this.openCountryBrief(payload.lat, payload.lon) });
+      }
+      items.push({ label: t('contextMenu.copyCoordinates'), action: () => navigator.clipboard.writeText(`${payload.lat.toFixed(5)}, ${payload.lon.toFixed(5)}`).catch(() => {}) });
+      showMapContextMenu(payload.screenX, payload.screenY, items);
+    });
+  }
+
+  private async ensureCountryBriefPage(): Promise<boolean> {
+    if (this.ctx.countryBriefPage) return true;
+    if (!this.ctx.map || this.ctx.isDestroyed) return false;
+    if (this.countryBriefPageLoading) return this.countryBriefPageLoading;
+    this.countryBriefPageLoading = this.createCountryBriefPage();
+    const ready = await this.countryBriefPageLoading;
+    this.countryBriefPageLoading = null;
+    return ready;
+  }
+
+  private async createCountryBriefPage(): Promise<boolean> {
+    const { CountryDeepDivePanel } = await import('@/components/CountryDeepDivePanel');
+    if (this.ctx.isDestroyed || !this.ctx.map) return false;
     this.ctx.countryBriefPage = new CountryDeepDivePanel(this.ctx.map);
     this.ctx.countryBriefPage.setShareStoryHandler((code, name) => {
       this.ctx.countryBriefPage?.hide();
@@ -167,26 +202,6 @@ export class CountryIntelManager implements AppModule {
       }
     });
 
-    this.ctx.map.onCountryClicked(async (countryClick) => {
-      if (countryClick.code && countryClick.name) {
-        trackCountrySelected(countryClick.code, countryClick.name, 'map');
-        this.openCountryBriefByCode(countryClick.code, countryClick.name);
-      } else {
-        this.openCountryBrief(countryClick.lat, countryClick.lon);
-      }
-    });
-
-    this.ctx.map.onMapContextMenu((payload) => {
-      const items = [];
-      if (payload.countryCode && payload.countryName) {
-        items.push({ label: t('contextMenu.openCountryBrief'), action: () => this.openCountryBriefByCode(payload.countryCode!, payload.countryName!) });
-      } else {
-        items.push({ label: t('contextMenu.openCountryBrief'), action: () => this.openCountryBrief(payload.lat, payload.lon) });
-      }
-      items.push({ label: t('contextMenu.copyCoordinates'), action: () => navigator.clipboard.writeText(`${payload.lat.toFixed(5)}, ${payload.lon.toFixed(5)}`).catch(() => {}) });
-      showMapContextMenu(payload.screenX, payload.screenY, items);
-    });
-
     this.ctx.countryBriefPage.onClose(() => {
       this.briefRequestToken++;
       this.ctx.map?.clearCountryHighlight();
@@ -194,34 +209,39 @@ export class CountryIntelManager implements AppModule {
       this.ctx.countryTimeline?.destroy();
       this.ctx.countryTimeline = null;
     });
+    return true;
   }
 
   async openCountryBrief(lat: number, lon: number): Promise<void> {
-    if (!this.ctx.countryBriefPage) return;
+    if (!(await this.ensureCountryBriefPage())) return;
+    const page = this.ctx.countryBriefPage;
+    if (!page) return;
     const token = ++this.briefRequestToken;
-    this.ctx.countryBriefPage.showLoading();
+    page.showLoading();
     this.ctx.map?.setRenderPaused(true);
 
     const localGeo = getCountryAtCoordinates(lat, lon);
     if (localGeo) {
       if (token !== this.briefRequestToken) return;
-      this.openCountryBriefByCode(localGeo.code, localGeo.name);
+      await this.openCountryBriefByCode(localGeo.code, localGeo.name);
       return;
     }
 
     const geo = await reverseGeocode(lat, lon);
     if (token !== this.briefRequestToken) return;
     if (!geo) {
-      this.ctx.countryBriefPage.hide();
+      page.hide();
       this.ctx.map?.setRenderPaused(false);
       return;
     }
 
-    this.openCountryBriefByCode(geo.code, geo.country);
+    await this.openCountryBriefByCode(geo.code, geo.country);
   }
 
   async openCountryBriefByCode(code: string, country: string, opts?: { maximize?: boolean }): Promise<void> {
-    if (!this.ctx.countryBriefPage) return;
+    if (!(await this.ensureCountryBriefPage())) return;
+    const page = this.ctx.countryBriefPage;
+    if (!page) return;
     this.ctx.map?.setRenderPaused(true);
     trackCountryBriefOpened(code);
 
@@ -233,7 +253,7 @@ export class CountryIntelManager implements AppModule {
 
     const signals = this.getCountrySignals(code, country);
 
-    this.ctx.countryBriefPage.show(country, code, score, signals);
+    page.show(country, code, score, signals);
     this.ctx.map?.highlightCountry(code);
     this.ctx.map?.fitCountry(code);
 
@@ -245,9 +265,9 @@ export class CountryIntelManager implements AppModule {
         }
       });
     }
-    this.ctx.countryBriefPage.updateSignalDetails?.(this.buildSignalDetails(code));
-    this.ctx.countryBriefPage.updateMilitaryActivity?.(this.buildMilitarySummary(code, country));
-    this.ctx.countryBriefPage.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, null));
+    page.updateSignalDetails?.(this.buildSignalDetails(code));
+    page.updateMilitaryActivity?.(this.buildMilitarySummary(code, country));
+    page.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, null));
 
     const marketClient = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args) });
     const stockPromise = marketClient.getCountryStockIndex({ countryCode: code })
@@ -304,9 +324,20 @@ export class CountryIntelManager implements AppModule {
       if (severityDelta !== 0) return severityDelta;
       return effectivePubDateMs(b) - effectivePubDateMs(a);
     });
-    this.ctx.countryBriefPage.updateNews(filteredNews.slice(0, 10));
+    page.updateNews(filteredNews.slice(0, 10));
 
-    this.ctx.countryBriefPage.updateInfrastructure(code);
+    page.updateInfrastructure(code);
+    void Promise.all([
+      preloadMilitaryBases().catch(() => []),
+      preloadInfrastructureTables().catch(() => {}),
+    ])
+      .then(() => {
+        if (this.ctx.countryBriefPage?.getCode() === code) {
+          this.ctx.countryBriefPage.updateInfrastructure(code);
+          this.ctx.countryBriefPage.updateMilitaryActivity?.(this.buildMilitarySummary(code, country));
+        }
+      })
+      .catch(() => {});
 
     const intelClient = new IntelligenceServiceClient(getRpcBaseUrl(), {
       fetch: (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args),
@@ -1248,7 +1279,7 @@ export class CountryIntelManager implements AppModule {
         id: base.id,
         name: base.name,
         distanceKm: base.distanceKm,
-        country: MILITARY_BASES.find((entry) => entry.id === base.id)?.country,
+        country: getCachedMilitaryBases().find((entry) => entry.id === base.id)?.country,
       }))
       : [];
 

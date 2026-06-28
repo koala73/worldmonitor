@@ -129,6 +129,21 @@ describe('Bootstrap endpoint (api/bootstrap.js)', () => {
   const bootstrapPath = join(root, 'api', 'bootstrap.js');
   const src = readFileSync(bootstrapPath, 'utf-8');
 
+  function collectBootstrapApiHelperImports(entryRelPath, seen = new Set()) {
+    const absolutePath = join(root, entryRelPath);
+    const normalized = entryRelPath.replace(/\\/g, '/');
+    if (seen.has(normalized)) return seen;
+    seen.add(normalized);
+
+    const source = readFileSync(absolutePath, 'utf-8');
+    const importRe = /from\s+['"](\.\/_[^'"]+\.js)['"]/g;
+    let match;
+    while ((match = importRe.exec(source)) !== null) {
+      collectBootstrapApiHelperImports(`api/${match[1].slice(2)}`, seen);
+    }
+    return seen;
+  }
+
   it('exports edge runtime config', () => {
     assert.ok(src.includes("runtime: 'edge'"), 'Missing edge runtime config');
   });
@@ -140,6 +155,17 @@ describe('Bootstrap endpoint (api/bootstrap.js)', () => {
   it('defines getCachedJsonBatch inline (self-contained, no server imports)', () => {
     assert.ok(src.includes('getCachedJsonBatch'), 'Missing getCachedJsonBatch function');
     assert.ok(!src.includes("from '../server/"), 'Should not import from server/ — Edge Functions cannot resolve cross-directory TS imports');
+  });
+
+  it('keeps bootstrap and transitive api helpers inside the Edge-safe API boundary', () => {
+    const checked = [...collectBootstrapApiHelperImports('api/bootstrap.js')];
+    const forbiddenImport = /from\s+['"](?:\.\.\/(?:server|src)\/|node:)/;
+    const forbiddenDynamicImport = /import\s*\(\s*['"](?:\.\.\/(?:server|src)\/|node:)/;
+    for (const relPath of checked) {
+      const source = readFileSync(join(root, relPath), 'utf-8');
+      assert.doesNotMatch(source, forbiddenImport, `${relPath} must not import server/src modules or Node built-ins`);
+      assert.doesNotMatch(source, forbiddenDynamicImport, `${relPath} must not dynamically import server/src modules or Node built-ins`);
+    }
   });
 
   it('supports optional ?keys= query param for subset filtering', () => {

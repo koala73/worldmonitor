@@ -31,6 +31,18 @@ http {
     root /usr/share/nginx/html;
     index index.html;
 
+    location = /embed {
+      include /etc/nginx/embed_security_headers.conf;
+      try_files /embed.html =404;
+      add_header Cache-Control "private, no-cache, must-revalidate";
+    }
+
+    location = /embed.html {
+      include /etc/nginx/embed_security_headers.conf;
+      try_files /embed.html =404;
+      add_header Cache-Control "private, no-cache, must-revalidate";
+    }
+
     location / {
       include /etc/nginx/security_headers.conf;
       try_files $uri $uri/ /index.html;

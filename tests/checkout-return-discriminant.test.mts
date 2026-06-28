@@ -14,8 +14,31 @@ interface MutableHistory {
   replaceState: (state: unknown, unused: string, url?: string | URL | null) => void;
 }
 
+class MemoryStorage {
+  private readonly store = new Map<string, string>();
+
+  getItem(key: string): string | null {
+    return this.store.get(key) ?? null;
+  }
+
+  setItem(key: string, value: string): void {
+    this.store.set(key, value);
+  }
+
+  removeItem(key: string): void {
+    this.store.delete(key);
+  }
+
+  clear(): void {
+    this.store.clear();
+  }
+}
+
+const LAST_CHECKOUT_ATTEMPT_KEY = 'wm-last-checkout-attempt';
+
 let _loc: MutableLocation;
 let _history: MutableHistory;
+let _sessionStorage: MemoryStorage;
 
 function setUrl(href: string): void {
   const url = new URL(href);
@@ -27,6 +50,7 @@ function setUrl(href: string): void {
 
 before(() => {
   _loc = { href: BASE_URL, pathname: '/', search: '', hash: '' };
+  _sessionStorage = new MemoryStorage();
   _history = {
     replaceState: (_state, _unused, url) => {
       if (url !== undefined && url !== null) setUrl(new URL(String(url), _loc.href).toString());
@@ -36,15 +60,22 @@ before(() => {
     configurable: true,
     value: { location: _loc, history: _history },
   });
+  Object.defineProperty(globalThis, 'sessionStorage', {
+    configurable: true,
+    value: _sessionStorage,
+  });
 });
 
 after(() => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   delete (globalThis as any).window;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  delete (globalThis as any).sessionStorage;
 });
 
 beforeEach(() => {
   setUrl(BASE_URL);
+  _sessionStorage.clear();
 });
 
 const { handleCheckoutReturn } = await import('../src/services/checkout-return.ts');
@@ -136,6 +167,54 @@ describe('handleCheckoutReturn — /pro overlay-success marker (?wm_checkout=)',
     // richer information and should be honored.
     setUrl(`${BASE_URL}?subscription_id=sub_X&status=active&wm_checkout=success`);
     assert.deepEqual(handleCheckoutReturn(), { kind: 'success' });
+  });
+
+  it('Dodo success status wins over the dashboard return marker used by 3DS redirects', () => {
+    setUrl(`${BASE_URL}?wm_checkout=return&subscription_id=sub_X&status=active`);
+    assert.deepEqual(handleCheckoutReturn(), { kind: 'success' });
+    assert.equal(_loc.href, BASE_URL);
+  });
+
+  it('Dodo failure status wins over the dashboard return marker used by 3DS redirects', () => {
+    setUrl(`${BASE_URL}?wm_checkout=return&payment_id=pay_X&status=failed`);
+    assert.deepEqual(handleCheckoutReturn(), { kind: 'failed', rawStatus: 'failed' });
+    assert.equal(_loc.href, BASE_URL);
+  });
+
+  it('uses wm_checkout=return alone only when there is a saved checkout attempt', () => {
+    _sessionStorage.setItem(
+      LAST_CHECKOUT_ATTEMPT_KEY,
+      JSON.stringify({ productId: 'prod_monthly', startedAt: Date.now() }),
+    );
+    setUrl(`${BASE_URL}?wm_checkout=return`);
+    assert.deepEqual(handleCheckoutReturn(), { kind: 'success' });
+    assert.equal(_loc.href, BASE_URL);
+  });
+
+  it('strips wm_checkout=return alone without a saved attempt but does not trigger success', () => {
+    setUrl(`${BASE_URL}?wm_checkout=return`);
+    assert.deepEqual(handleCheckoutReturn(), { kind: 'none' });
+    assert.equal(_loc.href, BASE_URL);
+  });
+
+  it('does not honor status with wm_checkout=return unless Dodo IDs are present', () => {
+    _sessionStorage.setItem(
+      LAST_CHECKOUT_ATTEMPT_KEY,
+      JSON.stringify({ productId: 'prod_monthly', startedAt: Date.now() }),
+    );
+    setUrl(`${BASE_URL}?wm_checkout=return&status=active`);
+    assert.deepEqual(handleCheckoutReturn(), { kind: 'none' });
+    assert.equal(_loc.href, BASE_URL);
+  });
+
+  it('does not treat Dodo IDs without status as success via wm_checkout=return', () => {
+    _sessionStorage.setItem(
+      LAST_CHECKOUT_ATTEMPT_KEY,
+      JSON.stringify({ productId: 'prod_monthly', startedAt: Date.now() }),
+    );
+    setUrl(`${BASE_URL}?wm_checkout=return&subscription_id=sub_X`);
+    assert.deepEqual(handleCheckoutReturn(), { kind: 'none' });
+    assert.equal(_loc.href, BASE_URL);
   });
 
   it('Dodo failure status wins over wm_checkout=success (surface actual failure)', () => {

@@ -458,7 +458,7 @@ describe('ThreatTimelinePanel registration', () => {
 
     assert.match(panelsSrc, /'threat-timeline':\s*\{\s*name:\s*'Threat Timeline'/);
     assert.match(panelsSrc, /intelligence:\s*\{[\s\S]*panelKeys:\s*\[[^\]]*'threat-timeline'/);
-    assert.match(layoutSrc, /isPanelInVariantDefaults\('threat-timeline'\)[\s\S]*createPanel\('threat-timeline',\s*\(\)\s*=>\s*new ThreatTimelinePanel\(\)\)/);
+    assert.match(layoutSrc, /isPanelInVariantDefaults\('threat-timeline'\)[\s\S]*lazyPanel\('threat-timeline',\s*\(\)\s*=>\s*import\('@\/components\/ThreatTimelinePanel'\)\.then\(m\s*=>\s*new m\.ThreatTimelinePanel\(\)\)\)/);
     assert.match(dataLoaderSrc, /isPanelInVariantDefaults\('threat-timeline'\)[\s\S]*panels\['threat-timeline'\]\s+as ThreatTimelinePanel/);
     assert.match(commandsSrc, /id:\s*'panel:threat-timeline'[\s\S]*keywords:\s*\[[^\]]*'threat trend'/);
   });

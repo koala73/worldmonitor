@@ -119,6 +119,13 @@ To automate, add a cron job:
 */30 * * * * cd /path/to/worldmonitor && ./scripts/run-seeders.sh >> /tmp/wm-seeders.log 2>&1
 ```
 
+**Per-seeder timeout (`SEED_TIMEOUT`):** standalone seeders are each wrapped in a
+wall-clock cap so one hung upstream can't starve the rest of the run. It defaults
+to `1800` (30 min); override with `SEED_TIMEOUT=<seconds>`, or `SEED_TIMEOUT=0` to
+disable. Bundle seeders (`seed-bundle-*.mjs`) are exempt — they already bound each
+section internally. Requires the `timeout` command (GNU coreutils); if it's absent
+the cap is silently skipped.
+
 ### 🔧 Manual seeder invocation
 
 If you prefer to run seeders individually:

@@ -3,7 +3,6 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https: http://localhost:5173 ws: wss: blob: data: https://abacus.worldmonitor.app https://*.ingest.sentry.io https://*.ingest.us.sentry.io; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'sha256-+SFBjfmi2XfnyAT3POBxf6JIKYDcNXtllPclOcaNBI0=' 'sha256-7oZNrsyfSuHAVU4KcnfCYgflzMCUu6NcFnN8paFIf0A=' 'sha256-903UI9my1I7mqHoiVeZSc56yd50YoRJTB2269QqL76w=' 'sha256-De8Zg+hVWgFs8WjjaLgxtgcz8ilhurqIUMY5Tzb6sRs=' 'sha256-DrjY0lH4SfvhYZefrLUSxCtdmRIT6YhNzXnq1l4PhgM=' 'sha256-Du+OJKJSbdUgz5nrHeWWINvez6XKDDU/tyj/5c2uvwo=' 'sha256-LAdItzAgekgQQLah6zECmAdxwThaBCXzADV6Px2hstA=' 'sha256-NDA7EpfjL/yP8vyFF5aJF7DRvsJO89X0MlSd7yfVkzU=' 'sha256-X3TTz80miIiit6P8R5dsphOutHMYVOQXRUXATNVKsAg=' 'sha256-XoZ2GX3HVyjaUGNkwyjzgpGsQ/crwmHBcf4R8zR1RB4=' 'sha256-XsSfnJeoJYzlhuBF8lmmhxzSpSgSecVttS4CzI5UqnM=' 'sha256-Y1di1iyV4O3x8mz3QuMZ1/KbbBYyIC3VCp85zutIyKg=' 'sha256-ZimHqIaRVsXHzs9742Lvc/LQq4wXTTIlgjDoXmsJKFE=' 'sha256-kPCvUR9alMLCC5mPPYZzjkGVooMo2ODuFxcv7Gz4j5Y=' 'sha256-rYGdQCwA8VlzwKCDSrVSZX/qm7P9rxn7F/BrbPUm+go=' 'sha256-tVTD7NdqnF80qbLAWi+afYhexjeXML1r9u1St/hT5cM=' 'wasm-unsafe-eval' https://www.youtube.com https://static.cloudflareinsights.com https://vercel.live https://challenges.cloudflare.com https://abacus.worldmonitor.app https://*.clerk.accounts.dev https://clerk.worldmonitor.app https://*.dodopayments.com https://js.stripe.com; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https: http://127.0.0.1:* http://localhost:*; frame-src 'self' http://127.0.0.1:* http://localhost:* https://www.worldmonitor.app https://worldmonitor.app https://tech.worldmonitor.app https://finance.worldmonitor.app https://commodity.worldmonitor.app https://happy.worldmonitor.app https://energy.worldmonitor.app https://www.youtube.com https://www.youtube-nocookie.com https://www.google.com https://webcams.windy.com https://challenges.cloudflare.com https://vercel.live https://*.vercel.app https://*.clerk.accounts.dev https://clerk.worldmonitor.app https://*.dodopayments.com https://pay.google.com https://hooks.stripe.com https://js.stripe.com;" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
 
     <!-- Primary Meta Tags -->
@@ -211,26 +210,49 @@
       [data-theme="light"].wm-pro-banner-reserved #app::before{background:#fff;border-bottom-color:#d4d4d4}
       [data-variant="happy"].wm-pro-banner-reserved #app::before{background:#fff;border-bottom-color:#DDD9CF}
       [data-variant="happy"][data-theme="dark"].wm-pro-banner-reserved #app::before{background:#222E3E;border-bottom-color:#344050}
+      html:not(.js),html:not(.js) body{height:auto;min-height:100%;overflow:auto}
+      html:not(.js) body > .app-heading{display:none}
+      html:not(.js) #app .skeleton-shell{display:none}
+      .app-heading{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
 
       /* ---------- skeleton shell (dark default) ---------- */
       .skeleton-shell{display:flex;flex-direction:column;height:100vh;background:#0a0a0a;font-family:'SF Mono','Monaco','Cascadia Code','Fira Code','DejaVu Sans Mono','Liberation Mono',monospace;overflow:hidden}
+      .skeleton-shell *{box-sizing:border-box}
       html.wm-pro-banner-reserved .skeleton-shell{height:calc(100vh - var(--wm-pro-banner-slot-height))}
       .skeleton-header{display:flex;align-items:center;justify-content:space-between;height:40px;padding:8px 16px;background:#141414;border-bottom:1px solid #2a2a2a;flex-shrink:0}
       .skeleton-header-left{display:flex;align-items:center;gap:12px}
       .skeleton-header-right{display:flex;align-items:center;gap:12px}
+      .skeleton-brand{display:flex;align-items:center;gap:8px;margin:0;color:#f5f5f5;font-size:14px;line-height:1;font-weight:800}
+      .skeleton-brand-mark{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border:1px solid #2f8f68;border-radius:50%;color:#4ade80;font-size:12px;line-height:1}
+      .skeleton-kicker{color:#9ca3af;font-size:11px;line-height:1;white-space:nowrap}
+      .skeleton-chip{display:inline-flex;align-items:center;min-height:22px;padding:0 8px;border:1px solid #2a2a2a;border-radius:4px;color:#d1d5db;background:#181818;font-size:11px;line-height:1;white-space:nowrap}
+      .skeleton-chip.live{color:#86efac;border-color:#14532d;background:#062317}
       .skeleton-pill{height:24px;border-radius:4px;background:#1e1e1e}
       .skeleton-dot{width:8px;height:8px;border-radius:50%;background:#0f5040}
       .skeleton-tabs{height:36px;background:#141414;border-bottom:1px solid #2a2a2a;flex-shrink:0}
       .skeleton-main{flex:1;display:flex;flex-direction:column;overflow:hidden;background:#0a0a0a}
       .skeleton-map{height:50vh;min-height:350px;border:1px solid #2a2a2a;background:#020a08;display:flex;flex-direction:column;flex-shrink:0}
-      .skeleton-map-bar{height:32px;display:flex;align-items:center;padding:0 12px;background:#141414;border-bottom:1px solid #2a2a2a}
+      .skeleton-map-bar{height:32px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 12px;background:#141414;border-bottom:1px solid #2a2a2a}
+      .skeleton-section-label{color:#f5f5f5;font-size:12px;line-height:1;font-weight:700;white-space:nowrap}
+      .skeleton-section-note{color:#9ca3af;font-size:11px;line-height:1;white-space:nowrap}
       .skeleton-map-body{flex:1;position:relative;overflow:hidden}
       .skeleton-map-body::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 50% at 50% 50%,#0a2a20 0%,#020a08 100%);opacity:.5}
+      .skeleton-map-content{position:relative;z-index:1;display:flex;flex-direction:column;gap:10px;max-width:560px;margin:32px;padding:22px;border:1px solid rgba(74,222,128,.24);background:rgba(5,12,10,.78);box-shadow:0 18px 60px rgba(0,0,0,.24)}
+      .skeleton-map-eyebrow{margin:0;color:#86efac;font-size:12px;line-height:1.2;font-weight:700}
+      .skeleton-map-title{margin:0;color:#f8fafc;font-size:28px;line-height:1.12;font-weight:800}
+      .skeleton-map-copy{margin:0;max-width:52ch;color:#d1d5db;font-size:14px;line-height:1.5}
+      .skeleton-map-badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
       .skeleton-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));grid-auto-flow:row dense;grid-auto-rows:minmax(var(--dashboard-panel-row-min),var(--dashboard-panel-row-max));gap:var(--dashboard-grid-gap);padding:var(--dashboard-grid-gap);align-content:start}
       .skeleton-panel{height:100%;min-height:var(--dashboard-panel-row-min);background:#141414;border:1px solid #2a2a2a;border-radius:0;display:flex;flex-direction:column}
       .skeleton-panel:first-child{grid-column:span 2;grid-row:span 2;min-height:var(--dashboard-first-grid-reservation)}
       .skeleton-panel-header{height:36px;display:flex;align-items:center;padding:0 12px;border-bottom:1px solid #1a1a1a}
+      .skeleton-panel-title{margin:0;color:#f5f5f5;font-size:12px;line-height:1;font-weight:700}
       .skeleton-panel-body{flex:1;padding:12px;display:flex;flex-direction:column;gap:10px}
+      .skeleton-panel-kicker{margin:0;color:#86efac;font-size:11px;line-height:1.3;font-weight:700}
+      .skeleton-panel-copy{margin:0;color:#d1d5db;font-size:13px;line-height:1.45}
+      .skeleton-panel-metric{display:flex;align-items:baseline;gap:8px;margin-top:auto;color:#f8fafc}
+      .skeleton-panel-metric strong{font-size:26px;line-height:1;font-weight:800}
+      .skeleton-panel-metric span{color:#9ca3af;font-size:11px;line-height:1.2}
       .skeleton-line{height:14px;border-radius:4px;background:linear-gradient(90deg,rgba(255,255,255,.05) 25%,rgba(255,255,255,.1) 50%,rgba(255,255,255,.05) 75%);background-size:200% 100%;animation:skel-shimmer 1.5s infinite}
       .skeleton-line.w75{width:75%}.skeleton-line.w60{width:60%}.skeleton-line.w50{width:50%}.skeleton-line.w85{width:85%}.skeleton-line.w40{width:40%}
 
@@ -239,44 +261,104 @@
       /* ---------- skeleton shell (light theme) ---------- */
       [data-theme="light"] .skeleton-shell{background:#f8f9fa}
       [data-theme="light"] .skeleton-header{background:#fff;border-bottom-color:#d4d4d4}
+      [data-theme="light"] .skeleton-brand{color:#111827}
+      [data-theme="light"] .skeleton-kicker{color:#4b5563}
+      [data-theme="light"] .skeleton-chip{color:#374151;background:#f7f7f7;border-color:#d4d4d4}
+      [data-theme="light"] .skeleton-chip.live{color:#166534;background:#dcfce7;border-color:#86efac}
       [data-theme="light"] .skeleton-pill{background:#f0f0f0}
       [data-theme="light"] .skeleton-dot{background:#16a34a}
       [data-theme="light"] .skeleton-tabs{background:#fff;border-bottom-color:#d4d4d4}
       [data-theme="light"] .skeleton-main{background:#f8f9fa}
       [data-theme="light"] .skeleton-map{border-color:#d4d4d4;background:#e8f0f8}
       [data-theme="light"] .skeleton-map-bar{background:#fff;border-bottom-color:#d4d4d4}
+      [data-theme="light"] .skeleton-section-label{color:#111827}
+      [data-theme="light"] .skeleton-section-note{color:#4b5563}
       [data-theme="light"] .skeleton-map-body::after{background:radial-gradient(ellipse 60% 50% at 50% 50%,#b0c8d8 0%,#e8f0f8 100%)}
+      [data-theme="light"] .skeleton-map-content{border-color:rgba(22,101,52,.2);background:rgba(255,255,255,.86);box-shadow:0 18px 60px rgba(15,23,42,.12)}
+      [data-theme="light"] .skeleton-map-eyebrow{color:#166534}
+      [data-theme="light"] .skeleton-map-title{color:#111827}
+      [data-theme="light"] .skeleton-map-copy{color:#374151}
       [data-theme="light"] .skeleton-panel{background:#fff;border-color:#d4d4d4}
       [data-theme="light"] .skeleton-panel-header{border-bottom-color:#e8e8e8}
+      [data-theme="light"] .skeleton-panel-title{color:#111827}
+      [data-theme="light"] .skeleton-panel-kicker{color:#166534}
+      [data-theme="light"] .skeleton-panel-copy{color:#374151}
+      [data-theme="light"] .skeleton-panel-metric{color:#111827}
+      [data-theme="light"] .skeleton-panel-metric span{color:#4b5563}
       [data-theme="light"] .skeleton-line{background:linear-gradient(90deg,rgba(0,0,0,.04) 25%,rgba(0,0,0,.08) 50%,rgba(0,0,0,.04) 75%);background-size:200% 100%;animation:skel-shimmer 1.5s infinite}
 
       /* ---------- skeleton shell (happy variant — light) ---------- */
       [data-variant="happy"] .skeleton-shell{background:#FAFAF5;font-family:'Nunito',system-ui,sans-serif}
       [data-variant="happy"] .skeleton-header{background:#FFFFFF;border-bottom-color:#DDD9CF}
+      [data-variant="happy"] .skeleton-brand{color:#24301f}
+      [data-variant="happy"] .skeleton-brand-mark{border-color:#6B8F5E;color:#6B8F5E}
+      [data-variant="happy"] .skeleton-kicker{color:#64705d}
+      [data-variant="happy"] .skeleton-chip{color:#3f4f36;background:#F2EFE8;border-color:#DDD9CF;border-radius:8px}
+      [data-variant="happy"] .skeleton-chip.live{color:#2f612e;background:#eef6e9;border-color:#b9cda8}
       [data-variant="happy"] .skeleton-pill{background:#F2EFE8;border-radius:8px}
       [data-variant="happy"] .skeleton-dot{background:#6B8F5E}
       [data-variant="happy"] .skeleton-tabs{background:#FFFFFF;border-bottom-color:#DDD9CF}
       [data-variant="happy"] .skeleton-main{background:#FAFAF5}
       [data-variant="happy"] .skeleton-map{border-color:#DDD9CF;background:#D4E6EC;border-radius:14px}
       [data-variant="happy"] .skeleton-map-bar{background:#FFFFFF;border-bottom-color:#DDD9CF}
+      [data-variant="happy"] .skeleton-section-label{color:#24301f}
+      [data-variant="happy"] .skeleton-section-note{color:#64705d}
       [data-variant="happy"] .skeleton-map-body::after{background:radial-gradient(ellipse 60% 50% at 50% 50%,#B9CDA8 0%,#D4E6EC 100%);opacity:.3}
+      [data-variant="happy"] .skeleton-map-content{border-color:rgba(107,143,94,.24);background:rgba(255,255,255,.84);box-shadow:0 18px 60px rgba(61,80,50,.12);border-radius:12px}
+      [data-variant="happy"] .skeleton-map-eyebrow{color:#4f7f3f}
+      [data-variant="happy"] .skeleton-map-title{color:#24301f}
+      [data-variant="happy"] .skeleton-map-copy{color:#3f4f36}
       [data-variant="happy"] .skeleton-panel{background:#FFFFFF;border-color:#DDD9CF;border-radius:14px}
       [data-variant="happy"] .skeleton-panel-header{border-bottom-color:#EBE8E0}
+      [data-variant="happy"] .skeleton-panel-title{color:#24301f}
+      [data-variant="happy"] .skeleton-panel-kicker{color:#4f7f3f}
+      [data-variant="happy"] .skeleton-panel-copy{color:#3f4f36}
+      [data-variant="happy"] .skeleton-panel-metric{color:#24301f}
+      [data-variant="happy"] .skeleton-panel-metric span{color:#64705d}
       [data-variant="happy"] .skeleton-line{background:linear-gradient(90deg,rgba(107,143,94,.06) 25%,rgba(107,143,94,.12) 50%,rgba(107,143,94,.06) 75%);background-size:200% 100%;animation:skel-shimmer 1.5s infinite}
 
       /* ---------- skeleton shell (happy variant — dark) ---------- */
       [data-variant="happy"][data-theme="dark"] .skeleton-shell{background:#1A2332}
       [data-variant="happy"][data-theme="dark"] .skeleton-header{background:#222E3E;border-bottom-color:#344050}
+      [data-variant="happy"][data-theme="dark"] .skeleton-brand{color:#F7FAF3}
+      [data-variant="happy"][data-theme="dark"] .skeleton-kicker{color:#B9C4B0}
+      [data-variant="happy"][data-theme="dark"] .skeleton-chip{color:#E7EDE0;background:#2A3848;border-color:#344050}
+      [data-variant="happy"][data-theme="dark"] .skeleton-chip.live{color:#C9F2B8;background:#243A2D;border-color:#456449}
       [data-variant="happy"][data-theme="dark"] .skeleton-pill{background:#2A3848}
       [data-variant="happy"][data-theme="dark"] .skeleton-dot{background:#8BAF7A}
       [data-variant="happy"][data-theme="dark"] .skeleton-tabs{background:#222E3E;border-bottom-color:#344050}
       [data-variant="happy"][data-theme="dark"] .skeleton-main{background:#1A2332}
       [data-variant="happy"][data-theme="dark"] .skeleton-map{border-color:#344050;background:#16202E}
       [data-variant="happy"][data-theme="dark"] .skeleton-map-bar{background:#222E3E;border-bottom-color:#344050}
+      [data-variant="happy"][data-theme="dark"] .skeleton-section-label{color:#F7FAF3}
+      [data-variant="happy"][data-theme="dark"] .skeleton-section-note{color:#B9C4B0}
       [data-variant="happy"][data-theme="dark"] .skeleton-map-body::after{background:radial-gradient(ellipse 60% 50% at 50% 50%,#2D4035 0%,#16202E 100%);opacity:.3}
+      [data-variant="happy"][data-theme="dark"] .skeleton-map-content{border-color:rgba(139,175,122,.24);background:rgba(24,33,45,.82);box-shadow:0 18px 60px rgba(0,0,0,.24)}
+      [data-variant="happy"][data-theme="dark"] .skeleton-map-eyebrow{color:#C9F2B8}
+      [data-variant="happy"][data-theme="dark"] .skeleton-map-title{color:#F7FAF3}
+      [data-variant="happy"][data-theme="dark"] .skeleton-map-copy{color:#E7EDE0}
       [data-variant="happy"][data-theme="dark"] .skeleton-panel{background:#222E3E;border-color:#344050}
       [data-variant="happy"][data-theme="dark"] .skeleton-panel-header{border-bottom-color:#283545}
+      [data-variant="happy"][data-theme="dark"] .skeleton-panel-title{color:#F7FAF3}
+      [data-variant="happy"][data-theme="dark"] .skeleton-panel-kicker{color:#C9F2B8}
+      [data-variant="happy"][data-theme="dark"] .skeleton-panel-copy{color:#E7EDE0}
+      [data-variant="happy"][data-theme="dark"] .skeleton-panel-metric{color:#F7FAF3}
+      [data-variant="happy"][data-theme="dark"] .skeleton-panel-metric span{color:#B9C4B0}
       [data-variant="happy"][data-theme="dark"] .skeleton-line{background:linear-gradient(90deg,rgba(139,175,122,.05) 25%,rgba(139,175,122,.10) 50%,rgba(139,175,122,.05) 75%);background-size:200% 100%;animation:skel-shimmer 1.5s infinite}
+
+      @media (max-width:767px){
+        .skeleton-header{height:44px;padding:6px 10px;gap:8px}
+        .skeleton-header-left,.skeleton-header-right{gap:8px;min-width:0}
+        .skeleton-kicker,.skeleton-section-note{display:none}
+        .skeleton-chip{padding:0 6px;font-size:10px}
+        .skeleton-map{min-height:320px}
+        .skeleton-map-content{max-width:calc(100% - 24px);margin:12px;padding:16px}
+        .skeleton-map-title{font-size:22px;line-height:1.15}
+        .skeleton-map-copy{font-size:13px;line-height:1.42}
+        .skeleton-grid{grid-template-columns:1fr}
+        .skeleton-panel:first-child{grid-column:span 1;grid-row:span 1;min-height:var(--dashboard-panel-row-min)}
+        .skeleton-panel:nth-child(n+5){display:none}
+      }
     </style>
 
     <!-- Preconnect: critical first-paint origins.
@@ -294,6 +376,7 @@
     <!-- Variant/locale fonts are narrowed and loaded after the dashboard paints. -->
   </head>
   <body>
+    <h1 class="app-heading">World Monitor — Real-Time Global Intelligence Dashboard</h1>
     <!--
       Canonical English crawler content. The SPA is multilingual (21 locales) but
       this prerender block is the indexable surface — language-specific content
@@ -345,34 +428,47 @@
     <script>(function(){try{var s=document.getElementById('seo-prerender');if(s){s.setAttribute('aria-hidden','true');s.setAttribute('inert','')}}catch(e){}})()</script>
     <div id="app">
       <!-- Pre-render skeleton: visible instantly, replaced when JS calls renderLayout() -->
-      <div class="skeleton-shell" aria-hidden="true">
+      <div class="skeleton-shell" aria-busy="true" aria-label="World Monitor dashboard loading">
         <div class="skeleton-header">
           <div class="skeleton-header-left">
-            <div class="skeleton-pill" style="width:120px"></div>
-            <div class="skeleton-pill" style="width:72px"></div>
-            <div class="skeleton-dot"></div>
+            <div class="skeleton-brand"><span class="skeleton-brand-mark" aria-hidden="true">W</span><span>World Monitor</span></div>
+            <span class="skeleton-kicker">Dashboard shell loading</span>
+            <span class="skeleton-dot" aria-hidden="true"></span>
           </div>
           <div class="skeleton-header-right">
-            <div class="skeleton-pill" style="width:80px"></div>
-            <div class="skeleton-pill" style="width:28px;height:28px"></div>
-            <div class="skeleton-pill" style="width:64px"></div>
+            <span class="skeleton-chip">Global</span>
+            <span class="skeleton-chip live">Live</span>
+            <span class="skeleton-chip">Loading</span>
           </div>
         </div>
-        <div class="skeleton-tabs"></div>
+        <div class="skeleton-tabs" aria-hidden="true"></div>
         <div class="skeleton-main">
           <div class="skeleton-map">
             <div class="skeleton-map-bar">
-              <div class="skeleton-pill" style="width:48px;height:16px"></div>
+              <span class="skeleton-section-label">Dashboard</span>
+              <span class="skeleton-section-note">Preparing map and panels</span>
             </div>
-            <div class="skeleton-map-body"></div>
+            <div class="skeleton-map-body">
+              <div class="skeleton-map-content">
+                <p class="skeleton-map-eyebrow">Preparing dashboard</p>
+                <h2 class="skeleton-map-title skeleton-lcp-copy" data-shell-lcp>Dashboard is loading</h2>
+                <p class="skeleton-map-copy">Map layers, panels, alerts, and analysis will appear here as soon as the app finishes loading.</p>
+                <div class="skeleton-map-badges">
+                  <span class="skeleton-chip">Map</span>
+                  <span class="skeleton-chip">Panels</span>
+                  <span class="skeleton-chip">Alerts</span>
+                  <span class="skeleton-chip">Analysis</span>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="skeleton-grid">
-            <div class="skeleton-panel"><div class="skeleton-panel-header"><div class="skeleton-pill" style="width:80px;height:14px"></div></div><div class="skeleton-panel-body"><div class="skeleton-line w85"></div><div class="skeleton-line w75"></div><div class="skeleton-line w60"></div><div class="skeleton-line"></div><div class="skeleton-line w50"></div><div class="skeleton-line w75"></div></div></div>
-            <div class="skeleton-panel"><div class="skeleton-panel-header"><div class="skeleton-pill" style="width:64px;height:14px"></div></div><div class="skeleton-panel-body"><div class="skeleton-line w75"></div><div class="skeleton-line"></div><div class="skeleton-line w60"></div><div class="skeleton-line w85"></div><div class="skeleton-line w40"></div><div class="skeleton-line w75"></div></div></div>
-            <div class="skeleton-panel"><div class="skeleton-panel-header"><div class="skeleton-pill" style="width:96px;height:14px"></div></div><div class="skeleton-panel-body"><div class="skeleton-line"></div><div class="skeleton-line w60"></div><div class="skeleton-line w85"></div><div class="skeleton-line w50"></div><div class="skeleton-line w75"></div><div class="skeleton-line w40"></div></div></div>
-            <div class="skeleton-panel"><div class="skeleton-panel-header"><div class="skeleton-pill" style="width:72px;height:14px"></div></div><div class="skeleton-panel-body"><div class="skeleton-line w60"></div><div class="skeleton-line w85"></div><div class="skeleton-line w75"></div><div class="skeleton-line"></div><div class="skeleton-line w50"></div><div class="skeleton-line w60"></div></div></div>
-            <div class="skeleton-panel"><div class="skeleton-panel-header"><div class="skeleton-pill" style="width:88px;height:14px"></div></div><div class="skeleton-panel-body"><div class="skeleton-line w85"></div><div class="skeleton-line w50"></div><div class="skeleton-line w75"></div><div class="skeleton-line w60"></div><div class="skeleton-line"></div><div class="skeleton-line w40"></div></div></div>
-            <div class="skeleton-panel"><div class="skeleton-panel-header"><div class="skeleton-pill" style="width:56px;height:14px"></div></div><div class="skeleton-panel-body"><div class="skeleton-line w75"></div><div class="skeleton-line w60"></div><div class="skeleton-line"></div><div class="skeleton-line w85"></div><div class="skeleton-line w50"></div><div class="skeleton-line w75"></div></div></div>
+            <section class="skeleton-panel" aria-label="Primary view loading"><div class="skeleton-panel-header"><h3 class="skeleton-panel-title">Primary View</h3></div><div class="skeleton-panel-body"><p class="skeleton-panel-kicker">Preparing workspace</p><p class="skeleton-panel-copy">The live workspace is reserving space for the map, panels, and current signals.</p><div aria-hidden="true" class="skeleton-line w75"></div><div aria-hidden="true" class="skeleton-line w50"></div></div></section>
+            <section class="skeleton-panel" aria-label="Map layers loading"><div class="skeleton-panel-header"><h3 class="skeleton-panel-title">Map Layers</h3></div><div class="skeleton-panel-body"><p class="skeleton-panel-kicker">Preparing overlays</p><p class="skeleton-panel-copy">Geographic overlays and layer controls will hydrate into this reserved area.</p><div aria-hidden="true" class="skeleton-line w75"></div><div aria-hidden="true" class="skeleton-line w60"></div><div aria-hidden="true" class="skeleton-line w40"></div></div></section>
+            <section class="skeleton-panel" aria-label="Signal panels loading"><div class="skeleton-panel-header"><h3 class="skeleton-panel-title">Signal Panels</h3></div><div class="skeleton-panel-body"><p class="skeleton-panel-kicker">Preparing data</p><p class="skeleton-panel-copy">Panel data and summaries will populate after the dashboard bundle starts.</p><div aria-hidden="true" class="skeleton-line"></div><div aria-hidden="true" class="skeleton-line w60"></div><div aria-hidden="true" class="skeleton-line w85"></div></div></section>
+            <section class="skeleton-panel" aria-label="Context loading"><div class="skeleton-panel-header"><h3 class="skeleton-panel-title">Context</h3></div><div class="skeleton-panel-body"><p class="skeleton-panel-kicker">Preparing context</p><p class="skeleton-panel-copy">Supporting context cards keep their final dashboard slots stable.</p><div aria-hidden="true" class="skeleton-line w60"></div><div aria-hidden="true" class="skeleton-line w85"></div><div aria-hidden="true" class="skeleton-line w75"></div></div></section>
+            <section class="skeleton-panel" aria-label="Analysis loading"><div class="skeleton-panel-header"><h3 class="skeleton-panel-title">Analysis</h3></div><div class="skeleton-panel-body"><p class="skeleton-panel-kicker">Preparing analysis</p><p class="skeleton-panel-copy">Analysis modules will appear after data and settings are ready.</p><div aria-hidden="true" class="skeleton-line w85"></div><div aria-hidden="true" class="skeleton-line w50"></div><div aria-hidden="true" class="skeleton-line w75"></div></div></section>
+            <section class="skeleton-panel" aria-label="Updates loading"><div class="skeleton-panel-header"><h3 class="skeleton-panel-title">Updates</h3></div><div class="skeleton-panel-body"><p class="skeleton-panel-kicker">Preparing updates</p><p class="skeleton-panel-copy">Recent updates and refresh state will replace this placeholder.</p><div aria-hidden="true" class="skeleton-line w75"></div><div aria-hidden="true" class="skeleton-line w60"></div><div aria-hidden="true" class="skeleton-line"></div></div></section>
           </div>
         </div>
       </div>
@@ -421,6 +517,6 @@
       },true);
     })()
     </script>
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="/src/main.ts" nonce="wm-static-bootstrap"></script>
   </body>
 </html>

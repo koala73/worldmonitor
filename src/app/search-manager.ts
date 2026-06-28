@@ -1,10 +1,10 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import type { SearchResult } from '@/components/SearchModal';
-import type { NewsItem, MapLayers } from '@/types';
-import type { MapView } from '@/components';
+import type { NewsItem, MapLayers, MilitaryBase, MilitaryFlight } from '@/types';
+import type { MapView, TimeRange } from '@/components/MapContainer';
 import type { Command } from '@/config/commands';
-import { SearchModal } from '@/components';
-import { CIIPanel } from '@/components';
+import { SearchModal } from '@/components/SearchModal';
+import type { CIIPanel } from '@/components/CIIPanel';
 import { SITE_VARIANT, STORAGE_KEYS, ALL_PANELS, getEffectivePanelConfig, isPanelEntitled } from '@/config';
 import { getAllowedLayerKeys, isLayerExecutable } from '@/config/map-layer-definitions';
 import type { MapRenderer } from '@/config/map-layer-definitions';
@@ -14,7 +14,9 @@ import { calculateCII, TIER1_COUNTRIES } from '@/services/country-instability';
 import { getCachedCountryScores } from '@/services/cached-risk-scores';
 import { CURATED_COUNTRIES } from '@/config/countries';
 import { getCountryBbox } from '@/services/country-geometry';
-import { INTEL_HOTSPOTS, CONFLICT_ZONES, MILITARY_BASES, UNDERSEA_CABLES, NUCLEAR_FACILITIES } from '@/config/geo';
+import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
+import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
+import { UNDERSEA_CABLES, NUCLEAR_FACILITIES } from '@/config/geo-map';
 import { PIPELINES } from '@/config/pipelines';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
 import { GAMMA_IRRADIATORS } from '@/config/irradiators';
@@ -29,7 +31,6 @@ import { saveToStorage, setTheme } from '@/utils';
 import { CountryIntelManager } from '@/app/country-intel';
 import type { PositionSample } from '@/services/aviation';
 import { fetchAircraftPositions } from '@/services/aviation';
-import type { MilitaryFlight } from '@/types';
 import { isProUser } from '@/services/widget-store';
 import { getAuthState } from '@/services/auth-state';
 
@@ -42,7 +43,6 @@ export interface SearchManagerCallbacks {
 export class SearchManager implements AppModule {
   private ctx: AppContext;
   private callbacks: SearchManagerCallbacks;
-  private boundKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private highlightTimers = new WeakMap<Element, ReturnType<typeof setTimeout>>();
 
   constructor(ctx: AppContext, callbacks: SearchManagerCallbacks) {
@@ -54,12 +54,7 @@ export class SearchManager implements AppModule {
     this.setupSearchModal();
   }
 
-  destroy(): void {
-    if (this.boundKeydownHandler) {
-      document.removeEventListener('keydown', this.boundKeydownHandler);
-      this.boundKeydownHandler = null;
-    }
-  }
+  destroy(): void {}
 
   private setupSearchModal(): void {
     const searchOptions = SITE_VARIANT === 'tech'
@@ -137,12 +132,7 @@ export class SearchManager implements AppModule {
         data: c,
       })));
 
-      this.ctx.searchModal.registerSource('base', MILITARY_BASES.map(b => ({
-        id: b.id,
-        title: b.name,
-        subtitle: `${b.type} ${b.description || ''}`.trim(),
-        data: b,
-      })));
+      this.registerBaseSearchSource();
 
       this.ctx.searchModal.registerSource('pipeline', PIPELINES.map(p => ({
         id: p.id,
@@ -265,18 +255,21 @@ export class SearchManager implements AppModule {
       }).catch(() => {/* silent — show no results */});
     });
 
-    this.boundKeydownHandler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        if (this.ctx.searchModal?.isOpen()) {
-          this.ctx.searchModal.close();
-        } else {
-          this.updateSearchIndex();
-          this.ctx.searchModal?.open();
-        }
-      }
+  }
+
+  private registerBaseSearchSource(): void {
+    const register = (bases: MilitaryBase[]) => {
+      this.ctx.searchModal?.registerSource('base', bases.map(b => ({
+        id: b.id,
+        title: b.name,
+        subtitle: `${b.type} ${b.description || ''}`.trim(),
+        data: b,
+      })));
     };
-    document.addEventListener('keydown', this.boundKeydownHandler);
+
+    const cached = getCachedMilitaryBases();
+    if (cached.length > 0) register(cached);
+    void preloadMilitaryBases().then(register).catch(() => {});
   }
 
   private handleSearchResult(result: SearchResult): void {
@@ -321,7 +314,7 @@ export class SearchManager implements AppModule {
         break;
       }
       case 'base': {
-        const base = result.data as typeof MILITARY_BASES[0];
+        const base = result.data as MilitaryBase;
         this.ctx.map?.setView('global');
         setTimeout(() => { this.ctx.map?.triggerBaseClick(base.id); }, 300);
         break;
@@ -598,7 +591,7 @@ export class SearchManager implements AppModule {
         break;
 
       case 'time':
-        this.ctx.map?.setTimeRange(action as import('@/components').TimeRange);
+        this.ctx.map?.setTimeRange(action as TimeRange);
         break;
 
       case 'country': {
@@ -745,6 +738,15 @@ export class SearchManager implements AppModule {
         title: `${m.symbol} - ${m.name}`,
         subtitle: `$${m.price?.toFixed(2) || 'N/A'}`,
         data: m,
+      })));
+    }
+
+    if (SITE_VARIANT === 'tech') {
+      this.ctx.searchModal.registerSource('techevent', this.ctx.latestTechEvents.map((e) => ({
+        id: e.id,
+        title: e.title,
+        subtitle: `${e.location} • ${new Date(e.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
+        data: e,
       })));
     }
   }

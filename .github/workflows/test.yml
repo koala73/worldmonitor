@@ -105,6 +105,8 @@ jobs:
           node-version: '22'
           cache: 'npm'
       - run: npm ci
+      - name: Build dashboard artifacts for built-output tests
+        run: VITE_VARIANT=full ./node_modules/.bin/vite build
       - run: npm run test:data
       - name: Edge function bundle check
         run: |

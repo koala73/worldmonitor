@@ -18,6 +18,7 @@ export type CheckoutErrorCode =
   | 'unauthorized'
   | 'session_expired'
   | 'duplicate_subscription'
+  | 'payment_in_progress'
   | 'invalid_product'
   | 'service_unavailable'
   | 'unknown';
@@ -36,6 +37,7 @@ const USER_COPY: Record<CheckoutErrorCode, string> = {
   unauthorized: 'Please sign in to continue your purchase.',
   session_expired: 'Your session expired. Sign in again to continue.',
   duplicate_subscription: "You already have an active subscription. Let's open the billing portal instead.",
+  payment_in_progress: 'You have a payment in progress. Finish it, or start a new checkout.',
   invalid_product: "That product isn't available. Please refresh and try again.",
   service_unavailable: 'Checkout is temporarily unavailable. Please try again in a moment.',
   unknown: "Something went wrong. Please try again or contact support if it keeps happening.",
@@ -45,18 +47,30 @@ const RETRYABLE: Record<CheckoutErrorCode, boolean> = {
   unauthorized: true,        // after sign-in
   session_expired: true,     // after sign-in
   duplicate_subscription: false,
+  // The recovery is a dialog confirmation ("start a new checkout"), not a
+  // network retry — so the generic retry affordance stays off (#4438).
+  payment_in_progress: false,
   invalid_product: false,
   service_unavailable: true,
   unknown: true,
 };
 
 const ACTIVE_SUBSCRIPTION_EXISTS = 'ACTIVE_SUBSCRIPTION_EXISTS';
+const PAYMENT_IN_PROGRESS = 'PAYMENT_IN_PROGRESS';
 
 /** Body shape we've observed from `/api/create-checkout` failures. */
 export interface CheckoutErrorBody {
   error?: string;
   message?: string;
   code?: string;
+  /**
+   * Context object on a 409 block. The two block shapes share the route and are
+   * discriminated by `error`: `ACTIVE_SUBSCRIPTION_EXISTS` carries `subscription`,
+   * `PAYMENT_IN_PROGRESS` carries `pendingPayment` (#4438). Both are partial —
+   * the body is parsed defensively (`parseCheckoutErrorBody`) and may be absent.
+   */
+  subscription?: { planKey?: string };
+  pendingPayment?: { planKey?: string };
 }
 
 function pickUserMessage(code: CheckoutErrorCode): string {
@@ -73,6 +87,7 @@ function extractServerMessage(body: CheckoutErrorBody | undefined): string | und
 function statusToCode(status: number, body: CheckoutErrorBody | undefined): CheckoutErrorCode {
   if (status === 401) return 'unauthorized';
   if (status === 409 && body?.error === ACTIVE_SUBSCRIPTION_EXISTS) return 'duplicate_subscription';
+  if (status === 409 && body?.error === PAYMENT_IN_PROGRESS) return 'payment_in_progress';
   // 403 from /api/create-checkout is infrastructure (Vercel firewall / WAF / edge
   // bot-protection) — neither the edge gateway nor the Convex relay handler
   // ever emits 403 on this route. Treat as retryable service unavailability so

@@ -9,8 +9,16 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { cachedFetchJson } from '../../../_shared/redis';
 import { getRelayBaseUrl, getRelayHeaders } from './_shared';
+import { aviationStackBudgetMonth, reserveAviationStackCalls } from './_avstack-budget';
 
 const CACHE_TTL = 300;
+// Always fetch a full page upstream and cache it once per airport+direction,
+// then slice to the caller's requested limit in memory. Threading req.limit
+// into the cache key (and the upstream query) meant limit 30 vs 31 vs 50 were
+// separate PAID AviationStack calls for identical data — a cache-key explosion
+// that multiplied spend. The page covers any limit ≤ 100.
+const UPSTREAM_PAGE = 100;
+const IATA_RE = /^[A-Z]{3}$/;
 
 interface AVSFlight {
     flight?: { iata?: string; icao?: string; codeshared?: { flight_iata?: string; airline_iata?: string }[] };
@@ -92,6 +100,8 @@ function normalizeFlights(flights: AVSFlight[], now: number): FlightInstance[] {
 //   'aviationstack' — live data from AviationStack via relay
 //   'none'          — relay not configured; flights = []
 //   'error'         — relay fetch failed; flights = []
+//   'invalid'       — malformed airport code; rejected before any paid call
+//   'budget'        — monthly AviationStack budget reached; serving empty
 export async function listAirportFlights(
     _ctx: ServerContext,
     req: ListAirportFlightsRequest,
@@ -99,8 +109,17 @@ export async function listAirportFlights(
     const airport = req.airport?.toUpperCase() || 'IST';
     const direction = req.direction || 'FLIGHT_DIRECTION_BOTH';
     const limit = Math.min(req.limit || 30, 100);
-    const cacheKey = `aviation:flights:${airport}:${direction}:${limit}:v1`;
     const now = Date.now();
+
+    // Reject malformed airport codes before they reach the paid API — bounds
+    // cache-key cardinality and blocks probing with arbitrary strings.
+    if (!IATA_RE.test(airport)) {
+        return { flights: [], totalAvailable: 0, source: 'invalid', updatedAt: now };
+    }
+
+    // Cache key is limit-independent (see UPSTREAM_PAGE) — one upstream call
+    // serves every limit for this airport+direction.
+    const cacheKey = `aviation:flights:${airport}:${direction}:v2:${aviationStackBudgetMonth()}`;
 
     try {
         const result = await cachedFetchJson<{ flights: FlightInstance[]; source: string }>(
@@ -110,10 +129,16 @@ export async function listAirportFlights(
                     return { flights: [], source: 'none' };
                 }
 
+                // Monthly quota guard — serve empty (cached briefly) instead of
+                // calling upstream once the request-time budget is exhausted.
+                if (!(await reserveAviationStackCalls(1, 'request'))) {
+                    return { flights: [], source: 'budget' };
+                }
+
                 const paramKey = direction === 'FLIGHT_DIRECTION_ARRIVAL' ? 'arr_iata' : 'dep_iata';
                 const params = new URLSearchParams({
                     [paramKey]: airport,
-                    limit: String(limit),
+                    limit: String(UPSTREAM_PAGE),
                 });
                 const url = `${relayBase}/aviationstack?${params}`;
 

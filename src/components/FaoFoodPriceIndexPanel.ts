@@ -2,11 +2,11 @@ import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import type { GetFaoFoodPriceIndexResponse, FaoFoodPricePoint } from '@/generated/client/worldmonitor/economic/v1/service_client';
 
-const client = new EconomicServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
+const getEconomicClient = createLazyClient(() => new EconomicServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
 
 const SVG_W = 480;
 const SVG_H = 140;
@@ -106,13 +106,13 @@ export class FaoFoodPriceIndexPanel extends Panel {
       if (hydrated?.points?.length) {
         if (!this.element?.isConnected) return;
         this.renderChart(hydrated);
-        void client.getFaoFoodPriceIndex({}).then(data => {
+        void getEconomicClient().getFaoFoodPriceIndex({}).then(data => {
           if (!this.element?.isConnected || !data.points?.length) return;
           this.renderChart(data);
         }).catch(() => {});
         return;
       }
-      const data = await client.getFaoFoodPriceIndex({});
+      const data = await getEconomicClient().getFaoFoodPriceIndex({});
       if (!this.element?.isConnected) return;
       this.renderChart(data);
     } catch (err) {

@@ -497,6 +497,194 @@ test.describe('desktop runtime routing guardrails', () => {
     expect(Math.abs(result.settled.height - result.shellState.height)).toBeLessThanOrEqual(1);
   });
 
+  test('MapContainer waits for desktop map demand before heavy WebGL resources', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto('/tests/runtime-harness.html');
+
+    const result = await page.evaluate(async () => {
+      const { DEFAULT_MAP_LAYERS } = await import('/src/config/index.ts');
+      const { initI18n } = await import('/src/services/i18n.ts');
+      await initI18n();
+
+      const isHeavyMapResource = (name: string): boolean =>
+        /DeckGLMap|GlobeMap|maplibre|deck-stack|globe\.gl|pmtiles|\.pmtiles|@deck\.gl|@luma\.gl|@loaders\.gl/i.test(name);
+      const heavyResourceNames = (): string[] =>
+        performance.getEntriesByType('resource')
+          .map((entry) => entry.name)
+          .filter(isHeavyMapResource);
+      const nextFrame = (): Promise<void> => new Promise((resolve) => requestAnimationFrame(() => resolve()));
+      const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+      performance.clearResourceTimings();
+      const { MapContainer } = await import('/src/components/MapContainer.ts');
+      const heavyAfterMapContainerImport = heavyResourceNames();
+
+      const mapHost = document.createElement('div');
+      mapHost.className = 'map-container';
+      mapHost.style.width = '960px';
+      mapHost.style.height = '360px';
+      mapHost.style.position = 'relative';
+      document.body.appendChild(mapHost);
+
+      const originalGetContext = HTMLCanvasElement.prototype.getContext;
+      const fakeDebugInfo = { UNMASKED_RENDERER_WEBGL: 0x9246 };
+      const fakeWebGL2 = {
+        getExtension(name: string) {
+          return name === 'WEBGL_debug_renderer_info' ? fakeDebugInfo : null;
+        },
+        getParameter() {
+          return 'ANGLE (Apple, ANGLE Metal Renderer: Apple M4, Unspecified Version)';
+        },
+      };
+      let map: InstanceType<typeof MapContainer> | null = null;
+
+      try {
+        HTMLCanvasElement.prototype.getContext = (function (
+          this: HTMLCanvasElement,
+          contextId: string,
+          options?: unknown,
+        ) {
+          if (contextId === 'webgl2') return fakeWebGL2 as unknown as RenderingContext;
+          return originalGetContext.call(this, contextId, options as never);
+        }) as typeof HTMLCanvasElement.prototype.getContext;
+
+        map = new MapContainer(mapHost, {
+          zoom: 1,
+          pan: { x: 0, y: 0 },
+          view: 'global',
+          layers: { ...DEFAULT_MAP_LAYERS },
+          timeRange: '7d',
+        });
+
+        await nextFrame();
+        await nextFrame();
+        const shellRect = mapHost.getBoundingClientRect();
+        await wait(700);
+
+        return {
+          heavyAfterMapContainerImport,
+          heavyBeforeDemand: heavyResourceNames(),
+          shellState: {
+            hasShellClass: mapHost.classList.contains('map-renderer-shell'),
+            ariaBusy: mapHost.getAttribute('aria-busy'),
+            pendingRenderer: mapHost.dataset.mapRendererPending ?? null,
+            deckMode: mapHost.classList.contains('deckgl-mode'),
+            svgMode: mapHost.classList.contains('svg-mode'),
+            width: shellRect.width,
+            height: shellRect.height,
+          },
+        };
+      } finally {
+        HTMLCanvasElement.prototype.getContext = originalGetContext;
+        map?.destroy();
+        mapHost.remove();
+      }
+    });
+
+    expect(result.heavyAfterMapContainerImport).toEqual([]);
+    expect(result.heavyBeforeDemand).toEqual([]);
+    expect(result.shellState.hasShellClass).toBe(true);
+    expect(result.shellState.ariaBusy).toBe('true');
+    expect(result.shellState.pendingRenderer).toBe('deck');
+    expect(result.shellState.deckMode).toBe(false);
+    expect(result.shellState.svgMode).toBe(false);
+    expect(result.shellState.width).toBeGreaterThan(0);
+    expect(result.shellState.height).toBeGreaterThan(0);
+  });
+
+  test('MapContainer starts desktop WebGL resources on first map interaction', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto('/tests/runtime-harness.html');
+
+    const result = await page.evaluate(async () => {
+      const { DEFAULT_MAP_LAYERS } = await import('/src/config/index.ts');
+      const { initI18n } = await import('/src/services/i18n.ts');
+      await initI18n();
+
+      const isHeavyMapResource = (name: string): boolean =>
+        /DeckGLMap|GlobeMap|maplibre|deck-stack|globe\.gl|pmtiles|\.pmtiles|@deck\.gl|@luma\.gl|@loaders\.gl/i.test(name);
+      const heavyResourceNames = (): string[] =>
+        performance.getEntriesByType('resource')
+          .map((entry) => entry.name)
+          .filter(isHeavyMapResource);
+      const nextFrame = (): Promise<void> => new Promise((resolve) => requestAnimationFrame(() => resolve()));
+      const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+      const waitForHeavyResource = async (): Promise<string[]> => {
+        const deadline = performance.now() + 5_000;
+        while (performance.now() < deadline) {
+          const names = heavyResourceNames();
+          if (names.length > 0) return names;
+          await wait(50);
+        }
+        return heavyResourceNames();
+      };
+
+      performance.clearResourceTimings();
+      const { MapContainer } = await import('/src/components/MapContainer.ts');
+
+      const mapHost = document.createElement('div');
+      mapHost.className = 'map-container';
+      mapHost.style.width = '960px';
+      mapHost.style.height = '360px';
+      mapHost.style.position = 'relative';
+      document.body.appendChild(mapHost);
+
+      const originalGetContext = HTMLCanvasElement.prototype.getContext;
+      const fakeDebugInfo = { UNMASKED_RENDERER_WEBGL: 0x9246 };
+      const fakeWebGL2 = {
+        getExtension(name: string) {
+          return name === 'WEBGL_debug_renderer_info' ? fakeDebugInfo : null;
+        },
+        getParameter() {
+          return 'ANGLE (Apple, ANGLE Metal Renderer: Apple M4, Unspecified Version)';
+        },
+      };
+      let map: InstanceType<typeof MapContainer> | null = null;
+
+      try {
+        HTMLCanvasElement.prototype.getContext = (function (
+          this: HTMLCanvasElement,
+          contextId: string,
+          options?: unknown,
+        ) {
+          if (contextId === 'webgl2') return fakeWebGL2 as unknown as RenderingContext;
+          return originalGetContext.call(this, contextId, options as never);
+        }) as typeof HTMLCanvasElement.prototype.getContext;
+
+        map = new MapContainer(mapHost, {
+          zoom: 1,
+          pan: { x: 0, y: 0 },
+          view: 'global',
+          layers: { ...DEFAULT_MAP_LAYERS },
+          timeRange: '7d',
+        });
+
+        await nextFrame();
+        await nextFrame();
+        await wait(100);
+        const heavyBeforeInteraction = heavyResourceNames();
+        mapHost.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+        const heavyAfterInteraction = await waitForHeavyResource();
+
+        return {
+          heavyBeforeInteraction,
+          heavyAfterInteraction,
+          pendingRenderer: mapHost.dataset.mapRendererPending ?? null,
+        };
+      } finally {
+        HTMLCanvasElement.prototype.getContext = originalGetContext;
+        map?.destroy();
+        mapHost.remove();
+      }
+    });
+
+    expect(result.heavyBeforeInteraction).toEqual([]);
+    expect(result.pendingRenderer).toBe('deck');
+    expect(result.heavyAfterInteraction.some((name) => (
+      /DeckGLMap|maplibre|@deck\.gl|@luma\.gl|@loaders\.gl/i.test(name)
+    ))).toBe(true);
+  });
+
   test('MapContainer replays escalation getter setup after deferred renderer mount', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/tests/runtime-harness.html');
@@ -986,6 +1174,10 @@ test.describe('desktop runtime routing guardrails', () => {
           layers: { ...DEFAULT_MAP_LAYERS },
           timeRange: '7d',
         });
+        await new Promise<void>((resolve) => requestAnimationFrame(() => {
+          requestAnimationFrame(() => window.setTimeout(resolve, 0));
+        }));
+        mapHost.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
         await waitForRenderer();
 
         return {

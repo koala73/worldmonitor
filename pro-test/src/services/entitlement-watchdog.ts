@@ -63,6 +63,7 @@ export function createEntitlementWatchdog(
   let intervalId: number | null = null;
   let startedAt = 0;
   let fired = false;
+  let generation = 0;
   const fetchTimeoutMs = config.fetchTimeoutMs ?? 8_000;
 
   const stop = (): void => {
@@ -70,6 +71,7 @@ export function createEntitlementWatchdog(
       deps.clearInterval(intervalId);
       intervalId = null;
     }
+    generation += 1;
   };
 
   const tick = async (): Promise<void> => {
@@ -77,6 +79,7 @@ export function createEntitlementWatchdog(
     // scheduled callback. setInterval can fire one more time after
     // clearInterval in some runtimes.
     if (intervalId === null || fired) return;
+    const tickGeneration = generation;
     if (deps.now() - startedAt > config.timeoutMs) {
       // Hard cap. Do NOT fire onPro on timeout — if the webhook hasn't
       // landed after the cap, something else is broken and promoting
@@ -86,13 +89,16 @@ export function createEntitlementWatchdog(
     }
     try {
       const token = await deps.getToken();
+      if (tickGeneration !== generation || intervalId === null || fired) return;
       if (!token) return;
       const resp = await deps.fetch(config.endpoint, {
         headers: { Authorization: `Bearer ${token}` },
         signal: AbortSignal.timeout(fetchTimeoutMs),
       });
+      if (tickGeneration !== generation || intervalId === null || fired) return;
       if (!resp.ok) return;
       const body = (await resp.json()) as { isPro?: boolean };
+      if (tickGeneration !== generation || intervalId === null || fired) return;
       if (body.isPro && !fired) {
         fired = true;
         stop();
@@ -109,6 +115,7 @@ export function createEntitlementWatchdog(
     start: (): void => {
       if (intervalId !== null || fired) return;
       startedAt = deps.now();
+      generation += 1;
       // Cast: the DOM lib types setInterval's return as number, the
       // Node lib types it as NodeJS.Timeout. Injected deps use number
       // because that matches window.setInterval and our fake timer.
