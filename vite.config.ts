@@ -1185,6 +1185,14 @@ export default defineConfig(({ mode }) => {
             if (id.endsWith('/src/config/military-bases.ts') || id.endsWith('/src/config/bases-expanded.ts')) {
               return 'military-bases-data';
             }
+            // Correlation engine (engine + 4 adapters) is dynamic-imported at its
+            // post-loadAllData run site in App.ts (#4486), so it already forms a lazy
+            // chunk; this rule only gives that chunk a STABLE name — the dir-index
+            // would otherwise emit an ambiguous `index-*.js` the eager-chunk guard
+            // can't pin. Naming only; the deferral is the call-site import().
+            if (id.includes('/src/services/correlation-engine/')) {
+              return 'correlation-engine';
+            }
             // Co-locate the deck.gl renderer with the deck vendor chunk so
             // onlyExplicitManualChunks cannot split deck's transitive deps
             // across the DeckGLMap boundary (which formed a circular chunk →

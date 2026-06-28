@@ -28,9 +28,20 @@ type StoredSseEvent = {
 };
 
 const SSE_CONTENT_TYPE = 'text/event-stream; charset=utf-8';
+// no-store forbids storage outright; no-cache is vacuous alongside it (RFC 9111
+// §5.2) so it is omitted. no-transform is load-bearing for SSE framing. This also
+// matches the sibling no-store work in api/mcp/rpc.ts (#4502).
+const MCP_CACHE_CONTROL = 'no-store, no-transform';
 const MAX_SSE_SESSIONS = 500;
 const MAX_SSE_STREAMS_PER_SESSION = 25;
 const mcpSseStreamsBySession = new Map<string, Map<string, StoredSseEvent[]>>();
+
+function getMcpCorsHeaders(methods = 'POST, GET, OPTIONS'): Record<string, string> {
+  return {
+    ...getPublicCorsHeaders(methods),
+    'Cache-Control': MCP_CACHE_CONTROL,
+  };
+}
 
 function clientAcceptsSse(req: Request): boolean {
   const accept = req.headers.get('accept') ?? '';
@@ -125,7 +136,7 @@ function sseHeadersFrom(headers: Headers): Headers {
   // no-store forbids storing the (sensitive Pro tool-result) payload, matching the
   // no-store the JSON branches carry; no-transform stays load-bearing for SSE (it
   // blocks proxy gzip/buffering that would corrupt the event-stream framing).
-  out.set('Cache-Control', 'no-store, no-transform');
+  out.set('Cache-Control', MCP_CACHE_CONTROL);
   return out;
 }
 
@@ -190,9 +201,10 @@ function handleSseReplay(req: Request, corsHeaders: Record<string, string>): Res
 
   return new Response(createSseStream(events), {
     status: 200,
-    // no-store, no-transform: the replay carries previously-streamed tool-result
-    // data; no-store forbids caching it, no-transform preserves SSE framing.
-    headers: { 'Content-Type': SSE_CONTENT_TYPE, 'Cache-Control': 'no-store, no-transform', ...corsHeaders },
+    // corsHeaders is getMcpCorsHeaders() (MCP_CACHE_CONTROL = no-store, no-transform):
+    // the replay carries previously-streamed tool-result data, so no-store forbids
+    // caching it and no-transform preserves SSE framing.
+    headers: { 'Content-Type': SSE_CONTENT_TYPE, ...corsHeaders },
   });
 }
 
@@ -205,7 +217,7 @@ export async function mcpHandler(
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
 ): Promise<Response> {
   // MCP is a public API endpoint secured by API key — allow all origins (claude.ai, Claude Desktop, custom agents)
-  const corsHeaders = getPublicCorsHeaders('POST, GET, OPTIONS');
+  const corsHeaders = getMcpCorsHeaders();
 
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: withMcpNoStore(corsHeaders) });
