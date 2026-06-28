@@ -957,7 +957,11 @@ export class App {
       },
       openCountryBrief: (code) => {
         const name = CountryIntelManager.resolveCountryName(code);
-        void this.countryIntel.openCountryBriefByCode(code, name);
+        void this.countryIntel.openCountryBriefByCode(code, name).catch((err) => {
+          console.error('[CountryBrief] Failed to open country brief:', err);
+          this.state.map?.setRenderPaused(false);
+          showToast('Country brief failed to open. Please try again.');
+        });
       },
       loadAllData: () => this.dataLoader.loadAllData(),
       updateMonitorResults: () => this.dataLoader.updateMonitorResults(),
@@ -1007,7 +1011,13 @@ export class App {
         }
 
         const manager = new SearchManager(this.state, {
-          openCountryBriefByCode: (code, country) => this.countryIntel.openCountryBriefByCode(code, country),
+          openCountryBriefByCode: (code, country) => {
+            void this.countryIntel.openCountryBriefByCode(code, country).catch((err) => {
+              console.error('[CountryBrief] Failed to open country brief:', err);
+              this.state.map?.setRenderPaused(false);
+              showToast('Country brief failed to open. Please try again.');
+            });
+          },
           enablePanel: (panelId) => this.eventHandlers.enablePanelById(panelId),
         });
         manager.init();
@@ -1801,8 +1811,12 @@ export class App {
         trackDeeplinkOpened('country', countryCode);
         const countryName = getCountryNameByCode(countryCode.toUpperCase()) || countryCode;
         setTimeout(() => {
-          this.countryIntel.openCountryBriefByCode(countryCode.toUpperCase(), countryName, {
+          void this.countryIntel.openCountryBriefByCode(countryCode.toUpperCase(), countryName, {
             maximize: true,
+          }).catch((err) => {
+            console.error('[CountryBrief] Failed to open country brief:', err);
+            this.state.map?.setRenderPaused(false);
+            showToast('Country brief failed to open. Please try again.');
           });
           this.eventHandlers.syncUrlState();
         }, DEEP_LINK_INITIAL_DELAY_MS);
@@ -1819,8 +1833,12 @@ export class App {
       trackDeeplinkOpened('country', deepLinkCountry);
       const cName = CountryIntelManager.resolveCountryName(deepLinkCountry);
       setTimeout(() => {
-        this.countryIntel.openCountryBriefByCode(deepLinkCountry, cName, {
+        void this.countryIntel.openCountryBriefByCode(deepLinkCountry, cName, {
           maximize: deepLinkExpanded,
+        }).catch((err) => {
+          console.error('[CountryBrief] Failed to open country brief:', err);
+          this.state.map?.setRenderPaused(false);
+          showToast('Country brief failed to open. Please try again.');
         });
         this.eventHandlers.syncUrlState();
       }, DEEP_LINK_INITIAL_DELAY_MS);

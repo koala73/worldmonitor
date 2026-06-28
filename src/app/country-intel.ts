@@ -1,4 +1,5 @@
 import type { AppContext, AppModule, CountryBriefSignals } from '@/app/app-context';
+import { getSignalAggregator } from '@/app/lazy-services';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
 import { IS_EMBEDDED_PREVIEW } from '@/utils/embedded-preview';
@@ -80,19 +81,6 @@ type CountryIntelBriefResult = {
   cached?: boolean;
 };
 
-type SignalAggregator = typeof import('@/services/signal-aggregator').signalAggregator;
-let signalAggregatorPromise: Promise<SignalAggregator> | null = null;
-
-function getSignalAggregator(): Promise<SignalAggregator> {
-  signalAggregatorPromise ??= import('@/services/signal-aggregator')
-    .then(module => module.signalAggregator)
-    .catch((err) => {
-      signalAggregatorPromise = null;
-      throw err;
-    });
-  return signalAggregatorPromise;
-}
-
 export class CountryIntelManager implements AppModule {
   private ctx: AppContext;
   private briefRequestToken = 0;
@@ -121,7 +109,9 @@ export class CountryIntelManager implements AppModule {
       const name = page.getName() ?? code;
       if (!code || !name) return;
       if (this._fwDebounce) clearTimeout(this._fwDebounce);
-      this._fwDebounce = setTimeout(() => void this.openCountryBriefByCode(code, name), 400);
+      this._fwDebounce = setTimeout(() => {
+        void this.openCountryBriefByCode(code, name).catch((err) => this.handleCountryBriefOpenError(err));
+      }, 400);
     });
 
     this.lastHadPremium = hasPremiumAccess(getAuthState());
@@ -151,23 +141,43 @@ export class CountryIntelManager implements AppModule {
     this.authUnsubscribe = null;
   }
 
+  private handleCountryBriefOpenError(err: unknown): void {
+    console.error('[CountryBrief] Failed to open country brief:', err);
+    this.ctx.map?.setRenderPaused(false);
+    this.showToast('Country brief failed to open. Please try again.');
+  }
+
   private async setupCountryIntel(): Promise<void> {
     if (!this.ctx.map) return;
     this.ctx.map.onCountryClicked((countryClick) => {
       if (countryClick.code && countryClick.name) {
         trackCountrySelected(countryClick.code, countryClick.name, 'map');
-        void this.openCountryBriefByCode(countryClick.code, countryClick.name);
+        void this.openCountryBriefByCode(countryClick.code, countryClick.name)
+          .catch((err) => this.handleCountryBriefOpenError(err));
       } else {
-        void this.openCountryBrief(countryClick.lat, countryClick.lon);
+        void this.openCountryBrief(countryClick.lat, countryClick.lon)
+          .catch((err) => this.handleCountryBriefOpenError(err));
       }
     });
 
     this.ctx.map.onMapContextMenu((payload) => {
       const items = [];
       if (payload.countryCode && payload.countryName) {
-        items.push({ label: t('contextMenu.openCountryBrief'), action: () => void this.openCountryBriefByCode(payload.countryCode!, payload.countryName!) });
+        items.push({
+          label: t('contextMenu.openCountryBrief'),
+          action: () => {
+            void this.openCountryBriefByCode(payload.countryCode!, payload.countryName!)
+              .catch((err) => this.handleCountryBriefOpenError(err));
+          },
+        });
       } else {
-        items.push({ label: t('contextMenu.openCountryBrief'), action: () => void this.openCountryBrief(payload.lat, payload.lon) });
+        items.push({
+          label: t('contextMenu.openCountryBrief'),
+          action: () => {
+            void this.openCountryBrief(payload.lat, payload.lon)
+              .catch((err) => this.handleCountryBriefOpenError(err));
+          },
+        });
       }
       items.push({ label: t('contextMenu.copyCoordinates'), action: () => navigator.clipboard.writeText(`${payload.lat.toFixed(5)}, ${payload.lon.toFixed(5)}`).catch(() => {}) });
       showMapContextMenu(payload.screenX, payload.screenY, items);
@@ -178,10 +188,13 @@ export class CountryIntelManager implements AppModule {
     if (this.ctx.countryBriefPage) return true;
     if (!this.ctx.map || this.ctx.isDestroyed) return false;
     if (this.countryBriefPageLoading) return this.countryBriefPageLoading;
-    this.countryBriefPageLoading = this.createCountryBriefPage();
-    const ready = await this.countryBriefPageLoading;
-    this.countryBriefPageLoading = null;
-    return ready;
+    const loading = this.createCountryBriefPage();
+    this.countryBriefPageLoading = loading;
+    try {
+      return await loading;
+    } finally {
+      if (this.countryBriefPageLoading === loading) this.countryBriefPageLoading = null;
+    }
   }
 
   private async createCountryBriefPage(): Promise<boolean> {
@@ -258,427 +271,465 @@ export class CountryIntelManager implements AppModule {
   }
 
   async openCountryBriefByCode(code: string, country: string, opts?: { maximize?: boolean }): Promise<void> {
-    if (!(await this.ensureCountryBriefPage())) return;
-    const page = this.ctx.countryBriefPage;
-    if (!page) return;
-    this.ctx.map?.setRenderPaused(true);
-    trackCountryBriefOpened(code);
-
-    const canonicalName = TIER1_COUNTRIES[code] || CountryIntelManager.resolveCountryName(code);
-    if (canonicalName !== code) country = canonicalName;
-
-    const scoreCode = normalizeCiiCountryCode(code);
-    const score = getCachedCountryScore(scoreCode) ?? calculateCII().find((s) => s.code === scoreCode) ?? null;
-
-    const signals = await this.getCountrySignals(code, country);
-
-    page.show(country, code, score, signals);
-    this.ctx.map?.highlightCountry(code);
-    this.ctx.map?.fitCountry(code);
-
-    if (opts?.maximize) {
-      requestAnimationFrame(() => {
-        const panel = this.ctx.countryBriefPage;
-        if (panel?.isVisible() && panel.getCode() === code) {
-          panel.maximize?.();
-        }
-      });
-    }
-    page.updateSignalDetails?.(await this.buildSignalDetails(code));
-    page.updateMilitaryActivity?.(this.buildMilitarySummary(code, country));
-    page.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, null));
-
-    const marketClient = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args) });
-    const stockPromise = marketClient.getCountryStockIndex({ countryCode: code })
-      .then((resp) => ({
-        available: resp.available,
-        code: resp.code,
-        symbol: resp.symbol,
-        indexName: resp.indexName,
-        price: String(resp.price),
-        weekChangePercent: String(resp.weekChangePercent),
-        currency: resp.currency,
-      }))
-      .catch(() => ({ available: false as const, code: '', symbol: '', indexName: '', price: '0', weekChangePercent: '0', currency: '' }));
-
-    let latestStock: CountryStockSnapshot | null = null;
-    let latestImf: ImfCountryBundle | null = null;
-
-    stockPromise.then((stock) => {
-      latestStock = stock;
-      if (this.ctx.countryBriefPage?.getCode() !== code) return;
-      this.ctx.countryBriefPage.updateStock(stock);
-      this.ctx.countryBriefPage.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, stock, latestImf));
-    });
-
-    // IMF WEO bundle (issue #3027): macro / growth / labor / external from
-    // the SDMX-3.0 seeded keys. Tolerant: missing data leaves card unchanged.
-    getImfCountryBundle(code).then((bundle) => {
-      latestImf = bundle;
-      if (this.ctx.countryBriefPage?.getCode() !== code) return;
-      this.ctx.countryBriefPage.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, latestStock, bundle));
-    }).catch(() => { /* non-fatal */ });
-
-    fetchCountryMarkets(country)
-      .then((markets) => {
-        if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateMarkets(markets);
-      })
-      .catch(() => {
-        if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateMarkets([]);
-      });
-
-    const searchTerms = CountryIntelManager.getCountrySearchTerms(country, code);
-    const otherCountryTerms = CountryIntelManager.getOtherCountryTerms(code);
-    const matchingNews = this.ctx.allNews.filter((n) => {
-      const t = n.title.toLowerCase();
-      return CountryIntelManager.firstMentionPosition(t, searchTerms) !== Infinity;
-    });
-    const filteredNews = matchingNews.filter((n) => {
-      const t = n.title.toLowerCase();
-      const ourPos = CountryIntelManager.firstMentionPosition(t, searchTerms);
-      const otherPos = CountryIntelManager.firstMentionPosition(t, otherCountryTerms);
-      return ourPos !== Infinity && (otherPos === Infinity || ourPos <= otherPos);
-    }).sort((a, b) => {
-      const severityDelta = this.newsSeverityRank(b) - this.newsSeverityRank(a);
-      if (severityDelta !== 0) return severityDelta;
-      return effectivePubDateMs(b) - effectivePubDateMs(a);
-    });
-    page.updateNews(filteredNews.slice(0, 10));
-
-    page.updateInfrastructure(code);
-    void Promise.all([
-      preloadMilitaryBases().catch(() => []),
-      preloadInfrastructureTables().catch(() => {}),
-    ])
-      .then(() => {
-        if (this.ctx.countryBriefPage?.getCode() === code) {
-          this.ctx.countryBriefPage.updateInfrastructure(code);
-          this.ctx.countryBriefPage.updateMilitaryActivity?.(this.buildMilitarySummary(code, country));
-        }
-      })
-      .catch(() => {});
-
-    const intelClient = new IntelligenceServiceClient(getRpcBaseUrl(), {
-      fetch: (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args),
-    });
-    intelClient.getCountryFacts({ countryCode: code })
-      .then((facts) => {
-        if (this.ctx.countryBriefPage?.getCode() !== code) return;
-        this.ctx.countryBriefPage.updateCountryFacts?.({
-          headOfState: facts.headOfState,
-          headOfStateTitle: facts.headOfStateTitle,
-          wikipediaSummary: facts.wikipediaSummary,
-          wikipediaThumbnailUrl: facts.wikipediaThumbnailUrl,
-          population: Number(facts.population),
-          capital: facts.capital,
-          languages: facts.languages,
-          currencies: facts.currencies,
-          areaSqKm: facts.areaSqKm,
-          countryName: facts.countryName,
-        });
-      })
-      .catch(() => {
-        if (this.ctx.countryBriefPage?.getCode() !== code) return;
-        this.ctx.countryBriefPage.updateCountryFacts?.({
-          headOfState: '', headOfStateTitle: '', wikipediaSummary: '',
-          wikipediaThumbnailUrl: '', population: 0, capital: '',
-          languages: [], currencies: [], areaSqKm: 0, countryName: '',
-        });
-      });
-
-    intelClient.getCountryEnergyProfile({ countryCode: code })
-      .then((profile) => {
-        if (this.ctx.countryBriefPage?.getCode() !== code) return;
-        this.ctx.countryBriefPage.updateEnergyProfile?.({
-          mixAvailable: profile.mixAvailable,
-          mixYear: profile.mixYear,
-          coalShare: profile.coalShare,
-          gasShare: profile.gasShare,
-          oilShare: profile.oilShare,
-          nuclearShare: profile.nuclearShare,
-          renewShare: profile.renewShare,
-          windShare: profile.windShare,
-          solarShare: profile.solarShare,
-          hydroShare: profile.hydroShare,
-          importShare: profile.importShare,
-          gasStorageAvailable: profile.gasStorageAvailable,
-          gasStorageFillPct: profile.gasStorageFillPct,
-          gasStorageChange1d: profile.gasStorageChange1d,
-          gasStorageTrend: profile.gasStorageTrend,
-          gasStorageDate: profile.gasStorageDate,
-          electricityAvailable: profile.electricityAvailable,
-          electricityPriceMwh: profile.electricityPriceMwh,
-          electricitySource: profile.electricitySource,
-          electricityDate: profile.electricityDate,
-          jodiOilAvailable: profile.jodiOilAvailable,
-          jodiOilDataMonth: profile.jodiOilDataMonth,
-          gasolineDemandKbd: profile.gasolineDemandKbd,
-          gasolineImportsKbd: profile.gasolineImportsKbd,
-          dieselDemandKbd: profile.dieselDemandKbd,
-          dieselImportsKbd: profile.dieselImportsKbd,
-          jetDemandKbd: profile.jetDemandKbd,
-          jetImportsKbd: profile.jetImportsKbd,
-          lpgDemandKbd: profile.lpgDemandKbd,
-          lpgImportsKbd: profile.lpgImportsKbd,
-          crudeImportsKbd: profile.crudeImportsKbd,
-          jodiGasAvailable: profile.jodiGasAvailable,
-          jodiGasDataMonth: profile.jodiGasDataMonth,
-          gasTotalDemandTj: profile.gasTotalDemandTj,
-          gasLngImportsTj: profile.gasLngImportsTj,
-          gasPipeImportsTj: profile.gasPipeImportsTj,
-          gasLngShare: profile.gasLngShare,
-          ieaStocksAvailable: profile.ieaStocksAvailable,
-          ieaStocksDataMonth: profile.ieaStocksDataMonth,
-          ieaDaysOfCover: profile.ieaDaysOfCover,
-          ieaNetExporter: profile.ieaNetExporter,
-          ieaBelowObligation: profile.ieaBelowObligation,
-          emberFossilShare: profile.emberFossilShare,
-          emberRenewShare: profile.emberRenewShare,
-          emberNuclearShare: profile.emberNuclearShare,
-          emberCoalShare: profile.emberCoalShare,
-          emberGasShare: profile.emberGasShare,
-          emberDemandTwh: profile.emberDemandTwh,
-          emberDataMonth: profile.emberDataMonth,
-          emberAvailable: profile.emberAvailable,
-          sprRegime: profile.sprRegime,
-          sprCapacityMb: profile.sprCapacityMb,
-          sprOperator: profile.sprOperator,
-          sprIeaMember: profile.sprIeaMember,
-          sprStockholdingModel: profile.sprStockholdingModel,
-          sprNote: profile.sprNote,
-          sprSource: profile.sprSource,
-          sprAsOf: profile.sprAsOf,
-          sprAvailable: profile.sprAvailable,
-        });
-      })
-      .catch(() => {
-        if (this.ctx.countryBriefPage?.getCode() !== code) return;
-        this.ctx.countryBriefPage.updateEnergyProfile?.({
-          mixAvailable: false, mixYear: 0, coalShare: 0, gasShare: 0, oilShare: 0,
-          nuclearShare: 0, renewShare: 0, windShare: 0, solarShare: 0, hydroShare: 0,
-          importShare: 0, gasStorageAvailable: false, gasStorageFillPct: 0,
-          gasStorageChange1d: 0, gasStorageTrend: '', gasStorageDate: '', electricityAvailable: false,
-          electricityPriceMwh: 0, electricitySource: '', electricityDate: '',
-          jodiOilAvailable: false, jodiOilDataMonth: '', gasolineDemandKbd: 0,
-          gasolineImportsKbd: 0, dieselDemandKbd: 0, dieselImportsKbd: 0,
-          jetDemandKbd: 0, jetImportsKbd: 0, lpgDemandKbd: 0, lpgImportsKbd: 0,
-          crudeImportsKbd: 0, jodiGasAvailable: false, jodiGasDataMonth: '',
-          gasTotalDemandTj: 0, gasLngImportsTj: 0, gasPipeImportsTj: 0,
-          gasLngShare: 0, ieaStocksAvailable: false, ieaStocksDataMonth: '',
-          ieaDaysOfCover: 0, ieaNetExporter: false, ieaBelowObligation: false,
-          emberFossilShare: 0, emberRenewShare: 0, emberNuclearShare: 0,
-          emberCoalShare: 0, emberGasShare: 0, emberDemandTwh: 0,
-          emberDataMonth: '', emberAvailable: false,
-          sprRegime: 'unknown', sprCapacityMb: 0, sprOperator: '', sprIeaMember: false,
-          sprStockholdingModel: '', sprNote: '', sprSource: '', sprAsOf: '',
-          sprAvailable: false,
-        });
-      });
-
-    intelClient.getCountryPortActivity({ countryCode: code })
-      .then((activity) => {
-        if (this.ctx.countryBriefPage?.getCode() !== code) return;
-        this.ctx.countryBriefPage.updateMaritimeActivity?.({
-          available: activity.available,
-          ports: (activity.ports ?? []).map((p) => ({
-            portId: p.portId,
-            portName: p.portName,
-            lat: p.lat,
-            lon: p.lon,
-            tankerCalls30d: p.tankerCalls30d,
-            trendDeltaPct: p.trendDeltaPct,
-            importTankerDwt: p.importTankerDwt,
-            exportTankerDwt: p.exportTankerDwt,
-            anomalySignal: p.anomalySignal,
-          })),
-          fetchedAt: activity.fetchedAt,
-        });
-      })
-      .catch(() => {
-        if (this.ctx.countryBriefPage?.getCode() !== code) return;
-        this.ctx.countryBriefPage.updateMaritimeActivity?.({ available: false, ports: [], fetchedAt: '' });
-      });
-
-    // Fetch multi-sector exposure (all 10 seeded HS2 codes in parallel)
-    fetchMultiSectorExposure(code)
-      .then((sectors) => {
-        if (this.ctx.countryBriefPage?.getCode() !== code) return;
-        if (sectors.length === 0) {
-          this.ctx.countryBriefPage.updateTradeExposure?.(null);
-          if (hasPremiumAccess(getAuthState())) this.ctx.countryBriefPage.updateMultiSectorCostShock?.(null);
-          return;
-        }
-        // Build a synthetic compat response from sector data (no extra fetch needed)
-        const top = sectors[0]!;
-        const syntheticResponse = {
-          iso2: code,
-          hs2: top.hs2,
-          exposures: sectors.slice(0, 3).map(s => ({
-            chokepointId: s.primaryChokepointId,
-            chokepointName: s.primaryChokepointName,
-            exposureScore: s.exposureScore,
-            coastSide: '',
-            shockSupported: s.hs2 === '27',
-          })),
-          primaryChokepointId: top.primaryChokepointId,
-          vulnerabilityIndex: top.vulnerabilityIndex,
-          fetchedAt: new Date().toISOString(),
-        };
-        this.ctx.countryBriefPage.updateTradeExposure?.(syntheticResponse, sectors);
-
-        // Trigger multi-sector cost shock calculator from the same primary chokepoint.
-        if (hasPremiumAccess(getAuthState()) && top.primaryChokepointId) {
-          fetchMultiSectorCostShock(code, top.primaryChokepointId, 30).then(multi => {
-            if (this.ctx.countryBriefPage?.getCode() !== code) return;
-            this.ctx.countryBriefPage.updateMultiSectorCostShock?.(multi);
-          }).catch(() => {
-            if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateMultiSectorCostShock?.(null);
-          });
-        } else if (hasPremiumAccess(getAuthState())) {
-          this.ctx.countryBriefPage.updateMultiSectorCostShock?.(null);
-        }
-      })
-      .catch(() => {
-        if (this.ctx.countryBriefPage?.getCode() !== code) return;
-        this.ctx.countryBriefPage.updateTradeExposure?.(null);
-        if (hasPremiumAccess(getAuthState())) this.ctx.countryBriefPage.updateMultiSectorCostShock?.(null);
-      });
-
-    if (hasPremiumAccess(getAuthState())) {
-      this.fetchProSections(code);
-    }
-
-    this.mountCountryTimeline(code, country);
+    const token = ++this.briefRequestToken;
+    let pageShown = false;
 
     try {
-      const context: Record<string, unknown> = {};
-      if (score) {
-        context.score = score.score;
-        context.level = score.level;
-        context.trend = score.trend;
-        context.components = score.components;
-        context.change24h = score.change24h;
-      }
-      Object.assign(context, signals);
+      if (!(await this.ensureCountryBriefPage())) return;
+      if (token !== this.briefRequestToken || this.ctx.isDestroyed) return;
+      const page = this.ctx.countryBriefPage;
+      if (!page) return;
+      this.ctx.map?.setRenderPaused(true);
+      trackCountryBriefOpened(code);
 
-      const aggregator = await getSignalAggregator();
-      const countryCluster = aggregator.getCountryClusters().find((c) => c.country === code);
-      if (countryCluster) {
-        context.convergenceScore = countryCluster.convergenceScore;
-        context.signalTypes = [...countryCluster.signalTypes];
-      }
+      const canonicalName = TIER1_COUNTRIES[code] || CountryIntelManager.resolveCountryName(code);
+      if (canonicalName !== code) country = canonicalName;
 
-      const convergences = aggregator.getRegionalConvergence()
-        .filter((r) => r.countries.includes(code));
-      if (convergences.length) {
-        context.regionalConvergence = convergences.map((r) => r.description);
-      }
+      const scoreCode = normalizeCiiCountryCode(code);
+      const score = getCachedCountryScore(scoreCode) ?? calculateCII().find((s) => s.code === scoreCode) ?? null;
 
-      if (this.ctx.intelligenceCache.advisories) {
-        const countryAdvisories = this.ctx.intelligenceCache.advisories.filter(a => a.country === code);
-        if (countryAdvisories.length > 0) {
-          context.travelAdvisories = countryAdvisories.map(a => ({ source: a.source, level: a.level, title: a.title }));
-        }
-      }
+      const signals = await this.getCountrySignals(code, country);
+      if (token !== this.briefRequestToken || this.ctx.isDestroyed || this.ctx.countryBriefPage !== page) return;
 
-      const groundingNews = filteredNews.slice(0, 15);
-      let briefSources = collectBriefSources(groundingNews, 6);
-      const headlines = groundingNews.map((n) => n.title);
-      if (headlines.length) context.headlines = headlines;
-      if (briefSources.length) context.briefSources = briefSources;
-      const briefHeadlines = (context.headlines as string[] | undefined) || [];
+      page.show(country, code, score, signals);
+      pageShown = true;
+      this.ctx.map?.highlightCountry(code);
+      this.ctx.map?.fitCountry(code);
 
-      const stockData = await stockPromise;
-      if (stockData.available) {
-        const pct = parseFloat(stockData.weekChangePercent);
-        context.stockIndex = `${stockData.indexName}: ${stockData.price} (${pct >= 0 ? '+' : ''}${stockData.weekChangePercent}% week)`;
-      }
-
-      let briefText = '';
-      let briefResult: CountryIntelBriefResult | null = null;
-      try {
-        let contextSnapshot = this.buildBriefContextSnapshot(country, code, score, signals, context);
-
-        if (isHeadlineMemoryEnabled() && mlWorker.isAvailable && mlWorker.isModelLoaded('embeddings') && briefHeadlines.length > 0) {
-          try {
-            const results = await mlWorker.vectorStoreSearch(briefHeadlines.slice(0, 3), 5, 0.3);
-            if (results.length > 0) {
-              const historical = results.map(r =>
-                `- ${r.text} (${new Date(r.pubDate).toISOString().slice(0, 10)})`
-              ).join('\n').slice(0, 350);
-              contextSnapshot = contextSnapshot.slice(0, 1800)
-                + `\n[BEGIN HISTORICAL DATA]\n${historical}\n[END HISTORICAL DATA]`;
-            }
-          } catch { /* RAG unavailable */ }
-        }
-
-        const countryFw = getActiveFrameworkForPanel('country-brief');
-        briefResult = await this.fetchCountryIntelBrief(code, contextSnapshot, countryFw?.systemPromptAppend ?? '');
-        briefText = briefResult.brief;
-        if (briefResult.sources.length > 0) {
-          briefSources = briefResult.sources;
-        }
-      } catch { /* server unreachable */ }
-
-      if (briefText) {
-        this.ctx.countryBriefPage?.updateBrief({
-          brief: briefText,
-          country,
-          code,
-          sources: briefSources,
-          generatedAt: briefResult?.generatedAt,
-          cached: briefResult?.cached,
+      if (opts?.maximize) {
+        requestAnimationFrame(() => {
+          const panel = this.ctx.countryBriefPage;
+          if (panel?.isVisible() && panel.getCode() === code) {
+            panel.maximize?.();
+          }
         });
-      } else {
-        let fallbackBrief = '';
-        const sumModelId = BETA_MODE ? 'summarization-beta' : 'summarization';
-        if (briefHeadlines.length >= 2 && mlWorker.isAvailable && mlWorker.isModelLoaded(sumModelId)) {
-          try {
-            const lang = getCurrentLanguage();
-            const prompt = lang === 'fr'
-              ? `Résumez la situation actuelle en ${country} à partir de ces titres : ${briefHeadlines.slice(0, 8).join('. ')}`
-              : `Summarize the current situation in ${country} based on these headlines: ${briefHeadlines.slice(0, 8).join('. ')}`;
+      }
+      try {
+        const signalDetails = await this.buildSignalDetails(code);
+        if (token === this.briefRequestToken && this.ctx.countryBriefPage?.getCode() === code) {
+          page.updateSignalDetails?.(signalDetails);
+        }
+      } catch (err) {
+        console.warn('[CountryBrief] signal details unavailable:', err);
+      }
+      if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
+      page.updateMilitaryActivity?.(this.buildMilitarySummary(code, country));
+      page.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, null));
 
-            const [summary] = await mlWorker.summarize([prompt], BETA_MODE ? 'summarization-beta' : undefined);
-            if (summary && summary.length > 20) fallbackBrief = summary;
-          } catch { /* T5 failed */ }
+      const marketClient = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args) });
+      const stockPromise = marketClient.getCountryStockIndex({ countryCode: code })
+        .then((resp) => ({
+          available: resp.available,
+          code: resp.code,
+          symbol: resp.symbol,
+          indexName: resp.indexName,
+          price: String(resp.price),
+          weekChangePercent: String(resp.weekChangePercent),
+          currency: resp.currency,
+        }))
+        .catch(() => ({ available: false as const, code: '', symbol: '', indexName: '', price: '0', weekChangePercent: '0', currency: '' }));
+
+      let latestStock: CountryStockSnapshot | null = null;
+      let latestImf: ImfCountryBundle | null = null;
+
+      stockPromise.then((stock) => {
+        latestStock = stock;
+        if (this.ctx.countryBriefPage?.getCode() !== code) return;
+        this.ctx.countryBriefPage.updateStock(stock);
+        this.ctx.countryBriefPage.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, stock, latestImf));
+      });
+
+      // IMF WEO bundle (issue #3027): macro / growth / labor / external from
+      // the SDMX-3.0 seeded keys. Tolerant: missing data leaves card unchanged.
+      getImfCountryBundle(code).then((bundle) => {
+        latestImf = bundle;
+        if (this.ctx.countryBriefPage?.getCode() !== code) return;
+        this.ctx.countryBriefPage.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, latestStock, bundle));
+      }).catch(() => { /* non-fatal */ });
+
+      fetchCountryMarkets(country)
+        .then((markets) => {
+          if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateMarkets(markets);
+        })
+        .catch(() => {
+          if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateMarkets([]);
+        });
+
+      const searchTerms = CountryIntelManager.getCountrySearchTerms(country, code);
+      const otherCountryTerms = CountryIntelManager.getOtherCountryTerms(code);
+      const matchingNews = this.ctx.allNews.filter((n) => {
+        const t = n.title.toLowerCase();
+        return CountryIntelManager.firstMentionPosition(t, searchTerms) !== Infinity;
+      });
+      const filteredNews = matchingNews.filter((n) => {
+        const t = n.title.toLowerCase();
+        const ourPos = CountryIntelManager.firstMentionPosition(t, searchTerms);
+        const otherPos = CountryIntelManager.firstMentionPosition(t, otherCountryTerms);
+        return ourPos !== Infinity && (otherPos === Infinity || ourPos <= otherPos);
+      }).sort((a, b) => {
+        const severityDelta = this.newsSeverityRank(b) - this.newsSeverityRank(a);
+        if (severityDelta !== 0) return severityDelta;
+        return effectivePubDateMs(b) - effectivePubDateMs(a);
+      });
+      page.updateNews(filteredNews.slice(0, 10));
+
+      page.updateInfrastructure(code);
+      void Promise.all([
+        preloadMilitaryBases().catch(() => []),
+        preloadInfrastructureTables().catch(() => {}),
+      ])
+        .then(() => {
+          if (this.ctx.countryBriefPage?.getCode() === code) {
+            this.ctx.countryBriefPage.updateInfrastructure(code);
+            this.ctx.countryBriefPage.updateMilitaryActivity?.(this.buildMilitarySummary(code, country));
+          }
+        })
+        .catch(() => {});
+
+      const intelClient = new IntelligenceServiceClient(getRpcBaseUrl(), {
+        fetch: (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args),
+      });
+      intelClient.getCountryFacts({ countryCode: code })
+        .then((facts) => {
+          if (this.ctx.countryBriefPage?.getCode() !== code) return;
+          this.ctx.countryBriefPage.updateCountryFacts?.({
+            headOfState: facts.headOfState,
+            headOfStateTitle: facts.headOfStateTitle,
+            wikipediaSummary: facts.wikipediaSummary,
+            wikipediaThumbnailUrl: facts.wikipediaThumbnailUrl,
+            population: Number(facts.population),
+            capital: facts.capital,
+            languages: facts.languages,
+            currencies: facts.currencies,
+            areaSqKm: facts.areaSqKm,
+            countryName: facts.countryName,
+          });
+        })
+        .catch(() => {
+          if (this.ctx.countryBriefPage?.getCode() !== code) return;
+          this.ctx.countryBriefPage.updateCountryFacts?.({
+            headOfState: '', headOfStateTitle: '', wikipediaSummary: '',
+            wikipediaThumbnailUrl: '', population: 0, capital: '',
+            languages: [], currencies: [], areaSqKm: 0, countryName: '',
+          });
+        });
+
+      intelClient.getCountryEnergyProfile({ countryCode: code })
+        .then((profile) => {
+          if (this.ctx.countryBriefPage?.getCode() !== code) return;
+          this.ctx.countryBriefPage.updateEnergyProfile?.({
+            mixAvailable: profile.mixAvailable,
+            mixYear: profile.mixYear,
+            coalShare: profile.coalShare,
+            gasShare: profile.gasShare,
+            oilShare: profile.oilShare,
+            nuclearShare: profile.nuclearShare,
+            renewShare: profile.renewShare,
+            windShare: profile.windShare,
+            solarShare: profile.solarShare,
+            hydroShare: profile.hydroShare,
+            importShare: profile.importShare,
+            gasStorageAvailable: profile.gasStorageAvailable,
+            gasStorageFillPct: profile.gasStorageFillPct,
+            gasStorageChange1d: profile.gasStorageChange1d,
+            gasStorageTrend: profile.gasStorageTrend,
+            gasStorageDate: profile.gasStorageDate,
+            electricityAvailable: profile.electricityAvailable,
+            electricityPriceMwh: profile.electricityPriceMwh,
+            electricitySource: profile.electricitySource,
+            electricityDate: profile.electricityDate,
+            jodiOilAvailable: profile.jodiOilAvailable,
+            jodiOilDataMonth: profile.jodiOilDataMonth,
+            gasolineDemandKbd: profile.gasolineDemandKbd,
+            gasolineImportsKbd: profile.gasolineImportsKbd,
+            dieselDemandKbd: profile.dieselDemandKbd,
+            dieselImportsKbd: profile.dieselImportsKbd,
+            jetDemandKbd: profile.jetDemandKbd,
+            jetImportsKbd: profile.jetImportsKbd,
+            lpgDemandKbd: profile.lpgDemandKbd,
+            lpgImportsKbd: profile.lpgImportsKbd,
+            crudeImportsKbd: profile.crudeImportsKbd,
+            jodiGasAvailable: profile.jodiGasAvailable,
+            jodiGasDataMonth: profile.jodiGasDataMonth,
+            gasTotalDemandTj: profile.gasTotalDemandTj,
+            gasLngImportsTj: profile.gasLngImportsTj,
+            gasPipeImportsTj: profile.gasPipeImportsTj,
+            gasLngShare: profile.gasLngShare,
+            ieaStocksAvailable: profile.ieaStocksAvailable,
+            ieaStocksDataMonth: profile.ieaStocksDataMonth,
+            ieaDaysOfCover: profile.ieaDaysOfCover,
+            ieaNetExporter: profile.ieaNetExporter,
+            ieaBelowObligation: profile.ieaBelowObligation,
+            emberFossilShare: profile.emberFossilShare,
+            emberRenewShare: profile.emberRenewShare,
+            emberNuclearShare: profile.emberNuclearShare,
+            emberCoalShare: profile.emberCoalShare,
+            emberGasShare: profile.emberGasShare,
+            emberDemandTwh: profile.emberDemandTwh,
+            emberDataMonth: profile.emberDataMonth,
+            emberAvailable: profile.emberAvailable,
+            sprRegime: profile.sprRegime,
+            sprCapacityMb: profile.sprCapacityMb,
+            sprOperator: profile.sprOperator,
+            sprIeaMember: profile.sprIeaMember,
+            sprStockholdingModel: profile.sprStockholdingModel,
+            sprNote: profile.sprNote,
+            sprSource: profile.sprSource,
+            sprAsOf: profile.sprAsOf,
+            sprAvailable: profile.sprAvailable,
+          });
+        })
+        .catch(() => {
+          if (this.ctx.countryBriefPage?.getCode() !== code) return;
+          this.ctx.countryBriefPage.updateEnergyProfile?.({
+            mixAvailable: false, mixYear: 0, coalShare: 0, gasShare: 0, oilShare: 0,
+            nuclearShare: 0, renewShare: 0, windShare: 0, solarShare: 0, hydroShare: 0,
+            importShare: 0, gasStorageAvailable: false, gasStorageFillPct: 0,
+            gasStorageChange1d: 0, gasStorageTrend: '', gasStorageDate: '', electricityAvailable: false,
+            electricityPriceMwh: 0, electricitySource: '', electricityDate: '',
+            jodiOilAvailable: false, jodiOilDataMonth: '', gasolineDemandKbd: 0,
+            gasolineImportsKbd: 0, dieselDemandKbd: 0, dieselImportsKbd: 0,
+            jetDemandKbd: 0, jetImportsKbd: 0, lpgDemandKbd: 0, lpgImportsKbd: 0,
+            crudeImportsKbd: 0, jodiGasAvailable: false, jodiGasDataMonth: '',
+            gasTotalDemandTj: 0, gasLngImportsTj: 0, gasPipeImportsTj: 0,
+            gasLngShare: 0, ieaStocksAvailable: false, ieaStocksDataMonth: '',
+            ieaDaysOfCover: 0, ieaNetExporter: false, ieaBelowObligation: false,
+            emberFossilShare: 0, emberRenewShare: 0, emberNuclearShare: 0,
+            emberCoalShare: 0, emberGasShare: 0, emberDemandTwh: 0,
+            emberDataMonth: '', emberAvailable: false,
+            sprRegime: 'unknown', sprCapacityMb: 0, sprOperator: '', sprIeaMember: false,
+            sprStockholdingModel: '', sprNote: '', sprSource: '', sprAsOf: '',
+            sprAvailable: false,
+          });
+        });
+
+      intelClient.getCountryPortActivity({ countryCode: code })
+        .then((activity) => {
+          if (this.ctx.countryBriefPage?.getCode() !== code) return;
+          this.ctx.countryBriefPage.updateMaritimeActivity?.({
+            available: activity.available,
+            ports: (activity.ports ?? []).map((p) => ({
+              portId: p.portId,
+              portName: p.portName,
+              lat: p.lat,
+              lon: p.lon,
+              tankerCalls30d: p.tankerCalls30d,
+              trendDeltaPct: p.trendDeltaPct,
+              importTankerDwt: p.importTankerDwt,
+              exportTankerDwt: p.exportTankerDwt,
+              anomalySignal: p.anomalySignal,
+            })),
+            fetchedAt: activity.fetchedAt,
+          });
+        })
+        .catch(() => {
+          if (this.ctx.countryBriefPage?.getCode() !== code) return;
+          this.ctx.countryBriefPage.updateMaritimeActivity?.({ available: false, ports: [], fetchedAt: '' });
+        });
+
+      // Fetch multi-sector exposure (all 10 seeded HS2 codes in parallel)
+      fetchMultiSectorExposure(code)
+        .then((sectors) => {
+          if (this.ctx.countryBriefPage?.getCode() !== code) return;
+          if (sectors.length === 0) {
+            this.ctx.countryBriefPage.updateTradeExposure?.(null);
+            if (hasPremiumAccess(getAuthState())) this.ctx.countryBriefPage.updateMultiSectorCostShock?.(null);
+            return;
+          }
+          // Build a synthetic compat response from sector data (no extra fetch needed)
+          const top = sectors[0]!;
+          const syntheticResponse = {
+            iso2: code,
+            hs2: top.hs2,
+            exposures: sectors.slice(0, 3).map(s => ({
+              chokepointId: s.primaryChokepointId,
+              chokepointName: s.primaryChokepointName,
+              exposureScore: s.exposureScore,
+              coastSide: '',
+              shockSupported: s.hs2 === '27',
+            })),
+            primaryChokepointId: top.primaryChokepointId,
+            vulnerabilityIndex: top.vulnerabilityIndex,
+            fetchedAt: new Date().toISOString(),
+          };
+          this.ctx.countryBriefPage.updateTradeExposure?.(syntheticResponse, sectors);
+
+          // Trigger multi-sector cost shock calculator from the same primary chokepoint.
+          if (hasPremiumAccess(getAuthState()) && top.primaryChokepointId) {
+            fetchMultiSectorCostShock(code, top.primaryChokepointId, 30).then(multi => {
+              if (this.ctx.countryBriefPage?.getCode() !== code) return;
+              this.ctx.countryBriefPage.updateMultiSectorCostShock?.(multi);
+            }).catch(() => {
+              if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateMultiSectorCostShock?.(null);
+            });
+          } else if (hasPremiumAccess(getAuthState())) {
+            this.ctx.countryBriefPage.updateMultiSectorCostShock?.(null);
+          }
+        })
+        .catch(() => {
+          if (this.ctx.countryBriefPage?.getCode() !== code) return;
+          this.ctx.countryBriefPage.updateTradeExposure?.(null);
+          if (hasPremiumAccess(getAuthState())) this.ctx.countryBriefPage.updateMultiSectorCostShock?.(null);
+        });
+
+      if (hasPremiumAccess(getAuthState())) {
+        this.fetchProSections(code);
+      }
+
+      this.mountCountryTimeline(code, country);
+
+      try {
+        const context: Record<string, unknown> = {};
+        if (score) {
+          context.score = score.score;
+          context.level = score.level;
+          context.trend = score.trend;
+          context.components = score.components;
+          context.change24h = score.change24h;
+        }
+        Object.assign(context, signals);
+
+        const aggregator = await getSignalAggregator();
+        if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
+        const countryCluster = aggregator.getCountryClusters().find((c) => c.country === code);
+        if (countryCluster) {
+          context.convergenceScore = countryCluster.convergenceScore;
+          context.signalTypes = [...countryCluster.signalTypes];
         }
 
-        if (fallbackBrief) {
-          this.ctx.countryBriefPage?.updateBrief({ brief: fallbackBrief, country, code, fallback: true, sources: briefSources });
-        } else {
-          const lines: string[] = [];
-          if (score) lines.push(t('countryBrief.fallback.instabilityIndex', { score: String(score.score), level: t(`countryBrief.levels.${score.level}`), trend: t(`countryBrief.trends.${score.trend}`) }));
-          if (signals.protests > 0) lines.push(t('countryBrief.fallback.protestsDetected', { count: String(signals.protests) }));
-          if (signals.militaryFlights > 0) lines.push(t('countryBrief.fallback.aircraftTracked', { count: String(signals.militaryFlights) }));
-          if (signals.militaryVessels > 0) lines.push(t('countryBrief.fallback.vesselsTracked', { count: String(signals.militaryVessels) }));
-          if (signals.activeStrikes > 0) lines.push(t('countryBrief.fallback.activeStrikes', { count: String(signals.activeStrikes) }));
-          if (signals.travelAdvisoryMaxLevel === 'do-not-travel') lines.push(`⚠️ Travel advisory: Do Not Travel (${signals.travelAdvisories} source${signals.travelAdvisories > 1 ? 's' : ''})`);
-          else if (signals.travelAdvisoryMaxLevel === 'reconsider') lines.push(`⚠️ Travel advisory: Reconsider Travel (${signals.travelAdvisories} source${signals.travelAdvisories > 1 ? 's' : ''})`);
-          if (signals.outages > 0) lines.push(t('countryBrief.fallback.internetOutages', { count: String(signals.outages) }));
-          if (signals.criticalNews > 0) lines.push(`🚨 Critical headlines in scope: ${signals.criticalNews}`);
-          if (signals.cyberThreats > 0) lines.push(`🛡️ Cyber threat indicators: ${signals.cyberThreats}`);
-          if (signals.aisDisruptions > 0) lines.push(`🚢 Maritime AIS disruptions: ${signals.aisDisruptions}`);
-          if (signals.satelliteFires > 0) lines.push(`🔥 Satellite fire detections: ${signals.satelliteFires}`);
-          if (signals.radiationAnomalies > 0) lines.push(`☢️ Radiation anomalies: ${signals.radiationAnomalies}`);
-          if (signals.temporalAnomalies > 0) lines.push(`⏱️ Temporal anomaly alerts: ${signals.temporalAnomalies}`);
-          if (signals.thermalEscalations > 0) lines.push(`🌡️ Thermal escalation clusters: ${signals.thermalEscalations}`);
-          if (signals.earthquakes > 0) lines.push(t('countryBrief.fallback.recentEarthquakes', { count: String(signals.earthquakes) }));
-          if (signals.orefHistory24h > 0) lines.push(`🚨 Sirens in past 24h: ${signals.orefHistory24h}`);
-          if (context.stockIndex) lines.push(t('countryBrief.fallback.stockIndex', { value: context.stockIndex }));
-          if (lines.length > 0) {
-            this.ctx.countryBriefPage?.updateBrief({ brief: lines.join('\n'), country, code, fallback: true });
-          } else {
-            this.ctx.countryBriefPage?.updateBrief({ brief: '', country, code, error: 'No AI service available. Configure GROQ_API_KEY in Settings for full briefs.' });
+        const convergences = aggregator.getRegionalConvergence()
+          .filter((r) => r.countries.includes(code));
+        if (convergences.length) {
+          context.regionalConvergence = convergences.map((r) => r.description);
+        }
+
+        if (this.ctx.intelligenceCache.advisories) {
+          const countryAdvisories = this.ctx.intelligenceCache.advisories.filter(a => a.country === code);
+          if (countryAdvisories.length > 0) {
+            context.travelAdvisories = countryAdvisories.map(a => ({ source: a.source, level: a.level, title: a.title }));
           }
         }
+
+        const groundingNews = filteredNews.slice(0, 15);
+        let briefSources = collectBriefSources(groundingNews, 6);
+        const headlines = groundingNews.map((n) => n.title);
+        if (headlines.length) context.headlines = headlines;
+        if (briefSources.length) context.briefSources = briefSources;
+        const briefHeadlines = (context.headlines as string[] | undefined) || [];
+
+        const stockData = await stockPromise;
+        if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
+        if (stockData.available) {
+          const pct = parseFloat(stockData.weekChangePercent);
+          context.stockIndex = `${stockData.indexName}: ${stockData.price} (${pct >= 0 ? '+' : ''}${stockData.weekChangePercent}% week)`;
+        }
+
+        let briefText = '';
+        let briefResult: CountryIntelBriefResult | null = null;
+        try {
+          let contextSnapshot = this.buildBriefContextSnapshot(country, code, score, signals, context);
+
+          if (isHeadlineMemoryEnabled() && mlWorker.isAvailable && mlWorker.isModelLoaded('embeddings') && briefHeadlines.length > 0) {
+            try {
+              const results = await mlWorker.vectorStoreSearch(briefHeadlines.slice(0, 3), 5, 0.3);
+              if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
+              if (results.length > 0) {
+                const historical = results.map(r =>
+                  `- ${r.text} (${new Date(r.pubDate).toISOString().slice(0, 10)})`
+                ).join('\n').slice(0, 350);
+                contextSnapshot = contextSnapshot.slice(0, 1800)
+                  + `\n[BEGIN HISTORICAL DATA]\n${historical}\n[END HISTORICAL DATA]`;
+              }
+            } catch { /* RAG unavailable */ }
+          }
+
+          const countryFw = getActiveFrameworkForPanel('country-brief');
+          briefResult = await this.fetchCountryIntelBrief(code, contextSnapshot, countryFw?.systemPromptAppend ?? '');
+          if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
+          briefText = briefResult.brief;
+          if (briefResult.sources.length > 0) {
+            briefSources = briefResult.sources;
+          }
+        } catch { /* server unreachable */ }
+
+        if (briefText) {
+          this.ctx.countryBriefPage?.updateBrief({
+            brief: briefText,
+            country,
+            code,
+            sources: briefSources,
+            generatedAt: briefResult?.generatedAt,
+            cached: briefResult?.cached,
+          });
+        } else {
+          let fallbackBrief = '';
+          const sumModelId = BETA_MODE ? 'summarization-beta' : 'summarization';
+          if (briefHeadlines.length >= 2 && mlWorker.isAvailable && mlWorker.isModelLoaded(sumModelId)) {
+            try {
+              const lang = getCurrentLanguage();
+              const prompt = lang === 'fr'
+                ? `Résumez la situation actuelle en ${country} à partir de ces titres : ${briefHeadlines.slice(0, 8).join('. ')}`
+                : `Summarize the current situation in ${country} based on these headlines: ${briefHeadlines.slice(0, 8).join('. ')}`;
+
+              const [summary] = await mlWorker.summarize([prompt], BETA_MODE ? 'summarization-beta' : undefined);
+              if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
+              if (summary && summary.length > 20) fallbackBrief = summary;
+            } catch { /* T5 failed */ }
+          }
+
+          if (fallbackBrief) {
+            this.ctx.countryBriefPage?.updateBrief({ brief: fallbackBrief, country, code, fallback: true, sources: briefSources });
+          } else {
+            const lines: string[] = [];
+            if (score) lines.push(t('countryBrief.fallback.instabilityIndex', { score: String(score.score), level: t(`countryBrief.levels.${score.level}`), trend: t(`countryBrief.trends.${score.trend}`) }));
+            if (signals.protests > 0) lines.push(t('countryBrief.fallback.protestsDetected', { count: String(signals.protests) }));
+            if (signals.militaryFlights > 0) lines.push(t('countryBrief.fallback.aircraftTracked', { count: String(signals.militaryFlights) }));
+            if (signals.militaryVessels > 0) lines.push(t('countryBrief.fallback.vesselsTracked', { count: String(signals.militaryVessels) }));
+            if (signals.activeStrikes > 0) lines.push(t('countryBrief.fallback.activeStrikes', { count: String(signals.activeStrikes) }));
+            if (signals.travelAdvisoryMaxLevel === 'do-not-travel') lines.push(`⚠️ Travel advisory: Do Not Travel (${signals.travelAdvisories} source${signals.travelAdvisories > 1 ? 's' : ''})`);
+            else if (signals.travelAdvisoryMaxLevel === 'reconsider') lines.push(`⚠️ Travel advisory: Reconsider Travel (${signals.travelAdvisories} source${signals.travelAdvisories > 1 ? 's' : ''})`);
+            if (signals.outages > 0) lines.push(t('countryBrief.fallback.internetOutages', { count: String(signals.outages) }));
+            if (signals.criticalNews > 0) lines.push(`🚨 Critical headlines in scope: ${signals.criticalNews}`);
+            if (signals.cyberThreats > 0) lines.push(`🛡️ Cyber threat indicators: ${signals.cyberThreats}`);
+            if (signals.aisDisruptions > 0) lines.push(`🚢 Maritime AIS disruptions: ${signals.aisDisruptions}`);
+            if (signals.satelliteFires > 0) lines.push(`🔥 Satellite fire detections: ${signals.satelliteFires}`);
+            if (signals.radiationAnomalies > 0) lines.push(`☢️ Radiation anomalies: ${signals.radiationAnomalies}`);
+            if (signals.temporalAnomalies > 0) lines.push(`⏱️ Temporal anomaly alerts: ${signals.temporalAnomalies}`);
+            if (signals.thermalEscalations > 0) lines.push(`🌡️ Thermal escalation clusters: ${signals.thermalEscalations}`);
+            if (signals.earthquakes > 0) lines.push(t('countryBrief.fallback.recentEarthquakes', { count: String(signals.earthquakes) }));
+            if (signals.orefHistory24h > 0) lines.push(`🚨 Sirens in past 24h: ${signals.orefHistory24h}`);
+            if (context.stockIndex) lines.push(t('countryBrief.fallback.stockIndex', { value: context.stockIndex }));
+            if (lines.length > 0) {
+              this.ctx.countryBriefPage?.updateBrief({ brief: lines.join('\n'), country, code, fallback: true });
+            } else {
+              this.ctx.countryBriefPage?.updateBrief({ brief: '', country, code, error: 'No AI service available. Configure GROQ_API_KEY in Settings for full briefs.' });
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[CountryBrief] fetch error:', err);
+        if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
+        this.ctx.countryBriefPage?.updateBrief({ brief: '', country, code, error: 'Failed to generate brief' });
       }
     } catch (err) {
-      console.error('[CountryBrief] fetch error:', err);
-      this.ctx.countryBriefPage?.updateBrief({ brief: '', country, code, error: 'Failed to generate brief' });
+      if (token !== this.briefRequestToken) {
+        console.warn('[CountryBrief] Superseded country brief open failed after it was stale:', err);
+        return;
+      }
+      console.error('[CountryBrief] Failed to open country brief:', err);
+      if (!pageShown) {
+        const activePage = this.ctx.countryBriefPage;
+        const activeCode = activePage?.getCode();
+        if (activePage?.isVisible() && (activeCode === '__loading__' || activeCode === '__error__')) activePage.hide();
+        this.ctx.map?.setRenderPaused(false);
+        this.showToast('Country brief failed to open. Please try again.');
+      }
+    } finally {
+      if (!pageShown && token === this.briefRequestToken) {
+        this.ctx.map?.setRenderPaused(false);
+      }
     }
   }
-
   private fetchProSections(code: string): void {
     // /pro live-preview iframe can't carry a Clerk session, so every pro
     // section call would 401. Skip the RPCs entirely so the embedded
@@ -817,7 +868,9 @@ export class CountryIntelManager implements AppModule {
       .then((signals) => {
         if (page.isVisible() && page.getCode() === code) page.updateScore?.(score, signals);
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.warn('[CountryBrief] refreshOpenBrief signal fetch failed:', err);
+      });
   }
 
   private async fetchCountryIntelBrief(code: string, contextSnapshot: string, framework = ''): Promise<CountryIntelBriefResult> {
