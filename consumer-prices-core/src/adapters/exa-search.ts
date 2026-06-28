@@ -167,6 +167,7 @@ export class ExaSearchAdapter implements RetailerAdapter {
         'x-api-key': this.apiKey,
         'Content-Type': 'application/json',
         'User-Agent': CHROME_UA,
+        'x-exa-integration': 'worldmonitor',
       },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(15_000),
