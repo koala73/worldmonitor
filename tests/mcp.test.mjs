@@ -37,6 +37,10 @@ function initBody(id = 1) {
   };
 }
 
+function assertNoStore(res, label) {
+  assert.equal(res.headers.get('Cache-Control'), 'no-store', `${label} must include Cache-Control: no-store`);
+}
+
 let handler;
 let evaluateFreshness;
 
@@ -132,6 +136,45 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const res = await handler(req);
     const body = await res.json();
     assert.equal(body.error?.code, -32600);
+  });
+
+  it('sets Cache-Control: no-store on representative MCP success and error responses', async () => {
+    const preflight = await handler(new Request(BASE_URL, {
+      method: 'OPTIONS',
+      headers: { origin: 'https://claude.ai' },
+    }));
+    assert.equal(preflight.status, 204);
+    assertNoStore(preflight, 'OPTIONS preflight');
+
+    const unauthenticated = await handler(new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(initBody()),
+    }));
+    assert.equal(unauthenticated.status, 401);
+    assertNoStore(unauthenticated, 'auth error');
+
+    const initialized = await handler(makeReq('POST', initBody(20)));
+    assert.equal(initialized.status, 200);
+    assertNoStore(initialized, 'initialize success');
+    assert.ok(initialized.headers.get('Mcp-Session-Id'), 'Mcp-Session-Id header must still be present');
+
+    const acknowledged = await handler(makeReq('POST', {
+      jsonrpc: '2.0',
+      method: 'notifications/initialized',
+      params: {},
+    }));
+    assert.equal(acknowledged.status, 202);
+    assertNoStore(acknowledged, 'notification acknowledgement');
+
+    const invalidMethod = await handler(makeReq('POST', {
+      jsonrpc: '2.0',
+      id: 21,
+      method: 'nonexistent/method',
+      params: {},
+    }));
+    assert.equal(invalidMethod.status, 200);
+    assertNoStore(invalidMethod, 'JSON-RPC error');
   });
 
   // --- logging/setLevel ---

@@ -14,7 +14,7 @@ import {
   signInternalMcpRequest,
 } from '../../server/_shared/mcp-internal-hmac';
 import { validateProMcpTokenOrNull } from '../../server/_shared/pro-mcp-token';
-import { rpcError } from './rpc';
+import { rpcError, withMcpNoStore } from './rpc';
 import type {
   AuthResolution,
   AuthResolutionRejected,
@@ -140,7 +140,7 @@ export async function resolveAuthContext(
         ok: false,
         response: new Response(
           JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Auth service temporarily unavailable. Try again.' } }),
-          { status: 503, headers: { 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders } },
+          { status: 503, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders }) },
         ),
       };
     }
@@ -149,7 +149,7 @@ export async function resolveAuthContext(
         ok: false,
         response: new Response(
           JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Invalid or expired OAuth token. Re-authenticate via /oauth/token.' } }),
-          { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders } },
+          { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders }) },
         ),
       };
     }
@@ -162,7 +162,7 @@ export async function resolveAuthContext(
       ok: false,
       response: new Response(
         JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Authentication required. Use OAuth (/oauth/token) or pass your API key via X-WorldMonitor-Key header.' } }),
-        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl), ...corsHeaders } },
+        { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl), ...corsHeaders }) },
       ),
     };
   }
@@ -172,7 +172,7 @@ export async function resolveAuthContext(
       ok: false,
       response: new Response(
         JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Invalid API key' } }),
-        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders } },
+        { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders }) },
       ),
     };
   }
@@ -202,7 +202,7 @@ export async function runProPreChecks(
     });
     return new Response(
       JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Service temporarily unavailable, retry in a moment.' } }),
-      { status: 503, headers: { 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders } },
+      { status: 503, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders }) },
     );
   }
 
@@ -210,7 +210,7 @@ export async function runProPreChecks(
   if (!validation || validation.userId !== context.userId) {
     return new Response(
       JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'MCP authorization revoked. Re-authorize at https://worldmonitor.app/mcp-grant.' } }),
-      { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders } },
+      { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders }) },
     );
   }
 
@@ -222,7 +222,7 @@ export async function runProPreChecks(
     captureSilentError(err, { tags: { route: 'api/mcp', step: 'pro-entitlement-recheck' }, ctx });
     return new Response(
       JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Subscription not active.' } }),
-      { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders } },
+      { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders }) },
     );
   }
   const tier = ent?.features?.tier ?? 0;
@@ -231,7 +231,7 @@ export async function runProPreChecks(
   if (!ent || tier < 1 || !mcpAccess || validUntil < Date.now()) {
     return new Response(
       JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Subscription not active.' } }),
-      { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders } },
+      { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders }) },
     );
   }
   return null;

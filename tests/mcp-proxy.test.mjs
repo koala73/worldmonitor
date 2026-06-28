@@ -88,6 +88,10 @@ function makeOptionsRequest(origin = 'https://worldmonitor.app') {
   });
 }
 
+function assertNoStore(res, label) {
+  assert.equal(res.headers.get('Cache-Control'), 'no-store', `${label} must include Cache-Control: no-store`);
+}
+
 // Minimal MCP server stub — returns valid JSON-RPC responses
 function makeMcpFetch({ initStatus = 200, listStatus = 200, callStatus = 200, tools = [], callResult = { content: [] } } = {}) {
   return async (_url, opts) => {
@@ -134,6 +138,7 @@ describe('api/mcp-proxy', () => {
     it('returns 401 when no X-WorldMonitor-Key is provided', async () => {
       const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }, 'https://worldmonitor.app', { authed: false }));
       assert.equal(res.status, 401);
+      assertNoStore(res, 'GET auth error');
     });
 
     it('returns 401 for curl-style request (no Origin, no key) — the #3723 bypass', async () => {
@@ -149,11 +154,13 @@ describe('api/mcp-proxy', () => {
     it('returns 401 for POST without key', async () => {
       const res = await handler(makePostRequest({ serverUrl: 'https://mcp.example.com/mcp', toolName: 'search' }, 'https://worldmonitor.app', { authed: false }));
       assert.equal(res.status, 401);
+      assertNoStore(res, 'POST auth error');
     });
 
     it('still returns 204 for OPTIONS preflight without key (preflights must not require auth)', async () => {
       const res = await handler(makeOptionsRequest());
       assert.equal(res.status, 204);
+      assertNoStore(res, 'OPTIONS preflight');
     });
 
     // wms_ session tokens are anonymous and freely mintable by any caller
@@ -215,11 +222,13 @@ describe('api/mcp-proxy', () => {
     it('returns 403 for disallowed origin', async () => {
       const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }, 'https://evil.com'));
       assert.equal(res.status, 403);
+      assertNoStore(res, 'disallowed origin');
     });
 
     it('returns 204 for OPTIONS preflight', async () => {
       const res = await handler(makeOptionsRequest());
       assert.equal(res.status, 204);
+      assertNoStore(res, 'OPTIONS preflight');
     });
 
     it('returns 405 for DELETE', async () => {
@@ -228,6 +237,7 @@ describe('api/mcp-proxy', () => {
         headers: { origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': ENTERPRISE_KEY },
       }));
       assert.equal(res.status, 405);
+      assertNoStore(res, 'DELETE method guard');
     });
 
     it('returns 405 for PUT', async () => {
@@ -246,6 +256,7 @@ describe('api/mcp-proxy', () => {
     it('returns 400 when serverUrl is missing', async () => {
       const res = await handler(makeGetRequest());
       assert.equal(res.status, 400);
+      assertNoStore(res, 'GET validation error');
       const data = await res.json();
       assert.match(data.error, /serverUrl/i);
     });
@@ -297,6 +308,7 @@ describe('api/mcp-proxy', () => {
       globalThis.fetch = makeMcpFetch({ tools: sampleTools });
       const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
       assert.equal(res.status, 200);
+      assertNoStore(res, 'GET list success');
       const data = await res.json();
       assert.ok(Array.isArray(data.tools));
       assert.equal(data.tools.length, 1);
@@ -315,6 +327,7 @@ describe('api/mcp-proxy', () => {
       globalThis.fetch = makeMcpFetch({ initStatus: 401 });
       const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
       assert.equal(res.status, 422);
+      assertNoStore(res, 'GET upstream error');
     });
 
     it('returns 422 when upstream returns JSON-RPC error', async () => {
@@ -387,6 +400,7 @@ describe('api/mcp-proxy', () => {
     it('returns 400 when serverUrl is missing', async () => {
       const res = await handler(makePostRequest({ toolName: 'search' }));
       assert.equal(res.status, 400);
+      assertNoStore(res, 'POST validation error');
       const data = await res.json();
       assert.match(data.error, /serverUrl/i);
     });
@@ -655,6 +669,7 @@ describe('api/mcp-proxy', () => {
         { extra: { 'cf-connecting-ip': ip } },
       ));
       assert.equal(res.status, 429, 'must return HTTP 429 on rate-limit hit');
+      assertNoStore(res, 'rate-limit error');
       assert.ok(res.headers.get('Retry-After'), 'must include Retry-After header');
       assert.ok(Number(res.headers.get('Retry-After')) >= 1, 'Retry-After must be >= 1s');
       const body = await res.json();

@@ -76,6 +76,10 @@ const SSE_CONNECT_TIMEOUT_MS = 10_000;
 const SSE_RPC_TIMEOUT_MS = process.env.NODE_TEST_CONTEXT ? 200 : 12_000;
 const MCP_PROTOCOL_VERSION = '2025-03-26';
 
+function withProxyNoStore(headers: Record<string, string> = {}): Record<string, string> {
+  return { ...headers, 'Cache-Control': 'no-store' };
+}
+
 const BLOCKED_HOST_PATTERNS = [
   /^localhost$/i,
   /^127\./,
@@ -452,9 +456,9 @@ async function handleCallTool(req: Request, cors: Record<string, string>, meta: 
 
 export default async function handler(req) {
   if (isDisallowedOrigin(req))
-    return new Response('Forbidden', { status: 403 });
+    return new Response('Forbidden', { status: 403, headers: withProxyNoStore() });
 
-  const cors = getCorsHeaders(req, 'GET, POST, OPTIONS');
+  const cors = withProxyNoStore(getCorsHeaders(req, 'GET, POST, OPTIONS'));
   if (req.method === 'OPTIONS')
     return new Response(null, { status: 204, headers: cors });
 

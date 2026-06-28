@@ -11,7 +11,7 @@ import { evaluateFreshness } from './freshness';
 import { applyJmespath } from './jmespath';
 import { reserveQuota } from './quota';
 import { TOOL_REGISTRY } from './registry/index';
-import { rpcError, rpcOk } from './rpc';
+import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import {
   emitTelemetry,
   principalIdForLog,
@@ -133,13 +133,13 @@ export async function dispatchToolsCall(
       if (reservation.reason === 'cap-exceeded') {
         return new Response(
           JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32029, message: `Daily MCP quota exceeded (${PRO_DAILY_QUOTA_LIMIT}/day). Resets at next UTC midnight.` } }),
-          { status: 429, headers: { 'Content-Type': 'application/json', 'Retry-After': String(secondsUntilUtcMidnight()), ...corsHeaders } },
+          { status: 429, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': String(secondsUntilUtcMidnight()), ...corsHeaders }) },
         );
       }
       // Hard-cap correctness: NEVER dispatch on reservation failure.
       return new Response(
         JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32603, message: 'Service temporarily unavailable, retry in a moment.' } }),
-        { status: 503, headers: { 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders } },
+        { status: 503, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders }) },
       );
     }
     proRollback = reservation.rollback;
