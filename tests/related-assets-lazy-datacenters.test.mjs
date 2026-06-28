@@ -27,11 +27,16 @@ describe('related-assets lazy datacenter table contract', () => {
   });
 
   it('refreshes one-shot related-asset renderers after the lazy infrastructure chunks resolve', () => {
-    assert.match(
-      countryIntelSrc,
-      /preloadInfrastructureTables\(\)\s*[\r\n\s.]+then\(\(\) => \{[\s\S]*?countryBriefPage\.updateInfrastructure\(code\)/,
-      'country brief infrastructure should re-render after the lazy datacenter/cable/nuclear tables resolve',
+    const preloadBlockStart = countryIntelSrc.indexOf(
+      'void Promise.all([',
+      countryIntelSrc.indexOf('page.updateInfrastructure(code);'),
     );
+    assert.notEqual(preloadBlockStart, -1, 'country brief should preload lazy related-asset tables after first render');
+    const preloadBlockEnd = countryIntelSrc.indexOf('const intelClient =', preloadBlockStart);
+    assert.notEqual(preloadBlockEnd, -1, 'country brief preload block should precede intelligence client setup');
+    const preloadBlock = countryIntelSrc.slice(preloadBlockStart, preloadBlockEnd);
+    assert.match(preloadBlock, /preloadInfrastructureTables\(\)/);
+    assert.match(preloadBlock, /countryBriefPage\.updateInfrastructure\(code\)/);
     assert.match(
       newsPanelSrc,
       /preloadRelatedAssetTables\(titles\)\s*[\r\n\s.]+then\(\(shouldRefresh\) => \{[\s\S]*?if \(shouldRefresh && this\.lastRawClusters\)/,
