@@ -28,7 +28,10 @@ type StoredSseEvent = {
 };
 
 const SSE_CONTENT_TYPE = 'text/event-stream; charset=utf-8';
-const MCP_CACHE_CONTROL = 'no-store, no-cache, no-transform';
+// no-store forbids storage outright; no-cache is vacuous alongside it (RFC 9111
+// §5.2) so it is omitted. no-transform is load-bearing for SSE framing. This also
+// matches the sibling no-store work in api/mcp/rpc.ts (#4502).
+const MCP_CACHE_CONTROL = 'no-store, no-transform';
 const MAX_SSE_SESSIONS = 500;
 const MAX_SSE_STREAMS_PER_SESSION = 25;
 const mcpSseStreamsBySession = new Map<string, Map<string, StoredSseEvent[]>>();
@@ -37,7 +40,6 @@ function getMcpCorsHeaders(methods = 'POST, GET, OPTIONS'): Record<string, strin
   return {
     ...getPublicCorsHeaders(methods),
     'Cache-Control': MCP_CACHE_CONTROL,
-    Pragma: 'no-cache',
   };
 }
 
@@ -132,7 +134,6 @@ function sseHeadersFrom(headers: Headers): Headers {
   const out = new Headers(headers);
   out.set('Content-Type', SSE_CONTENT_TYPE);
   out.set('Cache-Control', MCP_CACHE_CONTROL);
-  out.set('Pragma', 'no-cache');
   return out;
 }
 

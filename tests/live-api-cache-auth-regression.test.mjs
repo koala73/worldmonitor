@@ -51,7 +51,9 @@ function assertNoSentinelLeak(bodyText, name) {
 }
 
 function assertNotCached200(resp, name) {
-  assert.notEqual(resp.status, 200, `${name}: fake auth must not receive a 200`);
+  // The HTTP status is asserted explicitly at each call site (401); the only
+  // meaningful guard here is that the rejection was not served from a shared
+  // cache HIT (the #4497 failure mode).
   assert.notEqual(cfCacheStatus(resp).toUpperCase(), 'HIT', `${name}: fake auth response must not be a Cloudflare HIT`);
 }
 
@@ -171,5 +173,33 @@ describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - 
     const authBody = JSON.parse(authServer.bodyText);
     assert.equal(authBody.issuer, API_BASE);
     assert.equal(authBody.token_endpoint, `${API_BASE}/oauth/token`);
+  });
+
+  // The #4497 incident class is a CACHED 200 of private/authenticated data — the
+  // negative (401) cases above cannot catch it. With a real MCP-authorized key
+  // (WM_LIVE_TEST_KEY, never committed), assert an authenticated 200 MCP response
+  // is no-store and not served from a shared-cache HIT. Skipped unless the key is set.
+  it('authenticated MCP 200 is no-store and never a shared-cache HIT', { skip: !process.env.WM_LIVE_TEST_KEY }, async () => {
+    const post = await fetchText(`${WEB_BASE}/mcp`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-WorldMonitor-Key': process.env.WM_LIVE_TEST_KEY,
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-03-26',
+          capabilities: {},
+          clientInfo: { name: 'worldmonitor-live-sweep', version: '1.0' },
+        },
+      }),
+    });
+    assert.equal(post.resp.status, 200, 'authenticated MCP initialize should succeed (WM_LIVE_TEST_KEY must be a valid MCP-authorized key)');
+    assertNoStore(post.resp, 'authenticated MCP 200');
+    assert.notEqual(cfCacheStatus(post.resp).toUpperCase(), 'HIT', 'authenticated MCP 200 must not be a shared-cache HIT');
   });
 });

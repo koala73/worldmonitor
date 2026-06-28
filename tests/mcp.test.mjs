@@ -113,6 +113,24 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.ok(res.headers.get('mcp-session-id'), 'Mcp-Session-Id header must be present');
   });
 
+  it('bakes Cache-Control: no-store into JSON-RPC success and SSE-upgraded responses', async () => {
+    // getMcpCorsHeaders() threads no-store into every branch; assert the positive
+    // 200 paths (the #4497 incident class is a CACHED 200), not just the 401/204
+    // negative paths the other two assertions cover.
+    const json = await handler(makeReq('POST', initBody(50)));
+    assert.equal(json.status, 200);
+    assert.match(json.headers.get('cache-control') || '', /\bno-store\b/i, 'JSON-RPC 200 success must be no-store');
+
+    // Accept: text/event-stream upgrades the 200 to SSE; it must keep no-transform
+    // (framing) AND carry no-store (payload), and preserve Mcp-Session-Id.
+    const sse = await handler(makeReq('POST', initBody(51), { Accept: 'text/event-stream' }));
+    assert.equal(sse.status, 200);
+    assert.match(sse.headers.get('content-type') || '', /text\/event-stream/, 'must upgrade to an SSE stream');
+    assert.equal(sse.headers.get('cache-control'), 'no-store, no-transform', 'SSE success must be no-store + no-transform');
+    assert.ok(sse.headers.get('mcp-session-id'), 'Mcp-Session-Id must survive the SSE envelope');
+    await sse.body?.cancel();
+  });
+
   it('notifications/initialized returns 202 with no body', async () => {
     const req = makeReq('POST', { jsonrpc: '2.0', method: 'notifications/initialized', params: {} });
     const res = await handler(req);
