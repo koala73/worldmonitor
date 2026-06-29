@@ -15,8 +15,9 @@
  * Dockerfile.digest-notifications header for the cherry-pick alternative
  * we explicitly do NOT use for these three.)
  *
- * Approach: BFS from each entry script, follow relative imports, assert no
- * resolved path escapes `scripts/`. Skips bare-package and `node:*` imports.
+ * Approach: BFS from each entry script, follow relative imports and
+ * _bundle-runner section script references, assert no resolved path escapes
+ * `scripts/`. Skips bare-package and `node:*` imports.
  *
  * Companion to the header comment in
  * `scripts/_simulation-queue-constants.mjs`.
@@ -38,41 +39,45 @@ const scriptsDir = resolve(repoRoot, 'scripts');
 // companion test tests/railway-services-registry-coverage.test.mts fails
 // if any Dockerfile.* or runbook entry references a script that isn't
 // in the registry — that's how drift is caught.
-interface RailwayServiceEntry {
-  entry: string;
-  deployMode: 'nixpacks-root-scripts' | 'dockerfile';
-  dockerfile?: string;
-  service: string;
-  documentedAt: string;
-}
-
 const registry = JSON.parse(
   readFileSync(resolve(repoRoot, 'scripts/railway-services.json'), 'utf8'),
-) as RailwayServiceEntry[];
+);
 
 const ENTRY_POINTS = registry
   .filter((r) => r.deployMode === 'nixpacks-root-scripts')
   .map((r) => r.entry);
 
 const IMPORT_RE = /(?:^|[\s;])(?:import\b[\s\S]*?\bfrom|import|export\b[\s\S]*?\bfrom)\s+['"]([^'"]+)['"]/gm;
+const BUNDLE_SECTION_SCRIPT_RE = /\bscript\s*:\s*['"]([^'"]+\.(?:mjs|cjs|js))['"]/gm;
 
-function isRelative(spec: string): boolean {
+function isRelative(spec) {
   return spec.startsWith('./') || spec.startsWith('../');
 }
 
-function collectRelativeImports(filePath: string): string[] {
+function collectRelativeImports(filePath) {
   const src = readFileSync(filePath, 'utf8');
-  const out: string[] = [];
-  let m: RegExpExecArray | null;
+  const out = [];
+  let m;
   IMPORT_RE.lastIndex = 0;
   while ((m = IMPORT_RE.exec(src)) !== null) {
-    const spec = m[1]!;
+    const spec = m[1];
     if (isRelative(spec)) out.push(spec);
   }
   return out;
 }
 
-function escapesScriptsDir(absResolved: string): boolean {
+function collectBundleSectionScripts(filePath) {
+  const src = readFileSync(filePath, 'utf8');
+  const out = [];
+  let m;
+  BUNDLE_SECTION_SCRIPT_RE.lastIndex = 0;
+  while ((m = BUNDLE_SECTION_SCRIPT_RE.exec(src)) !== null) {
+    out.push(m[1]);
+  }
+  return out;
+}
+
+function escapesScriptsDir(absResolved) {
   const rel = relative(scriptsDir, absResolved);
   return rel.startsWith('..') || resolve(rel) === absResolved;
 }
@@ -80,20 +85,20 @@ function escapesScriptsDir(absResolved: string): boolean {
 describe('scripts/ Railway nixpacks packaging — no escape imports', () => {
   for (const entry of ENTRY_POINTS) {
     it(`entry ${entry} and its transitive scripts/ deps never import outside scripts/`, () => {
-      const visited = new Set<string>();
-      const queue: string[] = [resolve(repoRoot, entry)];
-      const violations: Array<{ from: string; spec: string; resolved: string }> = [];
+      const visited = new Set();
+      const queue = [resolve(repoRoot, entry)];
+      const violations = [];
 
       while (queue.length > 0) {
-        const file = queue.shift()!;
+        const file = queue.shift();
         if (visited.has(file)) continue;
         visited.add(file);
 
-        let imports: string[];
+        let imports;
         try {
           imports = collectRelativeImports(file);
         } catch (err) {
-          assert.fail(`Could not read ${file}: ${(err as Error).message}`);
+          assert.fail(`Could not read ${file}: ${err instanceof Error ? err.message : String(err)}`);
         }
 
         for (const spec of imports) {
@@ -112,6 +117,19 @@ describe('scripts/ Railway nixpacks packaging — no escape imports', () => {
           if (/\.(mjs|cjs|js)$/.test(resolved)) {
             queue.push(resolved);
           }
+        }
+
+        for (const spec of collectBundleSectionScripts(file)) {
+          const resolved = resolve(dirname(file), spec);
+          if (escapesScriptsDir(resolved)) {
+            violations.push({
+              from: relative(repoRoot, file),
+              spec,
+              resolved: relative(repoRoot, resolved),
+            });
+            continue;
+          }
+          queue.push(resolved);
         }
       }
 
