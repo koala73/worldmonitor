@@ -17,14 +17,43 @@ export const MAX_PANEL_ROW_SPAN = 4;
 /** Maximum column span supported by the CSS (`.panel.col-span-1` … `.col-span-3`). */
 export const MAX_PANEL_COL_SPAN = 3;
 
+function getPanelGrid(element: HTMLElement): HTMLElement | null {
+  return (element.closest('.panels-grid') || element.closest('.map-bottom-grid')) as HTMLElement | null;
+}
+
+function getPanelGridWidth(grid: HTMLElement): number {
+  const width = grid.getBoundingClientRect().width;
+  return Number.isFinite(width) ? width : 0;
+}
+
+/**
+ * Whether the owning grid's column count can be trusted right now. CSS
+ * `repeat(auto-fill/auto-fit, ...)` templates need a rendered width before
+ * they can be converted into a column count; a connected grid can briefly
+ * report width 0 during synchronous insertion/layout.
+ */
+export function isPanelGridColumnCountReady(element: HTMLElement): boolean {
+  const grid = getPanelGrid(element);
+  if (!grid || typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') return true;
+
+  const style = window.getComputedStyle(grid);
+  const template = style.gridTemplateColumns;
+  if (!template || template === 'none' || !template.includes('repeat(')) return true;
+  if (/repeat\(\s*\d+\s*,/i.test(template)) return true;
+  if (/repeat\(\s*auto-(fill|fit)\s*,/i.test(template)) {
+    return getPanelGridWidth(grid) > 0;
+  }
+  return true;
+}
+
 /**
  * Best-effort count of the rendered columns of the grid that owns `element`.
  * Falls back to {@link MAX_PANEL_COL_SPAN} when the grid or its computed style
  * is unavailable (e.g. server-side render).
  */
 export function getGridColumnCount(element: HTMLElement): number {
-  const grid = (element.closest('.panels-grid') || element.closest('.map-bottom-grid')) as HTMLElement | null;
-  if (!grid || typeof window === 'undefined') return MAX_PANEL_COL_SPAN;
+  const grid = getPanelGrid(element);
+  if (!grid || typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') return MAX_PANEL_COL_SPAN;
   const style = window.getComputedStyle(grid);
   const template = style.gridTemplateColumns;
   if (!template || template === 'none') return MAX_PANEL_COL_SPAN;
@@ -40,10 +69,11 @@ export function getGridColumnCount(element: HTMLElement): number {
     const autoRepeatMatch = template.match(/repeat\(\s*auto-(fill|fit)\s*,/i);
     if (autoRepeatMatch) {
       const gap = Number.parseFloat(style.columnGap || '0') || 0;
-      const width = grid.getBoundingClientRect().width;
+      const width = getPanelGridWidth(grid);
       if (width > 0) {
         return Math.max(1, Math.floor((width + gap) / (PANELS_GRID_MIN_TRACK_PX + gap)));
       }
+      return MAX_PANEL_COL_SPAN;
     }
   }
 

@@ -3,6 +3,7 @@ import {
   MAX_PANEL_ROW_SPAN,
   getExplicitColSpanClass,
   getMaxColSpan,
+  isPanelGridColumnCountReady,
   setColSpanClass,
 } from '@/utils/panel-grid';
 
@@ -142,15 +143,13 @@ export function createDeferredPanelShell(
  * direction until the real panel mounts).
  */
 export function reconcileDeferredPanelShellColSpan(shell: HTMLElement, attempts = 3): void {
-  const currentSpan = getExplicitColSpanClass(shell);
-  if (currentSpan === undefined) return;
-
   const tryReconcile = (remaining: number): void => {
-    if (!shell.isConnected || !shell.parentElement) {
-      if (remaining <= 0) return;
-      if (typeof requestAnimationFrame === 'function') {
-        requestAnimationFrame(() => tryReconcile(remaining - 1));
-      }
+    const currentSpan = getExplicitColSpanClass(shell);
+    if (currentSpan === undefined) return;
+
+    if (!shell.isConnected || !shell.parentElement || !isPanelGridColumnCountReady(shell)) {
+      if (remaining <= 0 || typeof requestAnimationFrame !== 'function') return;
+      requestAnimationFrame(() => tryReconcile(remaining - 1));
       return;
     }
     const maxSpan = getMaxColSpan(shell);

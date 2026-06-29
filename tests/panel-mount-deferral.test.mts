@@ -182,6 +182,48 @@ describe('panel mount deferral', () => {
     assert.equal(shell.classList.contains('col-span-2'), true);
   });
 
+  it('waits for a measurable connected grid before clamping saved shell column spans', () => {
+    const document = installDom();
+    const grid = document.createElement('div');
+    grid.className = 'panels-grid';
+    let gridWidth = 0;
+    Object.defineProperty(grid, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ width: gridWidth, height: 0, top: 0, left: 0, right: gridWidth, bottom: 0, x: 0, y: 0, toJSON: () => ({}) }),
+    });
+    (globalThis.window as unknown as { getComputedStyle: () => { gridTemplateColumns: string; columnGap: string } }).getComputedStyle = () => ({
+      gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+      columnGap: '0',
+    });
+
+    const frames: Array<() => void> = [];
+    (globalThis as unknown as { requestAnimationFrame: (cb: () => void) => number }).requestAnimationFrame = (cb) => {
+      frames.push(cb);
+      return frames.length;
+    };
+
+    try {
+      const shell = createDeferredPanelShell(
+        'live-webcams',
+        'Live Webcams',
+        getDeferredPanelShellFootprint({ panelId: 'live-webcams', savedColSpans: { 'live-webcams': 3 } }),
+      );
+      grid.appendChild(shell);
+      document.body.appendChild(grid);
+
+      reconcileDeferredPanelShellColSpan(shell);
+      assert.equal(shell.classList.contains('col-span-3'), true);
+      assert.equal(frames.length, 1);
+
+      gridWidth = 560;
+      frames.shift()?.();
+      assert.equal(shell.classList.contains('col-span-3'), false);
+      assert.equal(shell.classList.contains('col-span-2'), true);
+    } finally {
+      delete (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame;
+    }
+  });
+
   it('defers col-span reconciliation until the shell is connected, then clamps', () => {
     const document = installDom();
     const grid = document.createElement('div');

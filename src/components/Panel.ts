@@ -24,6 +24,7 @@ import {
   clearColSpanClass,
   getExplicitColSpanClass,
   getMaxColSpan,
+  isPanelGridColumnCountReady,
   setColSpanClass,
 } from '@/utils/panel-grid';
 
@@ -326,8 +327,11 @@ export class Panel {
     }
 
     const tryReconcile = (remaining: number) => {
-      if (!this.element.isConnected || !this.element.parentElement) {
-        if (remaining <= 0) return;
+      if (!this.element.isConnected || !this.element.parentElement || !isPanelGridColumnCountReady(this.element)) {
+        if (remaining <= 0) {
+          this.colSpanReconcileRaf = null;
+          return;
+        }
         this.colSpanReconcileRaf = requestAnimationFrame(() => tryReconcile(remaining - 1));
         return;
       }
