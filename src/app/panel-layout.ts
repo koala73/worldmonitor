@@ -455,7 +455,6 @@ export class PanelLayoutManager implements AppModule {
 
     markLcpDebug('wm:layout:render-start');
     document.documentElement.classList.add('wm-layout-hydrated');
-    markLcpDebug('wm:layout:shell-replaced');
     setTrustedHtml(this.ctx.container, trustedHtml(`
       ${this.ctx.isDesktopApp ? '<div class="tauri-titlebar" data-tauri-drag-region></div>' : ''}
       <a href="#main" class="skip-link">Skip to main content</a>
@@ -699,6 +698,11 @@ export class PanelLayoutManager implements AppModule {
         <span class="site-footer-copy">&copy; ${new Date().getFullYear()} World Monitor</span>
       </footer>
     `, "legacy direct innerHTML migration"));
+    // Mark AFTER the innerHTML swap so the timestamp reflects when the new shell
+    // DOM is actually live — placing it before setTrustedHtml recorded a time
+    // earlier than any LCP candidate in the new shell, making it useless for
+    // ordering the LCP element against the shell swap (PR #4512 review).
+    markLcpDebug('wm:layout:shell-replaced');
 
     // Skip link: explicitly move focus to <main> on activation. Native
     // fragment focus on a tabindex="-1" target is inconsistent across
