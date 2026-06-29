@@ -115,7 +115,7 @@ const CLERK_JS_VERSION = typeof __CLERK_JS_VERSION__ !== 'undefined' ? __CLERK_J
 // SEPARATE package from the (headless) SDK and is loaded from the same Frontend
 // API; its UMD bundle exposes `window.__internal_ClerkUICtor`, which we pass to
 // `clerk.load()`. Bump this alongside any @clerk/clerk-js MAJOR upgrade.
-const CLERK_UI_VERSION = '1';
+const CLERK_UI_VERSION = '2';
 
 // The SDK UMD bundle, loaded with a `data-clerk-publishable-key` attribute,
 // auto-creates a (not-yet-loaded) Clerk instance on `window.Clerk` — it exposes
