@@ -7,6 +7,7 @@ import {
   createDeferredPanelShell,
   getDeferredPanelShellFootprint,
   getInitialPanelMountBudget,
+  reconcileDeferredShellColSpan,
   shouldDeferInitialPanelMount,
 } from '../src/app/panel-mount-deferral';
 import { createBrowserEnvironment } from './helpers/runtime-config-panel-harness.mjs';
@@ -188,6 +189,46 @@ describe('panel mount deferral', () => {
       getDeferredPanelShellFootprint({ panelId: 'unknown-panel', dynamicFootprints }),
       { wide: false, collapsed: false },
     );
+  });
+
+  it('clamps a saved shell col-span down to the live grid width', () => {
+    const document = installDom();
+    const footprint = getDeferredPanelShellFootprint({
+      panelId: 'live-news',
+      savedColSpans: { 'live-news': 3 },
+    });
+    const shell = createDeferredPanelShell('live-news', 'Live News', footprint);
+    document.body.appendChild(shell);
+    assert.equal(shell.classList.contains('col-span-3'), true);
+
+    // A 2-column grid must collapse col-span-3 to col-span-2, matching the real panel.
+    reconcileDeferredShellColSpan(shell, 2);
+    assert.equal(shell.classList.contains('col-span-3'), false);
+    assert.equal(shell.classList.contains('col-span-2'), true);
+  });
+
+  it('drops the col-span class entirely when the grid only fits one column', () => {
+    const document = installDom();
+    const shell = createDeferredPanelShell('live-news', 'Live News', {
+      colSpan: 2,
+      colSpanSource: 'saved',
+    });
+    document.body.appendChild(shell);
+
+    reconcileDeferredShellColSpan(shell, 1);
+    assert.equal(shell.className.includes('col-span-'), false);
+  });
+
+  it('leaves a shell col-span untouched when it already fits the grid', () => {
+    const document = installDom();
+    const shell = createDeferredPanelShell('live-news', 'Live News', {
+      colSpan: 2,
+      colSpanSource: 'saved',
+    });
+    document.body.appendChild(shell);
+
+    reconcileDeferredShellColSpan(shell, 3);
+    assert.equal(shell.classList.contains('col-span-2'), true);
   });
 
   it('materially reduces initial DOM and control count for below-budget panels', () => {

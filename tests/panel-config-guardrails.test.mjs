@@ -100,6 +100,50 @@ function parsePanelKeys(variant) {
   return keys;
 }
 
+// Blank out the interior of line/block comments so a stray `}` or `{` inside a
+// comment can't truncate (or unbalance) the brace walk below — the demonstrated
+// real risk, e.g. CIIPanel has `//` comments inside its super({...}) block.
+// String and template literals are tracked (so `//` inside an URL string isn't
+// mistaken for a comment) but copied verbatim — downstream regexes read `id:` /
+// `className:` string values. Brace balancing inside strings/templates is left
+// to findMatchingBrace's own quote handling. Lengths/indices are preserved by
+// substituting spaces so this can be applied transparently before parsing.
+function stripComments(src) {
+  let out = '';
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const ch = src[i];
+    const next = src[i + 1];
+    if (ch === '/' && next === '/') {
+      while (i < n && src[i] !== '\n') { out += ' '; i++; }
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      out += '  '; i += 2;
+      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) {
+        out += src[i] === '\n' ? '\n' : ' '; i++;
+      }
+      if (i < n) { out += '  '; i += 2; }
+      continue;
+    }
+    if (ch === '\'' || ch === '"' || ch.charCodeAt(0) === 96) {
+      const quote = ch;
+      out += ch; i++;
+      while (i < n) {
+        const c = src[i];
+        if (c === '\\') { out += c + (src[i + 1] ?? ''); i += 2; continue; }
+        out += c; i++;
+        if (c === quote) break;
+      }
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
 function findMatchingBrace(src, open) {
   let depth = 0;
   let quote = null;
@@ -125,19 +169,26 @@ function findMatchingBrace(src, open) {
   return -1;
 }
 
-function extractSuperOptionObjects(src) {
+function extractSuperOptionObjects(rawSrc) {
+  const src = stripComments(rawSrc);
   const objects = [];
-  for (let index = 0; (index = src.indexOf('super(', index)) !== -1; index += 6) {
-    const open = src.indexOf('{', index);
-    if (open === -1) continue;
+  // Only treat `super(` as carrying an options object when a `{` follows
+  // immediately (allowing whitespace) — `super(varName)` must not grab the
+  // next unrelated object literal downstream.
+  const superCall = /\bsuper\(\s*\{/g;
+  let match;
+  while ((match = superCall.exec(src)) !== null) {
+    const open = src.indexOf('{', match.index);
     const close = findMatchingBrace(src, open);
     if (close === -1) continue;
     objects.push(src.slice(open + 1, close));
+    superCall.lastIndex = close + 1;
   }
   return objects;
 }
 
-function topLevelObjectEntries(src, constName) {
+function topLevelObjectEntries(rawSrc, constName) {
+  const src = stripComments(rawSrc);
   const decl = src.indexOf(constName);
   assert.notEqual(decl, -1, constName + ' not found');
   const open = src.indexOf('{', decl);
@@ -435,6 +486,74 @@ describe('panel-config guardrails', () => {
       'Deferred shell natural-footprint metadata drifted from Panel constructor options. ' +
         'Update DEFERRED_PANEL_NATURAL_FOOTPRINTS when adding/removing defaultRowSpan > 1 or panel-wide panels.',
     );
+  });
+
+  it('every tall/wide panel constructor exposes a literal id the footprint scan can read', () => {
+    // constructorFootprints() skips any super({...}) whose id is computed rather
+    // than a quoted literal. Such a panel would silently never appear in the
+    // drift check above, masking a genuinely missing footprint entry. Assert that
+    // every tall/wide constructor block carries a literal id so none can hide.
+    // Dynamic panels (custom-widget/mcp) intentionally use a computed spec.id and
+    // are covered by DEFERRED_DYNAMIC_PANEL_FOOTPRINTS instead, so exclude them.
+    const DYNAMIC_PANEL_CLASSNAMES = new Set(['custom-widget-panel', 'mcp-data-panel']);
+    const componentsDir = resolve(__dirname, '../src/components');
+    const unparseable = [];
+    for (const file of readdirSync(componentsDir).filter((name) => name.endsWith('.ts'))) {
+      const componentSrc = readFileSync(resolve(componentsDir, file), 'utf-8');
+      for (const objectBody of extractSuperOptionObjects(componentSrc)) {
+        const rowSpan = Number(objectBody.match(/\bdefaultRowSpan\s*:\s*(\d+)/)?.[1] ?? '0');
+        const wide = /\bclassName\s*:\s*['"]panel-wide['"]/.test(objectBody);
+        const isTallOrWide = (rowSpan && rowSpan > 1) || wide;
+        if (!isTallOrWide) continue;
+        const className = objectBody.match(/\bclassName\s*:\s*['"]([^'"]+)['"]/)?.[1];
+        if (className && DYNAMIC_PANEL_CLASSNAMES.has(className)) continue;
+        const hasLiteralId = /\bid\s*:\s*['"][^'"]+['"]/.test(objectBody);
+        if (!hasLiteralId) {
+          unparseable.push(file);
+        }
+      }
+    }
+    assert.deepStrictEqual(
+      unparseable.sort(),
+      [],
+      'Found tall/wide Panel constructor(s) without a literal id: ' + unparseable.join(', ') + '. ' +
+        'The footprint guardrail cannot track these, so give them a literal id: \'...\' in super({...}).',
+    );
+  });
+
+  it('source parser tolerates braces inside comments', () => {
+    // Locks down stripComments: a stray `}` (or `{`) inside a line or block
+    // comment must not truncate the parsed super({...}) body and drop
+    // defaultRowSpan — the real-world risk, e.g. CIIPanel comments its super().
+    const fixture = [
+      "class X extends Panel {",
+      "  constructor() {",
+      "    super({",
+      "      id: 'fixture-panel', // a closing brace } inside a comment",
+      "      /* block } comment { with braces */",
+      "      title: 'http://example.com/a', // url with // inside a string",
+      "      defaultRowSpan: 2,",
+      "    });",
+      "  }",
+      "}",
+    ].join('\n');
+    const [objectBody] = extractSuperOptionObjects(fixture);
+    assert.ok(objectBody, 'super({...}) body should parse past comment braces');
+    assert.equal(objectBody.match(/\bid\s*:\s*['"]([^'"]+)['"]/)?.[1], 'fixture-panel');
+    assert.equal(objectBody.match(/\btitle\s*:\s*['"]([^'"]+)['"]/)?.[1], 'http://example.com/a');
+    assert.equal(objectBody.match(/\bdefaultRowSpan\s*:\s*(\d+)/)?.[1], '2');
+  });
+
+  it('source parser ignores super() calls with a non-object argument', () => {
+    const fixture = [
+      "class A { constructor(code) { super(code); } }",
+      "const unrelated = { id: 'not-a-panel', defaultRowSpan: 2 };",
+      "class B extends Panel { constructor() { super({ id: 'real-panel', defaultRowSpan: 2 }); } }",
+    ].join('\n');
+    const ids = extractSuperOptionObjects(fixture)
+      .map((body) => body.match(/\bid\s*:\s*['"]([^'"]+)['"]/)?.[1])
+      .filter(Boolean);
+    assert.deepStrictEqual(ids, ['real-panel']);
   });
 
   it('dynamic custom and MCP footprint defaults match their real panel constructors', () => {

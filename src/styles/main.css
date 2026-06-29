@@ -13140,6 +13140,28 @@ a.prediction-link:hover {
     max-height: min(70vh, 500px);
   }
 
+  /*
+   * On mobile the grid is a single-column flexbox, so grid-row/column spans and
+   * .panel-wide are inert — every real panel renders within the 250-500px band
+   * above. Override the desktop span-based shell reservations (404/600/800px) so
+   * the deferred placeholder reserves the same floor the real mobile panel uses,
+   * otherwise tall/wide shells would shrink on mount and reintroduce CLS.
+   */
+  .panel-deferred-shell,
+  .panel-deferred-shell.panel-wide,
+  .panel-deferred-shell.span-2,
+  .panel-deferred-shell.span-3,
+  .panel-deferred-shell.span-4 {
+    contain-intrinsic-size: 250px;
+  }
+
+  .panel-deferred-shell.panel-collapsed,
+  .panel-deferred-shell.panel-collapsed.span-2,
+  .panel-deferred-shell.panel-collapsed.span-3,
+  .panel-deferred-shell.panel-collapsed.span-4 {
+    contain-intrinsic-size: auto;
+  }
+
   .panel-content {
     font-size: 13px;
     -webkit-overflow-scrolling: touch;

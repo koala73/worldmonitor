@@ -146,6 +146,28 @@ function applyDeferredPanelShellFootprint(shell: HTMLElement, footprint: Deferre
   }
 }
 
+/**
+ * After a deferred shell is attached to the grid, clamp its `col-span-*` class to
+ * the live grid column count. The real Panel does the same on mount via
+ * `restoreSavedColSpan`, so without this a saved col-span (e.g. 3) on a viewport
+ * that only fits 2 columns would over-reserve and the panel would shrink
+ * horizontally on mount — reintroducing CLS. `maxColSpan` is the live grid's
+ * resolved maximum (1-3); pass it from the caller that can measure the grid.
+ */
+export function reconcileDeferredShellColSpan(shell: HTMLElement, maxColSpan: number): void {
+  const current = shell.classList.contains('col-span-3') ? 3
+    : shell.classList.contains('col-span-2') ? 2
+      : shell.classList.contains('col-span-1') ? 1
+        : undefined;
+  if (current === undefined) return;
+  const clamped = Math.max(1, Math.min(maxColSpan, current));
+  if (clamped === current) return;
+  shell.classList.remove('col-span-1', 'col-span-2', 'col-span-3');
+  if (clamped > 1) {
+    shell.classList.add('col-span-' + clamped);
+  }
+}
+
 export function createDeferredPanelShell(
   panelId: string,
   title: string,

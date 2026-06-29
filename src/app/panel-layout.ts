@@ -4,6 +4,7 @@ import { replayPendingCalls, clearAllPendingCalls } from '@/app/pending-panel-da
 import {
   createDeferredPanelShell,
   getDeferredPanelShellFootprint,
+  reconcileDeferredShellColSpan,
   shouldDeferInitialPanelMount,
   type DeferredPanelNaturalFootprint,
 } from '@/app/panel-mount-deferral';
@@ -71,6 +72,7 @@ import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import type { AuthSession } from '@/services/auth-state';
 import { PanelGateReason, getPanelGateReason, hasPremiumAccess } from '@/services/panel-gating';
 import type { Panel } from '@/components/Panel';
+import { getMaxColSpan } from '@/components/Panel';
 import type { SupplyChainPanel } from '@/components/SupplyChainPanel';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
@@ -158,6 +160,7 @@ const DEFERRED_DYNAMIC_PANEL_FOOTPRINTS = {
 } as const satisfies Readonly<Record<string, DeferredPanelNaturalFootprint>>;
 
 const DEFERRED_PANEL_RETRY_DELAY_MS = 1_000;
+const DEFERRED_PANEL_MAX_RETRY_ATTEMPTS = 3;
 
 export interface PanelLayoutManagerCallbacks {
   openCountryStory: (code: string, name: string) => void;
@@ -175,6 +178,8 @@ interface DeferredPanelMount {
   mounted: boolean;
   loading: Promise<void> | null;
   retryTimer: ReturnType<typeof setTimeout> | null;
+  retryAttempts: number;
+  failed: boolean;
 }
 
 interface LazyPanelRegistration {
@@ -1268,6 +1273,9 @@ export class PanelLayoutManager implements AppModule {
       : null;
     if (placeholder && grid) {
       this.insertByOrder(grid, placeholder, key);
+      // Clamp a saved col-span to the live grid width, mirroring the real panel's
+      // restoreSavedColSpan, so a narrow viewport doesn't over-reserve and shift.
+      reconcileDeferredShellColSpan(placeholder, getMaxColSpan(placeholder));
       this.mobilePanelNav?.applyToNewPanel(placeholder);
     }
     const existing = this.deferredPanelMounts.get(key);
@@ -1285,6 +1293,8 @@ export class PanelLayoutManager implements AppModule {
       mounted: false,
       loading: null,
       retryTimer: null,
+      retryAttempts: 0,
+      failed: false,
     };
     this.deferredPanelMounts.set(key, deferred);
     if (placeholder) {
@@ -1326,9 +1336,17 @@ export class PanelLayoutManager implements AppModule {
   }
 
   private scheduleDeferredPanelRetry(key: string, deferred: DeferredPanelMount): void {
-    if (this.ctx.isDestroyed || deferred.mounted || deferred.retryTimer !== null) return;
+    if (this.ctx.isDestroyed || deferred.mounted || deferred.failed || deferred.retryTimer !== null) return;
     if (!deferred.placeholder?.parentNode) return;
     if (!deferred.panel && !this.lazyPanelRegistrations.has(key)) return;
+    if (deferred.retryAttempts >= DEFERRED_PANEL_MAX_RETRY_ATTEMPTS) {
+      // Give up after a bounded number of attempts so a permanently failing
+      // dynamic import (offline, stale chunk) can't spin a 1s retry loop forever.
+      // The shell stays in place as a quiet fallback, matching the prior fail-safe.
+      deferred.failed = true;
+      return;
+    }
+    deferred.retryAttempts += 1;
     deferred.retryTimer = setTimeout(() => {
       deferred.retryTimer = null;
       if (this.deferredPanelMounts.get(key) !== deferred || deferred.mounted || this.ctx.isDestroyed) return;
@@ -1338,7 +1356,7 @@ export class PanelLayoutManager implements AppModule {
 
   private mountDeferredPanel(key: string): boolean {
     const deferred = this.deferredPanelMounts.get(key);
-    if (!deferred || deferred.mounted || deferred.loading) return false;
+    if (!deferred || deferred.mounted || deferred.loading || deferred.failed) return false;
     const grid = this.getPanelMountGrid(key);
     if (!grid && !deferred.placeholder?.parentNode) return false;
 

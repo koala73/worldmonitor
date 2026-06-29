@@ -381,10 +381,17 @@ test.describe('dashboard layout stability on mobile', () => {
   });
 
   test.beforeEach(async ({ page }) => {
-    await installDashboardClsObserver(page);
+    // Seed the same tall/wide saved footprint as desktop so the deferred-shell
+    // mount path is exercised on mobile, where the mount budget is smallest and
+    // the grid is a single-column flexbox. This guards the mobile shell
+    // reservation override against reintroducing CLS during lazy mount.
+    await installDashboardClsObserver(page, { seedDeferredFootprint: shouldSeedDeferredFootprint });
   });
 
   test('keeps mobile first-load CLS below the dashboard threshold with top banner visible', async ({ page }) => {
+    // Note: the strict shell↔mount footprint equality check is desktop-only — on
+    // mobile spans are inert (flex column) and panels are content-sized, so we
+    // rely on the dashboard CLS bucket assertion to catch reservation regressions.
     await exerciseDashboardBoot(page);
   });
 });

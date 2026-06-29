@@ -84,7 +84,7 @@ function getGridColumnCount(element: HTMLElement): number {
   return columns.length > 0 ? columns.length : 3;
 }
 
-function getMaxColSpan(element: HTMLElement): number {
+export function getMaxColSpan(element: HTMLElement): number {
   return Math.max(1, Math.min(3, getGridColumnCount(element)));
 }
 
