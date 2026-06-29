@@ -277,8 +277,8 @@ const assertSeededDeferredPanelMount = async (
   expectClass(mounted!.className, 'span-3', 'seeded real panel row span');
   expectClass(mounted!.className, 'resized', 'seeded real panel saved row marker');
   expectClass(mounted!.className, 'col-span-2', 'seeded real panel saved column span');
-  expect(Math.abs(mounted!.width - shell!.width), 'seeded deferred shell width').toBeLessThanOrEqual(2);
-  expect(Math.abs(mounted!.height - shell!.height), 'seeded deferred shell height').toBeLessThanOrEqual(2);
+  expect(Math.abs(mounted!.width - shell!.width), 'shell→mounted width delta').toBeLessThanOrEqual(2);
+  expect(Math.abs(mounted!.height - shell!.height), 'shell→mounted height delta').toBeLessThanOrEqual(2);
 };
 
 const assertDashboardCls = async (page: Page): Promise<void> => {

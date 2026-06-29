@@ -95,8 +95,13 @@ export function getDeferredPanelShellFootprint({
   const savedRowSpan = validIntegerInRange(savedRowSpans?.[panelId], 1, 4);
 
   const wide = natural.wide === true;
-  const naturalColSpan = validIntegerInRange(natural.colSpan, 1, 3) ?? (wide ? 2 : undefined);
+  const naturalColSpan = validIntegerInRange(natural.colSpan, 1, 3);
   const savedColSpan = validIntegerInRange(savedColSpans?.[panelId], 1, 3);
+  // The real panel's default column span (Panel.getDefaultColSpan) is 2 for wide
+  // panels (via the panel-wide class) and 1 otherwise. A saved span only needs an
+  // explicit col-span class when it differs from that default — matching
+  // Panel.restoreSavedColSpan, which clears the class when saved === default.
+  const defaultColSpan = wide ? 2 : 1;
 
   const footprint: DeferredPanelShellFootprint = {
     wide,
@@ -112,7 +117,7 @@ export function getDeferredPanelShellFootprint({
   }
 
   if (savedColSpan !== undefined) {
-    if (savedColSpan !== (naturalColSpan ?? 1)) {
+    if (savedColSpan !== defaultColSpan) {
       footprint.colSpan = savedColSpan;
       footprint.colSpanSource = 'saved';
     }
@@ -138,11 +143,10 @@ function applyDeferredPanelShellFootprint(shell: HTMLElement, footprint: Deferre
     shell.classList.add('col-span-' + footprint.colSpan);
   }
   if (footprint.collapsed) {
+    // The .panel-deferred-shell.panel-collapsed .panel-deferred-content { display: none }
+    // CSS rule already hides the content; no inline style needed (and an inline
+    // style would out-specify any future reveal animation).
     shell.classList.add('panel-collapsed');
-    const content = shell.querySelector<HTMLElement>('.panel-deferred-content');
-    if (content) {
-      content.style.display = 'none';
-    }
   }
 }
 

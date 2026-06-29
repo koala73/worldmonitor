@@ -124,6 +124,34 @@ describe('panel mount deferral', () => {
     });
   });
 
+  it('keeps a saved col-span that equals a non-wide natural col-span', () => {
+    // Regression: a saved col-span equal to the panel's explicit (non-wide)
+    // natural col-span must still emit the class, because the real panel's
+    // default col-span is 1 — without the class the shell would render one
+    // column and shift horizontally on mount.
+    assert.deepEqual(
+      getDeferredPanelShellFootprint({
+        panelId: 'wide-data',
+        naturalFootprints: { 'wide-data': { colSpan: 2 } },
+        savedColSpans: { 'wide-data': 2 },
+      }),
+      { wide: false, collapsed: false, colSpan: 2, colSpanSource: 'saved' },
+    );
+  });
+
+  it('suppresses a saved col-span that matches the wide default of 2', () => {
+    // A wide panel already spans 2 columns via panel-wide, so a saved col-span of
+    // 2 is redundant and should not add an explicit class (mirrors the real panel).
+    assert.deepEqual(
+      getDeferredPanelShellFootprint({
+        panelId: 'live-news',
+        naturalFootprints: { 'live-news': { wide: true } },
+        savedColSpans: { 'live-news': 2 },
+      }),
+      { wide: true, collapsed: false },
+    );
+  });
+
   it('ignores invalid saved spans instead of emitting invalid shell classes', () => {
     const document = installDom();
     const footprint = getDeferredPanelShellFootprint({
@@ -155,7 +183,8 @@ describe('panel mount deferral', () => {
     assert.equal(shell.classList.contains('span-2'), true);
     assert.equal(shell.classList.contains('resized'), true);
     assert.equal(shell.classList.contains('panel-collapsed'), true);
-    assert.equal((shell.querySelector('.panel-deferred-content') as HTMLElement | null)?.style.display, 'none');
+    // Content visibility is handled by the .panel-collapsed CSS rule, not an inline style.
+    assert.notEqual((shell.querySelector('.panel-deferred-content') as HTMLElement | null)?.style.display, 'none');
     assert.equal(countInteractiveControls(shell), 0);
   });
 
