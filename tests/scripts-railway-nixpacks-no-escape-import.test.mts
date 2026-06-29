@@ -87,16 +87,17 @@ function stripComments(src: string): string {
 }
 
 function collectBundleSectionScripts(filePath: string): string[] {
-  const raw = readFileSync(filePath, 'utf8');
-  // `script:` section entries are the _bundle-runner orchestrator shape. Scan
-  // registry entry points AND any nested orchestrator reached in the BFS (a
-  // bundle that spawns a sub-bundle), but skip unrelated files so a stray
-  // `script: 'x.mjs'` literal elsewhere can't fake an escape.
-  if (!BUNDLE_ENTRY_FILES.has(filePath) && !raw.includes('_bundle-runner')) {
+  // Strip comments first so the gate and the extraction agree on the same
+  // source: `script:` section entries are the _bundle-runner orchestrator
+  // shape, so scan registry entry points AND any nested orchestrator reached
+  // in the BFS (a bundle that spawns a sub-bundle), but skip unrelated files
+  // (and files that mention `_bundle-runner` only in a comment) so a stray
+  // `script: 'x.mjs'` literal can't fake an escape.
+  const src = stripComments(readFileSync(filePath, 'utf8'));
+  if (!BUNDLE_ENTRY_FILES.has(filePath) && !src.includes('_bundle-runner')) {
     return [];
   }
 
-  const src = stripComments(raw);
   const out: string[] = [];
   let m: RegExpExecArray | null;
   BUNDLE_SECTION_SCRIPT_RE.lastIndex = 0;
