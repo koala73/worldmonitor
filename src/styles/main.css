@@ -22654,6 +22654,12 @@ body.map-width-resizing {
   color: var(--text-dim);
 }
 
+.mcp-refresh-hint {
+  margin-top: -4px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
 .modal-footer {
   display: flex;
   justify-content: flex-end;

@@ -6,6 +6,7 @@ import { proxyUrl } from '@/utils/proxy';
 import { premiumFetch } from '@/services/premium-fetch';
 import { track } from '@/services/analytics';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { parseIntegerInputValue } from '@/utils/number-input';
 
 
 interface McpConnectOptions {
@@ -150,6 +151,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
             value="${existing ? Math.round(existing.refreshIntervalMs / 1000) : MIN_MCP_REFRESH_S}" />
           <span class="mcp-refresh-unit">${escapeHtml(t('mcp.seconds'))}</span>
         </div>
+        <div class="mcp-refresh-hint" style="display:none"></div>
       </div>
     </div>
     <div class="modal-footer">
@@ -187,6 +189,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
   const argsError = modal.querySelector('.mcp-args-error') as HTMLElement;
   const titleInput = modal.querySelector('.mcp-panel-title') as HTMLInputElement;
   const refreshInput = modal.querySelector('.mcp-refresh-input') as HTMLInputElement;
+  const refreshHint = modal.querySelector('.mcp-refresh-hint') as HTMLElement;
   const addBtn = modal.querySelector('.mcp-add-btn') as HTMLButtonElement;
 
   function isSimpleMode(): boolean {
@@ -382,6 +385,15 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
     }
   }
 
+  refreshInput.addEventListener('input', () => {
+    const parsed = parseIntegerInputValue(refreshInput.value, { min: MIN_MCP_REFRESH_S, max: 86400, fallback: MIN_MCP_REFRESH_S });
+    refreshInput.value = String(parsed);
+    refreshHint.textContent = parsed === MIN_MCP_REFRESH_S && refreshInput.value !== String(MIN_MCP_REFRESH_S)
+      ? 'Using the minimum refresh interval.'
+      : '';
+    refreshHint.style.display = refreshHint.textContent ? '' : 'none';
+  });
+
   connectBtn.addEventListener('click', async () => {
     const serverUrl = urlInput.value.trim();
     if (!serverUrl) return;
@@ -430,6 +442,11 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
       return;
     }
     const id = existing?.id ?? `mcp-${crypto.randomUUID()}`;
+    const refreshIntervalSeconds = parseIntegerInputValue(refreshInput.value, {
+      min: MIN_MCP_REFRESH_S,
+      max: 86400,
+      fallback: MIN_MCP_REFRESH_S,
+    });
     const spec: McpPanelSpec = {
       id,
       title: titleInput.value.trim() || selectedTool.name,
@@ -437,7 +454,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
       customHeaders: getEffectiveHeaders(),
       toolName: selectedTool.name,
       toolArgs,
-      refreshIntervalMs: Math.max(MIN_MCP_REFRESH_S, parseInt(refreshInput.value, 10) || MIN_MCP_REFRESH_S) * 1000,
+      refreshIntervalMs: refreshIntervalSeconds * 1000,
       createdAt: existing?.createdAt ?? Date.now(),
       updatedAt: Date.now(),
     };
