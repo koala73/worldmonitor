@@ -1,6 +1,7 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { enqueuePanelCall } from '@/app/pending-panel-data';
+import { markLcpDebug } from '@/utils/lcp-debug';
 import type { NewsItem, MapLayers, SocialUnrestEvent, MilitaryFlight } from '@/types';
 import type { MarketData } from '@/types';
 import type { TimeRange } from '@/components/MapContainer';
@@ -504,6 +505,67 @@ export class DataLoaderManager implements AppModule {
     this.refreshCiiAndBrief(false);
   }
 
+  public refreshGeometryDependentCiiAfterCountryGeometry(): void {
+    markLcpDebug('wm:data:country-geometry-replay-start');
+    const cache = this.ctx.intelligenceCache;
+    let replayed = 0;
+
+    if (cache.protests || cache.conflicts || cache.military || cache.iranEvents) {
+      resetHotspotActivity();
+    }
+    if (cache.protests) {
+      ingestProtestsForCII(cache.protests.events);
+      replayed += 1;
+    }
+    if (cache.conflicts) {
+      ingestConflictsForCII(cache.conflicts);
+      replayed += 1;
+    }
+    if (cache.military) {
+      ingestMilitaryForCII(cache.military.flights, cache.military.vessels);
+      replayed += 1;
+    }
+    if (cache.iranEvents) {
+      const coerced = cache.iranEvents.map(e => ({ ...e, timestamp: Number(e.timestamp) || 0 }));
+      ingestStrikesForCII(coerced);
+      replayed += 1;
+    }
+    if (cache.earthquakes) {
+      ingestEarthquakesForCII(cache.earthquakes);
+      replayed += 1;
+    }
+    if (cache.flightDelays) {
+      const severe = cache.flightDelays.filter(d => d.severity === 'major' || d.severity === 'severe' || d.delayType === 'closure');
+      if (severe.length > 0) {
+        ingestAviationForCII(severe);
+        replayed += 1;
+      }
+    }
+    if (cache.outages) {
+      ingestOutagesForCII(cache.outages);
+      replayed += 1;
+    }
+    if (cache.orefAlerts) {
+      ingestOrefForCII(cache.orefAlerts.alertCount, cache.orefAlerts.historyCount24h);
+      replayed += 1;
+    }
+    if (cache.advisories) {
+      ingestAdvisoriesForCII(cache.advisories);
+      replayed += 1;
+    }
+    if (cache.sanctions) {
+      ingestSanctionsForCII(cache.sanctions.countries);
+      replayed += 1;
+    }
+    if (this.ctx.cyberThreatsCache) {
+      ingestCyberThreatsForCII(this.ctx.cyberThreatsCache);
+      replayed += 1;
+    }
+
+    markLcpDebug('wm:data:country-geometry-replay-ready', { replayed });
+    if (replayed > 0) this.refreshCiiAndBrief(false);
+  }
+
   private async tryFetchDigest(): Promise<ListFeedDigestResponse | null> {
     const now = Date.now();
 
@@ -515,6 +577,7 @@ export class DataLoaderManager implements AppModule {
     }
 
     try {
+      markLcpDebug('wm:data:feed-digest-start');
       const resp = await fetch(
         toApiUrl(`/api/news/v1/list-feed-digest?variant=${SITE_VARIANT}&lang=${getCurrentLanguage()}`),
         { cache: 'no-cache', signal: AbortSignal.timeout(this.digestRequestTimeoutMs) },
@@ -522,12 +585,14 @@ export class DataLoaderManager implements AppModule {
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json() as ListFeedDigestResponse;
       const catCount = Object.keys(data.categories ?? {}).length;
+      markLcpDebug('wm:data:feed-digest-ready', { categories: catCount });
       console.info(`[News] Digest fetched: ${catCount} categories`);
       this.lastGoodDigest = data;
       this.persistDigest(data);
       this.digestBreaker = { state: 'closed', failures: 0, cooldownUntil: 0 };
       return data;
     } catch (e) {
+      markLcpDebug('wm:data:feed-digest-error');
       console.warn('[News] Digest fetch failed, using fallback:', e);
       this.digestBreaker.failures++;
       if (this.digestBreaker.failures >= 2) {
@@ -2340,6 +2405,7 @@ export class DataLoaderManager implements AppModule {
     tasks.push((async () => {
       try {
         const conflictData = await fetchConflictEvents();
+        this.ctx.intelligenceCache.conflicts = conflictData.events;
         ingestConflictsForCII(conflictData.events);
         if (conflictData.count > 0) dataFreshness.recordUpdate('acled_conflict', conflictData.count);
       } catch (error) {

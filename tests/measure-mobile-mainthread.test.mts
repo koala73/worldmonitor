@@ -6,6 +6,7 @@ import {
   buildReport,
   parseArgs,
   rankLongTasks,
+  summarizeLcpDebug,
   summarizeLongTasks,
   tbtContribution,
 } from '../scripts/measure-mobile-mainthread.mjs';
@@ -57,6 +58,38 @@ describe('measure-mobile-mainthread attribution', () => {
     assert.equal(rankLongTasks([]).length, 0);
     assert.equal(rankLongTasks(undefined).length, 0);
     assert.equal(summarizeLongTasks(undefined).taskCount, 0);
+  });
+
+
+  it('summarizes LCP debug candidate and resource groups', () => {
+    const summary = summarizeLcpDebug({
+      context: { viewport: { width: 360, height: 780 }, devicePixelRatio: 2.63, variant: 'tech', theme: 'dark', visibilityState: 'visible' },
+      entries: [{
+        context: { viewport: { width: 360, height: 780 }, devicePixelRatio: 2.63, variant: 'tech', theme: 'dark', visibilityState: 'visible' },
+        element: { closest: 'map-container', selector: 'section#mapSection', tagName: 'section' },
+        resources: [
+          { category: 'map-topology', count: 1, encodedBodySize: 1000.4, transferSize: 1200.6 },
+          { category: 'feed-digest', count: 1, encodedBodySize: 800, transferSize: 900 },
+        ],
+        size: 12345,
+        startTime: 987.65,
+        url: '',
+      }],
+      resources: [],
+    });
+    assert.equal(summary.entryCount, 1);
+    assert.equal(summary.candidate?.closest, 'map-container');
+    assert.equal(summary.candidate?.startTime, 987.7);
+    assert.equal(summary.resources[0].category, 'map-topology');
+    assert.equal(summary.resources[0].transferSize, 1200.6);
+    assert.equal(summary.context?.variant, 'tech');
+  });
+
+  it('summarizes missing LCP debug data without throwing', () => {
+    const summary = summarizeLcpDebug(null);
+    assert.equal(summary.candidate, null);
+    assert.equal(summary.entryCount, 0);
+    assert.deepEqual(summary.resources, []);
   });
 
   it('attributeDomNodes computes share percentages and sorts by node count desc', () => {
@@ -120,10 +153,12 @@ describe('buildReport', () => {
       url: 'http://x/dashboard',
       cpu: 4,
       longtasks: [{ duration: 200, attribution: [{ containerName: 'Map' }] }],
+      lcpDebug: { entries: [{ element: { closest: 'shell-lcp' }, resources: [], size: 100, startTime: 500 }], resources: [] },
       nodeCounts: { total: 1000, mapSvg: 100, panels: 800 },
     });
     assert.equal(report.url, 'http://x/dashboard');
     assert.equal(report.cpu, 4);
+    assert.equal(report.lcp.candidate?.closest, 'shell-lcp');
     assert.equal(report.tasks.tbtMs, 150);
     assert.equal(report.nodes.rows[0].source, 'panels');
     // round-trips cleanly for `--json | jq`

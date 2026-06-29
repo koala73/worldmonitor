@@ -42,6 +42,7 @@ import { SignalModal } from '@/components/SignalModal';
 import { IntelligenceGapBadge } from '@/components/IntelligenceGapBadge';
 import { BreakingNewsBanner } from '@/components/BreakingNewsBanner';
 import { initBreakingNewsAlerts, destroyBreakingNewsAlerts } from '@/services/breaking-news-alerts';
+import { markLcpDebug } from '@/utils/lcp-debug';
 import type { ServiceStatusPanel } from '@/components/ServiceStatusPanel';
 import type { StablecoinPanel } from '@/components/StablecoinPanel';
 import type { EnergyCrisisPanel } from '@/components/EnergyCrisisPanel';
@@ -1077,6 +1078,40 @@ export class App {
     }
   }
 
+  private async waitForSlowBootstrapCheckpoint(): Promise<void> {
+    markLcpDebug('wm:data:slow-tier-wait-start');
+    try {
+      const settled = await waitForBootstrapSlowTier(isDesktopRuntime() ? 8_500 : 3_500);
+      markLcpDebug('wm:data:slow-tier-wait-end', { settled });
+      if (this.state.isDestroyed) return;
+      this.bootstrapHydrationState = getBootstrapHydrationState();
+      this.updateConnectivityUi();
+    } catch {
+      markLcpDebug('wm:data:slow-tier-wait-error');
+    }
+  }
+
+  private async preloadCountryGeometryForPostLcpWork(): Promise<void> {
+    markLcpDebug('wm:data:country-geometry-start');
+    try {
+      await preloadCountryGeometry();
+      markLcpDebug('wm:data:country-geometry-ready');
+    } catch {
+      markLcpDebug('wm:data:country-geometry-error');
+    }
+  }
+
+  private startPostLcpIntelligence(countryGeometryReady: Promise<void>): void {
+    void countryGeometryReady.finally(() => {
+      if (this.state.isDestroyed) return;
+      this.dataLoader.refreshGeometryDependentCiiAfterCountryGeometry();
+      // Correlation and country-learning use precision geometry/name matching,
+      // but they are post-initial-data work and should not hold the LCP path.
+      void this.loadInitialCorrelationEngine();
+      startLearning();
+    });
+  }
+
   private async loadInitialCorrelationEngine(): Promise<void> {
     try {
       const {
@@ -1108,6 +1143,7 @@ export class App {
 
   public async init(): Promise<void> {
     const initStart = performance.now();
+    markLcpDebug('wm:boot:app-init-start');
 
     // WebMCP — register synchronously before any init awaits so agent
     // scanners (isitagentready.com, in-browser agents) find the tools on
@@ -1141,6 +1177,7 @@ export class App {
     startFlightHistoryCleanup();
     startVesselHistoryCleanup();
     await initI18n();
+    markLcpDebug('wm:boot:i18n-ready');
     initDeferredDashboardFonts();
     // Localize the static index.html shell — <title>, meta description, and
     // sr-only <h1> are baked in English so search crawlers see something
@@ -1226,6 +1263,7 @@ export class App {
     // Wait for sidecar readiness on desktop so bootstrap hits a live server
     if (isDesktopRuntime()) {
       await waitForSidecarReady(3000);
+      markLcpDebug('wm:boot:sidecar-ready');
     }
 
     // Anonymous browser session token (issue #3541). Server's validateApiKey
@@ -1237,6 +1275,7 @@ export class App {
     if (!isDesktopRuntime()) {
       installWmSessionFetchInterceptor();
       await ensureWmSession();
+      markLcpDebug('wm:boot:session-ready');
     }
 
     // Hydrate in-memory cache from bootstrap endpoint. Awaits only the fast tier; the slow
@@ -1247,6 +1286,7 @@ export class App {
       this.bootstrapHydrationState = getBootstrapHydrationState();
       this.updateConnectivityUi();
     });
+    markLcpDebug('wm:boot:fast-bootstrap-ready');
     this.bootstrapHydrationState = getBootstrapHydrationState();
 
     // Verify OAuth OTT and hydrate auth session BEFORE any UI subscribes to auth state
@@ -1368,7 +1408,9 @@ export class App {
     // Phase 1: Layout (creates map + panels — they'll find hydrated data).
     // init() is async so the dynamic MapContainer import can resolve before
     // downstream code (e.g. mobileGeoCoords→state.map.setCenter) reads ctx.map.
+    markLcpDebug('wm:layout:init-start');
     await this.panelLayout.init();
+    markLcpDebug('wm:layout:init-complete');
     this.eventHandlers.setupSearchControls();
     showProBanner(this.state.container);
     this.updateConnectivityUi();
@@ -1475,11 +1517,8 @@ export class App {
 
     // Phase 6: Data loading
     this.dataLoader.syncDataFreshnessWithLayers();
-    await preloadCountryGeometry();
-    await waitForBootstrapSlowTier(isDesktopRuntime() ? 8_500 : 3_500);
+    const slowTierReady = this.waitForSlowBootstrapCheckpoint();
     if (this.state.isDestroyed) return;
-    this.bootstrapHydrationState = getBootstrapHydrationState();
-    this.updateConnectivityUi();
     // Prime panel-specific data concurrently with bulk loading.
     // primeVisiblePanelData owns ETF, Stablecoins, Gulf Economies, etc. that
     // are NOT part of loadAllData. Running them in parallel prevents those
@@ -1492,23 +1531,23 @@ export class App {
     // panels currently above the fold. IntersectionObserver wiring in
     // panel-layout.ts plus handleViewportPrime above re-trigger
     // loadAllData() as below-fold panels enter the viewport. (#3990)
+    markLcpDebug('wm:data:initial-fanout-start');
     await Promise.all([
       this.dataLoader.loadAllData(),
       this.primeVisiblePanelData(),
     ]);
+    markLcpDebug('wm:data:initial-fanout-complete');
+    const countryGeometryReady = this.preloadCountryGeometryForPostLcpWork();
+    void slowTierReady;
 
     // If bootstrap was served from cache but live data just loaded, promote the status indicator
     markBootstrapAsLive();
     this.bootstrapHydrationState = getBootstrapHydrationState();
     this.updateConnectivityUi();
 
-    // Initial correlation engine run — construct + register adapters + run here,
-    // inside a dynamic import, so the engine graph loads off the eager boot path
-    // (#4486). state.correlationEngine settles asynchronously; the refresh scheduler
-    // and export getter that read it already null-guard.
-    void this.loadInitialCorrelationEngine();
-
-    startLearning();
+    // Initial correlation engine run is post-LCP background work. Wait for
+    // precision country geometry there instead of before visible data fan-out.
+    this.startPostLcpIntelligence(countryGeometryReady);
 
     // Hide unconfigured layers after first data load
     if (!isAisConfigured()) {

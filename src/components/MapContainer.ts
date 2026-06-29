@@ -5,6 +5,7 @@
  * Supports an optional 3D globe mode (globe.gl) selectable from Settings.
  */
 import { isMobileDevice } from '@/utils';
+import { markLcpDebug } from '@/utils/lcp-debug';
 import type { MapComponent } from './Map';
 import type { DeckGLMap, DeckMapView, CountryClickPayload } from './DeckGLMap';
 import type { GlobeMap } from './GlobeMap';
@@ -275,6 +276,7 @@ export class MapContainer {
   }
 
   private showRendererShell(kind: RendererKind): void {
+    markLcpDebug('wm:map:shell-shown', { kind });
     this.container.classList.remove('deckgl-mode', 'globe-mode', 'svg-mode');
     this.container.classList.add('map-renderer-shell');
     this.container.dataset.mapRendererPending = kind;
@@ -370,6 +372,7 @@ export class MapContainer {
       };
 
       const finish = (): void => {
+        markLcpDebug('wm:map:renderer-demand', { kind: 'deck' });
         settle(true);
       };
 
@@ -446,6 +449,7 @@ export class MapContainer {
 
   private async initSvgMap(logMessage: string, token: number): Promise<void> {
     console.log(logMessage);
+    markLcpDebug('wm:map:svg-init-start');
     this.useDeckGL = false;
     this.deckGLMap = null;
     this.sanitizeNonDeckLayers();
@@ -456,11 +460,13 @@ export class MapContainer {
     // clear partial WebGL nodes before creating the SVG fallback.
     this.svgMap = new MapComponent(this.container, this.initialState, { chrome: this.chrome, isMobile: this.isMobile });
     this.rehydrateActiveMap();
+    markLcpDebug('wm:map:svg-ready');
   }
 
   private async createGlobeMap(rendererToken: number): Promise<void> {
     const globeToken = ++this.globeInitToken;
     try {
+      markLcpDebug('wm:map:globe-init-start');
       const { GlobeMap } = await import('./GlobeMap');
       if (!this.isCurrentRendererInit(rendererToken)) return;
       this.prepareRendererDom('globe-mode');
@@ -469,6 +475,7 @@ export class MapContainer {
         chrome: this.chrome,
       });
       this.rehydrateActiveMap();
+      markLcpDebug('wm:map:globe-ready');
     } catch (error) {
       this.handleGlobeInitFailure(globeToken, error);
     }
@@ -489,6 +496,7 @@ export class MapContainer {
   private async createDeckGLMap(token: number): Promise<void> {
     console.log('[MapContainer] Initializing deck.gl map (desktop mode)');
     try {
+      markLcpDebug('wm:map:deck-init-start');
       await loadMapLibreCss();
       const { DeckGLMap } = await import('./DeckGLMap');
       if (!this.isCurrentRendererInit(token)) return;
@@ -503,6 +511,7 @@ export class MapContainer {
       // SVG, instead of becoming an unhandled rejection behind a blank map.
       await this.deckGLMap.whenReady();
       if (!this.isCurrentRendererInit(token)) return;
+      markLcpDebug('wm:map:deck-ready');
     } catch (error) {
       if (!this.isCurrentRendererInit(token)) return;
       console.warn('[MapContainer] DeckGL initialization failed, falling back to SVG map', error);
@@ -523,6 +532,7 @@ export class MapContainer {
     // the tab becomes visible — the lightweight shell is shown until then.
     await afterFirstPaint();
     if (!this.isCurrentRendererInit(token)) return;
+    markLcpDebug('wm:map:after-first-paint');
 
     if (this.useGlobe) {
       console.log('[MapContainer] Initializing 3D globe (globe.gl mode)');

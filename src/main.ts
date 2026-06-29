@@ -1,6 +1,8 @@
 import './styles/base-layer.css';
 import './styles/happy-theme.css';
 import './bootstrap/zod-csp';
+import { installLcpAttributionDebug } from '@/bootstrap/lcp-attribution';
+import { markLcpDebug } from '@/utils/lcp-debug';
 import { enqueueSentryCall, installPreInitErrorQueue, scheduleSentryInit } from '@/bootstrap/sentry-defer';
 import { initVercelAnalytics } from '@/bootstrap/secondary-startup';
 import { App } from './App';
@@ -25,6 +27,7 @@ function activateDeferredDashboardStyles(): void {
 }
 
 activateDeferredDashboardStyles();
+installLcpAttributionDebug();
 
 // perf G — defer @sentry/browser off the critical path (#3994).
 // The eager `Sentry.init({...})` previously ran here cost ~1.96 s of pre-LCP
@@ -366,6 +369,7 @@ if (urlParams.get('settings') === '1') {
   );
 } else {
   installUtmInterceptor();
+  markLcpDebug('wm:boot:app-construct');
   const app = new App('app');
   app
     .init()

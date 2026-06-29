@@ -1,6 +1,7 @@
 import type { InternetOutage, SocialUnrestEvent, MilitaryFlight, MilitaryFlightCluster, MilitaryVessel, MilitaryVesselCluster, USNIFleetReport, PanelConfig, MapLayers, NewsItem, MarketData, ClusteredEvent, CyberThreat, Monitor } from '@/types';
 import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import type { IranEvent } from '@/generated/client/worldmonitor/conflict/v1/service_client';
+import type { ConflictEvent } from '@/services/conflict';
 import type { SanctionsPressureResult } from '@/services/sanctions-pressure';
 import type { RadiationWatchResult } from '@/services/radiation';
 import type { SecurityAdvisory } from '@/services/security-advisories';
@@ -19,6 +20,7 @@ export interface UnifiedSettingsController {
 }
 
 export interface IntelligenceCache {
+  conflicts?: ConflictEvent[];
   flightDelays?: AirportDelayAlert[];
   thermalEscalation?: import('@/services/thermal-escalation').ThermalEscalationWatch;
   aircraftPositions?: PositionSample[];
