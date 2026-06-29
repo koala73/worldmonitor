@@ -15,8 +15,9 @@
  * Dockerfile.digest-notifications header for the cherry-pick alternative
  * we explicitly do NOT use for these three.)
  *
- * Approach: BFS from each entry script, follow relative imports, assert no
- * resolved path escapes `scripts/`. Skips bare-package and `node:*` imports.
+ * Approach: BFS from each entry script, follow relative imports and
+ * _bundle-runner section script references, assert no resolved path escapes
+ * `scripts/`. Skips bare-package and `node:*` imports.
  *
  * Companion to the header comment in
  * `scripts/_simulation-queue-constants.mjs`.
@@ -53,8 +54,10 @@ const registry = JSON.parse(
 const ENTRY_POINTS = registry
   .filter((r) => r.deployMode === 'nixpacks-root-scripts')
   .map((r) => r.entry);
+const BUNDLE_ENTRY_FILES = new Set(ENTRY_POINTS.map((entry) => resolve(repoRoot, entry)));
 
 const IMPORT_RE = /(?:^|[\s;])(?:import\b[\s\S]*?\bfrom|import|export\b[\s\S]*?\bfrom)\s+['"]([^'"]+)['"]/gm;
+const BUNDLE_SECTION_SCRIPT_RE = /\bscript\s*:\s*['"]([^'"]+\.(?:mjs|cjs|js))['"]/gm;
 
 function isRelative(spec: string): boolean {
   return spec.startsWith('./') || spec.startsWith('../');
@@ -68,6 +71,26 @@ function collectRelativeImports(filePath: string): string[] {
   while ((m = IMPORT_RE.exec(src)) !== null) {
     const spec = m[1]!;
     if (isRelative(spec)) out.push(spec);
+  }
+  return out;
+}
+
+function stripLineComments(src: string): string {
+  return src
+    .split('\n')
+    .filter((line) => !line.trimStart().startsWith('//'))
+    .join('\n');
+}
+
+function collectBundleSectionScripts(filePath: string): string[] {
+  if (!BUNDLE_ENTRY_FILES.has(filePath)) return [];
+
+  const src = stripLineComments(readFileSync(filePath, 'utf8'));
+  const out: string[] = [];
+  let m: RegExpExecArray | null;
+  BUNDLE_SECTION_SCRIPT_RE.lastIndex = 0;
+  while ((m = BUNDLE_SECTION_SCRIPT_RE.exec(src)) !== null) {
+    out.push(m[1]!);
   }
   return out;
 }
@@ -112,6 +135,19 @@ describe('scripts/ Railway nixpacks packaging — no escape imports', () => {
           if (/\.(mjs|cjs|js)$/.test(resolved)) {
             queue.push(resolved);
           }
+        }
+
+        for (const spec of collectBundleSectionScripts(file)) {
+          const resolved = resolve(scriptsDir, spec);
+          if (escapesScriptsDir(resolved)) {
+            violations.push({
+              from: relative(repoRoot, file),
+              spec,
+              resolved: relative(repoRoot, resolved),
+            });
+            continue;
+          }
+          queue.push(resolved);
         }
       }
 

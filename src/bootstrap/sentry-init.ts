@@ -457,11 +457,16 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // a monkeypatched-`window.fetch` frame on the stack — a genuine API outage
       // (host-suffixed `Failed to fetch (<host>)`, handled above) and any
       // non-extension user are unaffected. The function match is anchored to
-      // exactly `window.fetch` / `fetch` (not a loose `/fetch/`) so an extension
+      // exactly `window.fetch` / `fetch` or the `Function.prototype.apply`
+      // trampoline (`Object.apply` / `apply`) an extension's hook.js uses to
+      // re-invoke the original fetch — NOT a loose `/fetch/` — so an extension
       // frame named `fetchContent` / `prefetch` does NOT swallow a real bare
-      // `Failed to fetch` from our own code (WORLDMONITOR-SG).
+      // `Failed to fetch` from our own code (WORLDMONITOR-SG). The `apply`
+      // trampoline variant is WORLDMONITOR-TZ: a wallet extension's
+      // `injected/hook.js` wraps `window.fetch` and the leaked rejection frame
+      // surfaces as `Object.apply`, not `window.fetch`.
       if (/^(?:TypeError: )?Failed to fetch$/.test(msg)
-          && frames.some(f => /^(?:chrome|moz|safari(?:-web)?)-extension:\/\//.test(f.filename ?? '') && /^(?:window\.)?fetch$/i.test(f.function ?? ''))) {
+          && frames.some(f => /^(?:chrome|moz|safari(?:-web)?)-extension:\/\//.test(f.filename ?? '') && /^(?:(?:window|Object)\.)?(?:fetch|apply)$/i.test(f.function ?? ''))) {
         return null;
       }
       // Suppress Sentry SDK DOM breadcrumb null-access on document.activeElement/contains.

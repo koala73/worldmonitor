@@ -2,18 +2,19 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { afterEach, describe, it } from 'node:test';
 
+import { createBrowserEnvironment } from './helpers/mini-dom.mts';
 import {
   countInteractiveControls,
   createDeferredPanelShell,
   getDeferredPanelShellFootprint,
   getInitialPanelMountBudget,
-  reconcileDeferredShellColSpan,
+  reconcileDeferredPanelShellColSpan,
   shouldDeferInitialPanelMount,
 } from '../src/app/panel-mount-deferral';
-import { createBrowserEnvironment } from './helpers/runtime-config-panel-harness.mjs';
 
 const originalDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
 const originalHTMLElement = Object.getOwnPropertyDescriptor(globalThis, 'HTMLElement');
+const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
 
 function installDom() {
   const env = createBrowserEnvironment();
@@ -27,6 +28,11 @@ function installDom() {
     writable: true,
     value: env.HTMLElement,
   });
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    writable: true,
+    value: env.window,
+  });
   return env.document;
 }
 
@@ -35,6 +41,36 @@ function restoreDom(): void {
   else delete (globalThis as { document?: unknown }).document;
   if (originalHTMLElement) Object.defineProperty(globalThis, 'HTMLElement', originalHTMLElement);
   else delete (globalThis as { HTMLElement?: unknown }).HTMLElement;
+  if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow);
+  else delete (globalThis as { window?: unknown }).window;
+}
+
+interface ParsedNaturalFootprint {
+  rowSpan?: number;
+  className?: string;
+}
+
+// Lightweight parse of the flat (one-entry-per-line) DEFERRED_PANEL_NATURAL_FOOTPRINTS
+// registry from panel-layout.ts source, so the e2e footprint test runs against the
+// real registry without importing panel-layout.ts (which needs the app bundler).
+function parseNaturalFootprintRegistry(src: string): Map<string, ParsedNaturalFootprint> {
+  const declIdx = src.indexOf('DEFERRED_PANEL_NATURAL_FOOTPRINTS');
+  const open = src.indexOf('{', src.indexOf('= {', declIdx));
+  const end = src.indexOf('\n};', open);
+  const block = src.slice(open, end === -1 ? undefined : end);
+  const map = new Map<string, ParsedNaturalFootprint>();
+  const entryRe = /(?:'([^']+)'|([A-Za-z0-9_-]+))\s*:\s*\{([^}]*)\}/g;
+  let match: RegExpExecArray | null;
+  while ((match = entryRe.exec(block))) {
+    const key = match[1] ?? match[2];
+    const body = match[3] ?? '';
+    const rowSpan = body.match(/rowSpan:\s*([2-4])/);
+    map.set(key, {
+      rowSpan: rowSpan ? Number(rowSpan[1]) : undefined,
+      className: /panel-wide/.test(body) ? 'panel-wide' : undefined,
+    });
+  }
+  return map;
 }
 
 function createFullPanel(id: string): HTMLElement {
@@ -96,168 +132,291 @@ describe('panel mount deferral', () => {
     assert.equal(countInteractiveControls(shell), 0);
   });
 
-  it('derives natural panel row reservations before constructing the real panel', () => {
-    assert.deepEqual(
-      getDeferredPanelShellFootprint({
-        panelId: 'energy-complex',
-        naturalFootprints: { 'energy-complex': { rowSpan: 2 } },
-      }),
-      { wide: false, collapsed: false, rowSpan: 2, rowSpanSource: 'natural' },
+  it('reserves natural lazy-panel row and column footprints before hydration', () => {
+    const document = installDom();
+    const naturalFootprints = {
+      'live-webcams': { className: 'panel-wide' },
+      'supply-chain': { rowSpan: 2 },
+    };
+
+    const wideShell = createDeferredPanelShell(
+      'live-webcams',
+      'Live Webcams',
+      getDeferredPanelShellFootprint({ panelId: 'live-webcams', naturalFootprints }),
     );
+    const tallShell = createDeferredPanelShell(
+      'supply-chain',
+      'Supply Chain',
+      getDeferredPanelShellFootprint({ panelId: 'supply-chain', naturalFootprints }),
+    );
+    document.body.appendChild(wideShell);
+    document.body.appendChild(tallShell);
+
+    assert.equal(wideShell.classList.contains('panel-wide'), true);
+    assert.equal(tallShell.classList.contains('span-2'), true);
   });
 
-  it('lets saved row and column spans override natural reservations', () => {
-    const footprint = getDeferredPanelShellFootprint({
-      panelId: 'live-news',
-      naturalFootprints: { 'live-news': { wide: true } },
-      savedRowSpans: { 'live-news': 3 },
-      savedColSpans: { 'live-news': 1 },
+  it('clamps saved deferred-shell column spans to the rendered grid width after insertion', () => {
+    const document = installDom();
+    const grid = document.createElement('div');
+    grid.className = 'panels-grid';
+    Object.defineProperty(grid, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ width: 560, height: 0, top: 0, left: 0, right: 560, bottom: 0, x: 0, y: 0, toJSON: () => ({}) }),
+    });
+    (globalThis.window as unknown as { getComputedStyle: () => { gridTemplateColumns: string; columnGap: string } }).getComputedStyle = () => ({
+      gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+      columnGap: '0',
     });
 
-    assert.deepEqual(footprint, {
-      wide: true,
-      collapsed: false,
-      rowSpan: 3,
-      rowSpanSource: 'saved',
-      colSpan: 1,
-      colSpanSource: 'saved',
+    const shell = createDeferredPanelShell(
+      'live-webcams',
+      'Live Webcams',
+      getDeferredPanelShellFootprint({ panelId: 'live-webcams', savedColSpans: { 'live-webcams': 3 } }),
+    );
+    grid.appendChild(shell);
+    document.body.appendChild(grid);
+    reconcileDeferredPanelShellColSpan(shell);
+
+    assert.equal(shell.classList.contains('col-span-3'), false);
+    assert.equal(shell.classList.contains('col-span-2'), true);
+  });
+
+  it('waits for a measurable connected grid before clamping saved shell column spans', () => {
+    const document = installDom();
+    const grid = document.createElement('div');
+    grid.className = 'panels-grid';
+    let gridWidth = 0;
+    Object.defineProperty(grid, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ width: gridWidth, height: 0, top: 0, left: 0, right: gridWidth, bottom: 0, x: 0, y: 0, toJSON: () => ({}) }),
     });
+    (globalThis.window as unknown as { getComputedStyle: () => { gridTemplateColumns: string; columnGap: string } }).getComputedStyle = () => ({
+      gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+      columnGap: '0',
+    });
+
+    const frames: Array<() => void> = [];
+    (globalThis as unknown as { requestAnimationFrame: (cb: () => void) => number }).requestAnimationFrame = (cb) => {
+      frames.push(cb);
+      return frames.length;
+    };
+
+    try {
+      const shell = createDeferredPanelShell(
+        'live-webcams',
+        'Live Webcams',
+        getDeferredPanelShellFootprint({ panelId: 'live-webcams', savedColSpans: { 'live-webcams': 3 } }),
+      );
+      grid.appendChild(shell);
+      document.body.appendChild(grid);
+
+      reconcileDeferredPanelShellColSpan(shell);
+      assert.equal(shell.classList.contains('col-span-3'), true);
+      assert.equal(frames.length, 1);
+
+      gridWidth = 560;
+      frames.shift()?.();
+      assert.equal(shell.classList.contains('col-span-3'), false);
+      assert.equal(shell.classList.contains('col-span-2'), true);
+    } finally {
+      delete (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame;
+    }
   });
 
-  it('keeps a saved col-span that equals a non-wide natural col-span', () => {
-    // Regression: a saved col-span equal to the panel's explicit (non-wide)
-    // natural col-span must still emit the class, because the real panel's
-    // default col-span is 1 — without the class the shell would render one
-    // column and shift horizontally on mount.
-    assert.deepEqual(
-      getDeferredPanelShellFootprint({
-        panelId: 'wide-data',
-        naturalFootprints: { 'wide-data': { colSpan: 2 } },
-        savedColSpans: { 'wide-data': 2 },
-      }),
-      { wide: false, collapsed: false, colSpan: 2, colSpanSource: 'saved' },
+  it('defers col-span reconciliation until the shell is connected, then clamps', () => {
+    const document = installDom();
+    const grid = document.createElement('div');
+    grid.className = 'panels-grid';
+    Object.defineProperty(grid, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ width: 560, height: 0, top: 0, left: 0, right: 560, bottom: 0, x: 0, y: 0, toJSON: () => ({}) }),
+    });
+    (globalThis.window as unknown as { getComputedStyle: () => { gridTemplateColumns: string; columnGap: string } }).getComputedStyle = () => ({
+      gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+      columnGap: '0',
+    });
+
+    // Drive requestAnimationFrame synchronously so the retry path is observable.
+    const frames: Array<() => void> = [];
+    (globalThis as unknown as { requestAnimationFrame: (cb: () => void) => number }).requestAnimationFrame = (cb) => {
+      frames.push(cb);
+      return frames.length;
+    };
+
+    const shell = createDeferredPanelShell(
+      'live-webcams',
+      'Live Webcams',
+      getDeferredPanelShellFootprint({ panelId: 'live-webcams', savedColSpans: { 'live-webcams': 3 } }),
     );
+    grid.appendChild(shell);
+
+    // Grid is detached: reconcile must NOT clamp against a 0-width grid; it
+    // schedules a retry instead of mis-reading the column count.
+    reconcileDeferredPanelShellColSpan(shell);
+    assert.equal(shell.classList.contains('col-span-3'), true);
+    assert.equal(frames.length, 1);
+
+    // Once connected, the queued frame clamps to the real column count.
+    document.body.appendChild(grid);
+    frames.shift()?.();
+    assert.equal(shell.classList.contains('col-span-3'), false);
+    assert.equal(shell.classList.contains('col-span-2'), true);
+
+    delete (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame;
   });
 
-  it('suppresses a saved col-span that matches the wide default of 2', () => {
-    // A wide panel already spans 2 columns via panel-wide, so a saved col-span of
-    // 2 is redundant and should not add an explicit class (mirrors the real panel).
-    assert.deepEqual(
-      getDeferredPanelShellFootprint({
-        panelId: 'live-news',
-        naturalFootprints: { 'live-news': { wide: true } },
-        savedColSpans: { 'live-news': 2 },
-      }),
-      { wide: true, collapsed: false },
-    );
-  });
-
-  it('ignores invalid saved spans instead of emitting invalid shell classes', () => {
+  it('lets saved user spans override natural deferred-shell footprints', () => {
     const document = installDom();
     const footprint = getDeferredPanelShellFootprint({
-      panelId: 'energy-complex',
-      naturalFootprints: { 'energy-complex': { rowSpan: 2 } },
-      savedRowSpans: { 'energy-complex': 9 },
-      savedColSpans: { 'energy-complex': 0 },
+      panelId: 'live-webcams',
+      naturalFootprints: { 'live-webcams': { className: 'panel-wide', rowSpan: 2 } },
+      savedRowSpans: { 'live-webcams': 3 },
+      savedColSpans: { 'live-webcams': 1 },
     });
-    const shell = createDeferredPanelShell('energy-complex', 'Energy Complex', footprint);
-    document.body.appendChild(shell);
-
-    assert.equal(shell.classList.contains('span-2'), true);
-    assert.equal(shell.className.includes('span-9'), false);
-    assert.equal(shell.className.includes('col-span-0'), false);
-  });
-
-  it('applies wide, saved resize, and collapsed footprint classes to shells', () => {
-    const document = installDom();
-    const footprint = getDeferredPanelShellFootprint({
-      panelId: 'live-news',
-      naturalFootprints: { 'live-news': { wide: true } },
-      savedRowSpans: { 'live-news': 2 },
-      savedCollapsed: { 'live-news': true },
-    });
-    const shell = createDeferredPanelShell('live-news', 'Live News', footprint);
+    const shell = createDeferredPanelShell('live-webcams', 'Live Webcams', footprint);
     document.body.appendChild(shell);
 
     assert.equal(shell.classList.contains('panel-wide'), true);
-    assert.equal(shell.classList.contains('span-2'), true);
-    assert.equal(shell.classList.contains('resized'), true);
-    assert.equal(shell.classList.contains('panel-collapsed'), true);
-    // Content visibility is handled by the .panel-collapsed CSS rule, not an inline style.
-    assert.notEqual((shell.querySelector('.panel-deferred-content') as HTMLElement | null)?.style.display, 'none');
-    assert.equal(countInteractiveControls(shell), 0);
+    assert.equal(shell.classList.contains('span-3'), true);
+    assert.equal(shell.classList.contains('span-2'), false);
+    assert.equal(shell.classList.contains('col-span-1'), true);
   });
 
-  it('uses explicit dynamic defaults for custom widget and MCP shells while honoring saved spans', () => {
+
+  it('marks saved row-span deferred shells as resized', () => {
+    const document = installDom();
+    const shell = createDeferredPanelShell(
+      'supply-chain',
+      'Supply Chain',
+      getDeferredPanelShellFootprint({
+        panelId: 'supply-chain',
+        naturalFootprints: { 'supply-chain': { rowSpan: 2 } },
+        savedRowSpans: { 'supply-chain': 3 },
+      }),
+    );
+    document.body.appendChild(shell);
+
+    assert.equal(shell.classList.contains('span-3'), true);
+    assert.equal(shell.classList.contains('resized'), true);
+  });
+
+  it('keeps a saved col-span that equals a non-wide natural col-span', () => {
+    const footprint = getDeferredPanelShellFootprint({
+      panelId: 'wide-data',
+      naturalFootprints: { 'wide-data': { colSpan: 2 } },
+      savedColSpans: { 'wide-data': 2 },
+    });
+
+    assert.equal(footprint.colSpan, 2);
+    assert.equal(footprint.colSpanSource, 'saved');
+  });
+
+  it('suppresses a saved col-span that matches the panel-wide default of 2', () => {
+    const footprint = getDeferredPanelShellFootprint({
+      panelId: 'live-webcams',
+      naturalFootprints: { 'live-webcams': { className: 'panel-wide' } },
+      savedColSpans: { 'live-webcams': 2 },
+    });
+
+    assert.equal(footprint.className, 'panel-wide');
+    assert.equal(footprint.colSpan, undefined);
+  });
+
+  it('applies collapsed state and dynamic default footprints to deferred shells', () => {
+    const document = installDom();
     const dynamicFootprints = {
       'cw-': { rowSpan: 2 },
       'mcp-': { rowSpan: 2 },
     };
 
-    assert.deepEqual(
+    const customShell = createDeferredPanelShell(
+      'cw-example',
+      'Custom Widget',
       getDeferredPanelShellFootprint({ panelId: 'cw-example', dynamicFootprints }),
-      { wide: false, collapsed: false, rowSpan: 2, rowSpanSource: 'natural' },
     );
-    assert.deepEqual(
+    const mcpShell = createDeferredPanelShell(
+      'mcp-example',
+      'MCP Data',
       getDeferredPanelShellFootprint({
         panelId: 'mcp-example',
         dynamicFootprints,
-        savedRowSpans: { 'mcp-example': 4 },
-        savedColSpans: { 'mcp-example': 2 },
+        savedCollapsed: { 'mcp-example': true },
       }),
-      {
-        wide: false,
-        collapsed: false,
-        rowSpan: 4,
-        rowSpanSource: 'saved',
-        colSpan: 2,
-        colSpanSource: 'saved',
-      },
     );
-    assert.deepEqual(
-      getDeferredPanelShellFootprint({ panelId: 'unknown-panel', dynamicFootprints }),
-      { wide: false, collapsed: false },
-    );
+    document.body.appendChild(customShell);
+    document.body.appendChild(mcpShell);
+
+    assert.equal(customShell.classList.contains('span-2'), true);
+    assert.equal(mcpShell.classList.contains('span-2'), true);
+    assert.equal(mcpShell.classList.contains('panel-collapsed'), true);
+    assert.equal(countInteractiveControls(mcpShell), 0);
   });
 
-  it('clamps a saved shell col-span down to the live grid width', () => {
-    const document = installDom();
+  it('rejects out-of-range or non-integer saved spans and falls back to the natural footprint', () => {
+    installDom();
     const footprint = getDeferredPanelShellFootprint({
-      panelId: 'live-news',
-      savedColSpans: { 'live-news': 3 },
+      panelId: 'supply-chain',
+      naturalFootprints: { 'supply-chain': { rowSpan: 2 } },
+      savedRowSpans: { 'supply-chain': 9 }, // over the 4-row max → rejected
+      savedColSpans: { 'supply-chain': 2.5 }, // non-integer → rejected
     });
-    const shell = createDeferredPanelShell('live-news', 'Live News', footprint);
-    document.body.appendChild(shell);
-    assert.equal(shell.classList.contains('col-span-3'), true);
-
-    // A 2-column grid must collapse col-span-3 to col-span-2, matching the real panel.
-    reconcileDeferredShellColSpan(shell, 2);
-    assert.equal(shell.classList.contains('col-span-3'), false);
-    assert.equal(shell.classList.contains('col-span-2'), true);
+    assert.equal(footprint.rowSpan, 2); // fell back to the natural row span
+    assert.equal(footprint.colSpan, undefined); // no natural col span, saved value rejected
   });
 
-  it('drops the col-span class entirely when the grid only fits one column', () => {
+  // End-to-end guard: the whole point of the deferred shell is that it reserves
+  // exactly the footprint the REAL panel takes after hydration. The real Panel
+  // cannot be instantiated here (it needs the app bundler / i18next), so we pin
+  // the panel's class formula from its source and assert the shell — built from
+  // the real registry via the real shell builder — produces the identical
+  // classes. If either the panel formula or the shell builder drifts, this fails.
+  it('reserves the same footprint classes the real panel applies after hydration', async () => {
     const document = installDom();
-    const shell = createDeferredPanelShell('live-news', 'Live News', {
-      colSpan: 2,
-      colSpanSource: 'saved',
-    });
-    document.body.appendChild(shell);
+    const panelSrc = await readFile(new URL('../src/components/Panel.ts', import.meta.url), 'utf8');
+    const layoutSrc = await readFile(new URL('../src/app/panel-layout.ts', import.meta.url), 'utf8');
 
-    reconcileDeferredShellColSpan(shell, 1);
-    assert.equal(shell.className.includes('col-span-'), false);
-  });
+    // Pin the real panel's footprint formulas: a tall panel gets `span-${N}`
+    // (only when N > 1) and a wide panel carries the `panel-wide` class. The
+    // shell below hardcodes these same class names, so a change here that isn't
+    // mirrored in panel-mount-deferral must break this test.
+    assert.match(
+      panelSrc,
+      /options\.defaultRowSpan\s*&&\s*options\.defaultRowSpan\s*>\s*1/,
+      'Panel must only reserve a row span class when defaultRowSpan > 1',
+    );
+    assert.match(
+      panelSrc,
+      /classList\.add\(`span-\$\{options\.defaultRowSpan\}`\)/,
+      'Panel must apply its row span as the `span-${N}` class the shell reserves',
+    );
 
-  it('leaves a shell col-span untouched when it already fits the grid', () => {
-    const document = installDom();
-    const shell = createDeferredPanelShell('live-news', 'Live News', {
-      colSpan: 2,
-      colSpanSource: 'saved',
-    });
-    document.body.appendChild(shell);
+    const registry = parseNaturalFootprintRegistry(layoutSrc);
+    assert.ok(registry.size > 0, 'expected DEFERRED_PANEL_NATURAL_FOOTPRINTS entries');
 
-    reconcileDeferredShellColSpan(shell, 3);
-    assert.equal(shell.classList.contains('col-span-2'), true);
+    for (const [panelId, natural] of registry) {
+      const shell = createDeferredPanelShell(
+        panelId,
+        panelId,
+        getDeferredPanelShellFootprint({ panelId, naturalFootprints: { [panelId]: natural } }),
+      );
+      document.body.appendChild(shell);
+
+      if (natural.rowSpan) {
+        assert.equal(
+          shell.classList.contains(`span-${natural.rowSpan}`),
+          true,
+          `${panelId}: shell must reserve span-${natural.rowSpan} to match the hydrated panel`,
+        );
+      }
+      if (natural.className === 'panel-wide') {
+        assert.equal(
+          shell.classList.contains('panel-wide'),
+          true,
+          `${panelId}: shell must reserve the panel-wide footprint`,
+        );
+      }
+    }
   });
 
   it('materially reduces initial DOM and control count for below-budget panels', () => {
@@ -304,7 +463,7 @@ describe('panel mount deferral', () => {
 
   it('signals queued panel work after replacing a deferred shell with the real panel', async () => {
     const source = await readFile(new URL('../src/app/panel-layout.ts', import.meta.url), 'utf8');
-    const mountPanelElement = source.match(/private\s+mountPanelElement[\s\S]*?\n  \}/);
+    const mountPanelElement = source.match(/private\s+mountPanelElement[\s\S]*?\n {2}\}/);
 
     assert.ok(mountPanelElement, 'mountPanelElement method not found');
     assert.match(

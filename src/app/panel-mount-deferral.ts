@@ -1,7 +1,16 @@
+import {
+  MAX_PANEL_COL_SPAN,
+  MAX_PANEL_ROW_SPAN,
+  getExplicitColSpanClass,
+  getMaxColSpan,
+  isPanelGridColumnCountReady,
+  setColSpanClass,
+} from '@/utils/panel-grid';
+
 export const INITIAL_PANEL_MOUNT_BUDGET_DESKTOP = 8;
 // Mobile mounts fewer panels eagerly; the rest get IntersectionObserver shells (700px
-// lookahead) and mount before they scroll into view. Lowered 4→3 to trim boot DOM /
-// main-thread work on mobile (#4460 / #4443 U4); the typically 1–2 above-the-fold panels
+// lookahead) and mount before they scroll into view. Lowered 4->3 to trim boot DOM /
+// main-thread work on mobile (#4460 / #4443 U4); the typically 1-2 above-the-fold panels
 // still mount eagerly, so no added skeleton flash.
 export const INITIAL_PANEL_MOUNT_BUDGET_MOBILE = 3;
 
@@ -11,27 +20,21 @@ export interface PanelMountDeferralInput {
   isMobile: boolean;
 }
 
-export interface DeferredPanelNaturalFootprint {
-  rowSpan?: number;
-  colSpan?: number;
-  wide?: boolean;
-}
-
 export type DeferredPanelFootprintSource = 'natural' | 'saved';
 
 export interface DeferredPanelShellFootprint {
+  className?: string;
   rowSpan?: number;
   rowSpanSource?: DeferredPanelFootprintSource;
   colSpan?: number;
   colSpanSource?: DeferredPanelFootprintSource;
-  wide?: boolean;
   collapsed?: boolean;
 }
 
 export interface DeferredPanelShellFootprintInput {
   panelId: string;
-  naturalFootprints?: Readonly<Record<string, DeferredPanelNaturalFootprint | undefined>>;
-  dynamicFootprints?: Readonly<Record<string, DeferredPanelNaturalFootprint | undefined>>;
+  naturalFootprints?: Readonly<Record<string, DeferredPanelShellFootprint | undefined>>;
+  dynamicFootprints?: Readonly<Record<string, DeferredPanelShellFootprint | undefined>>;
   savedRowSpans?: Readonly<Record<string, number | undefined>>;
   savedColSpans?: Readonly<Record<string, number | undefined>>;
   savedCollapsed?: Readonly<Record<string, boolean | undefined>>;
@@ -50,17 +53,28 @@ const CONTROL_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
 
-function validIntegerInRange(value: number | undefined, min: number, max: number): number | undefined {
+function clampSpan(value: number | undefined, max: number): number | undefined {
   if (typeof value !== 'number' || !Number.isInteger(value)) return undefined;
-  if (value < min || value > max) return undefined;
+  if (value < 1 || value > max) return undefined;
   return value;
+}
+
+function addClassTokens(element: HTMLElement, className: string | undefined): void {
+  if (!className) return;
+  for (const token of className.split(/\s+/)) {
+    if (token) element.classList.add(token);
+  }
+}
+
+function hasClassToken(className: string | undefined, token: string): boolean {
+  return className?.split(/\s+/).includes(token) === true;
 }
 
 function getNaturalFootprint({
   panelId,
   naturalFootprints,
   dynamicFootprints,
-}: Pick<DeferredPanelShellFootprintInput, 'panelId' | 'naturalFootprints' | 'dynamicFootprints'>): DeferredPanelNaturalFootprint {
+}: Pick<DeferredPanelShellFootprintInput, 'panelId' | 'naturalFootprints' | 'dynamicFootprints'>): DeferredPanelShellFootprint {
   const exact = naturalFootprints?.[panelId];
   if (exact) return exact;
   if (!dynamicFootprints) return {};
@@ -91,20 +105,14 @@ export function getDeferredPanelShellFootprint({
   savedCollapsed,
 }: DeferredPanelShellFootprintInput): DeferredPanelShellFootprint {
   const natural = getNaturalFootprint({ panelId, naturalFootprints, dynamicFootprints });
-  const naturalRowSpan = validIntegerInRange(natural.rowSpan, 1, 4);
-  const savedRowSpan = validIntegerInRange(savedRowSpans?.[panelId], 1, 4);
-
-  const wide = natural.wide === true;
-  const naturalColSpan = validIntegerInRange(natural.colSpan, 1, 3);
-  const savedColSpan = validIntegerInRange(savedColSpans?.[panelId], 1, 3);
-  // The real panel's default column span (Panel.getDefaultColSpan) is 2 for wide
-  // panels (via the panel-wide class) and 1 otherwise. A saved span only needs an
-  // explicit col-span class when it differs from that default — matching
-  // Panel.restoreSavedColSpan, which clears the class when saved === default.
-  const defaultColSpan = wide ? 2 : 1;
+  const naturalRowSpan = clampSpan(natural.rowSpan, MAX_PANEL_ROW_SPAN);
+  const savedRowSpan = clampSpan(savedRowSpans?.[panelId], MAX_PANEL_ROW_SPAN);
+  const naturalColSpan = clampSpan(natural.colSpan, MAX_PANEL_COL_SPAN);
+  const savedColSpan = clampSpan(savedColSpans?.[panelId], MAX_PANEL_COL_SPAN);
+  const defaultColSpan = hasClassToken(natural.className, 'panel-wide') ? 2 : 1;
 
   const footprint: DeferredPanelShellFootprint = {
-    wide,
+    className: natural.className,
     collapsed: savedCollapsed?.[panelId] === true,
   };
 
@@ -121,55 +129,12 @@ export function getDeferredPanelShellFootprint({
       footprint.colSpan = savedColSpan;
       footprint.colSpanSource = 'saved';
     }
-  } else if (naturalColSpan !== undefined && naturalColSpan > 1 && !wide) {
+  } else if (naturalColSpan !== undefined && naturalColSpan !== defaultColSpan) {
     footprint.colSpan = naturalColSpan;
     footprint.colSpanSource = 'natural';
   }
 
   return footprint;
-}
-
-function applyDeferredPanelShellFootprint(shell: HTMLElement, footprint: DeferredPanelShellFootprint): void {
-  if (footprint.wide) {
-    shell.classList.add('panel-wide');
-  }
-  if (footprint.rowSpan !== undefined) {
-    shell.classList.add('span-' + footprint.rowSpan);
-    if (footprint.rowSpanSource === 'saved') {
-      shell.classList.add('resized');
-    }
-  }
-  if (footprint.colSpan !== undefined) {
-    shell.classList.add('col-span-' + footprint.colSpan);
-  }
-  if (footprint.collapsed) {
-    // The .panel-deferred-shell.panel-collapsed .panel-deferred-content { display: none }
-    // CSS rule already hides the content; no inline style needed (and an inline
-    // style would out-specify any future reveal animation).
-    shell.classList.add('panel-collapsed');
-  }
-}
-
-/**
- * After a deferred shell is attached to the grid, clamp its `col-span-*` class to
- * the live grid column count. The real Panel does the same on mount via
- * `restoreSavedColSpan`, so without this a saved col-span (e.g. 3) on a viewport
- * that only fits 2 columns would over-reserve and the panel would shrink
- * horizontally on mount — reintroducing CLS. `maxColSpan` is the live grid's
- * resolved maximum (1-3); pass it from the caller that can measure the grid.
- */
-export function reconcileDeferredShellColSpan(shell: HTMLElement, maxColSpan: number): void {
-  const current = shell.classList.contains('col-span-3') ? 3
-    : shell.classList.contains('col-span-2') ? 2
-      : shell.classList.contains('col-span-1') ? 1
-        : undefined;
-  if (current === undefined) return;
-  const clamped = Math.max(1, Math.min(maxColSpan, current));
-  if (clamped === current) return;
-  shell.classList.remove('col-span-1', 'col-span-2', 'col-span-3');
-  if (clamped > 1) {
-    shell.classList.add('col-span-' + clamped);
-  }
 }
 
 export function createDeferredPanelShell(
@@ -182,6 +147,24 @@ export function createDeferredPanelShell(
   shell.dataset.panel = panelId;
   shell.dataset.deferredPanel = 'true';
   shell.setAttribute('aria-hidden', 'true');
+  addClassTokens(shell, footprint.className);
+
+  const rowSpan = clampSpan(footprint.rowSpan, MAX_PANEL_ROW_SPAN);
+  if (rowSpan !== undefined) {
+    shell.classList.add(`span-${rowSpan}`);
+    if (footprint.rowSpanSource === 'saved') {
+      shell.classList.add('resized');
+    }
+  }
+
+  const colSpan = clampSpan(footprint.colSpan, MAX_PANEL_COL_SPAN);
+  if (colSpan !== undefined) {
+    shell.classList.add(`col-span-${colSpan}`);
+  }
+
+  if (footprint.collapsed) {
+    shell.classList.add('panel-collapsed');
+  }
 
   const header = document.createElement('div');
   header.className = 'panel-header panel-deferred-header';
@@ -206,8 +189,36 @@ export function createDeferredPanelShell(
 
   shell.appendChild(header);
   shell.appendChild(content);
-  applyDeferredPanelShellFootprint(shell, footprint);
   return shell;
+}
+
+/**
+ * Clamp a deferred shell's reserved `col-span-N` down to what the rendered
+ * grid can actually fit. Mirrors {@link Panel}'s `reconcileColSpanAfterAttach`:
+ * the grid's column template/width is only readable once the shell is attached,
+ * so when it is not yet connected we retry across up to `attempts` animation
+ * frames instead of clamping against a 0-width grid (which would read a wrong
+ * column count and leave an over-wide shell -- a layout shift in the opposite
+ * direction until the real panel mounts).
+ */
+export function reconcileDeferredPanelShellColSpan(shell: HTMLElement, attempts = 3): void {
+  const tryReconcile = (remaining: number): void => {
+    const currentSpan = getExplicitColSpanClass(shell);
+    if (currentSpan === undefined) return;
+
+    if (!shell.isConnected || !shell.parentElement || !isPanelGridColumnCountReady(shell)) {
+      if (remaining <= 0 || typeof requestAnimationFrame !== 'function') return;
+      requestAnimationFrame(() => tryReconcile(remaining - 1));
+      return;
+    }
+    const maxSpan = getMaxColSpan(shell);
+    const clampedSpan = Math.max(1, Math.min(maxSpan, currentSpan));
+    if (clampedSpan !== currentSpan) {
+      setColSpanClass(shell, clampedSpan);
+    }
+  };
+
+  tryReconcile(attempts);
 }
 
 export function countInteractiveControls(root: ParentNode): number {

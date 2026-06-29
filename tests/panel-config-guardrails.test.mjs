@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -10,6 +10,8 @@ const panelsSrc = readFileSync(resolve(__dirname, '../src/config/panels.ts'), 'u
 const commandsSrc = readFileSync(resolve(__dirname, '../src/config/commands.ts'), 'utf-8');
 
 const VARIANT_FILES = ['full', 'tech', 'finance', 'commodity', 'energy', 'happy'];
+const PANEL_WIDE_CLASS_RE = /className:\s*['"][^'"]*\bpanel-wide\b/;
+const COMPONENT_SOURCE_RE = /\.tsx?$/;
 
 // Depth-aware extraction of the TOP-LEVEL keys of a `const X_PANELS = { ... }`
 // object literal — i.e. the panel ids, not nested config keys like
@@ -100,166 +102,226 @@ function parsePanelKeys(variant) {
   return keys;
 }
 
-// Blank out the interior of line/block comments so a stray `}` or `{` inside a
-// comment can't truncate (or unbalance) the brace walk below — the demonstrated
-// real risk, e.g. CIIPanel has `//` comments inside its super({...}) block.
-// String and template literals are tracked (so `//` inside an URL string isn't
-// mistaken for a comment) but copied verbatim — downstream regexes read `id:` /
-// `className:` string values. Brace balancing inside strings/templates is left
-// to findMatchingBrace's own quote handling. Lengths/indices are preserved by
-// substituting spaces so this can be applied transparently before parsing.
-function stripComments(src) {
-  let out = '';
-  let i = 0;
-  const n = src.length;
-  while (i < n) {
-    const ch = src[i];
-    const next = src[i + 1];
-    if (ch === '/' && next === '/') {
-      while (i < n && src[i] !== '\n') { out += ' '; i++; }
-      continue;
-    }
-    if (ch === '/' && next === '*') {
-      out += '  '; i += 2;
-      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) {
-        out += src[i] === '\n' ? '\n' : ' '; i++;
-      }
-      if (i < n) { out += '  '; i += 2; }
-      continue;
-    }
-    if (ch === '\'' || ch === '"' || ch.charCodeAt(0) === 96) {
-      const quote = ch;
-      out += ch; i++;
-      while (i < n) {
-        const c = src[i];
-        if (c === '\\') { out += c + (src[i + 1] ?? ''); i += 2; continue; }
-        out += c; i++;
-        if (c === quote) break;
-      }
-      continue;
-    }
-    out += ch;
-    i++;
-  }
-  return out;
-}
+// Characters after which a `/` begins a regex literal rather than division.
+// In object-literal / call-argument contexts (all we parse here) a regex value
+// always follows one of these, so the heuristic is reliable for super(...) bodies.
+const REGEX_START_PREFIX = new Set([undefined, '(', ',', ';', ':', '=', '!', '&', '|', '?', '{', '}', '[', '+', '-', '*', '%', '<', '>', '~', '^']);
 
-function findMatchingBrace(src, open) {
+function findMatchingBrace(src, openIndex) {
   let depth = 0;
   let quote = null;
   let escaped = false;
-  for (let i = open; i < src.length; i++) {
-    const ch = src[i];
+  let lineComment = false;
+  let blockComment = false;
+  let inRegex = false;
+  let regexClass = false;
+  // Last non-whitespace code character, used to disambiguate `/` (regex vs divide).
+  let prevSignificant;
+
+  for (let i = openIndex; i < src.length; i++) {
+    const char = src[i];
+    const next = src[i + 1];
+
+    if (lineComment) {
+      if (char === '\n') lineComment = false;
+      continue;
+    }
+    if (blockComment) {
+      if (char === '*' && next === '/') {
+        blockComment = false;
+        i++;
+      }
+      continue;
+    }
+    if (inRegex) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (char === '[') regexClass = true;
+      else if (char === ']') regexClass = false;
+      else if (char === '/' && !regexClass) inRegex = false;
+      else if (char === '\n') inRegex = false; // unterminated literal; bail out
+      continue;
+    }
     if (quote) {
-      if (escaped) escaped = false;
-      else if (ch === '\\') escaped = true;
-      else if (ch === quote) quote = null;
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (char === quote) quote = null;
       continue;
     }
-    if (ch === '\'' || ch === '"' || ch.charCodeAt(0) === 96) {
-      quote = ch;
+
+    if (char === '/' && next === '/') {
+      lineComment = true;
+      i++;
       continue;
     }
-    if (ch === '{') depth++;
-    else if (ch === '}') {
+    if (char === '/' && next === '*') {
+      blockComment = true;
+      i++;
+      continue;
+    }
+    if (char === '/' && REGEX_START_PREFIX.has(prevSignificant)) {
+      inRegex = true;
+      regexClass = false;
+      prevSignificant = '/';
+      continue;
+    }
+    if (char === '\'' || char === '"' || char === '`') {
+      quote = char;
+      prevSignificant = char;
+      continue;
+    }
+    if (char === '{') depth++;
+    else if (char === '}') {
       depth--;
       if (depth === 0) return i;
     }
+    if (!/\s/.test(char)) prevSignificant = char;
   }
   return -1;
 }
 
-function extractSuperOptionObjects(rawSrc) {
-  const src = stripComments(rawSrc);
-  const objects = [];
-  // Only treat `super(` as carrying an options object when a `{` follows
-  // immediately (allowing whitespace) — `super(varName)` must not grab the
-  // next unrelated object literal downstream.
-  const superCall = /\bsuper\(\s*\{/g;
-  let match;
-  while ((match = superCall.exec(src)) !== null) {
-    const open = src.indexOf('{', match.index);
-    const close = findMatchingBrace(src, open);
-    if (close === -1) continue;
-    objects.push(src.slice(open + 1, close));
-    superCall.lastIndex = close + 1;
+function staticStringLiteralValue(rawValue) {
+  const value = rawValue.trim();
+  if (value.length < 2) return null;
+  const quote = value[0];
+  if ((quote === '\'' || quote === '"') && value.endsWith(quote)) {
+    return value.slice(1, -1);
   }
-  return objects;
+  if (quote === '`' && value.endsWith('`') && !value.includes('${')) {
+    return value.slice(1, -1);
+  }
+  return null;
 }
 
-function topLevelObjectEntries(rawSrc, constName) {
-  const src = stripComments(rawSrc);
-  const decl = src.indexOf(constName);
-  assert.notEqual(decl, -1, constName + ' not found');
-  const open = src.indexOf('{', decl);
-  const close = findMatchingBrace(src, open);
-  assert.ok(close > open, constName + ' object did not parse');
-  const body = src.slice(open + 1, close);
-  const entries = new Map();
-  let index = 0;
-  while (index < body.length) {
-    const keyMatch = /\s*(?:['"]([^'"]+)['"]|([a-zA-Z_$][\w$-]*))\s*:\s*\{/y;
-    keyMatch.lastIndex = index;
-    const match = keyMatch.exec(body);
-    if (!match) {
-      index++;
+function superObjectBodies(src) {
+  const bodies = [];
+  let searchIndex = 0;
+  while (searchIndex < src.length) {
+    const superIndex = src.indexOf('super(', searchIndex);
+    if (superIndex === -1) break;
+    const open = src.indexOf('{', superIndex);
+    const closeParen = src.indexOf(')', superIndex);
+    if (open === -1 || (closeParen !== -1 && closeParen < open)) {
+      searchIndex = superIndex + 'super('.length;
       continue;
     }
+    const close = findMatchingBrace(src, open);
+    if (close === -1) {
+      searchIndex = open + 1;
+      continue;
+    }
+    bodies.push(src.slice(open + 1, close));
+    searchIndex = close + 1;
+  }
+  return bodies;
+}
+
+function naturalDeferredPanelFootprints() {
+  const componentsDir = resolve(__dirname, '../src/components');
+  const footprints = new Map();
+  for (const file of readdirSync(componentsDir)) {
+    if (!COMPONENT_SOURCE_RE.test(file) || file.endsWith('.d.ts')) continue;
+    const src = readFileSync(resolve(componentsDir, file), 'utf-8');
+    for (const body of superObjectBodies(src)) {
+      const id = body.match(/id:\s*['"]([^'"]+)['"]/);
+      if (!id) continue;
+      const classNameRaw = body.match(/className:\s*([^,\n}]+)/);
+      let panelWide = false;
+      let unverifiableClassName = null;
+      if (classNameRaw) {
+        const classNameValue = staticStringLiteralValue(classNameRaw[1]);
+        if (classNameValue === null) {
+          unverifiableClassName = classNameRaw[1].trim();
+        } else {
+          panelWide = /\bpanel-wide\b/.test(classNameValue);
+        }
+      }
+
+      // Capture the raw defaultRowSpan value so a non-literal (variable or
+      // expression) is reported as unverifiable rather than silently dropped —
+      // otherwise its footprint would escape this guard and reintroduce CLS.
+      const rowSpanRaw = body.match(/defaultRowSpan:\s*([^,\n}]+)/);
+      let rowSpan = null;
+      let unverifiableRowSpan = null;
+      if (rowSpanRaw) {
+        const value = rowSpanRaw[1].trim();
+        if (/^[2-4]$/.test(value)) rowSpan = value;
+        else if (value !== '1') unverifiableRowSpan = value;
+      }
+
+      if (!rowSpan && !panelWide && !unverifiableRowSpan && !unverifiableClassName) continue;
+      footprints.set(id[1], { file, rowSpan, panelWide, unverifiableRowSpan, unverifiableClassName });
+    }
+  }
+  return footprints;
+}
+
+function deferredPanelFootprintRegistryEntries() {
+  const decl = panelLayoutSrc.indexOf('DEFERRED_PANEL_NATURAL_FOOTPRINTS');
+  assert.notEqual(decl, -1, 'DEFERRED_PANEL_NATURAL_FOOTPRINTS registry not found');
+  const open = panelLayoutSrc.indexOf('{', panelLayoutSrc.indexOf('= {', decl));
+  const close = findMatchingBrace(panelLayoutSrc, open);
+  assert.ok(open !== -1 && close !== -1, 'DEFERRED_PANEL_NATURAL_FOOTPRINTS body not found');
+  const body = panelLayoutSrc.slice(open + 1, close);
+  const entries = new Map();
+  const entryRe = /(?:['"]([^'"]+)['"]|([a-zA-Z0-9_-]+))\s*:\s*\{/g;
+  let match;
+  while ((match = entryRe.exec(body))) {
     const key = match[1] || match[2];
-    const valueOpen = body.indexOf('{', match.index);
-    const valueClose = findMatchingBrace(body, valueOpen);
-    assert.ok(valueClose > valueOpen, 'entry for ' + key + ' did not parse');
-    entries.set(key, body.slice(valueOpen + 1, valueClose));
-    index = valueClose + 1;
+    const entryOpen = body.indexOf('{', match.index);
+    const entryClose = findMatchingBrace(body, entryOpen);
+    assert.ok(entryClose !== -1, 'unclosed deferred footprint entry for ' + key);
+    entries.set(key, body.slice(entryOpen + 1, entryClose));
+    entryRe.lastIndex = entryClose + 1;
   }
   return entries;
 }
 
-function parseFootprintObject(body) {
-  const row = body.match(/\browSpan\s*:\s*(\d+)/)?.[1];
-  const wide = /\bwide\s*:\s*true\b/.test(body);
-  return {
-    rowSpan: row ? Number(row) : undefined,
-    wide,
-  };
-}
 
-function constructorFootprints() {
-  const componentsDir = resolve(__dirname, '../src/components');
-  const out = new Map();
-  for (const file of readdirSync(componentsDir).filter((name) => name.endsWith('.ts'))) {
-    const componentSrc = readFileSync(resolve(componentsDir, file), 'utf-8');
-    for (const objectBody of extractSuperOptionObjects(componentSrc)) {
-      const id = objectBody.match(/\bid\s*:\s*['"]([^'"]+)['"]/)?.[1];
-      if (!id) continue;
-      const row = objectBody.match(/\bdefaultRowSpan\s*:\s*(\d+)/)?.[1];
-      const rowSpan = row ? Number(row) : undefined;
-      const wide = /\bclassName\s*:\s*['"]panel-wide['"]/.test(objectBody);
-      if ((rowSpan && rowSpan > 1) || wide) {
-        out.set(id, { rowSpan: rowSpan && rowSpan > 1 ? rowSpan : undefined, wide });
-      }
-    }
+function deferredDynamicPanelFootprintRegistryEntries() {
+  const decl = panelLayoutSrc.indexOf('DEFERRED_DYNAMIC_PANEL_FOOTPRINTS');
+  assert.notEqual(decl, -1, 'DEFERRED_DYNAMIC_PANEL_FOOTPRINTS registry not found');
+  const open = panelLayoutSrc.indexOf('{', panelLayoutSrc.indexOf('= {', decl));
+  const close = findMatchingBrace(panelLayoutSrc, open);
+  assert.ok(open !== -1 && close !== -1, 'DEFERRED_DYNAMIC_PANEL_FOOTPRINTS body not found');
+  const body = panelLayoutSrc.slice(open + 1, close);
+  const entries = new Map();
+  const entryRe = /(?:['"]([^'"]+)['"]|([a-zA-Z0-9_-]+))\s*:\s*\{/g;
+  let match;
+  while ((match = entryRe.exec(body))) {
+    const key = match[1] || match[2];
+    const entryOpen = body.indexOf('{', match.index);
+    const entryClose = findMatchingBrace(body, entryOpen);
+    assert.ok(entryClose !== -1, 'unclosed dynamic deferred footprint entry for ' + key);
+    entries.set(key, body.slice(entryOpen + 1, entryClose));
+    entryRe.lastIndex = entryClose + 1;
   }
-  return out;
-}
-
-function deferredReservationFootprints() {
-  const entries = topLevelObjectEntries(panelLayoutSrc, 'DEFERRED_PANEL_NATURAL_FOOTPRINTS');
-  return new Map([...entries].map(([key, body]) => [key, parseFootprintObject(body)]));
-}
-
-function dynamicReservationFootprints() {
-  const entries = topLevelObjectEntries(panelLayoutSrc, 'DEFERRED_DYNAMIC_PANEL_FOOTPRINTS');
-  return new Map([...entries].map(([key, body]) => [key, parseFootprintObject(body)]));
+  return entries;
 }
 
 function dynamicConstructorRowSpan(file, className) {
-  const componentSrc = readFileSync(resolve(__dirname, '../src/components', file), 'utf-8');
-  for (const objectBody of extractSuperOptionObjects(componentSrc)) {
-    const classNameRe = new RegExp('\\bclassName\\s*:\\s*[\'\"]' + className + '[\'\"]');
-    if (!classNameRe.test(objectBody)) continue;
-    const row = objectBody.match(/\bdefaultRowSpan\s*:\s*(\d+)/)?.[1];
-    return row ? Number(row) : undefined;
+  const src = readFileSync(resolve(__dirname, '../src/components', file), 'utf-8');
+  for (const body of superObjectBodies(src)) {
+    const classNameRaw = body.match(/className:\s*([^,\n}]+)/);
+    if (!classNameRaw) continue;
+    const classNameValue = staticStringLiteralValue(classNameRaw[1]);
+    if (!classNameValue?.split(/\s+/).includes(className)) continue;
+    const rowSpanRaw = body.match(/defaultRowSpan:\s*([^,\n}]+)/);
+    if (!rowSpanRaw) return undefined;
+    const value = rowSpanRaw[1].trim();
+    return /^\d+$/.test(value) ? Number(value) : undefined;
   }
   return undefined;
 }
@@ -339,6 +401,72 @@ describe('panel-config guardrails', () => {
       /panel\.toggle\(config\.enabled\);/,
       'lazy-mounted panels must replay the saved enabled/hidden state after insertion',
     );
+  });
+
+  it('reserves deferred shells for natural wide/tall panel footprints', () => {
+    const mismatches = [];
+    const naturalFootprints = naturalDeferredPanelFootprints();
+    const registryEntries = deferredPanelFootprintRegistryEntries();
+
+    for (const [panelId, footprint] of naturalFootprints) {
+      if (footprint.unverifiableRowSpan) {
+        mismatches.push(
+          panelId + ' (' + footprint.file + ') has a non-literal defaultRowSpan "' +
+            footprint.unverifiableRowSpan + '" this guard cannot verify; inline a literal 2-4 ' +
+            'or extend naturalDeferredPanelFootprints to resolve it',
+        );
+        continue;
+      }
+      if (footprint.unverifiableClassName) {
+        mismatches.push(
+          panelId + ' (' + footprint.file + ') has a non-literal className "' +
+            footprint.unverifiableClassName + '" this guard cannot verify for panel-wide; ' +
+            'inline a static className or extend naturalDeferredPanelFootprints to resolve it',
+        );
+        continue;
+      }
+      const entry = registryEntries.get(panelId);
+      if (!entry) {
+        mismatches.push(panelId + ' (' + footprint.file + ') missing registry entry');
+        continue;
+      }
+      if (footprint.rowSpan && !entry.includes('rowSpan: ' + footprint.rowSpan)) {
+        mismatches.push(panelId + ' (' + footprint.file + ') missing rowSpan: ' + footprint.rowSpan);
+      }
+      if (footprint.panelWide && !PANEL_WIDE_CLASS_RE.test(entry)) {
+        mismatches.push(panelId + ' (' + footprint.file + ') missing panel-wide className');
+      }
+    }
+
+    for (const [panelId, entry] of registryEntries) {
+      const footprint = naturalFootprints.get(panelId);
+      if (!footprint) {
+        mismatches.push(panelId + ' has stale registry entry with no natural wide/tall constructor footprint');
+        continue;
+      }
+      const registeredRowSpan = entry.match(/rowSpan:\s*([2-4])/);
+      if (registeredRowSpan && registeredRowSpan[1] !== footprint.rowSpan) {
+        mismatches.push(panelId + ' registry rowSpan ' + registeredRowSpan[1] + ' does not match constructor footprint');
+      }
+      const registeredPanelWide = PANEL_WIDE_CLASS_RE.test(entry);
+      if (registeredPanelWide !== footprint.panelWide) {
+        mismatches.push(panelId + ' registry panel-wide className does not match constructor footprint');
+      }
+    }
+
+    assert.deepStrictEqual(
+      mismatches,
+      [],
+      'Deferred shell natural footprint registry mismatch:\n' + mismatches.join('\n'),
+    );
+  });
+
+  it('reserves deferred shells for dynamic custom and MCP panel footprints', () => {
+    const dynamicEntries = deferredDynamicPanelFootprintRegistryEntries();
+    assert.match(dynamicEntries.get('cw-') ?? '', /rowSpan:\s*2/, 'cw- dynamic shell row span missing');
+    assert.match(dynamicEntries.get('mcp-') ?? '', /rowSpan:\s*2/, 'mcp- dynamic shell row span missing');
+    assert.equal(dynamicConstructorRowSpan('CustomWidgetPanel.ts', 'custom-widget-panel'), 2);
+    assert.equal(dynamicConstructorRowSpan('McpDataPanel.ts', 'mcp-data-panel'), 2);
   });
 
   it('runs dynamic custom and MCP panels through the mounted-panel hydration path', () => {
@@ -465,112 +593,6 @@ describe('panel-config guardrails', () => {
     assert.ok(categoryMappedPanelIds().size > 50, `category parse returned ${categoryMappedPanelIds().size} keys — regex likely broke`);
   });
 
-  it('deferred panel footprint metadata matches tall and wide panel constructors', () => {
-    const expected = constructorFootprints();
-    const actual = deferredReservationFootprints();
-
-    const missing = [...expected.keys()].filter((id) => !actual.has(id)).sort();
-    const stale = [...actual.keys()].filter((id) => !expected.has(id)).sort();
-    const mismatched = [];
-    for (const [id, footprint] of expected) {
-      const registered = actual.get(id);
-      if (!registered) continue;
-      if ((registered.rowSpan ?? undefined) !== (footprint.rowSpan ?? undefined) || registered.wide !== footprint.wide) {
-        mismatched.push(id + ' expected ' + JSON.stringify(footprint) + ' got ' + JSON.stringify(registered));
-      }
-    }
-
-    assert.deepStrictEqual(
-      { missing, stale, mismatched: mismatched.sort() },
-      { missing: [], stale: [], mismatched: [] },
-      'Deferred shell natural-footprint metadata drifted from Panel constructor options. ' +
-        'Update DEFERRED_PANEL_NATURAL_FOOTPRINTS when adding/removing defaultRowSpan > 1 or panel-wide panels.',
-    );
-  });
-
-  it('every tall/wide panel constructor exposes a literal id the footprint scan can read', () => {
-    // constructorFootprints() skips any super({...}) whose id is computed rather
-    // than a quoted literal. Such a panel would silently never appear in the
-    // drift check above, masking a genuinely missing footprint entry. Assert that
-    // every tall/wide constructor block carries a literal id so none can hide.
-    // Dynamic panels (custom-widget/mcp) intentionally use a computed spec.id and
-    // are covered by DEFERRED_DYNAMIC_PANEL_FOOTPRINTS instead, so exclude them.
-    const DYNAMIC_PANEL_CLASSNAMES = new Set(['custom-widget-panel', 'mcp-data-panel']);
-    const componentsDir = resolve(__dirname, '../src/components');
-    const unparseable = [];
-    for (const file of readdirSync(componentsDir).filter((name) => name.endsWith('.ts'))) {
-      const componentSrc = readFileSync(resolve(componentsDir, file), 'utf-8');
-      for (const objectBody of extractSuperOptionObjects(componentSrc)) {
-        const rowSpan = Number(objectBody.match(/\bdefaultRowSpan\s*:\s*(\d+)/)?.[1] ?? '0');
-        const wide = /\bclassName\s*:\s*['"]panel-wide['"]/.test(objectBody);
-        const isTallOrWide = (rowSpan && rowSpan > 1) || wide;
-        if (!isTallOrWide) continue;
-        const className = objectBody.match(/\bclassName\s*:\s*['"]([^'"]+)['"]/)?.[1];
-        if (className && DYNAMIC_PANEL_CLASSNAMES.has(className)) continue;
-        const hasLiteralId = /\bid\s*:\s*['"][^'"]+['"]/.test(objectBody);
-        if (!hasLiteralId) {
-          unparseable.push(file);
-        }
-      }
-    }
-    assert.deepStrictEqual(
-      unparseable.sort(),
-      [],
-      'Found tall/wide Panel constructor(s) without a literal id: ' + unparseable.join(', ') + '. ' +
-        'The footprint guardrail cannot track these, so give them a literal id: \'...\' in super({...}).',
-    );
-  });
-
-  it('source parser tolerates braces inside comments', () => {
-    // Locks down stripComments: a stray `}` (or `{`) inside a line or block
-    // comment must not truncate the parsed super({...}) body and drop
-    // defaultRowSpan — the real-world risk, e.g. CIIPanel comments its super().
-    const fixture = [
-      "class X extends Panel {",
-      "  constructor() {",
-      "    super({",
-      "      id: 'fixture-panel', // a closing brace } inside a comment",
-      "      /* block } comment { with braces */",
-      "      title: 'http://example.com/a', // url with // inside a string",
-      "      defaultRowSpan: 2,",
-      "    });",
-      "  }",
-      "}",
-    ].join('\n');
-    const [objectBody] = extractSuperOptionObjects(fixture);
-    assert.ok(objectBody, 'super({...}) body should parse past comment braces');
-    assert.equal(objectBody.match(/\bid\s*:\s*['"]([^'"]+)['"]/)?.[1], 'fixture-panel');
-    assert.equal(objectBody.match(/\btitle\s*:\s*['"]([^'"]+)['"]/)?.[1], 'http://example.com/a');
-    assert.equal(objectBody.match(/\bdefaultRowSpan\s*:\s*(\d+)/)?.[1], '2');
-  });
-
-  it('source parser ignores super() calls with a non-object argument', () => {
-    const fixture = [
-      "class A { constructor(code) { super(code); } }",
-      "const unrelated = { id: 'not-a-panel', defaultRowSpan: 2 };",
-      "class B extends Panel { constructor() { super({ id: 'real-panel', defaultRowSpan: 2 }); } }",
-    ].join('\n');
-    const ids = extractSuperOptionObjects(fixture)
-      .map((body) => body.match(/\bid\s*:\s*['"]([^'"]+)['"]/)?.[1])
-      .filter(Boolean);
-    assert.deepStrictEqual(ids, ['real-panel']);
-  });
-
-  it('dynamic custom and MCP footprint defaults match their real panel constructors', () => {
-    const dynamic = dynamicReservationFootprints();
-    assert.deepStrictEqual(
-      {
-        'cw-': dynamic.get('cw-')?.rowSpan,
-        'mcp-': dynamic.get('mcp-')?.rowSpan,
-      },
-      {
-        'cw-': dynamicConstructorRowSpan('CustomWidgetPanel.ts', 'custom-widget-panel'),
-        'mcp-': dynamicConstructorRowSpan('McpDataPanel.ts', 'mcp-data-panel'),
-      },
-      'Dynamic deferred shell prefixes must reserve the same defaultRowSpan as their real runtime panel classes.',
-    );
-  });
-
   it('every registered panel has a CMD+K command (discoverable by search)', () => {
     const panels = allRegistryPanelIds();
     const commands = panelCommandKeywordCounts();
@@ -660,6 +682,65 @@ describe('panel-config guardrails', () => {
       `prefix would be skipped on variant switches and bypass free-tier gating. Rename to a\n` +
       `non-reserved prefix.`,
     );
+  });
+
+  it('warns in dev when a hydrated panel exceeds its reserved deferred-shell footprint', () => {
+    const mountPanelElement = panelLayoutSrc.match(/private\s+mountPanelElement[\s\S]*?\n {2}\}/);
+    assert.ok(mountPanelElement, 'mountPanelElement method not found');
+    assert.match(
+      mountPanelElement[0],
+      /if\s*\(import\.meta\.env\.DEV\)\s*warnOnDeferredFootprintDrift\(key, placeholder, el\);/,
+      'mountPanelElement must surface deferred-shell footprint drift in dev builds',
+    );
+    assert.match(
+      panelLayoutSrc,
+      /function warnOnDeferredFootprintDrift\(/,
+      'warnOnDeferredFootprintDrift helper must exist',
+    );
+  });
+
+  it('keeps brace depth balanced across regex literals inside super() bodies', () => {
+    // Regression: a regex literal containing braces or quotes must not desync
+    // findMatchingBrace/superObjectBodies (which would silently drop or
+    // over-capture a panel footprint).
+    const src =
+      "class P { constructor() { super({ id: 'p', re: /[{}]'\"/, defaultRowSpan: 2 }); this.x = {}; } }";
+    const bodies = superObjectBodies(src);
+    assert.equal(bodies.length, 1, 'exactly the super(...) object body should be captured');
+    assert.match(bodies[0], /id: 'p'/);
+    assert.match(bodies[0], /defaultRowSpan: 2/);
+    assert.ok(!bodies[0].includes('this.x'), 'capture must stop at the super() object close brace');
+  });
+
+  it('does not mistake division for a regex literal in super() bodies', () => {
+    const src = "class P { constructor() { super({ id: 'p', ratio: width / 2, defaultRowSpan: 3 }); } }";
+    const bodies = superObjectBodies(src);
+    assert.equal(bodies.length, 1);
+    assert.match(bodies[0], /defaultRowSpan: 3/);
+  });
+
+  it('flags a non-literal defaultRowSpan as unverifiable rather than skipping it', () => {
+    // naturalDeferredPanelFootprints must surface values it cannot statically
+    // resolve, so a footprint expressed via a constant/expression cannot
+    // silently escape the registry-drift guard.
+    const src = "super({ id: 'mystery', defaultRowSpan: ROW_SPAN_TALL });";
+    const bodies = superObjectBodies(src);
+    const body = bodies[0] ?? '';
+    const rowSpanRaw = body.match(/defaultRowSpan:\s*([^,\n}]+)/);
+    assert.ok(rowSpanRaw, 'expected a defaultRowSpan match');
+    const value = rowSpanRaw[1].trim();
+    assert.ok(!/^[2-4]$/.test(value) && value !== '1', 'value should be treated as unverifiable');
+  });
+
+  it('includes TSX sources and flags non-literal className as unverifiable', () => {
+    assert.equal(COMPONENT_SOURCE_RE.test('FuturePanel.tsx'), true);
+
+    const src = "super({ id: 'mystery-wide', className: panelClassName });";
+    const bodies = superObjectBodies(src);
+    const body = bodies[0] ?? '';
+    const classNameRaw = body.match(/className:\s*([^,\n}]+)/);
+    assert.ok(classNameRaw, 'expected a className match');
+    assert.equal(staticStringLiteralValue(classNameRaw[1]), null);
   });
 });
 

@@ -1,6 +1,7 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { enqueuePanelCall } from '@/app/pending-panel-data';
+import { getSignalAggregator, type SignalAggregator } from '@/app/lazy-services';
 import type { NewsItem, MapLayers, SocialUnrestEvent, MilitaryFlight } from '@/types';
 import type { MarketData } from '@/types';
 import type { TimeRange } from '@/components/MapContainer';
@@ -25,8 +26,6 @@ import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
 import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
 import { withTimeout } from '@/utils/with-timeout';
 import {
-  fetchCategoryFeeds,
-  getFeedFailures,
   fetchMultipleStocks,
   fetchCommodityQuotes,
   fetchSectors,
@@ -76,7 +75,6 @@ import {
   fetchBisData,
   fetchBlsData,
   fetchCyberThreats,
-  drainTrendingSignals,
   fetchTradeRestrictions,
   fetchTariffTrends,
   fetchTradeFlows,
@@ -112,7 +110,6 @@ import { displayPubDateMs, effectivePubDateMs } from '@/services/feed-date';
 import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid } from '@/services/clustering';
 import { ingestProtests, ingestFlights, ingestVessels, ingestEarthquakes, detectGeoConvergence, geoConvergenceToSignal } from '@/services/geo-convergence';
-import { signalAggregator } from '@/services/signal-aggregator';
 import { updateAndCheck, consumeServerAnomalies, fetchLiveAnomalies } from '@/services/temporal-baseline';
 import { fetchAllFires, flattenFires, computeRegionStats, toMapFires } from '@/services/wildfires';
 import type { TheaterPostureSummary } from '@/services/military-surge';
@@ -140,7 +137,6 @@ import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { t, getCurrentLanguage } from '@/services/i18n';
 import { getHydratedData } from '@/services/bootstrap';
-import { ingestHeadlines } from '@/services/trending-keywords';
 import type { ListFeedDigestResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
 import type { GetSectorSummaryResponse, ListMarketQuotesResponse, ListCommodityQuotesResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
 import type {
@@ -191,14 +187,10 @@ import type { HappyContentCategory } from '@/services/positive-classifier';
 import { fetchKindnessData } from '@/services/kindness-data';
 import { getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
-import {
-  buildDailyMarketBrief,
-  cacheDailyMarketBrief,
-  getCachedDailyMarketBrief,
-  shouldRefreshDailyBrief,
-  type RegimeMacroContext,
-  type YieldCurveContext,
-  type SectorBriefContext,
+import type {
+  RegimeMacroContext,
+  YieldCurveContext,
+  SectorBriefContext,
 } from '@/services/daily-market-brief';
 import { fetchCachedRiskScores, getCachedScores, toCountryScore, type CachedRiskScores } from '@/services/cached-risk-scores';
 import type { ThreatLevel as ClientThreatLevel } from '@/types';
@@ -276,6 +268,76 @@ type HydrationTask = {
 };
 
 type HydrationTier = 1 | 2 | 3 | 4;
+type DailyMarketBriefModule = typeof import('@/services/daily-market-brief');
+type RssModule = Pick<typeof import('@/services/rss'), 'fetchCategoryFeeds' | 'getFeedFailures'>;
+type TrendingHeadlineInput = import('@/services/trending-keywords').TrendingHeadlineInput;
+type DrainTrendingSignals = typeof import('@/services/trending-keywords').drainTrendingSignals;
+
+let dailyMarketBriefModulePromise: Promise<DailyMarketBriefModule> | null = null;
+let rssModulePromise: Promise<RssModule> | null = null;
+let ingestHeadlinesPromise: Promise<(headlines: TrendingHeadlineInput[]) => void> | null = null;
+let drainTrendingSignalsPromise: Promise<DrainTrendingSignals> | null = null;
+
+function getDailyMarketBriefModule(): Promise<DailyMarketBriefModule> {
+  dailyMarketBriefModulePromise ??= import('@/services/daily-market-brief').catch((err) => {
+    dailyMarketBriefModulePromise = null;
+    throw err;
+  });
+  return dailyMarketBriefModulePromise;
+}
+
+function getRssModule(): Promise<RssModule> {
+  rssModulePromise ??= import('@/services/rss').catch((err) => {
+    rssModulePromise = null;
+    throw err;
+  });
+  return rssModulePromise;
+}
+
+async function ingestTrendingHeadlines(headlines: TrendingHeadlineInput[]): Promise<void> {
+  ingestHeadlinesPromise ??= import('@/services/trending-keywords')
+    .then(module => module.ingestHeadlines)
+    .catch((err) => {
+      ingestHeadlinesPromise = null;
+      throw err;
+    });
+  const ingestHeadlines = await ingestHeadlinesPromise;
+  ingestHeadlines(headlines);
+}
+
+async function drainTrendingSignalQueue(): Promise<ReturnType<DrainTrendingSignals>> {
+  try {
+    drainTrendingSignalsPromise ??= import('@/services/trending-keywords')
+      .then(module => module.drainTrendingSignals)
+      .catch((err) => {
+        drainTrendingSignalsPromise = null;
+        throw err;
+      });
+    const drainTrendingSignals = await drainTrendingSignalsPromise;
+    return drainTrendingSignals();
+  } catch (err) {
+    console.warn('[News] drainTrendingSignals failed (chunk load?):', err);
+    return [];
+  }
+}
+
+async function runSignalAggregator(
+  statusPanel: AppContext['statusPanel'] | undefined,
+  context: string,
+  ingest: (aggregator: SignalAggregator) => void,
+): Promise<void> {
+  try {
+    ingest(await getSignalAggregator());
+    statusPanel?.updateApi('Signal Aggregator', { status: 'ok', errorMessage: undefined });
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.warn(`[SignalAggregator] ${context} skipped:`, err);
+    statusPanel?.updateApi('Signal Aggregator', {
+      status: 'error',
+      errorMessage: `${context}: ${errorMessage}`,
+    });
+  }
+}
 
 const HYDRATION_TIER_ONE = new Set(['news', 'markets', 'intelligence']);
 const HYDRATION_TIER_TWO = new Set([
@@ -803,7 +865,7 @@ export class DataLoaderManager implements AppModule {
 
     const bootstrapTemporal = consumeServerAnomalies();
     if (bootstrapTemporal.anomalies.length > 0 || bootstrapTemporal.trackedTypes.length > 0) {
-      signalAggregator.ingestTemporalAnomalies(bootstrapTemporal.anomalies, bootstrapTemporal.trackedTypes);
+      await runSignalAggregator(this.ctx.statusPanel, 'bootstrap temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(bootstrapTemporal.anomalies, bootstrapTemporal.trackedTypes));
       ingestTemporalAnomaliesForCII(bootstrapTemporal.anomalies);
       this.refreshCiiAndBrief();
     } else {
@@ -813,7 +875,7 @@ export class DataLoaderManager implements AppModule {
 
   async refreshTemporalBaseline(): Promise<void> {
     const { anomalies, trackedTypes } = await fetchLiveAnomalies();
-    signalAggregator.ingestTemporalAnomalies(anomalies, trackedTypes);
+    await runSignalAggregator(this.ctx.statusPanel, 'temporal baseline anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(anomalies, trackedTypes));
     ingestTemporalAnomaliesForCII(anomalies);
     this.refreshCiiAndBrief();
   }
@@ -1108,7 +1170,10 @@ export class DataLoaderManager implements AppModule {
           .map(protoItemToNewsItem)
           .filter(i => enabledNames.has(i.source));
 
-        ingestHeadlines(items.map(i => ({ title: i.title, pubDate: i.pubDate, source: i.source, link: i.link })));
+        void ingestTrendingHeadlines(items.map(i => ({ title: i.title, pubDate: i.pubDate, source: i.source, link: i.link })))
+          .catch((err) => {
+            console.warn('[News] ingestTrendingHeadlines failed (chunk load?):', err);
+          });
 
         // Skip client-side AI reclassification for digest items.
         // The server already ran enrichWithAiCache() which checks the same Redis keys
@@ -1216,6 +1281,7 @@ export class DataLoaderManager implements AppModule {
         console.warn(`[News] Digest missing for "${category}", using per-feed fallback (${fallbackFeeds.length} feeds)`);
       }
 
+      const { fetchCategoryFeeds, getFeedFailures } = await getRssModule();
       const items = await fetchCategoryFeeds(fallbackFeeds, {
         batchSize: this.perFeedFallbackBatchSize,
         onBatch: (partialItems) => {
@@ -1334,6 +1400,7 @@ export class DataLoaderManager implements AppModule {
 
     let intel: NewsItem[];
     try {
+      const { fetchCategoryFeeds } = await getRssModule();
       intel = await fetchCategoryFeeds(fallbackIntelFeeds, { batchSize: this.perFeedFallbackBatchSize });
     } catch (e) {
       delete this.ctx.newsByCategory['intel'];
@@ -1874,13 +1941,15 @@ export class DataLoaderManager implements AppModule {
     this.dailyBriefGeneration++;
     const gen = this.dailyBriefGeneration;
     this.ctx.inFlight.add('dailyMarketBrief');
+    let dailyMarketBrief: DailyMarketBriefModule | null = null;
     try {
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      dailyMarketBrief = await getDailyMarketBriefModule();
       // Bound the IndexedDB cache read so a hung persistent-cache layer
       // can't keep the panel on its default Loading state forever — fall
       // through to "build from scratch" instead.
       const cached = await withTimeout(
-        getCachedDailyMarketBrief(timezone),
+        dailyMarketBrief.getCachedDailyMarketBrief(timezone),
         3_000,
         'daily-brief-cache-read',
       ).catch(() => null);
@@ -1889,7 +1958,7 @@ export class DataLoaderManager implements AppModule {
         this.callPanel('daily-market-brief', 'renderBrief', cached, 'cached');
       }
 
-      if (!force && cached && !shouldRefreshDailyBrief(cached, timezone)) {
+      if (!force && cached && !dailyMarketBrief.shouldRefreshDailyBrief(cached, timezone)) {
         return;
       }
 
@@ -1925,7 +1994,7 @@ export class DataLoaderManager implements AppModule {
       // resolves). On timeout the existing catch below serves the cached
       // version or shows an error, never letting the panel stay stuck.
       const brief = await withTimeout(
-        buildDailyMarketBrief({
+        dailyMarketBrief.buildDailyMarketBrief({
           markets: this.ctx.latestMarkets,
           newsByCategory: this.ctx.newsByCategory,
           timezone,
@@ -1953,7 +2022,7 @@ export class DataLoaderManager implements AppModule {
       }
 
       // Render first, persist after. The previous order `await
-      // cacheDailyMarketBrief(brief); render(brief)` meant a hung
+      // dailyMarketBrief.cacheDailyMarketBrief(brief); render(brief)` meant a hung
       // IndexedDB / Tauri-Store write blocked the panel from ever
       // displaying the finished brief — the build budget proved nothing
       // by itself. Now: user sees the brief immediately; the cache write
@@ -1962,7 +2031,7 @@ export class DataLoaderManager implements AppModule {
       // on Building forever."
       this.callPanel('daily-market-brief', 'renderBrief', brief, 'live');
       void withTimeout(
-        cacheDailyMarketBrief(brief),
+        dailyMarketBrief.cacheDailyMarketBrief(brief),
         5_000,
         'daily-brief-cache-write',
       ).catch((err) => {
@@ -1978,11 +2047,13 @@ export class DataLoaderManager implements AppModule {
       // state was. .catch(() => null) absorbs both the TimeoutError and
       // any persistent-cache read failure into the same null-result
       // branch that the existing showError fallback already handles.
-      const cached = await withTimeout(
-        getCachedDailyMarketBrief(timezone),
-        3_000,
-        'daily-brief-cache-read-recovery',
-      ).catch(() => null);
+      const cached = dailyMarketBrief
+        ? await withTimeout(
+          dailyMarketBrief.getCachedDailyMarketBrief(timezone),
+          3_000,
+          'daily-brief-cache-read-recovery',
+        ).catch(() => null)
+        : null;
       if (cached?.available) {
         this.callPanel('daily-market-brief', 'renderBrief', cached, 'cached');
         return;
@@ -2285,7 +2356,7 @@ export class DataLoaderManager implements AppModule {
         const outages = await fetchInternetOutages();
         this.ctx.intelligenceCache.outages = outages;
         ingestOutagesForCII(outages);
-        signalAggregator.ingestOutages(outages);
+        await runSignalAggregator(this.ctx.statusPanel, 'outages', (aggregator) => aggregator.ingestOutages(outages));
         dataFreshness.recordUpdate('outages', outages.length);
         if (this.ctx.mapLayers.outages) {
           this.ctx.map?.setOutages(outages);
@@ -2313,7 +2384,7 @@ export class DataLoaderManager implements AppModule {
         this.ctx.intelligenceCache.protests = protestData;
         ingestProtests(protestData.events);
         ingestProtestsForCII(protestData.events);
-        signalAggregator.ingestProtests(protestData.events);
+        await runSignalAggregator(this.ctx.statusPanel, 'protests', (aggregator) => aggregator.ingestProtests(protestData.events));
         const protestCount = protestData.sources.acled + protestData.sources.gdelt;
         if (protestCount > 0) dataFreshness.recordUpdate('acled', protestCount);
         if (protestData.sources.gdelt > 0) dataFreshness.recordUpdate('gdelt', protestData.sources.gdelt);
@@ -2393,15 +2464,17 @@ export class DataLoaderManager implements AppModule {
         ingestFlights(flightData.flights);
         ingestVessels(vesselData.vessels);
         ingestMilitaryForCII(flightData.flights, vesselData.vessels);
-        signalAggregator.ingestFlights(flightData.flights);
-        signalAggregator.ingestVessels(vesselData.vessels);
+        await runSignalAggregator(this.ctx.statusPanel, 'military tracks', (aggregator) => {
+          aggregator.ingestFlights(flightData.flights);
+          aggregator.ingestVessels(vesselData.vessels);
+        });
         dataFreshness.recordUpdate('opensky', flightData.flights.length);
         updateAndCheck([
           { type: 'military_flights', region: 'global', count: flightData.flights.length },
           { type: 'vessels', region: 'global', count: vesselData.vessels.length },
-        ]).then(anomalies => {
+        ]).then(async anomalies => {
           if (anomalies.length > 0) {
-            signalAggregator.ingestTemporalAnomalies(anomalies);
+            await runSignalAggregator(this.ctx.statusPanel, 'temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(anomalies));
             ingestTemporalAnomaliesForCII(anomalies);
             this.refreshCiiAndBrief();
           }
@@ -2595,7 +2668,7 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setOutages(outages);
       this.ctx.map?.setLayerReady('outages', outages.length > 0);
       ingestOutagesForCII(outages);
-      signalAggregator.ingestOutages(outages);
+      await runSignalAggregator(this.ctx.statusPanel, 'outages', (aggregator) => aggregator.ingestOutages(outages));
       this.ctx.statusPanel?.updateFeed('NetBlocks', { status: 'ok', itemCount: outages.length });
       dataFreshness.recordUpdate('outages', outages.length);
       (this.ctx.panels['internet-disruptions'] as InternetDisruptionsPanel)?.setOutages(outages);
@@ -2656,7 +2729,7 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setIranEvents(events);
       this.ctx.map?.setLayerReady('iranAttacks', events.length > 0);
       const coerced = events.map(e => ({ ...e, timestamp: Number(e.timestamp) || 0 }));
-      signalAggregator.ingestConflictEvents(coerced);
+      await runSignalAggregator(this.ctx.statusPanel, 'iran conflict events', (aggregator) => aggregator.ingestConflictEvents(coerced));
       ingestStrikesForCII(coerced);
       this.refreshCiiAndBrief();
     } catch {
@@ -2670,14 +2743,14 @@ export class DataLoaderManager implements AppModule {
       const aisStatus = getAisStatus();
       console.log('[Ships] Events:', { disruptions: disruptions.length, density: density.length, vessels: aisStatus.vessels });
       this.ctx.map?.setAisData(disruptions, density);
-      signalAggregator.ingestAisDisruptions(disruptions);
+      await runSignalAggregator(this.ctx.statusPanel, 'AIS disruptions', (aggregator) => aggregator.ingestAisDisruptions(disruptions));
       ingestAisDisruptionsForCII(disruptions);
       this.refreshCiiAndBrief();
       updateAndCheck([
         { type: 'ais_gaps', region: 'global', count: disruptions.length },
-      ]).then(anomalies => {
+      ]).then(async anomalies => {
         if (anomalies.length > 0) {
-          signalAggregator.ingestTemporalAnomalies(anomalies);
+          await runSignalAggregator(this.ctx.statusPanel, 'temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(anomalies));
           ingestTemporalAnomaliesForCII(anomalies);
           this.refreshCiiAndBrief();
         }
@@ -2789,7 +2862,7 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setLayerReady('protests', protestData.events.length > 0);
       ingestProtests(protestData.events);
       ingestProtestsForCII(protestData.events);
-      signalAggregator.ingestProtests(protestData.events);
+      await runSignalAggregator(this.ctx.statusPanel, 'protests', (aggregator) => aggregator.ingestProtests(protestData.events));
       const protestCount = protestData.sources.acled + protestData.sources.gdelt;
       if (protestCount > 0) dataFreshness.recordUpdate('acled', protestCount);
       if (protestData.sources.gdelt > 0) dataFreshness.recordUpdate('gdelt', protestData.sources.gdelt);
@@ -2921,14 +2994,16 @@ export class DataLoaderManager implements AppModule {
       ingestFlights(flightData.flights);
       ingestVessels(vesselData.vessels);
       ingestMilitaryForCII(flightData.flights, vesselData.vessels);
-      signalAggregator.ingestFlights(flightData.flights);
-      signalAggregator.ingestVessels(vesselData.vessels);
+      await runSignalAggregator(this.ctx.statusPanel, 'military tracks', (aggregator) => {
+        aggregator.ingestFlights(flightData.flights);
+        aggregator.ingestVessels(vesselData.vessels);
+      });
       updateAndCheck([
         { type: 'military_flights', region: 'global', count: flightData.flights.length },
         { type: 'vessels', region: 'global', count: vesselData.vessels.length },
-      ]).then(anomalies => {
+      ]).then(async anomalies => {
         if (anomalies.length > 0) {
-          signalAggregator.ingestTemporalAnomalies(anomalies);
+          await runSignalAggregator(this.ctx.statusPanel, 'temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(anomalies));
           ingestTemporalAnomaliesForCII(anomalies);
           this.refreshCiiAndBrief();
         }
@@ -3342,7 +3417,7 @@ export class DataLoaderManager implements AppModule {
         geoSignals = geoAlerts.map(geoConvergenceToSignal);
       }
 
-      const keywordSpikeSignals = drainTrendingSignals();
+      const keywordSpikeSignals = await drainTrendingSignalQueue();
       const allSignals = [...signals, ...geoSignals, ...keywordSpikeSignals];
       if (allSignals.length > 0) {
         addToSignalHistory(allSignals);
@@ -3374,7 +3449,7 @@ export class DataLoaderManager implements AppModule {
           acq_date: new Date(f.detectedAt).toISOString().slice(0, 10),
         }));
 
-        signalAggregator.ingestSatelliteFires(satelliteFires);
+        await runSignalAggregator(this.ctx.statusPanel, 'satellite fires', (aggregator) => aggregator.ingestSatelliteFires(satelliteFires));
         ingestSatelliteFiresForCII(satelliteFires);
         this.refreshCiiAndBrief();
 
@@ -3622,7 +3697,7 @@ export class DataLoaderManager implements AppModule {
       const result = await fetchSanctionsPressure();
       this.callPanel('sanctions-pressure', 'setData', result);
       this.ctx.intelligenceCache.sanctions = result;
-      signalAggregator.ingestSanctionsPressure(result.countries);
+      await runSignalAggregator(this.ctx.statusPanel, 'sanctions pressure', (aggregator) => aggregator.ingestSanctionsPressure(result.countries));
       ingestSanctionsForCII(result.countries);
       if (result.totalCount > 0) {
         dataFreshness.recordUpdate('sanctions_pressure', result.totalCount);
@@ -3663,7 +3738,7 @@ export class DataLoaderManager implements AppModule {
       const anomalies = result.observations.filter((observation) => observation.severity !== 'normal');
       this.callPanel('radiation-watch', 'setData', result);
       this.ctx.intelligenceCache.radiation = result;
-      signalAggregator.ingestRadiationObservations(result.observations);
+      await runSignalAggregator(this.ctx.statusPanel, 'radiation observations', (aggregator) => aggregator.ingestRadiationObservations(result.observations));
       this.ctx.map?.setRadiationObservations(anomalies);
       this.ctx.map?.setLayerReady('radiationWatch', anomalies.length > 0);
       if (result.observations.length > 0) {

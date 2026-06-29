@@ -3,10 +3,10 @@ import { normalizeExclusiveChoropleths } from '@/components/resilience-choroplet
 import { replayPendingCalls, clearAllPendingCalls } from '@/app/pending-panel-data';
 import {
   createDeferredPanelShell,
-  getDeferredPanelShellFootprint,
-  reconcileDeferredShellColSpan,
+  getDeferredPanelShellFootprint as resolveDeferredPanelShellFootprint,
+  reconcileDeferredPanelShellColSpan,
   shouldDeferInitialPanelMount,
-  type DeferredPanelNaturalFootprint,
+  type DeferredPanelShellFootprint,
 } from '@/app/panel-mount-deferral';
 import {
   addResponsiveZoneListener,
@@ -59,11 +59,6 @@ import {
   generateTabId,
   buildDefaultTabPanels,
 } from '@/services/tab-store';
-import {
-  loadPanelCollapsed,
-  loadPanelColSpans,
-  loadPanelSpans,
-} from '@/utils/panel-storage';
 import type { PanelTab, TabsState } from '@/services/tab-store';
 import { showToast } from '@/utils';
 import { loadMcpPanels, saveMcpPanel } from '@/services/mcp-store';
@@ -72,9 +67,9 @@ import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import type { AuthSession } from '@/services/auth-state';
 import { PanelGateReason, getPanelGateReason, hasPremiumAccess } from '@/services/panel-gating';
 import type { Panel } from '@/components/Panel';
-import { getMaxColSpan } from '@/components/Panel';
 import type { SupplyChainPanel } from '@/components/SupplyChainPanel';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { loadPanelCollapsed, loadPanelColSpans, loadPanelSpans } from '@/utils/panel-storage';
 
 
 /**
@@ -126,9 +121,20 @@ const WEB_CLERK_PRO_ONLY_PANELS = new Set([
 
 const COLLIDING_NEWS_PANEL_KEYS = new Set(['markets', 'crypto', 'economic']);
 
-export const DEFERRED_PANEL_NATURAL_FOOTPRINTS = {
-  'chat-analyst': { rowSpan: 2 },
+// TEMPORARY MIRROR of each panel constructor's footprint (`defaultRowSpan` /
+// `className: 'panel-wide'`, declared in src/components/*Panel.ts). A deferred
+// shell never instantiates its component, so it cannot read that footprint
+// directly and must reproduce it here to reserve the right grid space.
+//
+// This duplicates the authoritative per-component declaration. Two guards keep
+// it honest: `tests/panel-config-guardrails.test.mjs` fails CI on drift, and
+// `warnOnDeferredFootprintDrift` (below) logs in dev if a hydrated panel ends
+// up wider/taller than its reserved shell. The intended long-term fix is to
+// lift these defaults into one shared table imported by both the `Panel`
+// constructor and this map, removing the duplication entirely (see #4490).
+export const DEFERRED_PANEL_NATURAL_FOOTPRINTS: Readonly<Record<string, DeferredPanelShellFootprint>> = {
   cii: { rowSpan: 2 },
+  'chat-analyst': { rowSpan: 2 },
   'consumer-prices': { rowSpan: 2 },
   displacement: { rowSpan: 2 },
   economic: { rowSpan: 2 },
@@ -138,8 +144,8 @@ export const DEFERRED_PANEL_NATURAL_FOOTPRINTS = {
   'fuel-shortages': { rowSpan: 2 },
   'gdelt-intel': { rowSpan: 2 },
   'internet-disruptions': { rowSpan: 2 },
-  'live-news': { wide: true },
-  'live-webcams': { wide: true },
+  'live-news': { className: 'panel-wide' },
+  'live-webcams': { className: 'panel-wide' },
   'oil-inventories': { rowSpan: 2 },
   'pipeline-status': { rowSpan: 2 },
   'sanctions-pressure': { rowSpan: 2 },
@@ -151,16 +157,48 @@ export const DEFERRED_PANEL_NATURAL_FOOTPRINTS = {
   'threat-timeline': { rowSpan: 2 },
   'trade-policy': { rowSpan: 2 },
   'ucdp-events': { rowSpan: 2 },
-  'windy-webcams': { wide: true },
-} as const satisfies Readonly<Record<string, DeferredPanelNaturalFootprint>>;
+  'windy-webcams': { className: 'panel-wide' },
+};
 
-const DEFERRED_DYNAMIC_PANEL_FOOTPRINTS = {
+const DEFERRED_DYNAMIC_PANEL_FOOTPRINTS: Readonly<Record<string, DeferredPanelShellFootprint>> = {
   'cw-': { rowSpan: 2 },
   'mcp-': { rowSpan: 2 },
-} as const satisfies Readonly<Record<string, DeferredPanelNaturalFootprint>>;
+};
 
 const DEFERRED_PANEL_RETRY_DELAY_MS = 1_000;
 const DEFERRED_PANEL_MAX_RETRY_ATTEMPTS = 3;
+
+function readRowSpanClass(element: HTMLElement): number {
+  if (element.classList.contains('span-4')) return 4;
+  if (element.classList.contains('span-3')) return 3;
+  if (element.classList.contains('span-2')) return 2;
+  return 1;
+}
+
+function readColSpanFootprint(element: HTMLElement): number {
+  if (element.classList.contains('col-span-3')) return 3;
+  if (element.classList.contains('col-span-2')) return 2;
+  if (element.classList.contains('col-span-1')) return 1;
+  return element.classList.contains('panel-wide') ? 2 : 1;
+}
+
+// Dev-only guard: if a hydrated panel ends up taller/wider than the shell we
+// reserved for it, the registry above drifted from the panel constructor and
+// the deferred shell just caused the layout shift it exists to prevent. Surface
+// it in the app (CI also catches drift via panel-config-guardrails).
+function warnOnDeferredFootprintDrift(key: string, placeholder: HTMLElement, real: HTMLElement): void {
+  const reservedRows = readRowSpanClass(placeholder);
+  const reservedCols = readColSpanFootprint(placeholder);
+  const realRows = readRowSpanClass(real);
+  const realCols = readColSpanFootprint(real);
+  if (realRows > reservedRows || realCols > reservedCols) {
+    console.warn(
+      `[PanelLayoutManager] Deferred shell footprint drift for "${key}": reserved ` +
+        `${reservedCols}x${reservedRows} (col x row) but panel hydrated to ${realCols}x${realRows}. ` +
+        'Update DEFERRED_PANEL_NATURAL_FOOTPRINTS to match the panel constructor.',
+    );
+  }
+}
 
 export interface PanelLayoutManagerCallbacks {
   openCountryStory: (code: string, name: string) => void;
@@ -1247,6 +1285,7 @@ export class PanelLayoutManager implements AppModule {
     if (el.parentElement) return false;
     this.makeDraggable(el, key);
     if (placeholder?.parentNode) {
+      if (import.meta.env.DEV) warnOnDeferredFootprintDrift(key, placeholder, el);
       placeholder.parentNode.replaceChild(el, placeholder);
     } else {
       this.insertByOrder(grid, el, key);
@@ -1256,8 +1295,8 @@ export class PanelLayoutManager implements AppModule {
     return true;
   }
 
-  private getDeferredPanelFootprint(key: string) {
-    return getDeferredPanelShellFootprint({
+  private getDeferredPanelShellFootprint(key: string): DeferredPanelShellFootprint {
+    return resolveDeferredPanelShellFootprint({
       panelId: key,
       naturalFootprints: DEFERRED_PANEL_NATURAL_FOOTPRINTS,
       dynamicFootprints: DEFERRED_DYNAMIC_PANEL_FOOTPRINTS,
@@ -1269,13 +1308,11 @@ export class PanelLayoutManager implements AppModule {
 
   private deferPanelMount(key: string, panel: Panel | null, grid: HTMLElement | null, withShell: boolean): void {
     const placeholder = withShell && grid
-      ? createDeferredPanelShell(key, this.ctx.panelSettings[key]?.name ?? key, this.getDeferredPanelFootprint(key))
+      ? createDeferredPanelShell(key, this.ctx.panelSettings[key]?.name ?? key, this.getDeferredPanelShellFootprint(key))
       : null;
     if (placeholder && grid) {
       this.insertByOrder(grid, placeholder, key);
-      // Clamp a saved col-span to the live grid width, mirroring the real panel's
-      // restoreSavedColSpan, so a narrow viewport doesn't over-reserve and shift.
-      reconcileDeferredShellColSpan(placeholder, getMaxColSpan(placeholder));
+      reconcileDeferredPanelShellColSpan(placeholder);
       this.mobilePanelNav?.applyToNewPanel(placeholder);
     }
     const existing = this.deferredPanelMounts.get(key);
@@ -1341,7 +1378,7 @@ export class PanelLayoutManager implements AppModule {
     if (!deferred.panel && !this.lazyPanelRegistrations.has(key)) return;
     if (deferred.retryAttempts >= DEFERRED_PANEL_MAX_RETRY_ATTEMPTS) {
       // Give up after a bounded number of attempts so a permanently failing
-      // dynamic import (offline, stale chunk) can't spin a 1s retry loop forever.
+      // dynamic import (offline, stale chunk) cannot spin a 1s retry loop forever.
       // The shell stays in place as a quiet fallback, matching the prior fail-safe.
       deferred.failed = true;
       return;
