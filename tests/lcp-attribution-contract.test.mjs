@@ -71,6 +71,58 @@ describe('LCP attribution debug contract', () => {
     assert.ok(dataLoaderSrc.includes("markLcpDebug('wm:data:country-geometry-replay-ready'"));
   });
 
+  it('caches and replays every geometry-dependent CII source so deferred geometry never drops attribution (#4512)', () => {
+    const contextSrc = readSrc('src/app/app-context.ts');
+    const dataLoaderSrc = readSrc('src/app/data-loader.ts');
+
+    // Isolate the replay method body so we assert against the replay, not the
+    // whole file (a stray ingest elsewhere must not satisfy the guard).
+    const replayStart = dataLoaderSrc.indexOf('refreshGeometryDependentCiiAfterCountryGeometry(): void {');
+    assert.ok(replayStart >= 0, 'replay method must exist');
+    const replayEnd = dataLoaderSrc.indexOf('\n  private async tryFetchDigest', replayStart);
+    assert.ok(replayEnd > replayStart, 'could not bound replay method body');
+    const replayBody = dataLoaderSrc.slice(replayStart, replayEnd);
+
+    // Coordinate-only sources have NO country hint, so their CII attribution is
+    // 100% geometry-dependent. They were silently lost before #4512 because they
+    // had no IntelligenceCache field and were never replayed. Each must now be:
+    //   1) declared on IntelligenceCache,
+    //   2) written to the cache at its ingest site, and
+    //   3) re-ingested from the cache inside the replay.
+    const coordinateOnlySources = [
+      { field: 'gpsJamming', ingest: 'ingestGpsJammingForCII' },
+      { field: 'aisDisruptions', ingest: 'ingestAisDisruptionsForCII' },
+      { field: 'satelliteFires', ingest: 'ingestSatelliteFiresForCII' },
+    ];
+
+    for (const { field, ingest } of coordinateOnlySources) {
+      assert.ok(
+        new RegExp(`\\b${field}\\?:`).test(contextSrc),
+        `IntelligenceCache must declare ${field}`,
+      );
+      assert.ok(
+        dataLoaderSrc.includes(`this.ctx.intelligenceCache.${field} =`),
+        `data-loader must cache ${field} at its ingest site`,
+      );
+      assert.ok(
+        replayBody.includes(`${ingest}(cache.${field})`),
+        `replay must re-ingest ${field} via ${ingest}(cache.${field})`,
+      );
+    }
+  });
+
+  it('skips the post-LCP replay when geometry was already applied during the fan-out (#4512)', () => {
+    const appSrc = readSrc('src/App.ts');
+    // The replay is a full second CII compute + choropleth repaint; it must only
+    // run when the fan-out ingested before geometry was ready.
+    assert.ok(appSrc.includes('isCountryGeometryLoaded()'), 'App must snapshot geometry readiness before the fan-out');
+    assert.match(
+      appSrc,
+      /if \(!geometryAlreadyApplied\) \{\s*this\.dataLoader\.refreshGeometryDependentCiiAfterCountryGeometry\(\);/s,
+      'replay must be guarded by !geometryAlreadyApplied',
+    );
+  });
+
   it('marks feed digest request timing for U4 evidence', () => {
     const dataLoaderSrc = readSrc('src/app/data-loader.ts');
     assert.ok(dataLoaderSrc.includes("markLcpDebug('wm:data:feed-digest-start'"));

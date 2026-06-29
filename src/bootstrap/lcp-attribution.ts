@@ -6,7 +6,11 @@ type LcpElementSnapshot = {
   id: string;
   selector: string;
   tagName: string;
+  // Redacted by default ('') — the LCP element's textContent can hold user/PII
+  // content. Populated only when the explicit wm_lcp_text flag is set. Use
+  // textLength to see whether the candidate was a text node without exposing it.
   text: string;
+  textLength: number;
 };
 
 type LcpResourceGroup = {
@@ -66,6 +70,13 @@ declare global {
 
 const DEBUG_QUERY_PARAM = 'wm_lcp_debug';
 const DEBUG_STORAGE_KEYS = ['wm_lcp_debug', 'wm-lcp-debug'];
+// Raw LCP element text is opt-in via a SEPARATE, louder flag. The LCP element is
+// frequently a content block (a headline, a personalized greeting, a selected
+// place name), so its textContent can hold user/PII content. Attribution only
+// needs structure (tag/selector/closest/size), so by default we capture the
+// text *length* and leave the text itself redacted. (#4512 review)
+const DEBUG_TEXT_QUERY_PARAM = 'wm_lcp_text';
+const DEBUG_TEXT_STORAGE_KEYS = ['wm_lcp_text', 'wm-lcp-text'];
 const MAX_ENTRIES = 20;
 const MAX_RESOURCE_GROUPS = 12;
 const MAX_TEXT_LENGTH = 140;
@@ -103,18 +114,18 @@ function isTruthyDebugFlag(value: string | null): boolean {
   return value === '1' || value === 'true' || value === 'yes';
 }
 
-function isLcpDebugEnabled(): boolean {
+function isFlagEnabled(queryParam: string, storageKeys: string[]): boolean {
   if (typeof window === 'undefined') return false;
   try {
     const params = new URL(window.location.href).searchParams;
-    if (isTruthyDebugFlag(params.get(DEBUG_QUERY_PARAM))) return true;
+    if (isTruthyDebugFlag(params.get(queryParam))) return true;
   } catch {
     // Ignore URL parsing failures in unusual embedded runtimes.
   }
 
   const sessionStorage = getWindowStorage('sessionStorage');
   const localStorage = getWindowStorage('localStorage');
-  for (const key of DEBUG_STORAGE_KEYS) {
+  for (const key of storageKeys) {
     if (
       isTruthyDebugFlag(getStorageFlag(sessionStorage, key))
       || isTruthyDebugFlag(getStorageFlag(localStorage, key))
@@ -123,6 +134,14 @@ function isLcpDebugEnabled(): boolean {
     }
   }
   return false;
+}
+
+function isLcpDebugEnabled(): boolean {
+  return isFlagEnabled(DEBUG_QUERY_PARAM, DEBUG_STORAGE_KEYS);
+}
+
+function isLcpTextCaptureEnabled(): boolean {
+  return isFlagEnabled(DEBUG_TEXT_QUERY_PARAM, DEBUG_TEXT_STORAGE_KEYS);
 }
 
 function sanitizeResourceUrl(raw: string | undefined): string {
@@ -179,13 +198,15 @@ function closestAttributionLabel(element: Element): string {
 
 function snapshotElement(element: Element | undefined): LcpElementSnapshot | null {
   if (!element) return null;
+  const rawText = capText(element.textContent ?? '');
   return {
     className: capText(getClassName(element), 240),
     closest: closestAttributionLabel(element),
     id: element.id,
     selector: buildSelector(element),
     tagName: element.tagName.toLowerCase(),
-    text: capText(element.textContent ?? ''),
+    text: isLcpTextCaptureEnabled() ? rawText : '',
+    textLength: rawText.length,
   };
 }
 
@@ -336,6 +357,7 @@ export const __testing__ = {
   capText,
   classifyCriticalResource,
   isLcpDebugEnabled,
+  isLcpTextCaptureEnabled,
   isTruthyDebugFlag,
   sanitizeResourceUrl,
   snapshotContext,

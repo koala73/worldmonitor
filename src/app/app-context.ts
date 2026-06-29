@@ -1,7 +1,19 @@
-import type { InternetOutage, SocialUnrestEvent, MilitaryFlight, MilitaryFlightCluster, MilitaryVessel, MilitaryVesselCluster, USNIFleetReport, PanelConfig, MapLayers, NewsItem, MarketData, ClusteredEvent, CyberThreat, Monitor } from '@/types';
+import type { InternetOutage, SocialUnrestEvent, MilitaryFlight, MilitaryFlightCluster, MilitaryVessel, MilitaryVesselCluster, USNIFleetReport, PanelConfig, MapLayers, NewsItem, MarketData, ClusteredEvent, CyberThreat, Monitor, AisDisruptionEvent } from '@/types';
 import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import type { IranEvent } from '@/generated/client/worldmonitor/conflict/v1/service_client';
 import type { ConflictEvent } from '@/services/conflict';
+import type { GpsJamHex } from '@/services/gps-interference';
+
+// Geometry-resolved satellite-fire shape ingested into CII. Mirrors the inline
+// projection built in DataLoaderManager.loadFirmsData so the cache can replay it
+// once precision country geometry is ready (#4512).
+export type SatelliteFireSignal = {
+  lat: number;
+  lon: number;
+  brightness: number;
+  frp: number;
+  region?: string;
+};
 import type { SanctionsPressureResult } from '@/services/sanctions-pressure';
 import type { RadiationWatchResult } from '@/services/radiation';
 import type { SecurityAdvisory } from '@/services/security-advisories';
@@ -21,6 +33,13 @@ export interface UnifiedSettingsController {
 
 export interface IntelligenceCache {
   conflicts?: ConflictEvent[];
+  // Coordinate-resolved sources whose CII attribution depends on precision
+  // country geometry. They are ingested during the visible-data fan-out (before
+  // geometry is ready, so attribution is coarse/empty) and replayed once
+  // geometry lands — see refreshGeometryDependentCiiAfterCountryGeometry (#4512).
+  gpsJamming?: GpsJamHex[];
+  aisDisruptions?: AisDisruptionEvent[];
+  satelliteFires?: SatelliteFireSignal[];
   flightDelays?: AirportDelayAlert[];
   thermalEscalation?: import('@/services/thermal-escalation').ThermalEscalationWatch;
   aircraftPositions?: PositionSample[];

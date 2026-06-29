@@ -20,6 +20,7 @@ type LcpDebugSnapshot = {
       selector: string;
       tagName: string;
       text: string;
+      textLength: number;
     } | null;
     resources: Array<{ category: string; count: number; transferSize: number }>;
     size: number;
@@ -90,6 +91,23 @@ const expectContext = (snapshot: LcpDebugSnapshot): void => {
   expect(snapshot.context.visibilityState).toBeTruthy();
 };
 
+// Vocabulary produced by closestAttributionLabel(); '' is valid when the LCP
+// element is outside every known container. A non-empty value must be a real
+// label — this catches a regression where attribution silently degrades to ''.
+const KNOWN_ATTRIBUTION = new Set([
+  '', 'shell-lcp', 'shell', 'map-container', 'map-section', 'map-renderer-shell', 'panel',
+]);
+
+const expectMeaningfulCandidate = (latest: LcpDebugSnapshot['entries'][number]): void => {
+  expect(latest.element?.selector || latest.url).toBeTruthy();
+  const closest = latest.element?.closest ?? '';
+  expect(KNOWN_ATTRIBUTION.has(closest) || closest.startsWith('panel:')).toBe(true);
+  // Raw text must stay redacted unless the explicit wm_lcp_text flag is set
+  // (it is not set in these runs). The element's textLength still flows so
+  // attribution can tell a text node apart without exposing its content.
+  expect(latest.element?.text ?? '').toBe('');
+};
+
 test.describe('dashboard LCP attribution debug', () => {
   test.beforeEach(async ({ page }) => {
     await installLcpDebug(page);
@@ -105,7 +123,7 @@ test.describe('dashboard LCP attribution debug', () => {
     expect(latest).toBeTruthy();
     expect(latest!.startTime).toBeGreaterThanOrEqual(0);
     expect(latest!.size).toBeGreaterThan(0);
-    expect(latest!.element?.selector || latest!.url).toBeTruthy();
+    expectMeaningfulCandidate(latest!);
     expect(latest!.context.viewport.width).toBeGreaterThan(0);
     expect(latest!.url).not.toContain('wms_');
     expect(latest!.url).not.toContain('token=');
@@ -133,7 +151,7 @@ test.describe('dashboard LCP attribution debug on mobile', () => {
     expect(latest).toBeTruthy();
     expect(latest!.startTime).toBeGreaterThanOrEqual(0);
     expect(latest!.size).toBeGreaterThan(0);
-    expect(latest!.element?.selector || latest!.url).toBeTruthy();
+    expectMeaningfulCandidate(latest!);
     expect(latest!.context.viewport.width).toBeGreaterThan(0);
   });
 });

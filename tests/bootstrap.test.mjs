@@ -285,20 +285,29 @@ describe('App bootstrap slow-tier lifecycle', () => {
     assert.ok(appSrc.includes('cancelBootstrapSlowTier();'), 'App.destroy() should cancel pending slow bootstrap work');
   });
 
-  it('keeps slow-tier and country geometry waits off visible data fan-out (#4489)', () => {
+  it('keeps country geometry off the visible data fan-out while awaiting the slow tier (#4489/#4512)', () => {
     const phase6Start = appSrc.indexOf('// Phase 6: Data loading');
     const phase6End = appSrc.indexOf('// If bootstrap was served from cache', phase6Start);
     const phase6 = appSrc.slice(phase6Start, phase6End);
     const slowStartIndex = phase6.indexOf('const slowTierReady = this.waitForSlowBootstrapCheckpoint();');
+    const slowAwaitIndex = phase6.indexOf('await slowTierReady;');
     const fanoutIndex = phase6.indexOf('this.dataLoader.loadAllData()');
     const countryGeometryIndex = phase6.indexOf('const countryGeometryReady = this.preloadCountryGeometryForPostLcpWork();');
 
     assert.ok(phase6Start >= 0 && phase6End > phase6Start, 'Missing Phase 6 data loading block');
     assert.ok(slowStartIndex >= 0, 'slow-tier checkpoint should still start in the background');
-    assert.ok(fanoutIndex > slowStartIndex, 'visible data fan-out should start after kicking off slow-tier checkpoint');
+    // Slow-tier hydration keys are consume-once: the fan-out must NOT read them
+    // before the tier settles, so the bounded checkpoint is awaited first (#4512).
+    assert.ok(slowAwaitIndex > slowStartIndex, 'slow-tier checkpoint should be awaited before the fan-out');
+    assert.ok(fanoutIndex > slowAwaitIndex, 'visible data fan-out should start after the slow-tier checkpoint settles');
     assert.ok(countryGeometryIndex > fanoutIndex, 'country geometry preload should start after initial visible data fan-out');
-    assert.ok(phase6.includes('void slowTierReady;'), 'slow-tier checkpoint should not be awaited before fan-out');
-    assert.ok(appSrc.includes('this.startPostLcpIntelligence(countryGeometryReady);'), 'post-LCP intelligence should wait on background geometry');
+    // Country geometry preload must stay deferred — re-introducing a pre-fanout
+    // await here is the exact regression this guard exists to catch.
+    const preFanout = phase6.slice(0, fanoutIndex);
+    assert.ok(!/await\s+preloadCountryGeometry\s*\(/.test(preFanout), 'country geometry must not be awaited before the fan-out');
+    assert.ok(!/await\s+waitForBootstrapSlowTier\s*\(/.test(preFanout), 'raw slow-tier wait must not be inlined before the fan-out');
+    assert.ok(!phase6.includes('void slowTierReady;'), 'slow-tier checkpoint must be awaited, not discarded');
+    assert.ok(appSrc.includes('this.startPostLcpIntelligence(countryGeometryReady, geometryReadyBeforeFanout);'), 'post-LCP intelligence should wait on background geometry and know whether geometry was already applied');
     assert.ok(appSrc.includes('this.dataLoader.refreshGeometryDependentCiiAfterCountryGeometry();'), 'post-geometry replay should restore CII country attribution without blocking fan-out');
   });
 });

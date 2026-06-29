@@ -8,7 +8,11 @@ This note records the fresh-worktree implementation slice for the dashboard LCP 
 
 - Add opt-in final-LCP attribution for `/dashboard`.
 - Mark startup gates that can delay shell replacement, map readiness, country geometry, slow bootstrap, first data fan-out, and feed digest timing.
-- Move non-LCP precision country geometry and the slow-tier checkpoint out of the awaited visible-data fan-out path.
+- Move non-LCP precision country geometry out of the awaited visible-data fan-out path (with a conditional CII replay once geometry lands).
+
+## LCP baseline note
+
+The measured final LCP candidate is the pre-hydration shell copy (`p.skeleton-map-copy`, closest marker `shell`), which is painted in `panelLayout.init()` (Phase 1) — well before the Phase 6 data fan-out. The country-geometry preload and slow-tier checkpoint that this slice touches both lived in Phase 6, i.e. they were already **after** the LCP paint. So this change does not directly reduce the current LCP element's render time; its value is (1) making LCP attribution directly observable so the real upstream levers (i18n/session/fast-bootstrap/region awaits that gate Phase 1) can be targeted next, and (2) removing redundant post-paint work (a second CII compute + choropleth repaint) and avoiding a slow-tier hydration race. Treat any LCP-number movement from this slice as incidental until a field run attributes a non-shell candidate.
 
 ## Local Changes
 
@@ -18,8 +22,8 @@ This note records the fresh-worktree implementation slice for the dashboard LCP 
 - `src/main.ts` installs the observer before `new App('app')`.
 - `src/App.ts`, `src/app/panel-layout.ts`, `src/components/MapContainer.ts`, and `src/services/country-geometry.ts` add `performance.mark()` checkpoints for boot, layout, map, slow tier, country geometry, actual geometry fetch, and initial data fan-out.
 - `src/app/data-loader.ts` marks `/api/news/v1/list-feed-digest` start, ready, and error timing so the digest can be proven in or out of the pre-LCP path.
-- `src/App.ts` starts the slow-tier wait as a background checkpoint and starts `preloadCountryGeometry()` only after initial visible data fan-out completes. Correlation and country-learning now wait on that background geometry work instead of blocking the first data fan-out.
-- `src/app/data-loader.ts` replays cached geometry-sensitive CII inputs after deferred country geometry is ready, preserving country attribution without reintroducing a pre-fanout await.
+- `src/App.ts` awaits the (bounded) slow-tier checkpoint before the visible-data fan-out — slow-tier hydration keys are consume-once, so running the fan-out first would race their reads and waste the ~500 KB payload. This await is off the LCP critical path because the shell candidate already painted in Phase 1. Precision `preloadCountryGeometry()` still starts only after the fan-out completes, and correlation/country-learning wait on that background geometry work instead of blocking the fan-out.
+- `src/app/data-loader.ts` replays cached geometry-sensitive CII inputs (protests, conflicts, military, strikes, earthquakes, aviation, outages, OREF, advisories, sanctions, cyber, GPS jamming, AIS disruptions, satellite fires) after deferred country geometry is ready, preserving country attribution without reintroducing a pre-fanout await. The coordinate-only sources (GPS jamming, AIS disruptions, satellite fires) are now cached in `IntelligenceCache` so they can be replayed — previously they had no cache field and their attribution was silently lost on first load. The replay is skipped entirely when precision geometry was already loaded before the fan-out, so it never adds a redundant second CII compute + choropleth repaint.
 - `scripts/measure-mobile-mainthread.mjs` enables LCP debug during browser measurement and includes the LCP candidate, context, and resource groups in the JSON and human reports.
 
 ## Verification Run

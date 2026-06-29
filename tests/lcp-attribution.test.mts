@@ -93,4 +93,40 @@ describe('lcp attribution helpers', () => {
     assert.equal(__testing__.capText('  hello   world  ', 20), 'hello world');
     assert.equal(__testing__.capText('x'.repeat(200), 10), 'xxxxxxxxxx');
   });
+
+  it('keeps raw LCP text capture opt-in behind a separate flag', () => {
+    const windowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
+    // Debug enabled, but the text flag is NOT set: raw text must stay redacted.
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        location: { href: 'https://worldmonitor.app/dashboard?wm_lcp_debug=1' },
+        sessionStorage: { getItem: () => null },
+        localStorage: { getItem: () => null },
+      },
+    });
+    try {
+      assert.equal(__testing__.isLcpDebugEnabled(), true);
+      assert.equal(__testing__.isLcpTextCaptureEnabled(), false);
+    } finally {
+      if (windowDescriptor) Object.defineProperty(globalThis, 'window', windowDescriptor);
+      else delete (globalThis as typeof globalThis & { window?: unknown }).window;
+    }
+
+    // The explicit text flag opts in.
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        location: { href: 'https://worldmonitor.app/dashboard?wm_lcp_text=1' },
+        sessionStorage: { getItem: () => null },
+        localStorage: { getItem: () => null },
+      },
+    });
+    try {
+      assert.equal(__testing__.isLcpTextCaptureEnabled(), true);
+    } finally {
+      if (windowDescriptor) Object.defineProperty(globalThis, 'window', windowDescriptor);
+      else delete (globalThis as typeof globalThis & { window?: unknown }).window;
+    }
+  });
 });

@@ -561,6 +561,22 @@ export class DataLoaderManager implements AppModule {
       ingestCyberThreatsForCII(this.ctx.cyberThreatsCache);
       replayed += 1;
     }
+    // Coordinate-only sources (no country hint) that resolve purely via
+    // precision geometry. Without this replay their first-pass attribution —
+    // computed during the fan-out before geometry was ready — stays empty until
+    // the next scheduled refresh (#4512).
+    if (cache.gpsJamming?.length) {
+      ingestGpsJammingForCII(cache.gpsJamming);
+      replayed += 1;
+    }
+    if (cache.aisDisruptions?.length) {
+      ingestAisDisruptionsForCII(cache.aisDisruptions);
+      replayed += 1;
+    }
+    if (cache.satelliteFires?.length) {
+      ingestSatelliteFiresForCII(cache.satelliteFires);
+      replayed += 1;
+    }
 
     markLcpDebug('wm:data:country-geometry-replay-ready', { replayed });
     if (replayed > 0) this.refreshCiiAndBrief(false);
@@ -2599,10 +2615,12 @@ export class DataLoaderManager implements AppModule {
         try {
           const data = await fetchGpsInterference();
           if (!data) {
+            this.ctx.intelligenceCache.gpsJamming = [];
             ingestGpsJammingForCII([]);
             this.ctx.map?.setLayerReady('gpsJamming', false);
             return;
           }
+          this.ctx.intelligenceCache.gpsJamming = data.hexes;
           ingestGpsJammingForCII(data.hexes);
           if (this.ctx.mapLayers.gpsJamming) {
             await this.ctx.map?.setGpsJamming(data.hexes);
@@ -2737,6 +2755,7 @@ export class DataLoaderManager implements AppModule {
       console.log('[Ships] Events:', { disruptions: disruptions.length, density: density.length, vessels: aisStatus.vessels });
       this.ctx.map?.setAisData(disruptions, density);
       signalAggregator.ingestAisDisruptions(disruptions);
+      this.ctx.intelligenceCache.aisDisruptions = disruptions;
       ingestAisDisruptionsForCII(disruptions);
       this.refreshCiiAndBrief();
       updateAndCheck([
@@ -3440,6 +3459,7 @@ export class DataLoaderManager implements AppModule {
           acq_date: new Date(f.detectedAt).toISOString().slice(0, 10),
         }));
 
+        this.ctx.intelligenceCache.satelliteFires = satelliteFires;
         signalAggregator.ingestSatelliteFires(satelliteFires);
         ingestSatelliteFiresForCII(satelliteFires);
         this.refreshCiiAndBrief();
@@ -3450,6 +3470,7 @@ export class DataLoaderManager implements AppModule {
 
         dataFreshness.recordUpdate('firms', totalCount);
       } else {
+        this.ctx.intelligenceCache.satelliteFires = [];
         ingestSatelliteFiresForCII([]);
         this.refreshCiiAndBrief();
         (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update([], 0);

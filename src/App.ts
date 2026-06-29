@@ -80,7 +80,7 @@ import { isDesktopRuntime, waitForSidecarReady } from '@/services/runtime';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { BETA_MODE } from '@/config/beta';
 import { trackEvent, trackDeeplinkOpened, initAuthAnalytics } from '@/services/analytics';
-import { preloadCountryGeometry, getCountryNameByCode } from '@/services/country-geometry';
+import { preloadCountryGeometry, isCountryGeometryLoaded, getCountryNameByCode } from '@/services/country-geometry';
 import { initI18n, t, I18N_RESOURCES_LOADED_EVENT, type I18nResourcesLoadedDetail } from '@/services/i18n';
 import { initDeferredDashboardFonts } from '@/bootstrap/secondary-startup';
 
@@ -1101,10 +1101,15 @@ export class App {
     }
   }
 
-  private startPostLcpIntelligence(countryGeometryReady: Promise<void>): void {
+  private startPostLcpIntelligence(countryGeometryReady: Promise<void>, geometryAlreadyApplied: boolean): void {
     void countryGeometryReady.finally(() => {
       if (this.state.isDestroyed) return;
-      this.dataLoader.refreshGeometryDependentCiiAfterCountryGeometry();
+      // Replay geometry-dependent CII only when the fan-out ingested before
+      // precision geometry was ready; otherwise the first-pass attribution is
+      // already correct and a replay is a redundant compute + repaint (#4512).
+      if (!geometryAlreadyApplied) {
+        this.dataLoader.refreshGeometryDependentCiiAfterCountryGeometry();
+      }
       // Correlation and country-learning use precision geometry/name matching,
       // but they are post-initial-data work and should not hold the LCP path.
       void this.loadInitialCorrelationEngine();
@@ -1531,6 +1536,22 @@ export class App {
     // panels currently above the fold. IntersectionObserver wiring in
     // panel-layout.ts plus handleViewportPrime above re-trigger
     // loadAllData() as below-fold panels enter the viewport. (#3990)
+    // Slow-tier hydration keys are consume-once (getHydratedData deletes on
+    // read) and the visible-data consumers in loadAllData read them at task
+    // start. If the fan-out runs before the slow tier settles, those reads miss
+    // and fall back to per-panel RPCs that never re-read the late payload —
+    // wasting the ~500 KB slow-tier bootstrap. The shell LCP element already
+    // painted back in panelLayout.init() (Phase 1), so awaiting here is OFF the
+    // LCP critical path; it stays bounded by waitForBootstrapSlowTier's timeout
+    // (3.5 s browser / 8.5 s desktop). (#4512)
+    await slowTierReady;
+    if (this.state.isDestroyed) return;
+    // Snapshot whether precision geometry was already loaded BEFORE the fan-out
+    // (the map renderer triggers the memoized fetch early). If so, the fan-out's
+    // geometry-dependent CII ingests already attributed correctly and the
+    // post-LCP replay would just be a redundant second CII compute + choropleth
+    // repaint, so we skip it below. (#4512)
+    const geometryReadyBeforeFanout = isCountryGeometryLoaded();
     markLcpDebug('wm:data:initial-fanout-start');
     await Promise.all([
       this.dataLoader.loadAllData(),
@@ -1538,7 +1559,6 @@ export class App {
     ]);
     markLcpDebug('wm:data:initial-fanout-complete');
     const countryGeometryReady = this.preloadCountryGeometryForPostLcpWork();
-    void slowTierReady;
 
     // If bootstrap was served from cache but live data just loaded, promote the status indicator
     markBootstrapAsLive();
@@ -1547,7 +1567,7 @@ export class App {
 
     // Initial correlation engine run is post-LCP background work. Wait for
     // precision country geometry there instead of before visible data fan-out.
-    this.startPostLcpIntelligence(countryGeometryReady);
+    this.startPostLcpIntelligence(countryGeometryReady, geometryReadyBeforeFanout);
 
     // Hide unconfigured layers after first data load
     if (!isAisConfigured()) {

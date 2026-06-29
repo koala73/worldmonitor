@@ -295,6 +295,16 @@ export async function preloadCountryGeometry(): Promise<void> {
   await ensureLoaded();
 }
 
+/**
+ * True once the base country GeoJSON has been parsed and indexed, i.e. when
+ * getCountryAtCoordinates can resolve precise hits. Used by the boot path to
+ * decide whether geometry-dependent CII attribution actually ran without
+ * precision geometry (and therefore needs a replay) — see #4512.
+ */
+export function isCountryGeometryLoaded(): boolean {
+  return loadedGeoJson !== null;
+}
+
 export async function getCountriesGeoJson(): Promise<FeatureCollection<Geometry> | null> {
   await ensureLoaded();
   return loadedGeoJson;
