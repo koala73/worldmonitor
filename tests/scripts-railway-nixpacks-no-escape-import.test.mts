@@ -39,45 +39,63 @@ const scriptsDir = resolve(repoRoot, 'scripts');
 // companion test tests/railway-services-registry-coverage.test.mts fails
 // if any Dockerfile.* or runbook entry references a script that isn't
 // in the registry — that's how drift is caught.
+interface RailwayServiceEntry {
+  entry: string;
+  deployMode: 'nixpacks-root-scripts' | 'dockerfile';
+  dockerfile?: string;
+  service: string;
+  documentedAt: string;
+}
+
 const registry = JSON.parse(
   readFileSync(resolve(repoRoot, 'scripts/railway-services.json'), 'utf8'),
-);
+) as RailwayServiceEntry[];
 
 const ENTRY_POINTS = registry
   .filter((r) => r.deployMode === 'nixpacks-root-scripts')
   .map((r) => r.entry);
+const BUNDLE_ENTRY_FILES = new Set(ENTRY_POINTS.map((entry) => resolve(repoRoot, entry)));
 
 const IMPORT_RE = /(?:^|[\s;])(?:import\b[\s\S]*?\bfrom|import|export\b[\s\S]*?\bfrom)\s+['"]([^'"]+)['"]/gm;
 const BUNDLE_SECTION_SCRIPT_RE = /\bscript\s*:\s*['"]([^'"]+\.(?:mjs|cjs|js))['"]/gm;
 
-function isRelative(spec) {
+function isRelative(spec: string): boolean {
   return spec.startsWith('./') || spec.startsWith('../');
 }
 
-function collectRelativeImports(filePath) {
+function collectRelativeImports(filePath: string): string[] {
   const src = readFileSync(filePath, 'utf8');
-  const out = [];
-  let m;
+  const out: string[] = [];
+  let m: RegExpExecArray | null;
   IMPORT_RE.lastIndex = 0;
   while ((m = IMPORT_RE.exec(src)) !== null) {
-    const spec = m[1];
+    const spec = m[1]!;
     if (isRelative(spec)) out.push(spec);
   }
   return out;
 }
 
-function collectBundleSectionScripts(filePath) {
-  const src = readFileSync(filePath, 'utf8');
-  const out = [];
-  let m;
+function stripLineComments(src: string): string {
+  return src
+    .split('\n')
+    .filter((line) => !line.trimStart().startsWith('//'))
+    .join('\n');
+}
+
+function collectBundleSectionScripts(filePath: string): string[] {
+  if (!BUNDLE_ENTRY_FILES.has(filePath)) return [];
+
+  const src = stripLineComments(readFileSync(filePath, 'utf8'));
+  const out: string[] = [];
+  let m: RegExpExecArray | null;
   BUNDLE_SECTION_SCRIPT_RE.lastIndex = 0;
   while ((m = BUNDLE_SECTION_SCRIPT_RE.exec(src)) !== null) {
-    out.push(m[1]);
+    out.push(m[1]!);
   }
   return out;
 }
 
-function escapesScriptsDir(absResolved) {
+function escapesScriptsDir(absResolved: string): boolean {
   const rel = relative(scriptsDir, absResolved);
   return rel.startsWith('..') || resolve(rel) === absResolved;
 }
@@ -85,20 +103,20 @@ function escapesScriptsDir(absResolved) {
 describe('scripts/ Railway nixpacks packaging — no escape imports', () => {
   for (const entry of ENTRY_POINTS) {
     it(`entry ${entry} and its transitive scripts/ deps never import outside scripts/`, () => {
-      const visited = new Set();
-      const queue = [resolve(repoRoot, entry)];
-      const violations = [];
+      const visited = new Set<string>();
+      const queue: string[] = [resolve(repoRoot, entry)];
+      const violations: Array<{ from: string; spec: string; resolved: string }> = [];
 
       while (queue.length > 0) {
-        const file = queue.shift();
+        const file = queue.shift()!;
         if (visited.has(file)) continue;
         visited.add(file);
 
-        let imports;
+        let imports: string[];
         try {
           imports = collectRelativeImports(file);
         } catch (err) {
-          assert.fail(`Could not read ${file}: ${err instanceof Error ? err.message : String(err)}`);
+          assert.fail(`Could not read ${file}: ${(err as Error).message}`);
         }
 
         for (const spec of imports) {
@@ -120,7 +138,7 @@ describe('scripts/ Railway nixpacks packaging — no escape imports', () => {
         }
 
         for (const spec of collectBundleSectionScripts(file)) {
-          const resolved = resolve(dirname(file), spec);
+          const resolved = resolve(scriptsDir, spec);
           if (escapesScriptsDir(resolved)) {
             violations.push({
               from: relative(repoRoot, file),
