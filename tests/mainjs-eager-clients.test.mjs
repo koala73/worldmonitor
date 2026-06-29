@@ -361,3 +361,44 @@ describe('main.js eager diet — country-intel uses the shared signal aggregatio
     );
   });
 });
+
+describe('main.js eager diet — review feedback guards', () => {
+  const dataLoaderSource = readFileSync(resolve(repoRoot, 'src/app/data-loader.ts'), 'utf8');
+  const countryIntelSource = readFileSync(resolve(repoRoot, 'src/app/country-intel.ts'), 'utf8');
+  const statusPanelSource = readFileSync(resolve(repoRoot, 'src/components/StatusPanel.ts'), 'utf8');
+  const dataLoaderWithoutComments = stripComments(dataLoaderSource);
+  const statusPanelWithoutComments = stripComments(statusPanelSource);
+
+  it('shows a loading brief before waiting on lazy country signals', () => {
+    const openStart = countryIntelSource.indexOf('async openCountryBriefByCode');
+    const loadingIndex = countryIntelSource.indexOf('page.showLoading();', openStart);
+    const signalsIndex = countryIntelSource.indexOf('const signals = await this.getCountrySignals(code, country);', openStart);
+    assert.ok(openStart >= 0, 'openCountryBriefByCode should exist');
+    assert.ok(loadingIndex > openStart, 'openCountryBriefByCode should show the loading shell');
+    assert.ok(signalsIndex > loadingIndex, 'openCountryBriefByCode should show loading before lazy signal aggregation');
+  });
+
+  it('keeps country signals resilient to signal-aggregator chunk failures', () => {
+    const signalsStart = countryIntelSource.indexOf('async getCountrySignals');
+    const signalsEnd = countryIntelSource.indexOf('const globalTemporalAnomalies', signalsStart);
+    const signalSetup = countryIntelSource.slice(signalsStart, signalsEnd);
+    assert.match(signalSetup, /let\s+clusters:\s+CountrySignalCluster\[\]\s*=\s*\[\];/);
+    assert.match(signalSetup, /try\s*\{[\s\S]*getSignalAggregator\(\)[\s\S]*\}\s*catch/);
+    assert.match(signalSetup, /signal clusters unavailable, degrading/);
+  });
+
+  it('surfaces signal-aggregator chunk failures in the status panel', () => {
+    assert.match(dataLoaderWithoutComments, /statusPanel\?\.updateApi\('Signal Aggregator',\s*\{\s*status:\s*'error'/);
+    assert.doesNotMatch(
+      dataLoaderWithoutComments,
+      /await\s+runSignalAggregator\(\s*['"]/,
+      'runSignalAggregator call sites should pass statusPanel so lazy chunk failures are visible to ops',
+    );
+  });
+
+  it('allows Signal Aggregator API status updates to be recorded', () => {
+    const signalAggregatorOccurrences = (statusPanelWithoutComments.match(/'Signal Aggregator'/g) ?? []).length;
+    assert.equal(signalAggregatorOccurrences, 2, 'Signal Aggregator should be allowlisted for tech and world variants');
+    assert.match(statusPanelWithoutComments, /interface\s+ApiStatus\s*\{[\s\S]*errorMessage\?:\s*string/);
+  });
+});

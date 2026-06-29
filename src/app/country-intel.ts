@@ -274,12 +274,17 @@ export class CountryIntelManager implements AppModule {
   async openCountryBriefByCode(code: string, country: string, opts?: { maximize?: boolean }): Promise<void> {
     const token = ++this.briefRequestToken;
     let pageShown = false;
+    let showedLoading = false;
 
     try {
       if (!(await this.ensureCountryBriefPage())) return;
       if (token !== this.briefRequestToken || this.ctx.isDestroyed) return;
       const page = this.ctx.countryBriefPage;
       if (!page) return;
+      if (!this.hasVisibleRealCountryBrief() || page.getCode() !== code) {
+        page.showLoading();
+        showedLoading = true;
+      }
       this.ctx.map?.setRenderPaused(true);
       trackCountryBriefOpened(code);
 
@@ -721,16 +726,24 @@ export class CountryIntelManager implements AppModule {
       if (!pageShown) {
         const activePage = this.ctx.countryBriefPage;
         const activeCode = activePage?.getCode();
-        if (activePage?.isVisible() && (activeCode === '__loading__' || activeCode === '__error__')) activePage.hide();
-        this.ctx.map?.setRenderPaused(false);
+        if (showedLoading && activePage?.isVisible() && (activeCode === '__loading__' || activeCode === '__error__')) activePage.hide();
+        if (!this.hasVisibleRealCountryBrief()) this.ctx.map?.setRenderPaused(false);
         this.showToast('Country brief failed to open. Please try again.');
       }
     } finally {
-      if (!pageShown && token === this.briefRequestToken) {
+      if (!pageShown && token === this.briefRequestToken && !this.hasVisibleRealCountryBrief()) {
         this.ctx.map?.setRenderPaused(false);
       }
     }
   }
+
+  private hasVisibleRealCountryBrief(): boolean {
+    const page = this.ctx.countryBriefPage;
+    if (!page?.isVisible()) return false;
+    const activeCode = page.getCode();
+    return !!activeCode && activeCode !== '__loading__' && activeCode !== '__error__';
+  }
+
   private fetchProSections(code: string): void {
     // /pro live-preview iframe can't carry a Clerk session, so every pro
     // section call would 401. Skip the RPCs entirely so the embedded
