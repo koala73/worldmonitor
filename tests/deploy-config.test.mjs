@@ -973,6 +973,29 @@ describe('embeddable map route guardrails', () => {
     const dockerEmbedCsp = getNginxHeaderValueFrom('docker/nginx-embed-security-headers.conf', 'Content-Security-Policy');
     assert.equal(dockerEmbedCsp, getHeaderValueForSource('/embed', 'Content-Security-Policy'));
   });
+
+  it('self-hosted docker/nginx.conf SPA fallback ships the full dashboard CSP', () => {
+    // Image A (root Dockerfile -> docker/nginx.conf, nginx + Node API under
+    // supervisord) inlines headers per location instead of including
+    // security_headers.conf. The SPA fallback (location /) must still carry the
+    // dashboard CSP, or the containerized dashboard runs CSP-less while /embed
+    // stays locked down.
+    const canonicalCsp = getNginxHeaderValue('Content-Security-Policy');
+    assert.ok(canonicalCsp, 'docker/nginx-security-headers.conf must define a dashboard CSP');
+
+    const block = dockerNginxSource.match(/\n {4}location \/ \{\n([\s\S]*?)\n {4}\}/);
+    assert.ok(block, 'docker/nginx.conf must define a location / block');
+    const cspLine = block[1]
+      .split('\n')
+      .find((line) => /add_header Content-Security-Policy "/.test(line));
+    assert.ok(cspLine, 'docker/nginx.conf location / must ship a Content-Security-Policy header');
+    const value = cspLine.match(/add_header Content-Security-Policy "(.*)" always;/)?.[1];
+    assert.equal(
+      value,
+      canonicalCsp,
+      'docker/nginx.conf location / CSP must match docker/nginx-security-headers.conf (and thus vercel.json)',
+    );
+  });
 });
 
 // Per-route CSP override for the hosted brief magazine. The renderer
