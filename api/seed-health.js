@@ -299,7 +299,7 @@ export default async function handler(req) {
 
   const apiKeyResult = await validateApiKey(req);
   if (apiKeyResult.required && !apiKeyResult.valid)
-    return jsonResponse({ error: apiKeyResult.error }, 401, cors);
+    return jsonResponse({ error: 'Unauthorized' }, 401, cors);
 
   const now = Date.now();
   const entries = Object.entries(SEED_DOMAINS);
