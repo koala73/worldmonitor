@@ -75,17 +75,28 @@ function collectRelativeImports(filePath: string): string[] {
   return out;
 }
 
-function stripLineComments(src: string): string {
+// Conservative JS comment stripper (same pattern as
+// tests/news-feed-key-parity.test.mts): drop block comments, then line
+// comments anchored at a line start or after whitespace so in-string `//`
+// (e.g. `https://`) survives. Keeps a `script:` literal in a block, trailing,
+// or full-line comment from registering as a real child seeder.
+function stripComments(src: string): string {
   return src
-    .split('\n')
-    .filter((line) => !line.trimStart().startsWith('//'))
-    .join('\n');
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|\s)\/\/[^\n]*/g, '$1');
 }
 
 function collectBundleSectionScripts(filePath: string): string[] {
-  if (!BUNDLE_ENTRY_FILES.has(filePath)) return [];
+  const raw = readFileSync(filePath, 'utf8');
+  // `script:` section entries are the _bundle-runner orchestrator shape. Scan
+  // registry entry points AND any nested orchestrator reached in the BFS (a
+  // bundle that spawns a sub-bundle), but skip unrelated files so a stray
+  // `script: 'x.mjs'` literal elsewhere can't fake an escape.
+  if (!BUNDLE_ENTRY_FILES.has(filePath) && !raw.includes('_bundle-runner')) {
+    return [];
+  }
 
-  const src = stripLineComments(readFileSync(filePath, 'utf8'));
+  const src = stripComments(raw);
   const out: string[] = [];
   let m: RegExpExecArray | null;
   BUNDLE_SECTION_SCRIPT_RE.lastIndex = 0;
