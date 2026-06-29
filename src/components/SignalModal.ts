@@ -1,12 +1,18 @@
 import type { CorrelationSignal } from '@/services/correlation';
 import type { UnifiedAlert } from '@/services/cross-module-integration';
-import { suppressTrendingTerm } from '@/services/trending-keywords';
 import { escapeHtml } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
 import { getSignalContext, type SignalType } from '@/utils/analysis-constants';
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
+function suppressTrendingTermLazy(term: string): void {
+  void import('@/services/trending-keywords')
+    .then(module => module.suppressTrendingTerm(term))
+    .catch((err) => {
+      console.warn('[SignalModal] suppressTrendingTerm failed (chunk load?):', err);
+    });
+}
 
 export class SignalModal {
   private element: HTMLElement;
@@ -90,7 +96,7 @@ export class SignalModal {
       if (target.classList.contains('suppress-keyword-btn')) {
         const term = (target.dataset.term || '').trim();
         if (!term) return;
-        suppressTrendingTerm(term);
+        suppressTrendingTermLazy(term);
         this.currentSignals = this.currentSignals.filter(signal => {
           const signalTerm = (signal.data as Record<string, unknown>).term;
           return typeof signalTerm !== 'string' || signalTerm.toLowerCase() !== term.toLowerCase();

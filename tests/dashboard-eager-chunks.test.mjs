@@ -38,7 +38,7 @@ const DEFERRED_NPM_LIB_CHUNKS = ['satellite.es', 'confetti.module'];
 // it and fail this guard. correlation-engine gets its name from a manualChunks naming
 // rule (dir-index would otherwise emit an ambiguous `index-*.js`); story-renderer
 // (single file) names itself.
-const DEFERRED_SERVICE_CHUNKS = ['correlation-engine', 'story-renderer'];
+const DEFERRED_SERVICE_CHUNKS = ['correlation-engine', 'story-renderer', 'rss', 'trending-keywords', 'daily-market-brief', 'signal-aggregator'];
 const MILITARY_BASE_DIRECT_IMPORT_FORBIDDEN = [
   'src/app/country-intel.ts',
   'src/app/search-manager.ts',

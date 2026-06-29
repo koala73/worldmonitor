@@ -1193,6 +1193,21 @@ export default defineConfig(({ mode }) => {
             if (id.includes('/src/services/correlation-engine/')) {
               return 'correlation-engine';
             }
+            // Post-paint service tail split (#4487). These files are dynamic-imported
+            // from data-loader/country-intel/SignalModal; stable names let the
+            // dist guard prove they stay out of main rather than merely grepping src.
+            if (id.endsWith('/src/services/rss.ts')) {
+              return 'rss';
+            }
+            if (id.endsWith('/src/services/trending-keywords.ts')) {
+              return 'trending-keywords';
+            }
+            if (id.endsWith('/src/services/daily-market-brief.ts')) {
+              return 'daily-market-brief';
+            }
+            if (id.endsWith('/src/services/signal-aggregator.ts')) {
+              return 'signal-aggregator';
+            }
             // Co-locate the deck.gl renderer with the deck vendor chunk so
             // onlyExplicitManualChunks cannot split deck's transitive deps
             // across the DeckGLMap boundary (which formed a circular chunk →
