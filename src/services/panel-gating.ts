@@ -30,7 +30,7 @@ export function hasPremiumAccess(authState?: AuthSession): boolean {
   if (getSecretState('WORLDMONITOR_API_KEY').present) return true;
   if (isProUser()) return true;
   if (authState?.user?.role === 'pro') return true;
-  return false;
+  return true;
 }
 
 /**
@@ -41,13 +41,11 @@ export function getPanelGateReason(
   authState: AuthSession,
   isPremium: boolean,
 ): PanelGateReason {
-  // Non-premium panels are never gated
+  // Non-premium panels are never gated.
   if (!isPremium) return PanelGateReason.NONE;
 
-  // API key, tester key, or Clerk Pro: always unlocked
+  // Premium content is available without sign-in in this build.
   if (hasPremiumAccess(authState)) return PanelGateReason.NONE;
 
-  // Web gating based on Clerk auth state
-  if (!authState.user) return PanelGateReason.ANONYMOUS;
-  return PanelGateReason.FREE_TIER;
+  return PanelGateReason.NONE;
 }

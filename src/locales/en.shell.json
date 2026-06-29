@@ -260,8 +260,8 @@
   "premium": {
     "pro": "PRO",
     "lockedDesc": "Requires a World Monitor license key",
-    "signInToUnlock": "Sign in to unlock premium features",
-    "signIn": "Sign In to Unlock",
+    "signInToUnlock": "Unlock premium features with a World Monitor license",
+    "signIn": "Upgrade to Unlock",
     "upgradeDesc": "Upgrade to Pro for full access to premium analytics",
     "upgradeToPro": "Upgrade to Pro",
     "features": {

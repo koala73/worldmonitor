@@ -100,7 +100,7 @@ export class ResilienceWidget {
       return;
     }
 
-    if (this.authState.isPending || this.getGateReason() !== PanelGateReason.NONE) {
+    if (this.authState.isPending) {
       this.render();
       return;
     }
