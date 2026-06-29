@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -98,6 +98,119 @@ function parsePanelKeys(variant) {
     }
   }
   return keys;
+}
+
+function findMatchingBrace(src, open) {
+  let depth = 0;
+  let quote = null;
+  let escaped = false;
+  for (let i = open; i < src.length; i++) {
+    const ch = src[i];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '\'' || ch === '"' || ch.charCodeAt(0) === 96) {
+      quote = ch;
+      continue;
+    }
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+function extractSuperOptionObjects(src) {
+  const objects = [];
+  for (let index = 0; (index = src.indexOf('super(', index)) !== -1; index += 6) {
+    const open = src.indexOf('{', index);
+    if (open === -1) continue;
+    const close = findMatchingBrace(src, open);
+    if (close === -1) continue;
+    objects.push(src.slice(open + 1, close));
+  }
+  return objects;
+}
+
+function topLevelObjectEntries(src, constName) {
+  const decl = src.indexOf(constName);
+  assert.notEqual(decl, -1, constName + ' not found');
+  const open = src.indexOf('{', decl);
+  const close = findMatchingBrace(src, open);
+  assert.ok(close > open, constName + ' object did not parse');
+  const body = src.slice(open + 1, close);
+  const entries = new Map();
+  let index = 0;
+  while (index < body.length) {
+    const keyMatch = /\s*(?:['"]([^'"]+)['"]|([a-zA-Z_$][\w$-]*))\s*:\s*\{/y;
+    keyMatch.lastIndex = index;
+    const match = keyMatch.exec(body);
+    if (!match) {
+      index++;
+      continue;
+    }
+    const key = match[1] || match[2];
+    const valueOpen = body.indexOf('{', match.index);
+    const valueClose = findMatchingBrace(body, valueOpen);
+    assert.ok(valueClose > valueOpen, 'entry for ' + key + ' did not parse');
+    entries.set(key, body.slice(valueOpen + 1, valueClose));
+    index = valueClose + 1;
+  }
+  return entries;
+}
+
+function parseFootprintObject(body) {
+  const row = body.match(/\browSpan\s*:\s*(\d+)/)?.[1];
+  const wide = /\bwide\s*:\s*true\b/.test(body);
+  return {
+    rowSpan: row ? Number(row) : undefined,
+    wide,
+  };
+}
+
+function constructorFootprints() {
+  const componentsDir = resolve(__dirname, '../src/components');
+  const out = new Map();
+  for (const file of readdirSync(componentsDir).filter((name) => name.endsWith('.ts'))) {
+    const componentSrc = readFileSync(resolve(componentsDir, file), 'utf-8');
+    for (const objectBody of extractSuperOptionObjects(componentSrc)) {
+      const id = objectBody.match(/\bid\s*:\s*['"]([^'"]+)['"]/)?.[1];
+      if (!id) continue;
+      const row = objectBody.match(/\bdefaultRowSpan\s*:\s*(\d+)/)?.[1];
+      const rowSpan = row ? Number(row) : undefined;
+      const wide = /\bclassName\s*:\s*['"]panel-wide['"]/.test(objectBody);
+      if ((rowSpan && rowSpan > 1) || wide) {
+        out.set(id, { rowSpan: rowSpan && rowSpan > 1 ? rowSpan : undefined, wide });
+      }
+    }
+  }
+  return out;
+}
+
+function deferredReservationFootprints() {
+  const entries = topLevelObjectEntries(panelLayoutSrc, 'DEFERRED_PANEL_NATURAL_FOOTPRINTS');
+  return new Map([...entries].map(([key, body]) => [key, parseFootprintObject(body)]));
+}
+
+function dynamicReservationFootprints() {
+  const entries = topLevelObjectEntries(panelLayoutSrc, 'DEFERRED_DYNAMIC_PANEL_FOOTPRINTS');
+  return new Map([...entries].map(([key, body]) => [key, parseFootprintObject(body)]));
+}
+
+function dynamicConstructorRowSpan(file, className) {
+  const componentSrc = readFileSync(resolve(__dirname, '../src/components', file), 'utf-8');
+  for (const objectBody of extractSuperOptionObjects(componentSrc)) {
+    const classNameRe = new RegExp('\\bclassName\\s*:\\s*[\'\"]' + className + '[\'\"]');
+    if (!classNameRe.test(objectBody)) continue;
+    const row = objectBody.match(/\bdefaultRowSpan\s*:\s*(\d+)/)?.[1];
+    return row ? Number(row) : undefined;
+  }
+  return undefined;
 }
 
 describe('panel-config guardrails', () => {
@@ -299,6 +412,44 @@ describe('panel-config guardrails', () => {
     assert.ok(allRegistryPanelIds().size > 50, `registry parse returned ${allRegistryPanelIds().size} panels — regex likely broke`);
     assert.ok(panelCommandKeywordCounts().size > 50, `command parse returned ${panelCommandKeywordCounts().size} commands — regex likely broke`);
     assert.ok(categoryMappedPanelIds().size > 50, `category parse returned ${categoryMappedPanelIds().size} keys — regex likely broke`);
+  });
+
+  it('deferred panel footprint metadata matches tall and wide panel constructors', () => {
+    const expected = constructorFootprints();
+    const actual = deferredReservationFootprints();
+
+    const missing = [...expected.keys()].filter((id) => !actual.has(id)).sort();
+    const stale = [...actual.keys()].filter((id) => !expected.has(id)).sort();
+    const mismatched = [];
+    for (const [id, footprint] of expected) {
+      const registered = actual.get(id);
+      if (!registered) continue;
+      if ((registered.rowSpan ?? undefined) !== (footprint.rowSpan ?? undefined) || registered.wide !== footprint.wide) {
+        mismatched.push(id + ' expected ' + JSON.stringify(footprint) + ' got ' + JSON.stringify(registered));
+      }
+    }
+
+    assert.deepStrictEqual(
+      { missing, stale, mismatched: mismatched.sort() },
+      { missing: [], stale: [], mismatched: [] },
+      'Deferred shell natural-footprint metadata drifted from Panel constructor options. ' +
+        'Update DEFERRED_PANEL_NATURAL_FOOTPRINTS when adding/removing defaultRowSpan > 1 or panel-wide panels.',
+    );
+  });
+
+  it('dynamic custom and MCP footprint defaults match their real panel constructors', () => {
+    const dynamic = dynamicReservationFootprints();
+    assert.deepStrictEqual(
+      {
+        'cw-': dynamic.get('cw-')?.rowSpan,
+        'mcp-': dynamic.get('mcp-')?.rowSpan,
+      },
+      {
+        'cw-': dynamicConstructorRowSpan('CustomWidgetPanel.ts', 'custom-widget-panel'),
+        'mcp-': dynamicConstructorRowSpan('McpDataPanel.ts', 'mcp-data-panel'),
+      },
+      'Dynamic deferred shell prefixes must reserve the same defaultRowSpan as their real runtime panel classes.',
+    );
   });
 
   it('every registered panel has a CMD+K command (discoverable by search)', () => {

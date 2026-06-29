@@ -2359,6 +2359,23 @@ body.panel-resize-active iframe {
   contain-intrinsic-size: var(--dashboard-panel-row-min, 260px);
 }
 
+.panel-deferred-shell.panel-wide,
+.panel-deferred-shell.span-2 {
+  contain-intrinsic-size: var(--dashboard-first-grid-reservation, 400px);
+}
+
+.panel-deferred-shell.span-3 {
+  contain-intrinsic-size: 600px;
+}
+
+.panel-deferred-shell.span-4 {
+  contain-intrinsic-size: 800px;
+}
+
+.panel-deferred-shell.panel-collapsed .panel-deferred-content {
+  display: none;
+}
+
 .panel-deferred-content {
   display: flex;
   flex-direction: column;

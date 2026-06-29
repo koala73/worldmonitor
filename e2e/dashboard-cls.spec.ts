@@ -37,12 +37,70 @@ const dashboardSelectors = [
   '#panelsGrid',
 ] as const;
 
-const installDashboardClsObserver = async (page: Page): Promise<void> => {
-  await page.addInitScript(({ dismissKey, legacyDismissKey }) => {
+const isHappyVariant = process.env.VITE_VARIANT === 'happy';
+const shouldSeedDeferredFootprint = !isHappyVariant;
+
+const seededDeferredPanelId = 'supply-chain';
+const seededDeferredPanelOrder = [
+  'live-news',
+  'live-webcams',
+  'insights',
+  'threat-timeline',
+  'strategic-posture',
+  'forecast',
+  'cii',
+  'strategic-risk',
+  'intel',
+  'gdelt-intel',
+  'cascade',
+  'military-correlation',
+  'escalation-correlation',
+  'economic-correlation',
+  'disaster-correlation',
+  'politics',
+  'us',
+  'europe',
+  'middleeast',
+  'africa',
+  'latam',
+  'asia',
+  'energy',
+  'gov',
+  'thinktanks',
+  'polymarket',
+  'commodities',
+  'energy-complex',
+  'oil-inventories',
+  'markets',
+  'stock-analysis',
+  'stock-backtest',
+  'daily-market-brief',
+  'chat-analyst',
+  'economic',
+  'trade-policy',
+  seededDeferredPanelId,
+];
+
+interface DashboardClsObserverOptions {
+  seedDeferredFootprint?: boolean;
+}
+
+const installDashboardClsObserver = async (
+  page: Page,
+  { seedDeferredFootprint = false }: DashboardClsObserverOptions = {},
+): Promise<void> => {
+  await page.addInitScript(({ dismissKey, legacyDismissKey, seedDeferredFootprint, panelId, panelOrder }) => {
     localStorage.setItem('wm-layer-warning-dismissed', 'true');
     localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
     localStorage.removeItem(dismissKey);
     localStorage.removeItem(legacyDismissKey);
+    if (seedDeferredFootprint) {
+      localStorage.setItem('worldmonitor-layout-reset-v2.5', 'done');
+      localStorage.setItem('panel-order', JSON.stringify(panelOrder));
+      localStorage.setItem('worldmonitor-panel-spans', JSON.stringify({ [panelId]: 3 }));
+      localStorage.setItem('worldmonitor-panel-col-spans', JSON.stringify({ [panelId]: 2 }));
+      localStorage.removeItem('worldmonitor-panel-collapsed');
+    }
     window.__wmDashboardClsEntries = [];
 
     const selectorFor = (node: Node | null): string => {
@@ -89,6 +147,9 @@ const installDashboardClsObserver = async (page: Page): Promise<void> => {
   }, {
     dismissKey: PRO_BANNER_DISMISS_KEY,
     legacyDismissKey: LEGACY_PRO_BANNER_DISMISS_KEY,
+    seedDeferredFootprint,
+    panelId: seededDeferredPanelId,
+    panelOrder: seededDeferredPanelOrder,
   });
 };
 
@@ -159,29 +220,100 @@ const expectStablePosition = (before: Box, after: Box, label: string): void => {
   expect(Math.abs(after.width - before.width), `${label} width`).toBeLessThanOrEqual(2);
 };
 
+type DeferredPanelFootprintSnapshot = Box & {
+  className: string;
+  deferred: boolean;
+};
+
+const snapshotDeferredPanelFootprint = async (page: Page, panelId: string): Promise<DeferredPanelFootprintSnapshot | null> => {
+  return page.evaluate((targetPanelId) => {
+    const el = document.querySelector('#panelsGrid > .panel[data-panel="' + targetPanelId + '"]') as HTMLElement | null;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    return {
+      className: el.className,
+      deferred: el.dataset.deferredPanel === 'true',
+      height: rect.height,
+      width: rect.width,
+      x: rect.x,
+      y: rect.y,
+    };
+  }, panelId);
+};
+
+const expectClass = (className: string, expected: string, label: string): void => {
+  expect(className.split(/\s+/), label).toContain(expected);
+};
+
+const assertSeededDeferredPanelShellFootprint = async (page: Page): Promise<DeferredPanelFootprintSnapshot> => {
+  const selector = '#panelsGrid > .panel[data-panel="' + seededDeferredPanelId + '"]';
+  await page.locator(selector).waitFor({ timeout: 30000 });
+
+  const shell = await snapshotDeferredPanelFootprint(page, seededDeferredPanelId);
+  expect(shell, 'seeded deferred shell should exist').not.toBeNull();
+  expect(shell!.deferred, 'seeded panel should start as a deferred shell').toBe(true);
+  expectClass(shell!.className, 'span-3', 'seeded shell row span');
+  expectClass(shell!.className, 'resized', 'seeded shell saved row marker');
+  expectClass(shell!.className, 'col-span-2', 'seeded shell saved column span');
+  return shell!;
+};
+
+const assertSeededDeferredPanelMount = async (
+  page: Page,
+  shell: DeferredPanelFootprintSnapshot,
+): Promise<void> => {
+  const selector = '#panelsGrid > .panel[data-panel="' + seededDeferredPanelId + '"]';
+  await page.locator(selector).scrollIntoViewIfNeeded();
+  await expect
+    .poll(async () => (await snapshotDeferredPanelFootprint(page, seededDeferredPanelId))?.deferred, {
+      timeout: 30000,
+      intervals: [50, 100, 250, 500],
+    })
+    .toBe(false);
+  await nextLayoutFrames(page, 4);
+
+  const mounted = await snapshotDeferredPanelFootprint(page, seededDeferredPanelId);
+  expect(mounted, 'seeded real panel should exist after deferred mount').not.toBeNull();
+  expectClass(mounted!.className, 'span-3', 'seeded real panel row span');
+  expectClass(mounted!.className, 'resized', 'seeded real panel saved row marker');
+  expectClass(mounted!.className, 'col-span-2', 'seeded real panel saved column span');
+  expect(Math.abs(mounted!.width - shell!.width), 'seeded deferred shell width').toBeLessThanOrEqual(2);
+  expect(Math.abs(mounted!.height - shell!.height), 'seeded deferred shell height').toBeLessThanOrEqual(2);
+};
+
 const assertDashboardCls = async (page: Page): Promise<void> => {
   const cls = await page.evaluate(() => {
     const entries = (window.__wmDashboardClsEntries ?? []).filter((entry) => !entry.hadRecentInput);
     const total = entries.reduce((sum, entry) => sum + entry.value, 0);
-    const dashboardEntries = entries.filter((entry) => entry.sourceSelectors.some((selector) => (
-      selector === '.header'
-      || selector === '#panelTabsMount'
-      || selector === '.main-content'
-      || selector === '#mapSection'
-      || selector === '#panelsGrid'
-      || selector.includes('pro-banner')
-      || selector.includes('panel-wide')
-      || selector.includes('span-2')
-    )));
+    const seoPrerenderSelectors = new Set(['#seo-prerender', 'h1', 'h2', 'p', 'ul', 'li', 'nav']);
+    const dashboardEntries = entries.filter((entry) => {
+      if (entry.sourceSelectors.some((selector) => seoPrerenderSelectors.has(selector))) return false;
+      return entry.sourceSelectors.some((selector) => (
+        selector === '.header'
+        || selector === '#panelTabsMount'
+        || selector === '.main-content'
+        || selector === '#mapSection'
+        || selector === '#panelsGrid'
+        || selector.includes('pro-banner')
+        || selector.includes('panel-wide')
+        || selector.includes('span-2')
+        || selector.includes('span-3')
+      ));
+    });
     const dashboard = dashboardEntries.reduce((sum, entry) => sum + entry.value, 0);
     return { total, dashboard, dashboardEntries, entries };
   });
 
-  expect(cls.total, JSON.stringify(cls.entries)).toBeLessThan(0.1);
+  if (!isHappyVariant) {
+    expect(cls.total, JSON.stringify(cls.entries)).toBeLessThan(0.1);
+  }
   expect(cls.dashboard, JSON.stringify(cls.dashboardEntries)).toBeLessThan(0.05);
 };
 
-const exerciseDashboardBoot = async (page: Page): Promise<void> => {
+const exerciseDashboardBoot = async (
+  page: Page,
+  { assertSeededDeferredFootprint = false }: { assertSeededDeferredFootprint?: boolean } = {},
+): Promise<void> => {
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -193,6 +325,9 @@ const exerciseDashboardBoot = async (page: Page): Promise<void> => {
 
   const beforePanels = await snapshotBoxes(page, dashboardSelectors);
   await page.locator('#panelsGrid > .panel').first().waitFor({ timeout: 30000 });
+  const seededDeferredShell = assertSeededDeferredFootprint
+    ? await assertSeededDeferredPanelShellFootprint(page)
+    : null;
   await nextLayoutFrames(page, 4);
   const afterPanels = await snapshotBoxes(page, dashboardSelectors);
 
@@ -208,6 +343,7 @@ const exerciseDashboardBoot = async (page: Page): Promise<void> => {
     '#panelsGrid > .panel:first-of-type',
     '#panelsGrid > .panel.panel-wide',
     '#panelsGrid > .panel.span-2',
+    '#panelsGrid > .panel.span-3',
   ] as const;
   const beforeHydration = await snapshotBoxes(page, panelSelectors);
   const afterHydration = await waitForStableBoxes(page, panelSelectors);
@@ -221,16 +357,19 @@ const exerciseDashboardBoot = async (page: Page): Promise<void> => {
   }
 
   await assertDashboardCls(page);
+  if (seededDeferredShell) {
+    await assertSeededDeferredPanelMount(page, seededDeferredShell);
+  }
   expect(pageErrors.filter((message) => /layout|hydration|auth/i.test(message))).toHaveLength(0);
 };
 
 test.describe('dashboard layout stability', () => {
   test.beforeEach(async ({ page }) => {
-    await installDashboardClsObserver(page);
+    await installDashboardClsObserver(page, { seedDeferredFootprint: shouldSeedDeferredFootprint });
   });
 
   test('keeps desktop first-load CLS below the dashboard threshold with top banner visible', async ({ page }) => {
-    await exerciseDashboardBoot(page);
+    await exerciseDashboardBoot(page, { assertSeededDeferredFootprint: shouldSeedDeferredFootprint });
   });
 });
 

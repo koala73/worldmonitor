@@ -11,6 +11,32 @@ export interface PanelMountDeferralInput {
   isMobile: boolean;
 }
 
+export interface DeferredPanelNaturalFootprint {
+  rowSpan?: number;
+  colSpan?: number;
+  wide?: boolean;
+}
+
+export type DeferredPanelFootprintSource = 'natural' | 'saved';
+
+export interface DeferredPanelShellFootprint {
+  rowSpan?: number;
+  rowSpanSource?: DeferredPanelFootprintSource;
+  colSpan?: number;
+  colSpanSource?: DeferredPanelFootprintSource;
+  wide?: boolean;
+  collapsed?: boolean;
+}
+
+export interface DeferredPanelShellFootprintInput {
+  panelId: string;
+  naturalFootprints?: Readonly<Record<string, DeferredPanelNaturalFootprint | undefined>>;
+  dynamicFootprints?: Readonly<Record<string, DeferredPanelNaturalFootprint | undefined>>;
+  savedRowSpans?: Readonly<Record<string, number | undefined>>;
+  savedColSpans?: Readonly<Record<string, number | undefined>>;
+  savedCollapsed?: Readonly<Record<string, boolean | undefined>>;
+}
+
 const CONTROL_SELECTOR = [
   'button',
   'input',
@@ -24,6 +50,26 @@ const CONTROL_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
 
+function validIntegerInRange(value: number | undefined, min: number, max: number): number | undefined {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return undefined;
+  if (value < min || value > max) return undefined;
+  return value;
+}
+
+function getNaturalFootprint({
+  panelId,
+  naturalFootprints,
+  dynamicFootprints,
+}: Pick<DeferredPanelShellFootprintInput, 'panelId' | 'naturalFootprints' | 'dynamicFootprints'>): DeferredPanelNaturalFootprint {
+  const exact = naturalFootprints?.[panelId];
+  if (exact) return exact;
+  if (!dynamicFootprints) return {};
+  for (const [prefix, footprint] of Object.entries(dynamicFootprints)) {
+    if (panelId.startsWith(prefix) && footprint) return footprint;
+  }
+  return {};
+}
+
 export function getInitialPanelMountBudget(isMobile: boolean): number {
   return isMobile ? INITIAL_PANEL_MOUNT_BUDGET_MOBILE : INITIAL_PANEL_MOUNT_BUDGET_DESKTOP;
 }
@@ -36,7 +82,75 @@ export function shouldDeferInitialPanelMount({
   return enabled && mountedEnabledCount >= getInitialPanelMountBudget(isMobile);
 }
 
-export function createDeferredPanelShell(panelId: string, title: string): HTMLElement {
+export function getDeferredPanelShellFootprint({
+  panelId,
+  naturalFootprints,
+  dynamicFootprints,
+  savedRowSpans,
+  savedColSpans,
+  savedCollapsed,
+}: DeferredPanelShellFootprintInput): DeferredPanelShellFootprint {
+  const natural = getNaturalFootprint({ panelId, naturalFootprints, dynamicFootprints });
+  const naturalRowSpan = validIntegerInRange(natural.rowSpan, 1, 4);
+  const savedRowSpan = validIntegerInRange(savedRowSpans?.[panelId], 1, 4);
+
+  const wide = natural.wide === true;
+  const naturalColSpan = validIntegerInRange(natural.colSpan, 1, 3) ?? (wide ? 2 : undefined);
+  const savedColSpan = validIntegerInRange(savedColSpans?.[panelId], 1, 3);
+
+  const footprint: DeferredPanelShellFootprint = {
+    wide,
+    collapsed: savedCollapsed?.[panelId] === true,
+  };
+
+  if (savedRowSpan !== undefined) {
+    footprint.rowSpan = savedRowSpan;
+    footprint.rowSpanSource = 'saved';
+  } else if (naturalRowSpan !== undefined && naturalRowSpan > 1) {
+    footprint.rowSpan = naturalRowSpan;
+    footprint.rowSpanSource = 'natural';
+  }
+
+  if (savedColSpan !== undefined) {
+    if (savedColSpan !== (naturalColSpan ?? 1)) {
+      footprint.colSpan = savedColSpan;
+      footprint.colSpanSource = 'saved';
+    }
+  } else if (naturalColSpan !== undefined && naturalColSpan > 1 && !wide) {
+    footprint.colSpan = naturalColSpan;
+    footprint.colSpanSource = 'natural';
+  }
+
+  return footprint;
+}
+
+function applyDeferredPanelShellFootprint(shell: HTMLElement, footprint: DeferredPanelShellFootprint): void {
+  if (footprint.wide) {
+    shell.classList.add('panel-wide');
+  }
+  if (footprint.rowSpan !== undefined) {
+    shell.classList.add('span-' + footprint.rowSpan);
+    if (footprint.rowSpanSource === 'saved') {
+      shell.classList.add('resized');
+    }
+  }
+  if (footprint.colSpan !== undefined) {
+    shell.classList.add('col-span-' + footprint.colSpan);
+  }
+  if (footprint.collapsed) {
+    shell.classList.add('panel-collapsed');
+    const content = shell.querySelector<HTMLElement>('.panel-deferred-content');
+    if (content) {
+      content.style.display = 'none';
+    }
+  }
+}
+
+export function createDeferredPanelShell(
+  panelId: string,
+  title: string,
+  footprint: DeferredPanelShellFootprint = {},
+): HTMLElement {
   const shell = document.createElement('div');
   shell.className = 'panel panel-deferred-shell';
   shell.dataset.panel = panelId;
@@ -66,6 +180,7 @@ export function createDeferredPanelShell(panelId: string, title: string): HTMLEl
 
   shell.appendChild(header);
   shell.appendChild(content);
+  applyDeferredPanelShellFootprint(shell, footprint);
   return shell;
 }
 

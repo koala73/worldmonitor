@@ -5,6 +5,7 @@ import { afterEach, describe, it } from 'node:test';
 import {
   countInteractiveControls,
   createDeferredPanelShell,
+  getDeferredPanelShellFootprint,
   getInitialPanelMountBudget,
   shouldDeferInitialPanelMount,
 } from '../src/app/panel-mount-deferral';
@@ -92,6 +93,101 @@ describe('panel mount deferral', () => {
     assert.equal(shell.getAttribute('aria-hidden'), 'true');
     assert.equal(shell.querySelector('.panel-title')?.textContent, 'Strategic Risk Overview');
     assert.equal(countInteractiveControls(shell), 0);
+  });
+
+  it('derives natural panel row reservations before constructing the real panel', () => {
+    assert.deepEqual(
+      getDeferredPanelShellFootprint({
+        panelId: 'energy-complex',
+        naturalFootprints: { 'energy-complex': { rowSpan: 2 } },
+      }),
+      { wide: false, collapsed: false, rowSpan: 2, rowSpanSource: 'natural' },
+    );
+  });
+
+  it('lets saved row and column spans override natural reservations', () => {
+    const footprint = getDeferredPanelShellFootprint({
+      panelId: 'live-news',
+      naturalFootprints: { 'live-news': { wide: true } },
+      savedRowSpans: { 'live-news': 3 },
+      savedColSpans: { 'live-news': 1 },
+    });
+
+    assert.deepEqual(footprint, {
+      wide: true,
+      collapsed: false,
+      rowSpan: 3,
+      rowSpanSource: 'saved',
+      colSpan: 1,
+      colSpanSource: 'saved',
+    });
+  });
+
+  it('ignores invalid saved spans instead of emitting invalid shell classes', () => {
+    const document = installDom();
+    const footprint = getDeferredPanelShellFootprint({
+      panelId: 'energy-complex',
+      naturalFootprints: { 'energy-complex': { rowSpan: 2 } },
+      savedRowSpans: { 'energy-complex': 9 },
+      savedColSpans: { 'energy-complex': 0 },
+    });
+    const shell = createDeferredPanelShell('energy-complex', 'Energy Complex', footprint);
+    document.body.appendChild(shell);
+
+    assert.equal(shell.classList.contains('span-2'), true);
+    assert.equal(shell.className.includes('span-9'), false);
+    assert.equal(shell.className.includes('col-span-0'), false);
+  });
+
+  it('applies wide, saved resize, and collapsed footprint classes to shells', () => {
+    const document = installDom();
+    const footprint = getDeferredPanelShellFootprint({
+      panelId: 'live-news',
+      naturalFootprints: { 'live-news': { wide: true } },
+      savedRowSpans: { 'live-news': 2 },
+      savedCollapsed: { 'live-news': true },
+    });
+    const shell = createDeferredPanelShell('live-news', 'Live News', footprint);
+    document.body.appendChild(shell);
+
+    assert.equal(shell.classList.contains('panel-wide'), true);
+    assert.equal(shell.classList.contains('span-2'), true);
+    assert.equal(shell.classList.contains('resized'), true);
+    assert.equal(shell.classList.contains('panel-collapsed'), true);
+    assert.equal((shell.querySelector('.panel-deferred-content') as HTMLElement | null)?.style.display, 'none');
+    assert.equal(countInteractiveControls(shell), 0);
+  });
+
+  it('uses explicit dynamic defaults for custom widget and MCP shells while honoring saved spans', () => {
+    const dynamicFootprints = {
+      'cw-': { rowSpan: 2 },
+      'mcp-': { rowSpan: 2 },
+    };
+
+    assert.deepEqual(
+      getDeferredPanelShellFootprint({ panelId: 'cw-example', dynamicFootprints }),
+      { wide: false, collapsed: false, rowSpan: 2, rowSpanSource: 'natural' },
+    );
+    assert.deepEqual(
+      getDeferredPanelShellFootprint({
+        panelId: 'mcp-example',
+        dynamicFootprints,
+        savedRowSpans: { 'mcp-example': 4 },
+        savedColSpans: { 'mcp-example': 2 },
+      }),
+      {
+        wide: false,
+        collapsed: false,
+        rowSpan: 4,
+        rowSpanSource: 'saved',
+        colSpan: 2,
+        colSpanSource: 'saved',
+      },
+    );
+    assert.deepEqual(
+      getDeferredPanelShellFootprint({ panelId: 'unknown-panel', dynamicFootprints }),
+      { wide: false, collapsed: false },
+    );
   });
 
   it('materially reduces initial DOM and control count for below-budget panels', () => {

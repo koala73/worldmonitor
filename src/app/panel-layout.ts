@@ -3,7 +3,9 @@ import { normalizeExclusiveChoropleths } from '@/components/resilience-choroplet
 import { replayPendingCalls, clearAllPendingCalls } from '@/app/pending-panel-data';
 import {
   createDeferredPanelShell,
+  getDeferredPanelShellFootprint,
   shouldDeferInitialPanelMount,
+  type DeferredPanelNaturalFootprint,
 } from '@/app/panel-mount-deferral';
 import {
   addResponsiveZoneListener,
@@ -56,6 +58,11 @@ import {
   generateTabId,
   buildDefaultTabPanels,
 } from '@/services/tab-store';
+import {
+  loadPanelCollapsed,
+  loadPanelColSpans,
+  loadPanelSpans,
+} from '@/utils/panel-storage';
 import type { PanelTab, TabsState } from '@/services/tab-store';
 import { showToast } from '@/utils';
 import { loadMcpPanels, saveMcpPanel } from '@/services/mcp-store';
@@ -117,6 +124,41 @@ const WEB_CLERK_PRO_ONLY_PANELS = new Set([
 
 const COLLIDING_NEWS_PANEL_KEYS = new Set(['markets', 'crypto', 'economic']);
 
+export const DEFERRED_PANEL_NATURAL_FOOTPRINTS = {
+  'chat-analyst': { rowSpan: 2 },
+  cii: { rowSpan: 2 },
+  'consumer-prices': { rowSpan: 2 },
+  displacement: { rowSpan: 2 },
+  economic: { rowSpan: 2 },
+  'energy-complex': { rowSpan: 2 },
+  'energy-crisis': { rowSpan: 2 },
+  'energy-disruptions': { rowSpan: 2 },
+  'fuel-shortages': { rowSpan: 2 },
+  'gdelt-intel': { rowSpan: 2 },
+  'internet-disruptions': { rowSpan: 2 },
+  'live-news': { wide: true },
+  'live-webcams': { wide: true },
+  'oil-inventories': { rowSpan: 2 },
+  'pipeline-status': { rowSpan: 2 },
+  'sanctions-pressure': { rowSpan: 2 },
+  'security-advisories': { rowSpan: 2 },
+  'storage-facility-map': { rowSpan: 2 },
+  'strategic-posture': { rowSpan: 2 },
+  'supply-chain': { rowSpan: 2 },
+  'telegram-intel': { rowSpan: 2 },
+  'threat-timeline': { rowSpan: 2 },
+  'trade-policy': { rowSpan: 2 },
+  'ucdp-events': { rowSpan: 2 },
+  'windy-webcams': { wide: true },
+} as const satisfies Readonly<Record<string, DeferredPanelNaturalFootprint>>;
+
+const DEFERRED_DYNAMIC_PANEL_FOOTPRINTS = {
+  'cw-': { rowSpan: 2 },
+  'mcp-': { rowSpan: 2 },
+} as const satisfies Readonly<Record<string, DeferredPanelNaturalFootprint>>;
+
+const DEFERRED_PANEL_RETRY_DELAY_MS = 1_000;
+
 export interface PanelLayoutManagerCallbacks {
   openCountryStory: (code: string, name: string) => void;
   openCountryBrief: (code: string) => void;
@@ -132,6 +174,7 @@ interface DeferredPanelMount {
   observer: IntersectionObserver | null;
   mounted: boolean;
   loading: Promise<void> | null;
+  retryTimer: ReturnType<typeof setTimeout> | null;
 }
 
 interface LazyPanelRegistration {
@@ -340,6 +383,9 @@ export class PanelLayoutManager implements AppModule {
     this.panelDragCleanupHandlers = [];
     for (const deferred of this.deferredPanelMounts.values()) {
       deferred.observer?.disconnect();
+      if (deferred.retryTimer !== null) {
+        clearTimeout(deferred.retryTimer);
+      }
     }
     this.deferredPanelMounts.clear();
     this.lazyPanelRegistrations.clear();
@@ -1205,9 +1251,20 @@ export class PanelLayoutManager implements AppModule {
     return true;
   }
 
+  private getDeferredPanelFootprint(key: string) {
+    return getDeferredPanelShellFootprint({
+      panelId: key,
+      naturalFootprints: DEFERRED_PANEL_NATURAL_FOOTPRINTS,
+      dynamicFootprints: DEFERRED_DYNAMIC_PANEL_FOOTPRINTS,
+      savedRowSpans: loadPanelSpans(),
+      savedColSpans: loadPanelColSpans(),
+      savedCollapsed: loadPanelCollapsed(),
+    });
+  }
+
   private deferPanelMount(key: string, panel: Panel | null, grid: HTMLElement | null, withShell: boolean): void {
     const placeholder = withShell && grid
-      ? createDeferredPanelShell(key, this.ctx.panelSettings[key]?.name ?? key)
+      ? createDeferredPanelShell(key, this.ctx.panelSettings[key]?.name ?? key, this.getDeferredPanelFootprint(key))
       : null;
     if (placeholder && grid) {
       this.insertByOrder(grid, placeholder, key);
@@ -1215,6 +1272,9 @@ export class PanelLayoutManager implements AppModule {
     }
     const existing = this.deferredPanelMounts.get(key);
     existing?.observer?.disconnect();
+    if (existing?.retryTimer !== null && existing?.retryTimer !== undefined) {
+      clearTimeout(existing.retryTimer);
+    }
     if (existing?.placeholder && existing.placeholder !== placeholder) {
       existing.placeholder.remove();
     }
@@ -1224,6 +1284,7 @@ export class PanelLayoutManager implements AppModule {
       observer: null,
       mounted: false,
       loading: null,
+      retryTimer: null,
     };
     this.deferredPanelMounts.set(key, deferred);
     if (placeholder) {
@@ -1234,6 +1295,10 @@ export class PanelLayoutManager implements AppModule {
   private observeDeferredPanelShell(key: string, deferred: DeferredPanelMount): void {
     const { placeholder } = deferred;
     if (!placeholder) return;
+    if (deferred.retryTimer !== null) {
+      clearTimeout(deferred.retryTimer);
+      deferred.retryTimer = null;
+    }
     if (typeof window === 'undefined' || typeof IntersectionObserver === 'undefined') {
       const ric = typeof window !== 'undefined'
         ? (window as unknown as { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback
@@ -1260,6 +1325,17 @@ export class PanelLayoutManager implements AppModule {
     return document.getElementById('panelsGrid');
   }
 
+  private scheduleDeferredPanelRetry(key: string, deferred: DeferredPanelMount): void {
+    if (this.ctx.isDestroyed || deferred.mounted || deferred.retryTimer !== null) return;
+    if (!deferred.placeholder?.parentNode) return;
+    if (!deferred.panel && !this.lazyPanelRegistrations.has(key)) return;
+    deferred.retryTimer = setTimeout(() => {
+      deferred.retryTimer = null;
+      if (this.deferredPanelMounts.get(key) !== deferred || deferred.mounted || this.ctx.isDestroyed) return;
+      this.observeDeferredPanelShell(key, deferred);
+    }, DEFERRED_PANEL_RETRY_DELAY_MS);
+  }
+
   private mountDeferredPanel(key: string): boolean {
     const deferred = this.deferredPanelMounts.get(key);
     if (!deferred || deferred.mounted || deferred.loading) return false;
@@ -1268,18 +1344,25 @@ export class PanelLayoutManager implements AppModule {
 
     deferred.observer?.disconnect();
     deferred.observer = null;
+    if (deferred.retryTimer !== null) {
+      clearTimeout(deferred.retryTimer);
+      deferred.retryTimer = null;
+    }
     const targetGrid = grid ?? (deferred.placeholder!.parentNode as HTMLElement);
     const finish = (panel: Panel | null): void => {
-      if (!panel || this.ctx.isDestroyed) return;
       const current = this.deferredPanelMounts.get(key);
       if (current !== deferred || deferred.mounted) return;
+      deferred.loading = null;
+      if (!panel || this.ctx.isDestroyed) {
+        this.scheduleDeferredPanelRetry(key, deferred);
+        return;
+      }
       const placeholder = deferred.placeholder;
       if (this.mountPanelElement(targetGrid, key, panel, placeholder)) {
         this.afterPanelMounted(key, panel);
       }
       deferred.mounted = true;
       deferred.placeholder = null;
-      deferred.loading = null;
       this.deferredPanelMounts.delete(key);
     };
 
@@ -1287,7 +1370,7 @@ export class PanelLayoutManager implements AppModule {
       finish(deferred.panel);
       return true;
     }
-    deferred.loading = this.loadRegisteredPanel(key).then(finish);
+    deferred.loading = this.loadRegisteredPanel(key).then(finish, () => finish(null));
     return true;
   }
 
@@ -2978,7 +3061,7 @@ export class PanelLayoutManager implements AppModule {
               }
             }
 
-            document.removeEventListener('keydown', onKeyDown!);
+            document.removeEventListener('keydown', onKeyDown!, true);
             onKeyDown = null;
             isDragging = false;
             dragStarted = false;
@@ -2986,7 +3069,7 @@ export class PanelLayoutManager implements AppModule {
             if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
           }
         };
-        document.addEventListener('keydown', onKeyDown);
+        document.addEventListener('keydown', onKeyDown, true);
       }
 
       lastX = e.clientX;
@@ -3046,7 +3129,7 @@ export class PanelLayoutManager implements AppModule {
       document.body.classList.remove('panel-drag-active');
       originalRect = null;
       if (onKeyDown) {
-        document.removeEventListener('keydown', onKeyDown);
+        document.removeEventListener('keydown', onKeyDown, true);
         onKeyDown = null;
       }
     };
@@ -3060,7 +3143,7 @@ export class PanelLayoutManager implements AppModule {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
       if (onKeyDown) {
-        document.removeEventListener('keydown', onKeyDown);
+        document.removeEventListener('keydown', onKeyDown, true);
         onKeyDown = null;
       }
       if (rafId) {

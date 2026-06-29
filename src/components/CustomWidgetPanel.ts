@@ -14,6 +14,7 @@ export class CustomWidgetPanel extends Panel {
       title: spec.title,
       closable: true,
       className: 'custom-widget-panel',
+      defaultRowSpan: 2,
     });
     this.spec = spec;
     this.addHeaderButtons();
