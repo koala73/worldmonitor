@@ -121,6 +121,17 @@ const WEB_CLERK_PRO_ONLY_PANELS = new Set([
 
 const COLLIDING_NEWS_PANEL_KEYS = new Set(['markets', 'crypto', 'economic']);
 
+// TEMPORARY MIRROR of each panel constructor's footprint (`defaultRowSpan` /
+// `className: 'panel-wide'`, declared in src/components/*Panel.ts). A deferred
+// shell never instantiates its component, so it cannot read that footprint
+// directly and must reproduce it here to reserve the right grid space.
+//
+// This duplicates the authoritative per-component declaration. Two guards keep
+// it honest: `tests/panel-config-guardrails.test.mjs` fails CI on drift, and
+// `warnOnDeferredFootprintDrift` (below) logs in dev if a hydrated panel ends
+// up wider/taller than its reserved shell. The intended long-term fix is to
+// lift these defaults into one shared table imported by both the `Panel`
+// constructor and this map, removing the duplication entirely (see #4490).
 const DEFERRED_PANEL_NATURAL_FOOTPRINTS: Readonly<Record<string, DeferredPanelShellFootprint>> = {
   cii: { rowSpan: 2 },
   'chat-analyst': { rowSpan: 2 },
@@ -148,6 +159,38 @@ const DEFERRED_PANEL_NATURAL_FOOTPRINTS: Readonly<Record<string, DeferredPanelSh
   'ucdp-events': { rowSpan: 2 },
   'windy-webcams': { className: 'panel-wide' },
 };
+
+function readRowSpanClass(element: HTMLElement): number {
+  if (element.classList.contains('span-4')) return 4;
+  if (element.classList.contains('span-3')) return 3;
+  if (element.classList.contains('span-2')) return 2;
+  return 1;
+}
+
+function readColSpanFootprint(element: HTMLElement): number {
+  if (element.classList.contains('col-span-3')) return 3;
+  if (element.classList.contains('col-span-2')) return 2;
+  if (element.classList.contains('col-span-1')) return 1;
+  return element.classList.contains('panel-wide') ? 2 : 1;
+}
+
+// Dev-only guard: if a hydrated panel ends up taller/wider than the shell we
+// reserved for it, the registry above drifted from the panel constructor and
+// the deferred shell just caused the layout shift it exists to prevent. Surface
+// it in the app (CI also catches drift via panel-config-guardrails).
+function warnOnDeferredFootprintDrift(key: string, placeholder: HTMLElement, real: HTMLElement): void {
+  const reservedRows = readRowSpanClass(placeholder);
+  const reservedCols = readColSpanFootprint(placeholder);
+  const realRows = readRowSpanClass(real);
+  const realCols = readColSpanFootprint(real);
+  if (realRows > reservedRows || realCols > reservedCols) {
+    console.warn(
+      `[PanelLayoutManager] Deferred shell footprint drift for "${key}": reserved ` +
+        `${reservedCols}x${reservedRows} (col x row) but panel hydrated to ${realCols}x${realRows}. ` +
+        'Update DEFERRED_PANEL_NATURAL_FOOTPRINTS to match the panel constructor.',
+    );
+  }
+}
 
 export interface PanelLayoutManagerCallbacks {
   openCountryStory: (code: string, name: string) => void;
@@ -1228,6 +1271,7 @@ export class PanelLayoutManager implements AppModule {
     if (el.parentElement) return false;
     this.makeDraggable(el, key);
     if (placeholder?.parentNode) {
+      if (import.meta.env.DEV) warnOnDeferredFootprintDrift(key, placeholder, el);
       placeholder.parentNode.replaceChild(el, placeholder);
     } else {
       this.insertByOrder(grid, el, key);

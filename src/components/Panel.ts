@@ -19,6 +19,13 @@ import {
   savePanelColSpan,
   savePanelSpan,
 } from '@/utils/panel-storage';
+import {
+  clampColSpan,
+  clearColSpanClass,
+  getExplicitColSpanClass,
+  getMaxColSpan,
+  setColSpanClass,
+} from '@/utils/panel-grid';
 
 export type PanelSeverity = 'critical' | 'high' | 'medium' | 'low' | 'none';
 
@@ -41,7 +48,6 @@ const upgradeSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="2
 
 const ROW_RESIZE_STEP_PX = 80;
 const COL_RESIZE_STEP_PX = 80;
-const PANELS_GRID_MIN_TRACK_PX = 280;
 const FRESHNESS_BADGE_REFRESH_MS = 60_000;
 
 function getDefaultColSpan(element: HTMLElement): number {
@@ -49,47 +55,7 @@ function getDefaultColSpan(element: HTMLElement): number {
 }
 
 function getColSpan(element: HTMLElement): number {
-  if (element.classList.contains('col-span-3')) return 3;
-  if (element.classList.contains('col-span-2')) return 2;
-  if (element.classList.contains('col-span-1')) return 1;
-  return getDefaultColSpan(element);
-}
-
-function getGridColumnCount(element: HTMLElement): number {
-  const grid = (element.closest('.panels-grid') || element.closest('.map-bottom-grid')) as HTMLElement | null;
-  if (!grid) return 3;
-  const style = window.getComputedStyle(grid);
-  const template = style.gridTemplateColumns;
-  if (!template || template === 'none') return 3;
-
-  if (template.includes('repeat(')) {
-    const repeatCountMatch = template.match(/repeat\(\s*(\d+)\s*,/i);
-    if (repeatCountMatch) {
-      const parsed = Number.parseInt(repeatCountMatch[1] ?? '0', 10);
-      if (Number.isFinite(parsed) && parsed > 0) return parsed;
-    }
-
-    // For repeat(auto-fill/auto-fit, minmax(...)), infer count from rendered width.
-    const autoRepeatMatch = template.match(/repeat\(\s*auto-(fill|fit)\s*,/i);
-    if (autoRepeatMatch) {
-      const gap = Number.parseFloat(style.columnGap || '0') || 0;
-      const width = grid.getBoundingClientRect().width;
-      if (width > 0) {
-        return Math.max(1, Math.floor((width + gap) / (PANELS_GRID_MIN_TRACK_PX + gap)));
-      }
-    }
-  }
-
-  const columns = template.trim().split(/\s+/).filter(Boolean);
-  return columns.length > 0 ? columns.length : 3;
-}
-
-function getMaxColSpan(element: HTMLElement): number {
-  return Math.max(1, Math.min(3, getGridColumnCount(element)));
-}
-
-function clampColSpan(span: number, maxSpan: number): number {
-  return Math.max(1, Math.min(maxSpan, span));
+  return getExplicitColSpanClass(element) ?? getDefaultColSpan(element);
 }
 
 function persistPanelColSpan(panelId: string, element: HTMLElement): void {
@@ -110,15 +76,6 @@ function deltaToColSpan(startSpan: number, deltaX: number, maxSpan = 3): number 
     ? Math.floor(deltaX / COL_RESIZE_STEP_PX)
     : Math.ceil(deltaX / COL_RESIZE_STEP_PX);
   return clampColSpan(startSpan + spanDelta, maxSpan);
-}
-
-function clearColSpanClass(element: HTMLElement): void {
-  element.classList.remove('col-span-1', 'col-span-2', 'col-span-3');
-}
-
-function setColSpanClass(element: HTMLElement, span: number): void {
-  clearColSpanClass(element);
-  element.classList.add(`col-span-${span}`);
 }
 
 function getRowSpan(element: HTMLElement): number {

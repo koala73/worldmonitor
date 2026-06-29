@@ -101,12 +101,21 @@ function parsePanelKeys(variant) {
   return keys;
 }
 
+// Characters after which a `/` begins a regex literal rather than division.
+// In object-literal / call-argument contexts (all we parse here) a regex value
+// always follows one of these, so the heuristic is reliable for super(...) bodies.
+const REGEX_START_PREFIX = new Set([undefined, '(', ',', ';', ':', '=', '!', '&', '|', '?', '{', '}', '[', '+', '-', '*', '%', '<', '>', '~', '^']);
+
 function findMatchingBrace(src, openIndex) {
   let depth = 0;
   let quote = null;
   let escaped = false;
   let lineComment = false;
   let blockComment = false;
+  let inRegex = false;
+  let regexClass = false;
+  // Last non-whitespace code character, used to disambiguate `/` (regex vs divide).
+  let prevSignificant;
 
   for (let i = openIndex; i < src.length; i++) {
     const char = src[i];
@@ -121,6 +130,21 @@ function findMatchingBrace(src, openIndex) {
         blockComment = false;
         i++;
       }
+      continue;
+    }
+    if (inRegex) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (char === '[') regexClass = true;
+      else if (char === ']') regexClass = false;
+      else if (char === '/' && !regexClass) inRegex = false;
+      else if (char === '\n') inRegex = false; // unterminated literal; bail out
       continue;
     }
     if (quote) {
@@ -146,8 +170,15 @@ function findMatchingBrace(src, openIndex) {
       i++;
       continue;
     }
+    if (char === '/' && REGEX_START_PREFIX.has(prevSignificant)) {
+      inRegex = true;
+      regexClass = false;
+      prevSignificant = '/';
+      continue;
+    }
     if (char === '\'' || char === '"' || char === '`') {
       quote = char;
+      prevSignificant = char;
       continue;
     }
     if (char === '{') depth++;
@@ -155,6 +186,7 @@ function findMatchingBrace(src, openIndex) {
       depth--;
       if (depth === 0) return i;
     }
+    if (!/\s/.test(char)) prevSignificant = char;
   }
   return -1;
 }
@@ -191,10 +223,22 @@ function naturalDeferredPanelFootprints() {
     for (const body of superObjectBodies(src)) {
       const id = body.match(/id:\s*['"]([^'"]+)['"]/);
       if (!id) continue;
-      const rowSpan = body.match(/defaultRowSpan:\s*([2-4])/);
       const panelWide = PANEL_WIDE_CLASS_RE.test(body);
-      if (!rowSpan && !panelWide) continue;
-      footprints.set(id[1], { file, rowSpan: rowSpan ? rowSpan[1] : null, panelWide });
+
+      // Capture the raw defaultRowSpan value so a non-literal (variable or
+      // expression) is reported as unverifiable rather than silently dropped —
+      // otherwise its footprint would escape this guard and reintroduce CLS.
+      const rowSpanRaw = body.match(/defaultRowSpan:\s*([^,\n}]+)/);
+      let rowSpan = null;
+      let unverifiableRowSpan = null;
+      if (rowSpanRaw) {
+        const value = rowSpanRaw[1].trim();
+        if (/^[2-4]$/.test(value)) rowSpan = value;
+        else if (value !== '1') unverifiableRowSpan = value;
+      }
+
+      if (!rowSpan && !panelWide && !unverifiableRowSpan) continue;
+      footprints.set(id[1], { file, rowSpan, panelWide, unverifiableRowSpan });
     }
   }
   return footprints;
@@ -304,6 +348,14 @@ describe('panel-config guardrails', () => {
     const registryEntries = deferredPanelFootprintRegistryEntries();
 
     for (const [panelId, footprint] of naturalFootprints) {
+      if (footprint.unverifiableRowSpan) {
+        mismatches.push(
+          panelId + ' (' + footprint.file + ') has a non-literal defaultRowSpan "' +
+            footprint.unverifiableRowSpan + '" this guard cannot verify; inline a literal 2-4 ' +
+            'or extend naturalDeferredPanelFootprints to resolve it',
+        );
+        continue;
+      }
       const entry = registryEntries.get(panelId);
       if (!entry) {
         mismatches.push(panelId + ' (' + footprint.file + ') missing registry entry');
@@ -553,6 +605,54 @@ describe('panel-config guardrails', () => {
       `prefix would be skipped on variant switches and bypass free-tier gating. Rename to a\n` +
       `non-reserved prefix.`,
     );
+  });
+
+  it('warns in dev when a hydrated panel exceeds its reserved deferred-shell footprint', () => {
+    const mountPanelElement = panelLayoutSrc.match(/private\s+mountPanelElement[\s\S]*?\n {2}\}/);
+    assert.ok(mountPanelElement, 'mountPanelElement method not found');
+    assert.match(
+      mountPanelElement[0],
+      /if\s*\(import\.meta\.env\.DEV\)\s*warnOnDeferredFootprintDrift\(key, placeholder, el\);/,
+      'mountPanelElement must surface deferred-shell footprint drift in dev builds',
+    );
+    assert.match(
+      panelLayoutSrc,
+      /function warnOnDeferredFootprintDrift\(/,
+      'warnOnDeferredFootprintDrift helper must exist',
+    );
+  });
+
+  it('keeps brace depth balanced across regex literals inside super() bodies', () => {
+    // Regression: a regex literal containing braces or quotes must not desync
+    // findMatchingBrace/superObjectBodies (which would silently drop or
+    // over-capture a panel footprint).
+    const src =
+      "class P { constructor() { super({ id: 'p', re: /[{}]'\"/, defaultRowSpan: 2 }); this.x = {}; } }";
+    const bodies = superObjectBodies(src);
+    assert.equal(bodies.length, 1, 'exactly the super(...) object body should be captured');
+    assert.match(bodies[0], /id: 'p'/);
+    assert.match(bodies[0], /defaultRowSpan: 2/);
+    assert.ok(!bodies[0].includes('this.x'), 'capture must stop at the super() object close brace');
+  });
+
+  it('does not mistake division for a regex literal in super() bodies', () => {
+    const src = "class P { constructor() { super({ id: 'p', ratio: width / 2, defaultRowSpan: 3 }); } }";
+    const bodies = superObjectBodies(src);
+    assert.equal(bodies.length, 1);
+    assert.match(bodies[0], /defaultRowSpan: 3/);
+  });
+
+  it('flags a non-literal defaultRowSpan as unverifiable rather than skipping it', () => {
+    // naturalDeferredPanelFootprints must surface values it cannot statically
+    // resolve, so a footprint expressed via a constant/expression cannot
+    // silently escape the registry-drift guard.
+    const src = "super({ id: 'mystery', defaultRowSpan: ROW_SPAN_TALL });";
+    const bodies = superObjectBodies(src);
+    const body = bodies[0] ?? '';
+    const rowSpanRaw = body.match(/defaultRowSpan:\s*([^,\n}]+)/);
+    assert.ok(rowSpanRaw, 'expected a defaultRowSpan match');
+    const value = rowSpanRaw[1].trim();
+    assert.ok(!/^[2-4]$/.test(value) && value !== '1', 'value should be treated as unverifiable');
   });
 });
 

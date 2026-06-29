@@ -1,3 +1,11 @@
+import {
+  MAX_PANEL_COL_SPAN,
+  MAX_PANEL_ROW_SPAN,
+  getExplicitColSpanClass,
+  getMaxColSpan,
+  setColSpanClass,
+} from '@/utils/panel-grid';
+
 export const INITIAL_PANEL_MOUNT_BUDGET_DESKTOP = 8;
 // Mobile mounts fewer panels eagerly; the rest get IntersectionObserver shells (700px
 // lookahead) and mount before they scroll into view. Lowered 4→3 to trim boot DOM /
@@ -24,7 +32,6 @@ export interface DeferredPanelShellFootprintInput {
   savedColSpans?: Readonly<Record<string, number>>;
 }
 
-const PANELS_GRID_MIN_TRACK_PX = 280;
 const CONTROL_SELECTOR = [
   'button',
   'input',
@@ -51,46 +58,6 @@ function addClassTokens(element: HTMLElement, className: string | undefined): vo
   }
 }
 
-function getColSpanClass(element: HTMLElement): number | undefined {
-  if (element.classList.contains('col-span-3')) return 3;
-  if (element.classList.contains('col-span-2')) return 2;
-  if (element.classList.contains('col-span-1')) return 1;
-  return undefined;
-}
-
-function setColSpanClass(element: HTMLElement, span: number): void {
-  element.classList.remove('col-span-1', 'col-span-2', 'col-span-3');
-  element.classList.add('col-span-' + span);
-}
-
-function getGridColumnCount(element: HTMLElement): number {
-  const grid = (element.closest('.panels-grid') || element.closest('.map-bottom-grid')) as HTMLElement | null;
-  if (!grid || typeof window === 'undefined') return 3;
-  const style = window.getComputedStyle(grid);
-  const template = style.gridTemplateColumns;
-  if (!template || template === 'none') return 3;
-
-  if (template.includes('repeat(')) {
-    const repeatCountMatch = template.match(/repeat\(\s*(\d+)\s*,/i);
-    if (repeatCountMatch) {
-      const parsed = Number.parseInt(repeatCountMatch[1] ?? '0', 10);
-      if (Number.isFinite(parsed) && parsed > 0) return parsed;
-    }
-
-    const autoRepeatMatch = template.match(/repeat\(\s*auto-(fill|fit)\s*,/i);
-    if (autoRepeatMatch) {
-      const gap = Number.parseFloat(style.columnGap || '0') || 0;
-      const width = grid.getBoundingClientRect().width;
-      if (width > 0) {
-        return Math.max(1, Math.floor((width + gap) / (PANELS_GRID_MIN_TRACK_PX + gap)));
-      }
-    }
-  }
-
-  const columns = template.trim().split(/\s+/).filter(Boolean);
-  return columns.length > 0 ? columns.length : 3;
-}
-
 export function getInitialPanelMountBudget(isMobile: boolean): number {
   return isMobile ? INITIAL_PANEL_MOUNT_BUDGET_MOBILE : INITIAL_PANEL_MOUNT_BUDGET_DESKTOP;
 }
@@ -112,8 +79,8 @@ export function getDeferredPanelShellFootprint({
   const natural = naturalFootprints[panelId] ?? {};
   return {
     className: natural.className,
-    rowSpan: clampSpan(savedRowSpans[panelId], 4) ?? clampSpan(natural.rowSpan, 4),
-    colSpan: clampSpan(savedColSpans[panelId], 3) ?? clampSpan(natural.colSpan, 3),
+    rowSpan: clampSpan(savedRowSpans[panelId], MAX_PANEL_ROW_SPAN) ?? clampSpan(natural.rowSpan, MAX_PANEL_ROW_SPAN),
+    colSpan: clampSpan(savedColSpans[panelId], MAX_PANEL_COL_SPAN) ?? clampSpan(natural.colSpan, MAX_PANEL_COL_SPAN),
   };
 }
 
@@ -129,12 +96,12 @@ export function createDeferredPanelShell(
   shell.setAttribute('aria-hidden', 'true');
   addClassTokens(shell, footprint.className);
 
-  const rowSpan = clampSpan(footprint.rowSpan, 4);
+  const rowSpan = clampSpan(footprint.rowSpan, MAX_PANEL_ROW_SPAN);
   if (rowSpan !== undefined) {
     shell.classList.add(`span-${rowSpan}`);
   }
 
-  const colSpan = clampSpan(footprint.colSpan, 3);
+  const colSpan = clampSpan(footprint.colSpan, MAX_PANEL_COL_SPAN);
   if (colSpan !== undefined) {
     shell.classList.add(`col-span-${colSpan}`);
   }
@@ -165,15 +132,35 @@ export function createDeferredPanelShell(
   return shell;
 }
 
-export function reconcileDeferredPanelShellColSpan(shell: HTMLElement): void {
-  const currentSpan = getColSpanClass(shell);
+/**
+ * Clamp a deferred shell's reserved `col-span-N` down to what the rendered
+ * grid can actually fit. Mirrors {@link Panel}'s `reconcileColSpanAfterAttach`:
+ * the grid's column template/width is only readable once the shell is attached,
+ * so when it is not yet connected we retry across up to `attempts` animation
+ * frames instead of clamping against a 0-width grid (which would read a wrong
+ * column count and leave an over-wide shell — a layout shift in the opposite
+ * direction until the real panel mounts).
+ */
+export function reconcileDeferredPanelShellColSpan(shell: HTMLElement, attempts = 3): void {
+  const currentSpan = getExplicitColSpanClass(shell);
   if (currentSpan === undefined) return;
 
-  const maxSpan = Math.max(1, Math.min(3, getGridColumnCount(shell)));
-  const clampedSpan = Math.max(1, Math.min(maxSpan, currentSpan));
-  if (clampedSpan !== currentSpan) {
-    setColSpanClass(shell, clampedSpan);
-  }
+  const tryReconcile = (remaining: number): void => {
+    if (!shell.isConnected || !shell.parentElement) {
+      if (remaining <= 0) return;
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => tryReconcile(remaining - 1));
+      }
+      return;
+    }
+    const maxSpan = getMaxColSpan(shell);
+    const clampedSpan = Math.max(1, Math.min(maxSpan, currentSpan));
+    if (clampedSpan !== currentSpan) {
+      setColSpanClass(shell, clampedSpan);
+    }
+  };
+
+  tryReconcile(attempts);
 }
 
 export function countInteractiveControls(root: ParentNode): number {
