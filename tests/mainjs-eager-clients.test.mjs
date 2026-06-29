@@ -60,6 +60,13 @@ const DATA_LOADER_LAZY_PROMISE_SLOTS = [
 // Matches a direct eager assignment without crossing string-literal quotes.
 const EAGER_CONSTRUCTION = /^[^'"`\n]*=\s*new IntelligenceServiceClient\(/m;
 const LAZY_FACTORY = /createLazyClient\(\(\)\s*=>\s*new IntelligenceServiceClient\(/;
+// Counts every construction site and every lazy-wrapped one. EAGER_CONSTRUCTION
+// only catches the `<lhs> = new ...` assignment form; these catch the
+// non-assignment eager forms it misses (`export default new ...`, a standalone
+// `new ...().warmup()` call, an IIFE) by requiring construction count to equal
+// lazy-wrapped count — i.e. every construction must go through createLazyClient.
+const ANY_CONSTRUCTION = /new\s+IntelligenceServiceClient\s*\(/g;
+const LAZY_CONSTRUCTION = /createLazyClient\(\s*\(\)\s*=>\s*new\s+IntelligenceServiceClient\s*\(/g;
 
 function stripComments(src) {
   return src
@@ -178,6 +185,30 @@ describe('main.js eager diet — service clients are lazy-initialized', () => {
     assert.match(stripComments(eagerDeclaration), EAGER_CONSTRUCTION);
   });
 
+  it('construction-count check catches non-assignment eager forms EAGER_CONSTRUCTION misses', () => {
+    const countWrapped = (src) =>
+      (stripComments(src).match(LAZY_CONSTRUCTION) ?? []).length ===
+      (stripComments(src).match(ANY_CONSTRUCTION) ?? []).length;
+
+    // Bypasses that EAGER_CONSTRUCTION (assignment-only) does NOT catch:
+    assert.equal(countWrapped('export default new IntelligenceServiceClient(getRpcBaseUrl(), {})'), false);
+    assert.equal(countWrapped('new IntelligenceServiceClient(getRpcBaseUrl(), {}).warmup();'), false);
+    assert.equal(countWrapped('const c = (() => new IntelligenceServiceClient(x))();'), false);
+    // An eager construction added alongside a legit lazy factory must still fail:
+    assert.equal(
+      countWrapped(
+        'const client = createLazyClient(() => new IntelligenceServiceClient(getRpcBaseUrl(), {}));\n' +
+          'new IntelligenceServiceClient(getRpcBaseUrl(), {}).getCountryFacts();',
+      ),
+      false,
+    );
+    // A correctly lazy-wrapped sole construction passes:
+    assert.equal(
+      countWrapped('const client = createLazyClient(() => new IntelligenceServiceClient(getRpcBaseUrl(), {}));'),
+      true,
+    );
+  });
+
   it('detects dynamic imports without accepting comments or string literals', () => {
     assert.deepEqual(dynamicImportSpecifiers('const fixture = "import(\'@/services/rss\')";'), []);
     assert.deepEqual(dynamicImportSpecifiers('// import(\'@/services/rss\')\n'), []);
@@ -209,6 +240,20 @@ describe('main.js eager diet — service clients are lazy-initialized', () => {
         stripComments(source),
         EAGER_CONSTRUCTION,
         `${rel} must not assign "new IntelligenceServiceClient(...)" directly — that runs the constructor at boot`,
+      );
+    });
+
+    it(`${rel} wraps every IntelligenceServiceClient construction in createLazyClient`, () => {
+      const clean = stripComments(source);
+      const totalConstructions = (clean.match(ANY_CONSTRUCTION) ?? []).length;
+      const lazyConstructions = (clean.match(LAZY_CONSTRUCTION) ?? []).length;
+      assert.equal(
+        lazyConstructions,
+        totalConstructions,
+        `every "new IntelligenceServiceClient(...)" in ${rel} must be wrapped in createLazyClient(() => ...) ` +
+          `so the constructor never runs at boot — found ${totalConstructions} construction(s), ` +
+          `${lazyConstructions} lazy-wrapped (non-assignment forms like "export default new ...", ` +
+          `a standalone "new ...().warmup()", or an IIFE re-eagerise construction)`,
       );
     });
   }

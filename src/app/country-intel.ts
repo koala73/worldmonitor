@@ -1,5 +1,6 @@
 import type { AppContext, AppModule, CountryBriefSignals } from '@/app/app-context';
 import { getSignalAggregator } from '@/app/lazy-services';
+import type { CountrySignalCluster } from '@/services/signal-aggregator';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
 import { IS_EMBEDDED_PREVIEW } from '@/utils/embedded-preview';
@@ -1128,7 +1129,15 @@ export class CountryIntelManager implements AppModule {
   async getCountrySignals(code: string, country: string): Promise<CountryBriefSignals> {
     const countryLower = country.toLowerCase();
     const hasGeoShape = hasCountryGeometry(code) || !!CountryIntelManager.COUNTRY_BOUNDS[code];
-    const clusters = (await getSignalAggregator()).getCountryClusters();
+    // The signal-aggregator chunk is lazy-loaded; if it fails to load we still
+    // render the brief from the independent intelligence caches below rather
+    // than aborting the whole open. Only the cluster-derived counts degrade.
+    let clusters: CountrySignalCluster[] = [];
+    try {
+      clusters = (await getSignalAggregator()).getCountryClusters();
+    } catch (err) {
+      console.warn('[CountryBrief] signal clusters unavailable, degrading:', err);
+    }
     const countryCluster = clusters.find(c => c.country === code);
     const globalCluster = clusters.find(c => c.country === 'XX');
     const signalTypeCounts = {
