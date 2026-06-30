@@ -67,6 +67,8 @@ export class IntelligenceFindingsBadge {
   private popupEnabled: boolean;
   private contextMenu: HTMLElement | null = null;
   private contextMenuDismissListener: (() => void) | null = null;
+  private findingsModalOverlay: HTMLElement | null = null;
+  private findingsModalEscListener: ((e: KeyboardEvent) => void) | null = null;
   private updateEpoch = 0;
   private destroyed = false;
 
@@ -545,10 +547,10 @@ export class IntelligenceFindingsBadge {
       </div>
     `, "legacy direct innerHTML migration"));
 
-    const closeOverlay = () => {
-      overlay.remove();
-      document.removeEventListener('keydown', onEsc);
-    };
+    // Replace any modal already open so we never leak more than one overlay
+    // or its document-level Esc listener.
+    this.dismissFindingsModal();
+    const closeOverlay = () => this.dismissFindingsModal();
     const onEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') closeOverlay();
     };
@@ -559,6 +561,8 @@ export class IntelligenceFindingsBadge {
       }
     });
     document.addEventListener('keydown', onEsc);
+    this.findingsModalOverlay = overlay;
+    this.findingsModalEscListener = onEsc;
 
     // Handle clicking individual items
     overlay.querySelectorAll('.findings-modal-item').forEach(item => {
@@ -581,6 +585,17 @@ export class IntelligenceFindingsBadge {
     document.body.appendChild(overlay);
   }
 
+  private dismissFindingsModal(): void {
+    if (this.findingsModalEscListener) {
+      document.removeEventListener('keydown', this.findingsModalEscListener);
+      this.findingsModalEscListener = null;
+    }
+    if (this.findingsModalOverlay) {
+      this.findingsModalOverlay.remove();
+      this.findingsModalOverlay = null;
+    }
+  }
+
   public destroy(): void {
     this.destroyed = true;
     this.updateEpoch++;
@@ -591,6 +606,7 @@ export class IntelligenceFindingsBadge {
       cancelAnimationFrame(this.pendingUpdateFrame);
     }
     this.dismissContextMenu();
+    this.dismissFindingsModal();
     document.removeEventListener('wm:intelligence-updated', this.boundUpdate);
     document.removeEventListener('click', this.boundCloseDropdown);
     this.badge.remove();
