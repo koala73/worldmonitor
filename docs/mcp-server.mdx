@@ -326,7 +326,7 @@ Tools with no declared API paths still return data via `tools/call`, but they sh
 
 Common REST-only exclusions in `tests/mcp-api-parity.test.mjs`:
 
-- **Mutating endpoints** — writes, queues, webhooks, cache refreshes, or persistent side effects. Example: `GET /api/aviation/v1/list-airport-delays` is intentionally REST-only even though `get_aviation_status` exposes a cache-backed airport-delay snapshot.
+- **Mutating endpoints** — writes, queues, webhooks, cache refreshes, or persistent side effects. Example: `GET /api/aviation/v1/list-airport-delays` is intentionally REST-only because the GET handler refreshes/persists airport-delay cache state; `get_aviation_status` exposes the already-seeded cache-backed snapshot instead.
 - **Fetch-on-miss endpoints** — may call paid or rate-limited upstreams when cache is cold. Examples: `GET /api/conflict/v1/list-acled-events`, `GET /api/infrastructure/v1/list-service-statuses`, and `GET /api/supply-chain/v1/get-critical-minerals`.
 - **High-cardinality lookups** — arbitrary identifiers are not enumerable or cache-bundle friendly. Example: `GET /api/aviation/v1/get-flight-status`.
 - **LLM-cost endpoints** — direct LLM passthroughs or fetch-on-miss paths with per-call model cost stay out of open MCP exposure unless wrapped by a purpose-built tool.
