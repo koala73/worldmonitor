@@ -20,6 +20,7 @@
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 
+import { getKeyPrefix } from './redis';
 import { secondsUntilUtcMidnight } from './pro-mcp-token';
 
 /** Hardcoded per-minute burst for enterprise env keys — they carry no Convex
@@ -66,7 +67,10 @@ export function getBurstLimiter(perMinute: number): Ratelimit | null {
   const limiter = new Ratelimit({
     redis,
     limiter: Ratelimit.slidingWindow(perMinute, '60 s'),
-    prefix: 'rl:apikey:min',
+    // Env-scope the prefix exactly like the daily meter (runRedisPipeline's
+    // prefixKey) so a preview deployment sharing one Upstash database doesn't
+    // consume/pollute the production burst namespace. Empty in production.
+    prefix: `${getKeyPrefix()}rl:apikey:min`,
     analytics: false,
   });
   burstLimiters.set(perMinute, limiter);

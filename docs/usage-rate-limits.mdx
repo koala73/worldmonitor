@@ -33,7 +33,7 @@ Authenticated REST API keys (`wm_…`) are limited **per account**, not per IP �
 
 - **Per-minute** is a hard burst limit — exceeding it returns 429 immediately.
 - **Daily included** is your plan's allowance; it resets at **00:00 UTC**. Requests beyond it are **metered, not rejected** — usage-based overage billing is rolling out. Until then a safety ceiling (10× the included allowance) caps runaway usage with a 429.
-- The daily allowance and ceiling are **per account** (shared across all of an account's keys), so issuing more keys does not raise your limit.
+- The per-minute burst, daily allowance, and ceiling are all **per account** (shared across all of an account's `wm_…` keys), so issuing more keys does not raise your limit. (Operator-issued Enterprise keys are the exception — each is rate-limited independently.)
 - Need a higher limit? **Contact support** to raise your plan's allowance.
 
 ## OAuth endpoints

@@ -1077,6 +1077,12 @@ export function createDomainGateway(
         if (isEnterpriseAuth) {
           perMinute = ENTERPRISE_API_RATE_LIMIT; // hardcoded — no entitlement row
           allowance = -1; // unlimited daily / no ceiling
+          // Enterprise burst is keyed PER KEY (not per account) by design:
+          // these are operator-issued WORLDMONITOR_VALID_KEYS with no shared
+          // userId, and unlimited daily — so there's no quota to multiply by
+          // minting keys, and each operator key gets its own 1,000/min budget
+          // rather than contending for one shared bucket. (User keys below key
+          // on userId so a customer can't multiply their allowance.)
           identity = wmKey ? hashKeySync(wmKey) : '';
         } else if (sessionUserId) {
           const ent = await getEntitlements(sessionUserId);
