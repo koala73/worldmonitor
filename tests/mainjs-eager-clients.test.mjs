@@ -31,11 +31,16 @@ const DATA_LOADER_DEFERRED_SERVICE_IMPORTS = [
 ];
 
 const SIGNAL_AGGREGATOR_DEFERRED_SERVICE_IMPORT = '@/services/signal-aggregator';
+const MILITARY_VESSELS_DEFERRED_SERVICE_IMPORT = '@/services/military-vessels';
+const CROSS_MODULE_DEFERRED_SERVICE_IMPORT = '@/services/cross-module-integration';
+const INTELLIGENCE_GAP_BADGE_DEFERRED_IMPORT = '@/components/IntelligenceGapBadge';
 
 const SERVICE_BARREL_DEFERRED_EXPORTS = [
   './rss',
   './trending-keywords',
   './daily-market-brief',
+  './military-vessels',
+  './cross-module-integration',
 ];
 
 const DATA_LOADER_DEFERRED_BARREL_EXPORTS = [
@@ -47,6 +52,9 @@ const DATA_LOADER_DEFERRED_BARREL_EXPORTS = [
   'cacheDailyMarketBrief',
   'getCachedDailyMarketBrief',
   'shouldRefreshDailyBrief',
+  'fetchMilitaryVessels',
+  'initMilitaryVesselStream',
+  'isMilitaryVesselTrackingConfigured',
 ];
 
 
@@ -287,7 +295,7 @@ describe('main.js eager diet — data-loader service tail is lazy-loaded', () =>
     for (const specifier of SERVICE_BARREL_DEFERRED_EXPORTS) {
       assert.doesNotMatch(
         barrel,
-        new RegExp("export\\s+\\*\\s+from\\s+['\"]" + escapeRegExp(specifier) + "['\"]"),
+        new RegExp("\\bexport\\s+(?!type\\b)(?:\\*|\\{[\\s\\S]*?\\})\\s+from\\s+['\"]" + escapeRegExp(specifier) + "['\"]"),
         '@/services must not value-re-export ' + specifier + '; eager barrel consumers would pull it into main',
       );
     }
@@ -341,6 +349,44 @@ describe('main.js eager diet — shared signal aggregation loader is lazy-loaded
     assert.ok(
       stripComments(source).includes('signalAggregatorPromise = null;'),
       'lazy-services signalAggregatorPromise should be reset in its import().catch() path',
+    );
+  });
+});
+
+describe('main.js eager diet — structurally pinned service tail is lazy-loaded', () => {
+  it('keeps military-vessels behind a shared dynamic import loader', () => {
+    const source = readFileSync(resolve(repoRoot, 'src/services/military-vessels-lazy.ts'), 'utf8');
+    assert.ok(
+      dynamicImportSpecifiers(source).includes(MILITARY_VESSELS_DEFERRED_SERVICE_IMPORT),
+      'military-vessels-lazy should lazy-load military-vessels with import()',
+    );
+
+    const dataLoaderSource = stripComments(readFileSync(resolve(repoRoot, 'src/app/data-loader.ts'), 'utf8'));
+    assert.ok(
+      !valueImportSpecifiers(dataLoaderSource).includes(MILITARY_VESSELS_DEFERRED_SERVICE_IMPORT),
+      'data-loader must not value-import military-vessels directly',
+    );
+  });
+
+  it('keeps the desktop findings badge and cross-module alerts behind dynamic imports', () => {
+    const appSource = readFileSync(resolve(repoRoot, 'src/App.ts'), 'utf8');
+    assert.ok(
+      !valueImportSpecifiers(stripComments(appSource)).includes(INTELLIGENCE_GAP_BADGE_DEFERRED_IMPORT),
+      'App must not statically import the findings badge into the main entry',
+    );
+    assert.ok(
+      dynamicImportSpecifiers(appSource).includes(INTELLIGENCE_GAP_BADGE_DEFERRED_IMPORT),
+      'App should lazy-load the findings badge on desktop',
+    );
+
+    const badgeSource = readFileSync(resolve(repoRoot, 'src/components/IntelligenceGapBadge.ts'), 'utf8');
+    assert.ok(
+      !valueImportSpecifiers(stripComments(badgeSource)).includes(CROSS_MODULE_DEFERRED_SERVICE_IMPORT),
+      'IntelligenceGapBadge must not value-import cross-module-integration',
+    );
+    assert.ok(
+      dynamicImportSpecifiers(badgeSource).includes(CROSS_MODULE_DEFERRED_SERVICE_IMPORT),
+      'IntelligenceGapBadge should lazy-load cross-module alerts with import()',
     );
   });
 });

@@ -1,5 +1,5 @@
 import { getRecentSignals, type CorrelationSignal } from '@/services/correlation';
-import { getRecentAlerts, type UnifiedAlert } from '@/services/cross-module-integration';
+import type { UnifiedAlert } from '@/services/cross-module-integration';
 import { getAlertSettings, updateAlertSettings } from '@/services/breaking-news-alerts';
 import { t } from '@/services/i18n';
 import { getSignalContext } from '@/utils/analysis-constants';
@@ -17,6 +17,19 @@ const STORAGE_KEY = 'worldmonitor-intel-findings';
 const POPUP_STORAGE_KEY = 'wm-alert-popup-enabled';
 
 type FindingSource = 'signal' | 'alert';
+type GetRecentAlerts = typeof import('@/services/cross-module-integration').getRecentAlerts;
+
+let getRecentAlertsPromise: Promise<GetRecentAlerts> | null = null;
+
+function loadGetRecentAlerts(): Promise<GetRecentAlerts> {
+  getRecentAlertsPromise ??= import('@/services/cross-module-integration')
+    .then(module => module.getRecentAlerts)
+    .catch((err) => {
+      getRecentAlertsPromise = null;
+      throw err;
+    });
+  return getRecentAlertsPromise;
+}
 
 interface UnifiedFinding {
   id: string;
@@ -45,7 +58,7 @@ export class IntelligenceFindingsBadge {
     if (this.pendingUpdateFrame) return;
     this.pendingUpdateFrame = requestAnimationFrame(() => {
       this.pendingUpdateFrame = 0;
-      this.update();
+      void this.update();
     });
   };
   private audio: HTMLAudioElement | null = null;
@@ -53,6 +66,9 @@ export class IntelligenceFindingsBadge {
   private enabled: boolean;
   private popupEnabled: boolean;
   private contextMenu: HTMLElement | null = null;
+  private contextMenuDismissListener: (() => void) | null = null;
+  private updateEpoch = 0;
+  private destroyed = false;
 
   constructor() {
     this.enabled = IntelligenceFindingsBadge.getStoredEnabledState();
@@ -130,7 +146,7 @@ export class IntelligenceFindingsBadge {
       document.addEventListener('click', this.boundCloseDropdown);
       this.mount();
       this.initAudio();
-      this.update();
+      void this.update();
       this.startRefresh();
     }
   }
@@ -176,9 +192,10 @@ export class IntelligenceFindingsBadge {
       document.addEventListener('click', this.boundCloseDropdown);
       this.mount();
       this.initAudio();
-      this.update();
+      void this.update();
       this.startRefresh();
     } else {
+      this.updateEpoch++;
       localStorage.setItem(STORAGE_KEY, 'hidden');
       document.removeEventListener('click', this.boundCloseDropdown);
       document.removeEventListener('wm:intelligence-updated', this.boundUpdate);
@@ -208,6 +225,7 @@ export class IntelligenceFindingsBadge {
     });
 
     const dismiss = () => this.dismissContextMenu();
+    this.contextMenuDismissListener = dismiss;
     document.addEventListener('click', dismiss, { once: true });
 
     this.contextMenu = menu;
@@ -215,6 +233,10 @@ export class IntelligenceFindingsBadge {
   }
 
   private dismissContextMenu(): void {
+    if (this.contextMenuDismissListener) {
+      document.removeEventListener('click', this.contextMenuDismissListener);
+      this.contextMenuDismissListener = null;
+    }
     if (this.contextMenu) {
       this.contextMenu.remove();
       this.contextMenu = null;
@@ -236,8 +258,12 @@ export class IntelligenceFindingsBadge {
     }, REFRESH_INTERVAL_MS);
   }
 
-  public update(): void {
-    this.findings = this.mergeFindings();
+  public async update(): Promise<void> {
+    const epoch = ++this.updateEpoch;
+    const findings = await this.mergeFindings();
+    if (this.destroyed || !this.enabled || epoch !== this.updateEpoch) return;
+
+    this.findings = findings;
     const count = this.findings.length;
 
     const countEl = this.badge.querySelector('.findings-count');
@@ -275,9 +301,15 @@ export class IntelligenceFindingsBadge {
     this.renderDropdown();
   }
 
-  private mergeFindings(): UnifiedFinding[] {
+  private async mergeFindings(): Promise<UnifiedFinding[]> {
     const signals = getRecentSignals();
-    const alerts = getRecentAlerts(ALERT_HOURS);
+    let alerts: UnifiedAlert[] = [];
+    try {
+      const getRecentAlerts = await loadGetRecentAlerts();
+      alerts = getRecentAlerts(ALERT_HOURS);
+    } catch (error) {
+      console.warn('[IntelligenceGapBadge] Alert findings unavailable:', error);
+    }
 
     const signalFindings: UnifiedFinding[] = signals.map(s => ({
       id: `signal-${s.id}`,
@@ -466,7 +498,7 @@ export class IntelligenceFindingsBadge {
     this.dropdown.classList.toggle('open', this.isOpen);
     this.badge.classList.toggle('active', this.isOpen);
     if (this.isOpen) {
-      this.update();
+      void this.update();
     }
   }
 
@@ -550,12 +582,15 @@ export class IntelligenceFindingsBadge {
   }
 
   public destroy(): void {
+    this.destroyed = true;
+    this.updateEpoch++;
     if (this.refreshInterval) {
       clearInterval(this.refreshInterval);
     }
     if (this.pendingUpdateFrame) {
       cancelAnimationFrame(this.pendingUpdateFrame);
     }
+    this.dismissContextMenu();
     document.removeEventListener('wm:intelligence-updated', this.boundUpdate);
     document.removeEventListener('click', this.boundCloseDropdown);
     this.badge.remove();

@@ -1208,6 +1208,12 @@ export default defineConfig(({ mode }) => {
             if (id.endsWith('/src/services/signal-aggregator.ts')) {
               return 'signal-aggregator';
             }
+            if (id.endsWith('/src/services/military-vessels.ts')) {
+              return 'military-vessels';
+            }
+            if (id.endsWith('/src/services/cross-module-integration.ts')) {
+              return 'cross-module-integration';
+            }
             // Generated protobuf/RPC client modules are loaded through
             // src/services/generated-rpc-clients.ts so real constructors parse only
             // on first RPC use. Stable names let the eager-chunk guard prove they
