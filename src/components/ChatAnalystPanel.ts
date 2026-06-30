@@ -333,7 +333,9 @@ export class ChatAnalystPanel extends Panel {
       body,
     );
     this.messagesEl.appendChild(bubble);
-    this.scrollToBottom();
+    // The assistant branch scrolls inside renderMarkdownDeferred (after its DOM
+    // lands); the user branch renders synchronously above, so scroll now.
+    if (role !== 'assistant') this.scrollToBottom();
   }
 
   private appendStreamingBubble(): { bubble: HTMLElement; body: HTMLElement } {
@@ -608,13 +610,17 @@ export class ChatAnalystPanel extends Panel {
     void yieldToMain().then(() => {
       if (!el.isConnected) return;
       setTrustedHtml(el, renderMarkdown(content));
+      // Scroll AFTER the markdown DOM lands — rendered markdown (headers, code
+      // fences, lists) is taller than the raw streaming text, so scrolling before
+      // this undershoots the true bottom on every completion (#4537 follow-up).
+      this.scrollToBottom();
     });
   }
 
   private finalizeStreamingBubble(bodyEl: HTMLElement, text: string, success: boolean): void {
-    this.renderMarkdownDeferred(bodyEl, text);
     if (!success) bodyEl.classList.add('chat-msg-error');
-    this.scrollToBottom();
+    // renderMarkdownDeferred scrolls to bottom after the markdown DOM is written.
+    this.renderMarkdownDeferred(bodyEl, text);
   }
 
   clear(): void {
