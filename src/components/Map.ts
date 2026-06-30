@@ -16,6 +16,7 @@ import type { RadiationObservation } from '@/services/radiation';
 import { getSeverityColor } from '@/services/weather';
 import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/smart-poll-loop';
 import { scheduleAfterFirstPaint, yieldToMain } from '@/utils/after-paint';
+import { measure, mutate } from '@/utils/layout-batch';
 import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
 import {
   INTEL_HOTSPOTS,
@@ -206,6 +207,10 @@ export class MapComponent {
   private destroyed = false;
   // Mobile loads the lighter 110m country topology (U6); passed in from MapContainer.
   private readonly isMobile: boolean;
+  private overlayAppendTarget: ParentNode | null = null;
+  private labelVisibilityScheduled = false;
+  private pendingLabelVisibilityZoom = 1;
+  private lastContainerSize = { width: 0, height: 0 };
 
   constructor(container: HTMLElement, initialState: MapState, options: MapComponentOptions = {}) {
     this.container = container;
@@ -300,7 +305,7 @@ export class MapComponent {
         if (width > 0 && height > 0 && (width !== lastWidth || height !== lastHeight)) {
           lastWidth = width;
           lastHeight = height;
-          requestAnimationFrame(() => this.render());
+          this.scheduleRender();
         }
       }
     });
@@ -309,7 +314,7 @@ export class MapComponent {
     // Re-render when page becomes visible again (after browser throttling)
     this.boundVisibilityHandler = () => {
       if (!document.hidden) {
-        requestAnimationFrame(() => this.render());
+        this.scheduleRender();
       }
     };
     document.addEventListener('visibilitychange', this.boundVisibilityHandler);
@@ -319,12 +324,12 @@ export class MapComponent {
     const wasResizing = this.isResizing;
     this.isResizing = value;
     if (wasResizing && !value) {
-      requestAnimationFrame(() => this.render());
+      this.scheduleRender();
     }
   }
 
   public resize(): void {
-    requestAnimationFrame(() => this.render());
+    this.scheduleRender();
   }
 
   public destroy(): void {
@@ -1068,8 +1073,8 @@ export class MapComponent {
       }
       this.baseRendered = false;
       this.render();
-      // Re-render after layout stabilizes to catch full container width
-      requestAnimationFrame(() => requestAnimationFrame(() => this.render()));
+      // Re-render after layout stabilizes to catch full container width.
+      this.scheduleRender();
     } catch (e) {
       console.error('Failed to load map data:', e);
     }
@@ -1098,10 +1103,54 @@ export class MapComponent {
   public scheduleRender(): void {
     if (this.renderScheduled) return;
     this.renderScheduled = true;
-    requestAnimationFrame(() => {
-      this.renderScheduled = false;
-      this.render();
+    measure(() => {
+      const { width, height } = this.readContainerSize();
+      const measuredAt = performance.now();
+      mutate(() => {
+        if (this.destroyed) {
+          this.renderScheduled = false;
+          return;
+        }
+        if (measuredAt - this.lastRenderTime < this.MIN_RENDER_INTERVAL_MS) {
+          this.renderScheduled = false;
+          this.scheduleRender();
+          return;
+        }
+        this.lastRenderTime = measuredAt;
+        this.renderScheduled = false;
+        this.renderWithSize(width, height);
+      });
     });
+  }
+
+  private rememberContainerSize(size: { width: number; height: number }): { width: number; height: number } {
+    this.lastContainerSize = size;
+    return size;
+  }
+
+  private readContainerSize(): { width: number; height: number } {
+    return this.rememberContainerSize({
+      width: this.container.clientWidth,
+      height: this.container.clientHeight,
+    });
+  }
+
+  private getKnownContainerSize(): { width: number; height: number } {
+    return this.lastContainerSize.width > 0 && this.lastContainerSize.height > 0
+      ? this.lastContainerSize
+      : this.readContainerSize();
+  }
+
+  private measureContainerSize(): Promise<{ width: number; height: number }> {
+    return new Promise((resolve) => {
+      measure(() => {
+        resolve(this.destroyed ? { width: 0, height: 0 } : this.readContainerSize());
+      });
+    });
+  }
+
+  private appendOverlay(node: Node): void {
+    (this.overlayAppendTarget ?? this.overlays).appendChild(node);
   }
 
   public render(): void {
@@ -1113,8 +1162,14 @@ export class MapComponent {
     }
     this.lastRenderTime = now;
 
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.readContainerSize();
+    this.renderWithSize(width, height);
+  }
+
+  private renderWithSize(width: number, height: number): void {
+    if (this.destroyed) return;
+    if (this.renderScheduled) this.renderScheduled = false;
+    this.rememberContainerSize({ width, height });
 
     // Skip render if container has no dimensions (tab throttled, hidden, etc.)
     if (width === 0 || height === 0) {
@@ -1223,7 +1278,7 @@ export class MapComponent {
         console.error('[Map] POST-RENDER: Countries failed to render despite baseRendered=true. Forcing full rebuild.');
         this.baseRendered = false;
         // Schedule a retry on next frame instead of immediate recursion
-        requestAnimationFrame(() => this.render());
+        this.scheduleRender();
         return;
       }
     }
@@ -1270,8 +1325,8 @@ export class MapComponent {
   private async renderInitialDynamicPass(): Promise<void> {
     if (this.destroyed || !this.svg) return;
     this.initialDynamicRendered = true;
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = await this.measureContainerSize();
+    if (this.destroyed) return;
     if (width === 0 || height === 0) return; // next real render handles it
     await this.renderDynamicLayers(width, height, true);
     if (!this.destroyed) this.applyTransform();
@@ -1563,7 +1618,11 @@ export class MapComponent {
 
   private renderOverlays(projection: d3.GeoProjection): void {
     setTrustedHtml(this.overlays, trustedHtml('', "legacy direct innerHTML migration"));
+    const fragment = document.createDocumentFragment();
+    const previousTarget = this.overlayAppendTarget;
+    this.overlayAppendTarget = fragment;
 
+    try {
     // Strategic waterways
     if (this.state.layers.waterways) {
       this.renderWaterways(projection);
@@ -1603,7 +1662,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -1630,7 +1689,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -1660,7 +1719,7 @@ export class MapComponent {
           this.popup.loadConflictHistory(zone);
         });
 
-        this.overlays.appendChild(clickArea);
+        this.appendOverlay(clickArea);
       });
       this.renderConflictEventMarkers(projection);
     }
@@ -1694,7 +1753,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -1728,7 +1787,7 @@ export class MapComponent {
           this.onHotspotClick?.(spot);
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -1760,7 +1819,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -1805,7 +1864,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
       console.log('[Map] Actually rendered', rendered, 'earthquake markers');
     }
@@ -1838,7 +1897,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -1871,7 +1930,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -1904,7 +1963,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -1940,7 +1999,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -1976,7 +2035,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
 
       this.repairShips.forEach((ship) => {
@@ -2009,7 +2068,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -2042,7 +2101,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -2078,7 +2137,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -2115,7 +2174,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -2155,7 +2214,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -2195,7 +2254,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -2265,7 +2324,7 @@ export class MapComponent {
           }
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -2303,7 +2362,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -2363,7 +2422,7 @@ export class MapComponent {
           }
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -2400,7 +2459,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -2437,7 +2496,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -2474,7 +2533,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -2511,7 +2570,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -2543,7 +2602,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
 
         // Add label for high/elevated activity hubs at sufficient zoom
         if ((activity.activityLevel === 'high' || (activity.activityLevel === 'elevated' && this.state.zoom >= 2)) && this.state.zoom >= 1.5) {
@@ -2552,7 +2611,7 @@ export class MapComponent {
           label.textContent = activity.city;
           label.style.left = `${pos[0]}px`;
           label.style.top = `${pos[1] + 14}px`;
-          this.overlays.appendChild(label);
+          this.appendOverlay(label);
         }
       });
     }
@@ -2585,7 +2644,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -2651,7 +2710,7 @@ export class MapComponent {
           }
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -2694,7 +2753,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -2728,7 +2787,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -2778,7 +2837,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
 
         // Render flight track if available
         if (flight.track && flight.track.length > 1 && this.state.zoom >= 2) {
@@ -2833,7 +2892,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
 
       // Military Vessels (warships, carriers, submarines)
@@ -2881,7 +2940,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
 
         // Render vessel track if available
         if (vessel.track && vessel.track.length > 1 && this.state.zoom >= 2) {
@@ -2935,7 +2994,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -2980,7 +3039,7 @@ export class MapComponent {
           });
         });
 
-        this.overlays.appendChild(div);
+        this.appendOverlay(div);
       });
     }
 
@@ -3002,7 +3061,7 @@ export class MapComponent {
         dot.style.backgroundColor = color;
         dot.title = `${fire.region} — ${Math.round(fire.brightness)}K, ${fire.frp}MW`;
 
-        this.overlays.appendChild(dot);
+        this.appendOverlay(dot);
       });
     }
 
@@ -3039,8 +3098,13 @@ export class MapComponent {
             this.showWebcamTooltip(cam as WebcamEntry, e.clientX, e.clientY);
           }
         });
-        this.overlays.appendChild(dot);
+        this.appendOverlay(dot);
       });
+    }
+
+    } finally {
+      this.overlayAppendTarget = previousTarget;
+      this.overlays.appendChild(fragment);
     }
   }
 
@@ -3081,7 +3145,7 @@ export class MapComponent {
         div.appendChild(badge);
       }
 
-      this.overlays.appendChild(div);
+      this.appendOverlay(div);
     });
   }
 
@@ -3285,7 +3349,7 @@ export class MapComponent {
         });
       });
 
-      this.overlays.appendChild(div);
+      this.appendOverlay(div);
     });
   }
 
@@ -3320,7 +3384,7 @@ export class MapComponent {
         });
       });
 
-      this.overlays.appendChild(div);
+      this.appendOverlay(div);
     });
   }
 
@@ -3381,7 +3445,7 @@ export class MapComponent {
         });
       });
 
-      this.overlays.appendChild(div);
+      this.appendOverlay(div);
     });
   }
 
@@ -3417,7 +3481,7 @@ export class MapComponent {
         });
       });
 
-      this.overlays.appendChild(div);
+      this.appendOverlay(div);
     });
   }
 
@@ -3527,7 +3591,7 @@ export class MapComponent {
     flash.style.left = `${pos[0]}px`;
     flash.style.top = `${pos[1]}px`;
     flash.style.setProperty('--flash-duration', `${durationMs}ms`);
-    this.overlays.appendChild(flash);
+    this.appendOverlay(flash);
 
     window.setTimeout(() => {
       flash.remove();
@@ -3604,7 +3668,7 @@ export class MapComponent {
 
     this.onLayerChange?.(layer, this.state.layers[layer], source);
     // Defer render to next frame to avoid blocking the click handler
-    requestAnimationFrame(() => this.render());
+    this.scheduleRender();
   }
 
   public setOnLayerChange(callback: (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void): void {
@@ -3862,10 +3926,8 @@ export class MapComponent {
     this.render();
   }
 
-  private clampPan(): void {
+  private clampPan(width: number, height: number): void {
     const zoom = this.state.zoom;
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
 
     // Allow generous panning - maps should be explorable
     // Scale limits with zoom to allow reaching edges at higher zoom
@@ -3877,10 +3939,9 @@ export class MapComponent {
   }
 
   private applyTransform(): void {
-    this.clampPan();
+    const { width, height } = this.getKnownContainerSize();
+    this.clampPan(width, height);
     const zoom = this.state.zoom;
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
 
     // With transform-origin: 0 0, we need to offset to keep center in view
     // Formula: translate first to re-center, then scale
@@ -3943,15 +4004,30 @@ export class MapComponent {
   }
 
   private updateLabelVisibility(zoom: number): void {
-    const labels = this.overlays.querySelectorAll('.hotspot-label, .earthquake-label, .weather-label, .apt-label');
-    const labelRects: { el: Element; rect: DOMRect; priority: number }[] = [];
+    this.pendingLabelVisibilityZoom = zoom;
+    if (this.labelVisibilityScheduled) return;
+    this.labelVisibilityScheduled = true;
 
-    // Collect all label bounds with priority
+    measure(() => {
+      const measuredZoom = this.pendingLabelVisibilityZoom;
+      const labelRects = this.measureLabelVisibility();
+      mutate(() => {
+        this.labelVisibilityScheduled = false;
+        if (this.destroyed) return;
+        this.applyLabelVisibility(labelRects, measuredZoom);
+        if (this.pendingLabelVisibilityZoom !== measuredZoom) this.updateLabelVisibility(this.pendingLabelVisibilityZoom);
+      });
+    });
+  }
+
+  private measureLabelVisibility(): { el: HTMLElement; rect: DOMRect; priority: number }[] {
+    const labels = this.overlays.querySelectorAll('.hotspot-label, .earthquake-label, .weather-label, .apt-label');
+    const labelRects: { el: HTMLElement; rect: DOMRect; priority: number }[] = [];
+
     labels.forEach((label) => {
       const el = label as HTMLElement;
       const parent = el.closest('.hotspot, .earthquake-marker, .weather-marker, .apt-marker');
 
-      // Assign priority based on parent type and level
       let priority = 1;
       if (parent?.classList.contains('hotspot')) {
         const marker = parent.querySelector('.hotspot-marker');
@@ -3959,27 +4035,24 @@ export class MapComponent {
         else if (marker?.classList.contains('elevated')) priority = 3;
         else priority = 2;
       } else if (parent?.classList.contains('earthquake-marker')) {
-        priority = 4; // Earthquakes are important
+        priority = 4;
       } else if (parent?.classList.contains('weather-marker')) {
         if (parent.classList.contains('extreme')) priority = 5;
         else if (parent.classList.contains('severe')) priority = 4;
         else priority = 2;
       }
 
-      // Reset visibility first
-      el.style.opacity = '1';
-
-      // Get bounding rect (accounting for transforms)
-      const rect = el.getBoundingClientRect();
-      labelRects.push({ el, rect, priority });
+      labelRects.push({ el, rect: el.getBoundingClientRect(), priority });
     });
 
-    // Sort by priority (highest first)
+    return labelRects;
+  }
+
+  private applyLabelVisibility(labelRects: { el: HTMLElement; rect: DOMRect; priority: number }[], zoom: number): void {
     labelRects.sort((a, b) => b.priority - a.priority);
 
-    // Hide overlapping labels (keep higher priority visible)
     const visibleRects: DOMRect[] = [];
-    const minDistance = 30 / zoom; // Minimum pixel distance between labels
+    const minDistance = 30 / zoom;
 
     labelRects.forEach(({ el, rect, priority }) => {
       const overlaps = visibleRects.some((vr) => {
@@ -3990,9 +4063,9 @@ export class MapComponent {
       });
 
       if (overlaps && zoom < 2) {
-        // Hide overlapping labels when zoomed out, but keep high priority visible
-        (el as HTMLElement).style.opacity = priority >= 4 ? '0.7' : '0';
+        el.style.opacity = priority >= 4 ? '0.7' : '0';
       } else {
+        el.style.opacity = '1';
         visibleRects.push(rect);
       }
     });

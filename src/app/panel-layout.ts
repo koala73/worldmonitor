@@ -71,6 +71,7 @@ import type { Panel } from '@/components/Panel';
 import type { SupplyChainPanel } from '@/components/SupplyChainPanel';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { loadPanelCollapsed, loadPanelColSpans, loadPanelSpans } from '@/utils/panel-storage';
+import { measure, mutate } from '@/utils/layout-batch';
 
 
 /**
@@ -1446,17 +1447,28 @@ export class PanelLayoutManager implements AppModule {
     });
   }
 
+  private scheduleHydrationForPanelElement(element: HTMLElement, fallbackPhase: HydrationSchedulePhase = 'near'): void {
+    if (typeof window === 'undefined') {
+      this.scheduleLoadAllData(fallbackPhase);
+      return;
+    }
+
+    measure(() => {
+      const rect = element.getBoundingClientRect();
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+      const phase: HydrationSchedulePhase = rect.top < viewportHeight && rect.bottom > 0 ? 'visible' : 'near';
+      mutate(() => {
+        if (this.ctx.isDestroyed) return;
+        this.scheduleLoadAllData(phase);
+      });
+    });
+  }
+
   private observePanelForHydration(panel: Panel): void {
     if (this.observedHydrationPanels.has(panel)) return;
     this.observedHydrationPanels.add(panel);
     panel.observeNearViewport(() => {
-      if (typeof window === 'undefined') {
-        this.scheduleLoadAllData('near');
-        return;
-      }
-      const rect = panel.getElement?.().getBoundingClientRect();
-      const phase: HydrationSchedulePhase = rect && rect.top < window.innerHeight && rect.bottom > 0 ? 'visible' : 'near';
-      this.scheduleLoadAllData(phase);
+      this.scheduleHydrationForPanelElement(panel.getElement(), 'near');
     }, 200);
   }
 
@@ -1465,9 +1477,7 @@ export class PanelLayoutManager implements AppModule {
     if (config) panel.toggle(config.enabled);
     this.observePanelForHydration(panel);
     if (config?.enabled) {
-      const rect = typeof window !== 'undefined' ? panel.getElement().getBoundingClientRect() : null;
-      const phase: HydrationSchedulePhase = rect && rect.top < window.innerHeight && rect.bottom > 0 ? 'visible' : 'near';
-      this.scheduleLoadAllData(phase);
+      this.scheduleHydrationForPanelElement(panel.getElement(), 'near');
     }
   }
 

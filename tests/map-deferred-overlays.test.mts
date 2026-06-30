@@ -65,4 +65,102 @@ describe('mobile SVG map: defer + chunk dynamic overlays off first paint (#4429/
     assert.match(mapSrc, /public render\(\): void \{\s*\n\s*if \(this\.destroyed\) return;/);
     assert.match(mapSrc, /private async renderInitialDynamicPass\(\): Promise<void> \{\s*\n\s*if \(this\.destroyed \|\| !this\.svg\) return;/);
   });
+
+  it('uses layout batching for scheduled map renders and the post-load layout retry', () => {
+    assert.match(mapSrc, /import { measure, mutate } from '@\/utils\/layout-batch';/);
+    assert.equal(
+      mapSrc.includes('requestAnimationFrame(() => requestAnimationFrame(() => this.render()))'),
+      false,
+      'post-load layout retry must not use an ad hoc double-rAF render',
+    );
+
+    const scheduleStart = mapSrc.indexOf('public scheduleRender(): void');
+    const scheduleEnd = mapSrc.indexOf('  private readContainerSize', scheduleStart);
+    assert.ok(scheduleStart > 0 && scheduleEnd > scheduleStart, 'scheduleRender block should be present');
+    const scheduleBlock = mapSrc.slice(scheduleStart, scheduleEnd);
+    assert.ok(scheduleBlock.includes('measure(() => {'), 'scheduled render must read inside measure()');
+    assert.ok(scheduleBlock.includes('const { width, height } = this.readContainerSize();'));
+    assert.ok(scheduleBlock.includes('mutate(() => {'), 'scheduled render must write/render inside mutate()');
+    assert.ok(scheduleBlock.includes('this.renderWithSize(width, height);'));
+    const loadStart = mapSrc.indexOf('private async loadMapData(): Promise<void>');
+    const loadEnd = mapSrc.indexOf('  private initClusterRenderer', loadStart);
+    assert.ok(loadStart > 0 && loadEnd > loadStart, 'loadMapData block should be present');
+    const loadBlock = mapSrc.slice(loadStart, loadEnd);
+    assert.ok(loadBlock.includes('this.render();'));
+    assert.ok(loadBlock.includes('this.scheduleRender();'));
+    assert.ok(loadBlock.indexOf('this.render();') < loadBlock.indexOf('this.scheduleRender();'));
+  });
+
+  it('measures first-paint dynamic dimensions through the layout batch helper', () => {
+    const measureStart = mapSrc.indexOf('private measureContainerSize(): Promise');
+    const measureEnd = mapSrc.indexOf('  private appendOverlay', measureStart);
+    assert.ok(measureStart > 0 && measureEnd > measureStart, 'measureContainerSize block should be present');
+    const measureBlock = mapSrc.slice(measureStart, measureEnd);
+    assert.ok(measureBlock.includes('measure(() => {'));
+    assert.ok(measureBlock.includes('this.readContainerSize()'));
+
+    const initialPassStart = mapSrc.indexOf('private async renderInitialDynamicPass(): Promise<void>');
+    const initialPassEnd = mapSrc.indexOf('  private renderGrid', initialPassStart);
+    const initialPassBlock = mapSrc.slice(initialPassStart, initialPassEnd);
+    assert.ok(initialPassBlock.includes('const { width, height } = await this.measureContainerSize();'));
+    assert.ok(initialPassBlock.includes('if (this.destroyed) return;'));
+    assert.ok(initialPassBlock.includes('await this.renderDynamicLayers(width, height, true);'));
+  });
+
+  it('builds HTML overlays in a document fragment before appending once', () => {
+    assert.match(mapSrc, /private overlayAppendTarget: ParentNode | null = null/);
+    const appendStart = mapSrc.indexOf('private appendOverlay(node: Node): void');
+    const appendEnd = mapSrc.indexOf('  public render(): void', appendStart);
+    const appendBlock = mapSrc.slice(appendStart, appendEnd);
+    assert.ok(appendBlock.includes('(this.overlayAppendTarget ?? this.overlays).appendChild(node);'));
+
+    const overlaysStart = mapSrc.indexOf('private renderOverlays(projection: d3.GeoProjection): void');
+    const overlaysEnd = mapSrc.indexOf('  private renderConflictEventMarkers', overlaysStart);
+    assert.ok(overlaysStart > 0 && overlaysEnd > overlaysStart, 'renderOverlays block should be present');
+    const overlaysBlock = mapSrc.slice(overlaysStart, overlaysEnd);
+    assert.ok(overlaysBlock.includes('const fragment = document.createDocumentFragment();'));
+    assert.ok(overlaysBlock.includes('this.overlayAppendTarget = fragment;'));
+    assert.ok(overlaysBlock.includes('this.overlayAppendTarget = previousTarget;'));
+    assert.ok(overlaysBlock.includes('this.overlays.appendChild(fragment);'));
+    assert.ok(overlaysBlock.includes('try {'));
+    assert.ok(overlaysBlock.includes('} finally {'));
+  });
+
+
+  it("reuses remembered container size for transform math", () => {
+    assert.match(mapSrc, /private lastContainerSize = \{ width: 0, height: 0 \}/);
+    const helperStart = mapSrc.indexOf("private getKnownContainerSize():");
+    const helperEnd = mapSrc.indexOf("  private measureContainerSize", helperStart);
+    assert.ok(helperStart > 0 && helperEnd > helperStart, "container size cache helper should be present");
+    const helperBlock = mapSrc.slice(helperStart, helperEnd);
+    assert.ok(helperBlock.includes("this.lastContainerSize.width > 0"));
+    assert.ok(helperBlock.includes("this.readContainerSize()"));
+
+    const transformStart = mapSrc.indexOf("private applyTransform(): void");
+    const transformEnd = mapSrc.indexOf("  private updateLabelVisibility", transformStart);
+    assert.ok(transformStart > 0 && transformEnd > transformStart, "applyTransform block should be present");
+    const transformBlock = mapSrc.slice(transformStart, transformEnd);
+    assert.ok(transformBlock.includes("const { width, height } = this.getKnownContainerSize();"));
+    assert.ok(transformBlock.includes("this.clampPan(width, height);"));
+    assert.equal(transformBlock.includes("this.container.clientWidth"), false);
+    assert.equal(transformBlock.includes("this.container.clientHeight"), false);
+  });
+
+  it('splits label collision reads and opacity writes across layout batch phases', () => {
+    assert.match(mapSrc, /private labelVisibilityScheduled = false/);
+    const updateStart = mapSrc.indexOf('private updateLabelVisibility(zoom: number): void');
+    const measureStart = mapSrc.indexOf('private measureLabelVisibility()', updateStart);
+    const applyStart = mapSrc.indexOf('private applyLabelVisibility', measureStart);
+    assert.ok(updateStart > 0 && measureStart > updateStart && applyStart > measureStart, 'label visibility helpers should be split');
+    const updateBlock = mapSrc.slice(updateStart, measureStart);
+    const measureBlock = mapSrc.slice(measureStart, applyStart);
+    const applyBlock = mapSrc.slice(applyStart, mapSrc.indexOf('  public onHotspotClicked', applyStart));
+    assert.ok(updateBlock.includes('measure(() => {'));
+    assert.ok(updateBlock.includes('const labelRects = this.measureLabelVisibility();'));
+    assert.ok(updateBlock.includes('mutate(() => {'));
+    assert.ok(updateBlock.includes('this.applyLabelVisibility(labelRects, measuredZoom);'));
+    assert.ok(measureBlock.includes('el.getBoundingClientRect()'));
+    assert.equal(measureBlock.includes('style.opacity'), false, 'measurement phase must not write opacity');
+    assert.ok(applyBlock.includes('el.style.opacity'));
+  });
 });
