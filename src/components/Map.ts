@@ -1167,14 +1167,6 @@ export class MapComponent {
       : this.readContainerSize();
   }
 
-  private measureContainerSize(): Promise<{ width: number; height: number }> {
-    return new Promise((resolve) => {
-      measure(() => {
-        resolve(this.destroyed ? { width: 0, height: 0 } : this.readContainerSize());
-      });
-    });
-  }
-
   private appendOverlay(node: Node): void {
     (this.overlayAppendTarget ?? this.overlays).appendChild(node);
   }
@@ -1194,7 +1186,6 @@ export class MapComponent {
 
   private renderWithSize(width: number, height: number): void {
     if (this.destroyed) return;
-    if (this.renderScheduled) this.renderScheduled = false;
     this.rememberContainerSize({ width, height });
 
     // Skip render if container has no dimensions (tab throttled, hidden, etc.)
@@ -1350,10 +1341,10 @@ export class MapComponent {
   // (off the critical path + split into sub-50ms tasks). Steady-state renders run synchronously.
   private async renderInitialDynamicPass(): Promise<void> {
     if (this.destroyed || !this.svg) return;
-    this.initialDynamicRendered = true;
-    const { width, height } = await this.measureContainerSize();
+    const { width, height } = this.getKnownContainerSize();
     if (this.destroyed) return;
     if (width === 0 || height === 0) return; // next real render handles it
+    this.initialDynamicRendered = true;
     await this.renderDynamicLayers(width, height, true);
     if (!this.destroyed) this.applyTransform();
   }
@@ -1644,6 +1635,7 @@ export class MapComponent {
 
   private renderOverlays(projection: d3.GeoProjection): void {
     setTrustedHtml(this.overlays, trustedHtml('', "legacy direct innerHTML migration"));
+    this.labelVisibilityScheduled = false;
     const fragment = document.createDocumentFragment();
     const previousTarget = this.overlayAppendTarget;
     this.overlayAppendTarget = fragment;

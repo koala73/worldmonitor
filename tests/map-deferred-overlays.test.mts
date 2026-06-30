@@ -82,6 +82,17 @@ describe('mobile SVG map: defer + chunk dynamic overlays off first paint (#4429/
     assert.ok(scheduleBlock.includes('const { width, height } = this.readContainerSize();'));
     assert.ok(scheduleBlock.includes('mutate(() => {'), 'scheduled render must write/render inside mutate()');
     assert.ok(scheduleBlock.includes('this.renderWithSize(width, height);'));
+    assert.ok(scheduleBlock.includes('this.renderScheduled = false;'));
+
+    const renderWithSizeStart = mapSrc.indexOf('private renderWithSize(width: number, height: number): void');
+    const renderWithSizeEnd = mapSrc.indexOf('  private renderGrid', renderWithSizeStart);
+    assert.ok(renderWithSizeStart > 0 && renderWithSizeEnd > renderWithSizeStart, 'renderWithSize block should be present');
+    const renderWithSizeBlock = mapSrc.slice(renderWithSizeStart, renderWithSizeEnd);
+    assert.equal(
+      renderWithSizeBlock.includes('if (this.renderScheduled) this.renderScheduled = false;'),
+      false,
+      'direct renders must not clear a pending scheduled render dedup flag',
+    );
     const loadStart = mapSrc.indexOf('private async loadMapData(): Promise<void>');
     const loadEnd = mapSrc.indexOf('  private initClusterRenderer', loadStart);
     assert.ok(loadStart > 0 && loadEnd > loadStart, 'loadMapData block should be present');
@@ -91,24 +102,25 @@ describe('mobile SVG map: defer + chunk dynamic overlays off first paint (#4429/
     assert.ok(loadBlock.indexOf('this.render();') < loadBlock.indexOf('this.scheduleRender();'));
   });
 
-  it('measures first-paint dynamic dimensions through the layout batch helper', () => {
-    const measureStart = mapSrc.indexOf('private measureContainerSize(): Promise');
-    const measureEnd = mapSrc.indexOf('  private appendOverlay', measureStart);
-    assert.ok(measureStart > 0 && measureEnd > measureStart, 'measureContainerSize block should be present');
-    const measureBlock = mapSrc.slice(measureStart, measureEnd);
-    assert.ok(measureBlock.includes('measure(() => {'));
-    assert.ok(measureBlock.includes('this.readContainerSize()'));
+  it('uses cached first-paint dynamic dimensions without an extra frame', () => {
+    assert.equal(mapSrc.includes('private measureContainerSize(): Promise'), false);
 
     const initialPassStart = mapSrc.indexOf('private async renderInitialDynamicPass(): Promise<void>');
     const initialPassEnd = mapSrc.indexOf('  private renderGrid', initialPassStart);
     const initialPassBlock = mapSrc.slice(initialPassStart, initialPassEnd);
-    assert.ok(initialPassBlock.includes('const { width, height } = await this.measureContainerSize();'));
+    assert.ok(initialPassBlock.includes('const { width, height } = this.getKnownContainerSize();'));
+    assert.equal(initialPassBlock.includes('await this.measureContainerSize()'), false);
     assert.ok(initialPassBlock.includes('if (this.destroyed) return;'));
+    assert.ok(initialPassBlock.includes('if (width === 0 || height === 0) return;'));
+    assert.ok(
+      initialPassBlock.indexOf('if (width === 0 || height === 0) return;') < initialPassBlock.indexOf('this.initialDynamicRendered = true;'),
+      'initialDynamicRendered should flip only after size/destroyed checks',
+    );
     assert.ok(initialPassBlock.includes('await this.renderDynamicLayers(width, height, true);'));
   });
 
   it('builds HTML overlays in a document fragment before appending once', () => {
-    assert.match(mapSrc, /private overlayAppendTarget: ParentNode | null = null/);
+    assert.match(mapSrc, /private overlayAppendTarget: ParentNode \| null = null/);
     const appendStart = mapSrc.indexOf('private appendOverlay(node: Node): void');
     const appendEnd = mapSrc.indexOf('  public render(): void', appendStart);
     const appendBlock = mapSrc.slice(appendStart, appendEnd);
@@ -118,6 +130,11 @@ describe('mobile SVG map: defer + chunk dynamic overlays off first paint (#4429/
     const overlaysEnd = mapSrc.indexOf('  private renderConflictEventMarkers', overlaysStart);
     assert.ok(overlaysStart > 0 && overlaysEnd > overlaysStart, 'renderOverlays block should be present');
     const overlaysBlock = mapSrc.slice(overlaysStart, overlaysEnd);
+    assert.ok(overlaysBlock.includes('this.labelVisibilityScheduled = false;'));
+    assert.ok(
+      overlaysBlock.indexOf('this.labelVisibilityScheduled = false;') < overlaysBlock.indexOf('const fragment = document.createDocumentFragment();'),
+      'overlay rebuild should clear stale label visibility scheduling before new labels are appended',
+    );
     assert.ok(overlaysBlock.includes('const fragment = document.createDocumentFragment();'));
     assert.ok(overlaysBlock.includes('this.overlayAppendTarget = fragment;'));
     assert.ok(overlaysBlock.includes('this.overlayAppendTarget = previousTarget;'));
@@ -130,7 +147,7 @@ describe('mobile SVG map: defer + chunk dynamic overlays off first paint (#4429/
   it("reuses remembered container size for transform math", () => {
     assert.match(mapSrc, /private lastContainerSize = \{ width: 0, height: 0 \}/);
     const helperStart = mapSrc.indexOf("private getKnownContainerSize():");
-    const helperEnd = mapSrc.indexOf("  private measureContainerSize", helperStart);
+    const helperEnd = mapSrc.indexOf("  private appendOverlay", helperStart);
     assert.ok(helperStart > 0 && helperEnd > helperStart, "container size cache helper should be present");
     const helperBlock = mapSrc.slice(helperStart, helperEnd);
     assert.ok(helperBlock.includes("this.lastContainerSize.width > 0"));

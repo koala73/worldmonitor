@@ -86,6 +86,13 @@ function flushQueues(): void {
   }
 }
 
+export function __resetForTest(): void {
+  measureQueue.length = 0;
+  mutateQueue.length = 0;
+  scheduled = false;
+  flushing = false;
+}
+
 export function measure(callback: LayoutBatchCallback): CancelLayoutBatch {
   return enqueue(measureQueue, callback);
 }

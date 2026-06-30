@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { beforeEach, describe, it } from 'node:test';
 
-import { measure, mutate } from '../src/utils/layout-batch.ts';
+import { __resetForTest, measure, mutate } from '../src/utils/layout-batch.ts';
 
 type RafCallback = (timestamp: number) => void;
 
@@ -32,6 +32,9 @@ function installRafHarness() {
 }
 
 describe('layout batch', () => {
+  beforeEach(() => {
+    __resetForTest();
+  });
   it('runs all measures before mutates while preserving phase ordering', () => {
     const raf = installRafHarness();
     try {
