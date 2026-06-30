@@ -1,9 +1,6 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import {
-  HealthServiceClient,
-  type AirQualityAlert,
-  type ListAirQualityAlertsResponse,
-} from '@/generated/client/worldmonitor/health/v1/service_client';
+import type { AirQualityAlert, ListAirQualityAlertsResponse } from '@/generated/client/worldmonitor/health/v1/service_client';
+import { HealthServiceClient } from '@/services/generated-rpc-clients';
 
 export type { AirQualityAlert, ListAirQualityAlertsResponse };
 

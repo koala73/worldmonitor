@@ -3,13 +3,8 @@ import { createLazyClient, getRpcBaseUrl } from '@/services/rpc-client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
 import { t } from '@/services/i18n';
-import {
-  IntelligenceServiceClient,
-  type GetPizzintStatusResponse,
-  type PizzintStatus as ProtoPizzintStatus,
-  type PizzintLocation as ProtoLocation,
-  type GdeltTensionPair as ProtoTensionPair,
-} from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import type { GetPizzintStatusResponse, PizzintStatus as ProtoPizzintStatus, PizzintLocation as ProtoLocation, GdeltTensionPair as ProtoTensionPair } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import { IntelligenceServiceClient } from '@/services/generated-rpc-clients';
 
 // ---- Sebuf client ----
 

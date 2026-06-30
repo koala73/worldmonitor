@@ -39,6 +39,26 @@ const DEFERRED_NPM_LIB_CHUNKS = ['satellite.es', 'confetti.module'];
 // rule (dir-index would otherwise emit an ambiguous `index-*.js`); story-renderer
 // (single file) names itself.
 const DEFERRED_SERVICE_CHUNKS = ['correlation-engine', 'story-renderer', 'rss', 'trending-keywords', 'daily-market-brief', 'signal-aggregator'];
+const DEFERRED_RPC_CLIENT_CHUNKS = [
+  'rpc-client-market-v1',
+  'rpc-client-economic-v1',
+  'rpc-client-intelligence-v1',
+  'rpc-client-news-v1',
+  'rpc-client-research-v1',
+  'rpc-client-conflict-v1',
+  'rpc-client-supply-chain-v1',
+  'rpc-client-maritime-v1',
+  'rpc-client-military-v1',
+  'rpc-client-climate-v1',
+];
+const GENERATED_RPC_ENDPOINT_MARKERS = [
+  '/api/market/v1/list-market-quotes',
+  '/api/economic/v1/get-economic-stress',
+  '/api/intelligence/v1/get-country-facts',
+  '/api/news/v1/summarize-article',
+  '/api/research/v1/list-arxiv-papers',
+  '/api/conflict/v1/list-acled-events',
+];
 const MILITARY_BASE_DIRECT_IMPORT_FORBIDDEN = [
   'src/app/country-intel.ts',
   'src/app/search-manager.ts',
@@ -70,6 +90,29 @@ function hasModulepreloadForChunk(modulepreloadHrefs, chunk) {
   const escaped = escapeRegExp(chunk);
   const hrefRe = new RegExp(`(?:^|/)assets/${escaped}-[A-Za-z0-9_-]+\\.js$`);
   return modulepreloadHrefs.some((href) => hrefRe.test(href));
+}
+
+function getStaticChunkImports(assetsDir, chunkFile) {
+  const js = readFileSync(resolve(assetsDir, chunkFile), 'utf-8');
+  const imports = new Set();
+  for (const match of js.matchAll(/\bfrom\s*"\.\/([^"]+\.js)"/g)) imports.add(match[1]);
+  for (const match of js.matchAll(/\bimport\s*"\.\/([^"]+\.js)"/g)) imports.add(match[1]);
+  return [...imports];
+}
+
+function collectStaticChunkGraph(entryFile) {
+  const assetsDir = resolve(distDir, 'assets');
+  const seen = new Set();
+  const queue = [entryFile];
+  while (queue.length > 0) {
+    const chunkFile = queue.shift();
+    if (!chunkFile || seen.has(chunkFile) || !existsSync(resolve(assetsDir, chunkFile))) continue;
+    seen.add(chunkFile);
+    for (const imported of getStaticChunkImports(assetsDir, chunkFile)) {
+      if (!seen.has(imported)) queue.push(imported);
+    }
+  }
+  return [...seen];
 }
 
 function registerDeferredChunkAssertions(chunks, options) {
@@ -225,6 +268,48 @@ describe('eager chunk budget: post-paint enrichment services stay off the entry'
   registerDeferredChunkAssertions(DEFERRED_SERVICE_CHUNKS, {
     missingMessage: (chunk) => `${chunk}-*.js chunk should exist — if missing, a static import inlined the service into the entry (correlation-engine: App.ts; story-renderer: country-intel/StoryModal)`,
     preloadMessage: (chunk) => `${chunk} must not be eagerly modulepreloaded — it loads post-first-paint on demand`,
+  });
+});
+
+describe('eager chunk budget: generated RPC clients stay lazy', { skip: !existsSync(dashboardHtml) }, () => {
+  registerDeferredChunkAssertions(DEFERRED_RPC_CLIENT_CHUNKS, {
+    missingMessage: (chunk) => `${chunk}-*.js chunk should exist — generated RPC constructors must load through the lazy runtime shim`,
+    preloadMessage: (chunk) => `${chunk} must not be eagerly modulepreloaded — RPC constructors load on first RPC call`,
+  });
+
+  it('keeps generated RPC client chunks outside the main static dependency graph', () => {
+    const { mainFile } = loadDashboardBuild();
+    assert.ok(mainFile, 'main-*.js entry chunk should exist in dist/assets');
+    const reachableRpcChunks = collectStaticChunkGraph(mainFile).filter((chunk) => /^rpc-client-.*\.js$/.test(chunk));
+    assert.deepEqual(
+      reachableRpcChunks,
+      [],
+      'generated RPC chunks must not be reachable through main static imports',
+    );
+  });
+
+  it('does not eagerly preload or statically import any generated RPC client chunk', () => {
+    const { mainFile, mainJs, modulepreloadHrefs } = loadDashboardBuild();
+    assert.ok(mainFile, 'main-*.js entry chunk should exist in dist/assets');
+    assert.ok(
+      !modulepreloadHrefs.some((href) => /(?:^|\/)assets\/rpc-client-[A-Za-z0-9_-]+-[A-Za-z0-9_-]+\.js$/.test(href)),
+      'no rpc-client-*.js chunk should be eagerly modulepreloaded by dashboard.html',
+    );
+    assert.ok(
+      !/(?:from|import)"\.\/rpc-client-[A-Za-z0-9_-]+-[A-Za-z0-9_-]+\.js"/.test(mainJs),
+      mainFile + ' must not statically import any rpc-client-*.js chunk',
+    );
+  });
+
+  it('does not inline representative generated RPC method bodies into main', () => {
+    const { mainFile, mainJs } = loadDashboardBuild();
+    assert.ok(mainFile, 'main-*.js entry chunk should exist in dist/assets');
+    for (const endpoint of GENERATED_RPC_ENDPOINT_MARKERS) {
+      assert.ok(
+        !mainJs.includes(endpoint),
+        `${endpoint} generated RPC method body must stay out of ${mainFile}`,
+      );
+    }
   });
 });
 

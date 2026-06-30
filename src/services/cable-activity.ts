@@ -1,6 +1,7 @@
 import type { CableAdvisory, RepairShip, UnderseaCable } from '@/types';
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import { MaritimeServiceClient, type NavigationalWarning } from '@/generated/client/worldmonitor/maritime/v1/service_client';
+import type { NavigationalWarning } from '@/generated/client/worldmonitor/maritime/v1/service_client';
+import { MaritimeServiceClient } from '@/services/generated-rpc-clients';
 
 // UNDERSEA_CABLES (~130KB) lives in the lazy geo-map chunk; cable-activity is
 // reached eagerly via data-loader, so it loads the table on demand inside the

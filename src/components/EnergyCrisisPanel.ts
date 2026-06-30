@@ -1,9 +1,10 @@
 import { Panel } from './Panel';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { getHydratedData } from '@/services/bootstrap';
-import { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
+
 import type { GetEnergyCrisisPoliciesResponse, EnergyCrisisPolicy } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
+import { EconomicServiceClient } from '@/services/generated-rpc-clients';
 
 type PolicyData = GetEnergyCrisisPoliciesResponse;
 

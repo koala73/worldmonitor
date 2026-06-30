@@ -19,8 +19,9 @@
 
 import { CHOKEPOINT_REGISTRY, type ChokepointRegistryEntry } from '@/config/chokepoint-registry';
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import { MaritimeServiceClient } from '@/generated/client/worldmonitor/maritime/v1/service_client';
+
 import type { SnapshotCandidateReport } from '@/generated/client/worldmonitor/maritime/v1/service_client';
+import { MaritimeServiceClient } from '@/services/generated-rpc-clients';
 
 const client = new MaritimeServiceClient(getRpcBaseUrl(), {
   fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),

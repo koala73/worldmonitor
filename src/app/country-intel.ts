@@ -31,10 +31,7 @@ import { collectStoryData } from '@/services/story-data';
 // stays off the eager boot graph; this is one of its two eager edges (the other is
 // StoryModal). The export runs on user interaction (post-paint), already async.
 import { openStoryModal } from '@/components/StoryModal';
-import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
-import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
-import { TradeServiceClient } from '@/generated/client/worldmonitor/trade/v1/service_client';
-import { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
+
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { showMapContextMenu } from '@/components/MapContextMenu';
@@ -59,6 +56,7 @@ import { buildDependencyGraph } from '@/services/infrastructure-cascade';
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
 import { fetchMultiSectorExposure, fetchCountryProducts, fetchMultiSectorCostShock } from '@/services/supply-chain';
 import { getImfCountryBundle, buildImfEconomicIndicators, type ImfCountryBundle } from '@/services/imf-country-data';
+import { EconomicServiceClient, IntelligenceServiceClient, MarketServiceClient, TradeServiceClient } from '@/services/generated-rpc-clients';
 
 type IntlDisplayNamesCtor = new (
   locales: string | string[],
@@ -868,7 +866,6 @@ export class CountryIntelManager implements AppModule {
       }
     });
   }
-
 
   refreshOpenBrief(): void {
     const page = this.ctx.countryBriefPage;
