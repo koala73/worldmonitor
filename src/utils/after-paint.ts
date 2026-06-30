@@ -40,8 +40,20 @@ export function scheduleAfterFirstPaint(task: () => void, timeoutMs = 3000): voi
 
 /**
  * Yield to the main thread (ends the current task) so a long render can be split into
- * sub-50ms tasks — lowers TBT, which deferral alone does not (#4442).
+ * sub-50ms tasks — lowers TBT, which deferral alone does not (#4442), and shortens
+ * INP processing time by letting a higher-priority paint run between chunks (#4537).
+ *
+ * Prefers the native `scheduler.yield()` where available: it ends the current task
+ * AND resumes the continuation ahead of a fresh `setTimeout(0)`, which is clamped and
+ * scheduled behind other timer work — strictly better for INP. Falls back to
+ * `setTimeout(resolve, 0)` on browsers without the Scheduler API.
  */
 export function yieldToMain(): Promise<void> {
+  const scheduler = (globalThis as unknown as {
+    scheduler?: { yield?: () => Promise<void> };
+  }).scheduler;
+  if (typeof scheduler?.yield === 'function') {
+    return scheduler.yield();
+  }
   return new Promise((resolve) => { setTimeout(resolve, 0); });
 }

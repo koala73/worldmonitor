@@ -1,0 +1,84 @@
+/**
+ * Field INP attribution reporting (#4537).
+ *
+ * `reportInpMetric` shapes one web-vitals INP measurement (attribution build)
+ * into a Sentry event and routes it through `enqueueSentryCall` so it survives
+ * Sentry's deferred (~10s idle) init: the call buffers and drains on init
+ * rather than being dropped because the SDK hasn't loaded when the interaction
+ * occurs. Reporting interaction target + the three INP sub-parts lets us see
+ * which real interaction is slow and whether the cost is input delay,
+ * processing, or presentation — the data that drives fix prioritization.
+ *
+ * The `onINP` registration that calls this lives behind the `web-vitals`
+ * dependency (see `registerInpReporting` doc at the bottom). This module keeps
+ * the reportable logic free of that import so it builds and is unit-tested
+ * without the package present.
+ */
+import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
+
+/** Structural subset of web-vitals' INP attribution (kept local to avoid the dep). */
+export interface InpAttributionLike {
+  interactionTarget?: string;
+  interactionType?: string;
+  inputDelay?: number;
+  processingDuration?: number;
+  presentationDelay?: number;
+  loadState?: string;
+}
+
+/** Structural subset of web-vitals' INPMetricWithAttribution. */
+export interface InpMetricLike {
+  value: number;
+  rating?: 'good' | 'needs-improvement' | 'poor';
+  attribution?: InpAttributionLike;
+}
+
+const roundMs = (n: number | undefined): number | undefined =>
+  typeof n === 'number' && Number.isFinite(n) ? Math.round(n) : undefined;
+
+/**
+ * Report one field INP measurement to Sentry (R1, R2). `enqueue` is injectable
+ * for tests; in production it defaults to the deferred-Sentry queue.
+ */
+export function reportInpMetric(
+  metric: InpMetricLike,
+  enqueue: typeof enqueueSentryCall = enqueueSentryCall,
+): void {
+  const a = metric.attribution ?? {};
+  enqueue((s) => {
+    s.captureMessage('web-vital: INP', {
+      level: 'info',
+      tags: {
+        webvital: 'inp',
+        'inp.rating': metric.rating ?? 'unknown',
+        'inp.interactionType': a.interactionType ?? 'unknown',
+      },
+      extra: {
+        value: Math.round(metric.value),
+        interactionTarget: a.interactionTarget ?? 'unknown',
+        inputDelay: roundMs(a.inputDelay),
+        processingDuration: roundMs(a.processingDuration),
+        presentationDelay: roundMs(a.presentationDelay),
+        loadState: a.loadState,
+      },
+    });
+  });
+}
+
+/*
+ * Dep-gated registration — uncomment after `npm install web-vitals` (adds the
+ * dep + lockfile entry) and wire `registerInpReporting()` into `src/main.ts`
+ * alongside the Sentry bootstrap:
+ *
+ *   import { onINP } from 'web-vitals/attribution';
+ *
+ *   export function registerInpReporting(): void {
+ *     if (typeof window === 'undefined') return;
+ *     // web-vitals default = one report per page lifecycle (on hide) — quota-safe (R3).
+ *     // Gate `reportAllChanges: true` behind a dev flag for local debugging only.
+ *     onINP((m) => reportInpMetric(m as unknown as InpMetricLike));
+ *   }
+ *
+ * Left commented (not a static import) so the repo builds and typechecks before
+ * the dependency is installed.
+ */
