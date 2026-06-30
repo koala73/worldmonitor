@@ -95,6 +95,14 @@ describe('#3199 U3 — reserveDailyMeter', () => {
     assert.equal(mock.commands.length, 0, 'no pipeline call for unlimited');
   });
 
+  it('allowance 0 (misconfig): fails open, never meters or ceilings (no brick)', async () => {
+    const mock = makePipeline(0);
+    const r = await reserveDailyMeter({ userId: 'u', allowance: 0, pipeline: mock.pipeline });
+    assert.equal(r.metered, false);
+    assert.equal(r.overCeiling, false);
+    assert.equal(mock.commands.length, 0, 'allowance 0 must not ceiling-429 request #1');
+  });
+
   it('fail-open when Redis returns empty (outage): metered:false, served', async () => {
     const downPipeline = async () => [];
     const r = await reserveDailyMeter({ userId: 'u', allowance: STARTER_ALLOWANCE, pipeline: downPipeline });

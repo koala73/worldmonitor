@@ -149,8 +149,11 @@ export async function reserveDailyMeter(opts: {
   const noop = async (): Promise<void> => {};
   const retryAfterSec = secondsUntilUtcMidnight(date);
 
-  // Unlimited allowance — never meter, never ceiling.
-  if (allowance < 0) {
+  // No daily limit: `-1` is unlimited (enterprise); `0` is a misconfiguration
+  // (positive burst but zero allowance) that we fail OPEN on rather than
+  // ceiling-429 every request (ceiling would be 0×10 = 0, so request #1 trips).
+  // Callers already gate eligibility on apiRateLimit > 0, so this is defensive.
+  if (allowance <= 0) {
     return { count: 0, overCeiling: false, metered: false, retryAfterSec, rollback: noop };
   }
 
