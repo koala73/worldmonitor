@@ -1217,9 +1217,9 @@ export class App {
     // tables aligned by hand when adding a locale here OR there.
     const ogLocaleMap: Record<string, string> = {
       en: 'en_US', ar: 'ar_SA', bg: 'bg_BG', cs: 'cs_CZ', de: 'de_DE', el: 'el_GR',
-      es: 'es_ES', fr: 'fr_FR', it: 'it_IT', ja: 'ja_JP', ko: 'ko_KR', nl: 'nl_NL',
-      pl: 'pl_PL', pt: 'pt_BR', ro: 'ro_RO', ru: 'ru_RU', sv: 'sv_SE', th: 'th_TH',
-      tr: 'tr_TR', vi: 'vi_VN', zh: 'zh_CN',
+      es: 'es_ES', fr: 'fr_FR', hi: 'hi_IN', hr: 'hr_HR', hu: 'hu_HU', it: 'it_IT',
+      ja: 'ja_JP', ko: 'ko_KR', nl: 'nl_NL', pl: 'pl_PL', pt: 'pt_BR', ro: 'ro_RO',
+      ru: 'ru_RU', sv: 'sv_SE', th: 'th_TH', tr: 'tr_TR', vi: 'vi_VN', zh: 'zh_CN',
     };
     const baseLang = (document.documentElement.lang || 'en').split('-')[0] || 'en';
     setMeta('meta[property="og:locale"]', ogLocaleMap[baseLang] || `${baseLang}_${baseLang.toUpperCase()}`);

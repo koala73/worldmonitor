@@ -4,7 +4,7 @@ import en from './locales/en.json';
 
 type TranslationDictionary = Record<string, unknown>;
 
-const SUPPORTED_LANGUAGES = ['en', 'ar', 'bg', 'cs', 'de', 'el', 'es', 'fr', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ro', 'ru', 'sv', 'th', 'tr', 'vi', 'zh'] as const;
+const SUPPORTED_LANGUAGES = ['en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'ar', 'zh', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi'] as const;
 type SupportedLanguage = typeof SUPPORTED_LANGUAGES[number];
 const SUPPORTED_SET = new Set<SupportedLanguage>(SUPPORTED_LANGUAGES);
 const loadedLanguages = new Set<SupportedLanguage>(['en']);
@@ -40,9 +40,9 @@ async function ensureLoaded(lng: string): Promise<SupportedLanguage> {
 // hand when adding a locale here OR there.
 const OG_LOCALE: Record<string, string> = {
   en: 'en_US', ar: 'ar_SA', bg: 'bg_BG', cs: 'cs_CZ', de: 'de_DE', el: 'el_GR',
-  es: 'es_ES', fr: 'fr_FR', it: 'it_IT', ja: 'ja_JP', ko: 'ko_KR', nl: 'nl_NL',
-  pl: 'pl_PL', pt: 'pt_BR', ro: 'ro_RO', ru: 'ru_RU', sv: 'sv_SE', th: 'th_TH',
-  tr: 'tr_TR', vi: 'vi_VN', zh: 'zh_CN',
+  es: 'es_ES', fr: 'fr_FR', hi: 'hi_IN', hr: 'hr_HR', hu: 'hu_HU', it: 'it_IT',
+  ja: 'ja_JP', ko: 'ko_KR', nl: 'nl_NL', pl: 'pl_PL', pt: 'pt_BR', ro: 'ro_RO',
+  ru: 'ru_RU', sv: 'sv_SE', th: 'th_TH', tr: 'tr_TR', vi: 'vi_VN', zh: 'zh_CN',
 };
 
 function applyMetaTags(prefix = 'meta'): void {
