@@ -100,7 +100,14 @@ http.route({
 
     let body: { userId?: unknown };
     try {
-      body = await request.json() as { userId?: unknown };
+      const parsed = await request.json();
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      body = parsed as { userId?: unknown };
     } catch {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
