@@ -29,7 +29,7 @@ import {
   startFlightHistoryCleanup,
   stopFlightHistoryCleanup,
 } from '@/services';
-import { stopLoadedVesselHistoryCleanup } from '@/services/military-vessels-lazy';
+import { enableVesselRuntime, stopLoadedVesselHistoryCleanup } from '@/services/military-vessels-lazy';
 import { isProUser } from '@/services/widget-store';
 import { mlWorker } from '@/services/ml-worker';
 import { getAiFlowSettings, subscribeAiFlowChange, isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
@@ -1193,6 +1193,10 @@ export class App {
 
     await initDB();
     startFlightHistoryCleanup();
+    // Re-arm the lazy vessel runtime (a no-op on first boot; matters on a
+    // same-document re-init after a prior App.destroy() disarmed it). The
+    // history-cleanup interval itself still starts lazily on first vessel use.
+    enableVesselRuntime();
     await initI18n();
     markLcpDebug('wm:boot:i18n-ready');
     initDeferredDashboardFonts();
