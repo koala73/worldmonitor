@@ -1,11 +1,7 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import {
-  DisplacementServiceClient,
-  type GetDisplacementSummaryResponse as ProtoResponse,
-  type CountryDisplacement as ProtoCountry,
-  type DisplacementFlow as ProtoFlow,
-} from '@/generated/client/worldmonitor/displacement/v1/service_client';
+import type { GetDisplacementSummaryResponse as ProtoResponse, CountryDisplacement as ProtoCountry, DisplacementFlow as ProtoFlow } from '@/generated/client/worldmonitor/displacement/v1/service_client';
 import { createCircuitBreaker, getCSSColor } from '@/utils';
+import { DisplacementServiceClient } from '@/services/generated-rpc-clients';
 
 // ─── Consumer-friendly types (matching legacy shape exactly) ───
 

@@ -116,6 +116,8 @@ interface WorldTopology extends Topology {
 }
 
 export class MapComponent {
+  private static readonly MOBILE_MIN_EARTHQUAKE_MAGNITUDE = 5;
+  private static readonly MOBILE_MAX_IRAN_EVENTS = 50;
   private static readonly LAYER_ZOOM_THRESHOLDS: Partial<
     Record<keyof MapLayers, { minZoom: number; showLabels?: number }>
   > = {
@@ -211,6 +213,15 @@ export class MapComponent {
   private labelVisibilityScheduled = false;
   private pendingLabelVisibilityZoom = 1;
   private lastContainerSize = { width: 0, height: 0 };
+  // Desktop measures label overlap from the start; mobile defers until the first
+  // interaction. The effective value is set in the constructor (= !this.isMobile);
+  // false here documents the mobile-off default.
+  private mobileLabelVisibilityArmed = false;
+  // All container/document interaction listeners are registered with this signal so
+  // destroy() can remove them in one shot. The container node is reused across
+  // renderer switches (MapContainer keeps one element and rebuilds MapComponent on it),
+  // so listeners left attached would retain every destroyed instance forever.
+  private readonly listenerAbort = new AbortController();
 
   constructor(container: HTMLElement, initialState: MapState, options: MapComponentOptions = {}) {
     this.container = container;
@@ -218,6 +229,7 @@ export class MapComponent {
     this.hotspots = [...INTEL_HOTSPOTS];
     const chrome = options.chrome ?? true;
     this.isMobile = options.isMobile ?? false;
+    this.mobileLabelVisibilityArmed = !this.isMobile;
 
     this.wrapper = document.createElement('div');
     this.wrapper.className = 'map-wrapper';
@@ -334,6 +346,7 @@ export class MapComponent {
 
   public destroy(): void {
     this.destroyed = true;
+    this.listenerAbort.abort();
     window.removeEventListener('theme-changed', this.handleThemeChange);
     document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
     if (this.resizeObserver) {
@@ -841,6 +854,7 @@ export class MapComponent {
   }
 
   private setupZoomHandlers(): void {
+    const signal = this.listenerAbort.signal;
     let isDragging = false;
     let lastPos = { x: 0, y: 0 };
     let lastTouchDist = 0;
@@ -854,6 +868,16 @@ export class MapComponent {
         )
       );
     };
+
+    // Resume mobile label-overlap measurement on the first direct map interaction.
+    // Mobile-only: on desktop the flag is always armed, so this would only ever
+    // early-return inside resumeMobileLabelVisibility().
+    if (this.isMobile) {
+      this.container.addEventListener('pointerdown', (e) => {
+        if (shouldIgnoreInteractionStart(e.target)) return;
+        this.resumeMobileLabelVisibility();
+      }, { signal });
+    }
 
     // Wheel zoom with smooth delta
     this.container.addEventListener(
@@ -881,7 +905,7 @@ export class MapComponent {
         }
         this.applyTransform();
       },
-      { passive: false }
+      { passive: false, signal }
     );
 
     // Mouse drag for panning
@@ -893,7 +917,7 @@ export class MapComponent {
         startCountryClickGesture(countryClickGesture, { x: e.clientX, y: e.clientY });
         this.container.style.cursor = 'grabbing';
       }
-    });
+    }, { signal });
 
     document.addEventListener('mousemove', (e) => {
       if (!isDragging) return;
@@ -908,7 +932,7 @@ export class MapComponent {
 
       lastPos = { x: e.clientX, y: e.clientY };
       this.applyTransform();
-    });
+    }, { signal });
 
     document.addEventListener('mouseup', () => {
       if (isDragging) {
@@ -916,7 +940,7 @@ export class MapComponent {
         finishCountryClickGesture(countryClickGesture);
         this.container.style.cursor = 'grab';
       }
-    });
+    }, { signal });
 
     let touchStartPos = { x: 0, y: 0 };
     let touchDragActive = false;
@@ -927,6 +951,7 @@ export class MapComponent {
 
     this.container.addEventListener('touchstart', (e) => {
       if (shouldIgnoreInteractionStart(e.target)) return;
+      this.resumeMobileLabelVisibility();
       cancelAnimationFrame(inertiaRaf);
       const touch1 = e.touches[0];
       const touch2 = e.touches[1];
@@ -950,7 +975,7 @@ export class MapComponent {
         touchHistory.length = 0;
         touchHistory.push({ x: touch1.clientX, y: touch1.clientY, t: performance.now() });
       }
-    }, { passive: false });
+    }, { passive: false, signal });
 
     this.container.addEventListener('touchmove', (e) => {
       const touch1 = e.touches[0];
@@ -1001,7 +1026,7 @@ export class MapComponent {
 
         this.applyTransform();
       }
-    }, { passive: false });
+    }, { passive: false, signal });
 
     this.container.addEventListener('touchend', () => {
       if (touchDragActive && touchHistory.length >= 2) {
@@ -1030,7 +1055,7 @@ export class MapComponent {
       touchDragActive = false;
       lastTouchDist = 0;
       touchHistory.length = 0;
-    });
+    }, { signal });
 
     this.container.addEventListener('click', (e) => {
       if (!this.onCountryClick) return;
@@ -1055,7 +1080,7 @@ export class MapComponent {
       if (hit) {
         this.onCountryClick({ lat, lon, code: hit.code, name: hit.name });
       }
-    });
+    }, { signal });
 
     this.container.style.cursor = 'grab';
   }
@@ -1726,7 +1751,10 @@ export class MapComponent {
 
     // Iran events (severity-colored circles matching DeckGL layer)
     if (this.state.layers.iranAttacks && this.iranEvents.length > 0) {
-      this.iranEvents.forEach((ev) => {
+      const iranEventsForRender = this.isMobile
+        ? this.iranEvents.slice(0, MapComponent.MOBILE_MAX_IRAN_EVENTS)
+        : this.iranEvents;
+      iranEventsForRender.forEach((ev) => {
         const pos = projection([ev.longitude, ev.latitude]);
         if (!pos || !Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) return;
 
@@ -1829,9 +1857,12 @@ export class MapComponent {
       const filteredQuakes = this.state.timeRange === 'all'
         ? this.earthquakes
         : this.earthquakes.filter((eq) => eq.occurredAt >= Date.now() - this.getTimeRangeMs());
-      console.log('[Map] After time filter:', filteredQuakes.length, 'earthquakes. TimeRange:', this.state.timeRange);
+      const quakesForRender = this.isMobile
+        ? filteredQuakes.filter((eq) => eq.magnitude >= MapComponent.MOBILE_MIN_EARTHQUAKE_MAGNITUDE)
+        : filteredQuakes;
+      console.log('[Map] After time/mobile filter:', quakesForRender.length, 'earthquakes. TimeRange:', this.state.timeRange);
       let rendered = 0;
-      filteredQuakes.forEach((eq) => {
+      quakesForRender.forEach((eq) => {
         const pos = projection([eq.location?.longitude ?? 0, eq.location?.latitude ?? 0]);
         if (!pos) {
           console.log('[Map] Earthquake position null for:', eq.place, eq.location?.longitude, eq.location?.latitude);
@@ -3716,11 +3747,15 @@ export class MapComponent {
   public zoomIn(): void {
     this.state.zoom = Math.min(this.state.zoom + 0.5, 10);
     this.applyTransform();
+    // The on-screen +/- controls are excluded by shouldIgnoreInteractionStart, so a
+    // mobile user zooming only via buttons would never arm label thinning otherwise.
+    this.resumeMobileLabelVisibility();
   }
 
   public zoomOut(): void {
     this.state.zoom = Math.max(this.state.zoom - 0.5, 1);
     this.applyTransform();
+    this.resumeMobileLabelVisibility();
   }
 
   public reset(): void {
@@ -3732,6 +3767,7 @@ export class MapComponent {
     } else {
       this.applyTransform();
     }
+    this.resumeMobileLabelVisibility();
   }
 
   public triggerHotspotClick(id: string): void {
@@ -3962,9 +3998,19 @@ export class MapComponent {
     this.wrapper.style.setProperty('--zoom', String(zoom));
 
     // Smart label hiding based on zoom level and overlap
-    this.updateLabelVisibility(zoom);
+    if (this.shouldUpdateLabelVisibility()) this.updateLabelVisibility(zoom);
     this.updateZoomLayerVisibility();
     this.emitStateChange();
+  }
+
+  private shouldUpdateLabelVisibility(): boolean {
+    return !this.isMobile || this.mobileLabelVisibilityArmed;
+  }
+
+  private resumeMobileLabelVisibility(): void {
+    if (!this.isMobile || this.mobileLabelVisibilityArmed) return;
+    this.mobileLabelVisibilityArmed = true;
+    this.updateLabelVisibility(this.state.zoom);
   }
 
   private updateZoomLayerVisibility(): void {

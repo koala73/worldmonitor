@@ -1,4 +1,4 @@
-import { PredictionServiceClient } from '@/generated/client/worldmonitor/prediction/v1/service_client';
+
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { createCircuitBreaker } from '@/utils';
 import { SITE_VARIANT } from '@/config';
@@ -25,6 +25,7 @@ const breaker = createCircuitBreaker<PredictionMarket[]>({ name: 'Polymarket', c
 const client = new PredictionServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 import predictionTags from '../../../scripts/data/prediction-tags.json';
+import { PredictionServiceClient } from '@/services/generated-rpc-clients';
 
 const GEOPOLITICAL_TAGS = predictionTags.geopolitical;
 const TECH_TAGS = predictionTags.tech;

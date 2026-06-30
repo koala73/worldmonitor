@@ -1,9 +1,6 @@
 import { MARKET_SYMBOLS } from '@/config';
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import {
-  MarketServiceClient,
-  type AnalyzeStockResponse,
-} from '@/generated/client/worldmonitor/market/v1/service_client';
+import type { AnalyzeStockResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { getMarketWatchlistEntries } from '@/services/market-watchlist';
 import { runThrottledTargetRequests } from '@/services/throttled-target-requests';
 import { premiumFetch } from '@/services/premium-fetch';
@@ -12,6 +9,7 @@ import {
   selectStockAnalysisTargets,
   type StockAnalysisTarget,
 } from '@/services/stock-analysis-targets';
+import { MarketServiceClient } from '@/services/generated-rpc-clients';
 
 const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
 

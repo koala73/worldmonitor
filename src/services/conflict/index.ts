@@ -1,21 +1,10 @@
-import { getRpcBaseUrl } from '@/services/rpc-client';
-import {
-  ConflictServiceClient,
-  ApiError,
-  type AcledConflictEvent as ProtoAcledEvent,
-  type UcdpViolenceEvent as ProtoUcdpEvent,
-  type HumanitarianCountrySummary as ProtoHumanSummary,
-  type ListAcledEventsResponse,
-  type ListUcdpEventsResponse,
-  type GetHumanitarianSummaryResponse,
-  type GetHumanitarianSummaryBatchResponse,
-  type IranEvent,
-  type ListIranEventsResponse,
-} from '@/generated/client/worldmonitor/conflict/v1/service_client';
+import { getRpcBaseUrl, getRpcErrorStatusCode } from '@/services/rpc-client';
+import type { AcledConflictEvent as ProtoAcledEvent, UcdpViolenceEvent as ProtoUcdpEvent, HumanitarianCountrySummary as ProtoHumanSummary, ListAcledEventsResponse, ListUcdpEventsResponse, GetHumanitarianSummaryResponse, GetHumanitarianSummaryBatchResponse, IranEvent, ListIranEventsResponse } from '@/generated/client/worldmonitor/conflict/v1/service_client';
 import type { UcdpGeoEvent, UcdpEventType } from '@/types';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
 import { toApiUrl } from '@/services/runtime';
+import { ConflictServiceClient } from '@/services/generated-rpc-clients';
 
 // ---- Client + Circuit Breakers (per-RPC; HAPI uses per-country map) ----
 
@@ -307,7 +296,7 @@ export async function fetchHapiSummary(): Promise<Map<string, HapiConflictSummar
       );
     } catch (err: unknown) {
       // 404 deploy-skew fallback: batch endpoint not yet deployed, use per-item calls
-      if (err instanceof ApiError && err.statusCode === 404) {
+      if (getRpcErrorStatusCode(err) === 404) {
         const HAPI_CONCURRENT = 5;
         const allFallback: Array<{ iso2: string; r: GetHumanitarianSummaryResponse }> = [];
         for (let i = 0; i < HAPI_COUNTRY_CODES.length; i += HAPI_CONCURRENT) {

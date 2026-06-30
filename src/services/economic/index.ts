@@ -7,44 +7,9 @@
  * All data now flows through the EconomicServiceClient RPC.
  */
 
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { getRpcBaseUrl, getRpcErrorStatusCode } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
-import {
-  EconomicServiceClient,
-  ApiError,
-  type GetFredSeriesResponse,
-  type GetFredSeriesBatchResponse,
-  type ListWorldBankIndicatorsResponse,
-  type WorldBankCountryData as ProtoWorldBankCountryData,
-  type GetEnergyPricesResponse,
-  type EnergyPrice as ProtoEnergyPrice,
-  type GetEnergyCapacityResponse,
-  type GetBisPolicyRatesResponse,
-  type GetBisExchangeRatesResponse,
-  type GetBisCreditResponse,
-  type BisPolicyRate,
-  type BisExchangeRate,
-  type BisCreditToGdp,
-  type GetNationalDebtResponse,
-  type NationalDebtEntry,
-  type GetBlsSeriesResponse,
-  type GetCrudeInventoriesResponse,
-  type CrudeInventoryWeek,
-  type GetNatGasStorageResponse,
-  type NatGasStorageWeek,
-  type GetEcbFxRatesResponse,
-  type EcbFxRate,
-  type GetEuGasStorageResponse,
-  type EuGasStorageHistoryEntry,
-  type GetEurostatCountryDataResponse,
-  type EurostatCountryEntry,
-  type GetOilStocksAnalysisResponse,
-  type OilStocksAnalysisMember,
-  type OilStocksRegionalSummary,
-  type OilStocksRegionalSummaryEurope,
-  type OilStocksRegionalSummaryAsiaPacific,
-  type OilStocksRegionalSummaryNorthAmerica,
-} from '@/generated/client/worldmonitor/economic/v1/service_client';
+import type { GetFredSeriesResponse, GetFredSeriesBatchResponse, ListWorldBankIndicatorsResponse, WorldBankCountryData as ProtoWorldBankCountryData, GetEnergyPricesResponse, EnergyPrice as ProtoEnergyPrice, GetEnergyCapacityResponse, GetBisPolicyRatesResponse, GetBisExchangeRatesResponse, GetBisCreditResponse, BisPolicyRate, BisExchangeRate, BisCreditToGdp, GetNationalDebtResponse, NationalDebtEntry, GetBlsSeriesResponse, GetCrudeInventoriesResponse, CrudeInventoryWeek, GetNatGasStorageResponse, NatGasStorageWeek, GetEcbFxRatesResponse, EcbFxRate, GetEuGasStorageResponse, EuGasStorageHistoryEntry, GetEurostatCountryDataResponse, EurostatCountryEntry, GetOilStocksAnalysisResponse, OilStocksAnalysisMember, OilStocksRegionalSummary, OilStocksRegionalSummaryEurope, OilStocksRegionalSummaryAsiaPacific, OilStocksRegionalSummaryNorthAmerica } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getCSSColor } from '@/utils';
 import { isFeatureAvailable } from '../runtime-config';
@@ -52,6 +17,7 @@ import { dataFreshness } from '../data-freshness';
 import { getHydratedData } from '@/services/bootstrap';
 import { toApiUrl } from '@/services/runtime';
 import { hasPremiumAccess } from '@/services/panel-gating';
+import { EconomicServiceClient } from '@/services/generated-rpc-clients';
 
 // ---- Client + Circuit Breakers ----
 
@@ -171,7 +137,7 @@ export async function fetchFredData(): Promise<FredSeries[]> {
       );
     } catch (err: unknown) {
       // 404 deploy-skew fallback: batch endpoint not yet deployed, use per-item calls
-      if (err instanceof ApiError && err.statusCode === 404) {
+      if (getRpcErrorStatusCode(err) === 404) {
         const items = await Promise.all(FRED_SERIES.map((c) =>
           client.getFredSeries({ seriesId: c.id, limit: 120 }, { signal: AbortSignal.timeout(20_000) })
             .catch(() => ({ series: undefined }) as GetFredSeriesResponse),

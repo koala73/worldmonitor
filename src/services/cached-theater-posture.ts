@@ -1,12 +1,9 @@
 import type { TheaterPostureSummary } from './military-surge';
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import {
-  MilitaryServiceClient,
-  type GetTheaterPostureResponse,
-  type TheaterPosture,
-} from '@/generated/client/worldmonitor/military/v1/service_client';
+import type { GetTheaterPostureResponse, TheaterPosture } from '@/generated/client/worldmonitor/military/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
+import { MilitaryServiceClient } from '@/services/generated-rpc-clients';
 
 // ---- Sebuf client ----
 

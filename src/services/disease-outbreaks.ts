@@ -1,10 +1,7 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import {
-  HealthServiceClient,
-  type ListDiseaseOutbreaksResponse,
-  type DiseaseOutbreakItem,
-} from '@/generated/client/worldmonitor/health/v1/service_client';
+import type { ListDiseaseOutbreaksResponse, DiseaseOutbreakItem } from '@/generated/client/worldmonitor/health/v1/service_client';
 import { getHydratedData } from '@/services/bootstrap';
+import { HealthServiceClient } from '@/services/generated-rpc-clients';
 
 export type { ListDiseaseOutbreaksResponse, DiseaseOutbreakItem };
 
