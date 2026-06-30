@@ -25,7 +25,6 @@ const auditedRules = [
   { file: 'src/styles/main.css', css: mainCss, selector: '.search-highlight::after' },
   { file: 'src/styles/main.css', css: mainCss, selector: '.flash-highlight' },
   { file: 'src/styles/main.css', css: mainCss, selector: '.flash-highlight::after' },
-  { file: 'src/styles/main.css', css: mainCss, selector: '.panel.flash-new' },
   { file: 'src/styles/main.css', css: mainCss, selector: '.panel.flash-new::after' },
   { file: 'src/styles/main.css', css: mainCss, selector: '.tech-indicator-item' },
   { file: 'src/styles/main.css', css: mainCss, selector: '.tech-indicator-item::before' },
@@ -76,10 +75,10 @@ const finiteAnimationRules = [
 ];
 
 // animation-timing-function is a per-keyframe-stop easing override, not an
-// animated property — it triggers no paint work, so it is allowed alongside the
+// animated property. It triggers no paint work, so it is allowed alongside the
 // compositor-friendly properties to avoid a false failure if a stop later gains
 // its own easing.
-const compositedProperties = new Set(['opacity', 'transform', 'animation-timing-function']);
+const compositedKeyframeProperties = new Set(['animation-timing-function', 'opacity', 'transform']);
 
 const animationKeywords = new Set([
   'none',
@@ -125,10 +124,11 @@ function blockFromOpenBrace(css, open, token) {
 }
 
 function ruleBlock(css, selector) {
-  const start = css.indexOf(selector);
-  assert.notEqual(start, -1, `Missing CSS selector: ${selector}`);
+  const pattern = new RegExp(`(?:^|[}\\n,])\\s*${escapeRegExp(selector)}\\s*(?:,|\\{)`, 'g');
+  const match = pattern.exec(css);
+  assert.ok(match, `Missing CSS selector: ${selector}`);
 
-  const open = css.indexOf('{', start);
+  const open = css.indexOf('{', match.index);
   assert.notEqual(open, -1, `Missing opening brace after: ${selector}`);
   return blockFromOpenBrace(css, open, selector);
 }
@@ -228,6 +228,16 @@ describe('issue 4538 composited animation invariants', () => {
     assert.match(keyframeBlock('count-bump', css), /transform:\s*scale\(1\)/);
   });
 
+  it('matches audited selectors exactly instead of pseudo-element prefixes', () => {
+    const css = '.panel.flash-new::after { animation: panel-flash 0.8s ease-out; }';
+    const selectorListCss = '.search-highlight,\n.flash-highlight { animation: search-glow-pulse 1s ease-out; }';
+
+    assert.throws(() => ruleBlock(css, '.panel.flash-new'), /Missing CSS selector: \.panel\.flash-new/);
+    assert.match(ruleBlock(css, '.panel.flash-new::after'), /panel-flash/);
+    assert.match(ruleBlock(selectorListCss, '.search-highlight'), /search-glow-pulse/);
+    assert.match(ruleBlock(selectorListCss, '.flash-highlight'), /search-glow-pulse/);
+  });
+
   it('derives the audited keyframes from the issue selectors', () => {
     const found = collectAuditedAnimationNames();
     assert.deepEqual(new Set(found.keys()), expectedIssueKeyframes);
@@ -242,7 +252,7 @@ describe('issue 4538 composited animation invariants', () => {
 
       for (const property of properties) {
         assert.ok(
-          compositedProperties.has(property),
+          compositedKeyframeProperties.has(property),
           `${name} is used by ${rule.selector} in ${rule.file} and must not animate ${property}; use a static pseudo-element plus transform/opacity instead`,
         );
       }
@@ -279,15 +289,16 @@ describe('issue 4538 composited animation invariants', () => {
   });
 
   it('keeps panel-flash on the pseudo-element, never the panel host', () => {
-    // ruleBlock('.panel.flash-new') would match the substring inside
-    // '.panel.flash-new::after {' and silently resolve to the pseudo block, so the
-    // host invariant must be checked against a host-only selector match. This regex
-    // matches '.panel.flash-new {' but not '.panel.flash-new::after {' (the ':' after
-    // flash-new is not the required '{').
-    const hostRule = /\.panel\.flash-new\s*\{([^}]*)\}/.exec(mainCss);
-    if (hostRule) {
+    let hostBlock = null;
+    try {
+      hostBlock = ruleBlock(mainCss, '.panel.flash-new');
+    } catch (error) {
+      assert.match(String(error?.message ?? error), /Missing CSS selector: \.panel\.flash-new/);
+    }
+
+    if (hostBlock) {
       assert.equal(
-        animationNamesFromRule(hostRule[1]).size,
+        animationNamesFromRule(hostBlock).size,
         0,
         'the .panel.flash-new host must not animate at all; any host animation (under any name) would run on the clipped/box-shadow-bearing panel and bypass the pseudo-element layering',
       );
