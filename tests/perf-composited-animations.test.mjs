@@ -75,7 +75,11 @@ const finiteAnimationRules = [
   { css: mainCss, selector: '.panel.flash-new::after' },
 ];
 
-const compositedProperties = new Set(['opacity', 'transform']);
+// animation-timing-function is a per-keyframe-stop easing override, not an
+// animated property — it triggers no paint work, so it is allowed alongside the
+// compositor-friendly properties to avoid a false failure if a stop later gains
+// its own easing.
+const compositedProperties = new Set(['opacity', 'transform', 'animation-timing-function']);
 
 const animationKeywords = new Set([
   'none',
@@ -271,6 +275,25 @@ describe('issue 4538 composited animation invariants', () => {
     assert.ok(
       animationNamesFromRule(ruleBlock(mainCss, '.intel-skeleton::after')).has('skeleton-shimmer'),
       'the shimmer gradient should animate on the skeleton pseudo-element',
+    );
+  });
+
+  it('keeps panel-flash on the pseudo-element, never the panel host', () => {
+    // ruleBlock('.panel.flash-new') would match the substring inside
+    // '.panel.flash-new::after {' and silently resolve to the pseudo block, so the
+    // host invariant must be checked against a host-only selector match. This regex
+    // matches '.panel.flash-new {' but not '.panel.flash-new::after {' (the ':' after
+    // flash-new is not the required '{').
+    const hostRule = /\.panel\.flash-new\s*\{([^}]*)\}/.exec(mainCss);
+    if (hostRule) {
+      assert.ok(
+        !animationNamesFromRule(hostRule[1]).has('panel-flash'),
+        'panel-flash must stay on .panel.flash-new::after; applying it to the .panel host re-introduces the animated box-shadow on the panel and bypasses the pseudo-element layering',
+      );
+    }
+    assert.ok(
+      animationNamesFromRule(ruleBlock(mainCss, '.panel.flash-new::after')).has('panel-flash'),
+      'the panel flash should animate on the .panel.flash-new::after pseudo-element',
     );
   });
 });

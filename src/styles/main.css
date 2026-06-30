@@ -4751,11 +4751,6 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   isolation: isolate;
 }
 
-.header.signal-flash > * {
-  position: relative;
-  z-index: 1;
-}
-
 .header.signal-flash::after {
   content: '';
   position: absolute;
@@ -4763,7 +4758,11 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   background: rgba(0, 170, 255, 0.3);
   opacity: 0;
   pointer-events: none;
-  z-index: 0;
+  /* Negative z-index keeps the flash tint behind all header content without
+     promoting every child to its own stacking layer (which could reorder
+     siblings that rely on natural DOM paint order). isolation: isolate on the
+     host bounds this so the overlay can't fall behind the header itself. */
+  z-index: -1;
   animation: header-flash 0.5s ease-out 3;
 }
 
@@ -14151,7 +14150,6 @@ a.prediction-link:hover {
   pointer-events: none;
   animation: tech-item-highlight-pulse 2s ease-in-out infinite;
   animation-delay: inherit;
-  will-change: opacity;
 }
 
 @keyframes tech-item-pulse {
