@@ -137,6 +137,15 @@ minutes against the same RPC. That keeps the server-side risk-score cache warm
 for bootstrap and health monitoring while preserving the RPC handler as the
 scoring source of truth.
 
+### Backed by endpoints
+
+| Related input | Endpoint | Notes |
+|---|---|---|
+| CII / Strategic Risk scores | `GET /api/intelligence/v1/get-risk-scores` | Server-side scoring source of truth, warmed by the relay loop. |
+| Country humanitarian summary | `GET /api/conflict/v1/get-humanitarian-summary` | HAPI/HDX country overview for conflict-context workflows. |
+| Batch humanitarian summaries | `POST /api/conflict/v1/get-humanitarian-summary-batch` | Batch lookup for multiple countries; POST because the request carries a country list. |
+| Population exposure | `GET /api/displacement/v1/get-population-exposure` | Country population data or radius-based exposure estimate used by humanitarian and map workflows. |
+
 ## Trend Detection
 
 The server publishes `dynamicScore` as a signed movement delta in the range

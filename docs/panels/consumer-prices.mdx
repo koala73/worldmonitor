@@ -34,17 +34,20 @@ Panel id is `consumer-prices`; canonical component is `src/components/ConsumerPr
 
 ## Data sources
 
-Five RPCs back the five tabs:
+Five tab RPCs plus one sparkline RPC back the panel:
 
-| Tab | RPC |
+| Surface | RPC |
 |---|---|
 | Overview | `GET /api/consumer-prices/v1/get-consumer-price-overview` |
+| Overview sparkline | `GET /api/consumer-prices/v1/get-consumer-price-basket-series` |
 | Categories | `GET /api/consumer-prices/v1/list-consumer-price-categories` |
 | Movers | `GET /api/consumer-prices/v1/list-consumer-price-movers` |
 | Spread | `GET /api/consumer-prices/v1/list-retailer-price-spreads` |
 | Health | `GET /api/consumer-prices/v1/get-consumer-price-freshness` |
 
-There is also a `get-consumer-price-basket-series` RPC used internally for the sparkline data. Upstream data is scraped from retailer price feeds and aggregated per market.
+Upstream data is scraped from retailer price feeds by the companion
+`consumer-prices-core` service and published as Redis snapshots per market and
+basket.
 
 ## Refresh cadence
 

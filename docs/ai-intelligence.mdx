@@ -143,6 +143,14 @@ Every news item passes through a three-stage classification pipeline:
 
 This hybrid approach means the UI is never blocked waiting for AI — users see keyword results instantly, with ML and LLM refinements arriving within seconds and persisting for all subsequent visitors. Each classification carries its `source` tag (`keyword`, `ml`, or `llm`) so downstream consumers can weight confidence accordingly.
 
+### Backed by endpoints
+
+| Surface | Endpoint | Notes |
+|---|---|---|
+| Event classification | `GET /api/intelligence/v1/classify-event` | Direct REST RPC used by the generated client; server results are cached by headline hash. |
+| Country factual context | `GET /api/intelligence/v1/get-country-facts` | RestCountries / Wikipedia context for country-brief and dossier workflows. |
+| Summary cache lookup | `GET /api/news/v1/summarize-article-cache` | CDN-cacheable lookup for deterministic summary keys; generation remains `POST /api/news/v1/summarize-article`. |
+
 ## Alerts
 
 ### Breaking News Alert Pipeline
