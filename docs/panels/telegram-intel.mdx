@@ -29,7 +29,7 @@ Panel id is `telegram-intel`; canonical component is `src/components/TelegramInt
 
 | Surface | Endpoint | Notes |
 |---|---|---|
-| Panel relay path | `/api/telegram-feed` | Current browser path for the topic-tabbed feed. |
+| Panel relay path | `GET /api/telegram-feed` | Current browser path for the topic-tabbed feed. |
 | Generated service RPC | `GET /api/intelligence/v1/list-telegram-feed` | Direct IntelligenceService RPC with `topic`, `channel`, and `limit` query parameters; fetches the same Railway relay. |
 
 ## Refresh cadence

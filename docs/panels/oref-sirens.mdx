@@ -36,7 +36,7 @@ Panel id is `oref-sirens`; canonical component is `src/components/OrefSirensPane
 
 | Surface | Endpoint | Notes |
 |---|---|---|
-| Panel relay path | `/api/oref-alerts` | Current browser path for active sirens and history. |
+| Panel relay path | `GET /api/oref-alerts` | Current browser path for active sirens and history. |
 | Generated service RPC | `GET /api/intelligence/v1/list-oref-alerts` | `mode=MODE_HISTORY` serves Redis history; live mode tries the relay and falls back to cached counts. |
 
 ## Refresh cadence
