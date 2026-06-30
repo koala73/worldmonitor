@@ -24,7 +24,7 @@ The current version is **v8**.
 > cached `conflict:ucdp-events:v1` feed (whose rows actually carry
 > `violenceType` / `deathsBest` / `dateStart`), so UCDP never applied its
 > war (floor 70) / minor (floor 50) score floor and never counted toward
-> `/api/health.riskScores` realtime signal coverage. UCDP is now classified
+> `riskScores` realtime health/cache signal coverage. UCDP is now classified
 > per country over a 2-year trailing window (war when total deaths > 1000 or
 > event count > 100; minor when event count > 10), matching the frontend
 > `deriveUcdpClassifications` heuristic. The classifier is configured for that
