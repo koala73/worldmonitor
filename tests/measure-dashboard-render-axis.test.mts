@@ -41,8 +41,33 @@ describe('measure-dashboard-render-axis trace parsing', () => {
     assert.equal(summary.sharePct.styleLayoutOfAccounted, 33.3);
   });
 
-  it('extracts and ranks forced-reflow stacks from layout events with JS stacks', () => {
+  it('extracts and ranks explicitly forced reflow stacks', () => {
     const events = [
+      {
+        ph: 'X',
+        name: 'Layout',
+        dur: 8000,
+        args: { beginData: { forcedLayout: true, stackTrace: [{ functionName: 'renderMap', url: 'src/components/Map.ts', lineNumber: 100 }] } },
+      },
+      {
+        ph: 'X',
+        name: 'UpdateLayoutTree',
+        dur: 2000,
+        args: { data: { forcedReflow: true, stackTrace: [{ functionName: 'hydratePanel', url: 'src/app/panel-layout.ts', lineNumber: 50 }] } },
+      },
+      { ph: 'X', name: 'Paint', dur: 1000 },
+    ];
+
+    assert.deepEqual(extractStackFrames(events[0]).slice(0, 1), ['renderMap (src/components/Map.ts:100)']);
+    const forced = summarizeForcedReflows(events);
+    assert.equal(forced.eventCount, 2);
+    assert.equal(forced.totalMs, 10);
+    assert.equal(forced.stacks[0].topFrame, 'renderMap (src/components/Map.ts:100)');
+    assert.equal(forced.stacks[0].totalMs, 8);
+  });
+
+  it('does not count ordinary style/layout events solely because they have JS stacks', () => {
+    const forced = summarizeForcedReflows([
       {
         ph: 'X',
         name: 'Layout',
@@ -55,15 +80,11 @@ describe('measure-dashboard-render-axis trace parsing', () => {
         dur: 2000,
         args: { data: { stackTrace: [{ functionName: 'hydratePanel', url: 'src/app/panel-layout.ts', lineNumber: 50 }] } },
       },
-      { ph: 'X', name: 'Paint', dur: 1000 },
-    ];
+    ]);
 
-    assert.deepEqual(extractStackFrames(events[0]).slice(0, 1), ['renderMap (src/components/Map.ts:100)']);
-    const forced = summarizeForcedReflows(events);
-    assert.equal(forced.eventCount, 2);
-    assert.equal(forced.totalMs, 10);
-    assert.equal(forced.stacks[0].topFrame, 'renderMap (src/components/Map.ts:100)');
-    assert.equal(forced.stacks[0].totalMs, 8);
+    assert.equal(forced.eventCount, 0);
+    assert.equal(forced.totalMs, 0);
+    assert.deepEqual(forced.stacks, []);
   });
 
   it('handles missing trace data with warnings instead of throwing', () => {

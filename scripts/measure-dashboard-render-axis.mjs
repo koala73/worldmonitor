@@ -130,7 +130,7 @@ function looksForcedReflow(event) {
   if (/forced.*(layout|reflow)|layout.*forced|reflow/i.test(name)) return true;
   const data = event?.args?.data || event?.args?.beginData || {};
   if (data.forcedReflow || data.forcedLayout || data.isForced) return true;
-  return classifyRenderAxisEvent(name) === 'styleLayout' && extractStackFrames(event).length > 0;
+  return false;
 }
 
 export function summarizeForcedReflows(events, limit = 10) {

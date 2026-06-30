@@ -50,7 +50,7 @@ describe('layout batch', () => {
     }
   });
 
-  it('defers callbacks queued during a measure to the next frame', () => {
+  it('runs callbacks queued during a measure in the same frame mutate phase', () => {
     const raf = installRafHarness();
     try {
       const order: string[] = [];
@@ -61,11 +61,9 @@ describe('layout batch', () => {
       mutate(() => order.push('mutate-1'));
 
       raf.runNextFrame();
-      assert.deepEqual(order, ['measure-1', 'mutate-1']);
-      assert.equal(raf.pendingFrames, 1, 'nested mutate schedules a follow-up frame');
 
-      raf.runNextFrame();
       assert.deepEqual(order, ['measure-1', 'mutate-1', 'nested-mutate']);
+      assert.equal(raf.pendingFrames, 0, 'nested mutates should not schedule a redundant follow-up frame');
     } finally {
       raf.restore();
     }

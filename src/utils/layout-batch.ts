@@ -11,6 +11,7 @@ const measureQueue: QueuedCallback[] = [];
 const mutateQueue: QueuedCallback[] = [];
 
 let scheduled = false;
+let flushing = false;
 
 function requestFrame(callback: FrameRequestCallback): void {
   const raf =
@@ -29,7 +30,7 @@ function requestFrame(callback: FrameRequestCallback): void {
 }
 
 function scheduleFlush(): void {
-  if (scheduled) return;
+  if (scheduled || flushing) return;
   scheduled = true;
   requestFrame(flushQueues);
 }
@@ -71,13 +72,16 @@ function flushQueue(queue: QueuedCallback[]): void {
 
 function flushQueues(): void {
   scheduled = false;
-  const measures = measureQueue.splice(0);
-  const mutates = mutateQueue.splice(0);
+  flushing = true;
 
   try {
+    const measures = measureQueue.splice(0);
     flushQueue(measures);
+
+    const mutates = mutateQueue.splice(0);
     flushQueue(mutates);
   } finally {
+    flushing = false;
     if (measureQueue.length > 0 || mutateQueue.length > 0) scheduleFlush();
   }
 }

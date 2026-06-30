@@ -317,6 +317,7 @@ export class MapComponent {
         if (width > 0 && height > 0 && (width !== lastWidth || height !== lastHeight)) {
           lastWidth = width;
           lastHeight = height;
+          this.rememberContainerSize({ width, height });
           this.scheduleRender();
         }
       }

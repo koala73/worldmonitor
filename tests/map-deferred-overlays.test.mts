@@ -136,6 +136,16 @@ describe('mobile SVG map: defer + chunk dynamic overlays off first paint (#4429/
     assert.ok(helperBlock.includes("this.lastContainerSize.width > 0"));
     assert.ok(helperBlock.includes("this.readContainerSize()"));
 
+    const resizeStart = mapSrc.indexOf("private setupResizeObserver(): void");
+    const resizeEnd = mapSrc.indexOf("  public setIsResizing", resizeStart);
+    assert.ok(resizeStart > 0 && resizeEnd > resizeStart, "resize observer block should be present");
+    const resizeBlock = mapSrc.slice(resizeStart, resizeEnd);
+    assert.ok(resizeBlock.includes("this.rememberContainerSize({ width, height });"));
+    assert.ok(
+      resizeBlock.indexOf("this.rememberContainerSize({ width, height });") < resizeBlock.indexOf("this.scheduleRender();"),
+      "ResizeObserver should refresh cached dimensions before scheduling render",
+    );
+
     const transformStart = mapSrc.indexOf("private applyTransform(): void");
     const transformEnd = mapSrc.indexOf("  private updateLabelVisibility", transformStart);
     assert.ok(transformStart > 0 && transformEnd > transformStart, "applyTransform block should be present");
