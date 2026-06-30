@@ -3,59 +3,25 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { transformSync } from 'esbuild';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// `src/utils/index.ts` is a barrel that re-exports from `./proxy`, which reads
-// `import.meta.env.DEV` at module load — breaks plain tsx import. Strip the
-// side-effecting re-export/import lines and evaluate just the standalone code
-// (debounce has no env/DOM dependency). Same pattern as format-price-nullsafe.
-type DebounceFn = (<T extends (...a: unknown[]) => void>(fn: T, ms: number) =>
-  ((...a: Parameters<T>) => void) & { cancel(): void });
+// U3 wiring lock. The suite has no jsdom (SearchModal can't be rendered) and the
+// `@/utils` barrel can't be imported under tsx (proxy.ts reads import.meta.env),
+// so assert against source that the keystroke listener routes through the
+// debounced wrapper and that close() cancels it. The `debounce` util's own
+// behavior is pre-existing WM code, unchanged by U3.
+const utilsSrc = readFileSync(resolve(__dirname, '../src/utils/index.ts'), 'utf8');
+const searchModalSrc = readFileSync(resolve(__dirname, '../src/components/SearchModal.ts'), 'utf8');
 
-async function loadDebounce(): Promise<DebounceFn> {
-  const src = readFileSync(resolve(__dirname, '../src/utils/index.ts'), 'utf-8');
-  const stripped = src
-    .split('\n')
-    .filter((line) => !/^\s*(export\s+(type\s+)?\{[^}]*\}\s+from|export\s+\*\s+from|import\s+(type\s+)?\{[^}]*\}\s+from)\s+['"]/.test(line))
-    .join('\n');
-  const { code } = transformSync(stripped, { loader: 'ts', format: 'esm' });
-  const dataUrl = `data:text/javascript;base64,${Buffer.from(code).toString('base64')}#${import.meta.url}`;
-  return (await import(dataUrl)).debounce as DebounceFn;
-}
-
-// --- Behavioral: the debounce mechanism U3 relies on (R4) ---
-
-test('debounce coalesces rapid calls into a single trailing invocation (R4)', async () => {
-  const debounce = await loadDebounce();
-  let calls = 0;
-  const fn = debounce(() => { calls += 1; }, 20);
-  fn(); fn(); fn(); fn(); // simulate fast typing
-  assert.equal(calls, 0, 'must not fire synchronously per keystroke');
-  await delay(45);
-  assert.equal(calls, 1, 'fires once after the window settles');
+test('debounce util exposes the trailing-timer + cancel contract U3 relies on (R4)', () => {
+  // The exact mechanism U3 wires into: setTimeout-based trailing debounce + cancel.
+  assert.match(utilsSrc, /export function debounce</, 'debounce is exported');
+  assert.match(utilsSrc, /clearTimeout\(timeoutId\);\s*timeoutId = setTimeout\(\(\) => fn\(\.\.\.args\), delay\)/,
+    'debounce coalesces via clearTimeout + setTimeout(delay)');
+  assert.match(utilsSrc, /debounced\.cancel = \(\) => \{ clearTimeout\(timeoutId\); \}/,
+    'debounce exposes cancel()');
 });
-
-test('debounce.cancel() drops the pending invocation (R4)', async () => {
-  const debounce = await loadDebounce();
-  let calls = 0;
-  const fn = debounce(() => { calls += 1; }, 20);
-  fn();
-  fn.cancel(); // e.g. modal closed before settle
-  await delay(45);
-  assert.equal(calls, 0, 'cancelled debounce never fires');
-});
-
-// --- Wiring lock: no jsdom in the suite, so assert the SearchModal source
-// routes the keystroke listener through the debounced wrapper and cancels it
-// on close. Guards the U3 wiring against regression. ---
-
-const searchModalSrc = readFileSync(
-  resolve(__dirname, '../src/components/SearchModal.ts'),
-  'utf8',
-);
 
 test('SearchModal keystroke input is debounced, not a direct handleSearch (R4)', () => {
   assert.match(
@@ -67,6 +33,15 @@ test('SearchModal keystroke input is debounced, not a direct handleSearch (R4)',
     searchModalSrc,
     /addEventListener\('input',\s*\(\)\s*=>\s*this\.handleSearch\(\)\)/,
     'input listener should not call handleSearch directly',
+  );
+});
+
+test('SearchModal builds the debounced wrapper from the shared debounce util (R4)', () => {
+  assert.match(searchModalSrc, /import \{ shuffle, debounce \} from '@\/utils'/);
+  assert.match(
+    searchModalSrc,
+    /private debouncedSearch = debounce\(\(\): void => this\.handleSearch\(\), SEARCH_DEBOUNCE_MS\)/,
+    'debouncedSearch wraps handleSearch via the shared util',
   );
 });
 

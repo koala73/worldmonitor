@@ -65,20 +65,18 @@ export function reportInpMetric(
   });
 }
 
-/*
- * Dep-gated registration — uncomment after `npm install web-vitals` (adds the
- * dep + lockfile entry) and wire `registerInpReporting()` into `src/main.ts`
- * alongside the Sentry bootstrap:
- *
- *   import { onINP } from 'web-vitals/attribution';
- *
- *   export function registerInpReporting(): void {
- *     if (typeof window === 'undefined') return;
- *     // web-vitals default = one report per page lifecycle (on hide) — quota-safe (R3).
- *     // Gate `reportAllChanges: true` behind a dev flag for local debugging only.
- *     onINP((m) => reportInpMetric(m as unknown as InpMetricLike));
- *   }
- *
- * Left commented (not a static import) so the repo builds and typechecks before
- * the dependency is installed.
+/**
+ * Register the field INP listener (R1–R3). Browser-only. Uses a dynamic import
+ * so `web-vitals` code-splits into its own chunk (loaded post-paint when this
+ * runs) and so this module stays node-loadable for unit tests. web-vitals'
+ * `onINP` default reports once per page lifecycle (on visibility-hide) — the
+ * quota-safe production behavior (R3); `reportAllChanges` is dev-only debugging.
  */
+export function registerInpReporting(): void {
+  if (typeof window === 'undefined') return;
+  void import('web-vitals/attribution')
+    .then(({ onINP }) => {
+      onINP((metric) => reportInpMetric(metric as unknown as InpMetricLike));
+    })
+    .catch(() => { /* web-vitals chunk failed to load (adblock/CDN) — non-fatal */ });
+}

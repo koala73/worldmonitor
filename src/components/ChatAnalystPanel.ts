@@ -3,6 +3,7 @@ import { t } from '@/services/i18n';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { postProcessAnalystHtml } from '@/utils/analyst-markdown';
+import { yieldToMain } from '@/utils/after-paint';
 import { premiumFetch } from '@/services/premium-fetch';
 import { trackAnalystControlAction } from '@/services/analytics';
 import { h, replaceChildren, setTrustedHtml, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
@@ -323,7 +324,7 @@ export class ChatAnalystPanel extends Panel {
     const label = role === 'user' ? 'YOU' : 'ANALYST';
     const body = h('div', { className: 'chat-msg-body' });
     if (role === 'assistant') {
-      setTrustedHtml(body, renderMarkdown(content));
+      this.renderMarkdownDeferred(body, content);
     } else {
       body.textContent = content;
     }
@@ -599,8 +600,19 @@ export class ChatAnalystPanel extends Panel {
     return 'incomplete';
   }
 
+  // Defer the synchronous DOMPurify+marked sanitize off the current task so the
+  // interaction/stream paint lands first — cuts INP processing time (#4537).
+  // Fire-and-forget (no async ripple through the sync streaming call sites);
+  // guarded so a detached bubble (panel closed mid-flight) is skipped.
+  private renderMarkdownDeferred(el: HTMLElement, content: string): void {
+    void yieldToMain().then(() => {
+      if (!el.isConnected) return;
+      setTrustedHtml(el, renderMarkdown(content));
+    });
+  }
+
   private finalizeStreamingBubble(bodyEl: HTMLElement, text: string, success: boolean): void {
-    setTrustedHtml(bodyEl, renderMarkdown(text));
+    this.renderMarkdownDeferred(bodyEl, text);
     if (!success) bodyEl.classList.add('chat-msg-error');
     this.scrollToBottom();
   }

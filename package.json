@@ -168,6 +168,7 @@
     "telegram": "^2.26.22",
     "topojson-client": "^3.1.0",
     "uqr": "^0.1.2",
+    "web-vitals": "^5.3.0",
     "ws": "^8.21.0",
     "yaml": "^2.8.3",
     "youtubei.js": "^16.0.1",
