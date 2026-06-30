@@ -24,10 +24,18 @@ describe('IntelligenceGapBadge teardown', () => {
   });
 
   it('dismissFindingsModal removes the document keydown listener and the overlay', () => {
+    const idx = src.indexOf('private dismissFindingsModal(): void');
+    assert.notEqual(idx, -1, 'dismissFindingsModal() must exist');
+    const body = src.slice(idx, idx + 400);
     assert.match(
-      src,
-      /private dismissFindingsModal\(\): void \{[\s\S]*?removeEventListener\('keydown', this\.findingsModalEscListener\)[\s\S]*?this\.findingsModalOverlay\.remove\(\)[\s\S]*?\}/,
-      'dismissFindingsModal must tear down both the keydown listener and the overlay element',
+      body,
+      /removeEventListener\(\s*'keydown'\s*,\s*this\.findingsModalEscListener\b/,
+      'dismissFindingsModal must remove the document keydown (Esc) listener',
+    );
+    assert.match(
+      body,
+      /this\.findingsModalOverlay\??\.remove\(\)/,
+      'dismissFindingsModal must remove the overlay element',
     );
   });
 
