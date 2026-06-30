@@ -12396,18 +12396,18 @@ a.prediction-link:hover {
   }
 }
 
-/* Legacy alias */
-
-/* Panel flash when new items arrive */
+/* Panel flash when new items arrive.
+   Static outer box-shadow (the green bloom) with an opacity-only animation, so no
+   non-composited property is animated. The panel host clips descendants, so the
+   .panel.flash-new override below lifts the clip while the flash is active. */
 .panel.flash-new::after {
   content: '';
   position: absolute;
   inset: 0;
-  border: 1px solid rgba(68, 255, 136, 0.35);
-  background: rgba(68, 255, 136, 0.06);
+  border-radius: inherit;
+  box-shadow: 0 0 20px rgba(68, 255, 136, 0.4);
   opacity: 0;
   pointer-events: none;
-  z-index: 2;
   animation: panel-flash 0.5s ease-out;
 }
 
@@ -12419,6 +12419,22 @@ a.prediction-link:hover {
   100% {
     opacity: 0;
   }
+}
+
+/* Restore the outer glow on panel hosts.
+   .panel has overflow:hidden + contain:content, which clip a descendant pseudo's
+   box-shadow and would swallow the outer bloom of these finite highlight effects.
+   Lift the clip only while a highlight class is present. .panel-content keeps its
+   own overflow (overflow-y:auto, overflow-x computes to auto), so scrolling content
+   stays contained; only the thin header/padding band is briefly unclipped. contain
+   is relaxed to layout (drops paint/clip) to preserve layout isolation without
+   clipping. The glow itself animates opacity only — these overrides add no
+   animation to the host. */
+.panel.flash-new,
+.panel.search-highlight,
+.panel.flash-highlight {
+  overflow: visible;
+  contain: layout;
 }
 
 /* ============================================
