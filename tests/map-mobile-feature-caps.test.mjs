@@ -63,7 +63,7 @@ describe('mobile SVG map feature caps and label reflow skip (#4463 / U7)', () =>
   });
 
   it('keeps label overlap measurement disabled on mobile until the first direct map interaction', () => {
-    assert.match(mapSrc, /private mobileLabelVisibilityArmed = true/);
+    assert.match(mapSrc, /private mobileLabelVisibilityArmed = false/);
     assert.match(mapSrc, /this\.mobileLabelVisibilityArmed = !this\.isMobile/);
     assert.match(
       mapSrc,

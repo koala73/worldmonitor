@@ -208,7 +208,10 @@ export class MapComponent {
   private destroyed = false;
   // Mobile loads the lighter 110m country topology (U6); passed in from MapContainer.
   private readonly isMobile: boolean;
-  private mobileLabelVisibilityArmed = true;
+  // Desktop measures label overlap from the start; mobile defers until the first
+  // interaction. The effective value is set in the constructor (= !this.isMobile);
+  // false here documents the mobile-off default.
+  private mobileLabelVisibilityArmed = false;
   // All container/document interaction listeners are registered with this signal so
   // destroy() can remove them in one shot. The container node is reused across
   // renderer switches (MapContainer keeps one element and rebuilds MapComponent on it),
