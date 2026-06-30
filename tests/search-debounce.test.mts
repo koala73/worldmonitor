@@ -53,3 +53,26 @@ test('SearchModal.close() cancels the pending debounced search (R4)', () => {
     'close() should cancel the debounced search',
   );
 });
+
+// Stale-results guard: with the keystroke search debounced, Arrow/Enter must
+// flush the pending search first so selection acts on current results (review #4556).
+test('handleKeydown flushes the pending search before Arrow/Enter (R4)', () => {
+  const m = searchModalSrc.match(/private handleKeydown\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n  \}/);
+  assert.ok(m, 'handleKeydown exists');
+  const head = m![0].slice(0, m![0].indexOf('switch'));
+  assert.match(head, /ArrowDown.*ArrowUp.*Enter/s, 'guards the nav/selection keys');
+  assert.match(head, /this\.flushPendingSearch\(\)/, 'flushes before the switch');
+});
+
+test('flushPendingSearch runs handleSearch only when input changed since last search (R4)', () => {
+  const m = searchModalSrc.match(/private flushPendingSearch\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n  \}/);
+  assert.ok(m, 'flushPendingSearch exists');
+  const body = m![0];
+  assert.match(body, /!==\s*this\.lastSearchedQuery/, 'compares current input to last searched query');
+  assert.match(body, /this\.debouncedSearch\.cancel\(\)/, 'cancels the pending debounce');
+  assert.match(body, /this\.handleSearch\(\)/, 'runs the search synchronously');
+});
+
+test('handleSearch records lastSearchedQuery so staleness can be detected (R4)', () => {
+  assert.match(searchModalSrc, /this\.lastSearchedQuery = query/, 'handleSearch stores the searched query');
+});
