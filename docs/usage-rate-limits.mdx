@@ -21,6 +21,21 @@ Applies to all `/api/*` routes that don't have a stricter override. Implemented 
 
 See [MCP](/mcp-server) for details.
 
+## Per-plan API rate limits
+
+Authenticated REST API keys (`wm_…`) are limited **per account**, not per IP — a key behind a shared egress IP is not throttled by other tenants' traffic, and all of an account's keys share one allowance.
+
+| Plan | Per-minute (burst) | Daily included | Beyond the daily allowance |
+|------|--------------------|----------------|----------------------------|
+| **API Starter** | **60** / 60 s | **1,000** / UTC day | metered — hard stop at 10,000 / day |
+| **API Business** | **300** / 60 s | **10,000** / UTC day | metered — hard stop at 100,000 / day |
+| **Enterprise** | **1,000** / 60 s | unlimited | — |
+
+- **Per-minute** is a hard burst limit — exceeding it returns 429 immediately.
+- **Daily included** is your plan's allowance; it resets at **00:00 UTC**. Requests beyond it are **metered, not rejected** — usage-based overage billing is rolling out. Until then a safety ceiling (10× the included allowance) caps runaway usage with a 429.
+- The daily allowance and ceiling are **per account** (shared across all of an account's keys), so issuing more keys does not raise your limit.
+- Need a higher limit? **Contact support** to raise your plan's allowance.
+
 ## OAuth endpoints
 
 | Endpoint | Limit | Window | Scope |
@@ -56,14 +71,20 @@ These mostly use the default public API limit. Cache headers vary by endpoint:
 
 ## Response when limited
 
-HTTP 429 with:
+HTTP 429 with the standard rate-limit headers so you can self-throttle:
 
 ```
+HTTP/1.1 429 Too Many Requests
+X-RateLimit-Limit: <limit>
+X-RateLimit-Remaining: 0
+X-RateLimit-Reset: <reset, ms since epoch>
 Retry-After: <seconds>
 Content-Type: application/json
 
 { "error": "Too many requests" }
 ```
+
+For a daily-ceiling 429 the `Retry-After` counts down to the next 00:00 UTC.
 
 ## Retry guidance
 
