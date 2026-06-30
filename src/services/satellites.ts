@@ -12,8 +12,9 @@
 //   (useful for identifying imaging windows after events)
 
 import { createLazyClient, getRpcBaseUrl } from '@/services/rpc-client';
-import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+
 import type { SatRec } from 'satellite.js';
+import { IntelligenceServiceClient } from '@/services/generated-rpc-clients';
 
 // satellite.js (~20KB) is only needed once the satellite layer fetches TLEs — never at
 // boot. Lazy-load + cache the module so it ships off the eager main entry. initSatRecs

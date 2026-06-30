@@ -2,7 +2,7 @@ export type { ThreatLevel, EventCategory, ThreatClassification } from '@/types';
 import type { ThreatLevel, EventCategory, ThreatClassification } from '@/types';
 
 import { getCSSColor } from '@/utils';
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { getRpcBaseUrl, getRpcErrorStatusCode } from '@/services/rpc-client';
 
 /** @deprecated Use getThreatColor() instead for runtime CSS variable reads */
 export const THREAT_COLORS: Record<ThreatLevel, string> = {
@@ -373,12 +373,9 @@ export function classifyByKeyword(title: string, variant = 'full'): ThreatClassi
 }
 
 // Batched AI classification — collects headlines then fires parallel classifyEvent RPCs
-import {
-  IntelligenceServiceClient,
-  ApiError,
-  type ClassifyEventResponse,
-} from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import type { ClassifyEventResponse } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
+import { IntelligenceServiceClient } from '@/services/generated-rpc-clients';
 
 const classifyClient = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
@@ -464,18 +461,19 @@ function flushBatch(): void {
           consecutive429s = 0;
           job.resolve(toThreat(resp));
         } catch (err) {
-          if (err instanceof ApiError && (err.statusCode === 401 || err.statusCode === 429 || err.statusCode >= 500)) {
+          const statusCode = getRpcErrorStatusCode(err);
+          if (statusCode === 401 || statusCode === 429 || (statusCode !== undefined && statusCode >= 500)) {
             batchPaused = true;
             let delay: number;
-            if (err.statusCode === 401) {
+            if (statusCode === 401) {
               delay = 120_000;
-            } else if (err.statusCode === 429) {
+            } else if (statusCode === 429) {
               consecutive429s++;
               delay = Math.min(BASE_PAUSE_MS * 2 ** (consecutive429s - 1), MAX_PAUSE_MS);
             } else {
               delay = 30_000;
             }
-            console.warn(`[Classify] ${err.statusCode} — pausing AI classification for ${delay / 1000}s (backoff #${consecutive429s})`);
+            console.warn(`[Classify] ${statusCode} — pausing AI classification for ${delay / 1000}s (backoff #${consecutive429s})`);
             const remaining = batch.slice(i + 1);
             if ((job.attempts ?? 0) < MAX_RETRIES) {
               job.attempts = (job.attempts ?? 0) + 1;

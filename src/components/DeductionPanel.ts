@@ -1,7 +1,6 @@
 import { Panel } from './Panel';
 import { createLazyClient, getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
-import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { h, replaceChildren, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { yieldToMain } from '@/utils/after-paint';
 import { marked } from 'marked';
@@ -12,6 +11,7 @@ import { getActiveFrameworkForPanel } from '@/services/analysis-framework-store'
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { FrameworkSelector } from './FrameworkSelector';
 import { extractDeductionProbability } from './deduction-probability';
+import { IntelligenceServiceClient } from '@/services/generated-rpc-clients';
 
 // deduct-situation + list-market-implications are premium-gated.
 const getIntelligenceClient = createLazyClient(() => new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: premiumFetch }));

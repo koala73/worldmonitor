@@ -1,6 +1,6 @@
 ---
 title: "Tech Readiness Index"
-description: "Country-level tech-readiness rankings with flag-labelled rows, sourced from the Economic service. Refreshed every 6 hours."
+description: "Country-level tech-readiness rankings with flag-labelled rows, sourced from bootstrap-hydrated World Bank indicator caches. Refreshed every 6 hours."
 ---
 
 The **Tech Readiness Index** panel (internal id `tech-readiness`) ranks countries by a composite tech-readiness score — the kind of comparative view you want when sizing up "which markets are structurally well-positioned on tech infrastructure, talent, and adoption?"
@@ -20,7 +20,8 @@ Panel id is `tech-readiness`; canonical component is `src/components/TechReadine
 
 ## Data sources
 
-- `getTechReadinessRankings()` in `@/services/economic` — wraps the Economic service's tech-readiness RPC.
+- `getTechReadinessRankings()` in `@/services/economic` — reads bootstrap-hydrated `techReadiness` data when available, then falls back to `GET /api/bootstrap?keys=techReadiness`.
+- The data is precomputed by the World Bank indicator seed pipeline; the frontend does not call the World Bank API directly.
 
 ## Refresh cadence
 
@@ -28,8 +29,8 @@ Panel id is `tech-readiness`; canonical component is `src/components/TechReadine
 
 ## Tier & gating
 
-**Free.** No `premium` flag in either variant registration. The Economic service RPC is public.
+**Free.** No `premium` flag in either variant registration. The bootstrap hydration/fallback path is public.
 
 ## API reference
 
-- [Economic service](/api/EconomicService.openapi.yaml) — covers the tech-readiness ranking RPC and the broader macro family.
+- [Platform endpoints](/api-platform#bootstrap) — covers `/api/bootstrap`, including keyed hydration such as `techReadiness`.

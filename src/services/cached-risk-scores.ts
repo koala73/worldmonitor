@@ -2,14 +2,10 @@ import type { CountryScore, ComponentScores } from './country-instability';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { setHasCachedScores } from './country-instability';
 import { TIER1_COUNTRIES } from '@/config/countries';
-import {
-  IntelligenceServiceClient,
-  type GetRiskScoresResponse,
-  type CiiScore,
-  type StrategicRisk,
-} from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import type { GetRiskScoresResponse, CiiScore, StrategicRisk } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
+import { IntelligenceServiceClient } from '@/services/generated-rpc-clients';
 
 // ---- Sebuf client ----
 

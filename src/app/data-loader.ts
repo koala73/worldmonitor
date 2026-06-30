@@ -3,6 +3,7 @@ import { getRpcBaseUrl } from '@/services/rpc-client';
 import { enqueuePanelCall } from '@/app/pending-panel-data';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import { getSignalAggregator, type SignalAggregator } from '@/app/lazy-services';
+import { getMilitaryVesselsModule, isVesselRuntimeStoppedError } from '@/services/military-vessels-lazy';
 import type { NewsItem, MapLayers, SocialUnrestEvent, MilitaryFlight } from '@/types';
 import type { MarketData } from '@/types';
 import type { TimeRange } from '@/components/MapContainer';
@@ -54,9 +55,6 @@ import {
   getProtestStatus,
   fetchFlightDelays,
   fetchMilitaryFlights,
-  fetchMilitaryVessels,
-  initMilitaryVesselStream,
-  isMilitaryVesselTrackingConfigured,
   fetchUSNIFleetReport,
   updateBaseline,
   calculateDeviation,
@@ -152,7 +150,7 @@ import type {
   SectorValuation,
 } from '@/components/MarketPanel';
 import { mountCommunityWidget } from '@/components/CommunityWidget';
-import { ResearchServiceClient } from '@/generated/client/worldmonitor/research/v1/service_client';
+
 import type { StockAnalysisPanel } from '@/components/StockAnalysisPanel';
 import type { StockBacktestPanel } from '@/components/StockBacktestPanel';
 import type { PredictionPanel } from '@/components/PredictionPanel';
@@ -206,6 +204,7 @@ import { getTopActiveGeoHubs } from '@/services/geo-activity';
 // dashboard critical path (#4404).
 import type { GeoHubsPanel } from '@/components/GeoHubsPanel';
 import type { TechHubsPanel } from '@/components/TechHubsPanel';
+import { ResearchServiceClient } from '@/services/generated-rpc-clients';
 
 const PROTO_TO_CLIENT_LEVEL: Record<ProtoThreatLevel, ClientThreatLevel> = {
   THREAT_LEVEL_UNSPECIFIED: 'info',
@@ -1802,7 +1801,6 @@ export class DataLoaderManager implements AppModule {
         return base;
       })();
 
-
       // Hydrate markets from bootstrap (same pattern as sectors) — instant data on page load
       const hydratedMarkets = getHydratedData('marketQuotes') as ListMarketQuotesResponse | undefined;
       let stocksResult: Awaited<ReturnType<typeof fetchMultipleStocks>>;
@@ -2527,12 +2525,13 @@ export class DataLoaderManager implements AppModule {
 
     tasks.push((async () => {
       try {
-        if (isMilitaryVesselTrackingConfigured()) {
-          initMilitaryVesselStream();
+        const militaryVessels = await getMilitaryVesselsModule();
+        if (militaryVessels.isMilitaryVesselTrackingConfigured()) {
+          militaryVessels.initMilitaryVesselStream();
         }
         const [flightData, vesselData] = await Promise.all([
           fetchMilitaryFlights(),
-          fetchMilitaryVessels(),
+          militaryVessels.fetchMilitaryVessels(),
         ]);
         this.ctx.intelligenceCache.military = {
           flights: flightData.flights,
@@ -2575,6 +2574,9 @@ export class DataLoaderManager implements AppModule {
           await this.runMilitarySurgeAnalysis(flightData.flights);
         }
       } catch (error) {
+        // A teardown that races an in-flight vessel load is a deliberate
+        // cancellation, not a real fetch failure — don't pollute freshness.
+        if (isVesselRuntimeStoppedError(error)) return;
         console.error('[Intelligence] Military fetch failed:', error);
         dataFreshness.recordError('opensky', String(error));
       }
@@ -3058,12 +3060,13 @@ export class DataLoaderManager implements AppModule {
       return;
     }
     try {
-      if (isMilitaryVesselTrackingConfigured()) {
-        initMilitaryVesselStream();
+      const militaryVessels = await getMilitaryVesselsModule();
+      if (militaryVessels.isMilitaryVesselTrackingConfigured()) {
+        militaryVessels.initMilitaryVesselStream();
       }
       const [flightData, vesselData] = await Promise.all([
         fetchMilitaryFlights(),
-        fetchMilitaryVessels(),
+        militaryVessels.fetchMilitaryVessels(),
       ]);
       this.ctx.intelligenceCache.military = {
         flights: flightData.flights,
@@ -3114,6 +3117,9 @@ export class DataLoaderManager implements AppModule {
       this.ctx.statusPanel?.updateApi('OpenSky', { status: 'ok' });
       dataFreshness.recordUpdate('opensky', flightData.flights.length);
     } catch (error) {
+      // A teardown that races an in-flight vessel load is a deliberate
+      // cancellation, not a real fetch failure — leave feed/api state intact.
+      if (isVesselRuntimeStoppedError(error)) return;
       this.ctx.map?.setLayerReady('military', false);
       this.ctx.statusPanel?.updateFeed('Military', { status: 'error', errorMessage: String(error) });
       this.ctx.statusPanel?.updateApi('OpenSky', { status: 'error' });

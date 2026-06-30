@@ -8,9 +8,10 @@ import type {
   TrendDirection,
 } from './types';
 import { haversineKm } from '@/utils/distance';
-import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+
 import { premiumFetch } from '@/services/premium-fetch';
 import { hasPremiumAccess } from '@/services/panel-gating';
+import { IntelligenceServiceClient } from '@/services/generated-rpc-clients';
 
 const LLM_SCORE_THRESHOLD = 60;
 const LLM_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
@@ -26,7 +27,7 @@ export class CorrelationEngine {
   private cards: Map<string, ConvergenceCard[]> = new Map();
   private previousClusters: Map<string, ClusterState[]> = new Map();
   private llmCache: Map<string, LlmCacheEntry> = new Map();
-  private intelligenceClient: IntelligenceServiceClient;
+  private intelligenceClient: InstanceType<typeof IntelligenceServiceClient>;
   private running = false;
   private llmInFlight = 0;
 

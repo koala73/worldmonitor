@@ -62,7 +62,7 @@ Variants share all code but differ in default panels, map layers, and RSS feeds.
 | `src/config/` | Static data and variant configs (feeds, geo, military, pipelines, ports) |
 | `src/generated/` | Auto-generated sebuf client + server stubs (**do not edit by hand**) |
 | `src/types/` | TypeScript type definitions |
-| `src/locales/` | i18n JSON files (24 languages) |
+| `src/locales/` | i18n JSON files (25 languages) |
 | `src/workers/` | Web Workers for analysis |
 | `server/` | Sebuf handler implementations for all 34 server handler domains |
 | `api/` | Vercel Edge Functions (sebuf gateway + legacy endpoints) |

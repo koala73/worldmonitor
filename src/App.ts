@@ -27,10 +27,9 @@ import {
   isOutagesConfigured,
   disconnectAisStream,
   startFlightHistoryCleanup,
-  startVesselHistoryCleanup,
   stopFlightHistoryCleanup,
-  stopVesselHistoryCleanup,
 } from '@/services';
+import { enableVesselRuntime, stopLoadedVesselHistoryCleanup } from '@/services/military-vessels-lazy';
 import { isProUser } from '@/services/widget-store';
 import { mlWorker } from '@/services/ml-worker';
 import { getAiFlowSettings, subscribeAiFlowChange, isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
@@ -39,7 +38,6 @@ import { loadFromStorage, parseMapUrlState, saveToStorage, isMobileDevice, showT
 import { clearPanelSpans, invalidatePanelStorageCacheForKeys } from '@/utils/panel-storage';
 import type { ParsedMapUrlState } from '@/utils';
 import { SignalModal } from '@/components/SignalModal';
-import { IntelligenceGapBadge } from '@/components/IntelligenceGapBadge';
 import { BreakingNewsBanner } from '@/components/BreakingNewsBanner';
 import { initBreakingNewsAlerts, destroyBreakingNewsAlerts } from '@/services/breaking-news-alerts';
 import { markLcpDebug } from '@/utils/lcp-debug';
@@ -1195,7 +1193,10 @@ export class App {
 
     await initDB();
     startFlightHistoryCleanup();
-    startVesselHistoryCleanup();
+    // Re-arm the lazy vessel runtime (a no-op on first boot; matters on a
+    // same-document re-init after a prior App.destroy() disarmed it). The
+    // history-cleanup interval itself still starts lazily on first vessel use.
+    enableVesselRuntime();
     await initI18n();
     markLcpDebug('wm:boot:i18n-ready');
     initDeferredDashboardFonts();
@@ -1216,10 +1217,11 @@ export class App {
     // separate Vite roots and bundlers and can't share an import — keep the
     // tables aligned by hand when adding a locale here OR there.
     const ogLocaleMap: Record<string, string> = {
-      en: 'en_US', ar: 'ar_SA', bg: 'bg_BG', cs: 'cs_CZ', de: 'de_DE', el: 'el_GR',
-      es: 'es_ES', fr: 'fr_FR', it: 'it_IT', ja: 'ja_JP', ko: 'ko_KR', nl: 'nl_NL',
-      pl: 'pl_PL', pt: 'pt_BR', ro: 'ro_RO', ru: 'ru_RU', sv: 'sv_SE', th: 'th_TH',
-      tr: 'tr_TR', vi: 'vi_VN', zh: 'zh_CN',
+      en: 'en_US', bg: 'bg_BG', cs: 'cs_CZ', fr: 'fr_FR', de: 'de_DE', el: 'el_GR',
+      es: 'es_ES', hr: 'hr_HR', hu: 'hu_HU', it: 'it_IT', pl: 'pl_PL', pt: 'pt_BR',
+      nl: 'nl_NL', sv: 'sv_SE', ru: 'ru_RU', ar: 'ar_SA', fa: 'fa_IR', zh: 'zh_CN',
+      ja: 'ja_JP', ko: 'ko_KR', ro: 'ro_RO', tr: 'tr_TR', th: 'th_TH', vi: 'vi_VN',
+      hi: 'hi_IN',
     };
     const baseLang = (document.documentElement.lang || 'en').split('-')[0] || 'en';
     setMeta('meta[property="og:locale"]', ogLocaleMap[baseLang] || `${baseLang}_${baseLang.toUpperCase()}`);
@@ -1453,17 +1455,7 @@ export class App {
       this.state.map?.setCenter(lat, lon, 4);
     });
     if (!this.state.isMobile) {
-      this.state.findingsBadge = new IntelligenceGapBadge();
-      this.state.findingsBadge.setOnSignalClick((signal) => {
-        if (this.state.countryBriefPage?.isVisible()) return;
-        if (localStorage.getItem('wm-settings-open') === '1') return;
-        this.state.signalModal?.showSignal(signal);
-      });
-      this.state.findingsBadge.setOnAlertClick((alert) => {
-        if (this.state.countryBriefPage?.isVisible()) return;
-        if (localStorage.getItem('wm-settings-open') === '1') return;
-        this.state.signalModal?.showAlert(alert);
-      });
+      void this.initFindingsBadge();
     }
 
     initBreakingNewsAlerts();
@@ -1749,6 +1741,8 @@ export class App {
     this.unsubAiFlow?.();
     this.unsubFreeTier?.();
     this.unsubEntitlementPremiumLoaders?.();
+    this.state.findingsBadge?.destroy();
+    this.state.findingsBadge = null;
     this.state.breakingBanner?.destroy();
     destroyBreakingNewsAlerts();
     this.cachedModeBannerEl?.remove();
@@ -1760,12 +1754,32 @@ export class App {
     this.state.map?.destroy();
     disconnectAisStream();
     stopFlightHistoryCleanup();
-    stopVesselHistoryCleanup();
+    stopLoadedVesselHistoryCleanup();
     // Unregister every WebMCP tool so a same-document re-init (tests,
     // HMR, SPA harness) doesn't leave the browser with stale bindings
     // pointing at a disposed App.
     this.webMcpController?.abort();
     this.webMcpController = null;
+  }
+
+  private async initFindingsBadge(): Promise<void> {
+    try {
+      const { IntelligenceGapBadge } = await import('@/components/IntelligenceGapBadge');
+      if (this.state.isDestroyed) return;
+      this.state.findingsBadge = new IntelligenceGapBadge();
+      this.state.findingsBadge.setOnSignalClick((signal) => {
+        if (this.state.countryBriefPage?.isVisible()) return;
+        if (localStorage.getItem('wm-settings-open') === '1') return;
+        this.state.signalModal?.showSignal(signal);
+      });
+      this.state.findingsBadge.setOnAlertClick((alert) => {
+        if (this.state.countryBriefPage?.isVisible()) return;
+        if (localStorage.getItem('wm-settings-open') === '1') return;
+        this.state.signalModal?.showAlert(alert);
+      });
+    } catch (error) {
+      console.warn('[IntelligenceGapBadge] Lazy init failed:', error);
+    }
   }
 
   private showFollowedCountriesCapDropToast(kept: number, dropped: number): void {

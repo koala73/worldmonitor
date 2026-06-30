@@ -1,36 +1,11 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
 import type { CargoType } from '@/config/bypass-corridors';
-import {
-  SupplyChainServiceClient,
-  type GetShippingRatesResponse,
-  type GetChokepointStatusResponse,
-  type GetChokepointHistoryResponse,
-  type GetCriticalMineralsResponse,
-  type GetShippingStressResponse,
-  type GetCountryChokepointIndexResponse,
-  type GetBypassOptionsResponse,
-  type GetCountryCostShockResponse,
-  type GetCountryProductsResponse,
-  type GetMultiSectorCostShockResponse,
-  type GetSectorDependencyResponse,
-  type GetRouteExplorerLaneResponse,
-  type GetRouteImpactResponse,
-  type ShippingIndex,
-  type ChokepointInfo,
-  type CriticalMineral,
-  type MineralProducer,
-  type ShippingRatePoint,
-  type ChokepointExposureEntry,
-  type BypassOption,
-  type TransitDayCount,
-  type CountryProduct,
-  type ProductExporter,
-  type MultiSectorCostShock,
-} from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
+import type { GetShippingRatesResponse, GetChokepointStatusResponse, GetChokepointHistoryResponse, GetCriticalMineralsResponse, GetShippingStressResponse, GetCountryChokepointIndexResponse, GetBypassOptionsResponse, GetCountryCostShockResponse, GetCountryProductsResponse, GetMultiSectorCostShockResponse, GetSectorDependencyResponse, GetRouteExplorerLaneResponse, GetRouteImpactResponse, ShippingIndex, ChokepointInfo, CriticalMineral, MineralProducer, ShippingRatePoint, ChokepointExposureEntry, BypassOption, TransitDayCount, CountryProduct, ProductExporter, MultiSectorCostShock } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
 import { hasPremiumAccess } from '@/services/panel-gating';
+import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 
 export type {
   GetShippingRatesResponse,

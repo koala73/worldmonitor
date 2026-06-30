@@ -45,7 +45,7 @@
 - **Local AI** — run everything with Ollama, no API keys required
 - **6 site variants** from a single codebase (world, tech, finance, commodity, happy, energy)
 - **Native desktop app** (Tauri 2) for macOS, Windows, and Linux
-- **24 languages** with native-language feeds and RTL support
+- **25 languages** with native-language feeds and RTL support
 
 For the full feature list, architecture, data sources, and algorithms, see the **[documentation](https://www.worldmonitor.app/docs/documentation)**.
 

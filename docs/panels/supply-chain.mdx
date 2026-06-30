@@ -24,7 +24,39 @@ Panel id is `supply-chain`; canonical component is `src/components/SupplyChainPa
 
 ## Data sources
 
-Reads the cached supply-chain dataset (composite stress, carrier list, minerals, scenario templates). The Scenario Engine triggers call `POST /api/scenario/v1/run-scenario` and poll `GET /api/scenario/v1/get-scenario-status` — see [Scenarios API](/api-scenarios) for the HTTP contract.
+The panel and adjacent supply-chain workflows mix generated sebuf REST RPCs, bootstrap/shared-store first paint, and special platform routes. The main Supply Chain panel reads cached bootstrap payloads for composite stress, chokepoints, shipping rates, and minerals when available, then refreshes through the generated `SupplyChainService` RPCs.
+
+| Surface | Method + route | Feeds |
+|---|---|---|
+| Shipping stress header and carrier rows | `GET /api/supply-chain/v1/get-shipping-stress` | Composite stress score plus carrier / ETF / index rows; bootstrap-first via `shippingStress`. |
+| Shipping rates | `GET /api/supply-chain/v1/get-shipping-rates` | FRED freight indices and spike detection; bootstrap-first via `shippingRates`. |
+| Chokepoint cards and strip | `GET /api/supply-chain/v1/get-chokepoint-status` | Current chokepoint status, warnings, AIS disruption counts, and compact transit summaries; bootstrap-first via `chokepoints`. |
+| Expanded chokepoint card | `GET /api/supply-chain/v1/get-chokepoint-history` | Lazy transit-count history for one chokepoint. |
+| Critical minerals rows | `GET /api/supply-chain/v1/get-critical-minerals` | Mineral concentration, HHI, top producers, and risk rating; bootstrap-first via `minerals`. |
+| Country exposure | `GET /api/supply-chain/v1/get-country-chokepoint-index` | PRO country + HS2 exposure scores used by Country Brief and route-risk surfaces. |
+| Bypass corridors | `GET /api/supply-chain/v1/get-bypass-options` | PRO ranked maritime and land bypass options for a chokepoint / cargo type. |
+| Country cost shock | `GET /api/supply-chain/v1/get-country-cost-shock` | PRO cost-shock and war-risk estimates for a country + chokepoint + HS2 slice. |
+| Country import basket | `GET /api/supply-chain/v1/get-country-products` | PRO seeded bilateral-HS4 import basket for country drill-downs. |
+| Multi-sector shock | `GET /api/supply-chain/v1/get-multi-sector-cost-shock` | PRO sector-level cost-shock estimates over a closure window. |
+| Sector dependency | `GET /api/supply-chain/v1/get-sector-dependency` | PRO dependency flags, primary exporter share, and primary chokepoint exposure. |
+| Route Explorer lane | `GET /api/supply-chain/v1/get-route-explorer-lane` | PRO primary route geometry, chokepoint exposures, bypass geometry, war-risk tier, and disruption score. |
+| Route Explorer impact | `GET /api/supply-chain/v1/get-route-impact` | PRO country-impact metrics for selected lane + HS2 commodity. |
+| Pipeline registry | `GET /api/supply-chain/v1/list-pipelines` | Pipeline Status panel and Energy Atlas PathLayer; bootstrap/shared-store first, RPC refresh after render. |
+| Pipeline drawer | `GET /api/supply-chain/v1/get-pipeline-detail` | Lazy evidence bundle and revision log for one pipeline. |
+| Storage registry | `GET /api/supply-chain/v1/list-storage-facilities` | Strategic Storage Atlas and Energy Atlas ScatterplotLayer; bootstrap/shared-store first, RPC refresh after render. |
+| Storage drawer | `GET /api/supply-chain/v1/get-storage-facility-detail` | Lazy evidence bundle and revision log for one storage facility. |
+| Fuel shortage registry | `GET /api/supply-chain/v1/list-fuel-shortages` | Fuel-shortage alert panel and energy-intelligence summaries. |
+| Fuel shortage drawer | `GET /api/supply-chain/v1/get-fuel-shortage-detail` | Lazy citation timeline and evidence bundle for one shortage. |
+| Energy disruptions | `GET /api/supply-chain/v1/list-energy-disruptions` | Energy Disruptions panel, Pipeline / Storage drawer timelines, and active-disruption count in Global Energy Risk Overview. |
+
+Special platform routes used from this surface:
+
+| Surface | Method + route | Feeds |
+|---|---|---|
+| Scenario activation | `POST /api/scenario/v1/run-scenario` | PRO Scenario Engine trigger buttons dispatch a template id and parameters. |
+| Scenario status | `GET /api/scenario/v1/get-scenario-status` | Scenario Engine polling paints the active-scenario banner after worker completion. |
+
+See [Scenarios API](/api-scenarios) for the full async job contract.
 
 ## Refresh cadence
 

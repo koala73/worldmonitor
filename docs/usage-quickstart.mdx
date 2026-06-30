@@ -16,7 +16,7 @@ The dashboard browser session can call supported public endpoints without a user
 ### curl
 
 ```bash
-curl -s 'https://api.worldmonitor.app/api/conflict/v1/list-conflict-events?limit=5' \
+curl -s 'https://api.worldmonitor.app/api/conflict/v1/get-humanitarian-summary?country_code=SD' \
   -H 'X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567'
 ```
 
@@ -24,7 +24,7 @@ curl -s 'https://api.worldmonitor.app/api/conflict/v1/list-conflict-events?limit
 
 ```js
 const res = await fetch(
-  'https://api.worldmonitor.app/api/market/v1/get-quotes?symbols=AAPL,TSLA',
+  'https://api.worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL&symbols=TSLA',
   { headers: { 'X-WorldMonitor-Key': process.env.WM_KEY } }
 );
 const data = await res.json();

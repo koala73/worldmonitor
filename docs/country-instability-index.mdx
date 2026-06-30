@@ -97,7 +97,7 @@ count is greater than 100, and as UCDP **minor conflict** when event count is
 greater than 10 but the war thresholds are not met. Because UCDP GED ships as
 annual releases that lag real time, recent kinetic conflict is carried by
 **ACLED** (real-time) and the cross-source signal feed; UCDP supplies the
-historical baseline floor. For `/api/health.riskScores`, the conflict realtime
+historical baseline floor. In the `riskScores` health/cache signal, the conflict realtime
 family is covered when either ACLED or an in-window UCDP feed is present. ACLED
 auth being unconfigured degrades the conflict signal to UCDP-only; it becomes
 `COVERAGE_PARTIAL` only when ACLED is dark and UCDP is also absent, stale, or
@@ -136,6 +136,15 @@ The Railway relay process also runs an active CII warm-ping loop every 8
 minutes against the same RPC. That keeps the server-side risk-score cache warm
 for bootstrap and health monitoring while preserving the RPC handler as the
 scoring source of truth.
+
+### Backed by endpoints
+
+| Related input | Endpoint | Notes |
+|---|---|---|
+| CII / Strategic Risk scores | `GET /api/intelligence/v1/get-risk-scores` | Server-side scoring source of truth, warmed by the relay loop. |
+| Country humanitarian summary | `GET /api/conflict/v1/get-humanitarian-summary` | HAPI/HDX country overview for conflict-context workflows. |
+| Batch humanitarian summaries | `POST /api/conflict/v1/get-humanitarian-summary-batch` | Batch lookup for multiple countries; POST because the request carries a country list. |
+| Population exposure | `GET /api/displacement/v1/get-population-exposure` | Country population data or radius-based exposure estimate used by humanitarian and map workflows. |
 
 ## Trend Detection
 

@@ -29,7 +29,10 @@ http {
     server_name _;
 
     root /usr/share/nginx/html;
-    index index.html;
+    # The Vite build renames the SPA entry index.html -> dashboard.html
+    # (dashboardHtmlOutputPlugin, non-desktop builds), matching the Vercel
+    # rewrite of the catch-all route to /dashboard.html. Keep nginx in sync.
+    index dashboard.html;
 
     location = /embed {
       include /etc/nginx/embed_security_headers.conf;
@@ -45,7 +48,7 @@ http {
 
     location / {
       include /etc/nginx/security_headers.conf;
-      try_files $uri $uri/ /index.html;
+      try_files $uri $uri/ /dashboard.html;
       add_header Cache-Control "no-cache, no-store, must-revalidate";
     }
 
