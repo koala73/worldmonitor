@@ -152,6 +152,7 @@ import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import { fetchWebcamImage } from '@/services/webcams';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { summarizeRenderTiming, formatRenderTiming } from '@/components/map/render-timing';
 import {
   createCountryClickGestureTracker,
   finishCountryClickGesture,
@@ -5747,13 +5748,20 @@ export class DeckGLMap {
   private updateLayers(): void {
     if (this.renderPaused || this.webglLost || !this.maplibreMap) return;
     const startTime = performance.now();
+    let jsBuild = 0;
+    let layerCount = 0;
     try {
-      this.deckOverlay?.setProps({ layers: this.buildLayers() });
+      const buildStart = performance.now();
+      const built = this.buildLayers();
+      jsBuild = performance.now() - buildStart;
+      layerCount = built.length;
+      this.deckOverlay?.setProps({ layers: built });
     } catch { /* map may be mid-teardown (null.getProjection) */ }
     this.maplibreMap.triggerRepaint();
-    const elapsed = performance.now() - startTime;
-    if (import.meta.env.DEV && elapsed > 16) {
-      console.warn(`[DeckGLMap] updateLayers took ${elapsed.toFixed(2)}ms (>16ms budget)`);
+    if (import.meta.env.DEV) {
+      // Attribute a slow frame to our JS build vs deck.gl's commit (#4558).
+      const summary = summarizeRenderTiming({ total: performance.now() - startTime, jsBuild, layerCount });
+      if (summary.overBudget) console.warn(formatRenderTiming(summary));
     }
     this.updateZoomHints();
   }
