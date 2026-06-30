@@ -14,6 +14,7 @@ import { isProUser } from '@/services/widget-store';
 import { SITE_VARIANT } from '@/config/variant';
 import { t } from '@/services/i18n';
 import { createSettingsButton } from '@/components/settings-button';
+import { confirmDialog } from '@/components/confirm-dialog';
 import type { UnifiedSettingsTabId } from '@/components/settings-types';
 import type { MapProvider } from '@/config/basemap';
 import { escapeHtml } from '@/utils/sanitize';
@@ -70,6 +71,7 @@ export class UnifiedSettings {
   private draftPanelSettings: Record<string, PanelConfig> = {};
   private panelsJustSaved = false;
   private savedTimeout: ReturnType<typeof setTimeout> | null = null;
+  private confirmingClose = false;
   private apiKeys: ApiKeyInfo[] = [];
   private apiKeysLoading = false;
   private apiKeysError = '';
@@ -346,7 +348,22 @@ export class UnifiedSettings {
   }
 
   public close(): void {
-    if (this.hasPendingPanelChanges() && !confirm(t('header.unsavedChanges'))) return;
+    // Unsaved panel changes → confirm before tearing down. The confirm is a
+    // non-blocking in-app dialog (#4559): close() stays synchronous (8 callers)
+    // and defers teardown to the user's choice instead of a blocking confirm().
+    if (this.hasPendingPanelChanges()) {
+      if (this.confirmingClose) return; // a confirm is already on screen
+      this.confirmingClose = true;
+      void confirmDialog({ message: t('header.unsavedChanges') }).then((discard) => {
+        this.confirmingClose = false;
+        if (discard) this.teardownSettings();
+      });
+      return;
+    }
+    this.teardownSettings();
+  }
+
+  private teardownSettings(): void {
     this.overlay.classList.remove('active');
     this.prefsCleanup?.();
     this.prefsCleanup = null;
