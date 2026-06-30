@@ -990,6 +990,7 @@ describe('embeddable map route guardrails', () => {
       .find((line) => /add_header Content-Security-Policy "/.test(line));
     assert.ok(cspLine, 'docker/nginx.conf location / must ship a Content-Security-Policy header');
     const value = cspLine.match(/add_header Content-Security-Policy "(.*)" always;/)?.[1];
+    assert.ok(value, 'could not extract CSP value from docker/nginx.conf location / Content-Security-Policy line');
     assert.equal(
       value,
       canonicalCsp,
