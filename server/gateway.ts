@@ -522,6 +522,7 @@ export function createDomainGateway(
       clerkOrgId: null,
       userApiKeyCustomerRef: null,
       tier: null,
+      planKey: null,
     };
     // Domain segment for telemetry. Path layouts:
     //   /api/<domain>/v1/<rpc>          → parts[2] = domain
@@ -560,6 +561,7 @@ export function createDomainGateway(
             principalId: identity.principal_id,
             authKind: identity.auth_kind,
             tier: identity.tier,
+            planKey: identity.plan_key,
             country: deriveCountry(originalRequest),
             ipCity: deriveIpCity(originalRequest),
             ipRegion: deriveIpRegion(originalRequest),
@@ -1077,6 +1079,8 @@ export function createDomainGateway(
         if (isEnterpriseAuth) {
           perMinute = ENTERPRISE_API_RATE_LIMIT; // hardcoded — no entitlement row
           allowance = -1; // unlimited daily / no ceiling
+          usage.tier = 3; // enterprise tier — no entitlement row to read it from
+          // (plan_key defaults to 'enterprise' in buildUsageIdentity)
           // Enterprise burst is keyed PER KEY (not per account) by design:
           // these are operator-issued WORLDMONITOR_VALID_KEYS with no shared
           // userId, and unlimited daily — so there's no quota to multiply by
@@ -1086,6 +1090,13 @@ export function createDomainGateway(
           identity = wmKey ? hashKeySync(wmKey) : '';
         } else if (sessionUserId) {
           const ent = await getEntitlements(sessionUserId);
+          if (ent) {
+            // #4572 — attribute the usage event to the caller's real tier +
+            // plan (recorded even for downgraded keys), so the limit-abuse
+            // audit can compare each request to the customer's actual cap.
+            usage.tier = ent.features.tier;
+            usage.planKey = ent.planKey;
+          }
           if (ent && ent.features.apiAccess && ent.features.apiRateLimit > 0) {
             perMinute = ent.features.apiRateLimit;
             // undefined ⇒ fail-open (no daily limit); -1 ⇒ unlimited.

@@ -20,9 +20,32 @@ function baseInput(overrides: Partial<UsageIdentityInput> = {}): UsageIdentityIn
     clerkOrgId: null,
     userApiKeyCustomerRef: null,
     tier: null,
+    planKey: null,
     ...overrides,
   };
 }
+
+describe('buildUsageIdentity — plan_key attribution (#4572)', () => {
+  test('user_api_key carries the resolved planKey', () => {
+    const ident = buildUsageIdentity(baseInput({
+      isUserApiKey: true,
+      sessionUserId: 'u',
+      tier: 2,
+      planKey: 'api_business',
+    }));
+    expect(ident.plan_key).toBe('api_business');
+  });
+
+  test('enterprise_api_key defaults plan_key to "enterprise" when none supplied', () => {
+    const ident = buildUsageIdentity(baseInput({ enterpriseApiKey: 'wm_ent_x', tier: 3 }));
+    expect(ident.auth_kind).toBe('enterprise_api_key');
+    expect(ident.plan_key).toBe('enterprise');
+  });
+
+  test('anon has null plan_key', () => {
+    expect(buildUsageIdentity(baseInput()).plan_key).toBeNull();
+  });
+});
 
 describe('buildUsageIdentity — auth_kind branches', () => {
   test('user_api_key takes precedence over every other signal', () => {

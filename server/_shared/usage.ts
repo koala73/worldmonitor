@@ -96,6 +96,11 @@ export interface RequestEvent {
   principal_id: string | null;
   auth_kind: AuthKind;
   tier: number;
+  // #4572 — API plan attribution. planKey of the caller's entitlement
+  // (api_starter / api_business / enterprise / …) or null. Distinguishes
+  // Starter from Business (both tier 2) so the limit-abuse audit can compare
+  // each request to the customer's actual cap without an external lookup.
+  plan_key: string | null;
   country: string | null;
   ip_city: string | null;
   ip_region: string | null;
@@ -147,6 +152,7 @@ export function buildRequestEvent(p: {
   principalId: string | null;
   authKind: AuthKind;
   tier: number;
+  planKey: string | null;
   country: string | null;
   ipCity: string | null;
   ipRegion: string | null;
@@ -178,6 +184,7 @@ export function buildRequestEvent(p: {
     principal_id: p.principalId,
     auth_kind: p.authKind,
     tier: p.tier,
+    plan_key: p.planKey,
     country: p.country,
     ip_city: p.ipCity,
     ip_region: p.ipRegion,
