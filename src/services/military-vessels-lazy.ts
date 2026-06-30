@@ -43,7 +43,10 @@ function stopLoadedVesselRuntime(module: MilitaryVesselsModule): void {
 
 export function stopLoadedVesselHistoryCleanup(): void {
   vesselHistoryCleanupWanted = false;
-  if (militaryVesselsModule) stopLoadedVesselRuntime(militaryVesselsModule);
+  if (militaryVesselsModule) {
+    stopLoadedVesselRuntime(militaryVesselsModule);
+    return;
+  }
   void militaryVesselsModulePromise?.then((module) => {
     if (!vesselHistoryCleanupWanted) stopLoadedVesselRuntime(module);
   }).catch(() => {});

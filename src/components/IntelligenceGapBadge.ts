@@ -66,6 +66,7 @@ export class IntelligenceFindingsBadge {
   private enabled: boolean;
   private popupEnabled: boolean;
   private contextMenu: HTMLElement | null = null;
+  private contextMenuDismissListener: (() => void) | null = null;
   private updateEpoch = 0;
   private destroyed = false;
 
@@ -224,6 +225,7 @@ export class IntelligenceFindingsBadge {
     });
 
     const dismiss = () => this.dismissContextMenu();
+    this.contextMenuDismissListener = dismiss;
     document.addEventListener('click', dismiss, { once: true });
 
     this.contextMenu = menu;
@@ -231,6 +233,10 @@ export class IntelligenceFindingsBadge {
   }
 
   private dismissContextMenu(): void {
+    if (this.contextMenuDismissListener) {
+      document.removeEventListener('click', this.contextMenuDismissListener);
+      this.contextMenuDismissListener = null;
+    }
     if (this.contextMenu) {
       this.contextMenu.remove();
       this.contextMenu = null;
@@ -584,6 +590,7 @@ export class IntelligenceFindingsBadge {
     if (this.pendingUpdateFrame) {
       cancelAnimationFrame(this.pendingUpdateFrame);
     }
+    this.dismissContextMenu();
     document.removeEventListener('wm:intelligence-updated', this.boundUpdate);
     document.removeEventListener('click', this.boundCloseDropdown);
     this.badge.remove();
