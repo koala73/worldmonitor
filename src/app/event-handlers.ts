@@ -7,7 +7,6 @@ import type {
 import type { UnifiedSettingsConfig } from '@/components/UnifiedSettings';
 import type { AirlineIntelPanel } from '@/components/AirlineIntelPanel';
 import type { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
-import { openWidgetChatModal } from '@/components/WidgetChatModal';
 import { deleteWidget, getWidget, saveWidget, isProUser } from '@/services/widget-store';
 import {
   FREE_MAX_PANELS,
@@ -16,7 +15,6 @@ import {
   isFreePanelCapCounted,
 } from '@/config/panels';
 import type { McpDataPanel } from '@/components/McpDataPanel';
-import { openMcpConnectModal } from '@/components/McpConnectModal';
 import { deleteMcpPanel, getMcpPanel, saveMcpPanel } from '@/services/mcp-store';
 import type { PanelConfig, MapLayers, MilitaryFlight } from '@/types';
 import type { MapView } from '@/components/MapContainer';
@@ -578,27 +576,27 @@ export class EventHandlerManager implements AppModule {
     this.boundWidgetModifyHandler = ((e: CustomEvent<{ widgetId: string }>) => {
       const spec = getWidget(e.detail.widgetId);
       if (!spec) return;
-      openWidgetChatModal({
+      void import('@/components/WidgetChatModal').then((m) => m.openWidgetChatModal({
         mode: 'modify',
         existingSpec: spec,
         onComplete: (updated) => {
           saveWidget(updated);
           (this.ctx.panels[updated.id] as CustomWidgetPanel | undefined)?.updateSpec(updated);
         },
-      });
+      }));
     }) as EventListener;
     this.ctx.container.addEventListener('wm:widget-modify', this.boundWidgetModifyHandler);
 
     this.ctx.container.addEventListener('wm:mcp-configure', ((e: CustomEvent<{ panelId: string }>) => {
       const spec = getMcpPanel(e.detail.panelId);
       if (!spec) return;
-      openMcpConnectModal({
+      void import('@/components/McpConnectModal').then((m) => m.openMcpConnectModal({
         existingSpec: spec,
         onComplete: (updated) => {
           saveMcpPanel(updated);
           (this.ctx.panels[updated.id] as McpDataPanel | undefined)?.updateSpec(updated);
         },
-      });
+      }));
     }) as EventListener);
 
     // undo via Ctrl/Cmd+Z

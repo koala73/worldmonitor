@@ -42,7 +42,6 @@ import { t } from '@/services/i18n';
 import { getCurrentTheme } from '@/utils';
 import { trackCriticalBannerAction } from '@/services/analytics';
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
-import { openWidgetChatModal } from '@/components/WidgetChatModal';
 import { loadWidgets, saveWidget, isProUser } from '@/services/widget-store';
 import type { CustomWidgetSpec } from '@/services/widget-store';
 import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitled, hasTier, getEntitlementState, onEntitlementChange, shouldReloadOnEntitlementChange } from '@/services/entitlements';
@@ -51,7 +50,6 @@ import { initPaymentFailureBanner } from '@/components/payment-failure-banner';
 import { handleCheckoutReturn } from '@/services/checkout-return';
 import { registerCheckoutSuccessCallback, destroyCheckoutOverlay, showCheckoutSuccess, consumePostCheckoutFlag, clearCheckoutAttempt } from '@/services/checkout';
 import { showCheckoutFailureBanner } from '@/components/checkout-failure-banner';
-import { openMcpConnectModal } from '@/components/McpConnectModal';
 import { PanelTabBar } from '@/components/PanelTabBar';
 import {
   loadTabsState,
@@ -401,12 +399,12 @@ export class PanelLayoutManager implements AppModule {
 
     // Handle analyst action chip "Create chart widget →" click
     this.boundWidgetCreatorHandler = ((e: CustomEvent<{ initialMessage?: string }>) => {
-      openWidgetChatModal({
+      void import('@/components/WidgetChatModal').then((m) => m.openWidgetChatModal({
         mode: 'create',
         tier: 'pro',
         initialMessage: e.detail.initialMessage,
         onComplete: (spec) => this.addCustomWidget(spec),
-      });
+      }));
     }) as EventListener;
     this.ctx.container.addEventListener('wm:open-widget-creator', this.boundWidgetCreatorHandler);
   }
@@ -2177,11 +2175,11 @@ export class PanelLayoutManager implements AppModule {
     proBlock.appendChild(proLabel);
     proBlock.appendChild(proBadge);
     proBlock.addEventListener('click', () => {
-      openWidgetChatModal({
+      void import('@/components/WidgetChatModal').then((m) => m.openWidgetChatModal({
         mode: 'create',
         tier: 'pro',
         onComplete: (spec) => this.addCustomWidget(spec),
-      });
+      }));
     });
     panelsGrid.appendChild(proBlock);
 
@@ -2201,9 +2199,9 @@ export class PanelLayoutManager implements AppModule {
     mcpBlock.appendChild(mcpLabel);
     mcpBlock.appendChild(mcpBadge);
     mcpBlock.addEventListener('click', () => {
-      openMcpConnectModal({
+      void import('@/components/McpConnectModal').then((m) => m.openMcpConnectModal({
         onComplete: (spec) => this.addMcpPanel(spec),
-      });
+      }));
     });
     panelsGrid.appendChild(mcpBlock);
 
