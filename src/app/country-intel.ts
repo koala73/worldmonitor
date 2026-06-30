@@ -1512,7 +1512,10 @@ export class CountryIntelManager implements AppModule {
       regionalDescriptions: regional.map(r => r.description),
     } : null;
     const data = collectStoryData(code, name, this.ctx.latestClusters, postures, this.ctx.latestPredictions, signals, convergence);
-    void import('@/components/StoryModal').then((m) => m.openStoryModal(data));
+    // await (not void) so a chunk-load failure rejects openCountryStory's promise and
+    // reaches the caller's existing .catch() toast handler (country-intel.ts:205).
+    const { openStoryModal } = await import('@/components/StoryModal');
+    openStoryModal(data);
   }
 
   showToast(msg: string): void {

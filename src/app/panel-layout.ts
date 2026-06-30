@@ -404,7 +404,7 @@ export class PanelLayoutManager implements AppModule {
         tier: 'pro',
         initialMessage: e.detail.initialMessage,
         onComplete: (spec) => this.addCustomWidget(spec),
-      }));
+      })).catch((err) => console.error('[widget-chat] failed to lazy-load WidgetChatModal', err));
     }) as EventListener;
     this.ctx.container.addEventListener('wm:open-widget-creator', this.boundWidgetCreatorHandler);
   }
@@ -2179,7 +2179,7 @@ export class PanelLayoutManager implements AppModule {
         mode: 'create',
         tier: 'pro',
         onComplete: (spec) => this.addCustomWidget(spec),
-      }));
+      })).catch((err) => console.error('[widget-chat] failed to lazy-load WidgetChatModal', err));
     });
     panelsGrid.appendChild(proBlock);
 
@@ -2201,7 +2201,7 @@ export class PanelLayoutManager implements AppModule {
     mcpBlock.addEventListener('click', () => {
       void import('@/components/McpConnectModal').then((m) => m.openMcpConnectModal({
         onComplete: (spec) => this.addMcpPanel(spec),
-      }));
+      })).catch((err) => console.error('[mcp-connect] failed to lazy-load McpConnectModal', err));
     });
     panelsGrid.appendChild(mcpBlock);
 

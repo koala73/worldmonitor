@@ -583,7 +583,7 @@ export class EventHandlerManager implements AppModule {
           saveWidget(updated);
           (this.ctx.panels[updated.id] as CustomWidgetPanel | undefined)?.updateSpec(updated);
         },
-      }));
+      })).catch((err) => console.error('[widget-chat] failed to lazy-load WidgetChatModal', err));
     }) as EventListener;
     this.ctx.container.addEventListener('wm:widget-modify', this.boundWidgetModifyHandler);
 
@@ -596,7 +596,7 @@ export class EventHandlerManager implements AppModule {
           saveMcpPanel(updated);
           (this.ctx.panels[updated.id] as McpDataPanel | undefined)?.updateSpec(updated);
         },
-      }));
+      })).catch((err) => console.error('[mcp-connect] failed to lazy-load McpConnectModal', err));
     }) as EventListener);
 
     // undo via Ctrl/Cmd+Z
