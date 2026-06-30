@@ -274,7 +274,16 @@ For per-tool parameters, freshness budgets, timeouts, and concrete `curl` exampl
 
 ## API coverage
 
-Most MCP tools wrap one or more REST/RPC endpoints from the [API Reference](/api-reference). The table below maps each covered tool to the API paths it serves — useful when you know the API endpoint you want and need to find the corresponding MCP tool, or vice versa. A handful of tools don't appear in this table because they don't expose a 1:1 public OpenAPI operation — see the trailing note below the table for the categories, and the [MCP Tools Reference](/mcp-tools-reference) for the complete 39-tool set.
+An API endpoint is **MCP-exposed** only when the exact `METHOD /api/...` path is declared in a tool's registry `_apiPaths` entry. The table below is the human-facing rendering of those declarations from `api/mcp/registry/cache-tools.ts` and `api/mcp/registry/rpc-tools.ts`; it is narrower than the public OpenAPI catalog.
+
+A REST route can exist in OpenAPI and still be REST-only. The parity test keeps that distinction explicit: every public OpenAPI operation must either appear in `_apiPaths` or be listed in `tests/mcp-api-parity.test.mjs` with a categorized exclusion reason.
+
+Reverse lookup workflow:
+
+1. Copy the exact method and path from the OpenAPI page, for example `GET /api/research/v1/list-tech-events`.
+2. Search this table. If the route appears, call the listed MCP tool.
+3. If it does not appear, the REST route is not exposed through MCP as an API-equivalent path. A cache-only MCP tool may still return related domain data, but it is not claiming that REST route.
+4. For code-level verification, search `_apiPaths` in `api/mcp/registry/cache-tools.ts` and `api/mcp/registry/rpc-tools.ts`; the parity test explains intentional REST-only exclusions.
 
 | MCP tool | API endpoints served |
 |----------|---------------------|
@@ -309,17 +318,22 @@ Most MCP tools wrap one or more REST/RPC endpoints from the [API Reference](/api
 | `search_flights` | `GET /api/aviation/v1/search-google-flights` |
 | `search_flight_prices_by_date` | `GET /api/aviation/v1/search-google-dates` |
 
-A handful of tools have no entry above because they don't map 1:1 to a public OpenAPI operation. They still return live data via `tools/call`; they fall into three categories:
+Tools with no declared API paths still return data via `tools/call`, but they should not be read as REST equivalents:
 
 - **Cache-backed bootstrap aggregates** — read Redis keys seeded directly by Railway crons (e.g. `get_aviation_status`, `get_cyber_threats`, `get_country_macro`, the three EU Eurostat tools).
 - **Static in-memory registries** — filter a constant bundled with the MCP server's edge binary, no upstream call at all (e.g. `get_commodity_geo`).
 - **Live tools without a public OpenAPI row** — runtime proxies an HTTP call whose method drifts from the public spec, where a sibling tool already covers the spec-declared method (e.g. `generate_forecasts` POSTs `/api/forecast/v1/get-forecasts` while `get_forecast_predictions` owns the GET).
 
-See the [Tool catalog](#tool-catalog) above for the complete list of 39 tools, or the [MCP Tools Reference](/mcp-tools-reference) for per-tool details.
+Common REST-only exclusions in `tests/mcp-api-parity.test.mjs`:
 
-<Tip>
-**Reverse lookup** — if you know the API path you want, search this table with Cmd/Ctrl+F. The same data is also queryable via the running server's `tools/list` response, where each tool description names its domain.
-</Tip>
+- **Mutating endpoints** — writes, queues, webhooks, cache refreshes, or persistent side effects. Example: `GET /api/aviation/v1/list-airport-delays` is intentionally REST-only even though `get_aviation_status` exposes a cache-backed airport-delay snapshot.
+- **Fetch-on-miss endpoints** — may call paid or rate-limited upstreams when cache is cold. Examples: `GET /api/conflict/v1/list-acled-events`, `GET /api/infrastructure/v1/list-service-statuses`, and `GET /api/supply-chain/v1/get-critical-minerals`.
+- **High-cardinality lookups** — arbitrary identifiers are not enumerable or cache-bundle friendly. Example: `GET /api/aviation/v1/get-flight-status`.
+- **LLM-cost endpoints** — direct LLM passthroughs or fetch-on-miss paths with per-call model cost stay out of open MCP exposure unless wrapped by a purpose-built tool.
+- **Deferred future tools** — pure reads whose cache keys are not yet exposed by an MCP bundle. Example: `GET /api/cyber/v1/list-cyber-threats` is slated for a future expanded-domain tool rather than claimed by today's cache-backed `get_cyber_threats`.
+- **Manual mapping** — parameterized cache keys or inline Redis/Convex handlers need human triage. Examples: `GET /api/research/v1/list-arxiv-papers`, `GET /api/research/v1/list-trending-repos`, and `GET /api/research/v1/list-hackernews-items`; `get_research_signals` declares only `GET /api/research/v1/list-tech-events`.
+
+See the [Tool catalog](#tool-catalog) above for the complete list of 39 tools, or the [MCP Tools Reference](/mcp-tools-reference) for per-tool details.
 
 ## Prompts and resources
 
