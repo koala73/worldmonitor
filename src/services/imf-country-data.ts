@@ -25,6 +25,8 @@ export interface ImfGrowthEntry {
   realGdpGrowthPct: number | null;
   gdpPerCapitaUsd: number | null;
   realGdpLcuB: number | null;
+  /** Deprecated bootstrap alias; use realGdpLcuB for new code. */
+  realGdp?: number | null;
   gdpPerCapitaPpp: number | null;
   gdpPpp: number | null;
   investmentPct: number | null;
