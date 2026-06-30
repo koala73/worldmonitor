@@ -160,7 +160,7 @@
     "orbitalSurveillance": "Orbital Surveillance",
     "orbitalSurveillanceDesc": "(जल्द) Overhead pass predictions, revisit frequency analysis और imaging window alerts. जानें कि intelligence satellites कब आपकी areas of interest देख रहे हैं।",
     "morningBriefs": "Personal Intelligence Desk",
-    "morningBriefsDesc": "हर डाइजेस्ट में 30 तक रैंक की गई कहानियाँ होती हैं, जिन्हें 500+ स्रोतों से डुप्लिकेट हटाकर चुना जाता है। Daily, twice-daily या weekly cadence चुनें — या critical events के लिए real-time alerts। AI आकलन और देखने योग्य संकेत Slack, Discord, Telegram, ईमेल या webhook पर पाएँ। Newsletter नहीं — analyst.",
+    "morningBriefsDesc": "हर डाइजेस्ट में 30 तक रैंक की गई कहानियाँ होती हैं, जिन्हें 500+ स्रोतों से डुप्लिकेट हटाकर चुना जाता है। दैनिक, दिन में दो बार या साप्ताहिक cadence चुनें — या महत्वपूर्ण घटनाओं के लिए रीयल-टाइम अलर्ट। AI आकलन और देखने योग्य संकेत Slack, Discord, Telegram, ईमेल या webhook पर पाएँ। यह newsletter नहीं, आपका analyst है।",
     "oneKey": "30+ Services, 1 Key",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky और अधिक — सब active, अलग registrations नहीं।",
     "deliveryLabel": "चुनें कि intelligence आप तक कैसे पहुँचे"
@@ -271,13 +271,13 @@
     "fStandard": "मानक",
     "fKeyAuth": "Key auth",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
-    "noteBelow": "Core platform मुफ़्त रहता है। Paid plans equity research, macro analytics, AI briefings और organizational use unlock करते हैं।",
+    "noteBelow": "मुख्य प्लेटफ़ॉर्म मुफ़्त रहता है। पेड प्लान इक्विटी रिसर्च, मैक्रो एनालिटिक्स, AI ब्रीफ़िंग और संगठनात्मक उपयोग को अनलॉक करते हैं।",
     "f50plus": "50+"
   },
   "faq": {
     "title": "अक्सर पूछे जाने वाले प्रश्न",
     "q1": "क्या World Monitor अभी भी मुफ़्त है?",
-    "a1": "हाँ। Core platform मुफ़्त रहता है। Pro equity research, macro analytics और AI briefings जोड़ता है। Enterprise team deployments और TV apps जोड़ता है।",
+    "a1": "हाँ। मुख्य प्लेटफ़ॉर्म मुफ़्त रहता है। Pro इक्विटी रिसर्च, मैक्रो एनालिटिक्स और AI ब्रीफ़िंग जोड़ता है। Enterprise टीम डिप्लॉयमेंट और TV apps जोड़ता है।",
     "q2": "Pro के लिए भुगतान क्यों करें?",
     "a2": "Pro investors, analysts और professionals के लिए है जिन्हें stock monitoring, geopolitical analysis, economy analytics और AI-powered daily briefings चाहिए — सब एक ही key के तहत।",
     "q3": "Enterprise किसके लिए है?",
@@ -286,8 +286,8 @@
     "a4": "हाँ। Pro serious individuals के लिए काम करता है। Team और deployment needs बढ़ने पर Enterprise मौजूद है।",
     "q5": "क्या यह सिर्फ़ conflict monitoring के लिए है?",
     "a5": "नहीं। World Monitor मुख्य रूप से global intelligence platform है जो stock markets, macroeconomics, geopolitical analysis, energy, infrastructure और बहुत कुछ cover करता है। Conflict tracking कई capabilities में से एक है — focus नहीं।",
-    "q6": "Core platform को मुफ़्त क्यों रखें?",
-    "a6": "क्योंकि public access मायने रखता है। Paid plans serious users और organizations के लिए deeper workflows fund करते हैं।",
+    "q6": "मुख्य प्लेटफ़ॉर्म को मुफ़्त क्यों रखें?",
+    "a6": "क्योंकि सार्वजनिक एक्सेस मायने रखता है। पेड प्लान गंभीर उपयोगकर्ताओं और संगठनों के लिए गहरे workflows को support करते हैं।",
     "q7": "क्या मैं अपने API keys इस्तेमाल कर सकता/सकती हूँ?",
     "a7": "हाँ। Bring-your-own-keys हमेशा काम करता है। Pro का मतलब बस यह है कि आपको 20+ अलग services के लिए register नहीं करना पड़ता।",
     "q8": "MCP क्या है?",
@@ -337,9 +337,9 @@
   "soonBadge": "जल्द",
   "meta": {
     "title": "World Monitor Pro — AI Analyst, Personal Intelligence Desk, Claude और GPT के लिए MCP",
-    "description": "भू-राजनीतिक AI परत। इससे सवाल पूछें, इसकी सदस्यता लें, इस पर निर्माण करें। 30+ live services पर WM Analyst chat, daily, twice-daily या weekly Slack, Discord, Telegram, Email या webhook पर delivered AI digest, custom widget builder (HTML/CSS/JS + AI), और Claude, GPT व custom LLMs के लिए MCP connectors.",
+    "description": "भू-राजनीतिक AI परत। इससे सवाल पूछें, इसकी सदस्यता लें, इस पर निर्माण करें। 30+ लाइव सेवाओं पर WM Analyst chat, Slack, Discord, Telegram, ईमेल या webhook पर दैनिक, दिन में दो बार या साप्ताहिक मिलने वाला AI डाइजेस्ट, custom widget builder (HTML/CSS/JS + AI), और Claude, GPT व custom LLMs के लिए MCP connectors.",
     "ogTitle": "World Monitor Pro — Geopolitical AI Layer",
-    "ogDescription": "इससे सवाल पूछें, इसकी सदस्यता लें, इस पर निर्माण करें। WM Analyst chat, आपके schedule पर AI digest (daily, twice-daily या weekly), custom widget builder, और Claude/GPT के लिए MCP — 30+ live services एक key के तहत।"
+    "ogDescription": "इससे सवाल पूछें, इसकी सदस्यता लें, इस पर निर्माण करें। WM Analyst chat, आपके schedule पर AI डाइजेस्ट (दैनिक, दिन में दो बार या साप्ताहिक), custom widget builder, और Claude/GPT के लिए MCP — 30+ लाइव सेवाएँ एक key के तहत।"
   },
   "pricing": {
     "suffixForever": "हमेशा के लिए",

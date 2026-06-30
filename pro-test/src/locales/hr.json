@@ -297,7 +297,7 @@
     "q10": "Mogu li povezati Claude ili GPT s WorldMonitorom?",
     "a10": "Da. MCP je uključen u Pro — povežite WorldMonitor s Claudeom, GPT-om ili bilo kojim MCP-kompatibilnim LLM-om kao živim alatom.",
     "q11": "Koliko je sažetak personaliziran?",
-    "a11": "Odaberite ritam — dnevno, dvaput dnevno ili tjedno. Svaku praćenu priču ponovno bodujemo prema vašim pravilima upozorenja i watchlisti, dedupliciramo kroz 500+ izvora i šaljemo do 30 rangiranih stavki s AI Assessmentom i Signals to watch napisanim prema vašem kontekstu. Upozorenja u stvarnom vremenu dostupna su i za kritične događaje.",
+    "a11": "Odaberite ritam — dnevno, dvaput dnevno ili tjedno. Svaku praćenu priču ponovno bodujemo prema vašim pravilima upozorenja i watchlisti, uklanjamo duplikate među više od 500 izvora i šaljemo do 30 rangiranih stavki s AI Assessmentom i Signals to watch napisanim prema vašem kontekstu. Upozorenja u stvarnom vremenu dostupna su i za kritične događaje.",
     "q12": "Koja je stopa osvježavanja?",
     "a12": "Gotovo u stvarnom vremenu za Pro. 5–15 minuta na besplatnom planu.",
     "q13": "Kamo idu moji podaci?",
