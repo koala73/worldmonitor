@@ -1,6 +1,7 @@
-import { ForecastServiceClient } from '@/generated/client/worldmonitor/forecast/v1/service_client';
+
 import type { Forecast, GetForecastsResponse } from '@/generated/client/worldmonitor/forecast/v1/service_client';
 import { getRpcBaseUrl } from '@/services/rpc-client';
+import { ForecastServiceClient } from '@/services/generated-rpc-clients';
 
 export type { Forecast };
 
@@ -14,9 +15,9 @@ export interface ForecastFeed {
 
 export { escapeHtml } from '@/utils/sanitize';
 
-let _client: ForecastServiceClient | null = null;
+let _client: InstanceType<typeof ForecastServiceClient> | null = null;
 
-function getClient(): ForecastServiceClient {
+function getClient(): InstanceType<typeof ForecastServiceClient> {
   if (!_client) {
     _client = new ForecastServiceClient(getRpcBaseUrl(), {
       fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),

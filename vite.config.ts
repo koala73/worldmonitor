@@ -75,7 +75,7 @@ const LAZY_HTML_PRELOAD_CHUNKS = [
   ...PANEL_SUPPORT_CHUNK_NAMES,
 ] as const;
 const LAZY_HTML_PRELOAD_RE = new RegExp(
-  `/(${LAZY_HTML_PRELOAD_CHUNKS.join('|')})-[A-Za-z0-9_-]+\\.js$`,
+  `/(?:${LAZY_HTML_PRELOAD_CHUNKS.join('|')}|rpc-client-[A-Za-z0-9_-]+)-[A-Za-z0-9_-]+\\.js$`,
 );
 
 // Panel-cluster manualChunks map. Splits the previously monolithic ~2.3MB
@@ -1213,6 +1213,14 @@ export default defineConfig(({ mode }) => {
             }
             if (id.endsWith('/src/services/cross-module-integration.ts')) {
               return 'cross-module-integration';
+            }
+            // Generated protobuf/RPC client modules are loaded through
+            // src/services/generated-rpc-clients.ts so real constructors parse only
+            // on first RPC use. Stable names let the eager-chunk guard prove they
+            // stay out of the dashboard entry and HTML modulepreload list. (#4493)
+            const rpcClientMatch = id.match(/\/src\/generated\/client\/worldmonitor\/(.+)\/service_client\.ts$/);
+            if (rpcClientMatch) {
+              return `rpc-client-${rpcClientMatch[1].replace(/_/g, '-').replace(/\//g, '-')}`;
             }
             // Co-locate the deck.gl renderer with the deck vendor chunk so
             // onlyExplicitManualChunks cannot split deck's transitive deps

@@ -18,20 +18,14 @@ function replaceRequired(source: string, search: string | RegExp, replacement: s
 async function loadUcdpDeriver() {
   let patched = replaceRequired(
     conflictServiceSource,
-    "import { getRpcBaseUrl } from '@/services/rpc-client';",
-    "const getRpcBaseUrl = () => '';",
+    "import { getRpcBaseUrl, getRpcErrorStatusCode } from '@/services/rpc-client';",
+    "const getRpcBaseUrl = () => ''; const getRpcErrorStatusCode = (_err: unknown) => undefined;",
     'rpc-client',
   );
   patched = replaceRequired(
     patched,
-    /import \{\n[\s\S]*?\} from '@\/generated\/client\/worldmonitor\/conflict\/v1\/service_client';/,
-    `class ConflictServiceClient {
-  constructor(..._args: unknown[]) {}
-  listAcledEvents() { return { events: [], pagination: undefined }; }
-  listUcdpEvents() { return { events: [], pagination: undefined }; }
-}
-class ApiError extends Error {}
-type AcledConflictEvent = any;
+    /import type \{[\s\S]*?\} from '@\/generated\/client\/worldmonitor\/conflict\/v1\/service_client';/,
+    `type AcledConflictEvent = any;
 type UcdpViolenceEvent = any;
 type HumanitarianCountrySummary = any;
 type ListAcledEventsResponse = any;
@@ -41,6 +35,18 @@ type GetHumanitarianSummaryBatchResponse = any;
 type IranEvent = any;
 type ListIranEventsResponse = any;`,
     'generated conflict client',
+  );
+  patched = replaceRequired(
+    patched,
+    "import { ConflictServiceClient } from '@/services/generated-rpc-clients';",
+    `class ConflictServiceClient {
+  constructor(..._args: unknown[]) {}
+  listAcledEvents() { return { events: [], pagination: undefined }; }
+  listUcdpEvents() { return { events: [], pagination: undefined }; }
+  getHumanitarianSummaryBatch() { return { results: {}, fetched: 0, requested: 0 }; }
+  getHumanitarianSummary() { return { summary: undefined }; }
+}`,
+    'lazy conflict client',
   );
   patched = replaceRequired(
     patched,

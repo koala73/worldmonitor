@@ -17,3 +17,9 @@ export function createLazyClient<T>(factory: () => T): () => T {
     return client;
   };
 }
+
+export function getRpcErrorStatusCode(error: unknown): number | undefined {
+  if (typeof error !== 'object' || error === null) return undefined;
+  const statusCode = (error as { statusCode?: unknown }).statusCode;
+  return typeof statusCode === 'number' ? statusCode : undefined;
+}

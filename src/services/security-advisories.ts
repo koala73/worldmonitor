@@ -1,10 +1,8 @@
 import { createLazyClient, getRpcBaseUrl } from '@/services/rpc-client';
 import { getHydratedData } from '@/services/bootstrap';
 import { dataFreshness } from './data-freshness';
-import {
-  IntelligenceServiceClient,
-  type ListSecurityAdvisoriesResponse,
-} from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import type { ListSecurityAdvisoriesResponse } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import { IntelligenceServiceClient } from '@/services/generated-rpc-clients';
 
 export interface SecurityAdvisory {
   title: string;

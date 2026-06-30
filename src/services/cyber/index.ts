@@ -1,9 +1,5 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import {
-  CyberServiceClient,
-  type CyberThreat as ProtoCyberThreat,
-  type ListCyberThreatsResponse,
-} from '@/generated/client/worldmonitor/cyber/v1/service_client';
+import type { CyberThreat as ProtoCyberThreat, ListCyberThreatsResponse } from '@/generated/client/worldmonitor/cyber/v1/service_client';
 import type {
   CyberThreat,
   CyberThreatType,
@@ -13,6 +9,7 @@ import type {
 } from '@/types';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
+import { CyberServiceClient } from '@/services/generated-rpc-clients';
 
 // ---- Client + Circuit Breaker ----
 
