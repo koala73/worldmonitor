@@ -1,0 +1,41 @@
+name: Deploy Cloudflare WAF Rules
+on:
+  push:
+    branches: [main]
+    paths:
+      - deploy/cloudflare/**
+      - .github/workflows/deploy-cf-waf.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: jq empty deploy/cloudflare/waf-mcp-bot-exempt.json && echo OK
+      - env: {CLOUDFLARE_API_TOKEN: dry, CLOUDFLARE_ZONE_ID: dry, DRY_RUN: "1"}
+        run: bash deploy/cloudflare/apply-waf-rules.sh
+  apply:
+    needs: dry-run
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get install -y jq
+      - env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+        run: bash deploy/cloudflare/apply-waf-rules.sh
+  verify:
+    needs: apply
+    runs-on: ubuntu-latest
+    steps:
+      - run: sleep 30
+      - run: |
+          S=$(curl -s -o /tmp/b.txt -w "%{http_code}" -H "User-Agent: mcp-client/1.0" https://worldmonitor.app/mcp)
+          echo "HTTP $S"; head -c 200 /tmp/b.txt
+          if [[ "$S" != "200" && "$S" != "401" && "$S" != "405" ]]; then
+            echo "FAIL: unexpected status $S — /mcp may still be blocked"; exit 1
+          fi
+          echo "OK — /mcp reachable (HTTP $S)"
