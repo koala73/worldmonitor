@@ -31,11 +31,6 @@ export const ENTERPRISE_API_RATE_LIMIT = 1000;
  *  is metered (never rejects); the ceiling is pure runaway/cost protection. */
 export const CEILING_MULTIPLIER = 10;
 
-// Mirror REDIS_TEST_RETRY_OPTS in api/_rate-limit.js / server/_shared/rate-limit.ts:
-// skip the @upstash/redis retry backoff under the node test runner so
-// fail-open tests pointed at a fake host degrade immediately.
-const REDIS_TEST_RETRY_OPTS = process.env.NODE_TEST_CONTEXT ? { retry: false } : {};
-
 // One Redis client shared across every per-minute Ratelimit instance; one
 // Ratelimit per distinct numeric limit (60, 300, 1000) cached in the Map so two
 // Starter accounts share a limiter *config* but get separate buckets via the
@@ -48,7 +43,14 @@ function getRedis(): Redis | null {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
-  redisSingleton = new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS });
+  // Skip the @upstash/redis retry backoff under the node test runner so
+  // fail-open tests pointed at a fake host degrade immediately; production
+  // (env unset) keeps the resilient default. Mirrors api/_rate-limit.js.
+  // `retry: false` must stay a literal (not a spread) or it widens to
+  // `boolean` and fails tsconfig.api.json's RetryConfig type.
+  redisSingleton = process.env.NODE_TEST_CONTEXT
+    ? new Redis({ url, token, retry: false })
+    : new Redis({ url, token });
   return redisSingleton;
 }
 
