@@ -12,7 +12,7 @@
   "hero": {
     "noiseWord": "शोर",
     "signalWord": "सिग्नल",
-    "valueProps": "भू-राजनीतिक इंटेलिजेंस का AI लेयर — उससे पूछें, उसे सब्सक्राइब करें, उस पर बनाएं।",
+    "valueProps": "भू-राजनीतिक इंटेलिजेंस की AI परत — इससे सवाल पूछें, इसकी सदस्यता लें, इस पर निर्माण करें।",
     "reserveEarlyAccess": "अपना शुरुआती एक्सेस आरक्षित करें",
     "launchingDate": "अब लाइव",
     "tryFreeDashboard": "मुफ़्त डैशबोर्ड आज़माएँ",
@@ -23,7 +23,7 @@
     "goToDashboard": "डैशबोर्ड पर जाएँ"
   },
   "wired": {
-    "asFeaturedIn": "इसमें प्रकाशित"
+    "asFeaturedIn": "इनमें उल्लेखित"
   },
   "twoPath": {
     "proTitle": "World Monitor Pro",
@@ -67,17 +67,17 @@
     "deeperDesc": "आपके alert rules के हिसाब से ranked 30-item AI digest। Critical, High, Medium — Assessment और Signals to watch के साथ।"
   },
   "pillars": {
-    "askIt": "उससे पूछें",
+    "askIt": "इससे पूछें",
     "askItDesc": "WM Analyst chat. सभी 30+ services को plain English में query किया जा सकता है।",
-    "subscribeIt": "इसे subscribe करें",
+    "subscribeIt": "इसकी सदस्यता लें",
     "subscribeItDesc": "आपके schedule पर AI digest — daily, twice-daily या weekly. Slack, Discord, Telegram, Email, webhook.",
-    "buildOnIt": "इस पर बनाएं",
+    "buildOnIt": "इस पर निर्माण करें",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) और Claude, GPT, custom LLMs के लिए MCP."
   },
   "deliveryDesk": {
     "eyebrow": "DELIVERY DESK",
     "title": "आपका निजी इंटेलिजेंस डेस्क",
-    "body": "हर send में 30 तक ranked items, 500+ sources से deduped, आपकी watchlist के against scored. अपना cadence चुनें — daily, twice-daily या weekly — AI Assessment और Signals to watch के साथ, Slack, Discord, Telegram, Email या webhook पर delivered.",
+    "body": "हर भेजे गए ब्रीफ़ में 30 तक रैंक किए गए आइटम होते हैं, जिन्हें 500+ स्रोतों से डुप्लिकेट हटाकर आपकी वॉचलिस्ट के आधार पर स्कोर किया जाता है। अपना समय-क्रम चुनें — दैनिक, दिन में दो बार या साप्ताहिक — और AI आकलन व देखने योग्य संकेत Slack, Discord, Telegram, ईमेल या webhook पर पाएँ।",
     "closer": "Newsletter नहीं। एक analyst.",
     "channels": "Slack · Discord · Telegram · Email · Webhook · AES-256 encrypted · Quiet hours"
   },
@@ -137,7 +137,7 @@
     "cyberDesc": "Ransomware feeds, BGP hijacks, DDoS detection",
     "gdelt": "GDELT और News",
     "gdeltDesc": "500+ RSS feeds, AI-scored GDELT events, live broadcasts",
-    "seismology": "Seismology और Natural",
+    "seismology": "भूकंप विज्ञान और प्राकृतिक घटनाएँ",
     "seismologyDesc": "USGS earthquakes, volcanic activity, severe weather"
   },
   "tiers": {
@@ -148,7 +148,7 @@
   "proShowcase": {
     "proTier": "PRO TIER",
     "title": "आपका AI analyst जो कभी नहीं सोता",
-    "subtitle": "Free dashboard आपको दुनिया दिखाता है। Pro आपको पूछने के लिए analyst, subscribe करने के लिए digest और build करने के लिए primitives देता है। Stocks, macro, geopolitical risk — और इनके बीच के connections।",
+    "subtitle": "मुफ़्त डैशबोर्ड आपको दुनिया दिखाता है। Pro आपको पूछने के लिए विश्लेषक, सदस्यता लेने के लिए डाइजेस्ट और निर्माण के लिए आधार देता है। Stocks, macro, geopolitical risk — और इनके बीच के connections।",
     "equityResearch": "Equity Research",
     "equityResearchDesc": "Financials visualization, analyst price targets और valuation metrics के साथ global stock analysis. Track करें कि markets को क्या move करता है।",
     "geopoliticalAnalysis": "Geopolitical Analysis",
@@ -160,7 +160,7 @@
     "orbitalSurveillance": "Orbital Surveillance",
     "orbitalSurveillanceDesc": "(जल्द) Overhead pass predictions, revisit frequency analysis और imaging window alerts. जानें कि intelligence satellites कब आपकी areas of interest देख रहे हैं।",
     "morningBriefs": "Personal Intelligence Desk",
-    "morningBriefsDesc": "हर digest में 30 तक ranked stories, 500+ sources से deduped. Daily, twice-daily या weekly cadence चुनें — या critical events के लिए real-time alerts. AI Assessment और Signals to watch Slack, Discord, Telegram, Email या webhook पर delivered. Newsletter नहीं — analyst.",
+    "morningBriefsDesc": "हर डाइजेस्ट में 30 तक रैंक की गई कहानियाँ होती हैं, जिन्हें 500+ स्रोतों से डुप्लिकेट हटाकर चुना जाता है। Daily, twice-daily या weekly cadence चुनें — या critical events के लिए real-time alerts। AI आकलन और देखने योग्य संकेत Slack, Discord, Telegram, ईमेल या webhook पर पाएँ। Newsletter नहीं — analyst.",
     "oneKey": "30+ Services, 1 Key",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky और अधिक — सब active, अलग registrations नहीं।",
     "deliveryLabel": "चुनें कि intelligence आप तक कैसे पहुँचे"
@@ -229,46 +229,46 @@
   },
   "pricingTable": {
     "title": "Tiers की तुलना",
-    "feature": "Feature",
-    "freeHeader": "Free ($0)",
+    "feature": "सुविधा",
+    "freeHeader": "मुफ़्त ($0)",
     "proHeader": "Pro ($39.99)",
     "apiHeader": "API ($99.99)",
-    "entHeader": "Enterprise (Contact)",
-    "dataRefresh": "Data refresh",
-    "dashboard": "Dashboard",
+    "entHeader": "Enterprise (संपर्क)",
+    "dataRefresh": "डेटा रीफ़्रेश",
+    "dashboard": "डैशबोर्ड",
     "ai": "AI",
-    "briefsAlerts": "Briefs और alerts",
-    "delivery": "Delivery",
+    "briefsAlerts": "ब्रीफ़ और अलर्ट",
+    "delivery": "डिलीवरी",
     "apiRow": "API",
-    "infraLayers": "Infrastructure layers",
-    "satellite": "Orbital Surveillance",
-    "connectorsRow": "Connectors",
-    "deployment": "Deployment",
-    "securityRow": "Security",
+    "infraLayers": "इन्फ्रास्ट्रक्चर लेयर",
+    "satellite": "ऑर्बिटल निगरानी",
+    "connectorsRow": "कनेक्टर",
+    "deployment": "डिप्लॉयमेंट",
+    "securityRow": "सुरक्षा",
     "f5_15min": "5-15 min",
-    "fLt60s": "<60 seconds",
-    "fPerRequest": "Per-request",
+    "fLt60s": "<60 सेकंड",
+    "fPerRequest": "प्रति अनुरोध",
     "fLiveEdge": "Live-edge",
-    "f50panels": "50+ panels",
+    "f50panels": "50+ पैनल",
     "fWhiteLabel": "White-label",
     "fBYOK": "BYOK",
-    "fIncluded": "Included",
-    "fAgentsPersonas": "Agents + personas",
+    "fIncluded": "शामिल",
+    "fAgentsPersonas": "एजेंट + personas",
     "fDailyFlash": "Daily + flash",
-    "fTeamDist": "Team distribution",
+    "fTeamDist": "टीम वितरण",
     "fSlackTgWa": "Slack/Discord/TG/Email/Webhook",
     "fWebhook": "Webhook",
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + bulk",
-    "fTensOfThousands": "+ tens of thousands",
-    "fLiveTracking": "Live tracking",
-    "fPassAlerts": "Pass alerts + analysis",
+    "fTensOfThousands": "+ दसियों हज़ार",
+    "fLiveTracking": "लाइव ट्रैकिंग",
+    "fPassAlerts": "पास अलर्ट + विश्लेषण",
     "fImagerySar": "Imagery + SAR",
     "f100plus": "100+",
-    "fCloud": "Cloud",
+    "fCloud": "क्लाउड",
     "fCloudOnPrem": "Cloud/on-prem/air-gap",
-    "fStandard": "Standard",
+    "fStandard": "मानक",
     "fKeyAuth": "Key auth",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "Core platform मुफ़्त रहता है। Paid plans equity research, macro analytics, AI briefings और organizational use unlock करते हैं।",
@@ -301,7 +301,7 @@
     "q12": "Refresh rate क्या है?",
     "a12": "Pro के लिए near real time. Free पर 5–15 मिनट।",
     "q13": "मेरा data कहाँ जाता है?",
-    "a13": "Notification channels rest पर AES-256 encrypted हैं। Digests हमारे pipeline से unredacted बाहर नहीं जाते।"
+    "a13": "सूचना चैनल संग्रहित अवस्था में AES-256 से एन्क्रिप्टेड रहते हैं। डाइजेस्ट हमारी पाइपलाइन से बिना रेडैक्शन के बाहर नहीं जाते।"
   },
   "finalCta": {
     "title": "Pro से शुरू करें। Enterprise तक scale करें।",
@@ -337,9 +337,9 @@
   "soonBadge": "जल्द",
   "meta": {
     "title": "World Monitor Pro — AI Analyst, Personal Intelligence Desk, Claude और GPT के लिए MCP",
-    "description": "Geopolitical AI layer. उससे पूछें, उसे subscribe करें, उस पर build करें। 30+ live services पर WM Analyst chat, daily, twice-daily या weekly Slack, Discord, Telegram, Email या webhook पर delivered AI digest, custom widget builder (HTML/CSS/JS + AI), और Claude, GPT व custom LLMs के लिए MCP connectors.",
+    "description": "भू-राजनीतिक AI परत। इससे सवाल पूछें, इसकी सदस्यता लें, इस पर निर्माण करें। 30+ live services पर WM Analyst chat, daily, twice-daily या weekly Slack, Discord, Telegram, Email या webhook पर delivered AI digest, custom widget builder (HTML/CSS/JS + AI), और Claude, GPT व custom LLMs के लिए MCP connectors.",
     "ogTitle": "World Monitor Pro — Geopolitical AI Layer",
-    "ogDescription": "उससे पूछें, उसे subscribe करें, उस पर build करें। WM Analyst chat, आपके schedule पर AI digest (daily, twice-daily या weekly), custom widget builder, और Claude/GPT के लिए MCP — 30+ live services एक key के तहत।"
+    "ogDescription": "इससे सवाल पूछें, इसकी सदस्यता लें, इस पर निर्माण करें। WM Analyst chat, आपके schedule पर AI digest (daily, twice-daily या weekly), custom widget builder, और Claude/GPT के लिए MCP — 30+ live services एक key के तहत।"
   },
   "pricing": {
     "suffixForever": "हमेशा के लिए",
@@ -357,46 +357,46 @@
     "promoCodeNote": "Promo code है? Checkout के दौरान enter करें।",
     "tiers": {
       "free": {
-        "description": "Essentials से शुरू करें",
+        "description": "ज़रूरी सुविधाओं से शुरू करें",
         "features": [
-          "Core dashboard panels",
-          "Global news feed",
-          "Earthquake और weather alerts",
-          "Basic map view"
+          "मुख्य डैशबोर्ड पैनल",
+          "वैश्विक समाचार फ़ीड",
+          "भूकंप और मौसम अलर्ट",
+          "बेसिक मैप व्यू"
         ],
         "cta": "शुरू करें"
       },
       "pro": {
-        "description": "Full intelligence dashboard",
+        "description": "पूरा इंटेलिजेंस डैशबोर्ड",
         "features": [
-          "Free की हर चीज़",
-          "AI stock analysis और backtesting",
-          "Daily market briefs",
-          "Military और geopolitical tracking",
+          "मुफ़्त प्लान की हर चीज़",
+          "AI स्टॉक विश्लेषण और backtesting",
+          "दैनिक मार्केट ब्रीफ़",
+          "सैन्य और भू-राजनीतिक ट्रैकिंग",
           "Custom widget builder",
-          "MCP data connectors",
-          "Priority data refresh"
+          "MCP डेटा कनेक्टर",
+          "प्राथमिकता वाला डेटा रीफ़्रेश"
         ]
       },
       "api": {
-        "description": "Intelligence data तक programmatic access",
+        "description": "इंटेलिजेंस डेटा तक प्रोग्रामेटिक एक्सेस",
         "features": [
-          "REST API access",
-          "Real-time data streams",
-          "1,000 requests/day",
-          "Webhook notifications",
-          "Custom data exports"
+          "REST API एक्सेस",
+          "रीयल-टाइम डेटा स्ट्रीम",
+          "1,000 अनुरोध/दिन",
+          "Webhook सूचनाएँ",
+          "कस्टम डेटा एक्सपोर्ट"
         ]
       },
       "enterprise": {
-        "description": "Organizations के लिए custom solutions",
+        "description": "संगठनों के लिए कस्टम समाधान",
         "features": [
           "Pro + API की हर चीज़",
-          "Unlimited API requests",
-          "Dedicated support",
-          "Custom integrations",
-          "SLA guarantee",
-          "On-premise option"
+          "असीमित API अनुरोध",
+          "समर्पित सहायता",
+          "कस्टम इंटीग्रेशन",
+          "SLA गारंटी",
+          "On-premise विकल्प"
         ],
         "cta": "Sales से संपर्क करें"
       }

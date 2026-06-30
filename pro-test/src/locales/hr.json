@@ -29,7 +29,7 @@
     "proTitle": "World Monitor Pro",
     "proDesc": "Vaš AI analitičar. Osobni obavještajni desk. Platforma na kojoj možete graditi. Jedan ključ za 30+ servisa uživo.",
     "proF1": "WM Analyst chat — razgovorno pretražujte svih 30+ servisa",
-    "proF2": "AI sažetak — dnevno, dvaput dnevno ili tjedno — u Slack, Discord, Telegram, e-poštu ili webhook",
+    "proF2": "AI sažetak — dnevno, dvaput dnevno ili tjedno — putem Slacka, Discorda, Telegrama, e-pošte ili webhooka",
     "proF3": "Custom Widget Builder — HTML/CSS/JS uz izmjene potpomognute AI-jem",
     "proF4": "MCP konektori — povežite WorldMonitor s Claudeom, GPT-om ili vlastitim LLM-ovima",
     "proF5": "Istraživanje dionica, burzovna analiza i backtesting",
@@ -49,7 +49,7 @@
     "entF6": "REST API + webhookovi + masovni izvoz",
     "entF7": "Timski prostori sa SSO/MFA/RBAC",
     "entF8": "White-label i ugradivi paneli",
-    "entF9": "Android TV aplikacija za SOC zidove i trgovačke podije",
+    "entF9": "Android TV aplikacija za SOC zidove i trgovačke parkete",
     "entF10": "Cloud, on-prem ili air-gapped implementacija",
     "entF11": "Namjenski onboarding i podrška",
     "entCta": "Razgovarajte s prodajom",
@@ -77,8 +77,8 @@
   "deliveryDesk": {
     "eyebrow": "DELIVERY DESK",
     "title": "Vaš osobni obavještajni desk",
-    "body": "Do 30 rangiranih stavki po slanju, dedupliciranih kroz 500+ izvora i bodovanih prema vašoj watchlisti. Odaberite ritam — dnevno, dvaput dnevno ili tjedno — uz AI Assessment i Signals to watch dostavljene u Slack, Discord, Telegram, e-poštu ili webhook.",
-    "closer": "Nije newsletter. Analitičar je.",
+    "body": "Do 30 rangiranih stavki po slanju, dedupliciranih među više od 500 izvora i bodovanih prema vašoj watchlisti. Odaberite ritam — dnevno, dvaput dnevno ili tjedno — uz AI Assessment i Signals to watch dostavljene putem Slacka, Discorda, Telegrama, e-pošte ili webhooka.",
+    "closer": "Nije newsletter. To je analitičar.",
     "channels": "Slack · Discord · Telegram · E-pošta · Webhook · AES-256 šifrirano · Mirni sati"
   },
   "livePreview": {
@@ -148,7 +148,7 @@
   "proShowcase": {
     "proTier": "PRO RAZINA",
     "title": "Vaš AI analitičar koji nikad ne spava",
-    "subtitle": "Besplatna nadzorna ploča pokazuje vam svijet. Pro vam daje analitičara kojeg možete pitati, sažetak na koji se pretplaćujete i primitive na kojima gradite. Dionice, makro, geopolitički rizik — i veze među njima.",
+    "subtitle": "Besplatna nadzorna ploča pokazuje vam svijet. Pro vam daje analitičara kojeg možete pitati, sažetak na koji se pretplaćujete i gradivne elemente na kojima možete graditi. Dionice, makro, geopolitički rizik — i veze među njima.",
     "equityResearch": "Istraživanje dionica",
     "equityResearchDesc": "Globalna analiza dionica s vizualizacijom financijskih izvještaja, ciljnim cijenama analitičara i metrikama vrednovanja. Pratite što pokreće tržišta.",
     "geopoliticalAnalysis": "Geopolitička analiza",
@@ -160,7 +160,7 @@
     "orbitalSurveillance": "Orbitalni nadzor",
     "orbitalSurveillanceDesc": "(Uskoro) Predikcije preleta, analiza učestalosti ponovnog snimanja i upozorenja o prozorima snimanja. Znajte kada obavještajni sateliti promatraju vaša područja interesa.",
     "morningBriefs": "Osobni obavještajni desk",
-    "morningBriefsDesc": "Do 30 rangiranih priča po sažetku, dedupliciranih kroz 500+ izvora. Odaberite dnevni, dvaput dnevni ili tjedni ritam — ili upozorenja u stvarnom vremenu za kritične događaje. AI Assessment i Signals to watch dostavljeni u Slack, Discord, Telegram, e-poštu ili webhook. Nije newsletter — analitičar je.",
+    "morningBriefsDesc": "Do 30 rangiranih priča po sažetku, dedupliciranih među više od 500 izvora. Odaberite dnevni, dvaput dnevni ili tjedni ritam — ili upozorenja u stvarnom vremenu za kritične događaje. AI Assessment i Signals to watch dostavljeni putem Slacka, Discorda, Telegrama, e-pošte ili webhooka. Nije newsletter — to je analitičar.",
     "oneKey": "30+ servisa, 1 ključ",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky i drugi — svi aktivni, bez zasebnih registracija.",
     "deliveryLabel": "Odaberite kako obavještajni uvidi dolaze do vas"
@@ -187,7 +187,7 @@
     "business": "Business",
     "businessReqs": "50.000 zahtjeva/dan",
     "businessWebhooks": "Neograničeni webhookovi + SLA",
-    "feedData": "Uvedite podatke u svoje nadzorne ploče, automatizirajte upozorenja preko Zapier/n8n/Make i gradite vlastite modele bodovanja na CII/risk podacima."
+    "feedData": "Dovedite podatke u svoje nadzorne ploče, automatizirajte upozorenja preko Zapier/n8n/Makea i gradite vlastite modele bodovanja na podacima CII/rizika."
   },
   "enterpriseShowcase": {
     "enterpriseTier": "ENTERPRISE RAZINA",
@@ -202,7 +202,7 @@
     "connectors": "100+ podatkovnih konektora",
     "connectorsDesc": "PostgreSQL, Snowflake, Splunk, Sentinel, Jira, Slack, Teams i drugi. Izvoz u PDF, PowerPoint, CSV, GeoJSON.",
     "whiteLabel": "White-label, TV i ugradivo",
-    "whiteLabelDesc": "Vaš brand, vaša domena, vaša desktop aplikacija. Android TV aplikacija za SOC zidove i trgovačke podije. Ugradivi iframe paneli.",
+    "whiteLabelDesc": "Vaš brand, vaša domena, vaša desktop aplikacija. Android TV aplikacija za SOC zidove i trgovačke parkete. Ugradivi iframe paneli.",
     "financial": "Financijska inteligencija",
     "financialDesc": "Kalendar zarada, podaci energetskih mreža, prošireno praćenje roba s inferencijom tereta, screening sankcija s AIS korelacijom.",
     "commodity": "Trgovanje robama",
@@ -301,7 +301,7 @@
     "q12": "Koja je stopa osvježavanja?",
     "a12": "Gotovo u stvarnom vremenu za Pro. 5–15 minuta na besplatnom planu.",
     "q13": "Kamo idu moji podaci?",
-    "a13": "Kanali obavijesti šifrirani su AES-256 u mirovanju. Sažeci nikad ne napuštaju naš pipeline bez redakcije."
+    "a13": "Kanali obavijesti šifrirani su AES-256 u mirovanju. Sažeci nikada ne napuštaju naš obradni tok bez uklanjanja osjetljivih podataka."
   },
   "finalCta": {
     "title": "Počnite s Pro. Skalirajte na Enterprise.",
@@ -337,7 +337,7 @@
   "soonBadge": "Uskoro",
   "meta": {
     "title": "World Monitor Pro — AI analitičar, osobni obavještajni desk, MCP za Claude i GPT",
-    "description": "Geopolitički AI sloj. Pitajte ga, pretplatite se, gradite na njemu. WM Analyst chat kroz 30+ servisa uživo, AI sažetak dostavljen dnevno, dvaput dnevno ili tjedno u Slack, Discord, Telegram, e-poštu ili webhook, custom widget builder (HTML/CSS/JS + AI) i MCP konektori za Claude, GPT i vlastite LLM-ove.",
+    "description": "Geopolitički AI sloj. Pitajte ga, pretplatite se, gradite na njemu. WM Analyst chat kroz 30+ servisa uživo, AI sažetak dostavljen dnevno, dvaput dnevno ili tjedno putem Slacka, Discorda, Telegrama, e-pošte ili webhooka, custom widget builder (HTML/CSS/JS + AI) i MCP konektori za Claude, GPT i vlastite LLM-ove.",
     "ogTitle": "World Monitor Pro — geopolitički AI sloj",
     "ogDescription": "Pitajte ga, pretplatite se, gradite na njemu. WM Analyst chat, AI sažetak prema vašem rasporedu (dnevno, dvaput dnevno ili tjedno), custom widget builder i MCP za Claude/GPT — kroz 30+ servisa uživo pod jednim ključem."
   },
