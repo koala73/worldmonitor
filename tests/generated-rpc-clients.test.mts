@@ -64,3 +64,24 @@ test('lazy generated RPC client retries after a rejected constructor load', asyn
   assert.equal(await client.ping(), 'pong:https://example.test');
   assert.equal(attempts, 2);
 });
+
+test('lazy generated RPC client ignores symbol lookups without loading constructor', () => {
+  let attempts = 0;
+
+  class TestClient {
+    async ping(): Promise<string> {
+      return 'pong';
+    }
+  }
+
+  const LazyTestClient = createLazyRpcClientConstructor<TestClient>(async () => {
+    attempts += 1;
+    return TestClient;
+  });
+
+  const client = new LazyTestClient('https://example.test');
+  const symbolValue = (client as unknown as Record<PropertyKey, unknown>)[Symbol.toPrimitive];
+
+  assert.equal(symbolValue, undefined);
+  assert.equal(attempts, 0);
+});

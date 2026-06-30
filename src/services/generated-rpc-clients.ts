@@ -50,8 +50,9 @@ export function createLazyRpcClientConstructor<T extends object>(loadConstructor
     };
 
     return new Proxy({}, {
-      get(_target, property) {
+      get(target, property, receiver) {
         if (property === 'then') return undefined;
+        if (typeof property === 'symbol') return Reflect.get(target, property, receiver);
         return (...args: unknown[]) => getClient().then((client) => {
           const value = (client as Record<PropertyKey, unknown>)[property];
           return typeof value === 'function' ? value.apply(client, args) : value;
