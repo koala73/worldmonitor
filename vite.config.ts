@@ -1208,6 +1208,12 @@ export default defineConfig(({ mode }) => {
             if (id.endsWith('/src/services/signal-aggregator.ts')) {
               return 'signal-aggregator';
             }
+            if (id.endsWith('/src/services/military-vessels.ts')) {
+              return 'military-vessels';
+            }
+            if (id.endsWith('/src/services/cross-module-integration.ts')) {
+              return 'cross-module-integration';
+            }
             // Co-locate the deck.gl renderer with the deck vendor chunk so
             // onlyExplicitManualChunks cannot split deck's transitive deps
             // across the DeckGLMap boundary (which formed a circular chunk →

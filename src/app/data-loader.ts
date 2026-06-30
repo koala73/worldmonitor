@@ -3,6 +3,7 @@ import { getRpcBaseUrl } from '@/services/rpc-client';
 import { enqueuePanelCall } from '@/app/pending-panel-data';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import { getSignalAggregator, type SignalAggregator } from '@/app/lazy-services';
+import { getMilitaryVesselsModule } from '@/services/military-vessels-lazy';
 import type { NewsItem, MapLayers, SocialUnrestEvent, MilitaryFlight } from '@/types';
 import type { MarketData } from '@/types';
 import type { TimeRange } from '@/components/MapContainer';
@@ -54,9 +55,6 @@ import {
   getProtestStatus,
   fetchFlightDelays,
   fetchMilitaryFlights,
-  fetchMilitaryVessels,
-  initMilitaryVesselStream,
-  isMilitaryVesselTrackingConfigured,
   fetchUSNIFleetReport,
   updateBaseline,
   calculateDeviation,
@@ -2527,12 +2525,13 @@ export class DataLoaderManager implements AppModule {
 
     tasks.push((async () => {
       try {
-        if (isMilitaryVesselTrackingConfigured()) {
-          initMilitaryVesselStream();
+        const militaryVessels = await getMilitaryVesselsModule();
+        if (militaryVessels.isMilitaryVesselTrackingConfigured()) {
+          militaryVessels.initMilitaryVesselStream();
         }
         const [flightData, vesselData] = await Promise.all([
           fetchMilitaryFlights(),
-          fetchMilitaryVessels(),
+          militaryVessels.fetchMilitaryVessels(),
         ]);
         this.ctx.intelligenceCache.military = {
           flights: flightData.flights,
@@ -3058,12 +3057,13 @@ export class DataLoaderManager implements AppModule {
       return;
     }
     try {
-      if (isMilitaryVesselTrackingConfigured()) {
-        initMilitaryVesselStream();
+      const militaryVessels = await getMilitaryVesselsModule();
+      if (militaryVessels.isMilitaryVesselTrackingConfigured()) {
+        militaryVessels.initMilitaryVesselStream();
       }
       const [flightData, vesselData] = await Promise.all([
         fetchMilitaryFlights(),
-        fetchMilitaryVessels(),
+        militaryVessels.fetchMilitaryVessels(),
       ]);
       this.ctx.intelligenceCache.military = {
         flights: flightData.flights,

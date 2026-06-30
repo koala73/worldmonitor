@@ -1,7 +1,7 @@
 import { Panel } from './Panel';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { fetchCachedTheaterPosture, type CachedTheaterPosture } from '@/services/cached-theater-posture';
-import { fetchMilitaryVessels } from '@/services/military-vessels';
+import { getMilitaryVesselsModule } from '@/services/military-vessels-lazy';
 import { recalcPostureWithVessels, type TheaterPostureSummary } from '@/services/military-surge';
 import { isDesktopRuntime } from '@/services/runtime';
 import { t } from '../services/i18n';
@@ -165,6 +165,7 @@ export class StrategicPosturePanel extends Panel {
 
   private async augmentWithVessels(): Promise<void> {
     try {
+      const { fetchMilitaryVessels } = await getMilitaryVesselsModule();
       const { vessels } = await fetchMilitaryVessels();
       console.log(`[StrategicPosturePanel] Got ${vessels.length} total military vessels`);
       if (vessels.length === 0) {
