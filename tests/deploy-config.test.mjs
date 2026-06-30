@@ -948,6 +948,21 @@ describe('embeddable map route guardrails', () => {
     });
   }
 
+  it('both self-hosted nginx confs serve dashboard.html as the SPA entry', () => {
+    // dashboardHtmlOutputPlugin (vite.config.ts, !isDesktopBuild) renames the
+    // built SPA entry index.html -> dashboard.html for every web build, so dist/
+    // ships no index.html. BOTH self-hosted images must point the `index`
+    // directive and the SPA fallback at dashboard.html, or `/` 403s:
+    //   root Dockerfile   -> docker/nginx.conf          (docker-compose stack)
+    //   docker/Dockerfile -> docker/nginx.conf.template (published ghcr image)
+    for (const conf of ['docker/nginx.conf', 'docker/nginx.conf.template']) {
+      const src = readFileSync(resolve(__dirname, `../${conf}`), 'utf-8');
+      assert.match(src, /^\s*index dashboard\.html;/m, `${conf}: index directive must be dashboard.html`);
+      assert.match(src, /try_files \$uri \$uri\/ \/dashboard\.html;/, `${conf}: SPA fallback must serve /dashboard.html`);
+      assert.doesNotMatch(src, /try_files \$uri \$uri\/ \/index\.html;/, `${conf}: must not keep the broken /index.html SPA fallback`);
+    }
+  });
+
   it('keeps Docker embed routes on the locked-down embed security headers', () => {
     const nginxTemplate = readFileSync(resolve(__dirname, '../docker/nginx.conf.template'), 'utf-8');
     assert.match(nginxTemplate, /location = \/embed \{[\s\S]*?include \/etc\/nginx\/embed_security_headers\.conf;/);
