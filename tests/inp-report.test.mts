@@ -55,3 +55,29 @@ test('reportInpMetric routes through the injected enqueue exactly once (R2 deleg
   reportInpMetric({ value: 100 }, fakeEnqueue);
   assert.equal(calls, 1, 'delegates to enqueueSentryCall (which buffers until Sentry init)');
 });
+
+test('reportInpMetric drops good-rated INP without enqueuing (#4565)', () => {
+  let calls = 0;
+  const fakeEnqueue = ((fn: (s: any) => void) => {
+    calls += 1;
+    fn({ captureMessage: () => {} });
+  }) as unknown as typeof import('@/bootstrap/sentry-defer').enqueueSentryCall;
+  reportInpMetric({ value: 120, rating: 'good', attribution: { interactionTarget: 'x' } }, fakeEnqueue);
+  assert.equal(calls, 0, 'good-rated (<200ms) INP is not reported');
+});
+
+test('reportInpMetric still reports poor-rated INP (#4565)', () => {
+  const { ctx } = capture({ value: 900, rating: 'poor', attribution: { interactionTarget: 'canvas' } });
+  assert.equal(ctx.tags['inp.rating'], 'poor');
+  assert.equal(ctx.extra.value, 900);
+});
+
+test('reportInpMetric still reports unknown/undefined-rated INP (conservative) (#4565)', () => {
+  let calls = 0;
+  const fakeEnqueue = ((fn: (s: any) => void) => {
+    calls += 1;
+    fn({ captureMessage: () => {} });
+  }) as unknown as typeof import('@/bootstrap/sentry-defer').enqueueSentryCall;
+  reportInpMetric({ value: 250 }, fakeEnqueue); // no rating field
+  assert.equal(calls, 1, 'unknown/undefined rating still reports — do not drop unknowns');
+});

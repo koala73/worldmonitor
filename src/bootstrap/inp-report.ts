@@ -44,6 +44,10 @@ export function reportInpMetric(
   metric: InpMetricLike,
   enqueue: typeof enqueueSentryCall = enqueueSentryCall,
 ): void {
+  // Volume trim (#4565): skip 'good' (<200ms) INP — ~70% of field events, low
+  // diagnostic value. Report needs-improvement / poor / unknown only, so the
+  // actionable worst-case signal still lands while Sentry event volume drops ~70%.
+  if (metric.rating === 'good') return;
   const a = metric.attribution ?? {};
   enqueue((s) => {
     s.captureMessage('web-vital: INP', {
