@@ -45,7 +45,8 @@
         "features": [
           "REST API access",
           "Real-time data streams",
-          "1,000 requests/day",
+          "60 requests/minute",
+          "1,000 requests/day included",
           "Webhook notifications",
           "Custom data exports"
         ]
