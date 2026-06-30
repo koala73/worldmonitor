@@ -157,4 +157,53 @@ describe('DeferredHeavyCommit (#4558 U2 nucleus)', () => {
     sched.fire(); // nothing queued
     assert.equal(commits.length, 0);
   });
+
+  it('clears the scheduled flush when the only pending key reverts to its committed value', () => {
+    const sched = makeScheduler();
+    const commits: string[][] = [];
+    const gate = new DeferredHeavyCommit<string>({
+      schedule: sched.schedule,
+      isAlive: () => true,
+      onCommit: (k) => commits.push(k),
+      equals: (a, b) => a === b,
+    });
+
+    gate.stage('conflict', 'A');
+    sched.fire();
+    assert.deepEqual(commits[0], ['conflict']);
+    const cancelsBefore = sched.cancelCount;
+
+    // Real change schedules a flush, then revert it before the flush runs.
+    gate.stage('conflict', 'B');
+    assert.ok(gate.hasPending());
+    gate.stage('conflict', 'A'); // back to committed -> pending empties
+
+    assert.ok(!gate.hasPending(), 'no stale flush once nothing is pending');
+    assert.deepEqual(gate.pendingKeys(), []);
+    assert.equal(sched.pending, false, 'scheduler queue drained');
+    assert.equal(sched.cancelCount, cancelsBefore + 1, 'prior schedule cancelled');
+
+    sched.fire(); // nothing queued -> no extra commit
+    assert.equal(commits.length, 1, 'reverted change commits nothing');
+  });
+
+  it('keeps the scheduled flush when one of several pending keys reverts', () => {
+    const sched = makeScheduler();
+    const commits: string[][] = [];
+    const gate = new DeferredHeavyCommit<string>({
+      schedule: sched.schedule,
+      isAlive: () => true,
+      onCommit: (k) => commits.push([...k].sort()),
+      equals: (a, b) => a === b,
+    });
+
+    gate.stage('conflict', 'A'); // committed empty -> stays pending
+    gate.stage('protests', 'B');
+    gate.stage('conflict', undefined as unknown as string); // committed.get is undefined -> reverts conflict only
+
+    assert.ok(gate.hasPending(), 'flush stays scheduled while protests is pending');
+    assert.deepEqual(gate.pendingKeys(), ['protests']);
+    sched.fire();
+    assert.deepEqual(commits[0], ['protests']);
+  });
 });

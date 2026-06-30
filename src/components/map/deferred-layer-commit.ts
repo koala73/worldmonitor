@@ -52,8 +52,11 @@ export class DeferredHeavyCommit<T> {
   stage(key: string, data: T): void {
     this.pending.set(key, data);
     if (this.equals(data, this.committed.get(key))) {
-      // No real change for this key; don't schedule on its account.
+      // No real change for this key; don't schedule on its account. If this
+      // empties the pending set, drop any flush a prior stage() scheduled so
+      // hasPending() doesn't report a flush that would commit nothing.
       this.pending.delete(key);
+      if (this.pending.size === 0) this.clearHandle();
       return;
     }
     this.scheduleFlush();

@@ -5757,12 +5757,14 @@ export class DeckGLMap {
       layerCount = built.length;
       this.deckOverlay?.setProps({ layers: built });
     } catch { /* map may be mid-teardown (null.getProjection) */ }
-    this.maplibreMap.triggerRepaint();
     if (import.meta.env.DEV) {
       // Attribute a slow frame to our JS build vs deck.gl's commit (#4558).
+      // Sample total BEFORE triggerRepaint() so the deckCommit bucket isolates
+      // setProps tessellation and doesn't absorb the repaint-schedule cost.
       const summary = summarizeRenderTiming({ total: performance.now() - startTime, jsBuild, layerCount });
       if (summary.overBudget) console.warn(formatRenderTiming(summary));
     }
+    this.maplibreMap.triggerRepaint();
     this.updateZoomHints();
   }
 
