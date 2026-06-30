@@ -73,6 +73,12 @@ Alternative Routes: SEA-ME-WE 6 (11%), 2Africa (8%), Falcon (8%)
 
 The dashboard monitors real-time cable operations and advisories from official maritime warning systems, providing early warning of potential connectivity disruptions.
 
+### Backed by endpoints
+
+| Method | Route | What it feeds |
+|--------|-------|---------------|
+| `GET` | `/api/infrastructure/v1/get-cable-health` | Cable health map/tooltips and cascade context. `fetchCableHealth()` calls this RPC when the cable layer is active, keeps a 1-minute local cache, and the server response is backed by Redis plus NGA warning analysis. |
+
 ### Data Sources
 
 | Source | Coverage | Data Type |

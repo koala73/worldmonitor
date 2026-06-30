@@ -116,6 +116,13 @@ Client-side fetch uses a circuit breaker: 3 consecutive failures trigger a 10-mi
 - `api/health.js` checks `intelligence:satellites:tle:v1` as a standalone key
 - Seed metadata checked with `maxStaleMin: 180` (3h — survives 1 missed cycle)
 
+### Backed by endpoints
+
+| Surface | Endpoint | Notes |
+|---|---|---|
+| Satellite TLE mirror | `GET /api/intelligence/v1/list-satellites` | Generated IntelligenceService RPC reading `intelligence:satellites:tle:v1`; the current renderer still uses the legacy `api/satellites.js` path listed below. |
+| SAR / optical scene search | `GET /api/imagery/v1/search-imagery` | STAC-backed Sentinel search by `bbox`, `datetime`, `source`, and `limit`, cached per snapped query. |
+
 ---
 
 ## Files

@@ -20,7 +20,12 @@ Panel id is `stock-backtest`; canonical component is `src/components/StockBackte
 
 ## Data sources
 
-Backtests are produced by a Railway cron that replays previous analysis signals against historical price series. Results are stored in the premium-stock store and fetched via `@/services/stock-backtest`. The panel consumes `StockBacktestResult[]` through `renderBacktests(items, source)`.
+Backtests are produced by a Railway cron that replays previous analysis signals against historical price series. Results are stored in the premium-stock store and fetched via `@/services/stock-backtest`; stale or missing stored rows can be recomputed on demand.
+
+| Method + route | Feeds |
+|---|---|
+| `GET /api/market/v1/list-stored-stock-backtests` | Stored premium backtest snapshots rendered first when fresh. |
+| `GET /api/market/v1/backtest-stock` | On-demand per-symbol backtest recomputation for missing or stale rows. |
 
 ## Refresh cadence
 
@@ -32,5 +37,5 @@ Backtest results update with the premium-stock cron. Freshness is signalled by t
 
 ## API reference
 
-- [Markets service](/api/MarketService.openapi.yaml) — underlying price-series and stock-analysis RPCs.
+- [Markets service](/api/MarketService.openapi.yaml) — schemas and parameters for `list-stored-stock-backtests` and `backtest-stock`.
 - Related: [Premium Stock Analysis](/panels/stock-analysis) — per-ticker deep dive that seeds the backtest input.

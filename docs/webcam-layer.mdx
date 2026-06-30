@@ -74,6 +74,15 @@ Runtime:
   User pins webcam → localStorage → PinnedWebcamsPanel (2x2 iframe grid)
 ```
 
+### Backed by endpoints
+
+The webcam layer does not hydrate marker or preview data from the bootstrap payload. Viewport reads are direct WebcamService RPC calls against the seeded Redis geo index, and preview/player URLs are fetched only after a user interacts with a marker.
+
+| Method | Route | What it feeds |
+|--------|-------|---------------|
+| `GET` | `/api/webcam/v1/list-webcams` | Map webcam markers and clusters for the current viewport; the handler reads seeded Redis geo/metadata keys and caches clustered viewport responses. |
+| `GET` | `/api/webcam/v1/get-webcam-image` | Tooltip preview images and Windy player URLs for a selected camera; the handler calls Windy on demand and caches each webcam image lookup for 5 minutes. |
+
 ### Server-side clustering
 
 The `listWebcams` handler performs server-side spatial clustering based on zoom level. At low zoom, nearby cameras are grouped into cluster markers showing a count. At higher zoom, individual markers appear. This keeps the map performant even when thousands of cameras are in view.
