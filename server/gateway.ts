@@ -28,7 +28,15 @@ import {
   getInternalMcpVerifiedNonce,
   verifyInternalMcpRequest,
 } from './_shared/mcp-internal-hmac';
-import { buildUsageIdentity, type UsageIdentityInput } from './_shared/usage-identity';
+import { buildUsageIdentity, hashKeySync, type UsageIdentityInput } from './_shared/usage-identity';
+import { runRedisPipeline } from './_shared/redis';
+import {
+  checkBurst,
+  reserveDailyMeter,
+  rateLimitHeaders,
+  ENTERPRISE_API_RATE_LIMIT,
+  CEILING_MULTIPLIER,
+} from './_shared/api-key-rate-limit';
 import {
   deliverUsageEvents,
   buildRequestEvent,
@@ -522,8 +530,15 @@ export function createDomainGateway(
     const domain = (/^v\d+$/.test(_parts[2] ?? '') ? _parts[3] : _parts[2]) ?? '';
     const reqBytes = deriveReqBytes(request);
 
+    // #3199: in shadow mode a per-account limit that WOULD have triggered is
+    // recorded on the single terminal success emit (never a second event) so the
+    // volume signal Phase-2 pricing reuses isn't double-counted. Overrides only
+    // a successful terminal reason (status < 400); a real 4xx/5xx outcome wins.
+    let pendingShadowReason: RequestReason | null = null;
     function emitRequest(status: number, reason: RequestReason, cacheTier: UsageCacheTier | null, resBytes = 0): void {
       if (!ctx?.waitUntil) return;
+      const effectiveReason: RequestReason =
+        pendingShadowReason && status < 400 ? pendingShadowReason : reason;
       const identity = buildUsageIdentity(usage);
       // Single ctx.waitUntil() registered synchronously in the request phase.
       // The IIFE awaits ua_hash (SHA-256) then awaits delivery directly via
@@ -559,7 +574,7 @@ export function createDomainGateway(
             acceptLanguage: deriveAcceptLanguage(originalRequest),
             host: deriveHost(originalRequest),
             sentryTraceId: deriveSentryTraceId(originalRequest),
-            reason,
+            reason: effectiveReason,
           }),
         ]);
       })());
@@ -1043,7 +1058,95 @@ export function createDomainGateway(
         return endpointRlResponse;
       }
 
-      if (!hasEndpointRatePolicy(pathname)) {
+      // ── Per-account API rate limit (#3199) ──────────────────────────────
+      // Eligible authenticated keys — a valid user key (which carries NO
+      // keyCheck.kind, so `isUserApiKey` is the discriminator) or an enterprise
+      // env key — are governed by a per-account burst + daily meter + 10×
+      // safety ceiling instead of the global per-IP cap. In ENFORCE they bypass
+      // the per-IP fallback below; in SHADOW they only record telemetry and
+      // still fall through to per-IP, so protection never drops below today.
+      // Limits are NOT in scope here (checkEntitlement discards `features`), so
+      // user keys resolve getEntitlements explicitly (cached); enterprise keys
+      // carry no entitlement and use hardcoded limits.
+      let governedByApiKeyLayer = false;
+      if (keyCheck.valid && (isUserApiKey || isEnterpriseAuth)) {
+        const enforce = process.env.API_RATE_LIMIT_ENFORCE === 'true';
+        let perMinute = 0;
+        let allowance = -1;
+        let identity = '';
+        if (isEnterpriseAuth) {
+          perMinute = ENTERPRISE_API_RATE_LIMIT; // hardcoded — no entitlement row
+          allowance = -1; // unlimited daily / no ceiling
+          identity = wmKey ? hashKeySync(wmKey) : '';
+        } else if (sessionUserId) {
+          const ent = await getEntitlements(sessionUserId);
+          if (ent && ent.features.apiAccess && ent.features.apiRateLimit > 0) {
+            perMinute = ent.features.apiRateLimit;
+            // undefined ⇒ fail-open (no daily limit); -1 ⇒ unlimited.
+            allowance =
+              typeof ent.features.apiDailyAllowance === 'number'
+                ? ent.features.apiDailyAllowance
+                : -1;
+            identity = sessionUserId;
+          }
+          // else: downgraded / null entitlement ⇒ not eligible (perMinute = 0),
+          // falls through to the per-IP path — never a slidingWindow(0).
+        }
+
+        if (perMinute > 0 && identity) {
+          // 1. Per-minute burst (hard limit).
+          const burst = await checkBurst(perMinute, identity);
+          if (!burst.ok) {
+            if (enforce) {
+              const retryAfterSec = Math.max(1, Math.ceil((burst.reset - Date.now()) / 1000));
+              emitRequest(429, 'rl_min_429', null);
+              return new Response(JSON.stringify({ error: 'Too many requests' }), {
+                status: 429,
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Cache-Control': 'no-store',
+                  ...rateLimitHeaders({ limit: burst.limit, remaining: 0, resetMs: burst.reset, retryAfterSec }),
+                  ...corsHeaders,
+                },
+              });
+            }
+            pendingShadowReason = 'rl_min_shadow';
+          } else if (allowance >= 0) {
+            // 2. Daily meter + 10× ceiling (skipped for unlimited allowance).
+            const meter = await reserveDailyMeter({
+              userId: identity,
+              allowance,
+              pipeline: (cmds) => runRedisPipeline(cmds),
+            });
+            if (meter.overCeiling) {
+              if (enforce) {
+                await meter.rollback();
+                emitRequest(429, 'rl_ceiling_429', null);
+                return new Response(JSON.stringify({ error: 'Daily request ceiling exceeded' }), {
+                  status: 429,
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-store',
+                    ...rateLimitHeaders({
+                      limit: allowance * CEILING_MULTIPLIER,
+                      remaining: 0,
+                      resetMs: Date.now() + meter.retryAfterSec * 1000,
+                      retryAfterSec: meter.retryAfterSec,
+                    }),
+                    ...corsHeaders,
+                  },
+                });
+              }
+              pendingShadowReason = 'rl_ceiling_shadow';
+            }
+          }
+          // Eligible + enforce + not rejected ⇒ the per-account layer governs
+          // this request; skip the per-IP fallback. In shadow, keep per-IP on.
+          if (enforce) governedByApiKeyLayer = true;
+        }
+      }
+
+      if (!governedByApiKeyLayer && !hasEndpointRatePolicy(pathname)) {
         const rateLimitResponse = await checkRateLimit(request, corsHeaders);
         if (rateLimitResponse) {
           const reason =

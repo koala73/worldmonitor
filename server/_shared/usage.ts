@@ -72,7 +72,14 @@ export type RequestReason =
   | 'malformed_request'
   | 'unknown_route'
   | 'method_not_allowed'
-  | 'cors_error';
+  | 'cors_error'
+  // #3199 per-account API rate limit. `_429` = enforced reject; `_shadow` =
+  // would-have-rejected but served (shadow mode), threaded onto the single
+  // terminal success emit so the volume signal isn't double-counted.
+  | 'rl_min_429'
+  | 'rl_ceiling_429'
+  | 'rl_min_shadow'
+  | 'rl_ceiling_shadow';
 
 export interface RequestEvent {
   _time: string;
