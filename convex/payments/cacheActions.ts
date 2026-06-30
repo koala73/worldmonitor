@@ -49,6 +49,9 @@ export const syncEntitlementCache = internalAction({
       // Optional — legacy entitlement rows pre-dating plan 2026-05-10-001
       // do not carry mcpAccess. Schema validator must accept their reads.
       mcpAccess: v.optional(v.boolean()),
+      // Optional — per-account daily REST allowance (#3199). Catalog-sourced
+      // writes set it; legacy rows omit it (rate-limit consumer fail-opens).
+      apiDailyAllowance: v.optional(v.number()),
     }),
     validUntil: v.number(),
   },

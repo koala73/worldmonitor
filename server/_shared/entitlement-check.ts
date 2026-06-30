@@ -34,6 +34,15 @@ interface CachedEntitlements {
      * this on the next subscription event.
      */
     mcpAccess?: boolean;
+    /**
+     * Per-account daily REST allowance (#3199). The rate-limit layer meters
+     * but never rejects at this value; the hard ceiling is 10×. `-1` =
+     * unlimited. Unlike `mcpAccess`, consumers treat `undefined` as
+     * **no daily limit (fail-OPEN)** — a stale/legacy cache must not punish
+     * a paying customer. NOT added to the cache-staleness gate below for
+     * that reason (forcing a re-fetch would contradict fail-open).
+     */
+    apiDailyAllowance?: number;
   };
   validUntil: number;
 }

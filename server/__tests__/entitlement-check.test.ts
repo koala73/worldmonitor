@@ -26,6 +26,7 @@ import { getCachedJson } from "../_shared/redis";
 import {
   getRequiredTier,
   checkEntitlement,
+  getEntitlements,
 } from "../_shared/entitlement-check";
 
 // ---------------------------------------------------------------------------
@@ -245,5 +246,36 @@ describe("gateway entitlement check", () => {
       }
       vi.unstubAllGlobals();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #3199 U2 — apiDailyAllowance threads through to the resolved entitlement
+// ---------------------------------------------------------------------------
+
+describe("getEntitlements surfaces apiDailyAllowance (#3199 U2)", () => {
+  test("a fresh Starter cache row exposes apiDailyAllowance", async () => {
+    const fresh = makeEntitlements(2, "api_starter");
+    vi.mocked(getCachedJson).mockResolvedValueOnce({
+      ...fresh,
+      features: { ...fresh.features, apiDailyAllowance: 1000 },
+    } as never);
+
+    const result = await getEntitlements("user_starter");
+    expect(result?.features.apiDailyAllowance).toBe(1000);
+  });
+
+  test("a legacy cache row lacking apiDailyAllowance resolves to undefined (fail-open), no throw", async () => {
+    // makeEntitlements sets mcpAccess (boolean) so the row passes the
+    // staleness gate, but does NOT set apiDailyAllowance — the field is
+    // intentionally absent from the staleness gate so legacy rows are served
+    // from cache and the rate-limit consumer fail-opens on undefined.
+    vi.mocked(getCachedJson).mockResolvedValueOnce(
+      makeEntitlements(2, "api_starter") as never,
+    );
+
+    const result = await getEntitlements("user_legacy");
+    expect(result).not.toBeNull();
+    expect(result?.features.apiDailyAllowance).toBeUndefined();
   });
 });

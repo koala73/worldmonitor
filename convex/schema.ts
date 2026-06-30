@@ -550,6 +550,12 @@ export default defineSchema({
       // the next subscription event; legacy rows return undefined and
       // every consumer treats undefined as "no MCP access" (fail-closed).
       mcpAccess: v.optional(v.boolean()),
+      // Optional — per-account daily REST allowance (#3199). Legacy rows
+      // predate it; the rate-limit consumer treats undefined as "no daily
+      // limit" (fail-OPEN). Catalog-sourced writes always set it, so this
+      // validator MUST accept it or the webhook's entitlement write is
+      // rejected (v.object is strict on extra keys).
+      apiDailyAllowance: v.optional(v.number()),
     }),
     validUntil: v.number(),
     // Optional complimentary-entitlement floor. When set and in the future,
