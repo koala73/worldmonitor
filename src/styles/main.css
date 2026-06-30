@@ -12506,6 +12506,67 @@ a.prediction-link:hover {
   display: flex;
 }
 
+/* Non-blocking confirm dialog (#4559) — replaces native confirm(). Sits above
+   the settings modal; mirrors the mobile-warning overlay tokens. */
+.confirm-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-scrim, rgb(0 0 0 / 50%));
+  backdrop-filter: blur(2px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 4000;
+  padding: 20px;
+}
+
+.confirm-dialog-overlay.active {
+  display: flex;
+}
+
+.confirm-dialog {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-width: 360px;
+  width: 100%;
+  box-shadow: 0 8px 32px var(--shadow-color);
+  animation: mobile-warning-appear 0.2s ease-out;
+}
+
+.confirm-dialog-message {
+  margin: 0;
+  padding: 20px;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.confirm-dialog-btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--darken-medium);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.confirm-dialog-confirm {
+  background: var(--danger, #d64545);
+  border-color: var(--danger, #d64545);
+  color: #fff;
+}
+
 .mobile-warning-modal {
   background: var(--surface);
   border: 1px solid var(--border);
