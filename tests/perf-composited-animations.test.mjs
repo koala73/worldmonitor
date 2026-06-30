@@ -286,9 +286,10 @@ describe('issue 4538 composited animation invariants', () => {
     // flash-new is not the required '{').
     const hostRule = /\.panel\.flash-new\s*\{([^}]*)\}/.exec(mainCss);
     if (hostRule) {
-      assert.ok(
-        !animationNamesFromRule(hostRule[1]).has('panel-flash'),
-        'panel-flash must stay on .panel.flash-new::after; applying it to the .panel host re-introduces the animated box-shadow on the panel and bypasses the pseudo-element layering',
+      assert.equal(
+        animationNamesFromRule(hostRule[1]).size,
+        0,
+        'the .panel.flash-new host must not animate at all; any host animation (under any name) would run on the clipped/box-shadow-bearing panel and bypass the pseudo-element layering',
       );
     }
     assert.ok(

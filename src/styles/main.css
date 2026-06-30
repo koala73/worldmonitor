@@ -1966,6 +1966,9 @@ body.panel-resize-active iframe {
   border-radius: inherit;
   opacity: 0;
   pointer-events: none;
+  /* Behind the count digit (bare text node, can't be z-lifted) so the bump tint
+     never washes out the number. Host isolation:isolate scopes this to the badge. */
+  z-index: -1;
 }
 
 .panel-count.bump {
@@ -12334,6 +12337,8 @@ a.prediction-link:hover {
   background: linear-gradient(90deg, rgba(68, 255, 136, 0.15) 0%, transparent 60%);
   opacity: 0;
   pointer-events: none;
+  /* Behind item text, matching the pre-conversion host-background glow. */
+  z-index: -1;
   animation: item-glow 2s ease-out;
 }
 
@@ -14148,6 +14153,8 @@ a.prediction-link:hover {
   border-radius: inherit;
   opacity: 0;
   pointer-events: none;
+  /* Behind the row icon/label, matching the pre-conversion host-background pulse. */
+  z-index: -1;
   animation: tech-item-highlight-pulse 2s ease-in-out infinite;
   animation-delay: inherit;
 }
