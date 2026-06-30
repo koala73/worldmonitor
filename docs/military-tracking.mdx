@@ -15,7 +15,7 @@ The frontend uses generated MilitaryService clients for fresh or scoped reads, w
 | Method | Route | What it feeds |
 |--------|-------|---------------|
 | `GET` | `/api/military/v1/list-military-flights` | Military aircraft map layer, surge inputs, and country-risk signals; the frontend calls it by bounding box through the generated client and the handler serves Redis/relay-backed data. |
-| `GET` | `/api/military/v1/get-theater-posture` | AI Strategic Posture cards; `fetchCachedTheaterPosture()` reads bootstrap `theaterPosture` first, then falls back to this cached RPC. |
+| `GET` | `/api/military/v1/get-theater-posture` | AI Strategic Posture cards; `fetchCachedTheaterPosture()` checks bootstrap `theaterPosture`, circuit-breaker cache, and IndexedDB before falling through to this RPC. |
 | `GET` | `/api/military/v1/get-aircraft-details` | Single-aircraft Wingbits enrichment for map popups and aircraft detail lookups. |
 | `POST` | `/api/military/v1/get-aircraft-details-batch` | Batched Wingbits enrichment for visible military aircraft; the browser keeps a local cache so repeat views do not refetch the same ICAO24 records. |
 | `GET` | `/api/military/v1/get-wingbits-status` | Wingbits configuration check used before enabling enrichment-dependent UI. |
