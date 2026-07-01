@@ -87,8 +87,9 @@ describe('seed-submarine-cables strategic slug list', () => {
 
   it('drops the dead unityeac-pacific slug in favour of unity', () => {
     // TeleGeography split the combined "Unity/EAC-Pacific" cable; the old slug
-    // now 404s to an HTML SPA shell (the <!DOCTYPE parse failure that broke the
-    // static-ref bundle before #4516 tolerated per-cable fetch failures).
+    // now returns HTTP 200 with the SPA's HTML shell (not a 404) — the <!DOCTYPE
+    // parse failure that broke the static-ref bundle before #4516 tolerated
+    // per-cable fetch failures.
     assert.equal(allIds.includes('unityeac-pacific'), false, 'unityeac-pacific is a dead slug');
     assert.equal(allIds.includes('unity'), true, 'unity is the live replacement slug');
   });
