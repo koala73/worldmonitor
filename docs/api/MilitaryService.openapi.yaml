@@ -127,7 +127,7 @@ paths:
                 - name: icao24
                   in: query
                   description: ICAO 24-bit hex address (lowercase).
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -323,7 +323,7 @@ paths:
                 - name: icao24
                   in: query
                   description: ICAO 24-bit hex address (lowercase, 6 characters).
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:

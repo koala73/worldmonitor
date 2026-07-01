@@ -103,7 +103,7 @@ paths:
                 - name: airport
                   in: query
                   description: IATA airport code (e.g., "IST").
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: direction
@@ -193,13 +193,13 @@ paths:
                 - name: flight_number
                   in: query
                   description: IATA flight number (e.g., "TK1952").
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: date
                   in: query
                   description: Departure date in ISO 8601 format (e.g., "2026-03-05").
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: origin
@@ -344,19 +344,19 @@ paths:
                 - name: origin
                   in: query
                   description: Origin airport IATA code.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: destination
                   in: query
                   description: Destination airport IATA code.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: departure_date
                   in: query
                   description: Outbound departure date (ISO 8601).
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: return_date

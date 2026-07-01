@@ -112,7 +112,7 @@ paths:
                 - name: airport
                   in: query
                   description: IATA airport code (e.g., "IST").
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: direction
@@ -202,13 +202,13 @@ paths:
                 - name: flight_number
                   in: query
                   description: IATA flight number (e.g., "TK1952").
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: date
                   in: query
                   description: Departure date in ISO 8601 format (e.g., "2026-03-05").
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: origin
@@ -353,19 +353,19 @@ paths:
                 - name: origin
                   in: query
                   description: Origin airport IATA code.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: destination
                   in: query
                   description: Destination airport IATA code.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: departure_date
                   in: query
                   description: Outbound departure date (ISO 8601).
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: return_date
@@ -1000,7 +1000,7 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code (e.g., "YE", "SD", "SO").
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -1231,8 +1231,8 @@ paths:
                     type: string
                 - name: limit
                   in: query
-                  description: limit caps the number of risers and fallers returned (default 10).
-                  required: false
+                  description: limit caps the number of risers and fallers returned.
+                  required: true
                   schema:
                     type: integer
                     format: int32
@@ -1518,7 +1518,7 @@ paths:
                 - name: series_id
                   in: query
                   description: FRED series ID (e.g., "GDP", "UNRATE", "CPIAUCSL").
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: limit
@@ -1558,7 +1558,7 @@ paths:
                 - name: indicator_code
                   in: query
                   description: World Bank indicator code (e.g., "NY.GDP.MKTP.CD").
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: country_code
@@ -2721,7 +2721,7 @@ paths:
                 - name: type
                   in: query
                   description: 'Activity type: "military_flights", "vessels", "protests", "news", "ais_gaps", "satellite_fires".'
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: region
@@ -3083,7 +3083,7 @@ paths:
                 - name: title
                   in: query
                   description: Event title or headline.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: description
@@ -3134,7 +3134,7 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code.
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -3167,7 +3167,7 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: framework
@@ -3206,7 +3206,7 @@ paths:
                 - name: query
                   in: query
                   description: Search query string.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: max_records
@@ -3516,7 +3516,7 @@ paths:
             parameters:
                 - name: country_code
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -3810,7 +3810,7 @@ paths:
                     Display region id (e.g. "mena", "east-asia", "europe"). See shared/geography.js.
                      Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
                      trailing or consecutive hyphens.
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -3849,7 +3849,7 @@ paths:
                     Display region id (e.g. "mena", "east-asia", "europe"). See shared/geography.js.
                      Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
                      trailing or consecutive hyphens.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: limit
@@ -3893,7 +3893,7 @@ paths:
             parameters:
                 - name: region_id
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -4318,7 +4318,7 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code (e.g., "US", "GB", "JP").
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -4376,7 +4376,7 @@ paths:
             parameters:
                 - name: symbol
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: name
@@ -4465,7 +4465,7 @@ paths:
             parameters:
                 - name: symbol
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: name
@@ -4743,7 +4743,7 @@ paths:
             parameters:
                 - name: symbol
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -4967,7 +4967,7 @@ paths:
                 - name: icao24
                   in: query
                   description: ICAO 24-bit hex address (lowercase).
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -5163,7 +5163,7 @@ paths:
                 - name: icao24
                   in: query
                   description: ICAO 24-bit hex address (lowercase, 6 characters).
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -5885,7 +5885,7 @@ paths:
                   description: |-
                     Job id of the form `scenario:{epoch_ms}:{8-char-suffix}`. Path-traversal
                      guarded by JOB_ID_RE in the handler.
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -6010,13 +6010,13 @@ paths:
                 - name: fromIso2
                   in: query
                   description: Origin country, ISO-3166-1 alpha-2 uppercase.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: toIso2
                   in: query
                   description: Destination country, ISO-3166-1 alpha-2 uppercase.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: cargoType
@@ -6181,7 +6181,7 @@ paths:
             parameters:
                 - name: chokepointId
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -6265,7 +6265,7 @@ paths:
                 - name: iso2
                   in: query
                   description: ISO 3166-1 alpha-2 country code (uppercase).
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: hs2
@@ -6303,7 +6303,7 @@ paths:
             parameters:
                 - name: chokepointId
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: cargoType
@@ -6348,12 +6348,12 @@ paths:
             parameters:
                 - name: iso2
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: chokepointId
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: hs2
@@ -6391,7 +6391,7 @@ paths:
             parameters:
                 - name: iso2
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -6425,12 +6425,12 @@ paths:
             parameters:
                 - name: iso2
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: chokepointId
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: closureDays
@@ -6469,13 +6469,13 @@ paths:
             parameters:
                 - name: iso2
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: hs2
                   in: query
                   description: HS2 chapter code, e.g. "27" (mineral fuels), "85" (electronics)
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -6512,24 +6512,24 @@ paths:
             parameters:
                 - name: fromIso2
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: toIso2
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: hs2
                   in: query
                   description: HS2 chapter code, e.g. "27", "85"
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: cargoType
                   in: query
                   description: 'One of: container, tanker, bulk, roro'
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -6560,17 +6560,17 @@ paths:
             parameters:
                 - name: fromIso2
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: toIso2
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: hs2
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -6641,7 +6641,7 @@ paths:
             parameters:
                 - name: pipelineId
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -6716,7 +6716,7 @@ paths:
             parameters:
                 - name: facilityId
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -6800,7 +6800,7 @@ paths:
             parameters:
                 - name: shortageId
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -9303,10 +9303,12 @@ components:
                 limit:
                     type: integer
                     format: int32
-                    description: limit caps the number of risers and fallers returned (default 10).
+                    description: limit caps the number of risers and fallers returned.
                 categorySlug:
                     type: string
                     description: category_slug filters to a single category when set.
+            required:
+                - limit
             description: ListConsumerPriceMoversRequest parameters for the movers RPC.
         worldmonitor_consumer_prices_v1_ListConsumerPriceMoversResponse:
             type: object
@@ -14958,6 +14960,12 @@ components:
                 turnstileToken:
                     type: string
                     description: Cloudflare Turnstile token proving the submitter is human.
+            required:
+                - email
+                - name
+                - organization
+                - phone
+                - turnstileToken
             description: SubmitContactRequest carries an enterprise contact form submission.
         worldmonitor_leads_v1_SubmitContactResponse:
             type: object
@@ -14986,6 +14994,9 @@ components:
                 turnstileToken:
                     type: string
                     description: Cloudflare Turnstile token. Desktop sources bypass Turnstile; see handler.
+            required:
+                - email
+                - turnstileToken
             description: RegisterInterestRequest carries a Pro-waitlist signup.
         worldmonitor_leads_v1_RegisterInterestResponse:
             type: object
@@ -18554,6 +18565,8 @@ components:
             properties:
                 countryCode:
                     type: string
+            required:
+                - countryCode
         worldmonitor_resilience_v1_GetResilienceScoreResponse:
             type: object
             properties:

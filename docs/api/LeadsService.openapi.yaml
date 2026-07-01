@@ -121,6 +121,12 @@ components:
                 turnstileToken:
                     type: string
                     description: Cloudflare Turnstile token proving the submitter is human.
+            required:
+                - email
+                - name
+                - organization
+                - phone
+                - turnstileToken
             description: SubmitContactRequest carries an enterprise contact form submission.
         SubmitContactResponse:
             type: object
@@ -149,6 +155,9 @@ components:
                 turnstileToken:
                     type: string
                     description: Cloudflare Turnstile token. Desktop sources bypass Turnstile; see handler.
+            required:
+                - email
+                - turnstileToken
             description: RegisterInterestRequest carries a Pro-waitlist signup.
         RegisterInterestResponse:
             type: object

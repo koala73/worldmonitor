@@ -80,7 +80,7 @@ paths:
                 - name: title
                   in: query
                   description: Event title or headline.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: description
@@ -131,7 +131,7 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code.
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -164,7 +164,7 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: framework
@@ -203,7 +203,7 @@ paths:
                 - name: query
                   in: query
                   description: Search query string.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: max_records
@@ -513,7 +513,7 @@ paths:
             parameters:
                 - name: country_code
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -807,7 +807,7 @@ paths:
                     Display region id (e.g. "mena", "east-asia", "europe"). See shared/geography.js.
                      Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
                      trailing or consecutive hyphens.
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -846,7 +846,7 @@ paths:
                     Display region id (e.g. "mena", "east-asia", "europe"). See shared/geography.js.
                      Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
                      trailing or consecutive hyphens.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: limit
@@ -890,7 +890,7 @@ paths:
             parameters:
                 - name: region_id
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
