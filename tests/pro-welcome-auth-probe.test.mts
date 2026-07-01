@@ -1,6 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
+import {
+  startClerkUserStateSync,
+  type ClerkUserState,
+  type ClerkUserStateSource,
+  type ClerkUserStateUpdate,
+} from '../pro-test/src/services/clerk-user-state.ts';
 import { hasLiveClientSession, hasLiveSessionJwt } from '../pro-test/src/services/clerk-session.ts';
 import { maybeRedirectWelcomeVisitor } from '../pro-test/src/services/welcome-redirect.ts';
 
@@ -81,6 +87,62 @@ describe('welcome auth probe — hasLiveClientSession browser wrapper', () => {
     withDocumentCookie('', () => {
       assert.equal(hasLiveClientSession(), false);
     });
+  });
+});
+
+describe('welcome auth probe — Clerk hook remount ordering', () => {
+  function flushBatchedUpdates(initial: ClerkUserState, updates: ClerkUserStateUpdate[]): ClerkUserState {
+    return updates.reduce((state, update) => (
+      typeof update === 'function' ? update(state) : update
+    ), initial);
+  }
+
+  it('preserves an already-loaded Clerk user when the hook remounts', () => {
+    const realUser = { id: 'user_pro_123' } as NonNullable<ClerkUserState['user']>;
+    const updates: ClerkUserStateUpdate[] = [];
+    let loadSubscribed = false;
+    let authSubscribed = false;
+    let scheduled = false;
+    const clerk: ClerkUserStateSource = {
+      user: realUser,
+      addListener() {
+        authSubscribed = true;
+        return () => { authSubscribed = false; };
+      },
+    };
+
+    const cleanup = startClerkUserStateSync((update) => {
+      updates.push(update);
+    }, {
+      hasLiveClientSession: () => true,
+      subscribeClerkLoaded(cb) {
+        loadSubscribed = true;
+        cb(clerk);
+        return () => { loadSubscribed = false; };
+      },
+      scheduleClerkLoad() {
+        scheduled = true;
+        return Promise.resolve(clerk);
+      },
+      onLoadError(err) {
+        throw err;
+      },
+    });
+
+    const finalState = flushBatchedUpdates(
+      { user: null, isLoaded: true, signedIn: true },
+      updates
+    );
+    assert.equal(finalState.user, realUser);
+    assert.equal(finalState.signedIn, true);
+    assert.equal(finalState.isLoaded, true);
+    assert.equal(loadSubscribed, true);
+    assert.equal(authSubscribed, true);
+    assert.equal(scheduled, true);
+
+    cleanup();
+    assert.equal(loadSubscribed, false);
+    assert.equal(authSubscribed, false);
   });
 });
 

@@ -15,7 +15,8 @@ import {
 } from 'lucide-react';
 import { t } from './i18n';
 import { ensureClerk, tryResumeCheckoutFromUrl } from './services/checkout';
-import { scheduleClerkLoad, subscribeClerkLoaded, type LoadedClerk } from './services/clerk';
+import { scheduleClerkLoad, subscribeClerkLoaded } from './services/clerk';
+import { startClerkUserStateSync, type ClerkUserState } from './services/clerk-user-state';
 import { hasLiveClientSession } from './services/clerk-session';
 import { PricingSection } from './components/PricingSection';
 import { SoonBadge } from './components/SoonBadge';
@@ -108,8 +109,6 @@ function openSignIn(): void {
  * once the visitor is authenticated, and by the Hero to hide its redundant
  * SIGN IN CTA. Single source of truth for "is the /pro visitor signed in".
  */
-type ClerkUserState = { user: UserResource | null; isLoaded: boolean; signedIn: boolean };
-
 function useClerkUser(): ClerkUserState {
   const [state, setState] = useState<ClerkUserState>(() => ({
     user: null,
@@ -118,46 +117,16 @@ function useClerkUser(): ClerkUserState {
   }));
 
   useEffect(() => {
-    let mounted = true;
-    let unsubscribeAuth: (() => void) | undefined;
-    const setFromClerk = (clerk: LoadedClerk): void => {
-      if (!mounted) return;
-      const nextUser = clerk.user ?? null;
-      setState({ user: nextUser, isLoaded: true, signedIn: !!nextUser });
-      if (!unsubscribeAuth) {
-        unsubscribeAuth = clerk.addListener(() => {
-          if (!mounted) return;
-          const listenerUser = clerk.user ?? null;
-          setState({ user: listenerUser, isLoaded: true, signedIn: !!listenerUser });
-        });
-      }
-    };
-    const unsubscribeLoaded = subscribeClerkLoaded(setFromClerk);
-    const signedIn = hasLiveClientSession();
-    setState((current) => (
-      current.user === null && current.isLoaded === true && current.signedIn === signedIn
-        ? current
-        : { user: null, isLoaded: true, signedIn }
-    ));
-
-    if (signedIn) {
-      const scheduledClerk = scheduleClerkLoad();
-      if (!scheduledClerk) {
+    return startClerkUserStateSync(setState, {
+      hasLiveClientSession,
+      subscribeClerkLoaded,
+      scheduleClerkLoad,
+      onLoadError(err) {
+        console.error('[auth] Failed to load Clerk for nav auth state:', err);
+        Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'load-clerk-for-nav' } });
         setState({ user: null, isLoaded: true, signedIn: false });
-      } else {
-        scheduledClerk.catch((err) => {
-          console.error('[auth] Failed to load Clerk for nav auth state:', err);
-          Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'load-clerk-for-nav' } });
-          if (mounted) setState({ user: null, isLoaded: true, signedIn: false });
-        });
-      }
-    }
-
-    return () => {
-      mounted = false;
-      unsubscribeLoaded();
-      unsubscribeAuth?.();
-    };
+      },
+    });
   }, []);
 
   return state;
