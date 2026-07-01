@@ -383,7 +383,8 @@
         "features": [
           "REST-API-Zugriff",
           "Echtzeit-Datenströme",
-          "1.000 Anfragen/Tag",
+          "60 Anfragen/Minute",
+          "1.000 Anfragen/Tag inklusive",
           "Webhook-Benachrichtigungen",
           "Custom-Datenexporte"
         ]

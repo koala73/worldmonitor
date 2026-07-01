@@ -383,7 +383,8 @@
         "features": [
           "Přístup k REST API",
           "Datové toky v reálném čase",
-          "1 000 požadavků denně",
+          "60 požadavků/minutu",
+          "1 000 požadavků denně v ceně",
           "Webhook oznámení",
           "Vlastní export dat"
         ]

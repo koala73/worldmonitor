@@ -383,7 +383,8 @@
         "features": [
           "REST API pristup",
           "Tokovi podataka u stvarnom vremenu",
-          "1.000 zahtjeva/dan",
+          "60 zahtjeva/minutu",
+          "1.000 zahtjeva/dan uključeno",
           "Webhook obavijesti",
           "Prilagođeni izvozi podataka"
         ]

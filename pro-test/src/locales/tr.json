@@ -383,7 +383,8 @@
         "features": [
           "REST API erişimi",
           "Gerçek zamanlı veri akışları",
-          "Günde 1.000 istek",
+          "Dakikada 60 istek",
+          "Günde 1.000 istek dahil",
           "Webhook bildirimleri",
           "Özel veri dışa aktarımı"
         ]

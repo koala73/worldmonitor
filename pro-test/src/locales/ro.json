@@ -383,7 +383,8 @@
         "features": [
           "Acces REST API",
           "Fluxuri de date în timp real",
-          "1.000 de cereri/zi",
+          "60 de cereri/minut",
+          "1.000 de cereri/zi incluse",
           "Notificări webhook",
           "Exporturi de date personalizate"
         ]

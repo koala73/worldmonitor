@@ -383,7 +383,8 @@
         "features": [
           "Truy cập REST API",
           "Luồng dữ liệu thời gian thực",
-          "1.000 yêu cầu/ngày",
+          "60 yêu cầu/phút",
+          "Bao gồm 1.000 yêu cầu/ngày",
           "Thông báo Webhook",
           "Xuất dữ liệu tùy chỉnh"
         ]

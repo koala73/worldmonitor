@@ -59,7 +59,7 @@ const TIER_CONFIG = {
   api_starter: {
     name: 'API',
     description: 'Programmatic access to intelligence data',
-    features: ['REST API access', 'Real-time data streams', '1,000 requests/day', 'Webhook notifications', 'Custom data exports'],
+    features: ['REST API access', 'Real-time data streams', '60 requests/minute', '1,000 requests/day included', 'Webhook notifications', 'Custom data exports'],
     highlighted: false,
   },
   enterprise: {
