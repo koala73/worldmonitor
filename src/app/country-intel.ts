@@ -27,10 +27,11 @@ import { getCachedCountryScore, normalizeCiiCountryCode } from '@/services/cache
 import { dataFreshness } from '@/services/data-freshness';
 import { fetchCountryMarkets } from '@/services/prediction';
 import { collectStoryData } from '@/services/story-data';
-// StoryModal — and the story-renderer it statically pulls in — is lazy-imported at
-// its call site (below) so it stays off the eager boot graph. renderStoryToCanvas was
-// already made dynamic in #4486; #4571 closes the remaining StoryModal eager edge.
-// The modal opens on user interaction (post-paint), so the import() latency is hidden.
+// StoryModal is lazy-imported at its call site (below), and its render path
+// lazy-imports story-renderer, so both stay off the eager boot graph.
+// renderStoryToCanvas was already made dynamic in #4486; #4571 closes the
+// remaining StoryModal eager edge. The modal opens on user interaction
+// (post-paint), so the import() latency is hidden.
 
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
