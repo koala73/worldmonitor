@@ -137,8 +137,10 @@ describe('Product catalog freshness', () => {
   it('Pro locale MCP pricing feature mentions Claude Desktop and the call allowance', () => {
     for (const [file, src] of Object.entries(readProLocaleFiles())) {
       const locale = JSON.parse(src);
-      const feature = locale?.pricing?.tiers?.pro?.features?.[5];
-      assert.equal(typeof feature, 'string', `${file} missing pricing.tiers.pro.features[5]`);
+      const features = locale?.pricing?.tiers?.pro?.features;
+      assert.ok(Array.isArray(features), `${file} missing pricing.tiers.pro.features`);
+      const feature = features.find((value) => /\bMCP\b/.test(value));
+      assert.equal(typeof feature, 'string', `${file} missing a Pro pricing feature mentioning MCP`);
       assert.match(feature, /\bMCP\b/, `${file} Pro MCP feature should mention MCP`);
       assert.match(feature, /Claude Desktop/, `${file} Pro MCP feature should mention Claude Desktop`);
       assert.match(feature, /\b50\b/, `${file} Pro MCP feature should mention the 50 calls/day allowance`);
