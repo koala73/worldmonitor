@@ -10,7 +10,12 @@ const CACHE_TTL = 7 * 24 * 3600; // 7 days — cable infra changes slowly
 
 // Strategic cable list — TeleGeography slugs organized by region.
 // Find slugs at: https://www.submarinecablemap.com/api/v3/cable/all.json
-const CABLE_REGIONS = [
+// NOTE: TeleGeography renames/splits slugs over time (e.g. the combined
+// "Unity/EAC-Pacific" was split into 'unity' + 'eac-c2c'). A stale slug returns
+// HTTP 200 with the SPA's HTML shell (not JSON); per-cable fetches tolerate this
+// (see fetchSubmarineCables), but it silently drops the cable — verify slugs
+// against cable/all.json when the fetched count drifts below the region total.
+export const CABLE_REGIONS = [
   {
     label: 'TRANS-ATLANTIC',
     ids: [
@@ -24,7 +29,7 @@ const CABLE_REGIONS = [
     ids: [
       'faster', 'southern-cross-cable-network-sccn', 'curie',
       'trans-pacific-express-tpe-cable-system', 'new-cross-pacific-ncp-cable-system',
-      'pacific-light-cable-network-plcn', 'jupiter', 'unityeac-pacific',
+      'pacific-light-cable-network-plcn', 'jupiter', 'unity',
       'pacific-crossing-1-pc-1', 'topaz', 'echo', 'southern-cross-next', 'hawaiki',
     ],
   },

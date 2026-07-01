@@ -2,6 +2,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  CABLE_REGIONS,
   declareRecords,
   fetchSubmarineCables,
   validate,
@@ -65,6 +66,34 @@ function installSubmarineCableFetchMock({ malformedDetail }) {
 
   return { detailIds };
 }
+
+describe('seed-submarine-cables strategic slug list', () => {
+  const allIds = CABLE_REGIONS.flatMap(r => r.ids);
+
+  it('has no duplicate slugs across regions', () => {
+    const seen = new Set();
+    const dupes = [];
+    for (const id of allIds) {
+      if (seen.has(id)) dupes.push(id);
+      seen.add(id);
+    }
+    assert.deepEqual(dupes, [], `duplicate cable slug(s): ${dupes.join(', ')}`);
+  });
+
+  it('uses only well-formed lowercase-kebab slugs', () => {
+    const bad = allIds.filter(id => !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id));
+    assert.deepEqual(bad, [], `malformed cable slug(s): ${bad.join(', ')}`);
+  });
+
+  it('drops the dead unityeac-pacific slug in favour of unity', () => {
+    // TeleGeography split the combined "Unity/EAC-Pacific" cable; the old slug
+    // now returns HTTP 200 with the SPA's HTML shell (not a 404) — the <!DOCTYPE
+    // parse failure that broke the static-ref bundle before #4516 tolerated
+    // per-cable fetch failures.
+    assert.equal(allIds.includes('unityeac-pacific'), false, 'unityeac-pacific is a dead slug');
+    assert.equal(allIds.includes('unity'), true, 'unity is the live replacement slug');
+  });
+});
 
 describe('seed-submarine-cables detail fetch resilience', () => {
   it('skips a malformed individual detail response when the validation floor still passes', async () => {
