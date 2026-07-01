@@ -91,6 +91,29 @@ function installDeps(rateLimitResult: RateLimitResult): {
 }
 
 describe('user-prefs POST write rate limit', () => {
+  it('rejects invalid sessions before checking the scoped limiter', async () => {
+    const rateLimitCalls: Array<{ scope: string; limit: number; window: string; identifier: string }> = [];
+    let createdClient = false;
+
+    __setUserPrefsDepsForTests({
+      validateBearerToken: async () => ({ valid: false }),
+      checkScopedRateLimit: async (scope: string, limit: number, window: string, identifier: string) => {
+        rateLimitCalls.push({ scope, limit, window, identifier });
+        return { allowed: true, limit, reset: 0, degraded: false };
+      },
+      createConvexClient: () => {
+        createdClient = true;
+        throw new Error('Convex client should not be constructed for invalid sessions');
+      },
+    });
+
+    const res = await handler(makePost());
+
+    assert.equal(res.status, 401);
+    assert.deepEqual(await res.json(), { error: 'UNAUTHENTICATED' });
+    assert.deepEqual(rateLimitCalls, []);
+    assert.equal(createdClient, false);
+  });
   it('returns 429 + Retry-After without calling Convex when the identity is over budget', async () => {
     process.env.CONVEX_URL = 'https://convex.test';
     mock.method(Date, 'now', () => TEST_NOW);
