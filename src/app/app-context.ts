@@ -84,13 +84,14 @@ export interface AppContext {
   seenGeoAlerts: Set<string>;
   monitors: Monitor[];
 
-  signalModal: import('@/components').SignalModal | null;
+  signalModal: import('@/components/SignalModal').SignalModal | null;
+  ensureSignalModal: () => Promise<import('@/components/SignalModal').SignalModal>;
   statusPanel: import('@/components').StatusPanel | null;
   searchModal: import('@/components').SearchModal | null;
   findingsBadge: import('@/components').IntelligenceGapBadge | null;
   breakingBanner: import('@/components/BreakingNewsBanner').BreakingNewsBanner | null;
   playbackControl: import('@/components').PlaybackControl | null;
-  exportPanel: import('@/utils').ExportPanel | null;
+  exportPanel: import('@/utils/export').ExportPanel | null;
   unifiedSettings: UnifiedSettingsController | null;
   pizzintIndicator: import('@/components').PizzIntIndicator | null;
   correlationEngine: import('@/services/correlation-engine').CorrelationEngine | null;

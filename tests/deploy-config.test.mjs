@@ -147,6 +147,24 @@ describe('deploy/cache configuration guardrails', () => {
     assert.doesNotMatch(viteConfigSource, /globPatterns:\s*\['\*\*\/\*\.\{js,css,html/);
   });
 
+  it('keeps off-page public assets out of the PWA precache', () => {
+    const assertGlobIgnore = (pattern) => {
+      assert.match(
+        viteConfigSource,
+        new RegExp(`globIgnores:\\s*\\[[\\s\\S]*'${escapeRegExp(pattern)}'[\\s\\S]*\\]`)
+      );
+    };
+
+    assert.match(viteConfigSource, /includeManifestIcons:\s*false/);
+    assert.doesNotMatch(
+      viteConfigSource,
+      /globIgnores:[\s\S]*'assets\/\*\*'/
+    );
+    assertGlobIgnore('pro/**');
+    assertGlobIgnore('favico/**');
+    assertGlobIgnore('textures/**');
+  });
+
   it('keeps the lazy Clerk SDK out of the PWA precache', () => {
     assert.match(viteConfigSource, /globIgnores:\s*\[[^\]]*'\*\*\/clerk-\*\.js'[^\]]*\]/s);
     assert.match(

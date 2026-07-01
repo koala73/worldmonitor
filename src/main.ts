@@ -4,6 +4,7 @@ import './bootstrap/zod-csp';
 import { installLcpAttributionDebug } from '@/bootstrap/lcp-attribution';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import { enqueueSentryCall, installPreInitErrorQueue, scheduleSentryInit } from '@/bootstrap/sentry-defer';
+import { registerClsReporting } from '@/bootstrap/cls-report';
 import { registerInpReporting } from '@/bootstrap/inp-report';
 import { initVercelAnalytics } from '@/bootstrap/secondary-startup';
 import { App } from './App';
@@ -43,6 +44,10 @@ scheduleSentryInit();
 // we can see which real interaction is slow and whether the cost is input delay,
 // processing, or presentation (#4537). web-vitals loads in its own post-paint chunk.
 registerInpReporting();
+
+// Report field CLS attribution to Sentry so field-only layout shifts can name
+// their largest shifting element before we scope the layout fix (#4580).
+registerClsReporting();
 
 // Suppress NotAllowedError from YouTube IFrame API's internal play() — browser autoplay policy,
 // not actionable. The YT IFrame API doesn't expose the play() promise so it leaks as unhandled.

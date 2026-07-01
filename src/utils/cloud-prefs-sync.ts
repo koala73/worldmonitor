@@ -293,16 +293,18 @@ interface CloudPrefs {
 }
 
 /**
- * Typed 503 from the edge — Convex platform-level outage. Callers detect
+ * Typed temporary response from the edge. Callers detect
  * this via `instanceof ServiceUnavailableError` and back off using
  * `retryAfterSec` instead of treating it as a permanent error.
  */
 export class ServiceUnavailableError extends Error {
   retryAfterSec: number;
-  constructor(retryAfterSec: number) {
-    super(`service unavailable (retry after ${retryAfterSec}s)`);
+  status: number;
+  constructor(retryAfterSec: number, status = 503) {
+    super(`service temporarily unavailable (${status}; retry after ${retryAfterSec}s)`);
     this.name = 'ServiceUnavailableError';
     this.retryAfterSec = retryAfterSec;
+    this.status = status;
   }
 }
 
@@ -313,6 +315,10 @@ export class ServiceUnavailableError extends Error {
 const RETRY_AFTER_MIN_SEC = 1;
 const RETRY_AFTER_MAX_SEC = 60;
 const RETRY_AFTER_DEFAULT_SEC = 5;
+
+export function isTemporaryCloudPrefsStatus(status: number): boolean {
+  return status === 429 || status === 503;
+}
 
 /**
  * Parse the `Retry-After` header per RFC 7231: either delta-seconds or an
@@ -348,7 +354,7 @@ async function fetchCloudPrefs(token: string, variant: string): Promise<CloudPre
     headers: { Authorization: `Bearer ${token}` },
   });
   if (res.status === 401) return null;
-  if (res.status === 503) throw new ServiceUnavailableError(parseRetryAfterSeconds(res.headers));
+  if (isTemporaryCloudPrefsStatus(res.status)) throw new ServiceUnavailableError(parseRetryAfterSeconds(res.headers), res.status);
   if (!res.ok) throw new Error(`fetch prefs: ${res.status}`);
   return (await res.json()) as CloudPrefs | null;
 }
@@ -376,7 +382,7 @@ async function postCloudPrefs(
     const actualSyncVersion = typeof body.actualSyncVersion === 'number' ? body.actualSyncVersion : undefined;
     return { conflict: true, actualSyncVersion };
   }
-  if (res.status === 503) throw new ServiceUnavailableError(parseRetryAfterSeconds(res.headers));
+  if (isTemporaryCloudPrefsStatus(res.status)) throw new ServiceUnavailableError(parseRetryAfterSeconds(res.headers), res.status);
   if (!res.ok) throw new Error(`post prefs: ${res.status}`);
   return (await res.json()) as { syncVersion: number };
 }
@@ -495,7 +501,7 @@ export async function onSignIn(userId: string, variant: string): Promise<void> {
     Storage.prototype.setItem.call(localStorage, KEY_LAST_SIGNED_IN_AS, userId);
   } catch (err) {
     if (err instanceof ServiceUnavailableError) {
-      // Convex platform 503 — transient. Set 'pending' (not 'error') and
+      // Temporary edge response — transient. Set 'pending' (not 'error') and
       // re-attempt sign-in sync after the server-suggested delay. This is
       // the user-facing "transient outage shouldn't be permanent" fix
       // (PR #3479): without this branch the catch would fall through to
@@ -508,7 +514,7 @@ export async function onSignIn(userId: string, variant: string): Promise<void> {
       // attempt began). Without the guard, a 5s delayed retry from user A
       // could fire after sign-out (no token) or after user B signed in
       // (wrong token in cache).
-      console.warn(`[cloud-prefs] onSignIn 503; retrying in ${err.retryAfterSec}s`);
+      console.warn(`[cloud-prefs] onSignIn ${err.status}; retrying in ${err.retryAfterSec}s`);
       setState('pending');
       clearRetryTimer();
       _retryTimer = setTimeout(() => {
@@ -594,7 +600,7 @@ async function uploadNow(variant: string): Promise<void> {
     }
   } catch (err) {
     if (err instanceof ServiceUnavailableError) {
-      // Convex platform 503 — transient. Re-queue the upload after the
+      // Temporary edge response — transient. Re-queue the upload after the
       // server-suggested delay so the unsaved blob isn't lost. Setting
       // 'pending' state matches the existing schedulePrefUpload UX.
       //
@@ -603,7 +609,7 @@ async function uploadNow(variant: string): Promise<void> {
       // but the closure's captured `myGeneration` no longer matches, so
       // the retry aborts. Without this, the upload would re-fire against
       // a now-empty token cache or a different user's token.
-      console.warn(`[cloud-prefs] uploadNow 503; retrying in ${err.retryAfterSec}s`);
+      console.warn(`[cloud-prefs] uploadNow ${err.status}; retrying in ${err.retryAfterSec}s`);
       setState('pending');
       clearRetryTimer();
       _retryTimer = setTimeout(() => {

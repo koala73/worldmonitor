@@ -69,6 +69,15 @@ function logRateLimitDegraded(stage: string, err: unknown): void {
   });
 }
 
+const scopedMissingConfigStages = new Set<string>();
+
+function logScopedRateLimitMissingConfig(scope: string): void {
+  const stage = `checkScopedRateLimit:${scope}:missing-config`;
+  if (scopedMissingConfigStages.has(stage)) return;
+  scopedMissingConfigStages.add(stage);
+  logRateLimitDegraded(stage, new Error('UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN missing'));
+}
+
 // Marker header set on every degraded (fail-closed) response so observability
 // can correlate "rate-limit unavailable" windows with downstream behaviour
 // without parsing the JSON body. Mirrored in api/_rate-limit.js.
@@ -326,7 +335,10 @@ export interface ScopedRateLimitResult {
  */
 export async function checkScopedRateLimit(scope: string, limit: number, window: Duration, identifier: string): Promise<ScopedRateLimitResult> {
   const rl = getScopedRatelimit(scope, limit, window);
-  if (!rl) return { allowed: true, limit, reset: 0, degraded: true };
+  if (!rl) {
+    logScopedRateLimitMissingConfig(scope);
+    return { allowed: true, limit, reset: 0, degraded: true };
+  }
   try {
     const result = await rl.limit(`${scope}:${identifier}`);
     return {
