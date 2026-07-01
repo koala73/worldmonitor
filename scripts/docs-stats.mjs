@@ -26,6 +26,92 @@ const filesIn = (p) =>
   readdirSync(join(ROOT, p), { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
 const entriesIn = (p) => readdirSync(join(ROOT, p), { withFileTypes: true }).map((e) => e.name);
 
+function sorted(items) {
+  return [...items].sort();
+}
+
+function sameStringSet(a, b) {
+  const left = sorted(a);
+  const right = sorted(b);
+  return left.length === right.length && left.every((v, i) => v === right[i]);
+}
+
+function describeSetDelta(found, expected) {
+  const foundSet = new Set(found);
+  const expectedSet = new Set(expected);
+  const missing = sorted(expected.filter((v) => !foundSet.has(v)));
+  const extra = sorted(found.filter((v) => !expectedSet.has(v)));
+  return [
+    missing.length ? `missing: ${missing.join(', ')}` : '',
+    extra.length ? `extra: ${extra.join(', ')}` : '',
+  ].filter(Boolean).join('; ');
+}
+
+function parseJsonLdBlocks(html) {
+  return [...html.matchAll(/<script\s+type="application\/ld\+json">\s*([\s\S]*?)\s*<\/script>/g)]
+    .map((m) => JSON.parse(m[1]));
+}
+
+function validateIndexLanguageMetadata(stats) {
+  const failures = [];
+  const html = read('index.html');
+  const expected = stats.localeCodes;
+
+  const alternateLinks = [...html.matchAll(/<link\s+rel="alternate"\s+hreflang="([^"]+)"\s+href="([^"]+)"\s*\/>/g)]
+    .map((m) => ({ code: m[1], href: m[2] }));
+  const defaultLink = alternateLinks.find((l) => l.code === 'x-default');
+  if (!defaultLink) {
+    failures.push('index.html: x-default hreflang link not found');
+  } else {
+    const defaultUrl = new URL(defaultLink.href);
+    if (defaultUrl.searchParams.has('lang')) {
+      failures.push('index.html: x-default hreflang href must not set ?lang');
+    }
+  }
+
+  const localeLinks = alternateLinks.filter((l) => l.code !== 'x-default');
+  const hreflangCodes = localeLinks.map((l) => l.code);
+  if (!sameStringSet(hreflangCodes, expected)) {
+    failures.push(`index.html: hreflang locale set does not match src/locales (${describeSetDelta(hreflangCodes, expected)})`);
+  }
+
+  for (const code of expected.filter((c) => c !== 'en')) {
+    const link = localeLinks.find((l) => l.code === code);
+    if (!link) continue;
+    const lang = new URL(link.href).searchParams.get('lang');
+    if (lang !== code) {
+      failures.push(`index.html: hreflang ${code} href must use ?lang=${code}`);
+    }
+  }
+
+  let jsonLd;
+  try {
+    jsonLd = parseJsonLdBlocks(html);
+  } catch (error) {
+    failures.push(`index.html: JSON-LD could not be parsed (${error.message})`);
+    return failures;
+  }
+
+  const webSite = jsonLd.find((o) => o?.['@type'] === 'WebSite');
+  if (!webSite) {
+    failures.push('index.html: WebSite JSON-LD block not found');
+  } else {
+    const inLanguage = Array.isArray(webSite.inLanguage) ? webSite.inLanguage : [webSite.inLanguage].filter(Boolean);
+    if (!sameStringSet(inLanguage, expected)) {
+      failures.push(`index.html: WebSite inLanguage does not match src/locales (${describeSetDelta(inLanguage, expected)})`);
+    }
+  }
+
+  const app = jsonLd.find((o) => o?.['@type'] === 'WebApplication');
+  const feature = app?.featureList?.find((item) => /language support with RTL/.test(item));
+  const count = feature?.match(/(\d+)\s+language support with RTL/)?.[1];
+  if (Number(count) !== stats.locales) {
+    failures.push(`index.html: featureList language count says ${count ?? 'missing'}, code says ${stats.locales}`);
+  }
+
+  return failures;
+}
+
 function makefileVar(text, name) {
   const match = text.match(new RegExp(`^${name}\\s*:=\\s*(\\S+)`, 'm'));
   if (!match) throw new Error(`docs-stats: could not find ${name} in Makefile`);
@@ -82,7 +168,11 @@ function computeStats() {
   const serverDomains = dirsIn('server/worldmonitor').length;
 
   // ---- User-facing locales (src/locales/*.json, excluding shell fragments) ----
-  const locales = filesIn('src/locales').filter((f) => f.endsWith('.json') && !f.endsWith('.shell.json')).length;
+  const localeCodes = filesIn('src/locales')
+    .filter((f) => f.endsWith('.json') && !f.endsWith('.shell.json'))
+    .map((f) => f.replace(/\.json$/, ''))
+    .sort();
+  const locales = localeCodes.length;
 
   // ---- CI workflows (.github/workflows/*.yml) ----
   const workflows = filesIn('.github/workflows').filter((f) => f.endsWith('.yml') || f.endsWith('.yaml')).sort();
@@ -156,6 +246,7 @@ function computeStats() {
     protoDomainFolders,
     openapiServiceSpecs,
     serverDomains,
+    localeCodes,
     locales,
     workflows,
     workflowCount: workflows.length,
@@ -206,6 +297,8 @@ function claims(s) {
     { file: 'CONTRIBUTING.md', re: /currently \*\*(v\d+\.\d+\.\d+)\*\*/, value: s.sebufVersion },
     { file: 'CONTRIBUTING.md', re: /expand our (\d+)\+\s+feed collection/, value: s.feedDefinitions, min: true },
     { file: 'SECURITY.md', re: /All (\d+)\s+domain APIs are served through Sebuf/, value: s.serverDomains },
+    { file: 'index.html', re: /"(\d+)\s+language support with RTL"/, value: s.locales },
+    { file: 'index.html', re: /multilingual \((\d+)\s+locales\)/, value: s.locales },
 
     { file: 'docs/architecture.mdx', re: /(\d+)\s+service domains, and (?:\d+)\s+map layers/, value: s.protoServices },
     { file: 'docs/architecture.mdx', re: /(\d+)\s+map layers\./, value: s.layerDefinitions },
@@ -287,6 +380,8 @@ function main() {
       failures.push(`ARCHITECTURE.md: CI workflow \`${wf}\` is not listed in the CI/CD table`);
     }
   }
+
+  failures.push(...validateIndexLanguageMetadata(stats));
 
   for (const c of claims(stats)) {
     let text;

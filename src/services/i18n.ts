@@ -156,12 +156,25 @@ export async function initI18n(): Promise<void> {
   // (`wm-locale-explicit`) is preserved untouched.
   try { localStorage.removeItem('i18nextLng'); } catch { /* private mode */ }
 
-  // Custom detector: reads ONLY the explicit-choice key. Returns undefined
-  // when unset so detection falls through to navigator. This replaces the
-  // default `localStorage` step (which would read i18next's auto-cache key)
-  // so a user whose browser is French always lands on French unless they've
-  // explicitly chosen otherwise via Settings → Language.
+  // Custom detectors:
+  // - wmQuery honors shareable/SEO language URLs such as /dashboard?lang=fa.
+  // - wmExplicit reads ONLY the explicit-choice key. Returns undefined when
+  //   unset so detection falls through to navigator. This replaces the default
+  //   `localStorage` step (which would read i18next's auto-cache key) so a user
+  //   whose browser is French always lands on French unless they've explicitly
+  //   chosen otherwise via Settings → Language.
   const detector = new LanguageDetector();
+  detector.addDetector({
+    name: 'wmQuery',
+    lookup: () => {
+      try {
+        return new URL(window.location.href).searchParams.get('lang') || undefined;
+      } catch {
+        return undefined;
+      }
+    },
+    cacheUserLanguage: () => { /* URL language is explicit per request, not persisted */ },
+  });
   detector.addDetector({
     name: 'wmExplicit',
     lookup: () => {
@@ -185,7 +198,7 @@ export async function initI18n(): Promise<void> {
         escapeValue: false, // not needed for these simple strings
       },
       detection: {
-        order: ['wmExplicit', 'navigator'],
+        order: ['wmQuery', 'wmExplicit', 'navigator'],
         caches: [], // never auto-write — only changeLanguage() persists
       },
     });

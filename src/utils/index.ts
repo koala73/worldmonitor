@@ -37,17 +37,19 @@ export function formatPrice(price: number | null | undefined): string {
   })}`;
 }
 
-export function formatChange(change: number): string {
-  if (!Number.isFinite(change)) return '--';
+export function formatChange(change: number | null | undefined): string {
+  if (typeof change !== 'number' || !Number.isFinite(change)) return '--';
   const sign = change >= 0 ? '+' : '';
   return `${sign}${change.toFixed(2)}%`;
 }
 
-export function getChangeClass(change: number): string {
+export function getChangeClass(change: number | null | undefined): string {
+  if (typeof change !== 'number' || !Number.isFinite(change)) return '';
   return change >= 0 ? 'up' : 'down';
 }
 
-export function getHeatmapClass(change: number): string {
+export function getHeatmapClass(change: number | null | undefined): string {
+  if (typeof change !== 'number' || !Number.isFinite(change)) return '';
   const abs = Math.abs(change);
   const direction = change >= 0 ? 'up' : 'down';
 
