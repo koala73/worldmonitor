@@ -6,6 +6,7 @@ import { initSentry } from './sentry';
 import './index.css';
 
 const WELCOME_HYDRATION_IDLE_TIMEOUT_MS = 2500;
+const WELCOME_HYDRATION_FALLBACK_TARGET_MS = 1200;
 
 function scheduleWelcomeHydration(hydrate: () => void) {
   const idleWindow = window as Window & {
@@ -17,7 +18,9 @@ function scheduleWelcomeHydration(hydrate: () => void) {
     return;
   }
 
-  window.setTimeout(hydrate, 1200);
+  const elapsedMs = typeof performance !== 'undefined' ? performance.now() : 0;
+  const fallbackDelayMs = Math.max(0, WELCOME_HYDRATION_FALLBACK_TARGET_MS - elapsedMs);
+  window.setTimeout(hydrate, fallbackDelayMs);
 }
 
 initSentry();

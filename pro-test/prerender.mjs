@@ -47,12 +47,9 @@ const CRITICAL_CSS = [
 
 const DEFERRED_STYLES_SCRIPT = "(function(){var links=document.querySelectorAll('link[data-wm-deferred-style]');for(var i=0;i<links.length;i++){links[i].addEventListener('load',function(){this.rel='stylesheet';},{once:true});}})();";
 
-function findStylesheetTag(html) {
-  const marker = '<link rel="stylesheet"';
-  const start = html.indexOf(marker);
-  if (start === -1) return '';
-  const end = html.indexOf('>', start);
-  return end === -1 ? '' : html.slice(start, end + 1);
+function findStylesheetTags(html) {
+  return [...html.matchAll(/<link\b[^>]*\brel="stylesheet"[^>]*>/gi)]
+    .map((match) => match[0]);
 }
 
 function tagAttribute(tag, name) {
@@ -65,8 +62,13 @@ function tagAttribute(tag, name) {
 }
 
 function inlineCriticalCss(html, file) {
-  const stylesheetTag = findStylesheetTag(html);
-  if (!stylesheetTag) return html;
+  const stylesheetTags = findStylesheetTags(html);
+  if (stylesheetTags.length !== 1) {
+    console.error("[prerender] ERROR: Expected exactly one stylesheet tag for " + file + ", found " + stylesheetTags.length + ".");
+    process.exit(1);
+  }
+
+  const stylesheetTag = stylesheetTags[0];
 
   const href = tagAttribute(stylesheetTag, 'href');
   if (!href) {
@@ -266,7 +268,9 @@ for (const { file, content, rootAttributes } of PAGES) {
 
   const htmlPath = resolve(__dirname, '../public/pro', file);
   let html = readFileSync(htmlPath, 'utf-8');
-  html = inlineCriticalCss(html, file);
+  if (file === 'welcome.html') {
+    html = inlineCriticalCss(html, file);
+  }
   if (!html.includes('<div id="root"></div>')) {
     console.error(`[prerender] ERROR: ${file} has no empty <div id="root"></div> to inject into.`);
     process.exit(1);
