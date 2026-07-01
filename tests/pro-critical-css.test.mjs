@@ -145,7 +145,43 @@ describe('pro built HTML critical CSS contract', () => {
 
       assert.equal(fallbackTags.length, 1, `${href} should have exactly one noscript stylesheet fallback`);
       assert.match(html, /querySelectorAll\('link\[data-wm-deferred-style\]'\)/);
-      assert.match(html, /this\.rel='stylesheet'/);
+      assert.match(html, /\.rel='stylesheet'/);
+      // The activation must recover the full sheet when the preload fails or is
+      // ignored -- not only on `load` -- else JS users can be stranded on
+      // critical CSS only. Require the error + timeout fallback arms.
+      assert.match(html, /addEventListener\('load'/);
+      assert.match(html, /addEventListener\('error'/);
+      assert.match(html, /setTimeout\(/);
+    });
+
+    it(`${label} re-shows responsive nav/hero reveals so unlayered .hidden can't hide them at all widths`, () => {
+      // Regression guard for #4603: the inline critical CSS is UNLAYERED and beats
+      // the @layer-wrapped Tailwind sheet, so `nav .hidden{display:none}` /
+      // `main .hidden{display:none}` permanently hide `hidden md:flex` desktop nav
+      // rows and `hidden sm:block` unless the breakpoint reveal is ALSO inlined here.
+      const html = builtSrc(relPath);
+      const criticalCss = inlineStyleTags(html)
+        .filter((tag) => html.indexOf(tag) < html.indexOf(deferredStylePreloadTags(html)[0]))
+        .join('\n');
+
+      const navHideIdx = criticalCss.indexOf('nav .hidden{display:none}');
+      const mainHideIdx = criticalCss.indexOf('main .hidden{display:none}');
+      const sm640Idx = criticalCss.indexOf('@media (min-width:640px){');
+      const md768Idx = criticalCss.indexOf('@media (min-width:768px){');
+      const navRevealIdx = criticalCss.indexOf('nav [class~="md:flex"]{display:flex}');
+      const smBlockRevealIdx = criticalCss.indexOf('main [class~="sm:block"]{display:block}');
+
+      assert.notEqual(navHideIdx, -1, `${relPath} critical CSS should hide plain .hidden nav elements`);
+      assert.notEqual(mainHideIdx, -1, `${relPath} critical CSS should hide plain .hidden main elements`);
+      assert.notEqual(navRevealIdx, -1, `${relPath} critical CSS must re-show hidden md:flex nav rows at >=768px`);
+      assert.notEqual(smBlockRevealIdx, -1, `${relPath} critical CSS must re-show hidden sm:block at >=640px`);
+      // Equal-specificity rules: each reveal must come AFTER its unlayered hide to win the cascade.
+      assert.ok(navRevealIdx > navHideIdx, `${relPath} nav md:flex reveal must follow nav .hidden to win the cascade`);
+      assert.ok(smBlockRevealIdx > mainHideIdx, `${relPath} main sm:block reveal must follow main .hidden to win the cascade`);
+      // The nav reveal must sit inside the >=768px block (gated to desktop, not applied at all widths).
+      assert.ok(md768Idx !== -1 && navRevealIdx > md768Idx, `${relPath} nav md:flex reveal must be inside the min-width:768px media block`);
+      // The sm:block reveal must sit inside the >=640px block (between the 640 and 768 media opens).
+      assert.ok(sm640Idx !== -1 && smBlockRevealIdx > sm640Idx && smBlockRevealIdx < md768Idx, `${relPath} sm:block reveal must be inside the min-width:640px media block`);
     });
   }
 

@@ -15,7 +15,7 @@
  * so this runs anywhere Node runs, including bare CI.
  */
 import { readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -25,6 +25,123 @@ const dirsIn = (p) =>
 const filesIn = (p) =>
   readdirSync(join(ROOT, p), { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
 const entriesIn = (p) => readdirSync(join(ROOT, p), { withFileTypes: true }).map((e) => e.name);
+
+function sorted(items) {
+  return [...items].sort();
+}
+
+function sameStringSet(a, b) {
+  const left = sorted(a);
+  const right = sorted(b);
+  return left.length === right.length && left.every((v, i) => v === right[i]);
+}
+
+function describeSetDelta(found, expected) {
+  const foundSet = new Set(found);
+  const expectedSet = new Set(expected);
+  const missing = sorted(expected.filter((v) => !foundSet.has(v)));
+  const extra = sorted(found.filter((v) => !expectedSet.has(v)));
+  return [
+    missing.length ? `missing: ${missing.join(', ')}` : '',
+    extra.length ? `extra: ${extra.join(', ')}` : '',
+  ].filter(Boolean).join('; ');
+}
+
+function parseJsonLdBlocks(html) {
+  return [...html.matchAll(/<script\s+type="application\/ld\+json">\s*([\s\S]*?)\s*<\/script>/g)]
+    .map((m) => JSON.parse(m[1]));
+}
+
+function validateIndexLanguageMetadata(stats, html = read('index.html')) {
+  const failures = [];
+  const expected = stats.localeCodes;
+
+  const alternateLinks = [...html.matchAll(/<link\s+rel="alternate"\s+hreflang="([^"]+)"\s+href="([^"]+)"\s*\/>/g)]
+    .map((m) => ({ code: m[1], href: m[2] }));
+  const defaultLink = alternateLinks.find((l) => l.code === 'x-default');
+  if (!defaultLink) {
+    failures.push('index.html: x-default hreflang link not found');
+  } else {
+    const params = hrefSearchParams(defaultLink.href);
+    if (!params) {
+      failures.push('index.html: x-default hreflang href is not a valid URL');
+    } else if (params.has('lang')) {
+      failures.push('index.html: x-default hreflang href must not set ?lang');
+    }
+  }
+
+  const localeLinks = alternateLinks.filter((l) => l.code !== 'x-default');
+  const hreflangCodes = localeLinks.map((l) => l.code);
+  if (!sameStringSet(hreflangCodes, expected)) {
+    failures.push(`index.html: hreflang locale set does not match src/locales (${describeSetDelta(hreflangCodes, expected)})`);
+  }
+
+  for (const code of expected.filter((c) => c !== 'en')) {
+    const link = localeLinks.find((l) => l.code === code);
+    if (!link) continue;
+    const lang = hrefSearchParams(link.href)?.get('lang');
+    if (lang !== code) {
+      failures.push(`index.html: hreflang ${code} href must use ?lang=${code}`);
+    }
+  }
+
+  let jsonLd;
+  try {
+    jsonLd = parseJsonLdBlocks(html);
+  } catch (error) {
+    failures.push(`index.html: JSON-LD could not be parsed (${error.message})`);
+    return failures;
+  }
+
+  const webSite = jsonLd.find((o) => o?.['@type'] === 'WebSite');
+  if (!webSite) {
+    failures.push('index.html: WebSite JSON-LD block not found');
+  } else {
+    const inLanguage = Array.isArray(webSite.inLanguage) ? webSite.inLanguage : [webSite.inLanguage].filter(Boolean);
+    if (!sameStringSet(inLanguage, expected)) {
+      failures.push(`index.html: WebSite inLanguage does not match src/locales (${describeSetDelta(inLanguage, expected)})`);
+    }
+  }
+
+  // The "<N> language support with RTL" featureList count is validated by the
+  // index.html claims() entry (single source of truth), so it is not re-checked
+  // here to avoid a duplicate assertion of the same string against the same value.
+
+  return failures;
+}
+
+// Parse a URL's query params tolerantly. A base URL is supplied so a relative
+// hreflang href (e.g. `/dashboard?lang=fa`) parses instead of throwing and
+// crashing the whole gate. Returns null only when the value is not a URL at all.
+function hrefSearchParams(href) {
+  try {
+    return new URL(href, 'https://www.worldmonitor.app').searchParams;
+  } catch {
+    return null;
+  }
+}
+
+// Cross-check the runtime i18next allow-list (SUPPORTED_LANGUAGES in
+// src/services/i18n.ts) against the filesystem locale set. index.html now
+// advertises an hreflang `?lang=<code>` for every locale on disk; if a code is
+// present on disk but missing from SUPPORTED_LANGUAGES, i18next silently falls
+// back to English for that `?lang=`, making the advertised URL a dead end.
+function parseSupportedLanguages(i18nSource) {
+  const block = i18nSource.match(/const\s+SUPPORTED_LANGUAGES\s*=\s*\[([\s\S]*?)\]\s*as const/);
+  if (!block) return null;
+  return (block[1].match(/'([^']+)'/g) || []).map((s) => s.slice(1, -1));
+}
+
+function validateSupportedLanguagesRegistry(stats, i18nSource = read('src/services/i18n.ts')) {
+  const supported = parseSupportedLanguages(i18nSource);
+  if (!supported) {
+    return ['src/services/i18n.ts: could not parse SUPPORTED_LANGUAGES array'];
+  }
+  if (!sameStringSet(supported, stats.localeCodes)) {
+    return [`src/services/i18n.ts: SUPPORTED_LANGUAGES does not match src/locales (${describeSetDelta(supported, stats.localeCodes)})`];
+  }
+  return [];
+}
 
 function makefileVar(text, name) {
   const match = text.match(new RegExp(`^${name}\\s*:=\\s*(\\S+)`, 'm'));
@@ -82,7 +199,11 @@ function computeStats() {
   const serverDomains = dirsIn('server/worldmonitor').length;
 
   // ---- User-facing locales (src/locales/*.json, excluding shell fragments) ----
-  const locales = filesIn('src/locales').filter((f) => f.endsWith('.json') && !f.endsWith('.shell.json')).length;
+  const localeCodes = filesIn('src/locales')
+    .filter((f) => f.endsWith('.json') && !f.endsWith('.shell.json'))
+    .map((f) => f.replace(/\.json$/, ''))
+    .sort();
+  const locales = localeCodes.length;
 
   // ---- CI workflows (.github/workflows/*.yml) ----
   const workflows = filesIn('.github/workflows').filter((f) => f.endsWith('.yml') || f.endsWith('.yaml')).sort();
@@ -156,6 +277,7 @@ function computeStats() {
     protoDomainFolders,
     openapiServiceSpecs,
     serverDomains,
+    localeCodes,
     locales,
     workflows,
     workflowCount: workflows.length,
@@ -206,6 +328,8 @@ function claims(s) {
     { file: 'CONTRIBUTING.md', re: /currently \*\*(v\d+\.\d+\.\d+)\*\*/, value: s.sebufVersion },
     { file: 'CONTRIBUTING.md', re: /expand our (\d+)\+\s+feed collection/, value: s.feedDefinitions, min: true },
     { file: 'SECURITY.md', re: /All (\d+)\s+domain APIs are served through Sebuf/, value: s.serverDomains },
+    { file: 'index.html', re: /"(\d+)\s+language support with RTL"/, value: s.locales },
+    { file: 'index.html', re: /multilingual \((\d+)\s+locales\)/, value: s.locales },
 
     { file: 'docs/architecture.mdx', re: /(\d+)\s+service domains, and (?:\d+)\s+map layers/, value: s.protoServices },
     { file: 'docs/architecture.mdx', re: /(\d+)\s+map layers\./, value: s.layerDefinitions },
@@ -288,6 +412,9 @@ function main() {
     }
   }
 
+  failures.push(...validateIndexLanguageMetadata(stats));
+  failures.push(...validateSupportedLanguagesRegistry(stats));
+
   for (const c of claims(stats)) {
     let text;
     try {
@@ -323,4 +450,19 @@ function main() {
   console.log(`docs-stats --check OK — ${claims(stats).length} doc claims match code.`);
 }
 
-main();
+export {
+  computeStats,
+  validateIndexLanguageMetadata,
+  validateSupportedLanguagesRegistry,
+  parseSupportedLanguages,
+  parseJsonLdBlocks,
+  sameStringSet,
+  describeSetDelta,
+};
+
+// Run only when executed directly (node scripts/docs-stats.mjs [--check]).
+// Stays import-safe so tests can load the validators without triggering the
+// filesystem scan / CI gate on import.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}

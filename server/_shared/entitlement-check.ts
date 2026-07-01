@@ -179,6 +179,7 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
         'x-convex-shared-secret': convexSharedSecret,
       },
       body: JSON.stringify({ userId }),
+      signal: AbortSignal.timeout(3_000),
     });
     if (!response.ok) return null;
     const result = await response.json() as CachedEntitlements | null;
