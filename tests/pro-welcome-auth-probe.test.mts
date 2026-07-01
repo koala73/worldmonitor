@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { hasLiveSessionJwt } from '../pro-test/src/services/clerk-session.ts';
+import { hasLiveClientSession, hasLiveSessionJwt } from '../pro-test/src/services/clerk-session.ts';
 import { maybeRedirectWelcomeVisitor } from '../pro-test/src/services/welcome-redirect.ts';
 
 // Build a minimal Clerk-style session JWT (header.payload.signature). Only the
@@ -12,6 +12,23 @@ function jwt(payload: Record<string, unknown>): string {
 }
 
 const nowSec = Math.floor(Date.now() / 1000);
+
+function withDocumentCookie(cookie: string, run: () => void): void {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: { cookie },
+  });
+  try {
+    run();
+  } finally {
+    if (descriptor) {
+      Object.defineProperty(globalThis, 'document', descriptor);
+    } else {
+      delete (globalThis as { document?: unknown }).document;
+    }
+  }
+}
 
 describe('welcome auth probe — hasLiveSessionJwt (live __session token only)', () => {
   it('is true for an unexpired __session JWT', () => {
@@ -46,6 +63,24 @@ describe('welcome auth probe — hasLiveSessionJwt (live __session token only)',
 
   it('decodes a URL-encoded __session value before parsing', () => {
     assert.equal(hasLiveSessionJwt(`__session=${encodeURIComponent(jwt({ exp: nowSec + 3600 }))}`), true);
+  });
+});
+
+describe('welcome auth probe — hasLiveClientSession browser wrapper', () => {
+  it('is false in SSR/prerender contexts without document', () => {
+    assert.equal(hasLiveClientSession(), false);
+  });
+
+  it('reads document.cookie without loading Clerk', () => {
+    withDocumentCookie(`__session=${jwt({ exp: nowSec + 3600 })}`, () => {
+      assert.equal(hasLiveClientSession(), true);
+    });
+    withDocumentCookie(`__session=${jwt({ exp: nowSec - 1 })}`, () => {
+      assert.equal(hasLiveClientSession(), false);
+    });
+    withDocumentCookie('', () => {
+      assert.equal(hasLiveClientSession(), false);
+    });
   });
 });
 

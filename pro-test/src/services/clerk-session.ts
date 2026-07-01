@@ -37,3 +37,8 @@ export function hasLiveSessionJwt(cookieHeader: string): boolean {
   const exp = decodeJwtExp(safeDecodeCookieValue(match[1]).trim());
   return exp !== null && exp * 1000 > Date.now();
 }
+
+export function hasLiveClientSession(): boolean {
+  if (typeof document === 'undefined') return false;
+  return hasLiveSessionJwt(document.cookie);
+}
