@@ -159,13 +159,16 @@ describe("#3199 U4 — gateway per-account rate-limit wiring", () => {
     expect(checkRateLimit).not.toHaveBeenCalled();
   });
 
-  test("downgraded entitlement (apiAccess:false) → NOT eligible, per-IP runs, no burst check", async () => {
+  test("downgraded entitlement (apiAccess:false) → 403 (#4611), rejected before the rate-limit block", async () => {
     process.env.API_RATE_LIMIT_ENFORCE = "true";
     entitlement = { planKey: "pro", features: { tier: 1, apiAccess: false, apiRateLimit: 0 }, validUntil: Date.now() + 86_400_000 };
 
     const res = await makeGateway()(userKeyRequest(), ctx);
-    expect(res.status).toBe(200);
-    expect(checkBurst).not.toHaveBeenCalled(); // never slidingWindow(0)
-    expect(checkRateLimit).toHaveBeenCalledTimes(1);
+    // #4611: a wm_ key whose owner lost apiAccess is rejected outright, not
+    // silently downgraded to the per-IP path. The apiAccess gate runs BEFORE
+    // the #3199 per-account rate-limit block, so neither limiter is consulted.
+    expect(res.status).toBe(403);
+    expect(checkBurst).not.toHaveBeenCalled();
+    expect(checkRateLimit).not.toHaveBeenCalled();
   });
 });

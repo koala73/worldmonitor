@@ -947,14 +947,51 @@ export function createDomainGateway(
       usage.enterpriseApiKey = wmKey;
     }
 
-    // User API keys on PREMIUM_RPC_PATHS need verified pro-tier entitlement.
-    // Admin keys (WORLDMONITOR_VALID_KEYS) bypass this since they are operator-issued.
-    if (isUserApiKey && needsLegacyProBearerGate && sessionUserId) {
-      const ent = await getEntitlements(sessionUserId);
-      recordUsageEntitlement(ent);
-      if (!ent || !ent.features.apiAccess) {
+    // ── Active-subscription gate for user API keys (#4611) ──────────────────
+    // A wm_ user key that authenticated this request must map to an owner with
+    // ACTIVE apiAccess on EVERY keyed route — not just PREMIUM_RPC_PATHS. A
+    // cancelled/downgraded customer keeps a valid (un-revoked) key that still
+    // resolves to their userId, so without a route-wide gate the key keeps
+    // serving the whole paid programmatic surface for free: the API Starter
+    // product leaks past churn. Runs BEFORE the #3199 per-account rate-limit
+    // block so an expired key is rejected outright, never metered — and the
+    // resolved entitlement is reused there to avoid a second lookup.
+    //
+    // Scoped to isUserApiKey: the wm_ key IS the authenticating credential
+    // (isUserApiKey ⇒ sessionUserId is the resolved key owner, set at :933).
+    // This intentionally does NOT re-validate wm_ keys on any other route class:
+    //   - Enterprise operator keys (kind 'enterprise', incl. legacy wm_-prefixed
+    //     relay keys) never set isUserApiKey and carry no user entitlement row.
+    //   - Verified internal paths (MCP / seed-refresh / relay warm-ping) never
+    //     set isUserApiKey.
+    //   - PUBLIC_NO_AUTH_RPC_PATHS serve free data to everyone; the key is not
+    //     the authenticator there. Re-validating an arbitrary header key on that
+    //     anonymous surface would add an unauthenticated Convex-lookup
+    //     amplification vector (a rotating fake wm_ key per request defeats the
+    //     negative cache, ahead of any rate limit) for no revenue gain — public
+    //     data is not the paid product — and would wrongly gate the
+    //     intentionally-anonymous lead-capture forms.
+    let userKeyEntitlement: CachedEntitlements | null | undefined;
+    if (isUserApiKey && sessionUserId) {
+      userKeyEntitlement = await getEntitlements(sessionUserId);
+      recordUsageEntitlement(userKeyEntitlement);
+      // Fail-OPEN on an unresolved entitlement (null ⇒ transient Convex/cache
+      // failure, indistinguishable from "no row"): mirrors the #3199 block below
+      // and avoids 403-ing an ACTIVE subscriber fleet-wide during a backend
+      // blip. Reject only on an AFFIRMATIVELY inactive/expired entitlement — the
+      // systematic churn case (#4611), always resolvable under normal operation
+      // (the warm 15-min entitlement cache closes the leak; an outage degrades
+      // to prior behavior rather than denying paying customers).
+      if (
+        userKeyEntitlement &&
+        (!userKeyEntitlement.features.apiAccess || userKeyEntitlement.validUntil < Date.now())
+      ) {
         emitRequest(403, 'tier_403', null);
-        return createGatewayAuthErrorResponse(403, 'API access subscription required', corsHeaders);
+        return createGatewayAuthErrorResponse(
+          403,
+          'API access requires an active subscription',
+          corsHeaders,
+        );
       }
     }
 
@@ -1087,7 +1124,14 @@ export function createDomainGateway(
           // on userId so a customer can't multiply their allowance.)
           identity = wmKey ? hashKeySync(wmKey) : '';
         } else if (sessionUserId) {
-          const ent = await getEntitlements(sessionUserId);
+          // Reuse the entitlement the #4611 gate above already resolved for this
+          // same user key (undefined ⇒ the gate didn't run, e.g. a Clerk-session
+          // caller with no wm_ key — resolve it now). Avoids a duplicate lookup
+          // on the hot active-key path.
+          const ent =
+            userKeyEntitlement !== undefined
+              ? userKeyEntitlement
+              : await getEntitlements(sessionUserId);
           if (ent) {
             // #4572 — attribute the usage event to the caller's real tier +
             // plan (recorded even for downgraded keys), so the limit-abuse
