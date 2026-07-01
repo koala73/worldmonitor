@@ -15,6 +15,7 @@
  * without the package present.
  */
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
+import { roundMs } from '@/bootstrap/web-vitals-utils';
 
 /** Structural subset of web-vitals' INP attribution (kept local to avoid the dep). */
 export interface InpAttributionLike {
@@ -32,9 +33,6 @@ export interface InpMetricLike {
   rating?: 'good' | 'needs-improvement' | 'poor';
   attribution?: InpAttributionLike;
 }
-
-const roundMs = (n: number | undefined): number | undefined =>
-  typeof n === 'number' && Number.isFinite(n) ? Math.round(n) : undefined;
 
 /**
  * Report one field INP measurement to Sentry (R1, R2). `enqueue` is injectable

@@ -12,6 +12,7 @@
  * without the package present.
  */
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
+import { roundMs } from '@/bootstrap/web-vitals-utils';
 
 /** Structural subset of web-vitals' CLS attribution (kept local to avoid the dep). */
 export interface ClsAttributionLike {
@@ -27,9 +28,6 @@ export interface ClsMetricLike {
   rating?: 'good' | 'needs-improvement' | 'poor';
   attribution?: ClsAttributionLike;
 }
-
-const roundMs = (n: number | undefined): number | undefined =>
-  typeof n === 'number' && Number.isFinite(n) ? Math.round(n) : undefined;
 
 /**
  * Report one field CLS measurement to Sentry. `enqueue` is injectable for tests;
