@@ -148,7 +148,7 @@ describe('Product catalog freshness', () => {
   });
 
   it('product catalog fallbacks advertise the canonical Pro MCP feature', () => {
-    const expectedFeature = tiersJson.find((tier) => tier.localeKey === 'pro')?.features?.[5];
+    const expectedFeature = tiersJson.find((tier) => tier.localeKey === 'pro')?.features?.find((f) => /\bMCP\b/.test(f));
     assert.equal(
       expectedFeature,
       'MCP access for Claude Desktop & other AI clients (50 calls/day)',
