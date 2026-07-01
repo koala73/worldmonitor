@@ -180,8 +180,8 @@ function servicesBarrelValueImportBlock(src) {
 }
 
 function valueImportBlock(src, specifier) {
-  const re = new RegExp(`\\bimport\\s+\\{([\\s\\S]*?)\\}\\s+from\\s+['"]${escapeRegExp(specifier)}['"]`);
-  return src.match(re)?.[1] ?? '';
+  const re = new RegExp(`\\bimport\\s+\\{([\\s\\S]*?)\\}\\s+from\\s+['"]${escapeRegExp(specifier)}['"]`, 'g');
+  return [...src.matchAll(re)].map((match) => match[1]).join('\n');
 }
 
 describe('main.js eager diet — service clients are lazy-initialized', () => {
@@ -346,6 +346,15 @@ describe('main.js eager diet — export panel is interaction-loaded', () => {
   const eventHandlersSource = readFileSync(resolve(repoRoot, 'src/app/event-handlers.ts'), 'utf8');
   const eventHandlersWithoutComments = stripComments(eventHandlersSource);
   const utilsIndexSource = readFileSync(resolve(repoRoot, 'src/utils/index.ts'), 'utf8');
+
+  it('checks every import block from the same specifier', () => {
+    const source = [
+      'import { buildMapUrl } from "@/utils";',
+      'import { ExportPanel } from "@/utils";',
+    ].join('\n');
+
+    assert.match(valueImportBlock(source, '@/utils'), /\bExportPanel\b/);
+  });
 
   it('does not import ExportPanel through the eager utils barrel', () => {
     assert.doesNotMatch(
