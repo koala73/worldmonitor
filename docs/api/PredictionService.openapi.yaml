@@ -20,7 +20,9 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -97,7 +99,9 @@ components:
                     description: Maximum items per page (1-100).
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 category:
                     type: string
                     description: Optional category filter (e.g., "Politics").

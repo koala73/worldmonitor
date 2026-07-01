@@ -124,7 +124,9 @@ paths:
             parameters:
                 - name: period
                   in: query
-                  description: Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                  description: |-
+                    Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -583,11 +585,13 @@ paths:
             parameters:
                 - name: fromDate
                   in: query
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                 - name: toDate
                   in: query
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -935,7 +939,9 @@ components:
             properties:
                 period:
                     type: string
-                    description: Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                    description: |-
+                        Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: GetSectorSummaryRequest specifies parameters for retrieving sector performance.
         GetSectorSummaryResponse:
             type: object
@@ -1781,8 +1787,10 @@ components:
             properties:
                 fromDate:
                     type: string
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
                 toDate:
                     type: string
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
         ListEarningsCalendarResponse:
             type: object
             properties:

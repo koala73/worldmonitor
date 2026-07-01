@@ -215,7 +215,9 @@ paths:
                     format: int32
                 - name: timespan
                   in: query
-                  description: Time span filter (e.g., "15min", "1h", "24h").
+                  description: |-
+                    Time span filter (e.g., "15min", "1h", "24h").
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -224,12 +226,15 @@ paths:
                   description: |-
                     Tone filter appended to query (e.g., "tone>5" for positive, "tone<-5" for negative).
                      Left empty to skip tone filtering.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                 - name: sort
                   in: query
-                  description: 'Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".'
+                  description: |-
+                    Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -1435,15 +1440,20 @@ components:
                     description: Maximum number of articles to return (1-250).
                 timespan:
                     type: string
-                    description: Time span filter (e.g., "15min", "1h", "24h").
+                    description: |-
+                        Time span filter (e.g., "15min", "1h", "24h").
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 toneFilter:
                     type: string
                     description: |-
                         Tone filter appended to query (e.g., "tone>5" for positive, "tone<-5" for negative).
                          Left empty to skip tone filtering.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 sort:
                     type: string
-                    description: 'Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".'
+                    description: |-
+                        Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             required:
                 - query
             description: SearchGdeltDocumentsRequest specifies filters for searching GDELT news articles.

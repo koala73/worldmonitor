@@ -72,14 +72,18 @@ paths:
                     format: int32
                 - name: page_size
                   in: query
-                  description: Maximum items per page.
+                  description: |-
+                    Maximum items per page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -187,7 +191,9 @@ paths:
                         type: string
                 - name: years
                   in: query
-                  description: Number of years of historical data. Default 20 if not set.
+                  description: |-
+                    Number of years of historical data. Default 20 if not set.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
@@ -475,11 +481,13 @@ paths:
             parameters:
                 - name: fromDate
                   in: query
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                 - name: toDate
                   in: query
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -930,10 +938,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page.
+                    description: |-
+                        Maximum items per page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             required:
                 - indicatorCode
             description: ListWorldBankIndicatorsRequest specifies filters for retrieving World Bank data.
@@ -1227,7 +1239,9 @@ components:
                 years:
                     type: integer
                     format: int32
-                    description: Number of years of historical data. Default 20 if not set.
+                    description: |-
+                        Number of years of historical data. Default 20 if not set.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
         GetEnergyCapacityResponse:
             type: object
             properties:
@@ -1694,8 +1708,10 @@ components:
             properties:
                 fromDate:
                     type: string
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
                 toDate:
                     type: string
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
         GetEconomicCalendarResponse:
             type: object
             properties:

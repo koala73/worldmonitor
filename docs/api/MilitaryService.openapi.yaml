@@ -20,7 +20,9 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -54,13 +56,17 @@ paths:
                     format: double
                 - name: operator
                   in: query
-                  description: Optional operator filter.
+                  description: |-
+                    Optional operator filter.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                 - name: aircraft_type
                   in: query
-                  description: Optional aircraft type filter.
+                  description: |-
+                    Optional aircraft type filter.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -93,7 +99,9 @@ paths:
             parameters:
                 - name: theater
                   in: query
-                  description: Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
+                  description: |-
+                    Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -433,7 +441,9 @@ components:
                     description: Maximum items per page (1-100).
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 neLat:
                     type: number
                     format: double
@@ -727,7 +737,9 @@ components:
             properties:
                 theater:
                     type: string
-                    description: Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
+                    description: |-
+                        Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: GetTheaterPostureRequest specifies the theater to assess.
         GetTheaterPostureResponse:
             type: object

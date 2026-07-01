@@ -11,7 +11,8 @@ message ListPredictionMarketsRequest {
   // Maximum items per page (1-100).
   int32 page_size = 1 [(sebuf.http.query) = { name: "page_size" }];
   // Cursor for next page.
-  string cursor = 2 [(sebuf.http.query) = { name: "cursor" }];
+  // Accepted but currently ignored; no-op until this handler supports the parameter.
+  string cursor = 2 [(sebuf.http.query) = { name: "cursor" }, (sebuf.http.unimplemented) = true];
   // Optional category filter (e.g., "Politics").
   string category = 3 [(sebuf.http.query) = { name: "category" }];
   // Optional search query for market titles.

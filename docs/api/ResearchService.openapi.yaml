@@ -20,7 +20,9 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -32,7 +34,9 @@ paths:
                     type: string
                 - name: query
                   in: query
-                  description: Search query for paper titles and abstracts.
+                  description: |-
+                    Search query for paper titles and abstracts.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -248,13 +252,17 @@ components:
                     description: Maximum items per page (1-100).
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 category:
                     type: string
                     description: arXiv category filter (e.g., "cs.AI"). Empty returns all tracked categories.
                 query:
                     type: string
-                    description: Search query for paper titles and abstracts.
+                    description: |-
+                        Search query for paper titles and abstracts.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: ListArxivPapersRequest specifies filters for retrieving arXiv papers.
         ListArxivPapersResponse:
             type: object

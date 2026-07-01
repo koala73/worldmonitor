@@ -22,26 +22,34 @@ paths:
             parameters:
                 - name: page_size
                   in: query
-                  description: Maximum items per page (1-100).
+                  description: |-
+                    Maximum items per page (1-100).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                 - name: region
                   in: query
-                  description: Optional region filter.
+                  description: |-
+                    Optional region filter.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                 - name: min_severity
                   in: query
-                  description: Optional minimum severity filter.
+                  description: |-
+                    Optional minimum severity filter.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -689,20 +697,26 @@ paths:
             parameters:
                 - name: page_size
                   in: query
-                  description: Maximum items per page (1-100).
+                  description: |-
+                    Maximum items per page (1-100).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                 - name: min_severity
                   in: query
-                  description: Optional filter by anomaly severity.
+                  description: |-
+                    Optional filter by anomaly severity.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -893,14 +907,18 @@ paths:
                     format: int64
                 - name: page_size
                   in: query
-                  description: Maximum items per page (1-100).
+                  description: |-
+                    Maximum items per page (1-100).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -939,28 +957,36 @@ paths:
             parameters:
                 - name: start
                   in: query
-                  description: Start of time range (inclusive), Unix epoch milliseconds.
+                  description: |-
+                    Start of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                     format: int64
                 - name: end
                   in: query
-                  description: End of time range (inclusive), Unix epoch milliseconds.
+                  description: |-
+                    End of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                     format: int64
                 - name: page_size
                   in: query
-                  description: Maximum items per page (1-100).
+                  description: |-
+                    Maximum items per page (1-100).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -1343,14 +1369,18 @@ paths:
             parameters:
                 - name: start
                   in: query
-                  description: Start of time range (inclusive), Unix epoch milliseconds.
+                  description: |-
+                    Start of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                     format: int64
                 - name: end
                   in: query
-                  description: End of time range (inclusive), Unix epoch milliseconds.
+                  description: |-
+                    End of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -1576,14 +1606,18 @@ paths:
                     format: int32
                 - name: page_size
                   in: query
-                  description: Maximum items per page.
+                  description: |-
+                    Maximum items per page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -1691,7 +1725,9 @@ paths:
                         type: string
                 - name: years
                   in: query
-                  description: Number of years of historical data. Default 20 if not set.
+                  description: |-
+                    Number of years of historical data. Default 20 if not set.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
@@ -1979,11 +2015,13 @@ paths:
             parameters:
                 - name: fromDate
                   in: query
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                 - name: toDate
                   in: query
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -2641,14 +2679,18 @@ paths:
                     format: int64
                 - name: page_size
                   in: query
-                  description: Maximum items per page.
+                  description: |-
+                    Maximum items per page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -3218,7 +3260,9 @@ paths:
                     format: int32
                 - name: timespan
                   in: query
-                  description: Time span filter (e.g., "15min", "1h", "24h").
+                  description: |-
+                    Time span filter (e.g., "15min", "1h", "24h").
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -3227,12 +3271,15 @@ paths:
                   description: |-
                     Tone filter appended to query (e.g., "tone>5" for positive, "tone<-5" for negative).
                      Left empty to skip tone filtering.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                 - name: sort
                   in: query
-                  description: 'Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".'
+                  description: |-
+                    Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -4064,14 +4111,18 @@ paths:
             parameters:
                 - name: page_size
                   in: query
-                  description: Maximum items per page (1-100).
+                  description: |-
+                    Maximum items per page (1-100).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -4221,7 +4272,9 @@ paths:
             parameters:
                 - name: period
                   in: query
-                  description: Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                  description: |-
+                    Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -4680,11 +4733,13 @@ paths:
             parameters:
                 - name: fromDate
                   in: query
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                 - name: toDate
                   in: query
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -4860,7 +4915,9 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -4894,13 +4951,17 @@ paths:
                     format: double
                 - name: operator
                   in: query
-                  description: Optional operator filter.
+                  description: |-
+                    Optional operator filter.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                 - name: aircraft_type
                   in: query
-                  description: Optional aircraft type filter.
+                  description: |-
+                    Optional aircraft type filter.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -4933,7 +4994,9 @@ paths:
             parameters:
                 - name: theater
                   in: query
-                  description: Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
+                  description: |-
+                    Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -5240,6 +5303,7 @@ paths:
             parameters:
                 - name: days
                   in: query
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
@@ -5410,7 +5474,9 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -5496,7 +5562,9 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -5508,7 +5576,9 @@ paths:
                     type: string
                 - name: query
                   in: query
-                  description: Search query for paper titles and abstracts.
+                  description: |-
+                    Search query for paper titles and abstracts.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -5945,14 +6015,18 @@ paths:
             parameters:
                 - name: start
                   in: query
-                  description: Start of time range (inclusive), Unix epoch milliseconds.
+                  description: |-
+                    Start of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                     format: int64
                 - name: end
                   in: query
-                  description: End of time range (inclusive), Unix epoch milliseconds.
+                  description: |-
+                    End of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -5966,13 +6040,17 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                 - name: min_magnitude
                   in: query
-                  description: Minimum magnitude filter (e.g., 4.0 for significant quakes).
+                  description: |-
+                    Minimum magnitude filter (e.g., 4.0 for significant quakes).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: number
@@ -6915,7 +6993,9 @@ paths:
             parameters:
                 - name: countries
                   in: query
-                  description: WTO member codes to filter by. Empty = all.
+                  description: |-
+                    WTO member codes to filter by. Empty = all.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   style: form
                   explode: true
@@ -7057,7 +7137,9 @@ paths:
             parameters:
                 - name: countries
                   in: query
-                  description: WTO member codes to filter by. Empty = all.
+                  description: |-
+                    WTO member codes to filter by. Empty = all.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   style: form
                   explode: true
@@ -7067,7 +7149,9 @@ paths:
                         type: string
                 - name: measure_type
                   in: query
-                  description: 'Filter by measure type: "SPS", "TBT", or empty for both.'
+                  description: |-
+                    Filter by measure type: "SPS", "TBT", or empty for both.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -7192,14 +7276,18 @@ paths:
                     format: int64
                 - name: page_size
                   in: query
-                  description: Maximum items per page (1-100).
+                  description: |-
+                    Maximum items per page (1-100).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -7211,34 +7299,44 @@ paths:
                     type: string
                 - name: min_severity
                   in: query
-                  description: Optional minimum severity filter.
+                  description: |-
+                    Optional minimum severity filter.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                 - name: ne_lat
                   in: query
-                  description: North-east corner latitude of bounding box.
+                  description: |-
+                    North-east corner latitude of bounding box.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: number
                     format: double
                 - name: ne_lon
                   in: query
-                  description: North-east corner longitude of bounding box.
+                  description: |-
+                    North-east corner longitude of bounding box.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: number
                     format: double
                 - name: sw_lat
                   in: query
-                  description: South-west corner latitude of bounding box.
+                  description: |-
+                    South-west corner latitude of bounding box.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: number
                     format: double
                 - name: sw_lon
                   in: query
-                  description: South-west corner longitude of bounding box.
+                  description: |-
+                    South-west corner longitude of bounding box.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: number
@@ -7359,55 +7457,71 @@ paths:
             parameters:
                 - name: start
                   in: query
-                  description: Start of time range (inclusive), Unix epoch milliseconds.
+                  description: |-
+                    Start of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                     format: int64
                 - name: end
                   in: query
-                  description: End of time range (inclusive), Unix epoch milliseconds.
+                  description: |-
+                    End of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                     format: int64
                 - name: page_size
                   in: query
-                  description: Maximum items per page (1-100).
+                  description: |-
+                    Maximum items per page (1-100).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                 - name: ne_lat
                   in: query
-                  description: North-east latitude of bounding box.
+                  description: |-
+                    North-east latitude of bounding box.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: number
                     format: double
                 - name: ne_lon
                   in: query
-                  description: North-east longitude of bounding box.
+                  description: |-
+                    North-east longitude of bounding box.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: number
                     format: double
                 - name: sw_lat
                   in: query
-                  description: South-west latitude of bounding box.
+                  description: |-
+                    South-west latitude of bounding box.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: number
                     format: double
                 - name: sw_lon
                   in: query
-                  description: South-west longitude of bounding box.
+                  description: |-
+                    South-west longitude of bounding box.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: number
@@ -7481,10 +7595,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page (1-100).
+                    description: |-
+                        Maximum items per page (1-100).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 region:
                     type: string
                     enum:
@@ -8509,10 +8627,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page (1-100).
+                    description: |-
+                        Maximum items per page (1-100).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 minSeverity:
                     type: string
                     enum:
@@ -8844,10 +8966,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page (1-100).
+                    description: |-
+                        Maximum items per page (1-100).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 country:
                     type: string
                     description: Optional country filter (ISO 3166-1 alpha-2).
@@ -8905,18 +9031,26 @@ components:
                 start:
                     type: integer
                     format: int64
-                    description: 'Start of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        Start of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 end:
                     type: integer
                     format: int64
-                    description: 'End of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        End of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page (1-100).
+                    description: |-
+                        Maximum items per page (1-100).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 country:
                     type: string
                     description: Optional country filter (ISO 3166-1 alpha-2).
@@ -9495,11 +9629,15 @@ components:
                 start:
                     type: integer
                     format: int64
-                    description: 'Start of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        Start of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 end:
                     type: integer
                     format: int64
-                    description: 'End of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        End of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 pageSize:
                     type: integer
                     format: int32
@@ -9928,10 +10066,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page.
+                    description: |-
+                        Maximum items per page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             required:
                 - indicatorCode
             description: ListWorldBankIndicatorsRequest specifies filters for retrieving World Bank data.
@@ -10214,7 +10356,9 @@ components:
                 years:
                     type: integer
                     format: int32
-                    description: Number of years of historical data. Default 20 if not set.
+                    description: |-
+                        Number of years of historical data. Default 20 if not set.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
         worldmonitor_economic_v1_GetEnergyCapacityResponse:
             type: object
             properties:
@@ -10681,8 +10825,10 @@ components:
             properties:
                 fromDate:
                     type: string
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
                 toDate:
                     type: string
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
         worldmonitor_economic_v1_GetEconomicCalendarResponse:
             type: object
             properties:
@@ -12141,10 +12287,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page.
+                    description: |-
+                        Maximum items per page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 country:
                     type: string
                     description: Optional country filter (ISO 3166-1 alpha-2).
@@ -13161,15 +13311,20 @@ components:
                     description: Maximum number of articles to return (1-250).
                 timespan:
                     type: string
-                    description: Time span filter (e.g., "15min", "1h", "24h").
+                    description: |-
+                        Time span filter (e.g., "15min", "1h", "24h").
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 toneFilter:
                     type: string
                     description: |-
                         Tone filter appended to query (e.g., "tone>5" for positive, "tone<-5" for negative).
                          Left empty to skip tone filtering.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 sort:
                     type: string
-                    description: 'Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".'
+                    description: |-
+                        Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             required:
                 - query
             description: SearchGdeltDocumentsRequest specifies filters for searching GDELT news articles.
@@ -15227,10 +15382,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page (1-100).
+                    description: |-
+                        Maximum items per page (1-100).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 area:
                     type: string
                     description: Optional area filter (e.g., "NAVAREA IV", "Persian Gulf").
@@ -15430,7 +15589,9 @@ components:
             properties:
                 period:
                     type: string
-                    description: Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                    description: |-
+                        Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: GetSectorSummaryRequest specifies parameters for retrieving sector performance.
         worldmonitor_market_v1_GetSectorSummaryResponse:
             type: object
@@ -16276,8 +16437,10 @@ components:
             properties:
                 fromDate:
                     type: string
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
                 toDate:
                     type: string
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
         worldmonitor_market_v1_ListEarningsCalendarResponse:
             type: object
             properties:
@@ -16782,7 +16945,9 @@ components:
                     description: Maximum items per page (1-100).
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 neLat:
                     type: number
                     format: double
@@ -17049,7 +17214,9 @@ components:
             properties:
                 theater:
                     type: string
-                    description: Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
+                    description: |-
+                        Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: GetTheaterPostureRequest specifies the theater to assess.
         worldmonitor_military_v1_GetTheaterPostureResponse:
             type: object
@@ -17629,6 +17796,7 @@ components:
                 days:
                     type: integer
                     format: int32
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
         worldmonitor_natural_v1_ListNaturalEventsResponse:
             type: object
             properties:
@@ -18057,7 +18225,9 @@ components:
                     description: Maximum items per page (1-100).
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 category:
                     type: string
                     description: Optional category filter (e.g., "Politics").
@@ -18276,13 +18446,17 @@ components:
                     description: Maximum items per page (1-100).
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 category:
                     type: string
                     description: arXiv category filter (e.g., "cs.AI"). Empty returns all tracked categories.
                 query:
                     type: string
-                    description: Search query for paper titles and abstracts.
+                    description: |-
+                        Search query for paper titles and abstracts.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: ListArxivPapersRequest specifies filters for retrieving arXiv papers.
         worldmonitor_research_v1_ListArxivPapersResponse:
             type: object
@@ -19210,22 +19384,30 @@ components:
                 start:
                     type: integer
                     format: int64
-                    description: 'Start of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        Start of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 end:
                     type: integer
                     format: int64
-                    description: 'End of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        End of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 pageSize:
                     type: integer
                     format: int32
                     description: Maximum items per page (1-100).
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 minMagnitude:
                     type: number
                     format: double
-                    description: Minimum magnitude filter (e.g., 4.0 for significant quakes).
+                    description: |-
+                        Minimum magnitude filter (e.g., 4.0 for significant quakes).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: ListEarthquakesRequest specifies filters for retrieving earthquake data from USGS.
         worldmonitor_seismology_v1_ListEarthquakesResponse:
             type: object
@@ -21187,7 +21369,9 @@ components:
                     type: array
                     items:
                         type: string
-                        description: WTO member codes to filter by. Empty = all.
+                        description: |-
+                            WTO member codes to filter by. Empty = all.
+                             Accepted but currently ignored; no-op until this handler supports the parameter.
                 limit:
                     type: integer
                     format: int32
@@ -21387,10 +21571,14 @@ components:
                     type: array
                     items:
                         type: string
-                        description: WTO member codes to filter by. Empty = all.
+                        description: |-
+                            WTO member codes to filter by. Empty = all.
+                             Accepted but currently ignored; no-op until this handler supports the parameter.
                 measureType:
                     type: string
-                    description: 'Filter by measure type: "SPS", "TBT", or empty for both.'
+                    description: |-
+                        Filter by measure type: "SPS", "TBT", or empty for both.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 limit:
                     type: integer
                     format: int32
@@ -21557,10 +21745,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page (1-100).
+                    description: |-
+                        Maximum items per page (1-100).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 country:
                     type: string
                     description: Optional country filter (ISO 3166-1 alpha-2).
@@ -21577,19 +21769,27 @@ components:
                 neLat:
                     type: number
                     format: double
-                    description: North-east corner latitude of bounding box.
+                    description: |-
+                        North-east corner latitude of bounding box.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 neLon:
                     type: number
                     format: double
-                    description: North-east corner longitude of bounding box.
+                    description: |-
+                        North-east corner longitude of bounding box.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 swLat:
                     type: number
                     format: double
-                    description: South-west corner latitude of bounding box.
+                    description: |-
+                        South-west corner latitude of bounding box.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 swLon:
                     type: number
                     format: double
-                    description: South-west corner longitude of bounding box.
+                    description: |-
+                        South-west corner longitude of bounding box.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: ListUnrestEventsRequest specifies filters for retrieving social unrest events.
         worldmonitor_unrest_v1_ListUnrestEventsResponse:
             type: object
@@ -21838,34 +22038,50 @@ components:
                 start:
                     type: integer
                     format: int64
-                    description: 'Start of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        Start of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 end:
                     type: integer
                     format: int64
-                    description: 'End of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        End of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page (1-100).
+                    description: |-
+                        Maximum items per page (1-100).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 neLat:
                     type: number
                     format: double
-                    description: North-east latitude of bounding box.
+                    description: |-
+                        North-east latitude of bounding box.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 neLon:
                     type: number
                     format: double
-                    description: North-east longitude of bounding box.
+                    description: |-
+                        North-east longitude of bounding box.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 swLat:
                     type: number
                     format: double
-                    description: South-west latitude of bounding box.
+                    description: |-
+                        South-west latitude of bounding box.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 swLon:
                     type: number
                     format: double
-                    description: South-west longitude of bounding box.
+                    description: |-
+                        South-west longitude of bounding box.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: ListFireDetectionsRequest specifies filters for retrieving fire detections from NASA FIRMS.
         worldmonitor_wildfire_v1_ListFireDetectionsResponse:
             type: object
