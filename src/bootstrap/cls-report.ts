@@ -62,7 +62,8 @@ export function reportClsMetric(
 /**
  * Register the field CLS listener. Browser-only. Uses a dynamic import so
  * `web-vitals` code-splits into its own chunk and so this module stays
- * node-loadable for unit tests.
+ * node-loadable for unit tests. Uses web-vitals' default lifecycle cadence
+ * (including bfcache/visibility reports), matching the INP reporter.
  */
 export function registerClsReporting(): void {
   if (typeof window === 'undefined') return;

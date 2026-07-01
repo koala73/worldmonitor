@@ -52,6 +52,7 @@ test('reportClsMetric tolerates poor-rated CLS with missing attribution', () => 
   assert.equal(ctx.extra.largestShiftTarget, 'unknown');
   assert.equal(ctx.extra.largestShiftValue, undefined);
   assert.equal(ctx.extra.largestShiftTime, undefined);
+  assert.equal(ctx.extra.loadState, undefined);
 });
 
 test('reportClsMetric still reports unknown/undefined-rated CLS conservatively', () => {
