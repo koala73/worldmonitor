@@ -186,6 +186,8 @@ All new services share these settings:
 | **Cron schedule** | `0 13 * * *` (daily 13:00 UTC) |
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 4 services (ecb-fx-rates, ecb-short-rates, yield-curve-eu, fsi-eu) |
+| **Net savings** | 3 slots |
+| **Members** | ECB FX Rates (daily), ECB Short Rates (daily), Yield Curve EU (daily), FSI EU (daily) |
 
 > **Why 13:00 UTC (not 06:00):** the daily ECB SDMX series (€STR, yield curve,
 > CISS) are rebuilt during ECB's early-morning refresh window. A `0 6 * * *`
@@ -194,8 +196,6 @@ All new services share these settings:
 > gracefully (TTL extended, no data loss) while the bundle exited non-zero and
 > showed red on Railway. 13:00 UTC (15:00 CEST) clears €STR (08:00 CET), the
 > yield curve (~12:00 CET) and CISS morning publication. Changed 2026-07-01.
-| **Net savings** | 3 slots |
-| **Members** | ECB FX Rates (daily), ECB Short Rates (daily), Yield Curve EU (daily), FSI EU (daily) |
 
 ### Bundle 2: seed-bundle-portwatch
 
