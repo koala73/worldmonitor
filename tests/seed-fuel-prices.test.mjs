@@ -48,7 +48,9 @@ test('fetchUS_EIA recovers from a transient 502 instead of failing the critical 
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   };
   try {
-    const out = await fetchUS_EIA();
+    // baseDelayMs: 0 threads through to withFuelRetry so the retry is instant
+    // (no 1.5s real sleep) — the seam's whole point.
+    const out = await fetchUS_EIA({ baseDelayMs: 0 });
     assert.ok(calls >= 2, 'should have retried after the 502');
     assert.equal(out.length, 1);
     assert.equal(out[0].code, 'US');

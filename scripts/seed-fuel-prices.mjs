@@ -254,7 +254,7 @@ async function fetchMexico() {
   }
 }
 
-export async function fetchUS_EIA() {
+export async function fetchUS_EIA({ baseDelayMs } = {}) {
   try {
     const apiKey = process.env.EIA_API_KEY || '';
     if (!apiKey) {
@@ -272,7 +272,7 @@ export async function fetchUS_EIA() {
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return r;
-    });
+    }, { baseDelayMs });
     const data = await resp.json();
     const rows = data?.response?.data;
     if (!Array.isArray(rows) || rows.length === 0) return [];
