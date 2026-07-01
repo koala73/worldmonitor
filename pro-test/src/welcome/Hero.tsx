@@ -79,7 +79,6 @@ const ConsoleFrame = () => (
           height="1912"
           fetchPriority="high"
           decoding="async"
-          sizes={HERO_IMAGE_SIZES}
         />
       </picture>
     </a>
