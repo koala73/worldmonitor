@@ -36,6 +36,7 @@
     "build:blog": "cd blog-site && npm run build && rm -rf ../public/blog && mkdir -p ../public/blog && cp -r dist/* ../public/blog/",
     "build:pro": "cd pro-test && npm ci && npm run build",
     "build:openapi": "node -e \"require('fs').cpSync('docs/api/worldmonitor.openapi.yaml', 'public/openapi.yaml')\"",
+    "gen:openapi:security": "node scripts/openapi-inject-security.mjs",
     "build:agent-skills": "node scripts/build-agent-skills-index.mjs",
     "prebuild": "npm run build:openapi && npm run build:agent-skills",
     "build": "npm run build:blog && tsc && vite build",

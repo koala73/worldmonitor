@@ -8,6 +8,10 @@ info:
     version: 1.0.0
 servers:
     - url: https://api.worldmonitor.app
+security:
+    - WorldMonitorKey: []
+    - ApiKeyHeader: []
+    - BearerAuth: []
 paths:
     /api/aviation/v1/list-airport-delays:
         get:
@@ -7429,6 +7433,21 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
 components:
+    securitySchemes:
+        WorldMonitorKey:
+            type: apiKey
+            in: header
+            name: X-WorldMonitor-Key
+            description: User-issued WorldMonitor API key.
+        ApiKeyHeader:
+            type: apiKey
+            in: header
+            name: X-Api-Key
+            description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
+        BearerAuth:
+            type: http
+            scheme: bearer
+            description: 'Bearer token: a Clerk-issued JWT (web sessions) or the relay shared secret, passed as Authorization: Bearer <token>.'
     schemas:
         Error:
             type: object
