@@ -145,7 +145,13 @@ describe('pro built HTML critical CSS contract', () => {
 
       assert.equal(fallbackTags.length, 1, `${href} should have exactly one noscript stylesheet fallback`);
       assert.match(html, /querySelectorAll\('link\[data-wm-deferred-style\]'\)/);
-      assert.match(html, /this\.rel='stylesheet'/);
+      assert.match(html, /\.rel='stylesheet'/);
+      // The activation must recover the full sheet when the preload fails or is
+      // ignored -- not only on `load` -- else JS users can be stranded on
+      // critical CSS only. Require the error + timeout fallback arms.
+      assert.match(html, /addEventListener\('load'/);
+      assert.match(html, /addEventListener\('error'/);
+      assert.match(html, /setTimeout\(/);
     });
 
     it(`${label} re-shows responsive nav/hero reveals so unlayered .hidden can't hide them at all widths`, () => {

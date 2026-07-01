@@ -54,7 +54,13 @@ const CRITICAL_CSS = [
   'html.js #seo-prerender{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden}'
 ].join('');
 
-const DEFERRED_STYLES_SCRIPT = "(function(){var links=document.querySelectorAll('link[data-wm-deferred-style]');for(var i=0;i<links.length;i++){links[i].addEventListener('load',function(){this.rel='stylesheet';},{once:true});}})();";
+// Flip each deferred preload to a real stylesheet on load, on error (retry a
+// failed fetch as a stylesheet), and after a timeout (covers browsers that
+// ignore `rel=preload as=style` and never fire an event) -- without a timeout
+// or error arm a failed/unsupported preload leaves JS users on critical-CSS
+// only, with the full sheet never applied. Idempotent (guarded rel check) and
+// CSP-safe (no inline onload; runs inside the nonce'd bootstrap script).
+const DEFERRED_STYLES_SCRIPT = "(function(){var links=document.querySelectorAll('link[data-wm-deferred-style]');for(var i=0;i<links.length;i++){(function(l){function a(){if(l.rel!=='stylesheet'){l.rel='stylesheet';}}l.addEventListener('load',a,{once:true});l.addEventListener('error',a,{once:true});setTimeout(a,3000);})(links[i]);}})();";
 
 function findStylesheetTags(html) {
   return [...html.matchAll(/<link\b[^>]*\brel="stylesheet"[^>]*>/gi)]
