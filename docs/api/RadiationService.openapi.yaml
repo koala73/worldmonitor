@@ -8,7 +8,10 @@ paths:
             tags:
                 - RadiationService
             summary: ListRadiationObservations
-            description: ListRadiationObservations retrieves normalized EPA RadNet and Safecast readings.
+            description: |-
+                ListRadiationObservations retrieves normalized EPA RadNet and Safecast readings.
+                 Empty observations with fetched_at=0 or data_available=false means the seed
+                 snapshot is unavailable/degraded, not that radiation readings are confirmed absent.
             operationId: ListRadiationObservations
             parameters:
                 - name: max_items
@@ -88,7 +91,15 @@ components:
                 fetchedAt:
                     type: integer
                     format: int64
-                    description: 'Time the service synthesized the response, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        Time the service synthesized the response, as Unix epoch milliseconds. A
+                         value of 0 means the snapshot is unavailable/degraded, not that radiation
+                         observations are confirmed absent.. Warning: Values > 2^53 may lose precision in JavaScript
+                dataAvailable:
+                    type: boolean
+                    description: |-
+                        True when observations came from a seed snapshot. False means an empty
+                         payload is graceful degradation because the snapshot is unavailable.
                 epaCount:
                     type: integer
                     format: int32

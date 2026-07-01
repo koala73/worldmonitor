@@ -11,6 +11,7 @@ export interface ListThermalEscalationsResponse {
   sourceVersion: string;
   clusters: ThermalEscalationCluster[];
   summary?: ThermalEscalationSummary;
+  dataAvailable: boolean;
 }
 
 export interface ThermalEscalationCluster {

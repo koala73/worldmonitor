@@ -65,6 +65,7 @@ message RouteIntelligenceResponse {
   string war_risk_tier = 8;
   // Disruption score of the primary chokepoint, 0-100.
   int32 disruption_score = 9;
-  // ISO-8601 timestamp of when the response was assembled.
+  // ISO-8601 timestamp of when the response was assembled. Empty string means
+  // the route snapshot is unavailable/degraded, not confirmed zero exposure.
   string fetched_at = 10;
 }

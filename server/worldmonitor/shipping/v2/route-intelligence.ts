@@ -111,6 +111,6 @@ export async function routeIntelligence(
     bypassOptions,
     warRiskTier,
     disruptionScore,
-    fetchedAt: new Date().toISOString(),
+    fetchedAt: primaryRouteId ? new Date().toISOString() : '',
   };
 }

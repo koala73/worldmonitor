@@ -333,11 +333,15 @@ export async function getVesselSnapshot(
       Boolean(req.includeTankers),
       bbox,
     );
-    return { snapshot };
+    return {
+      snapshot,
+      fetchedAt: snapshot?.snapshotAt ?? 0,
+      dataAvailable: Boolean(snapshot),
+    };
   } catch (err) {
     // BboxValidationError carries statusCode=400; rethrowing lets the
     // gateway error-mapper surface it as HTTP 400 with the reason string.
     if (err instanceof BboxValidationError) throw err;
-    return { snapshot: undefined };
+    return { snapshot: undefined, fetchedAt: 0, dataAvailable: false };
   }
 }

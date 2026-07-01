@@ -145,7 +145,7 @@ async function trySeededData(req: GetDisplacementSummaryRequest): Promise<GetDis
       if (req.countryLimit > 0) summary.countries = summary.countries.slice(0, req.countryLimit);
       const flowLimit = req.flowLimit > 0 ? req.flowLimit : 50;
       summary.topFlows = summary.topFlows.slice(0, flowLimit);
-      return { summary };
+      return { summary, fetchedAt, dataAvailable: true };
     }
 
     return null;
@@ -167,6 +167,8 @@ export async function getDisplacementSummary(
       countries: [],
       topFlows: [],
     },
+    fetchedAt: 0,
+    dataAvailable: false,
   };
 
   try {
@@ -356,6 +358,8 @@ export async function getDisplacementSummary(
           countries: protoCountries,
           topFlows: protoFlows,
         },
+        fetchedAt: Date.now(),
+        dataAvailable: true,
       };
     });
 
@@ -366,7 +370,12 @@ export async function getDisplacementSummary(
       }
       const flowLimit = req.flowLimit > 0 ? req.flowLimit : 50;
       summary.topFlows = summary.topFlows.slice(0, flowLimit);
-      return { summary };
+      return {
+        ...result,
+        summary,
+        fetchedAt: result.fetchedAt || 0,
+        dataAvailable: result.dataAvailable !== false,
+      };
     }
     return result || emptyResponse;
   } catch {

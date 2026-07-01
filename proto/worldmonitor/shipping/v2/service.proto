@@ -22,6 +22,8 @@ service ShippingV2Service {
   // RouteIntelligence scores a country-pair trade route for chokepoint exposure
   // and current disruption risk. Partner-facing; wire shape is byte-compatible
   // with the pre-migration JSON response documented at docs/api-shipping-v2.mdx.
+  // Empty exposure/bypass arrays with empty fetched_at mean the route snapshot is
+  // unavailable/degraded, not that the route has confirmed zero exposure.
   rpc RouteIntelligence(RouteIntelligenceRequest) returns (RouteIntelligenceResponse) {
     option (sebuf.http.config) = {path: "/route-intelligence", method: HTTP_METHOD_GET};
   }

@@ -18,8 +18,8 @@ export const listClimateNews: ClimateServiceHandler['listClimateNews'] = async (
 ): Promise<ListClimateNewsResponse> => {
   try {
     const result = await getCachedJson(CLIMATE_NEWS_KEY, true) as ListClimateNewsResponse | null;
-    return result ?? { items: [], fetchedAt: 0 };
+    return result ? { ...result, dataAvailable: true } : { items: [], fetchedAt: 0, dataAvailable: false };
   } catch {
-    return { items: [], fetchedAt: 0 };
+    return { items: [], fetchedAt: 0, dataAvailable: false };
   }
 };

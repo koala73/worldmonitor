@@ -25,5 +25,7 @@ message GetEconomicCalendarResponse {
   string from_date = 2;
   string to_date = 3;
   int32 total = 4;
+  // True when the upstream or seed-backed variant is unavailable; empty payload fields
+  // are graceful degradation, not confirmed zero data.
   bool unavailable = 5;
 }

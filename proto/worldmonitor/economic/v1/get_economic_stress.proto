@@ -20,5 +20,7 @@ message GetEconomicStressResponse {
   string label = 2;
   repeated EconomicStressComponent components = 3;
   string seeded_at = 4;
+  // True when the upstream or seed-backed variant is unavailable; empty payload fields
+  // are graceful degradation, not confirmed zero data.
   bool unavailable = 5;
 }

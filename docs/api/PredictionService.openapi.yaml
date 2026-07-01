@@ -8,7 +8,10 @@ paths:
             tags:
                 - PredictionService
             summary: ListPredictionMarkets
-            description: ListPredictionMarkets retrieves active prediction markets from Polymarket.
+            description: |-
+                ListPredictionMarkets retrieves active prediction markets from seeded market snapshots.
+                 Empty markets with fetched_at=0 or data_available=false means the seed
+                 snapshot is unavailable/degraded, not that there are confirmed zero markets.
             operationId: ListPredictionMarkets
             parameters:
                 - name: page_size
@@ -114,6 +117,18 @@ components:
                         $ref: '#/components/schemas/PredictionMarket'
                 pagination:
                     $ref: '#/components/schemas/PaginationResponse'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: |-
+                        Time the seed snapshot was fetched, as Unix epoch milliseconds. A value of
+                         0 means the snapshot is unavailable/degraded, not that there are confirmed
+                         zero matching markets.. Warning: Values > 2^53 may lose precision in JavaScript
+                dataAvailable:
+                    type: boolean
+                    description: |-
+                        True when markets were evaluated against a seed snapshot. False means an
+                         empty payload is graceful degradation because the snapshot is unavailable.
             description: ListPredictionMarketsResponse contains prediction markets matching the request.
         PredictionMarket:
             type: object

@@ -9,7 +9,7 @@ import { MaritimeServiceClient } from '@/services/generated-rpc-clients';
 
 const client = new MaritimeServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 const snapshotBreaker = createCircuitBreaker<GetVesselSnapshotResponse>({ name: 'Maritime Snapshot', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
-const emptySnapshotFallback: GetVesselSnapshotResponse = { snapshot: undefined };
+const emptySnapshotFallback: GetVesselSnapshotResponse = { snapshot: undefined, fetchedAt: 0, dataAvailable: false };
 
 const DISRUPTION_TYPE_REVERSE: Record<string, AisDisruptionType> = {
   AIS_DISRUPTION_TYPE_GAP_SPIKE: 'gap_spike',

@@ -34,6 +34,7 @@ interface BootstrapData {
   geopolitical?: BootstrapMarket[];
   tech?: BootstrapMarket[];
   finance?: BootstrapMarket[];
+  fetchedAt?: number;
 }
 
 function toProtoMarket(m: BootstrapMarket, category: string): PredictionMarket {
@@ -59,7 +60,9 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
     const limit = clampInt(req.pageSize, 50, 1, 100);
 
     const bootstrap = await getCachedJson(BOOTSTRAP_KEY) as BootstrapData | null;
-    if (!bootstrap) return { markets: [], pagination: undefined };
+    if (!bootstrap) return { markets: [], pagination: undefined, fetchedAt: 0, dataAvailable: false };
+
+    const fetchedAt = Number(bootstrap.fetchedAt ?? 0);
 
     const isTech = category && TECH_CATEGORY_TAGS.includes(category);
     const isFinance = !isTech && category && FINANCE_CATEGORY_TAGS.includes(category);
@@ -67,7 +70,7 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
       : isFinance ? (bootstrap.finance ?? bootstrap.geopolitical)
       : bootstrap.geopolitical;
 
-    if (!variant || variant.length === 0) return { markets: [], pagination: undefined };
+    if (!variant || variant.length === 0) return { markets: [], pagination: undefined, fetchedAt, dataAvailable: false };
 
     let markets = variant.map((m) => toProtoMarket(m, category));
 
@@ -76,8 +79,8 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
       markets = markets.filter((m) => m.title.toLowerCase().includes(q));
     }
 
-    return { markets: markets.slice(0, limit), pagination: undefined };
+    return { markets: markets.slice(0, limit), pagination: undefined, fetchedAt, dataAvailable: true };
   } catch {
-    return { markets: [], pagination: undefined };
+    return { markets: [], pagination: undefined, fetchedAt: 0, dataAvailable: false };
   }
 };

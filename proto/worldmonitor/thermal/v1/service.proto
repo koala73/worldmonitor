@@ -8,6 +8,9 @@ import "worldmonitor/thermal/v1/list_thermal_escalations.proto";
 service ThermalService {
   option (sebuf.http.service_config) = {base_path: "/api/thermal/v1"};
 
+  // ListThermalEscalations retrieves seeded thermal anomaly clusters. Empty
+  // clusters with empty fetched_at or data_available=false means the seed
+  // snapshot is unavailable/degraded, not that escalation is confirmed absent.
   rpc ListThermalEscalations(ListThermalEscalationsRequest) returns (ListThermalEscalationsResponse) {
     option (sebuf.http.config) = {path: "/list-thermal-escalations", method: HTTP_METHOD_GET};
   }

@@ -71,5 +71,7 @@ message GetOilStocksAnalysisResponse {
   // Regional aggregates for Europe, Asia-Pacific, and North America.
   OilStocksRegionalSummary regional_summary = 5;
   // True when upstream seed data is unavailable (fallback result).
+  // True when the upstream or seed-backed variant is unavailable; empty payload fields
+  // are graceful degradation, not confirmed zero data.
   bool unavailable = 6;
 }

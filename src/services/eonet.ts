@@ -36,7 +36,7 @@ function normalizeNaturalCategory(category: string | undefined): NaturalEventCat
 const client = new NaturalServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 const breaker = createCircuitBreaker<ListNaturalEventsResponse>({ name: 'NaturalEvents', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 
-const emptyFallback: ListNaturalEventsResponse = { events: [] };
+const emptyFallback: ListNaturalEventsResponse = { events: [], fetchedAt: 0, dataAvailable: false };
 
 function toNaturalEvent(e: ListNaturalEventsResponse['events'][number]): NaturalEvent {
   return {

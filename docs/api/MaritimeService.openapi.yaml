@@ -8,7 +8,10 @@ paths:
             tags:
                 - MaritimeService
             summary: GetVesselSnapshot
-            description: GetVesselSnapshot retrieves a point-in-time view of AIS vessel traffic and disruptions.
+            description: |-
+                GetVesselSnapshot retrieves a point-in-time view of AIS vessel traffic and disruptions.
+                 Empty/absent snapshot with fetched_at=0 or data_available=false means the
+                 relay snapshot is unavailable/degraded, not that traffic is confirmed absent.
             operationId: GetVesselSnapshot
             parameters:
                 - name: ne_lat
@@ -196,6 +199,18 @@ components:
             properties:
                 snapshot:
                     $ref: '#/components/schemas/VesselSnapshot'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: |-
+                        Time the relay snapshot was fetched, as Unix epoch milliseconds. A value
+                         of 0 means the snapshot is unavailable/degraded, not that vessel traffic is
+                         confirmed absent.. Warning: Values > 2^53 may lose precision in JavaScript
+                dataAvailable:
+                    type: boolean
+                    description: |-
+                        True when snapshot is populated. False means an absent snapshot is
+                         graceful degradation because the relay snapshot is unavailable.
             description: GetVesselSnapshotResponse contains the vessel traffic snapshot.
         VesselSnapshot:
             type: object

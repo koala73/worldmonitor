@@ -8,6 +8,10 @@ paths:
             tags:
                 - NaturalService
             summary: ListNaturalEvents
+            description: |-
+                ListNaturalEvents retrieves seeded EONET/GDACS/NHC natural events. Empty
+                 events with fetched_at=0 or data_available=false means the seed snapshot is
+                 unavailable/degraded, not that there are confirmed zero events.
             operationId: ListNaturalEvents
             parameters:
                 - name: days
@@ -81,6 +85,18 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/NaturalEvent'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: |-
+                        Time the seed snapshot was fetched, as Unix epoch milliseconds. A value of
+                         0 means the snapshot is unavailable/degraded, not that there are confirmed
+                         zero natural events.. Warning: Values > 2^53 may lose precision in JavaScript
+                dataAvailable:
+                    type: boolean
+                    description: |-
+                        True when events came from a seed snapshot. False means an empty payload is
+                         graceful degradation because the snapshot is unavailable.
         NaturalEvent:
             type: object
             properties:

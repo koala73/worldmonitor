@@ -29,5 +29,7 @@ message GetEcbFxRatesResponse {
   // Unix ms when the data was last seeded.
   int64 seeded_at = 3;
   // True when Redis key is missing or data is unavailable.
+  // True when the upstream or seed-backed variant is unavailable; empty payload fields
+  // are graceful degradation, not confirmed zero data.
   bool unavailable = 4;
 }

@@ -8,6 +8,8 @@ export interface GetGivingSummaryRequest {
 
 export interface GetGivingSummaryResponse {
   summary?: GivingSummary;
+  fetchedAt: number;
+  dataAvailable: boolean;
 }
 
 export interface GivingSummary {

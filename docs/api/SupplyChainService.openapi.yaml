@@ -33,6 +33,10 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetChokepointStatus
+            description: |-
+                GetChokepointStatus retrieves seeded chokepoint status. Empty chokepoints
+                 with upstream_unavailable=true means the seed snapshot is unavailable/
+                 degraded, not that there are confirmed zero chokepoints.
             operationId: GetChokepointStatus
             responses:
                 "200":
@@ -847,8 +851,14 @@ components:
                         $ref: '#/components/schemas/ChokepointInfo'
                 fetchedAt:
                     type: string
+                    description: |-
+                        ISO-8601 time the status snapshot was fetched. Empty string with
+                         upstream_unavailable=true means the snapshot is unavailable/degraded.
                 upstreamUnavailable:
                     type: boolean
+                    description: |-
+                        True when upstream seed/relay data is unavailable or partial. When true, an
+                         empty chokepoints array is graceful degradation, not confirmed zero data.
         ChokepointInfo:
             type: object
             properties:

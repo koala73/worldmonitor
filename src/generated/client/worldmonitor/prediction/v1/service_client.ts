@@ -11,6 +11,8 @@ export interface ListPredictionMarketsRequest {
 export interface ListPredictionMarketsResponse {
   markets: PredictionMarket[];
   pagination?: PaginationResponse;
+  fetchedAt: number;
+  dataAvailable: boolean;
 }
 
 export interface PredictionMarket {

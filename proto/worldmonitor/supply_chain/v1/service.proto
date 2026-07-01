@@ -28,6 +28,9 @@ service SupplyChainService {
     option (sebuf.http.config) = {path: "/get-shipping-rates", method: HTTP_METHOD_GET};
   }
 
+  // GetChokepointStatus retrieves seeded chokepoint status. Empty chokepoints
+  // with upstream_unavailable=true means the seed snapshot is unavailable/
+  // degraded, not that there are confirmed zero chokepoints.
   rpc GetChokepointStatus(GetChokepointStatusRequest) returns (GetChokepointStatusResponse) {
     option (sebuf.http.config) = {path: "/get-chokepoint-status", method: HTTP_METHOD_GET};
   }

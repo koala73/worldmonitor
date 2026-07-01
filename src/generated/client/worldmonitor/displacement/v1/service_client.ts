@@ -9,6 +9,8 @@ export interface GetDisplacementSummaryRequest {
 
 export interface GetDisplacementSummaryResponse {
   summary?: DisplacementSummary;
+  fetchedAt: number;
+  dataAvailable: boolean;
 }
 
 export interface DisplacementSummary {

@@ -15,6 +15,8 @@ export interface ListFireDetectionsRequest {
 export interface ListFireDetectionsResponse {
   fireDetections: FireDetection[];
   pagination?: PaginationResponse;
+  fetchedAt: number;
+  dataAvailable: boolean;
 }
 
 export interface FireDetection {

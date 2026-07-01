@@ -41,5 +41,7 @@ message GetHyperliquidFlowResponse {
   bool warmup = 3;             // true while any asset is in warmup state
   int32 asset_count = 4;
   repeated HyperliquidAssetFlow assets = 5;
-  bool unavailable = 6;        // true when seed key is empty/missing
+  // True when the upstream or seed-backed variant is unavailable; empty payload fields
+  // are graceful degradation, not confirmed zero data.
+  bool unavailable = 6;
 }

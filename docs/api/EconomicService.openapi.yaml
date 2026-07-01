@@ -1058,7 +1058,10 @@ components:
                     $ref: '#/components/schemas/MacroMeta'
                 unavailable:
                     type: boolean
-                    description: True when upstream data is unavailable (fallback result).
+                    description: |-
+                        True when upstream data is unavailable (fallback result).
+                         True when the upstream or seed-backed variant is unavailable; empty payload fields
+                         are graceful degradation, not confirmed zero data.
             description: GetMacroSignalsResponse contains the full macro signal dashboard with 7 signals and verdict.
         MacroSignals:
             type: object
@@ -1532,7 +1535,10 @@ components:
                     description: ISO 8601 timestamp when seed data was written.
                 unavailable:
                     type: boolean
-                    description: True when upstream data is unavailable (fallback result).
+                    description: |-
+                        True when upstream data is unavailable (fallback result).
+                         True when the upstream or seed-backed variant is unavailable; empty payload fields
+                         are graceful degradation, not confirmed zero data.
             description: GetNationalDebtResponse wraps the full list of national debt entries.
         NationalDebtEntry:
             type: object
@@ -1712,6 +1718,9 @@ components:
                     format: int32
                 unavailable:
                     type: boolean
+                    description: |-
+                        True when the upstream or seed-backed variant is unavailable; empty payload fields
+                         are graceful degradation, not confirmed zero data.
         EconomicEvent:
             type: object
             properties:
@@ -1812,7 +1821,10 @@ components:
                     description: Unix ms when the data was last seeded.
                 unavailable:
                     type: boolean
-                    description: True when Redis key is missing or data is unavailable.
+                    description: |-
+                        True when Redis key is missing or data is unavailable.
+                         True when the upstream or seed-backed variant is unavailable; empty payload fields
+                         are graceful degradation, not confirmed zero data.
             description: GetEcbFxRatesResponse contains the latest ECB reference rates.
         EcbFxRate:
             type: object
@@ -1849,7 +1861,10 @@ components:
                     description: UTC ms timestamp when seed data was written.
                 unavailable:
                     type: boolean
-                    description: True when upstream data is unavailable (fallback result).
+                    description: |-
+                        True when upstream data is unavailable (fallback result).
+                         True when the upstream or seed-backed variant is unavailable; empty payload fields
+                         are graceful degradation, not confirmed zero data.
             description: GetEurostatCountryDataResponse contains per-country CPI, unemployment, and GDP growth.
         CountriesEntry:
             type: object
@@ -1923,7 +1938,10 @@ components:
                     description: Calendar date of the most recent data point (YYYY-MM-DD).
                 unavailable:
                     type: boolean
-                    description: True when upstream data is unavailable (fallback result).
+                    description: |-
+                        True when upstream data is unavailable (fallback result).
+                         True when the upstream or seed-backed variant is unavailable; empty payload fields
+                         are graceful degradation, not confirmed zero data.
             description: GetEuGasStorageResponse contains the EU aggregate gas storage snapshot.
         EuGasStorageHistoryEntry:
             type: object
@@ -1950,7 +1968,10 @@ components:
                     $ref: '#/components/schemas/EuYieldCurveData'
                 unavailable:
                     type: boolean
-                    description: True if data is not yet available in cache.
+                    description: |-
+                        True if data is not yet available in cache.
+                         True when the upstream or seed-backed variant is unavailable; empty payload fields
+                         are graceful degradation, not confirmed zero data.
             description: GetEuYieldCurveResponse contains the latest ECB Euro Area AAA sovereign yield curve.
         EuYieldCurveData:
             type: object
@@ -1999,10 +2020,13 @@ components:
                     type: string
                 unavailable:
                     type: boolean
+                    description: |-
+                        True when the upstream or seed-backed variant is unavailable; empty payload fields
+                         are graceful degradation, not confirmed zero data.
                 stale:
                     type: boolean
                     description: |-
-                        True when latest_date is older than the CISS content-age budget — the ECB
+                        True when latest_date is older than the CISS content-age budget -- the ECB
                          series has stopped publishing (issue #3845). Consumers must not present a
                          stale reading as current. Seeder-side detection is content-age
                          (STALE_CONTENT in /api/health); this flag is the per-request equivalent.
@@ -2032,6 +2056,9 @@ components:
                     type: string
                 unavailable:
                     type: boolean
+                    description: |-
+                        True when the upstream or seed-backed variant is unavailable; empty payload fields
+                         are graceful degradation, not confirmed zero data.
         EconomicStressComponent:
             type: object
             properties:
@@ -2118,7 +2145,10 @@ components:
                     $ref: '#/components/schemas/OilStocksRegionalSummary'
                 unavailable:
                     type: boolean
-                    description: True when upstream seed data is unavailable (fallback result).
+                    description: |-
+                        True when upstream seed data is unavailable (fallback result).
+                         True when the upstream or seed-backed variant is unavailable; empty payload fields
+                         are graceful degradation, not confirmed zero data.
             description: GetOilStocksAnalysisResponse contains the IEA oil stocks days-of-cover analysis.
         OilStocksAnalysisMember:
             type: object
@@ -2369,7 +2399,10 @@ components:
                     description: UTC ISO-8601 timestamp when this data was last updated.
                 unavailable:
                     type: boolean
-                    description: True when upstream seed data is unavailable (fallback result).
+                    description: |-
+                        True when upstream seed data is unavailable (fallback result).
+                         True when the upstream or seed-backed variant is unavailable; empty payload fields
+                         are graceful degradation, not confirmed zero data.
             description: GetEnergyCrisisPoliciesResponse contains energy crisis policy data from the IEA tracker.
         EnergyCrisisPolicy:
             type: object
