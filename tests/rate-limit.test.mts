@@ -216,15 +216,23 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
     assert.match(src, /fingerprint:\s*\['rate-limit',\s*'redis-error',\s*stage\]/);
   });
 
-  it('checkScopedRateLimit reports degraded when Upstash env is missing', async () => {
+  it('checkScopedRateLimit reports and captures degraded missing-config once per scope', async () => {
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
     const mod = await importFreshRateLimitModule();
 
     const result = await mod.checkScopedRateLimit('test-scope', 5, '60 s', 'identifier');
+    const secondResult = await mod.checkScopedRateLimit('test-scope', 5, '60 s', 'identifier-2');
 
     assert.equal(result.allowed, true);
     assert.equal(result.degraded, true);
+    assert.equal(secondResult.allowed, true);
+    assert.equal(secondResult.degraded, true);
+    const missingConfigLogs = consoleErrors.filter((line) =>
+      line.includes('stage=checkScopedRateLimit:test-scope:missing-config'),
+    );
+    assert.equal(missingConfigLogs.length, 1, 'missing config should be observable without logging every request');
+    assert.match(missingConfigLogs[0], /UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN missing/);
   });
 
   it('checkScopedRateLimit returns degraded:true on Redis error so callers can fail-closed locally', async () => {
@@ -271,6 +279,11 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
       path: 'api/mcp-proxy.ts',
       expected: /Redis-degraded scoped limits intentionally stay availability-first/,
       reason: 'MCP proxy is already premium-auth gated; scoped limit degradation is logged and remains availability-first',
+    },
+    {
+      path: 'api/user-prefs.ts',
+      expected: /Redis-degraded scoped limits intentionally fail open for prefs writes/,
+      reason: 'cloud prefs writes are low-stakes, so Redis degradation should not block legitimate settings sync',
     },
   ];
 
