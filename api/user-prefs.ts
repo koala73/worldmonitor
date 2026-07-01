@@ -20,6 +20,46 @@ import { captureSilentError } from './_sentry-edge.js';
 import { extractConvexErrorKind, isOpaqueConvexServerError, readConvexErrorNumber } from './_convex-error.js';
 import { ConvexHttpClient } from 'convex/browser';
 import { validateBearerToken } from '../server/auth-session';
+import { checkScopedRateLimit } from '../server/_shared/rate-limit';
+
+export const USER_PREFS_WRITE_RATE_SCOPE = 'user-prefs-write';
+export const USER_PREFS_WRITE_RATE_LIMIT = 30;
+export const USER_PREFS_WRITE_RATE_WINDOW = '60 s';
+
+type SessionValidator = typeof validateBearerToken;
+type ScopedRateLimiter = typeof checkScopedRateLimit;
+
+interface UserPrefsConvexClient {
+  setAuth(token: string): void;
+  query(name: unknown, args: Record<string, unknown>): Promise<unknown>;
+  mutation(name: unknown, args: Record<string, unknown>): Promise<unknown>;
+}
+
+interface UserPrefsDeps {
+  validateBearerToken: SessionValidator;
+  checkScopedRateLimit: ScopedRateLimiter;
+  createConvexClient: (
+    convexUrl: string,
+    options: ConstructorParameters<typeof ConvexHttpClient>[1],
+  ) => UserPrefsConvexClient;
+}
+
+function createDefaultUserPrefsDeps(): UserPrefsDeps {
+  return {
+    validateBearerToken,
+    checkScopedRateLimit,
+    createConvexClient: (convexUrl, options) =>
+      new ConvexHttpClient(convexUrl, options) as UserPrefsConvexClient,
+  };
+}
+
+let userPrefsDeps: UserPrefsDeps = createDefaultUserPrefsDeps();
+
+export function __setUserPrefsDepsForTests(overrides: Partial<UserPrefsDeps> | null): void {
+  userPrefsDeps = overrides
+    ? { ...createDefaultUserPrefsDeps(), ...overrides }
+    : createDefaultUserPrefsDeps();
+}
 
 export default async function handler(
   req: Request,
@@ -45,7 +85,7 @@ export default async function handler(
     return jsonResponse({ error: 'UNAUTHENTICATED' }, 401, cors);
   }
 
-  const session = await validateBearerToken(token);
+  const session = await userPrefsDeps.validateBearerToken(token);
   if (!session.valid || !session.userId) {
     return jsonResponse({ error: 'UNAUTHENTICATED' }, 401, cors);
   }
@@ -53,6 +93,36 @@ export default async function handler(
   const convexUrl = process.env.CONVEX_URL;
   if (!convexUrl) {
     return jsonResponse({ error: 'Service unavailable' }, 503, cors);
+  }
+
+  if (req.method === 'POST') {
+    const scoped = await userPrefsDeps.checkScopedRateLimit(
+      USER_PREFS_WRITE_RATE_SCOPE,
+      USER_PREFS_WRITE_RATE_LIMIT,
+      USER_PREFS_WRITE_RATE_WINDOW,
+      session.userId,
+    );
+    // Redis-degraded scoped limits intentionally fail open for prefs writes:
+    // the sync blob is low-stakes, while a limiter outage should not strand a
+    // legitimate user's local settings. checkScopedRateLimit logs Redis errors;
+    // this warning also surfaces missing-config fail-open windows.
+    if (scoped.degraded) {
+      console.warn('[user-prefs] POST write rate limit unavailable; failing open');
+    } else if (!scoped.allowed) {
+      const retryAfter = Math.max(1, Math.ceil((scoped.reset - Date.now()) / 1000));
+      console.warn('[user-prefs] POST write rate limit exceeded');
+      return jsonResponse(
+        { error: 'RATE_LIMITED' },
+        429,
+        {
+          ...cors,
+          'X-RateLimit-Limit': String(scoped.limit),
+          'X-RateLimit-Remaining': '0',
+          'X-RateLimit-Reset': String(scoped.reset),
+          'Retry-After': String(retryAfter),
+        },
+      );
+    }
   }
 
   // Bound the Convex round-trip below Vercel's 25s edge wall-clock so a
@@ -63,7 +133,7 @@ export default async function handler(
   // the JWKS verify above + response packaging below. Injected via the
   // public `fetch` constructor option (the `setFetchOptions` instance
   // method is marked `@internal` in convex's d.ts and not safe to depend on).
-  const client = new ConvexHttpClient(convexUrl, {
+  const client = userPrefsDeps.createConvexClient(convexUrl, {
     fetch: (input, init) =>
       fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(20_000) }),
   });

@@ -8,7 +8,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
@@ -20,6 +20,13 @@ describe('Product catalog freshness', () => {
   // Read generated files
   const generatedProductsSrc = readFileSync(join(ROOT, 'src/config/products.generated.ts'), 'utf8');
   const tiersJson = JSON.parse(readFileSync(join(ROOT, 'pro-test/src/generated/tiers.json'), 'utf8'));
+  const proLocalesDir = join(ROOT, 'pro-test/src/locales');
+  const readProLocaleFiles = () => Object.fromEntries(
+    readdirSync(proLocalesDir)
+      .filter((file) => file.endsWith('.json'))
+      .sort()
+      .map((file) => [file, readFileSync(join(proLocalesDir, file), 'utf8')]),
+  );
 
   // Extract product IDs from generated TS (regex since we can't import TS in node:test)
   const generatedProductIds = [...generatedProductsSrc.matchAll(/'(pdt_[^']+)'/g)].map(m => m[1]);
@@ -62,6 +69,92 @@ describe('Product catalog freshness', () => {
     assert.ok(ent, 'Enterprise tier not found');
     assert.equal(ent.price, null, 'Enterprise price should be null');
     assert.equal(ent.cta, 'Contact Sales');
+  });
+
+  it('English pro locale pricing feature placeholders cover every publicVisible tier group', () => {
+    const enLocale = JSON.parse(readFileSync(join(proLocalesDir, 'en.json'), 'utf8'));
+    const pricingTiers = enLocale?.pricing?.tiers;
+    assert.ok(
+      pricingTiers && typeof pricingTiers === 'object' && !Array.isArray(pricingTiers),
+      'en.json missing pricing.tiers',
+    );
+
+    const catalogSrc = readFileSync(join(ROOT, 'convex/config/productCatalog.ts'), 'utf8');
+    const blocks = catalogSrc.split(/\n\s*\w+:\s*\{/).slice(1);
+    const visibleGroups = new Set();
+    for (const block of blocks) {
+      if (block.includes('publicVisible: true')) {
+        const groupMatch = block.match(/tierGroup:\s*['"]([^'"]+)['"]/);
+        if (groupMatch) visibleGroups.add(groupMatch[1]);
+      }
+    }
+
+    const groupToName = { free: 'Free', pro: 'Pro', api_starter: 'API', enterprise: 'Enterprise' };
+    const groupToLocaleKey = { free: 'free', pro: 'pro', api_starter: 'api', enterprise: 'enterprise' };
+    const tiersByLocaleKey = new Map(tiersJson.map((tier) => [tier.localeKey, tier]));
+
+    for (const group of visibleGroups) {
+      const expectedName = groupToName[group];
+      assert.ok(
+        expectedName,
+        'Catalog tier group ' + group + ' is publicVisible but has no expected generated tier name mapping in this test',
+      );
+
+      const localeKey = groupToLocaleKey[group];
+      assert.ok(
+        localeKey,
+        'Catalog tier group ' + group + ' is publicVisible but has no expected pro locale key mapping in this test',
+      );
+
+      const generatedTier = tiersByLocaleKey.get(localeKey);
+      assert.ok(
+        generatedTier,
+        'Missing generated tier for publicVisible catalog group ' + group + ' (expected localeKey ' + localeKey + ')',
+      );
+      assert.equal(
+        generatedTier.name,
+        expectedName,
+        'Generated tier name mismatch for publicVisible catalog group ' + group,
+      );
+
+      const localeTier = pricingTiers[localeKey];
+      assert.ok(
+        localeTier && typeof localeTier === 'object' && !Array.isArray(localeTier),
+        'en.json missing pricing.tiers.' + localeKey + ' for publicVisible catalog group ' + group,
+      );
+      assert.ok(
+        Array.isArray(localeTier.features),
+        'en.json pricing.tiers.' + localeKey + '.features must be an array',
+      );
+      assert.deepEqual(
+        localeTier.features,
+        generatedTier.features,
+        'en.json pricing.tiers.' + localeKey + '.features is not synced to generated tier features for ' + group,
+      );
+    }
+  });
+
+  it('generated files and pro locale placeholders are fresh (re-running generator produces same output)', () => {
+    // Capture current generated content
+    const currentProducts = readFileSync(join(ROOT, 'src/config/products.generated.ts'), 'utf8');
+    const currentTiers = readFileSync(join(ROOT, 'pro-test/src/generated/tiers.json'), 'utf8');
+    const currentFallback = readFileSync(join(ROOT, 'api/_product-fallback-prices.js'), 'utf8');
+    const currentLocales = readProLocaleFiles();
+
+    // Re-run generator
+    execSync('npx tsx scripts/generate-product-config.mjs', { cwd: ROOT, stdio: 'pipe' });
+
+    // Compare
+    const freshProducts = readFileSync(join(ROOT, 'src/config/products.generated.ts'), 'utf8');
+    const freshTiers = readFileSync(join(ROOT, 'pro-test/src/generated/tiers.json'), 'utf8');
+    const freshFallback = readFileSync(join(ROOT, 'api/_product-fallback-prices.js'), 'utf8');
+    const freshLocales = readProLocaleFiles();
+
+    assert.equal(currentProducts, freshProducts, 'products.generated.ts is stale — run: npx tsx scripts/generate-product-config.mjs');
+    assert.equal(currentTiers, freshTiers, 'tiers.json is stale — run: npx tsx scripts/generate-product-config.mjs');
+
+    assert.equal(currentFallback, freshFallback, '_product-fallback-prices.js is stale — run: npx tsx scripts/generate-product-config.mjs');
+    assert.deepEqual(currentLocales, freshLocales, 'pro locale pricing feature placeholders are stale — run: npx tsx scripts/generate-product-config.mjs');
   });
 
   it('every currentForCheckout catalog entry appears in generated products', () => {
@@ -111,26 +204,6 @@ describe('Product catalog freshness', () => {
         `Catalog tier group "${group}" is publicVisible but missing from tiers.json (expected name: "${expectedName}")`,
       );
     }
-  });
-
-  it('generated files are fresh (re-running generator produces same output)', () => {
-    // Capture current generated content
-    const currentProducts = readFileSync(join(ROOT, 'src/config/products.generated.ts'), 'utf8');
-    const currentTiers = readFileSync(join(ROOT, 'pro-test/src/generated/tiers.json'), 'utf8');
-
-    // Re-run generator
-    execSync('npx tsx scripts/generate-product-config.mjs', { cwd: ROOT, stdio: 'pipe' });
-
-    // Compare
-    const freshProducts = readFileSync(join(ROOT, 'src/config/products.generated.ts'), 'utf8');
-    const freshTiers = readFileSync(join(ROOT, 'pro-test/src/generated/tiers.json'), 'utf8');
-
-    assert.equal(currentProducts, freshProducts, 'products.generated.ts is stale — run: npx tsx scripts/generate-product-config.mjs');
-    assert.equal(currentTiers, freshTiers, 'tiers.json is stale — run: npx tsx scripts/generate-product-config.mjs');
-
-    const currentFallback = readFileSync(join(ROOT, 'api/_product-fallback-prices.js'), 'utf8');
-    const freshFallback = readFileSync(join(ROOT, 'api/_product-fallback-prices.js'), 'utf8');
-    assert.equal(currentFallback, freshFallback, '_product-fallback-prices.js is stale');
   });
 
   it('fallback prices file has entries for all self-serve products', () => {

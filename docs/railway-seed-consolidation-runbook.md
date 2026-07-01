@@ -183,11 +183,19 @@ All new services share these settings:
 |---|---|
 | **Service name** | `seed-bundle-ecb-eu` |
 | **Start command** | `node scripts/seed-bundle-ecb-eu.mjs` |
-| **Cron schedule** | `0 6 * * *` (daily 06:00 UTC) |
+| **Cron schedule** | `0 13 * * *` (daily 13:00 UTC) |
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 4 services (ecb-fx-rates, ecb-short-rates, yield-curve-eu, fsi-eu) |
 | **Net savings** | 3 slots |
 | **Members** | ECB FX Rates (daily), ECB Short Rates (daily), Yield Curve EU (daily), FSI EU (daily) |
+
+> **Why 13:00 UTC (not 06:00):** the daily ECB SDMX series (€STR, yield curve,
+> CISS) are rebuilt during ECB's early-morning refresh window. A `0 6 * * *`
+> run (08:00 CEST — exactly €STR's publication moment) intermittently hit that
+> window and got empty/incomplete datasets, so those three sections failed
+> gracefully (TTL extended, no data loss) while the bundle exited non-zero and
+> showed red on Railway. 13:00 UTC (15:00 CEST) clears €STR (08:00 CET), the
+> yield curve (~12:00 CET) and CISS morning publication. Changed 2026-07-01.
 
 ### Bundle 2: seed-bundle-portwatch
 

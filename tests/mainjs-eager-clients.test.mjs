@@ -34,6 +34,8 @@ const SIGNAL_AGGREGATOR_DEFERRED_SERVICE_IMPORT = '@/services/signal-aggregator'
 const MILITARY_VESSELS_DEFERRED_SERVICE_IMPORT = '@/services/military-vessels';
 const CROSS_MODULE_DEFERRED_SERVICE_IMPORT = '@/services/cross-module-integration';
 const INTELLIGENCE_GAP_BADGE_DEFERRED_IMPORT = '@/components/IntelligenceGapBadge';
+const EXPORT_PANEL_DEFERRED_IMPORT = '@/utils/export';
+const SIGNAL_MODAL_DEFERRED_IMPORT = '@/components/SignalModal';
 
 const SERVICE_BARREL_DEFERRED_EXPORTS = [
   './rss',
@@ -175,6 +177,11 @@ function valueImportSpecifiers(src) {
 
 function servicesBarrelValueImportBlock(src) {
   return src.match(/\bimport\s+\{([\s\S]*?)\}\s+from\s+['"]@\/services['"]/)?.[1] ?? '';
+}
+
+function valueImportBlock(src, specifier) {
+  const re = new RegExp(`\\bimport\\s+\\{([\\s\\S]*?)\\}\\s+from\\s+['"]${escapeRegExp(specifier)}['"]`, 'g');
+  return [...src.matchAll(re)].map((match) => match[1]).join('\n');
 }
 
 describe('main.js eager diet — service clients are lazy-initialized', () => {
@@ -331,6 +338,75 @@ describe('main.js eager diet — eager UI keeps trending-keywords lazy', () => {
     assert.ok(
       dynamicImportSpecifiers(source).includes('@/services/trending-keywords'),
       'SignalModal should lazy-load trending-keywords when suppressing a term',
+    );
+  });
+});
+
+describe('main.js eager diet — export panel is interaction-loaded', () => {
+  const eventHandlersSource = readFileSync(resolve(repoRoot, 'src/app/event-handlers.ts'), 'utf8');
+  const eventHandlersWithoutComments = stripComments(eventHandlersSource);
+  const utilsIndexSource = readFileSync(resolve(repoRoot, 'src/utils/index.ts'), 'utf8');
+
+  it('checks every import block from the same specifier', () => {
+    const source = [
+      'import { buildMapUrl } from "@/utils";',
+      'import { ExportPanel } from "@/utils";',
+    ].join('\n');
+
+    assert.match(valueImportBlock(source, '@/utils'), /\bExportPanel\b/);
+  });
+
+  it('does not import ExportPanel through the eager utils barrel', () => {
+    assert.doesNotMatch(
+      valueImportBlock(eventHandlersWithoutComments, '@/utils'),
+      /\bExportPanel\b/,
+      'event-handlers should not import ExportPanel from @/utils; it pulls export.ts into main.js',
+    );
+  });
+
+  it('keeps ExportPanel behind a dynamic import and resets failed loads', () => {
+    assert.ok(
+      dynamicImportSpecifiers(eventHandlersSource).includes(EXPORT_PANEL_DEFERRED_IMPORT),
+      'event-handlers should lazy-load ExportPanel with import("@/utils/export")',
+    );
+    assert.ok(
+      eventHandlersWithoutComments.includes('exportPanelLoad = null;'),
+      'event-handlers should reset exportPanelLoad on chunk-load failure so later Pro gates can retry',
+    );
+  });
+
+  it('does not re-export export.ts from the eager utils barrel', () => {
+    assert.doesNotMatch(
+      stripComments(utilsIndexSource),
+      /from\s+['"]\.\/export['"]/,
+      'src/utils/index.ts should not re-export ./export into every @/utils importer',
+    );
+  });
+});
+
+describe('main.js eager diet — signal modal is interaction-loaded', () => {
+  const appSource = readFileSync(resolve(repoRoot, 'src/App.ts'), 'utf8');
+  const appWithoutComments = stripComments(appSource);
+
+  it('does not statically import SignalModal into App boot', () => {
+    assert.ok(
+      !valueImportSpecifiers(appWithoutComments).includes(SIGNAL_MODAL_DEFERRED_IMPORT),
+      'App should not statically import SignalModal; first show should lazy-load it',
+    );
+  });
+
+  it('keeps SignalModal behind a dynamic import and resets failed loads', () => {
+    assert.ok(
+      appWithoutComments.includes("this.signalModalLoad = import('@/components/SignalModal')"),
+      'App should lazy-load SignalModal with import("@/components/SignalModal")',
+    );
+    assert.ok(
+      appWithoutComments.includes('signalModalLoad = null;'),
+      'App should reset signalModalLoad on chunk-load failure so later notifications can retry',
+    );
+    assert.ok(
+      !appWithoutComments.includes('this.state.signalModal = new SignalModal();'),
+      'App should not construct SignalModal during boot',
     );
   });
 });

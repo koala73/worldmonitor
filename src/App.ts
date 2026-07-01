@@ -37,7 +37,6 @@ import { startLearning } from '@/services/country-instability';
 import { loadFromStorage, parseMapUrlState, saveToStorage, isMobileDevice, showToast } from '@/utils';
 import { clearPanelSpans, invalidatePanelStorageCacheForKeys } from '@/utils/panel-storage';
 import type { ParsedMapUrlState } from '@/utils';
-import { SignalModal } from '@/components/SignalModal';
 import { BreakingNewsBanner } from '@/components/BreakingNewsBanner';
 import { initBreakingNewsAlerts, destroyBreakingNewsAlerts } from '@/services/breaking-news-alerts';
 import { markLcpDebug } from '@/utils/lcp-debug';
@@ -135,6 +134,7 @@ import type { CorrelationPanel } from '@/components/CorrelationPanel';
 
 const CYBER_LAYER_ENABLED = import.meta.env.VITE_ENABLE_CYBER_LAYER === 'true';
 const FREE_MAP_PANEL_ACCESS_KEY = 'worldmonitor-free-map-panel-access-v1';
+type SignalModalInstance = import('@/components/SignalModal').SignalModal;
 
 export type { CountryBriefSignals } from '@/app/app-context';
 
@@ -149,6 +149,7 @@ export class App {
   private eventHandlers: EventHandlerManager;
   private searchManager: SearchManager | null = null;
   private searchManagerLoad: Promise<SearchManager> | null = null;
+  private signalModalLoad: Promise<SignalModalInstance> | null = null;
   // Monotonic epoch: every openSearch() call supersedes earlier in-flight ones.
   // searchToggleDesiredOpen accumulates the net intent of rapid Cmd+K presses
   // while the lazy chunk loads (XOR: odd → open, even → cancel). (#4403 review)
@@ -903,6 +904,7 @@ export class App {
       seenGeoAlerts: new Set(),
       monitors,
       signalModal: null,
+      ensureSignalModal: () => this.ensureSignalModal(),
       statusPanel: null,
       searchModal: null,
       findingsBadge: null,
@@ -997,6 +999,30 @@ export class App {
       this.refreshScheduler,
       this.eventHandlers,
     ];
+  }
+
+  private ensureSignalModal(): Promise<SignalModalInstance> {
+    if (this.state.signalModal) return Promise.resolve(this.state.signalModal);
+    if (this.signalModalLoad) return this.signalModalLoad;
+
+    this.signalModalLoad = import('@/components/SignalModal')
+      .then(({ SignalModal }) => {
+        if (this.state.isDestroyed) {
+          throw new Error('App destroyed before signal modal loaded');
+        }
+        const signalModal = new SignalModal();
+        signalModal.setLocationClickHandler((lat, lon) => {
+          this.state.map?.setCenter(lat, lon, 4);
+        });
+        this.state.signalModal = signalModal;
+        return signalModal;
+      })
+      .catch((err) => {
+        this.signalModalLoad = null;
+        throw err;
+      });
+
+    return this.signalModalLoad;
   }
 
   private ensureSearchManager(): Promise<SearchManager> {
@@ -1450,10 +1476,6 @@ export class App {
     }
 
     // Phase 2: Shared UI components
-    this.state.signalModal = new SignalModal();
-    this.state.signalModal.setLocationClickHandler((lat, lon) => {
-      this.state.map?.setCenter(lat, lon, 4);
-    });
     if (!this.state.isMobile) {
       void this.initFindingsBadge();
     }
@@ -1770,12 +1792,24 @@ export class App {
       this.state.findingsBadge.setOnSignalClick((signal) => {
         if (this.state.countryBriefPage?.isVisible()) return;
         if (localStorage.getItem('wm-settings-open') === '1') return;
-        this.state.signalModal?.showSignal(signal);
+        void this.state.ensureSignalModal()
+          .then((signalModal) => {
+            if (!this.state.isDestroyed) signalModal.showSignal(signal);
+          })
+          .catch((err) => {
+            console.warn('[SignalModal] Failed to show signal:', err);
+          });
       });
       this.state.findingsBadge.setOnAlertClick((alert) => {
         if (this.state.countryBriefPage?.isVisible()) return;
         if (localStorage.getItem('wm-settings-open') === '1') return;
-        this.state.signalModal?.showAlert(alert);
+        void this.state.ensureSignalModal()
+          .then((signalModal) => {
+            if (!this.state.isDestroyed) signalModal.showAlert(alert);
+          })
+          .catch((err) => {
+            console.warn('[SignalModal] Failed to show alert:', err);
+          });
       });
     } catch (error) {
       console.warn('[IntelligenceGapBadge] Lazy init failed:', error);

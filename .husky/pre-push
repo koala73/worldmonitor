@@ -294,11 +294,15 @@ echo "Running pro-test bundle freshness check..."
 # branches. RUN_ALL forces the check when the branch delta couldn't be
 # computed (matches the safety fallback used by the test runners above).
 #
-# Trigger on EITHER pro-test/ OR public/pro/ to match the CI workflow's
-# path filter — a bundle-only PR that edits public/pro/ without touching
-# pro-test/ (e.g. a fix-forward rebuild, or a hand-edit) is exactly the
-# class of change this guard is meant to validate.
-if [ "$RUN_ALL" = true ] || echo "$CHANGED_FILES" | grep -qE "^(pro-test|public/pro)/"; then
+# Trigger on pro-test/, public/pro/, or the catalog/generator that feeds
+# pro-test/src/generated/tiers.json. Catalog-only pricing-copy changes are
+# otherwise able to ship stale /pro bundles because Vercel serves public/pro/
+# as committed bytes.
+if [ "$RUN_ALL" = true ] || echo "$CHANGED_FILES" | grep -qE "^(pro-test|public/pro)/|^convex/config/productCatalog\.ts$|^scripts/generate-product-config\.mjs$"; then
+  npx tsx scripts/generate-product-config.mjs >/dev/null || {
+    echo "ERROR: product config generation failed"
+    exit 1
+  }
   if [ ! -d pro-test/node_modules ]; then
     echo "  Installing pro-test deps..."
     (cd pro-test && npm ci --cache "$npm_config_cache") || exit 1
@@ -307,15 +311,17 @@ if [ "$RUN_ALL" = true ] || echo "$CHANGED_FILES" | grep -qE "^(pro-test|public/
     echo "ERROR: pro-test build failed"
     exit 1
   }
-  if ! git diff --exit-code public/pro/; then
+  if ! git diff --exit-code src/config/products.generated.ts api/_product-fallback-prices.js pro-test/src/generated/tiers.json pro-test/src/locales/ public/pro/; then
     echo ""
     echo "============================================================"
-    echo "ERROR: pro-test sources changed but public/pro/ is stale."
+    echo "ERROR: product catalog, generated config, pro locales, or public/pro/ is stale."
     echo "Vercel ships whatever is committed under public/pro/ —"
     echo "it does NOT rebuild pro-test on deploy."
     echo "Fix:"
+    echo "  npx tsx scripts/generate-product-config.mjs"
     echo "  cd pro-test && npm run build && cd .."
-    echo "  git add public/pro/ && git commit --amend --no-edit"
+    echo "  git add src/config/products.generated.ts api/_product-fallback-prices.js pro-test/src/generated/tiers.json pro-test/src/locales/ public/pro/"
+    echo "  git commit --amend --no-edit"
     echo "============================================================"
     exit 1
   fi
@@ -331,7 +337,7 @@ if [ "$RUN_ALL" = true ] || echo "$CHANGED_FILES" | grep -qE "^(pro-test|public/
   fi
   echo "  pro-test bundle is up to date."
 else
-  echo "  Skipped (no pro-test/ or public/pro/ changes in branch)."
+  echo "  Skipped (no pro-test/, public/pro/, product catalog, or product-config generator changes in branch)."
 fi
 
 echo "Running version sync check..."

@@ -20,11 +20,49 @@ const fnBody = constsBlock[0] + ';\n' + fnMatch[1].trim();
 // eslint-disable-next-line no-new-func
 const parseRetryAfterSeconds = new Function('headers', fnBody);
 
+const temporaryStatusMatch = src.match(/export function isTemporaryCloudPrefsStatus\(status: number\): boolean \{([\s\S]*?)\n\}/);
+assert.ok(temporaryStatusMatch, 'isTemporaryCloudPrefsStatus must exist in cloud-prefs-sync.ts');
+// eslint-disable-next-line no-new-func
+const isTemporaryCloudPrefsStatus = new Function('status', temporaryStatusMatch[1].trim());
+
+const postCloudPrefsBody = (() => {
+  const start = src.indexOf('async function postCloudPrefs');
+  assert.notEqual(start, -1, 'postCloudPrefs must exist in cloud-prefs-sync.ts');
+  const end = src.indexOf('// ── Core logic', start);
+  assert.notEqual(end, -1, 'postCloudPrefs should end before the core logic section');
+  return src.slice(start, end);
+})();
+
 const mkHeaders = (value) => {
   const h = new Headers();
   if (value !== undefined) h.set('Retry-After', value);
   return h;
 };
+
+describe('temporary cloud prefs statuses', () => {
+  it('treats 429 and 503 as retryable temporary failures', () => {
+    assert.equal(isTemporaryCloudPrefsStatus(429), true);
+    assert.equal(isTemporaryCloudPrefsStatus(503), true);
+  });
+
+  it('does not route auth, conflict, or generic server errors through the retry path', () => {
+    assert.equal(isTemporaryCloudPrefsStatus(401), false);
+    assert.equal(isTemporaryCloudPrefsStatus(409), false);
+    assert.equal(isTemporaryCloudPrefsStatus(500), false);
+  });
+
+  it('postCloudPrefs uses the temporary-status retry path before generic errors', () => {
+    assert.match(
+      postCloudPrefsBody,
+      /if \(isTemporaryCloudPrefsStatus\(res\.status\)\) throw new ServiceUnavailableError\(parseRetryAfterSeconds\(res\.headers\), res\.status\);/,
+      'POST 429 must throw ServiceUnavailableError so uploadNow honors Retry-After instead of stranding the write in error state',
+    );
+    assert.ok(
+      postCloudPrefsBody.includes("if (!res.ok) throw new Error(`post prefs: ${res.status}`);"),
+      'generic non-OK handling must remain after the temporary retry branch',
+    );
+  });
+});
 
 describe('parseRetryAfterSeconds', () => {
   describe('delta-seconds form', () => {
