@@ -53,6 +53,7 @@ let entitlement: typeof STARTER | { planKey: string; features: Record<string, un
 vi.mock("../_shared/entitlement-check", () => ({
   getRequiredTier: () => null, // not tier-gated
   checkEntitlement: vi.fn().mockResolvedValue(null), // passes
+  checkEntitlementDetailed: vi.fn().mockResolvedValue({ response: null, entitlements: null }), // passes
   getEntitlements: vi.fn(async () => entitlement),
 }));
 
