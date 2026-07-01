@@ -7,6 +7,7 @@ import {
   type BoundedFeature,
   bboxIntersects,
   CULL_PAD_FRACTION,
+  conflictZoneContentKey,
   culledIndices,
   cullToViewport,
   geometryBounds,
@@ -148,6 +149,26 @@ describe('culledIndices (#4561 U1/P2)', () => {
   });
 });
 
+describe('conflictZoneContentKey (#4561 review P2)', () => {
+  const zones: BoundedFeature[] = [
+    polygon('inside', [12, 12, 18, 18]),
+    polygon('straddle', [8, 9, 11, 11]),
+    polygon('outside', [80, 60, 90, 70]),
+  ];
+
+  it('stays stable when the visible index set and tolerance are unchanged', () => {
+    const first = conflictZoneContentKey(culledIndices(zones, [10, 10, 40, 30]), 0.125);
+    const second = conflictZoneContentKey(culledIndices(zones, [11, 11, 39, 29]), 0.125);
+    assert.equal(second, first);
+  });
+
+  it('changes when visible indices or simplification tolerance change', () => {
+    const first = conflictZoneContentKey(culledIndices(zones, [10, 10, 40, 30]), 0.125);
+    assert.notEqual(conflictZoneContentKey(culledIndices(zones, [78, 58, 92, 72]), 0.125), first);
+    assert.notEqual(conflictZoneContentKey(culledIndices(zones, [10, 10, 40, 30]), 0.25), first);
+  });
+});
+
 // ── U2: low-zoom simplification ────────────────────────────────────────────────
 
 /** A closed ring densely sampled along a circle (many near-collinear vertices). */
@@ -195,6 +216,15 @@ describe('simplifyRing (#4561 U2)', () => {
   it('is a passthrough at tolerance 0', () => {
     const ring = denseCircle(0, 0, 5, 50);
     assert.equal(simplifyRing(ring, 0), ring);
+  });
+
+  it('keeps backtracking vertices whose nearest segment endpoint exceeds tolerance', () => {
+    const backtracking: Position = [-10, 0.1];
+    const ring: Position[] = [[0, 0], backtracking, [5, 0], [20, 0], [10, 10], [0, 0]];
+    const simplified = simplifyRing(ring, 1);
+    const keys = new Set(simplified.map(pointKey));
+    assert.ok(keys.has(pointKey(backtracking)), 'segment-distance RDP keeps the endpoint-outside vertex');
+    assert.ok(simplified.length < ring.length, 'still simplifies unrelated near-collinear points');
   });
 
   it('handles large rings without recursive call-stack growth', () => {

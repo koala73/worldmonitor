@@ -158,6 +158,7 @@ import {
   type BBox,
   type BoundedFeature,
   culledIndices,
+  conflictZoneContentKey,
   geometryBounds,
   simplifyGeometry,
   zoomToSimplifyTolerance,
@@ -532,6 +533,7 @@ function installDeckInterleavedRaceFilter(): void {
 
 export class DeckGLMap {
   private static readonly MAX_CLUSTER_LEAVES = 200;
+  private static readonly MAX_CONFLICT_SIMPLIFIED_CACHE_ENTRIES = 800;
 
   private container: HTMLElement;
   private deckOverlay: MapboxOverlay | null = null;
@@ -627,6 +629,7 @@ export class DeckGLMap {
   // returns the same FeatureCollection ref and Object.is short-circuits the
   // deck.gl re-tessellation (#4561 review P2).
   private conflictZoneContentKey: string | null = null;
+  private conflictZoneSimplifiedFeatureCache = new Map<string, GeoJSON.Feature>();
 
   // CII choropleth data
   private ciiScoresMap: Map<string, { score: number; level: string }> = new Map();
@@ -724,6 +727,27 @@ export class DeckGLMap {
   private webglLost = false;
   /** Stable empty GeoJSON for the immediate (pre-defer) frame of a heavy layer (#4558). */
   private readonly emptyHeavyData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
+  private conflictZoneFeatureForIndex(
+    bounded: readonly BoundedFeature[],
+    index: number,
+    tolerance: number,
+  ): GeoJSON.Feature | null {
+    const feature = bounded[index]?.feature;
+    if (!feature) return null;
+    if (tolerance <= 0) return feature;
+
+    const cacheKey = conflictZoneContentKey([index], tolerance);
+    const cached = this.conflictZoneSimplifiedFeatureCache.get(cacheKey);
+    if (cached) return cached;
+
+    const simplified: GeoJSON.Feature = { ...feature, geometry: simplifyGeometry(feature.geometry, tolerance) };
+    if (this.conflictZoneSimplifiedFeatureCache.size >= DeckGLMap.MAX_CONFLICT_SIMPLIFIED_CACHE_ENTRIES) {
+      this.conflictZoneSimplifiedFeatureCache.clear();
+    }
+    this.conflictZoneSimplifiedFeatureCache.set(cacheKey, simplified);
+    return simplified;
+  }
+
   /**
    * Two-phase heavy-layer commit (#4558). On the interaction-attributed frame
    * heavy layers render their previously-committed (or empty) data; the real
@@ -2686,8 +2710,10 @@ export class DeckGLMap {
    * #4561: bound the conflict-zone tessellation to the current viewport. Only
    * zones whose bounds intersect the (padded) viewport are handed to deck.gl, so
    * the synchronous tessellation cost scales with what's on screen — not the
-   * global zone set. Cached by a quantized viewport key so a small pan reuses the
-   * previous cull; `moveend` already re-runs `buildLayers`, refreshing the key.
+   * global zone set. Cached by the culled feature-index set plus simplification
+   * tolerance, so pans that leave the visible content unchanged reuse the same
+   * FeatureCollection ref. `moveend` already re-runs `buildLayers`, refreshing
+   * the content key.
    * At world/low zoom every zone is included (culling can't reduce the count
    * there — that case is bounded by low-zoom simplification, U2).
    */
@@ -2714,14 +2740,14 @@ export class DeckGLMap {
       mapBounds.getWest(), mapBounds.getSouth(), mapBounds.getEast(), mapBounds.getNorth(),
     ];
     const zoom = this.maplibreMap?.getZoom() ?? 2;
-    const tolerance = zoomToSimplifyTolerance(zoom);
+    const tolerance = Number(zoomToSimplifyTolerance(zoom).toFixed(4));
 
     // The cull (bbox tests over the static zone set) is cheap and runs every
     // build; the content key = culled index set + tolerance captures exactly what
     // the FeatureCollection contains, so an unchanged visible set reuses the
     // cached FC ref and the deck.gl re-tessellation short-circuits (review P2).
     const indices = culledIndices(bounded, viewport);
-    const contentKey = `${tolerance.toFixed(4)}:${indices.join(',')}`;
+    const contentKey = conflictZoneContentKey(indices, tolerance);
     if (contentKey === this.conflictZoneContentKey && this.conflictZoneGeoJson) {
       return this.conflictZoneGeoJson;
     }
@@ -2729,11 +2755,9 @@ export class DeckGLMap {
     // U2: at world/low zoom the cull can't reduce the count, so RDP-simplify the
     // (invisible-at-this-zoom) sub-pixel vertices to bound tessellation. New
     // geometry objects — never mutate the shared country geometry.
-    const features: GeoJSON.Feature[] = indices.map((i) => {
-      const feature = bounded[i]?.feature;
-      if (!feature) return null;
-      return tolerance > 0 ? { ...feature, geometry: simplifyGeometry(feature.geometry, tolerance) } : feature;
-    }).filter((f): f is GeoJSON.Feature => f !== null);
+    const features: GeoJSON.Feature[] = indices
+      .map((i) => this.conflictZoneFeatureForIndex(bounded, i, tolerance))
+      .filter((f): f is GeoJSON.Feature => f !== null);
 
     this.conflictZoneGeoJson = { type: 'FeatureCollection', features };
     this.conflictZoneContentKey = contentKey;
@@ -7335,6 +7359,7 @@ export class DeckGLMap {
         this.conflictZoneGeoJson = null;
         this.conflictZoneBounded = null;
         this.conflictZoneContentKey = null;
+        this.conflictZoneSimplifiedFeatureCache.clear();
         this.maplibreMap.addSource('country-boundaries', {
           type: 'geojson',
           data: geojson,

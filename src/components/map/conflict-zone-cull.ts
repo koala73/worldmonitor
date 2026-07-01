@@ -118,6 +118,11 @@ export function culledIndices(
   return out;
 }
 
+/** Cache key for the actual FeatureCollection content handed to deck.gl. */
+export function conflictZoneContentKey(indices: readonly number[], tolerance: number): string {
+  return tolerance.toFixed(4) + ":" + indices.join(",");
+}
+
 /** The features whose bounds intersect the padded viewport, order preserved. */
 export function cullToViewport(
   features: readonly BoundedFeature[],
@@ -150,13 +155,17 @@ const lon = (p: Position): number => p[0] ?? 0;
 const lat = (p: Position): number => p[1] ?? 0;
 const samePoint = (a: Position, b: Position): boolean => lon(a) === lon(b) && lat(a) === lat(b);
 
-/** Perpendicular distance from point p to the infinite line through a-b. */
-function perpendicularDistance(p: Position, a: Position, b: Position): number {
+/** Distance from point p to the finite segment a-b. */
+function segmentDistance(p: Position, a: Position, b: Position): number {
   const dx = lon(b) - lon(a);
   const dy = lat(b) - lat(a);
-  const denom = Math.hypot(dx, dy);
-  if (denom === 0) return Math.hypot(lon(p) - lon(a), lat(p) - lat(a));
-  return Math.abs(dy * lon(p) - dx * lat(p) + lon(b) * lat(a) - lat(b) * lon(a)) / denom;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(lon(p) - lon(a), lat(p) - lat(a));
+
+  const t = Math.max(0, Math.min(1, ((lon(p) - lon(a)) * dx + (lat(p) - lat(a)) * dy) / lenSq));
+  const projLon = lon(a) + t * dx;
+  const projLat = lat(a) + t * dy;
+  return Math.hypot(lon(p) - projLon, lat(p) - projLat);
 }
 
 /** Ramer-Douglas-Peucker on an open polyline: keeps both endpoints, drops points within tolerance. */
@@ -184,7 +193,7 @@ function rdp(points: Position[], tolerance: number): Position[] {
     for (let i = startIndex + 1; i < endIndex; i++) {
       const pt = points[i];
       if (!pt) continue;
-      const d = perpendicularDistance(pt, first, last);
+      const d = segmentDistance(pt, first, last);
       if (d > maxDist) {
         maxDist = d;
         index = i;
