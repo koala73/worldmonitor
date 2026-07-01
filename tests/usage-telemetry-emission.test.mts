@@ -419,6 +419,70 @@ describe('gateway telemetry payload — bearer identity propagation', () => {
     assert.equal(ev.reason, 'tier_403');
   });
 
+  it('records plan_key on a SERVED (200) user API-key request on a non-tier-gated route (#4613)', async () => {
+    // #4613: the served keyed path attributes plan_key via the #3199 per-account
+    // rate-limit block's recordUsageEntitlement — a DIFFERENT call site than the
+    // tier-gate rejection path (asserted above) or the clerk_jwt success path.
+    // Without this guard, a regression there emits plan_key=null on the paid API
+    // surface, silently breaking the per-plan usage / limit-abuse audit (#4572).
+    process.env.USAGE_TELEMETRY = '1';
+    process.env.AXIOM_API_TOKEN = 'test-token';
+    process.env.CONVEX_SITE_URL = 'https://convex.test';
+    process.env.CONVEX_SERVER_SHARED_SECRET = 'test-shared-secret';
+
+    const starterEntitlements = {
+      planKey: 'api_starter',
+      features: {
+        tier: 2,
+        apiAccess: true,
+        apiRateLimit: 1000,
+        maxDashboards: 25,
+        prioritySupport: false,
+        exportFormats: ['csv'],
+        mcpAccess: true,
+      },
+      validUntil: Date.now() + 60_000,
+    };
+    const spy = installAxiomFetchSpy(ORIGINAL_FETCH, {
+      apiKeyValidationResponse: { userId: 'user_active_api_key', keyId: 'key_active', name: 'Active key' },
+      entitlementsResponse: starterEntitlements,
+    });
+
+    // list-cyber-threats: a plain keyed RPC — not tier-gated, not premium, not
+    // public-no-auth — so the served path runs through the per-account block
+    // where user-key plan_key attribution happens.
+    const handler = createDomainGateway([
+      {
+        method: 'GET',
+        path: '/api/cyber/v1/list-cyber-threats',
+        handler: async () => new Response('{"ok":true}', { status: 200 }),
+      },
+    ]);
+
+    const recorder = makeRecordingCtx();
+    const res = await handler(
+      new Request('https://worldmonitor.app/api/cyber/v1/list-cyber-threats', {
+        headers: {
+          Origin: 'https://worldmonitor.app',
+          'X-Api-Key': 'wm_test_active_key',
+        },
+      }),
+      recorder.ctx,
+    );
+    assert.equal(res.status, 200, 'active user API key should be served on a non-tier-gated route');
+
+    await recorder.settled;
+    spy.restore();
+
+    assert.equal(spy.events.length, 1);
+    const ev = spy.events[0]!;
+    assert.equal(ev.auth_kind, 'user_api_key');
+    assert.equal(ev.customer_id, 'user_active_api_key');
+    assert.equal(ev.tier, 2);
+    assert.equal(ev.plan_key, 'api_starter', 'served user-key request must attribute plan_key (#4613)');
+    assert.equal(ev.reason, 'ok');
+  });
+
   it('still emits with auth_kind=anon when the bearer is invalid', async () => {
     process.env.USAGE_TELEMETRY = '1';
     process.env.AXIOM_API_TOKEN = 'test-token';
