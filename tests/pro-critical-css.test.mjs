@@ -164,17 +164,20 @@ describe('pro built HTML critical CSS contract', () => {
         .filter((tag) => html.indexOf(tag) < html.indexOf(deferredStylePreloadTags(html)[0]))
         .join('\n');
 
-      const hideIdx = criticalCss.indexOf('nav .hidden{display:none}');
+      const navHideIdx = criticalCss.indexOf('nav .hidden{display:none}');
+      const mainHideIdx = criticalCss.indexOf('main .hidden{display:none}');
       const sm640Idx = criticalCss.indexOf('@media (min-width:640px){');
       const md768Idx = criticalCss.indexOf('@media (min-width:768px){');
       const navRevealIdx = criticalCss.indexOf('nav [class*="md:flex"]{display:flex}');
       const smBlockRevealIdx = criticalCss.indexOf('main [class*="sm:block"]{display:block}');
 
-      assert.notEqual(hideIdx, -1, `${relPath} critical CSS should hide plain .hidden nav elements`);
+      assert.notEqual(navHideIdx, -1, `${relPath} critical CSS should hide plain .hidden nav elements`);
+      assert.notEqual(mainHideIdx, -1, `${relPath} critical CSS should hide plain .hidden main elements`);
       assert.notEqual(navRevealIdx, -1, `${relPath} critical CSS must re-show hidden md:flex nav rows at >=768px`);
       assert.notEqual(smBlockRevealIdx, -1, `${relPath} critical CSS must re-show hidden sm:block at >=640px`);
-      // Equal-specificity rules: the reveal must come AFTER the unlayered hide to win the cascade.
-      assert.ok(navRevealIdx > hideIdx, `${relPath} nav md:flex reveal must follow nav .hidden to win the cascade`);
+      // Equal-specificity rules: each reveal must come AFTER its unlayered hide to win the cascade.
+      assert.ok(navRevealIdx > navHideIdx, `${relPath} nav md:flex reveal must follow nav .hidden to win the cascade`);
+      assert.ok(smBlockRevealIdx > mainHideIdx, `${relPath} main sm:block reveal must follow main .hidden to win the cascade`);
       // The nav reveal must sit inside the >=768px block (gated to desktop, not applied at all widths).
       assert.ok(md768Idx !== -1 && navRevealIdx > md768Idx, `${relPath} nav md:flex reveal must be inside the min-width:768px media block`);
       // The sm:block reveal must sit inside the >=640px block (between the 640 and 768 media opens).
