@@ -38,6 +38,7 @@ export function formatPrice(price: number | null | undefined): string {
 }
 
 export function formatChange(change: number): string {
+  if (!Number.isFinite(change)) return '--';
   const sign = change >= 0 ? '+' : '';
   return `${sign}${change.toFixed(2)}%`;
 }
