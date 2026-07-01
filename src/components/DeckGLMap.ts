@@ -157,10 +157,9 @@ import { DeferredHeavyCommit } from '@/components/map/deferred-layer-commit';
 import {
   type BBox,
   type BoundedFeature,
-  cullToViewport,
+  culledIndices,
   geometryBounds,
   simplifyGeometry,
-  viewportCacheKey,
   zoomToSimplifyTolerance,
 } from '@/components/map/conflict-zone-cull';
 import {
@@ -623,7 +622,11 @@ export class DeckGLMap {
   // #4561: all zone features + their precomputed bounds, built once (cheap — no
   // tessellation); the viewport cull filters this into conflictZoneGeoJson.
   private conflictZoneBounded: BoundedFeature[] | null = null;
-  private conflictZoneViewportKey: string | null = null;
+  // Keyed on the culled feature-index set + simplify tolerance (the FC's actual
+  // content), NOT the viewport — so a pan that leaves the visible set unchanged
+  // returns the same FeatureCollection ref and Object.is short-circuits the
+  // deck.gl re-tessellation (#4561 review P2).
+  private conflictZoneContentKey: string | null = null;
 
   // CII choropleth data
   private ciiScoresMap: Map<string, { score: number; level: string }> = new Map();
@@ -2639,6 +2642,10 @@ export class DeckGLMap {
     if (this.conflictZoneBounded) return this.conflictZoneBounded;
 
     const bounded: BoundedFeature[] = [];
+    // A feature with no computable bounds (empty/degenerate geometry) is
+    // intentionally excluded — deck.gl skips such geometry anyway, and it can't
+    // be viewport-tested. CONFLICT_ZONES + country features are always valid, so
+    // this is a safety guard, not an expected drop.
     const push = (feature: GeoJSON.Feature): void => {
       const bounds = geometryBounds(feature.geometry);
       if (bounds) bounded.push({ bounds, feature });
@@ -2693,26 +2700,37 @@ export class DeckGLMap {
       return { type: 'FeatureCollection', features: bounded.map((b) => b.feature) };
     }
 
+    // getBounds() lng stays in the zone-data lng range only because both map
+    // inits set renderWorldCopies: false — off-copy zones genuinely aren't drawn,
+    // so culling them is correct. Flipping that flag would need the cull to
+    // handle wrapped longitudes (#4561 review P3-a).
     const viewport: BBox = [
       mapBounds.getWest(), mapBounds.getSouth(), mapBounds.getEast(), mapBounds.getNorth(),
     ];
     const zoom = this.maplibreMap?.getZoom() ?? 2;
-    const key = viewportCacheKey(viewport, zoom);
-    if (key === this.conflictZoneViewportKey && this.conflictZoneGeoJson) {
+    const tolerance = zoomToSimplifyTolerance(zoom);
+
+    // The cull (bbox tests over the static zone set) is cheap and runs every
+    // build; the content key = culled index set + tolerance captures exactly what
+    // the FeatureCollection contains, so an unchanged visible set reuses the
+    // cached FC ref and the deck.gl re-tessellation short-circuits (review P2).
+    const indices = culledIndices(bounded, viewport);
+    const contentKey = `${tolerance.toFixed(4)}:${indices.join(',')}`;
+    if (contentKey === this.conflictZoneContentKey && this.conflictZoneGeoJson) {
       return this.conflictZoneGeoJson;
     }
 
-    let features = cullToViewport(bounded, viewport);
     // U2: at world/low zoom the cull can't reduce the count, so RDP-simplify the
     // (invisible-at-this-zoom) sub-pixel vertices to bound tessellation. New
     // geometry objects — never mutate the shared country geometry.
-    const tolerance = zoomToSimplifyTolerance(zoom);
-    if (tolerance > 0) {
-      features = features.map((f) => ({ ...f, geometry: simplifyGeometry(f.geometry, tolerance) }));
-    }
+    const features: GeoJSON.Feature[] = indices.map((i) => {
+      const feature = bounded[i]?.feature;
+      if (!feature) return null;
+      return tolerance > 0 ? { ...feature, geometry: simplifyGeometry(feature.geometry, tolerance) } : feature;
+    }).filter((f): f is GeoJSON.Feature => f !== null);
 
     this.conflictZoneGeoJson = { type: 'FeatureCollection', features };
-    this.conflictZoneViewportKey = key;
+    this.conflictZoneContentKey = contentKey;
     return this.conflictZoneGeoJson;
   }
 
@@ -7310,7 +7328,7 @@ export class DeckGLMap {
         this.countriesGeoJsonData = geojson;
         this.conflictZoneGeoJson = null;
         this.conflictZoneBounded = null;
-        this.conflictZoneViewportKey = null;
+        this.conflictZoneContentKey = null;
         this.maplibreMap.addSource('country-boundaries', {
           type: 'geojson',
           data: geojson,

@@ -97,37 +97,39 @@ export function padViewport(viewport: BBox, fraction = CULL_PAD_FRACTION): BBox 
 }
 
 /**
- * The features whose bounds intersect the padded viewport, order preserved. At
- * world/low zoom (or across the antimeridian) returns every feature so we never
- * under-cull.
+ * Indices (into `features`, order preserved) whose bounds intersect the padded
+ * viewport. At world/low zoom (or across the antimeridian) returns every index
+ * so we never under-cull. Index identity (not zone id) is what callers key their
+ * tessellation cache on: a multi-country zone emits one feature per country, all
+ * sharing the zone id, so an id-based key could collide two distinct feature sets.
  */
+export function culledIndices(
+  features: readonly BoundedFeature[],
+  viewport: BBox,
+  padFraction = CULL_PAD_FRACTION,
+): number[] {
+  if (isWorldViewport(viewport)) return features.map((_, i) => i);
+  const padded = padViewport(viewport, padFraction);
+  const out: number[] = [];
+  for (let i = 0; i < features.length; i++) {
+    const f = features[i];
+    if (f && bboxIntersects(f.bounds, padded)) out.push(i);
+  }
+  return out;
+}
+
+/** The features whose bounds intersect the padded viewport, order preserved. */
 export function cullToViewport(
   features: readonly BoundedFeature[],
   viewport: BBox,
   padFraction = CULL_PAD_FRACTION,
 ): Feature[] {
-  if (isWorldViewport(viewport)) return features.map((f) => f.feature);
-  const padded = padViewport(viewport, padFraction);
   const out: Feature[] = [];
-  for (const f of features) {
-    if (bboxIntersects(f.bounds, padded)) out.push(f.feature);
+  for (const i of culledIndices(features, viewport, padFraction)) {
+    const f = features[i];
+    if (f) out.push(f.feature);
   }
   return out;
-}
-
-/**
- * Quantized cache key: identical within a grid cell (~1/4 of the viewport span)
- * so a small pan reuses the cached cull, while a pan past the step yields a new
- * key. The step (span/4) is smaller than the pad (span/2), so the cache always
- * refreshes before the padding is exhausted — no stale/missing zone on pan.
- */
-export function viewportCacheKey(viewport: BBox, zoom: number): string {
-  if (isWorldViewport(viewport)) return `world:${Math.round(zoom)}`;
-  const [west, south, east, north] = viewport;
-  const stepLon = Math.max((east - west) / 4, 0.01);
-  const stepLat = Math.max((north - south) / 4, 0.01);
-  const q = (v: number, step: number): string => (Math.round(v / step) * step).toFixed(3);
-  return `${Math.round(zoom)}:${q(west, stepLon)}:${q(south, stepLat)}:${q(east, stepLon)}:${q(north, stepLat)}`;
 }
 
 // ── U2: low-zoom geometry simplification backstop ──────────────────────────────

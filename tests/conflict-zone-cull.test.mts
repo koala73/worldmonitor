@@ -7,6 +7,7 @@ import {
   type BoundedFeature,
   bboxIntersects,
   CULL_PAD_FRACTION,
+  culledIndices,
   cullToViewport,
   geometryBounds,
   isWorldViewport,
@@ -14,10 +15,9 @@ import {
   SIMPLIFY_ZOOM_THRESHOLD,
   simplifyGeometry,
   simplifyRing,
-  viewportCacheKey,
   zoomToSimplifyTolerance,
 } from '../src/components/map/conflict-zone-cull.ts';
-import type { Position } from 'geojson';
+import type { Geometry, Position } from 'geojson';
 
 function polygon(id: string, bounds: BBox): BoundedFeature {
   const [w, s, e, n] = bounds;
@@ -121,21 +121,30 @@ describe('cullToViewport (#4561 U1)', () => {
   });
 });
 
-describe('viewportCacheKey (#4561 U1)', () => {
-  it('is stable for a sub-step pan and changes past the quantization step', () => {
-    const base: BBox = [0, 0, 40, 20]; // stepLon = 10, stepLat = 5
-    const key = viewportCacheKey(base, 4);
-    // small pan (< step) quantizes to the same cell -> same key
-    assert.equal(viewportCacheKey([1, 1, 41, 21], 4), key);
-    // pan past the step -> new key
-    assert.notEqual(viewportCacheKey([12, 7, 52, 27], 4), key);
-    // zoom change -> new key
-    assert.notEqual(viewportCacheKey(base, 6), key);
+describe('culledIndices (#4561 U1/P2)', () => {
+  const zones: BoundedFeature[] = [
+    polygon('inside', [12, 12, 18, 18]),
+    polygon('straddle', [8, 9, 11, 11]),
+    polygon('outside', [80, 60, 90, 70]),
+  ];
+
+  it('returns the intersecting indices (identity), preserving order', () => {
+    assert.deepEqual(culledIndices(zones, [10, 10, 40, 30]), [0, 1]);
   });
 
-  it('collapses all world/antimeridian viewports to a per-zoom world key', () => {
-    assert.equal(viewportCacheKey([-170, -80, 170, 80], 2), 'world:2');
-    assert.equal(viewportCacheKey([170, -10, -170, 10], 2), 'world:2');
+  it('returns identical index sets for two viewports sharing the same visible zones (content short-circuit basis)', () => {
+    // Both viewports show only zones 0 and 1, none of 2 -> same content key upstream.
+    assert.deepEqual(culledIndices(zones, [10, 10, 40, 30]), culledIndices(zones, [11, 11, 39, 29]));
+  });
+
+  it('distinguishes different visible sets (keys must differ)', () => {
+    const withOutside = culledIndices(zones, [78, 58, 92, 72]);
+    assert.notDeepEqual(culledIndices(zones, [10, 10, 40, 30]), withOutside);
+    assert.ok(withOutside.includes(2));
+  });
+
+  it('returns all indices at a world viewport', () => {
+    assert.deepEqual(culledIndices(zones, [-170, -80, 170, 80]), [0, 1, 2]);
   });
 });
 
@@ -209,5 +218,25 @@ describe('simplifyGeometry (#4561 U2)', () => {
   it('returns non-polygon geometry untouched', () => {
     const point = { type: 'Point' as const, coordinates: [1, 2] };
     assert.equal(simplifyGeometry(point, 0.5), point);
+  });
+
+  it('never mutates the source geometry (deep-frozen input does not throw)', () => {
+    // Guards Risk #3: the culled features alias the shared country geometry, so
+    // simplifyGeometry must only read it. A frozen input would throw on any write.
+    const deepFreeze = (v: unknown): void => {
+      if (Array.isArray(v)) {
+        v.forEach(deepFreeze);
+        Object.freeze(v);
+      } else if (v && typeof v === 'object') {
+        Object.values(v).forEach(deepFreeze);
+        Object.freeze(v);
+      }
+    };
+    const geom: Geometry = { type: 'Polygon', coordinates: [denseCircle(0, 0, 10, 120)] };
+    deepFreeze(geom);
+    const out = simplifyGeometry(geom, 0.5); // must not throw
+    assert.equal(geom.type, 'Polygon');
+    if (geom.type === 'Polygon') assert.equal(geom.coordinates[0]?.length, 121, 'source ring length unchanged');
+    assert.notEqual(out, geom, 'returns a new geometry object');
   });
 });
