@@ -156,6 +156,10 @@ describe('deploy/cache configuration guardrails', () => {
     };
 
     assert.match(viteConfigSource, /includeManifestIcons:\s*false/);
+    assert.doesNotMatch(
+      viteConfigSource,
+      /globIgnores:[\s\S]*'assets\/\*\*'/
+    );
     assertGlobIgnore('pro/**');
     assertGlobIgnore('favico/**');
     assertGlobIgnore('textures/**');
