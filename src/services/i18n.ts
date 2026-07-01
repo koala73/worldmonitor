@@ -2,6 +2,7 @@ import i18next from 'i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
+import { readQueryLanguage, stripQueryLanguage } from '@/utils/i18n-url';
 
 // Keep only first-paint English strings in the entry chunk. The full English
 // dictionary is loaded through localeModules so it can split like other locales.
@@ -166,13 +167,7 @@ export async function initI18n(): Promise<void> {
   const detector = new LanguageDetector();
   detector.addDetector({
     name: 'wmQuery',
-    lookup: () => {
-      try {
-        return new URL(window.location.href).searchParams.get('lang') || undefined;
-      } catch {
-        return undefined;
-      }
-    },
+    lookup: () => readQueryLanguage(window.location.href),
     cacheUserLanguage: () => { /* URL language is explicit per request, not persisted */ },
   });
   detector.addDetector({
@@ -236,6 +231,15 @@ export async function changeLanguage(lng: string): Promise<void> {
   try { localStorage.setItem(EXPLICIT_LOCALE_KEY, normalized); } catch { /* private mode */ }
   await i18next.changeLanguage(normalized);
   applyDocumentDirection(normalized);
+  // Drop any `?lang=` from the URL before reloading. `wmQuery` is first in
+  // detection.order, so a stale query param would out-rank the explicit choice
+  // we just persisted and silently revert the language on this very reload.
+  try {
+    const stripped = stripQueryLanguage(window.location.href);
+    if (stripped !== window.location.href) {
+      window.history.replaceState(window.history.state, '', stripped);
+    }
+  } catch { /* history unavailable */ }
   window.location.reload(); // Simple reload to update all components for now
 }
 

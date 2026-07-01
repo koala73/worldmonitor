@@ -15,7 +15,7 @@
  * so this runs anywhere Node runs, including bare CI.
  */
 import { readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -52,9 +52,8 @@ function parseJsonLdBlocks(html) {
     .map((m) => JSON.parse(m[1]));
 }
 
-function validateIndexLanguageMetadata(stats) {
+function validateIndexLanguageMetadata(stats, html = read('index.html')) {
   const failures = [];
-  const html = read('index.html');
   const expected = stats.localeCodes;
 
   const alternateLinks = [...html.matchAll(/<link\s+rel="alternate"\s+hreflang="([^"]+)"\s+href="([^"]+)"\s*\/>/g)]
@@ -63,8 +62,10 @@ function validateIndexLanguageMetadata(stats) {
   if (!defaultLink) {
     failures.push('index.html: x-default hreflang link not found');
   } else {
-    const defaultUrl = new URL(defaultLink.href);
-    if (defaultUrl.searchParams.has('lang')) {
+    const params = hrefSearchParams(defaultLink.href);
+    if (!params) {
+      failures.push('index.html: x-default hreflang href is not a valid URL');
+    } else if (params.has('lang')) {
       failures.push('index.html: x-default hreflang href must not set ?lang');
     }
   }
@@ -78,7 +79,7 @@ function validateIndexLanguageMetadata(stats) {
   for (const code of expected.filter((c) => c !== 'en')) {
     const link = localeLinks.find((l) => l.code === code);
     if (!link) continue;
-    const lang = new URL(link.href).searchParams.get('lang');
+    const lang = hrefSearchParams(link.href)?.get('lang');
     if (lang !== code) {
       failures.push(`index.html: hreflang ${code} href must use ?lang=${code}`);
     }
@@ -102,14 +103,44 @@ function validateIndexLanguageMetadata(stats) {
     }
   }
 
-  const app = jsonLd.find((o) => o?.['@type'] === 'WebApplication');
-  const feature = app?.featureList?.find((item) => /language support with RTL/.test(item));
-  const count = feature?.match(/(\d+)\s+language support with RTL/)?.[1];
-  if (Number(count) !== stats.locales) {
-    failures.push(`index.html: featureList language count says ${count ?? 'missing'}, code says ${stats.locales}`);
-  }
+  // The "<N> language support with RTL" featureList count is validated by the
+  // index.html claims() entry (single source of truth), so it is not re-checked
+  // here to avoid a duplicate assertion of the same string against the same value.
 
   return failures;
+}
+
+// Parse a URL's query params tolerantly. A base URL is supplied so a relative
+// hreflang href (e.g. `/dashboard?lang=fa`) parses instead of throwing and
+// crashing the whole gate. Returns null only when the value is not a URL at all.
+function hrefSearchParams(href) {
+  try {
+    return new URL(href, 'https://www.worldmonitor.app').searchParams;
+  } catch {
+    return null;
+  }
+}
+
+// Cross-check the runtime i18next allow-list (SUPPORTED_LANGUAGES in
+// src/services/i18n.ts) against the filesystem locale set. index.html now
+// advertises an hreflang `?lang=<code>` for every locale on disk; if a code is
+// present on disk but missing from SUPPORTED_LANGUAGES, i18next silently falls
+// back to English for that `?lang=`, making the advertised URL a dead end.
+function parseSupportedLanguages(i18nSource) {
+  const block = i18nSource.match(/const\s+SUPPORTED_LANGUAGES\s*=\s*\[([\s\S]*?)\]\s*as const/);
+  if (!block) return null;
+  return (block[1].match(/'([^']+)'/g) || []).map((s) => s.slice(1, -1));
+}
+
+function validateSupportedLanguagesRegistry(stats, i18nSource = read('src/services/i18n.ts')) {
+  const supported = parseSupportedLanguages(i18nSource);
+  if (!supported) {
+    return ['src/services/i18n.ts: could not parse SUPPORTED_LANGUAGES array'];
+  }
+  if (!sameStringSet(supported, stats.localeCodes)) {
+    return [`src/services/i18n.ts: SUPPORTED_LANGUAGES does not match src/locales (${describeSetDelta(supported, stats.localeCodes)})`];
+  }
+  return [];
 }
 
 function makefileVar(text, name) {
@@ -382,6 +413,7 @@ function main() {
   }
 
   failures.push(...validateIndexLanguageMetadata(stats));
+  failures.push(...validateSupportedLanguagesRegistry(stats));
 
   for (const c of claims(stats)) {
     let text;
@@ -418,4 +450,19 @@ function main() {
   console.log(`docs-stats --check OK — ${claims(stats).length} doc claims match code.`);
 }
 
-main();
+export {
+  computeStats,
+  validateIndexLanguageMetadata,
+  validateSupportedLanguagesRegistry,
+  parseSupportedLanguages,
+  parseJsonLdBlocks,
+  sameStringSet,
+  describeSetDelta,
+};
+
+// Run only when executed directly (node scripts/docs-stats.mjs [--check]).
+// Stays import-safe so tests can load the validators without triggering the
+// filesystem scan / CI gate on import.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}

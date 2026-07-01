@@ -85,4 +85,14 @@ describe('change formatting unavailable-state consistency', () => {
     assert.equal(getHeatmapClass(-1.25), 'down-2');
     assert.equal(getHeatmapClass(2), 'up-3');
   });
+
+  it('applies the correct heatmap bucket at the abs 1 and 2 boundaries', async () => {
+    const { getHeatmapClass } = await loadUtils();
+    assert.equal(getHeatmapClass(0), 'up-1');
+    assert.equal(getHeatmapClass(0.99), 'up-1');
+    assert.equal(getHeatmapClass(1), 'up-2');
+    assert.equal(getHeatmapClass(-1), 'down-2');
+    assert.equal(getHeatmapClass(1.99), 'up-2');
+    assert.equal(getHeatmapClass(-2), 'down-3');
+  });
 });
