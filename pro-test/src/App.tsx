@@ -181,6 +181,7 @@ const ProEntitlementContext = createContext<ProEntitlementState>({ isPro: false,
 
 function ProEntitlementProvider({ children }: { children: ReactNode }): ReactElement {
   const { user, signedIn } = useClerkUser();
+  const userId = user?.id ?? null;
   const [state, setState] = useState<ProEntitlementState>({ isPro: false, isChecked: false });
 
   useEffect(() => {
@@ -188,7 +189,7 @@ function ProEntitlementProvider({ children }: { children: ReactNode }): ReactEle
       setState({ isPro: false, isChecked: true });
       return;
     }
-    if (!user) {
+    if (!userId) {
       setState({ isPro: false, isChecked: false });
       return;
     }
@@ -228,7 +229,7 @@ function ProEntitlementProvider({ children }: { children: ReactNode }): ReactEle
       }
     })();
     return () => { cancelled = true; };
-  }, [signedIn, user]);
+  }, [signedIn, userId]);
 
   return <ProEntitlementContext.Provider value={state}>{children}</ProEntitlementContext.Provider>;
 }

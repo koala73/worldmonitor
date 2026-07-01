@@ -28,7 +28,10 @@ export function scheduleClerkLoad(): Promise<LoadedClerk> | null {
 
   scheduledClerkLoadPromise = new Promise((resolve, reject) => {
     const startLoad = (): void => {
-      ensureClerk().then(resolve, (err) => {
+      ensureClerk().then((loadedClerk) => {
+        scheduledClerkLoadPromise = null;
+        resolve(loadedClerk);
+      }, (err) => {
         scheduledClerkLoadPromise = null;
         reject(err);
       });
