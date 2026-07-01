@@ -17,7 +17,7 @@ import {
   simplifyRing,
   zoomToSimplifyTolerance,
 } from '../src/components/map/conflict-zone-cull.ts';
-import type { Geometry, Position } from 'geojson';
+import type { Position } from 'geojson';
 
 function polygon(id: string, bounds: BBox): BoundedFeature {
   const [w, s, e, n] = bounds;
@@ -196,6 +196,13 @@ describe('simplifyRing (#4561 U2)', () => {
     const ring = denseCircle(0, 0, 5, 50);
     assert.equal(simplifyRing(ring, 0), ring);
   });
+
+  it('handles large rings without recursive call-stack growth', () => {
+    const ring = denseCircle(0, 0, 10, 12_000);
+    const simplified = simplifyRing(ring, 0.05);
+    assert.ok(simplified.length >= 4, 'still returns a valid ring');
+    assert.deepEqual(simplified[0], simplified[simplified.length - 1], 'ring stays closed');
+  });
 });
 
 describe('simplifyGeometry (#4561 U2)', () => {
@@ -213,6 +220,28 @@ describe('simplifyGeometry (#4561 U2)', () => {
     const after = geometryBounds(out);
     assert.ok(before && after);
     for (let i = 0; i < 4; i++) assert.ok(Math.abs((before as BBox)[i] - (after as BBox)[i]) <= 0.5);
+  });
+
+  it('simplifies polygon children inside a GeometryCollection', () => {
+    const polygonChild = { type: 'Polygon' as const, coordinates: [denseCircle(0, 0, 10, 120)] };
+    const pointChild = { type: 'Point' as const, coordinates: [1, 2] };
+    const geom: Geometry = { type: 'GeometryCollection', geometries: [polygonChild, pointChild] };
+    const out = simplifyGeometry(geom, 0.5);
+    assert.equal(out.type, 'GeometryCollection');
+    if (out.type !== 'GeometryCollection') return;
+    const firstGeometry = out.geometries[0];
+    const secondGeometry = out.geometries[1];
+    assert.ok(firstGeometry);
+    assert.ok(secondGeometry);
+    assert.equal(firstGeometry.type, 'Polygon');
+    if (firstGeometry.type === 'Polygon') {
+      const simplifiedRing = firstGeometry.coordinates[0];
+      const originalRing = polygonChild.coordinates[0];
+      assert.ok(simplifiedRing);
+      assert.ok(originalRing);
+      assert.ok(simplifiedRing.length < originalRing.length, 'polygon child simplified');
+    }
+    assert.deepEqual(secondGeometry, pointChild);
   });
 
   it('returns non-polygon geometry untouched', () => {

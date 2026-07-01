@@ -159,28 +159,45 @@ function perpendicularDistance(p: Position, a: Position, b: Position): number {
   return Math.abs(dy * lon(p) - dx * lat(p) + lon(b) * lat(a) - lat(b) * lon(a)) / denom;
 }
 
-/** Ramer–Douglas–Peucker on an open polyline: keeps both endpoints, drops points within tolerance. */
+/** Ramer-Douglas-Peucker on an open polyline: keeps both endpoints, drops points within tolerance. */
 function rdp(points: Position[], tolerance: number): Position[] {
   if (points.length <= 2) return points.slice();
-  const first = points[0];
-  const last = points[points.length - 1];
-  if (!first || !last) return points.slice();
+  if (!points[0] || !points[points.length - 1]) return points.slice();
 
-  let index = 0;
-  let maxDist = 0;
-  for (let i = 1; i < points.length - 1; i++) {
-    const pt = points[i];
-    if (!pt) continue;
-    const d = perpendicularDistance(pt, first, last);
-    if (d > maxDist) {
-      maxDist = d;
-      index = i;
+  const keep = new Array<boolean>(points.length).fill(false);
+  keep[0] = true;
+  keep[points.length - 1] = true;
+  const stack: Array<[number, number]> = [[0, points.length - 1]];
+
+  while (stack.length > 0) {
+    const segment = stack.pop();
+    if (!segment) break;
+    const [startIndex, endIndex] = segment;
+    if (endIndex - startIndex <= 1) continue;
+
+    const first = points[startIndex];
+    const last = points[endIndex];
+    if (!first || !last) continue;
+
+    let index = 0;
+    let maxDist = 0;
+    for (let i = startIndex + 1; i < endIndex; i++) {
+      const pt = points[i];
+      if (!pt) continue;
+      const d = perpendicularDistance(pt, first, last);
+      if (d > maxDist) {
+        maxDist = d;
+        index = i;
+      }
+    }
+
+    if (maxDist > tolerance) {
+      keep[index] = true;
+      stack.push([startIndex, index], [index, endIndex]);
     }
   }
-  if (maxDist <= tolerance) return [first, last];
-  const left = rdp(points.slice(0, index + 1), tolerance);
-  const right = rdp(points.slice(index), tolerance);
-  return left.slice(0, -1).concat(right);
+
+  return points.filter((_, i) => keep[i]);
 }
 
 /**
@@ -233,6 +250,12 @@ export function simplifyGeometry(geometry: Geometry, tolerance: number): Geometr
     return {
       type: 'MultiPolygon',
       coordinates: geometry.coordinates.map((poly) => poly.map((r) => simplifyRing(r, tolerance))),
+    };
+  }
+  if (geometry.type === 'GeometryCollection') {
+    return {
+      type: 'GeometryCollection',
+      geometries: geometry.geometries.map((g) => simplifyGeometry(g, tolerance)),
     };
   }
   return geometry;

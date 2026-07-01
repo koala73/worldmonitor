@@ -2696,8 +2696,14 @@ export class DeckGLMap {
 
     const mapBounds = this.maplibreMap?.getBounds();
     if (!mapBounds) {
+      const key = 'preinit';
+      if (key === this.conflictZoneContentKey && this.conflictZoneGeoJson) {
+        return this.conflictZoneGeoJson;
+      }
       // Pre-map-init: no viewport to cull against — render all (prior behavior).
-      return { type: 'FeatureCollection', features: bounded.map((b) => b.feature) };
+      this.conflictZoneGeoJson = { type: 'FeatureCollection', features: bounded.map((b) => b.feature) };
+      this.conflictZoneContentKey = key;
+      return this.conflictZoneGeoJson;
     }
 
     // getBounds() lng stays in the zone-data lng range only because both map
