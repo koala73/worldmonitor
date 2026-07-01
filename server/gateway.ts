@@ -877,9 +877,11 @@ export function createDomainGateway(
     // Session resolution — extract userId from bearer token (Clerk JWT) if present.
     // Only runs for tier-gated endpoints to avoid JWKS lookup on every request.
     let sessionUserId: string | null = null;
+    let sessionRole: 'free' | 'pro' | null = null;
     if (isTierGated) {
       const session = await resolveClerkSession(request);
       sessionUserId = session?.userId ?? null;
+      sessionRole = session?.role ?? null;
       usage.sessionUserId = sessionUserId;
       usage.clerkOrgId = session?.orgId ?? null;
       if (sessionUserId) {
@@ -928,6 +930,10 @@ export function createDomainGateway(
         // so it no longer depends on this header — the header is now for
         // handler consumption + the internal-MCP `isCallerPremium` path.
         sessionUserId = userKeyResult.userId;
+        // The Clerk role belongs to the bearer subject, not the user-key owner.
+        // Once the explicit wm_ key becomes the identity source, require the
+        // key owner's Convex entitlement to drive tier-gated access.
+        sessionRole = null;
         usage.sessionUserId = sessionUserId;
         usage.clerkOrgId = null;
         request = withAuthenticatedUserId(request, sessionUserId);
@@ -1066,7 +1072,9 @@ export function createDomainGateway(
     // through the MCP edge's whitelisted tool set.
     const isEnterpriseAuth = keyCheck.valid && wmKey && !isUserApiKey && keyCheck.kind === 'enterprise';
     if (!isEnterpriseAuth && !internalMcpVerified && !seedRefreshVerified && !relayWarmPingVerified) {
-      const entitlementCheck = await checkEntitlementDetailed(sessionUserId, pathname, corsHeaders);
+      const entitlementCheck = await checkEntitlementDetailed(sessionUserId, pathname, corsHeaders, {
+        clerkRole: sessionRole,
+      });
       recordUsageEntitlement(entitlementCheck.entitlements);
       const entitlementResponse = entitlementCheck.response;
       if (entitlementResponse) {

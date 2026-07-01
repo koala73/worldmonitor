@@ -8,7 +8,7 @@ paths:
             tags:
                 - LeadsService
             summary: SubmitContact
-            description: SubmitContact stores an enterprise contact submission in Convex and emails ops.
+            description: SubmitContact stores an enterprise contact submission in Convex and emails ops. Turnstile-gated. Missing or invalid Cloudflare Turnstile token returns 403 Bot verification failed.
             operationId: SubmitContact
             requestBody:
                 content:
@@ -29,6 +29,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "403":
+                    description: Bot verification failed.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
                 default:
                     description: Error response
                     content:

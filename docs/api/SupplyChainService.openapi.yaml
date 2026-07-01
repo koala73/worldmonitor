@@ -144,7 +144,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetCountryChokepointIndex
-            description: GetCountryChokepointIndex returns per-chokepoint exposure scores for a country. PRO-gated.
+            description: GetCountryChokepointIndex returns per-chokepoint exposure scores for a country. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetCountryChokepointIndex
             parameters:
                 - name: iso2
@@ -172,6 +172,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -183,7 +189,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetBypassOptions
-            description: GetBypassOptions returns ranked bypass corridors for a chokepoint. PRO-gated.
+            description: GetBypassOptions returns ranked bypass corridors for a chokepoint. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetBypassOptions
             parameters:
                 - name: chokepointId
@@ -217,6 +223,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -228,7 +240,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetCountryCostShock
-            description: GetCountryCostShock returns cost shock and war risk data for a country+chokepoint. PRO-gated.
+            description: GetCountryCostShock returns cost shock and war risk data for a country+chokepoint. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetCountryCostShock
             parameters:
                 - name: iso2
@@ -260,6 +272,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -271,7 +289,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetCountryProducts
-            description: GetCountryProducts returns the seeded bilateral-HS4 import basket for a country. PRO-gated.
+            description: GetCountryProducts returns the seeded bilateral-HS4 import basket for a country. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetCountryProducts
             parameters:
                 - name: iso2
@@ -292,6 +310,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -306,6 +330,7 @@ paths:
             description: |-
                 GetMultiSectorCostShock returns per-sector cost-shock estimates for a
                  country+chokepoint+closure-window. PRO-gated.
+                Requires entitlement tier >= 1.
             operationId: GetMultiSectorCostShock
             parameters:
                 - name: iso2
@@ -338,6 +363,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -349,7 +380,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetSectorDependency
-            description: GetSectorDependency returns dependency flags and risk profile for a country+HS2 sector. PRO-gated.
+            description: GetSectorDependency returns dependency flags and risk profile for a country+HS2 sector. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetSectorDependency
             parameters:
                 - name: iso2
@@ -376,6 +407,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -393,6 +430,7 @@ paths:
                  a country pair + HS2 + cargo type. PRO-gated. Wraps the route-intelligence vendor
                  endpoint's compute with browser-callable auth and adds fields needed by the
                  Route Explorer UI.
+                Requires entitlement tier >= 1.
             operationId: GetRouteExplorerLane
             parameters:
                 - name: fromIso2
@@ -430,6 +468,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -441,6 +485,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetRouteImpact
+            description: PRO-gated. Requires entitlement tier >= 1.
             operationId: GetRouteImpact
             parameters:
                 - name: fromIso2
@@ -471,6 +516,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -767,6 +818,26 @@ components:
                     type: string
                     description: Error message (e.g., 'user not found', 'database connection failed')
             description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        ForbiddenError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable entitlement failure reason.
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint.
+                currentTier:
+                    type: integer
+                    format: int32
+                    description: Caller entitlement tier when known.
+                planKey:
+                    type: string
+                    description: Caller plan key when known.
+            required:
+                - error
+            description: Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.
         FieldViolation:
             type: object
             properties:
