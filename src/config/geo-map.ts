@@ -357,8 +357,8 @@ export const UNDERSEA_CABLES: UnderseaCable[] = [
     ],
   },
   {
-    id: 'unityeac_pacific',
-    name: 'Unity/EAC-Pacific',
+    id: 'unity',
+    name: 'Unity',
     points: [[140, 35], [141.3, 34.9], [160.2, 41.4], [-118.4, 33.8], [-129.6, 37.9], [-180, 44.7]],
     major: true,
     rfsYear: 2010,
