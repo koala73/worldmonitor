@@ -134,6 +134,32 @@ describe('Product catalog freshness', () => {
     }
   });
 
+  it('Pro locale MCP pricing feature mentions Claude Desktop and the call allowance', () => {
+    for (const [file, src] of Object.entries(readProLocaleFiles())) {
+      const locale = JSON.parse(src);
+      const feature = locale?.pricing?.tiers?.pro?.features?.[5];
+      assert.equal(typeof feature, 'string', `${file} missing pricing.tiers.pro.features[5]`);
+      assert.match(feature, /\bMCP\b/, `${file} Pro MCP feature should mention MCP`);
+      assert.match(feature, /Claude Desktop/, `${file} Pro MCP feature should mention Claude Desktop`);
+      assert.match(feature, /\b50\b/, `${file} Pro MCP feature should mention the 50 calls/day allowance`);
+    }
+  });
+
+  it('product catalog fallbacks advertise the canonical Pro MCP feature', () => {
+    const expectedFeature = tiersJson.find((tier) => tier.localeKey === 'pro')?.features?.[5];
+    assert.equal(
+      expectedFeature,
+      'MCP access for Claude Desktop & other AI clients (50 calls/day)',
+      'generated Pro MCP feature changed; update fallback catalog copy and this assertion together',
+    );
+
+    for (const relPath of ['api/product-catalog.js', 'scripts/ais-relay.cjs']) {
+      const src = readFileSync(join(ROOT, relPath), 'utf8');
+      assert.ok(src.includes(expectedFeature), `${relPath} is missing the canonical Pro MCP feature`);
+      assert.ok(!src.includes('MCP data connectors'), `${relPath} still contains stale Pro MCP feature copy`);
+    }
+  });
+
   it('generated files and pro locale placeholders are fresh (re-running generator produces same output)', () => {
     // Capture current generated content
     const currentProducts = readFileSync(join(ROOT, 'src/config/products.generated.ts'), 'utf8');
