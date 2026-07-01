@@ -148,9 +148,11 @@ describe('deploy/cache configuration guardrails', () => {
   });
 
   it('keeps off-page public assets out of the PWA precache', () => {
-    const globIgnoresSource = viteConfigSource.match(/globIgnores:\s*\[([\s\S]*?)\]/)?.[1] ?? '';
     const assertGlobIgnore = (pattern) => {
-      assert.match(globIgnoresSource, new RegExp(`'${escapeRegExp(pattern)}'`));
+      assert.match(
+        viteConfigSource,
+        new RegExp(`globIgnores:\\s*\\[[\\s\\S]*'${escapeRegExp(pattern)}'[\\s\\S]*\\]`)
+      );
     };
 
     assert.match(viteConfigSource, /includeManifestIcons:\s*false/);
