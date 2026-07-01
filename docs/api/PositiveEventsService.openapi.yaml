@@ -15,6 +15,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "events":
+                                    - "category": "cs.AI"
+                                      "count": 1
+                                      "latitude": 40.7128
+                                      "longitude": -74.006
+                                      "name": "WorldMonitor Analyst"
+                                "fetchedAt": 1717200000000
+                                "stale": true
                             schema:
                                 $ref: '#/components/schemas/ListPositiveGeoEventsResponse'
                 "400":

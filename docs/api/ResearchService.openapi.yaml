@@ -15,6 +15,7 @@ paths:
                   in: query
                   description: Maximum items per page (1-100).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
@@ -22,18 +23,21 @@ paths:
                   in: query
                   description: Cursor for next page.
                   required: false
+                  example: "next-page-token"
                   schema:
                     type: string
                 - name: category
                   in: query
                   description: arXiv category filter (e.g., "cs.AI"). Empty returns all tracked categories.
                   required: false
+                  example: "cs.AI"
                   schema:
                     type: string
                 - name: query
                   in: query
                   description: Search query for paper titles and abstracts.
                   required: false
+                  example: "supply chain risk"
                   schema:
                     type: string
             responses:
@@ -41,6 +45,20 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "pagination":
+                                    "nextCursor": "next-page-token"
+                                    "totalCount": 1
+                                "papers":
+                                    - "authors":
+                                          - "example"
+                                      "categories":
+                                          - "example"
+                                      "id": "example-id"
+                                      "publishedAt": 1717200000000
+                                      "summary": "Example WorldMonitor observation."
+                                      "title": "example"
+                                      "url": "https://example.com/worldmonitor"
                             schema:
                                 $ref: '#/components/schemas/ListArxivPapersResponse'
                 "400":
@@ -67,6 +85,7 @@ paths:
                   in: query
                   description: Maximum items per page (1-100).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
@@ -74,18 +93,21 @@ paths:
                   in: query
                   description: Cursor for next page.
                   required: false
+                  example: "next-page-token"
                   schema:
                     type: string
                 - name: language
                   in: query
                   description: Programming language filter (e.g., "python", "typescript").
                   required: false
+                  example: "typescript"
                   schema:
                     type: string
                 - name: period
                   in: query
                   description: Trending period (e.g., "daily", "weekly"). Defaults to "daily".
                   required: false
+                  example: "daily"
                   schema:
                     type: string
             responses:
@@ -93,6 +115,17 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "pagination":
+                                    "nextCursor": "next-page-token"
+                                    "totalCount": 1
+                                "repos":
+                                    - "description": "Example WorldMonitor observation."
+                                      "forks": 1
+                                      "fullName": "koala73/worldmonitor"
+                                      "language": "typescript"
+                                      "stars": 1
+                                      "starsToday": 1
                             schema:
                                 $ref: '#/components/schemas/ListTrendingReposResponse'
                 "400":
@@ -119,6 +152,7 @@ paths:
                   in: query
                   description: Maximum items per page (1-100).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
@@ -126,12 +160,14 @@ paths:
                   in: query
                   description: Cursor for next page.
                   required: false
+                  example: "next-page-token"
                   schema:
                     type: string
                 - name: feed_type
                   in: query
                   description: 'Feed type: "top", "new", "best", "ask", "show". Defaults to "top".'
                   required: false
+                  example: "top"
                   schema:
                     type: string
             responses:
@@ -139,6 +175,17 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "items":
+                                    - "by": "example"
+                                      "commentCount": 1
+                                      "id": 1
+                                      "score": 42
+                                      "submittedAt": 1717200000000
+                                      "title": "example"
+                                "pagination":
+                                    "nextCursor": "next-page-token"
+                                    "totalCount": 1
                             schema:
                                 $ref: '#/components/schemas/ListHackernewsItemsResponse'
                 "400":
@@ -165,18 +212,21 @@ paths:
                   in: query
                   description: 'Event type filter: "all", "conferences", "earnings", "ipo", "other". Empty = all.'
                   required: false
+                  example: "conference"
                   schema:
                     type: string
                 - name: mappable
                   in: query
                   description: Only events with non-virtual coordinates.
                   required: false
+                  example: true
                   schema:
                     type: boolean
                 - name: limit
                   in: query
                   description: Max events to return (0 = unlimited).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
@@ -184,6 +234,7 @@ paths:
                   in: query
                   description: Events within N days from now (0 = unlimited).
                   required: false
+                  example: 7
                   schema:
                     type: integer
                     format: int32
@@ -192,6 +243,22 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "conferenceCount": 1
+                                "count": 1
+                                "error": "example"
+                                "events":
+                                    - "coords":
+                                          "country": "US"
+                                          "lat": 40.7128
+                                          "lng": -74.006
+                                          "original": "example"
+                                          "virtual": true
+                                      "description": "Example WorldMonitor observation."
+                                      "endDate": "2026-01-15"
+                                      "id": "example-id"
+                                      "location": "example"
+                                "lastUpdated": "2026-01-15"
                             schema:
                                 $ref: '#/components/schemas/ListTechEventsResponse'
                 "400":

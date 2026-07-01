@@ -17,6 +17,8 @@ paths:
                   required: false
                   style: form
                   explode: true
+                  example:
+                      - "example"
                   schema:
                     type: array
                     items:
@@ -25,6 +27,7 @@ paths:
                   in: query
                   description: Max results to return (server caps at 100).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
@@ -33,6 +36,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "restrictions":
+                                    - "affectedCountry": "example"
+                                      "description": "Example WorldMonitor observation."
+                                      "id": "example-id"
+                                      "measureType": "all"
+                                      "notifiedAt": "2026-01-15T12:00:00Z"
+                                "upstreamUnavailable": true
                             schema:
                                 $ref: '#/components/schemas/GetTradeRestrictionsResponse'
                 "400":
@@ -59,24 +71,28 @@ paths:
                   in: query
                   description: WTO member code of reporting country (e.g. "840" = US).
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: partner_country
                   in: query
                   description: WTO member code of partner country (e.g. "156" = China).
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: product_sector
                   in: query
                   description: Product sector filter (HS chapter). Empty = aggregate.
                   required: false
+                  example: "diesel"
                   schema:
                     type: string
                 - name: years
                   in: query
                   description: Number of years to look back (default 10, max 30).
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
@@ -85,6 +101,21 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "datapoints":
+                                    - "boundRate": 75.25
+                                      "indicatorCode": "example"
+                                      "partnerCountry": "example"
+                                      "productSector": "diesel"
+                                      "reportingCountry": "example"
+                                "effectiveTariffRate":
+                                    "observationPeriod": "daily"
+                                    "sourceName": "WorldMonitor Analyst"
+                                    "sourceUrl": "https://example.com/worldmonitor"
+                                    "tariffRate": 75.25
+                                    "updatedAt": "2026-01-15"
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "upstreamUnavailable": true
                             schema:
                                 $ref: '#/components/schemas/GetTariffTrendsResponse'
                 "400":
@@ -111,18 +142,21 @@ paths:
                   in: query
                   description: WTO member code of reporting country.
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: partner_country
                   in: query
                   description: WTO member code of partner country.
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: years
                   in: query
                   description: Number of years to look back (default 10, max 30).
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
@@ -131,6 +165,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "flows":
+                                    - "exportValueUsd": 1.5
+                                      "importValueUsd": 1.5
+                                      "partnerCountry": "example"
+                                      "productSector": "diesel"
+                                      "reportingCountry": "example"
+                                "upstreamUnavailable": true
                             schema:
                                 $ref: '#/components/schemas/GetTradeFlowsResponse'
                 "400":
@@ -159,6 +202,8 @@ paths:
                   required: false
                   style: form
                   explode: true
+                  example:
+                      - "example"
                   schema:
                     type: array
                     items:
@@ -167,12 +212,14 @@ paths:
                   in: query
                   description: 'Filter by measure type: "SPS", "TBT", or empty for both.'
                   required: false
+                  example: "all"
                   schema:
                     type: string
                 - name: limit
                   in: query
                   description: Max results to return (server caps at 100).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
@@ -181,6 +228,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "barriers":
+                                    - "dateDistributed": "2026-01-15"
+                                      "id": "example-id"
+                                      "measureType": "all"
+                                      "notifyingCountry": "example"
+                                      "objective": "example"
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "upstreamUnavailable": true
                             schema:
                                 $ref: '#/components/schemas/GetTradeBarriersResponse'
                 "400":
@@ -207,6 +263,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "months":
+                                    - "calendarMonth": 1
+                                      "calendarYear": 1
+                                      "fiscalYear": 1
+                                      "fytdAmountBillions": 1.5
+                                      "monthlyAmountBillions": 1.5
+                                "upstreamUnavailable": true
                             schema:
                                 $ref: '#/components/schemas/GetCustomsRevenueResponse'
                 "400":
@@ -233,18 +298,21 @@ paths:
                   in: query
                   description: UN Comtrade reporter code (e.g. "842" = US, "156" = China). Empty returns all reporters.
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: cmd_code
                   in: query
                   description: HS commodity code (e.g. "2709" = crude oil). Empty returns all commodities.
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: anomalies_only
                   in: query
                   description: If true, only return flows with a year-over-year change exceeding 30%.
                   required: false
+                  example: true
                   schema:
                     type: boolean
             responses:
@@ -252,6 +320,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "flows":
+                                    - "cmdCode": "example"
+                                      "cmdDesc": "example"
+                                      "isAnomaly": true
+                                      "netWeightKg": 1.5
+                                      "partnerCode": "example"
+                                "upstreamUnavailable": true
                             schema:
                                 $ref: '#/components/schemas/ListComtradeFlowsResponse'
                 "400":

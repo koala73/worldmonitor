@@ -15,6 +15,7 @@ paths:
                   in: query
                   description: Start of time range (inclusive), Unix epoch milliseconds.
                   required: false
+                  example: "1717200000000"
                   schema:
                     type: string
                     format: int64
@@ -22,6 +23,7 @@ paths:
                   in: query
                   description: End of time range (inclusive), Unix epoch milliseconds.
                   required: false
+                  example: "1717200000000"
                   schema:
                     type: string
                     format: int64
@@ -29,6 +31,7 @@ paths:
                   in: query
                   description: Maximum items per page (1-100).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
@@ -36,12 +39,14 @@ paths:
                   in: query
                   description: Cursor for next page.
                   required: false
+                  example: "next-page-token"
                   schema:
                     type: string
                 - name: min_magnitude
                   in: query
                   description: Minimum magnitude filter (e.g., 4.0 for significant quakes).
                   required: false
+                  example: 1.5
                   schema:
                     type: number
                     format: double
@@ -50,6 +55,19 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "earthquakes":
+                                    - "concernLevel": "example"
+                                      "concernScore": 42.5
+                                      "depthKm": 1.5
+                                      "id": "example-id"
+                                      "location":
+                                          "latitude": 40.7128
+                                          "longitude": -74.006
+                                      "magnitude": 1.5
+                                "pagination":
+                                    "nextCursor": "next-page-token"
+                                    "totalCount": 1
                             schema:
                                 $ref: '#/components/schemas/ListEarthquakesResponse'
                 "400":

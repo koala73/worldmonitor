@@ -15,6 +15,7 @@ paths:
                   in: query
                   description: Start of time range (inclusive), Unix epoch milliseconds.
                   required: false
+                  example: "1717200000000"
                   schema:
                     type: string
                     format: int64
@@ -22,6 +23,7 @@ paths:
                   in: query
                   description: End of time range (inclusive), Unix epoch milliseconds.
                   required: false
+                  example: "1717200000000"
                   schema:
                     type: string
                     format: int64
@@ -29,6 +31,7 @@ paths:
                   in: query
                   description: Maximum items per page (1-100).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
@@ -36,12 +39,14 @@ paths:
                   in: query
                   description: Cursor for next page.
                   required: false
+                  example: "next-page-token"
                   schema:
                     type: string
                 - name: ne_lat
                   in: query
                   description: North-east latitude of bounding box.
                   required: false
+                  example: 40.7128
                   schema:
                     type: number
                     format: double
@@ -49,6 +54,7 @@ paths:
                   in: query
                   description: North-east longitude of bounding box.
                   required: false
+                  example: -74.006
                   schema:
                     type: number
                     format: double
@@ -56,6 +62,7 @@ paths:
                   in: query
                   description: South-west latitude of bounding box.
                   required: false
+                  example: 40.7128
                   schema:
                     type: number
                     format: double
@@ -63,6 +70,7 @@ paths:
                   in: query
                   description: South-west longitude of bounding box.
                   required: false
+                  example: -74.006
                   schema:
                     type: number
                     format: double
@@ -71,6 +79,17 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fireDetections":
+                                    - "brightness": 1.5
+                                      "confidence": "FIRE_CONFIDENCE_UNSPECIFIED"
+                                      "dayNight": "example"
+                                      "detectedAt": 1717200000000
+                                      "frp": 1.5
+                                      "id": "example-id"
+                                "pagination":
+                                    "nextCursor": "next-page-token"
+                                    "totalCount": 1
                             schema:
                                 $ref: '#/components/schemas/ListFireDetectionsResponse'
                 "400":

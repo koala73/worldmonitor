@@ -15,6 +15,7 @@ paths:
                   in: query
                   description: Start of time range (inclusive), Unix epoch milliseconds.
                   required: false
+                  example: "1717200000000"
                   schema:
                     type: string
                     format: int64
@@ -22,6 +23,7 @@ paths:
                   in: query
                   description: End of time range (inclusive), Unix epoch milliseconds.
                   required: false
+                  example: "1717200000000"
                   schema:
                     type: string
                     format: int64
@@ -29,6 +31,7 @@ paths:
                   in: query
                   description: Maximum items per page (1-100).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
@@ -36,24 +39,28 @@ paths:
                   in: query
                   description: Cursor for next page.
                   required: false
+                  example: "next-page-token"
                   schema:
                     type: string
                 - name: type
                   in: query
                   description: Optional threat type filter.
                   required: false
+                  example: "all"
                   schema:
                     type: string
                 - name: source
                   in: query
                   description: Optional source filter.
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: min_severity
                   in: query
                   description: Optional minimum criticality filter.
                   required: false
+                  example: "watch"
                   schema:
                     type: string
             responses:
@@ -61,6 +68,17 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "pagination":
+                                    "nextCursor": "next-page-token"
+                                    "totalCount": 1
+                                "threats":
+                                    - "country": "US"
+                                      "firstSeenAt": 1717200000000
+                                      "id": "example-id"
+                                      "indicator": "example"
+                                      "indicatorType": "CYBER_THREAT_INDICATOR_TYPE_UNSPECIFIED"
+                                      "lastSeenAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/ListCyberThreatsResponse'
                 "400":

@@ -15,12 +15,14 @@ paths:
                   in: query
                   description: market_code is the ISO 3166-1 alpha-2 market identifier (e.g. "ae").
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: basket_slug
                   in: query
                   description: basket_slug selects which basket to use (e.g. "essentials-ae").
                   required: false
+                  example: "example"
                   schema:
                     type: string
             responses:
@@ -28,6 +30,12 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "asOf": "1717200000000"
+                                "coveragePct": 1.5
+                                "currencyCode": "example"
+                                "essentialsIndex": 1.5
+                                "freshnessLagMin": 1
                             schema:
                                 $ref: '#/components/schemas/GetConsumerPriceOverviewResponse'
                 "400":
@@ -54,18 +62,21 @@ paths:
                   in: query
                   description: market_code is the ISO 3166-1 alpha-2 market identifier.
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: basket_slug
                   in: query
                   description: basket_slug selects the basket (e.g. "essentials-ae").
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: range
                   in: query
                   description: range is one of "7d", "30d", "90d", "180d".
                   required: false
+                  example: "example"
                   schema:
                     type: string
             responses:
@@ -73,6 +84,14 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "asOf": "1717200000000"
+                                "basketSlug": "example"
+                                "currencyCode": "example"
+                                "essentialsSeries":
+                                    - "date": "2026-01-15"
+                                      "index": 1.5
+                                "marketCode": "example"
                             schema:
                                 $ref: '#/components/schemas/GetConsumerPriceBasketSeriesResponse'
                 "400":
@@ -99,18 +118,21 @@ paths:
                   in: query
                   description: market_code is the ISO 3166-1 alpha-2 market identifier.
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: basket_slug
                   in: query
                   description: basket_slug selects the basket scope.
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: range
                   in: query
                   description: range is one of "7d", "30d", "90d", "180d".
                   required: false
+                  example: "example"
                   schema:
                     type: string
             responses:
@@ -118,6 +140,17 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "asOf": "1717200000000"
+                                "categories":
+                                    - "coveragePct": 1.5
+                                      "currentIndex": 1.5
+                                      "itemCount": 1
+                                      "momPct": 1.5
+                                      "name": "WorldMonitor Analyst"
+                                "marketCode": "example"
+                                "range": "example"
+                                "upstreamUnavailable": true
                             schema:
                                 $ref: '#/components/schemas/ListConsumerPriceCategoriesResponse'
                 "400":
@@ -144,18 +177,21 @@ paths:
                   in: query
                   description: market_code is the ISO 3166-1 alpha-2 market identifier.
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: range
                   in: query
                   description: range is one of "7d", "30d", "90d".
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: limit
                   in: query
                   description: limit caps the number of risers and fallers returned (default 10).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
@@ -163,6 +199,7 @@ paths:
                   in: query
                   description: category_slug filters to a single category when set.
                   required: false
+                  example: "cs.AI"
                   schema:
                     type: string
             responses:
@@ -170,6 +207,22 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "asOf": "1717200000000"
+                                "fallers":
+                                    - "category": "cs.AI"
+                                      "changePct": 1.5
+                                      "currencyCode": "example"
+                                      "currentPrice": 75.25
+                                      "productId": "diesel"
+                                "marketCode": "example"
+                                "range": "example"
+                                "risers":
+                                    - "category": "cs.AI"
+                                      "changePct": 1.5
+                                      "currencyCode": "example"
+                                      "currentPrice": 75.25
+                                      "productId": "diesel"
                             schema:
                                 $ref: '#/components/schemas/ListConsumerPriceMoversResponse'
                 "400":
@@ -196,12 +249,14 @@ paths:
                   in: query
                   description: market_code is the ISO 3166-1 alpha-2 market identifier.
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: basket_slug
                   in: query
                   description: basket_slug selects which basket to compare across retailers.
                   required: false
+                  example: "example"
                   schema:
                     type: string
             responses:
@@ -209,6 +264,17 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "asOf": "1717200000000"
+                                "basketSlug": "example"
+                                "currencyCode": "example"
+                                "marketCode": "example"
+                                "retailers":
+                                    - "basketTotal": 1
+                                      "currencyCode": "example"
+                                      "deltaVsCheapest": 1.5
+                                      "deltaVsCheapestPct": 1.5
+                                      "freshnessMin": 1
                             schema:
                                 $ref: '#/components/schemas/ListRetailerPriceSpreadsResponse'
                 "400":
@@ -235,6 +301,7 @@ paths:
                   in: query
                   description: market_code is the ISO 3166-1 alpha-2 market identifier.
                   required: false
+                  example: "example"
                   schema:
                     type: string
             responses:
@@ -242,6 +309,17 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "asOf": "1717200000000"
+                                "marketCode": "example"
+                                "overallFreshnessMin": 1
+                                "retailers":
+                                    - "freshnessMin": 1
+                                      "lastRunAt": "1717200000000"
+                                      "name": "WorldMonitor Analyst"
+                                      "parseSuccessRate": 75.25
+                                      "slug": "example"
+                                "stalledCount": 1
                             schema:
                                 $ref: '#/components/schemas/GetConsumerPriceFreshnessResponse'
                 "400":

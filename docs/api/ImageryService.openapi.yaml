@@ -13,21 +13,25 @@ paths:
                 - name: bbox
                   in: query
                   required: false
+                  example: "-74.10,40.60,-73.70,40.90"
                   schema:
                     type: string
                 - name: datetime
                   in: query
                   required: false
+                  example: "2026-01-15"
                   schema:
                     type: string
                 - name: source
                   in: query
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: limit
                   in: query
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
@@ -36,6 +40,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "cacheHit": true
+                                "scenes":
+                                    - "assetUrl": "https://example.com/worldmonitor"
+                                      "datetime": "2026-01-15"
+                                      "geometryGeojson": "example"
+                                      "id": "example-id"
+                                      "mode": "example"
+                                "totalResults": 1
                             schema:
                                 $ref: '#/components/schemas/SearchImageryResponse'
                 "400":

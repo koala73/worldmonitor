@@ -13,6 +13,7 @@ paths:
                 - name: max_items
                   in: query
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
@@ -21,6 +22,24 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "clusters":
+                                    - "avgBrightness": 1.5
+                                      "baselineExpectedCount": 1
+                                      "baselineExpectedFrp": 1.5
+                                      "centroid":
+                                          "latitude": 40.7128
+                                          "longitude": -74.006
+                                      "confidence": "THERMAL_CONFIDENCE_UNSPECIFIED"
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "observationWindowHours": 1
+                                "sourceVersion": "example"
+                                "summary":
+                                    "clusterCount": 1
+                                    "conflictAdjacentCount": 1
+                                    "elevatedCount": 1
+                                    "highRelevanceCount": 1
+                                    "persistentCount": 1
                             schema:
                                 $ref: '#/components/schemas/ListThermalEscalationsResponse'
                 "400":

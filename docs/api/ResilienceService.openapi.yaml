@@ -13,6 +13,7 @@ paths:
                 - name: countryCode
                   in: query
                   required: true
+                  example: "US"
                   schema:
                     type: string
             responses:
@@ -20,6 +21,23 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "baselineScore": 42.5
+                                "change30d": 1.5
+                                "countryCode": "US"
+                                "dataVersion": "example"
+                                "domains":
+                                    - "dimensions":
+                                          - "coverage": 1.5
+                                            "freshness":
+                                                "lastObservedAtMs": "1717200000000"
+                                                "staleness": "example"
+                                            "id": "example-id"
+                                            "imputationClass": "example"
+                                            "imputedWeight": 1.5
+                                      "id": "example-id"
+                                      "score": 42.5
+                                      "weight": 1.5
                             schema:
                                 $ref: '#/components/schemas/GetResilienceScoreResponse'
                 "400":
@@ -45,6 +63,22 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "coverage": 1.5
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "greyedOut":
+                                    - "countryCode": "US"
+                                      "headlineEligible": true
+                                      "level": "example"
+                                      "lowConfidence": true
+                                      "overallCoverage": 1.5
+                                "items":
+                                    - "countryCode": "US"
+                                      "headlineEligible": true
+                                      "level": "example"
+                                      "lowConfidence": true
+                                      "overallCoverage": 1.5
+                                "partial": true
                             schema:
                                 $ref: '#/components/schemas/GetResilienceRankingResponse'
                 "400":
@@ -70,6 +104,20 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "cache":
+                                    "historyPrefix": "example"
+                                    "intervalMethodology": "example"
+                                    "intervalPrefix": "example"
+                                    "rankingKey": "example"
+                                    "scorePrefix": "example"
+                                "constructVersions":
+                                    "energy": "example"
+                                "dataVersion": "example"
+                                "deployedCommitSha": "example"
+                                "flags":
+                                    - "enabled": true
+                                      "name": "WorldMonitor Analyst"
                             schema:
                                 $ref: '#/components/schemas/GetResilienceRuntimeManifestResponse'
                 "400":

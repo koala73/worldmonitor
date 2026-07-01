@@ -18,12 +18,14 @@ paths:
                   in: query
                   description: Origin country, ISO-3166-1 alpha-2 uppercase.
                   required: false
+                  example: "CN"
                   schema:
                     type: string
                 - name: toIso2
                   in: query
                   description: Destination country, ISO-3166-1 alpha-2 uppercase.
                   required: false
+                  example: "US"
                   schema:
                     type: string
                 - name: cargoType
@@ -33,6 +35,7 @@ paths:
                      Empty string defers to the server default. Unknown values are coerced to
                      "container" to preserve legacy behavior.
                   required: false
+                  example: "container"
                   schema:
                     type: string
                 - name: hs2
@@ -41,6 +44,7 @@ paths:
                     2-digit HS commodity code (default "27" — mineral fuels). Non-digit
                      characters are stripped server-side to match legacy behavior.
                   required: false
+                  example: "27"
                   schema:
                     type: string
             responses:
@@ -48,6 +52,20 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "bypassOptions":
+                                    - "activationThreshold": "example"
+                                      "addedCostMultiplier": 75.25
+                                      "addedTransitDays": 7
+                                      "id": "example-id"
+                                      "name": "WorldMonitor Analyst"
+                                "cargoType": "container"
+                                "chokepointExposures":
+                                    - "chokepointId": "suez-canal"
+                                      "chokepointName": "WorldMonitor Analyst"
+                                      "exposurePct": 1
+                                "disruptionScore": 42
+                                "fetchedAt": "2026-01-15T12:00:00Z"
                             schema:
                                 $ref: '#/components/schemas/RouteIntelligenceResponse'
                 "400":
@@ -77,6 +95,14 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "webhooks":
+                                    - "active": true
+                                      "alertThreshold": 1
+                                      "callbackUrl": "https://example.com/worldmonitor-webhook"
+                                      "chokepointIds":
+                                          - "suez-canal"
+                                      "createdAt": "2026-01-15T12:00:00Z"
                             schema:
                                 $ref: '#/components/schemas/ListWebhooksResponse'
                 "400":
@@ -103,6 +129,11 @@ paths:
             requestBody:
                 content:
                     application/json:
+                        example:
+                            "alertThreshold": 1
+                            "callbackUrl": "https://example.com/worldmonitor-webhook"
+                            "chokepointIds":
+                                - "suez-canal"
                         schema:
                             $ref: '#/components/schemas/RegisterWebhookRequest'
                 required: true
@@ -111,6 +142,9 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "secret": "example"
+                                "subscriberId": "example-id"
                             schema:
                                 $ref: '#/components/schemas/RegisterWebhookResponse'
                 "400":

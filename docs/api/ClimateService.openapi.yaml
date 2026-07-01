@@ -15,6 +15,7 @@ paths:
                   in: query
                   description: Maximum items per page (1-100).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
@@ -22,12 +23,14 @@ paths:
                   in: query
                   description: Cursor for next page.
                   required: false
+                  example: "next-page-token"
                   schema:
                     type: string
                 - name: min_severity
                   in: query
                   description: Optional filter by anomaly severity.
                   required: false
+                  example: "watch"
                   schema:
                     type: string
             responses:
@@ -35,6 +38,20 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "anomalies":
+                                    - "location":
+                                          "latitude": 40.7128
+                                          "longitude": -74.006
+                                      "period": "daily"
+                                      "precipDelta": 1.5
+                                      "severity": "ANOMALY_SEVERITY_UNSPECIFIED"
+                                      "tempDelta": 1.5
+                                      "type": "ANOMALY_TYPE_UNSPECIFIED"
+                                      "zone": "example"
+                                "pagination":
+                                    "nextCursor": "next-page-token"
+                                    "totalCount": 1
                             schema:
                                 $ref: '#/components/schemas/ListClimateAnomaliesResponse'
                 "400":
@@ -61,6 +78,7 @@ paths:
                   in: query
                   description: Maximum items per page (1-100).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
@@ -68,6 +86,7 @@ paths:
                   in: query
                   description: Cursor for next page.
                   required: false
+                  example: "next-page-token"
                   schema:
                     type: string
             responses:
@@ -75,6 +94,16 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "disasters":
+                                    - "affectedPopulation": 1
+                                      "country": "US"
+                                      "countryCode": "US"
+                                      "id": "example-id"
+                                      "lat": 40.7128
+                                "pagination":
+                                    "nextCursor": "next-page-token"
+                                    "totalCount": 1
                             schema:
                                 $ref: '#/components/schemas/ListClimateDisastersResponse'
                 "400":
@@ -101,6 +130,13 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "monitoring":
+                                    "annualGrowthRate": 75.25
+                                    "currentPpm": 1.5
+                                    "measuredAt": "1717200000000"
+                                    "methanePpb": 1.5
+                                    "monthlyAverage": 1.5
                             schema:
                                 $ref: '#/components/schemas/GetCo2MonitoringResponse'
                 "400":
@@ -127,6 +163,16 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "data":
+                                    "arcticExtentAnomalyMkm2": 1.5
+                                    "arcticExtentMkm2": 1.5
+                                    "arcticTrend": "example"
+                                    "iceTrend12m":
+                                        - "anomalyMkm2": 1.5
+                                          "extentMkm2": 1.5
+                                          "month": "example"
+                                    "measuredAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/GetOceanIceDataResponse'
                 "400":
@@ -153,6 +199,14 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fetchedAt": 1717200000000
+                                "stations":
+                                    - "aqi": 1
+                                      "city": "example"
+                                      "countryCode": "US"
+                                      "lat": 40.7128
+                                      "lng": -74.006
                             schema:
                                 $ref: '#/components/schemas/ListAirQualityDataResponse'
                 "400":
@@ -179,6 +233,14 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fetchedAt": 1717200000000
+                                "items":
+                                    - "id": "example-id"
+                                      "publishedAt": 1717200000000
+                                      "sourceName": "WorldMonitor Analyst"
+                                      "summary": "Example WorldMonitor observation."
+                                      "title": "example"
                             schema:
                                 $ref: '#/components/schemas/ListClimateNewsResponse'
                 "400":

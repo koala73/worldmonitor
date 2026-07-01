@@ -16,6 +16,9 @@ paths:
             requestBody:
                 content:
                     application/json:
+                        example:
+                            "iso2": "US"
+                            "scenarioId": "oil-price-shock"
                         schema:
                             $ref: '#/components/schemas/RunScenarioRequest'
                 required: true
@@ -24,6 +27,10 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "jobId": "scenario:1717200000000:abcd1234"
+                                "status": "example"
+                                "statusUrl": "https://example.com/worldmonitor"
                             schema:
                                 $ref: '#/components/schemas/RunScenarioResponse'
                 "400":
@@ -55,6 +62,7 @@ paths:
                     Job id of the form `scenario:{epoch_ms}:{8-char-suffix}`. Path-traversal
                      guarded by JOB_ID_RE in the handler.
                   required: false
+                  example: "scenario:1717200000000:abcd1234"
                   schema:
                     type: string
             responses:
@@ -62,6 +70,21 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "error": "example"
+                                "result":
+                                    "affectedChokepointIds":
+                                        - "suez-canal"
+                                    "template":
+                                        "costShockMultiplier": 75.25
+                                        "disruptionPct": 1
+                                        "durationDays": 7
+                                        "name": "WorldMonitor Analyst"
+                                    "topImpactCountries":
+                                        - "impactPct": 1
+                                          "iso2": "US"
+                                          "totalImpact": 1
+                                "status": "example"
                             schema:
                                 $ref: '#/components/schemas/GetScenarioStatusResponse'
                 "400":
@@ -90,6 +113,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "templates":
+                                    - "affectedChokepointIds":
+                                          - "suez-canal"
+                                      "affectedHs2":
+                                          - "27"
+                                      "costShockMultiplier": 75.25
+                                      "disruptionPct": 1
+                                      "durationDays": 7
                             schema:
                                 $ref: '#/components/schemas/ListScenarioTemplatesResponse'
                 "400":

@@ -15,6 +15,7 @@ paths:
                   in: query
                   description: Start of time range (inclusive), Unix epoch milliseconds.
                   required: false
+                  example: "1717200000000"
                   schema:
                     type: string
                     format: int64
@@ -22,6 +23,7 @@ paths:
                   in: query
                   description: End of time range (inclusive), Unix epoch milliseconds.
                   required: false
+                  example: "1717200000000"
                   schema:
                     type: string
                     format: int64
@@ -29,6 +31,7 @@ paths:
                   in: query
                   description: Maximum items per page (1-100).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
@@ -36,12 +39,14 @@ paths:
                   in: query
                   description: Cursor for next page.
                   required: false
+                  example: "next-page-token"
                   schema:
                     type: string
                 - name: country
                   in: query
                   description: Optional country filter (ISO 3166-1 alpha-2).
                   required: false
+                  example: "US"
                   schema:
                     type: string
             responses:
@@ -49,6 +54,18 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "events":
+                                    - "actors":
+                                          - "example"
+                                      "admin1": "example"
+                                      "country": "US"
+                                      "eventType": "all"
+                                      "fatalities": 1
+                                      "id": "example-id"
+                                "pagination":
+                                    "nextCursor": "next-page-token"
+                                    "totalCount": 1
                             schema:
                                 $ref: '#/components/schemas/ListAcledEventsResponse'
                 "400":
@@ -75,6 +92,7 @@ paths:
                   in: query
                   description: Start of time range (inclusive), Unix epoch milliseconds.
                   required: false
+                  example: "1717200000000"
                   schema:
                     type: string
                     format: int64
@@ -82,6 +100,7 @@ paths:
                   in: query
                   description: End of time range (inclusive), Unix epoch milliseconds.
                   required: false
+                  example: "1717200000000"
                   schema:
                     type: string
                     format: int64
@@ -89,6 +108,7 @@ paths:
                   in: query
                   description: Maximum items per page (1-100).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
@@ -96,12 +116,14 @@ paths:
                   in: query
                   description: Cursor for next page.
                   required: false
+                  example: "next-page-token"
                   schema:
                     type: string
                 - name: country
                   in: query
                   description: Optional country filter (ISO 3166-1 alpha-2).
                   required: false
+                  example: "US"
                   schema:
                     type: string
             responses:
@@ -109,6 +131,17 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "events":
+                                    - "country": "US"
+                                      "dateEnd": 1
+                                      "dateStart": 1
+                                      "deathsBest": 1
+                                      "deathsHigh": 1
+                                      "id": "example-id"
+                                "pagination":
+                                    "nextCursor": "next-page-token"
+                                    "totalCount": 1
                             schema:
                                 $ref: '#/components/schemas/ListUcdpEventsResponse'
                 "400":
@@ -135,6 +168,7 @@ paths:
                   in: query
                   description: ISO 3166-1 alpha-2 country code (e.g., "YE", "SD", "SO").
                   required: false
+                  example: "US"
                   schema:
                     type: string
             responses:
@@ -142,6 +176,13 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "summary":
+                                    "conflictDemonstrations": 42
+                                    "conflictEventsTotal": 1
+                                    "conflictFatalities": 1
+                                    "conflictPoliticalViolenceEvents": 1
+                                    "countryCode": "US"
                             schema:
                                 $ref: '#/components/schemas/GetHumanitarianSummaryResponse'
                 "400":
@@ -168,6 +209,14 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "events":
+                                    - "category": "cs.AI"
+                                      "id": "example-id"
+                                      "latitude": 40.7128
+                                      "locationName": "WorldMonitor Analyst"
+                                      "longitude": -74.006
+                                "scrapedAt": "1717200000000"
                             schema:
                                 $ref: '#/components/schemas/ListIranEventsResponse'
                 "400":
@@ -192,6 +241,9 @@ paths:
             requestBody:
                 content:
                     application/json:
+                        example:
+                            "countryCodes":
+                                - "US"
                         schema:
                             $ref: '#/components/schemas/GetHumanitarianSummaryBatchRequest'
                 required: true
@@ -200,6 +252,16 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fetched": 1
+                                "requested": 1
+                                "results":
+                                    "exampleKey":
+                                        "conflictDemonstrations": 42
+                                        "conflictEventsTotal": 1
+                                        "conflictFatalities": 1
+                                        "conflictPoliticalViolenceEvents": 1
+                                        "countryCode": "US"
                             schema:
                                 $ref: '#/components/schemas/GetHumanitarianSummaryBatchResponse'
                 "400":
