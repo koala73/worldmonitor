@@ -43,8 +43,8 @@ vi.mock("../_shared/rate-limit", () => ({
 }));
 
 // --- Stub entitlement resolution. getEntitlements returns whatever the
-//     current test set; getRequiredTier=null keeps routes non-tier-gated so
-//     PREMIUM_RPC_PATHS membership alone drives the legacy premium path. ------
+//     current test sets. getRequiredTier defaults to null so most routes stay
+//     non-tier-gated; individual tests can opt into ENDPOINT_ENTITLEMENTS. -----
 const ACTIVE = {
   planKey: "api_starter",
   features: {
@@ -61,9 +61,11 @@ const ACTIVE = {
 };
 type Ent = { planKey: string; features: Record<string, unknown>; validUntil: number } | null;
 let entitlement: Ent = ACTIVE;
-const getEntitlements = vi.fn(async () => entitlement);
+const requiredTiers = new Map<string, number>();
+const entitlementsByUser = new Map<string, Ent>();
+const getEntitlements = vi.fn(async (userId: string) => entitlementsByUser.get(userId) ?? entitlement);
 vi.mock("../_shared/entitlement-check", () => ({
-  getRequiredTier: () => null, // not tier-gated
+  getRequiredTier: (pathname: string) => requiredTiers.get(pathname) ?? null,
   checkEntitlement: vi.fn().mockResolvedValue(null),
   checkEntitlementDetailed: vi.fn().mockResolvedValue({ response: null, entitlements: null }),
   getEntitlements: (...a: unknown[]) => getEntitlements(...a),
@@ -73,6 +75,14 @@ vi.mock("../_shared/entitlement-check", () => ({
 const validateUserApiKey = vi.fn(async () => ({ userId: "acct_lapsed", keyId: "k1", name: "t" }));
 vi.mock("../_shared/user-api-key", () => ({
   validateUserApiKey: (...a: unknown[]) => validateUserApiKey(...a),
+}));
+
+// --- Stub Clerk session resolution for mixed bearer + wm_ requests. ----------
+type MockClerkSession = { userId: string; orgId: string | null } | null;
+let clerkSession: MockClerkSession = null;
+const resolveClerkSession = vi.fn(async () => clerkSession);
+vi.mock("../_shared/auth-session", () => ({
+  resolveClerkSession: (...a: unknown[]) => resolveClerkSession(...a),
 }));
 
 import { createDomainGateway } from "../gateway";
@@ -96,11 +106,15 @@ function makeGateway() {
   ]);
 }
 
-function keyReq(path: string, method = "GET", key = "wm_lapsed_customer_key") {
-  return new Request(`https://www.worldmonitor.app${path}`, {
-    method,
-    headers: { "X-Api-Key": key },
-  });
+function keyReq(
+  path: string,
+  method = "GET",
+  key = "wm_lapsed_customer_key",
+  extraHeaders: Record<string, string> = {},
+) {
+  const headers = new Headers(extraHeaders);
+  headers.set("X-Api-Key", key);
+  return new Request(`https://www.worldmonitor.app${path}`, { method, headers });
 }
 
 const ctx = { waitUntil: () => {} };
@@ -108,12 +122,16 @@ const ORIGINAL_ENV = { ...process.env };
 
 beforeEach(() => {
   entitlement = ACTIVE;
+  requiredTiers.clear();
+  entitlementsByUser.clear();
+  clerkSession = null;
   checkBurst.mockReset().mockResolvedValue({ ok: true });
   reserveDailyMeter.mockReset().mockResolvedValue({
     count: 1, overCeiling: false, metered: true, retryAfterSec: 100, rollback: async () => {},
   });
   checkRateLimit.mockClear().mockResolvedValue(null);
   getEntitlements.mockClear();
+  resolveClerkSession.mockClear();
   validateUserApiKey.mockClear().mockResolvedValue({ userId: "acct_lapsed", keyId: "k1", name: "t" });
   delete process.env.UPSTASH_REDIS_REST_URL;
   delete process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -155,6 +173,27 @@ describe("#4611 — expired wm_ key rejected on all route classes", () => {
     entitlement = DOWNGRADED;
     const res = await makeGateway()(keyReq(PREMIUM_PATH, "POST"), ctx);
     expect(res.status).toBe(403);
+  });
+
+  test("tier-gated route: mixed bearer + downgraded wm_ key checks the wm_ owner", async () => {
+    requiredTiers.set(PREMIUM_PATH, 1);
+    clerkSession = { userId: "acct_active_session", orgId: "org_1" };
+    entitlementsByUser.set("acct_active_session", ACTIVE);
+    entitlementsByUser.set("acct_lapsed", DOWNGRADED);
+
+    const res = await makeGateway()(
+      keyReq(PREMIUM_PATH, "POST", "wm_lapsed_customer_key", {
+        Authorization: "Bearer valid-clerk-session",
+      }),
+      ctx,
+    );
+
+    expect(res.status).toBe(403);
+    expect(resolveClerkSession).toHaveBeenCalledTimes(1);
+    expect(validateUserApiKey).toHaveBeenCalledWith("wm_lapsed_customer_key");
+    expect(getEntitlements).toHaveBeenCalledWith("acct_lapsed");
+    expect(checkBurst).not.toHaveBeenCalled();
+    expect(checkRateLimit).not.toHaveBeenCalled();
   });
 
   // --- apiAccess:true but validUntil in the past (lapsed) → 403 -------------

@@ -233,6 +233,8 @@ describe("gateway entitlement check", () => {
           }),
         }),
       );
+      const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+      expect(init.signal).toBeInstanceOf(AbortSignal);
     } finally {
       if (originalSiteUrl === undefined) {
         delete process.env.CONVEX_SITE_URL;

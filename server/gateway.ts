@@ -902,16 +902,13 @@ export function createDomainGateway(
           forceKey: (isTierGated && !sessionUserId) || needsLegacyProBearerGate,
         })) as { valid: boolean; required: boolean; error?: string; kind?: 'enterprise' | 'session' | 'user' });
 
-    // Clerk session is itself proof of authentication (validated at line 410).
-    // validateApiKey is strict-no-trust-of-headers per #3541 and would 401 every
-    // Clerk-authenticated user who hasn't also minted a wms_ session token.
-    // Override: tier-gated routes with a resolved sessionUserId pass this layer.
-    if (isTierGated && sessionUserId && keyCheck.required && !keyCheck.valid) {
-      keyCheck = { valid: true, required: false };
-    }
-
     // User-owned API keys (wm_ prefix): when the static WORLDMONITOR_VALID_KEYS
     // check fails, try async Convex-backed validation for user-issued keys.
+    //
+    // Run this before the Clerk-session override below. A request can carry both
+    // a valid bearer session and an X-Api-Key wm_ header; when that happens, the
+    // wm_ key is still an explicit authenticating credential and its owner must
+    // pass the #4611 apiAccess gate.
     let isUserApiKey = false;
     const wmKey =
       request.headers.get('X-WorldMonitor-Key') ??
@@ -930,12 +927,19 @@ export function createDomainGateway(
         // userId argument directly (see checkEntitlement(sessionUserId, …))
         // so it no longer depends on this header — the header is now for
         // handler consumption + the internal-MCP `isCallerPremium` path.
-        if (!sessionUserId) {
-          sessionUserId = userKeyResult.userId;
-          usage.sessionUserId = sessionUserId;
-          request = withAuthenticatedUserId(request, sessionUserId);
-        }
+        sessionUserId = userKeyResult.userId;
+        usage.sessionUserId = sessionUserId;
+        usage.clerkOrgId = null;
+        request = withAuthenticatedUserId(request, sessionUserId);
       }
+    }
+
+    // Clerk session is itself proof of authentication (validated at line 410).
+    // validateApiKey is strict-no-trust-of-headers per #3541 and would 401 every
+    // Clerk-authenticated user who hasn't also minted a wms_ session token.
+    // Override: tier-gated routes with a resolved sessionUserId pass this layer.
+    if (isTierGated && sessionUserId && keyCheck.required && !keyCheck.valid) {
+      keyCheck = { valid: true, required: false };
     }
 
     // Enterprise API key (WORLDMONITOR_VALID_KEYS): require kind === 'enterprise'.
@@ -958,7 +962,7 @@ export function createDomainGateway(
     // resolved entitlement is reused there to avoid a second lookup.
     //
     // Scoped to isUserApiKey: the wm_ key IS the authenticating credential
-    // (isUserApiKey ⇒ sessionUserId is the resolved key owner, set at :933).
+    // (isUserApiKey ⇒ sessionUserId is the resolved key owner, set above).
     // This intentionally does NOT re-validate wm_ keys on any other route class:
     //   - Enterprise operator keys (kind 'enterprise', incl. legacy wm_-prefixed
     //     relay keys) never set isUserApiKey and carry no user entitlement row.
