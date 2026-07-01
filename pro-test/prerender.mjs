@@ -42,7 +42,8 @@ const CRITICAL_CSS = [
   'main [class*=text-wm-bg]{color:#050505}main [class*=text-wm-border]{color:#222}main [class*=text-wm-muted]{color:#9ca3af}main [class*=text-wm-text]{color:#f3f4f6}main [class*=text-wm-blue]{color:#60a5fa}main [class*=opacity-50]{opacity:.5}main [class*=opacity-60]{opacity:.6}main [class*=backdrop-blur-sm]{backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}main picture{display:block}main picture img{display:block;width:100%}',
   'main a[href*="welcome-hero"],main a[href*="moments"]{width:100%;justify-content:center;padding:.875rem 1.25rem;border-radius:.25rem;font:700 .875rem/1.25 var(--font-mono);letter-spacing:.025em;text-transform:uppercase}main a[href*="moments"]{background:transparent;color:#f3f4f6}',
   '@media (min-width:640px){nav>div{padding-inline:1.5rem}main>section:first-child{padding-top:8rem;padding-inline:1.5rem}main h1{font-size:3rem;line-height:1.05}main [class*="sm:flex-row"]{flex-direction:row}main [class*="sm:items-center"]{align-items:center}main [class*="sm:w-auto"]{width:auto}main [class*="sm:grid-cols-4"]{grid-template-columns:repeat(4,minmax(0,1fr))}main [class*="sm:max-w-3xl"]{max-width:48rem}main [class*="sm:max-w-none"]{max-width:none}main [class*="sm:px-4"]{padding-inline:1rem}main [class*="sm:px-6"]{padding-inline:1.5rem}main [class*="sm:px-8"]{padding-inline:2rem}main [class*="sm:tracking-wider"]{letter-spacing:.05em}}',
-  '@media (min-width:768px){main h1{font-size:4.5rem}main p{font-size:1.125rem;line-height:1.75rem}main [class*="md:text-lg"]{font-size:1.125rem;line-height:1.75rem}}'
+  '@media (min-width:768px){main h1{font-size:4.5rem}main p{font-size:1.125rem;line-height:1.75rem}main [class*="md:text-lg"]{font-size:1.125rem;line-height:1.75rem}}',
+  'html.js #seo-prerender{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden}'
 ].join('');
 
 const DEFERRED_STYLES_SCRIPT = "(function(){var links=document.querySelectorAll('link[data-wm-deferred-style]');for(var i=0;i<links.length;i++){links[i].addEventListener('load',function(){this.rel='stylesheet';},{once:true});}})();";
@@ -268,9 +269,7 @@ for (const { file, content, rootAttributes } of PAGES) {
 
   const htmlPath = resolve(__dirname, '../public/pro', file);
   let html = readFileSync(htmlPath, 'utf-8');
-  if (file === 'welcome.html') {
-    html = inlineCriticalCss(html, file);
-  }
+  html = inlineCriticalCss(html, file);
   if (!html.includes('<div id="root"></div>')) {
     console.error(`[prerender] ERROR: ${file} has no empty <div id="root"></div> to inject into.`);
     process.exit(1);
