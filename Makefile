@@ -116,6 +116,7 @@ generate: clean ## Generate code from proto definitions
 	@# security / 401. Inject the API-key contract into the generated specs so
 	@# the published OpenAPI matches the gateway's runtime enforcement (#4599).
 	@node scripts/openapi-inject-security.mjs
+	@node scripts/apply-openapi-filter-param-schemas.mjs
 	@echo "Code generation complete!"
 
 breaking: ## Check for breaking changes against main

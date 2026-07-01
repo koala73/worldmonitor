@@ -30,6 +30,10 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'ANOMALY_SEVERITY_NORMAL'
+                        - 'ANOMALY_SEVERITY_MODERATE'
+                        - 'ANOMALY_SEVERITY_EXTREME'
             responses:
                 "200":
                     description: Successful response

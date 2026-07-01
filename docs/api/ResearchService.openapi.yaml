@@ -130,10 +130,17 @@ paths:
                     type: string
                 - name: feed_type
                   in: query
-                  description: 'Feed type: "top", "new", "best", "ask", "show". Defaults to "top".'
+                  description: 'Feed type: "top", "new", "best", "ask", "show", "job". Defaults to "top".'
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'top'
+                        - 'new'
+                        - 'best'
+                        - 'ask'
+                        - 'show'
+                        - 'job'
             responses:
                 "200":
                     description: Successful response
@@ -163,10 +170,16 @@ paths:
             parameters:
                 - name: type
                   in: query
-                  description: 'Event type filter: "all", "conferences", "earnings", "ipo", "other". Empty = all.'
+                  description: 'Event type filter: "all", "conference", "earnings", "ipo", "other". Empty = all.'
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'all'
+                        - 'conference'
+                        - 'earnings'
+                        - 'ipo'
+                        - 'other'
                 - name: mappable
                   in: query
                   description: Only events with non-virtual coordinates.
@@ -383,7 +396,7 @@ components:
                     description: Cursor for next page.
                 feedType:
                     type: string
-                    description: 'Feed type: "top", "new", "best", "ask", "show". Defaults to "top".'
+                    description: 'Feed type: "top", "new", "best", "ask", "show", "job". Defaults to "top".'
             description: ListHackernewsItemsRequest specifies filters for retrieving Hacker News items.
         ListHackernewsItemsResponse:
             type: object
@@ -433,7 +446,7 @@ components:
             properties:
                 type:
                     type: string
-                    description: 'Event type filter: "all", "conferences", "earnings", "ipo", "other". Empty = all.'
+                    description: 'Event type filter: "all", "conference", "earnings", "ipo", "other". Empty = all.'
                 mappable:
                     type: boolean
                     description: Only events with non-virtual coordinates.

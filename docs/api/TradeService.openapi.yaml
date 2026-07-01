@@ -241,6 +241,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^\d{4,6}$'
                 - name: anomalies_only
                   in: query
                   description: If true, only return flows with a year-over-year change exceeding 30%.

@@ -49,6 +49,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^summary:v\d+:[a-z0-9:_-]{3,120}$'
             responses:
                 "200":
                     description: Successful response

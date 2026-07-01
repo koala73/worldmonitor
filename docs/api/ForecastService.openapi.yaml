@@ -15,6 +15,14 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'conflict'
+                        - 'market'
+                        - 'supply_chain'
+                        - 'political'
+                        - 'military'
+                        - 'cyber'
+                        - 'infrastructure'
                 - name: region
                   in: query
                   required: false

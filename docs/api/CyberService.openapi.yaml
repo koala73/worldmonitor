@@ -44,18 +44,34 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'CYBER_THREAT_TYPE_C2_SERVER'
+                        - 'CYBER_THREAT_TYPE_MALWARE_HOST'
+                        - 'CYBER_THREAT_TYPE_PHISHING'
+                        - 'CYBER_THREAT_TYPE_MALICIOUS_URL'
                 - name: source
                   in: query
                   description: Optional source filter.
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'CYBER_THREAT_SOURCE_FEODO'
+                        - 'CYBER_THREAT_SOURCE_URLHAUS'
+                        - 'CYBER_THREAT_SOURCE_C2INTEL'
+                        - 'CYBER_THREAT_SOURCE_OTX'
+                        - 'CYBER_THREAT_SOURCE_ABUSEIPDB'
                 - name: min_severity
                   in: query
                   description: Optional minimum criticality filter.
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'CRITICALITY_LEVEL_LOW'
+                        - 'CRITICALITY_LEVEL_MEDIUM'
+                        - 'CRITICALITY_LEVEL_HIGH'
+                        - 'CRITICALITY_LEVEL_CRITICAL'
             responses:
                 "200":
                     description: Successful response

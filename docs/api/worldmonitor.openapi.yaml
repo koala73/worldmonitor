@@ -39,12 +39,25 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'AIRPORT_REGION_AMERICAS'
+                        - 'AIRPORT_REGION_EUROPE'
+                        - 'AIRPORT_REGION_APAC'
+                        - 'AIRPORT_REGION_MENA'
+                        - 'AIRPORT_REGION_AFRICA'
                 - name: min_severity
                   in: query
                   description: Optional minimum severity filter.
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'FLIGHT_DELAY_SEVERITY_NORMAL'
+                        - 'FLIGHT_DELAY_SEVERITY_MINOR'
+                        - 'FLIGHT_DELAY_SEVERITY_MODERATE'
+                        - 'FLIGHT_DELAY_SEVERITY_MAJOR'
+                        - 'FLIGHT_DELAY_SEVERITY_SEVERE'
+                        - 'FLIGHT_DELAY_SEVERITY_UNKNOWN'
             responses:
                 "200":
                     description: Successful response
@@ -121,6 +134,10 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'FLIGHT_DIRECTION_DEPARTURE'
+                        - 'FLIGHT_DIRECTION_ARRIVAL'
+                        - 'FLIGHT_DIRECTION_BOTH'
                 - name: limit
                   in: query
                   description: Maximum number of flights to return (1-100).
@@ -387,6 +404,11 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'CABIN_CLASS_ECONOMY'
+                        - 'CABIN_CLASS_PREMIUM_ECONOMY'
+                        - 'CABIN_CLASS_BUSINESS'
+                        - 'CABIN_CLASS_FIRST'
                 - name: nonstop_only
                   in: query
                   description: Whether to restrict to nonstop flights only.
@@ -706,6 +728,10 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'ANOMALY_SEVERITY_NORMAL'
+                        - 'ANOMALY_SEVERITY_MODERATE'
+                        - 'ANOMALY_SEVERITY_EXTREME'
             responses:
                 "200":
                     description: Successful response
@@ -1003,6 +1029,246 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'AD'
+                        - 'AE'
+                        - 'AF'
+                        - 'AG'
+                        - 'AI'
+                        - 'AL'
+                        - 'AM'
+                        - 'AO'
+                        - 'AQ'
+                        - 'AR'
+                        - 'AS'
+                        - 'AT'
+                        - 'AU'
+                        - 'AW'
+                        - 'AX'
+                        - 'AZ'
+                        - 'BA'
+                        - 'BB'
+                        - 'BD'
+                        - 'BE'
+                        - 'BF'
+                        - 'BG'
+                        - 'BH'
+                        - 'BI'
+                        - 'BJ'
+                        - 'BL'
+                        - 'BM'
+                        - 'BN'
+                        - 'BO'
+                        - 'BR'
+                        - 'BS'
+                        - 'BT'
+                        - 'BW'
+                        - 'BY'
+                        - 'BZ'
+                        - 'CA'
+                        - 'CD'
+                        - 'CF'
+                        - 'CG'
+                        - 'CH'
+                        - 'CI'
+                        - 'CK'
+                        - 'CL'
+                        - 'CM'
+                        - 'CN'
+                        - 'CO'
+                        - 'CR'
+                        - 'CU'
+                        - 'CV'
+                        - 'CW'
+                        - 'CY'
+                        - 'CZ'
+                        - 'DE'
+                        - 'DJ'
+                        - 'DK'
+                        - 'DM'
+                        - 'DO'
+                        - 'DZ'
+                        - 'EC'
+                        - 'EE'
+                        - 'EG'
+                        - 'EH'
+                        - 'ER'
+                        - 'ES'
+                        - 'ET'
+                        - 'FI'
+                        - 'FJ'
+                        - 'FK'
+                        - 'FM'
+                        - 'FO'
+                        - 'FR'
+                        - 'GA'
+                        - 'GB'
+                        - 'GD'
+                        - 'GE'
+                        - 'GG'
+                        - 'GH'
+                        - 'GI'
+                        - 'GL'
+                        - 'GM'
+                        - 'GN'
+                        - 'GQ'
+                        - 'GR'
+                        - 'GS'
+                        - 'GT'
+                        - 'GU'
+                        - 'GW'
+                        - 'GY'
+                        - 'HK'
+                        - 'HM'
+                        - 'HN'
+                        - 'HR'
+                        - 'HT'
+                        - 'HU'
+                        - 'ID'
+                        - 'IE'
+                        - 'IL'
+                        - 'IM'
+                        - 'IN'
+                        - 'IO'
+                        - 'IQ'
+                        - 'IR'
+                        - 'IS'
+                        - 'IT'
+                        - 'JE'
+                        - 'JM'
+                        - 'JO'
+                        - 'JP'
+                        - 'KE'
+                        - 'KG'
+                        - 'KH'
+                        - 'KI'
+                        - 'KM'
+                        - 'KN'
+                        - 'KP'
+                        - 'KR'
+                        - 'KW'
+                        - 'KY'
+                        - 'KZ'
+                        - 'LA'
+                        - 'LB'
+                        - 'LC'
+                        - 'LI'
+                        - 'LK'
+                        - 'LR'
+                        - 'LS'
+                        - 'LT'
+                        - 'LU'
+                        - 'LV'
+                        - 'LY'
+                        - 'MA'
+                        - 'MC'
+                        - 'MD'
+                        - 'ME'
+                        - 'MF'
+                        - 'MG'
+                        - 'MH'
+                        - 'MK'
+                        - 'ML'
+                        - 'MM'
+                        - 'MN'
+                        - 'MO'
+                        - 'MP'
+                        - 'MR'
+                        - 'MS'
+                        - 'MT'
+                        - 'MU'
+                        - 'MV'
+                        - 'MW'
+                        - 'MX'
+                        - 'MY'
+                        - 'MZ'
+                        - 'NA'
+                        - 'NC'
+                        - 'NE'
+                        - 'NF'
+                        - 'NG'
+                        - 'NI'
+                        - 'NL'
+                        - 'NO'
+                        - 'NP'
+                        - 'NR'
+                        - 'NU'
+                        - 'NZ'
+                        - 'OM'
+                        - 'PA'
+                        - 'PE'
+                        - 'PF'
+                        - 'PG'
+                        - 'PH'
+                        - 'PK'
+                        - 'PL'
+                        - 'PM'
+                        - 'PN'
+                        - 'PR'
+                        - 'PS'
+                        - 'PT'
+                        - 'PW'
+                        - 'PY'
+                        - 'QA'
+                        - 'RO'
+                        - 'RS'
+                        - 'RU'
+                        - 'RW'
+                        - 'SA'
+                        - 'SB'
+                        - 'SC'
+                        - 'SD'
+                        - 'SE'
+                        - 'SG'
+                        - 'SH'
+                        - 'SI'
+                        - 'SK'
+                        - 'SL'
+                        - 'SM'
+                        - 'SN'
+                        - 'SO'
+                        - 'SR'
+                        - 'SS'
+                        - 'ST'
+                        - 'SV'
+                        - 'SX'
+                        - 'SY'
+                        - 'SZ'
+                        - 'TC'
+                        - 'TD'
+                        - 'TF'
+                        - 'TG'
+                        - 'TH'
+                        - 'TJ'
+                        - 'TL'
+                        - 'TM'
+                        - 'TN'
+                        - 'TO'
+                        - 'TR'
+                        - 'TT'
+                        - 'TV'
+                        - 'TW'
+                        - 'TZ'
+                        - 'UA'
+                        - 'UG'
+                        - 'UM'
+                        - 'US'
+                        - 'UY'
+                        - 'UZ'
+                        - 'VA'
+                        - 'VC'
+                        - 'VE'
+                        - 'VG'
+                        - 'VI'
+                        - 'VN'
+                        - 'VU'
+                        - 'WF'
+                        - 'WS'
+                        - 'XK'
+                        - 'YE'
+                        - 'ZA'
+                        - 'ZM'
+                        - 'ZW'
             responses:
                 "200":
                     description: Successful response
@@ -1374,18 +1640,34 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'CYBER_THREAT_TYPE_C2_SERVER'
+                        - 'CYBER_THREAT_TYPE_MALWARE_HOST'
+                        - 'CYBER_THREAT_TYPE_PHISHING'
+                        - 'CYBER_THREAT_TYPE_MALICIOUS_URL'
                 - name: source
                   in: query
                   description: Optional source filter.
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'CYBER_THREAT_SOURCE_FEODO'
+                        - 'CYBER_THREAT_SOURCE_URLHAUS'
+                        - 'CYBER_THREAT_SOURCE_C2INTEL'
+                        - 'CYBER_THREAT_SOURCE_OTX'
+                        - 'CYBER_THREAT_SOURCE_ABUSEIPDB'
                 - name: min_severity
                   in: query
                   description: Optional minimum criticality filter.
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'CRITICALITY_LEVEL_LOW'
+                        - 'CRITICALITY_LEVEL_MEDIUM'
+                        - 'CRITICALITY_LEVEL_HIGH'
+                        - 'CRITICALITY_LEVEL_CRITICAL'
             responses:
                 "200":
                     description: Successful response
@@ -1939,10 +2221,13 @@ paths:
             parameters:
                 - name: series_id
                   in: query
-                  description: BLS series ID (e.g. "CES0500000001", "CIU1010000000000A").
+                  description: 'BLS/FRED-backed series ID. Supported values: "USPRIV", "ECIALLCIV".'
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'USPRIV'
+                        - 'ECIALLCIV'
                 - name: limit
                   in: query
                   description: Maximum number of observations to return. Defaults to 60.
@@ -2342,6 +2627,14 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'conflict'
+                        - 'market'
+                        - 'supply_chain'
+                        - 'political'
+                        - 'military'
+                        - 'cyber'
+                        - 'infrastructure'
                 - name: region
                   in: query
                   required: false
@@ -2691,6 +2984,12 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'SERVICE_OPERATIONAL_STATUS_OPERATIONAL'
+                        - 'SERVICE_OPERATIONAL_STATUS_DEGRADED'
+                        - 'SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE'
+                        - 'SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE'
+                        - 'SERVICE_OPERATIONAL_STATUS_MAINTENANCE'
             responses:
                 "200":
                     description: Successful response
@@ -2724,6 +3023,13 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'military_flights'
+                        - 'vessels'
+                        - 'protests'
+                        - 'news'
+                        - 'ais_gaps'
+                        - 'satellite_fires'
                 - name: region
                   in: query
                   description: Geographic region key, defaults to "global".
@@ -3137,6 +3443,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
             responses:
                 "200":
                     description: Successful response
@@ -3170,6 +3477,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: framework
                   in: query
                   description: Optional analytical framework instructions to append to system prompt. Max 2000 chars enforced at handler level.
@@ -3367,6 +3675,8 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'MODE_HISTORY'
             responses:
                 "200":
                     description: Successful response
@@ -3519,6 +3829,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
             responses:
                 "200":
                     description: Successful response
@@ -3731,6 +4042,11 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'hormuz_strait'
+                        - 'malacca_strait'
+                        - 'suez'
+                        - 'bab_el_mandeb'
                 - name: disruption_pct
                   in: query
                   required: false
@@ -3742,6 +4058,10 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'oil'
+                        - 'gas'
+                        - 'both'
             responses:
                 "200":
                     description: Successful response
@@ -3813,6 +4133,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
             responses:
                 "200":
                     description: Successful response
@@ -3852,6 +4173,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
                 - name: limit
                   in: query
                   description: |-
@@ -3896,6 +4218,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
             responses:
                 "200":
                     description: Successful response
@@ -4321,6 +4644,52 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'US'
+                        - 'GB'
+                        - 'DE'
+                        - 'FR'
+                        - 'JP'
+                        - 'CN'
+                        - 'HK'
+                        - 'IN'
+                        - 'KR'
+                        - 'TW'
+                        - 'AU'
+                        - 'BR'
+                        - 'CA'
+                        - 'MX'
+                        - 'AR'
+                        - 'RU'
+                        - 'ZA'
+                        - 'SA'
+                        - 'AE'
+                        - 'IL'
+                        - 'TR'
+                        - 'PL'
+                        - 'NL'
+                        - 'CH'
+                        - 'ES'
+                        - 'IT'
+                        - 'SE'
+                        - 'NO'
+                        - 'SG'
+                        - 'TH'
+                        - 'MY'
+                        - 'ID'
+                        - 'PH'
+                        - 'NZ'
+                        - 'EG'
+                        - 'CL'
+                        - 'PE'
+                        - 'AT'
+                        - 'BE'
+                        - 'FI'
+                        - 'DK'
+                        - 'IE'
+                        - 'PT'
+                        - 'CZ'
+                        - 'HU'
             responses:
                 "200":
                     description: Successful response
@@ -4898,12 +5267,40 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'MILITARY_OPERATOR_USAF'
+                        - 'MILITARY_OPERATOR_USN'
+                        - 'MILITARY_OPERATOR_USMC'
+                        - 'MILITARY_OPERATOR_USA'
+                        - 'MILITARY_OPERATOR_RAF'
+                        - 'MILITARY_OPERATOR_RN'
+                        - 'MILITARY_OPERATOR_FAF'
+                        - 'MILITARY_OPERATOR_GAF'
+                        - 'MILITARY_OPERATOR_PLAAF'
+                        - 'MILITARY_OPERATOR_PLAN'
+                        - 'MILITARY_OPERATOR_VKS'
+                        - 'MILITARY_OPERATOR_IAF'
+                        - 'MILITARY_OPERATOR_NATO'
+                        - 'MILITARY_OPERATOR_OTHER'
                 - name: aircraft_type
                   in: query
                   description: Optional aircraft type filter.
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'MILITARY_AIRCRAFT_TYPE_FIGHTER'
+                        - 'MILITARY_AIRCRAFT_TYPE_BOMBER'
+                        - 'MILITARY_AIRCRAFT_TYPE_TRANSPORT'
+                        - 'MILITARY_AIRCRAFT_TYPE_TANKER'
+                        - 'MILITARY_AIRCRAFT_TYPE_AWACS'
+                        - 'MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE'
+                        - 'MILITARY_AIRCRAFT_TYPE_HELICOPTER'
+                        - 'MILITARY_AIRCRAFT_TYPE_DRONE'
+                        - 'MILITARY_AIRCRAFT_TYPE_PATROL'
+                        - 'MILITARY_AIRCRAFT_TYPE_SPECIAL_OPS'
+                        - 'MILITARY_AIRCRAFT_TYPE_VIP'
+                        - 'MILITARY_AIRCRAFT_TYPE_UNKNOWN'
             responses:
                 "200":
                     description: Successful response
@@ -5123,11 +5520,39 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'us-nato'
+                        - 'china'
+                        - 'russia'
+                        - 'uk'
+                        - 'france'
+                        - 'india'
+                        - 'italy'
+                        - 'uae'
+                        - 'turkey'
+                        - 'japan'
+                        - 'other'
                 - name: kind
                   in: query
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'base'
+                        - 'airfield'
+                        - 'naval_base'
+                        - 'military'
+                        - 'barracks'
+                        - 'bunker'
+                        - 'trench'
+                        - 'training_area'
+                        - 'checkpoint'
+                        - 'shelter'
+                        - 'ammunition'
+                        - 'office'
+                        - 'obstacle_course'
+                        - 'nuclear_explosion_site'
+                        - 'range'
                 - name: country
                   in: query
                   required: false
@@ -5309,6 +5734,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^summary:v\d+:[a-z0-9:_-]{3,120}$'
             responses:
                 "200":
                     description: Successful response
@@ -5420,6 +5846,19 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'ai'
+                        - 'tech'
+                        - 'crypto'
+                        - 'science'
+                        - 'economy'
+                        - 'fed'
+                        - 'inflation'
+                        - 'interest-rates'
+                        - 'recession'
+                        - 'trade'
+                        - 'tariffs'
+                        - 'debt-ceiling'
                 - name: query
                   in: query
                   description: Optional search query for market titles.
@@ -5606,10 +6045,17 @@ paths:
                     type: string
                 - name: feed_type
                   in: query
-                  description: 'Feed type: "top", "new", "best", "ask", "show". Defaults to "top".'
+                  description: 'Feed type: "top", "new", "best", "ask", "show", "job". Defaults to "top".'
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'top'
+                        - 'new'
+                        - 'best'
+                        - 'ask'
+                        - 'show'
+                        - 'job'
             responses:
                 "200":
                     description: Successful response
@@ -5639,10 +6085,16 @@ paths:
             parameters:
                 - name: type
                   in: query
-                  description: 'Event type filter: "all", "conferences", "earnings", "ipo", "other". Empty = all.'
+                  description: 'Event type filter: "all", "conference", "earnings", "ipo", "other". Empty = all.'
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'all'
+                        - 'conference'
+                        - 'earnings'
+                        - 'ipo'
+                        - 'other'
                 - name: mappable
                   in: query
                   description: Only events with non-virtual coordinates.
@@ -5888,6 +6340,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^scenario:[0-9]{13}:[a-z0-9]{8}$'
             responses:
                 "200":
                     description: Successful response
@@ -6013,12 +6466,14 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: toIso2
                   in: query
                   description: Destination country, ISO-3166-1 alpha-2 uppercase.
                   required: false
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: cargoType
                   in: query
                   description: |-
@@ -6268,6 +6723,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter (2-digit string). Defaults to "27" (energy/mineral fuels) when absent.
@@ -6351,6 +6807,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: chokepointId
                   in: query
                   required: false
@@ -6394,6 +6851,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
             responses:
                 "200":
                     description: Successful response
@@ -6428,6 +6886,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: chokepointId
                   in: query
                   required: false
@@ -6472,6 +6931,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter code, e.g. "27" (mineral fuels), "85" (electronics)
@@ -6515,11 +6975,13 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: toIso2
                   in: query
                   required: false
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter code, e.g. "27", "85"
@@ -6563,11 +7025,13 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: toIso2
                   in: query
                   required: false
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   required: false
@@ -7143,6 +7607,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^\d{4,6}$'
                 - name: anomalies_only
                   in: query
                   description: If true, only return flows with a year-over-year change exceeding 30%.
@@ -7215,6 +7680,10 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'SEVERITY_LEVEL_LOW'
+                        - 'SEVERITY_LEVEL_MEDIUM'
+                        - 'SEVERITY_LEVEL_HIGH'
                 - name: ne_lat
                   in: query
                   description: North-east corner latitude of bounding box.
@@ -10631,7 +11100,7 @@ components:
             properties:
                 seriesId:
                     type: string
-                    description: BLS series ID (e.g. "CES0500000001", "CIU1010000000000A").
+                    description: 'BLS/FRED-backed series ID. Supported values: "USPRIV", "ECIALLCIV".'
                 limit:
                     type: integer
                     format: int32
@@ -18400,7 +18869,7 @@ components:
                     description: Cursor for next page.
                 feedType:
                     type: string
-                    description: 'Feed type: "top", "new", "best", "ask", "show". Defaults to "top".'
+                    description: 'Feed type: "top", "new", "best", "ask", "show", "job". Defaults to "top".'
             description: ListHackernewsItemsRequest specifies filters for retrieving Hacker News items.
         worldmonitor_research_v1_ListHackernewsItemsResponse:
             type: object
@@ -18450,7 +18919,7 @@ components:
             properties:
                 type:
                     type: string
-                    description: 'Event type filter: "all", "conferences", "earnings", "ipo", "other". Empty = all.'
+                    description: 'Event type filter: "all", "conference", "earnings", "ipo", "other". Empty = all.'
                 mappable:
                     type: boolean
                     description: Only events with non-virtual coordinates.

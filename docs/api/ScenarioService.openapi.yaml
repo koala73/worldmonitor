@@ -57,6 +57,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^scenario:[0-9]{13}:[a-z0-9]{8}$'
             responses:
                 "200":
                     description: Successful response

@@ -50,6 +50,10 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'SEVERITY_LEVEL_LOW'
+                        - 'SEVERITY_LEVEL_MEDIUM'
+                        - 'SEVERITY_LEVEL_HIGH'
                 - name: ne_lat
                   in: query
                   description: North-east corner latitude of bounding box.

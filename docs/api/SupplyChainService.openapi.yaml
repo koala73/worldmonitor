@@ -153,6 +153,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter (2-digit string). Defaults to "27" (energy/mineral fuels) when absent.
@@ -236,6 +237,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: chokepointId
                   in: query
                   required: false
@@ -279,6 +281,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
             responses:
                 "200":
                     description: Successful response
@@ -313,6 +316,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: chokepointId
                   in: query
                   required: false
@@ -357,6 +361,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter code, e.g. "27" (mineral fuels), "85" (electronics)
@@ -400,11 +405,13 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: toIso2
                   in: query
                   required: false
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter code, e.g. "27", "85"
@@ -448,11 +455,13 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: toIso2
                   in: query
                   required: false
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   required: false
