@@ -27,6 +27,14 @@ const DASHBOARD_SCREENSHOT_ASSETS = [
   { filenamePrefix: DASHBOARD_SCREENSHOT_BASENAME + '-1280', extension: '.webp' },
 ];
 
+// This inline critical CSS is UNLAYERED, so it wins the cascade over the
+// full Tailwind stylesheet (which lives in @layer utilities) regardless of
+// specificity/media -- even after the deferred sheet loads. That means any
+// `hidden <bp>:<display>` reveal (e.g. `hidden md:flex` nav rows, `hidden
+// sm:block`) must ALSO be re-shown here in the matching @media block, or the
+// unlayered `nav .hidden`/`main .hidden` rules keep those elements hidden at
+// ALL widths (regressed the pro/welcome desktop nav in #4603; see the
+// `nav [class*="md:flex"]`/`main [class*="sm:block"]` reveals below).
 const CRITICAL_CSS = [
   ':root{--font-sans:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;--font-mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;--font-display:system-ui,sans-serif;--color-wm-bg:#050505;--color-wm-card:#111;--color-wm-border:#222;--color-wm-green:#4ade80;--color-wm-blue:#60a5fa;--color-wm-text:#f3f4f6;--color-wm-muted:#9ca3af}',
   '*,::before,::after{box-sizing:border-box;border:0 solid #222}html{background:#050505;color:#f3f4f6;-webkit-text-size-adjust:100%;tab-size:4}body{margin:0;background:#050505;color:#f3f4f6;font-family:var(--font-sans);line-height:1.5;-webkit-font-smoothing:antialiased}a{color:inherit;text-decoration:none}img,svg{display:block;vertical-align:middle}img{max-width:100%;height:auto}h1,h2,h3,p{margin:0}',
@@ -41,8 +49,8 @@ const CRITICAL_CSS = [
   'main [class*=text-2xl]{font-size:1.5rem;line-height:1.33}main [class*=text-4xl]{font-size:2.25rem;line-height:1.11}main [class*=text-base]{font-size:1rem;line-height:1.5}main [class*=text-sm]{font-size:.875rem;line-height:1.25rem}main [class*=text-xs]{font-size:.75rem;line-height:1rem}main [class*="text-[9px]"]{font-size:9px}main [class*="text-[10px]"]{font-size:10px}main [class*="text-[11px]"]{font-size:11px}main [class*=leading-none]{line-height:1}main [class*=leading-relaxed]{line-height:1.625}main [class*=tracking-tight]{letter-spacing:-.025em}main [class*=tracking-wide]{letter-spacing:.025em}main [class*=tracking-wider]{letter-spacing:.05em}main [class*=tracking-widest]{letter-spacing:.1em}main [class*="tracking-[1px]"]{letter-spacing:1px}main [class*="tracking-[4px]"]{letter-spacing:4px}main [class*=break-words]{overflow-wrap:break-word}',
   'main [class*=text-wm-bg]{color:#050505}main [class*=text-wm-border]{color:#222}main [class*=text-wm-muted]{color:#9ca3af}main [class*=text-wm-text]{color:#f3f4f6}main [class*=text-wm-blue]{color:#60a5fa}main [class*=opacity-50]{opacity:.5}main [class*=opacity-60]{opacity:.6}main [class*=backdrop-blur-sm]{backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}main picture{display:block}main picture img{display:block;width:100%}',
   'main a[href*="welcome-hero"],main a[href*="moments"]{width:100%;justify-content:center;padding:.875rem 1.25rem;border-radius:.25rem;font:700 .875rem/1.25 var(--font-mono);letter-spacing:.025em;text-transform:uppercase}main a[href*="moments"]{background:transparent;color:#f3f4f6}',
-  '@media (min-width:640px){nav>div{padding-inline:1.5rem}main>section:first-child{padding-top:8rem;padding-inline:1.5rem}main h1{font-size:3rem;line-height:1.05}main [class*="sm:flex-row"]{flex-direction:row}main [class*="sm:items-center"]{align-items:center}main [class*="sm:w-auto"]{width:auto}main [class*="sm:grid-cols-4"]{grid-template-columns:repeat(4,minmax(0,1fr))}main [class*="sm:max-w-3xl"]{max-width:48rem}main [class*="sm:max-w-none"]{max-width:none}main [class*="sm:px-4"]{padding-inline:1rem}main [class*="sm:px-6"]{padding-inline:1.5rem}main [class*="sm:px-8"]{padding-inline:2rem}main [class*="sm:tracking-wider"]{letter-spacing:.05em}}',
-  '@media (min-width:768px){main h1{font-size:4.5rem}main p{font-size:1.125rem;line-height:1.75rem}main [class*="md:text-lg"]{font-size:1.125rem;line-height:1.75rem}}',
+  '@media (min-width:640px){nav>div{padding-inline:1.5rem}main>section:first-child{padding-top:8rem;padding-inline:1.5rem}main h1{font-size:3rem;line-height:1.05}main [class*="sm:flex-row"]{flex-direction:row}main [class*="sm:items-center"]{align-items:center}main [class*="sm:w-auto"]{width:auto}main [class*="sm:grid-cols-4"]{grid-template-columns:repeat(4,minmax(0,1fr))}main [class*="sm:max-w-3xl"]{max-width:48rem}main [class*="sm:max-w-none"]{max-width:none}main [class*="sm:px-4"]{padding-inline:1rem}main [class*="sm:px-6"]{padding-inline:1.5rem}main [class*="sm:px-8"]{padding-inline:2rem}main [class*="sm:tracking-wider"]{letter-spacing:.05em}main [class*="sm:block"]{display:block}}',
+  '@media (min-width:768px){main h1{font-size:4.5rem}main p{font-size:1.125rem;line-height:1.75rem}main [class*="md:text-lg"]{font-size:1.125rem;line-height:1.75rem}nav [class*="md:flex"]{display:flex}}',
   'html.js #seo-prerender{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden}'
 ].join('');
 
