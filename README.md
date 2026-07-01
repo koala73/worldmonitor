@@ -89,6 +89,21 @@ npm run dev:energy     # energy.worldmonitor.app
 
 See the **[self-hosting guide](https://www.worldmonitor.app/docs/getting-started)** for deployment options (Vercel, Docker, static).
 
+### Render
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/render-examples/worldmonitor)
+
+Blueprint [`render.yaml`](./render.yaml) provisions:
+
+| Resource | Role |
+|----------|------|
+| `worldmonitor` | Public web service (Docker: nginx + Node API) |
+| `worldmonitor-redis` | Render Key Value (cache + seeded data) |
+| `redis-rest` | Private Upstash-compatible REST proxy |
+| `ais-relay` | Private AIS / OSINT relay |
+
+`REDIS_TOKEN` and `RELAY_SHARED_SECRET` are generated on Apply. Add LLM and data-source keys in the Dashboard after deploy (see [`.env.example`](./.env.example)). Seed Redis with [`./scripts/run-seeders.sh`](./scripts/run-seeders.sh) once the stack is live.
+
 ---
 
 ## Tech Stack

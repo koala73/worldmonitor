@@ -20,7 +20,7 @@ import crypto from 'node:crypto';
 import { createClient } from 'redis';
 
 const REDIS_URL = process.env.SRH_CONNECTION_STRING || process.env.REDIS_URL || 'redis://redis:6379';
-const TOKEN = process.env.SRH_TOKEN || '';
+const TOKEN = process.env.SRH_TOKEN || process.env.REDIS_TOKEN || '';
 const PORT = parseInt(process.env.PORT || '80', 10);
 
 const client = createClient({ url: REDIS_URL });

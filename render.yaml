@@ -1,0 +1,108 @@
+# yaml-language-server: $schema=https://render.com/schema/render.yaml.json
+#
+# World Monitor on Render
+# Upstream: https://github.com/koala73/worldmonitor
+#
+# Deploy: https://render.com/deploy?repo=https://github.com/render-examples/worldmonitor
+#
+# Pattern: docker-fork — multi-stage Dockerfile (nginx + Node API sidecar).
+# Mirrors the self-hosted Docker stack with Render-managed Key Value instead of
+# a local Redis container, plus private redis-rest and ais-relay services.
+#
+# After first deploy:
+#   1. Open the worldmonitor service URL and confirm /api/health is OK.
+#   2. Add optional API keys in the Dashboard (GROQ_API_KEY, FRED_API_KEY, etc.).
+#   3. Seed Redis from your machine — see SELF_HOSTING.md (run-seeders.sh) using
+#      the redis-rest internal URL or run seeders via Render Shell once wired.
+#
+# PORT=8080 matches nginx in docker/nginx.conf (not Render's default 10000).
+
+previews:
+  generation: off
+
+envVarGroups:
+  - name: worldmonitor-stack
+    envVars:
+      - key: LOCAL_API_MODE
+        value: docker
+      - key: LOCAL_API_CLOUD_FALLBACK
+        value: "false"
+      - key: REDIS_TOKEN
+        generateValue: true
+      - key: RELAY_SHARED_SECRET
+        generateValue: true
+
+projects:
+  - name: worldmonitor
+    environments:
+      - name: production
+        services:
+          - type: web
+            name: worldmonitor
+            runtime: docker
+            plan: standard
+            region: oregon
+            dockerfilePath: ./Dockerfile
+            dockerContext: .
+            healthCheckPath: /api/health
+            maxShutdownDelaySeconds: 120
+            envVars:
+              - fromGroup: worldmonitor-stack
+              - key: PORT
+                value: "8080"
+              - key: REDIS_REST_HOSTPORT
+                fromService:
+                  type: pserv
+                  name: redis-rest
+                  property: hostport
+              - key: AIS_RELAY_HOSTPORT
+                fromService:
+                  type: pserv
+                  name: ais-relay
+                  property: hostport
+              - key: GROQ_API_KEY
+                sync: false
+              - key: OPENROUTER_API_KEY
+                sync: false
+              - key: FINNHUB_API_KEY
+                sync: false
+              - key: FRED_API_KEY
+                sync: false
+              - key: EIA_API_KEY
+                sync: false
+              - key: AISSTREAM_API_KEY
+                sync: false
+
+          - type: pserv
+            name: redis-rest
+            runtime: docker
+            plan: starter
+            region: oregon
+            dockerfilePath: ./Dockerfile.redis-rest
+            dockerContext: ./docker
+            envVars:
+              - fromGroup: worldmonitor-stack
+              - key: SRH_CONNECTION_STRING
+                fromService:
+                  type: keyvalue
+                  name: worldmonitor-redis
+                  property: connectionString
+
+          - type: pserv
+            name: ais-relay
+            runtime: docker
+            plan: starter
+            region: oregon
+            dockerfilePath: ./Dockerfile.relay
+            dockerContext: .
+            envVars:
+              - fromGroup: worldmonitor-stack
+              - key: AISSTREAM_API_KEY
+                sync: false
+
+          - type: keyvalue
+            name: worldmonitor-redis
+            plan: starter
+            region: oregon
+            maxmemoryPolicy: allkeys-lru
+            ipAllowList: []

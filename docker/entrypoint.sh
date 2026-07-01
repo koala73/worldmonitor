@@ -19,5 +19,14 @@ if [ -z "${LOCAL_API_TOKEN:-}" ]; then
   export LOCAL_API_TOKEN
 fi
 
+# Render Blueprint: map private-network hostports to URLs the app expects.
+export UPSTASH_REDIS_REST_TOKEN="${UPSTASH_REDIS_REST_TOKEN:-${REDIS_TOKEN:-}}"
+if [ -n "${REDIS_REST_HOSTPORT:-}" ] && [ -z "${UPSTASH_REDIS_REST_URL:-}" ]; then
+  export UPSTASH_REDIS_REST_URL="http://${REDIS_REST_HOSTPORT}"
+fi
+if [ -n "${AIS_RELAY_HOSTPORT:-}" ] && [ -z "${WS_RELAY_URL:-}" ]; then
+  export WS_RELAY_URL="http://${AIS_RELAY_HOSTPORT}"
+fi
+
 envsubst '$LOCAL_API_PORT $LOCAL_API_TOKEN' < /etc/nginx/nginx.conf.template > /tmp/nginx.conf
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/worldmonitor.conf
