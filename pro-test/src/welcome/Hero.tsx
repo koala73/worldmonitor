@@ -4,6 +4,16 @@ import { WiredBadge } from '../components/WiredBadge';
 import { t } from '../i18n';
 import { DASHBOARD_PATH } from '../routes';
 import dashboardScreenshot from '../assets/worldmonitor-7-mar-2026.jpg';
+import dashboardScreenshotAvif640 from '../assets/worldmonitor-7-mar-2026-640.avif';
+import dashboardScreenshotAvif960 from '../assets/worldmonitor-7-mar-2026-960.avif';
+import dashboardScreenshotAvif1280 from '../assets/worldmonitor-7-mar-2026-1280.avif';
+import dashboardScreenshotWebp640 from '../assets/worldmonitor-7-mar-2026-640.webp';
+import dashboardScreenshotWebp960 from '../assets/worldmonitor-7-mar-2026-960.webp';
+import dashboardScreenshotWebp1280 from '../assets/worldmonitor-7-mar-2026-1280.webp';
+
+const HERO_IMAGE_SIZES = '(min-width: 1072px) 1024px, (min-width: 640px) calc(100vw - 3rem), calc(100vw - 2rem)';
+const HERO_IMAGE_AVIF_SRCSET = dashboardScreenshotAvif640 + ' 640w, ' + dashboardScreenshotAvif960 + ' 960w, ' + dashboardScreenshotAvif1280 + ' 1280w';
+const HERO_IMAGE_WEBP_SRCSET = dashboardScreenshotWebp640 + ' 640w, ' + dashboardScreenshotWebp960 + ' 960w, ' + dashboardScreenshotWebp1280 + ' 1280w';
 
 const HERO_PROOF_STATS = [
   { valueKey: 'welcome.depth.s1v', labelKey: 'welcome.depth.s1l' },
@@ -58,14 +68,19 @@ const ConsoleFrame = () => (
           <span>{t('welcome.hero.plateNote')}</span>
         </span>
       </div>
-      <img
-        src={dashboardScreenshot}
-        alt={t('welcome.hero.screenshotAlt')}
-        className="w-full block"
-        width="2752"
-        height="1538"
-        fetchPriority="high"
-      />
+      <picture>
+        <source type="image/avif" srcSet={HERO_IMAGE_AVIF_SRCSET} sizes={HERO_IMAGE_SIZES} />
+        <source type="image/webp" srcSet={HERO_IMAGE_WEBP_SRCSET} sizes={HERO_IMAGE_SIZES} />
+        <img
+          src={dashboardScreenshot}
+          alt={t('welcome.hero.screenshotAlt')}
+          className="w-full block"
+          width="2940"
+          height="1912"
+          fetchPriority="high"
+          decoding="async"
+        />
+      </picture>
     </a>
   </motion.div>
 );

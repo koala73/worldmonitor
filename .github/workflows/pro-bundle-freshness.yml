@@ -1,16 +1,21 @@
 name: Pro bundle freshness
 
-# Rebuilds pro-test on any PR that touches pro-test/** or public/pro/**
-# and fails if the committed public/pro/ doesn't match the build output.
+# Rebuilds pro-test on any PR that touches pro-test/**, public/pro/**, or
+# the catalog/generator that feed pro-test's generated pricing model, and
+# fails if generated config, locale placeholders, or committed public/pro/
+# do not match the regenerated and rebuilt output.
 #
 # Why: public/pro/ is committed to the repo and served verbatim by Vercel.
 # The root build script does NOT run pro-test's vite build, so if a PR
-# changes pro-test/src/** but forgets to commit the regenerated bundle,
-# the deploy silently ships stale JS. Happened with PR #3227 → #3228.
+# changes pro-test/src/** or catalog-fed pricing copy but forgets to commit
+# the regenerated bundle, the deploy silently ships stale JS. Happened with
+# PR #3227 -> #3228 and catalog copy drift in #4563 -> #4574.
 
 on:
   pull_request:
     paths:
+      - 'convex/config/productCatalog.ts'
+      - 'scripts/generate-product-config.mjs'
       - 'pro-test/**'
       - 'public/pro/**'
 
@@ -27,7 +32,15 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: pro-test/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            pro-test/package-lock.json
+
+      - name: Install root deps
+        run: npm ci --ignore-scripts
+
+      - name: Regenerate product config
+        run: npx tsx scripts/generate-product-config.mjs
 
       - name: Install pro-test deps
         run: cd pro-test && npm ci
@@ -35,12 +48,12 @@ jobs:
       - name: Build pro-test
         run: cd pro-test && npm run build
 
-      - name: Verify public/pro/ matches build output
+      - name: Verify generated product config, pro locales, and public/pro/ match build output
         run: |
-          if ! git diff --exit-code public/pro/; then
-            echo "::error::pro-test sources changed but public/pro/ is stale."
+          if ! git diff --exit-code src/config/products.generated.ts api/_product-fallback-prices.js pro-test/src/generated/tiers.json pro-test/src/locales/ public/pro/; then
+            echo "::error::Product catalog, generated config, pro locales, or public/pro/ is stale."
             echo "Vercel ships whatever is committed under public/pro/ — it does NOT rebuild pro-test on deploy."
-            echo "Run 'cd pro-test && npm run build' locally and commit the regenerated bundle."
+            echo "Run 'npx tsx scripts/generate-product-config.mjs', then 'cd pro-test && npm run build', and commit generated config, pro locales, plus public/pro/."
             exit 1
           fi
           UNTRACKED=$(git ls-files --others --exclude-standard public/pro/)

@@ -29,7 +29,6 @@ import {
   buildMapUrl,
   debounce,
   saveToStorage,
-  ExportPanel,
   getCurrentTheme,
   setTheme,
   showToast,
@@ -211,6 +210,7 @@ export class EventHandlerManager implements AppModule {
   private missionPresetPopover: HTMLElement | null = null;
   private missionDataRefreshTimer: number | null = null;
   private proGateUnsubscribers: Array<() => void> = [];
+  private exportPanelLoad: Promise<NonNullable<AppContext['exportPanel']>> | null = null;
   private closedPanelStack: string[] = []; // max-items: 20
   private idleTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private snapshotIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -1628,8 +1628,7 @@ export class EventHandlerManager implements AppModule {
   }
 
   setupExportPanel(): void {
-    // Always create — show/hide reactively via auth state subscription below.
-    this.ctx.exportPanel = new ExportPanel(() => {
+    const getExportData = () => {
       const allCards = this.ctx.correlationEngine?.getAllCards() ?? [];
       const disabledCount = this.ctx.disabledSources.size;
       return {
@@ -1651,19 +1650,61 @@ export class EventHandlerManager implements AppModule {
         convergenceCards: allCards.map(({ assessment: _a, ...card }) => card),
         monitors: this.ctx.monitors.length > 0 ? this.ctx.monitors : undefined,
       };
-    });
-
-    const el = this.ctx.exportPanel.getElement();
-    const headerRight = this.ctx.container.querySelector('.header-right');
-    if (headerRight) {
-      headerRight.insertBefore(el, headerRight.firstChild);
-    }
-
-    const applyProGate = (isPro: boolean, initial = false) => {
-      el.style.display = isPro ? '' : 'none';
-      if (initial && !isPro) trackGateHit('export');
     };
-    applyProGate(getAuthState().user?.role === 'pro', true);
+
+    const attachExportPanel = (panel: NonNullable<AppContext['exportPanel']>): void => {
+      const el = panel.getElement();
+      if (el.parentElement) return;
+      const headerRight = this.ctx.container.querySelector('.header-right');
+      if (headerRight) {
+        headerRight.insertBefore(el, headerRight.firstChild);
+      }
+    };
+
+    const ensureExportPanel = (): Promise<NonNullable<AppContext['exportPanel']>> => {
+      if (this.ctx.exportPanel) {
+        attachExportPanel(this.ctx.exportPanel);
+        return Promise.resolve(this.ctx.exportPanel);
+      }
+      if (this.exportPanelLoad) return this.exportPanelLoad;
+
+      this.exportPanelLoad = import('@/utils/export')
+        .then(({ ExportPanel }) => {
+          if (this.ctx.isDestroyed) {
+            throw new Error('EventHandlerManager destroyed before export panel loaded');
+          }
+          const panel = new ExportPanel(getExportData);
+          this.ctx.exportPanel = panel;
+          attachExportPanel(panel);
+          return panel;
+        })
+        .catch((err) => {
+          this.exportPanelLoad = null;
+          throw err;
+        });
+
+      return this.exportPanelLoad;
+    };
+
+    let currentIsPro = getAuthState().user?.role === 'pro';
+    const applyProGate = (isPro: boolean, initial = false) => {
+      currentIsPro = isPro;
+      if (!isPro) {
+        const el = this.ctx.exportPanel?.getElement();
+        if (el) el.style.display = 'none';
+        if (initial) trackGateHit('export');
+        return;
+      }
+
+      void ensureExportPanel()
+        .then((panel) => {
+          panel.getElement().style.display = currentIsPro ? '' : 'none';
+        })
+        .catch((err) => {
+          console.warn('[export-panel] Failed to lazy-load ExportPanel:', err);
+        });
+    };
+    applyProGate(currentIsPro, true);
     this.proGateUnsubscribers.push(subscribeAuthState(state => applyProGate(state.user?.role === 'pro')));
   }
 

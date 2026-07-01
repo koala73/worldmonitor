@@ -118,6 +118,7 @@ import { fetchGpsInterference } from '@/services/gps-interference';
 import { fetchSatelliteTLEs, initSatRecs, propagatePositions, startPropagationLoop } from '@/services/satellites';
 import type { SatRecEntry } from '@/services/satellites';
 import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
+import type { CorrelationSignal } from '@/services/correlation';
 import { fetchConflictEvents, fetchUcdpClassifications, fetchHapiSummary, fetchUcdpEvents, deduplicateAgainstAcled, fetchIranEvents } from '@/services/conflict';
 import { fetchUnhcrPopulation } from '@/services/displacement';
 import { fetchClimateAnomalies } from '@/services/climate';
@@ -714,6 +715,16 @@ export class DataLoaderManager implements AppModule {
 
   private shouldShowIntelligenceNotifications(): boolean {
     return !this.ctx.isMobile && !!this.ctx.findingsBadge?.isPopupEnabled();
+  }
+
+  private showSignalNotification(signals: CorrelationSignal[], context: string): void {
+    void this.ctx.ensureSignalModal()
+      .then((signalModal) => {
+        if (!this.ctx.isDestroyed) signalModal.show(signals);
+      })
+      .catch((err) => {
+        console.warn(`[SignalModal] ${context} notification skipped:`, err);
+      });
   }
 
   private isPanelNearViewport(panelId: string, marginPx = 400): boolean {
@@ -3136,13 +3147,13 @@ export class DataLoaderManager implements AppModule {
       if (surgeAlerts.length > 0) {
         const surgeSignals = surgeAlerts.map(surgeAlertToSignal);
         addToSignalHistory(surgeSignals);
-        if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(surgeSignals);
+        if (this.shouldShowIntelligenceNotifications()) this.showSignalNotification(surgeSignals, 'Military surge');
       }
       const foreignAlerts = detectForeignMilitaryPresence(flights);
       if (foreignAlerts.length > 0) {
         const foreignSignals = foreignAlerts.map(foreignPresenceToSignal);
         addToSignalHistory(foreignSignals);
-        if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(foreignSignals);
+        if (this.shouldShowIntelligenceNotifications()) this.showSignalNotification(foreignSignals, 'Foreign presence');
       }
     } catch (error) {
       console.warn('[Intelligence] Military surge analysis skipped:', error);
@@ -3512,7 +3523,7 @@ export class DataLoaderManager implements AppModule {
       const allSignals = [...signals, ...geoSignals, ...keywordSpikeSignals];
       if (allSignals.length > 0) {
         addToSignalHistory(allSignals);
-        if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(allSignals);
+        if (this.shouldShowIntelligenceNotifications()) this.showSignalNotification(allSignals, 'Correlation');
       }
     } catch (error) {
       console.error('[App] Correlation analysis failed:', error);

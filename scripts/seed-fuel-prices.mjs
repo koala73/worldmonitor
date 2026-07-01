@@ -17,8 +17,10 @@ if (_proxyAuth) {
 
 async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// Retry wrapper: 3 attempts, 1.5s/3s/4.5s backoff. Use for all upstream calls.
-async function withFuelRetry(label, fn, { tries = 3 } = {}) {
+// Retry wrapper: 3 attempts, 1.5s/3s backoff. Use for all upstream calls so a
+// single transient 5xx/network blip on a publish-gating source (US/GB/MY/EU)
+// doesn't reject the whole weekly snapshot. baseDelayMs is injectable for tests.
+export async function withFuelRetry(label, fn, { tries = 3, baseDelayMs = 1500 } = {}) {
   let lastErr;
   for (let i = 1; i <= tries; i++) {
     try {
@@ -26,7 +28,7 @@ async function withFuelRetry(label, fn, { tries = 3 } = {}) {
     } catch (err) {
       lastErr = err;
       if (i < tries) {
-        const delay = 1500 * i;
+        const delay = baseDelayMs * i;
         console.warn(`  [${label}] attempt ${i}/${tries} failed (${err.message}) — retry in ${delay}ms`);
         await sleep(delay);
       }
@@ -142,11 +144,16 @@ function isSaneUsd(usdPrice) {
 async function fetchMalaysia() {
   try {
     const url = 'https://api.data.gov.my/data-catalogue?id=fuelprice&limit=20&sort=-date';
-    const resp = await globalThis.fetch(url, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(20000),
+    // MY is a critical + untolerated source — retry transient errors so one blip
+    // doesn't reject the whole publish.
+    const resp = await withFuelRetry('MY', async () => {
+      const r = await globalThis.fetch(url, {
+        headers: { 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r;
     });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
     if (!Array.isArray(data) || data.length === 0) return [];
     const row = data.find(r => r.series_type === 'level') ?? data[0];
@@ -247,7 +254,7 @@ async function fetchMexico() {
   }
 }
 
-async function fetchUS_EIA() {
+export async function fetchUS_EIA({ baseDelayMs } = {}) {
   try {
     const apiKey = process.env.EIA_API_KEY || '';
     if (!apiKey) {
@@ -256,11 +263,16 @@ async function fetchUS_EIA() {
     }
     const url = `https://api.eia.gov/v2/petroleum/pri/gnd/data/?api_key=${apiKey}&data[]=value&facets[series][]=EMM_EPMR_PTE_NUS_DPG&facets[series][]=EMD_EPD2DXL0_PTE_NUS_DPG&sort[0][column]=period&sort[0][direction]=desc&length=4`;
     console.log(`  [US] Fetching EIA: ${url.replace(/api_key=[^&]+/, 'api_key=***')}`);
-    const resp = await globalThis.fetch(url, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(20000),
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    // EIA's gateway intermittently 502s. US is a critical + untolerated source,
+    // so a single unretried blip rejects the whole publish — retry transient errors.
+    const resp = await withFuelRetry('US', async () => {
+      const r = await globalThis.fetch(url, {
+        headers: { 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r;
+    }, { baseDelayMs });
     const data = await resp.json();
     const rows = data?.response?.data;
     if (!Array.isArray(rows) || rows.length === 0) return [];
@@ -318,11 +330,16 @@ function parseEUPrice(raw) {
 async function fetchEU_CSV() {
   try {
     console.log(`  [EU] Fetching XLSX from EC document store`);
-    const resp = await globalThis.fetch(EU_XLSX_URL, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(60000),
+    // EU-CSV supplies 27 of the ≥30 countries the publish gate requires, so a
+    // transient failure here also rejects the whole snapshot — retry it.
+    const resp = await withFuelRetry('EU', async () => {
+      const r = await globalThis.fetch(EU_XLSX_URL, {
+        headers: { 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(60000),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r;
     });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
     const buf = Buffer.from(await resp.arrayBuffer());
     const workbook = new ExcelJS.Workbook();
@@ -556,18 +573,26 @@ async function fetchUK_DESNZ() {
   // URL changes weekly; discover via Content API.
   try {
     console.log('  [GB] Discovering DESNZ CSV URL...');
-    const apiResp = await globalThis.fetch('https://www.gov.uk/api/content/government/statistics/weekly-road-fuel-prices', {
-      headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(15000),
+    // GB is a critical + untolerated source — retry both the discovery call and
+    // the CSV fetch so one transient blip doesn't reject the whole publish.
+    const apiResp = await withFuelRetry('GB-api', async () => {
+      const r = await globalThis.fetch('https://www.gov.uk/api/content/government/statistics/weekly-road-fuel-prices', {
+        headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(15000),
+      });
+      if (!r.ok) throw new Error(`Content API HTTP ${r.status}`);
+      return r;
     });
-    if (!apiResp.ok) throw new Error(`Content API HTTP ${apiResp.status}`);
     const apiData = await apiResp.json();
     const csvAttach = apiData?.details?.attachments?.find(a => a.content_type?.includes('csv') && a.title?.includes('2018'));
     if (!csvAttach?.url) throw new Error('CSV attachment not found in Content API');
 
-    const csvResp = await globalThis.fetch(csvAttach.url, {
-      headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(20000),
+    const csvResp = await withFuelRetry('GB-csv', async () => {
+      const r = await globalThis.fetch(csvAttach.url, {
+        headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(20000),
+      });
+      if (!r.ok) throw new Error(`CSV HTTP ${r.status}`);
+      return r;
     });
-    if (!csvResp.ok) throw new Error(`CSV HTTP ${csvResp.status}`);
     const lines = (await csvResp.text()).split('\n').filter(l => l.trim());
     // Header: Date,ULSP Pump price pence/litre,ULSD Pump price pence/litre,...
     const dataLines = lines.slice(1).filter(l => l.split(',').length >= 3);

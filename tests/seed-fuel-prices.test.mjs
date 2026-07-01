@@ -1,6 +1,66 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCREStationPrices, validateFuel } from '../scripts/seed-fuel-prices.mjs';
+import { parseCREStationPrices, validateFuel, withFuelRetry, fetchUS_EIA } from '../scripts/seed-fuel-prices.mjs';
+
+test('withFuelRetry returns the first success without retrying', async () => {
+  let calls = 0;
+  const r = await withFuelRetry('T', async () => { calls++; return 'ok'; }, { baseDelayMs: 0 });
+  assert.equal(r, 'ok');
+  assert.equal(calls, 1);
+});
+
+test('withFuelRetry retries transient failures then succeeds', async () => {
+  let calls = 0;
+  const r = await withFuelRetry('T', async () => {
+    calls++;
+    if (calls < 3) throw new Error('boom');
+    return 'ok';
+  }, { baseDelayMs: 0 });
+  assert.equal(r, 'ok');
+  assert.equal(calls, 3);
+});
+
+test('withFuelRetry throws the last error after exhausting tries', async () => {
+  let calls = 0;
+  await assert.rejects(
+    withFuelRetry('T', async () => { calls++; throw new Error(`fail-${calls}`); }, { tries: 3, baseDelayMs: 0 }),
+    /fail-3/,
+  );
+  assert.equal(calls, 3);
+});
+
+// Regression: prod log 2026-06-23 showed a single `[US] fetchUS_EIA error: HTTP 502`
+// rejecting the ENTIRE multi-source publish (US is critical + untolerated), because
+// fetchUS_EIA did a bare fetch with no retry. A transient 502 must be retried.
+test('fetchUS_EIA recovers from a transient 502 instead of failing the critical source', async () => {
+  const origFetch = globalThis.fetch;
+  const origKey = process.env.EIA_API_KEY;
+  process.env.EIA_API_KEY = 'test-key';
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    if (calls === 1) return new Response('bad gateway', { status: 502 });
+    return new Response(JSON.stringify({
+      response: { data: [
+        { series: 'EMM_EPMR_PTE_NUS_DPG', value: 3.10, period: '2026-06-16' },
+        { series: 'EMD_EPD2DXL0_PTE_NUS_DPG', value: 3.60, period: '2026-06-16' },
+      ] },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  try {
+    // baseDelayMs: 0 threads through to withFuelRetry so the retry is instant
+    // (no 1.5s real sleep) — the seam's whole point.
+    const out = await fetchUS_EIA({ baseDelayMs: 0 });
+    assert.ok(calls >= 2, 'should have retried after the 502');
+    assert.equal(out.length, 1);
+    assert.equal(out[0].code, 'US');
+    assert.ok(out[0].gasoline.usdPrice > 0, 'US gasoline price should be present after recovery');
+  } finally {
+    globalThis.fetch = origFetch;
+    if (origKey === undefined) delete process.env.EIA_API_KEY;
+    else process.env.EIA_API_KEY = origKey;
+  }
+});
 
 test('parseCREStationPrices extracts regular + diesel per-station prices from CRE XML', () => {
   const xml = `<?xml version="1.0" encoding="utf-8"?>

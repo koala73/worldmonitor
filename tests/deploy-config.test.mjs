@@ -63,9 +63,14 @@ const getCspDirectiveTokens = (csp, directive) => {
   return [...new Set(tokens)].sort();
 };
 
+const hasTrustedStaticNonce = (attributes) => (
+  new RegExp(`\\bnonce=["']${STATIC_SCRIPT_NONCE}["']`).test(attributes)
+);
+
 const getInlineScriptHashTokens = (htmlSource) => {
-  return [...htmlSource.matchAll(/<script\b(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)]
-    .map((match) => match[1])
+  return [...htmlSource.matchAll(/<script\b(?![^>]*\bsrc=)([^>]*)>([\s\S]*?)<\/script>/gi)]
+    .filter((match) => !hasTrustedStaticNonce(match[1]))
+    .map((match) => match[2])
     .filter((body) => body.trim().length > 0)
     .map((body) => `'sha256-${createHash('sha256').update(body).digest('base64')}'`);
 };
@@ -145,6 +150,24 @@ describe('deploy/cache configuration guardrails', () => {
       /globPatterns:\s*\['\*\*\/\*\.\{js,css,ico,png,svg,woff2\}'\]/
     );
     assert.doesNotMatch(viteConfigSource, /globPatterns:\s*\['\*\*\/\*\.\{js,css,html/);
+  });
+
+  it('keeps off-page public assets out of the PWA precache', () => {
+    const assertGlobIgnore = (pattern) => {
+      assert.match(
+        viteConfigSource,
+        new RegExp(`globIgnores:\\s*\\[[\\s\\S]*'${escapeRegExp(pattern)}'[\\s\\S]*\\]`)
+      );
+    };
+
+    assert.match(viteConfigSource, /includeManifestIcons:\s*false/);
+    assert.doesNotMatch(
+      viteConfigSource,
+      /globIgnores:[\s\S]*'assets\/\*\*'/
+    );
+    assertGlobIgnore('pro/**');
+    assertGlobIgnore('favico/**');
+    assertGlobIgnore('textures/**');
   });
 
   it('keeps the lazy Clerk SDK out of the PWA precache', () => {
@@ -708,7 +731,7 @@ describe('security header guardrails', () => {
     assert.ok(scriptSrc.includes("'self'"), 'CSP script-src must include self');
   });
 
-  it('CSP script-src hashes exactly match inline scripts served under the global CSP', () => {
+  it('CSP script-src hashes exactly match un-nonced inline scripts served under the global CSP', () => {
     const csp = getHeaderValue('Content-Security-Policy');
     const scriptHashTokens = getCspDirectiveTokens(csp, 'script-src')
       .filter((token) => token.startsWith("'sha256-"));
@@ -721,7 +744,7 @@ describe('security header guardrails', () => {
     assert.deepEqual(
       scriptHashTokens,
       inlineHashTokens,
-      'CSP script-src hashes must be the exact set required by deployed HTML files: ' +
+      'CSP script-src hashes must be the exact set required by un-nonced deployed HTML scripts: ' +
         GLOBAL_CSP_INLINE_SCRIPT_HTML_FILES.join(', ')
     );
   });

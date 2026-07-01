@@ -934,6 +934,10 @@ export default defineConfig(({ mode }) => {
           'favico/apple-touch-icon.png',
           'favico/favicon-32x32.png',
         ],
+        // Manifest install icons stay advertised in manifest.webmanifest, but
+        // they are fetched on demand instead of forced into first-visit SW
+        // precache with the rest of the dashboard shell.
+        includeManifestIcons: false,
 
         manifest: {
           name: `${activeMeta.siteName} - ${activeMeta.subject}`,
@@ -955,7 +959,18 @@ export default defineConfig(({ mode }) => {
 
         workbox: {
           globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
-          globIgnores: ['**/ml*.js', '**/onnx*.wasm', '**/locale-*.js', '**/clerk-*.js'],
+          globIgnores: [
+            '**/ml*.js',
+            '**/onnx*.wasm',
+            '**/locale-*.js',
+            '**/clerk-*.js',
+            // Keep off-page/static-heavy public assets out of the dashboard's
+            // first-visit precache. The small root favicons above remain
+            // explicit includeAssets entries.
+            'pro/**',
+            'favico/**',
+            'textures/**',
+          ],
           // globe.gl + three.js grows main bundle past the 2 MiB default limit
           maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
           navigateFallback: null,

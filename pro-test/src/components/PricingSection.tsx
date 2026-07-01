@@ -9,6 +9,7 @@ import fallbackTiers from '../generated/tiers.json';
 
 interface Tier {
   name: string;
+  localeKey?: string;
   description: string;
   features: string[];
   highlighted?: boolean;
@@ -45,12 +46,11 @@ function usePricingData(): Tier[] {
 
 /**
  * Look up localized copy for a catalog tier, falling back to the catalog
- * value when the locale hasn't translated this tier yet. Stable lookup key
- * is the lower-cased English tier name (Free / Pro / API / Enterprise) —
- * the catalog API treats those as identifiers, not display copy.
+ * value when the locale hasn't translated this tier yet. Generated tiers
+ * carry a stable localeKey so display-name changes do not affect lookup.
  */
 function localizeTier(tier: Tier): { description: string; features: string[]; cta?: string } {
-  const key = tier.name.toLowerCase();
+  const key = tier.localeKey ?? tier.name.toLowerCase();
   const description = t(`pricing.tiers.${key}.description`, { defaultValue: tier.description });
   const features = tArray(`pricing.tiers.${key}.features`) ?? tier.features;
   // Resolve CTA priority: locale-specific tier override → catalog tier.cta →
