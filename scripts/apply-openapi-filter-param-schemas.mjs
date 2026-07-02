@@ -7,12 +7,16 @@ const OPENAPI_DIR = join(ROOT, 'docs/api');
 const JSON_SPEC_SUFFIX = '.openapi.json';
 const YAML_SPEC_SUFFIX = '.openapi.yaml';
 const ISO2_TO_ISO3 = JSON.parse(readFileSync(join(ROOT, 'shared/iso2-to-iso3.json'), 'utf8'));
+const FILTER_PARAM_CONTRACTS = JSON.parse(readFileSync(join(ROOT, 'shared/openapi-filter-param-contracts.json'), 'utf8'));
 
-const MARKET_COUNTRY_CODES = [
-  'US', 'GB', 'DE', 'FR', 'JP', 'CN', 'HK', 'IN', 'KR', 'TW', 'AU', 'BR', 'CA', 'MX', 'AR', 'RU',
-  'ZA', 'SA', 'AE', 'IL', 'TR', 'PL', 'NL', 'CH', 'ES', 'IT', 'SE', 'NO', 'SG', 'TH', 'MY', 'ID',
-  'PH', 'NZ', 'EG', 'CL', 'PE', 'AT', 'BE', 'FI', 'DK', 'IE', 'PT', 'CZ', 'HU',
+const PREDICTION_MARKET_CATEGORIES = [
+  ...FILTER_PARAM_CONTRACTS.predictionMarketTechCategories,
+  ...FILTER_PARAM_CONTRACTS.predictionMarketFinanceCategories,
 ];
+
+function quotedList(values) {
+  return values.map((value) => `"${value}"`).join(', ');
+}
 
 export const OPENAPI_FILTER_PARAM_SCHEMA_OVERRIDES = [
   {
@@ -25,44 +29,44 @@ export const OPENAPI_FILTER_PARAM_SCHEMA_OVERRIDES = [
     path: '/api/economic/v1/get-bls-series',
     method: 'get',
     name: 'series_id',
-    description: 'BLS/FRED-backed series ID. Supported values: "USPRIV", "ECIALLCIV".',
-    schema: { type: 'string', enum: ['USPRIV', 'ECIALLCIV'] },
+    description: `BLS/FRED-backed series ID. Supported values: ${quotedList(FILTER_PARAM_CONTRACTS.economicBlsSeriesIds)}.`,
+    schema: { type: 'string', enum: FILTER_PARAM_CONTRACTS.economicBlsSeriesIds },
   },
   {
     path: '/api/forecast/v1/get-forecasts',
     method: 'get',
     name: 'domain',
-    schema: { type: 'string', enum: ['conflict', 'market', 'supply_chain', 'political', 'military', 'cyber', 'infrastructure'] },
+    schema: { type: 'string', enum: FILTER_PARAM_CONTRACTS.forecastDomains },
   },
   {
     path: '/api/infrastructure/v1/get-temporal-baseline',
     method: 'get',
     name: 'type',
-    schema: { type: 'string', enum: ['military_flights', 'vessels', 'protests', 'news', 'ais_gaps', 'satellite_fires'] },
+    schema: { type: 'string', enum: FILTER_PARAM_CONTRACTS.infrastructureTemporalBaselineTypes },
   },
   {
     path: '/api/intelligence/v1/compute-energy-shock',
     method: 'get',
     name: 'chokepoint_id',
-    schema: { type: 'string', enum: ['hormuz_strait', 'malacca_strait', 'suez', 'bab_el_mandeb'] },
+    schema: { type: 'string', enum: FILTER_PARAM_CONTRACTS.intelligenceChokepointIds },
   },
   {
     path: '/api/intelligence/v1/compute-energy-shock',
     method: 'get',
     name: 'fuel_mode',
-    schema: { type: 'string', enum: ['oil', 'gas', 'both'] },
+    schema: { type: 'string', enum: FILTER_PARAM_CONTRACTS.intelligenceFuelModes },
   },
   {
     path: '/api/market/v1/get-country-stock-index',
     method: 'get',
     name: 'country_code',
-    schema: { type: 'string', enum: MARKET_COUNTRY_CODES },
+    schema: { type: 'string', enum: Object.keys(FILTER_PARAM_CONTRACTS.marketCountryStockIndexes) },
   },
   {
     path: '/api/military/v1/list-military-bases',
     method: 'get',
     name: 'type',
-    schema: { type: 'string', enum: ['us-nato', 'china', 'russia', 'uk', 'france', 'india', 'italy', 'uae', 'turkey', 'japan', 'other'] },
+    schema: { type: 'string', enum: FILTER_PARAM_CONTRACTS.militaryBaseTypes },
   },
   {
     path: '/api/military/v1/list-military-bases',
@@ -70,18 +74,14 @@ export const OPENAPI_FILTER_PARAM_SCHEMA_OVERRIDES = [
     name: 'kind',
     schema: {
       type: 'string',
-      enum: [
-        'base', 'airfield', 'naval_base', 'military', 'barracks', 'bunker', 'trench',
-        'training_area', 'checkpoint', 'shelter', 'ammunition', 'office', 'obstacle_course',
-        'nuclear_explosion_site', 'range',
-      ],
+      enum: FILTER_PARAM_CONTRACTS.militaryBaseKinds,
     },
   },
   {
     path: '/api/news/v1/summarize-article-cache',
     method: 'get',
     name: 'cache_key',
-    schema: { type: 'string', pattern: '^summary:v\\d+:[a-z0-9:_-]{3,120}$' },
+    schema: { type: 'string', pattern: FILTER_PARAM_CONTRACTS.newsSummarizeArticleCacheKeyPattern },
   },
   {
     path: '/api/prediction/v1/list-prediction-markets',
@@ -89,28 +89,28 @@ export const OPENAPI_FILTER_PARAM_SCHEMA_OVERRIDES = [
     name: 'category',
     schema: {
       type: 'string',
-      enum: ['ai', 'tech', 'crypto', 'science', 'economy', 'fed', 'inflation', 'interest-rates', 'recession', 'trade', 'tariffs', 'debt-ceiling'],
+      enum: PREDICTION_MARKET_CATEGORIES,
     },
   },
   {
     path: '/api/research/v1/list-tech-events',
     method: 'get',
     name: 'type',
-    description: 'Event type filter: "all", "conference", "earnings", "ipo", "other". Empty = all.',
-    schema: { type: 'string', enum: ['all', 'conference', 'earnings', 'ipo', 'other'] },
+    description: `Event type filter: ${quotedList(FILTER_PARAM_CONTRACTS.researchTechEventTypes)}. Empty = all.`,
+    schema: { type: 'string', enum: FILTER_PARAM_CONTRACTS.researchTechEventTypes },
   },
   {
     path: '/api/research/v1/list-hackernews-items',
     method: 'get',
     name: 'feed_type',
-    description: 'Feed type: "top", "new", "best", "ask", "show", "job". Defaults to "top".',
-    schema: { type: 'string', enum: ['top', 'new', 'best', 'ask', 'show', 'job'] },
+    description: `Feed type: ${quotedList(FILTER_PARAM_CONTRACTS.researchHackerNewsFeedTypes)}. Defaults to "top".`,
+    schema: { type: 'string', enum: FILTER_PARAM_CONTRACTS.researchHackerNewsFeedTypes },
   },
   {
     path: '/api/trade/v1/list-comtrade-flows',
     method: 'get',
     name: 'cmd_code',
-    schema: { type: 'string', pattern: '^\\d{4,6}$' },
+    schema: { type: 'string', pattern: FILTER_PARAM_CONTRACTS.tradeComtradeCmdCodePattern },
   },
 ];
 

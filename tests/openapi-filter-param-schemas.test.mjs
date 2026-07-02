@@ -4,6 +4,11 @@ import { describe, it } from 'node:test';
 import YAML from 'yaml';
 
 const ISO2_CODES = Object.keys(JSON.parse(readFileSync('shared/iso2-to-iso3.json', 'utf8'))).sort();
+const FILTER_PARAM_CONTRACTS = JSON.parse(readFileSync('shared/openapi-filter-param-contracts.json', 'utf8'));
+const PREDICTION_MARKET_CATEGORIES = [
+  ...FILTER_PARAM_CONTRACTS.predictionMarketTechCategories,
+  ...FILTER_PARAM_CONTRACTS.predictionMarketFinanceCategories,
+];
 
 const EXPECTED_ENUMS = [
   ['ConflictService', '/api/conflict/v1/get-humanitarian-summary', 'get', 'country_code', ISO2_CODES],
@@ -26,16 +31,8 @@ const EXPECTED_ENUMS = [
     'CRITICALITY_LEVEL_HIGH',
     'CRITICALITY_LEVEL_CRITICAL',
   ]],
-  ['EconomicService', '/api/economic/v1/get-bls-series', 'get', 'series_id', ['USPRIV', 'ECIALLCIV']],
-  ['ForecastService', '/api/forecast/v1/get-forecasts', 'get', 'domain', [
-    'conflict',
-    'market',
-    'supply_chain',
-    'political',
-    'military',
-    'cyber',
-    'infrastructure',
-  ]],
+  ['EconomicService', '/api/economic/v1/get-bls-series', 'get', 'series_id', FILTER_PARAM_CONTRACTS.economicBlsSeriesIds],
+  ['ForecastService', '/api/forecast/v1/get-forecasts', 'get', 'domain', FILTER_PARAM_CONTRACTS.forecastDomains],
   ['InfrastructureService', '/api/infrastructure/v1/list-service-statuses', 'get', 'status', [
     'SERVICE_OPERATIONAL_STATUS_OPERATIONAL',
     'SERVICE_OPERATIONAL_STATUS_DEGRADED',
@@ -43,77 +40,20 @@ const EXPECTED_ENUMS = [
     'SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE',
     'SERVICE_OPERATIONAL_STATUS_MAINTENANCE',
   ]],
-  ['InfrastructureService', '/api/infrastructure/v1/get-temporal-baseline', 'get', 'type', [
-    'military_flights',
-    'vessels',
-    'protests',
-    'news',
-    'ais_gaps',
-    'satellite_fires',
-  ]],
-  ['IntelligenceService', '/api/intelligence/v1/compute-energy-shock', 'get', 'chokepoint_id', [
-    'hormuz_strait',
-    'malacca_strait',
-    'suez',
-    'bab_el_mandeb',
-  ]],
-  ['IntelligenceService', '/api/intelligence/v1/compute-energy-shock', 'get', 'fuel_mode', ['oil', 'gas', 'both']],
-  ['MarketService', '/api/market/v1/get-country-stock-index', 'get', 'country_code', [
-    'US', 'GB', 'DE', 'FR', 'JP', 'CN', 'HK', 'IN', 'KR', 'TW', 'AU', 'BR', 'CA', 'MX', 'AR', 'RU',
-    'ZA', 'SA', 'AE', 'IL', 'TR', 'PL', 'NL', 'CH', 'ES', 'IT', 'SE', 'NO', 'SG', 'TH', 'MY', 'ID',
-    'PH', 'NZ', 'EG', 'CL', 'PE', 'AT', 'BE', 'FI', 'DK', 'IE', 'PT', 'CZ', 'HU',
-  ]],
-  ['MilitaryService', '/api/military/v1/list-military-bases', 'get', 'type', [
-    'us-nato',
-    'china',
-    'russia',
-    'uk',
-    'france',
-    'india',
-    'italy',
-    'uae',
-    'turkey',
-    'japan',
-    'other',
-  ]],
-  ['MilitaryService', '/api/military/v1/list-military-bases', 'get', 'kind', [
-    'base',
-    'airfield',
-    'naval_base',
-    'military',
-    'barracks',
-    'bunker',
-    'trench',
-    'training_area',
-    'checkpoint',
-    'shelter',
-    'ammunition',
-    'office',
-    'obstacle_course',
-    'nuclear_explosion_site',
-    'range',
-  ]],
-  ['PredictionService', '/api/prediction/v1/list-prediction-markets', 'get', 'category', [
-    'ai',
-    'tech',
-    'crypto',
-    'science',
-    'economy',
-    'fed',
-    'inflation',
-    'interest-rates',
-    'recession',
-    'trade',
-    'tariffs',
-    'debt-ceiling',
-  ]],
-  ['ResearchService', '/api/research/v1/list-tech-events', 'get', 'type', ['all', 'conference', 'earnings', 'ipo', 'other']],
-  ['ResearchService', '/api/research/v1/list-hackernews-items', 'get', 'feed_type', ['top', 'new', 'best', 'ask', 'show', 'job']],
+  ['InfrastructureService', '/api/infrastructure/v1/get-temporal-baseline', 'get', 'type', FILTER_PARAM_CONTRACTS.infrastructureTemporalBaselineTypes],
+  ['IntelligenceService', '/api/intelligence/v1/compute-energy-shock', 'get', 'chokepoint_id', FILTER_PARAM_CONTRACTS.intelligenceChokepointIds],
+  ['IntelligenceService', '/api/intelligence/v1/compute-energy-shock', 'get', 'fuel_mode', FILTER_PARAM_CONTRACTS.intelligenceFuelModes],
+  ['MarketService', '/api/market/v1/get-country-stock-index', 'get', 'country_code', Object.keys(FILTER_PARAM_CONTRACTS.marketCountryStockIndexes)],
+  ['MilitaryService', '/api/military/v1/list-military-bases', 'get', 'type', FILTER_PARAM_CONTRACTS.militaryBaseTypes],
+  ['MilitaryService', '/api/military/v1/list-military-bases', 'get', 'kind', FILTER_PARAM_CONTRACTS.militaryBaseKinds],
+  ['PredictionService', '/api/prediction/v1/list-prediction-markets', 'get', 'category', PREDICTION_MARKET_CATEGORIES],
+  ['ResearchService', '/api/research/v1/list-tech-events', 'get', 'type', FILTER_PARAM_CONTRACTS.researchTechEventTypes],
+  ['ResearchService', '/api/research/v1/list-hackernews-items', 'get', 'feed_type', FILTER_PARAM_CONTRACTS.researchHackerNewsFeedTypes],
 ];
 
 const EXPECTED_PATTERNS = [
-  ['NewsService', '/api/news/v1/summarize-article-cache', 'get', 'cache_key', '^summary:v\\d+:[a-z0-9:_-]{3,120}$'],
-  ['TradeService', '/api/trade/v1/list-comtrade-flows', 'get', 'cmd_code', '^\\d{4,6}$'],
+  ['NewsService', '/api/news/v1/summarize-article-cache', 'get', 'cache_key', FILTER_PARAM_CONTRACTS.newsSummarizeArticleCacheKeyPattern],
+  ['TradeService', '/api/trade/v1/list-comtrade-flows', 'get', 'cmd_code', FILTER_PARAM_CONTRACTS.tradeComtradeCmdCodePattern],
 ];
 
 function readJsonSpec(service) {
