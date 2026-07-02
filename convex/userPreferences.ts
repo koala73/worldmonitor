@@ -119,6 +119,10 @@ export const setPreferences = mutation({
     if (!identity) throw new ConvexError({ kind: "UNAUTHENTICATED" });
     const userId = identity.subject;
 
+    // Run before the CAS read so stale expectedSyncVersion requests cannot
+    // bypass the authoritative direct-Convex backstop by intentionally
+    // returning CONFLICT forever. CONFLICT retries count as write attempts;
+    // the limit is sized for that worst-case retry profile.
     await checkUserPrefsWriteRateLimit(ctx, userId);
 
     const blobSize = JSON.stringify(args.data).length;

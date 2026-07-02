@@ -29,7 +29,7 @@ describe('cloud prefs flush version guardrails', () => {
     );
     assert.match(
       flushBody,
-      /if \(isTemporaryCloudPrefsStatus\(res\.status\)\) \{[\s\S]*parseRetryAfterSeconds\(res\.headers\)[\s\S]*void uploadNow\(_currentVariant\);[\s\S]*\}\s*return;/,
+      /rearmTemporaryCloudPrefsRetry\([\s\S]*status: res.status,[\s\S]*setRetryTimer:[\s\S]*uploadNow:[\s\S]*return;/,
       'flushOnUnload must requeue observable 429/503 keepalive failures instead of stranding the final save',
     );
     assert.match(

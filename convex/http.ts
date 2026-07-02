@@ -11,6 +11,13 @@ const TRUSTED = [
   "http://localhost:3000",
 ];
 
+const EXPOSED_HEADERS = [
+  "Retry-After",
+  "X-RateLimit-Limit",
+  "X-RateLimit-Remaining",
+  "X-RateLimit-Reset",
+].join(", ");
+
 function matchOrigin(origin: string, pattern: string): boolean {
   if (pattern.startsWith("*.")) {
     return origin.endsWith(pattern.slice(1));
@@ -30,6 +37,7 @@ function corsHeaders(origin: string | null): Headers {
     headers.set("Access-Control-Allow-Origin", allowed);
     headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
     headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    headers.set("Access-Control-Expose-Headers", EXPOSED_HEADERS);
     headers.set("Access-Control-Max-Age", "86400");
   }
   return headers;

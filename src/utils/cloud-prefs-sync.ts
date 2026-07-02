@@ -22,7 +22,14 @@ import {
   mergeCloudWithLocalDirty,
   settledDirtyKeys,
 } from './cloud-prefs-migrations';
+import {
+  isTemporaryCloudPrefsStatus,
+  parseRetryAfterSeconds,
+  rearmTemporaryCloudPrefsRetry,
+} from './cloud-prefs-retry';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
+export { isTemporaryCloudPrefsStatus, parseRetryAfterSeconds } from './cloud-prefs-retry';
 
 
 const ENABLED = import.meta.env.VITE_CLOUD_PREFS_ENABLED === 'true';
@@ -306,47 +313,6 @@ export class ServiceUnavailableError extends Error {
     this.retryAfterSec = retryAfterSec;
     this.status = status;
   }
-}
-
-// Bounds on the Retry-After value we'll honor. Lower bound prevents a
-// retry storm if the server sends 0 or a malformed value; upper bound
-// caps the delay so a misconfigured/extreme header doesn't strand sync
-// for minutes.
-const RETRY_AFTER_MIN_SEC = 1;
-const RETRY_AFTER_MAX_SEC = 60;
-const RETRY_AFTER_DEFAULT_SEC = 5;
-
-export function isTemporaryCloudPrefsStatus(status: number): boolean {
-  return status === 429 || status === 503;
-}
-
-/**
- * Parse the `Retry-After` header per RFC 7231: either delta-seconds or an
- * HTTP-date. Returns a clamped number of seconds, with the configured
- * default for missing/malformed values. Exported for testability.
- */
-export function parseRetryAfterSeconds(headers: Headers): number {
-  const raw = headers.get('Retry-After');
-  if (!raw) return RETRY_AFTER_DEFAULT_SEC;
-  const trimmed = raw.trim();
-  // delta-seconds form: digits only.
-  if (/^\d+$/.test(trimmed)) {
-    const n = Number(trimmed);
-    if (!Number.isFinite(n)) return RETRY_AFTER_DEFAULT_SEC;
-    return Math.min(Math.max(n, RETRY_AFTER_MIN_SEC), RETRY_AFTER_MAX_SEC);
-  }
-  // HTTP-date form: parse and convert to delta-seconds from now.
-  // `Date.parse` is permissive — `Date.parse("-5")` parses as year -5 BCE,
-  // and other garbage strings can produce finite timestamps that then
-  // clamp to RETRY_AFTER_MIN_SEC, retrying in 1s instead of the safer
-  // default. Require the input to look like a real HTTP-date (must
-  // contain both a 4-digit year and a `:` time separator) so non-date
-  // garbage falls into the default-seconds branch instead.
-  if (!/\b\d{4}\b/.test(trimmed) || !trimmed.includes(':')) return RETRY_AFTER_DEFAULT_SEC;
-  const t = Date.parse(trimmed);
-  if (!Number.isFinite(t)) return RETRY_AFTER_DEFAULT_SEC;
-  const delta = Math.round((t - Date.now()) / 1000);
-  return Math.min(Math.max(delta, RETRY_AFTER_MIN_SEC), RETRY_AFTER_MAX_SEC);
 }
 
 async function fetchCloudPrefs(token: string, variant: string): Promise<CloudPrefs | null> {
@@ -735,17 +701,16 @@ export function install(variant: string): void {
       // responses are observable during tab switches, so re-arm the normal
       // retry machinery instead of stranding the final save.
       if (!res.ok) {
-        if (isTemporaryCloudPrefsStatus(res.status)) {
-          const retryAfterSec = parseRetryAfterSeconds(res.headers);
-          if (_authGeneration !== myGeneration) return;
-          setState('pending');
-          clearRetryTimer();
-          _retryTimer = setTimeout(() => {
-            _retryTimer = null;
-            if (_authGeneration !== myGeneration) return;
-            void uploadNow(_currentVariant);
-          }, retryAfterSec * 1000);
-        }
+        rearmTemporaryCloudPrefsRetry({
+          status: res.status,
+          headers: res.headers,
+          myGeneration,
+          getAuthGeneration: () => _authGeneration,
+          setPending: () => setState('pending'),
+          clearRetryTimer,
+          setRetryTimer: (timer) => { _retryTimer = timer; },
+          uploadNow: () => uploadNow(_currentVariant),
+        });
         return;
       }
       const body = (await res.json().catch(() => null)) as { syncVersion?: number } | null;

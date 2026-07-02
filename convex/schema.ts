@@ -42,9 +42,7 @@ export default defineSchema({
     windowStart: v.number(),
     count: v.number(),
     updatedAt: v.number(),
-  })
-    .index("by_user_window", ["userId", "windowStart"])
-    .index("by_updatedAt", ["updatedAt"]),
+  }).index("by_user_window", ["userId", "windowStart"]),
 
   notificationChannels: defineTable(
     v.union(

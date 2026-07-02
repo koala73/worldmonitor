@@ -23,6 +23,8 @@ import { validateBearerToken } from '../server/auth-session';
 import { checkScopedRateLimit } from '../server/_shared/rate-limit';
 
 export const USER_PREFS_WRITE_RATE_SCOPE = 'user-prefs-write';
+// Keep in lockstep with convex/constants.ts; tests/user-prefs-rate-limit.test.mts
+// guards the duplicated Edge/Convex rate-limit contract from drifting.
 export const USER_PREFS_WRITE_RATE_LIMIT = 30;
 export const USER_PREFS_WRITE_RATE_WINDOW = '60 s';
 

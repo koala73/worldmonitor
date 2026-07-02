@@ -7,6 +7,10 @@ import handler, {
   USER_PREFS_WRITE_RATE_SCOPE,
   USER_PREFS_WRITE_RATE_WINDOW,
 } from '../api/user-prefs.ts';
+import {
+  USER_PREFS_WRITE_RATE_LIMIT as CONVEX_USER_PREFS_WRITE_RATE_LIMIT,
+  USER_PREFS_WRITE_RATE_WINDOW_MS,
+} from '../convex/constants.ts';
 
 const originalConvexUrl = process.env.CONVEX_URL;
 const TEST_NOW = 1_700_000_000_000;
@@ -25,6 +29,14 @@ type ClientCall =
   | { kind: 'setAuth'; token: string }
   | { kind: 'query'; name: unknown; args: Record<string, unknown> }
   | { kind: 'mutation'; name: unknown; args: Record<string, unknown> };
+
+function expectExposedRateLimitHeaders(headers: Headers): void {
+  const exposed = headers.get('Access-Control-Expose-Headers') ?? '';
+  assert.match(exposed, /Retry-After/);
+  assert.match(exposed, /X-RateLimit-Limit/);
+  assert.match(exposed, /X-RateLimit-Remaining/);
+  assert.match(exposed, /X-RateLimit-Reset/);
+}
 
 function restoreEnv(): void {
   if (originalConvexUrl === undefined) delete process.env.CONVEX_URL;
@@ -91,6 +103,11 @@ function installDeps(rateLimitResult: RateLimitResult): {
 }
 
 describe('user-prefs POST write rate limit', () => {
+  it('keeps the Edge and Convex write limit contracts in lockstep', () => {
+    assert.equal(USER_PREFS_WRITE_RATE_LIMIT, CONVEX_USER_PREFS_WRITE_RATE_LIMIT);
+    assert.equal(USER_PREFS_WRITE_RATE_WINDOW, String(USER_PREFS_WRITE_RATE_WINDOW_MS / 1000) + ' s');
+  });
+
   it('rejects invalid sessions before checking the scoped limiter', async () => {
     const rateLimitCalls: Array<{ scope: string; limit: number; window: string; identifier: string }> = [];
     let createdClient = false;
@@ -114,6 +131,7 @@ describe('user-prefs POST write rate limit', () => {
     assert.deepEqual(rateLimitCalls, []);
     assert.equal(createdClient, false);
   });
+
   it('returns 429 + Retry-After without calling Convex when the identity is over budget', async () => {
     process.env.CONVEX_URL = 'https://convex.test';
     mock.method(Date, 'now', () => TEST_NOW);
@@ -132,6 +150,7 @@ describe('user-prefs POST write rate limit', () => {
     assert.equal(res.headers.get('X-RateLimit-Limit'), String(USER_PREFS_WRITE_RATE_LIMIT));
     assert.equal(res.headers.get('X-RateLimit-Remaining'), '0');
     assert.equal(res.headers.get('X-RateLimit-Reset'), String(TEST_NOW + 30_000));
+    expectExposedRateLimitHeaders(res.headers);
     assert.deepEqual(await res.json(), { error: 'RATE_LIMITED' });
     assert.deepEqual(rateLimitCalls, [{
       scope: USER_PREFS_WRITE_RATE_SCOPE,
@@ -233,6 +252,7 @@ describe('user-prefs POST write rate limit', () => {
     assert.equal(res.headers.get('X-RateLimit-Limit'), String(USER_PREFS_WRITE_RATE_LIMIT));
     assert.equal(res.headers.get('X-RateLimit-Remaining'), '0');
     assert.equal(res.headers.get('X-RateLimit-Reset'), String(reset));
+    expectExposedRateLimitHeaders(res.headers);
     assert.deepEqual(await res.json(), { error: 'RATE_LIMITED' });
   });
 });
