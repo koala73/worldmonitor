@@ -100,8 +100,8 @@ function patternString(pattern, key) {
   if (/scenario:\[0-9\]\{13\}:\[a-z0-9\]\{8\}/.test(pattern) || pattern.includes('scenario:')) {
     return 'scenario:1717200000000:abcd1234';
   }
-  if (pattern.includes('[A-Z]{2}') || pattern.includes('A-Z]{2}')) return 'US';
-  if (pattern.includes('[A-Z]{3}') || pattern.includes('A-Z]{3}')) return 'USA';
+  if (/^\^?\[A-Z\]\{3\}\$?$/.test(pattern)) return 'USA';
+  if (/^\^?\[A-Z\]\{2\}\$?$/.test(pattern)) return 'US';
   if (pattern.includes('[0-9]{13}')) return '1717200000000';
   if (pattern.includes('[a-z0-9]')) return 'example1';
   if (key.includes('email')) return 'analyst@example.com';
@@ -279,9 +279,10 @@ function injectSpecExamples(spec) {
       if (!HTTP_METHODS.has(method) || !op || typeof op !== 'object') continue;
       operations++;
       const context = { operationId: op.operationId, path, method };
+      let hasRequestExample = false;
 
       if (Array.isArray(op.parameters) && op.parameters.length > 0) {
-        requestOperations++;
+        hasRequestExample = true;
         for (const param of op.parameters) {
           if (!param || typeof param !== 'object' || !param.schema) continue;
           const example = exampleForSchema(param.schema, spec, {
@@ -295,13 +296,15 @@ function injectSpecExamples(spec) {
 
       const requestMedia = op.requestBody?.content?.[JSON_MEDIA];
       if (requestMedia?.schema) {
-        requestOperations++;
+        hasRequestExample = true;
         const example = exampleForSchema(requestMedia.schema, spec, {
           ...context,
           name: `${op.operationId ?? 'operation'}Request`,
         });
         changed = setExample(requestMedia, example) || changed;
       }
+
+      if (hasRequestExample) requestOperations++;
 
       const responses = successResponses(op);
       if (responses.length > 0) responseOperations++;
@@ -627,6 +630,6 @@ if (CHECK) {
 } else {
   const stabilizeSummary = stabilizeTouched ? `, stabilization pass updated ${stabilizeTouched}` : '';
   console.log(
-    `openapi-inject-examples: updated ${touched} artifact set(s) - ${specFiles.length} specs, ${operations} operations, ${requestOperations} request example target(s), ${responseOperations} response example target(s), bundle ${bundleChanged ? 'updated' : 'unchanged'}${stabilizeSummary}`,
+    `openapi-inject-examples: updated ${touched} artifact set(s) - ${specFiles.length} specs, ${operations} operations, ${requestOperations} request operation(s), ${responseOperations} response example target(s), bundle ${bundleChanged ? 'updated' : 'unchanged'}${stabilizeSummary}`,
   );
 }
