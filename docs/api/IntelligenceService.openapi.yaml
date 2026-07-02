@@ -38,7 +38,7 @@ paths:
                                 "stale": true
                                 "strategicRisks":
                                     - "factors":
-                                          - "example"
+                                        - "example"
                                       "level": "SEVERITY_LEVEL_UNSPECIFIED"
                                       "region": "example"
                                       "score": 42.5
@@ -500,12 +500,12 @@ paths:
                                 "error": "example"
                                 "history":
                                     - "alerts":
-                                          - "cat": "2026-01-15T12:00:00Z"
-                                            "data":
-                                                - "example"
-                                            "desc": "example"
-                                            "id": "example-id"
-                                            "timestampMs": 1717200000000
+                                        - "cat": "2026-01-15T12:00:00Z"
+                                          "data":
+                                              - "example"
+                                          "desc": "example"
+                                          "id": "example-id"
+                                          "timestampMs": 1717200000000
                                       "timestampMs": 1717200000000
                                 "historyCount24h": 1
                             schema:
@@ -676,11 +676,11 @@ paths:
                                 "domain": "example"
                                 "signals":
                                     - "engagement":
-                                          "comments": 1
-                                          "forks": 1
-                                          "mentions": 1
-                                          "points": 1
-                                          "stars": 1
+                                        "comments": 1
+                                        "forks": 1
+                                        "mentions": 1
+                                        "points": 1
+                                        "stars": 1
                                       "source": "example"
                                       "sourceTier": 1
                                       "strength": "example"
@@ -851,7 +851,7 @@ paths:
                                 "evaluatedAt": 1717200000000
                                 "signals":
                                     - "contributingTypes":
-                                          - "example"
+                                        - "example"
                                       "detectedAt": 1717200000000
                                       "id": "example-id"
                                       "severity": "CROSS_SOURCE_SIGNAL_SEVERITY_UNSPECIFIED"
@@ -1143,7 +1143,7 @@ paths:
                                     "generatedAt": 1717200000000
                                     "leverageEdges":
                                         - "evidenceIds":
-                                              - "example"
+                                            - "example"
                                           "fromActorId": "example-id"
                                           "mechanism": "example"
                                           "strength": 1.5

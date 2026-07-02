@@ -100,7 +100,7 @@ paths:
                                       "eventCount": 1
                                       "events":
                                           - "actors":
-                                                - "example"
+                                              - "example"
                                             "city": "example"
                                             "confidence": "CONFIDENCE_LEVEL_UNSPECIFIED"
                                             "country": "US"
@@ -109,7 +109,7 @@ paths:
                                       "id": "example-id"
                                 "events":
                                     - "actors":
-                                          - "example"
+                                        - "example"
                                       "city": "example"
                                       "confidence": "CONFIDENCE_LEVEL_UNSPECIFIED"
                                       "country": "US"

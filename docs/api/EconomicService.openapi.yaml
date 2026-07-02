@@ -270,8 +270,8 @@ paths:
                             example:
                                 "series":
                                     - "data":
-                                          - "capacityMw": 1.5
-                                            "year": 1
+                                        - "capacityMw": 1.5
+                                          "year": 1
                                       "energySource": "example"
                                       "name": "WorldMonitor Analyst"
                             schema:

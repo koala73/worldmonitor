@@ -456,16 +456,16 @@ paths:
                             example:
                                 "items":
                                     - "snapshots":
-                                          - "action": "example"
-                                            "analysisAt": 1717200000000
-                                            "analysisId": "example-id"
-                                            "analystConsensus":
-                                                "buy": 1
-                                                "hold": 1
-                                                "period": "daily"
-                                                "sell": 1
-                                                "strongBuy": 1
-                                            "available": true
+                                        - "action": "example"
+                                          "analysisAt": 1717200000000
+                                          "analysisId": "example-id"
+                                          "analystConsensus":
+                                              "buy": 1
+                                              "hold": 1
+                                              "period": "daily"
+                                              "sell": 1
+                                              "strongBuy": 1
+                                          "available": true
                                       "symbol": "AAPL"
                             schema:
                                 $ref: '#/components/schemas/GetStockAnalysisHistoryResponse'
@@ -1009,7 +1009,7 @@ paths:
                                 "assetCount": 1
                                 "assets":
                                     - "alerts":
-                                          - "example"
+                                        - "example"
                                       "assetClass": "example"
                                       "basisScore": 42.5
                                       "composite": 1.5

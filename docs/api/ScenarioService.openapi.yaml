@@ -116,7 +116,7 @@ paths:
                             example:
                                 "templates":
                                     - "affectedChokepointIds":
-                                          - "suez-canal"
+                                        - "suez-canal"
                                       "affectedHs2":
                                           - "27"
                                       "costShockMultiplier": 75.25

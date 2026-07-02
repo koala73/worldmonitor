@@ -53,7 +53,7 @@ paths:
                             example:
                                 "clusters":
                                     - "categories":
-                                          - "example"
+                                        - "example"
                                       "count": 1
                                       "lat": 40.7128
                                       "lng": -74.006

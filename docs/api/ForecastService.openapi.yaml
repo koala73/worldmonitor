@@ -32,10 +32,10 @@ paths:
                                 "error": "example"
                                 "forecasts":
                                     - "calibration":
-                                          "drift": 1.5
-                                          "marketPrice": 75.25
-                                          "marketTitle": "example"
-                                          "source": "example"
+                                        "drift": 1.5
+                                        "marketPrice": 75.25
+                                        "marketTitle": "example"
+                                        "source": "example"
                                       "cascades":
                                           - "domain": "example"
                                             "effect": "example"

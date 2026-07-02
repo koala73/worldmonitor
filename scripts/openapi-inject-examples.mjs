@@ -21,7 +21,6 @@
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { stringify as stringifyYaml, parse as parseYaml } from 'yaml';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
@@ -355,13 +354,80 @@ function findOperation(lines, path, method, label) {
   throw new Error(`${label}: could not locate ${method.toUpperCase()} ${path} in YAML artifact`);
 }
 
+function isScalar(value) {
+  return value === null || typeof value !== 'object';
+}
+
+function yamlScalar(value) {
+  if (typeof value === 'string') return JSON.stringify(value);
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '0';
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (value === null) return 'null';
+  return JSON.stringify(value);
+}
+
+function yamlKey(key) {
+  return JSON.stringify(String(key));
+}
+
+function renderYamlNode(value, indent) {
+  const prefix = ' '.repeat(indent);
+  if (isScalar(value)) return [`${prefix}${yamlScalar(value)}`];
+  if (Array.isArray(value)) {
+    if (value.length === 0) return [`${prefix}[]`];
+    const lines = [];
+    for (const item of value) {
+      if (isScalar(item)) {
+        lines.push(`${prefix}- ${yamlScalar(item)}`);
+      } else if (Array.isArray(item)) {
+        if (item.length === 0) {
+          lines.push(`${prefix}- []`);
+        } else {
+          lines.push(`${prefix}-`);
+          lines.push(...renderYamlNode(item, indent + 4));
+        }
+      } else {
+        const keys = Object.keys(item);
+        if (keys.length === 0) {
+          lines.push(`${prefix}- {}`);
+          continue;
+        }
+        keys.forEach((key, index) => {
+          const child = item[key];
+          const propPrefix = index === 0 ? `${prefix}- ` : `${prefix}  `;
+          if (isScalar(child)) {
+            lines.push(`${propPrefix}${yamlKey(key)}: ${yamlScalar(child)}`);
+          } else {
+            lines.push(`${propPrefix}${yamlKey(key)}:`);
+            lines.push(...renderYamlNode(child, indent + (index === 0 ? 4 : 6)));
+          }
+        });
+      }
+    }
+    return lines;
+  }
+
+  const keys = Object.keys(value);
+  if (keys.length === 0) return [`${prefix}{}`];
+  const lines = [];
+  for (const key of keys) {
+    const child = value[key];
+    if (isScalar(child)) {
+      lines.push(`${prefix}${yamlKey(key)}: ${yamlScalar(child)}`);
+    } else {
+      lines.push(`${prefix}${yamlKey(key)}:`);
+      lines.push(...renderYamlNode(child, indent + 4));
+    }
+  }
+  return lines;
+}
+
 function renderExampleBlock(example, indent) {
   const prefix = ' '.repeat(indent);
   if (example === null || typeof example !== 'object') {
     return [`${prefix}example: ${JSON.stringify(example)}`];
   }
-  const dumped = stringifyYaml(example, { indent: 4, lineWidth: 0, defaultStringType: 'QUOTE_DOUBLE' }).trimEnd();
-  return [`${prefix}example:`, ...dumped.split('\n').map((line) => `${' '.repeat(indent + 4)}${line}`)];
+  return [`${prefix}example:`, ...renderYamlNode(example, indent + 4)];
 }
 
 function removeSiblingBlocks(lines, start, end, indent) {
@@ -496,23 +562,22 @@ function processServiceSpec(file) {
   const yamlFile = file.replace(/\.json$/, '.yaml');
   const yamlPath = resolve(apiDir, yamlFile);
   const yamlRaw = readFileSync(yamlPath, 'utf8');
-  // Parse first so malformed generated YAML fails before the surgical patch.
-  parseYaml(yamlRaw);
   const yamlText = patchYamlExamples(yamlRaw, spec, yamlFile);
   const yamlChanged = yamlRaw !== yamlText;
   if (yamlChanged && !CHECK) writeFileSync(yamlPath, yamlText);
 
-  return { ...stats, changed: jsonChanged || yamlChanged, jsonChanged, yamlChanged };
+  return { ...stats, changed: jsonChanged || yamlChanged, jsonChanged, yamlChanged, spec };
 }
 
-function processBundle() {
-  const raw = readFileSync(bundlePath, 'utf8');
-  const spec = parseYaml(raw);
-  const stats = injectSpecExamples(spec);
-  const text = patchYamlExamples(raw, spec, 'worldmonitor.openapi.yaml');
+function processBundle(serviceSpecs) {
+  let text = readFileSync(bundlePath, 'utf8');
+  const raw = text;
+  for (const spec of serviceSpecs) {
+    text = patchYamlExamples(text, spec, 'worldmonitor.openapi.yaml');
+  }
   const changed = raw !== text;
   if (changed && !CHECK) writeFileSync(bundlePath, text);
-  return { ...stats, changed };
+  return { changed };
 }
 
 const specFiles = readdirSync(apiDir).filter((f) => /Service\.openapi\.json$/.test(f)).sort();
@@ -523,8 +588,10 @@ let responseOperations = 0;
 function processAllSpecs(countStats = false) {
   let touched = 0;
   let bundleChanged = false;
+  const serviceSpecs = [];
   for (const file of specFiles) {
     const result = processServiceSpec(file);
+    serviceSpecs.push(result.spec);
     if (result.changed) touched++;
     if (countStats) {
       operations += result.operations;
@@ -532,7 +599,7 @@ function processAllSpecs(countStats = false) {
       responseOperations += result.responseOperations;
     }
   }
-  const bundleResult = processBundle();
+  const bundleResult = processBundle(serviceSpecs);
   if (bundleResult.changed) {
     touched++;
     bundleChanged = true;

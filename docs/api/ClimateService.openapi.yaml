@@ -41,8 +41,8 @@ paths:
                             example:
                                 "anomalies":
                                     - "location":
-                                          "latitude": 40.7128
-                                          "longitude": -74.006
+                                        "latitude": 40.7128
+                                        "longitude": -74.006
                                       "period": "daily"
                                       "precipDelta": 1.5
                                       "severity": "ANOMALY_SEVERITY_UNSPECIFIED"

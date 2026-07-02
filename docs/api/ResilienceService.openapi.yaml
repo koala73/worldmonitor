@@ -28,13 +28,13 @@ paths:
                                 "dataVersion": "example"
                                 "domains":
                                     - "dimensions":
-                                          - "coverage": 1.5
-                                            "freshness":
-                                                "lastObservedAtMs": "1717200000000"
-                                                "staleness": "example"
-                                            "id": "example-id"
-                                            "imputationClass": "example"
-                                            "imputedWeight": 1.5
+                                        - "coverage": 1.5
+                                          "freshness":
+                                              "lastObservedAtMs": "1717200000000"
+                                              "staleness": "example"
+                                          "id": "example-id"
+                                          "imputationClass": "example"
+                                          "imputedWeight": 1.5
                                       "id": "example-id"
                                       "score": 42.5
                                       "weight": 1.5

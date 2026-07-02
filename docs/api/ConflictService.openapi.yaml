@@ -57,7 +57,7 @@ paths:
                             example:
                                 "events":
                                     - "actors":
-                                          - "example"
+                                        - "example"
                                       "admin1": "example"
                                       "country": "US"
                                       "eventType": "all"

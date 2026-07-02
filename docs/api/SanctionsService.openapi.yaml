@@ -35,7 +35,7 @@ paths:
                                 "datasetDate": "1717200000000"
                                 "entries":
                                     - "countryCodes":
-                                          - "US"
+                                        - "US"
                                       "countryNames":
                                           - "WorldMonitor Analyst"
                                       "effectiveAt": "1717200000000"
@@ -84,7 +84,7 @@ paths:
                             example:
                                 "results":
                                     - "countryCodes":
-                                          - "US"
+                                        - "US"
                                       "entityType": "all"
                                       "id": "example-id"
                                       "name": "WorldMonitor Analyst"

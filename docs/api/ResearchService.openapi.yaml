@@ -51,7 +51,7 @@ paths:
                                     "totalCount": 1
                                 "papers":
                                     - "authors":
-                                          - "example"
+                                        - "example"
                                       "categories":
                                           - "example"
                                       "id": "example-id"
@@ -249,11 +249,11 @@ paths:
                                 "error": "example"
                                 "events":
                                     - "coords":
-                                          "country": "US"
-                                          "lat": 40.7128
-                                          "lng": -74.006
-                                          "original": "example"
-                                          "virtual": true
+                                        "country": "US"
+                                        "lat": 40.7128
+                                        "lng": -74.006
+                                        "original": "example"
+                                        "virtual": true
                                       "description": "Example WorldMonitor observation."
                                       "endDate": "2026-01-15"
                                       "id": "example-id"

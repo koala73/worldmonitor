@@ -57,7 +57,7 @@ paths:
                             example:
                                 "outages":
                                     - "categories":
-                                          - "example"
+                                        - "example"
                                       "cause": "example"
                                       "country": "US"
                                       "description": "Example WorldMonitor observation."
