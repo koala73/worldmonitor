@@ -82,6 +82,8 @@ describe('api/mcp.ts — telemetry redaction (closed-key allowlist)', () => {
   let handler;
   let MCP_TOOLCALL_TELEMETRY_KEYS;
   let MCP_TOOLS_LIST_TELEMETRY_KEYS;
+  let MCP_RATE_LIMIT_HIT_TELEMETRY_KEYS;
+  let emitMcpRateLimitHit;
   let captured;
   let origLog;
 
@@ -94,6 +96,8 @@ describe('api/mcp.ts — telemetry redaction (closed-key allowlist)', () => {
     handler = mod.default;
     MCP_TOOLCALL_TELEMETRY_KEYS = mod.MCP_TOOLCALL_TELEMETRY_KEYS;
     MCP_TOOLS_LIST_TELEMETRY_KEYS = mod.MCP_TOOLS_LIST_TELEMETRY_KEYS;
+    MCP_RATE_LIMIT_HIT_TELEMETRY_KEYS = mod.MCP_RATE_LIMIT_HIT_TELEMETRY_KEYS;
+    emitMcpRateLimitHit = mod.emitMcpRateLimitHit;
     captured = [];
     origLog = console.log;
     console.log = (line) => captured.push(line);
@@ -113,6 +117,8 @@ describe('api/mcp.ts — telemetry redaction (closed-key allowlist)', () => {
     assert.ok(MCP_TOOLCALL_TELEMETRY_KEYS.length > 0, 'MCP_TOOLCALL_TELEMETRY_KEYS must be non-empty');
     assert.ok(Array.isArray(MCP_TOOLS_LIST_TELEMETRY_KEYS), 'MCP_TOOLS_LIST_TELEMETRY_KEYS must be exported as an array');
     assert.ok(MCP_TOOLS_LIST_TELEMETRY_KEYS.length > 0, 'MCP_TOOLS_LIST_TELEMETRY_KEYS must be non-empty');
+    assert.ok(Array.isArray(MCP_RATE_LIMIT_HIT_TELEMETRY_KEYS), 'MCP_RATE_LIMIT_HIT_TELEMETRY_KEYS must be exported as an array');
+    assert.ok(MCP_RATE_LIMIT_HIT_TELEMETRY_KEYS.length > 0, 'MCP_RATE_LIMIT_HIT_TELEMETRY_KEYS must be non-empty');
   });
 
   it('declared allowlists exclude every request/response body key', () => {
@@ -125,7 +131,25 @@ describe('api/mcp.ts — telemetry redaction (closed-key allowlist)', () => {
         !MCP_TOOLS_LIST_TELEMETRY_KEYS.includes(forbidden),
         `MCP_TOOLS_LIST_TELEMETRY_KEYS must not include "${forbidden}" — request/response bodies are never logged`,
       );
+      assert.ok(
+        !MCP_RATE_LIMIT_HIT_TELEMETRY_KEYS.includes(forbidden),
+        `MCP_RATE_LIMIT_HIT_TELEMETRY_KEYS must not include "${forbidden}" — request/response bodies are never logged`,
+      );
     }
+  });
+
+  it('mcp.rate_limit_hit emitted line keys ⊆ MCP_RATE_LIMIT_HIT_TELEMETRY_KEYS', () => {
+    emitMcpRateLimitHit(
+      { kind: 'env_key', apiKey: VALID_KEY },
+      { dimension: 'mcp_minute_burst', limit: 60, windowSeconds: 60 },
+    );
+
+    const ev = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.rate_limit_hit');
+    assert.equal(ev.length, 1, `expected exactly one mcp.rate_limit_hit line, got ${ev.length}`);
+    assert.equal(ev[0].user_id, null, 'env-key rate-limit telemetry must not log a raw user id');
+    assert.notEqual(ev[0].principal_id, VALID_KEY, 'env-key rate-limit telemetry must not log the raw API key');
+    const offending = Object.keys(ev[0]).filter((k) => !MCP_RATE_LIMIT_HIT_TELEMETRY_KEYS.includes(k));
+    assert.deepEqual(offending, [], `unauthorized telemetry keys on mcp.rate_limit_hit: ${offending.join(', ')} — add to MCP_RATE_LIMIT_HIT_TELEMETRY_KEYS or remove from the emit site`);
   });
 
   it('mcp.toolcall emitted line keys ⊆ MCP_TOOLCALL_TELEMETRY_KEYS', async () => {

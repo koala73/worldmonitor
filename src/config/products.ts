@@ -8,4 +8,4 @@
  * Do not add product IDs here manually.
  */
 
-export { DODO_PRODUCTS, DEFAULT_UPGRADE_PRODUCT } from './products.generated';
+export { DODO_PRODUCTS, PLAN_LIMITS, DEFAULT_UPGRADE_PRODUCT } from './products.generated';

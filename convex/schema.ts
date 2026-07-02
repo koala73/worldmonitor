@@ -27,6 +27,34 @@ const paymentEventStatus = v.union(
   v.literal("dispute_closed"),
 );
 
+const apiPlanLimitDimension = v.union(
+  v.literal("api_daily_requests"),
+  v.literal("api_minute_burst"),
+  v.literal("mcp_daily_calls"),
+  v.literal("mcp_minute_burst"),
+);
+
+const apiPlanLimitNoticeState = v.union(
+  v.literal("warning"),
+  v.literal("over_limit"),
+  v.literal("sustained_burst"),
+);
+
+const apiPlanLimitEmailStatus = v.union(
+  v.literal("pending"),
+  v.literal("sent"),
+  v.literal("skipped"),
+  v.literal("suppressed"),
+  v.literal("failed"),
+);
+
+const apiPlanLimitCtaKind = v.union(
+  v.literal("checkout"),
+  v.literal("billing_portal"),
+  v.literal("contact_support"),
+  v.literal("none"),
+);
+
 export default defineSchema({
   userPreferences: defineTable({
     userId: v.string(),
@@ -543,6 +571,12 @@ export default defineSchema({
       maxDashboards: v.number(),
       apiAccess: v.boolean(),
       apiRateLimit: v.number(),
+      planLimits: v.optional(v.object({
+        apiRequestsPerDay: v.union(v.number(), v.null()),
+        apiBurstRequestsPerMinute: v.union(v.number(), v.null()),
+        mcpCallsPerDay: v.union(v.number(), v.null()),
+        mcpBurstRequestsPerMinute: v.union(v.number(), v.null()),
+      })),
       prioritySupport: v.boolean(),
       exportFormats: v.array(v.string()),
       // Optional for backward-compat with existing rows written before
@@ -563,7 +597,49 @@ export default defineSchema({
     // goodwill credits outlive Dodo subscription cancellations.
     compUntil: v.optional(v.number()),
     updatedAt: v.number(),
-  }).index("by_userId", ["userId"]),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_validUntil", ["validUntil"]),
+
+  apiUsageRollups: defineTable({
+    userId: v.string(),
+    planKey: v.string(),
+    dimension: apiPlanLimitDimension,
+    windowKey: v.string(),
+    windowStart: v.number(),
+    windowEnd: v.number(),
+    limit: v.union(v.number(), v.null()),
+    usage: v.number(),
+    usageRatio: v.union(v.number(), v.null()),
+    source: v.string(),
+    sourceFreshAt: v.number(),
+    computedAt: v.number(),
+  })
+    .index("by_user_window", ["userId", "windowKey"])
+    .index("by_window_dimension", ["windowKey", "dimension"]),
+
+  apiPlanLimitNotices: defineTable({
+    userId: v.string(),
+    planKey: v.string(),
+    dimension: apiPlanLimitDimension,
+    state: apiPlanLimitNoticeState,
+    windowKey: v.string(),
+    usage: v.number(),
+    limit: v.union(v.number(), v.null()),
+    usageRatio: v.union(v.number(), v.null()),
+    current: v.boolean(),
+    firstSeenAt: v.number(),
+    lastSeenAt: v.number(),
+    lastEmailedAt: v.optional(v.number()),
+    acknowledgedAt: v.optional(v.number()),
+    emailStatus: apiPlanLimitEmailStatus,
+    upgradeTargetPlanKey: v.optional(v.string()),
+    ctaKind: apiPlanLimitCtaKind,
+    blockedReason: v.optional(v.string()),
+  })
+    .index("by_user_state", ["userId", "state"])
+    .index("by_notice_dedupe", ["userId", "planKey", "dimension", "state", "windowKey"])
+    .index("by_email_due", ["emailStatus", "lastSeenAt"]),
 
   customers: defineTable({
     userId: v.string(),

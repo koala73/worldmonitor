@@ -64,6 +64,23 @@ describe('Product catalog freshness', () => {
     assert.ok(typeof api.annualPrice === 'number', 'API should have annualPrice');
   });
 
+  it('generated products.ts includes typed plan limits', () => {
+    assert.match(generatedProductsSrc, /export const PLAN_LIMITS = \{/, 'Missing PLAN_LIMITS export');
+    assert.match(generatedProductsSrc, /"api_starter": \{"apiRequestsPerDay":1000,/, 'API Starter daily limit missing');
+    assert.match(generatedProductsSrc, /"api_business": \{"apiRequestsPerDay":10000,/, 'API Business daily limit missing');
+    assert.match(generatedProductsSrc, /"enterprise": \{"apiRequestsPerDay":null,/, 'Enterprise unlimited daily limit missing');
+  });
+
+  it('generated tiers expose plan limits for public plans', () => {
+    const pro = tiersJson.find(t => t.name === 'Pro');
+    const api = tiersJson.find(t => t.name === 'API');
+    const ent = tiersJson.find(t => t.name === 'Enterprise');
+
+    assert.equal(pro?.planLimits?.mcpCallsPerDay, 50, 'Pro MCP daily limit should be visible');
+    assert.equal(api?.planLimits?.apiRequestsPerDay, 1000, 'API Starter daily limit should be visible');
+    assert.equal(ent?.planLimits?.apiRequestsPerDay, null, 'Enterprise daily limit should be unlimited');
+  });
+
   it('Enterprise tier is custom with contact CTA', () => {
     const ent = tiersJson.find(t => t.name === 'Enterprise');
     assert.ok(ent, 'Enterprise tier not found');

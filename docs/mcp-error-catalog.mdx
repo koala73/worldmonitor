@@ -12,7 +12,7 @@ description: "Every error shape WorldMonitor's MCP server can emit — JSON-RPC 
   - Origin / method gates               api/mcp/handler.ts:35-49
   - Top-level dispatch / -32600/-32601  api/mcp/handler.ts:66-164
   - Auth -32001 / -32603 emitters       api/mcp/auth.ts:126-238
-  - Per-minute -32029                   api/mcp/auth.ts:243-260
+  - Per-minute -32029 + hit telemetry    api/mcp/auth.ts:243-260
   - Pro daily-cap -32029 (HTTP 429)     api/mcp/dispatch.ts:130-144
   - Tool exec -32603                    api/mcp/dispatch.ts:231-269
   - _budget_exceeded envelope           api/mcp/dispatch.ts:183-229
@@ -84,6 +84,8 @@ Two distinct triggers share this code; the HTTP status disambiguates.
 
 **Per-minute throttle — HTTP 200.** Sliding-window limiter at **60 requests / minute** keyed per API key (Starter+) or per Pro user (combined across all that user's tokens). The limiter runs in `api/mcp/handler.ts` **before** the method-dispatch switch, so **every** request that reaches it counts — `tools/call`, all metadata methods (`tools/list`, `describe_tool`, `prompts/list`, `resources/list`), AND the lifecycle methods (`initialize`, `notifications/initialized`, `ping`). There is no per-method exemption. (The Pro daily-cap exemption set is separate and narrower — see below.) Comes back as a JSON-RPC error inside HTTP 200 because the limiter is upstream of any per-id correlation. Fails OPEN on Upstash transient errors — single spikes in limiter-backend latency won't take the API down.
 
+When the per-minute limiter rejects, the handler emits a durable `mcp.rate_limit_hit` telemetry event with an allowlisted identity shape. The plan-limit scanner uses that event for sustained-burst notices; it does not infer customer-facing MCP burst notices from raw Upstash limiter internals.
+
 The `message` text identifies which limiter fired. Two distinct strings:
 
 | Auth context           | `message`                                                        | Site                  |
@@ -124,6 +126,8 @@ Content-Type: application/json
 ```
 
 **What to do.** For HTTP 200 / per-minute: back off ~1 second and retry. The limiter is a sliding window, not a token bucket — sustained 60 rpm is fine; bursts above 60 in any 60-second window reject. For HTTP 429 / daily: honour `Retry-After` (the value is `seconds-until-UTC-midnight`). If the Pro/OAuth daily cap is the binding constraint for batch work, use the API-key or REST/API path where appropriate, or contact Enterprise for a custom MCP limit.
+
+Paid-plan customers also receive account notices and bounded-cadence email when sustained usage crosses a plan threshold. These notices never imply an automatic upgrade, automatic overage charge, or automatic move into API Business; support or checkout action is explicit.
 
 ### `-32600` — Invalid request envelope
 

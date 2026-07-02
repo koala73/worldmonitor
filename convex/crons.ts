@@ -9,6 +9,20 @@ crons.hourly(
   internal.telegramPairingTokens.cleanupExpired,
 );
 
+crons.hourly(
+  "api-plan-limit-usage-scan",
+  { minuteUTC: 17 },
+  internal.apiPlanLimitUsage.scanApiPlanLimitUsageInternal,
+  {},
+);
+
+crons.hourly(
+  "api-plan-limit-email-delivery",
+  { minuteUTC: 18 },
+  internal.apiPlanLimitEmails.sendDuePlanLimitEmails,
+  {},
+);
+
 // PRO-launch broadcast ramp runner. Wakes once a day at 13:00 UTC
 // (~9am ET / 6am PT / 3pm CET — early enough that any kill-gate
 // trip can be triaged within US business hours, late enough that

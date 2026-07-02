@@ -133,6 +133,8 @@ OAuth 60/min is per-USER (a user with 3 Claude installations shares one 60/min p
 
 Hitting the Pro/OAuth daily quota returns JSON-RPC error `-32029` plus HTTP `429` with a `Retry-After` header pointing at the next UTC midnight. Hitting the per-minute limit returns the same error code with a short `Retry-After`.
 
+WorldMonitor also surfaces current MCP plan-limit notices in Settings and sends a bounded-cadence email when a paid user approaches or exceeds their plan allowance. Notices are informational and action-oriented: they offer retry/reset guidance, checkout when the next tier is self-serve, or support contact when it is not. They do not automatically upgrade the account or create overage charges.
+
 ### Other rate limits
 
 - **OAuth authorize**: 10 requests / minute / IP
