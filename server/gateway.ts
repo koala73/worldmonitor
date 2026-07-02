@@ -386,12 +386,90 @@ export type GatewayCtx = { waitUntil: (p: Promise<unknown>) => void };
 const POST_TO_GET_MAX_BODY_BYTES = 1_048_576;
 const POST_TO_GET_MAX_ARRAY_VALUES_PER_KEY = 200;
 
+export const REQUIRED_BBOX_QUERY_PARAMS = ['sw_lat', 'sw_lon', 'ne_lat', 'ne_lon'] as const;
+
+// Issue #4595 is scoped to military RPCs whose handlers require bbox.
+// Other bbox-capable RPCs support lookup/global modes and must not emit this diagnostic.
+export const REQUIRED_BBOX_RPC_PATHS = [
+  '/api/military/v1/list-military-bases',
+  '/api/military/v1/list-military-flights',
+] as const;
+
+const REQUIRED_BBOX_RPC_PATH_SET = new Set<string>(REQUIRED_BBOX_RPC_PATHS);
+const MILITARY_BBOX_DIAGNOSTIC_PATH_SET = new Set<string>(REQUIRED_BBOX_RPC_PATHS);
+
 function isPostToGetCompatibleBodySize(headers: Headers): boolean {
   const rawContentLength = headers.get('Content-Length');
   if (rawContentLength === null || !/^\d+$/.test(rawContentLength)) return false;
 
   const contentLength = Number(rawContentLength);
   return Number.isSafeInteger(contentLength) && contentLength < POST_TO_GET_MAX_BODY_BYTES;
+}
+
+function getRequiredBboxQueryProblems(searchParams: URLSearchParams): { missing: string[]; invalid: string[]; allZero: boolean } {
+  const absent: string[] = [];
+  const invalid: string[] = [];
+  const values: number[] = [];
+
+  for (const param of REQUIRED_BBOX_QUERY_PARAMS) {
+    const raw = searchParams.get(param);
+    if (raw == null) {
+      absent.push(param);
+      continue;
+    }
+    if (raw.trim() === '') {
+      invalid.push(param);
+      continue;
+    }
+    const value = Number(raw);
+    if (!Number.isFinite(value)) {
+      invalid.push(param);
+      continue;
+    }
+    values.push(value);
+  }
+
+  const missing = absent.length === REQUIRED_BBOX_QUERY_PARAMS.length ? [...REQUIRED_BBOX_QUERY_PARAMS] : [];
+  return {
+    missing,
+    invalid,
+    allZero: absent.length === 0 && invalid.length === 0 && values.every((value) => value === 0),
+  };
+}
+
+type RequiredBboxDiagnostic = {
+  status: 'missing' | 'invalid';
+  missing: string[];
+  invalid: string[];
+};
+
+function getRequiredBboxDiagnostic(request: Request, pathname: string): RequiredBboxDiagnostic | null {
+  if (!REQUIRED_BBOX_RPC_PATH_SET.has(pathname)) return null;
+
+  const { searchParams } = new URL(request.url);
+  const { missing, invalid, allZero } = getRequiredBboxQueryProblems(searchParams);
+  if (missing.length === 0 && invalid.length === 0 && !allZero) return null;
+
+  return {
+    status: missing.length > 0 ? 'missing' : 'invalid',
+    missing,
+    invalid: allZero ? [...REQUIRED_BBOX_QUERY_PARAMS] : invalid,
+  };
+}
+
+function attachRequiredBboxDiagnosticHeaders(
+  headers: Headers,
+  pathname: string,
+  diagnostic: RequiredBboxDiagnostic | null,
+): void {
+  if (!diagnostic) return;
+  headers.set('X-WorldMonitor-Bbox', diagnostic.status);
+  if (diagnostic.missing.length > 0) headers.set('X-WorldMonitor-Bbox-Missing', diagnostic.missing.join(','));
+  if (diagnostic.invalid.length > 0) headers.set('X-WorldMonitor-Bbox-Invalid', diagnostic.invalid.join(','));
+  if (MILITARY_BBOX_DIAGNOSTIC_PATH_SET.has(pathname)) {
+    // Issue #4595 explicitly requested the military alias; keep it as a stable consumer affordance.
+    headers.set('X-Military-Bbox', diagnostic.status);
+  }
 }
 
 // `TRUSTED_USER_ID_HEADER` (a.k.a. `x-user-id`) is gateway-internal: the
@@ -1282,6 +1360,8 @@ export function createDomainGateway(
       });
     }
 
+    const requiredBboxDiagnostic = getRequiredBboxDiagnostic(request, pathname);
+
     // Execute handler with top-level error boundary.
     // Wrap in runWithUsageScope so deep fetch helpers (fetchJson,
     // cachedFetchJsonWithMeta) can attribute upstream calls to this customer
@@ -1320,6 +1400,7 @@ export function createDomainGateway(
         mergedHeaders.set(key, value);
       }
     }
+    attachRequiredBboxDiagnosticHeaders(mergedHeaders, pathname, requiredBboxDiagnostic);
 
     // For GET 200 responses: read body once for cache-header decisions + ETag
     let resolvedCacheTier: CacheTier | null = null;

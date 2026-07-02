@@ -111,7 +111,7 @@ paths:
                 - name: type
                   in: query
                   description: 'Activity type: "military_flights", "vessels", "protests", "news", "ais_gaps", "satellite_fires".'
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: region

@@ -66,7 +66,7 @@ paths:
             parameters:
                 - name: chokepointId
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -150,7 +150,7 @@ paths:
                 - name: iso2
                   in: query
                   description: ISO 3166-1 alpha-2 country code (uppercase).
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: hs2
@@ -188,7 +188,7 @@ paths:
             parameters:
                 - name: chokepointId
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: cargoType
@@ -233,12 +233,12 @@ paths:
             parameters:
                 - name: iso2
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: chokepointId
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: hs2
@@ -276,7 +276,7 @@ paths:
             parameters:
                 - name: iso2
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -310,12 +310,12 @@ paths:
             parameters:
                 - name: iso2
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: chokepointId
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: closureDays
@@ -354,13 +354,13 @@ paths:
             parameters:
                 - name: iso2
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: hs2
                   in: query
                   description: HS2 chapter code, e.g. "27" (mineral fuels), "85" (electronics)
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -397,24 +397,24 @@ paths:
             parameters:
                 - name: fromIso2
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: toIso2
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: hs2
                   in: query
                   description: HS2 chapter code, e.g. "27", "85"
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: cargoType
                   in: query
                   description: 'One of: container, tanker, bulk, roro'
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -445,17 +445,17 @@ paths:
             parameters:
                 - name: fromIso2
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: toIso2
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: hs2
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -526,7 +526,7 @@ paths:
             parameters:
                 - name: pipelineId
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -601,7 +601,7 @@ paths:
             parameters:
                 - name: facilityId
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -685,7 +685,7 @@ paths:
             parameters:
                 - name: shortageId
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:

@@ -118,7 +118,7 @@ npm run build:happy
 npm run build:energy
 ```
 
-The dev server runs at `http://localhost:3000`. Run `make help` to see all available make targets.
+The dev server runs at `http://localhost:3000` (override the port with `DEV_PORT` in `.env.local`). Run `make help` to see all available make targets.
 
 ### Environment Variables (Optional)
 

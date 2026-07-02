@@ -14,7 +14,7 @@ paths:
                 - name: series_id
                   in: query
                   description: FRED series ID (e.g., "GDP", "UNRATE", "CPIAUCSL").
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: limit
@@ -54,7 +54,7 @@ paths:
                 - name: indicator_code
                   in: query
                   description: World Bank indicator code (e.g., "NY.GDP.MKTP.CD").
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: country_code

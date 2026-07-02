@@ -8,6 +8,8 @@ import {
   getRedisCredentials,
   loadEnvFile,
   logSeedResult,
+  parseRetryAfterMs,
+  PERMANENT_4XX_STATUSES,
   releaseLock,
   verifySeedKey,
   withRetry,
@@ -461,17 +463,33 @@ export function buildMirrorWriteCommands(payload, ttlSeconds, fetchedAt = Date.n
 
 async function redisPipeline(commands) {
   const { url, token } = getRedisCredentials();
-  const response = await fetch(`${url}/pipeline`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(commands),
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!response.ok) {
-    const body = await response.text().catch(() => '');
-    throw new Error(`Redis pipeline failed: HTTP ${response.status} — ${body.slice(0, 200)}`);
-  }
-  return response.json();
+  const body = JSON.stringify(commands);
+  // Retry transient publish failures (Upstash timeouts, 5xx, network resets) so
+  // a single latency spike after a successful fetch doesn't fail the whole
+  // bundle — the fetch already retries, the publish did not. Mirrors
+  // redisCommand()'s tagging: permanent 4xx won't recover (fail fast), 429
+  // honours Retry-After, timeouts/5xx fall through to withRetry's backoff.
+  return withRetry(async () => {
+    const response = await fetch(`${url}/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body,
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      const error = new Error(`Redis pipeline failed: HTTP ${response.status} — ${text.slice(0, 200)}`);
+      error.httpStatus = response.status;
+      if (PERMANENT_4XX_STATUSES.has(response.status)) {
+        error.nonRetryable = true;
+      } else if (response.status === 429) {
+        const retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after'));
+        if (retryAfterMs != null) error.retryAfterMs = retryAfterMs;
+      }
+      throw error;
+    }
+    return response.json();
+  }, 2, 1_000);
 }
 
 async function publishMirroredPayload(payload) {

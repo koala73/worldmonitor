@@ -122,6 +122,8 @@ components:
             properties:
                 countryCode:
                     type: string
+            required:
+                - countryCode
         GetResilienceScoreResponse:
             type: object
             properties:

@@ -1,4 +1,4 @@
-export * from './market';
+// market: not re-exported (#4571) — eager service client; kept tree-shakeable out of main.js
 export * from './prediction';
 export * from './earthquakes';
 export * from './clustering';
@@ -7,7 +7,10 @@ export * from './velocity';
 export * from './storage';
 export * from './correlation';
 export * from './weather';
-export * from './economic';
+// economic is NOT re-exported here (#4571): it runs a module-load side effect
+// (new EconomicServiceClient() + circuit breakers), so an `export *` re-export
+// keeps it un-tree-shakeable in eager main.js. Its consumers import it directly
+// (`@/services/economic`) or dynamically (data-loader), so it tree-shakes out.
 export * from './infrastructure';
 export * from './cyber';
 export * from './maritime';
@@ -19,7 +22,7 @@ export * from './research';
 export * from './wildfires';
 export * from './climate';
 export * from './unrest';
-export * from './aviation';
+// aviation: not re-exported (#4571) — eager service client; kept tree-shakeable out of main.js
 export * from './military-flights';
 export * from './usni-fleet';
 export * from './pizzint';
@@ -33,8 +36,8 @@ export * from './data-freshness';
 export * from './usa-spending';
 export { generateSummary, translateText } from './summarization';
 export * from './cached-theater-posture';
-export * from './trade';
-export * from './supply-chain';
+// trade: not re-exported (#4571) — eager service client; kept tree-shakeable out of main.js
+// supply-chain: not re-exported (#4571 review) — eager service client; kept tree-shakeable out of main.js
 export * from './radiation';
 export * from './breaking-news-alerts';
 export * from './sanctions-pressure';
