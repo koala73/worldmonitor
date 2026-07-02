@@ -17,13 +17,18 @@ const src = readFileSync(new URL('../src/services/index.ts', import.meta.url), '
 
 describe('@/services barrel keeps side-effectful services tree-shakeable (#4571 U4)', () => {
   for (const svc of DEFERRED) {
-    it(`does not \`export * from './${svc}'\` (would pull it into eager main.js)`, () => {
-      const re = new RegExp(`export\\s*\\*\\s*from\\s*['"]\\./${svc}['"]`);
+    it(`does not re-export './${svc}' (star OR named — either pulls it into eager main.js)`, () => {
+      // Both `export * from './svc'` AND `export { fetchX } from './svc'` re-export the
+      // module through the barrel. Since the module has a top-level side effect, Rollup
+      // retains it (and runs its client/breaker init) for any eager barrel importer either
+      // way — a named re-export is NOT a safe escape hatch (Greptile #4640 review).
+      const starRe = new RegExp(`export\\s*\\*\\s*from\\s*['"]\\./${svc}['"]`);
+      const namedRe = new RegExp(`export\\s*\\{[^}]*\\}\\s*from\\s*['"]\\./${svc}['"]`);
       assert.ok(
-        !re.test(src),
-        `src/services/index.ts must not re-export './${svc}' via \`export *\` — it has a `
-          + `module-load side effect and must stay in a lazy chunk. Consumers import it directly `
-          + `(@/services/${svc}) or dynamically (data-loader). See #4571.`,
+        !starRe.test(src) && !namedRe.test(src),
+        `src/services/index.ts must not re-export './${svc}' (via \`export *\` or a named `
+          + `\`export { … } from\`) — it has a module-load side effect and must stay in a lazy `
+          + `chunk. Consumers import it directly (@/services/${svc}) or dynamically (data-loader). See #4571.`,
       );
     });
   }
