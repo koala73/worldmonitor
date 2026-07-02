@@ -29,6 +29,22 @@ function fixtureTraceEvents() {
   ];
 }
 
+function fixtureBeginEndTraceEvents() {
+  return [
+    { ph: 'M', name: 'thread_name', pid: 1, tid: 1, args: { name: 'CrRendererMain' } },
+    { ph: 'M', name: 'thread_name', pid: 1, tid: 2, args: { name: 'CrRendererMain' } },
+    null,
+    { ph: 'B', name: 'RunTask', pid: 1, tid: 1, ts: 0 },
+    { ph: 'B', name: 'Layout', pid: 1, tid: 1, ts: 100 },
+    { ph: 'E', name: 'Layout', pid: 1, tid: 1, ts: 250 },
+    { ph: 'E', name: 'RunTask', pid: 1, tid: 1, ts: 500 },
+    { ph: 'B', name: 'RunTask', pid: 1, tid: 2, ts: 0 },
+    { ph: 'B', name: 'FunctionCall', pid: 1, tid: 2, ts: 10 },
+    { ph: 'E', name: 'FunctionCall', pid: 1, tid: 2, ts: 110 },
+    { ph: 'E', name: 'RunTask', pid: 1, tid: 2, ts: 200 },
+  ];
+}
+
 test('categoryOf maps known events and defaults unknowns to other (#4539)', () => {
   assert.equal(categoryOf('FunctionCall'), 'scripting');
   assert.equal(categoryOf('Layout'), 'styleLayout');
@@ -58,6 +74,10 @@ test('normalizeCompleteEvents keeps X events and pairs B/E into durations (#4539
 
 test('pickRendererMainThread picks the busiest CrRendererMain (#4539)', () => {
   assert.equal(pickRendererMainThread(fixtureTraceEvents()), '1:1');
+});
+
+test('pickRendererMainThread scores normalized B/E events and skips null entries (#4539)', () => {
+  assert.equal(pickRendererMainThread(fixtureBeginEndTraceEvents()), '1:1');
 });
 
 test('computeSelfTimeByName subtracts nested children from parents (#4539)', () => {

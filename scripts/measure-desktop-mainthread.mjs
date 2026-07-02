@@ -29,6 +29,7 @@
 import { pathToFileURL } from 'node:url';
 
 const TBT_THRESHOLD_MS = 50;
+const TRACE_COMPLETE_TIMEOUT_MS = 30000;
 
 function round(n) {
   return Math.round((Number(n) || 0) * 10) / 10;
@@ -148,19 +149,19 @@ export function normalizeCompleteEvents(events) {
  * the top frame is a known limitation). Returns "pid:tid" or null when none found.
  */
 export function pickRendererMainThread(events) {
+  const list = Array.isArray(events) ? events : [];
   const candidates = new Set();
-  for (const e of Array.isArray(events) ? events : []) {
+  for (const e of list) {
     if (e && e.ph === 'M' && e.name === 'thread_name' && e.args?.name === 'CrRendererMain') {
       candidates.add(`${e.pid}:${e.tid}`);
     }
   }
   if (candidates.size === 0) return null;
   const durByThread = new Map();
-  for (const e of events) {
-    if (!e) continue;
+  for (const e of normalizeCompleteEvents(list)) {
     const key = `${e.pid}:${e.tid}`;
     if (!candidates.has(key)) continue;
-    if (e.ph === 'X' && typeof e.dur === 'number') durByThread.set(key, (durByThread.get(key) || 0) + e.dur);
+    if (typeof e.dur === 'number') durByThread.set(key, (durByThread.get(key) || 0) + e.dur);
   }
   let best = null;
   let bestDur = -1;
@@ -299,6 +300,21 @@ async function readTraceStream(client, handle) {
   return data;
 }
 
+function waitForTraceComplete(client, timeoutMs = TRACE_COMPLETE_TIMEOUT_MS) {
+  return new Promise((resolve, reject) => {
+    let timer;
+    const onComplete = (event) => {
+      clearTimeout(timer);
+      resolve(event);
+    };
+    timer = setTimeout(() => {
+      if (typeof client.off === 'function') client.off('Tracing.tracingComplete', onComplete);
+      reject(new Error(`Timed out waiting ${timeoutMs}ms for Tracing.tracingComplete`));
+    }, timeoutMs);
+    client.once('Tracing.tracingComplete', onComplete);
+  });
+}
+
 /** Live capture (best-effort). Loads the URL under a desktop viewport + optional CPU throttle and records a trace. */
 async function measure(url, { cpu = 1, settle = 15000 } = {}) {
   const { chromium } = await import('@playwright/test');
@@ -339,15 +355,10 @@ async function measure(url, { cpu = 1, settle = 15000 } = {}) {
     });
     await page.goto(url, { waitUntil: 'load', timeout: 60000 });
     await page.waitForTimeout(settle);
-    // Guard against a dropped CDP session / never-fired tracingComplete: without a
-    // timeout the await below would hang forever and the finally's browser.close()
-    // would never run. Reject after 30s so the error propagates and cleanup happens.
-    const completePromise = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('Tracing.tracingComplete timed out after 30s')), 30000);
-      client.once('Tracing.tracingComplete', (evt) => { clearTimeout(timer); resolve(evt); });
-    });
+    const completePromise = waitForTraceComplete(client);
     await client.send('Tracing.end');
     const { stream } = await completePromise;
+    if (!stream) throw new Error('Tracing completed without an IO stream');
     const raw = await readTraceStream(client, stream);
     const trace = JSON.parse(raw);
     const longtasks = await page.evaluate(() => window.__longtasks || []);
@@ -363,10 +374,10 @@ export function buildReport(result) {
   const mainThread = pickRendererMainThread(events);
   const longTasks = summarizeLongTasks(result?.longtasks);
   if (!mainThread) {
-    // No CrRendererMain metadata — we can't isolate one properly-nested thread.
-    // Mixing all threads' (concurrent, non-nested) events into the self-time
-    // stack would violate its precondition and silently emit a plausible-but-
-    // wrong split, so refuse to attribute rather than produce garbage.
+    // No CrRendererMain metadata - we cannot isolate one properly-nested thread.
+    // Mixing all threads' concurrent events into the self-time stack would violate
+    // its precondition, so refuse to attribute rather than emit a plausible but
+    // wrong split.
     return {
       url: result?.url,
       cpu: result?.cpu,
@@ -403,6 +414,10 @@ function printHuman(report) {
   console.log('\n"Other" decomposed (top events — this is the #4539 black box):');
   for (const o of report.other) {
     console.log(`  ${o.name.padEnd(36)} ${String(o.ms).padStart(9)}ms  (${o.pct}%)`);
+  }
+  if (report.warning) {
+    console.log('\nWarnings:');
+    console.log('  ' + report.warning);
   }
   console.log('\nNote: absolute ms is host-contention-sensitive (#4486). Trust the RELATIVE');
   console.log('shares here; take authoritative absolute desktop timings from PageSpeed/Calibre.\n');
