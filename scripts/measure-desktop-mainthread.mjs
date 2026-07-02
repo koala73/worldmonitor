@@ -139,10 +139,12 @@ export function normalizeCompleteEvents(events) {
 }
 
 /**
- * Identify the busiest CrRendererMain (pid:tid). The main frame's renderer main
- * thread carries the dashboard's main-thread work; picking the busiest among the
- * threads named CrRendererMain avoids counting worker/iframe/prerender threads.
- * Returns "pid:tid" or null when no such thread is found.
+ * Identify the busiest CrRendererMain (pid:tid) — the target page's renderer main
+ * thread. Picking the busiest among threads named CrRendererMain excludes worker
+ * threads (they are named differently), but a cross-origin iframe or prerender
+ * runs its own CrRendererMain, so this assumes the top-level dashboard frame is
+ * the busiest renderer (true in practice; a heavy third-party embed out-busying
+ * the top frame is a known limitation). Returns "pid:tid" or null when none found.
  */
 export function pickRendererMainThread(events) {
   const candidates = new Set();
@@ -328,7 +330,10 @@ async function measure(url, { cpu = 1, settle = 15000 } = {}) {
     });
     await client.send('Tracing.start', {
       transferMode: 'ReturnAsStream',
-      traceConfig: { recordMode: 'recordUntilFull', includedCategories: TRACE_CATEGORIES },
+      // recordAsMuchAsPossible (not recordUntilFull): don't stop at the first ring-buffer
+      // fill over a busy 15s settle, which would drop late paint/interaction events and
+      // bias the *relative* split toward early-load parse/script work.
+      traceConfig: { recordMode: 'recordAsMuchAsPossible', includedCategories: TRACE_CATEGORIES },
     });
     await page.goto(url, { waitUntil: 'load', timeout: 60000 });
     await page.waitForTimeout(settle);
@@ -348,17 +353,31 @@ async function measure(url, { cpu = 1, settle = 15000 } = {}) {
 export function buildReport(result) {
   const events = result?.trace?.traceEvents || (Array.isArray(result?.trace) ? result.trace : []);
   const mainThread = pickRendererMainThread(events);
-  const complete = normalizeCompleteEvents(events).filter(
-    (e) => !mainThread || `${e.pid}:${e.tid}` === mainThread,
-  );
+  const longTasks = summarizeLongTasks(result?.longtasks);
+  if (!mainThread) {
+    // No CrRendererMain metadata — we can't isolate one properly-nested thread.
+    // Mixing all threads' (concurrent, non-nested) events into the self-time
+    // stack would violate its precondition and silently emit a plausible-but-
+    // wrong split, so refuse to attribute rather than produce garbage.
+    return {
+      url: result?.url,
+      cpu: result?.cpu,
+      mainThread: null,
+      mainThreadMs: 0,
+      categories: [],
+      other: [],
+      longTasks,
+      warning: 'no CrRendererMain thread found in trace; not attributing',
+    };
+  }
+  const complete = normalizeCompleteEvents(events).filter((e) => `${e.pid}:${e.tid}` === mainThread);
   const { byName } = computeSelfTimeByName(complete);
-  const decomposition = buildDecomposition(byName);
   return {
     url: result?.url,
     cpu: result?.cpu,
     mainThread,
-    ...decomposition,
-    longTasks: summarizeLongTasks(result?.longtasks),
+    ...buildDecomposition(byName),
+    longTasks,
   };
 }
 

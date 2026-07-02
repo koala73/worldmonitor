@@ -98,3 +98,37 @@ test('buildReport filters to the main thread and decomposes end to end (#4539)',
   assert.equal(report.mainThreadMs, 1.5, 'the 1:2 FunctionCall is excluded');
   assert.equal(report.categories.find((c) => c.category === 'scripting').ms, 0.3);
 });
+
+test('self-time handles ts-tie parent/child and adjacent siblings (guards the dur-desc tiebreak) (#4539)', () => {
+  // Child emitted BEFORE its parent in the array (as Chrome does — the child
+  // completes first) and sharing the parent's start ts. The `dur` desc sort
+  // tiebreak is what keeps the larger interval as the parent; dropping it would
+  // make the child the "parent" and mis-attribute self-time.
+  const { byName, total } = computeSelfTimeByName(
+    normalizeCompleteEvents([
+      { ph: 'X', name: 'Layout', pid: 1, tid: 1, ts: 0, dur: 40 }, // child, ts == parent.ts
+      { ph: 'X', name: 'Paint', pid: 1, tid: 1, ts: 40, dur: 60 }, // sibling, ts == Layout.end (adjacent)
+      { ph: 'X', name: 'RunTask', pid: 1, tid: 1, ts: 0, dur: 100 }, // parent, emitted last
+    ]),
+  );
+  assert.equal(byName.get('RunTask'), 0, 'parent self = 100 - 40 - 60');
+  assert.equal(byName.get('Layout'), 40, 'ts-tie child keeps its full duration');
+  assert.equal(byName.get('Paint'), 60, 'adjacent sibling is not nested under Layout');
+  assert.equal(total, 100);
+});
+
+test('buildReport refuses to attribute when no CrRendererMain thread exists (#4539)', () => {
+  // No thread_name metadata — mixing all threads would corrupt the split, so bail.
+  const report = buildReport({
+    url: 'x',
+    cpu: 1,
+    trace: { traceEvents: [{ ph: 'X', name: 'RunTask', pid: 9, tid: 9, ts: 0, dur: 100 }] },
+    longtasks: [{ duration: 80 }],
+  });
+  assert.equal(report.mainThread, null);
+  assert.equal(report.mainThreadMs, 0);
+  assert.deepEqual(report.categories, []);
+  assert.deepEqual(report.other, []);
+  assert.match(report.warning, /no CrRendererMain/);
+  assert.equal(report.longTasks.longTaskCount, 1, 'long-task summary still reported');
+});
