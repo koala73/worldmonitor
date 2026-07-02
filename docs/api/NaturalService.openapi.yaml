@@ -12,7 +12,7 @@ paths:
             parameters:
                 - name: days
                   in: query
-                  description: Number of recent days to include in the natural-event feed.
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
@@ -75,7 +75,7 @@ components:
                 days:
                     type: integer
                     format: int32
-                    description: Number of recent days to include in the natural-event feed.
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
         ListNaturalEventsResponse:
             type: object
             properties:

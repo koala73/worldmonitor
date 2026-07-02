@@ -1979,13 +1979,13 @@ paths:
             parameters:
                 - name: fromDate
                   in: query
-                  description: Start date for economic events, formatted as YYYY-MM-DD.
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                 - name: toDate
                   in: query
-                  description: End date for economic events, formatted as YYYY-MM-DD.
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -4715,13 +4715,13 @@ paths:
             parameters:
                 - name: fromDate
                   in: query
-                  description: Start date for earnings entries, formatted as YYYY-MM-DD.
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                 - name: toDate
                   in: query
-                  description: End date for earnings entries, formatted as YYYY-MM-DD.
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -5286,7 +5286,7 @@ paths:
             parameters:
                 - name: days
                   in: query
-                  description: Number of recent days to include in the natural-event feed.
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
@@ -10755,10 +10755,10 @@ components:
             properties:
                 fromDate:
                     type: string
-                    description: Start date for economic events, formatted as YYYY-MM-DD.
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
                 toDate:
                     type: string
-                    description: End date for economic events, formatted as YYYY-MM-DD.
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
         worldmonitor_economic_v1_GetEconomicCalendarResponse:
             type: object
             properties:
@@ -16385,10 +16385,10 @@ components:
             properties:
                 fromDate:
                     type: string
-                    description: Start date for earnings entries, formatted as YYYY-MM-DD.
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
                 toDate:
                     type: string
-                    description: End date for earnings entries, formatted as YYYY-MM-DD.
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
         worldmonitor_market_v1_ListEarningsCalendarResponse:
             type: object
             properties:
@@ -17749,7 +17749,7 @@ components:
                 days:
                     type: integer
                     format: int32
-                    description: Number of recent days to include in the natural-event feed.
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
         worldmonitor_natural_v1_ListNaturalEventsResponse:
             type: object
             properties:

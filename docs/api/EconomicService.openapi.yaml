@@ -475,13 +475,13 @@ paths:
             parameters:
                 - name: fromDate
                   in: query
-                  description: Start date for economic events, formatted as YYYY-MM-DD.
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                 - name: toDate
                   in: query
-                  description: End date for economic events, formatted as YYYY-MM-DD.
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -1696,10 +1696,10 @@ components:
             properties:
                 fromDate:
                     type: string
-                    description: Start date for economic events, formatted as YYYY-MM-DD.
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
                 toDate:
                     type: string
-                    description: End date for economic events, formatted as YYYY-MM-DD.
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
         GetEconomicCalendarResponse:
             type: object
             properties:

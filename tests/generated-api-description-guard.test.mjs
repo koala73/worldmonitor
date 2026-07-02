@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import YAML from 'yaml';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
@@ -156,6 +157,21 @@ function generatedJsonSpecs() {
     .sort();
 }
 
+function generatedQuerySpecs() {
+  const serviceJsonSpecs = generatedJsonSpecs().map((file) => ({
+    file,
+    spec: JSON.parse(readFileSync(resolve(apiDir, file), 'utf8')),
+  }));
+
+  return [
+    ...serviceJsonSpecs,
+    {
+      file: 'worldmonitor.openapi.yaml',
+      spec: YAML.parse(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8')),
+    },
+  ];
+}
+
 function hasDescription(schema) {
   return (
     (typeof schema.description === 'string' && schema.description.trim().length > 0) ||
@@ -197,8 +213,7 @@ function parameterDescriptionText(parameter) {
 
 function collectQueryParameters() {
   const rows = [];
-  for (const file of generatedJsonSpecs()) {
-    const spec = JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'));
+  for (const { file, spec } of generatedQuerySpecs()) {
     for (const [route, pathItem] of Object.entries(spec.paths ?? {})) {
       const pathParameters = Array.isArray(pathItem?.parameters) ? pathItem.parameters : [];
       for (const [method, operation] of Object.entries(pathItem ?? {})) {
