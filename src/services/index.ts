@@ -37,7 +37,7 @@ export * from './usa-spending';
 export { generateSummary, translateText } from './summarization';
 export * from './cached-theater-posture';
 // trade: not re-exported (#4571) — eager service client; kept tree-shakeable out of main.js
-export * from './supply-chain';
+// supply-chain: not re-exported (#4571 review) — eager service client; kept tree-shakeable out of main.js
 export * from './radiation';
 export * from './breaking-news-alerts';
 export * from './sanctions-pressure';

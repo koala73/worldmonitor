@@ -53,9 +53,6 @@ import {
   fetchNaturalEvents,
   fetchRecentAwards,
   fetchCyberThreats,
-  fetchShippingRates,
-  fetchChokepointStatus,
-  fetchCriticalMinerals,
   fetchSanctionsPressure,
   fetchRadiationWatch,
 } from '@/services';
@@ -173,7 +170,6 @@ import type { NewsItem as ProtoNewsItem, ThreatLevel as ProtoThreatLevel } from 
 import { fetchMarketImplications } from '@/services/market-implications';
 import { fetchDiseaseOutbreaks } from '@/services/disease-outbreaks';
 import { fetchSocialVelocity } from '@/services/social-velocity';
-import { fetchShippingStress } from '@/services/supply-chain';
 import { getTopActiveGeoHubs } from '@/services/geo-activity';
 // getTopActiveHubs is lazy-imported at its call sites (applyTechHubActivities) so
 // the tech-activity → tech-hub-index → ~62KB tech-geo chain stays off the eager
@@ -1780,8 +1776,20 @@ export class DataLoaderManager implements AppModule {
       marketMod = await import('@/services/market');
     } catch (e) {
       // Persistent failure mode: a stale-deploy chunk 404 would otherwise skip the
-      // whole markets/crypto/commodities cycle with no signal. Log so it's traceable.
+      // whole markets/crypto/commodities cycle with no signal. Log so it's traceable,
+      // and mirror the downstream failure states before returning.
       console.warn('[DataLoader] market chunk load failed', e);
+      this.ctx.statusPanel?.updateApi('Finnhub', { status: 'error' });
+      this.ctx.statusPanel?.updateApi('CoinGecko', { status: 'error' });
+      (this.ctx.panels['markets'] as MarketPanel | undefined)?.showRetrying(t('common.failedMarketData'));
+      (this.ctx.panels['heatmap'] as HeatmapPanel | undefined)?.showRetrying(t('common.failedSectorData'));
+      (this.ctx.panels['commodities'] as CommoditiesPanel | undefined)?.showRetrying(t('common.failedCommodities'));
+      (this.ctx.panels['energy-complex'] as EnergyComplexPanel | undefined)?.showRetrying(t('common.failedCommodities'));
+      (this.ctx.panels['crypto'] as CryptoPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+      (this.ctx.panels['crypto-heatmap'] as CryptoHeatmapPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+      (this.ctx.panels['defi-tokens'] as DefiTokensPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+      (this.ctx.panels['ai-tokens'] as AiTokensPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+      (this.ctx.panels['other-tokens'] as OtherTokensPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
       return;
     }
     const {
@@ -3383,6 +3391,9 @@ export class DataLoaderManager implements AppModule {
     if (!scPanel) return;
 
     try {
+      const {
+        fetchShippingRates, fetchChokepointStatus, fetchCriticalMinerals, fetchShippingStress,
+      } = await import('@/services/supply-chain');
       const [shipping, chokepoints, minerals, stress] = await Promise.allSettled([
         fetchShippingRates(),
         fetchChokepointStatus(),
