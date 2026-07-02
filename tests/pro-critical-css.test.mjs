@@ -168,8 +168,8 @@ describe('pro built HTML critical CSS contract', () => {
       const mainHideIdx = criticalCss.indexOf('main .hidden{display:none}');
       const sm640Idx = criticalCss.indexOf('@media (min-width:640px){');
       const md768Idx = criticalCss.indexOf('@media (min-width:768px){');
-      const navRevealIdx = criticalCss.indexOf('nav [class*="md:flex"]{display:flex}');
-      const smBlockRevealIdx = criticalCss.indexOf('main [class*="sm:block"]{display:block}');
+      const navRevealIdx = criticalCss.indexOf('nav [class~="md:flex"]{display:flex}');
+      const smBlockRevealIdx = criticalCss.indexOf('main [class~="sm:block"]{display:block}');
 
       assert.notEqual(navHideIdx, -1, `${relPath} critical CSS should hide plain .hidden nav elements`);
       assert.notEqual(mainHideIdx, -1, `${relPath} critical CSS should hide plain .hidden main elements`);

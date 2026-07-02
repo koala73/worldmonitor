@@ -12,31 +12,41 @@ paths:
             parameters:
                 - name: zoom
                   in: query
+                  description: Map zoom level used to decide whether to return webcams or clusters.
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
                 - name: bound_w
                   in: query
+                  description: Western longitude bound of the map viewport.
                   required: false
+                  example: 1.5
                   schema:
                     type: number
                     format: double
                 - name: bound_s
                   in: query
+                  description: Southern latitude bound of the map viewport.
                   required: false
+                  example: 1.5
                   schema:
                     type: number
                     format: double
                 - name: bound_e
                   in: query
+                  description: Eastern longitude bound of the map viewport.
                   required: false
+                  example: 1.5
                   schema:
                     type: number
                     format: double
                 - name: bound_n
                   in: query
+                  description: Northern latitude bound of the map viewport.
                   required: false
+                  example: 1.5
                   schema:
                     type: number
                     format: double
@@ -45,6 +55,20 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "clusters":
+                                    - "categories":
+                                        - "example"
+                                      "count": 1
+                                      "lat": 40.7128
+                                      "lng": -74.006
+                                "totalInView": 1
+                                "webcams":
+                                    - "category": "cs.AI"
+                                      "country": "US"
+                                      "lat": 40.7128
+                                      "lng": -74.006
+                                      "title": "example"
                             schema:
                                 $ref: '#/components/schemas/ListWebcamsResponse'
                 "400":
@@ -68,7 +92,9 @@ paths:
             parameters:
                 - name: webcam_id
                   in: query
+                  description: Webcam identifier to resolve into image and player URLs.
                   required: false
+                  example: "example-id"
                   schema:
                     type: string
             responses:
@@ -76,6 +102,12 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "error": "example"
+                                "lastUpdated": "1717200000000"
+                                "playerUrl": "https://example.com/worldmonitor"
+                                "thumbnailUrl": "https://example.com/worldmonitor"
+                                "title": "example"
                             schema:
                                 $ref: '#/components/schemas/GetWebcamImageResponse'
                 "400":
@@ -129,18 +161,23 @@ components:
                 zoom:
                     type: integer
                     format: int32
+                    description: Map zoom level used to decide whether to return webcams or clusters.
                 boundW:
                     type: number
                     format: double
+                    description: Western longitude bound of the map viewport.
                 boundS:
                     type: number
                     format: double
+                    description: Southern latitude bound of the map viewport.
                 boundE:
                     type: number
                     format: double
+                    description: Eastern longitude bound of the map viewport.
                 boundN:
                     type: number
                     format: double
+                    description: Northern latitude bound of the map viewport.
         ListWebcamsResponse:
             type: object
             properties:
@@ -193,6 +230,7 @@ components:
             properties:
                 webcamId:
                     type: string
+                    description: Webcam identifier to resolve into image and player URLs.
         GetWebcamImageResponse:
             type: object
             properties:

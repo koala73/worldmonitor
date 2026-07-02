@@ -14,24 +14,19 @@
  * `npm run gen:openapi:security`. Idempotent: re-running (or a fresh regenerate
  * followed by this step) yields byte-identical output.
  *
- * Two artifacts:
+ * Two artifact families:
  *   1. docs/api/<Service>.openapi.json — full injection (schemes + root
  *      API-key security + per-operation bearer overrides where the gateway
- *      accepts Clerk bearer auth + per-operation 401). Re-serialized
- *      byte-faithfully to the generator's format (recursively sorted keys,
- *      Go-style <>&/U+2028/U+2029 escaping, no trailing newline) so the diff is
- *      additions-only.
- *   2. docs/api/worldmonitor.openapi.yaml — the bundle copied to
- *      public/openapi.yaml at build time. The generator's YAML emitter cannot
- *      be reproduced by js-yaml (a re-dump reformats ~100% of 21k lines), so
- *      the bundle gets a formatting-preserving surgical insertion of the two
- *      top-level blocks that convey global API-key auth (`security` +
- *      `components.securitySchemes`). Per-operation detail in the bundle (the
- *      401 response, bearer overrides, and the `security: []` override on the
- *      handful of public RPCs) is intentionally left to native plugin support
- *      (tracked in #4599); the per-service specs carry the precise
- *      per-operation contract, and the bundle's root `security` documents the
- *      authenticated API-key default.
+ *      accepts Clerk bearer auth + per-operation 401 + entitlement/public 403
+ *      responses/notes). Re-serialized byte-faithfully to the generator's
+ *      format (recursively sorted keys, Go-style <>&/U+2028/U+2029 escaping, no
+ *      trailing newline) so the diff is additions-only.
+ *   2. docs/api/<Service>.openapi.yaml and docs/api/worldmonitor.openapi.yaml —
+ *      docs-facing YAML. The generator's YAML emitter cannot be reproduced by
+ *      js-yaml (a re-dump reformats ~100% of 21k lines), so YAML gets
+ *      formatting-preserving surgical insertions for per-operation
+ *      entitlement/public 403 responses and gate notes. The bundle also
+ *      receives the top-level blocks that convey global API-key auth.
  */
 
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
@@ -65,11 +60,14 @@ const PUBLIC_PATHS = readPublicNoAuthPaths();
 // Bearer auth is not a universal replacement for an API key. The gateway only
 // resolves Clerk bearer sessions for endpoint-entitlement gates and legacy Pro
 // paths, so stamp BearerAuth at operation level only for those exact paths.
-function readEndpointEntitlementPaths() {
+function readEndpointEntitlements() {
   const src = readFileSync(entitlementPath, 'utf8');
   const block = src.match(/ENDPOINT_ENTITLEMENTS\s*:\s*Record<string,\s*number>\s*=\s*\{([\s\S]*?)\};/);
   if (!block) throw new Error(`could not locate ENDPOINT_ENTITLEMENTS in ${entitlementPath}`);
-  return [...block[1].matchAll(/'([^']+)'\s*:/g)].map((m) => m[1]);
+  const entries = [...block[1].matchAll(/'([^']+)'\s*:\s*(\d+)/g)]
+    .map((m) => [m[1], Number(m[2])]);
+  if (entries.length === 0) throw new Error('ENDPOINT_ENTITLEMENTS parsed as empty — refusing to run');
+  return new Map(entries);
 }
 
 function readPremiumRpcPaths() {
@@ -79,10 +77,29 @@ function readPremiumRpcPaths() {
   return [...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
 }
 
-const BEARER_AUTH_PATHS = new Set([...readEndpointEntitlementPaths(), ...readPremiumRpcPaths()]);
+const ENDPOINT_ENTITLEMENTS = readEndpointEntitlements();
+const ENDPOINT_ENTITLEMENT_PATHS = new Set(ENDPOINT_ENTITLEMENTS.keys());
+const BEARER_AUTH_PATHS = new Set([...ENDPOINT_ENTITLEMENT_PATHS, ...readPremiumRpcPaths()]);
 if (BEARER_AUTH_PATHS.size === 0) {
   throw new Error('bearer-auth path sources parsed as empty — refusing to run');
 }
+
+// Public RPCs can still have documented 403 gates. Lead capture intentionally
+// opts out of API-key auth at the gateway, then fails closed in the handler when
+// Cloudflare Turnstile verification fails.
+const PUBLIC_FORBIDDEN_GATES = new Map([
+  ['/api/leads/v1/submit-contact', {
+    note: 'Turnstile-gated. Missing or invalid Cloudflare Turnstile token returns 403 Bot verification failed.',
+    response: {
+      description: 'Bot verification failed.',
+      content: {
+        'application/json': {
+          schema: { $ref: '#/components/schemas/Error' },
+        },
+      },
+    },
+  }],
+]);
 
 // ── Contract definitions ──────────────────────────────────────────────────
 // Header names mirror the gateway's accepted public API-key headers
@@ -144,7 +161,57 @@ const UNAUTHORIZED_RESPONSE = {
   },
 };
 
+const FORBIDDEN_SCHEMA = {
+  type: 'object',
+  description:
+    'Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.',
+  properties: {
+    error: { type: 'string', description: 'Human-readable entitlement failure reason.' },
+    requiredTier: {
+      type: 'integer',
+      format: 'int32',
+      description: 'Minimum entitlement tier required for this endpoint.',
+    },
+    currentTier: {
+      type: 'integer',
+      format: 'int32',
+      description: 'Caller entitlement tier when known.',
+    },
+    planKey: { type: 'string', description: 'Caller plan key when known.' },
+  },
+  required: ['error'],
+};
+
+const FORBIDDEN_RESPONSE = {
+  description: 'PRO entitlement access denied.',
+  content: {
+    'application/json': {
+      schema: { $ref: '#/components/schemas/ForbiddenError' },
+    },
+  },
+};
+
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head']);
+
+function entitlementNote(requiredTier) {
+  return `PRO-gated. Requires entitlement tier >= ${requiredTier}.`;
+}
+
+function appendEntitlementNote(description, requiredTier) {
+  const note = entitlementNote(requiredTier);
+  const text = String(description ?? '').trim();
+  if (!text) return note;
+  if (/Requires entitlement tier >= \d+/i.test(text)) return text;
+  if (/PRO-gated/i.test(text)) return `${text} Requires entitlement tier >= ${requiredTier}.`;
+  return `${text} ${note}`;
+}
+
+function appendGateNote(description, note) {
+  const text = String(description ?? '').trim();
+  if (!text) return note;
+  if (text.includes(note)) return text;
+  return `${text} ${note}`;
+}
 
 // ── Byte-faithful serializer (matches protoc-gen-openapiv3 JSON output) ─────
 const sortRec = (x) =>
@@ -191,8 +258,16 @@ function injectJson(spec) {
     spec.components.schemas.UnauthorizedError = UNAUTHORIZED_SCHEMA;
     changed = true;
   }
+  const hasEntitlementPath = Object.keys(spec.paths ?? {}).some((path) => ENDPOINT_ENTITLEMENTS.has(path));
+  if (hasEntitlementPath && !eq(spec.components.schemas.ForbiddenError, FORBIDDEN_SCHEMA)) {
+    spec.components.schemas.ForbiddenError = FORBIDDEN_SCHEMA;
+    changed = true;
+  }
   for (const [path, ops] of Object.entries(spec.paths ?? {})) {
     const isPublic = PUBLIC_PATHS.has(path);
+    const requiredTier = ENDPOINT_ENTITLEMENTS.get(path);
+    const isEntitlementGated = requiredTier !== undefined;
+    const publicForbiddenGate = PUBLIC_FORBIDDEN_GATES.get(path);
     for (const [method, op] of Object.entries(ops)) {
       if (!HTTP_METHODS.has(method) || !op || typeof op !== 'object') continue;
       op.responses ||= {};
@@ -201,6 +276,17 @@ function injectJson(spec) {
         // (marks the operation as unauthenticated) and carry no 401-for-missing-key.
         if (!eq(op.security, [])) { op.security = []; changed = true; }
         if (op.responses['401'] !== undefined) { delete op.responses['401']; changed = true; }
+        if (publicForbiddenGate) {
+          const nextDescription = appendGateNote(op.description, publicForbiddenGate.note);
+          if (op.description !== nextDescription) {
+            op.description = nextDescription;
+            changed = true;
+          }
+          if (!eq(op.responses['403'], publicForbiddenGate.response)) {
+            op.responses['403'] = publicForbiddenGate.response;
+            changed = true;
+          }
+        }
       } else {
         if (BEARER_AUTH_PATHS.has(path)) {
           if (!eq(op.security, BEARER_OPERATION_SECURITY)) {
@@ -214,6 +300,17 @@ function injectJson(spec) {
         if (!eq(op.responses['401'], UNAUTHORIZED_RESPONSE)) {
           op.responses['401'] = UNAUTHORIZED_RESPONSE;
           changed = true;
+        }
+        if (isEntitlementGated) {
+          const nextDescription = appendEntitlementNote(op.description, requiredTier);
+          if (op.description !== nextDescription) {
+            op.description = nextDescription;
+            changed = true;
+          }
+          if (!eq(op.responses['403'], FORBIDDEN_RESPONSE)) {
+            op.responses['403'] = FORBIDDEN_RESPONSE;
+            changed = true;
+          }
         }
       }
     }
@@ -321,8 +418,271 @@ function injectBundle(text) {
   return { text: lines.join('\n'), changed };
 }
 
+// ── Service/bundle YAML entitlement insertion (formatting-preserving) ────────
+const YAML_METHOD_LINE_RE = /^        (get|post|put|delete|patch|options|head):$/;
+
+const YAML_FORBIDDEN_RESPONSE = [
+  '                "403":',
+  '                    description: PRO entitlement access denied.',
+  '                    content:',
+  '                        application/json:',
+  '                            schema:',
+  "                                $ref: '#/components/schemas/ForbiddenError'",
+];
+
+const YAML_BOT_FORBIDDEN_RESPONSE = [
+  '                "403":',
+  '                    description: Bot verification failed.',
+  '                    content:',
+  '                        application/json:',
+  '                            schema:',
+  "                                $ref: '#/components/schemas/Error'",
+];
+
+const YAML_FORBIDDEN_SCHEMA = [
+  '        ForbiddenError:',
+  '            type: object',
+  '            properties:',
+  '                error:',
+  '                    type: string',
+  '                    description: Human-readable entitlement failure reason.',
+  '                requiredTier:',
+  '                    type: integer',
+  '                    format: int32',
+  '                    description: Minimum entitlement tier required for this endpoint.',
+  '                currentTier:',
+  '                    type: integer',
+  '                    format: int32',
+  '                    description: Caller entitlement tier when known.',
+  '                planKey:',
+  '                    type: string',
+  '                    description: Caller plan key when known.',
+  '            required:',
+  '                - error',
+  '            description: Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.',
+];
+
+function findYamlPathRange(lines, path) {
+  const start = lines.indexOf(`    ${path}:`);
+  if (start === -1) return null;
+  let end = start + 1;
+  while (end < lines.length) {
+    const line = lines[end];
+    if (line && !line.startsWith('        ')) break;
+    end++;
+  }
+  return { start, end };
+}
+
+function findYamlOperationRange(lines, path) {
+  const range = findYamlPathRange(lines, path);
+  if (!range) return null;
+  const methodIndex = lines.findIndex((line, index) => (
+    index > range.start && index < range.end && YAML_METHOD_LINE_RE.test(line)
+  ));
+  if (methodIndex === -1) return null;
+  return { start: methodIndex, end: range.end };
+}
+
+function yamlBlockNote(existingText, requiredTier) {
+  return /PRO-gated/i.test(existingText)
+    ? `Requires entitlement tier >= ${requiredTier}.`
+    : entitlementNote(requiredTier);
+}
+
+function ensureYamlEntitlementDescription(lines, path, requiredTier) {
+  const op = findYamlOperationRange(lines, path);
+  if (!op) return false;
+  const descIndex = lines.findIndex((line, index) => (
+    index > op.start && index < op.end && line.startsWith('            description:')
+  ));
+
+  if (descIndex === -1) {
+    const operationIdIndex = lines.findIndex((line, index) => (
+      index > op.start && index < op.end && line.startsWith('            operationId:')
+    ));
+    const insertAt = operationIdIndex === -1 ? op.start + 1 : operationIdIndex;
+    lines.splice(insertAt, 0, `            description: ${entitlementNote(requiredTier)}`);
+    return true;
+  }
+
+  const line = lines[descIndex];
+  if (/^ {12}description:\s*[|>]/.test(line)) {
+    let blockEnd = descIndex + 1;
+    while (blockEnd < lines.length) {
+      const next = lines[blockEnd];
+      if (next && !next.startsWith('                ')) break;
+      blockEnd++;
+    }
+    const blockText = lines.slice(descIndex, blockEnd).join('\n');
+    if (/Requires entitlement tier >= \d+/i.test(blockText)) return false;
+    lines.splice(blockEnd, 0, `                ${yamlBlockNote(blockText, requiredTier)}`);
+    return true;
+  }
+
+  const prefix = '            description: ';
+  if (!line.startsWith(prefix)) return false;
+  const current = line.slice(prefix.length);
+  const next = appendEntitlementNote(current, requiredTier);
+  if (next === current) return false;
+  lines[descIndex] = prefix + next;
+  return true;
+}
+
+function ensureYamlGateDescription(lines, path, note) {
+  const op = findYamlOperationRange(lines, path);
+  if (!op) return false;
+  const descIndex = lines.findIndex((line, index) => (
+    index > op.start && index < op.end && line.startsWith('            description:')
+  ));
+
+  if (descIndex === -1) {
+    const operationIdIndex = lines.findIndex((line, index) => (
+      index > op.start && index < op.end && line.startsWith('            operationId:')
+    ));
+    const insertAt = operationIdIndex === -1 ? op.start + 1 : operationIdIndex;
+    lines.splice(insertAt, 0, `            description: ${note}`);
+    return true;
+  }
+
+  const line = lines[descIndex];
+  if (/^ {12}description:\s*[|>]/.test(line)) {
+    let blockEnd = descIndex + 1;
+    while (blockEnd < lines.length) {
+      const next = lines[blockEnd];
+      if (next && !next.startsWith('                ')) break;
+      blockEnd++;
+    }
+    const blockText = lines.slice(descIndex, blockEnd).join('\n');
+    if (blockText.includes(note)) return false;
+    lines.splice(blockEnd, 0, `                ${note}`);
+    return true;
+  }
+
+  const prefix = '            description: ';
+  if (!line.startsWith(prefix)) return false;
+  const current = line.slice(prefix.length);
+  const next = appendGateNote(current, note);
+  if (next === current) return false;
+  lines[descIndex] = prefix + next;
+  return true;
+}
+
+function findYamlResponseRange(lines, op, statusLine) {
+  const start = lines.findIndex((line, index) => (
+    index > op.start && index < op.end && line === statusLine
+  ));
+  if (start === -1) return null;
+
+  let end = start + 1;
+  while (end < op.end) {
+    const line = lines[end];
+    if (line && /^ {16}[^ ].*:/.test(line)) break;
+    if (line && !line.startsWith('                    ')) break;
+    end++;
+  }
+  return { start, end, text: lines.slice(start, end).join('\n') };
+}
+
+function ensureYamlForbiddenResponse(lines, path, responseLines = YAML_FORBIDDEN_RESPONSE) {
+  const op = findYamlOperationRange(lines, path);
+  if (!op) return false;
+
+  const expected = responseLines.join('\n');
+  const existing = findYamlResponseRange(lines, op, '                "403":');
+  if (existing) {
+    if (existing.text === expected) return false;
+    lines.splice(existing.start, existing.end - existing.start, ...responseLines);
+    return true;
+  }
+
+  const responsesIndex = lines.findIndex((line, index) => (
+    index > op.start && index < op.end && line === '            responses:'
+  ));
+  if (responsesIndex === -1) return false;
+
+  let responseEnd = responsesIndex + 1;
+  while (responseEnd < op.end) {
+    const line = lines[responseEnd];
+    if (line && !line.startsWith('                ')) break;
+    responseEnd++;
+  }
+
+  const defaultIndex = lines.findIndex((line, index) => (
+    index > responsesIndex && index < responseEnd && line === '                default:'
+  ));
+  const insertAt = defaultIndex === -1 ? responseEnd : defaultIndex;
+  lines.splice(insertAt, 0, ...responseLines);
+  return true;
+}
+function findYamlSchemaRange(lines, schemaName) {
+  const start = lines.indexOf(`        ${schemaName}:`);
+  if (start === -1) return null;
+  let end = start + 1;
+  while (end < lines.length) {
+    const line = lines[end];
+    if (line && /^ {8}[^ ].*:/.test(line)) break;
+    if (line && !line.startsWith('            ')) break;
+    end++;
+  }
+  return { start, end, text: lines.slice(start, end).join('\n') };
+}
+
+function ensureYamlForbiddenSchema(lines) {
+  const existing = findYamlSchemaRange(lines, 'ForbiddenError');
+  if (existing) {
+    const expected = YAML_FORBIDDEN_SCHEMA.join('\n');
+    if (existing.text === expected) return false;
+    lines.splice(existing.start, existing.end - existing.start, ...YAML_FORBIDDEN_SCHEMA);
+    return true;
+  }
+  const schemasIndex = lines.indexOf('    schemas:');
+  if (schemasIndex === -1) return false;
+
+  const errorIndex = lines.findIndex((line, index) => index > schemasIndex && line === '        Error:');
+  if (errorIndex === -1) {
+    lines.splice(schemasIndex + 1, 0, ...YAML_FORBIDDEN_SCHEMA);
+    return true;
+  }
+
+  let insertAt = errorIndex + 1;
+  while (insertAt < lines.length) {
+    const line = lines[insertAt];
+    if (line && /^ {8}[^ ].*:/.test(line)) break;
+    if (line && !line.startsWith('            ')) break;
+    insertAt++;
+  }
+  lines.splice(insertAt, 0, ...YAML_FORBIDDEN_SCHEMA);
+  return true;
+}
+
+function injectYamlEntitlementContract(text) {
+  const lines = text.split('\n');
+  let changed = false;
+  let matchedEntitlementPath = false;
+
+  for (const [path, requiredTier] of ENDPOINT_ENTITLEMENTS) {
+    if (!findYamlPathRange(lines, path)) continue;
+    matchedEntitlementPath = true;
+    changed = ensureYamlEntitlementDescription(lines, path, requiredTier) || changed;
+    changed = ensureYamlForbiddenResponse(lines, path) || changed;
+  }
+
+  if (matchedEntitlementPath) {
+    changed = ensureYamlForbiddenSchema(lines) || changed;
+  }
+
+  for (const [path, gate] of PUBLIC_FORBIDDEN_GATES) {
+    if (!findYamlPathRange(lines, path)) continue;
+    changed = ensureYamlGateDescription(lines, path, gate.note) || changed;
+    changed = ensureYamlForbiddenResponse(lines, path, YAML_BOT_FORBIDDEN_RESPONSE) || changed;
+  }
+
+  return { text: lines.join('\n'), changed };
+}
 // ── Run ──────────────────────────────────────────────────────────────────────
 const specFiles = readdirSync(apiDir).filter((f) => /Service\.openapi\.json$/.test(f)).sort();
+const serviceYamlFiles = readdirSync(apiDir).filter((f) => /Service\.openapi\.yaml$/.test(f)).sort();
 let wouldChange = 0;
 const touched = [];
 
@@ -336,16 +696,28 @@ for (const file of specFiles) {
   }
 }
 
+for (const file of serviceYamlFiles) {
+  const path = resolve(apiDir, file);
+  const raw = readFileSync(path, 'utf8');
+  const { text, changed } = injectYamlEntitlementContract(raw);
+  if (changed) {
+    wouldChange++;
+    touched.push(file);
+    if (!CHECK) writeFileSync(path, text);
+  }
+}
+
 // Bundle (optional — only if present)
 let bundleChanged = false;
 try {
   const bundleRaw = readFileSync(bundlePath, 'utf8');
-  const { text, changed } = injectBundle(bundleRaw);
-  bundleChanged = changed;
-  if (changed) {
+  const securityResult = injectBundle(bundleRaw);
+  const entitlementResult = injectYamlEntitlementContract(securityResult.text);
+  bundleChanged = securityResult.changed || entitlementResult.changed;
+  if (bundleChanged) {
     wouldChange++;
     touched.push('worldmonitor.openapi.yaml');
-    if (!CHECK) writeFileSync(bundlePath, text);
+    if (!CHECK) writeFileSync(bundlePath, entitlementResult.text);
   }
 } catch (err) {
   if (err.code !== 'ENOENT') throw err;
@@ -357,9 +729,9 @@ if (CHECK) {
     console.error('  Run: npm run gen:openapi:security');
     process.exit(1);
   }
-  console.log(`✓ all ${specFiles.length} specs + bundle carry the security contract`);
+  console.log(`✓ all ${specFiles.length} JSON specs, ${serviceYamlFiles.length} YAML specs + bundle carry the security contract`);
 } else {
   console.log(
-    `openapi-inject-security: updated ${wouldChange} artifact(s) — ${specFiles.length} specs scanned, bundle ${bundleChanged ? 'updated' : 'unchanged'}`,
+    `openapi-inject-security: updated ${wouldChange} artifact(s) — ${specFiles.length} JSON specs, ${serviceYamlFiles.length} YAML specs scanned, bundle ${bundleChanged ? 'updated' : 'unchanged'}`,
   );
 }

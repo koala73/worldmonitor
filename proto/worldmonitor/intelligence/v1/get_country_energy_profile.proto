@@ -3,6 +3,7 @@ package worldmonitor.intelligence.v1;
 import "sebuf/http/annotations.proto";
 
 message GetCountryEnergyProfileRequest {
+  // ISO 3166-1 alpha-2 country code for the energy profile.
   string country_code = 1 [(sebuf.http.query) = {name: "country_code"}];
 }
 

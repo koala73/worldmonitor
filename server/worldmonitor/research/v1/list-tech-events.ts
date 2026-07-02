@@ -19,6 +19,7 @@ import type {
   TechEventCoords,
 } from '../../../../src/generated/server/worldmonitor/research/v1/service_server';
 import { CITY_COORDS } from '../../../../api/data/city-coords';
+import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
 import { CHROME_UA, clampInt } from '../../../_shared/constants';
 import { cachedFetchJson } from '../../../_shared/redis';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
@@ -31,6 +32,7 @@ const REDIS_CACHE_TTL = 21600; // 6 hr — weekly event data
 const ICS_URL = 'https://www.techmeme.com/newsy_events.ics';
 const DEV_EVENTS_RSS = 'https://dev.events/rss.xml';
 const FETCH_TIMEOUT_MS = 8000;
+const TECH_EVENT_TYPES = new Set(filterParamContracts.researchTechEventTypes);
 
 // ---------- Relay helpers (Railway proxy for blocked sources) ----------
 
@@ -351,7 +353,7 @@ async function fetchTechEvents(req: ListTechEventsRequest): Promise<ListTechEven
 
   // Filter by type if specified
   if (type && type !== 'all') {
-    events = events.filter(e => e.type === type);
+    events = TECH_EVENT_TYPES.has(type) ? events.filter(e => e.type === type) : [];
   }
 
   // Filter to only mappable events if requested
@@ -411,7 +413,7 @@ function filterEvents(
   let filtered = [...events];
 
   if (type && type !== 'all') {
-    filtered = filtered.filter(e => e.type === type);
+    filtered = TECH_EVENT_TYPES.has(type) ? filtered.filter(e => e.type === type) : [];
   }
   if (mappable) {
     filtered = filtered.filter(e => e.coords && !e.coords.virtual);

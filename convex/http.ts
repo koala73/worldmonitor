@@ -3,12 +3,20 @@ import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { webhookHandler } from "./payments/webhookHandlers";
 import { resendWebhookHandler } from "./resendWebhookHandler";
+import { USER_PREFS_WRITE_RATE_LIMIT } from "./constants";
 
 const TRUSTED = [
   "https://worldmonitor.app",
   "*.worldmonitor.app",
   "http://localhost:3000",
 ];
+
+const EXPOSED_HEADERS = [
+  "Retry-After",
+  "X-RateLimit-Limit",
+  "X-RateLimit-Remaining",
+  "X-RateLimit-Reset",
+].join(", ");
 
 function matchOrigin(origin: string, pattern: string): boolean {
   if (pattern.startsWith("*.")) {
@@ -29,6 +37,7 @@ function corsHeaders(origin: string | null): Headers {
     headers.set("Access-Control-Allow-Origin", allowed);
     headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
     headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    headers.set("Access-Control-Expose-Headers", EXPOSED_HEADERS);
     headers.set("Access-Control-Max-Age", "86400");
   }
   return headers;
@@ -62,25 +71,46 @@ async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
  *   - `throw new ConvexError("PRO_REQUIRED")`  → data = '"PRO_REQUIRED"' → "PRO_REQUIRED"
  *   - `throw new ConvexError({code: "X", ...})` → data = '{"code":"X",…}'  → "X"
  */
-function extractConvexErrorCode(err: unknown): string | null {
+function parseConvexErrorData(err: unknown): unknown {
   const raw = (err as { data?: unknown } | undefined)?.data;
-  if (typeof raw !== "string") {
-    if (raw && typeof raw === "object" && "code" in (raw as Record<string, unknown>)) {
-      return String((raw as Record<string, unknown>).code);
-    }
-    return null;
-  }
+  if (typeof raw !== "string") return raw ?? null;
   try {
-    const parsed = JSON.parse(raw);
-    if (typeof parsed === "string") return parsed;
-    if (parsed && typeof parsed === "object" && "code" in parsed) {
-      return String((parsed as Record<string, unknown>).code);
-    }
-    return null;
+    return JSON.parse(raw);
   } catch {
-    // Not JSON — treat the raw string as the code itself.
     return raw;
   }
+}
+
+function extractConvexErrorCode(err: unknown): string | null {
+  const parsed = parseConvexErrorData(err);
+  if (typeof parsed === "string") return parsed;
+  if (parsed && typeof parsed === "object") {
+    const data = parsed as Record<string, unknown>;
+    const code = data.code ?? data.kind;
+    if (typeof code === "string") return code;
+  }
+  return null;
+}
+
+function readConvexErrorNumber(err: unknown, field: string): number | null {
+  const parsed = parseConvexErrorData(err);
+  if (!parsed || typeof parsed !== "object") return null;
+  const value = (parsed as Record<string, unknown>)[field];
+  return typeof value === "number" ? value : null;
+}
+
+type SetPreferencesResult =
+  | { ok: true; syncVersion: number }
+  | { ok: false; reason: "CONFLICT"; actualSyncVersion: number }
+  | { ok: false; reason: "BLOB_TOO_LARGE"; size: number; max: number }
+  | { ok: false; reason: "RATE_LIMITED"; limit: number; reset: number };
+
+function setRateLimitResponseHeaders(headers: Headers, limit: number, reset: number): void {
+  const retryAfter = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
+  headers.set("X-RateLimit-Limit", String(limit));
+  headers.set("X-RateLimit-Remaining", "0");
+  headers.set("X-RateLimit-Reset", String(reset));
+  headers.set("Retry-After", String(retryAfter));
 }
 
 const http = httpRouter();
@@ -189,15 +219,24 @@ http.route({
           expectedSyncVersion: body.expectedSyncVersion,
           schemaVersion: body.schemaVersion,
         },
-      )) as
-        | { ok: true; syncVersion: number }
-        | { ok: false; reason: "CONFLICT"; actualSyncVersion: number };
-      // PR 3 (post-launch-stabilization): setPreferences now returns a
-      // discriminated result for CONFLICT instead of throwing. Mirror the
-      // wire shape from api/user-prefs.ts (Vercel) so clients see the same
-      // 409 + actualSyncVersion regardless of which `/api/user-prefs` host
-      // they hit.
+      )) as SetPreferencesResult;
+      // Expected write denials return as a discriminated result so Convex can
+      // commit limiter bookkeeping and duplicate-counter cleanup. Mirror the
+      // wire shape from api/user-prefs.ts (Vercel) regardless of host.
       if (result.ok === false) {
+        if (result.reason === "BLOB_TOO_LARGE") {
+          return new Response(JSON.stringify({ error: "BLOB_TOO_LARGE" }), {
+            status: 400,
+            headers,
+          });
+        }
+        if (result.reason === "RATE_LIMITED") {
+          setRateLimitResponseHeaders(headers, result.limit, result.reset);
+          return new Response(JSON.stringify({ error: "RATE_LIMITED" }), {
+            status: 429,
+            headers,
+          });
+        }
         return new Response(
           JSON.stringify({
             error: "CONFLICT",
@@ -212,19 +251,29 @@ http.route({
       );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      const code = extractConvexErrorCode(err);
       // Defensive: keep CONFLICT-throw fallback for the deploy-ordering
       // window where this http action may run against an older Convex
       // deployment that still throws. Once both layers have soaked, this
       // branch is unreachable and can be removed.
-      if (msg.includes("CONFLICT")) {
+      if (code === "CONFLICT" || msg.includes("CONFLICT")) {
         return new Response(JSON.stringify({ error: "CONFLICT" }), {
           status: 409,
           headers,
         });
       }
-      if (msg.includes("BLOB_TOO_LARGE")) {
+      if (code === "BLOB_TOO_LARGE" || msg.includes("BLOB_TOO_LARGE")) {
         return new Response(JSON.stringify({ error: "BLOB_TOO_LARGE" }), {
           status: 400,
+          headers,
+        });
+      }
+      if (code === "RATE_LIMITED" || msg.includes("RATE_LIMITED")) {
+        const limit = readConvexErrorNumber(err, "limit") ?? USER_PREFS_WRITE_RATE_LIMIT;
+        const reset = readConvexErrorNumber(err, "reset") ?? Date.now() + 60_000;
+        setRateLimitResponseHeaders(headers, limit, reset);
+        return new Response(JSON.stringify({ error: "RATE_LIMITED" }), {
+          status: 429,
           headers,
         });
       }

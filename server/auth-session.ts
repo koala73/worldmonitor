@@ -39,6 +39,7 @@ export function getJWKS() {
 export interface SessionResult {
   valid: boolean;
   userId?: string;
+  orgId?: string | null;
   role?: 'free' | 'pro';
   email?: string;
   name?: string;
@@ -62,6 +63,14 @@ export function getClerkJwtVerifyOptions() {
     audience: getAllowedAudiences(),
     algorithms: ['RS256'],
   };
+}
+
+function extractOrgId(payload: Record<string, unknown>): string | null {
+  const orgClaim = payload.org as Record<string, unknown> | undefined;
+  return (
+    (typeof orgClaim?.id === 'string' ? orgClaim.id : null) ??
+    (typeof payload.org_id === 'string' ? payload.org_id : null)
+  );
 }
 
 // Short-lived in-memory cache for plan lookups (userId → { role, expiresAt }).
@@ -132,8 +141,9 @@ export async function validateBearerToken(token: string): Promise<SessionResult>
     const givenName = typeof payload.given_name === 'string' ? payload.given_name : undefined;
     const familyName = typeof payload.family_name === 'string' ? payload.family_name : undefined;
     const name = [givenName, familyName].filter(Boolean).join(' ') || undefined;
+    const orgId = extractOrgId(payload);
 
-    return { valid: true, userId, role, email, name };
+    return { valid: true, userId, orgId, role, email, name };
   } catch {
     // Signature verification failed, expired, wrong issuer, etc.
     return { valid: false };

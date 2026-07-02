@@ -15,6 +15,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "alertLevelMethodologyVersion": "example"
+                                "fetchedAt": 1717200000000
+                                "outbreaks":
+                                    - "alertLevel": "example"
+                                      "cases": 1
+                                      "countryCode": "US"
+                                      "disease": "example"
+                                      "id": "example-id"
                             schema:
                                 $ref: '#/components/schemas/ListDiseaseOutbreaksResponse'
                 "400":
@@ -41,6 +50,14 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "alerts":
+                                    - "aqi": 1
+                                      "city": "example"
+                                      "countryCode": "US"
+                                      "lat": 40.7128
+                                      "lng": -74.006
+                                "fetchedAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/ListAirQualityAlertsResponse'
                 "400":

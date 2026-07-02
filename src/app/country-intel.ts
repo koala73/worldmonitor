@@ -12,6 +12,7 @@ import type {
   CountryDeepDiveSignalDetails,
 } from '@/components/CountryBriefPanel';
 import { reverseGeocode } from '@/utils/reverse-geocode';
+import { yieldToMain } from '@/utils/after-paint';
 import { effectivePubDateMs } from '@/services/feed-date';
 import {
   getCountryAtCoordinates,
@@ -298,6 +299,13 @@ export class CountryIntelManager implements AppModule {
 
       page.show(country, code, score, signals);
       pageShown = true;
+      // Yield so the deep-dive panel paint lands before the map catch-up
+      // (highlightCountry deck rebuild + fitCountry fitBounds animation) — country
+      // click is the field #1 INP offender, presentation-delay-dominated (#4617).
+      // Re-check the staleness guard after the new async gap so a newer country
+      // open can't be painted over by this one.
+      await yieldToMain();
+      if (token !== this.briefRequestToken || this.ctx.isDestroyed || this.ctx.countryBriefPage !== page) return;
       this.ctx.map?.highlightCountry(code);
       this.ctx.map?.fitCountry(code);
 

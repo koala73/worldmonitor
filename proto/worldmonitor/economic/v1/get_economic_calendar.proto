@@ -5,8 +5,10 @@ package worldmonitor.economic.v1;
 import "sebuf/http/annotations.proto";
 
 message GetEconomicCalendarRequest {
-  string from_date = 1 [(sebuf.http.query) = {name: "fromDate"}];
-  string to_date = 2 [(sebuf.http.query) = {name: "toDate"}];
+  // Accepted but currently ignored; no-op until this handler supports the parameter.
+  string from_date = 1 [(sebuf.http.query) = {name: "fromDate"}, (sebuf.http.unimplemented) = true];
+  // Accepted but currently ignored; no-op until this handler supports the parameter.
+  string to_date = 2 [(sebuf.http.query) = {name: "toDate"}, (sebuf.http.unimplemented) = true];
 }
 
 message EconomicEvent {

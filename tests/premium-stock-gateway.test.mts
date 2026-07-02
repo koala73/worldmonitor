@@ -30,6 +30,27 @@ function installRateLimitRedisFake(): void {
   }) as typeof fetch;
 }
 
+const ISSUE_4609_GATED_ROUTES = [
+  { method: 'POST', path: '/api/forecast/v1/trigger-simulation' },
+  { method: 'GET', path: '/api/sanctions/v1/list-sanctions-pressure' },
+  { method: 'POST', path: '/api/scenario/v1/run-scenario' },
+  { method: 'GET', path: '/api/scenario/v1/get-scenario-status' },
+  { method: 'GET', path: '/api/supply-chain/v1/get-country-chokepoint-index' },
+  { method: 'GET', path: '/api/supply-chain/v1/get-bypass-options' },
+  { method: 'GET', path: '/api/supply-chain/v1/get-country-cost-shock' },
+  { method: 'GET', path: '/api/supply-chain/v1/get-route-explorer-lane' },
+  { method: 'GET', path: '/api/supply-chain/v1/get-route-impact' },
+  { method: 'GET', path: '/api/supply-chain/v1/get-country-products' },
+  { method: 'GET', path: '/api/supply-chain/v1/get-multi-sector-cost-shock' },
+  { method: 'GET', path: '/api/supply-chain/v1/get-sector-dependency' },
+  { method: 'GET', path: '/api/trade/v1/list-comtrade-flows' },
+  { method: 'GET', path: '/api/trade/v1/get-tariff-trends' },
+  { method: 'GET', path: '/api/market/v1/analyze-stock' },
+  { method: 'GET', path: '/api/market/v1/get-stock-analysis-history' },
+  { method: 'GET', path: '/api/market/v1/backtest-stock' },
+  { method: 'GET', path: '/api/market/v1/list-stored-stock-backtests' },
+] as const;
+
 // Public routes now require a wms_ session token (issue #3541) — header-only
 // origin trust is gone. Mint one for tests that previously relied on
 // "trusted browser origin = anonymous public read."
@@ -149,6 +170,143 @@ describe('premium gateway API key enforcement', () => {
       headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
     }));
     assert.equal(insiderTransactionsAllowed.status, 200);
+  });
+
+  it('standardizes issue #4609 Pro RPCs behind the entitlement 403 gate', async () => {
+    const handler = createDomainGateway(ISSUE_4609_GATED_ROUTES.map(({ method, path }) => ({
+      method,
+      path,
+      handler: async () => new Response(JSON.stringify({ leaked: true }), { status: 200 }),
+    })));
+
+    const originalSiteUrl = process.env.CONVEX_SITE_URL;
+    const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    const originalFetchForIssue4609GateTest = globalThis.fetch;
+    process.env.CONVEX_SITE_URL = 'https://test.convex.site';
+    process.env.CONVEX_SERVER_SHARED_SECRET = 'test-secret';
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+      if (url.endsWith('/api/internal-validate-api-key')) {
+        return new Response(
+          JSON.stringify({ userId: 'free_api_user', keyId: 'free-key', name: 'Free API key' }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (url.endsWith('/api/internal-entitlements')) {
+        return new Response(
+          JSON.stringify({
+            planKey: 'api_free_test',
+            validUntil: Date.now() + 86_400_000,
+            features: {
+              tier: 0,
+              apiAccess: true,
+              apiRateLimit: 60,
+              maxDashboards: 3,
+              prioritySupport: false,
+              exportFormats: [],
+              mcpAccess: false,
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return originalFetchForIssue4609GateTest(input, init);
+    }) as typeof fetch;
+
+    try {
+      for (const { method, path } of ISSUE_4609_GATED_ROUTES) {
+        const res = await handler(new Request(`https://worldmonitor.app${path}`, {
+          method,
+          headers: {
+            Origin: 'https://worldmonitor.app',
+            'X-Api-Key': 'wm_free_test_key',
+          },
+        }));
+        assert.equal(res.status, 403, `${method} ${path} should fail at the entitlement gate`);
+        const body = await res.json() as { error?: string; requiredTier?: number; currentTier?: number };
+        assert.equal(body.error, 'Upgrade required', `${method} ${path} should use the standardized entitlement body`);
+        assert.equal(body.requiredTier, 1, `${method} ${path} should declare the required tier`);
+        assert.equal(body.currentTier, 0, `${method} ${path} should include the caller tier when known`);
+      }
+    } finally {
+      globalThis.fetch = originalFetchForIssue4609GateTest;
+      if (originalSiteUrl === undefined) delete process.env.CONVEX_SITE_URL;
+      else process.env.CONVEX_SITE_URL = originalSiteUrl;
+      if (originalSecret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
+      else process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+    }
+  });
+
+  it('allows issue #4609 Pro RPCs for tier-1 entitlements', async () => {
+    const handler = createDomainGateway(ISSUE_4609_GATED_ROUTES.map(({ method, path }) => ({
+      method,
+      path,
+      handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    })));
+
+    const originalSiteUrl = process.env.CONVEX_SITE_URL;
+    const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    const originalFetchForIssue4609ProTest = globalThis.fetch;
+    process.env.CONVEX_SITE_URL = 'https://test.convex.site';
+    process.env.CONVEX_SERVER_SHARED_SECRET = 'test-secret';
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+      if (url.endsWith('/api/internal-validate-api-key')) {
+        return new Response(
+          JSON.stringify({ userId: 'pro_api_user', keyId: 'pro-key', name: 'Pro API key' }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (url.endsWith('/api/internal-entitlements')) {
+        return new Response(
+          JSON.stringify({
+            planKey: 'pro_monthly',
+            validUntil: Date.now() + 86_400_000,
+            features: {
+              tier: 1,
+              apiAccess: true,
+              apiRateLimit: 60,
+              maxDashboards: 10,
+              prioritySupport: false,
+              exportFormats: ['csv'],
+              mcpAccess: true,
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return originalFetchForIssue4609ProTest(input, init);
+    }) as typeof fetch;
+
+    try {
+      for (const { method, path } of ISSUE_4609_GATED_ROUTES) {
+        const res = await handler(new Request(`https://worldmonitor.app${path}`, {
+          method,
+          headers: {
+            Origin: 'https://worldmonitor.app',
+            'X-Api-Key': 'wm_pro_test_key',
+          },
+        }));
+        assert.equal(res.status, 200, `${method} ${path} should allow tier-1 Pro entitlements`);
+        assert.deepEqual(await res.json(), { ok: true });
+      }
+    } finally {
+      globalThis.fetch = originalFetchForIssue4609ProTest;
+      if (originalSiteUrl === undefined) delete process.env.CONVEX_SITE_URL;
+      else process.env.CONVEX_SITE_URL = originalSiteUrl;
+      if (originalSecret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
+      else process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+    }
   });
 
   it('PR #3557 review: anonymous wms_ session token does NOT unlock premium endpoints', async () => {
@@ -456,9 +614,9 @@ describe('premium gateway bearer token auth', () => {
       .sign(opts?.key ?? privateKey);
   }
 
-  it('valid bearer token resolves userId but entitlement check still applies', async () => {
-    // A valid Pro bearer token resolves a userId via session, but without entitlement data
-    // in the test env (no Redis/Convex), the entitlement check fails closed → 403
+  it('valid Pro bearer token unlocks tier-1 entitlement-gated endpoints without a Convex row', async () => {
+    // Clerk role='pro' remains a supported Pro signal for complimentary,
+    // tester, and legacy grants that do not have a Convex entitlement row.
     const token = await signToken({ sub: 'user_pro', plan: 'pro' });
     const res = await handler(new Request('https://worldmonitor.app/api/market/v1/analyze-stock?symbol=AAPL', {
       headers: {
@@ -466,10 +624,70 @@ describe('premium gateway bearer token auth', () => {
         Authorization: `Bearer ${token}`,
       },
     }));
-    // Fail-closed: entitlement data unavailable → 403
-    assert.equal(res.status, 403);
-    const body = await res.json() as { error: string };
-    assert.match(body.error, /[Uu]nable to verify|[Aa]uthentication required/);
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true });
+  });
+
+  it('does not apply a Pro bearer role to a different wm_ key owner', async () => {
+    const token = await signToken({ sub: 'user_pro', plan: 'pro' });
+    const originalSiteUrl = process.env.CONVEX_SITE_URL;
+    const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    const originalFetchForMixedAuthTest = globalThis.fetch;
+    process.env.CONVEX_SITE_URL = 'https://test.convex.site';
+    process.env.CONVEX_SERVER_SHARED_SECRET = 'test-secret';
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+      if (url.endsWith('/api/internal-validate-api-key')) {
+        return new Response(
+          JSON.stringify({ userId: 'free_api_user', keyId: 'free-key', name: 'Free API key' }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (url.endsWith('/api/internal-entitlements')) {
+        return new Response(
+          JSON.stringify({
+            planKey: 'api_free_test',
+            validUntil: Date.now() + 86_400_000,
+            features: {
+              tier: 0,
+              apiAccess: true,
+              apiRateLimit: 60,
+              maxDashboards: 3,
+              prioritySupport: false,
+              exportFormats: [],
+              mcpAccess: false,
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return originalFetchForMixedAuthTest(input, init);
+    }) as typeof fetch;
+
+    try {
+      const res = await handler(new Request('https://worldmonitor.app/api/market/v1/analyze-stock?symbol=AAPL', {
+        headers: {
+          Origin: 'https://worldmonitor.app',
+          Authorization: `Bearer ${token}`,
+          'X-Api-Key': 'wm_free_test_key',
+        },
+      }));
+      assert.equal(res.status, 403);
+      const body = await res.json() as { error?: string; currentTier?: number };
+      assert.equal(body.error, 'Upgrade required');
+      assert.equal(body.currentTier, 0);
+    } finally {
+      globalThis.fetch = originalFetchForMixedAuthTest;
+      if (originalSiteUrl === undefined) delete process.env.CONVEX_SITE_URL;
+      else process.env.CONVEX_SITE_URL = originalSiteUrl;
+      if (originalSecret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
+      else process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+    }
   });
 
   it('free bearer token on premium endpoint → 403', async () => {

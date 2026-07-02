@@ -12,12 +12,24 @@ paths:
             parameters:
                 - name: domain
                   in: query
+                  description: Forecast domain to retrieve, such as geopolitics, markets, or climate.
                   required: false
+                  example: "conflict"
                   schema:
                     type: string
+                    enum:
+                        - 'conflict'
+                        - 'market'
+                        - 'supply_chain'
+                        - 'political'
+                        - 'military'
+                        - 'cyber'
+                        - 'infrastructure'
                 - name: region
                   in: query
+                  description: Optional geographic or thematic region filter for forecasts.
                   required: false
+                  example: "example"
                   schema:
                     type: string
             responses:
@@ -25,6 +37,44 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "degraded": true
+                                "error": "example"
+                                "forecasts":
+                                    - "calibration":
+                                        "drift": 1.5
+                                        "marketPrice": 75.25
+                                        "marketTitle": "example"
+                                        "source": "example"
+                                      "cascades":
+                                          - "domain": "example"
+                                            "effect": "example"
+                                            "probability": 1.5
+                                      "caseFile":
+                                          "actorLenses":
+                                              - "example"
+                                          "actors":
+                                              - "category": "cs.AI"
+                                                "constraints":
+                                                    - "example"
+                                                "id": "example-id"
+                                                "influenceScore": 42.5
+                                                "likelyActions":
+                                                    - "example"
+                                          "baseCase": "example"
+                                          "branches":
+                                              - "kind": "example"
+                                                "outcome": "example"
+                                                "projectedProbability": 1.5
+                                                "rounds":
+                                                    - {}
+                                                "summary": "Example WorldMonitor observation."
+                                          "changeItems":
+                                              - "example"
+                                      "confidence": 0.82
+                                      "createdAt": 1717200000000
+                                "generatedAt": 1717200000000
+                                "stale": true
                             schema:
                                 $ref: '#/components/schemas/GetForecastsResponse'
                 "400":
@@ -50,6 +100,7 @@ paths:
                   in: query
                   description: Currently ignored; always returns the latest package. Reserved for Phase 3 per-run lookup.
                   required: false
+                  example: "example-id"
                   schema:
                     type: string
             responses:
@@ -57,6 +108,12 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "error": "example"
+                                "found": true
+                                "generatedAt": 1717200000000
+                                "note": "example"
+                                "pkgKey": "example"
                             schema:
                                 $ref: '#/components/schemas/GetSimulationPackageResponse'
                 "400":
@@ -91,6 +148,7 @@ paths:
                          expiry-or-mismatch.
                      If runId is empty: returns :latest (existing behavior).
                   required: false
+                  example: "example-id"
                   schema:
                     type: string
             responses:
@@ -98,6 +156,12 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "error": "example"
+                                "found": true
+                                "generatedAt": 1717200000000
+                                "note": "example"
+                                "outcomeKey": "example"
                             schema:
                                 $ref: '#/components/schemas/GetSimulationOutcomeResponse'
                 "400":
@@ -124,10 +188,13 @@ paths:
                  (scripts/process-simulation-tasks.mjs) polls the queue and writes
                  outcomes; callers poll GetSimulationOutcome with the returned runId
                  to retrieve the result. Mirrors run-scenario.ts pattern. See #3734.
+                Requires entitlement tier >= 1.
             operationId: TriggerSimulation
             requestBody:
                 content:
                     application/json:
+                        example:
+                            "clientVersion": "example"
                         schema:
                             $ref: '#/components/schemas/TriggerSimulationRequest'
                 required: true
@@ -136,6 +203,11 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "pkgFingerprint": "example"
+                                "queued": true
+                                "reason": "example"
+                                "runId": "example-id"
                             schema:
                                 $ref: '#/components/schemas/TriggerSimulationResponse'
                 "400":
@@ -144,6 +216,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -159,6 +237,26 @@ components:
                     type: string
                     description: Error message (e.g., 'user not found', 'database connection failed')
             description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        ForbiddenError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable entitlement failure reason.
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint.
+                currentTier:
+                    type: integer
+                    format: int32
+                    description: Caller entitlement tier when known.
+                planKey:
+                    type: string
+                    description: Caller plan key when known.
+            required:
+                - error
+            description: Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.
         FieldViolation:
             type: object
             properties:
@@ -188,8 +286,10 @@ components:
             properties:
                 domain:
                     type: string
+                    description: Forecast domain to retrieve, such as geopolitics, markets, or climate.
                 region:
                     type: string
+                    description: Optional geographic or thematic region filter for forecasts.
         GetForecastsResponse:
             type: object
             properties:

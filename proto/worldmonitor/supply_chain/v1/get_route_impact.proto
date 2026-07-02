@@ -15,18 +15,21 @@ message StrategicProduct {
 }
 
 message GetRouteImpactRequest {
+  // ISO 3166-1 alpha-2 origin country code for the route.
   string from_iso2 = 1 [
     (buf.validate.field).required = true,
     (buf.validate.field).string.len = 2,
     (buf.validate.field).string.pattern = "^[A-Z]{2}$",
     (sebuf.http.query) = {name: "fromIso2"}
   ];
+  // ISO 3166-1 alpha-2 destination country code for the route.
   string to_iso2 = 2 [
     (buf.validate.field).required = true,
     (buf.validate.field).string.len = 2,
     (buf.validate.field).string.pattern = "^[A-Z]{2}$",
     (sebuf.http.query) = {name: "toIso2"}
   ];
+  // HS2 chapter code for the product sector on the route.
   string hs2 = 3 [
     (buf.validate.field).required = true,
     (sebuf.http.query) = {name: "hs2"}

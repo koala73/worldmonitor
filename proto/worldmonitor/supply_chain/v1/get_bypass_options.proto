@@ -6,6 +6,7 @@ import "sebuf/http/annotations.proto";
 import "worldmonitor/supply_chain/v1/supply_chain_data.proto";
 
 message GetBypassOptionsRequest {
+  // Chokepoint identifier to evaluate for bypass options.
   string chokepoint_id = 1 [
     (buf.validate.field).required = true,
     (sebuf.http.query) = {name: "chokepointId"}

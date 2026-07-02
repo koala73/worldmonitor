@@ -59,7 +59,8 @@ message CoordRing {
 }
 
 message ListNaturalEventsRequest {
-  int32 days = 1 [(sebuf.http.query) = { name: "days" }];
+  // Accepted but currently ignored; no-op until this handler supports the parameter.
+  int32 days = 1 [(sebuf.http.query) = { name: "days" }, (sebuf.http.unimplemented) = true];
 }
 
 message ListNaturalEventsResponse {

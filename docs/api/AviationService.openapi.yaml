@@ -13,34 +13,70 @@ paths:
             parameters:
                 - name: page_size
                   in: query
-                  description: Maximum items per page (1-100).
+                  description: |-
+                    Maximum items per page (1-100).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "next-page-token"
                   schema:
                     type: string
                 - name: region
                   in: query
-                  description: Optional region filter.
+                  description: |-
+                    Optional region filter.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "AIRPORT_REGION_AMERICAS"
                   schema:
                     type: string
+                    enum:
+                        - 'AIRPORT_REGION_AMERICAS'
+                        - 'AIRPORT_REGION_EUROPE'
+                        - 'AIRPORT_REGION_APAC'
+                        - 'AIRPORT_REGION_MENA'
+                        - 'AIRPORT_REGION_AFRICA'
                 - name: min_severity
                   in: query
-                  description: Optional minimum severity filter.
+                  description: |-
+                    Optional minimum severity filter.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "FLIGHT_DELAY_SEVERITY_NORMAL"
                   schema:
                     type: string
+                    enum:
+                        - 'FLIGHT_DELAY_SEVERITY_NORMAL'
+                        - 'FLIGHT_DELAY_SEVERITY_MINOR'
+                        - 'FLIGHT_DELAY_SEVERITY_MODERATE'
+                        - 'FLIGHT_DELAY_SEVERITY_MAJOR'
+                        - 'FLIGHT_DELAY_SEVERITY_SEVERE'
+                        - 'FLIGHT_DELAY_SEVERITY_UNKNOWN'
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "alerts":
+                                    - "avgDelayMinutes": 1
+                                      "cancelledFlights": 1
+                                      "city": "example"
+                                      "country": "US"
+                                      "delayType": "FLIGHT_DELAY_TYPE_GROUND_STOP"
+                                      "id": "example-id"
+                                "pagination":
+                                    "nextCursor": "next-page-token"
+                                    "totalCount": 1
                             schema:
                                 $ref: '#/components/schemas/ListAirportDelaysResponse'
                 "400":
@@ -69,6 +105,8 @@ paths:
                   required: false
                   style: form
                   explode: true
+                  example:
+                      - "JFK"
                   schema:
                     type: array
                     items:
@@ -78,6 +116,14 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "cacheHit": true
+                                "summaries":
+                                    - "avgDelayMinutes": 1
+                                      "cancellationRate": 75.25
+                                      "closureStatus": true
+                                      "delayPct": 1.5
+                                      "iata": "JFK"
                             schema:
                                 $ref: '#/components/schemas/GetAirportOpsSummaryResponse'
                 "400":
@@ -103,19 +149,26 @@ paths:
                 - name: airport
                   in: query
                   description: IATA airport code (e.g., "IST").
-                  required: false
+                  required: true
+                  example: "JFK"
                   schema:
                     type: string
                 - name: direction
                   in: query
                   description: Direction filter.
                   required: false
+                  example: "FLIGHT_DIRECTION_DEPARTURE"
                   schema:
                     type: string
+                    enum:
+                        - 'FLIGHT_DIRECTION_DEPARTURE'
+                        - 'FLIGHT_DIRECTION_ARRIVAL'
+                        - 'FLIGHT_DIRECTION_BOTH'
                 - name: limit
                   in: query
                   description: Maximum number of flights to return (1-100).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
@@ -124,6 +177,16 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "flights":
+                                    - "actualArrival": 1
+                                      "actualDeparture": 1
+                                      "aircraftIcao24": "example"
+                                      "aircraftType": "all"
+                                      "cancelled": true
+                                "source": "example"
+                                "totalAvailable": 1
+                                "updatedAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/ListAirportFlightsResponse'
                 "400":
@@ -152,6 +215,8 @@ paths:
                   required: false
                   style: form
                   explode: true
+                  example:
+                      - "JFK"
                   schema:
                     type: array
                     items:
@@ -160,6 +225,7 @@ paths:
                   in: query
                   description: 'Minimum number of flights required to include a carrier (default: 1).'
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
@@ -168,6 +234,18 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "carriers":
+                                    - "airport": "JFK"
+                                      "avgDelayMinutes": 1
+                                      "cancellationRate": 75.25
+                                      "cancelledCount": 1
+                                      "carrier":
+                                          "iataCode": "JFK"
+                                          "icaoCode": "example"
+                                          "name": "WorldMonitor Analyst"
+                                "source": "example"
+                                "updatedAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/GetCarrierOpsResponse'
                 "400":
@@ -193,19 +271,22 @@ paths:
                 - name: flight_number
                   in: query
                   description: IATA flight number (e.g., "TK1952").
-                  required: false
+                  required: true
+                  example: "JFK"
                   schema:
                     type: string
                 - name: date
                   in: query
                   description: Departure date in ISO 8601 format (e.g., "2026-03-05").
-                  required: false
+                  required: true
+                  example: "2026-01-15"
                   schema:
                     type: string
                 - name: origin
                   in: query
                   description: Optional origin airport IATA code to disambiguate.
                   required: false
+                  example: "JFK"
                   schema:
                     type: string
             responses:
@@ -213,6 +294,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "cacheHit": true
+                                "flights":
+                                    - "actualArrival": 1
+                                      "actualDeparture": 1
+                                      "aircraftIcao24": "example"
+                                      "aircraftType": "all"
+                                      "cancelled": true
+                                "source": "example"
                             schema:
                                 $ref: '#/components/schemas/GetFlightStatusResponse'
                 "400":
@@ -239,18 +329,21 @@ paths:
                   in: query
                   description: ICAO 24-bit transponder address (hex, e.g., "4b1805").
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: callsign
                   in: query
                   description: ATC callsign (e.g., "THY7CX").
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: sw_lat
                   in: query
                   description: Optional bounding box south-west latitude.
                   required: false
+                  example: 40.7128
                   schema:
                     type: number
                     format: double
@@ -258,6 +351,7 @@ paths:
                   in: query
                   description: Optional bounding box south-west longitude.
                   required: false
+                  example: -74.006
                   schema:
                     type: number
                     format: double
@@ -265,6 +359,7 @@ paths:
                   in: query
                   description: Optional bounding box north-east latitude.
                   required: false
+                  example: 40.7128
                   schema:
                     type: number
                     format: double
@@ -272,6 +367,7 @@ paths:
                   in: query
                   description: Optional bounding box north-east longitude.
                   required: false
+                  example: -74.006
                   schema:
                     type: number
                     format: double
@@ -280,6 +376,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "positions":
+                                    - "altitudeM": 1.5
+                                      "callsign": "example"
+                                      "groundSpeedKts": 1.5
+                                      "icao24": "example"
+                                      "lat": 40.7128
+                                "source": "example"
+                                "updatedAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/TrackAircraftResponse'
                 "400":
@@ -306,12 +411,14 @@ paths:
                   in: query
                   description: YouTube channel handle or ID.
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: video_id
                   in: query
                   description: Specific video ID to check.
                   required: false
+                  example: "example-id"
                   schema:
                     type: string
             responses:
@@ -319,6 +426,12 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "channelExists": true
+                                "channelName": "WorldMonitor Analyst"
+                                "error": "example"
+                                "hlsUrl": "https://example.com/worldmonitor"
+                                "isLive": true
                             schema:
                                 $ref: '#/components/schemas/GetYoutubeLiveStreamInfoResponse'
                 "400":
@@ -344,31 +457,36 @@ paths:
                 - name: origin
                   in: query
                   description: Origin airport IATA code.
-                  required: false
+                  required: true
+                  example: "JFK"
                   schema:
                     type: string
                 - name: destination
                   in: query
                   description: Destination airport IATA code.
-                  required: false
+                  required: true
+                  example: "LHR"
                   schema:
                     type: string
                 - name: departure_date
                   in: query
                   description: Outbound departure date (ISO 8601).
-                  required: false
+                  required: true
+                  example: "2026-01-15"
                   schema:
                     type: string
                 - name: return_date
                   in: query
                   description: Return date (ISO 8601), empty for one-way.
                   required: false
+                  example: "2026-01-15"
                   schema:
                     type: string
                 - name: adults
                   in: query
                   description: Number of adult passengers (1-9).
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
@@ -376,18 +494,26 @@ paths:
                   in: query
                   description: Desired cabin class.
                   required: false
+                  example: "CABIN_CLASS_ECONOMY"
                   schema:
                     type: string
+                    enum:
+                        - 'CABIN_CLASS_ECONOMY'
+                        - 'CABIN_CLASS_PREMIUM_ECONOMY'
+                        - 'CABIN_CLASS_BUSINESS'
+                        - 'CABIN_CLASS_FIRST'
                 - name: nonstop_only
                   in: query
                   description: Whether to restrict to nonstop flights only.
                   required: false
+                  example: true
                   schema:
                     type: boolean
                 - name: max_results
                   in: query
                   description: Maximum number of quotes to return (1-50).
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
@@ -395,12 +521,14 @@ paths:
                   in: query
                   description: ISO 4217 currency code for prices (e.g., "usd", "eur", "try").
                   required: false
+                  example: "USD"
                   schema:
                     type: string
                 - name: market
                   in: query
                   description: Market/locale code (e.g., "us", "tr").
                   required: false
+                  example: "example"
                   schema:
                     type: string
             responses:
@@ -408,6 +536,12 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "degraded": true
+                                "error": "example"
+                                "isDemoMode": true
+                                "isIndicative": true
+                                "provider": "worldmonitor"
                             schema:
                                 $ref: '#/components/schemas/SearchFlightPricesResponse'
                 "400":
@@ -436,6 +570,8 @@ paths:
                   required: false
                   style: form
                   explode: true
+                  example:
+                      - "example"
                   schema:
                     type: array
                     items:
@@ -444,6 +580,7 @@ paths:
                   in: query
                   description: Time window in hours to look back (1-168).
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
@@ -451,6 +588,7 @@ paths:
                   in: query
                   description: Maximum number of news items to return (1-50).
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
@@ -459,6 +597,16 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "items":
+                                    - "id": "example-id"
+                                      "imageUrl": "https://example.com/worldmonitor"
+                                      "matchedEntities":
+                                          - "example"
+                                      "publishedAt": 1717200000000
+                                      "snippet": "example"
+                                "source": "example"
+                                "updatedAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/ListAviationNewsResponse'
                 "400":
@@ -485,42 +633,49 @@ paths:
                   in: query
                   description: Departure airport IATA code (e.g. "JFK").
                   required: false
+                  example: "JFK"
                   schema:
                     type: string
                 - name: destination
                   in: query
                   description: Arrival airport IATA code (e.g. "LHR").
                   required: false
+                  example: "LHR"
                   schema:
                     type: string
                 - name: departure_date
                   in: query
                   description: Departure date in YYYY-MM-DD format.
                   required: false
+                  example: "2026-01-15"
                   schema:
                     type: string
                 - name: return_date
                   in: query
                   description: Return date in YYYY-MM-DD format; omit for one-way.
                   required: false
+                  example: "2026-01-15"
                   schema:
                     type: string
                 - name: cabin_class
                   in: query
                   description: 'Cabin class: ECONOMY, PREMIUM_ECONOMY, BUSINESS, or FIRST.'
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: max_stops
                   in: query
                   description: 'Stop filter: ANY, NON_STOP, ONE_STOP, or TWO_PLUS_STOPS.'
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: departure_window
                   in: query
                   description: Departure time window in HH-HH format (e.g. "6-20").
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: airlines
@@ -529,6 +684,8 @@ paths:
                   required: false
                   style: form
                   explode: true
+                  example:
+                      - "JFK"
                   schema:
                     type: array
                     items:
@@ -537,12 +694,14 @@ paths:
                   in: query
                   description: 'Sort order: CHEAPEST, DURATION, DEPARTURE_TIME, or ARRIVAL_TIME.'
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: passengers
                   in: query
                   description: Number of adult passengers (1-9).
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
@@ -551,6 +710,19 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "degraded": true
+                                "error": "example"
+                                "flights":
+                                    - "durationMinutes": 42
+                                      "legs":
+                                          - "airlineCode": "example"
+                                            "arrivalAirport": "example"
+                                            "arrivalDatetime": "2026-01-15"
+                                            "departureAirport": "example"
+                                            "departureDatetime": "2026-01-15"
+                                      "price": 75.25
+                                      "stops": 1
                             schema:
                                 $ref: '#/components/schemas/SearchGoogleFlightsResponse'
                 "400":
@@ -577,30 +749,35 @@ paths:
                   in: query
                   description: Departure airport IATA code (e.g. "JFK").
                   required: false
+                  example: "JFK"
                   schema:
                     type: string
                 - name: destination
                   in: query
                   description: Arrival airport IATA code (e.g. "LHR").
                   required: false
+                  example: "LHR"
                   schema:
                     type: string
                 - name: start_date
                   in: query
                   description: Start of date range in YYYY-MM-DD format.
                   required: false
+                  example: "2026-01-15"
                   schema:
                     type: string
                 - name: end_date
                   in: query
                   description: End of date range in YYYY-MM-DD format.
                   required: false
+                  example: "2026-01-15"
                   schema:
                     type: string
                 - name: trip_duration
                   in: query
                   description: Trip duration in days (required for round-trip searches).
                   required: false
+                  example: 42
                   schema:
                     type: integer
                     format: int32
@@ -608,24 +785,28 @@ paths:
                   in: query
                   description: Whether to search for round-trip flights.
                   required: false
+                  example: true
                   schema:
                     type: boolean
                 - name: cabin_class
                   in: query
                   description: 'Cabin class: ECONOMY, PREMIUM_ECONOMY, BUSINESS, or FIRST.'
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: max_stops
                   in: query
                   description: 'Stop filter: ANY, NON_STOP, ONE_STOP, or TWO_PLUS_STOPS.'
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: departure_window
                   in: query
                   description: Departure time window in HH-HH format (e.g. "6-20").
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: airlines
@@ -634,6 +815,8 @@ paths:
                   required: false
                   style: form
                   explode: true
+                  example:
+                      - "JFK"
                   schema:
                     type: array
                     items:
@@ -642,12 +825,14 @@ paths:
                   in: query
                   description: Whether to sort results by price (lowest first).
                   required: false
+                  example: true
                   schema:
                     type: boolean
                 - name: passengers
                   in: query
                   description: Number of adult passengers (1-9).
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
@@ -656,6 +841,13 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "dates":
+                                    - "date": "2026-01-15"
+                                      "price": 75.25
+                                      "returnDate": "2026-01-15"
+                                "degraded": true
+                                "error": "example"
                             schema:
                                 $ref: '#/components/schemas/SearchGoogleDatesResponse'
                 "400":
@@ -709,10 +901,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page (1-100).
+                    description: |-
+                        Maximum items per page (1-100).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 region:
                     type: string
                     enum:

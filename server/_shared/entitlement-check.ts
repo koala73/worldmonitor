@@ -52,6 +52,10 @@ export interface EntitlementCheckResult {
   entitlements: CachedEntitlements | null;
 }
 
+export interface EntitlementCheckOptions {
+  clerkRole?: 'free' | 'pro' | null;
+}
+
 // ---------------------------------------------------------------------------
 // Endpoint-to-tier map (replaces PREMIUM_RPC_PATHS)
 // ---------------------------------------------------------------------------
@@ -70,10 +74,24 @@ export interface EntitlementCheckResult {
  * 403'd real Pro subscribers calling via Clerk session (no tester key).
  */
 const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
+  '/api/forecast/v1/trigger-simulation': 1,
   '/api/market/v1/analyze-stock': 1,
   '/api/market/v1/get-stock-analysis-history': 1,
   '/api/market/v1/backtest-stock': 1,
   '/api/market/v1/list-stored-stock-backtests': 1,
+  '/api/sanctions/v1/list-sanctions-pressure': 1,
+  '/api/scenario/v1/run-scenario': 1,
+  '/api/scenario/v1/get-scenario-status': 1,
+  '/api/supply-chain/v1/get-country-chokepoint-index': 1,
+  '/api/supply-chain/v1/get-bypass-options': 1,
+  '/api/supply-chain/v1/get-country-cost-shock': 1,
+  '/api/supply-chain/v1/get-route-explorer-lane': 1,
+  '/api/supply-chain/v1/get-route-impact': 1,
+  '/api/supply-chain/v1/get-country-products': 1,
+  '/api/supply-chain/v1/get-multi-sector-cost-shock': 1,
+  '/api/supply-chain/v1/get-sector-dependency': 1,
+  '/api/trade/v1/list-comtrade-flows': 1,
+  '/api/trade/v1/get-tariff-trends': 1,
 };
 
 const CONVEX_INTERNAL_ENTITLEMENTS_PATH = '/api/internal-entitlements';
@@ -225,8 +243,9 @@ export async function checkEntitlement(
   userId: string | null,
   pathname: string,
   corsHeaders: Record<string, string>,
+  options: EntitlementCheckOptions = {},
 ): Promise<Response | null> {
-  const result = await checkEntitlementDetailed(userId, pathname, corsHeaders);
+  const result = await checkEntitlementDetailed(userId, pathname, corsHeaders, options);
   return result.response;
 }
 
@@ -239,6 +258,7 @@ export async function checkEntitlementDetailed(
   userId: string | null,
   pathname: string,
   corsHeaders: Record<string, string>,
+  options: EntitlementCheckOptions = {},
 ): Promise<EntitlementCheckResult> {
   const requiredTier = getRequiredTier(pathname);
   if (requiredTier === null) {
@@ -254,6 +274,13 @@ export async function checkEntitlementDetailed(
       ),
       entitlements: null,
     };
+  }
+
+  // Preserve the legacy Pro bearer contract for tier-1 gates. Complimentary,
+  // tester, and legacy Clerk-role grants can have no Convex entitlement row,
+  // while the frontend still unlocks Pro panels for role='pro'.
+  if (options.clerkRole === 'pro' && requiredTier <= 1) {
+    return { response: null, entitlements: null };
   }
 
   const ent = await getEntitlements(userId);

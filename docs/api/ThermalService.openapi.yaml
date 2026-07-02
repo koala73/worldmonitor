@@ -16,7 +16,9 @@ paths:
             parameters:
                 - name: max_items
                   in: query
+                  description: Maximum number of thermal escalation clusters to return.
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
@@ -25,6 +27,19 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "clusters":
+                                    - "avgBrightness": 1.5
+                                      "baselineExpectedCount": 1
+                                      "baselineExpectedFrp": 1.5
+                                      "centroid":
+                                          "latitude": 40.7128
+                                          "longitude": -74.006
+                                      "confidence": "THERMAL_CONFIDENCE_LOW"
+                                "dataAvailable": true
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "observationWindowHours": 1
+                                "sourceVersion": "example"
                             schema:
                                 $ref: '#/components/schemas/ListThermalEscalationsResponse'
                 "400":
@@ -78,6 +93,7 @@ components:
                 maxItems:
                     type: integer
                     format: int32
+                    description: Maximum number of thermal escalation clusters to return.
         ListThermalEscalationsResponse:
             type: object
             properties:

@@ -13,13 +13,14 @@ import {
   type PredictionMarket,
 } from '../../../../src/generated/server/worldmonitor/prediction/v1/service_server';
 
+import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
 import { clampInt } from '../../../_shared/constants';
 import { getCachedJson } from '../../../_shared/redis';
 
 const BOOTSTRAP_KEY = 'prediction:markets-bootstrap:v1';
 
-const TECH_CATEGORY_TAGS = ['ai', 'tech', 'crypto', 'science'];
-const FINANCE_CATEGORY_TAGS = ['economy', 'fed', 'inflation', 'interest-rates', 'recession', 'trade', 'tariffs', 'debt-ceiling'];
+const TECH_CATEGORY_TAGS = filterParamContracts.predictionMarketTechCategories;
+const FINANCE_CATEGORY_TAGS = filterParamContracts.predictionMarketFinanceCategories;
 
 interface BootstrapMarket {
   title: string;

@@ -12,22 +12,30 @@ paths:
             parameters:
                 - name: bbox
                   in: query
+                  description: Bounding box filter for imagery search, encoded as west,south,east,north.
                   required: false
+                  example: "-74.10,40.60,-73.70,40.90"
                   schema:
                     type: string
                 - name: datetime
                   in: query
+                  description: ISO 8601 datetime or datetime range for matching imagery scenes.
                   required: false
+                  example: "2026-01-15"
                   schema:
                     type: string
                 - name: source
                   in: query
+                  description: Optional imagery source filter, such as satellite or provider name.
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: limit
                   in: query
+                  description: Maximum number of imagery scenes to return.
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
@@ -36,6 +44,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "cacheHit": true
+                                "scenes":
+                                    - "assetUrl": "https://example.com/worldmonitor"
+                                      "datetime": "2026-01-15"
+                                      "geometryGeojson": "example"
+                                      "id": "example-id"
+                                      "mode": "example"
+                                "totalResults": 1
                             schema:
                                 $ref: '#/components/schemas/SearchImageryResponse'
                 "400":
@@ -88,13 +105,17 @@ components:
             properties:
                 bbox:
                     type: string
+                    description: Bounding box filter for imagery search, encoded as west,south,east,north.
                 datetime:
                     type: string
+                    description: ISO 8601 datetime or datetime range for matching imagery scenes.
                 source:
                     type: string
+                    description: Optional imagery source filter, such as satellite or provider name.
                 limit:
                     type: integer
                     format: int32
+                    description: Maximum number of imagery scenes to return.
         SearchImageryResponse:
             type: object
             properties:

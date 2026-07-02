@@ -12,10 +12,14 @@ paths:
                 RunScenario enqueues a scenario job on scenario-queue:pending. PRO-gated.
                  The scenario-worker (scripts/scenario-worker.mjs) pulls jobs off the
                  queue via BLMOVE and writes results under scenario-result:{job_id}.
+                Requires entitlement tier >= 1.
             operationId: RunScenario
             requestBody:
                 content:
                     application/json:
+                        example:
+                            "iso2": "US"
+                            "scenarioId": "oil-price-shock"
                         schema:
                             $ref: '#/components/schemas/RunScenarioRequest'
                 required: true
@@ -24,6 +28,10 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "jobId": "scenario:1717200000000:abcd1234"
+                                "status": "example"
+                                "statusUrl": "https://example.com/worldmonitor"
                             schema:
                                 $ref: '#/components/schemas/RunScenarioResponse'
                 "400":
@@ -32,6 +40,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -47,6 +61,7 @@ paths:
                 GetScenarioStatus polls a single job's result. PRO-gated.
                  Returns status="pending" when no result key exists, mirroring the
                  worker's lifecycle state once the key is written.
+                Requires entitlement tier >= 1.
             operationId: GetScenarioStatus
             parameters:
                 - name: jobId
@@ -54,14 +69,31 @@ paths:
                   description: |-
                     Job id of the form `scenario:{epoch_ms}:{8-char-suffix}`. Path-traversal
                      guarded by JOB_ID_RE in the handler.
-                  required: false
+                  required: true
+                  example: "scenario:1717200000000:abcd1234"
                   schema:
                     type: string
+                    pattern: '^scenario:[0-9]{13}:[a-z0-9]{8}$'
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "error": "example"
+                                "result":
+                                    "affectedChokepointIds":
+                                        - "suez-canal"
+                                    "template":
+                                        "costShockMultiplier": 75.25
+                                        "disruptionPct": 1
+                                        "durationDays": 7
+                                        "name": "WorldMonitor Analyst"
+                                    "topImpactCountries":
+                                        - "impactPct": 1
+                                          "iso2": "US"
+                                          "totalImpact": 1
+                                "status": "example"
                             schema:
                                 $ref: '#/components/schemas/GetScenarioStatusResponse'
                 "400":
@@ -70,6 +102,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -90,6 +128,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "templates":
+                                    - "affectedChokepointIds":
+                                        - "suez-canal"
+                                      "affectedHs2":
+                                          - "27"
+                                      "costShockMultiplier": 75.25
+                                      "disruptionPct": 1
+                                      "durationDays": 7
                             schema:
                                 $ref: '#/components/schemas/ListScenarioTemplatesResponse'
                 "400":
@@ -113,6 +160,26 @@ components:
                     type: string
                     description: Error message (e.g., 'user not found', 'database connection failed')
             description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        ForbiddenError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable entitlement failure reason.
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint.
+                currentTier:
+                    type: integer
+                    format: int32
+                    description: Caller entitlement tier when known.
+                planKey:
+                    type: string
+                    description: Caller plan key when known.
+            required:
+                - error
+            description: Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.
         FieldViolation:
             type: object
             properties:

@@ -8,11 +8,20 @@ paths:
             tags:
                 - LeadsService
             summary: SubmitContact
-            description: SubmitContact stores an enterprise contact submission in Convex and emails ops.
+            description: SubmitContact stores an enterprise contact submission in Convex and emails ops. Turnstile-gated. Missing or invalid Cloudflare Turnstile token returns 403 Bot verification failed.
             operationId: SubmitContact
             requestBody:
                 content:
                     application/json:
+                        example:
+                            "email": "analyst@example.com"
+                            "message": "Example WorldMonitor observation."
+                            "name": "WorldMonitor Analyst"
+                            "organization": "example"
+                            "phone": "example"
+                            "source": "example"
+                            "turnstileToken": "example"
+                            "website": "example"
                         schema:
                             $ref: '#/components/schemas/SubmitContactRequest'
                 required: true
@@ -21,6 +30,9 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "emailSent": true
+                                "status": "example"
                             schema:
                                 $ref: '#/components/schemas/SubmitContactResponse'
                 "400":
@@ -29,6 +41,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "403":
+                    description: Bot verification failed.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
                 default:
                     description: Error response
                     content:
@@ -45,6 +63,13 @@ paths:
             requestBody:
                 content:
                     application/json:
+                        example:
+                            "appVersion": "example"
+                            "email": "analyst@example.com"
+                            "referredBy": "example"
+                            "source": "example"
+                            "turnstileToken": "example"
+                            "website": "example"
                         schema:
                             $ref: '#/components/schemas/RegisterInterestRequest'
                 required: true
@@ -53,6 +78,12 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "emailSuppressed": true
+                                "position": 1
+                                "referralCode": "example"
+                                "referralCount": 1
+                                "status": "example"
                             schema:
                                 $ref: '#/components/schemas/RegisterInterestResponse'
                 "400":
@@ -121,6 +152,12 @@ components:
                 turnstileToken:
                     type: string
                     description: Cloudflare Turnstile token proving the submitter is human.
+            required:
+                - email
+                - name
+                - organization
+                - phone
+                - turnstileToken
             description: SubmitContactRequest carries an enterprise contact form submission.
         SubmitContactResponse:
             type: object
@@ -149,6 +186,9 @@ components:
                 turnstileToken:
                     type: string
                     description: Cloudflare Turnstile token. Desktop sources bypass Turnstile; see handler.
+            required:
+                - email
+                - turnstileToken
             description: RegisterInterestRequest carries a Pro-waitlist signup.
         RegisterInterestResponse:
             type: object
