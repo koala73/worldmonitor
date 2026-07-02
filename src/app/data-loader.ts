@@ -1778,7 +1778,10 @@ export class DataLoaderManager implements AppModule {
     let marketMod: typeof import('@/services/market');
     try {
       marketMod = await import('@/services/market');
-    } catch {
+    } catch (e) {
+      // Persistent failure mode: a stale-deploy chunk 404 would otherwise skip the
+      // whole markets/crypto/commodities cycle with no signal. Log so it's traceable.
+      console.warn('[DataLoader] market chunk load failed', e);
       return;
     }
     const {
