@@ -407,14 +407,18 @@ function isPostToGetCompatibleBodySize(headers: Headers): boolean {
 }
 
 function getRequiredBboxQueryProblems(searchParams: URLSearchParams): { missing: string[]; invalid: string[]; allZero: boolean } {
-  const missing: string[] = [];
+  const absent: string[] = [];
   const invalid: string[] = [];
   const values: number[] = [];
 
   for (const param of REQUIRED_BBOX_QUERY_PARAMS) {
     const raw = searchParams.get(param);
-    if (raw == null || raw.trim() === '') {
-      missing.push(param);
+    if (raw == null) {
+      absent.push(param);
+      continue;
+    }
+    if (raw.trim() === '') {
+      invalid.push(param);
       continue;
     }
     const value = Number(raw);
@@ -425,10 +429,11 @@ function getRequiredBboxQueryProblems(searchParams: URLSearchParams): { missing:
     values.push(value);
   }
 
+  const missing = absent.length === REQUIRED_BBOX_QUERY_PARAMS.length ? [...REQUIRED_BBOX_QUERY_PARAMS] : [];
   return {
     missing,
     invalid,
-    allZero: missing.length === 0 && invalid.length === 0 && values.every((value) => value === 0),
+    allZero: absent.length === 0 && invalid.length === 0 && values.every((value) => value === 0),
   };
 }
 
@@ -462,6 +467,7 @@ function attachRequiredBboxDiagnosticHeaders(
   if (diagnostic.missing.length > 0) headers.set('X-WorldMonitor-Bbox-Missing', diagnostic.missing.join(','));
   if (diagnostic.invalid.length > 0) headers.set('X-WorldMonitor-Bbox-Invalid', diagnostic.invalid.join(','));
   if (MILITARY_BBOX_DIAGNOSTIC_PATH_SET.has(pathname)) {
+    // Issue #4595 explicitly requested the military alias; keep it as a stable consumer affordance.
     headers.set('X-Military-Bbox', diagnostic.status);
   }
 }

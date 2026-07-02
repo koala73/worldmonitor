@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
+import { MilitaryServiceClient } from '../src/generated/client/worldmonitor/military/v1/service_client.ts';
 import {
   createDomainGateway,
   REQUIRED_BBOX_QUERY_PARAMS,
@@ -78,6 +79,23 @@ function makeJsonPostRequest(path: string, bodyObject: Record<string, unknown>):
     },
     body,
   });
+}
+
+async function getGeneratedMilitaryFlightsPathAndQuery(req: Parameters<MilitaryServiceClient['listMilitaryFlights']>[0]): Promise<string> {
+  let requestedUrl = '';
+  const client = new MilitaryServiceClient('https://worldmonitor.app', {
+    fetch: async (input) => {
+      requestedUrl = String(input);
+      return new Response(JSON.stringify({ flights: [], clusters: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    },
+  });
+
+  await client.listMilitaryFlights(req);
+  const url = new URL(requestedUrl);
+  return url.pathname + url.search;
 }
 
 function assertNoBboxDiagnostic(res: Response): void {
@@ -194,21 +212,39 @@ describe('gateway required-bbox diagnostics', () => {
     assertBboxDiagnostic(res, 'invalid', { invalid: 'ne_lat', military: true });
   });
 
-  it('reports both missing and invalid fields for partial malformed bboxes', async () => {
+  it('reports invalid present fields without treating omitted zero corners as missing', async () => {
     const hits = new Map<string, number>();
     const handler = createBboxGateway(hits);
 
     const res = await handler(makeRequest(
-      '/api/military/v1/list-military-flights?sw_lat=0&ne_lat=abc',
+      '/api/military/v1/list-military-flights?ne_lat=abc&ne_lon=1',
     ));
 
     assert.equal(res.status, 200);
     assert.equal(hits.get('/api/military/v1/list-military-flights'), 1);
-    assertBboxDiagnostic(res, 'missing', {
-      missing: 'sw_lon,ne_lon',
-      invalid: 'ne_lat',
-      military: true,
+    assertBboxDiagnostic(res, 'invalid', { invalid: 'ne_lat', military: true });
+  });
+
+  it('does not flag the generated client shape for a zero-corner bbox', async () => {
+    const hits = new Map<string, number>();
+    const handler = createBboxGateway(hits);
+    const pathAndQuery = await getGeneratedMilitaryFlightsPathAndQuery({
+      pageSize: 100,
+      cursor: '',
+      neLat: 1,
+      neLon: 1,
+      swLat: 0,
+      swLon: 0,
+      operator: 'MILITARY_OPERATOR_UNSPECIFIED',
+      aircraftType: 'MILITARY_AIRCRAFT_TYPE_UNSPECIFIED',
     });
+
+    assert.equal(pathAndQuery, '/api/military/v1/list-military-flights?page_size=100&ne_lat=1&ne_lon=1');
+    const res = await handler(makeRequest(pathAndQuery));
+
+    assert.equal(res.status, 200);
+    assert.equal(hits.get('/api/military/v1/list-military-flights'), 1);
+    assertNoBboxDiagnostic(res);
   });
 
   it('reads the POST-to-GET converted request before deciding bbox diagnostics', async () => {
