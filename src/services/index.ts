@@ -1,4 +1,4 @@
-export * from './market';
+// market: not re-exported (#4571) — eager service client; kept tree-shakeable out of main.js
 export * from './prediction';
 export * from './earthquakes';
 export * from './clustering';
@@ -22,7 +22,7 @@ export * from './research';
 export * from './wildfires';
 export * from './climate';
 export * from './unrest';
-export * from './aviation';
+// aviation: not re-exported (#4571) — eager service client; kept tree-shakeable out of main.js
 export * from './military-flights';
 export * from './usni-fleet';
 export * from './pizzint';
@@ -36,7 +36,7 @@ export * from './data-freshness';
 export * from './usa-spending';
 export { generateSummary, translateText } from './summarization';
 export * from './cached-theater-posture';
-export * from './trade';
+// trade: not re-exported (#4571) — eager service client; kept tree-shakeable out of main.js
 export * from './supply-chain';
 export * from './radiation';
 export * from './breaking-news-alerts';

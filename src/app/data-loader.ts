@@ -28,16 +28,6 @@ import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
 import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
 import { withTimeout } from '@/utils/with-timeout';
 import {
-  fetchMultipleStocks,
-  fetchCommodityQuotes,
-  fetchSectors,
-  warmCommodityCache,
-  warmSectorCache,
-  fetchCrypto,
-  fetchCryptoSectors,
-  fetchDefiTokens,
-  fetchAiTokens,
-  fetchOtherTokens,
   fetchPredictions,
   fetchEarthquakes,
   fetchWeatherAlerts,
@@ -52,7 +42,6 @@ import {
   fetchCableHealth,
   fetchProtestEvents,
   getProtestStatus,
-  fetchFlightDelays,
   fetchMilitaryFlights,
   fetchUSNIFleetReport,
   updateBaseline,
@@ -64,12 +53,6 @@ import {
   fetchNaturalEvents,
   fetchRecentAwards,
   fetchCyberThreats,
-  fetchTradeRestrictions,
-  fetchTariffTrends,
-  fetchTradeFlows,
-  fetchComtradeFlows,
-  fetchTradeBarriers,
-  fetchCustomsRevenue,
   fetchShippingRates,
   fetchChokepointStatus,
   fetchCriticalMinerals,
@@ -1788,6 +1771,12 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadMarkets(): Promise<void> {
+    // Method-scoped so all of loadMarkets' try blocks (stocks/sectors/commodities +
+    // crypto/defi/ai/other) see these; market is dynamic-imported off eager main.js (#4571).
+    const {
+      fetchMultipleStocks, fetchCommodityQuotes, fetchSectors, warmCommodityCache, warmSectorCache,
+      fetchCrypto, fetchCryptoSectors, fetchDefiTokens, fetchAiTokens, fetchOtherTokens,
+    } = await import('@/services/market');
     try {
       const customEntries = getMarketWatchlistEntries();
       const effectiveSymbols = (() => {
@@ -3025,6 +3014,7 @@ export class DataLoaderManager implements AppModule {
 
   async loadFlightDelays(): Promise<void> {
     try {
+      const { fetchFlightDelays } = await import('@/services/aviation');
       const delays = await fetchFlightDelays();
       this.ctx.map?.setFlightDelays(delays);
       this.ctx.map?.setLayerReady('flights', delays.length > 0);
@@ -3329,6 +3319,10 @@ export class DataLoaderManager implements AppModule {
     if (!tradePanel) return;
 
     try {
+      const {
+        fetchTradeRestrictions, fetchTariffTrends, fetchTradeFlows,
+        fetchTradeBarriers, fetchCustomsRevenue, fetchComtradeFlows,
+      } = await import('@/services/trade');
       const [restrictions, tariffs, flows, barriers, revenue, comtrade] = await Promise.allSettled([
         fetchTradeRestrictions([], 50),
         fetchTariffTrends('840', '156', '', 10),
