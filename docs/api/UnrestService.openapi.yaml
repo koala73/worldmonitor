@@ -2,6 +2,9 @@ openapi: 3.1.0
 info:
     title: UnrestService API
     version: 1.0.0
+security:
+    - WorldMonitorKey: []
+    - ApiKeyHeader: []
 paths:
     /api/unrest/v1/list-unrest-events:
         get:
@@ -10,6 +13,7 @@ paths:
             summary: ListUnrestEvents
             description: ListUnrestEvents retrieves protest, riot, and civil unrest events.
             operationId: ListUnrestEvents
+            security: []
             parameters:
                 - name: start
                   in: query
@@ -151,7 +155,27 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
 components:
+    securitySchemes:
+        WorldMonitorKey:
+            type: apiKey
+            in: header
+            name: X-WorldMonitor-Key
+            description: User-issued WorldMonitor API key.
+        ApiKeyHeader:
+            type: apiKey
+            in: header
+            name: X-Api-Key
+            description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
     schemas:
+        UnauthorizedError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable error message.
+            required:
+                - error
+            description: Returned when the API key is missing, malformed, or lacks current API access.
         Error:
             type: object
             properties:

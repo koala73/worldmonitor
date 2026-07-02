@@ -276,6 +276,54 @@ function assertSchemaRequires(spec, schemaName, fields, label) {
   }
 }
 
+// Full auth contract, format-agnostic (works on JSON specs or YAML-loaded
+// specs): securitySchemes (2 or 3 by bearer-path presence), root API-key
+// security, UnauthorizedError schema, and per-operation 401 / public opt-out /
+// bearer stamping. Used to assert the per-service YAML files and the bundle
+// reach parity with the per-service JSON specs (#4650).
+function assertAuthContract(spec, label) {
+  const schemes = spec.components?.securitySchemes;
+  assert.ok(schemes, `${label}: components.securitySchemes missing`);
+  assertSchemeFields(schemes, expectedSchemesForSpec(spec), label);
+  assertSecurityNames(spec.security, API_KEY_SECURITY_NAMES, `${label}: root`);
+
+  const unauthorized = spec.components?.schemas?.UnauthorizedError;
+  assert.ok(unauthorized, `${label}: components.schemas.UnauthorizedError missing`);
+  assert.ok(
+    Array.isArray(unauthorized.required) && unauthorized.required.includes('error'),
+    `${label}: UnauthorizedError must require 'error'`,
+  );
+
+  for (const [path, ops] of Object.entries(spec.paths ?? {})) {
+    const isPublic = PUBLIC_PATHS.has(path);
+    const acceptsBearer = BEARER_AUTH_PATHS.has(path);
+    for (const [method, op] of Object.entries(ops)) {
+      if (!HTTP_METHODS.has(method) || !op || typeof op !== 'object') continue;
+      const opLabel = `${label}: ${method.toUpperCase()} ${path}`;
+      if (isPublic) {
+        assert.ok(
+          Array.isArray(op.security) && op.security.length === 0,
+          `${opLabel}: public op must set security: [] (opt out of auth)`,
+        );
+        assert.equal(op.responses?.['401'], undefined, `${opLabel}: public op must not carry a 401`);
+        continue;
+      }
+      const r401 = op.responses?.['401'];
+      assert.ok(r401, `${opLabel}: missing 401 response`);
+      assert.equal(
+        r401.content?.['application/json']?.schema?.$ref,
+        '#/components/schemas/UnauthorizedError',
+        `${opLabel}: 401 must reference UnauthorizedError`,
+      );
+      if (acceptsBearer) {
+        assertSecurityNames(op.security, BEARER_SECURITY_NAMES, opLabel);
+      } else {
+        assert.equal(op.security, undefined, `${opLabel}: should inherit API-key root security`);
+      }
+    }
+  }
+}
+
 describe('OpenAPI security contract', () => {
   it('audits at least the full known service surface', () => {
     assert.ok(serviceSpecs.length >= 34, `expected >= 34 service specs, found ${serviceSpecs.length}`);
@@ -384,11 +432,16 @@ describe('OpenAPI security contract', () => {
     assertPublicForbiddenGateContract(bundle, 'bundle');
   });
 
-  it('bundle (worldmonitor.openapi.yaml) carries global API-key security + schemes', () => {
+  it('service YAML specs carry the full auth contract (parity with JSON)', () => {
+    for (const file of readdirSync(apiDir).filter((f) => /Service\.openapi\.yaml$/.test(f)).sort()) {
+      const spec = loadYaml(readFileSync(resolve(apiDir, file), 'utf8'));
+      assertAuthContract(spec, file);
+    }
+  });
+
+  it('bundle (worldmonitor.openapi.yaml) carries the full auth contract', () => {
     const bundle = loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'));
-    assertSecurityNames(bundle.security, API_KEY_SECURITY_NAMES, 'bundle: root');
-    const schemes = bundle.components?.securitySchemes ?? {};
-    assertSchemeFields(schemes, API_KEY_SCHEMES, 'bundle');
+    assertAuthContract(bundle, 'bundle');
   });
 
   it('propagates request-schema required fields to matching query parameters', () => {

@@ -2,6 +2,9 @@ openapi: 3.1.0
 info:
     title: LeadsService API
     version: 1.0.0
+security:
+    - WorldMonitorKey: []
+    - ApiKeyHeader: []
 paths:
     /api/leads/v1/submit-contact:
         post:
@@ -10,6 +13,7 @@ paths:
             summary: SubmitContact
             description: SubmitContact stores an enterprise contact submission in Convex and emails ops. Turnstile-gated. Missing or invalid Cloudflare Turnstile token returns 403 Bot verification failed.
             operationId: SubmitContact
+            security: []
             requestBody:
                 content:
                     application/json:
@@ -60,6 +64,7 @@ paths:
             summary: RegisterInterest
             description: RegisterInterest adds an email to the Pro waitlist and sends a confirmation email.
             operationId: RegisterInterest
+            security: []
             requestBody:
                 content:
                     application/json:
@@ -99,7 +104,27 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
 components:
+    securitySchemes:
+        WorldMonitorKey:
+            type: apiKey
+            in: header
+            name: X-WorldMonitor-Key
+            description: User-issued WorldMonitor API key.
+        ApiKeyHeader:
+            type: apiKey
+            in: header
+            name: X-Api-Key
+            description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
     schemas:
+        UnauthorizedError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable error message.
+            required:
+                - error
+            description: Returned when the API key is missing, malformed, or lacks current API access.
         Error:
             type: object
             properties:

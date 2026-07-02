@@ -22,11 +22,17 @@
  *      format (recursively sorted keys, Go-style <>&/U+2028/U+2029 escaping, no
  *      trailing newline) so the diff is additions-only.
  *   2. docs/api/<Service>.openapi.yaml and docs/api/worldmonitor.openapi.yaml —
- *      docs-facing YAML. The generator's YAML emitter cannot be reproduced by
- *      js-yaml (a re-dump reformats ~100% of 21k lines), so YAML gets
- *      formatting-preserving surgical insertions for per-operation
- *      entitlement/public 403 responses and gate notes. The bundle also
- *      receives the top-level blocks that convey global API-key auth.
+ *      docs-facing YAML (the bundle is copied to public/openapi.yaml at build).
+ *      The generator's YAML emitter cannot be reproduced by js-yaml (a re-dump
+ *      reformats ~100% of 21k lines), so YAML gets formatting-preserving
+ *      surgical insertions. Each YAML artifact receives the SAME contract its
+ *      JSON sibling carries (#4650): top-level securitySchemes (2 or 3 by
+ *      bearer-path presence) + root API-key security + the UnauthorizedError
+ *      schema + per-operation 401 / public security:[] opt-outs / bearer
+ *      stamping, then per-operation entitlement/public 403 responses and notes.
+ *      Like the sibling injectors this runs in the `make generate` codegen
+ *      context (no npm deps guaranteed), so it has no external imports: paths
+ *      are enumerated by text scan and all writes are surgical text insertions.
  */
 
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
@@ -318,10 +324,13 @@ function injectJson(spec) {
   return changed;
 }
 
-// ── Bundle YAML surgical insertion (formatting-preserving) ───────────────────
-// The bundle uses 4-space indentation with top-level keys at column 0.
-function bundleSecurityBlock() {
-  // Top-level `security:` list, 4-space list items to match `servers:` style.
+// ── Shared YAML auth-contract insertion (formatting-preserving) ──────────────
+// YAML artifacts use 4-space indentation with top-level keys at column 0. The
+// same helpers serve both the per-service YAML files and the bundle so every
+// YAML artifact reaches parity with its JSON sibling (#4650).
+function yamlRootSecurityBlock() {
+  // Top-level `security:` list (API-key schemes only, matching ROOT_SECURITY);
+  // 4-space list items to match the bundle's `servers:` style.
   return [
     'security:',
     '    - WorldMonitorKey: []',
@@ -329,21 +338,31 @@ function bundleSecurityBlock() {
   ].join('\n');
 }
 
-function bundleSecuritySchemesBlock() {
+function yamlSecuritySchemesBlock(hasBearer) {
   // Child of top-level `components:` — 4-space key, 8-space scheme names,
-  // 12-space fields. Field order kept stable for idempotency.
-  const L = [];
-  L.push('    securitySchemes:');
-  L.push('        WorldMonitorKey:');
-  L.push('            type: apiKey');
-  L.push('            in: header');
-  L.push('            name: X-WorldMonitor-Key');
-  L.push('            description: User-issued WorldMonitor API key.');
-  L.push('        ApiKeyHeader:');
-  L.push('            type: apiKey');
-  L.push('            in: header');
-  L.push('            name: X-Api-Key');
-  L.push('            description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).');
+  // 12-space fields. BearerAuth is appended only when the artifact has a
+  // bearer-capable operation, mirroring expectedSchemesForSpec in the JSON path.
+  const L = [
+    '    securitySchemes:',
+    '        WorldMonitorKey:',
+    '            type: apiKey',
+    '            in: header',
+    '            name: X-WorldMonitor-Key',
+    '            description: User-issued WorldMonitor API key.',
+    '        ApiKeyHeader:',
+    '            type: apiKey',
+    '            in: header',
+    '            name: X-Api-Key',
+    '            description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).',
+  ];
+  if (hasBearer) {
+    L.push(
+      '        BearerAuth:',
+      '            type: http',
+      '            scheme: bearer',
+      "            description: 'Bearer token: a Clerk-issued JWT for browser session flows, passed as Authorization: Bearer <token>.'",
+    );
+  }
   return L.join('\n');
 }
 
@@ -380,42 +399,35 @@ function findComponentsChildBlock(lines, key) {
   return { componentsIndex, block: null };
 }
 
-function injectBundle(text) {
-  const lines = text.split('\n');
-  let changed = false;
-
-  const expectedSecurity = bundleSecurityBlock();
-  const securityBlock = findTopLevelBlock(lines, 'security');
-  if (securityBlock) {
-    if (securityBlock.text !== expectedSecurity) {
-      lines.splice(securityBlock.start, securityBlock.end - securityBlock.start, ...expectedSecurity.split('\n'));
-      changed = true;
-    }
-  } else {
-    // Insert root `security:` immediately before top-level `paths:`.
-    const pathsIndex = lines.indexOf('paths:');
-    if (pathsIndex === -1) throw new Error('bundle: could not find top-level `paths:` anchor for security block');
-    lines.splice(pathsIndex, 0, ...expectedSecurity.split('\n'));
-    changed = true;
+function ensureYamlRootSecurity(lines) {
+  const expected = yamlRootSecurityBlock();
+  const block = findTopLevelBlock(lines, 'security');
+  if (block) {
+    if (block.text === expected) return false;
+    lines.splice(block.start, block.end - block.start, ...expected.split('\n'));
+    return true;
   }
+  // Insert root `security:` immediately before top-level `paths:`.
+  const pathsIndex = lines.indexOf('paths:');
+  if (pathsIndex === -1) throw new Error('yaml: could not find top-level `paths:` anchor for security block');
+  lines.splice(pathsIndex, 0, ...expected.split('\n'));
+  return true;
+}
 
-  const expectedSchemes = bundleSecuritySchemesBlock();
-  const { componentsIndex, block: schemesBlock } = findComponentsChildBlock(lines, 'securitySchemes');
+function ensureYamlSecuritySchemes(lines, hasBearer) {
+  const expected = yamlSecuritySchemesBlock(hasBearer);
+  const { componentsIndex, block } = findComponentsChildBlock(lines, 'securitySchemes');
   if (componentsIndex === -1) {
-    throw new Error('bundle: could not find top-level `components:` anchor for securitySchemes block');
+    throw new Error('yaml: could not find top-level `components:` anchor for securitySchemes block');
   }
-  if (schemesBlock) {
-    if (schemesBlock.text !== expectedSchemes) {
-      lines.splice(schemesBlock.start, schemesBlock.end - schemesBlock.start, ...expectedSchemes.split('\n'));
-      changed = true;
-    }
-  } else {
-    // Insert `securitySchemes:` as the first child under top-level `components:`.
-    lines.splice(componentsIndex + 1, 0, ...expectedSchemes.split('\n'));
-    changed = true;
+  if (block) {
+    if (block.text === expected) return false;
+    lines.splice(block.start, block.end - block.start, ...expected.split('\n'));
+    return true;
   }
-
-  return { text: lines.join('\n'), changed };
+  // Insert `securitySchemes:` as the first child under top-level `components:`.
+  lines.splice(componentsIndex + 1, 0, ...expected.split('\n'));
+  return true;
 }
 
 // ── Service/bundle YAML entitlement insertion (formatting-preserving) ────────
@@ -460,6 +472,35 @@ const YAML_FORBIDDEN_SCHEMA = [
   '            required:',
   '                - error',
   '            description: Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.',
+];
+
+const YAML_UNAUTHORIZED_RESPONSE = [
+  '                "401":',
+  '                    description: Missing or invalid API key.',
+  '                    content:',
+  '                        application/json:',
+  '                            schema:',
+  "                                $ref: '#/components/schemas/UnauthorizedError'",
+];
+
+const YAML_UNAUTHORIZED_SCHEMA = [
+  '        UnauthorizedError:',
+  '            type: object',
+  '            properties:',
+  '                error:',
+  '                    type: string',
+  '                    description: Human-readable error message.',
+  '            required:',
+  '                - error',
+  '            description: Returned when the API key is missing, malformed, or lacks current API access.',
+];
+
+// Operation-level security list items (16-space `-` under a 12-space `security:`).
+const YAML_BEARER_OPERATION_SECURITY = [
+  '            security:',
+  '                - WorldMonitorKey: []',
+  '                - ApiKeyHeader: []',
+  '                - BearerAuth: []',
 ];
 
 function findYamlPathRange(lines, path) {
@@ -680,6 +721,170 @@ function injectYamlEntitlementContract(text) {
 
   return { text: lines.join('\n'), changed };
 }
+
+function ensureYamlUnauthorizedSchema(lines) {
+  const existing = findYamlSchemaRange(lines, 'UnauthorizedError');
+  if (existing) {
+    const expected = YAML_UNAUTHORIZED_SCHEMA.join('\n');
+    if (existing.text === expected) return false;
+    lines.splice(existing.start, existing.end - existing.start, ...YAML_UNAUTHORIZED_SCHEMA);
+    return true;
+  }
+  const schemasIndex = lines.indexOf('    schemas:');
+  if (schemasIndex === -1) return false;
+  lines.splice(schemasIndex + 1, 0, ...YAML_UNAUTHORIZED_SCHEMA);
+  return true;
+}
+
+// Method-scoped operation range (a path may carry more than one HTTP method,
+// e.g. /api/v2/shipping/webhooks has both get and post).
+function findYamlOperationRangeForMethod(lines, path, method) {
+  const range = findYamlPathRange(lines, path);
+  if (!range) return null;
+  const methodLine = `        ${method}:`;
+  const methodIndex = lines.findIndex((line, index) => (
+    index > range.start && index < range.end && line === methodLine
+  ));
+  if (methodIndex === -1) return null;
+  let end = range.end;
+  for (let i = methodIndex + 1; i < range.end; i++) {
+    if (YAML_METHOD_LINE_RE.test(lines[i])) { end = i; break; }
+  }
+  return { start: methodIndex, end };
+}
+
+function ensureYamlUnauthorizedResponse(lines, path, method) {
+  const op = findYamlOperationRangeForMethod(lines, path, method);
+  if (!op) return false;
+
+  const expected = YAML_UNAUTHORIZED_RESPONSE.join('\n');
+  const existing = findYamlResponseRange(lines, op, '                "401":');
+  if (existing) {
+    if (existing.text === expected) return false;
+    lines.splice(existing.start, existing.end - existing.start, ...YAML_UNAUTHORIZED_RESPONSE);
+    return true;
+  }
+
+  const responsesIndex = lines.findIndex((line, index) => (
+    index > op.start && index < op.end && line === '            responses:'
+  ));
+  if (responsesIndex === -1) return false;
+
+  let responseEnd = responsesIndex + 1;
+  while (responseEnd < op.end) {
+    const line = lines[responseEnd];
+    if (line && !line.startsWith('                ')) break;
+    responseEnd++;
+  }
+
+  // Insert 401 before the 403 when present, else before `default:`. Anchoring
+  // on 403 makes the pass order-independent: whether the entitlement 403 is
+  // already present (running over an injected baseline) or added afterwards
+  // (fresh `make generate`, security-first), the order stays 2xx → 401 → 403 →
+  // default, so a hand-run and a full regenerate produce identical bytes.
+  const forbiddenIndex = lines.findIndex((line, index) => (
+    index > responsesIndex && index < responseEnd && line === '                "403":'
+  ));
+  const defaultIndex = lines.findIndex((line, index) => (
+    index > responsesIndex && index < responseEnd && line === '                default:'
+  ));
+  const insertAt = forbiddenIndex !== -1
+    ? forbiddenIndex
+    : (defaultIndex === -1 ? responseEnd : defaultIndex);
+  lines.splice(insertAt, 0, ...YAML_UNAUTHORIZED_RESPONSE);
+  return true;
+}
+
+function findYamlOperationSecurityRange(lines, op) {
+  const start = lines.findIndex((line, index) => (
+    index > op.start && index < op.end && line.startsWith('            security:')
+  ));
+  if (start === -1) return null;
+  // `security: []` is a single inline line; the bearer form is a block of
+  // 16-space list items.
+  if (lines[start] === '            security: []') return { start, end: start + 1 };
+  let end = start + 1;
+  while (end < op.end) {
+    const line = lines[end];
+    if (line && !line.startsWith('                ')) break;
+    end++;
+  }
+  return { start, end };
+}
+
+// kind: 'public' → `security: []` (opt out); 'bearer' → API-key + BearerAuth list.
+function ensureYamlOperationSecurity(lines, path, method, kind) {
+  const op = findYamlOperationRangeForMethod(lines, path, method);
+  if (!op) return false;
+  const desired = kind === 'public' ? ['            security: []'] : YAML_BEARER_OPERATION_SECURITY;
+
+  const existing = findYamlOperationSecurityRange(lines, op);
+  if (existing) {
+    if (lines.slice(existing.start, existing.end).join('\n') === desired.join('\n')) return false;
+    lines.splice(existing.start, existing.end - existing.start, ...desired);
+    return true;
+  }
+
+  const operationIdIndex = lines.findIndex((line, index) => (
+    index > op.start && index < op.end && line.startsWith('            operationId:')
+  ));
+  const insertAt = operationIdIndex === -1 ? op.start + 1 : operationIdIndex + 1;
+  lines.splice(insertAt, 0, ...desired);
+  return true;
+}
+
+// Enumerate operations by text scan (no YAML parser): a path is a 4-space key
+// beginning with `/`; its methods are the 8-space HTTP-verb keys inside the
+// path block (which ends at the next path or any shallower-indented line,
+// matching findYamlPathRange). Handles multi-method paths.
+function enumerateYamlOperations(lines) {
+  const operations = [];
+  for (let i = 0; i < lines.length; i++) {
+    const match = lines[i].match(/^ {4}(\/\S+):$/);
+    if (!match) continue;
+    const methods = [];
+    for (let j = i + 1; j < lines.length; j++) {
+      const line = lines[j];
+      if (line && !line.startsWith('        ')) break;
+      const methodMatch = line.match(YAML_METHOD_LINE_RE);
+      if (methodMatch) methods.push(methodMatch[1]);
+    }
+    if (methods.length > 0) operations.push({ path: match[1], methods });
+  }
+  return operations;
+}
+
+// Full auth contract for a YAML artifact (per-service YAML or the bundle),
+// mirroring injectJson: top-level securitySchemes (2 or 3 by bearer-path
+// presence) + root API-key security + UnauthorizedError schema + per-operation
+// 401 / public security:[] opt-outs / bearer stamping.
+function injectYamlAuthContract(text) {
+  const lines = text.split('\n');
+  let changed = false;
+
+  const operations = enumerateYamlOperations(lines);
+  const hasBearer = operations.some(({ path }) => BEARER_AUTH_PATHS.has(path));
+
+  changed = ensureYamlRootSecurity(lines) || changed;
+  changed = ensureYamlSecuritySchemes(lines, hasBearer) || changed;
+  changed = ensureYamlUnauthorizedSchema(lines) || changed;
+
+  for (const { path, methods } of operations) {
+    for (const method of methods) {
+      if (PUBLIC_PATHS.has(path)) {
+        // Public RPC: opt out of the root requirement, carry no 401.
+        changed = ensureYamlOperationSecurity(lines, path, method, 'public') || changed;
+      } else {
+        changed = ensureYamlUnauthorizedResponse(lines, path, method) || changed;
+        if (BEARER_AUTH_PATHS.has(path)) {
+          changed = ensureYamlOperationSecurity(lines, path, method, 'bearer') || changed;
+        }
+      }
+    }
+  }
+
+  return { text: lines.join('\n'), changed };
+}
 // ── Run ──────────────────────────────────────────────────────────────────────
 const specFiles = readdirSync(apiDir).filter((f) => /Service\.openapi\.json$/.test(f)).sort();
 const serviceYamlFiles = readdirSync(apiDir).filter((f) => /Service\.openapi\.yaml$/.test(f)).sort();
@@ -699,11 +904,12 @@ for (const file of specFiles) {
 for (const file of serviceYamlFiles) {
   const path = resolve(apiDir, file);
   const raw = readFileSync(path, 'utf8');
-  const { text, changed } = injectYamlEntitlementContract(raw);
-  if (changed) {
+  const authResult = injectYamlAuthContract(raw);
+  const entitlementResult = injectYamlEntitlementContract(authResult.text);
+  if (authResult.changed || entitlementResult.changed) {
     wouldChange++;
     touched.push(file);
-    if (!CHECK) writeFileSync(path, text);
+    if (!CHECK) writeFileSync(path, entitlementResult.text);
   }
 }
 
@@ -711,9 +917,9 @@ for (const file of serviceYamlFiles) {
 let bundleChanged = false;
 try {
   const bundleRaw = readFileSync(bundlePath, 'utf8');
-  const securityResult = injectBundle(bundleRaw);
-  const entitlementResult = injectYamlEntitlementContract(securityResult.text);
-  bundleChanged = securityResult.changed || entitlementResult.changed;
+  const authResult = injectYamlAuthContract(bundleRaw);
+  const entitlementResult = injectYamlEntitlementContract(authResult.text);
+  bundleChanged = authResult.changed || entitlementResult.changed;
   if (bundleChanged) {
     wouldChange++;
     touched.push('worldmonitor.openapi.yaml');
