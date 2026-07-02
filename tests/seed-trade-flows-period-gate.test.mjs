@@ -13,7 +13,7 @@
 //      make the gate structurally unsatisfiable regardless of period.
 //
 // Fix contract pinned here:
-//   - fetchFlows requests an explicit lagged period window (recentPeriods()).
+//   - fetchFlows requests an explicit lagged period (recentPeriod()).
 //   - checkCoverage treats reporters with `required:false` as best-effort:
 //     still fetched/published if present, but excluded from both coverage floors.
 

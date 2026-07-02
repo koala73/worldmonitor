@@ -205,7 +205,15 @@ export async function fetchAllFlows(opts = {}) {
   let lastGate = null;
   for (let pi = 0; pi < periods.length; pi++) {
     const period = periods[pi];
-    if (pi > 0) console.log(`  Prior period failed coverage — falling back to period ${period}...`);
+    if (pi > 0) {
+      console.log(`  Prior period failed coverage — falling back to period ${period}...`);
+      // Keep the inter-request gap across the pass boundary: the fresh
+      // fetchFlowsForPeriod loop skips its delay on the first pair (ri=ci=0),
+      // so without this the first fallback call fires immediately after the
+      // prior pass's last response — right when the rate-limited preview
+      // endpoint is most likely to return a transient 5xx.
+      await pace(INTER_REQUEST_DELAY_MS);
+    }
 
     const { allFlows, perKeyFlows } = await fetchFlowsForPeriod(period, pace);
 
