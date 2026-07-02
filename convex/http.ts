@@ -99,6 +99,20 @@ function readConvexErrorNumber(err: unknown, field: string): number | null {
   return typeof value === "number" ? value : null;
 }
 
+type SetPreferencesResult =
+  | { ok: true; syncVersion: number }
+  | { ok: false; reason: "CONFLICT"; actualSyncVersion: number }
+  | { ok: false; reason: "BLOB_TOO_LARGE"; size: number; max: number }
+  | { ok: false; reason: "RATE_LIMITED"; limit: number; reset: number };
+
+function setRateLimitResponseHeaders(headers: Headers, limit: number, reset: number): void {
+  const retryAfter = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
+  headers.set("X-RateLimit-Limit", String(limit));
+  headers.set("X-RateLimit-Remaining", "0");
+  headers.set("X-RateLimit-Reset", String(reset));
+  headers.set("Retry-After", String(retryAfter));
+}
+
 const http = httpRouter();
 
 http.route({
@@ -205,15 +219,24 @@ http.route({
           expectedSyncVersion: body.expectedSyncVersion,
           schemaVersion: body.schemaVersion,
         },
-      )) as
-        | { ok: true; syncVersion: number }
-        | { ok: false; reason: "CONFLICT"; actualSyncVersion: number };
-      // PR 3 (post-launch-stabilization): setPreferences now returns a
-      // discriminated result for CONFLICT instead of throwing. Mirror the
-      // wire shape from api/user-prefs.ts (Vercel) so clients see the same
-      // 409 + actualSyncVersion regardless of which `/api/user-prefs` host
-      // they hit.
+      )) as SetPreferencesResult;
+      // Expected write denials return as a discriminated result so Convex can
+      // commit limiter bookkeeping and duplicate-counter cleanup. Mirror the
+      // wire shape from api/user-prefs.ts (Vercel) regardless of host.
       if (result.ok === false) {
+        if (result.reason === "BLOB_TOO_LARGE") {
+          return new Response(JSON.stringify({ error: "BLOB_TOO_LARGE" }), {
+            status: 400,
+            headers,
+          });
+        }
+        if (result.reason === "RATE_LIMITED") {
+          setRateLimitResponseHeaders(headers, result.limit, result.reset);
+          return new Response(JSON.stringify({ error: "RATE_LIMITED" }), {
+            status: 429,
+            headers,
+          });
+        }
         return new Response(
           JSON.stringify({
             error: "CONFLICT",
@@ -248,11 +271,7 @@ http.route({
       if (code === "RATE_LIMITED" || msg.includes("RATE_LIMITED")) {
         const limit = readConvexErrorNumber(err, "limit") ?? USER_PREFS_WRITE_RATE_LIMIT;
         const reset = readConvexErrorNumber(err, "reset") ?? Date.now() + 60_000;
-        const retryAfter = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
-        headers.set("X-RateLimit-Limit", String(limit));
-        headers.set("X-RateLimit-Remaining", "0");
-        headers.set("X-RateLimit-Reset", String(reset));
-        headers.set("Retry-After", String(retryAfter));
+        setRateLimitResponseHeaders(headers, limit, reset);
         return new Response(JSON.stringify({ error: "RATE_LIMITED" }), {
           status: 429,
           headers,

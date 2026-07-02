@@ -42,64 +42,81 @@ export const getPreferences = query({
  * exposed through `api/user-prefs.ts` (HTTP 409 with `actualSyncVersion`)
  * is unchanged — clients see the same response.
  *
- * `BLOB_TOO_LARGE` and `UNAUTHENTICATED` remain THROWS because they are
- * rare and we DO want them visible in Sentry as errors. CONFLICT is
- * dozens-per-day expected behavior, not an error.
+ * Expected write denials return instead of throwing so limiter accounting and
+ * duplicate-row cleanup persist in Convex. `UNAUTHENTICATED` remains a throw
+ * because it is auth drift / bad input rather than a metered write attempt.
  */
 export type SetPreferencesResult =
   | { ok: true; syncVersion: number }
-  | { ok: false; reason: "CONFLICT"; actualSyncVersion: number };
+  | { ok: false; reason: "CONFLICT"; actualSyncVersion: number }
+  | { ok: false; reason: "BLOB_TOO_LARGE"; size: number; max: number }
+  | { ok: false; reason: "RATE_LIMITED"; limit: number; reset: number };
 
-async function checkUserPrefsWriteRateLimit(ctx: MutationCtx, userId: string): Promise<void> {
+type UserPrefsWriteRateLimitResult =
+  | { ok: true }
+  | { ok: false; reason: "RATE_LIMITED"; limit: number; reset: number };
+
+const RATE_LIMIT_COUNTER_SCAN_LIMIT = USER_PREFS_WRITE_RATE_LIMIT + 1;
+const RATE_LIMIT_STALE_CLEANUP_LIMIT = 5;
+
+async function checkUserPrefsWriteRateLimit(
+  ctx: MutationCtx,
+  userId: string,
+): Promise<UserPrefsWriteRateLimitResult> {
   const now = Date.now();
   const windowStart = Math.floor(now / USER_PREFS_WRITE_RATE_WINDOW_MS) * USER_PREFS_WRITE_RATE_WINDOW_MS;
   const reset = windowStart + USER_PREFS_WRITE_RATE_WINDOW_MS;
-  const rows = await ctx.db
+  const currentRows = await ctx.db
     .query("userPreferenceWriteRateLimits")
-    .withIndex("by_user_window", (q) => q.eq("userId", userId))
-    .collect();
-  const currentRows = rows.filter((row) => row.windowStart === windowStart);
+    .withIndex("by_user_window", (q) =>
+      q.eq("userId", userId).eq("windowStart", windowStart),
+    )
+    .take(RATE_LIMIT_COUNTER_SCAN_LIMIT);
   const count = currentRows.reduce((sum, row) => sum + row.count, 0);
+  const retained = currentRows[0] ?? null;
 
-  if (count >= USER_PREFS_WRITE_RATE_LIMIT) {
-    throw new ConvexError({
-      kind: "RATE_LIMITED",
-      limit: USER_PREFS_WRITE_RATE_LIMIT,
-      reset,
-    });
+  for (const row of currentRows.slice(1)) {
+    await ctx.db.delete(row._id);
   }
 
-  let retainedId: (typeof rows)[number]["_id"] | null = null;
+  if (count >= USER_PREFS_WRITE_RATE_LIMIT) {
+    if (retained && retained.count !== count) {
+      await ctx.db.patch(retained._id, {
+        count,
+        updatedAt: now,
+      });
+    }
+    return {
+      ok: false,
+      reason: "RATE_LIMITED",
+      limit: USER_PREFS_WRITE_RATE_LIMIT,
+      reset,
+    };
+  }
 
-  if (currentRows.length > 0) {
-    const current = currentRows[0]!;
-    retainedId = current._id;
-    await ctx.db.patch(current._id, {
+  if (retained) {
+    await ctx.db.patch(retained._id, {
       count: count + 1,
       updatedAt: now,
     });
   } else {
-    const reusable = rows[0];
-    if (reusable) {
-      retainedId = reusable._id;
-      await ctx.db.patch(reusable._id, {
-        windowStart,
-        count: 1,
-        updatedAt: now,
-      });
-    } else {
-      retainedId = await ctx.db.insert("userPreferenceWriteRateLimits", {
-        userId,
-        windowStart,
-        count: 1,
-        updatedAt: now,
-      });
-    }
+    await ctx.db.insert("userPreferenceWriteRateLimits", {
+      userId,
+      windowStart,
+      count: 1,
+      updatedAt: now,
+    });
   }
 
-  for (const row of rows) {
-    if (row._id !== retainedId) await ctx.db.delete(row._id);
+  const staleRows = await ctx.db
+    .query("userPreferenceWriteRateLimits")
+    .withIndex("by_user_window", (q) => q.eq("userId", userId))
+    .take(RATE_LIMIT_STALE_CLEANUP_LIMIT);
+  for (const row of staleRows) {
+    if (row.windowStart !== windowStart) await ctx.db.delete(row._id);
   }
+
+  return { ok: true };
 }
 
 export const setPreferences = mutation({
@@ -111,8 +128,8 @@ export const setPreferences = mutation({
   },
   handler: async (ctx, args): Promise<SetPreferencesResult> => {
     const identity = await ctx.auth.getUserIdentity();
-    // BLOB_TOO_LARGE and UNAUTHENTICATED throw as structured ConvexErrors —
-    // they are rare error conditions we want surfaced in Sentry. Convex's
+    // UNAUTHENTICATED throws as a structured ConvexError because it is rare
+    // auth drift / bad input we want surfaced in Sentry. Convex's
     // wire format propagates `errorData` for object payloads so the edge
     // handler routes via `err.data.kind`. (PR #3466 fixed the original
     // string-data wire-strip bug.)
@@ -123,15 +140,17 @@ export const setPreferences = mutation({
     // bypass the authoritative direct-Convex backstop by intentionally
     // returning CONFLICT forever. CONFLICT retries count as write attempts;
     // the limit is sized for that worst-case retry profile.
-    await checkUserPrefsWriteRateLimit(ctx, userId);
+    const rateLimit = await checkUserPrefsWriteRateLimit(ctx, userId);
+    if (!rateLimit.ok) return rateLimit;
 
     const blobSize = JSON.stringify(args.data).length;
     if (blobSize > MAX_PREFS_BLOB_SIZE) {
-      throw new ConvexError({
-        kind: "BLOB_TOO_LARGE",
+      return {
+        ok: false,
+        reason: "BLOB_TOO_LARGE",
         size: blobSize,
         max: MAX_PREFS_BLOB_SIZE,
-      });
+      };
     }
 
     const existing = await ctx.db

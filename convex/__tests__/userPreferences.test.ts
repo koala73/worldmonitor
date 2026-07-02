@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import schema from "../schema";
 import { api } from "../_generated/api";
 import {
+  MAX_PREFS_BLOB_SIZE,
   USER_PREFS_WRITE_RATE_LIMIT,
   USER_PREFS_WRITE_RATE_WINDOW_MS,
 } from "../constants";
@@ -41,18 +42,9 @@ async function writePref(
 }
 
 async function expectRateLimited(promise: Promise<unknown>, reset = TEST_RESET) {
-  let caught: unknown;
-  try {
-    await promise;
-  } catch (err) {
-    caught = err;
-  }
-
-  const data = (caught as { data?: unknown } | undefined)?.data;
-  const parsed = typeof data === "string" ? JSON.parse(data) : data;
-
-  expect(parsed).toEqual({
-    kind: "RATE_LIMITED",
+  await expect(promise).resolves.toEqual({
+    ok: false,
+    reason: "RATE_LIMITED",
     limit: USER_PREFS_WRITE_RATE_LIMIT,
     reset,
   });
@@ -154,6 +146,68 @@ describe("userPreferences.setPreferences write rate limit", () => {
       count: 4,
       updatedAt: TEST_NOW,
     });
+  });
+
+  test("consolidates duplicate counter rows even when the request is rate limited", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(TEST_NOW);
+    const t = makeT();
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("userPreferenceWriteRateLimits", {
+        userId: USER_A.subject,
+        windowStart: TEST_WINDOW_START,
+        count: 10,
+        updatedAt: TEST_NOW - 20,
+      });
+      await ctx.db.insert("userPreferenceWriteRateLimits", {
+        userId: USER_A.subject,
+        windowStart: TEST_WINDOW_START,
+        count: USER_PREFS_WRITE_RATE_LIMIT - 10,
+        updatedAt: TEST_NOW - 10,
+      });
+    });
+
+    await expectRateLimited(writePref(t, USER_A, 0));
+
+    const rows = await t.run(async (ctx) => {
+      return await ctx.db
+        .query("userPreferenceWriteRateLimits")
+        .withIndex("by_user_window", (q) =>
+          q.eq("userId", USER_A.subject).eq("windowStart", TEST_WINDOW_START),
+        )
+        .collect();
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      userId: USER_A.subject,
+      windowStart: TEST_WINDOW_START,
+      count: USER_PREFS_WRITE_RATE_LIMIT,
+      updatedAt: TEST_NOW,
+    });
+  });
+
+  test("oversized write attempts consume the direct Convex write budget", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(TEST_NOW);
+    const t = makeT();
+    const data = { payload: "x".repeat(MAX_PREFS_BLOB_SIZE) };
+
+    for (let i = 0; i < USER_PREFS_WRITE_RATE_LIMIT; i++) {
+      await expect(
+        t.withIdentity(USER_A).mutation(api.userPreferences.setPreferences, {
+          variant: "full",
+          data,
+          expectedSyncVersion: 0,
+          schemaVersion: 1,
+        }),
+      ).resolves.toMatchObject({
+        ok: false,
+        reason: "BLOB_TOO_LARGE",
+        max: MAX_PREFS_BLOB_SIZE,
+      });
+    }
+
+    await expectRateLimited(writePref(t, USER_A, 0));
   });
 
   test("rate limit wins before stale-version CONFLICT checks", async () => {

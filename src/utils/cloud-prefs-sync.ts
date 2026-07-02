@@ -27,6 +27,7 @@ import {
   parseRetryAfterSeconds,
   rearmTemporaryCloudPrefsRetry,
 } from './cloud-prefs-retry';
+import { applyObservableCloudPrefsFlushSuccess } from './cloud-prefs-flush';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
 export { isTemporaryCloudPrefsStatus, parseRetryAfterSeconds } from './cloud-prefs-retry';
@@ -714,22 +715,23 @@ export function install(variant: string): void {
         return;
       }
       const body = (await res.json().catch(() => null)) as { syncVersion?: number } | null;
-      if (typeof body?.syncVersion !== 'number') return;
-      // Auth generation: a sign-out or user switch while the flush was in
-      // flight already cleared/replaced sync state — don't resurrect a
-      // version marker for the previous session.
-      if (_authGeneration !== myGeneration) return;
-      // Monotonic: a slow flush response must not regress the version past
-      // a newer upload (or conflict-merge) that completed meanwhile.
-      if (body.syncVersion <= getSyncVersion()) return;
-      setSyncVersion(body.syncVersion);
-      clearSettledDirtyKeys(blob);
-      Storage.prototype.setItem.call(localStorage, KEY_LAST_SYNC_AT, String(Date.now()));
-      // Only claim 'synced' when no newer edit re-armed the debounce AND no
-      // uploadNow is mid-flight (the debounce callback nulls the timer
-      // synchronously before uploadNow's async work, so the timer alone
-      // can't distinguish "idle" from "upload in progress").
-      if (_debounceTimer === null && _uploadsInFlight === 0) setState('synced');
+      applyObservableCloudPrefsFlushSuccess({
+        syncVersion: body?.syncVersion,
+        myGeneration,
+        getAuthGeneration: () => _authGeneration,
+        getSyncVersion,
+        setSyncVersion,
+        clearSettledDirtyKeys: () => clearSettledDirtyKeys(blob),
+        setLastSyncAt: (timestampMs) => {
+          Storage.prototype.setItem.call(localStorage, KEY_LAST_SYNC_AT, String(timestampMs));
+        },
+        // Only claim 'synced' when no newer edit re-armed the debounce AND no
+        // uploadNow is mid-flight (the debounce callback nulls the timer
+        // synchronously before uploadNow's async work, so the timer alone
+        // can't distinguish "idle" from "upload in progress").
+        isIdle: () => _debounceTimer === null && _uploadsInFlight === 0,
+        setSynced: () => setState('synced'),
+      });
     }).catch(() => { /* best-effort on unload */ });
   };
 
