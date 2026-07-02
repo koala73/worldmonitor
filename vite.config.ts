@@ -880,6 +880,15 @@ export default defineConfig(({ mode }) => {
   // available to the dev server plugins and server-side handlers.
   Object.assign(process.env, env);
 
+  // Dev-server port: DEV_PORT overrides the 3000 default. Reject non-integer or
+  // out-of-range values (fall back to 3000) so a typo can't crash Vite's listen()
+  // with ERR_SOCKET_BAD_PORT. Not VITE_-prefixed, so it never reaches the client bundle.
+  const parsedDevPort = Number(env.DEV_PORT);
+  const devPort =
+    Number.isInteger(parsedDevPort) && parsedDevPort >= 1 && parsedDevPort <= 65535
+      ? parsedDevPort
+      : 3000;
+
   const isE2E = process.env.VITE_E2E === '1';
   const isDesktopBuild = process.env.VITE_DESKTOP_RUNTIME === '1';
   const activeVariant = process.env.VITE_VARIANT || 'full';
@@ -1261,7 +1270,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      port: 3000,
+      port: devPort,
       open: !isE2E,
       hmr: isE2E ? false : undefined,
       watch: {

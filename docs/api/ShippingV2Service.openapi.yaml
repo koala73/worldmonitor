@@ -17,14 +17,14 @@ paths:
                 - name: fromIso2
                   in: query
                   description: Origin country, ISO-3166-1 alpha-2 uppercase.
-                  required: false
+                  required: true
                   schema:
                     type: string
                     pattern: '^[A-Z]{2}$'
                 - name: toIso2
                   in: query
                   description: Destination country, ISO-3166-1 alpha-2 uppercase.
-                  required: false
+                  required: true
                   schema:
                     type: string
                     pattern: '^[A-Z]{2}$'

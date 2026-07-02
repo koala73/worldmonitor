@@ -124,7 +124,9 @@ paths:
             parameters:
                 - name: period
                   in: query
-                  description: Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                  description: |-
+                    Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -221,7 +223,7 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code (e.g., "US", "GB", "JP").
-                  required: false
+                  required: true
                   schema:
                     type: string
                     enum:
@@ -325,7 +327,7 @@ paths:
             parameters:
                 - name: symbol
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: name
@@ -414,7 +416,7 @@ paths:
             parameters:
                 - name: symbol
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: name
@@ -629,11 +631,13 @@ paths:
             parameters:
                 - name: fromDate
                   in: query
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                 - name: toDate
                   in: query
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -692,7 +696,7 @@ paths:
             parameters:
                 - name: symbol
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -981,7 +985,9 @@ components:
             properties:
                 period:
                     type: string
-                    description: Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                    description: |-
+                        Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: GetSectorSummaryRequest specifies parameters for retrieving sector performance.
         GetSectorSummaryResponse:
             type: object
@@ -1827,8 +1833,10 @@ components:
             properties:
                 fromDate:
                     type: string
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
                 toDate:
                     type: string
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
         ListEarningsCalendarResponse:
             type: object
             properties:

@@ -54,7 +54,7 @@ paths:
                   description: |-
                     Job id of the form `scenario:{epoch_ms}:{8-char-suffix}`. Path-traversal
                      guarded by JOB_ID_RE in the handler.
-                  required: false
+                  required: true
                   schema:
                     type: string
                     pattern: '^scenario:[0-9]{13}:[a-z0-9]{8}$'

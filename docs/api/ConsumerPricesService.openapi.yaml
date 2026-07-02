@@ -154,8 +154,8 @@ paths:
                     type: string
                 - name: limit
                   in: query
-                  description: limit caps the number of risers and fallers returned (default 10).
-                  required: false
+                  description: limit caps the number of risers and fallers returned.
+                  required: true
                   schema:
                     type: integer
                     format: int32
@@ -485,10 +485,12 @@ components:
                 limit:
                     type: integer
                     format: int32
-                    description: limit caps the number of risers and fallers returned (default 10).
+                    description: limit caps the number of risers and fallers returned.
                 categorySlug:
                     type: string
                     description: category_slug filters to a single category when set.
+            required:
+                - limit
             description: ListConsumerPriceMoversRequest parameters for the movers RPC.
         ListConsumerPriceMoversResponse:
             type: object
