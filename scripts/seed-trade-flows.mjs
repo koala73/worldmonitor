@@ -17,22 +17,48 @@ const ANOMALY_THRESHOLD = 0.30; // 30% YoY change
 // (e.g., wrong reporterCode → HTTP 200 with count:0 for every commodity).
 // Global coverage floor — overall populated/total must be ≥ this.
 const MIN_COVERAGE_RATIO = 0.70;
-// Per-reporter coverage floor — each reporter must have ≥ this fraction of
-// its commodities populated. Prevents the "India/Taiwan flatlines entirely"
-// failure mode: with 6 reporters × 5 commodities, losing one full reporter
-// is only 5/30 missing (83% global coverage → passes MIN_COVERAGE_RATIO),
-// but 0/5 per-reporter coverage for the dead one blocks publish here.
+// Per-reporter coverage floor — each REQUIRED reporter must have ≥ this fraction
+// of its commodities populated. Prevents the "India/Taiwan flatlines entirely"
+// failure mode: losing one full required reporter passes the global ratio but
+// its 0/5 per-reporter coverage blocks publish here.
 const MIN_PER_REPORTER_RATIO = 0.40; // at least 2 of 5 commodities per reporter
 
-// Strategic reporters: US, China, Russia, Iran, India, Taiwan
+// Strategic reporters: US, China, Russia, Iran, India, Taiwan.
+// `required: false` reporters are best-effort: still fetched and published when
+// they return data, but excluded from BOTH coverage floors. Russia (suspended
+// UN Comtrade reporting post-2022) and Iran (sporadic) return 0 as reporters for
+// every recent year, so gating on them makes the publish gate unsatisfiable and
+// exit-75-crashes the seed on every run regardless of period.
 const REPORTERS = [
   { code: '842', name: 'USA' },
   { code: '156', name: 'China' },
-  { code: '643', name: 'Russia' },
-  { code: '364', name: 'Iran' },
+  { code: '643', name: 'Russia', required: false },
+  { code: '364', name: 'Iran', required: false },
   { code: '699', name: 'India' },
   { code: '490', name: 'Taiwan' },
 ];
+
+// Comtrade annual data lags. The preview endpoint accepts a SINGLE period and,
+// when given NONE, defaults to the most-recent year present GLOBALLY — currently
+// the fastest reporter (US) is a full year ahead of everyone else, so that
+// default flatlines every other reporter and trips the coverage gate. (Multiple
+// comma-separated periods return HTTP 400 on this endpoint.) Pin an explicit,
+// uniform year instead: (y-2) is ~2 years old, so it is reliably final for all
+// strategic reporters. (Single-year data means yoyChange stays 0 here, same as
+// the pre-fix implicit-latest behavior — restoring true YoY needs a second call.)
+export function recentPeriod(now = new Date(), lag = 2) {
+  return String(now.getUTCFullYear() - lag);
+}
+
+// Candidate periods, freshest first. fetchAllFlows tries (y-2) and, only if its
+// coverage gate fails, falls back to (y-3). This survives the year boundary:
+// on Jan 1, (y-2) rolls to a fresher year the slower required reporters may not
+// have filed yet — without the fallback the seed would exit-75-crash for weeks
+// until they catch up. (y-3) is guaranteed-final and keeps the snapshot fresh
+// enough (annual trade data is inherently ~2yr lagged).
+export function candidatePeriods(now = new Date()) {
+  return [recentPeriod(now, 2), recentPeriod(now, 3)];
+}
 
 // Strategic HS commodity codes
 const COMMODITIES = [
@@ -54,11 +80,12 @@ export function isTransientComtrade(status) {
 let _retrySleep = sleep;
 export function __setSleepForTests(fn) { _retrySleep = typeof fn === 'function' ? fn : sleep; }
 
-export async function fetchFlows(reporter, commodity) {
+export async function fetchFlows(reporter, commodity, period = recentPeriod()) {
   const url = new URL(`${COMTRADE_BASE}/preview/C/A/HS`);
   url.searchParams.set('reporterCode', reporter.code);
   url.searchParams.set('cmdCode', commodity.code);
   url.searchParams.set('flowCode', 'X,M'); // exports + imports
+  url.searchParams.set('period', period); // explicit lagged year; see recentPeriod()
 
   async function once() {
     return fetch(url.toString(), {
@@ -139,7 +166,9 @@ export async function fetchFlows(reporter, commodity) {
   return flows;
 }
 
-async function fetchAllFlows() {
+// Fetch every (reporter × commodity) pair for one annual `period`.
+// `pace` is the inter-request delay (injectable so tests skip the real 3s waits).
+async function fetchFlowsForPeriod(period, pace) {
   const allFlows = [];
   const perKeyFlows = {};
 
@@ -149,12 +178,12 @@ async function fetchAllFlows() {
       const commodity = COMMODITIES[ci];
       const label = `${reporter.name}/${commodity.desc}`;
 
-      if (ri > 0 || ci > 0) await sleep(INTER_REQUEST_DELAY_MS);
-      console.log(`  Fetching ${label}...`);
+      if (ri > 0 || ci > 0) await pace(INTER_REQUEST_DELAY_MS);
+      console.log(`  Fetching ${label} (period ${period})...`);
 
       let flows = [];
       try {
-        flows = await fetchFlows(reporter, commodity);
+        flows = await fetchFlows(reporter, commodity, period);
         console.log(`    ${flows.length} records`);
       } catch (err) {
         console.warn(`    ${label}: failed (${err.message})`);
@@ -166,16 +195,37 @@ async function fetchAllFlows() {
     }
   }
 
-  const gate = checkCoverage(perKeyFlows, REPORTERS, COMMODITIES);
-  console.log(`  Coverage: ${gate.populated}/${gate.total} (${(gate.globalRatio * 100).toFixed(0)}%) reporter×commodity pairs populated`);
-  for (const r of gate.perReporter) {
-    if (r.ratio < MIN_PER_REPORTER_RATIO) {
-      console.warn(`    ${r.reporter} reporter ${r.code}: ${r.populated}/${r.total} (${(r.ratio * 100).toFixed(0)}%) — below per-reporter floor ${MIN_PER_REPORTER_RATIO}`);
+  return { allFlows, perKeyFlows };
+}
+
+export async function fetchAllFlows(opts = {}) {
+  const periods = opts.periods ?? candidatePeriods();
+  const pace = opts.pace ?? sleep;
+
+  let lastGate = null;
+  for (let pi = 0; pi < periods.length; pi++) {
+    const period = periods[pi];
+    if (pi > 0) console.log(`  Prior period failed coverage — falling back to period ${period}...`);
+
+    const { allFlows, perKeyFlows } = await fetchFlowsForPeriod(period, pace);
+
+    const gate = checkCoverage(perKeyFlows, REPORTERS, COMMODITIES);
+    lastGate = gate;
+    console.log(`  Coverage (period ${period}): ${gate.populated}/${gate.total} (${(gate.globalRatio * 100).toFixed(0)}%) required reporter×commodity pairs populated`);
+    for (const r of gate.perReporter) {
+      if (!r.required) {
+        console.log(`    ${r.reporter} reporter ${r.code}: ${r.populated}/${r.total} (best-effort, not gated)`);
+      } else if (r.ratio < MIN_PER_REPORTER_RATIO) {
+        console.warn(`    ${r.reporter} reporter ${r.code}: ${r.populated}/${r.total} (${(r.ratio * 100).toFixed(0)}%) — below per-reporter floor ${MIN_PER_REPORTER_RATIO}`);
+      }
+    }
+
+    if (gate.ok) {
+      return { flows: allFlows, perKeyFlows, fetchedAt: new Date().toISOString(), period };
     }
   }
-  if (!gate.ok) throw new Error(gate.reason);
 
-  return { flows: allFlows, perKeyFlows, fetchedAt: new Date().toISOString() };
+  throw new Error(lastGate?.reason ?? 'no candidate period produced sufficient coverage');
 }
 
 /**
@@ -189,19 +239,34 @@ async function fetchAllFlows() {
  * a global-only gate.
  */
 export function checkCoverage(perKeyFlows, reporters, commodities) {
-  const total = reporters.length * commodities.length;
-  const populated = Object.values(perKeyFlows).filter((v) => (v.flows?.length ?? 0) > 0).length;
-  const globalRatio = total > 0 ? populated / total : 0;
+  const commTotal = commodities.length;
 
+  // Full breakdown (for logging). `required` defaults to true, so callers that
+  // pass plain { code, name } reporters keep the original all-reporters gate.
   const perReporter = reporters.map((r) => {
     const pop = commodities.filter((c) => (perKeyFlows[`${KEY_PREFIX}:${r.code}:${c.code}`]?.flows?.length ?? 0) > 0).length;
-    return { reporter: r.name, code: r.code, populated: pop, total: commodities.length, ratio: commodities.length > 0 ? pop / commodities.length : 0 };
+    return {
+      reporter: r.name,
+      code: r.code,
+      populated: pop,
+      total: commTotal,
+      ratio: commTotal > 0 ? pop / commTotal : 0,
+      required: r.required !== false,
+    };
   });
+
+  // Both floors apply to REQUIRED reporters only. Best-effort reporters
+  // (required:false) are still fetched and published when they return data,
+  // but never block publish — see the REPORTERS note on Russia/Iran.
+  const gated = perReporter.filter((r) => r.required);
+  const total = gated.length * commTotal;
+  const populated = gated.reduce((n, r) => n + r.populated, 0);
+  const globalRatio = total > 0 ? populated / total : 0;
 
   if (globalRatio < MIN_COVERAGE_RATIO) {
     return { ok: false, populated, total, globalRatio, perReporter, reason: `coverage ${populated}/${total} below global floor ${MIN_COVERAGE_RATIO}; refusing to publish partial snapshot` };
   }
-  const dead = perReporter.find((r) => r.ratio < MIN_PER_REPORTER_RATIO);
+  const dead = gated.find((r) => r.ratio < MIN_PER_REPORTER_RATIO);
   if (dead) {
     return { ok: false, populated, total, globalRatio, perReporter, reason: `reporter ${dead.reporter} (${dead.code}) only ${dead.populated}/${dead.total} commodities — below per-reporter floor ${MIN_PER_REPORTER_RATIO}; refusing to publish snapshot with a flatlined reporter` };
   }
