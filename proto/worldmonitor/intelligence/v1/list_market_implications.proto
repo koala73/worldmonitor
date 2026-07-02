@@ -24,6 +24,7 @@ message MarketImplicationCard {
 }
 
 message ListMarketImplicationsRequest {
+  // Framework identifier whose market implication cards should be listed.
   string framework_id = 1 [(sebuf.http.query) = { name: "frameworkId" }];
 }
 

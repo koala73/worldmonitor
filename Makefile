@@ -112,10 +112,14 @@ generate: clean ## Generate code from proto definitions
 		done && \
 		BUF_BIN=$$(command -v buf) && \
 		PATH="$$PLUGIN_DIR:$$PATH" "$$BUF_BIN" generate
-	@# protoc-gen-openapiv3 does not emit WorldMonitor-specific auth or
-	@# examples metadata. Inject those generated-doc contracts after buf
-	@# generation so the published OpenAPI matches runtime and is usable.
+	@# protoc-gen-openapiv3 still misses WorldMonitor-specific contract details:
+	@# auth/security (#4599 root cause #1), filter parameter schemas,
+	@# query parameter requiredness (#4599 root cause #3 / #4604), and
+	@# examples. Apply byte-/format-preserving injectors before deriving
+	@# examples so examples reflect the final schemas.
 	@node scripts/openapi-inject-security.mjs
+	@node scripts/apply-openapi-filter-param-schemas.mjs
+	@node scripts/openapi-inject-required.mjs
 	@node scripts/openapi-inject-examples.mjs
 	@echo "Code generation complete!"
 

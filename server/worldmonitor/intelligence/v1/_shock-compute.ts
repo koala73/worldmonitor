@@ -1,6 +1,9 @@
+import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
+
 export const GULF_PARTNER_CODES = new Set(['682', '784', '368', '414', '364']);
 
-export const VALID_CHOKEPOINTS = new Set(['hormuz_strait', 'malacca_strait', 'suez', 'bab_el_mandeb']);
+export const VALID_CHOKEPOINTS = new Set(filterParamContracts.intelligenceChokepointIds);
+export const VALID_FUEL_MODES = new Set(filterParamContracts.intelligenceFuelModes);
 
 const CHOKEPOINT_DISPLAY_NAMES: Record<string, string> = {
   hormuz_strait: 'Strait of Hormuz',
@@ -169,12 +172,14 @@ export const EU_GAS_STORAGE_COUNTRIES = new Set([
   'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE', 'GB',
 ]);
 
-export type FuelMode = 'oil' | 'gas' | 'both';
+export type FuelMode = (typeof filterParamContracts.intelligenceFuelModes)[number];
+
+const DEFAULT_FUEL_MODE = filterParamContracts.intelligenceFuelModes[0] ?? 'oil';
 
 export function parseFuelMode(raw: string | undefined | null): FuelMode {
   const v = (raw ?? '').trim().toLowerCase();
-  if (v === 'gas' || v === 'both') return v;
-  return 'oil';
+  if (VALID_FUEL_MODES.has(v)) return v;
+  return DEFAULT_FUEL_MODE;
 }
 
 export function computeGasDisruption(

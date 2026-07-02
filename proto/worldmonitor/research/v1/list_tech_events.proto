@@ -7,7 +7,7 @@ import "sebuf/http/annotations.proto";
 
 // ListTechEventsRequest specifies filters for retrieving tech events.
 message ListTechEventsRequest {
-  // Event type filter: "all", "conferences", "earnings", "ipo", "other". Empty = all.
+  // Event type filter: "all", "conference", "earnings", "ipo", "other". Empty = all.
   string type = 1 [(sebuf.http.query) = { name: "type" }];
   // Only events with non-virtual coordinates.
   bool mappable = 2 [(sebuf.http.query) = { name: "mappable" }];

@@ -12,6 +12,7 @@ paths:
             parameters:
                 - name: countryCode
                   in: query
+                  description: ISO 3166-1 alpha-2 country code to score.
                   required: true
                   example: "US"
                   schema:
@@ -170,6 +171,9 @@ components:
             properties:
                 countryCode:
                     type: string
+                    description: ISO 3166-1 alpha-2 country code to score.
+            required:
+                - countryCode
         GetResilienceScoreResponse:
             type: object
             properties:

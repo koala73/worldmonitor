@@ -13,6 +13,7 @@ paths:
             parameters:
                 - name: max_items
                   in: query
+                  description: Maximum number of recent sanctions entries to include.
                   required: false
                   example: 1
                   schema:
@@ -65,12 +66,14 @@ paths:
             parameters:
                 - name: q
                   in: query
+                  description: Search text for a sanctioned person, organization, vessel, or aircraft.
                   required: false
                   example: "example"
                   schema:
                     type: string
                 - name: max_results
                   in: query
+                  description: Maximum number of matching sanctioned entities to return.
                   required: false
                   example: 1
                   schema:
@@ -145,6 +148,7 @@ components:
                 maxItems:
                     type: integer
                     format: int32
+                    description: Maximum number of recent sanctions entries to include.
             description: ListSanctionsPressureRequest retrieves recent OFAC sanctions pressure state.
         ListSanctionsPressureResponse:
             type: object
@@ -263,9 +267,11 @@ components:
             properties:
                 q:
                     type: string
+                    description: Search text for a sanctioned person, organization, vessel, or aircraft.
                 maxResults:
                     type: integer
                     format: int32
+                    description: Maximum number of matching sanctioned entities to return.
             description: LookupSanctionEntityRequest searches the OFAC entity index by name, vessel, or aircraft.
         LookupSanctionEntityResponse:
             type: object

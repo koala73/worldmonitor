@@ -19,6 +19,9 @@ paths:
                             "name": "WorldMonitor Analyst"
                             "organization": "example"
                             "phone": "example"
+                            "source": "example"
+                            "turnstileToken": "example"
+                            "website": "example"
                         schema:
                             $ref: '#/components/schemas/SubmitContactRequest'
                 required: true
@@ -60,6 +63,7 @@ paths:
                             "referredBy": "example"
                             "source": "example"
                             "turnstileToken": "example"
+                            "website": "example"
                         schema:
                             $ref: '#/components/schemas/RegisterInterestRequest'
                 required: true
@@ -142,6 +146,12 @@ components:
                 turnstileToken:
                     type: string
                     description: Cloudflare Turnstile token proving the submitter is human.
+            required:
+                - email
+                - name
+                - organization
+                - phone
+                - turnstileToken
             description: SubmitContactRequest carries an enterprise contact form submission.
         SubmitContactResponse:
             type: object
@@ -170,6 +180,9 @@ components:
                 turnstileToken:
                     type: string
                     description: Cloudflare Turnstile token. Desktop sources bypass Turnstile; see handler.
+            required:
+                - email
+                - turnstileToken
             description: RegisterInterestRequest carries a Pro-waitlist signup.
         RegisterInterestResponse:
             type: object

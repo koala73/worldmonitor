@@ -9,11 +9,12 @@ import type {
   ListHackernewsItemsResponse,
 } from '../../../../src/generated/server/worldmonitor/research/v1/service_server';
 
+import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
 import { clampInt } from '../../../_shared/constants';
 import { getCachedJson } from '../../../_shared/redis';
 
 const SEED_KEY_PREFIX = 'research:hackernews:v1';
-const ALLOWED_HN_FEEDS = new Set(['top', 'new', 'best', 'ask', 'show', 'job']);
+const ALLOWED_HN_FEEDS = new Set(filterParamContracts.researchHackerNewsFeedTypes);
 
 export async function listHackernewsItems(
   _ctx: ServerContext,

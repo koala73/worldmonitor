@@ -100,6 +100,7 @@ function patternString(pattern, key) {
   if (/scenario:\[0-9\]\{13\}:\[a-z0-9\]\{8\}/.test(pattern) || pattern.includes('scenario:')) {
     return 'scenario:1717200000000:abcd1234';
   }
+  if (pattern.includes('summary:v\\d+:')) return 'summary:v1:example-cache';
   if (/^\^?\[A-Z\]\{3\}\$?$/.test(pattern)) return 'USA';
   if (/^\^?\[A-Z\]\{2\}\$?$/.test(pattern)) return 'US';
   if (pattern.includes('[0-9]{13}')) return '1717200000000';

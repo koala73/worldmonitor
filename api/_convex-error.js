@@ -144,6 +144,7 @@ export function extractConvexErrorKind(err, msg) {
   // through to the unknown/500 path.
   if (isOpaqueConvexServerError(msg)) return 'SERVICE_UNAVAILABLE';
   if (msg.includes('CONFLICT')) return 'CONFLICT';
+  if (msg.includes('RATE_LIMITED')) return 'RATE_LIMITED';
   if (msg.includes('BLOB_TOO_LARGE')) return 'BLOB_TOO_LARGE';
   if (msg.includes('UNAUTHENTICATED')) return 'UNAUTHENTICATED';
   return null;

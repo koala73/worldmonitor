@@ -14,7 +14,7 @@ paths:
                 - name: series_id
                   in: query
                   description: FRED series ID (e.g., "GDP", "UNRATE", "CPIAUCSL").
-                  required: false
+                  required: true
                   example: "example-id"
                   schema:
                     type: string
@@ -65,7 +65,7 @@ paths:
                 - name: indicator_code
                   in: query
                   description: World Bank indicator code (e.g., "NY.GDP.MKTP.CD").
-                  required: false
+                  required: true
                   example: "NY.GDP.MKTP.CD"
                   schema:
                     type: string
@@ -86,7 +86,9 @@ paths:
                     format: int32
                 - name: page_size
                   in: query
-                  description: Maximum items per page.
+                  description: |-
+                    Maximum items per page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: 25
                   schema:
@@ -94,7 +96,9 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "next-page-token"
                   schema:
@@ -256,7 +260,9 @@ paths:
                         type: string
                 - name: years
                   in: query
-                  description: Number of years of historical data. Default 20 if not set.
+                  description: |-
+                    Number of years of historical data. Default 20 if not set.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: 1
                   schema:
@@ -601,11 +607,14 @@ paths:
             parameters:
                 - name: series_id
                   in: query
-                  description: BLS series ID (e.g. "CES0500000001", "CIU1010000000000A").
+                  description: 'BLS/FRED-backed series ID. Supported values: "USPRIV", "ECIALLCIV".'
                   required: false
-                  example: "example-id"
+                  example: "USPRIV"
                   schema:
                     type: string
+                    enum:
+                        - 'USPRIV'
+                        - 'ECIALLCIV'
                 - name: limit
                   in: query
                   description: Maximum number of observations to return. Defaults to 60.
@@ -653,12 +662,14 @@ paths:
             parameters:
                 - name: fromDate
                   in: query
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "2026-01-15"
                   schema:
                     type: string
                 - name: toDate
                   in: query
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "2026-01-15"
                   schema:
@@ -1286,10 +1297,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page.
+                    description: |-
+                        Maximum items per page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             required:
                 - indicatorCode
             description: ListWorldBankIndicatorsRequest specifies filters for retrieving World Bank data.
@@ -1583,7 +1598,9 @@ components:
                 years:
                     type: integer
                     format: int32
-                    description: Number of years of historical data. Default 20 if not set.
+                    description: |-
+                        Number of years of historical data. Default 20 if not set.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
         GetEnergyCapacityResponse:
             type: object
             properties:
@@ -2000,7 +2017,7 @@ components:
             properties:
                 seriesId:
                     type: string
-                    description: BLS series ID (e.g. "CES0500000001", "CIU1010000000000A").
+                    description: 'BLS/FRED-backed series ID. Supported values: "USPRIV", "ECIALLCIV".'
                 limit:
                     type: integer
                     format: int32
@@ -2050,8 +2067,10 @@ components:
             properties:
                 fromDate:
                     type: string
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
                 toDate:
                     type: string
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
         GetEconomicCalendarResponse:
             type: object
             properties:

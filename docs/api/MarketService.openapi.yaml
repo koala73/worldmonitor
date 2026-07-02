@@ -160,7 +160,9 @@ paths:
             parameters:
                 - name: period
                   in: query
-                  description: Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                  description: |-
+                    Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "daily"
                   schema:
@@ -297,10 +299,56 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code (e.g., "US", "GB", "JP").
-                  required: false
+                  required: true
                   example: "US"
                   schema:
                     type: string
+                    enum:
+                        - 'US'
+                        - 'GB'
+                        - 'DE'
+                        - 'FR'
+                        - 'JP'
+                        - 'CN'
+                        - 'HK'
+                        - 'IN'
+                        - 'KR'
+                        - 'TW'
+                        - 'AU'
+                        - 'BR'
+                        - 'CA'
+                        - 'MX'
+                        - 'AR'
+                        - 'RU'
+                        - 'ZA'
+                        - 'SA'
+                        - 'AE'
+                        - 'IL'
+                        - 'TR'
+                        - 'PL'
+                        - 'NL'
+                        - 'CH'
+                        - 'ES'
+                        - 'IT'
+                        - 'SE'
+                        - 'NO'
+                        - 'SG'
+                        - 'TH'
+                        - 'MY'
+                        - 'ID'
+                        - 'PH'
+                        - 'NZ'
+                        - 'EG'
+                        - 'CL'
+                        - 'PE'
+                        - 'AT'
+                        - 'BE'
+                        - 'FI'
+                        - 'DK'
+                        - 'IE'
+                        - 'PT'
+                        - 'CZ'
+                        - 'HU'
             responses:
                 "200":
                     description: Successful response
@@ -370,18 +418,21 @@ paths:
             parameters:
                 - name: symbol
                   in: query
-                  required: false
+                  description: Stock ticker symbol to analyze.
+                  required: true
                   example: "AAPL"
                   schema:
                     type: string
                 - name: name
                   in: query
+                  description: Optional company display name used to disambiguate the symbol.
                   required: false
                   example: "WorldMonitor Analyst"
                   schema:
                     type: string
                 - name: include_news
                   in: query
+                  description: Whether to include recent news in the stock analysis.
                   required: false
                   example: true
                   schema:
@@ -426,6 +477,7 @@ paths:
             parameters:
                 - name: symbols
                   in: query
+                  description: Stock ticker symbols whose stored analysis history should be returned.
                   required: false
                   style: form
                   explode: true
@@ -437,6 +489,7 @@ paths:
                         type: string
                 - name: limit_per_symbol
                   in: query
+                  description: Maximum number of history snapshots to return per symbol.
                   required: false
                   example: 25
                   schema:
@@ -444,6 +497,7 @@ paths:
                     format: int32
                 - name: include_news
                   in: query
+                  description: Whether history snapshots should include stored news summaries.
                   required: false
                   example: true
                   schema:
@@ -491,18 +545,21 @@ paths:
             parameters:
                 - name: symbol
                   in: query
-                  required: false
+                  description: Stock ticker symbol to backtest.
+                  required: true
                   example: "AAPL"
                   schema:
                     type: string
                 - name: name
                   in: query
+                  description: Optional company display name used to disambiguate the symbol.
                   required: false
                   example: "WorldMonitor Analyst"
                   schema:
                     type: string
                 - name: eval_window_days
                   in: query
+                  description: Evaluation window in days for simulated backtest outcomes.
                   required: false
                   example: 7
                   schema:
@@ -543,6 +600,7 @@ paths:
             parameters:
                 - name: symbols
                   in: query
+                  description: Stock ticker symbols whose stored backtests should be returned.
                   required: false
                   style: form
                   explode: true
@@ -554,6 +612,7 @@ paths:
                         type: string
                 - name: eval_window_days
                   in: query
+                  description: Evaluation window in days used by stored backtests.
                   required: false
                   example: 7
                   schema:
@@ -768,12 +827,14 @@ paths:
             parameters:
                 - name: fromDate
                   in: query
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "2026-01-15"
                   schema:
                     type: string
                 - name: toDate
                   in: query
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "2026-01-15"
                   schema:
@@ -853,7 +914,8 @@ paths:
             parameters:
                 - name: symbol
                   in: query
-                  required: false
+                  description: Stock ticker symbol for insider transaction lookup.
+                  required: true
                   example: "AAPL"
                   schema:
                     type: string
@@ -1220,7 +1282,9 @@ components:
             properties:
                 period:
                     type: string
-                    description: Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                    description: |-
+                        Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: GetSectorSummaryRequest specifies parameters for retrieving sector performance.
         GetSectorSummaryResponse:
             type: object
@@ -1510,11 +1574,14 @@ components:
                     type: string
                     maxLength: 32
                     minLength: 1
+                    description: Stock ticker symbol to analyze.
                 name:
                     type: string
                     maxLength: 120
+                    description: Optional company display name used to disambiguate the symbol.
                 includeNews:
                     type: boolean
+                    description: Whether to include recent news in the stock analysis.
             required:
                 - symbol
         AnalyzeStockResponse:
@@ -1748,13 +1815,16 @@ components:
                     type: array
                     items:
                         type: string
+                        description: Stock ticker symbols whose stored analysis history should be returned.
                 limitPerSymbol:
                     type: integer
                     maximum: 32
                     minimum: 1
                     format: int32
+                    description: Maximum number of history snapshots to return per symbol.
                 includeNews:
                     type: boolean
+                    description: Whether history snapshots should include stored news summaries.
         GetStockAnalysisHistoryResponse:
             type: object
             properties:
@@ -1778,14 +1848,17 @@ components:
                     type: string
                     maxLength: 32
                     minLength: 1
+                    description: Stock ticker symbol to backtest.
                 name:
                     type: string
                     maxLength: 120
+                    description: Optional company display name used to disambiguate the symbol.
                 evalWindowDays:
                     type: integer
                     maximum: 30
                     minimum: 3
                     format: int32
+                    description: Evaluation window in days for simulated backtest outcomes.
             required:
                 - symbol
         BacktestStockResponse:
@@ -1877,11 +1950,13 @@ components:
                     type: array
                     items:
                         type: string
+                        description: Stock ticker symbols whose stored backtests should be returned.
                 evalWindowDays:
                     type: integer
                     maximum: 30
                     minimum: 3
                     format: int32
+                    description: Evaluation window in days used by stored backtests.
         ListStoredStockBacktestsResponse:
             type: object
             properties:
@@ -2066,8 +2141,10 @@ components:
             properties:
                 fromDate:
                     type: string
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
                 toDate:
                     type: string
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
         ListEarningsCalendarResponse:
             type: object
             properties:
@@ -2161,6 +2238,7 @@ components:
                     type: string
                     maxLength: 32
                     minLength: 1
+                    description: Stock ticker symbol for insider transaction lookup.
             required:
                 - symbol
         GetInsiderTransactionsResponse:

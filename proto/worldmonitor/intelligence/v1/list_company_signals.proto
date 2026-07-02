@@ -6,7 +6,9 @@ import "sebuf/http/annotations.proto";
 
 // Request to discover and classify company signals (hiring, funding, tech changes).
 message ListCompanySignalsRequest {
+  // Company name to discover signals for.
   string company = 1 [(sebuf.http.query) = {name: "company"}];
+  // Company domain to discover signals for.
   string domain = 2 [(sebuf.http.query) = {name: "domain"}];
 }
 

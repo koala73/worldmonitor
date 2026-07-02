@@ -17,17 +17,19 @@ paths:
                 - name: fromIso2
                   in: query
                   description: Origin country, ISO-3166-1 alpha-2 uppercase.
-                  required: false
-                  example: "CN"
-                  schema:
-                    type: string
-                - name: toIso2
-                  in: query
-                  description: Destination country, ISO-3166-1 alpha-2 uppercase.
-                  required: false
+                  required: true
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
+                - name: toIso2
+                  in: query
+                  description: Destination country, ISO-3166-1 alpha-2 uppercase.
+                  required: true
+                  example: "US"
+                  schema:
+                    type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: cargoType
                   in: query
                   description: |-

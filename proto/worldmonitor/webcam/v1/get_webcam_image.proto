@@ -5,6 +5,7 @@ package worldmonitor.webcam.v1;
 import "sebuf/http/annotations.proto";
 
 message GetWebcamImageRequest {
+  // Webcam identifier to resolve into image and player URLs.
   string webcam_id = 1 [(sebuf.http.query) = {name: "webcam_id"}];
 }
 

@@ -10,9 +10,11 @@ import "worldmonitor/cyber/v1/cyber_threat.proto";
 // ListCyberThreatsRequest specifies filters for retrieving cyber threat indicators.
 message ListCyberThreatsRequest {
   // Start of time range (inclusive), Unix epoch milliseconds.
-  int64 start = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER, (sebuf.http.query) = { name: "start" }];
+  // Accepted but currently ignored; no-op until this handler supports the parameter.
+  int64 start = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER, (sebuf.http.query) = { name: "start" }, (sebuf.http.unimplemented) = true];
   // End of time range (inclusive), Unix epoch milliseconds.
-  int64 end = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER, (sebuf.http.query) = { name: "end" }];
+  // Accepted but currently ignored; no-op until this handler supports the parameter.
+  int64 end = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER, (sebuf.http.query) = { name: "end" }, (sebuf.http.unimplemented) = true];
   // Maximum items per page (1-100).
   int32 page_size = 3 [(sebuf.http.query) = { name: "page_size" }];
   // Cursor for next page.

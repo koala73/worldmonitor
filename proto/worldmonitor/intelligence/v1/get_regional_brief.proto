@@ -6,6 +6,7 @@ import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 
 message GetRegionalBriefRequest {
+  // Stable regional brief identifier, such as "middle-east".
   string region_id = 1 [
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 1,

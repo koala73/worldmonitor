@@ -21,7 +21,9 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "next-page-token"
                   schema:
@@ -60,18 +62,50 @@ paths:
                     format: double
                 - name: operator
                   in: query
-                  description: Optional operator filter.
+                  description: |-
+                    Optional operator filter.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
-                  example: "example"
+                  example: "MILITARY_OPERATOR_USAF"
                   schema:
                     type: string
+                    enum:
+                        - 'MILITARY_OPERATOR_USAF'
+                        - 'MILITARY_OPERATOR_USN'
+                        - 'MILITARY_OPERATOR_USMC'
+                        - 'MILITARY_OPERATOR_USA'
+                        - 'MILITARY_OPERATOR_RAF'
+                        - 'MILITARY_OPERATOR_RN'
+                        - 'MILITARY_OPERATOR_FAF'
+                        - 'MILITARY_OPERATOR_GAF'
+                        - 'MILITARY_OPERATOR_PLAAF'
+                        - 'MILITARY_OPERATOR_PLAN'
+                        - 'MILITARY_OPERATOR_VKS'
+                        - 'MILITARY_OPERATOR_IAF'
+                        - 'MILITARY_OPERATOR_NATO'
+                        - 'MILITARY_OPERATOR_OTHER'
                 - name: aircraft_type
                   in: query
-                  description: Optional aircraft type filter.
+                  description: |-
+                    Optional aircraft type filter.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
-                  example: "all"
+                  example: "MILITARY_AIRCRAFT_TYPE_FIGHTER"
                   schema:
                     type: string
+                    enum:
+                        - 'MILITARY_AIRCRAFT_TYPE_FIGHTER'
+                        - 'MILITARY_AIRCRAFT_TYPE_BOMBER'
+                        - 'MILITARY_AIRCRAFT_TYPE_TRANSPORT'
+                        - 'MILITARY_AIRCRAFT_TYPE_TANKER'
+                        - 'MILITARY_AIRCRAFT_TYPE_AWACS'
+                        - 'MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE'
+                        - 'MILITARY_AIRCRAFT_TYPE_HELICOPTER'
+                        - 'MILITARY_AIRCRAFT_TYPE_DRONE'
+                        - 'MILITARY_AIRCRAFT_TYPE_PATROL'
+                        - 'MILITARY_AIRCRAFT_TYPE_SPECIAL_OPS'
+                        - 'MILITARY_AIRCRAFT_TYPE_VIP'
+                        - 'MILITARY_AIRCRAFT_TYPE_UNKNOWN'
             responses:
                 "200":
                     description: Successful response
@@ -124,7 +158,9 @@ paths:
             parameters:
                 - name: theater
                   in: query
-                  description: Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
+                  description: |-
+                    Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "example"
                   schema:
@@ -167,7 +203,7 @@ paths:
                 - name: icao24
                   in: query
                   description: ICAO 24-bit hex address (lowercase).
-                  required: false
+                  required: true
                   example: "example"
                   schema:
                     type: string
@@ -330,6 +366,7 @@ paths:
             parameters:
                 - name: ne_lat
                   in: query
+                  description: North-east corner latitude of the map bounding box.
                   required: false
                   example: 40.7128
                   schema:
@@ -337,6 +374,7 @@ paths:
                     format: double
                 - name: ne_lon
                   in: query
+                  description: North-east corner longitude of the map bounding box.
                   required: false
                   example: -74.006
                   schema:
@@ -344,6 +382,7 @@ paths:
                     format: double
                 - name: sw_lat
                   in: query
+                  description: South-west corner latitude of the map bounding box.
                   required: false
                   example: 40.7128
                   schema:
@@ -351,6 +390,7 @@ paths:
                     format: double
                 - name: sw_lon
                   in: query
+                  description: South-west corner longitude of the map bounding box.
                   required: false
                   example: -74.006
                   schema:
@@ -358,6 +398,7 @@ paths:
                     format: double
                 - name: zoom
                   in: query
+                  description: Map zoom level used to decide whether to return bases or clusters.
                   required: false
                   example: 1
                   schema:
@@ -365,18 +406,49 @@ paths:
                     format: int32
                 - name: type
                   in: query
+                  description: Optional military base type filter.
                   required: false
-                  example: "all"
+                  example: "us-nato"
                   schema:
                     type: string
+                    enum:
+                        - 'us-nato'
+                        - 'china'
+                        - 'russia'
+                        - 'uk'
+                        - 'france'
+                        - 'india'
+                        - 'italy'
+                        - 'uae'
+                        - 'turkey'
+                        - 'japan'
+                        - 'other'
                 - name: kind
                   in: query
+                  description: Optional military base kind filter.
                   required: false
-                  example: "example"
+                  example: "base"
                   schema:
                     type: string
+                    enum:
+                        - 'base'
+                        - 'airfield'
+                        - 'naval_base'
+                        - 'military'
+                        - 'barracks'
+                        - 'bunker'
+                        - 'trench'
+                        - 'training_area'
+                        - 'checkpoint'
+                        - 'shelter'
+                        - 'ammunition'
+                        - 'office'
+                        - 'obstacle_course'
+                        - 'nuclear_explosion_site'
+                        - 'range'
                 - name: country
                   in: query
+                  description: Optional country filter for military bases.
                   required: false
                   example: "US"
                   schema:
@@ -426,7 +498,7 @@ paths:
                 - name: icao24
                   in: query
                   description: ICAO 24-bit hex address (lowercase, 6 characters).
-                  required: false
+                  required: true
                   example: "example"
                   schema:
                     type: string
@@ -556,7 +628,9 @@ components:
                     description: Maximum items per page (1-100).
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 neLat:
                     type: number
                     format: double
@@ -850,7 +924,9 @@ components:
             properties:
                 theater:
                     type: string
-                    description: Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
+                    description: |-
+                        Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: GetTheaterPostureRequest specifies the theater to assess.
         GetTheaterPostureResponse:
             type: object
@@ -1157,24 +1233,32 @@ components:
                 neLat:
                     type: number
                     format: double
+                    description: North-east corner latitude of the map bounding box.
                 neLon:
                     type: number
                     format: double
+                    description: North-east corner longitude of the map bounding box.
                 swLat:
                     type: number
                     format: double
+                    description: South-west corner latitude of the map bounding box.
                 swLon:
                     type: number
                     format: double
+                    description: South-west corner longitude of the map bounding box.
                 zoom:
                     type: integer
                     format: int32
+                    description: Map zoom level used to decide whether to return bases or clusters.
                 type:
                     type: string
+                    description: Optional military base type filter.
                 kind:
                     type: string
+                    description: Optional military base kind filter.
                 country:
                     type: string
+                    description: Optional country filter for military bases.
         ListMilitaryBasesResponse:
             type: object
             properties:

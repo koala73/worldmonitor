@@ -12,6 +12,7 @@ paths:
             parameters:
                 - name: max_items
                   in: query
+                  description: Maximum number of thermal escalation clusters to return.
                   required: false
                   example: 1
                   schema:
@@ -93,6 +94,7 @@ components:
                 maxItems:
                     type: integer
                     format: int32
+                    description: Maximum number of thermal escalation clusters to return.
         ListThermalEscalationsResponse:
             type: object
             properties:

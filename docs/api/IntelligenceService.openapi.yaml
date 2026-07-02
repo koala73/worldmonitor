@@ -116,7 +116,7 @@ paths:
                 - name: title
                   in: query
                   description: Event title or headline.
-                  required: false
+                  required: true
                   example: "example"
                   schema:
                     type: string
@@ -179,10 +179,11 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code.
-                  required: false
+                  required: true
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
             responses:
                 "200":
                     description: Successful response
@@ -228,10 +229,11 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code.
-                  required: false
+                  required: true
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: framework
                   in: query
                   description: Optional analytical framework instructions to append to system prompt. Max 2000 chars enforced at handler level.
@@ -275,7 +277,7 @@ paths:
                 - name: query
                   in: query
                   description: Search query string.
-                  required: false
+                  required: true
                   example: "supply chain risk"
                   schema:
                     type: string
@@ -289,7 +291,9 @@ paths:
                     format: int32
                 - name: timespan
                   in: query
-                  description: Time span filter (e.g., "15min", "1h", "24h").
+                  description: |-
+                    Time span filter (e.g., "15min", "1h", "24h").
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "2026-01-15T12:00:00Z"
                   schema:
@@ -299,13 +303,16 @@ paths:
                   description: |-
                     Tone filter appended to query (e.g., "tone>5" for positive, "tone<-5" for negative).
                      Left empty to skip tone filtering.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "example"
                   schema:
                     type: string
                 - name: sort
                   in: query
-                  description: 'Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".'
+                  description: |-
+                    Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "example"
                   schema:
@@ -480,9 +487,11 @@ paths:
                   in: query
                   description: Mode selection. MODE_UNSPECIFIED defaults to active alerts.
                   required: false
-                  example: "example"
+                  example: "MODE_HISTORY"
                   schema:
                     type: string
+                    enum:
+                        - 'MODE_HISTORY'
             responses:
                 "200":
                     description: Successful response
@@ -592,12 +601,14 @@ paths:
             parameters:
                 - name: domain
                   in: query
+                  description: Company domain to enrich, such as "github.com".
                   required: false
                   example: "example"
                   schema:
                     type: string
                 - name: name
                   in: query
+                  description: Company name to enrich when a domain is not available.
                   required: false
                   example: "WorldMonitor Analyst"
                   schema:
@@ -655,12 +666,14 @@ paths:
             parameters:
                 - name: company
                   in: query
+                  description: Company name to discover signals for.
                   required: false
                   example: "example"
                   schema:
                     type: string
                 - name: domain
                   in: query
+                  description: Company domain to discover signals for.
                   required: false
                   example: "example"
                   schema:
@@ -725,10 +738,12 @@ paths:
             parameters:
                 - name: country_code
                   in: query
-                  required: false
+                  description: ISO 3166-1 alpha-2 country code for the facts lookup.
+                  required: true
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
             responses:
                 "200":
                     description: Successful response
@@ -880,6 +895,7 @@ paths:
             parameters:
                 - name: frameworkId
                   in: query
+                  description: Framework identifier whose market implication cards should be listed.
                   required: false
                   example: "example-id"
                   schema:
@@ -957,6 +973,7 @@ paths:
             parameters:
                 - name: country_code
                   in: query
+                  description: ISO 3166-1 alpha-2 country code for the energy profile.
                   required: false
                   example: "US"
                   schema:
@@ -996,18 +1013,26 @@ paths:
             parameters:
                 - name: country_code
                   in: query
+                  description: ISO 3166-1 alpha-2 country code for the affected energy market.
                   required: false
                   example: "US"
                   schema:
                     type: string
                 - name: chokepoint_id
                   in: query
+                  description: Chokepoint identifier to model as disrupted.
                   required: false
-                  example: "suez-canal"
+                  example: "hormuz_strait"
                   schema:
                     type: string
+                    enum:
+                        - 'hormuz_strait'
+                        - 'malacca_strait'
+                        - 'suez'
+                        - 'bab_el_mandeb'
                 - name: disruption_pct
                   in: query
+                  description: Percent of chokepoint flow disrupted, from 0 to 100.
                   required: false
                   example: 1
                   schema:
@@ -1015,10 +1040,15 @@ paths:
                     format: int32
                 - name: fuel_mode
                   in: query
+                  description: 'Fuel mode to model: "oil", "gas", or "both". Defaults to "oil".'
                   required: false
-                  example: "example"
+                  example: "oil"
                   schema:
                     type: string
+                    enum:
+                        - 'oil'
+                        - 'gas'
+                        - 'both'
             responses:
                 "200":
                     description: Successful response
@@ -1054,6 +1084,7 @@ paths:
             parameters:
                 - name: country_code
                   in: query
+                  description: ISO 3166-1 alpha-2 country code for port activity.
                   required: false
                   example: "US"
                   schema:
@@ -1103,10 +1134,11 @@ paths:
                     Display region id (e.g. "mena", "east-asia", "europe"). See shared/geography.js.
                      Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
                      trailing or consecutive hyphens.
-                  required: false
-                  example: "example-id"
+                  required: true
+                  example: "example1"
                   schema:
                     type: string
+                    pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
             responses:
                 "200":
                     description: Successful response
@@ -1179,10 +1211,11 @@ paths:
                     Display region id (e.g. "mena", "east-asia", "europe"). See shared/geography.js.
                      Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
                      trailing or consecutive hyphens.
-                  required: false
-                  example: "example-id"
+                  required: true
+                  example: "example1"
                   schema:
                     type: string
+                    pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
                 - name: limit
                   in: query
                   description: |-
@@ -1232,10 +1265,12 @@ paths:
             parameters:
                 - name: region_id
                   in: query
-                  required: false
-                  example: "example-id"
+                  description: Stable regional brief identifier, such as "middle-east".
+                  required: true
+                  example: "example1"
                   schema:
                     type: string
+                    pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
             responses:
                 "200":
                     description: Successful response
@@ -1786,15 +1821,20 @@ components:
                     description: Maximum number of articles to return (1-250).
                 timespan:
                     type: string
-                    description: Time span filter (e.g., "15min", "1h", "24h").
+                    description: |-
+                        Time span filter (e.g., "15min", "1h", "24h").
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 toneFilter:
                     type: string
                     description: |-
                         Tone filter appended to query (e.g., "tone>5" for positive, "tone<-5" for negative).
                          Left empty to skip tone filtering.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 sort:
                     type: string
-                    description: 'Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".'
+                    description: |-
+                        Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             required:
                 - query
             description: SearchGdeltDocumentsRequest specifies filters for searching GDELT news articles.
@@ -2123,8 +2163,10 @@ components:
             properties:
                 domain:
                     type: string
+                    description: Company domain to enrich, such as "github.com".
                 name:
                     type: string
+                    description: Company name to enrich when a domain is not available.
             description: |-
                 Request to fetch enrichment data for a company.
                  Requires either domain (e.g. "github.com") or name (e.g. "GitHub").
@@ -2233,8 +2275,10 @@ components:
             properties:
                 company:
                     type: string
+                    description: Company name to discover signals for.
                 domain:
                     type: string
+                    description: Company domain to discover signals for.
             description: Request to discover and classify company signals (hiring, funding, tech changes).
         ListCompanySignalsResponse:
             type: object
@@ -2327,6 +2371,7 @@ components:
                 countryCode:
                     type: string
                     pattern: ^[A-Z]{2}$
+                    description: ISO 3166-1 alpha-2 country code for the facts lookup.
             required:
                 - countryCode
         GetCountryFactsResponse:
@@ -2524,6 +2569,7 @@ components:
             properties:
                 frameworkId:
                     type: string
+                    description: Framework identifier whose market implication cards should be listed.
         ListMarketImplicationsResponse:
             type: object
             properties:
@@ -2625,6 +2671,7 @@ components:
             properties:
                 countryCode:
                     type: string
+                    description: ISO 3166-1 alpha-2 country code for the energy profile.
         GetCountryEnergyProfileResponse:
             type: object
             properties:
@@ -2795,13 +2842,17 @@ components:
             properties:
                 countryCode:
                     type: string
+                    description: ISO 3166-1 alpha-2 country code for the affected energy market.
                 chokepointId:
                     type: string
+                    description: Chokepoint identifier to model as disrupted.
                 disruptionPct:
                     type: integer
                     format: int32
+                    description: Percent of chokepoint flow disrupted, from 0 to 100.
                 fuelMode:
                     type: string
+                    description: 'Fuel mode to model: "oil", "gas", or "both". Defaults to "oil".'
         ComputeEnergyShockScenarioResponse:
             type: object
             properties:
@@ -2916,6 +2967,7 @@ components:
             properties:
                 countryCode:
                     type: string
+                    description: ISO 3166-1 alpha-2 country code for port activity.
         CountryPortActivityResponse:
             type: object
             properties:
@@ -3521,6 +3573,7 @@ components:
                     maxLength: 32
                     minLength: 1
                     pattern: ^[a-z][a-z0-9]*(-[a-z0-9]+)*$
+                    description: Stable regional brief identifier, such as "middle-east".
             required:
                 - regionId
         GetRegionalBriefResponse:
