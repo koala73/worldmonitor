@@ -2381,7 +2381,12 @@ body.panel-resize-active iframe {
   min-width: 0;
   user-select: none;
   content-visibility: auto;
+  /* #4580: field CLS attribution shows #panelsGrid + deferred panels re-shifting as
+     they scroll in/out of view. `auto <fallback>` makes the browser remember each
+     element's last rendered size, so re-entry reserves the real height instead of the
+     fallback and doesn't shift. The plain line stays first as the pre-Chrome-111 fallback. */
   contain-intrinsic-size: 260px;
+  contain-intrinsic-size: auto 260px;
 }
 
 .panel-deferred-shell {
@@ -2389,19 +2394,23 @@ body.panel-resize-active iframe {
   pointer-events: none;
   content-visibility: auto;
   contain-intrinsic-size: var(--dashboard-panel-row-min, 260px);
+  contain-intrinsic-size: auto var(--dashboard-panel-row-min, 260px);
 }
 
 .panel-deferred-shell.panel-wide,
 .panel-deferred-shell.span-2 {
   contain-intrinsic-size: var(--dashboard-first-grid-reservation, 400px);
+  contain-intrinsic-size: auto var(--dashboard-first-grid-reservation, 400px);
 }
 
 .panel-deferred-shell.span-3 {
   contain-intrinsic-size: 600px;
+  contain-intrinsic-size: auto 600px;
 }
 
 .panel-deferred-shell.span-4 {
   contain-intrinsic-size: 800px;
+  contain-intrinsic-size: auto 800px;
 }
 
 .panel-deferred-shell.panel-collapsed .panel-deferred-content {
@@ -13359,6 +13368,7 @@ a.prediction-link:hover {
   .panel-deferred-shell.span-3,
   .panel-deferred-shell.span-4 {
     contain-intrinsic-size: 250px;
+    contain-intrinsic-size: auto 250px; /* #4580: remember rendered size on mobile too */
   }
 
   .panel-deferred-shell.panel-collapsed,
