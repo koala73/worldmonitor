@@ -1773,10 +1773,18 @@ export class DataLoaderManager implements AppModule {
   async loadMarkets(): Promise<void> {
     // Method-scoped so all of loadMarkets' try blocks (stocks/sectors/commodities +
     // crypto/defi/ai/other) see these; market is dynamic-imported off eager main.js (#4571).
+    // Guarded: loadMarkets must not reject (the init() watchlist handler calls it
+    // unguarded), so a chunk-load failure skips this cycle like the per-block catches do.
+    let marketMod: typeof import('@/services/market');
+    try {
+      marketMod = await import('@/services/market');
+    } catch {
+      return;
+    }
     const {
       fetchMultipleStocks, fetchCommodityQuotes, fetchSectors, warmCommodityCache, warmSectorCache,
       fetchCrypto, fetchCryptoSectors, fetchDefiTokens, fetchAiTokens, fetchOtherTokens,
-    } = await import('@/services/market');
+    } = marketMod;
     try {
       const customEntries = getMarketWatchlistEntries();
       const effectiveSymbols = (() => {
