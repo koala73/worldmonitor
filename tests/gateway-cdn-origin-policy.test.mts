@@ -25,7 +25,7 @@ afterEach(() => {
   process.env.WM_SESSION_SECRET = 'test-secret-must-be-at-least-32-chars-long-xxx';
 });
 
-function createHandler(options: { handlerCdnCacheHeader?: string } = {}) {
+function createHandler(options: { handlerCdnCacheHeader?: string; publicRouteBody?: unknown } = {}) {
   return createDomainGateway([
     {
       method: 'GET',
@@ -38,7 +38,7 @@ function createHandler(options: { handlerCdnCacheHeader?: string } = {}) {
     {
       method: 'GET',
       path: '/api/conflict/v1/list-acled-events',
-      handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      handler: async () => new Response(JSON.stringify(options.publicRouteBody ?? { ok: true }), { status: 200 }),
     },
     {
       method: 'GET',
@@ -121,6 +121,24 @@ describe('gateway CDN origin policy', () => {
     assert.equal(res.headers.get('Access-Control-Allow-Origin'), origin);
     assert.equal(res.headers.get('Vary'), 'Origin');
     assert.match(res.headers.get('CDN-Cache-Control') ?? '', /s-maxage=/);
+  });
+
+  it('skips CDN caching for degraded dataAvailable=false 200 responses', async () => {
+    const origin = 'https://worldmonitor.app';
+    const handler = createHandler({
+      publicRouteBody: { events: [], fetchedAt: 0, dataAvailable: false },
+    });
+    const res = await handler(new Request('https://worldmonitor.app/api/conflict/v1/list-acled-events?_debug=1', {
+      headers: { Origin: origin },
+    }));
+    const body = await res.json();
+
+    assert.equal(res.status, 200);
+    assert.equal(body.dataAvailable, false);
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.equal(res.headers.get('X-Cache-Tier'), 'no-store');
+    assert.equal(res.headers.get('CDN-Cache-Control'), null);
+    assert.equal(res.headers.get('Vercel-CDN-Cache-Control'), null);
   });
 
   it('strips handler-supplied shared CDN headers on credential-bearing GETs', async () => {

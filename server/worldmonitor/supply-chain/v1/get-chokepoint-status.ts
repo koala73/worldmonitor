@@ -404,8 +404,8 @@ export async function getChokepointStatus(
       },
     );
 
-    return result ?? { chokepoints: [], fetchedAt: new Date().toISOString(), upstreamUnavailable: true };
+    return result ?? { chokepoints: [], fetchedAt: '', upstreamUnavailable: true };
   } catch {
-    return { chokepoints: [], fetchedAt: new Date().toISOString(), upstreamUnavailable: true };
+    return { chokepoints: [], fetchedAt: '', upstreamUnavailable: true };
   }
 }

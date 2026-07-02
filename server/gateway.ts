@@ -1329,12 +1329,14 @@ export function createDomainGateway(
       // Skip CDN caching for upstream-unavailable / empty responses so CF
       // doesn't serve stale error data for hours.
       //
-      // Two field names are in active use across the RPC handlers because the
-      // codebase grew two fallback conventions in parallel:
+      // Three field names are in active use across the RPC handlers because the
+      // codebase grew three fallback conventions in parallel:
       //   - `upstreamUnavailable: true` — used by consumer-prices/intelligence/
       //     trade handlers that return ad-hoc JSON shapes.
       //   - `unavailable: true` — proto-typed handlers (every economic RPC
       //     including get-macro-signals — `bool unavailable = N` in the proto).
+      //   - `dataAvailable: false` — seed-backed handlers that distinguish
+      //     a real empty snapshot from a degraded or missing seed.
       // The original check only matched the first form, so proto-typed
       // fallback responses were getting full `medium` cache tier (CF s-maxage
       // 1200s, browser max-age 1800s). Production incident 2026-05-03: a
@@ -1343,14 +1345,17 @@ export function createDomainGateway(
       // cached for 30 min. Even after auth was fixed (PR #3574), browsers
       // and CF POPs kept serving "Upstream API unavailable" until the cache
       // TTL expired naturally — 30 min of false-bad UX per affected user.
-      // Detecting both field names closes that window.
+      // Detecting all three field names closes that window.
       const bodyStr = new TextDecoder().decode(bodyBytes);
       const isUpstreamUnavailable =
         bodyStr.includes('"upstreamUnavailable":true') ||
-        bodyStr.includes('"unavailable":true');
+        bodyStr.includes('"unavailable":true') ||
+        bodyStr.includes('"dataAvailable":false');
 
       if (mergedHeaders.get('X-No-Cache') || isUpstreamUnavailable) {
         mergedHeaders.set('Cache-Control', 'no-store');
+        mergedHeaders.delete('CDN-Cache-Control');
+        mergedHeaders.delete('Vercel-CDN-Cache-Control');
         mergedHeaders.set('X-Cache-Tier', 'no-store');
         resolvedCacheTier = 'no-store';
       } else {

@@ -41,6 +41,12 @@ let WebhookDeliverySsrfError;
 let ValidationError;
 let ApiError;
 
+function stubChokepointStatus(value) {
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    result: value == null ? null : JSON.stringify(value),
+  }), { status: 200 });
+}
+
 describe('ShippingV2Service handlers', () => {
   beforeEach(async () => {
     process.env.WORLDMONITOR_VALID_KEYS = 'pro-test-key';
@@ -80,7 +86,7 @@ describe('ShippingV2Service handlers', () => {
 
     it('rejects malformed fromIso2 with ValidationError', async () => {
       // Stub redis GET for CHOKEPOINT_STATUS_KEY so the handler never panics.
-      globalThis.fetch = async () => new Response(JSON.stringify({ result: null }), { status: 200 });
+      stubChokepointStatus(null);
       // 'usa' uppercases to 'USA' (3 chars) — regex `^[A-Z]{2}$` rejects.
       await assert.rejects(
         () => routeIntelligence(proCtx(), { fromIso2: 'usa', toIso2: 'NL', cargoType: '', hs2: '' }),
@@ -89,7 +95,10 @@ describe('ShippingV2Service handlers', () => {
     });
 
     it('preserves partner wire shape with ISO-8601 fetchedAt and camelCase fields', async () => {
-      globalThis.fetch = async () => new Response(JSON.stringify({ result: null }), { status: 200 });
+      stubChokepointStatus({
+        chokepoints: [{ id: 'suez', disruptionScore: 12, warRiskTier: 'WAR_RISK_TIER_ELEVATED' }],
+        upstreamUnavailable: false,
+      });
       const before = Date.now();
       const res = await routeIntelligence(proCtx(), {
         fromIso2: 'AE',
@@ -117,8 +126,40 @@ describe('ShippingV2Service handlers', () => {
       assert.ok(parsedTs >= before && parsedTs <= after, 'fetchedAt within request window');
     });
 
+    it('marks the route snapshot degraded when chokepoint status is unavailable', async () => {
+      stubChokepointStatus(null);
+      const res = await routeIntelligence(proCtx(), {
+        fromIso2: 'AE',
+        toIso2: 'NL',
+        cargoType: 'tanker',
+        hs2: '27',
+      });
+
+      assert.notEqual(res.primaryRouteId, '', 'static route lookup still found a route');
+      assert.equal(res.fetchedAt, '', 'fetchedAt follows the upstream status miss');
+    });
+
+    it('does not mark a no-route country pair degraded when chokepoint status is available', async () => {
+      stubChokepointStatus({
+        chokepoints: [{ id: 'suez', disruptionScore: 12, warRiskTier: 'WAR_RISK_TIER_ELEVATED' }],
+        upstreamUnavailable: false,
+      });
+      const res = await routeIntelligence(proCtx(), {
+        fromIso2: 'ZZ',
+        toIso2: 'NL',
+        cargoType: 'tanker',
+        hs2: '27',
+      });
+
+      assert.equal(res.primaryRouteId, '');
+      assert.match(res.fetchedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/);
+    });
+
     it('defaults hs2 to "27" when blank or all non-digits', async () => {
-      globalThis.fetch = async () => new Response(JSON.stringify({ result: null }), { status: 200 });
+      stubChokepointStatus({
+        chokepoints: [{ id: 'suez', disruptionScore: 12, warRiskTier: 'WAR_RISK_TIER_ELEVATED' }],
+        upstreamUnavailable: false,
+      });
       const res1 = await routeIntelligence(proCtx(), { fromIso2: 'AE', toIso2: 'NL', cargoType: '', hs2: '' });
       const res2 = await routeIntelligence(proCtx(), { fromIso2: 'AE', toIso2: 'NL', cargoType: '', hs2: 'abc' });
       assert.equal(res1.hs2, '27');
@@ -126,7 +167,10 @@ describe('ShippingV2Service handlers', () => {
     });
 
     it('coerces unknown cargoType to container', async () => {
-      globalThis.fetch = async () => new Response(JSON.stringify({ result: null }), { status: 200 });
+      stubChokepointStatus({
+        chokepoints: [{ id: 'suez', disruptionScore: 12, warRiskTier: 'WAR_RISK_TIER_ELEVATED' }],
+        upstreamUnavailable: false,
+      });
       const res = await routeIntelligence(proCtx(), {
         fromIso2: 'AE',
         toIso2: 'NL',

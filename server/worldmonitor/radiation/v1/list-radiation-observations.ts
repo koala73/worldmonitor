@@ -46,7 +46,7 @@ export const listRadiationObservations: RadiationServiceHandler['listRadiationOb
   const maxItems = clampMaxItems(req.maxItems);
   try {
     const data = await getCachedJson(REDIS_CACHE_KEY, true) as ListRadiationObservationsResponse | null;
-    if (!data?.observations?.length) return emptyResponse();
+    if (!Array.isArray(data?.observations)) return emptyResponse();
     return {
       ...data,
       dataAvailable: true,
