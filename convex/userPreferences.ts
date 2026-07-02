@@ -1,6 +1,11 @@
 import { ConvexError, v } from "convex/values";
-import { internalQuery, mutation, query } from "./_generated/server";
-import { CURRENT_PREFS_SCHEMA_VERSION, MAX_PREFS_BLOB_SIZE } from "./constants";
+import { internalQuery, mutation, query, type MutationCtx } from "./_generated/server";
+import {
+  CURRENT_PREFS_SCHEMA_VERSION,
+  MAX_PREFS_BLOB_SIZE,
+  USER_PREFS_WRITE_RATE_LIMIT,
+  USER_PREFS_WRITE_RATE_WINDOW_MS,
+} from "./constants";
 
 export const getPreferencesByUserId = internalQuery({
   args: { userId: v.string(), variant: v.string() },
@@ -45,6 +50,58 @@ export type SetPreferencesResult =
   | { ok: true; syncVersion: number }
   | { ok: false; reason: "CONFLICT"; actualSyncVersion: number };
 
+async function checkUserPrefsWriteRateLimit(ctx: MutationCtx, userId: string): Promise<void> {
+  const now = Date.now();
+  const windowStart = Math.floor(now / USER_PREFS_WRITE_RATE_WINDOW_MS) * USER_PREFS_WRITE_RATE_WINDOW_MS;
+  const reset = windowStart + USER_PREFS_WRITE_RATE_WINDOW_MS;
+  const rows = await ctx.db
+    .query("userPreferenceWriteRateLimits")
+    .withIndex("by_user_window", (q) => q.eq("userId", userId))
+    .collect();
+  const currentRows = rows.filter((row) => row.windowStart === windowStart);
+  const count = currentRows.reduce((sum, row) => sum + row.count, 0);
+
+  if (count >= USER_PREFS_WRITE_RATE_LIMIT) {
+    throw new ConvexError({
+      kind: "RATE_LIMITED",
+      limit: USER_PREFS_WRITE_RATE_LIMIT,
+      reset,
+    });
+  }
+
+  let retainedId: (typeof rows)[number]["_id"] | null = null;
+
+  if (currentRows.length > 0) {
+    const current = currentRows[0]!;
+    retainedId = current._id;
+    await ctx.db.patch(current._id, {
+      count: count + 1,
+      updatedAt: now,
+    });
+  } else {
+    const reusable = rows[0];
+    if (reusable) {
+      retainedId = reusable._id;
+      await ctx.db.patch(reusable._id, {
+        windowStart,
+        count: 1,
+        updatedAt: now,
+      });
+    } else {
+      retainedId = await ctx.db.insert("userPreferenceWriteRateLimits", {
+        userId,
+        windowStart,
+        count: 1,
+        updatedAt: now,
+      });
+    }
+  }
+
+  for (const row of rows) {
+    if (row._id !== retainedId) await ctx.db.delete(row._id);
+  }
+}
+
 export const setPreferences = mutation({
   args: {
     variant: v.string(),
@@ -61,6 +118,8 @@ export const setPreferences = mutation({
     // string-data wire-strip bug.)
     if (!identity) throw new ConvexError({ kind: "UNAUTHENTICATED" });
     const userId = identity.subject;
+
+    await checkUserPrefsWriteRateLimit(ctx, userId);
 
     const blobSize = JSON.stringify(args.data).length;
     if (blobSize > MAX_PREFS_BLOB_SIZE) {

@@ -32,6 +32,12 @@ export const CURRENT_PREFS_SCHEMA_VERSION = 1;
 
 export const MAX_PREFS_BLOB_SIZE = 65536;
 
+// Cloud preference writes are low-latency but public to authenticated Convex
+// clients. Keep the authoritative guard inside the mutation so direct
+// *.convex.site callers cannot bypass the Vercel edge limiter.
+export const USER_PREFS_WRITE_RATE_LIMIT = 30;
+export const USER_PREFS_WRITE_RATE_WINDOW_MS = 60 * 1000;
+
 // Followed-countries (watchlist primitive) constants. See
 // docs/plans/2026-05-02-001-feat-followed-countries-watchlist-primitive-plan.md
 // (U12) for context. These three constants are consumed by the

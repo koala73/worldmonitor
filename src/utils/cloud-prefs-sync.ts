@@ -730,10 +730,24 @@ export function install(variant: string): void {
       // the new version when the response is observable (true unloads never
       // get here; the next boot's onSignIn GET heals those instead).
       //
-      // Non-2xx (409/5xx): change nothing — keeping the stale version and
-      // the dirty keys is what routes the next upload through the
-      // conflict-merge path, which is the correct recovery.
-      if (!res.ok) return;
+      // Non-2xx: 409 keeps the stale version and dirty keys so the next
+      // upload resolves through the conflict-merge path. Temporary 429/5xx
+      // responses are observable during tab switches, so re-arm the normal
+      // retry machinery instead of stranding the final save.
+      if (!res.ok) {
+        if (isTemporaryCloudPrefsStatus(res.status)) {
+          const retryAfterSec = parseRetryAfterSeconds(res.headers);
+          if (_authGeneration !== myGeneration) return;
+          setState('pending');
+          clearRetryTimer();
+          _retryTimer = setTimeout(() => {
+            _retryTimer = null;
+            if (_authGeneration !== myGeneration) return;
+            void uploadNow(_currentVariant);
+          }, retryAfterSec * 1000);
+        }
+        return;
+      }
       const body = (await res.json().catch(() => null)) as { syncVersion?: number } | null;
       if (typeof body?.syncVersion !== 'number') return;
       // Auth generation: a sign-out or user switch while the flush was in

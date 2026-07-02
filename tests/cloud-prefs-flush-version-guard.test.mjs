@@ -29,8 +29,8 @@ describe('cloud prefs flush version guardrails', () => {
     );
     assert.match(
       flushBody,
-      /if \(!res\.ok\) return;/,
-      'flushOnUnload must leave local state untouched on 409/5xx so conflict-merge recovers',
+      /if \(isTemporaryCloudPrefsStatus\(res\.status\)\) \{[\s\S]*parseRetryAfterSeconds\(res\.headers\)[\s\S]*void uploadNow\(_currentVariant\);[\s\S]*\}\s*return;/,
+      'flushOnUnload must requeue observable 429/503 keepalive failures instead of stranding the final save',
     );
     assert.match(
       flushBody,

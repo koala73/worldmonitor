@@ -197,4 +197,42 @@ describe('user-prefs POST write rate limit', () => {
     assert.equal(warnMock.mock.calls.length, 1);
     assert.match(String(warnMock.mock.calls[0].arguments[0]), /rate limit unavailable; failing open/);
   });
+
+  it('maps Convex-side RATE_LIMITED to 429 with retry guidance', async () => {
+    process.env.CONVEX_URL = 'https://convex.test';
+    mock.method(Date, 'now', () => TEST_NOW);
+    const reset = TEST_NOW + 12_000;
+
+    __setUserPrefsDepsForTests({
+      validateBearerToken: async () => ({ valid: true, userId: TEST_USER_ID }),
+      checkScopedRateLimit: async () => ({
+        allowed: true,
+        limit: USER_PREFS_WRITE_RATE_LIMIT,
+        reset,
+        degraded: false,
+      }),
+      createConvexClient: () => ({
+        setAuth(): void {},
+        async query(): Promise<unknown> {
+          return null;
+        },
+        async mutation(): Promise<unknown> {
+          const err = new Error('ConvexError: RATE_LIMITED') as Error & {
+            data?: Record<string, unknown>;
+          };
+          err.data = { kind: 'RATE_LIMITED', limit: USER_PREFS_WRITE_RATE_LIMIT, reset };
+          throw err;
+        },
+      }),
+    });
+
+    const res = await handler(makePost());
+
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get('Retry-After'), '12');
+    assert.equal(res.headers.get('X-RateLimit-Limit'), String(USER_PREFS_WRITE_RATE_LIMIT));
+    assert.equal(res.headers.get('X-RateLimit-Remaining'), '0');
+    assert.equal(res.headers.get('X-RateLimit-Reset'), String(reset));
+    assert.deepEqual(await res.json(), { error: 'RATE_LIMITED' });
+  });
 });

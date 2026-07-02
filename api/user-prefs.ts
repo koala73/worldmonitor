@@ -266,6 +266,22 @@ export default async function handler(
     if (kind === 'BLOB_TOO_LARGE') {
       return jsonResponse({ error: 'BLOB_TOO_LARGE' }, 400, cors);
     }
+    if (kind === 'RATE_LIMITED') {
+      const limit = readConvexErrorNumber(err, 'limit') ?? USER_PREFS_WRITE_RATE_LIMIT;
+      const reset = readConvexErrorNumber(err, 'reset') ?? Date.now() + 60_000;
+      const retryAfter = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
+      return jsonResponse(
+        { error: 'RATE_LIMITED' },
+        429,
+        {
+          ...cors,
+          'X-RateLimit-Limit': String(limit),
+          'X-RateLimit-Remaining': '0',
+          'X-RateLimit-Reset': String(reset),
+          'Retry-After': String(retryAfter),
+        },
+      );
+    }
     if (kind === 'UNAUTHENTICATED') {
       // See GET branch above — UNAUTHENTICATED here means Clerk-vs-Convex
       // auth drift (token already passed validateBearerToken). Capture

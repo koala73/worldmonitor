@@ -3,6 +3,7 @@ import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { webhookHandler } from "./payments/webhookHandlers";
 import { resendWebhookHandler } from "./resendWebhookHandler";
+import { USER_PREFS_WRITE_RATE_LIMIT } from "./constants";
 
 const TRUSTED = [
   "https://worldmonitor.app",
@@ -62,25 +63,32 @@ async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
  *   - `throw new ConvexError("PRO_REQUIRED")`  → data = '"PRO_REQUIRED"' → "PRO_REQUIRED"
  *   - `throw new ConvexError({code: "X", ...})` → data = '{"code":"X",…}'  → "X"
  */
-function extractConvexErrorCode(err: unknown): string | null {
+function parseConvexErrorData(err: unknown): unknown {
   const raw = (err as { data?: unknown } | undefined)?.data;
-  if (typeof raw !== "string") {
-    if (raw && typeof raw === "object" && "code" in (raw as Record<string, unknown>)) {
-      return String((raw as Record<string, unknown>).code);
-    }
-    return null;
-  }
+  if (typeof raw !== "string") return raw ?? null;
   try {
-    const parsed = JSON.parse(raw);
-    if (typeof parsed === "string") return parsed;
-    if (parsed && typeof parsed === "object" && "code" in parsed) {
-      return String((parsed as Record<string, unknown>).code);
-    }
-    return null;
+    return JSON.parse(raw);
   } catch {
-    // Not JSON — treat the raw string as the code itself.
     return raw;
   }
+}
+
+function extractConvexErrorCode(err: unknown): string | null {
+  const parsed = parseConvexErrorData(err);
+  if (typeof parsed === "string") return parsed;
+  if (parsed && typeof parsed === "object") {
+    const data = parsed as Record<string, unknown>;
+    const code = data.code ?? data.kind;
+    if (typeof code === "string") return code;
+  }
+  return null;
+}
+
+function readConvexErrorNumber(err: unknown, field: string): number | null {
+  const parsed = parseConvexErrorData(err);
+  if (!parsed || typeof parsed !== "object") return null;
+  const value = (parsed as Record<string, unknown>)[field];
+  return typeof value === "number" ? value : null;
 }
 
 const http = httpRouter();
@@ -212,19 +220,33 @@ http.route({
       );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      const code = extractConvexErrorCode(err);
       // Defensive: keep CONFLICT-throw fallback for the deploy-ordering
       // window where this http action may run against an older Convex
       // deployment that still throws. Once both layers have soaked, this
       // branch is unreachable and can be removed.
-      if (msg.includes("CONFLICT")) {
+      if (code === "CONFLICT" || msg.includes("CONFLICT")) {
         return new Response(JSON.stringify({ error: "CONFLICT" }), {
           status: 409,
           headers,
         });
       }
-      if (msg.includes("BLOB_TOO_LARGE")) {
+      if (code === "BLOB_TOO_LARGE" || msg.includes("BLOB_TOO_LARGE")) {
         return new Response(JSON.stringify({ error: "BLOB_TOO_LARGE" }), {
           status: 400,
+          headers,
+        });
+      }
+      if (code === "RATE_LIMITED" || msg.includes("RATE_LIMITED")) {
+        const limit = readConvexErrorNumber(err, "limit") ?? USER_PREFS_WRITE_RATE_LIMIT;
+        const reset = readConvexErrorNumber(err, "reset") ?? Date.now() + 60_000;
+        const retryAfter = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
+        headers.set("X-RateLimit-Limit", String(limit));
+        headers.set("X-RateLimit-Remaining", "0");
+        headers.set("X-RateLimit-Reset", String(reset));
+        headers.set("Retry-After", String(retryAfter));
+        return new Response(JSON.stringify({ error: "RATE_LIMITED" }), {
+          status: 429,
           headers,
         });
       }
