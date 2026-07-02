@@ -271,7 +271,7 @@ function successResponses(op) {
 function injectSpecExamples(spec) {
   let changed = false;
   let operations = 0;
-  let requestOperations = 0;
+  let requestBearingOperations = 0;
   let responseOperations = 0;
 
   for (const [path, ops] of Object.entries(spec.paths ?? {})) {
@@ -304,7 +304,7 @@ function injectSpecExamples(spec) {
         changed = setExample(requestMedia, example) || changed;
       }
 
-      if (hasRequestExample) requestOperations++;
+      if (hasRequestExample) requestBearingOperations++;
 
       const responses = successResponses(op);
       if (responses.length > 0) responseOperations++;
@@ -319,7 +319,7 @@ function injectSpecExamples(spec) {
     }
   }
 
-  return { changed, operations, requestOperations, responseOperations };
+  return { changed, operations, requestBearingOperations, responseOperations };
 }
 
 function countIndent(line) {
@@ -585,7 +585,7 @@ function processBundle(serviceSpecs) {
 
 const specFiles = readdirSync(apiDir).filter((f) => /Service\.openapi\.json$/.test(f)).sort();
 let operations = 0;
-let requestOperations = 0;
+let requestBearingOperations = 0;
 let responseOperations = 0;
 
 function processAllSpecs(countStats = false) {
@@ -598,7 +598,7 @@ function processAllSpecs(countStats = false) {
     if (result.changed) touched++;
     if (countStats) {
       operations += result.operations;
-      requestOperations += result.requestOperations;
+      requestBearingOperations += result.requestBearingOperations;
       responseOperations += result.responseOperations;
     }
   }
@@ -630,6 +630,6 @@ if (CHECK) {
 } else {
   const stabilizeSummary = stabilizeTouched ? `, stabilization pass updated ${stabilizeTouched}` : '';
   console.log(
-    `openapi-inject-examples: updated ${touched} artifact set(s) - ${specFiles.length} specs, ${operations} operations, ${requestOperations} request operation(s), ${responseOperations} response example target(s), bundle ${bundleChanged ? 'updated' : 'unchanged'}${stabilizeSummary}`,
+    `openapi-inject-examples: updated ${touched} artifact set(s) - ${specFiles.length} specs, ${operations} operations, ${requestBearingOperations} request operation(s), ${responseOperations} response example target(s), bundle ${bundleChanged ? 'updated' : 'unchanged'}${stabilizeSummary}`,
   );
 }

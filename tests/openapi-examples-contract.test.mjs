@@ -157,6 +157,7 @@ function assertOperationExamples(spec, label) {
 }
 
 describe('OpenAPI examples contract', () => {
+  // Bump these exact surface counts when adding or removing proto services/RPCs.
   it('audits the known service operation surface', () => {
     assert.equal(serviceSpecs.length, 34, `expected 34 service specs, found ${serviceSpecs.length}`);
     const total = serviceSpecs.reduce((sum, file) => {
