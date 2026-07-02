@@ -50,7 +50,7 @@ paths:
                                     - "category": "cs.AI"
                                       "closesAt": 1717200000000
                                       "id": "example-id"
-                                      "source": "MARKET_SOURCE_UNSPECIFIED"
+                                      "source": "MARKET_SOURCE_POLYMARKET"
                                       "title": "example"
                                       "url": "https://example.com/worldmonitor"
                                 "pagination":

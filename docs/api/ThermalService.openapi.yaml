@@ -30,7 +30,7 @@ paths:
                                       "centroid":
                                           "latitude": 40.7128
                                           "longitude": -74.006
-                                      "confidence": "THERMAL_CONFIDENCE_UNSPECIFIED"
+                                      "confidence": "THERMAL_CONFIDENCE_LOW"
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "observationWindowHours": 1
                                 "sourceVersion": "example"

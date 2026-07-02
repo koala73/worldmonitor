@@ -77,7 +77,7 @@ paths:
                                       "firstSeenAt": 1717200000000
                                       "id": "example-id"
                                       "indicator": "example"
-                                      "indicatorType": "CYBER_THREAT_INDICATOR_TYPE_UNSPECIFIED"
+                                      "indicatorType": "CYBER_THREAT_INDICATOR_TYPE_IP"
                                       "lastSeenAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/ListCyberThreatsResponse'

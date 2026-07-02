@@ -98,6 +98,7 @@ function validateExample(value, schema, spec, label, seen = new Set()) {
     assert.equal(typeof value, 'boolean', `${label}: expected boolean`);
   } else if (type === 'string') {
     assert.equal(typeof value, 'string', `${label}: expected string`);
+    assert.doesNotMatch(value, /_UNSPECIFIED$/, `${label}: must not use an unspecified enum sentinel`);
   }
   if (typeof value === 'number') {
     if (Number.isFinite(schema.minimum)) assert.ok(value >= schema.minimum, `${label}: below minimum`);
@@ -108,6 +109,11 @@ function validateExample(value, schema, spec, label, seen = new Set()) {
     if (Number.isFinite(schema.maxLength)) assert.ok(value.length <= schema.maxLength, `${label}: above maxLength`);
     if (schema.pattern) assert.match(value, new RegExp(schema.pattern), `${label}: pattern mismatch`);
   }
+}
+
+function isDocumentedCodeParam(param) {
+  const text = `${param.name} ${param.description ?? ''}`.toLowerCase();
+  return /country|iata|iso 4217|iso 3166|iso 639|wto member code|world bank indicator code|cpc category|un comtrade reporter code|hs commodity code/.test(text);
 }
 
 function operationEntries(spec) {
@@ -133,6 +139,9 @@ function assertOperationExamples(spec, label) {
       requestExpected++;
       assert.notEqual(param.example, undefined, `${opLabel}: parameter ${param.name} missing example`);
       validateExample(param.example, param.schema, spec, `${opLabel} parameter ${param.name}`);
+      if (isDocumentedCodeParam(param)) {
+        assert.notEqual(param.example, 'example', `${opLabel}: parameter ${param.name} needs a documented code example`);
+      }
     }
 
     const requestMedia = op.requestBody?.content?.[JSON_MEDIA];

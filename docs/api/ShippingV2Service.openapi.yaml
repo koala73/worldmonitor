@@ -44,7 +44,7 @@ paths:
                     2-digit HS commodity code (default "27" — mineral fuels). Non-digit
                      characters are stripped server-side to match legacy behavior.
                   required: false
-                  example: "27"
+                  example: "2709"
                   schema:
                     type: string
             responses:

@@ -51,7 +51,7 @@ paths:
                                       "cancelledFlights": 1
                                       "city": "example"
                                       "country": "US"
-                                      "delayType": "FLIGHT_DELAY_TYPE_UNSPECIFIED"
+                                      "delayType": "FLIGHT_DELAY_TYPE_GROUND_STOP"
                                       "id": "example-id"
                                 "pagination":
                                     "nextCursor": "next-page-token"
@@ -85,7 +85,7 @@ paths:
                   style: form
                   explode: true
                   example:
-                      - "example"
+                      - "JFK"
                   schema:
                     type: array
                     items:
@@ -102,7 +102,7 @@ paths:
                                       "cancellationRate": 75.25
                                       "closureStatus": true
                                       "delayPct": 1.5
-                                      "iata": "example"
+                                      "iata": "JFK"
                             schema:
                                 $ref: '#/components/schemas/GetAirportOpsSummaryResponse'
                 "400":
@@ -129,7 +129,7 @@ paths:
                   in: query
                   description: IATA airport code (e.g., "IST").
                   required: false
-                  example: "example"
+                  example: "JFK"
                   schema:
                     type: string
                 - name: direction
@@ -191,7 +191,7 @@ paths:
                   style: form
                   explode: true
                   example:
-                      - "example"
+                      - "JFK"
                   schema:
                     type: array
                     items:
@@ -211,12 +211,12 @@ paths:
                         application/json:
                             example:
                                 "carriers":
-                                    - "airport": "example"
+                                    - "airport": "JFK"
                                       "avgDelayMinutes": 1
                                       "cancellationRate": 75.25
                                       "cancelledCount": 1
                                       "carrier":
-                                          "iataCode": "example"
+                                          "iataCode": "JFK"
                                           "icaoCode": "example"
                                           "name": "WorldMonitor Analyst"
                                 "source": "example"
@@ -247,7 +247,7 @@ paths:
                   in: query
                   description: IATA flight number (e.g., "TK1952").
                   required: false
-                  example: "example"
+                  example: "JFK"
                   schema:
                     type: string
                 - name: date
@@ -261,7 +261,7 @@ paths:
                   in: query
                   description: Optional origin airport IATA code to disambiguate.
                   required: false
-                  example: "example"
+                  example: "JFK"
                   schema:
                     type: string
             responses:
@@ -433,14 +433,14 @@ paths:
                   in: query
                   description: Origin airport IATA code.
                   required: false
-                  example: "example"
+                  example: "JFK"
                   schema:
                     type: string
                 - name: destination
                   in: query
                   description: Destination airport IATA code.
                   required: false
-                  example: "example"
+                  example: "LHR"
                   schema:
                     type: string
                 - name: departure_date
@@ -491,7 +491,7 @@ paths:
                   in: query
                   description: ISO 4217 currency code for prices (e.g., "usd", "eur", "try").
                   required: false
-                  example: "example"
+                  example: "USD"
                   schema:
                     type: string
                 - name: market
@@ -603,14 +603,14 @@ paths:
                   in: query
                   description: Departure airport IATA code (e.g. "JFK").
                   required: false
-                  example: "example"
+                  example: "JFK"
                   schema:
                     type: string
                 - name: destination
                   in: query
                   description: Arrival airport IATA code (e.g. "LHR").
                   required: false
-                  example: "example"
+                  example: "LHR"
                   schema:
                     type: string
                 - name: departure_date
@@ -655,7 +655,7 @@ paths:
                   style: form
                   explode: true
                   example:
-                      - "example"
+                      - "JFK"
                   schema:
                     type: array
                     items:
@@ -719,14 +719,14 @@ paths:
                   in: query
                   description: Departure airport IATA code (e.g. "JFK").
                   required: false
-                  example: "example"
+                  example: "JFK"
                   schema:
                     type: string
                 - name: destination
                   in: query
                   description: Arrival airport IATA code (e.g. "LHR").
                   required: false
-                  example: "example"
+                  example: "LHR"
                   schema:
                     type: string
                 - name: start_date
@@ -786,7 +786,7 @@ paths:
                   style: form
                   explode: true
                   example:
-                      - "example"
+                      - "JFK"
                   schema:
                     type: array
                     items:

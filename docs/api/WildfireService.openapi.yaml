@@ -82,7 +82,7 @@ paths:
                             example:
                                 "fireDetections":
                                     - "brightness": 1.5
-                                      "confidence": "FIRE_CONFIDENCE_UNSPECIFIED"
+                                      "confidence": "FIRE_CONFIDENCE_LOW"
                                       "dayNight": "example"
                                       "detectedAt": 1717200000000
                                       "frp": 1.5

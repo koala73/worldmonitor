@@ -44,7 +44,7 @@ paths:
                                 "summary":
                                     "countries":
                                         - "asylumSeekers": 1
-                                          "code": "example"
+                                          "code": "US"
                                           "hostAsylumSeekers": 1
                                           "hostRefugees": 1
                                           "hostTotal": 1
@@ -56,12 +56,12 @@ paths:
                                         "stateless": 1
                                         "total": 1
                                     "topFlows":
-                                        - "asylumCode": "example"
+                                        - "asylumCode": "US"
                                           "asylumLocation":
                                               "latitude": 40.7128
                                               "longitude": -74.006
                                           "asylumName": "WorldMonitor Analyst"
-                                          "originCode": "example"
+                                          "originCode": "US"
                                           "originLocation":
                                               "latitude": 40.7128
                                               "longitude": -74.006
@@ -128,7 +128,7 @@ paths:
                         application/json:
                             example:
                                 "countries":
-                                    - "code": "example"
+                                    - "code": "US"
                                       "densityPerKm2": 1
                                       "name": "WorldMonitor Analyst"
                                       "population": 1
@@ -136,7 +136,7 @@ paths:
                                     "densityPerKm2": 1
                                     "exposedPopulation": 1
                                     "exposureRadiusKm": 1.5
-                                    "nearestCountry": "example"
+                                    "nearestCountry": "US"
                                 "success": true
                             schema:
                                 $ref: '#/components/schemas/GetPopulationExposureResponse'

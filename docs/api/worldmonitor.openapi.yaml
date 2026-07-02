@@ -60,7 +60,7 @@ paths:
                                       "cancelledFlights": 1
                                       "city": "example"
                                       "country": "US"
-                                      "delayType": "FLIGHT_DELAY_TYPE_UNSPECIFIED"
+                                      "delayType": "FLIGHT_DELAY_TYPE_GROUND_STOP"
                                       "id": "example-id"
                                 "pagination":
                                     "nextCursor": "next-page-token"
@@ -94,7 +94,7 @@ paths:
                   style: form
                   explode: true
                   example:
-                      - "example"
+                      - "JFK"
                   schema:
                     type: array
                     items:
@@ -111,7 +111,7 @@ paths:
                                       "cancellationRate": 75.25
                                       "closureStatus": true
                                       "delayPct": 1.5
-                                      "iata": "example"
+                                      "iata": "JFK"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_aviation_v1_GetAirportOpsSummaryResponse'
                 "400":
@@ -138,7 +138,7 @@ paths:
                   in: query
                   description: IATA airport code (e.g., "IST").
                   required: false
-                  example: "example"
+                  example: "JFK"
                   schema:
                     type: string
                 - name: direction
@@ -200,7 +200,7 @@ paths:
                   style: form
                   explode: true
                   example:
-                      - "example"
+                      - "JFK"
                   schema:
                     type: array
                     items:
@@ -220,12 +220,12 @@ paths:
                         application/json:
                             example:
                                 "carriers":
-                                    - "airport": "example"
+                                    - "airport": "JFK"
                                       "avgDelayMinutes": 1
                                       "cancellationRate": 75.25
                                       "cancelledCount": 1
                                       "carrier":
-                                          "iataCode": "example"
+                                          "iataCode": "JFK"
                                           "icaoCode": "example"
                                           "name": "WorldMonitor Analyst"
                                 "source": "example"
@@ -256,7 +256,7 @@ paths:
                   in: query
                   description: IATA flight number (e.g., "TK1952").
                   required: false
-                  example: "example"
+                  example: "JFK"
                   schema:
                     type: string
                 - name: date
@@ -270,7 +270,7 @@ paths:
                   in: query
                   description: Optional origin airport IATA code to disambiguate.
                   required: false
-                  example: "example"
+                  example: "JFK"
                   schema:
                     type: string
             responses:
@@ -442,14 +442,14 @@ paths:
                   in: query
                   description: Origin airport IATA code.
                   required: false
-                  example: "example"
+                  example: "JFK"
                   schema:
                     type: string
                 - name: destination
                   in: query
                   description: Destination airport IATA code.
                   required: false
-                  example: "example"
+                  example: "LHR"
                   schema:
                     type: string
                 - name: departure_date
@@ -500,7 +500,7 @@ paths:
                   in: query
                   description: ISO 4217 currency code for prices (e.g., "usd", "eur", "try").
                   required: false
-                  example: "example"
+                  example: "USD"
                   schema:
                     type: string
                 - name: market
@@ -612,14 +612,14 @@ paths:
                   in: query
                   description: Departure airport IATA code (e.g. "JFK").
                   required: false
-                  example: "example"
+                  example: "JFK"
                   schema:
                     type: string
                 - name: destination
                   in: query
                   description: Arrival airport IATA code (e.g. "LHR").
                   required: false
-                  example: "example"
+                  example: "LHR"
                   schema:
                     type: string
                 - name: departure_date
@@ -664,7 +664,7 @@ paths:
                   style: form
                   explode: true
                   example:
-                      - "example"
+                      - "JFK"
                   schema:
                     type: array
                     items:
@@ -728,14 +728,14 @@ paths:
                   in: query
                   description: Departure airport IATA code (e.g. "JFK").
                   required: false
-                  example: "example"
+                  example: "JFK"
                   schema:
                     type: string
                 - name: destination
                   in: query
                   description: Arrival airport IATA code (e.g. "LHR").
                   required: false
-                  example: "example"
+                  example: "LHR"
                   schema:
                     type: string
                 - name: start_date
@@ -795,7 +795,7 @@ paths:
                   style: form
                   explode: true
                   example:
-                      - "example"
+                      - "JFK"
                   schema:
                     type: array
                     items:
@@ -883,9 +883,9 @@ paths:
                                         "longitude": -74.006
                                       "period": "daily"
                                       "precipDelta": 1.5
-                                      "severity": "ANOMALY_SEVERITY_UNSPECIFIED"
+                                      "severity": "ANOMALY_SEVERITY_NORMAL"
                                       "tempDelta": 1.5
-                                      "type": "ANOMALY_TYPE_UNSPECIFIED"
+                                      "type": "ANOMALY_TYPE_WARM"
                                       "zone": "example"
                                 "pagination":
                                     "nextCursor": "next-page-token"
@@ -1378,7 +1378,7 @@ paths:
                   in: query
                   description: market_code is the ISO 3166-1 alpha-2 market identifier (e.g. "ae").
                   required: false
-                  example: "example"
+                  example: "US"
                   schema:
                     type: string
                 - name: basket_slug
@@ -1396,7 +1396,7 @@ paths:
                             example:
                                 "asOf": "1717200000000"
                                 "coveragePct": 1.5
-                                "currencyCode": "example"
+                                "currencyCode": "USD"
                                 "essentialsIndex": 1.5
                                 "freshnessLagMin": 1
                             schema:
@@ -1425,7 +1425,7 @@ paths:
                   in: query
                   description: market_code is the ISO 3166-1 alpha-2 market identifier.
                   required: false
-                  example: "example"
+                  example: "US"
                   schema:
                     type: string
                 - name: basket_slug
@@ -1450,11 +1450,11 @@ paths:
                             example:
                                 "asOf": "1717200000000"
                                 "basketSlug": "example"
-                                "currencyCode": "example"
+                                "currencyCode": "USD"
                                 "essentialsSeries":
                                     - "date": "2026-01-15"
                                       "index": 1.5
-                                "marketCode": "example"
+                                "marketCode": "US"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_consumer_prices_v1_GetConsumerPriceBasketSeriesResponse'
                 "400":
@@ -1481,7 +1481,7 @@ paths:
                   in: query
                   description: market_code is the ISO 3166-1 alpha-2 market identifier.
                   required: false
-                  example: "example"
+                  example: "US"
                   schema:
                     type: string
                 - name: basket_slug
@@ -1511,7 +1511,7 @@ paths:
                                       "itemCount": 1
                                       "momPct": 1.5
                                       "name": "WorldMonitor Analyst"
-                                "marketCode": "example"
+                                "marketCode": "US"
                                 "range": "example"
                                 "upstreamUnavailable": true
                             schema:
@@ -1540,7 +1540,7 @@ paths:
                   in: query
                   description: market_code is the ISO 3166-1 alpha-2 market identifier.
                   required: false
-                  example: "example"
+                  example: "US"
                   schema:
                     type: string
                 - name: range
@@ -1575,15 +1575,15 @@ paths:
                                 "fallers":
                                     - "category": "cs.AI"
                                       "changePct": 1.5
-                                      "currencyCode": "example"
+                                      "currencyCode": "USD"
                                       "currentPrice": 75.25
                                       "productId": "diesel"
-                                "marketCode": "example"
+                                "marketCode": "US"
                                 "range": "example"
                                 "risers":
                                     - "category": "cs.AI"
                                       "changePct": 1.5
-                                      "currencyCode": "example"
+                                      "currencyCode": "USD"
                                       "currentPrice": 75.25
                                       "productId": "diesel"
                             schema:
@@ -1612,7 +1612,7 @@ paths:
                   in: query
                   description: market_code is the ISO 3166-1 alpha-2 market identifier.
                   required: false
-                  example: "example"
+                  example: "US"
                   schema:
                     type: string
                 - name: basket_slug
@@ -1630,11 +1630,11 @@ paths:
                             example:
                                 "asOf": "1717200000000"
                                 "basketSlug": "example"
-                                "currencyCode": "example"
-                                "marketCode": "example"
+                                "currencyCode": "USD"
+                                "marketCode": "US"
                                 "retailers":
                                     - "basketTotal": 1
-                                      "currencyCode": "example"
+                                      "currencyCode": "USD"
                                       "deltaVsCheapest": 1.5
                                       "deltaVsCheapestPct": 1.5
                                       "freshnessMin": 1
@@ -1664,7 +1664,7 @@ paths:
                   in: query
                   description: market_code is the ISO 3166-1 alpha-2 market identifier.
                   required: false
-                  example: "example"
+                  example: "US"
                   schema:
                     type: string
             responses:
@@ -1674,7 +1674,7 @@ paths:
                         application/json:
                             example:
                                 "asOf": "1717200000000"
-                                "marketCode": "example"
+                                "marketCode": "US"
                                 "overallFreshnessMin": 1
                                 "retailers":
                                     - "freshnessMin": 1
@@ -1771,7 +1771,7 @@ paths:
                                       "firstSeenAt": 1717200000000
                                       "id": "example-id"
                                       "indicator": "example"
-                                      "indicatorType": "CYBER_THREAT_INDICATOR_TYPE_UNSPECIFIED"
+                                      "indicatorType": "CYBER_THREAT_INDICATOR_TYPE_IP"
                                       "lastSeenAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_cyber_v1_ListCyberThreatsResponse'
@@ -1828,7 +1828,7 @@ paths:
                                 "summary":
                                     "countries":
                                         - "asylumSeekers": 1
-                                          "code": "example"
+                                          "code": "US"
                                           "hostAsylumSeekers": 1
                                           "hostRefugees": 1
                                           "hostTotal": 1
@@ -1840,12 +1840,12 @@ paths:
                                         "stateless": 1
                                         "total": 1
                                     "topFlows":
-                                        - "asylumCode": "example"
+                                        - "asylumCode": "US"
                                           "asylumLocation":
                                               "latitude": 40.7128
                                               "longitude": -74.006
                                           "asylumName": "WorldMonitor Analyst"
-                                          "originCode": "example"
+                                          "originCode": "US"
                                           "originLocation":
                                               "latitude": 40.7128
                                               "longitude": -74.006
@@ -1912,7 +1912,7 @@ paths:
                         application/json:
                             example:
                                 "countries":
-                                    - "code": "example"
+                                    - "code": "US"
                                       "densityPerKm2": 1
                                       "name": "WorldMonitor Analyst"
                                       "population": 1
@@ -1920,7 +1920,7 @@ paths:
                                     "densityPerKm2": 1
                                     "exposedPopulation": 1
                                     "exposureRadiusKm": 1.5
-                                    "nearestCountry": "example"
+                                    "nearestCountry": "US"
                                 "success": true
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_displacement_v1_GetPopulationExposureResponse'
@@ -1999,7 +1999,7 @@ paths:
                   in: query
                   description: World Bank indicator code (e.g., "NY.GDP.MKTP.CD").
                   required: false
-                  example: "example"
+                  example: "NY.GDP.MKTP.CD"
                   schema:
                     type: string
                 - name: country_code
@@ -2040,8 +2040,8 @@ paths:
                             example:
                                 "data":
                                     - "countryCode": "US"
-                                      "countryName": "WorldMonitor Analyst"
-                                      "indicatorCode": "example"
+                                      "countryName": "US"
+                                      "indicatorCode": "NY.GDP.MKTP.CD"
                                       "indicatorName": "WorldMonitor Analyst"
                                       "value": 1.5
                                       "year": 1
@@ -2237,7 +2237,7 @@ paths:
                                 "rates":
                                     - "centralBank": "example"
                                       "countryCode": "US"
-                                      "countryName": "WorldMonitor Analyst"
+                                      "countryName": "US"
                                       "date": "2026-01-15"
                                       "previousRate": 75.25
                             schema:
@@ -2269,7 +2269,7 @@ paths:
                             example:
                                 "rates":
                                     - "countryCode": "US"
-                                      "countryName": "WorldMonitor Analyst"
+                                      "countryName": "US"
                                       "date": "2026-01-15"
                                       "nominalEer": 1.5
                                       "realChange": 1.5
@@ -2302,7 +2302,7 @@ paths:
                             example:
                                 "entries":
                                     - "countryCode": "US"
-                                      "countryName": "WorldMonitor Analyst"
+                                      "countryName": "US"
                                       "creditGdpRatio": 42.5
                                       "date": "2026-01-15"
                                       "previousRatio": 42.5
@@ -2381,20 +2381,20 @@ paths:
                     content:
                         application/json:
                             example:
-                                "cheapestCountry": "example"
+                                "cheapestCountry": "US"
                                 "countries":
                                     - "code": "example"
-                                      "currency": "example"
+                                      "currency": "USD"
                                       "flag": "example"
                                       "fxRate": 75.25
                                       "items":
                                           - "available": true
-                                            "currency": "example"
+                                            "currency": "USD"
                                             "itemId": "example-id"
                                             "itemName": "WorldMonitor Analyst"
                                             "localPrice": 75.25
                                 "fetchedAt": "2026-01-15T12:00:00Z"
-                                "mostExpensiveCountry": "example"
+                                "mostExpensiveCountry": "US"
                                 "prevFetchedAt": "2026-01-15T12:00:00Z"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_economic_v1_ListGroceryBasketPricesResponse'
@@ -2423,15 +2423,15 @@ paths:
                     content:
                         application/json:
                             example:
-                                "cheapestCountry": "example"
+                                "cheapestCountry": "US"
                                 "countries":
                                     - "available": true
                                       "code": "example"
-                                      "currency": "example"
+                                      "currency": "USD"
                                       "flag": "example"
                                       "fxRate": 75.25
                                 "fetchedAt": "2026-01-15T12:00:00Z"
-                                "mostExpensiveCountry": "example"
+                                "mostExpensiveCountry": "US"
                                 "prevFetchedAt": "2026-01-15T12:00:00Z"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_economic_v1_ListBigMacPricesResponse'
@@ -2499,7 +2499,7 @@ paths:
                                 "cheapestGasoline": "example"
                                 "countries":
                                     - "code": "example"
-                                      "currency": "example"
+                                      "currency": "USD"
                                       "diesel":
                                           "available": true
                                           "grade": "example"
@@ -3880,7 +3880,7 @@ paths:
                                               "ts": 1
                                         "lastUpdated": 1
                                         "score": 42.5
-                                        "status": "CABLE_HEALTH_STATUS_UNSPECIFIED"
+                                        "status": "CABLE_HEALTH_STATUS_OK"
                                 "generatedAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_infrastructure_v1_GetCableHealthResponse'
@@ -3952,7 +3952,7 @@ paths:
                                       "percentage": 42.5
                                 "topTargetLocations":
                                     - "countryCode": "US"
-                                      "countryName": "WorldMonitor Analyst"
+                                      "countryName": "US"
                                       "latitude": 40.7128
                                       "longitude": -74.006
                                       "percentage": 42.5
@@ -3999,7 +3999,7 @@ paths:
                                       "asnName": "WorldMonitor Analyst"
                                       "endDate": 1
                                       "latitude": 40.7128
-                                      "locationCode": "example"
+                                      "locationCode": "US"
                                 "totalCount": 1
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_infrastructure_v1_ListInternetTrafficAnomaliesResponse'
@@ -4051,10 +4051,10 @@ paths:
                                 "strategicRisks":
                                     - "factors":
                                         - "example"
-                                      "level": "SEVERITY_LEVEL_UNSPECIFIED"
+                                      "level": "SEVERITY_LEVEL_LOW"
                                       "region": "example"
                                       "score": 42.5
-                                      "trend": "TREND_DIRECTION_UNSPECIFIED"
+                                      "trend": "TREND_DIRECTION_RISING"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_intelligence_v1_GetRiskScoresResponse'
                 "400":
@@ -4093,13 +4093,13 @@ paths:
                                 "pizzint":
                                     "activeSpikes": 1
                                     "aggregateActivity": 1.5
-                                    "dataFreshness": "DATA_FRESHNESS_UNSPECIFIED"
+                                    "dataFreshness": "DATA_FRESHNESS_FRESH"
                                     "defconLabel": "example"
                                     "defconLevel": 1
                                 "tensionPairs":
                                     - "changePercent": 42.5
                                       "countries":
-                                          - "example"
+                                          - "US"
                                       "id": "example-id"
                                       "label": "example"
                                       "region": "example"
@@ -4165,7 +4165,7 @@ paths:
                                     "confidence": 0.82
                                     "entities":
                                         - "example"
-                                    "severity": "SEVERITY_LEVEL_UNSPECIFIED"
+                                    "severity": "SEVERITY_LEVEL_LOW"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_intelligence_v1_ClassifyEventResponse'
                 "400":
@@ -4213,7 +4213,7 @@ paths:
                                         "newsActivity": 1.5
                                     "computedAt": 1717200000000
                                 "countryCode": "US"
-                                "countryName": "WorldMonitor Analyst"
+                                "countryName": "US"
                                 "fetchedAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_intelligence_v1_GetCountryRiskResponse'
@@ -4259,7 +4259,7 @@ paths:
                             example:
                                 "brief": "example"
                                 "countryCode": "US"
-                                "countryName": "WorldMonitor Analyst"
+                                "countryName": "US"
                                 "generatedAt": 1717200000000
                                 "model": "example"
                             schema:
@@ -4458,7 +4458,7 @@ paths:
                                     - "aircraftCount": 1
                                       "h3": "example"
                                       "lat": 40.7128
-                                      "level": "INTERFERENCE_LEVEL_UNSPECIFIED"
+                                      "level": "INTERFERENCE_LEVEL_LOW"
                                       "lon": -74.006
                                       "npAvg": 1.5
                                 "source": "example"
@@ -4749,7 +4749,7 @@ paths:
                             example:
                                 "areaSqKm": 1.5
                                 "capital": "example"
-                                "countryName": "WorldMonitor Analyst"
+                                "countryName": "US"
                                 "currencies":
                                     - "example"
                                 "headOfState": "example"
@@ -4866,7 +4866,7 @@ paths:
                                         - "example"
                                       "detectedAt": 1717200000000
                                       "id": "example-id"
-                                      "severity": "CROSS_SOURCE_SIGNAL_SEVERITY_UNSPECIFIED"
+                                      "severity": "CROSS_SOURCE_SIGNAL_SEVERITY_LOW"
                                       "severityScore": 42.5
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_intelligence_v1_ListCrossSourceSignalsResponse'
@@ -5833,8 +5833,8 @@ paths:
                         application/json:
                             example:
                                 "available": true
-                                "code": "example"
-                                "currency": "example"
+                                "code": "US"
+                                "currency": "USD"
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "indexName": "WorldMonitor Analyst"
                             schema:
@@ -6043,7 +6043,7 @@ paths:
                                 "available": true
                                 "avgSimulatedReturnPct": 1.5
                                 "cumulativeSimulatedReturnPct": 1.5
-                                "currency": "example"
+                                "currency": "USD"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_market_v1_BacktestStockResponse'
                 "400":
@@ -6095,7 +6095,7 @@ paths:
                                       "available": true
                                       "avgSimulatedReturnPct": 1.5
                                       "cumulativeSimulatedReturnPct": 1.5
-                                      "currency": "example"
+                                      "currency": "USD"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_market_v1_ListStoredStockBacktestsResponse'
                 "400":
@@ -6489,7 +6489,7 @@ paths:
                                         "wowNetDelta": "1717200000000"
                                     "reportDate": "2026-01-15"
                                 "crossCurrencyPrices":
-                                    - "currency": "example"
+                                    - "currency": "USD"
                                       "flag": "example"
                                       "price": 75.25
                                 "drivers":
@@ -6632,23 +6632,23 @@ paths:
                         application/json:
                             example:
                                 "clusters":
-                                    - "activityType": "MILITARY_ACTIVITY_TYPE_UNSPECIFIED"
-                                      "dominantOperator": "MILITARY_OPERATOR_UNSPECIFIED"
+                                    - "activityType": "MILITARY_ACTIVITY_TYPE_EXERCISE"
+                                      "dominantOperator": "MILITARY_OPERATOR_USAF"
                                       "flightCount": 1
                                       "flights":
                                           - "aircraftModel": "example"
-                                            "aircraftType": "MILITARY_AIRCRAFT_TYPE_UNSPECIFIED"
+                                            "aircraftType": "MILITARY_AIRCRAFT_TYPE_FIGHTER"
                                             "altitude": 1.5
                                             "callsign": "example"
-                                            "confidence": "MILITARY_CONFIDENCE_UNSPECIFIED"
+                                            "confidence": "MILITARY_CONFIDENCE_LOW"
                                             "id": "example-id"
                                       "id": "example-id"
                                 "flights":
                                     - "aircraftModel": "example"
-                                      "aircraftType": "MILITARY_AIRCRAFT_TYPE_UNSPECIFIED"
+                                      "aircraftType": "MILITARY_AIRCRAFT_TYPE_FIGHTER"
                                       "altitude": 1.5
                                       "callsign": "example"
-                                      "confidence": "MILITARY_CONFIDENCE_UNSPECIFIED"
+                                      "confidence": "MILITARY_CONFIDENCE_LOW"
                                       "id": "example-id"
                                 "pagination":
                                     "nextCursor": "next-page-token"
@@ -6994,7 +6994,7 @@ paths:
                                     "altitude": 1.5
                                     "arrDelayedMin": 1
                                     "arrEstimatedUtc": "example"
-                                    "arrIata": "example"
+                                    "arrIata": "JFK"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_military_v1_GetWingbitsLiveFlightResponse'
                 "400":
@@ -7021,7 +7021,7 @@ paths:
                   in: query
                   description: CPC category filter (e.g. "H04B", "F42B"). Empty returns all categories.
                   required: false
-                  example: "example"
+                  example: "H04B"
                   schema:
                     type: string
                 - name: assignee
@@ -7123,7 +7123,7 @@ paths:
                             "geoContext": "example"
                             "headlines":
                                 - "example"
-                            "lang": "example"
+                            "lang": "en"
                             "mode": "example"
                             "provider": "worldmonitor"
                         schema:
@@ -7213,7 +7213,7 @@ paths:
                   in: query
                   description: ISO 639-1 language code (en, fr, ar, etc.)
                   required: false
-                  example: "example"
+                  example: "en"
                   schema:
                     type: string
             responses:
@@ -7333,7 +7333,7 @@ paths:
                                     - "category": "cs.AI"
                                       "closesAt": 1717200000000
                                       "id": "example-id"
-                                      "source": "MARKET_SOURCE_UNSPECIFIED"
+                                      "source": "MARKET_SOURCE_POLYMARKET"
                                       "title": "example"
                                       "url": "https://example.com/worldmonitor"
                                 "pagination":
@@ -7819,7 +7819,7 @@ paths:
                                 "countries":
                                     - "aircraftCount": 1
                                       "countryCode": "US"
-                                      "countryName": "WorldMonitor Analyst"
+                                      "countryName": "US"
                                       "entryCount": 1
                                       "newEntryCount": 1
                                 "datasetDate": "1717200000000"
@@ -7827,9 +7827,9 @@ paths:
                                     - "countryCodes":
                                         - "US"
                                       "countryNames":
-                                          - "WorldMonitor Analyst"
+                                          - "US"
                                       "effectiveAt": "1717200000000"
-                                      "entityType": "SANCTIONS_ENTITY_TYPE_UNSPECIFIED"
+                                      "entityType": "SANCTIONS_ENTITY_TYPE_ENTITY"
                                       "id": "example-id"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_sanctions_v1_ListSanctionsPressureResponse'
@@ -8149,7 +8149,7 @@ paths:
                     2-digit HS commodity code (default "27" — mineral fuels). Non-digit
                      characters are stripped server-side to match legacy behavior.
                   required: false
-                  example: "27"
+                  example: "2709"
                   schema:
                     type: string
             responses:
@@ -8551,7 +8551,7 @@ paths:
                                     - "activationThreshold": "example"
                                       "addedCostMultiplier": 75.25
                                       "addedTransitDays": 7
-                                      "bypassWarRiskTier": "WAR_RISK_TIER_UNSPECIFIED"
+                                      "bypassWarRiskTier": "WAR_RISK_TIER_NORMAL"
                                       "capacityConstraintTonnage": "1717200000000"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_supply_chain_v1_GetBypassOptionsResponse'
@@ -8754,7 +8754,7 @@ paths:
                             example:
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "flags":
-                                    - "DEPENDENCY_FLAG_UNSPECIFIED"
+                                    - "DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL"
                                 "hasViableBypass": true
                                 "hs2": "27"
                                 "hs2Label": "27"
@@ -8881,7 +8881,7 @@ paths:
                             example:
                                 "comtradeSource": "example"
                                 "dependencyFlags":
-                                    - "DEPENDENCY_FLAG_UNSPECIFIED"
+                                    - "DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL"
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "hs2InSeededUniverse": true
                                 "laneValueUsd": 1.5
@@ -9350,7 +9350,7 @@ paths:
                                       "centroid":
                                           "latitude": 40.7128
                                           "longitude": -74.006
-                                      "confidence": "THERMAL_CONFIDENCE_UNSPECIFIED"
+                                      "confidence": "THERMAL_CONFIDENCE_LOW"
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "observationWindowHours": 1
                                 "sourceVersion": "example"
@@ -9389,7 +9389,7 @@ paths:
                   style: form
                   explode: true
                   example:
-                      - "example"
+                      - "840"
                   schema:
                     type: array
                     items:
@@ -9410,7 +9410,7 @@ paths:
                             example:
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "restrictions":
-                                    - "affectedCountry": "example"
+                                    - "affectedCountry": "US"
                                       "description": "Example WorldMonitor observation."
                                       "id": "example-id"
                                       "measureType": "all"
@@ -9442,14 +9442,14 @@ paths:
                   in: query
                   description: WTO member code of reporting country (e.g. "840" = US).
                   required: false
-                  example: "example"
+                  example: "840"
                   schema:
                     type: string
                 - name: partner_country
                   in: query
                   description: WTO member code of partner country (e.g. "156" = China).
                   required: false
-                  example: "example"
+                  example: "156"
                   schema:
                     type: string
                 - name: product_sector
@@ -9476,9 +9476,9 @@ paths:
                                 "datapoints":
                                     - "boundRate": 75.25
                                       "indicatorCode": "example"
-                                      "partnerCountry": "example"
+                                      "partnerCountry": "156"
                                       "productSector": "diesel"
-                                      "reportingCountry": "example"
+                                      "reportingCountry": "840"
                                 "effectiveTariffRate":
                                     "observationPeriod": "daily"
                                     "sourceName": "WorldMonitor Analyst"
@@ -9513,14 +9513,14 @@ paths:
                   in: query
                   description: WTO member code of reporting country.
                   required: false
-                  example: "example"
+                  example: "840"
                   schema:
                     type: string
                 - name: partner_country
                   in: query
                   description: WTO member code of partner country.
                   required: false
-                  example: "example"
+                  example: "156"
                   schema:
                     type: string
                 - name: years
@@ -9541,9 +9541,9 @@ paths:
                                 "flows":
                                     - "exportValueUsd": 1.5
                                       "importValueUsd": 1.5
-                                      "partnerCountry": "example"
+                                      "partnerCountry": "156"
                                       "productSector": "diesel"
-                                      "reportingCountry": "example"
+                                      "reportingCountry": "840"
                                 "upstreamUnavailable": true
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_trade_v1_GetTradeFlowsResponse'
@@ -9574,7 +9574,7 @@ paths:
                   style: form
                   explode: true
                   example:
-                      - "example"
+                      - "840"
                   schema:
                     type: array
                     items:
@@ -9604,7 +9604,7 @@ paths:
                                     - "dateDistributed": "2026-01-15"
                                       "id": "example-id"
                                       "measureType": "all"
-                                      "notifyingCountry": "example"
+                                      "notifyingCountry": "US"
                                       "objective": "example"
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "upstreamUnavailable": true
@@ -9669,14 +9669,14 @@ paths:
                   in: query
                   description: UN Comtrade reporter code (e.g. "842" = US, "156" = China). Empty returns all reporters.
                   required: false
-                  example: "example"
+                  example: "842"
                   schema:
                     type: string
                 - name: cmd_code
                   in: query
                   description: HS commodity code (e.g. "2709" = crude oil). Empty returns all commodities.
                   required: false
-                  example: "example"
+                  example: "2709"
                   schema:
                     type: string
                 - name: anomalies_only
@@ -9694,7 +9694,7 @@ paths:
                             example:
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "flows":
-                                    - "cmdCode": "example"
+                                    - "cmdCode": "2709"
                                       "cmdDesc": "example"
                                       "isAnomaly": true
                                       "netWeightKg": 1.5
@@ -9813,18 +9813,18 @@ paths:
                                           - "actors":
                                               - "example"
                                             "city": "example"
-                                            "confidence": "CONFIDENCE_LEVEL_UNSPECIFIED"
+                                            "confidence": "CONFIDENCE_LEVEL_LOW"
                                             "country": "US"
-                                            "eventType": "UNREST_EVENT_TYPE_UNSPECIFIED"
+                                            "eventType": "UNREST_EVENT_TYPE_PROTEST"
                                             "id": "example-id"
                                       "id": "example-id"
                                 "events":
                                     - "actors":
                                         - "example"
                                       "city": "example"
-                                      "confidence": "CONFIDENCE_LEVEL_UNSPECIFIED"
+                                      "confidence": "CONFIDENCE_LEVEL_LOW"
                                       "country": "US"
-                                      "eventType": "UNREST_EVENT_TYPE_UNSPECIFIED"
+                                      "eventType": "UNREST_EVENT_TYPE_PROTEST"
                                       "id": "example-id"
                                 "pagination":
                                     "nextCursor": "next-page-token"
@@ -10035,7 +10035,7 @@ paths:
                             example:
                                 "fireDetections":
                                     - "brightness": 1.5
-                                      "confidence": "FIRE_CONFIDENCE_UNSPECIFIED"
+                                      "confidence": "FIRE_CONFIDENCE_LOW"
                                       "dayNight": "example"
                                       "detectedAt": 1717200000000
                                       "frp": 1.5

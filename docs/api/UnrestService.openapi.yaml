@@ -102,18 +102,18 @@ paths:
                                           - "actors":
                                               - "example"
                                             "city": "example"
-                                            "confidence": "CONFIDENCE_LEVEL_UNSPECIFIED"
+                                            "confidence": "CONFIDENCE_LEVEL_LOW"
                                             "country": "US"
-                                            "eventType": "UNREST_EVENT_TYPE_UNSPECIFIED"
+                                            "eventType": "UNREST_EVENT_TYPE_PROTEST"
                                             "id": "example-id"
                                       "id": "example-id"
                                 "events":
                                     - "actors":
                                         - "example"
                                       "city": "example"
-                                      "confidence": "CONFIDENCE_LEVEL_UNSPECIFIED"
+                                      "confidence": "CONFIDENCE_LEVEL_LOW"
                                       "country": "US"
-                                      "eventType": "UNREST_EVENT_TYPE_UNSPECIFIED"
+                                      "eventType": "UNREST_EVENT_TYPE_PROTEST"
                                       "id": "example-id"
                                 "pagination":
                                     "nextCursor": "next-page-token"

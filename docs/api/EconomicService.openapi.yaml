@@ -66,7 +66,7 @@ paths:
                   in: query
                   description: World Bank indicator code (e.g., "NY.GDP.MKTP.CD").
                   required: false
-                  example: "example"
+                  example: "NY.GDP.MKTP.CD"
                   schema:
                     type: string
                 - name: country_code
@@ -107,8 +107,8 @@ paths:
                             example:
                                 "data":
                                     - "countryCode": "US"
-                                      "countryName": "WorldMonitor Analyst"
-                                      "indicatorCode": "example"
+                                      "countryName": "US"
+                                      "indicatorCode": "NY.GDP.MKTP.CD"
                                       "indicatorName": "WorldMonitor Analyst"
                                       "value": 1.5
                                       "year": 1
@@ -304,7 +304,7 @@ paths:
                                 "rates":
                                     - "centralBank": "example"
                                       "countryCode": "US"
-                                      "countryName": "WorldMonitor Analyst"
+                                      "countryName": "US"
                                       "date": "2026-01-15"
                                       "previousRate": 75.25
                             schema:
@@ -336,7 +336,7 @@ paths:
                             example:
                                 "rates":
                                     - "countryCode": "US"
-                                      "countryName": "WorldMonitor Analyst"
+                                      "countryName": "US"
                                       "date": "2026-01-15"
                                       "nominalEer": 1.5
                                       "realChange": 1.5
@@ -369,7 +369,7 @@ paths:
                             example:
                                 "entries":
                                     - "countryCode": "US"
-                                      "countryName": "WorldMonitor Analyst"
+                                      "countryName": "US"
                                       "creditGdpRatio": 42.5
                                       "date": "2026-01-15"
                                       "previousRatio": 42.5
@@ -448,20 +448,20 @@ paths:
                     content:
                         application/json:
                             example:
-                                "cheapestCountry": "example"
+                                "cheapestCountry": "US"
                                 "countries":
                                     - "code": "example"
-                                      "currency": "example"
+                                      "currency": "USD"
                                       "flag": "example"
                                       "fxRate": 75.25
                                       "items":
                                           - "available": true
-                                            "currency": "example"
+                                            "currency": "USD"
                                             "itemId": "example-id"
                                             "itemName": "WorldMonitor Analyst"
                                             "localPrice": 75.25
                                 "fetchedAt": "2026-01-15T12:00:00Z"
-                                "mostExpensiveCountry": "example"
+                                "mostExpensiveCountry": "US"
                                 "prevFetchedAt": "2026-01-15T12:00:00Z"
                             schema:
                                 $ref: '#/components/schemas/ListGroceryBasketPricesResponse'
@@ -490,15 +490,15 @@ paths:
                     content:
                         application/json:
                             example:
-                                "cheapestCountry": "example"
+                                "cheapestCountry": "US"
                                 "countries":
                                     - "available": true
                                       "code": "example"
-                                      "currency": "example"
+                                      "currency": "USD"
                                       "flag": "example"
                                       "fxRate": 75.25
                                 "fetchedAt": "2026-01-15T12:00:00Z"
-                                "mostExpensiveCountry": "example"
+                                "mostExpensiveCountry": "US"
                                 "prevFetchedAt": "2026-01-15T12:00:00Z"
                             schema:
                                 $ref: '#/components/schemas/ListBigMacPricesResponse'
@@ -566,7 +566,7 @@ paths:
                                 "cheapestGasoline": "example"
                                 "countries":
                                     - "code": "example"
-                                      "currency": "example"
+                                      "currency": "USD"
                                       "diesel":
                                           "available": true
                                           "grade": "example"

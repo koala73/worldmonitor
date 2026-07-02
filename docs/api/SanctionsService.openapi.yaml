@@ -29,7 +29,7 @@ paths:
                                 "countries":
                                     - "aircraftCount": 1
                                       "countryCode": "US"
-                                      "countryName": "WorldMonitor Analyst"
+                                      "countryName": "US"
                                       "entryCount": 1
                                       "newEntryCount": 1
                                 "datasetDate": "1717200000000"
@@ -37,9 +37,9 @@ paths:
                                     - "countryCodes":
                                         - "US"
                                       "countryNames":
-                                          - "WorldMonitor Analyst"
+                                          - "US"
                                       "effectiveAt": "1717200000000"
-                                      "entityType": "SANCTIONS_ENTITY_TYPE_UNSPECIFIED"
+                                      "entityType": "SANCTIONS_ENTITY_TYPE_ENTITY"
                                       "id": "example-id"
                             schema:
                                 $ref: '#/components/schemas/ListSanctionsPressureResponse'

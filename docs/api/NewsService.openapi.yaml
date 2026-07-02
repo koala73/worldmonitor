@@ -19,7 +19,7 @@ paths:
                             "geoContext": "example"
                             "headlines":
                                 - "example"
-                            "lang": "example"
+                            "lang": "en"
                             "mode": "example"
                             "provider": "worldmonitor"
                         schema:
@@ -109,7 +109,7 @@ paths:
                   in: query
                   description: ISO 639-1 language code (en, fr, ar, etc.)
                   required: false
-                  example: "example"
+                  example: "en"
                   schema:
                     type: string
             responses:

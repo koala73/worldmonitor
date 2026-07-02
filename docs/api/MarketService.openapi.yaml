@@ -308,8 +308,8 @@ paths:
                         application/json:
                             example:
                                 "available": true
-                                "code": "example"
-                                "currency": "example"
+                                "code": "US"
+                                "currency": "USD"
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "indexName": "WorldMonitor Analyst"
                             schema:
@@ -518,7 +518,7 @@ paths:
                                 "available": true
                                 "avgSimulatedReturnPct": 1.5
                                 "cumulativeSimulatedReturnPct": 1.5
-                                "currency": "example"
+                                "currency": "USD"
                             schema:
                                 $ref: '#/components/schemas/BacktestStockResponse'
                 "400":
@@ -570,7 +570,7 @@ paths:
                                       "available": true
                                       "avgSimulatedReturnPct": 1.5
                                       "cumulativeSimulatedReturnPct": 1.5
-                                      "currency": "example"
+                                      "currency": "USD"
                             schema:
                                 $ref: '#/components/schemas/ListStoredStockBacktestsResponse'
                 "400":
@@ -964,7 +964,7 @@ paths:
                                         "wowNetDelta": "1717200000000"
                                     "reportDate": "2026-01-15"
                                 "crossCurrencyPrices":
-                                    - "currency": "example"
+                                    - "currency": "USD"
                                       "flag": "example"
                                       "price": 75.25
                                 "drivers":

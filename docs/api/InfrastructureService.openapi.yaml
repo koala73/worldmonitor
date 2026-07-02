@@ -370,7 +370,7 @@ paths:
                                               "ts": 1
                                         "lastUpdated": 1
                                         "score": 42.5
-                                        "status": "CABLE_HEALTH_STATUS_UNSPECIFIED"
+                                        "status": "CABLE_HEALTH_STATUS_OK"
                                 "generatedAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/GetCableHealthResponse'
@@ -442,7 +442,7 @@ paths:
                                       "percentage": 42.5
                                 "topTargetLocations":
                                     - "countryCode": "US"
-                                      "countryName": "WorldMonitor Analyst"
+                                      "countryName": "US"
                                       "latitude": 40.7128
                                       "longitude": -74.006
                                       "percentage": 42.5
@@ -489,7 +489,7 @@ paths:
                                       "asnName": "WorldMonitor Analyst"
                                       "endDate": 1
                                       "latitude": 40.7128
-                                      "locationCode": "example"
+                                      "locationCode": "US"
                                 "totalCount": 1
                             schema:
                                 $ref: '#/components/schemas/ListInternetTrafficAnomaliesResponse'

@@ -129,10 +129,19 @@ function stringExample(name, schema = {}, context = {}) {
   if (key.includes('ticker') || key.includes('symbol')) return constrainedString('AAPL', schema);
   if (key.includes('fullname')) return constrainedString('koala73/worldmonitor', schema);
   if (key.includes('provider')) return constrainedString('worldmonitor', schema);
+  if (description.includes('iata')) return constrainedString(key.includes('destination') || key.includes('arrival') ? 'LHR' : 'JFK', schema);
+  if (description.includes('iso 4217') || key.includes('currency')) return constrainedString('USD', schema);
+  if (description.includes('iso 639') || key === 'lang' || key.includes('locale')) return constrainedString('en', schema);
+  if (description.includes('iso 3166') || key.includes('marketcode')) return constrainedString('US', schema);
+  if (description.includes('wto member code')) return constrainedString(key.includes('partner') ? '156' : '840', schema);
+  if (description.includes('world bank indicator code')) return constrainedString('NY.GDP.MKTP.CD', schema);
+  if (description.includes('cpc category')) return constrainedString('H04B', schema);
+  if (description.includes('un comtrade reporter code')) return constrainedString('842', schema);
+  if (description.includes('hs commodity code') || key.includes('cmdcode')) return constrainedString('2709', schema);
   if (key.includes('fromiso')) return constrainedString('CN', schema);
   if (key.includes('toiso')) return constrainedString('US', schema);
   if (key.includes('iso3')) return constrainedString('USA', schema);
-  if (key.includes('iso2') || key === 'country' || key.includes('countrycode')) return constrainedString('US', schema);
+  if (key.includes('iso2') || key.includes('country') || key.includes('countrycode')) return constrainedString('US', schema);
   if (key.includes('bbox')) return constrainedString('-74.10,40.60,-73.70,40.90', schema);
   if (key.includes('lat')) return constrainedString('40.7128', schema);
   if (key.includes('lng') || key.includes('lon')) return constrainedString('-74.0060', schema);
@@ -205,7 +214,10 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   if (schema.example !== undefined) return clone(schema.example);
   if (schema.default !== undefined) return clone(schema.default);
   if (schema.const !== undefined) return clone(schema.const);
-  if (Array.isArray(schema.enum) && schema.enum.length > 0) return clone(schema.enum[0]);
+  if (Array.isArray(schema.enum) && schema.enum.length > 0) {
+    const value = schema.enum.find((item) => !(typeof item === 'string' && item.endsWith('_UNSPECIFIED')));
+    return clone(value ?? schema.enum[0]);
+  }
   if (Array.isArray(schema.allOf) && schema.allOf.length > 0) {
     return schema.allOf.reduce(
       (acc, part) => mergeObjects(acc, exampleForSchema(part, spec, context, depth + 1, seen)),
@@ -430,7 +442,7 @@ function renderExampleBlock(example, indent) {
   if (example === null || typeof example !== 'object') {
     return [`${prefix}example: ${JSON.stringify(example)}`];
   }
-  return [`${prefix}example:`, ...renderYamlNode(example, indent + 4)];
+  return [`${prefix}example:`, ...renderYamlNode(sortRec(example), indent + 4)];
 }
 
 function removeSiblingBlocks(lines, start, end, indent) {
@@ -556,7 +568,7 @@ function patchYamlExamples(raw, spec, label) {
 
 function processServiceSpec(file) {
   const jsonPath = resolve(apiDir, file);
-  const spec = JSON.parse(readFileSync(jsonPath, 'utf8'));
+  const spec = sortRec(JSON.parse(readFileSync(jsonPath, 'utf8')));
   const stats = injectSpecExamples(spec);
   const serialized = serialize(spec);
   const jsonChanged = readFileSync(jsonPath, 'utf8') !== serialized;
@@ -611,14 +623,8 @@ function processAllSpecs(countStats = false) {
 }
 
 const firstPass = processAllSpecs(true);
-let stabilizeTouched = 0;
-let bundleChanged = firstPass.bundleChanged;
-if (!CHECK && firstPass.touched > 0) {
-  const stabilizePass = processAllSpecs(false);
-  stabilizeTouched = stabilizePass.touched;
-  bundleChanged = bundleChanged || stabilizePass.bundleChanged;
-}
-const touched = firstPass.touched + stabilizeTouched;
+const bundleChanged = firstPass.bundleChanged;
+const touched = firstPass.touched;
 
 if (CHECK) {
   if (touched > 0) {
@@ -628,8 +634,7 @@ if (CHECK) {
   }
   console.log(`ok ${specFiles.length} specs + bundle carry generated examples (${operations} operations)`);
 } else {
-  const stabilizeSummary = stabilizeTouched ? `, stabilization pass updated ${stabilizeTouched}` : '';
   console.log(
-    `openapi-inject-examples: updated ${touched} artifact set(s) - ${specFiles.length} specs, ${operations} operations, ${requestBearingOperations} request operation(s), ${responseOperations} response example target(s), bundle ${bundleChanged ? 'updated' : 'unchanged'}${stabilizeSummary}`,
+    `openapi-inject-examples: updated ${touched} artifact set(s) - ${specFiles.length} specs, ${operations} operations, ${requestBearingOperations} request operation(s), ${responseOperations} response example target(s), bundle ${bundleChanged ? 'updated' : 'unchanged'}`,
   );
 }

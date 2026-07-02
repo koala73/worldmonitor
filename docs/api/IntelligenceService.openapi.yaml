@@ -39,10 +39,10 @@ paths:
                                 "strategicRisks":
                                     - "factors":
                                         - "example"
-                                      "level": "SEVERITY_LEVEL_UNSPECIFIED"
+                                      "level": "SEVERITY_LEVEL_LOW"
                                       "region": "example"
                                       "score": 42.5
-                                      "trend": "TREND_DIRECTION_UNSPECIFIED"
+                                      "trend": "TREND_DIRECTION_RISING"
                             schema:
                                 $ref: '#/components/schemas/GetRiskScoresResponse'
                 "400":
@@ -81,13 +81,13 @@ paths:
                                 "pizzint":
                                     "activeSpikes": 1
                                     "aggregateActivity": 1.5
-                                    "dataFreshness": "DATA_FRESHNESS_UNSPECIFIED"
+                                    "dataFreshness": "DATA_FRESHNESS_FRESH"
                                     "defconLabel": "example"
                                     "defconLevel": 1
                                 "tensionPairs":
                                     - "changePercent": 42.5
                                       "countries":
-                                          - "example"
+                                          - "US"
                                       "id": "example-id"
                                       "label": "example"
                                       "region": "example"
@@ -153,7 +153,7 @@ paths:
                                     "confidence": 0.82
                                     "entities":
                                         - "example"
-                                    "severity": "SEVERITY_LEVEL_UNSPECIFIED"
+                                    "severity": "SEVERITY_LEVEL_LOW"
                             schema:
                                 $ref: '#/components/schemas/ClassifyEventResponse'
                 "400":
@@ -201,7 +201,7 @@ paths:
                                         "newsActivity": 1.5
                                     "computedAt": 1717200000000
                                 "countryCode": "US"
-                                "countryName": "WorldMonitor Analyst"
+                                "countryName": "US"
                                 "fetchedAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/GetCountryRiskResponse'
@@ -247,7 +247,7 @@ paths:
                             example:
                                 "brief": "example"
                                 "countryCode": "US"
-                                "countryName": "WorldMonitor Analyst"
+                                "countryName": "US"
                                 "generatedAt": 1717200000000
                                 "model": "example"
                             schema:
@@ -446,7 +446,7 @@ paths:
                                     - "aircraftCount": 1
                                       "h3": "example"
                                       "lat": 40.7128
-                                      "level": "INTERFERENCE_LEVEL_UNSPECIFIED"
+                                      "level": "INTERFERENCE_LEVEL_LOW"
                                       "lon": -74.006
                                       "npAvg": 1.5
                                 "source": "example"
@@ -737,7 +737,7 @@ paths:
                             example:
                                 "areaSqKm": 1.5
                                 "capital": "example"
-                                "countryName": "WorldMonitor Analyst"
+                                "countryName": "US"
                                 "currencies":
                                     - "example"
                                 "headOfState": "example"
@@ -854,7 +854,7 @@ paths:
                                         - "example"
                                       "detectedAt": 1717200000000
                                       "id": "example-id"
-                                      "severity": "CROSS_SOURCE_SIGNAL_SEVERITY_UNSPECIFIED"
+                                      "severity": "CROSS_SOURCE_SIGNAL_SEVERITY_LOW"
                                       "severityScore": 42.5
                             schema:
                                 $ref: '#/components/schemas/ListCrossSourceSignalsResponse'

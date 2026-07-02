@@ -15,7 +15,7 @@ paths:
                   in: query
                   description: market_code is the ISO 3166-1 alpha-2 market identifier (e.g. "ae").
                   required: false
-                  example: "example"
+                  example: "US"
                   schema:
                     type: string
                 - name: basket_slug
@@ -33,7 +33,7 @@ paths:
                             example:
                                 "asOf": "1717200000000"
                                 "coveragePct": 1.5
-                                "currencyCode": "example"
+                                "currencyCode": "USD"
                                 "essentialsIndex": 1.5
                                 "freshnessLagMin": 1
                             schema:
@@ -62,7 +62,7 @@ paths:
                   in: query
                   description: market_code is the ISO 3166-1 alpha-2 market identifier.
                   required: false
-                  example: "example"
+                  example: "US"
                   schema:
                     type: string
                 - name: basket_slug
@@ -87,11 +87,11 @@ paths:
                             example:
                                 "asOf": "1717200000000"
                                 "basketSlug": "example"
-                                "currencyCode": "example"
+                                "currencyCode": "USD"
                                 "essentialsSeries":
                                     - "date": "2026-01-15"
                                       "index": 1.5
-                                "marketCode": "example"
+                                "marketCode": "US"
                             schema:
                                 $ref: '#/components/schemas/GetConsumerPriceBasketSeriesResponse'
                 "400":
@@ -118,7 +118,7 @@ paths:
                   in: query
                   description: market_code is the ISO 3166-1 alpha-2 market identifier.
                   required: false
-                  example: "example"
+                  example: "US"
                   schema:
                     type: string
                 - name: basket_slug
@@ -148,7 +148,7 @@ paths:
                                       "itemCount": 1
                                       "momPct": 1.5
                                       "name": "WorldMonitor Analyst"
-                                "marketCode": "example"
+                                "marketCode": "US"
                                 "range": "example"
                                 "upstreamUnavailable": true
                             schema:
@@ -177,7 +177,7 @@ paths:
                   in: query
                   description: market_code is the ISO 3166-1 alpha-2 market identifier.
                   required: false
-                  example: "example"
+                  example: "US"
                   schema:
                     type: string
                 - name: range
@@ -212,15 +212,15 @@ paths:
                                 "fallers":
                                     - "category": "cs.AI"
                                       "changePct": 1.5
-                                      "currencyCode": "example"
+                                      "currencyCode": "USD"
                                       "currentPrice": 75.25
                                       "productId": "diesel"
-                                "marketCode": "example"
+                                "marketCode": "US"
                                 "range": "example"
                                 "risers":
                                     - "category": "cs.AI"
                                       "changePct": 1.5
-                                      "currencyCode": "example"
+                                      "currencyCode": "USD"
                                       "currentPrice": 75.25
                                       "productId": "diesel"
                             schema:
@@ -249,7 +249,7 @@ paths:
                   in: query
                   description: market_code is the ISO 3166-1 alpha-2 market identifier.
                   required: false
-                  example: "example"
+                  example: "US"
                   schema:
                     type: string
                 - name: basket_slug
@@ -267,11 +267,11 @@ paths:
                             example:
                                 "asOf": "1717200000000"
                                 "basketSlug": "example"
-                                "currencyCode": "example"
-                                "marketCode": "example"
+                                "currencyCode": "USD"
+                                "marketCode": "US"
                                 "retailers":
                                     - "basketTotal": 1
-                                      "currencyCode": "example"
+                                      "currencyCode": "USD"
                                       "deltaVsCheapest": 1.5
                                       "deltaVsCheapestPct": 1.5
                                       "freshnessMin": 1
@@ -301,7 +301,7 @@ paths:
                   in: query
                   description: market_code is the ISO 3166-1 alpha-2 market identifier.
                   required: false
-                  example: "example"
+                  example: "US"
                   schema:
                     type: string
             responses:
@@ -311,7 +311,7 @@ paths:
                         application/json:
                             example:
                                 "asOf": "1717200000000"
-                                "marketCode": "example"
+                                "marketCode": "US"
                                 "overallFreshnessMin": 1
                                 "retailers":
                                     - "freshnessMin": 1

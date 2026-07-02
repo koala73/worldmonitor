@@ -290,7 +290,7 @@ paths:
                                     - "activationThreshold": "example"
                                       "addedCostMultiplier": 75.25
                                       "addedTransitDays": 7
-                                      "bypassWarRiskTier": "WAR_RISK_TIER_UNSPECIFIED"
+                                      "bypassWarRiskTier": "WAR_RISK_TIER_NORMAL"
                                       "capacityConstraintTonnage": "1717200000000"
                             schema:
                                 $ref: '#/components/schemas/GetBypassOptionsResponse'
@@ -493,7 +493,7 @@ paths:
                             example:
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "flags":
-                                    - "DEPENDENCY_FLAG_UNSPECIFIED"
+                                    - "DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL"
                                 "hasViableBypass": true
                                 "hs2": "27"
                                 "hs2Label": "27"
@@ -620,7 +620,7 @@ paths:
                             example:
                                 "comtradeSource": "example"
                                 "dependencyFlags":
-                                    - "DEPENDENCY_FLAG_UNSPECIFIED"
+                                    - "DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL"
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "hs2InSeededUniverse": true
                                 "laneValueUsd": 1.5

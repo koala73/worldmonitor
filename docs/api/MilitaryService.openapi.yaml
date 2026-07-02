@@ -79,23 +79,23 @@ paths:
                         application/json:
                             example:
                                 "clusters":
-                                    - "activityType": "MILITARY_ACTIVITY_TYPE_UNSPECIFIED"
-                                      "dominantOperator": "MILITARY_OPERATOR_UNSPECIFIED"
+                                    - "activityType": "MILITARY_ACTIVITY_TYPE_EXERCISE"
+                                      "dominantOperator": "MILITARY_OPERATOR_USAF"
                                       "flightCount": 1
                                       "flights":
                                           - "aircraftModel": "example"
-                                            "aircraftType": "MILITARY_AIRCRAFT_TYPE_UNSPECIFIED"
+                                            "aircraftType": "MILITARY_AIRCRAFT_TYPE_FIGHTER"
                                             "altitude": 1.5
                                             "callsign": "example"
-                                            "confidence": "MILITARY_CONFIDENCE_UNSPECIFIED"
+                                            "confidence": "MILITARY_CONFIDENCE_LOW"
                                             "id": "example-id"
                                       "id": "example-id"
                                 "flights":
                                     - "aircraftModel": "example"
-                                      "aircraftType": "MILITARY_AIRCRAFT_TYPE_UNSPECIFIED"
+                                      "aircraftType": "MILITARY_AIRCRAFT_TYPE_FIGHTER"
                                       "altitude": 1.5
                                       "callsign": "example"
-                                      "confidence": "MILITARY_CONFIDENCE_UNSPECIFIED"
+                                      "confidence": "MILITARY_CONFIDENCE_LOW"
                                       "id": "example-id"
                                 "pagination":
                                     "nextCursor": "next-page-token"
@@ -441,7 +441,7 @@ paths:
                                     "altitude": 1.5
                                     "arrDelayedMin": 1
                                     "arrEstimatedUtc": "example"
-                                    "arrIata": "example"
+                                    "arrIata": "JFK"
                             schema:
                                 $ref: '#/components/schemas/GetWingbitsLiveFlightResponse'
                 "400":
@@ -468,7 +468,7 @@ paths:
                   in: query
                   description: CPC category filter (e.g. "H04B", "F42B"). Empty returns all categories.
                   required: false
-                  example: "example"
+                  example: "H04B"
                   schema:
                     type: string
                 - name: assignee

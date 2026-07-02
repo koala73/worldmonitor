@@ -45,9 +45,9 @@ paths:
                                         "longitude": -74.006
                                       "period": "daily"
                                       "precipDelta": 1.5
-                                      "severity": "ANOMALY_SEVERITY_UNSPECIFIED"
+                                      "severity": "ANOMALY_SEVERITY_NORMAL"
                                       "tempDelta": 1.5
-                                      "type": "ANOMALY_TYPE_UNSPECIFIED"
+                                      "type": "ANOMALY_TYPE_WARM"
                                       "zone": "example"
                                 "pagination":
                                     "nextCursor": "next-page-token"

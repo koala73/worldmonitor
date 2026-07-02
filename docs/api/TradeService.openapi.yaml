@@ -18,7 +18,7 @@ paths:
                   style: form
                   explode: true
                   example:
-                      - "example"
+                      - "840"
                   schema:
                     type: array
                     items:
@@ -39,7 +39,7 @@ paths:
                             example:
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "restrictions":
-                                    - "affectedCountry": "example"
+                                    - "affectedCountry": "US"
                                       "description": "Example WorldMonitor observation."
                                       "id": "example-id"
                                       "measureType": "all"
@@ -71,14 +71,14 @@ paths:
                   in: query
                   description: WTO member code of reporting country (e.g. "840" = US).
                   required: false
-                  example: "example"
+                  example: "840"
                   schema:
                     type: string
                 - name: partner_country
                   in: query
                   description: WTO member code of partner country (e.g. "156" = China).
                   required: false
-                  example: "example"
+                  example: "156"
                   schema:
                     type: string
                 - name: product_sector
@@ -105,9 +105,9 @@ paths:
                                 "datapoints":
                                     - "boundRate": 75.25
                                       "indicatorCode": "example"
-                                      "partnerCountry": "example"
+                                      "partnerCountry": "156"
                                       "productSector": "diesel"
-                                      "reportingCountry": "example"
+                                      "reportingCountry": "840"
                                 "effectiveTariffRate":
                                     "observationPeriod": "daily"
                                     "sourceName": "WorldMonitor Analyst"
@@ -142,14 +142,14 @@ paths:
                   in: query
                   description: WTO member code of reporting country.
                   required: false
-                  example: "example"
+                  example: "840"
                   schema:
                     type: string
                 - name: partner_country
                   in: query
                   description: WTO member code of partner country.
                   required: false
-                  example: "example"
+                  example: "156"
                   schema:
                     type: string
                 - name: years
@@ -170,9 +170,9 @@ paths:
                                 "flows":
                                     - "exportValueUsd": 1.5
                                       "importValueUsd": 1.5
-                                      "partnerCountry": "example"
+                                      "partnerCountry": "156"
                                       "productSector": "diesel"
-                                      "reportingCountry": "example"
+                                      "reportingCountry": "840"
                                 "upstreamUnavailable": true
                             schema:
                                 $ref: '#/components/schemas/GetTradeFlowsResponse'
@@ -203,7 +203,7 @@ paths:
                   style: form
                   explode: true
                   example:
-                      - "example"
+                      - "840"
                   schema:
                     type: array
                     items:
@@ -233,7 +233,7 @@ paths:
                                     - "dateDistributed": "2026-01-15"
                                       "id": "example-id"
                                       "measureType": "all"
-                                      "notifyingCountry": "example"
+                                      "notifyingCountry": "US"
                                       "objective": "example"
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "upstreamUnavailable": true
@@ -298,14 +298,14 @@ paths:
                   in: query
                   description: UN Comtrade reporter code (e.g. "842" = US, "156" = China). Empty returns all reporters.
                   required: false
-                  example: "example"
+                  example: "842"
                   schema:
                     type: string
                 - name: cmd_code
                   in: query
                   description: HS commodity code (e.g. "2709" = crude oil). Empty returns all commodities.
                   required: false
-                  example: "example"
+                  example: "2709"
                   schema:
                     type: string
                 - name: anomalies_only
@@ -323,7 +323,7 @@ paths:
                             example:
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "flows":
-                                    - "cmdCode": "example"
+                                    - "cmdCode": "2709"
                                       "cmdDesc": "example"
                                       "isAnomaly": true
                                       "netWeightKg": 1.5
