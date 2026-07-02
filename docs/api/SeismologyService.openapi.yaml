@@ -13,14 +13,18 @@ paths:
             parameters:
                 - name: start
                   in: query
-                  description: Start of time range (inclusive), Unix epoch milliseconds.
+                  description: |-
+                    Start of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                     format: int64
                 - name: end
                   in: query
-                  description: End of time range (inclusive), Unix epoch milliseconds.
+                  description: |-
+                    End of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -34,13 +38,17 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                 - name: min_magnitude
                   in: query
-                  description: Minimum magnitude filter (e.g., 4.0 for significant quakes).
+                  description: |-
+                    Minimum magnitude filter (e.g., 4.0 for significant quakes).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: number
@@ -103,22 +111,30 @@ components:
                 start:
                     type: integer
                     format: int64
-                    description: 'Start of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        Start of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 end:
                     type: integer
                     format: int64
-                    description: 'End of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        End of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 pageSize:
                     type: integer
                     format: int32
                     description: Maximum items per page (1-100).
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 minMagnitude:
                     type: number
                     format: double
-                    description: Minimum magnitude filter (e.g., 4.0 for significant quakes).
+                    description: |-
+                        Minimum magnitude filter (e.g., 4.0 for significant quakes).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: ListEarthquakesRequest specifies filters for retrieving earthquake data from USGS.
         ListEarthquakesResponse:
             type: object

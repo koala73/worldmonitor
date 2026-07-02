@@ -23,6 +23,8 @@ import { validateBearerToken } from '../server/auth-session';
 import { checkScopedRateLimit } from '../server/_shared/rate-limit';
 
 export const USER_PREFS_WRITE_RATE_SCOPE = 'user-prefs-write';
+// Keep in lockstep with convex/constants.ts; tests/user-prefs-rate-limit.test.mts
+// guards the duplicated Edge/Convex rate-limit contract from drifting.
 export const USER_PREFS_WRITE_RATE_LIMIT = 30;
 export const USER_PREFS_WRITE_RATE_WINDOW = '60 s';
 
@@ -59,6 +61,27 @@ export function __setUserPrefsDepsForTests(overrides: Partial<UserPrefsDeps> | n
   userPrefsDeps = overrides
     ? { ...createDefaultUserPrefsDeps(), ...overrides }
     : createDefaultUserPrefsDeps();
+}
+
+type SetPreferencesResult =
+  | { ok: true; syncVersion: number }
+  | { ok: false; reason: 'CONFLICT'; actualSyncVersion: number }
+  | { ok: false; reason: 'BLOB_TOO_LARGE'; size: number; max: number }
+  | { ok: false; reason: 'RATE_LIMITED'; limit: number; reset: number };
+
+function rateLimitHeaders(
+  cors: Record<string, string>,
+  limit: number,
+  reset: number,
+): Record<string, string> {
+  const retryAfter = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
+  return {
+    ...cors,
+    'X-RateLimit-Limit': String(limit),
+    'X-RateLimit-Remaining': '0',
+    'X-RateLimit-Reset': String(reset),
+    'Retry-After': String(retryAfter),
+  };
 }
 
 export default async function handler(
@@ -222,20 +245,22 @@ export default async function handler(
       data: body.data,
       expectedSyncVersion: body.expectedSyncVersion,
       schemaVersion: typeof body.schemaVersion === 'number' ? body.schemaVersion : undefined,
-    })) as
-      | { ok: true; syncVersion: number }
-      | { ok: false; reason: 'CONFLICT'; actualSyncVersion: number };
-    // PR 3 (post-launch-stabilization): setPreferences now returns a
-    // discriminated result for CONFLICT instead of throwing. Wire shape
-    // to the client (HTTP 409 with actualSyncVersion) is unchanged. The
-    // change silences the dozens-per-day "Uncaught ConvexError" log surface
-    // in Convex Insights, which was just the intentional CAS guard. We no
-    // longer captureSilentError on CONFLICT either — PR 1.B's Sentry
-    // attribution served its purpose during the soak window (we used
-    // it to verify the stuck-bundle storm decayed) and is no longer
-    // needed now that CONFLICT is a normal return shape.
+    })) as SetPreferencesResult;
+    // Expected write denials return as a discriminated result so Convex can
+    // commit limiter bookkeeping and duplicate-counter cleanup. Wire shape to
+    // clients stays the same as the older thrown ConvexError paths below.
     if (result.ok === false) {
-      // Discriminated union narrows to the CONFLICT variant here.
+      if (result.reason === 'BLOB_TOO_LARGE') {
+        return jsonResponse({ error: 'BLOB_TOO_LARGE' }, 400, cors);
+      }
+      if (result.reason === 'RATE_LIMITED') {
+        console.warn('[user-prefs] POST convex write rate limit exceeded');
+        return jsonResponse(
+          { error: 'RATE_LIMITED' },
+          429,
+          rateLimitHeaders(cors, result.limit, result.reset),
+        );
+      }
       return jsonResponse(
         { error: 'CONFLICT', actualSyncVersion: result.actualSyncVersion },
         409,
@@ -265,6 +290,16 @@ export default async function handler(
     }
     if (kind === 'BLOB_TOO_LARGE') {
       return jsonResponse({ error: 'BLOB_TOO_LARGE' }, 400, cors);
+    }
+    if (kind === 'RATE_LIMITED') {
+      const limit = readConvexErrorNumber(err, 'limit') ?? USER_PREFS_WRITE_RATE_LIMIT;
+      const reset = readConvexErrorNumber(err, 'reset') ?? Date.now() + 60_000;
+      console.warn('[user-prefs] POST convex write rate limit exceeded');
+      return jsonResponse(
+        { error: 'RATE_LIMITED' },
+        429,
+        rateLimitHeaders(cors, limit, reset),
+      );
     }
     if (kind === 'UNAUTHENTICATED') {
       // See GET branch above — UNAUTHENTICATED here means Clerk-vs-Convex

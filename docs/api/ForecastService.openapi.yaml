@@ -16,6 +16,14 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'conflict'
+                        - 'market'
+                        - 'supply_chain'
+                        - 'political'
+                        - 'military'
+                        - 'cyber'
+                        - 'infrastructure'
                 - name: region
                   in: query
                   description: Optional geographic or thematic region filter for forecasts.

@@ -13,7 +13,9 @@ paths:
             parameters:
                 - name: countries
                   in: query
-                  description: WTO member codes to filter by. Empty = all.
+                  description: |-
+                    WTO member codes to filter by. Empty = all.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   style: form
                   explode: true
@@ -155,7 +157,9 @@ paths:
             parameters:
                 - name: countries
                   in: query
-                  description: WTO member codes to filter by. Empty = all.
+                  description: |-
+                    WTO member codes to filter by. Empty = all.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   style: form
                   explode: true
@@ -165,7 +169,9 @@ paths:
                         type: string
                 - name: measure_type
                   in: query
-                  description: 'Filter by measure type: "SPS", "TBT", or empty for both.'
+                  description: |-
+                    Filter by measure type: "SPS", "TBT", or empty for both.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -241,6 +247,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^\d{4,6}$'
                 - name: anomalies_only
                   in: query
                   description: If true, only return flows with a year-over-year change exceeding 30%.
@@ -306,7 +313,9 @@ components:
                     type: array
                     items:
                         type: string
-                        description: WTO member codes to filter by. Empty = all.
+                        description: |-
+                            WTO member codes to filter by. Empty = all.
+                             Accepted but currently ignored; no-op until this handler supports the parameter.
                 limit:
                     type: integer
                     format: int32
@@ -506,10 +515,14 @@ components:
                     type: array
                     items:
                         type: string
-                        description: WTO member codes to filter by. Empty = all.
+                        description: |-
+                            WTO member codes to filter by. Empty = all.
+                             Accepted but currently ignored; no-op until this handler supports the parameter.
                 measureType:
                     type: string
-                    description: 'Filter by measure type: "SPS", "TBT", or empty for both.'
+                    description: |-
+                        Filter by measure type: "SPS", "TBT", or empty for both.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 limit:
                     type: integer
                     format: int32

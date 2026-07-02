@@ -22,29 +22,50 @@ paths:
             parameters:
                 - name: page_size
                   in: query
-                  description: Maximum items per page (1-100).
+                  description: |-
+                    Maximum items per page (1-100).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                 - name: region
                   in: query
-                  description: Optional region filter.
+                  description: |-
+                    Optional region filter.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'AIRPORT_REGION_AMERICAS'
+                        - 'AIRPORT_REGION_EUROPE'
+                        - 'AIRPORT_REGION_APAC'
+                        - 'AIRPORT_REGION_MENA'
+                        - 'AIRPORT_REGION_AFRICA'
                 - name: min_severity
                   in: query
-                  description: Optional minimum severity filter.
+                  description: |-
+                    Optional minimum severity filter.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'FLIGHT_DELAY_SEVERITY_NORMAL'
+                        - 'FLIGHT_DELAY_SEVERITY_MINOR'
+                        - 'FLIGHT_DELAY_SEVERITY_MODERATE'
+                        - 'FLIGHT_DELAY_SEVERITY_MAJOR'
+                        - 'FLIGHT_DELAY_SEVERITY_SEVERE'
+                        - 'FLIGHT_DELAY_SEVERITY_UNKNOWN'
             responses:
                 "200":
                     description: Successful response
@@ -112,7 +133,7 @@ paths:
                 - name: airport
                   in: query
                   description: IATA airport code (e.g., "IST").
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: direction
@@ -121,6 +142,10 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'FLIGHT_DIRECTION_DEPARTURE'
+                        - 'FLIGHT_DIRECTION_ARRIVAL'
+                        - 'FLIGHT_DIRECTION_BOTH'
                 - name: limit
                   in: query
                   description: Maximum number of flights to return (1-100).
@@ -202,13 +227,13 @@ paths:
                 - name: flight_number
                   in: query
                   description: IATA flight number (e.g., "TK1952").
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: date
                   in: query
                   description: Departure date in ISO 8601 format (e.g., "2026-03-05").
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: origin
@@ -353,19 +378,19 @@ paths:
                 - name: origin
                   in: query
                   description: Origin airport IATA code.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: destination
                   in: query
                   description: Destination airport IATA code.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: departure_date
                   in: query
                   description: Outbound departure date (ISO 8601).
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: return_date
@@ -387,6 +412,11 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'CABIN_CLASS_ECONOMY'
+                        - 'CABIN_CLASS_PREMIUM_ECONOMY'
+                        - 'CABIN_CLASS_BUSINESS'
+                        - 'CABIN_CLASS_FIRST'
                 - name: nonstop_only
                   in: query
                   description: Whether to restrict to nonstop flights only.
@@ -689,23 +719,33 @@ paths:
             parameters:
                 - name: page_size
                   in: query
-                  description: Maximum items per page (1-100).
+                  description: |-
+                    Maximum items per page (1-100).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                 - name: min_severity
                   in: query
-                  description: Optional filter by anomaly severity.
+                  description: |-
+                    Optional filter by anomaly severity.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'ANOMALY_SEVERITY_NORMAL'
+                        - 'ANOMALY_SEVERITY_MODERATE'
+                        - 'ANOMALY_SEVERITY_EXTREME'
             responses:
                 "200":
                     description: Successful response
@@ -893,14 +933,18 @@ paths:
                     format: int64
                 - name: page_size
                   in: query
-                  description: Maximum items per page (1-100).
+                  description: |-
+                    Maximum items per page (1-100).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -939,28 +983,36 @@ paths:
             parameters:
                 - name: start
                   in: query
-                  description: Start of time range (inclusive), Unix epoch milliseconds.
+                  description: |-
+                    Start of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                     format: int64
                 - name: end
                   in: query
-                  description: End of time range (inclusive), Unix epoch milliseconds.
+                  description: |-
+                    End of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                     format: int64
                 - name: page_size
                   in: query
-                  description: Maximum items per page (1-100).
+                  description: |-
+                    Maximum items per page (1-100).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -1000,9 +1052,249 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code (e.g., "YE", "SD", "SO").
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    enum:
+                        - 'AD'
+                        - 'AE'
+                        - 'AF'
+                        - 'AG'
+                        - 'AI'
+                        - 'AL'
+                        - 'AM'
+                        - 'AO'
+                        - 'AQ'
+                        - 'AR'
+                        - 'AS'
+                        - 'AT'
+                        - 'AU'
+                        - 'AW'
+                        - 'AX'
+                        - 'AZ'
+                        - 'BA'
+                        - 'BB'
+                        - 'BD'
+                        - 'BE'
+                        - 'BF'
+                        - 'BG'
+                        - 'BH'
+                        - 'BI'
+                        - 'BJ'
+                        - 'BL'
+                        - 'BM'
+                        - 'BN'
+                        - 'BO'
+                        - 'BR'
+                        - 'BS'
+                        - 'BT'
+                        - 'BW'
+                        - 'BY'
+                        - 'BZ'
+                        - 'CA'
+                        - 'CD'
+                        - 'CF'
+                        - 'CG'
+                        - 'CH'
+                        - 'CI'
+                        - 'CK'
+                        - 'CL'
+                        - 'CM'
+                        - 'CN'
+                        - 'CO'
+                        - 'CR'
+                        - 'CU'
+                        - 'CV'
+                        - 'CW'
+                        - 'CY'
+                        - 'CZ'
+                        - 'DE'
+                        - 'DJ'
+                        - 'DK'
+                        - 'DM'
+                        - 'DO'
+                        - 'DZ'
+                        - 'EC'
+                        - 'EE'
+                        - 'EG'
+                        - 'EH'
+                        - 'ER'
+                        - 'ES'
+                        - 'ET'
+                        - 'FI'
+                        - 'FJ'
+                        - 'FK'
+                        - 'FM'
+                        - 'FO'
+                        - 'FR'
+                        - 'GA'
+                        - 'GB'
+                        - 'GD'
+                        - 'GE'
+                        - 'GG'
+                        - 'GH'
+                        - 'GI'
+                        - 'GL'
+                        - 'GM'
+                        - 'GN'
+                        - 'GQ'
+                        - 'GR'
+                        - 'GS'
+                        - 'GT'
+                        - 'GU'
+                        - 'GW'
+                        - 'GY'
+                        - 'HK'
+                        - 'HM'
+                        - 'HN'
+                        - 'HR'
+                        - 'HT'
+                        - 'HU'
+                        - 'ID'
+                        - 'IE'
+                        - 'IL'
+                        - 'IM'
+                        - 'IN'
+                        - 'IO'
+                        - 'IQ'
+                        - 'IR'
+                        - 'IS'
+                        - 'IT'
+                        - 'JE'
+                        - 'JM'
+                        - 'JO'
+                        - 'JP'
+                        - 'KE'
+                        - 'KG'
+                        - 'KH'
+                        - 'KI'
+                        - 'KM'
+                        - 'KN'
+                        - 'KP'
+                        - 'KR'
+                        - 'KW'
+                        - 'KY'
+                        - 'KZ'
+                        - 'LA'
+                        - 'LB'
+                        - 'LC'
+                        - 'LI'
+                        - 'LK'
+                        - 'LR'
+                        - 'LS'
+                        - 'LT'
+                        - 'LU'
+                        - 'LV'
+                        - 'LY'
+                        - 'MA'
+                        - 'MC'
+                        - 'MD'
+                        - 'ME'
+                        - 'MF'
+                        - 'MG'
+                        - 'MH'
+                        - 'MK'
+                        - 'ML'
+                        - 'MM'
+                        - 'MN'
+                        - 'MO'
+                        - 'MP'
+                        - 'MR'
+                        - 'MS'
+                        - 'MT'
+                        - 'MU'
+                        - 'MV'
+                        - 'MW'
+                        - 'MX'
+                        - 'MY'
+                        - 'MZ'
+                        - 'NA'
+                        - 'NC'
+                        - 'NE'
+                        - 'NF'
+                        - 'NG'
+                        - 'NI'
+                        - 'NL'
+                        - 'NO'
+                        - 'NP'
+                        - 'NR'
+                        - 'NU'
+                        - 'NZ'
+                        - 'OM'
+                        - 'PA'
+                        - 'PE'
+                        - 'PF'
+                        - 'PG'
+                        - 'PH'
+                        - 'PK'
+                        - 'PL'
+                        - 'PM'
+                        - 'PN'
+                        - 'PR'
+                        - 'PS'
+                        - 'PT'
+                        - 'PW'
+                        - 'PY'
+                        - 'QA'
+                        - 'RO'
+                        - 'RS'
+                        - 'RU'
+                        - 'RW'
+                        - 'SA'
+                        - 'SB'
+                        - 'SC'
+                        - 'SD'
+                        - 'SE'
+                        - 'SG'
+                        - 'SH'
+                        - 'SI'
+                        - 'SK'
+                        - 'SL'
+                        - 'SM'
+                        - 'SN'
+                        - 'SO'
+                        - 'SR'
+                        - 'SS'
+                        - 'ST'
+                        - 'SV'
+                        - 'SX'
+                        - 'SY'
+                        - 'SZ'
+                        - 'TC'
+                        - 'TD'
+                        - 'TF'
+                        - 'TG'
+                        - 'TH'
+                        - 'TJ'
+                        - 'TL'
+                        - 'TM'
+                        - 'TN'
+                        - 'TO'
+                        - 'TR'
+                        - 'TT'
+                        - 'TV'
+                        - 'TW'
+                        - 'TZ'
+                        - 'UA'
+                        - 'UG'
+                        - 'UM'
+                        - 'US'
+                        - 'UY'
+                        - 'UZ'
+                        - 'VA'
+                        - 'VC'
+                        - 'VE'
+                        - 'VG'
+                        - 'VI'
+                        - 'VN'
+                        - 'VU'
+                        - 'WF'
+                        - 'WS'
+                        - 'XK'
+                        - 'YE'
+                        - 'ZA'
+                        - 'ZM'
+                        - 'ZW'
             responses:
                 "200":
                     description: Successful response
@@ -1231,8 +1523,8 @@ paths:
                     type: string
                 - name: limit
                   in: query
-                  description: limit caps the number of risers and fallers returned (default 10).
-                  required: false
+                  description: limit caps the number of risers and fallers returned.
+                  required: true
                   schema:
                     type: integer
                     format: int32
@@ -1343,14 +1635,18 @@ paths:
             parameters:
                 - name: start
                   in: query
-                  description: Start of time range (inclusive), Unix epoch milliseconds.
+                  description: |-
+                    Start of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                     format: int64
                 - name: end
                   in: query
-                  description: End of time range (inclusive), Unix epoch milliseconds.
+                  description: |-
+                    End of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -1374,18 +1670,34 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'CYBER_THREAT_TYPE_C2_SERVER'
+                        - 'CYBER_THREAT_TYPE_MALWARE_HOST'
+                        - 'CYBER_THREAT_TYPE_PHISHING'
+                        - 'CYBER_THREAT_TYPE_MALICIOUS_URL'
                 - name: source
                   in: query
                   description: Optional source filter.
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'CYBER_THREAT_SOURCE_FEODO'
+                        - 'CYBER_THREAT_SOURCE_URLHAUS'
+                        - 'CYBER_THREAT_SOURCE_C2INTEL'
+                        - 'CYBER_THREAT_SOURCE_OTX'
+                        - 'CYBER_THREAT_SOURCE_ABUSEIPDB'
                 - name: min_severity
                   in: query
                   description: Optional minimum criticality filter.
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'CRITICALITY_LEVEL_LOW'
+                        - 'CRITICALITY_LEVEL_MEDIUM'
+                        - 'CRITICALITY_LEVEL_HIGH'
+                        - 'CRITICALITY_LEVEL_CRITICAL'
             responses:
                 "200":
                     description: Successful response
@@ -1518,7 +1830,7 @@ paths:
                 - name: series_id
                   in: query
                   description: FRED series ID (e.g., "GDP", "UNRATE", "CPIAUCSL").
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: limit
@@ -1558,7 +1870,7 @@ paths:
                 - name: indicator_code
                   in: query
                   description: World Bank indicator code (e.g., "NY.GDP.MKTP.CD").
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: country_code
@@ -1576,14 +1888,18 @@ paths:
                     format: int32
                 - name: page_size
                   in: query
-                  description: Maximum items per page.
+                  description: |-
+                    Maximum items per page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -1691,7 +2007,9 @@ paths:
                         type: string
                 - name: years
                   in: query
-                  description: Number of years of historical data. Default 20 if not set.
+                  description: |-
+                    Number of years of historical data. Default 20 if not set.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
@@ -1939,10 +2257,13 @@ paths:
             parameters:
                 - name: series_id
                   in: query
-                  description: BLS series ID (e.g. "CES0500000001", "CIU1010000000000A").
+                  description: 'BLS/FRED-backed series ID. Supported values: "USPRIV", "ECIALLCIV".'
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'USPRIV'
+                        - 'ECIALLCIV'
                 - name: limit
                   in: query
                   description: Maximum number of observations to return. Defaults to 60.
@@ -2345,6 +2666,14 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'conflict'
+                        - 'market'
+                        - 'supply_chain'
+                        - 'political'
+                        - 'military'
+                        - 'cyber'
+                        - 'infrastructure'
                 - name: region
                   in: query
                   description: Optional geographic or thematic region filter for forecasts.
@@ -2649,14 +2978,18 @@ paths:
                     format: int64
                 - name: page_size
                   in: query
-                  description: Maximum items per page.
+                  description: |-
+                    Maximum items per page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -2699,6 +3032,12 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'SERVICE_OPERATIONAL_STATUS_OPERATIONAL'
+                        - 'SERVICE_OPERATIONAL_STATUS_DEGRADED'
+                        - 'SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE'
+                        - 'SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE'
+                        - 'SERVICE_OPERATIONAL_STATUS_MAINTENANCE'
             responses:
                 "200":
                     description: Successful response
@@ -2729,9 +3068,16 @@ paths:
                 - name: type
                   in: query
                   description: 'Activity type: "military_flights", "vessels", "protests", "news", "ais_gaps", "satellite_fires".'
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    enum:
+                        - 'military_flights'
+                        - 'vessels'
+                        - 'protests'
+                        - 'news'
+                        - 'ais_gaps'
+                        - 'satellite_fires'
                 - name: region
                   in: query
                   description: Geographic region key, defaults to "global".
@@ -3094,7 +3440,7 @@ paths:
                 - name: title
                   in: query
                   description: Event title or headline.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: description
@@ -3145,9 +3491,10 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code.
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
             responses:
                 "200":
                     description: Successful response
@@ -3178,9 +3525,10 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code.
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: framework
                   in: query
                   description: Optional analytical framework instructions to append to system prompt. Max 2000 chars enforced at handler level.
@@ -3217,7 +3565,7 @@ paths:
                 - name: query
                   in: query
                   description: Search query string.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: max_records
@@ -3229,7 +3577,9 @@ paths:
                     format: int32
                 - name: timespan
                   in: query
-                  description: Time span filter (e.g., "15min", "1h", "24h").
+                  description: |-
+                    Time span filter (e.g., "15min", "1h", "24h").
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -3238,12 +3588,15 @@ paths:
                   description: |-
                     Tone filter appended to query (e.g., "tone>5" for positive, "tone<-5" for negative).
                      Left empty to skip tone filtering.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                 - name: sort
                   in: query
-                  description: 'Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".'
+                  description: |-
+                    Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -3378,6 +3731,8 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'MODE_HISTORY'
             responses:
                 "200":
                     description: Successful response
@@ -3532,9 +3887,10 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code for the facts lookup.
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
             responses:
                 "200":
                     description: Successful response
@@ -3751,6 +4107,11 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'hormuz_strait'
+                        - 'malacca_strait'
+                        - 'suez'
+                        - 'bab_el_mandeb'
                 - name: disruption_pct
                   in: query
                   description: Percent of chokepoint flow disrupted, from 0 to 100.
@@ -3764,6 +4125,10 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'oil'
+                        - 'gas'
+                        - 'both'
             responses:
                 "200":
                     description: Successful response
@@ -3833,9 +4198,10 @@ paths:
                     Display region id (e.g. "mena", "east-asia", "europe"). See shared/geography.js.
                      Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
                      trailing or consecutive hyphens.
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
             responses:
                 "200":
                     description: Successful response
@@ -3872,9 +4238,10 @@ paths:
                     Display region id (e.g. "mena", "east-asia", "europe"). See shared/geography.js.
                      Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
                      trailing or consecutive hyphens.
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
                 - name: limit
                   in: query
                   description: |-
@@ -3917,9 +4284,10 @@ paths:
                 - name: region_id
                   in: query
                   description: Stable regional brief identifier, such as "middle-east".
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
             responses:
                 "200":
                     description: Successful response
@@ -4088,14 +4456,18 @@ paths:
             parameters:
                 - name: page_size
                   in: query
-                  description: Maximum items per page (1-100).
+                  description: |-
+                    Maximum items per page (1-100).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -4245,7 +4617,9 @@ paths:
             parameters:
                 - name: period
                   in: query
-                  description: Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                  description: |-
+                    Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -4342,9 +4716,55 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code (e.g., "US", "GB", "JP").
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    enum:
+                        - 'US'
+                        - 'GB'
+                        - 'DE'
+                        - 'FR'
+                        - 'JP'
+                        - 'CN'
+                        - 'HK'
+                        - 'IN'
+                        - 'KR'
+                        - 'TW'
+                        - 'AU'
+                        - 'BR'
+                        - 'CA'
+                        - 'MX'
+                        - 'AR'
+                        - 'RU'
+                        - 'ZA'
+                        - 'SA'
+                        - 'AE'
+                        - 'IL'
+                        - 'TR'
+                        - 'PL'
+                        - 'NL'
+                        - 'CH'
+                        - 'ES'
+                        - 'IT'
+                        - 'SE'
+                        - 'NO'
+                        - 'SG'
+                        - 'TH'
+                        - 'MY'
+                        - 'ID'
+                        - 'PH'
+                        - 'NZ'
+                        - 'EG'
+                        - 'CL'
+                        - 'PE'
+                        - 'AT'
+                        - 'BE'
+                        - 'FI'
+                        - 'DK'
+                        - 'IE'
+                        - 'PT'
+                        - 'CZ'
+                        - 'HU'
             responses:
                 "200":
                     description: Successful response
@@ -4401,7 +4821,7 @@ paths:
                 - name: symbol
                   in: query
                   description: Stock ticker symbol to analyze.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: name
@@ -4496,7 +4916,7 @@ paths:
                 - name: symbol
                   in: query
                   description: Stock ticker symbol to backtest.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: name
@@ -4781,7 +5201,7 @@ paths:
                 - name: symbol
                   in: query
                   description: Stock ticker symbol for insider transaction lookup.
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -4898,7 +5318,9 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -4932,16 +5354,48 @@ paths:
                     format: double
                 - name: operator
                   in: query
-                  description: Optional operator filter.
+                  description: |-
+                    Optional operator filter.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'MILITARY_OPERATOR_USAF'
+                        - 'MILITARY_OPERATOR_USN'
+                        - 'MILITARY_OPERATOR_USMC'
+                        - 'MILITARY_OPERATOR_USA'
+                        - 'MILITARY_OPERATOR_RAF'
+                        - 'MILITARY_OPERATOR_RN'
+                        - 'MILITARY_OPERATOR_FAF'
+                        - 'MILITARY_OPERATOR_GAF'
+                        - 'MILITARY_OPERATOR_PLAAF'
+                        - 'MILITARY_OPERATOR_PLAN'
+                        - 'MILITARY_OPERATOR_VKS'
+                        - 'MILITARY_OPERATOR_IAF'
+                        - 'MILITARY_OPERATOR_NATO'
+                        - 'MILITARY_OPERATOR_OTHER'
                 - name: aircraft_type
                   in: query
-                  description: Optional aircraft type filter.
+                  description: |-
+                    Optional aircraft type filter.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'MILITARY_AIRCRAFT_TYPE_FIGHTER'
+                        - 'MILITARY_AIRCRAFT_TYPE_BOMBER'
+                        - 'MILITARY_AIRCRAFT_TYPE_TRANSPORT'
+                        - 'MILITARY_AIRCRAFT_TYPE_TANKER'
+                        - 'MILITARY_AIRCRAFT_TYPE_AWACS'
+                        - 'MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE'
+                        - 'MILITARY_AIRCRAFT_TYPE_HELICOPTER'
+                        - 'MILITARY_AIRCRAFT_TYPE_DRONE'
+                        - 'MILITARY_AIRCRAFT_TYPE_PATROL'
+                        - 'MILITARY_AIRCRAFT_TYPE_SPECIAL_OPS'
+                        - 'MILITARY_AIRCRAFT_TYPE_VIP'
+                        - 'MILITARY_AIRCRAFT_TYPE_UNKNOWN'
             responses:
                 "200":
                     description: Successful response
@@ -4971,7 +5425,9 @@ paths:
             parameters:
                 - name: theater
                   in: query
-                  description: Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
+                  description: |-
+                    Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -5005,7 +5461,7 @@ paths:
                 - name: icao24
                   in: query
                   description: ICAO 24-bit hex address (lowercase).
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -5167,12 +5623,40 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'us-nato'
+                        - 'china'
+                        - 'russia'
+                        - 'uk'
+                        - 'france'
+                        - 'india'
+                        - 'italy'
+                        - 'uae'
+                        - 'turkey'
+                        - 'japan'
+                        - 'other'
                 - name: kind
                   in: query
                   description: Optional military base kind filter.
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'base'
+                        - 'airfield'
+                        - 'naval_base'
+                        - 'military'
+                        - 'barracks'
+                        - 'bunker'
+                        - 'trench'
+                        - 'training_area'
+                        - 'checkpoint'
+                        - 'shelter'
+                        - 'ammunition'
+                        - 'office'
+                        - 'obstacle_course'
+                        - 'nuclear_explosion_site'
+                        - 'range'
                 - name: country
                   in: query
                   description: Optional country filter for military bases.
@@ -5209,7 +5693,7 @@ paths:
                 - name: icao24
                   in: query
                   description: ICAO 24-bit hex address (lowercase, 6 characters).
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -5356,6 +5840,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^summary:v\d+:[a-z0-9:_-]{3,120}$'
             responses:
                 "200":
                     description: Successful response
@@ -5457,7 +5942,9 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -5467,6 +5954,19 @@ paths:
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'ai'
+                        - 'tech'
+                        - 'crypto'
+                        - 'science'
+                        - 'economy'
+                        - 'fed'
+                        - 'inflation'
+                        - 'interest-rates'
+                        - 'recession'
+                        - 'trade'
+                        - 'tariffs'
+                        - 'debt-ceiling'
                 - name: query
                   in: query
                   description: Optional search query for market titles.
@@ -5543,7 +6043,9 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -5555,7 +6057,9 @@ paths:
                     type: string
                 - name: query
                   in: query
-                  description: Search query for paper titles and abstracts.
+                  description: |-
+                    Search query for paper titles and abstracts.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -5653,10 +6157,17 @@ paths:
                     type: string
                 - name: feed_type
                   in: query
-                  description: 'Feed type: "top", "new", "best", "ask", "show". Defaults to "top".'
+                  description: 'Feed type: "top", "new", "best", "ask", "show", "job". Defaults to "top".'
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'top'
+                        - 'new'
+                        - 'best'
+                        - 'ask'
+                        - 'show'
+                        - 'job'
             responses:
                 "200":
                     description: Successful response
@@ -5686,10 +6197,16 @@ paths:
             parameters:
                 - name: type
                   in: query
-                  description: 'Event type filter: "all", "conferences", "earnings", "ipo", "other". Empty = all.'
+                  description: 'Event type filter: "all", "conference", "earnings", "ipo", "other". Empty = all.'
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'all'
+                        - 'conference'
+                        - 'earnings'
+                        - 'ipo'
+                        - 'other'
                 - name: mappable
                   in: query
                   description: Only events with non-virtual coordinates.
@@ -5936,9 +6453,10 @@ paths:
                   description: |-
                     Job id of the form `scenario:{epoch_ms}:{8-char-suffix}`. Path-traversal
                      guarded by JOB_ID_RE in the handler.
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^scenario:[0-9]{13}:[a-z0-9]{8}$'
             responses:
                 "200":
                     description: Successful response
@@ -5996,14 +6514,18 @@ paths:
             parameters:
                 - name: start
                   in: query
-                  description: Start of time range (inclusive), Unix epoch milliseconds.
+                  description: |-
+                    Start of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                     format: int64
                 - name: end
                   in: query
-                  description: End of time range (inclusive), Unix epoch milliseconds.
+                  description: |-
+                    End of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -6017,13 +6539,17 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                 - name: min_magnitude
                   in: query
-                  description: Minimum magnitude filter (e.g., 4.0 for significant quakes).
+                  description: |-
+                    Minimum magnitude filter (e.g., 4.0 for significant quakes).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: number
@@ -6061,15 +6587,17 @@ paths:
                 - name: fromIso2
                   in: query
                   description: Origin country, ISO-3166-1 alpha-2 uppercase.
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: toIso2
                   in: query
                   description: Destination country, ISO-3166-1 alpha-2 uppercase.
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: cargoType
                   in: query
                   description: |-
@@ -6233,7 +6761,7 @@ paths:
                 - name: chokepointId
                   in: query
                   description: Chokepoint identifier whose transit history should be returned.
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -6317,9 +6845,10 @@ paths:
                 - name: iso2
                   in: query
                   description: ISO 3166-1 alpha-2 country code (uppercase).
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter (2-digit string). Defaults to "27" (energy/mineral fuels) when absent.
@@ -6356,7 +6885,7 @@ paths:
                 - name: chokepointId
                   in: query
                   description: Chokepoint identifier to evaluate for bypass options.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: cargoType
@@ -6402,13 +6931,14 @@ paths:
                 - name: iso2
                   in: query
                   description: ISO 3166-1 alpha-2 country code for the importing country.
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: chokepointId
                   in: query
                   description: Chokepoint identifier to model as disrupted.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: hs2
@@ -6447,9 +6977,10 @@ paths:
                 - name: iso2
                   in: query
                   description: ISO 3166-1 alpha-2 country code whose strategic products should be returned.
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
             responses:
                 "200":
                     description: Successful response
@@ -6482,13 +7013,14 @@ paths:
                 - name: iso2
                   in: query
                   description: ISO 3166-1 alpha-2 country code for the importing country.
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: chokepointId
                   in: query
                   description: Chokepoint identifier to model as disrupted.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: closureDays
@@ -6528,13 +7060,14 @@ paths:
                 - name: iso2
                   in: query
                   description: ISO 3166-1 alpha-2 country code whose sector dependency should be analyzed.
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter code, e.g. "27" (mineral fuels), "85" (electronics)
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -6572,25 +7105,27 @@ paths:
                 - name: fromIso2
                   in: query
                   description: ISO 3166-1 alpha-2 origin country code for the trade lane.
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: toIso2
                   in: query
                   description: ISO 3166-1 alpha-2 destination country code for the trade lane.
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter code, e.g. "27", "85"
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: cargoType
                   in: query
                   description: 'One of: container, tanker, bulk, roro'
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -6622,19 +7157,21 @@ paths:
                 - name: fromIso2
                   in: query
                   description: ISO 3166-1 alpha-2 origin country code for the route.
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: toIso2
                   in: query
                   description: ISO 3166-1 alpha-2 destination country code for the route.
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter code for the product sector on the route.
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -6706,7 +7243,7 @@ paths:
                 - name: pipelineId
                   in: query
                   description: Pipeline identifier to load with full evidence details.
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -6782,7 +7319,7 @@ paths:
                 - name: facilityId
                   in: query
                   description: Storage facility identifier to load with full evidence details.
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -6867,7 +7404,7 @@ paths:
                 - name: shortageId
                   in: query
                   description: Fuel-shortage identifier to load with full evidence details.
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -6983,7 +7520,9 @@ paths:
             parameters:
                 - name: countries
                   in: query
-                  description: WTO member codes to filter by. Empty = all.
+                  description: |-
+                    WTO member codes to filter by. Empty = all.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   style: form
                   explode: true
@@ -7125,7 +7664,9 @@ paths:
             parameters:
                 - name: countries
                   in: query
-                  description: WTO member codes to filter by. Empty = all.
+                  description: |-
+                    WTO member codes to filter by. Empty = all.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   style: form
                   explode: true
@@ -7135,7 +7676,9 @@ paths:
                         type: string
                 - name: measure_type
                   in: query
-                  description: 'Filter by measure type: "SPS", "TBT", or empty for both.'
+                  description: |-
+                    Filter by measure type: "SPS", "TBT", or empty for both.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -7211,6 +7754,7 @@ paths:
                   required: false
                   schema:
                     type: string
+                    pattern: '^\d{4,6}$'
                 - name: anomalies_only
                   in: query
                   description: If true, only return flows with a year-over-year change exceeding 30%.
@@ -7260,14 +7804,18 @@ paths:
                     format: int64
                 - name: page_size
                   in: query
-                  description: Maximum items per page (1-100).
+                  description: |-
+                    Maximum items per page (1-100).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
@@ -7279,34 +7827,48 @@ paths:
                     type: string
                 - name: min_severity
                   in: query
-                  description: Optional minimum severity filter.
+                  description: |-
+                    Optional minimum severity filter.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
+                    enum:
+                        - 'SEVERITY_LEVEL_LOW'
+                        - 'SEVERITY_LEVEL_MEDIUM'
+                        - 'SEVERITY_LEVEL_HIGH'
                 - name: ne_lat
                   in: query
-                  description: North-east corner latitude of bounding box.
+                  description: |-
+                    North-east corner latitude of bounding box.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: number
                     format: double
                 - name: ne_lon
                   in: query
-                  description: North-east corner longitude of bounding box.
+                  description: |-
+                    North-east corner longitude of bounding box.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: number
                     format: double
                 - name: sw_lat
                   in: query
-                  description: South-west corner latitude of bounding box.
+                  description: |-
+                    South-west corner latitude of bounding box.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: number
                     format: double
                 - name: sw_lon
                   in: query
-                  description: South-west corner longitude of bounding box.
+                  description: |-
+                    South-west corner longitude of bounding box.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: number
@@ -7433,55 +7995,71 @@ paths:
             parameters:
                 - name: start
                   in: query
-                  description: Start of time range (inclusive), Unix epoch milliseconds.
+                  description: |-
+                    Start of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                     format: int64
                 - name: end
                   in: query
-                  description: End of time range (inclusive), Unix epoch milliseconds.
+                  description: |-
+                    End of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                     format: int64
                 - name: page_size
                   in: query
-                  description: Maximum items per page (1-100).
+                  description: |-
+                    Maximum items per page (1-100).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: string
                 - name: ne_lat
                   in: query
-                  description: North-east latitude of bounding box.
+                  description: |-
+                    North-east latitude of bounding box.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: number
                     format: double
                 - name: ne_lon
                   in: query
-                  description: North-east longitude of bounding box.
+                  description: |-
+                    North-east longitude of bounding box.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: number
                     format: double
                 - name: sw_lat
                   in: query
-                  description: South-west latitude of bounding box.
+                  description: |-
+                    South-west latitude of bounding box.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: number
                     format: double
                 - name: sw_lon
                   in: query
-                  description: South-west longitude of bounding box.
+                  description: |-
+                    South-west longitude of bounding box.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   schema:
                     type: number
@@ -7555,10 +8133,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page (1-100).
+                    description: |-
+                        Maximum items per page (1-100).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 region:
                     type: string
                     enum:
@@ -8583,10 +9165,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page (1-100).
+                    description: |-
+                        Maximum items per page (1-100).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 minSeverity:
                     type: string
                     enum:
@@ -8918,10 +9504,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page (1-100).
+                    description: |-
+                        Maximum items per page (1-100).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 country:
                     type: string
                     description: Optional country filter (ISO 3166-1 alpha-2).
@@ -8979,18 +9569,26 @@ components:
                 start:
                     type: integer
                     format: int64
-                    description: 'Start of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        Start of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 end:
                     type: integer
                     format: int64
-                    description: 'End of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        End of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page (1-100).
+                    description: |-
+                        Maximum items per page (1-100).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 country:
                     type: string
                     description: Optional country filter (ISO 3166-1 alpha-2).
@@ -9377,10 +9975,12 @@ components:
                 limit:
                     type: integer
                     format: int32
-                    description: limit caps the number of risers and fallers returned (default 10).
+                    description: limit caps the number of risers and fallers returned.
                 categorySlug:
                     type: string
                     description: category_slug filters to a single category when set.
+            required:
+                - limit
             description: ListConsumerPriceMoversRequest parameters for the movers RPC.
         worldmonitor_consumer_prices_v1_ListConsumerPriceMoversResponse:
             type: object
@@ -9569,11 +10169,15 @@ components:
                 start:
                     type: integer
                     format: int64
-                    description: 'Start of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        Start of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 end:
                     type: integer
                     format: int64
-                    description: 'End of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        End of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 pageSize:
                     type: integer
                     format: int32
@@ -10002,10 +10606,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page.
+                    description: |-
+                        Maximum items per page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             required:
                 - indicatorCode
             description: ListWorldBankIndicatorsRequest specifies filters for retrieving World Bank data.
@@ -10288,7 +10896,9 @@ components:
                 years:
                     type: integer
                     format: int32
-                    description: Number of years of historical data. Default 20 if not set.
+                    description: |-
+                        Number of years of historical data. Default 20 if not set.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
         worldmonitor_economic_v1_GetEnergyCapacityResponse:
             type: object
             properties:
@@ -10705,7 +11315,7 @@ components:
             properties:
                 seriesId:
                     type: string
-                    description: BLS series ID (e.g. "CES0500000001", "CIU1010000000000A").
+                    description: 'BLS/FRED-backed series ID. Supported values: "USPRIV", "ECIALLCIV".'
                 limit:
                     type: integer
                     format: int32
@@ -12223,10 +12833,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page.
+                    description: |-
+                        Maximum items per page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 country:
                     type: string
                     description: Optional country filter (ISO 3166-1 alpha-2).
@@ -13246,15 +13860,20 @@ components:
                     description: Maximum number of articles to return (1-250).
                 timespan:
                     type: string
-                    description: Time span filter (e.g., "15min", "1h", "24h").
+                    description: |-
+                        Time span filter (e.g., "15min", "1h", "24h").
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 toneFilter:
                     type: string
                     description: |-
                         Tone filter appended to query (e.g., "tone>5" for positive, "tone<-5" for negative).
                          Left empty to skip tone filtering.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 sort:
                     type: string
-                    description: 'Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".'
+                    description: |-
+                        Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             required:
                 - query
             description: SearchGdeltDocumentsRequest specifies filters for searching GDELT news articles.
@@ -15056,6 +15675,12 @@ components:
                 turnstileToken:
                     type: string
                     description: Cloudflare Turnstile token proving the submitter is human.
+            required:
+                - email
+                - name
+                - organization
+                - phone
+                - turnstileToken
             description: SubmitContactRequest carries an enterprise contact form submission.
         worldmonitor_leads_v1_SubmitContactResponse:
             type: object
@@ -15084,6 +15709,9 @@ components:
                 turnstileToken:
                     type: string
                     description: Cloudflare Turnstile token. Desktop sources bypass Turnstile; see handler.
+            required:
+                - email
+                - turnstileToken
             description: RegisterInterestRequest carries a Pro-waitlist signup.
         worldmonitor_leads_v1_RegisterInterestResponse:
             type: object
@@ -15325,10 +15953,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page (1-100).
+                    description: |-
+                        Maximum items per page (1-100).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 area:
                     type: string
                     description: Optional area filter (e.g., "NAVAREA IV", "Persian Gulf").
@@ -15528,7 +16160,9 @@ components:
             properties:
                 period:
                     type: string
-                    description: Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                    description: |-
+                        Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: GetSectorSummaryRequest specifies parameters for retrieving sector performance.
         worldmonitor_market_v1_GetSectorSummaryResponse:
             type: object
@@ -16894,7 +17528,9 @@ components:
                     description: Maximum items per page (1-100).
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 neLat:
                     type: number
                     format: double
@@ -17161,7 +17797,9 @@ components:
             properties:
                 theater:
                     type: string
-                    description: Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
+                    description: |-
+                        Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: GetTheaterPostureRequest specifies the theater to assess.
         worldmonitor_military_v1_GetTheaterPostureResponse:
             type: object
@@ -18178,7 +18816,9 @@ components:
                     description: Maximum items per page (1-100).
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 category:
                     type: string
                     description: Optional category filter (e.g., "Politics").
@@ -18397,13 +19037,17 @@ components:
                     description: Maximum items per page (1-100).
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 category:
                     type: string
                     description: arXiv category filter (e.g., "cs.AI"). Empty returns all tracked categories.
                 query:
                     type: string
-                    description: Search query for paper titles and abstracts.
+                    description: |-
+                        Search query for paper titles and abstracts.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: ListArxivPapersRequest specifies filters for retrieving arXiv papers.
         worldmonitor_research_v1_ListArxivPapersResponse:
             type: object
@@ -18521,7 +19165,7 @@ components:
                     description: Cursor for next page.
                 feedType:
                     type: string
-                    description: 'Feed type: "top", "new", "best", "ask", "show". Defaults to "top".'
+                    description: 'Feed type: "top", "new", "best", "ask", "show", "job". Defaults to "top".'
             description: ListHackernewsItemsRequest specifies filters for retrieving Hacker News items.
         worldmonitor_research_v1_ListHackernewsItemsResponse:
             type: object
@@ -18571,7 +19215,7 @@ components:
             properties:
                 type:
                     type: string
-                    description: 'Event type filter: "all", "conferences", "earnings", "ipo", "other". Empty = all.'
+                    description: 'Event type filter: "all", "conference", "earnings", "ipo", "other". Empty = all.'
                 mappable:
                     type: boolean
                     description: Only events with non-virtual coordinates.
@@ -18676,6 +19320,8 @@ components:
                 countryCode:
                     type: string
                     description: ISO 3166-1 alpha-2 country code to score.
+            required:
+                - countryCode
         worldmonitor_resilience_v1_GetResilienceScoreResponse:
             type: object
             properties:
@@ -19335,22 +19981,30 @@ components:
                 start:
                     type: integer
                     format: int64
-                    description: 'Start of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        Start of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 end:
                     type: integer
                     format: int64
-                    description: 'End of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        End of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 pageSize:
                     type: integer
                     format: int32
                     description: Maximum items per page (1-100).
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 minMagnitude:
                     type: number
                     format: double
-                    description: Minimum magnitude filter (e.g., 4.0 for significant quakes).
+                    description: |-
+                        Minimum magnitude filter (e.g., 4.0 for significant quakes).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: ListEarthquakesRequest specifies filters for retrieving earthquake data from USGS.
         worldmonitor_seismology_v1_ListEarthquakesResponse:
             type: object
@@ -21329,7 +21983,9 @@ components:
                     type: array
                     items:
                         type: string
-                        description: WTO member codes to filter by. Empty = all.
+                        description: |-
+                            WTO member codes to filter by. Empty = all.
+                             Accepted but currently ignored; no-op until this handler supports the parameter.
                 limit:
                     type: integer
                     format: int32
@@ -21529,10 +22185,14 @@ components:
                     type: array
                     items:
                         type: string
-                        description: WTO member codes to filter by. Empty = all.
+                        description: |-
+                            WTO member codes to filter by. Empty = all.
+                             Accepted but currently ignored; no-op until this handler supports the parameter.
                 measureType:
                     type: string
-                    description: 'Filter by measure type: "SPS", "TBT", or empty for both.'
+                    description: |-
+                        Filter by measure type: "SPS", "TBT", or empty for both.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 limit:
                     type: integer
                     format: int32
@@ -21699,10 +22359,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page (1-100).
+                    description: |-
+                        Maximum items per page (1-100).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 country:
                     type: string
                     description: Optional country filter (ISO 3166-1 alpha-2).
@@ -21719,19 +22383,27 @@ components:
                 neLat:
                     type: number
                     format: double
-                    description: North-east corner latitude of bounding box.
+                    description: |-
+                        North-east corner latitude of bounding box.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 neLon:
                     type: number
                     format: double
-                    description: North-east corner longitude of bounding box.
+                    description: |-
+                        North-east corner longitude of bounding box.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 swLat:
                     type: number
                     format: double
-                    description: South-west corner latitude of bounding box.
+                    description: |-
+                        South-west corner latitude of bounding box.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 swLon:
                     type: number
                     format: double
-                    description: South-west corner longitude of bounding box.
+                    description: |-
+                        South-west corner longitude of bounding box.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: ListUnrestEventsRequest specifies filters for retrieving social unrest events.
         worldmonitor_unrest_v1_ListUnrestEventsResponse:
             type: object
@@ -21986,34 +22658,50 @@ components:
                 start:
                     type: integer
                     format: int64
-                    description: 'Start of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        Start of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 end:
                     type: integer
                     format: int64
-                    description: 'End of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        End of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page (1-100).
+                    description: |-
+                        Maximum items per page (1-100).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 neLat:
                     type: number
                     format: double
-                    description: North-east latitude of bounding box.
+                    description: |-
+                        North-east latitude of bounding box.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 neLon:
                     type: number
                     format: double
-                    description: North-east longitude of bounding box.
+                    description: |-
+                        North-east longitude of bounding box.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 swLat:
                     type: number
                     format: double
-                    description: South-west latitude of bounding box.
+                    description: |-
+                        South-west latitude of bounding box.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 swLon:
                     type: number
                     format: double
-                    description: South-west longitude of bounding box.
+                    description: |-
+                        South-west longitude of bounding box.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: ListFireDetectionsRequest specifies filters for retrieving fire detections from NASA FIRMS.
         worldmonitor_wildfire_v1_ListFireDetectionsResponse:
             type: object

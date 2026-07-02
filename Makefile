@@ -112,10 +112,12 @@ generate: clean ## Generate code from proto definitions
 		done && \
 		BUF_BIN=$$(command -v buf) && \
 		PATH="$$PLUGIN_DIR:$$PATH" "$$BUF_BIN" generate
-	@# protoc-gen-openapiv3 has no auth option, so it emits no securitySchemes /
-	@# security / 401. Inject the API-key contract into the generated specs so
-	@# the published OpenAPI matches the gateway's runtime enforcement (#4599).
+	@# protoc-gen-openapiv3 still misses WorldMonitor-specific contract details:
+	@# auth/security (#4599 root cause #1) and query parameter requiredness
+	@# (#4599 root cause #3 / #4604). Apply byte-/format-preserving injectors.
 	@node scripts/openapi-inject-security.mjs
+	@node scripts/apply-openapi-filter-param-schemas.mjs
+	@node scripts/openapi-inject-required.mjs
 	@echo "Code generation complete!"
 
 breaking: ## Check for breaking changes against main

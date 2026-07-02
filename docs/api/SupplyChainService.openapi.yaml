@@ -67,7 +67,7 @@ paths:
                 - name: chokepointId
                   in: query
                   description: Chokepoint identifier whose transit history should be returned.
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -151,9 +151,10 @@ paths:
                 - name: iso2
                   in: query
                   description: ISO 3166-1 alpha-2 country code (uppercase).
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter (2-digit string). Defaults to "27" (energy/mineral fuels) when absent.
@@ -190,7 +191,7 @@ paths:
                 - name: chokepointId
                   in: query
                   description: Chokepoint identifier to evaluate for bypass options.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: cargoType
@@ -236,13 +237,14 @@ paths:
                 - name: iso2
                   in: query
                   description: ISO 3166-1 alpha-2 country code for the importing country.
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: chokepointId
                   in: query
                   description: Chokepoint identifier to model as disrupted.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: hs2
@@ -281,9 +283,10 @@ paths:
                 - name: iso2
                   in: query
                   description: ISO 3166-1 alpha-2 country code whose strategic products should be returned.
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
             responses:
                 "200":
                     description: Successful response
@@ -316,13 +319,14 @@ paths:
                 - name: iso2
                   in: query
                   description: ISO 3166-1 alpha-2 country code for the importing country.
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: chokepointId
                   in: query
                   description: Chokepoint identifier to model as disrupted.
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: closureDays
@@ -362,13 +366,14 @@ paths:
                 - name: iso2
                   in: query
                   description: ISO 3166-1 alpha-2 country code whose sector dependency should be analyzed.
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter code, e.g. "27" (mineral fuels), "85" (electronics)
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -406,25 +411,27 @@ paths:
                 - name: fromIso2
                   in: query
                   description: ISO 3166-1 alpha-2 origin country code for the trade lane.
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: toIso2
                   in: query
                   description: ISO 3166-1 alpha-2 destination country code for the trade lane.
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter code, e.g. "27", "85"
-                  required: false
+                  required: true
                   schema:
                     type: string
                 - name: cargoType
                   in: query
                   description: 'One of: container, tanker, bulk, roro'
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -456,19 +463,21 @@ paths:
                 - name: fromIso2
                   in: query
                   description: ISO 3166-1 alpha-2 origin country code for the route.
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: toIso2
                   in: query
                   description: ISO 3166-1 alpha-2 destination country code for the route.
-                  required: false
+                  required: true
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter code for the product sector on the route.
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -540,7 +549,7 @@ paths:
                 - name: pipelineId
                   in: query
                   description: Pipeline identifier to load with full evidence details.
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -616,7 +625,7 @@ paths:
                 - name: facilityId
                   in: query
                   description: Storage facility identifier to load with full evidence details.
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
@@ -701,7 +710,7 @@ paths:
                 - name: shortageId
                   in: query
                   description: Fuel-shortage identifier to load with full evidence details.
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:
