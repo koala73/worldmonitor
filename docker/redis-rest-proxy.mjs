@@ -39,8 +39,15 @@ function checkAuth(req) {
 }
 
 // Command safety: allowlist of expected Redis commands.
-// Blocks dangerous operations like FLUSHALL, CONFIG SET, EVAL, DEBUG, SLAVEOF.
+// Blocks dangerous operations like FLUSHALL, CONFIG SET, DEBUG, SLAVEOF.
+// EVALSHA/EVAL/SCRIPT are allowed in this self-hosted proxy: @upstash/ratelimit
+// implements its sliding window as a Lua script (EVALSHA, with SCRIPT LOAD and
+// EVAL on script-cache miss), and without them every rate-limit check logs
+// "Command not allowed: EVALSHA" and fail-closed endpoints (chat-analyst) 503.
+// Exposure is bounded: the proxy binds loopback/compose-network only, requires
+// the bearer token, and its only caller is the app itself.
 const ALLOWED_COMMANDS = new Set([
+  'EVAL', 'EVALSHA', 'SCRIPT',
   'GET', 'SET', 'DEL', 'MGET', 'MSET', 'SCAN',
   'TTL', 'EXPIRE', 'PEXPIRE', 'EXISTS', 'TYPE',
   'HGET', 'HSET', 'HDEL', 'HGETALL', 'HMGET', 'HMSET', 'HKEYS', 'HVALS', 'HEXISTS', 'HLEN',

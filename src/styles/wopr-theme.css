@@ -1,0 +1,101 @@
+/*
+ * AALICE "WOPR" skin for World Monitor.
+ *
+ * Fork-side, AGPL, self-host only (AMD-003 boundary: no aalice code crosses in;
+ * this is a WorldMonitor stylesheet living in the WorldMonitor repo). It matches
+ * the aalice wings' UI v2 look — WarGames terminal phosphor × Ghost-in-the-Shell
+ * HUD × cyberpunk glass, monochrome with an amber accent.
+ *
+ * Scope is deliberately narrow: this overrides ONLY the base palette and
+ * typography tokens (main.css first :root). It does NOT touch:
+ *   - the semantic / threat / DEFCON / status colors (main.css second :root),
+ *     which encode monitoring state per section and must stay legible;
+ *   - any layout, spacing, panel structure, or the map's section arrangement.
+ *
+ * It is unlayered on purpose. base-layer.css wraps main.css in @layer base;
+ * unlayered rules win the cascade regardless of specificity, so these token
+ * overrides take effect without !important and without editing main.css.
+ */
+
+/* Scoped to not-light so the light-theme toggle still functions: unlayered
+   rules beat @layer base regardless of specificity, so an unscoped :root here
+   would also override main.css's [data-theme="light"] block. */
+:root:not([data-theme='light']) {
+  /* Backgrounds — near-black with a faint green-phosphor bias */
+  --bg: #050706;
+  --bg-secondary: #090c0a;
+  --surface: #0e1210;
+  --surface-hover: #141a17;
+  --surface-active: #16201b;
+
+  /* Borders — phosphor at low alpha, like etched glass */
+  --border: rgba(197, 209, 200, 0.14);
+  --border-strong: rgba(197, 209, 200, 0.40);
+  --border-subtle: rgba(197, 209, 200, 0.07);
+
+  /* Text — CRT phosphor green, not white */
+  --text: #c5d1c8;
+  --text-secondary: #aab6ad;
+  --text-dim: #7d8a81;
+  --text-muted: #5f6b64;
+  --text-faint: #4b564e;
+  --text-ghost: #3a433d;
+  --accent: #ffb454; /* amber — the single warm accent */
+
+  /* Overlays & shadows — tint toward phosphor so glass reads green, not grey */
+  --overlay-subtle: rgba(197, 209, 200, 0.03);
+  --overlay-light: rgba(197, 209, 200, 0.05);
+  --overlay-medium: rgba(197, 209, 200, 0.10);
+  --overlay-heavy: rgba(197, 209, 200, 0.20);
+  --shadow-color: rgba(0, 0, 0, 0.6);
+
+  /* Scrollbar */
+  --scrollbar-thumb: #27302b;
+  --scrollbar-thumb-hover: #3c4841;
+
+  /* Input & panels */
+  --input-bg: #0c100e;
+  --panel-bg: #0b0f0d;
+  --panel-border: rgba(197, 209, 200, 0.14);
+
+  /* Map — deepen the base, keep the green graticule (fits the phosphor look) */
+  --map-bg: #030605;
+  --map-grid: #0c2a21;
+  --map-country: #08150f;
+  --map-stroke: #12564494;
+
+  /* Typography — Fira Code first, matching the aalice wings */
+  --font-mono: 'Fira Code', 'JetBrains Mono', 'SF Mono', 'Cascadia Code',
+    'DejaVu Sans Mono', ui-monospace, monospace;
+}
+
+/* Amber selection, terminal-style */
+::selection {
+  background: rgba(255, 180, 84, 0.28);
+  color: #eef4ef;
+}
+
+/*
+ * Faint CRT scanlines + vignette. Non-interactive (pointer-events:none) and
+ * kept far more subtle than the aalice wings' overlay so the dense map and
+ * panels stay fully readable — this is atmosphere, not a filter over data.
+ */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.05) 0 1px,
+      transparent 1px 3px
+    ),
+    radial-gradient(140% 110% at 50% 40%, transparent 68%, rgba(0, 0, 0, 0.35));
+  mix-blend-mode: multiply;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before { background: none; }
+}

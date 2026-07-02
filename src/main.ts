@@ -1,5 +1,9 @@
 import './styles/base-layer.css';
 import './styles/happy-theme.css';
+// AALICE WOPR skin — unlayered, imported last so its palette/type token
+// overrides win the cascade over @layer base (main.css). Palette only; no
+// layout changes. See src/styles/wopr-theme.css (AMD-003, fork-side).
+import './styles/wopr-theme.css';
 import * as Sentry from '@sentry/browser';
 import { inject } from '@vercel/analytics';
 import { App } from './App';

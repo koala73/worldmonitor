@@ -296,6 +296,14 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
 ];
 
 function readEnvSecret(key: RuntimeSecretKey): string {
+  // Self-hosted docker deployments have no build-time env and no desktop
+  // keyring: docker/entrypoint.sh materializes selected container env vars
+  // into /wm-runtime-env.js (a classic script loaded before the module
+  // bundle), exposed here as a window global. Build-time import.meta.env
+  // remains the fallback for Vite-built variants.
+  const runtimeEnv = (globalThis as { __WM_RUNTIME_ENV__?: Record<string, unknown> }).__WM_RUNTIME_ENV__;
+  const injected = runtimeEnv?.[key];
+  if (typeof injected === 'string' && injected.trim()) return injected.trim();
   const envValue = (import.meta as { env?: Record<string, unknown> }).env?.[key];
   return typeof envValue === 'string' ? envValue.trim() : '';
 }
@@ -374,6 +382,11 @@ function seedSecretsFromEnvironment(): void {
   if (isDesktopRuntime()) return;
 
   const keys = new Set<RuntimeSecretKey>(RUNTIME_FEATURES.flatMap(feature => feature.requiredSecrets));
+  // Not a feature secret, but the premium unlock: panel gating and
+  // X-WorldMonitor-Key injection (runtime.ts, premium-fetch.ts) read it
+  // from this store. Desktop gets it from the keyring; self-host web gets
+  // it from the injected runtime env.
+  keys.add('WORLDMONITOR_API_KEY');
   for (const key of keys) {
     const value = readEnvSecret(key);
     if (value) {

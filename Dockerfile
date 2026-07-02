@@ -77,10 +77,12 @@ COPY docker/supervisord.conf /etc/supervisor/conf.d/worldmonitor.conf
 COPY docker/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
-# Ensure writable dirs for non-root
+# Ensure writable dirs for non-root. The web root is included so the
+# entrypoint can materialize /wm-runtime-env.js (self-host premium unlock)
+# at container start.
 RUN chown -R appuser:appgroup /app /tmp/nginx-client-body /tmp/nginx-proxy \
     /tmp/nginx-fastcgi /tmp/nginx-uwsgi /tmp/nginx-scgi /var/log/supervisor \
-    /var/lib/nginx /var/log/nginx
+    /var/lib/nginx /var/log/nginx /usr/share/nginx/html
 
 USER appuser
 

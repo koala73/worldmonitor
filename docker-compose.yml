@@ -20,6 +20,8 @@ services:
     container_name: worldmonitor
     ports:
       - "${WM_PORT:-3000}:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       UPSTASH_REDIS_REST_URL: "http://redis-rest:80"
       UPSTASH_REDIS_REST_TOKEN: "${REDIS_TOKEN:?REDIS_TOKEN required — generate with: openssl rand -hex 32}"
@@ -31,6 +33,11 @@ services:
       LLM_API_URL: "${LLM_API_URL:-}"
       LLM_API_KEY: "${LLM_API_KEY:-}"
       LLM_MODEL: "${LLM_MODEL:-}"
+      # Ollama on the Docker host — provider chain tries ollama first; llm.ts
+      # appends /v1/chat/completions to this base URL (AMD-003: local LLM).
+      OLLAMA_API_URL: "${OLLAMA_API_URL:-}"
+      OLLAMA_MODEL: "${OLLAMA_MODEL:-}"
+      OLLAMA_API_KEY: "${OLLAMA_API_KEY:-}"
       GROQ_API_KEY: "${GROQ_API_KEY:-}"
       # Data source API keys (optional — features degrade gracefully)
       AISSTREAM_API_KEY: "${AISSTREAM_API_KEY:-}"
@@ -44,6 +51,12 @@ services:
       # Warm-ping / seed-refresh auth — gateway validates against these (gateway.ts).
       WORLDMONITOR_RELAY_KEY: "${WORLDMONITOR_RELAY_KEY:-}"
       WORLDMONITOR_SEED_REFRESH_KEY: "${WORLDMONITOR_SEED_REFRESH_KEY:-}"
+      # Self-host premium unlock: VALID_KEYS is the server-side allowlist
+      # (enterprise kind — bypasses entitlements); API_KEY is the same value,
+      # injected into the SPA at container start (docker/entrypoint.sh) so the
+      # browser sends X-WorldMonitor-Key on premium paths and panel gating opens.
+      WORLDMONITOR_VALID_KEYS: "${WORLDMONITOR_VALID_KEYS:-}"
+      WORLDMONITOR_API_KEY: "${WORLDMONITOR_API_KEY:-}"
     # Docker secrets (recommended for API keys — keeps them out of docker inspect).
     # Create secrets/ dir with one file per key, then uncomment below.
     # See SELF_HOSTING.md or docker-compose.override.yml for details.
