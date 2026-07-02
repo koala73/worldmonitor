@@ -176,7 +176,9 @@ import { classifyNewsItem } from '@/services/positive-classifier';
 import { fetchGivingSummary } from '@/services/giving';
 import { fetchProgressData } from '@/services/progress-data';
 import { fetchConservationWins } from '@/services/conservation-data';
-import { fetchRenewableEnergyData, fetchEnergyCapacity } from '@/services/renewable-energy-data';
+// #4571: renewable-energy-data (+ its transitive economic edge) dynamic-imported
+// inside loadRenewableData so it doesn't parse/execute at boot — the renewable
+// panel is below-fold and its load is viewport-gated (shouldLoad('renewable')).
 import { checkMilestones } from '@/services/celebration';
 import { fetchHappinessScores } from '@/services/happiness-data';
 import { fetchRenewableInstallations } from '@/services/renewable-installations';
@@ -3767,6 +3769,7 @@ export class DataLoaderManager implements AppModule {
   }
 
   private async loadRenewableData(): Promise<void> {
+    const { fetchRenewableEnergyData, fetchEnergyCapacity } = await import('@/services/renewable-energy-data');
     const data = await fetchRenewableEnergyData();
     this.callPanel('renewable', 'setData', data);
     if (SITE_VARIANT === 'happy' && data?.globalPercentage) {
