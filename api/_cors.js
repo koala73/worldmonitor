@@ -37,6 +37,10 @@ const EXPOSED_HEADERS = [
   'X-RateLimit-Limit',
   'X-RateLimit-Remaining',
   'X-RateLimit-Reset',
+  'X-WorldMonitor-Bbox',
+  'X-WorldMonitor-Bbox-Missing',
+  'X-WorldMonitor-Bbox-Invalid',
+  'X-Military-Bbox',
 ].join(', ');
 
 function isAllowedOrigin(origin) {
