@@ -35,6 +35,9 @@ test('categoryOf maps known events and defaults unknowns to other (#4539)', () =
   assert.equal(categoryOf('UpdateLayoutTree'), 'styleLayout');
   assert.equal(categoryOf('MinorGC'), 'garbageCollection');
   assert.equal(categoryOf('Paint'), 'paintComposite');
+  // Lighthouse groups layer-tree updates under paint/composite, not styleLayout
+  assert.equal(categoryOf('UpdateLayerTree'), 'paintComposite');
+  assert.equal(categoryOf('UpdateLayer'), 'paintComposite');
   assert.equal(categoryOf('RunTask'), 'other');
   assert.equal(categoryOf('SomeNativeThingWeDoNotMap'), 'other');
 });

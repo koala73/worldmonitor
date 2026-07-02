@@ -64,11 +64,12 @@ const CATEGORY_BY_EVENT = new Map(Object.entries({
   RecalculateStyles: 'styleLayout',
   ScheduleStyleRecalculation: 'styleLayout',
   InvalidateLayout: 'styleLayout',
-  UpdateLayerTree: 'styleLayout',
   HitTest: 'styleLayout',
   ParseAuthorStyleSheet: 'styleLayout',
-  // paint + composite + raster + GPU
+  // paint + composite + raster + GPU (Lighthouse groups layer-tree updates here, not styleLayout)
   Paint: 'paintComposite',
+  UpdateLayerTree: 'paintComposite',
+  UpdateLayer: 'paintComposite',
   PrePaint: 'paintComposite',
   'Composite Layers': 'paintComposite',
   CompositeLayers: 'paintComposite',
@@ -156,6 +157,7 @@ export function pickRendererMainThread(events) {
   if (candidates.size === 0) return null;
   const durByThread = new Map();
   for (const e of events) {
+    if (!e) continue;
     const key = `${e.pid}:${e.tid}`;
     if (!candidates.has(key)) continue;
     if (e.ph === 'X' && typeof e.dur === 'number') durByThread.set(key, (durByThread.get(key) || 0) + e.dur);
@@ -337,7 +339,13 @@ async function measure(url, { cpu = 1, settle = 15000 } = {}) {
     });
     await page.goto(url, { waitUntil: 'load', timeout: 60000 });
     await page.waitForTimeout(settle);
-    const completePromise = new Promise((resolve) => client.once('Tracing.tracingComplete', resolve));
+    // Guard against a dropped CDP session / never-fired tracingComplete: without a
+    // timeout the await below would hang forever and the finally's browser.close()
+    // would never run. Reject after 30s so the error propagates and cleanup happens.
+    const completePromise = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Tracing.tracingComplete timed out after 30s')), 30000);
+      client.once('Tracing.tracingComplete', (evt) => { clearTimeout(timer); resolve(evt); });
+    });
     await client.send('Tracing.end');
     const { stream } = await completePromise;
     const raw = await readTraceStream(client, stream);
