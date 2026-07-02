@@ -323,6 +323,12 @@ canvas,
   border-bottom: 1px solid var(--border);
   height: 40px;
   flex-shrink: 0;
+  /* Lift the header's stacking context above the content grid so its
+     dropdown panels (Intelligence Findings, Pentagon Pizza, etc.) are not
+     occluded by .panels-grid (z-index: 1) or .map-controls (z-index: 500).
+     Kept below .search-overlay (2000) and modals so they still cover the header. */
+  position: relative;
+  z-index: 600;
 }
 
 /* -- Tauri desktop: separate title bar for traffic lights -- */
