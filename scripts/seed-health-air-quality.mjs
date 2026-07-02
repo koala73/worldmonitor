@@ -479,6 +479,7 @@ async function redisPipeline(commands) {
     if (!response.ok) {
       const text = await response.text().catch(() => '');
       const error = new Error(`Redis pipeline failed: HTTP ${response.status} — ${text.slice(0, 200)}`);
+      error.httpStatus = response.status;
       if (PERMANENT_4XX_STATUSES.has(response.status)) {
         error.nonRetryable = true;
       } else if (response.status === 429) {
