@@ -1261,7 +1261,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      port: 3000,
+      port: Number(env.VITE_DEV_PORT) || 3000,
       open: !isE2E,
       hmr: isE2E ? false : undefined,
       watch: {
