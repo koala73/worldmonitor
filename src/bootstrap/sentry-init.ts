@@ -433,6 +433,36 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // Suppress parentNode.insertBefore from injected/inline scripts (iOS WKWebView, Apple Mail)
       // Also covers [native code] frames (no filename) produced by WKWebView's forEach wrapper
       if (/parentNode\.insertBefore/.test(msg) && frames.every(f => !f.filename || f.filename === '<anonymous>' || f.filename === '[native code]' || /^blob:/.test(f.filename) || /^https?:\/\/[^/]+\/?$/.test(f.filename))) return null;
+      // Suppress TypeErrors whose ONLY source frames are non-script URLs — the
+      // page document URL itself (a relative path like `/dashboard` or the full
+      // `https://<host>/dashboard`) or any external resource served without a
+      // recognized script extension. Scripts injected into the page's MAIN world
+      // — WKUserScript content scripts on Firefox iOS / other in-app WebViews,
+      // bookmarklets — are attributed by WebKit to the document URL (line 1,
+      // minified fns `o`/`s`/`Or`, with native `insertBefore`/`forEach` frames),
+      // not to a distinct `.js` script URL. Our own shipped code never runs from
+      // such a URL: the app entry is a hashed `/assets/*.js` module chunk (flagged
+      // first-party by firstPartyFile), so a TypeError with zero first-party
+      // frames whose non-infra frames are all non-script URLs cannot originate in
+      // our bundle. The `frames.every(...)` injected-script gate above misses this
+      // because the `[native code]` insertBefore/forEach frames break its
+      // predicate and its page-URL matcher only accepts bare origins, not document
+      // paths (WORLDMONITOR-V8: Firefox iOS 152, `undefined is not an object
+      // (evaluating 's[e]')`, insertBefore in a promiseReactionJob — 6 events / 1
+      // user).
+      //
+      // `isNonScriptUrlFrame` is intentionally broader than "page document": the
+      // `https?://` branch also matches extensionless third-party script URLs
+      // (e.g. `https://js.stripe.com/v3/`). That is still correct to suppress here
+      // — the `!hasFirstParty` guard already proves zero first-party involvement,
+      // so a same-shaped error from a third-party host is equally unactionable.
+      const isNonScriptUrlFrame = (filename: string) =>
+        !/\.(?:m|c)?[jt]sx?(?:[?#]|$)/.test(filename)
+        && (/^\/(?!\/)/.test(filename) || /^https?:\/\//.test(filename));
+      if ((excType === 'TypeError' || /^TypeError:/.test(msg))
+          && !hasFirstParty
+          && nonInfraFrames.length > 0
+          && nonInfraFrames.every(f => isNonScriptUrlFrame(f.filename ?? ''))) return null;
       // Suppress NotFoundError: insertBefore with no usable stack (Chrome 146+ extension DOM interference — stack shows minified bundle but no line/function)
       if (excType === 'NotFoundError' && /insertBefore/.test(msg) && frames.every(f => !f.lineno && !f.function)) return null;
       // Suppress Sentry breadcrumb DOM-measuring crashes (element.offsetWidth on detached DOM)
