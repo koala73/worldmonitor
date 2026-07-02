@@ -41,7 +41,6 @@ import {
   fetchPredictions,
   fetchEarthquakes,
   fetchWeatherAlerts,
-  fetchFredData,
   fetchInternetOutages,
   fetchTrafficAnomalies,
   fetchDdosAttacks,
@@ -64,15 +63,6 @@ import {
   fetchGdeltTensions,
   fetchNaturalEvents,
   fetchRecentAwards,
-  fetchOilAnalytics,
-  fetchCrudeInventoriesRpc,
-  fetchNatGasStorageRpc,
-  getEuGasStorageData,
-  getOilStocksAnalysisData,
-  fetchLngVulnerability,
-  getEcbFxRatesData,
-  fetchBisData,
-  fetchBlsData,
   fetchCyberThreats,
   fetchTradeRestrictions,
   fetchTariffTrends,
@@ -1970,6 +1960,7 @@ export class DataLoaderManager implements AppModule {
       // Load ECB FX rates for CommoditiesPanel FX tab
       if (commoditiesPanel) {
         try {
+          const { getEcbFxRatesData } = await import('@/services/economic');
           const fxResp = await getEcbFxRatesData();
           if (!fxResp.unavailable && fxResp.rates?.length) {
             const EUR_FX_ORDER = ['USD', 'GBP', 'JPY', 'CHF', 'CAD', 'CNY', 'AUD'];
@@ -3186,6 +3177,7 @@ export class DataLoaderManager implements AppModule {
 
     try {
       economicPanel?.setLoading(true);
+      const { fetchFredData } = await import('@/services/economic');
       const data = await fetchFredData();
 
       const postInfo = getCircuitBreakerCooldownInfo('FRED Batch');
@@ -3218,6 +3210,10 @@ export class DataLoaderManager implements AppModule {
   async loadOilAnalytics(): Promise<void> {
     const energyPanel = this.ctx.panels['energy-complex'] as EnergyComplexPanel | undefined;
     try {
+      const {
+        fetchOilAnalytics, fetchCrudeInventoriesRpc, fetchNatGasStorageRpc,
+        getEuGasStorageData, getOilStocksAnalysisData, fetchLngVulnerability,
+      } = await import('@/services/economic');
       const [data, crudeResp, natGasResp, euGasResp, oilStocksResp] = await Promise.allSettled([
         fetchOilAnalytics(),
         fetchCrudeInventoriesRpc(),
@@ -3290,6 +3286,7 @@ export class DataLoaderManager implements AppModule {
   async loadBisData(): Promise<void> {
     const economicPanel = this.ctx.panels['economic'] as EconomicPanel;
     try {
+      const { fetchBisData } = await import('@/services/economic');
       const data = await fetchBisData();
       economicPanel?.updateBis(data);
       const hasData = data.policyRates?.length > 0;
@@ -3307,6 +3304,7 @@ export class DataLoaderManager implements AppModule {
   async loadBlsData(): Promise<void> {
     const economicPanel = this.ctx.panels['economic'] as EconomicPanel;
     try {
+      const { fetchBlsData } = await import('@/services/economic');
       const data = await fetchBlsData();
       if (data.length > 0) {
         economicPanel?.updateBls(data);
