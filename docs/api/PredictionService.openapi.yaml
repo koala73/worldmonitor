@@ -15,25 +15,44 @@ paths:
                   in: query
                   description: Maximum items per page (1-100).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "next-page-token"
                   schema:
                     type: string
                 - name: category
                   in: query
                   description: Optional category filter (e.g., "Politics").
                   required: false
+                  example: "ai"
                   schema:
                     type: string
+                    enum:
+                        - 'ai'
+                        - 'tech'
+                        - 'crypto'
+                        - 'science'
+                        - 'economy'
+                        - 'fed'
+                        - 'inflation'
+                        - 'interest-rates'
+                        - 'recession'
+                        - 'trade'
+                        - 'tariffs'
+                        - 'debt-ceiling'
                 - name: query
                   in: query
                   description: Optional search query for market titles.
                   required: false
+                  example: "supply chain risk"
                   schema:
                     type: string
             responses:
@@ -41,6 +60,17 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "markets":
+                                    - "category": "cs.AI"
+                                      "closesAt": 1717200000000
+                                      "id": "example-id"
+                                      "source": "MARKET_SOURCE_POLYMARKET"
+                                      "title": "example"
+                                      "url": "https://example.com/worldmonitor"
+                                "pagination":
+                                    "nextCursor": "next-page-token"
+                                    "totalCount": 1
                             schema:
                                 $ref: '#/components/schemas/ListPredictionMarketsResponse'
                 "400":
@@ -97,7 +127,9 @@ components:
                     description: Maximum items per page (1-100).
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 category:
                     type: string
                     description: Optional category filter (e.g., "Politics").

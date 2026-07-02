@@ -13,17 +13,20 @@ message StockAnalysisHeadline {
 }
 
 message AnalyzeStockRequest {
+  // Stock ticker symbol to analyze.
   string symbol = 1 [(sebuf.http.query) = { name: "symbol" },
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 1,
     (buf.validate.field).string.max_len = 32
   ];
 
+  // Optional company display name used to disambiguate the symbol.
   string name = 2 [
     (sebuf.http.query) = { name: "name" },
     (buf.validate.field).string.max_len = 120
   ];
 
+  // Whether to include recent news in the stock analysis.
   bool include_news = 3 [(sebuf.http.query) = { name: "include_news" }];
 }
 

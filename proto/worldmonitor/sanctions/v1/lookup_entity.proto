@@ -6,7 +6,9 @@ import "sebuf/http/annotations.proto";
 
 // LookupSanctionEntityRequest searches the OFAC entity index by name, vessel, or aircraft.
 message LookupSanctionEntityRequest {
+  // Search text for a sanctioned person, organization, vessel, or aircraft.
   string q = 1 [(sebuf.http.query) = { name: "q" }];
+  // Maximum number of matching sanctioned entities to return.
   int32 max_results = 2 [(sebuf.http.query) = { name: "max_results" }];
 }
 

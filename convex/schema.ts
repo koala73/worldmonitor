@@ -37,6 +37,13 @@ export default defineSchema({
     syncVersion: v.number(),
   }).index("by_user_variant", ["userId", "variant"]),
 
+  userPreferenceWriteRateLimits: defineTable({
+    userId: v.string(),
+    windowStart: v.number(),
+    count: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user_window", ["userId", "windowStart"]),
+
   notificationChannels: defineTable(
     v.union(
       v.object({

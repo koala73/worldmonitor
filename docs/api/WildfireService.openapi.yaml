@@ -13,56 +13,80 @@ paths:
             parameters:
                 - name: start
                   in: query
-                  description: Start of time range (inclusive), Unix epoch milliseconds.
+                  description: |-
+                    Start of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "1717200000000"
                   schema:
                     type: string
                     format: int64
                 - name: end
                   in: query
-                  description: End of time range (inclusive), Unix epoch milliseconds.
+                  description: |-
+                    End of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "1717200000000"
                   schema:
                     type: string
                     format: int64
                 - name: page_size
                   in: query
-                  description: Maximum items per page (1-100).
+                  description: |-
+                    Maximum items per page (1-100).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "next-page-token"
                   schema:
                     type: string
                 - name: ne_lat
                   in: query
-                  description: North-east latitude of bounding box.
+                  description: |-
+                    North-east latitude of bounding box.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: 40.7128
                   schema:
                     type: number
                     format: double
                 - name: ne_lon
                   in: query
-                  description: North-east longitude of bounding box.
+                  description: |-
+                    North-east longitude of bounding box.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: -74.006
                   schema:
                     type: number
                     format: double
                 - name: sw_lat
                   in: query
-                  description: South-west latitude of bounding box.
+                  description: |-
+                    South-west latitude of bounding box.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: 40.7128
                   schema:
                     type: number
                     format: double
                 - name: sw_lon
                   in: query
-                  description: South-west longitude of bounding box.
+                  description: |-
+                    South-west longitude of bounding box.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: -74.006
                   schema:
                     type: number
                     format: double
@@ -71,6 +95,17 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fireDetections":
+                                    - "brightness": 1.5
+                                      "confidence": "FIRE_CONFIDENCE_LOW"
+                                      "dayNight": "example"
+                                      "detectedAt": 1717200000000
+                                      "frp": 1.5
+                                      "id": "example-id"
+                                "pagination":
+                                    "nextCursor": "next-page-token"
+                                    "totalCount": 1
                             schema:
                                 $ref: '#/components/schemas/ListFireDetectionsResponse'
                 "400":
@@ -124,34 +159,50 @@ components:
                 start:
                     type: integer
                     format: int64
-                    description: 'Start of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        Start of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 end:
                     type: integer
                     format: int64
-                    description: 'End of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        End of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page (1-100).
+                    description: |-
+                        Maximum items per page (1-100).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 neLat:
                     type: number
                     format: double
-                    description: North-east latitude of bounding box.
+                    description: |-
+                        North-east latitude of bounding box.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 neLon:
                     type: number
                     format: double
-                    description: North-east longitude of bounding box.
+                    description: |-
+                        North-east longitude of bounding box.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 swLat:
                     type: number
                     format: double
-                    description: South-west latitude of bounding box.
+                    description: |-
+                        South-west latitude of bounding box.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 swLon:
                     type: number
                     format: double
-                    description: South-west longitude of bounding box.
+                    description: |-
+                        South-west longitude of bounding box.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: ListFireDetectionsRequest specifies filters for retrieving fire detections from NASA FIRMS.
         ListFireDetectionsResponse:
             type: object

@@ -15,6 +15,7 @@ paths:
                   in: query
                   description: North-east corner latitude of bounding box.
                   required: false
+                  example: 40.7128
                   schema:
                     type: number
                     format: double
@@ -22,6 +23,7 @@ paths:
                   in: query
                   description: North-east corner longitude of bounding box.
                   required: false
+                  example: -74.006
                   schema:
                     type: number
                     format: double
@@ -29,6 +31,7 @@ paths:
                   in: query
                   description: South-west corner latitude of bounding box.
                   required: false
+                  example: 40.7128
                   schema:
                     type: number
                     format: double
@@ -36,6 +39,7 @@ paths:
                   in: query
                   description: South-west corner longitude of bounding box.
                   required: false
+                  example: -74.006
                   schema:
                     type: number
                     format: double
@@ -46,6 +50,7 @@ paths:
                      position reports. Clients with no position callbacks should leave this
                      false to keep responses small.
                   required: false
+                  example: true
                   schema:
                     type: boolean
                 - name: include_tankers
@@ -57,6 +62,7 @@ paths:
                      candidate_reports (which is military-only) so consumers self-select
                      via this flag rather than the response field changing meaning.
                   required: false
+                  example: true
                   schema:
                     type: boolean
             responses:
@@ -64,6 +70,34 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "snapshot":
+                                    "candidateReports":
+                                        - "course": 1
+                                          "heading": 1
+                                          "lat": 40.7128
+                                          "lon": -74.006
+                                          "mmsi": "123456789"
+                                    "densityZones":
+                                        - "deltaPct": 1.5
+                                          "id": "example-id"
+                                          "intensity": 1.5
+                                          "location":
+                                              "latitude": 40.7128
+                                              "longitude": -74.006
+                                          "name": "WorldMonitor Analyst"
+                                          "note": "example"
+                                    "disruptions":
+                                        - "changePct": 1.5
+                                          "darkShips": 1
+                                          "description": "Example WorldMonitor observation."
+                                          "id": "example-id"
+                                          "location":
+                                              "latitude": 40.7128
+                                              "longitude": -74.006
+                                          "name": "WorldMonitor Analyst"
+                                    "sequence": 1
+                                    "snapshotAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/GetVesselSnapshotResponse'
                 "400":
@@ -88,21 +122,28 @@ paths:
             parameters:
                 - name: page_size
                   in: query
-                  description: Maximum items per page (1-100).
+                  description: |-
+                    Maximum items per page (1-100).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "next-page-token"
                   schema:
                     type: string
                 - name: area
                   in: query
                   description: Optional area filter (e.g., "NAVAREA IV", "Persian Gulf").
                   required: false
+                  example: "example"
                   schema:
                     type: string
             responses:
@@ -110,6 +151,16 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "pagination":
+                                    "nextCursor": "next-page-token"
+                                    "totalCount": 1
+                                "warnings":
+                                    - "area": "example"
+                                      "authority": "example"
+                                      "expiresAt": 1717200000000
+                                      "id": "example-id"
+                                      "issuedAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/ListNavigationalWarningsResponse'
                 "400":
@@ -392,10 +443,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page (1-100).
+                    description: |-
+                        Maximum items per page (1-100).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 area:
                     type: string
                     description: Optional area filter (e.g., "NAVAREA IV", "Persian Gulf").

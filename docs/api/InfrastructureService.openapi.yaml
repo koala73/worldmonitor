@@ -15,6 +15,7 @@ paths:
                   in: query
                   description: Start of time range (inclusive), Unix epoch milliseconds.
                   required: false
+                  example: "1717200000000"
                   schema:
                     type: string
                     format: int64
@@ -22,26 +23,34 @@ paths:
                   in: query
                   description: End of time range (inclusive), Unix epoch milliseconds.
                   required: false
+                  example: "1717200000000"
                   schema:
                     type: string
                     format: int64
                 - name: page_size
                   in: query
-                  description: Maximum items per page.
+                  description: |-
+                    Maximum items per page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "next-page-token"
                   schema:
                     type: string
                 - name: country
                   in: query
                   description: Optional country filter (ISO 3166-1 alpha-2).
                   required: false
+                  example: "US"
                   schema:
                     type: string
             responses:
@@ -49,6 +58,18 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "outages":
+                                    - "categories":
+                                        - "example"
+                                      "cause": "example"
+                                      "country": "US"
+                                      "description": "Example WorldMonitor observation."
+                                      "detectedAt": 1717200000000
+                                      "id": "example-id"
+                                "pagination":
+                                    "nextCursor": "next-page-token"
+                                    "totalCount": 1
                             schema:
                                 $ref: '#/components/schemas/ListInternetOutagesResponse'
                 "400":
@@ -75,13 +96,27 @@ paths:
                   in: query
                   description: Optional status filter. Returns only services in this state.
                   required: false
+                  example: "SERVICE_OPERATIONAL_STATUS_OPERATIONAL"
                   schema:
                     type: string
+                    enum:
+                        - 'SERVICE_OPERATIONAL_STATUS_OPERATIONAL'
+                        - 'SERVICE_OPERATIONAL_STATUS_DEGRADED'
+                        - 'SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE'
+                        - 'SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE'
+                        - 'SERVICE_OPERATIONAL_STATUS_MAINTENANCE'
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "statuses":
+                                    - "checkedAt": 1717200000000
+                                      "description": "Example WorldMonitor observation."
+                                      "id": "example-id"
+                                      "latencyMs": 1
+                                      "name": "WorldMonitor Analyst"
                             schema:
                                 $ref: '#/components/schemas/ListServiceStatusesResponse'
                 "400":
@@ -107,19 +142,29 @@ paths:
                 - name: type
                   in: query
                   description: 'Activity type: "military_flights", "vessels", "protests", "news", "ais_gaps", "satellite_fires".'
-                  required: false
+                  required: true
+                  example: "military_flights"
                   schema:
                     type: string
+                    enum:
+                        - 'military_flights'
+                        - 'vessels'
+                        - 'protests'
+                        - 'news'
+                        - 'ais_gaps'
+                        - 'satellite_fires'
                 - name: region
                   in: query
                   description: Geographic region key, defaults to "global".
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: count
                   in: query
                   description: Current observed count to compare against baseline.
                   required: false
+                  example: 1
                   schema:
                     type: number
                     format: double
@@ -128,6 +173,18 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "anomaly":
+                                    "multiplier": 1.5
+                                    "severity": "watch"
+                                    "zScore": 42.5
+                                "baseline":
+                                    "mean": 1.5
+                                    "sampleCount": 1
+                                    "stdDev": 1.5
+                                "error": "example"
+                                "learning": true
+                                "sampleCount": 1
                             schema:
                                 $ref: '#/components/schemas/GetTemporalBaselineResponse'
                 "400":
@@ -154,6 +211,10 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "city": "example"
+                                "country": "US"
+                                "region": "example"
                             schema:
                                 $ref: '#/components/schemas/GetIpGeoResponse'
                 "400":
@@ -178,13 +239,17 @@ paths:
             parameters:
                 - name: lat
                   in: query
+                  description: Latitude of the point to reverse geocode.
                   required: false
+                  example: 40.7128
                   schema:
                     type: number
                     format: double
                 - name: lon
                   in: query
+                  description: Longitude of the point to reverse geocode.
                   required: false
+                  example: -74.006
                   schema:
                     type: number
                     format: double
@@ -193,6 +258,11 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "code": "example"
+                                "country": "US"
+                                "displayName": "WorldMonitor Analyst"
+                                "error": "example"
                             schema:
                                 $ref: '#/components/schemas/ReverseGeocodeResponse'
                 "400":
@@ -219,13 +289,17 @@ paths:
                   in: query
                   description: Predefined tiers or specific keys.
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: keys
                   in: query
+                  description: Specific bootstrap cache keys to fetch when tier is not sufficient.
                   required: false
                   style: form
                   explode: true
+                  example:
+                      - "example"
                   schema:
                     type: array
                     items:
@@ -235,6 +309,11 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "data":
+                                    "exampleKey": "example"
+                                "missing":
+                                    - "example"
                             schema:
                                 $ref: '#/components/schemas/GetBootstrapDataResponse'
                 "400":
@@ -259,6 +338,11 @@ paths:
             requestBody:
                 content:
                     application/json:
+                        example:
+                            "updates":
+                                - "count": 1
+                                  "region": "example"
+                                  "type": "all"
                         schema:
                             $ref: '#/components/schemas/RecordBaselineSnapshotRequest'
                 required: true
@@ -267,6 +351,9 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "error": "example"
+                                "updated": 1
                             schema:
                                 $ref: '#/components/schemas/RecordBaselineSnapshotResponse'
                 "400":
@@ -293,6 +380,18 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "cables":
+                                    "exampleKey":
+                                        "confidence": 0.82
+                                        "evidence":
+                                            - "source": "example"
+                                              "summary": "Example WorldMonitor observation."
+                                              "ts": 1
+                                        "lastUpdated": 1
+                                        "score": 42.5
+                                        "status": "CABLE_HEALTH_STATUS_OK"
+                                "generatedAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/GetCableHealthResponse'
                 "400":
@@ -319,6 +418,16 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "anomalies":
+                                    - "currentCount": 1
+                                      "expectedCount": 1
+                                      "message": "Example WorldMonitor observation."
+                                      "multiplier": 1.5
+                                      "region": "example"
+                                "computedAt": "2026-01-15T12:00:00Z"
+                                "trackedTypes":
+                                    - "example"
                             schema:
                                 $ref: '#/components/schemas/ListTemporalAnomaliesResponse'
                 "400":
@@ -345,6 +454,21 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "dateRangeEnd": "2026-01-15"
+                                "dateRangeStart": "2026-01-15"
+                                "protocol":
+                                    - "label": "example"
+                                      "percentage": 42.5
+                                "topTargetLocations":
+                                    - "countryCode": "US"
+                                      "countryName": "US"
+                                      "latitude": 40.7128
+                                      "longitude": -74.006
+                                      "percentage": 42.5
+                                "vector":
+                                    - "label": "example"
+                                      "percentage": 42.5
                             schema:
                                 $ref: '#/components/schemas/ListInternetDdosAttacksResponse'
                 "400":
@@ -371,6 +495,7 @@ paths:
                   in: query
                   description: Optional ISO 3166-1 alpha-2 country code filter.
                   required: false
+                  example: "US"
                   schema:
                     type: string
             responses:
@@ -378,6 +503,14 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "anomalies":
+                                    - "asn": "example"
+                                      "asnName": "WorldMonitor Analyst"
+                                      "endDate": 1
+                                      "latitude": 40.7128
+                                      "locationCode": "US"
+                                "totalCount": 1
                             schema:
                                 $ref: '#/components/schemas/ListInternetTrafficAnomaliesResponse'
                 "400":
@@ -439,10 +572,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page.
+                    description: |-
+                        Maximum items per page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 country:
                     type: string
                     description: Optional country filter (ISO 3166-1 alpha-2).
@@ -687,9 +824,11 @@ components:
                 lat:
                     type: number
                     format: double
+                    description: Latitude of the point to reverse geocode.
                 lon:
                     type: number
                     format: double
+                    description: Longitude of the point to reverse geocode.
             description: ReverseGeocodeRequest parameters for coordinate-to-address lookups.
         ReverseGeocodeResponse:
             type: object
@@ -717,6 +856,7 @@ components:
                     type: array
                     items:
                         type: string
+                        description: Specific bootstrap cache keys to fetch when tier is not sufficient.
             description: GetBootstrapDataRequest parameters for multi-key fetching.
         GetBootstrapDataResponse:
             type: object

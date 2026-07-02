@@ -17,6 +17,8 @@ paths:
                   required: false
                   style: form
                   explode: true
+                  example:
+                      - "AAPL"
                   schema:
                     type: array
                     items:
@@ -26,6 +28,18 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "finnhubSkipped": true
+                                "quotes":
+                                    - "change": 1.5
+                                      "display": "example"
+                                      "name": "WorldMonitor Analyst"
+                                      "price": 75.25
+                                      "sparkline":
+                                          - 1.5
+                                      "symbol": "AAPL"
+                                "rateLimited": true
+                                "skipReason": "example"
                             schema:
                                 $ref: '#/components/schemas/ListMarketQuotesResponse'
                 "400":
@@ -54,6 +68,8 @@ paths:
                   required: false
                   style: form
                   explode: true
+                  example:
+                      - "example"
                   schema:
                     type: array
                     items:
@@ -63,6 +79,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "quotes":
+                                    - "change": 1.5
+                                      "change7d": 1.5
+                                      "name": "WorldMonitor Analyst"
+                                      "price": 75.25
+                                      "sparkline":
+                                          - 1.5
+                                      "symbol": "AAPL"
                             schema:
                                 $ref: '#/components/schemas/ListCryptoQuotesResponse'
                 "400":
@@ -91,6 +116,8 @@ paths:
                   required: false
                   style: form
                   explode: true
+                  example:
+                      - "AAPL"
                   schema:
                     type: array
                     items:
@@ -100,6 +127,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "quotes":
+                                    - "change": 1.5
+                                      "display": "example"
+                                      "name": "WorldMonitor Analyst"
+                                      "price": 75.25
+                                      "sparkline":
+                                          - 1.5
+                                      "symbol": "AAPL"
                             schema:
                                 $ref: '#/components/schemas/ListCommodityQuotesResponse'
                 "400":
@@ -124,8 +160,11 @@ paths:
             parameters:
                 - name: period
                   in: query
-                  description: Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                  description: |-
+                    Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "daily"
                   schema:
                     type: string
             responses:
@@ -133,6 +172,11 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "sectors":
+                                    - "change": 1.5
+                                      "name": "WorldMonitor Analyst"
+                                      "symbol": "AAPL"
                             schema:
                                 $ref: '#/components/schemas/GetSectorSummaryResponse'
                 "400":
@@ -161,6 +205,8 @@ paths:
                   required: false
                   style: form
                   explode: true
+                  example:
+                      - "example"
                   schema:
                     type: array
                     items:
@@ -170,6 +216,22 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "stablecoins":
+                                    - "change24h": 1.5
+                                      "change7d": 1.5
+                                      "deviation": 1.5
+                                      "id": "example-id"
+                                      "image": "example"
+                                      "marketCap": 1.5
+                                      "symbol": "AAPL"
+                                "summary":
+                                    "coinCount": 1
+                                    "depeggedCount": 1
+                                    "healthStatus": "example"
+                                    "totalMarketCap": 1
+                                    "totalVolume24h": 1
+                                "timestamp": "2026-01-15T12:00:00Z"
                             schema:
                                 $ref: '#/components/schemas/ListStablecoinMarketsResponse'
                 "400":
@@ -196,6 +258,22 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "etfs":
+                                    - "avgVolume": 1
+                                      "direction": "example"
+                                      "estFlow": 1
+                                      "issuer": "example"
+                                      "price": 75.25
+                                      "ticker": "AAPL"
+                                "rateLimited": true
+                                "summary":
+                                    "etfCount": 1
+                                    "inflowCount": 1
+                                    "netDirection": "example"
+                                    "outflowCount": 1
+                                    "totalEstFlow": 1
+                                "timestamp": "2026-01-15T12:00:00Z"
                             schema:
                                 $ref: '#/components/schemas/ListEtfFlowsResponse'
                 "400":
@@ -221,14 +299,67 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code (e.g., "US", "GB", "JP").
-                  required: false
+                  required: true
+                  example: "US"
                   schema:
                     type: string
+                    enum:
+                        - 'US'
+                        - 'GB'
+                        - 'DE'
+                        - 'FR'
+                        - 'JP'
+                        - 'CN'
+                        - 'HK'
+                        - 'IN'
+                        - 'KR'
+                        - 'TW'
+                        - 'AU'
+                        - 'BR'
+                        - 'CA'
+                        - 'MX'
+                        - 'AR'
+                        - 'RU'
+                        - 'ZA'
+                        - 'SA'
+                        - 'AE'
+                        - 'IL'
+                        - 'TR'
+                        - 'PL'
+                        - 'NL'
+                        - 'CH'
+                        - 'ES'
+                        - 'IT'
+                        - 'SE'
+                        - 'NO'
+                        - 'SG'
+                        - 'TH'
+                        - 'MY'
+                        - 'ID'
+                        - 'PH'
+                        - 'NZ'
+                        - 'EG'
+                        - 'CL'
+                        - 'PE'
+                        - 'AT'
+                        - 'BE'
+                        - 'FI'
+                        - 'DK'
+                        - 'IE'
+                        - 'PT'
+                        - 'CZ'
+                        - 'HU'
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "available": true
+                                "code": "US"
+                                "currency": "USD"
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "indexName": "WorldMonitor Analyst"
                             schema:
                                 $ref: '#/components/schemas/GetCountryStockIndexResponse'
                 "400":
@@ -255,6 +386,14 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "quotes":
+                                    - "change": 1.5
+                                      "country": "US"
+                                      "flag": "example"
+                                      "name": "WorldMonitor Analyst"
+                                      "price": 75.25
+                                "rateLimited": true
                             schema:
                                 $ref: '#/components/schemas/ListGulfQuotesResponse'
                 "400":
@@ -279,17 +418,23 @@ paths:
             parameters:
                 - name: symbol
                   in: query
-                  required: false
+                  description: Stock ticker symbol to analyze.
+                  required: true
+                  example: "AAPL"
                   schema:
                     type: string
                 - name: name
                   in: query
+                  description: Optional company display name used to disambiguate the symbol.
                   required: false
+                  example: "WorldMonitor Analyst"
                   schema:
                     type: string
                 - name: include_news
                   in: query
+                  description: Whether to include recent news in the stock analysis.
                   required: false
+                  example: true
                   schema:
                     type: boolean
             responses:
@@ -297,6 +442,17 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "action": "example"
+                                "analysisAt": 1717200000000
+                                "analysisId": "example-id"
+                                "analystConsensus":
+                                    "buy": 1
+                                    "hold": 1
+                                    "period": "daily"
+                                    "sell": 1
+                                    "strongBuy": 1
+                                "available": true
                             schema:
                                 $ref: '#/components/schemas/AnalyzeStockResponse'
                 "400":
@@ -327,22 +483,29 @@ paths:
             parameters:
                 - name: symbols
                   in: query
+                  description: Stock ticker symbols whose stored analysis history should be returned.
                   required: false
                   style: form
                   explode: true
+                  example:
+                      - "AAPL"
                   schema:
                     type: array
                     items:
                         type: string
                 - name: limit_per_symbol
                   in: query
+                  description: Maximum number of history snapshots to return per symbol.
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
                 - name: include_news
                   in: query
+                  description: Whether history snapshots should include stored news summaries.
                   required: false
+                  example: true
                   schema:
                     type: boolean
             responses:
@@ -350,6 +513,20 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "items":
+                                    - "snapshots":
+                                        - "action": "example"
+                                          "analysisAt": 1717200000000
+                                          "analysisId": "example-id"
+                                          "analystConsensus":
+                                              "buy": 1
+                                              "hold": 1
+                                              "period": "daily"
+                                              "sell": 1
+                                              "strongBuy": 1
+                                          "available": true
+                                      "symbol": "AAPL"
                             schema:
                                 $ref: '#/components/schemas/GetStockAnalysisHistoryResponse'
                 "400":
@@ -380,17 +557,23 @@ paths:
             parameters:
                 - name: symbol
                   in: query
-                  required: false
+                  description: Stock ticker symbol to backtest.
+                  required: true
+                  example: "AAPL"
                   schema:
                     type: string
                 - name: name
                   in: query
+                  description: Optional company display name used to disambiguate the symbol.
                   required: false
+                  example: "WorldMonitor Analyst"
                   schema:
                     type: string
                 - name: eval_window_days
                   in: query
+                  description: Evaluation window in days for simulated backtest outcomes.
                   required: false
+                  example: 7
                   schema:
                     type: integer
                     format: int32
@@ -399,6 +582,12 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "actionableEvaluations": 1
+                                "available": true
+                                "avgSimulatedReturnPct": 1.5
+                                "cumulativeSimulatedReturnPct": 1.5
+                                "currency": "USD"
                             schema:
                                 $ref: '#/components/schemas/BacktestStockResponse'
                 "400":
@@ -429,16 +618,21 @@ paths:
             parameters:
                 - name: symbols
                   in: query
+                  description: Stock ticker symbols whose stored backtests should be returned.
                   required: false
                   style: form
                   explode: true
+                  example:
+                      - "AAPL"
                   schema:
                     type: array
                     items:
                         type: string
                 - name: eval_window_days
                   in: query
+                  description: Evaluation window in days used by stored backtests.
                   required: false
+                  example: 7
                   schema:
                     type: integer
                     format: int32
@@ -447,6 +641,13 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "items":
+                                    - "actionableEvaluations": 1
+                                      "available": true
+                                      "avgSimulatedReturnPct": 1.5
+                                      "cumulativeSimulatedReturnPct": 1.5
+                                      "currency": "USD"
                             schema:
                                 $ref: '#/components/schemas/ListStoredStockBacktestsResponse'
                 "400":
@@ -479,6 +680,11 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "sectors":
+                                    - "change": 1.5
+                                      "id": "example-id"
+                                      "name": "WorldMonitor Analyst"
                             schema:
                                 $ref: '#/components/schemas/ListCryptoSectorsResponse'
                 "400":
@@ -505,6 +711,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "tokens":
+                                    - "change": 1.5
+                                      "change7d": 1.5
+                                      "name": "WorldMonitor Analyst"
+                                      "price": 75.25
+                                      "sparkline":
+                                          - 1.5
+                                      "symbol": "AAPL"
                             schema:
                                 $ref: '#/components/schemas/ListDefiTokensResponse'
                 "400":
@@ -531,6 +746,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "tokens":
+                                    - "change": 1.5
+                                      "change7d": 1.5
+                                      "name": "WorldMonitor Analyst"
+                                      "price": 75.25
+                                      "sparkline":
+                                          - 1.5
+                                      "symbol": "AAPL"
                             schema:
                                 $ref: '#/components/schemas/ListAiTokensResponse'
                 "400":
@@ -557,6 +781,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "tokens":
+                                    - "change": 1.5
+                                      "change7d": 1.5
+                                      "name": "WorldMonitor Analyst"
+                                      "price": 75.25
+                                      "sparkline":
+                                          - 1.5
+                                      "symbol": "AAPL"
                             schema:
                                 $ref: '#/components/schemas/ListOtherTokensResponse'
                 "400":
@@ -583,6 +816,17 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "aaiiBear": 1.5
+                                "aaiiBull": 1.5
+                                "breadth":
+                                    "contribution": 1.5
+                                    "degraded": true
+                                    "inputsJson": "example"
+                                    "score": 42.5
+                                    "weight": 1.5
+                                "cnnFearGreed": 1.5
+                                "cnnLabel": "example"
                             schema:
                                 $ref: '#/components/schemas/GetFearGreedIndexResponse'
                 "400":
@@ -607,12 +851,16 @@ paths:
             parameters:
                 - name: fromDate
                   in: query
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "2026-01-15"
                   schema:
                     type: string
                 - name: toDate
                   in: query
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "2026-01-15"
                   schema:
                     type: string
             responses:
@@ -620,6 +868,17 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "earnings":
+                                    - "company": "example"
+                                      "date": "2026-01-15"
+                                      "epsActual": 1.5
+                                      "epsEstimate": 1.5
+                                      "hasActuals": true
+                                "fromDate": "2026-01-15"
+                                "toDate": "2026-01-15"
+                                "total": 1
+                                "unavailable": true
                             schema:
                                 $ref: '#/components/schemas/ListEarningsCalendarResponse'
                 "400":
@@ -646,6 +905,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "instruments":
+                                    - "assetManagerLong": "1717200000000"
+                                      "assetManagerShort": "1717200000000"
+                                      "code": "example"
+                                      "dealerLong": "1717200000000"
+                                      "dealerShort": "1717200000000"
+                                "reportDate": "2026-01-15"
+                                "unavailable": true
                             schema:
                                 $ref: '#/components/schemas/GetCotPositioningResponse'
                 "400":
@@ -670,7 +938,9 @@ paths:
             parameters:
                 - name: symbol
                   in: query
-                  required: false
+                  description: Stock ticker symbol for insider transaction lookup.
+                  required: true
+                  example: "AAPL"
                   schema:
                     type: string
             responses:
@@ -678,6 +948,12 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "netValue": 1.5
+                                "symbol": "AAPL"
+                                "totalBuys": 1
+                                "totalSells": 1
                             schema:
                                 $ref: '#/components/schemas/GetInsiderTransactionsResponse'
                 "400":
@@ -704,6 +980,16 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "currentPctAbove200d": 1.5
+                                "currentPctAbove20d": 1.5
+                                "currentPctAbove50d": 1.5
+                                "history":
+                                    - "date": "2026-01-15"
+                                      "pctAbove200d": 1.5
+                                      "pctAbove20d": 1.5
+                                      "pctAbove50d": 1.5
+                                "unavailable": true
                             schema:
                                 $ref: '#/components/schemas/GetMarketBreadthHistoryResponse'
                 "400":
@@ -730,6 +1016,55 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "cbReserves":
+                                    "asOfMonth": "example"
+                                    "topBuyers12m":
+                                        - "deltaTonnes12m": 1.5
+                                          "iso3": "USA"
+                                          "name": "WorldMonitor Analyst"
+                                    "topHolders":
+                                        - "iso3": "USA"
+                                          "name": "WorldMonitor Analyst"
+                                          "pctOfReserves": 1.5
+                                          "tonnes": 1.5
+                                    "topSellers12m":
+                                        - "deltaTonnes12m": 1.5
+                                          "iso3": "USA"
+                                          "name": "WorldMonitor Analyst"
+                                    "totalTonnes": 1
+                                "cot":
+                                    "managedMoney":
+                                        "longPositions": "1717200000000"
+                                        "netPct": 1.5
+                                        "oiSharePct": 1.5
+                                        "shortPositions": "1717200000000"
+                                        "wowNetDelta": "1717200000000"
+                                    "nextReleaseDate": "2026-01-15"
+                                    "openInterest": "1717200000000"
+                                    "producerSwap":
+                                        "longPositions": "1717200000000"
+                                        "netPct": 1.5
+                                        "oiSharePct": 1.5
+                                        "shortPositions": "1717200000000"
+                                        "wowNetDelta": "1717200000000"
+                                    "reportDate": "2026-01-15"
+                                "crossCurrencyPrices":
+                                    - "currency": "USD"
+                                      "flag": "example"
+                                      "price": 75.25
+                                "drivers":
+                                    - "changePct": 1.5
+                                      "correlation30d": 1.5
+                                      "label": "example"
+                                      "symbol": "AAPL"
+                                      "value": 1.5
+                                "etfFlows":
+                                    "asOfDate": "2026-01-15"
+                                    "aumUsd": 1.5
+                                    "changeM1Pct": 1.5
+                                    "changeM1Tonnes": 1.5
+                                    "changeW1Pct": 1.5
                             schema:
                                 $ref: '#/components/schemas/GetGoldIntelligenceResponse'
                 "400":
@@ -756,6 +1091,18 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "assetCount": 1
+                                "assets":
+                                    - "alerts":
+                                        - "example"
+                                      "assetClass": "example"
+                                      "basisScore": 42.5
+                                      "composite": 1.5
+                                      "dayNotional": "example"
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "ts": "1717200000000"
+                                "unavailable": true
                             schema:
                                 $ref: '#/components/schemas/GetHyperliquidFlowResponse'
                 "400":
@@ -979,7 +1326,9 @@ components:
             properties:
                 period:
                     type: string
-                    description: Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                    description: |-
+                        Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: GetSectorSummaryRequest specifies parameters for retrieving sector performance.
         GetSectorSummaryResponse:
             type: object
@@ -1269,11 +1618,14 @@ components:
                     type: string
                     maxLength: 32
                     minLength: 1
+                    description: Stock ticker symbol to analyze.
                 name:
                     type: string
                     maxLength: 120
+                    description: Optional company display name used to disambiguate the symbol.
                 includeNews:
                     type: boolean
+                    description: Whether to include recent news in the stock analysis.
             required:
                 - symbol
         AnalyzeStockResponse:
@@ -1507,13 +1859,16 @@ components:
                     type: array
                     items:
                         type: string
+                        description: Stock ticker symbols whose stored analysis history should be returned.
                 limitPerSymbol:
                     type: integer
                     maximum: 32
                     minimum: 1
                     format: int32
+                    description: Maximum number of history snapshots to return per symbol.
                 includeNews:
                     type: boolean
+                    description: Whether history snapshots should include stored news summaries.
         GetStockAnalysisHistoryResponse:
             type: object
             properties:
@@ -1537,14 +1892,17 @@ components:
                     type: string
                     maxLength: 32
                     minLength: 1
+                    description: Stock ticker symbol to backtest.
                 name:
                     type: string
                     maxLength: 120
+                    description: Optional company display name used to disambiguate the symbol.
                 evalWindowDays:
                     type: integer
                     maximum: 30
                     minimum: 3
                     format: int32
+                    description: Evaluation window in days for simulated backtest outcomes.
             required:
                 - symbol
         BacktestStockResponse:
@@ -1636,11 +1994,13 @@ components:
                     type: array
                     items:
                         type: string
+                        description: Stock ticker symbols whose stored backtests should be returned.
                 evalWindowDays:
                     type: integer
                     maximum: 30
                     minimum: 3
                     format: int32
+                    description: Evaluation window in days used by stored backtests.
         ListStoredStockBacktestsResponse:
             type: object
             properties:
@@ -1825,8 +2185,10 @@ components:
             properties:
                 fromDate:
                     type: string
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
                 toDate:
                     type: string
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
         ListEarningsCalendarResponse:
             type: object
             properties:
@@ -1920,6 +2282,7 @@ components:
                     type: string
                     maxLength: 32
                     minLength: 1
+                    description: Stock ticker symbol for insider transaction lookup.
             required:
                 - symbol
         GetInsiderTransactionsResponse:

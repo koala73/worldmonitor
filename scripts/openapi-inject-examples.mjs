@@ -1,0 +1,641 @@
+#!/usr/bin/env node
+/**
+ * Inject generated request/response examples into the OpenAPI specs.
+ *
+ * protoc-gen-openapiv3 currently emits only shapes. Until the upstream plugin
+ * grows proto message-level example support, this post-generation step derives
+ * deterministic, schema-valid examples from the generated OpenAPI contract and
+ * writes them into the generated artifacts. See umbrella issue #4599 and
+ * workstream #4610.
+ *
+ * Artifacts:
+ *   1. docs/api/<Service>.openapi.json - full examples, reserialized with the
+ *      same sorted, Go-escaped JSON strategy used by openapi-inject-security.
+ *   2. docs/api/<Service>.openapi.yaml - surgical example insertions so the
+ *      Mintlify per-service docs carry request/response examples without
+ *      reformatting the whole generated YAML file.
+ *   3. docs/api/worldmonitor.openapi.yaml - same surgical insertion for the
+ *      unified bundle copied to /openapi.yaml at build time.
+ */
+
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const apiDir = resolve(root, 'docs/api');
+const bundlePath = resolve(apiDir, 'worldmonitor.openapi.yaml');
+const CHECK = process.argv.includes('--check');
+
+const JSON_MEDIA = 'application/json';
+const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head']);
+const MAX_OBJECT_DEPTH = 6;
+const MAX_OPTIONAL_PROPERTIES = 5;
+
+// Byte-faithful JSON serializer matching protoc-gen-openapiv3 output.
+const sortRec = (x) =>
+  Array.isArray(x)
+    ? x.map(sortRec)
+    : x && typeof x === 'object'
+      ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, sortRec(x[k])]))
+      : x;
+
+const goEscape = (s) => {
+  let r = '';
+  for (const ch of s) {
+    const c = ch.codePointAt(0);
+    r += c === 0x3c || c === 0x3e || c === 0x26 || c === 0x2028 || c === 0x2029
+      ? '\\u' + c.toString(16).padStart(4, '0')
+      : ch;
+  }
+  return r;
+};
+
+const serialize = (obj) => goEscape(JSON.stringify(sortRec(obj)));
+const eq = (a, b) => JSON.stringify(sortRec(a)) === JSON.stringify(sortRec(b));
+
+function clone(value) {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+
+function refName(ref) {
+  if (!ref || !ref.startsWith('#/components/schemas/')) return null;
+  return decodeURIComponent(ref.slice('#/components/schemas/'.length));
+}
+
+function resolveRef(schema, spec) {
+  const name = refName(schema?.$ref);
+  if (!name) return schema;
+  const resolved = spec.components?.schemas?.[name];
+  if (!resolved) throw new Error(`missing schema ref ${schema.$ref}`);
+  return resolved;
+}
+
+function schemaType(schema) {
+  if (!schema || typeof schema !== 'object') return undefined;
+  const t = Array.isArray(schema.type) ? schema.type.find((v) => v !== 'null') : schema.type;
+  if (t) return t;
+  if (schema.properties || schema.additionalProperties) return 'object';
+  if (schema.items) return 'array';
+  return undefined;
+}
+
+function normalizeKey(name = '') {
+  return String(name).replace(/[_\-\s]/g, '').toLowerCase();
+}
+
+function constrainedString(value, schema) {
+  const min = Number.isFinite(schema?.minLength) ? schema.minLength : 0;
+  const max = Number.isFinite(schema?.maxLength) ? schema.maxLength : Infinity;
+  let out = String(value);
+  if (out.length < min) out = out + 'x'.repeat(min - out.length);
+  if (out.length > max) out = out.slice(0, max);
+  return out || 'example';
+}
+
+function patternString(pattern, key) {
+  if (!pattern) return null;
+  const simpleAlternation = pattern.match(/^\^\(([^)]+)\)\$/);
+  if (simpleAlternation) return simpleAlternation[1].split('|')[0];
+  if (/scenario:\[0-9\]\{13\}:\[a-z0-9\]\{8\}/.test(pattern) || pattern.includes('scenario:')) {
+    return 'scenario:1717200000000:abcd1234';
+  }
+  if (pattern.includes('summary:v\\d+:')) return 'summary:v1:example-cache';
+  if (/^\^?\[A-Z\]\{3\}\$?$/.test(pattern)) return 'USA';
+  if (/^\^?\[A-Z\]\{2\}\$?$/.test(pattern)) return 'US';
+  if (pattern.includes('[0-9]{13}')) return '1717200000000';
+  if (pattern.includes('[a-z0-9]')) return 'example1';
+  if (key.includes('email')) return 'analyst@example.com';
+  return null;
+}
+
+function stringExample(name, schema = {}, context = {}) {
+  const key = normalizeKey(name || context.name || context.operationId);
+  const description = String(schema.description ?? context.description ?? '').toLowerCase();
+  if (schema.format === 'int64' || schema.format === 'uint64') return constrainedString('1717200000000', schema);
+  if (schema.format === 'date-time') return constrainedString('2026-01-15T12:00:00Z', schema);
+  if (schema.format === 'date') return constrainedString('2026-01-15', schema);
+  const pattern = patternString(schema.pattern, key);
+  if (pattern) return constrainedString(pattern, schema);
+  if (key.includes('email')) return constrainedString('analyst@example.com', schema);
+  if (key.includes('callbackurl')) return constrainedString('https://example.com/worldmonitor-webhook', schema);
+  if (key.includes('url') || key.includes('link')) return constrainedString('https://example.com/worldmonitor', schema);
+  if (key.includes('jobid')) return constrainedString('scenario:1717200000000:abcd1234', schema);
+  if (key.includes('scenarioid')) return constrainedString('oil-price-shock', schema);
+  if (key.includes('chokepointid')) return constrainedString('suez-canal', schema);
+  if (key.includes('pipelineid')) return constrainedString('transmed-pipeline', schema);
+  if (key.includes('facilityid')) return constrainedString('rough-storage', schema);
+  if (key.includes('assetid')) return constrainedString('asset-example-1', schema);
+  if (key.includes('vessel') || key.includes('mmsi')) return constrainedString('123456789', schema);
+  if (key.includes('ticker') || key.includes('symbol')) return constrainedString('AAPL', schema);
+  if (key.includes('fullname')) return constrainedString('koala73/worldmonitor', schema);
+  if (key.includes('provider')) return constrainedString('worldmonitor', schema);
+  if (description.includes('iata')) return constrainedString(key.includes('destination') || key.includes('arrival') ? 'LHR' : 'JFK', schema);
+  if (description.includes('iso 4217') || key.includes('currency')) return constrainedString('USD', schema);
+  if (description.includes('iso 639') || key === 'lang' || key.includes('locale')) return constrainedString('en', schema);
+  if (description.includes('iso 3166') || key.includes('marketcode')) return constrainedString('US', schema);
+  if (description.includes('wto member code')) return constrainedString(key.includes('partner') ? '156' : '840', schema);
+  if (description.includes('world bank indicator code')) return constrainedString('NY.GDP.MKTP.CD', schema);
+  if (description.includes('cpc category')) return constrainedString('H04B', schema);
+  if (description.includes('un comtrade reporter code')) return constrainedString('842', schema);
+  if (description.includes('hs commodity code') || key.includes('cmdcode')) return constrainedString('2709', schema);
+  if (key.includes('fromiso')) return constrainedString('CN', schema);
+  if (key.includes('toiso')) return constrainedString('US', schema);
+  if (key.includes('iso3')) return constrainedString('USA', schema);
+  if (key.includes('iso2') || key.includes('country') || key.includes('countrycode')) return constrainedString('US', schema);
+  if (key.includes('bbox')) return constrainedString('-74.10,40.60,-73.70,40.90', schema);
+  if (key.includes('lat')) return constrainedString('40.7128', schema);
+  if (key.includes('lng') || key.includes('lon')) return constrainedString('-74.0060', schema);
+  if (key.includes('date') || key.endsWith('day')) return constrainedString('2026-01-15', schema);
+  if (key.includes('time') || key.endsWith('at')) return constrainedString('2026-01-15T12:00:00Z', schema);
+  if (key.includes('cursor')) return constrainedString('next-page-token', schema);
+  if (key.includes('query') || key.includes('search')) return constrainedString('supply chain risk', schema);
+  if (key.includes('language')) return constrainedString('typescript', schema);
+  if (key.includes('category')) return constrainedString('cs.AI', schema);
+  if (key.includes('feedtype')) return constrainedString('top', schema);
+  if (key.includes('period')) return constrainedString('daily', schema);
+  if (key.includes('hs2')) return constrainedString('27', schema);
+  if (key.includes('cargotype')) return constrainedString('container', schema);
+  if (key.includes('commoditytype')) return constrainedString('oil', schema);
+  if (key.includes('facilitytype')) return constrainedString('ugs', schema);
+  if (key.includes('assettype')) return constrainedString('pipeline', schema);
+  if (key.includes('product')) return constrainedString('diesel', schema);
+  if (key.includes('severity')) return constrainedString('watch', schema);
+  if (key === 'type' || key.endsWith('type')) {
+    if (description.includes('conference')) return constrainedString('conference', schema);
+    if (description.includes('pipeline')) return constrainedString('pipeline', schema);
+    return constrainedString('all', schema);
+  }
+  if (key.includes('name')) return constrainedString('WorldMonitor Analyst', schema);
+  if (key.includes('message') || key.includes('summary') || key.includes('description')) {
+    return constrainedString('Example WorldMonitor observation.', schema);
+  }
+  if (key === 'id' || key.endsWith('id') || key.includes('identifier')) return constrainedString('example-id', schema);
+  return constrainedString('example', schema);
+}
+
+function numberExample(name, schema = {}, integer = false) {
+  const key = normalizeKey(name);
+  let value = integer ? 1 : 1.5;
+  if (key.includes('page') || key.includes('limit')) value = 25;
+  else if (key.includes('days')) value = 7;
+  else if (key.includes('closuredays')) value = 30;
+  else if (key === 'lat' || key.endsWith('lat') || key.includes('latitude')) value = 40.7128;
+  else if (key === 'lng' || key === 'lon' || key.endsWith('lng') || key.endsWith('lon') || key.includes('longitude')) value = -74.006;
+  else if (key.includes('time') || key.endsWith('at')) value = 1717200000000;
+  else if (key.includes('percent') || key.includes('ratio') || key.includes('score')) value = 42.5;
+  else if (key.includes('confidence')) value = 0.82;
+  else if (key.includes('price') || key.includes('cost') || key.includes('rate')) value = 75.25;
+  else if (key.includes('count') || key.includes('total')) value = 1;
+
+  if (Number.isFinite(schema.minimum) && value < schema.minimum) value = schema.minimum;
+  if (Number.isFinite(schema.maximum) && value > schema.maximum) value = schema.maximum;
+  if (integer) value = Math.trunc(value);
+  if (integer && Number.isFinite(schema.minimum) && value < schema.minimum) value = Math.ceil(schema.minimum);
+  if (integer && Number.isFinite(schema.maximum) && value > schema.maximum) value = Math.floor(schema.maximum);
+  return value;
+}
+
+function mergeObjects(a, b) {
+  return a && b && typeof a === 'object' && typeof b === 'object' && !Array.isArray(a) && !Array.isArray(b)
+    ? { ...a, ...b }
+    : b;
+}
+
+function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set()) {
+  if (!schema || typeof schema !== 'object') return 'example';
+  const original = schema;
+  schema = resolveRef(schema, spec);
+  const ref = original.$ref;
+  if (ref) {
+    if (seen.has(ref)) return {};
+    seen = new Set([...seen, ref]);
+  }
+
+  if (schema.example !== undefined) return clone(schema.example);
+  if (schema.default !== undefined) return clone(schema.default);
+  if (schema.const !== undefined) return clone(schema.const);
+  if (Array.isArray(schema.enum) && schema.enum.length > 0) {
+    const value = schema.enum.find((item) => !(typeof item === 'string' && item.endsWith('_UNSPECIFIED')));
+    return clone(value ?? schema.enum[0]);
+  }
+  if (Array.isArray(schema.allOf) && schema.allOf.length > 0) {
+    return schema.allOf.reduce(
+      (acc, part) => mergeObjects(acc, exampleForSchema(part, spec, context, depth + 1, seen)),
+      {},
+    );
+  }
+  const union = schema.oneOf ?? schema.anyOf;
+  if (Array.isArray(union) && union.length > 0) {
+    return exampleForSchema(union[0], spec, context, depth + 1, seen);
+  }
+
+  const type = schemaType(schema);
+  const name = context.name ?? '';
+  if (depth > MAX_OBJECT_DEPTH && (type === 'object' || type === 'array')) return type === 'array' ? [] : {};
+
+  if (type === 'array') {
+    return [exampleForSchema(schema.items ?? {}, spec, { ...context, name }, depth + 1, seen)];
+  }
+  if (type === 'object') {
+    const props = schema.properties ?? {};
+    const required = new Set(Array.isArray(schema.required) ? schema.required : []);
+    const optional = Object.keys(props).filter((key) => !required.has(key)).slice(0, MAX_OPTIONAL_PROPERTIES);
+    const keys = [...required, ...optional];
+    if (keys.length === 0) {
+      if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
+        return {
+          exampleKey: exampleForSchema(schema.additionalProperties, spec, { ...context, name: 'exampleKey' }, depth + 1, seen),
+        };
+      }
+      return {};
+    }
+    const out = {};
+    for (const key of keys) {
+      out[key] = exampleForSchema(props[key], spec, { ...context, name: key }, depth + 1, seen);
+    }
+    return out;
+  }
+  if (type === 'integer') return numberExample(name, schema, true);
+  if (type === 'number') return numberExample(name, schema, false);
+  if (type === 'boolean') return true;
+  return stringExample(name, schema, context);
+}
+
+function setExample(holder, example) {
+  let changed = false;
+  if (!eq(holder.example, example)) {
+    holder.example = example;
+    changed = true;
+  }
+  if (holder.examples !== undefined) {
+    delete holder.examples;
+    changed = true;
+  }
+  return changed;
+}
+
+function successResponses(op) {
+  return Object.entries(op.responses ?? {}).filter(([code, response]) =>
+    /^2\d\d$/.test(code) && response?.content?.[JSON_MEDIA]?.schema,
+  );
+}
+
+function injectSpecExamples(spec) {
+  let changed = false;
+  let operations = 0;
+  let requestBearingOperations = 0;
+  let responseOperations = 0;
+
+  for (const [path, ops] of Object.entries(spec.paths ?? {})) {
+    for (const [method, op] of Object.entries(ops ?? {})) {
+      if (!HTTP_METHODS.has(method) || !op || typeof op !== 'object') continue;
+      operations++;
+      const context = { operationId: op.operationId, path, method };
+      let hasRequestExample = false;
+
+      if (Array.isArray(op.parameters) && op.parameters.length > 0) {
+        hasRequestExample = true;
+        for (const param of op.parameters) {
+          if (!param || typeof param !== 'object' || !param.schema) continue;
+          const example = exampleForSchema(param.schema, spec, {
+            ...context,
+            name: param.name,
+            description: param.description,
+          });
+          changed = setExample(param, example) || changed;
+        }
+      }
+
+      const requestMedia = op.requestBody?.content?.[JSON_MEDIA];
+      if (requestMedia?.schema) {
+        hasRequestExample = true;
+        const example = exampleForSchema(requestMedia.schema, spec, {
+          ...context,
+          name: `${op.operationId ?? 'operation'}Request`,
+        });
+        changed = setExample(requestMedia, example) || changed;
+      }
+
+      if (hasRequestExample) requestBearingOperations++;
+
+      const responses = successResponses(op);
+      if (responses.length > 0) responseOperations++;
+      for (const [, response] of responses) {
+        const media = response.content[JSON_MEDIA];
+        const example = exampleForSchema(media.schema, spec, {
+          ...context,
+          name: `${op.operationId ?? 'operation'}Response`,
+        });
+        changed = setExample(media, example) || changed;
+      }
+    }
+  }
+
+  return { changed, operations, requestBearingOperations, responseOperations };
+}
+
+function countIndent(line) {
+  return line.match(/^ */)?.[0].length ?? 0;
+}
+
+function blockEnd(lines, start, indent) {
+  let end = start + 1;
+  while (end < lines.length) {
+    const line = lines[end];
+    if (line.trim() && countIndent(line) <= indent) break;
+    end++;
+  }
+  return end;
+}
+
+function unquoteYamlScalar(value) {
+  const trimmed = value.trim();
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function findOperation(lines, path, method, label) {
+  for (let i = 0; i < lines.length; i++) {
+    if (countIndent(lines[i]) !== 4 || lines[i].trim() !== `${path}:`) continue;
+    const pathEnd = blockEnd(lines, i, 4);
+    for (let j = i + 1; j < pathEnd; j++) {
+      if (countIndent(lines[j]) === 8 && lines[j].trim() === `${method}:`) {
+        return { start: j, end: blockEnd(lines, j, 8) };
+      }
+    }
+  }
+  throw new Error(`${label}: could not locate ${method.toUpperCase()} ${path} in YAML artifact`);
+}
+
+function isScalar(value) {
+  return value === null || typeof value !== 'object';
+}
+
+function yamlScalar(value) {
+  if (typeof value === 'string') return JSON.stringify(value);
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '0';
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (value === null) return 'null';
+  return JSON.stringify(value);
+}
+
+function yamlKey(key) {
+  return JSON.stringify(String(key));
+}
+
+function renderYamlNode(value, indent) {
+  const prefix = ' '.repeat(indent);
+  if (isScalar(value)) return [`${prefix}${yamlScalar(value)}`];
+  if (Array.isArray(value)) {
+    if (value.length === 0) return [`${prefix}[]`];
+    const lines = [];
+    for (const item of value) {
+      if (isScalar(item)) {
+        lines.push(`${prefix}- ${yamlScalar(item)}`);
+      } else if (Array.isArray(item)) {
+        if (item.length === 0) {
+          lines.push(`${prefix}- []`);
+        } else {
+          lines.push(`${prefix}-`);
+          lines.push(...renderYamlNode(item, indent + 4));
+        }
+      } else {
+        const keys = Object.keys(item);
+        if (keys.length === 0) {
+          lines.push(`${prefix}- {}`);
+          continue;
+        }
+        keys.forEach((key, index) => {
+          const child = item[key];
+          const propPrefix = index === 0 ? `${prefix}- ` : `${prefix}  `;
+          if (isScalar(child)) {
+            lines.push(`${propPrefix}${yamlKey(key)}: ${yamlScalar(child)}`);
+          } else {
+            lines.push(`${propPrefix}${yamlKey(key)}:`);
+            lines.push(...renderYamlNode(child, indent + (index === 0 ? 4 : 6)));
+          }
+        });
+      }
+    }
+    return lines;
+  }
+
+  const keys = Object.keys(value);
+  if (keys.length === 0) return [`${prefix}{}`];
+  const lines = [];
+  for (const key of keys) {
+    const child = value[key];
+    if (isScalar(child)) {
+      lines.push(`${prefix}${yamlKey(key)}: ${yamlScalar(child)}`);
+    } else {
+      lines.push(`${prefix}${yamlKey(key)}:`);
+      lines.push(...renderYamlNode(child, indent + 4));
+    }
+  }
+  return lines;
+}
+
+function renderExampleBlock(example, indent) {
+  const prefix = ' '.repeat(indent);
+  if (example === null || typeof example !== 'object') {
+    return [`${prefix}example: ${JSON.stringify(example)}`];
+  }
+  return [`${prefix}example:`, ...renderYamlNode(sortRec(example), indent + 4)];
+}
+
+function removeSiblingBlocks(lines, start, end, indent) {
+  let i = start;
+  while (i < end) {
+    const trimmed = lines[i].trim();
+    if (countIndent(lines[i]) === indent && (trimmed === 'example:' || trimmed.startsWith('example: ') || trimmed === 'examples:' || trimmed.startsWith('examples: '))) {
+      const rmEnd = blockEnd(lines, i, indent);
+      lines.splice(i, rmEnd - i);
+      end -= rmEnd - i;
+      continue;
+    }
+    i++;
+  }
+  return end;
+}
+
+function replaceParamExample(lines, opStart, opEnd, name, example) {
+  for (let i = opStart + 1; i < opEnd; i++) {
+    const match = lines[i].match(/^(\s*)-\s+name:\s+(.+)$/);
+    if (!match || countIndent(lines[i]) !== 16) continue;
+    if (unquoteYamlScalar(match[2]) !== name) continue;
+    const propIndent = 18;
+    let end = blockEnd(lines, i, 16);
+    end = removeSiblingBlocks(lines, i + 1, end, propIndent);
+    const insertAt = (() => {
+      for (let j = i + 1; j < end; j++) {
+        if (countIndent(lines[j]) === propIndent && lines[j].trim() === 'schema:') return j;
+      }
+      return end;
+    })();
+    lines.splice(insertAt, 0, ...renderExampleBlock(example, propIndent));
+    return;
+  }
+  throw new Error(`could not locate YAML parameter ${name}`);
+}
+
+function findChildLine(lines, start, end, indent, text) {
+  for (let i = start + 1; i < end; i++) {
+    if (countIndent(lines[i]) === indent && lines[i].trim() === text) return i;
+  }
+  return -1;
+}
+
+function replaceMediaExample(lines, mediaStart, example) {
+  const mediaIndent = countIndent(lines[mediaStart]);
+  const childIndent = mediaIndent + 4;
+  let end = blockEnd(lines, mediaStart, mediaIndent);
+  end = removeSiblingBlocks(lines, mediaStart + 1, end, childIndent);
+  let insertAt = end;
+  for (let i = mediaStart + 1; i < end; i++) {
+    if (countIndent(lines[i]) === childIndent && lines[i].trim() === 'schema:') {
+      insertAt = i;
+      break;
+    }
+  }
+  lines.splice(insertAt, 0, ...renderExampleBlock(example, childIndent));
+}
+
+function replaceRequestBodyExample(lines, opStart, opEnd, example) {
+  const requestStart = findChildLine(lines, opStart, opEnd, 12, 'requestBody:');
+  if (requestStart === -1) return;
+  const requestEnd = blockEnd(lines, requestStart, 12);
+  let mediaStart = -1;
+  for (let i = requestStart + 1; i < requestEnd; i++) {
+    if (lines[i].trim() === JSON_MEDIA + ':') {
+      mediaStart = i;
+      break;
+    }
+  }
+  if (mediaStart === -1) throw new Error('requestBody missing application/json in YAML artifact');
+  replaceMediaExample(lines, mediaStart, example);
+}
+
+function replaceResponseExample(lines, opStart, opEnd, code, example) {
+  const responsesStart = findChildLine(lines, opStart, opEnd, 12, 'responses:');
+  if (responsesStart === -1) return;
+  const responsesEnd = blockEnd(lines, responsesStart, 12);
+  let codeStart = -1;
+  for (let i = responsesStart + 1; i < responsesEnd; i++) {
+    if (countIndent(lines[i]) !== 16) continue;
+    const trimmed = lines[i].trim();
+    if (trimmed === `${code}:` || trimmed === `"${code}":`) {
+      codeStart = i;
+      break;
+    }
+  }
+  if (codeStart === -1) return;
+  const codeEnd = blockEnd(lines, codeStart, 16);
+  const mediaStart = findChildLine(lines, codeStart, codeEnd, 24, `${JSON_MEDIA}:`);
+  if (mediaStart === -1) return;
+  replaceMediaExample(lines, mediaStart, example);
+}
+
+function patchYamlExamples(raw, spec, label) {
+  const lines = raw.split('\n');
+  for (const [path, ops] of Object.entries(spec.paths ?? {})) {
+    for (const [method, op] of Object.entries(ops ?? {})) {
+      if (!HTTP_METHODS.has(method) || !op || typeof op !== 'object') continue;
+
+      for (const param of op.parameters ?? []) {
+        if (param?.example === undefined) continue;
+        const loc = findOperation(lines, path, method, label);
+        replaceParamExample(lines, loc.start, loc.end, param.name, param.example);
+      }
+
+      const requestExample = op.requestBody?.content?.[JSON_MEDIA]?.example;
+      if (requestExample !== undefined) {
+        const loc = findOperation(lines, path, method, label);
+        replaceRequestBodyExample(lines, loc.start, loc.end, requestExample);
+      }
+
+      for (const [code, response] of successResponses(op)) {
+        const example = response.content?.[JSON_MEDIA]?.example;
+        if (example === undefined) continue;
+        const loc = findOperation(lines, path, method, label);
+        replaceResponseExample(lines, loc.start, loc.end, code, example);
+      }
+    }
+  }
+  return lines.join('\n');
+}
+
+function processServiceSpec(file) {
+  const jsonPath = resolve(apiDir, file);
+  const spec = sortRec(JSON.parse(readFileSync(jsonPath, 'utf8')));
+  const stats = injectSpecExamples(spec);
+  const serialized = serialize(spec);
+  const jsonChanged = readFileSync(jsonPath, 'utf8') !== serialized;
+  if (jsonChanged && !CHECK) writeFileSync(jsonPath, serialized);
+
+  const yamlFile = file.replace(/\.json$/, '.yaml');
+  const yamlPath = resolve(apiDir, yamlFile);
+  const yamlRaw = readFileSync(yamlPath, 'utf8');
+  const yamlText = patchYamlExamples(yamlRaw, spec, yamlFile);
+  const yamlChanged = yamlRaw !== yamlText;
+  if (yamlChanged && !CHECK) writeFileSync(yamlPath, yamlText);
+
+  return { ...stats, changed: jsonChanged || yamlChanged, jsonChanged, yamlChanged, spec };
+}
+
+function processBundle(serviceSpecs) {
+  let text = readFileSync(bundlePath, 'utf8');
+  const raw = text;
+  for (const spec of serviceSpecs) {
+    text = patchYamlExamples(text, spec, 'worldmonitor.openapi.yaml');
+  }
+  const changed = raw !== text;
+  if (changed && !CHECK) writeFileSync(bundlePath, text);
+  return { changed };
+}
+
+const specFiles = readdirSync(apiDir).filter((f) => /Service\.openapi\.json$/.test(f)).sort();
+let operations = 0;
+let requestBearingOperations = 0;
+let responseOperations = 0;
+
+function processAllSpecs(countStats = false) {
+  let touched = 0;
+  let bundleChanged = false;
+  const serviceSpecs = [];
+  for (const file of specFiles) {
+    const result = processServiceSpec(file);
+    serviceSpecs.push(result.spec);
+    if (result.changed) touched++;
+    if (countStats) {
+      operations += result.operations;
+      requestBearingOperations += result.requestBearingOperations;
+      responseOperations += result.responseOperations;
+    }
+  }
+  const bundleResult = processBundle(serviceSpecs);
+  if (bundleResult.changed) {
+    touched++;
+    bundleChanged = true;
+  }
+  return { touched, bundleChanged };
+}
+
+const firstPass = processAllSpecs(true);
+const bundleChanged = firstPass.bundleChanged;
+const touched = firstPass.touched;
+
+if (CHECK) {
+  if (touched > 0) {
+    console.error(`x ${touched} OpenAPI artifact set(s) missing generated examples`);
+    console.error('  Run: npm run gen:openapi:examples');
+    process.exit(1);
+  }
+  console.log(`ok ${specFiles.length} specs + bundle carry generated examples (${operations} operations)`);
+} else {
+  console.log(
+    `openapi-inject-examples: updated ${touched} artifact set(s) - ${specFiles.length} specs, ${operations} operations, ${requestBearingOperations} request operation(s), ${responseOperations} response example target(s), bundle ${bundleChanged ? 'updated' : 'unchanged'}`,
+  );
+}

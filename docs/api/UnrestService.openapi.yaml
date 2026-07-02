@@ -15,6 +15,7 @@ paths:
                   in: query
                   description: Start of time range (inclusive), Unix epoch milliseconds.
                   required: false
+                  example: "1717200000000"
                   schema:
                     type: string
                     format: int64
@@ -22,59 +23,86 @@ paths:
                   in: query
                   description: End of time range (inclusive), Unix epoch milliseconds.
                   required: false
+                  example: "1717200000000"
                   schema:
                     type: string
                     format: int64
                 - name: page_size
                   in: query
-                  description: Maximum items per page (1-100).
+                  description: |-
+                    Maximum items per page (1-100).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "next-page-token"
                   schema:
                     type: string
                 - name: country
                   in: query
                   description: Optional country filter (ISO 3166-1 alpha-2).
                   required: false
+                  example: "US"
                   schema:
                     type: string
                 - name: min_severity
                   in: query
-                  description: Optional minimum severity filter.
+                  description: |-
+                    Optional minimum severity filter.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "SEVERITY_LEVEL_LOW"
                   schema:
                     type: string
+                    enum:
+                        - 'SEVERITY_LEVEL_LOW'
+                        - 'SEVERITY_LEVEL_MEDIUM'
+                        - 'SEVERITY_LEVEL_HIGH'
                 - name: ne_lat
                   in: query
-                  description: North-east corner latitude of bounding box.
+                  description: |-
+                    North-east corner latitude of bounding box.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: 40.7128
                   schema:
                     type: number
                     format: double
                 - name: ne_lon
                   in: query
-                  description: North-east corner longitude of bounding box.
+                  description: |-
+                    North-east corner longitude of bounding box.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: -74.006
                   schema:
                     type: number
                     format: double
                 - name: sw_lat
                   in: query
-                  description: South-west corner latitude of bounding box.
+                  description: |-
+                    South-west corner latitude of bounding box.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: 40.7128
                   schema:
                     type: number
                     format: double
                 - name: sw_lon
                   in: query
-                  description: South-west corner longitude of bounding box.
+                  description: |-
+                    South-west corner longitude of bounding box.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: -74.006
                   schema:
                     type: number
                     format: double
@@ -83,6 +111,31 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "clusters":
+                                    - "country": "US"
+                                      "endAt": 1717200000000
+                                      "eventCount": 1
+                                      "events":
+                                          - "actors":
+                                              - "example"
+                                            "city": "example"
+                                            "confidence": "CONFIDENCE_LEVEL_LOW"
+                                            "country": "US"
+                                            "eventType": "UNREST_EVENT_TYPE_PROTEST"
+                                            "id": "example-id"
+                                      "id": "example-id"
+                                "events":
+                                    - "actors":
+                                        - "example"
+                                      "city": "example"
+                                      "confidence": "CONFIDENCE_LEVEL_LOW"
+                                      "country": "US"
+                                      "eventType": "UNREST_EVENT_TYPE_PROTEST"
+                                      "id": "example-id"
+                                "pagination":
+                                    "nextCursor": "next-page-token"
+                                    "totalCount": 1
                             schema:
                                 $ref: '#/components/schemas/ListUnrestEventsResponse'
                 "400":
@@ -144,10 +197,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page (1-100).
+                    description: |-
+                        Maximum items per page (1-100).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 country:
                     type: string
                     description: Optional country filter (ISO 3166-1 alpha-2).
@@ -164,19 +221,27 @@ components:
                 neLat:
                     type: number
                     format: double
-                    description: North-east corner latitude of bounding box.
+                    description: |-
+                        North-east corner latitude of bounding box.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 neLon:
                     type: number
                     format: double
-                    description: North-east corner longitude of bounding box.
+                    description: |-
+                        North-east corner longitude of bounding box.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 swLat:
                     type: number
                     format: double
-                    description: South-west corner latitude of bounding box.
+                    description: |-
+                        South-west corner latitude of bounding box.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 swLon:
                     type: number
                     format: double
-                    description: South-west corner longitude of bounding box.
+                    description: |-
+                        South-west corner longitude of bounding box.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: ListUnrestEventsRequest specifies filters for retrieving social unrest events.
         ListUnrestEventsResponse:
             type: object

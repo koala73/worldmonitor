@@ -13,7 +13,9 @@ paths:
             parameters:
                 - name: max_items
                   in: query
+                  description: Maximum number of recent sanctions entries to include.
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
@@ -22,6 +24,24 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "aircraftCount": 1
+                                "consolidatedCount": 1
+                                "countries":
+                                    - "aircraftCount": 1
+                                      "countryCode": "US"
+                                      "countryName": "US"
+                                      "entryCount": 1
+                                      "newEntryCount": 1
+                                "datasetDate": "1717200000000"
+                                "entries":
+                                    - "countryCodes":
+                                        - "US"
+                                      "countryNames":
+                                          - "US"
+                                      "effectiveAt": "1717200000000"
+                                      "entityType": "SANCTIONS_ENTITY_TYPE_ENTITY"
+                                      "id": "example-id"
                             schema:
                                 $ref: '#/components/schemas/ListSanctionsPressureResponse'
                 "400":
@@ -52,12 +72,16 @@ paths:
             parameters:
                 - name: q
                   in: query
+                  description: Search text for a sanctioned person, organization, vessel, or aircraft.
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: max_results
                   in: query
+                  description: Maximum number of matching sanctioned entities to return.
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
@@ -66,6 +90,17 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "results":
+                                    - "countryCodes":
+                                        - "US"
+                                      "entityType": "all"
+                                      "id": "example-id"
+                                      "name": "WorldMonitor Analyst"
+                                      "programs":
+                                          - "example"
+                                "source": "example"
+                                "total": 1
                             schema:
                                 $ref: '#/components/schemas/LookupSanctionEntityResponse'
                 "400":
@@ -139,6 +174,7 @@ components:
                 maxItems:
                     type: integer
                     format: int32
+                    description: Maximum number of recent sanctions entries to include.
             description: ListSanctionsPressureRequest retrieves recent OFAC sanctions pressure state.
         ListSanctionsPressureResponse:
             type: object
@@ -257,9 +293,11 @@ components:
             properties:
                 q:
                     type: string
+                    description: Search text for a sanctioned person, organization, vessel, or aircraft.
                 maxResults:
                     type: integer
                     format: int32
+                    description: Maximum number of matching sanctioned entities to return.
             description: LookupSanctionEntityRequest searches the OFAC entity index by name, vessel, or aircraft.
         LookupSanctionEntityResponse:
             type: object

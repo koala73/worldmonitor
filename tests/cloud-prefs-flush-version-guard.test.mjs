@@ -29,18 +29,13 @@ describe('cloud prefs flush version guardrails', () => {
     );
     assert.match(
       flushBody,
-      /if \(!res\.ok\) return;/,
-      'flushOnUnload must leave local state untouched on 409/5xx so conflict-merge recovers',
+      /rearmTemporaryCloudPrefsRetry\([\s\S]*status: res.status,[\s\S]*setRetryTimer:[\s\S]*uploadNow:[\s\S]*return;/,
+      'flushOnUnload must requeue observable 429/503 keepalive failures instead of stranding the final save',
     );
     assert.match(
       flushBody,
-      /setSyncVersion\(body\.syncVersion\)/,
-      'flushOnUnload must persist the new syncVersion on a 200',
-    );
-    assert.match(
-      flushBody,
-      /clearSettledDirtyKeys\(blob\)/,
-      'flushOnUnload must settle the dirty keys it durably uploaded',
+      /applyObservableCloudPrefsFlushSuccess\([\s\S]*syncVersion: body\?\.syncVersion,[\s\S]*setSyncVersion,[\s\S]*clearSettledDirtyKeys: \(\) => clearSettledDirtyKeys\(blob\)/,
+      'flushOnUnload must route successful observable responses through the behavior-tested flush helper',
     );
   });
 
@@ -52,12 +47,12 @@ describe('cloud prefs flush version guardrails', () => {
     );
     assert.match(
       flushBody,
-      /if \(_authGeneration !== myGeneration\) return;/,
+      /getAuthGeneration: \(\) => _authGeneration/,
       'flushOnUnload must not resurrect sync state after sign-out/user switch',
     );
     assert.match(
       flushBody,
-      /if \(body\.syncVersion <= getSyncVersion\(\)\) return;/,
+      /getSyncVersion,/,
       'flushOnUnload must never regress the version past a newer upload',
     );
   });
@@ -69,7 +64,7 @@ describe('cloud prefs flush version guardrails', () => {
     // 'synced' during an active upload (Greptile P2 on PR #4267).
     assert.match(
       flushBody,
-      /if \(_debounceTimer === null && _uploadsInFlight === 0\) setState\('synced'\);/,
+      /isIdle: \(\) => _debounceTimer === null && _uploadsInFlight === 0,[\s\S]*setSynced: \(\) => setState\('synced'\)/,
       'flushOnUnload must not claim synced while a debounce is armed or an upload is in flight',
     );
     const uploadNowBody = (() => {

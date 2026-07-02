@@ -10,6 +10,7 @@ import "worldmonitor/supply_chain/v1/supply_chain_data.proto";
 // chokepoint. Loaded lazily on card expand so the main chokepoint-status
 // response can stay compact (no 180-day history per chokepoint).
 message GetChokepointHistoryRequest {
+  // Chokepoint identifier whose transit history should be returned.
   string chokepoint_id = 1 [
     (buf.validate.field).required = true,
     (sebuf.http.query) = {name: "chokepointId"}

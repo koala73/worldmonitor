@@ -11,11 +11,13 @@ message ListArxivPapersRequest {
   // Maximum items per page (1-100).
   int32 page_size = 1 [(sebuf.http.query) = { name: "page_size" }];
   // Cursor for next page.
-  string cursor = 2 [(sebuf.http.query) = { name: "cursor" }];
+  // Accepted but currently ignored; no-op until this handler supports the parameter.
+  string cursor = 2 [(sebuf.http.query) = { name: "cursor" }, (sebuf.http.unimplemented) = true];
   // arXiv category filter (e.g., "cs.AI"). Empty returns all tracked categories.
   string category = 3 [(sebuf.http.query) = { name: "category" }];
   // Search query for paper titles and abstracts.
-  string query = 4 [(sebuf.http.query) = { name: "query" }];
+  // Accepted but currently ignored; no-op until this handler supports the parameter.
+  string query = 4 [(sebuf.http.query) = { name: "query" }, (sebuf.http.unimplemented) = true];
 }
 
 // ListArxivPapersResponse contains arXiv papers matching the request.

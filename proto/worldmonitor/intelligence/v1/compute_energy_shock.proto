@@ -4,10 +4,14 @@ import "sebuf/http/annotations.proto";
 option go_package = "github.com/koala73/worldmonitor/worldmonitor/intelligence/v1";
 
 message ComputeEnergyShockScenarioRequest {
+  // ISO 3166-1 alpha-2 country code for the affected energy market.
   string country_code   = 1 [(sebuf.http.query) = {name: "country_code"}];
+  // Chokepoint identifier to model as disrupted.
   string chokepoint_id  = 2 [(sebuf.http.query) = {name: "chokepoint_id"}];
+  // Percent of chokepoint flow disrupted, from 0 to 100.
   int32  disruption_pct = 3 [(sebuf.http.query) = {name: "disruption_pct"}];
-  string fuel_mode      = 4 [(sebuf.http.query) = {name: "fuel_mode"}]; // "oil"|"gas"|"both", default "oil"
+  // Fuel mode to model: "oil", "gas", or "both". Defaults to "oil".
+  string fuel_mode      = 4 [(sebuf.http.query) = {name: "fuel_mode"}];
 }
 
 message ProductImpact {

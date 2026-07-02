@@ -13,6 +13,15 @@ paths:
             requestBody:
                 content:
                     application/json:
+                        example:
+                            "bodies":
+                                - "example"
+                            "geoContext": "example"
+                            "headlines":
+                                - "example"
+                            "lang": "en"
+                            "mode": "example"
+                            "provider": "worldmonitor"
                         schema:
                             $ref: '#/components/schemas/SummarizeArticleRequest'
                 required: true
@@ -21,6 +30,12 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "error": "example"
+                                "errorType": "all"
+                                "fallback": true
+                                "model": "example"
+                                "provider": "worldmonitor"
                             schema:
                                 $ref: '#/components/schemas/SummarizeArticleResponse'
                 "400":
@@ -47,13 +62,21 @@ paths:
                   in: query
                   description: Deterministic cache key computed by buildSummaryCacheKey().
                   required: false
+                  example: "summary:v1:example-cache"
                   schema:
                     type: string
+                    pattern: '^summary:v\d+:[a-z0-9:_-]{3,120}$'
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "error": "example"
+                                "errorType": "all"
+                                "fallback": true
+                                "model": "example"
+                                "provider": "worldmonitor"
                             schema:
                                 $ref: '#/components/schemas/SummarizeArticleResponse'
                 "400":
@@ -80,12 +103,14 @@ paths:
                   in: query
                   description: 'Digest variant: full, tech, finance, happy, commodity. Unsupported site variants, including energy, currently fall back to full.'
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: lang
                   in: query
                   description: ISO 639-1 language code (en, fr, ar, etc.)
                   required: false
+                  example: "en"
                   schema:
                     type: string
             responses:
@@ -93,6 +118,22 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "categories":
+                                    "exampleKey":
+                                        "items":
+                                            - "corroborationCount": 42
+                                              "importanceScore": 42
+                                              "isAlert": true
+                                              "link": "https://example.com/worldmonitor"
+                                              "location":
+                                                  "latitude": 40.7128
+                                                  "longitude": -74.006
+                                              "source": "example"
+                                              "title": "example"
+                                "feedStatuses":
+                                    "exampleKey": "example"
+                                "generatedAt": "2026-01-15T12:00:00Z"
                             schema:
                                 $ref: '#/components/schemas/ListFeedDigestResponse'
                 "400":

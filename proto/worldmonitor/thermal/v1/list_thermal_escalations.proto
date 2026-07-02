@@ -6,6 +6,7 @@ import "sebuf/http/annotations.proto";
 import "worldmonitor/thermal/v1/thermal_escalation_cluster.proto";
 
 message ListThermalEscalationsRequest {
+  // Maximum number of thermal escalation clusters to return.
   int32 max_items = 1 [(sebuf.http.query) = { name: "max_items" }];
 }
 

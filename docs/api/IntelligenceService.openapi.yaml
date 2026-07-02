@@ -15,6 +15,7 @@ paths:
                   in: query
                   description: Optional region filter. Empty returns all tracked regions.
                   required: false
+                  example: "example"
                   schema:
                     type: string
             responses:
@@ -22,6 +23,26 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "ciiScores":
+                                    - "advisoryLevel": "example"
+                                      "advisoryProvenance": "live"
+                                      "combinedScore": 42.5
+                                      "components":
+                                          "ciiContribution": 1.5
+                                          "geoConvergence": 1.5
+                                          "militaryActivity": 1.5
+                                          "newsActivity": 1.5
+                                      "computedAt": 1717200000000
+                                "degraded": true
+                                "stale": true
+                                "strategicRisks":
+                                    - "factors":
+                                        - "example"
+                                      "level": "SEVERITY_LEVEL_LOW"
+                                      "region": "example"
+                                      "score": 42.5
+                                      "trend": "TREND_DIRECTION_RISING"
                             schema:
                                 $ref: '#/components/schemas/GetRiskScoresResponse'
                 "400":
@@ -48,6 +69,7 @@ paths:
                   in: query
                   description: Whether to include GDELT tension pairs in the response.
                   required: false
+                  example: true
                   schema:
                     type: boolean
             responses:
@@ -55,6 +77,20 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "pizzint":
+                                    "activeSpikes": 1
+                                    "aggregateActivity": 1.5
+                                    "dataFreshness": "DATA_FRESHNESS_FRESH"
+                                    "defconLabel": "example"
+                                    "defconLevel": 1
+                                "tensionPairs":
+                                    - "changePercent": 42.5
+                                      "countries":
+                                          - "US"
+                                      "id": "example-id"
+                                      "label": "example"
+                                      "region": "example"
                             schema:
                                 $ref: '#/components/schemas/GetPizzintStatusResponse'
                 "400":
@@ -80,25 +116,29 @@ paths:
                 - name: title
                   in: query
                   description: Event title or headline.
-                  required: false
+                  required: true
+                  example: "example"
                   schema:
                     type: string
                 - name: description
                   in: query
                   description: Event description or body text.
                   required: false
+                  example: "Example WorldMonitor observation."
                   schema:
                     type: string
                 - name: source
                   in: query
                   description: Event source (e.g., "reuters", "acled").
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: country
                   in: query
                   description: Country context (ISO 3166-1 alpha-2).
                   required: false
+                  example: "US"
                   schema:
                     type: string
             responses:
@@ -106,6 +146,14 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "classification":
+                                    "analysis": "example"
+                                    "category": "cs.AI"
+                                    "confidence": 0.82
+                                    "entities":
+                                        - "example"
+                                    "severity": "SEVERITY_LEVEL_LOW"
                             schema:
                                 $ref: '#/components/schemas/ClassifyEventResponse'
                 "400":
@@ -131,14 +179,31 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code.
-                  required: false
+                  required: true
+                  example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "advisoryLevel": "example"
+                                "cii":
+                                    "advisoryLevel": "example"
+                                    "advisoryProvenance": "live"
+                                    "combinedScore": 42.5
+                                    "components":
+                                        "ciiContribution": 1.5
+                                        "geoConvergence": 1.5
+                                        "militaryActivity": 1.5
+                                        "newsActivity": 1.5
+                                    "computedAt": 1717200000000
+                                "countryCode": "US"
+                                "countryName": "US"
+                                "fetchedAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/GetCountryRiskResponse'
                 "400":
@@ -164,13 +229,16 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code.
-                  required: false
+                  required: true
+                  example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: framework
                   in: query
                   description: Optional analytical framework instructions to append to system prompt. Max 2000 chars enforced at handler level.
                   required: false
+                  example: "example"
                   schema:
                     type: string
             responses:
@@ -178,6 +246,12 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "brief": "example"
+                                "countryCode": "US"
+                                "countryName": "US"
+                                "generatedAt": 1717200000000
+                                "model": "example"
                             schema:
                                 $ref: '#/components/schemas/GetCountryIntelBriefResponse'
                 "400":
@@ -203,20 +277,25 @@ paths:
                 - name: query
                   in: query
                   description: Search query string.
-                  required: false
+                  required: true
+                  example: "supply chain risk"
                   schema:
                     type: string
                 - name: max_records
                   in: query
                   description: Maximum number of articles to return (1-250).
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
                 - name: timespan
                   in: query
-                  description: Time span filter (e.g., "15min", "1h", "24h").
+                  description: |-
+                    Time span filter (e.g., "15min", "1h", "24h").
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "2026-01-15T12:00:00Z"
                   schema:
                     type: string
                 - name: tone_filter
@@ -224,13 +303,18 @@ paths:
                   description: |-
                     Tone filter appended to query (e.g., "tone>5" for positive, "tone<-5" for negative).
                      Left empty to skip tone filtering.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: sort
                   in: query
-                  description: 'Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".'
+                  description: |-
+                    Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "example"
                   schema:
                     type: string
             responses:
@@ -238,6 +322,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "articles":
+                                    - "date": "2026-01-15"
+                                      "image": "example"
+                                      "language": "typescript"
+                                      "source": "example"
+                                      "title": "example"
+                                "error": "example"
+                                "query": "supply chain risk"
                             schema:
                                 $ref: '#/components/schemas/SearchGdeltDocumentsResponse'
                 "400":
@@ -262,6 +355,10 @@ paths:
             requestBody:
                 content:
                     application/json:
+                        example:
+                            "framework": "example"
+                            "geoContext": "example"
+                            "query": "supply chain risk"
                         schema:
                             $ref: '#/components/schemas/DeductSituationRequest'
                 required: true
@@ -270,6 +367,10 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "analysis": "example"
+                                "model": "example"
+                                "provider": "worldmonitor"
                             schema:
                                 $ref: '#/components/schemas/DeductSituationResponse'
                 "400":
@@ -296,6 +397,7 @@ paths:
                   in: query
                   description: Filter by country code. Empty returns all.
                   required: false
+                  example: "US"
                   schema:
                     type: string
             responses:
@@ -303,6 +405,14 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "satellites":
+                                    - "alt": 1.5
+                                      "country": "US"
+                                      "id": "example-id"
+                                      "inclination": 1.5
+                                      "line1": "example"
+                                      "line2": "example"
                             schema:
                                 $ref: '#/components/schemas/ListSatellitesResponse'
                 "400":
@@ -329,6 +439,7 @@ paths:
                   in: query
                   description: Optional region filter.
                   required: false
+                  example: "example"
                   schema:
                     type: string
             responses:
@@ -336,6 +447,20 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fetchedAt": 1717200000000
+                                "hexes":
+                                    - "aircraftCount": 1
+                                      "h3": "example"
+                                      "lat": 40.7128
+                                      "level": "INTERFERENCE_LEVEL_LOW"
+                                      "lon": -74.006
+                                      "npAvg": 1.5
+                                "source": "example"
+                                "stats":
+                                    "highCount": 1
+                                    "mediumCount": 1
+                                    "totalHexes": 1
                             schema:
                                 $ref: '#/components/schemas/ListGpsInterferenceResponse'
                 "400":
@@ -362,13 +487,36 @@ paths:
                   in: query
                   description: Mode selection. MODE_UNSPECIFIED defaults to active alerts.
                   required: false
+                  example: "MODE_HISTORY"
                   schema:
                     type: string
+                    enum:
+                        - 'MODE_HISTORY'
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "alerts":
+                                    - "cat": "2026-01-15T12:00:00Z"
+                                      "data":
+                                          - "example"
+                                      "desc": "example"
+                                      "id": "example-id"
+                                      "timestampMs": 1717200000000
+                                "configured": true
+                                "error": "example"
+                                "history":
+                                    - "alerts":
+                                        - "cat": "2026-01-15T12:00:00Z"
+                                          "data":
+                                              - "example"
+                                          "desc": "example"
+                                          "id": "example-id"
+                                          "timestampMs": 1717200000000
+                                      "timestampMs": 1717200000000
+                                "historyCount24h": 1
                             schema:
                                 $ref: '#/components/schemas/ListOrefAlertsResponse'
                 "400":
@@ -395,6 +543,7 @@ paths:
                   in: query
                   description: Maximum number of messages to return (default 50).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
@@ -402,12 +551,14 @@ paths:
                   in: query
                   description: Filter by topic keyword (e.g. "military", "cyber").
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: channel
                   in: query
                   description: Filter by specific channel ID or name.
                   required: false
+                  example: "example"
                   schema:
                     type: string
             responses:
@@ -415,6 +566,17 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "count": 1
+                                "enabled": true
+                                "error": "example"
+                                "messages":
+                                    - "channelId": "example-id"
+                                      "channelName": "WorldMonitor Analyst"
+                                      "id": "example-id"
+                                      "mediaUrls":
+                                          - "https://example.com/worldmonitor"
+                                      "sourceUrl": "https://example.com/worldmonitor"
                             schema:
                                 $ref: '#/components/schemas/ListTelegramFeedResponse'
                 "400":
@@ -439,12 +601,16 @@ paths:
             parameters:
                 - name: domain
                   in: query
+                  description: Company domain to enrich, such as "github.com".
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: name
                   in: query
+                  description: Company name to enrich when a domain is not available.
                   required: false
+                  example: "WorldMonitor Analyst"
                   schema:
                     type: string
             responses:
@@ -452,6 +618,30 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "company":
+                                    "description": "Example WorldMonitor observation."
+                                    "domain": "example"
+                                    "founded": 1
+                                    "location": "example"
+                                    "name": "WorldMonitor Analyst"
+                                "enrichedAtMs": 1
+                                "github":
+                                    "avatarUrl": "https://example.com/worldmonitor"
+                                    "followers": 1
+                                    "publicRepos": 1
+                                "hackerNewsMentions":
+                                    - "comments": 1
+                                      "createdAtMs": 1
+                                      "points": 1
+                                      "title": "example"
+                                      "url": "https://example.com/worldmonitor"
+                                "secFilings":
+                                    "recentFilings":
+                                        - "description": "Example WorldMonitor observation."
+                                          "fileDate": "2026-01-15"
+                                          "form": "example"
+                                    "totalFilings": 1
                             schema:
                                 $ref: '#/components/schemas/GetCompanyEnrichmentResponse'
                 "400":
@@ -476,12 +666,16 @@ paths:
             parameters:
                 - name: company
                   in: query
+                  description: Company name to discover signals for.
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: domain
                   in: query
+                  description: Company domain to discover signals for.
                   required: false
+                  example: "example"
                   schema:
                     type: string
             responses:
@@ -489,6 +683,37 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "company": "example"
+                                "discoveredAtMs": 1
+                                "domain": "example"
+                                "signals":
+                                    - "engagement":
+                                        "comments": 1
+                                        "forks": 1
+                                        "mentions": 1
+                                        "points": 1
+                                        "stars": 1
+                                      "source": "example"
+                                      "sourceTier": 1
+                                      "strength": "example"
+                                      "timestampMs": 1717200000000
+                                "summary":
+                                    "byType":
+                                        "exampleKey": 1
+                                    "signalDiversity": 1
+                                    "strongestSignal":
+                                        "engagement":
+                                            "comments": 1
+                                            "forks": 1
+                                            "mentions": 1
+                                            "points": 1
+                                            "stars": 1
+                                        "source": "example"
+                                        "sourceTier": 1
+                                        "strength": "example"
+                                        "timestampMs": 1717200000000
+                                    "totalSignals": 1
                             schema:
                                 $ref: '#/components/schemas/ListCompanySignalsResponse'
                 "400":
@@ -513,14 +738,24 @@ paths:
             parameters:
                 - name: country_code
                   in: query
-                  required: false
+                  description: ISO 3166-1 alpha-2 country code for the facts lookup.
+                  required: true
+                  example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "areaSqKm": 1.5
+                                "capital": "example"
+                                "countryName": "US"
+                                "currencies":
+                                    - "example"
+                                "headOfState": "example"
                             schema:
                                 $ref: '#/components/schemas/GetCountryFactsResponse'
                 "400":
@@ -547,6 +782,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "advisories":
+                                    - "country": "US"
+                                      "level": "example"
+                                      "link": "https://example.com/worldmonitor"
+                                      "pubDate": "2026-01-15"
+                                      "source": "example"
+                                "byCountry":
+                                    "exampleKey": "example"
                             schema:
                                 $ref: '#/components/schemas/ListSecurityAdvisoriesResponse'
                 "400":
@@ -573,6 +817,7 @@ paths:
                   in: query
                   description: Topic ID (military, cyber, nuclear, sanctions, intelligence, maritime).
                   required: false
+                  example: "example"
                   schema:
                     type: string
             responses:
@@ -580,6 +825,16 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "error": "example"
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "tone":
+                                    - "date": "2026-01-15"
+                                      "value": 1.5
+                                "topic": "example"
+                                "vol":
+                                    - "date": "2026-01-15"
+                                      "value": 1.5
                             schema:
                                 $ref: '#/components/schemas/GetGdeltTopicTimelineResponse'
                 "400":
@@ -606,6 +861,16 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "compositeCount": 1
+                                "evaluatedAt": 1717200000000
+                                "signals":
+                                    - "contributingTypes":
+                                        - "example"
+                                      "detectedAt": 1717200000000
+                                      "id": "example-id"
+                                      "severity": "CROSS_SOURCE_SIGNAL_SEVERITY_LOW"
+                                      "severityScore": 42.5
                             schema:
                                 $ref: '#/components/schemas/ListCrossSourceSignalsResponse'
                 "400":
@@ -630,7 +895,9 @@ paths:
             parameters:
                 - name: frameworkId
                   in: query
+                  description: Framework identifier whose market implication cards should be listed.
                   required: false
+                  example: "example-id"
                   schema:
                     type: string
             responses:
@@ -638,6 +905,16 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "cards":
+                                    - "confidence": "example"
+                                      "direction": "example"
+                                      "driver": "example"
+                                      "name": "WorldMonitor Analyst"
+                                      "narrative": "example"
+                                "degraded": true
+                                "emptyReason": "example"
+                                "generatedAt": "2026-01-15T12:00:00Z"
                             schema:
                                 $ref: '#/components/schemas/ListMarketImplicationsResponse'
                 "400":
@@ -664,6 +941,14 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fetchedAt": 1717200000000
+                                "posts":
+                                    - "createdAt": 1717200000000
+                                      "id": "example-id"
+                                      "numComments": 1
+                                      "score": 42
+                                      "subreddit": "example"
                             schema:
                                 $ref: '#/components/schemas/GetSocialVelocityResponse'
                 "400":
@@ -688,7 +973,9 @@ paths:
             parameters:
                 - name: country_code
                   in: query
+                  description: ISO 3166-1 alpha-2 country code for the energy profile.
                   required: false
+                  example: "US"
                   schema:
                     type: string
             responses:
@@ -696,6 +983,12 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "coalShare": 1.5
+                                "crudeImportsKbd": 1.5
+                                "dieselDemandKbd": 1.5
+                                "dieselImportsKbd": 1.5
+                                "electricityAvailable": true
                             schema:
                                 $ref: '#/components/schemas/GetCountryEnergyProfileResponse'
                 "400":
@@ -720,30 +1013,53 @@ paths:
             parameters:
                 - name: country_code
                   in: query
+                  description: ISO 3166-1 alpha-2 country code for the affected energy market.
                   required: false
+                  example: "US"
                   schema:
                     type: string
                 - name: chokepoint_id
                   in: query
+                  description: Chokepoint identifier to model as disrupted.
                   required: false
+                  example: "hormuz_strait"
                   schema:
                     type: string
+                    enum:
+                        - 'hormuz_strait'
+                        - 'malacca_strait'
+                        - 'suez'
+                        - 'bab_el_mandeb'
                 - name: disruption_pct
                   in: query
+                  description: Percent of chokepoint flow disrupted, from 0 to 100.
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
                 - name: fuel_mode
                   in: query
+                  description: 'Fuel mode to model: "oil", "gas", or "both". Defaults to "oil".'
                   required: false
+                  example: "oil"
                   schema:
                     type: string
+                    enum:
+                        - 'oil'
+                        - 'gas'
+                        - 'both'
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "assessment": "example"
+                                "chokepointConfidence": "example"
+                                "chokepointId": "suez-canal"
+                                "comtradeCoverage": true
+                                "countryCode": "US"
                             schema:
                                 $ref: '#/components/schemas/ComputeEnergyShockScenarioResponse'
                 "400":
@@ -768,7 +1084,9 @@ paths:
             parameters:
                 - name: country_code
                   in: query
+                  description: ISO 3166-1 alpha-2 country code for port activity.
                   required: false
+                  example: "US"
                   schema:
                     type: string
             responses:
@@ -776,6 +1094,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "available": true
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "ports":
+                                    - "anomalySignal": true
+                                      "exportTankerDwt": 1.5
+                                      "importTankerDwt": 1.5
+                                      "lat": 40.7128
+                                      "lon": -74.006
                             schema:
                                 $ref: '#/components/schemas/CountryPortActivityResponse'
                 "400":
@@ -807,14 +1134,52 @@ paths:
                     Display region id (e.g. "mena", "east-asia", "europe"). See shared/geography.js.
                      Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
                      trailing or consecutive hyphens.
-                  required: false
+                  required: true
+                  example: "example1"
                   schema:
                     type: string
+                    pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "snapshot":
+                                    "actors":
+                                        - "actorId": "example-id"
+                                          "delta": 1.5
+                                          "evidenceIds":
+                                              - "example"
+                                          "leverageDomains":
+                                              - "example"
+                                          "leverageScore": 42.5
+                                    "balance":
+                                        "allianceCohesion": 1.5
+                                        "buffers":
+                                            - "axis": "example"
+                                              "description": "Example WorldMonitor observation."
+                                              "evidenceIds":
+                                                  - "example"
+                                              "magnitude": 1.5
+                                              "orientation": "example"
+                                        "capitalStress": 1.5
+                                        "coercivePressure": 1.5
+                                        "domesticFragility": 1.5
+                                    "evidence":
+                                        - "confidence": 0.82
+                                          "corridor": "example"
+                                          "id": "example-id"
+                                          "observedAt": 1717200000000
+                                          "source": "example"
+                                    "generatedAt": 1717200000000
+                                    "leverageEdges":
+                                        - "evidenceIds":
+                                            - "example"
+                                          "fromActorId": "example-id"
+                                          "mechanism": "example"
+                                          "strength": 1.5
+                                          "toActorId": "example-id"
                             schema:
                                 $ref: '#/components/schemas/GetRegionalSnapshotResponse'
                 "400":
@@ -846,9 +1211,11 @@ paths:
                     Display region id (e.g. "mena", "east-asia", "europe"). See shared/geography.js.
                      Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
                      trailing or consecutive hyphens.
-                  required: false
+                  required: true
+                  example: "example1"
                   schema:
                     type: string
+                    pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
                 - name: limit
                   in: query
                   description: |-
@@ -856,6 +1223,7 @@ paths:
                      when omitted or <= 0. Hard cap enforced by the handler at 100 (= the
                      writer-side LTRIM cap in regime-history.mjs).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
@@ -864,6 +1232,13 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "transitions":
+                                    - "label": "example"
+                                      "previousLabel": "example"
+                                      "regionId": "example-id"
+                                      "snapshotId": "example-id"
+                                      "transitionDriver": "example"
                             schema:
                                 $ref: '#/components/schemas/GetRegimeHistoryResponse'
                 "400":
@@ -890,14 +1265,25 @@ paths:
             parameters:
                 - name: region_id
                   in: query
-                  required: false
+                  description: Stable regional brief identifier, such as "middle-east".
+                  required: true
+                  example: "example1"
                   schema:
                     type: string
+                    pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "brief":
+                                    "generatedAt": 1717200000000
+                                    "keyDevelopments":
+                                        - "example"
+                                    "model": "example"
+                                    "periodEnd": 1
+                                    "periodStart": 1
                             schema:
                                 $ref: '#/components/schemas/GetRegionalBriefResponse'
                 "400":
@@ -1435,15 +1821,20 @@ components:
                     description: Maximum number of articles to return (1-250).
                 timespan:
                     type: string
-                    description: Time span filter (e.g., "15min", "1h", "24h").
+                    description: |-
+                        Time span filter (e.g., "15min", "1h", "24h").
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 toneFilter:
                     type: string
                     description: |-
                         Tone filter appended to query (e.g., "tone>5" for positive, "tone<-5" for negative).
                          Left empty to skip tone filtering.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 sort:
                     type: string
-                    description: 'Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".'
+                    description: |-
+                        Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             required:
                 - query
             description: SearchGdeltDocumentsRequest specifies filters for searching GDELT news articles.
@@ -1772,8 +2163,10 @@ components:
             properties:
                 domain:
                     type: string
+                    description: Company domain to enrich, such as "github.com".
                 name:
                     type: string
+                    description: Company name to enrich when a domain is not available.
             description: |-
                 Request to fetch enrichment data for a company.
                  Requires either domain (e.g. "github.com") or name (e.g. "GitHub").
@@ -1882,8 +2275,10 @@ components:
             properties:
                 company:
                     type: string
+                    description: Company name to discover signals for.
                 domain:
                     type: string
+                    description: Company domain to discover signals for.
             description: Request to discover and classify company signals (hiring, funding, tech changes).
         ListCompanySignalsResponse:
             type: object
@@ -1976,6 +2371,7 @@ components:
                 countryCode:
                     type: string
                     pattern: ^[A-Z]{2}$
+                    description: ISO 3166-1 alpha-2 country code for the facts lookup.
             required:
                 - countryCode
         GetCountryFactsResponse:
@@ -2173,6 +2569,7 @@ components:
             properties:
                 frameworkId:
                     type: string
+                    description: Framework identifier whose market implication cards should be listed.
         ListMarketImplicationsResponse:
             type: object
             properties:
@@ -2274,6 +2671,7 @@ components:
             properties:
                 countryCode:
                     type: string
+                    description: ISO 3166-1 alpha-2 country code for the energy profile.
         GetCountryEnergyProfileResponse:
             type: object
             properties:
@@ -2444,13 +2842,17 @@ components:
             properties:
                 countryCode:
                     type: string
+                    description: ISO 3166-1 alpha-2 country code for the affected energy market.
                 chokepointId:
                     type: string
+                    description: Chokepoint identifier to model as disrupted.
                 disruptionPct:
                     type: integer
                     format: int32
+                    description: Percent of chokepoint flow disrupted, from 0 to 100.
                 fuelMode:
                     type: string
+                    description: 'Fuel mode to model: "oil", "gas", or "both". Defaults to "oil".'
         ComputeEnergyShockScenarioResponse:
             type: object
             properties:
@@ -2565,6 +2967,7 @@ components:
             properties:
                 countryCode:
                     type: string
+                    description: ISO 3166-1 alpha-2 country code for port activity.
         CountryPortActivityResponse:
             type: object
             properties:
@@ -3170,6 +3573,7 @@ components:
                     maxLength: 32
                     minLength: 1
                     pattern: ^[a-z][a-z0-9]*(-[a-z0-9]+)*$
+                    description: Stable regional brief identifier, such as "middle-east".
             required:
                 - regionId
         GetRegionalBriefResponse:

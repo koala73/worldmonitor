@@ -15,6 +15,7 @@ paths:
                   in: query
                   description: Maximum items to return (1-25). Zero uses the service default.
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
@@ -23,6 +24,12 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "anomalyCount": 1
+                                "conflictingCount": 1
+                                "convertedFromCpmCount": 1
+                                "corroboratedCount": 75
+                                "elevatedCount": 1
                             schema:
                                 $ref: '#/components/schemas/ListRadiationObservationsResponse'
                 "400":
