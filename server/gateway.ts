@@ -388,16 +388,15 @@ const POST_TO_GET_MAX_ARRAY_VALUES_PER_KEY = 200;
 
 export const REQUIRED_BBOX_QUERY_PARAMS = ['sw_lat', 'sw_lon', 'ne_lat', 'ne_lon'] as const;
 
+// Issue #4595 is scoped to military RPCs whose handlers require bbox.
+// Other bbox-capable RPCs support lookup/global modes and must not emit this diagnostic.
 export const REQUIRED_BBOX_RPC_PATHS = [
-  '/api/aviation/v1/track-aircraft',
-  '/api/maritime/v1/get-vessel-snapshot',
   '/api/military/v1/list-military-bases',
   '/api/military/v1/list-military-flights',
-  '/api/unrest/v1/list-unrest-events',
-  '/api/wildfire/v1/list-fire-detections',
 ] as const;
 
 const REQUIRED_BBOX_RPC_PATH_SET = new Set<string>(REQUIRED_BBOX_RPC_PATHS);
+const MILITARY_BBOX_DIAGNOSTIC_PATH_SET = new Set<string>(REQUIRED_BBOX_RPC_PATHS);
 
 function isPostToGetCompatibleBodySize(headers: Headers): boolean {
   const rawContentLength = headers.get('Content-Length');
@@ -462,7 +461,7 @@ function attachRequiredBboxDiagnosticHeaders(
   headers.set('X-WorldMonitor-Bbox', diagnostic.status);
   if (diagnostic.missing.length > 0) headers.set('X-WorldMonitor-Bbox-Missing', diagnostic.missing.join(','));
   if (diagnostic.invalid.length > 0) headers.set('X-WorldMonitor-Bbox-Invalid', diagnostic.invalid.join(','));
-  if (pathname.startsWith('/api/military/')) {
+  if (MILITARY_BBOX_DIAGNOSTIC_PATH_SET.has(pathname)) {
     headers.set('X-Military-Bbox', diagnostic.status);
   }
 }
