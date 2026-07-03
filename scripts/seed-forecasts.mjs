@@ -14788,6 +14788,7 @@ const SCENARIO_LLM_VALIDATION_RETRIES = 1;
 async function resolveScenarioLlmResult(scenarioOnly, scenarioLlmOptions, maxValidationRetries = SCENARIO_LLM_VALIDATION_RETRIES) {
   let last = { result: null, parsed: null, raw: null, valid: [], validCases: [] };
   for (let attempt = 0; attempt <= maxValidationRetries; attempt++) {
+    if (attempt > 0) console.log(`  [LLM:scenario] validation retry ${attempt + 1}/${maxValidationRetries + 1} (prior attempt validated to 0)`);
     const result = await callForecastLLM(SCENARIO_SYSTEM_PROMPT, buildUserPrompt(scenarioOnly), { ...scenarioLlmOptions, stage: 'scenario' });
     if (!result) break; // provider failure / budget exhausted — keep the last (possibly empty) result
     const parsed = extractStructuredLlmPayload(result.text);

@@ -95,16 +95,24 @@ describe('resolveScenarioLlmResult validation retry', () => {
   ];
   const validCasePayload = JSON.stringify([{ index: 0, baseCase: 'This is a base case narrative well over twenty characters long.' }]);
 
-  it('retries once when the first response validates to zero, then accepts the valid one', async () => {
+  it('retries once when the first response validates to zero, then accepts the valid one (and logs the retry)', async () => {
     let calls = 0;
-    __setForecastLlmCallOverrideForTests(async () => {
-      calls += 1;
-      return { text: calls === 1 ? '[]' : validCasePayload, model: 'm', provider: 'p' };
-    });
-    const out = await resolveScenarioLlmResult(predictions, {});
-    assert.equal(calls, 2, 'empty first response triggers exactly one retry');
-    assert.ok(out.result, 'returns a usable result');
-    assert.equal(out.validCases.length, 1, 'second response validated');
+    const logs = [];
+    const origLog = console.log;
+    console.log = (...a) => logs.push(a.join(' '));
+    try {
+      __setForecastLlmCallOverrideForTests(async () => {
+        calls += 1;
+        return { text: calls === 1 ? '[]' : validCasePayload, model: 'm', provider: 'p' };
+      });
+      const out = await resolveScenarioLlmResult(predictions, {});
+      assert.equal(calls, 2, 'empty first response triggers exactly one retry');
+      assert.ok(out.result, 'returns a usable result');
+      assert.equal(out.validCases.length, 1, 'second response validated');
+    } finally {
+      console.log = origLog;
+    }
+    assert.ok(logs.some((l) => l.includes('validation retry')), 'emits a log line when the retry fires');
   });
 
   it('stops after the bounded retry when every response is empty (returns last)', async () => {
