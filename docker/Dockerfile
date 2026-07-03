@@ -3,7 +3,7 @@
 # Multi-stage build for the World Monitor web app (frontend only).
 
 # Stage 1: Build the frontend with TypeScript + Vite.
-FROM node:22-alpine AS builder
+FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS builder
 
 WORKDIR /app
 
@@ -26,7 +26,7 @@ RUN npm run build
 
 
 # Stage 2: Serve the built assets from nginx.
-FROM nginx:alpine AS runtime
+FROM nginx:alpine@sha256:54f2a904c251d5a34adf545a72d32515a15e08418dae0266e23be2e18c66fefa AS runtime
 
 WORKDIR /usr/share/nginx/html
 
