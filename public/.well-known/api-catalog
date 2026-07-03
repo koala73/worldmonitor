@@ -1,6 +1,26 @@
 {
   "linkset": [
     {
+      "anchor": "https://worldmonitor.app/.well-known/api-catalog",
+      "item": [
+        {
+          "href": "https://api.worldmonitor.app/",
+          "title": "World Monitor REST API",
+          "type": "application/vnd.oai.openapi"
+        },
+        {
+          "href": "https://worldmonitor.app/mcp",
+          "title": "World Monitor MCP server",
+          "type": "application/json"
+        },
+        {
+          "href": "https://worldmonitor.app/",
+          "title": "World Monitor agent skills",
+          "type": "application/json"
+        }
+      ]
+    },
+    {
       "anchor": "https://api.worldmonitor.app/",
       "service-desc": [
         {

@@ -1102,19 +1102,42 @@ describe('brief magazine CSP override', () => {
 //   (2) variant build scripts dropping the `npm run build:openapi`
 //       prefix and silently shipping web bundles without the spec;
 //   (3) the openapi source under docs/ being deleted without a
-//       matching removal of the build step.
+//       matching removal of the build step;
+//   (4) linkset[0] losing its RFC 9727 `item` enumeration (agent
+//       crawlers read the catalog anchor's item links to find every API).
 describe('agent readiness: api-catalog + openapi build', () => {
   const apiCatalog = JSON.parse(
     readFileSync(resolve(__dirname, '../public/.well-known/api-catalog'), 'utf-8')
   );
   const pkg = JSON.parse(readFileSync(resolve(__dirname, '../package.json'), 'utf-8'));
 
-  it('api anchor is first and points at the api host root', () => {
-    assert.equal(apiCatalog.linkset[0].anchor, 'https://api.worldmonitor.app/');
+  const catalogEntry = apiCatalog.linkset[0];
+  const apiEntry = apiCatalog.linkset.find((entry) => entry.anchor === 'https://api.worldmonitor.app/');
+
+  it('linkset[0] is the catalog anchor and enumerates each API via RFC 9727 item links', () => {
+    assert.equal(catalogEntry.anchor, 'https://worldmonitor.app/.well-known/api-catalog');
+    assert.ok(Array.isArray(catalogEntry.item), 'linkset[0] must carry an "item" array (RFC 9727 §4)');
+    assert.ok(catalogEntry.item.length > 0, 'linkset[0].item must enumerate at least one API');
+    // Each item MUST resolve to a linkset context object that describes that API.
+    const anchors = new Set(apiCatalog.linkset.map((entry) => entry.anchor));
+    for (const item of catalogEntry.item) {
+      assert.ok(item.href, 'each item entry must carry an href');
+      assert.ok(
+        anchors.has(item.href),
+        `item href ${item.href} must match a linkset context anchor`
+      );
+    }
+    const itemHrefs = catalogEntry.item.map((i) => i.href);
+    assert.ok(itemHrefs.includes('https://api.worldmonitor.app/'), 'item list must enumerate the REST API host root');
+    assert.ok(itemHrefs.includes('https://worldmonitor.app/mcp'), 'item list must enumerate the MCP server');
+  });
+
+  it('the api host root has its own context object', () => {
+    assert.ok(apiEntry, 'linkset must contain a context object anchored at https://api.worldmonitor.app/');
   });
 
   it('status href points at /api/health (SPA lives at /health — would 200 HTML and look healthy)', () => {
-    const statusHref = apiCatalog.linkset[0].status[0].href;
+    const statusHref = apiEntry.status[0].href;
     assert.ok(
       statusHref.startsWith('https://api.worldmonitor.app'),
       `status href must be on api.worldmonitor.app, got: ${statusHref}`
@@ -1126,7 +1149,7 @@ describe('agent readiness: api-catalog + openapi build', () => {
   });
 
   it('service-desc points at /openapi.yaml with the OpenAPI media type', () => {
-    const serviceDesc = apiCatalog.linkset[0]['service-desc'][0];
+    const serviceDesc = apiEntry['service-desc'][0];
     assert.ok(
       serviceDesc.href.endsWith('/openapi.yaml'),
       `service-desc href must end with /openapi.yaml, got: ${serviceDesc.href}`

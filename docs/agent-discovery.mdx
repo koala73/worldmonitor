@@ -53,9 +53,10 @@ The header-discoverable static assets (`.well-known/*`, `/openapi.yaml`) serve `
 ### Codegen a REST client for every service
 
 ```bash
-# 1. Discover the bundled OpenAPI URL
+# 1. Discover the bundled OpenAPI URL (linkset[0] enumerates every API via
+#    RFC 9727 `item` links; select the REST API context object by anchor)
 curl -s https://worldmonitor.app/.well-known/api-catalog \
-  | jq -r '.linkset[0]."service-desc"[0].href'
+  | jq -r '.linkset[] | select(.anchor == "https://api.worldmonitor.app/")."service-desc"[0].href'
 # → https://www.worldmonitor.app/openapi.yaml
 
 # 2. Generate clients
