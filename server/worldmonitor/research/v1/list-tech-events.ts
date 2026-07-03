@@ -21,7 +21,7 @@ import type {
 import { CITY_COORDS } from '../../../../api/data/city-coords';
 import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
 import { CHROME_UA } from '../../../_shared/constants';
-import { resolveTechEventsPaging } from './_tech-events-paging';
+import { resolveTechEventsPaging, type TechEventsPagingPresence } from './_tech-events-paging';
 import { cachedFetchJson } from '../../../_shared/redis';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 
@@ -34,6 +34,14 @@ const ICS_URL = 'https://www.techmeme.com/newsy_events.ics';
 const DEV_EVENTS_RSS = 'https://dev.events/rss.xml';
 const FETCH_TIMEOUT_MS = 8000;
 const TECH_EVENT_TYPES = new Set(filterParamContracts.researchTechEventTypes);
+
+function readTechEventsPagingPresence(ctx: ServerContext): TechEventsPagingPresence {
+  const searchParams = new URL(ctx.request.url, 'http://localhost').searchParams;
+  return {
+    hasLimit: searchParams.has('limit'),
+    hasDays: searchParams.has('days'),
+  };
+}
 
 // ---------- Relay helpers (Railway proxy for blocked sources) ----------
 
@@ -295,9 +303,12 @@ function parseDevEventsRSS(rssText: string): TechEvent[] {
 
 // ---------- Fetch ----------
 
-async function fetchTechEvents(req: ListTechEventsRequest): Promise<ListTechEventsResponse> {
+async function fetchTechEvents(
+  req: ListTechEventsRequest,
+  pagingPresence: TechEventsPagingPresence,
+): Promise<ListTechEventsResponse> {
   const { type, mappable } = req;
-  const { limit, days } = resolveTechEventsPaging(req);
+  const { limit, days } = resolveTechEventsPaging(req, pagingPresence);
 
   // Fetch both sources in parallel (direct → relay fallback)
   const [icsText, rssText] = await Promise.all([
@@ -405,9 +416,10 @@ function geocodeEvents(events: TechEvent[]): TechEvent[] {
 function filterEvents(
   events: TechEvent[],
   req: ListTechEventsRequest,
+  pagingPresence: TechEventsPagingPresence,
 ): ListTechEventsResponse {
   const { type, mappable } = req;
-  const { limit, days } = resolveTechEventsPaging(req);
+  const { limit, days } = resolveTechEventsPaging(req, pagingPresence);
 
   let filtered = [...events];
 
@@ -443,14 +455,16 @@ function filterEvents(
 // ---------- Handler ----------
 
 export async function listTechEvents(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: ListTechEventsRequest,
 ): Promise<ListTechEventsResponse> {
   try {
+    const pagingPresence = readTechEventsPagingPresence(ctx);
+
     // Primary: read from seed-populated Redis key (Railway relay seeds this every 6h)
     const result = await cachedFetchJson<ListTechEventsResponse>(REDIS_CACHE_KEY, REDIS_CACHE_TTL, async () => {
       // Fallback fetcher: only runs on cold start when seed hasn't populated yet
-      const fetched = await fetchTechEvents({ ...req, limit: 0 });
+      const fetched = await fetchTechEvents(req, pagingPresence);
       return fetched.events.length > 0 ? fetched : null;
     });
 
@@ -460,7 +474,7 @@ export async function listTechEvents(
 
     // Apply geocoding (seed stores events without coords) and filter by request params
     const geocoded = geocodeEvents(result.events);
-    return filterEvents(geocoded, req);
+    return filterEvents(geocoded, req, pagingPresence);
   } catch (error) {
     return {
       success: false,
