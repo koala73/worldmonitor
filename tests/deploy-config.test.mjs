@@ -499,7 +499,7 @@ describe('docker runtime dependency guardrails', () => {
   const runtimeLock = JSON.parse(readFileSync(resolve(__dirname, '../docker/runtime-package-lock.json'), 'utf-8'));
 
   it('installs runtime node_modules from a minimal dependency stage', () => {
-    assert.match(dockerfileSource, /FROM node:22-alpine AS runtime-deps/);
+    assert.match(dockerfileSource, /^FROM\s+node:22-alpine@sha256:[a-f0-9]{64}\s+AS\s+runtime-deps$/m);
     assert.match(dockerfileSource, /npm ci --omit=dev --omit=optional --ignore-scripts/);
     assert.match(dockerfileSource, /COPY --from=runtime-deps \/app\/node_modules \.\/node_modules/);
     assert.doesNotMatch(dockerfileSource, /npm prune --omit=dev/);
