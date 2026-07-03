@@ -45,6 +45,8 @@ const ROOT = new URL('..', import.meta.url).pathname;
 const OPENAPI_DIR = join(ROOT, 'docs/api');
 const RATE_LIMIT_SRC = join(ROOT, 'server/_shared/rate-limit.ts');
 const API_EXCEPTIONS = join(ROOT, 'api/api-route-exceptions.json');
+const RUNTIME_RATE_LIMIT_DIRS = ['server', 'api'].map((dir) => join(ROOT, dir));
+const RUNTIME_SOURCE_EXTENSIONS = new Set(['.js', '.cjs', '.mjs', '.ts', '.tsx']);
 
 async function extractRateLimitPolicyModule() {
   // Dynamic import via the file URL — works under tsx (the shebang) which
@@ -129,6 +131,50 @@ function extractEdgeFunctionRoutes() {
     routes.add(urlPath);
   }
   return routes;
+}
+
+function listRuntimeSourceFiles(dir, files = []) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === 'node_modules' || entry.name === '.next' || entry.name === 'dist') continue;
+    const fullPath = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      listRuntimeSourceFiles(fullPath, files);
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    const dot = entry.name.lastIndexOf('.');
+    const ext = dot === -1 ? '' : entry.name.slice(dot);
+    if (RUNTIME_SOURCE_EXTENSIONS.has(ext)) files.push(fullPath);
+  }
+  return files;
+}
+
+function toRepoRelativePath(pathname) {
+  return pathname.slice(ROOT.length).replace(/^\/+/, '');
+}
+
+function findEndpointRateLimitFailOpenOptOuts() {
+  // The endpoint limiter is the guardrail for routes listed in
+  // FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED. Its helper still exposes an
+  // escape hatch for tests/backcompat, but production runtime callers must not
+  // pass `{ failClosed: false }` and silently nullify the registry.
+  const findings = [];
+  const callWithFailOpenOptOut =
+    /checkEndpointRateLimit\s*\([\s\S]*?\{[\s\S]*?failClosed\s*:\s*false[\s\S]*?\}\s*\)/g;
+
+  for (const dir of RUNTIME_RATE_LIMIT_DIRS) {
+    for (const file of listRuntimeSourceFiles(dir)) {
+      if (file === RATE_LIMIT_SRC) continue;
+      const src = readFileSync(file, 'utf8');
+      if (!src.includes('checkEndpointRateLimit') || !src.includes('failClosed')) continue;
+      for (const match of src.matchAll(callWithFailOpenOptOut)) {
+        const line = src.slice(0, match.index).split('\n').length;
+        findings.push(`${toRepoRelativePath(file)}:${line}`);
+      }
+    }
+  }
+
+  return findings;
 }
 
 async function main() {
@@ -252,6 +298,20 @@ async function main() {
     console.error('  (b) RATE_LIMIT_MUTATION_FALLBACK_EXEMPT (server/_shared/rate-limit.ts) — the');
     console.error('      route is safe to fail open (add a justification comment/reason explaining');
     console.error('      why: e.g. read-only despite POST, Redis-only write, already auth-gated).\n');
+    process.exit(1);
+  }
+
+  const endpointFailOpenOptOuts = findEndpointRateLimitFailOpenOptOuts();
+  if (endpointFailOpenOptOuts.length > 0) {
+    console.error('✗ production runtime caller(s) opt out of fail-closed endpoint rate limiting:\n');
+    for (const location of endpointFailOpenOptOuts) {
+      console.error(`  - ${location}`);
+    }
+    console.error('\nRoutes in FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED rely on');
+    console.error('checkEndpointRateLimit defaulting to fail closed when Redis is unavailable.');
+    console.error('Do not pass { failClosed: false } from server/ or api/ runtime code;');
+    console.error('move genuinely safe non-GET routes to RATE_LIMIT_MUTATION_FALLBACK_EXEMPT');
+    console.error('or documented read routes to GLOBAL_RATE_LIMIT_FALLBACK_READ_ROUTES instead.\n');
     process.exit(1);
   }
 
