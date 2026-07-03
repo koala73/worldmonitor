@@ -112,6 +112,7 @@ function entitlementForUser(userId) {
 function installFetchStub(opts = {}) {
   const overrideEntitlement = opts.entitlement;
   const replayCacheUnavailable = opts.replayCacheUnavailable === true;
+  const replayCacheCommandError = opts.replayCacheCommandError === true;
   globalThis.fetch = async (input, init) => {
     const url = typeof input === 'string' ? input : input?.url;
     if (typeof url === 'string' && url.includes('redis.test/get/')) {
@@ -130,6 +131,7 @@ function installFetchStub(opts = {}) {
       const commands = JSON.parse(String(init?.body ?? '[]'));
       const results = commands.map((cmd) => {
         if (cmd?.[0] === 'SET' && cmd?.[3] === 'EX' && cmd?.[5] === 'NX') {
+          if (replayCacheCommandError) return { error: 'WRONGTYPE Operation against a key holding the wrong kind of value' };
           const key = String(cmd[1]);
           if (replayCacheKeys.has(key)) return { result: null };
           replayCacheKeys.add(key);
@@ -343,6 +345,16 @@ describe('gateway internal-MCP HMAC verify — happy paths', () => {
     assert.equal(res.status, 503, 'replay-cache outage must fail closed');
     assert.deepEqual(await res.json(), { error: 'internal_mcp_replay_cache_unavailable' });
     assert.equal(lastHandlerRequest, null, 'handler must not run when replay cache cannot claim the nonce');
+  });
+
+  it('valid HMAC fails closed when Redis returns a command-level replay-cache error', async () => {
+    installFetchStub({ replayCacheCommandError: true });
+    const handler = makeGateway();
+    const req = await buildSignedRequest();
+    const res = await handler(req);
+    assert.equal(res.status, 503, 'Redis command-level errors must be cache-unavailable, not replay');
+    assert.deepEqual(await res.json(), { error: 'internal_mcp_replay_cache_unavailable' });
+    assert.equal(lastHandlerRequest, null, 'handler must not run when Redis cannot atomically claim the nonce');
   });
 
   it('isCallerPremium returns true for a verified-marker request from tier-1 mcpAccess user', async () => {

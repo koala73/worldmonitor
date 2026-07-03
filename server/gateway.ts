@@ -92,7 +92,9 @@ async function claimInternalMcpReplayNonce(userId: string, nonce: string): Promi
     ['SET', key, '1', 'EX', INTERNAL_MCP_REPLAY_CACHE_TTL_SECONDS, 'NX'],
   ]);
   if (result.length === 0) return 'unavailable';
-  return result[0]?.result === 'OK' ? 'fresh' : 'replay';
+  const claim = result[0] as { result?: unknown; error?: unknown } | undefined;
+  if (claim?.error) return 'unavailable';
+  return claim?.result === 'OK' ? 'fresh' : 'replay';
 }
 
 // --- Edge cache tier definitions ---
