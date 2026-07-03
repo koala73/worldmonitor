@@ -5069,7 +5069,7 @@ paths:
                             "updates":
                                 - "count": 1
                                   "region": "example"
-                                  "type": "all"
+                                  "type": "military_flights"
                         schema:
                             $ref: '#/components/schemas/worldmonitor_infrastructure_v1_RecordBaselineSnapshotRequest'
                 required: true

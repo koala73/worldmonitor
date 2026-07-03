@@ -20,7 +20,8 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/research/v1/service_server';
 import { CITY_COORDS } from '../../../../api/data/city-coords';
 import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
-import { CHROME_UA, clampInt } from '../../../_shared/constants';
+import { CHROME_UA } from '../../../_shared/constants';
+import { resolveTechEventsPaging } from './_tech-events-paging';
 import { cachedFetchJson } from '../../../_shared/redis';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 
@@ -296,8 +297,7 @@ function parseDevEventsRSS(rssText: string): TechEvent[] {
 
 async function fetchTechEvents(req: ListTechEventsRequest): Promise<ListTechEventsResponse> {
   const { type, mappable } = req;
-  const limit = clampInt(req.limit, 50, 1, 200);
-  const days = clampInt(req.days, 90, 1, 365);
+  const { limit, days } = resolveTechEventsPaging(req);
 
   // Fetch both sources in parallel (direct → relay fallback)
   const [icsText, rssText] = await Promise.all([
@@ -407,8 +407,7 @@ function filterEvents(
   req: ListTechEventsRequest,
 ): ListTechEventsResponse {
   const { type, mappable } = req;
-  const limit = clampInt(req.limit, 50, 1, 200);
-  const days = clampInt(req.days, 90, 1, 365);
+  const { limit, days } = resolveTechEventsPaging(req);
 
   let filtered = [...events];
 

@@ -251,6 +251,33 @@ describe('OpenAPI examples contract', () => {
     assert.equal(totals.responseExpected, 192);
   });
 
+  // record-baseline-snapshot's nested updates[].type is a bare string (no schema
+  // enum), so the field-name heuristic used to emit 'all' — which the handler
+  // rejects (VALID_BASELINE_TYPES has no 'all'), silently skipping the update and
+  // contradicting the 200 example. Guard the curated override against a regen
+  // reverting it. Drift-anchored to the same contract the handler reads.
+  it('uses a real accepted baseline type in the record-baseline-snapshot sample', () => {
+    const contract = JSON.parse(
+      readFileSync(resolve(root, 'shared/openapi-filter-param-contracts.json'), 'utf8'),
+    );
+    const validTypes = new Set(contract.infrastructureTemporalBaselineTypes ?? []);
+    assert.ok(validTypes.size > 0, 'expected infrastructureTemporalBaselineTypes in the filter-param contract');
+    const spec = JSON.parse(readFileSync(resolve(apiDir, 'InfrastructureService.openapi.json'), 'utf8'));
+    let checked = 0;
+    for (const { path, op } of operationEntries(spec)) {
+      if (!path.includes('record-baseline-snapshot')) continue;
+      const example = op.requestBody?.content?.[JSON_MEDIA]?.example;
+      for (const update of example?.updates ?? []) {
+        checked++;
+        assert.ok(
+          validTypes.has(update.type),
+          `record-baseline-snapshot sample type '${update.type}' is not an accepted VALID_BASELINE_TYPES member — the handler would silently skip it`,
+        );
+      }
+    }
+    assert.ok(checked > 0, 'expected at least one record-baseline-snapshot update example to check');
+  });
+
   it('adds request and response examples to every per-service YAML spec', () => {
     let operations = 0;
     for (const file of serviceSpecs) {

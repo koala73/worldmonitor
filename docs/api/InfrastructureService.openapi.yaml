@@ -419,7 +419,7 @@ paths:
                             "updates":
                                 - "count": 1
                                   "region": "example"
-                                  "type": "all"
+                                  "type": "military_flights"
                         schema:
                             $ref: '#/components/schemas/RecordBaselineSnapshotRequest'
                 required: true

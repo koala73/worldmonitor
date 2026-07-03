@@ -93,6 +93,22 @@ const FRED_SERIES_EXAMPLE_ID = 'GDP';
 // handlers lowercase it. No allowlist — pin a realistic sample address.
 const ICAO24_EXAMPLE = 'a835af';
 
+// baseline `type`: record-baseline-snapshot's BaselineUpdate.type is a bare
+// string (no schema enum), so stringExample()'s endsWith('type') heuristic emits
+// the literal 'all' — which record-baseline-snapshot.ts rejects (VALID_BASELINE_TYPES
+// has no 'all'), silently skipping the update. Pin the first real accepted type,
+// drift-anchored to the same contract the handler reads and matching the sibling
+// GetTemporalBaseline enum example.
+const BASELINE_TYPE_EXAMPLE_ID = (() => {
+  try {
+    const contract = JSON.parse(readRepoText('shared/openapi-filter-param-contracts.json'));
+    const ids = Array.isArray(contract.infrastructureTemporalBaselineTypes) ? contract.infrastructureTemporalBaselineTypes : [];
+    return ids.includes('military_flights') ? 'military_flights' : (ids[0] ?? 'military_flights');
+  } catch {
+    return 'military_flights';
+  }
+})();
+
 // key = normalizeKey(paramName); context carries { operationId, path, method }.
 // Returns a curated example that overrides the field-name heuristic, or
 // undefined to fall through. `series_id` / `series_ids` is shared by FRED (no
@@ -102,6 +118,10 @@ function overrideStringExample(key, context = {}) {
   if (key.includes('chokepointid')) return CHOKEPOINT_EXAMPLE_ID;
   if (key.includes('scenarioid')) return SCENARIO_EXAMPLE_ID;
   if (key.includes('icao24')) return ICAO24_EXAMPLE;
+  if (key === 'type') {
+    const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
+    if (where.includes('baseline')) return BASELINE_TYPE_EXAMPLE_ID;
+  }
   if (key === 'seriesid' || key === 'seriesids') {
     const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
     if (where.includes('fred')) return FRED_SERIES_EXAMPLE_ID;
