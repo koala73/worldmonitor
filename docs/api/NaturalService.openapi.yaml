@@ -69,15 +69,6 @@ components:
             name: X-Api-Key
             description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
     schemas:
-        UnauthorizedError:
-            type: object
-            properties:
-                error:
-                    type: string
-                    description: Human-readable error message.
-            required:
-                - error
-            description: Returned when the API key is missing, malformed, or lacks current API access.
         Error:
             type: object
             properties:

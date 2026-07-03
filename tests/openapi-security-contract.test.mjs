@@ -339,12 +339,19 @@ function assertAuthContract(spec, label) {
   assertSchemeFields(schemes, expectedSchemesForSpec(spec), label);
   assertSecurityNames(spec.security, API_KEY_SECURITY_NAMES, `${label}: root`);
 
+  // UnauthorizedError is present iff the spec has a non-public op (which carries
+  // the 401 that references it); all-public specs must NOT carry an orphan.
+  const hasNonPublicOp = Object.keys(spec.paths ?? {}).some((path) => !PUBLIC_PATHS.has(path));
   const unauthorized = spec.components?.schemas?.UnauthorizedError;
-  assert.ok(unauthorized, `${label}: components.schemas.UnauthorizedError missing`);
-  assert.ok(
-    Array.isArray(unauthorized.required) && unauthorized.required.includes('error'),
-    `${label}: UnauthorizedError must require 'error'`,
-  );
+  if (hasNonPublicOp) {
+    assert.ok(unauthorized, `${label}: components.schemas.UnauthorizedError missing`);
+    assert.ok(
+      Array.isArray(unauthorized.required) && unauthorized.required.includes('error'),
+      `${label}: UnauthorizedError must require 'error'`,
+    );
+  } else {
+    assert.equal(unauthorized, undefined, `${label}: all-public spec must not carry an orphaned UnauthorizedError`);
+  }
 
   for (const [path, ops] of Object.entries(spec.paths ?? {})) {
     const isPublic = PUBLIC_PATHS.has(path);
@@ -408,13 +415,18 @@ describe('OpenAPI security contract', () => {
         assertSecurityNames(spec.security, API_KEY_SECURITY_NAMES, `${file}: root`);
       });
 
-      it('defines the UnauthorizedError schema', () => {
+      it('defines UnauthorizedError iff it has a non-public op', () => {
+        const hasNonPublicOp = Object.keys(spec.paths ?? {}).some((path) => !PUBLIC_PATHS.has(path));
         const s = spec.components?.schemas?.UnauthorizedError;
-        assert.ok(s, `${file}: components.schemas.UnauthorizedError missing`);
-        assert.ok(
-          Array.isArray(s.required) && s.required.includes('error'),
-          `${file}: UnauthorizedError must require 'error'`,
-        );
+        if (hasNonPublicOp) {
+          assert.ok(s, `${file}: components.schemas.UnauthorizedError missing`);
+          assert.ok(
+            Array.isArray(s.required) && s.required.includes('error'),
+            `${file}: UnauthorizedError must require 'error'`,
+          );
+        } else {
+          assert.equal(s, undefined, `${file}: all-public spec must not carry an orphaned UnauthorizedError`);
+        }
       });
 
       it('defines ForbiddenError when it has entitlement-gated paths', () => {

@@ -323,7 +323,12 @@ function injectJson(spec) {
     spec.security = ROOT_SECURITY;
     changed = true;
   }
-  if (!eq(spec.components.schemas.UnauthorizedError, UNAUTHORIZED_SCHEMA)) {
+  // UnauthorizedError backs the per-operation 401, which only NON-public ops
+  // carry. In an all-public spec (Leads/Natural/Seismology/Unrest) no op
+  // references it, so injecting it unconditionally leaves an orphaned schema —
+  // gate on the spec having at least one non-public op, mirroring ForbiddenError.
+  const hasNonPublicOp = Object.keys(spec.paths ?? {}).some((path) => !PUBLIC_PATHS.has(path));
+  if (hasNonPublicOp && !eq(spec.components.schemas.UnauthorizedError, UNAUTHORIZED_SCHEMA)) {
     spec.components.schemas.UnauthorizedError = UNAUTHORIZED_SCHEMA;
     changed = true;
   }
@@ -1036,10 +1041,13 @@ function injectYamlAuthContract(text) {
 
   const operations = enumerateYamlOperations(lines);
   const hasBearer = operations.some(({ path }) => BEARER_AUTH_PATHS.has(path));
+  // Mirror injectJson: only inject UnauthorizedError when a non-public op
+  // (which carries the 401 that references it) exists — otherwise it is orphaned.
+  const hasNonPublicOp = operations.some(({ path }) => !PUBLIC_PATHS.has(path));
 
   changed = ensureYamlRootSecurity(lines) || changed;
   changed = ensureYamlSecuritySchemes(lines, hasBearer) || changed;
-  changed = ensureYamlUnauthorizedSchema(lines) || changed;
+  if (hasNonPublicOp) changed = ensureYamlUnauthorizedSchema(lines) || changed;
 
   for (const { path, methods } of operations) {
     for (const method of methods) {
