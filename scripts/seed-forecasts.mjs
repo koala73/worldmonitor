@@ -14139,6 +14139,19 @@ function resolveForecastLlmProviders(options = {}) {
   return providers.length > 0 ? providers : FORECAST_LLM_PROVIDERS;
 }
 
+function moveForecastLlmProviderToBack(options = {}, providerName = '') {
+  if (!providerName) return options;
+  const requestedOrder = Array.isArray(options.providerOrder) && options.providerOrder.length > 0
+    ? options.providerOrder
+    : FORECAST_LLM_PROVIDERS.map(provider => provider.name);
+  const providerOrder = [...new Set(requestedOrder.filter(name => FORECAST_LLM_PROVIDER_NAMES.has(name)))];
+  if (providerOrder.length < 2 || !providerOrder.includes(providerName)) return options;
+  return {
+    ...options,
+    providerOrder: [...providerOrder.filter(name => name !== providerName), providerName],
+  };
+}
+
 function summarizeForecastLlmOptions(options = {}) {
   return {
     providerOrder: Array.isArray(options.providerOrder) ? options.providerOrder : [],
@@ -14517,7 +14530,11 @@ async function redisSet(url, token, key, data, ttlSeconds) {
     await withRetry(async () => {
       const resp = await fetch(url, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'User-Agent': CHROME_UA,
+        },
         body: JSON.stringify(['SET', key, JSON.stringify(data), 'EX', ttlSeconds]),
         signal: AbortSignal.timeout(10_000),
       });
@@ -14787,9 +14804,10 @@ const SCENARIO_LLM_VALIDATION_RETRIES = 1;
 
 async function resolveScenarioLlmResult(scenarioOnly, scenarioLlmOptions, maxValidationRetries = SCENARIO_LLM_VALIDATION_RETRIES) {
   let last = { result: null, parsed: null, raw: null, valid: [], validCases: [] };
+  let callOptions = { ...scenarioLlmOptions, stage: 'scenario' };
   for (let attempt = 0; attempt <= maxValidationRetries; attempt++) {
     if (attempt > 0) console.log(`  [LLM:scenario] validation retry ${attempt + 1}/${maxValidationRetries + 1} (prior attempt validated to 0)`);
-    const result = await callForecastLLM(SCENARIO_SYSTEM_PROMPT, buildUserPrompt(scenarioOnly), { ...scenarioLlmOptions, stage: 'scenario' });
+    const result = await callForecastLLM(SCENARIO_SYSTEM_PROMPT, buildUserPrompt(scenarioOnly), callOptions);
     if (!result) break; // provider failure / budget exhausted — keep the last (possibly empty) result
     const parsed = extractStructuredLlmPayload(result.text);
     const raw = parsed.items;
@@ -14797,6 +14815,7 @@ async function resolveScenarioLlmResult(scenarioOnly, scenarioLlmOptions, maxVal
     const validCases = validateCaseNarratives(raw, scenarioOnly);
     last = { result, parsed, raw, valid, validCases };
     if (valid.length > 0 || validCases.length > 0) break;
+    callOptions = moveForecastLlmProviderToBack(callOptions, result.provider);
   }
   return last;
 }

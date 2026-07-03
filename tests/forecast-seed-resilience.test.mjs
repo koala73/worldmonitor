@@ -11,6 +11,7 @@ import {
   __setForecastLlmTransportForTests,
   __setForecastLlmRunDeadlineForTests,
 } from '../scripts/seed-forecasts.mjs';
+import { CHROME_UA } from '../scripts/_seed-utils.mjs';
 
 const REAL_FETCH = globalThis.fetch;
 
@@ -56,6 +57,16 @@ describe('redisSet cache-write retry', () => {
     globalThis.fetch = async () => { calls += 1; return calls === 1 ? { ok: false, status: 503 } : { ok: true }; };
     await __redisSetForTests('http://redis', 'tok', 'k', { a: 1 }, 600);
     assert.equal(calls, 2, '5xx is retryable');
+  });
+
+  it('sends the standard User-Agent header on cache writes', async () => {
+    let seenHeaders = null;
+    globalThis.fetch = async (_url, init) => {
+      seenHeaders = init.headers;
+      return { ok: true };
+    };
+    await __redisSetForTests('http://redis', 'tok', 'k', { a: 1 }, 600);
+    assert.equal(seenHeaders?.['User-Agent'], CHROME_UA);
   });
 });
 
@@ -130,5 +141,41 @@ describe('resolveScenarioLlmResult validation retry', () => {
     const out = await resolveScenarioLlmResult(predictions, {});
     assert.equal(calls, 1, 'valid first response => no retry');
     assert.equal(out.validCases.length, 1);
+  });
+
+  it('tries a fallback provider after the primary validates to zero narratives', async () => {
+    const oldGroqKey = process.env.GROQ_API_KEY;
+    const oldOpenRouterKey = process.env.OPENROUTER_API_KEY;
+    process.env.GROQ_API_KEY = 'groq-key';
+    process.env.OPENROUTER_API_KEY = 'openrouter-key';
+    const providers = [];
+    try {
+      __setForecastLlmTransportForTests({
+        fetch: async (url) => {
+          const provider = url.includes('groq.com') ? 'groq' : 'openrouter';
+          providers.push(provider);
+          return {
+            ok: true,
+            json: async () => ({
+              model: `${provider}-model`,
+              choices: [{
+                message: {
+                  content: provider === 'groq'
+                    ? 'The provider returned a semantically empty JSON payload: []'
+                    : validCasePayload,
+                },
+              }],
+            }),
+          };
+        },
+      });
+      const out = await resolveScenarioLlmResult(predictions, { providerOrder: ['groq', 'openrouter'], retryDelayMs: 1 });
+      assert.deepEqual(providers, ['groq', 'openrouter']);
+      assert.equal(out.result.provider, 'openrouter');
+      assert.equal(out.validCases.length, 1);
+    } finally {
+      if (oldGroqKey === undefined) delete process.env.GROQ_API_KEY; else process.env.GROQ_API_KEY = oldGroqKey;
+      if (oldOpenRouterKey === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = oldOpenRouterKey;
+    }
   });
 });
