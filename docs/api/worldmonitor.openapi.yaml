@@ -12058,7 +12058,7 @@ paths:
                         application/json:
                             example:
                                 "error": "example"
-                                "lastUpdated": "1717200000000"
+                                "lastUpdated": "2026-01-15"
                                 "playerUrl": "https://example.com/worldmonitor"
                                 "thumbnailUrl": "https://example.com/worldmonitor"
                                 "title": "example"
@@ -26982,10 +26982,11 @@ components:
                     type: string
                 lastUpdated:
                     type: string
-                    format: int64
                     description: |-
                         ISO-8601 datetime string of the webcam's most recent update
                          (e.g. "2026-07-03T12:00:00.000Z"); empty string when unknown or unavailable.
+                         String (not int64): the handler emits new Date(...).toISOString(), so the
+                         field carries a datetime string, never epoch milliseconds.
                 error:
                     type: string
         worldmonitor_wildfire_v1_ListFireDetectionsRequest:

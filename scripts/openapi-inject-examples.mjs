@@ -77,7 +77,7 @@ const CHOKEPOINT_EXAMPLE_ID = (() => {
 // template literals (the interface uses `id: string;`, no quotes).
 const SCENARIO_EXAMPLE_ID = (() => {
   const src = readRepoText('server/worldmonitor/supply-chain/v1/scenario-templates.ts');
-  const ids = [...src.matchAll(/\bid:\s*'([a-z0-9-]+)'/g)].map((m) => m[1]);
+  const ids = [...src.matchAll(/\bid:\s*['"`]([a-z0-9-]+)['"`]/g)].map((m) => m[1]);
   return ids.includes('hormuz-tanker-blockade') ? 'hormuz-tanker-blockade' : (ids[0] ?? 'hormuz-tanker-blockade');
 })();
 

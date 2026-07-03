@@ -16,6 +16,8 @@ message GetWebcamImageResponse {
   string windy_url = 4;
   // ISO-8601 datetime string of the webcam's most recent update
   // (e.g. "2026-07-03T12:00:00.000Z"); empty string when unknown or unavailable.
-  int64 last_updated = 5;
+  // String (not int64): the handler emits new Date(...).toISOString(), so the
+  // field carries a datetime string, never epoch milliseconds.
+  string last_updated = 5;
   string error = 6;
 }

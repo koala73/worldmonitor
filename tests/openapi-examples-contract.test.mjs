@@ -32,7 +32,7 @@ const CURATED = (() => {
     resolve(root, 'server/worldmonitor/supply-chain/v1/scenario-templates.ts'),
     'utf8',
   );
-  const scenarioIds = new Set([...scenarioSrc.matchAll(/\bid:\s*'([a-z0-9-]+)'/g)].map((m) => m[1]));
+  const scenarioIds = new Set([...scenarioSrc.matchAll(/\bid:\s*['"`]([a-z0-9-]+)['"`]/g)].map((m) => m[1]));
   return { chokepointIds, scenarioIds };
 })();
 
