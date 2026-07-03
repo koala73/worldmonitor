@@ -163,6 +163,7 @@ async function main() {
   const fallbackWithPolicy = globalFallbackReadRoutes.filter((k) => keys.includes(k));
   const fallbackMissingRoute = globalFallbackReadRoutes.filter((k) => !gatewayRoutePaths.has(k));
   const fallbackNonGet = globalFallbackReadRoutes.filter((k) => {
+    if (!gatewayRoutePaths.has(k)) return false;
     const methods = gatewayRoutes.get(k);
     return !methods || methods.size !== 1 || !methods.has('get');
   });
