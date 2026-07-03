@@ -12,13 +12,13 @@ export * from './weather';
 // keeps it un-tree-shakeable in eager main.js. Its consumers import it directly
 // (`@/services/economic`) or dynamically (data-loader), so it tree-shakes out.
 export * from './infrastructure';
-export * from './cyber';
+// cyber: not re-exported (#4649) — eager service client; kept tree-shakeable out of main.js
 export * from './maritime';
-export * from './cable-activity';
+// cable-activity: not re-exported (#4649) — eager service client; kept tree-shakeable out of main.js
 export * from './cable-health';
 export * from './conflict';
 export * from './displacement';
-export * from './research';
+// research: not re-exported (#4649) — eager service client; kept tree-shakeable out of main.js
 export * from './wildfires';
 export * from './climate';
 export * from './unrest';

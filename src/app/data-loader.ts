@@ -38,7 +38,6 @@ import {
   fetchAisSignals,
   getAisStatus,
   isAisConfigured,
-  fetchCableActivity,
   fetchCableHealth,
   fetchProtestEvents,
   getProtestStatus,
@@ -52,7 +51,6 @@ import {
   fetchGdeltTensions,
   fetchNaturalEvents,
   fetchRecentAwards,
-  fetchCyberThreats,
   fetchSanctionsPressure,
   fetchRadiationWatch,
 } from '@/services';
@@ -2803,6 +2801,7 @@ export class DataLoaderManager implements AppModule {
     }
 
     try {
+      const { fetchCyberThreats } = await import('@/services/cyber');
       const threats = await fetchCyberThreats({ limit: 500, days: 14 });
       this.ctx.cyberThreatsCache = threats;
       this.ctx.map?.setCyberThreats(threats);
@@ -2912,6 +2911,7 @@ export class DataLoaderManager implements AppModule {
 
   async loadCableActivity(): Promise<void> {
     try {
+      const { fetchCableActivity } = await import('@/services/cable-activity');
       const activity = await fetchCableActivity();
       this.ctx.map?.setCableActivity(activity.advisories, activity.repairShips);
       const itemCount = activity.advisories.length + activity.repairShips.length;
