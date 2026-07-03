@@ -353,6 +353,16 @@ function assertAuthContract(spec, label) {
     assert.equal(unauthorized, undefined, `${label}: all-public spec must not carry an orphaned UnauthorizedError`);
   }
 
+  // ForbiddenError backs the per-op 403 every non-public op now carries (the
+  // account-state #4611 403, plus entitlement/premium); present iff a non-public
+  // op exists, absent otherwise (no orphan).
+  const forbidden = spec.components?.schemas?.ForbiddenError;
+  if (hasNonPublicOp) {
+    assert.ok(forbidden, `${label}: ForbiddenError schema missing`);
+  } else {
+    assert.equal(forbidden, undefined, `${label}: all-public spec must not carry an orphaned ForbiddenError`);
+  }
+
   for (const [path, ops] of Object.entries(spec.paths ?? {})) {
     const isPublic = PUBLIC_PATHS.has(path);
     const acceptsBearer = BEARER_AUTH_PATHS.has(path);
@@ -379,6 +389,15 @@ function assertAuthContract(spec, label) {
       } else {
         assert.equal(op.security, undefined, `${opLabel}: should inherit API-key root security`);
       }
+      // Every non-public op carries a 403 (account-state #4611, or the more
+      // specific entitlement/premium gate) — all referencing ForbiddenError.
+      const r403 = op.responses?.['403'];
+      assert.ok(r403, `${opLabel}: missing 403 response`);
+      assert.equal(
+        r403.content?.['application/json']?.schema?.$ref,
+        '#/components/schemas/ForbiddenError',
+        `${opLabel}: 403 must reference ForbiddenError`,
+      );
     }
   }
 }

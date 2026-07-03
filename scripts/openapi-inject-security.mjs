@@ -260,6 +260,21 @@ const PREMIUM_FORBIDDEN_RESPONSE = {
   },
 };
 
+// Account-state 403 (#4611): the gateway rejects ANY non-public keyed route when
+// a user API key resolves to an affirmatively inactive/expired entitlement
+// (gateway.ts:1073-1083 → `API access requires an active subscription`, body
+// `{ error }`). It is orthogonal to the per-route entitlement/premium gates and
+// applies to every authenticated operation, so it is documented on the plain
+// authed ops that carry no more-specific 403. Reuses ForbiddenError ({ error }).
+const INACTIVE_ACCESS_FORBIDDEN_RESPONSE = {
+  description: 'API access requires an active subscription (the API key\'s subscription is inactive or expired).',
+  content: {
+    'application/json': {
+      schema: { $ref: '#/components/schemas/ForbiddenError' },
+    },
+  },
+};
+
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head']);
 
 function entitlementNote(requiredTier) {
@@ -332,12 +347,10 @@ function injectJson(spec) {
     spec.components.schemas.UnauthorizedError = UNAUTHORIZED_SCHEMA;
     changed = true;
   }
-  // ForbiddenError backs BOTH 403 families — tier-entitlement and legacy-Pro —
-  // so it is required whenever the spec has an entitlement path OR a
-  // premium-only (legacy-Pro) path.
-  const hasEntitlementPath = Object.keys(spec.paths ?? {}).some((path) => ENDPOINT_ENTITLEMENTS.has(path));
-  const hasPremiumOnlyPath = Object.keys(spec.paths ?? {}).some((path) => PREMIUM_ONLY_PATHS.has(path));
-  if ((hasEntitlementPath || hasPremiumOnlyPath) && !eq(spec.components.schemas.ForbiddenError, FORBIDDEN_SCHEMA)) {
+  // ForbiddenError backs ALL 403 families — tier-entitlement, legacy-Pro, and the
+  // account-state (#4611) 403 that applies to every authenticated op — so it is
+  // required whenever the spec has a non-public op (same gate as UnauthorizedError).
+  if (hasNonPublicOp && !eq(spec.components.schemas.ForbiddenError, FORBIDDEN_SCHEMA)) {
     spec.components.schemas.ForbiddenError = FORBIDDEN_SCHEMA;
     changed = true;
   }
@@ -401,6 +414,14 @@ function injectJson(spec) {
           }
           if (!eq(op.responses['403'], PREMIUM_FORBIDDEN_RESPONSE)) {
             op.responses['403'] = PREMIUM_FORBIDDEN_RESPONSE;
+            changed = true;
+          }
+        } else {
+          // Plain authenticated op: no route-specific gate, but the account-state
+          // (#4611) 403 still applies to any authed route. Do not clobber a more
+          // specific 403 (handled by the branches above).
+          if (!eq(op.responses['403'], INACTIVE_ACCESS_FORBIDDEN_RESPONSE)) {
+            op.responses['403'] = INACTIVE_ACCESS_FORBIDDEN_RESPONSE;
             changed = true;
           }
         }
@@ -544,6 +565,15 @@ function yamlPublicForbiddenResponse(gate) {
 const YAML_PREMIUM_FORBIDDEN_RESPONSE = [
   '                "403":',
   '                    description: Pro subscription required.',
+  '                    content:',
+  '                        application/json:',
+  '                            schema:',
+  "                                $ref: '#/components/schemas/ForbiddenError'",
+];
+
+const YAML_INACTIVE_ACCESS_FORBIDDEN_RESPONSE = [
+  '                "403":',
+  "                    description: API access requires an active subscription (the API key's subscription is inactive or expired).",
   '                    content:',
   '                        application/json:',
   '                            schema:',
@@ -849,6 +879,17 @@ function injectYamlEntitlementContract(text) {
     for (const method of methods) {
       changed = ensureYamlGateDescription(lines, path, method, PREMIUM_FORBIDDEN_NOTE) || changed;
       changed = ensureYamlForbiddenResponse(lines, path, method, YAML_PREMIUM_FORBIDDEN_RESPONSE) || changed;
+    }
+  }
+
+  // Plain authenticated ops (non-public, non-entitlement, non-premium) still
+  // carry the account-state (#4611) 403 that applies to every authed route —
+  // mirrors injectJson's plain-authed `else` branch.
+  for (const [path, methods] of methodsByPath) {
+    if (PUBLIC_PATHS.has(path) || ENDPOINT_ENTITLEMENTS.has(path) || PREMIUM_ONLY_PATHS.has(path)) continue;
+    matchedForbiddenSchemaPath = true;
+    for (const method of methods) {
+      changed = ensureYamlForbiddenResponse(lines, path, method, YAML_INACTIVE_ACCESS_FORBIDDEN_RESPONSE) || changed;
     }
   }
 
