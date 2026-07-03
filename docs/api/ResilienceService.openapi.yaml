@@ -138,6 +138,7 @@ paths:
             tags:
                 - ResilienceService
             summary: GetResilienceRuntimeManifest
+            description: 'GetResilienceRuntimeManifest returns the resilience-scoring runtime manifest: manifest version, deploy metadata (commit SHA, Vercel env), and the active formula tag.'
             operationId: GetResilienceRuntimeManifest
             security: []
             responses:

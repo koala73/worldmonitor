@@ -1392,6 +1392,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetOilInventories
+            description: 'GetOilInventories returns recent oil-inventory series: US crude weeks, the SPR snapshot, natural-gas weeks, EU gas storage, and IEA stocks.'
             operationId: GetOilInventories
             responses:
                 "200":

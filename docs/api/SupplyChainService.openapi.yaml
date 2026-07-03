@@ -13,6 +13,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetShippingRates
+            description: GetShippingRates returns current container shipping-rate indices; upstream_unavailable is set when the source could not be reached.
             operationId: GetShippingRates
             responses:
                 "200":
@@ -170,6 +171,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetCriticalMinerals
+            description: GetCriticalMinerals returns critical-minerals supply indicators; upstream_unavailable is set when the source could not be reached.
             operationId: GetCriticalMinerals
             responses:
                 "200":

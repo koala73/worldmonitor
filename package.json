@@ -40,6 +40,7 @@
     "gen:openapi:examples": "node scripts/openapi-inject-examples.mjs",
     "gen:openapi:required": "node scripts/openapi-inject-required.mjs",
     "gen:openapi:servers": "node scripts/openapi-inject-servers.mjs",
+    "gen:openapi:deprecated": "node scripts/openapi-inject-deprecated.mjs",
     "build:agent-skills": "node scripts/build-agent-skills-index.mjs",
     "prebuild": "npm run build:openapi && npm run build:agent-skills",
     "build": "npm run build:blog && tsc && vite build",

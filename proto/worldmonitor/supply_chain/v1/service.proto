@@ -24,6 +24,7 @@ import "worldmonitor/supply_chain/v1/list_energy_disruptions.proto";
 service SupplyChainService {
   option (sebuf.http.service_config) = {base_path: "/api/supply-chain/v1"};
 
+  // GetShippingRates returns current container shipping-rate indices; upstream_unavailable is set when the source could not be reached.
   rpc GetShippingRates(GetShippingRatesRequest) returns (GetShippingRatesResponse) {
     option (sebuf.http.config) = {path: "/get-shipping-rates", method: HTTP_METHOD_GET};
   }
@@ -42,6 +43,7 @@ service SupplyChainService {
     option (sebuf.http.config) = {path: "/get-chokepoint-history", method: HTTP_METHOD_GET};
   }
 
+  // GetCriticalMinerals returns critical-minerals supply indicators; upstream_unavailable is set when the source could not be reached.
   rpc GetCriticalMinerals(GetCriticalMineralsRequest) returns (GetCriticalMineralsResponse) {
     option (sebuf.http.config) = {path: "/get-critical-minerals", method: HTTP_METHOD_GET};
   }

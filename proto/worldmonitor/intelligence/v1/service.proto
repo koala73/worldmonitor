@@ -119,6 +119,7 @@ service IntelligenceService {
   // (the prior domain-slug attribution heuristic was unsound). Deprecated pending a
   // verified attribution model.
   rpc GetCompanyEnrichment(GetCompanyEnrichmentRequest) returns (GetCompanyEnrichmentResponse) {
+    option deprecated = true;
     option (sebuf.http.config) = {
       path: "/get-company-enrichment"
       method: HTTP_METHOD_GET
@@ -130,6 +131,7 @@ service IntelligenceService {
   // guessed-identity/keyword heuristic was unsound). Deprecated pending a verified
   // attribution model.
   rpc ListCompanySignals(ListCompanySignalsRequest) returns (ListCompanySignalsResponse) {
+    option deprecated = true;
     option (sebuf.http.config) = {
       path: "/list-company-signals"
       method: HTTP_METHOD_GET

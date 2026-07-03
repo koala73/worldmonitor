@@ -13,6 +13,7 @@ paths:
             tags:
                 - ImageryService
             summary: SearchImagery
+            description: SearchImagery searches satellite imagery scenes by bounding box, datetime range, and source, returning matching scenes and a total-results count.
             operationId: SearchImagery
             parameters:
                 - name: bbox

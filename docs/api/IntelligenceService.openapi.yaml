@@ -737,6 +737,7 @@ paths:
                                 $ref: '#/components/schemas/Error'
     /api/intelligence/v1/get-company-enrichment:
         get:
+            deprecated: true
             tags:
                 - IntelligenceService
             summary: GetCompanyEnrichment
@@ -818,6 +819,7 @@ paths:
                                 $ref: '#/components/schemas/Error'
     /api/intelligence/v1/list-company-signals:
         get:
+            deprecated: true
             tags:
                 - IntelligenceService
             summary: ListCompanySignals

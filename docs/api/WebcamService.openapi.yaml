@@ -13,6 +13,7 @@ paths:
             tags:
                 - WebcamService
             summary: ListWebcams
+            description: ListWebcams lists webcams in view, grouped into map clusters, with a total-in-view count.
             operationId: ListWebcams
             parameters:
                 - name: zoom
@@ -105,6 +106,7 @@ paths:
             tags:
                 - WebcamService
             summary: GetWebcamImage
+            description: GetWebcamImage resolves a webcam id into its thumbnail and player URLs, title, and last-updated timestamp.
             operationId: GetWebcamImage
             parameters:
                 - name: webcam_id

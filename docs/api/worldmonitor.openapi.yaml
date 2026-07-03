@@ -4002,6 +4002,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetOilInventories
+            description: 'GetOilInventories returns recent oil-inventory series: US crude weeks, the SPR snapshot, natural-gas weeks, EU gas storage, and IEA stocks.'
             operationId: GetOilInventories
             responses:
                 "200":
@@ -4141,6 +4142,7 @@ paths:
             tags:
                 - ForecastService
             summary: GetForecasts
+            description: GetForecasts returns the latest generated probabilistic forecasts, with degraded/stale flags that distinguish a backend outage from a healthy empty set.
             operationId: GetForecasts
             parameters:
                 - name: domain
@@ -4239,6 +4241,7 @@ paths:
             tags:
                 - ForecastService
             summary: GetSimulationPackage
+            description: GetSimulationPackage returns the latest forecast simulation package; the response note is populated when a supplied runId does not match the returned package.
             operationId: GetSimulationPackage
             parameters:
                 - name: runId
@@ -4294,6 +4297,7 @@ paths:
             tags:
                 - ForecastService
             summary: GetSimulationOutcome
+            description: GetSimulationOutcome returns the stored outcome of a forecast simulation run; `found` is false when no outcome matches the requested runId.
             operationId: GetSimulationOutcome
             parameters:
                 - name: runId
@@ -4587,6 +4591,7 @@ paths:
             tags:
                 - ImageryService
             summary: SearchImagery
+            description: SearchImagery searches satellite imagery scenes by bounding box, datetime range, and source, returning matching scenes and a total-results count.
             operationId: SearchImagery
             parameters:
                 - name: bbox
@@ -6041,6 +6046,7 @@ paths:
                                 $ref: '#/components/schemas/Error'
     /api/intelligence/v1/get-company-enrichment:
         get:
+            deprecated: true
             tags:
                 - IntelligenceService
             summary: GetCompanyEnrichment
@@ -6122,6 +6128,7 @@ paths:
                                 $ref: '#/components/schemas/Error'
     /api/intelligence/v1/list-company-signals:
         get:
+            deprecated: true
             tags:
                 - IntelligenceService
             summary: ListCompanySignals
@@ -10218,6 +10225,7 @@ paths:
             tags:
                 - ResilienceService
             summary: GetResilienceRuntimeManifest
+            description: 'GetResilienceRuntimeManifest returns the resilience-scoring runtime manifest: manifest version, deploy metadata (commit SHA, Vercel env), and the active formula tag.'
             operationId: GetResilienceRuntimeManifest
             security: []
             responses:
@@ -10873,6 +10881,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetShippingRates
+            description: GetShippingRates returns current container shipping-rate indices; upstream_unavailable is set when the source could not be reached.
             operationId: GetShippingRates
             responses:
                 "200":
@@ -11030,6 +11039,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetCriticalMinerals
+            description: GetCriticalMinerals returns critical-minerals supply indicators; upstream_unavailable is set when the source could not be reached.
             operationId: GetCriticalMinerals
             responses:
                 "200":
@@ -12874,6 +12884,7 @@ paths:
             tags:
                 - WebcamService
             summary: ListWebcams
+            description: ListWebcams lists webcams in view, grouped into map clusters, with a total-in-view count.
             operationId: ListWebcams
             parameters:
                 - name: zoom
@@ -12966,6 +12977,7 @@ paths:
             tags:
                 - WebcamService
             summary: GetWebcamImage
+            description: GetWebcamImage resolves a webcam id into its thumbnail and player URLs, title, and last-updated timestamp.
             operationId: GetWebcamImage
             parameters:
                 - name: webcam_id
