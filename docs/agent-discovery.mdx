@@ -23,6 +23,7 @@ You'll see entries like:
 
 ```
 Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+json",
+      </openapi.json>; rel="service-desc"; type="application/json",
       </openapi.yaml>; rel="service-desc"; type="application/vnd.oai.openapi",
       </docs/documentation>; rel="service-doc"; type="text/html",
       </api/health>; rel="status"; type="application/json",
@@ -38,6 +39,7 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
 |---|---|---|
 | [`/.well-known/api-catalog`](https://worldmonitor.app/.well-known/api-catalog) | [RFC 9727](https://datatracker.ietf.org/doc/html/rfc9727) | JSON linkset bundling every other discovery URL — start here if you want one fetch and a map |
 | [`/openapi.yaml`](https://www.worldmonitor.app/openapi.yaml) | OpenAPI 3.1 | Single bundled spec covering **every** REST service (Conflict, Resilience, Market, Economic, Maritime, Aviation, Climate, …) — feed it to any code-generator |
+| [`/openapi.json`](https://www.worldmonitor.app/openapi.json) | OpenAPI 3.1 | Byte-identical bundle as minified JSON — same spec as `/openapi.yaml`, for tooling and scanners that only parse JSON |
 | [`/.well-known/mcp/server-card.json`](https://worldmonitor.app/.well-known/mcp/server-card.json) | MCP | Transport (`streamableHttp`), endpoint, OAuth resource, scopes, streaming, capability flags |
 | [`/.well-known/oauth-authorization-server`](https://api.worldmonitor.app/.well-known/oauth-authorization-server) | [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) | OAuth 2.1 authorization-server metadata (PKCE, DCR, token endpoints) |
 | [`/.well-known/oauth-protected-resource`](https://worldmonitor.app/.well-known/oauth-protected-resource) | [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) | Resource metadata for `https://worldmonitor.app/mcp` |
@@ -46,7 +48,7 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
 | [`/llms-full.txt`](https://worldmonitor.app/llms-full.txt) | (extension) | Long-form variant covering all data layers, panels, and data sources |
 | [`/api/health`](https://api.worldmonitor.app/api/health) | (custom) | Per-key seed status, freshness, record counts — agents can gate fetches on this |
 
-The header-discoverable static assets (`.well-known/*`, `/openapi.yaml`) serve `Access-Control-Allow-Origin: *` and are cached `public, max-age=3600` — safe to memoize. `/api/health` uses the normal API CORS allowlist and is **not** cached (`private, no-store`) because it reflects real-time seed freshness; agents should hit it fresh whenever they need to gate on data availability.
+The header-discoverable static assets (`.well-known/*`, `/openapi.yaml`, `/openapi.json`) serve `Access-Control-Allow-Origin: *` and are cached `public, max-age=3600` — safe to memoize. `/api/health` uses the normal API CORS allowlist and is **not** cached (`private, no-store`) because it reflects real-time seed freshness; agents should hit it fresh whenever they need to gate on data availability.
 
 ## Agent walkthroughs
 

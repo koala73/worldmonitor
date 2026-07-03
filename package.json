@@ -35,7 +35,7 @@
     "postinstall": "cd blog-site && npm ci --prefer-offline",
     "build:blog": "cd blog-site && npm run build && rm -rf ../public/blog && mkdir -p ../public/blog && cp -r dist/* ../public/blog/",
     "build:pro": "cd pro-test && npm ci && npm run build",
-    "build:openapi": "node -e \"require('fs').cpSync('docs/api/worldmonitor.openapi.yaml', 'public/openapi.yaml')\"",
+    "build:openapi": "node -e \"require('fs').cpSync('docs/api/worldmonitor.openapi.yaml', 'public/openapi.yaml')\" && node scripts/build-openapi-json.mjs",
     "gen:openapi:security": "node scripts/openapi-inject-security.mjs",
     "gen:openapi:examples": "node scripts/openapi-inject-examples.mjs",
     "gen:openapi:required": "node scripts/openapi-inject-required.mjs",
