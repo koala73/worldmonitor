@@ -34,6 +34,17 @@ const blockedUrls = [
   'https://[::ffff:a9fe:a9fe]/hook',
   'https://[fe80::1]/hook',
   'https://[2001:db8::1]/hook',
+  // NAT64 64:ff9b::/96 embedding an internal IPv4
+  'https://[64:ff9b::a9fe:a9fe]/hook',
+  'https://[64:ff9b::7f00:1]/hook',
+  // 6to4 2002::/16 embedding an internal IPv4
+  'https://[2002:7f00:1::]/hook',
+  'https://[2002:a9fe:a9fe::]/hook',
+  // IPv4-compatible ::/96 embedding an internal IPv4
+  'https://[::7f00:1]/hook',
+  'https://[::a9fe:a9fe]/hook',
+  // fec0::/10 deprecated site-local
+  'https://[fec0::1]/hook',
 ];
 
 describe('notification webhook SSRF guard', () => {
@@ -56,6 +67,25 @@ describe('notification webhook SSRF guard', () => {
       '224.0.0.1',
       '::ffff:169.254.169.254',
       '::ffff:a9fe:a9fe',
+      // IPv4-mapped hex form (::ffff:hhhh:hhhh) embedding loopback
+      '::ffff:7f00:1',
+      '::FFFF:7F00:1',
+      // NAT64 64:ff9b::/96 → trailing 32 bits are the embedded IPv4
+      '64:ff9b::a9fe:a9fe',
+      '64:ff9b::7f00:1',
+      '0064:ff9b:0000:0000:0000:0000:a9fe:a9fe',
+      // 6to4 2002::/16 → the 32 bits after 2002: are the embedded IPv4
+      '2002:7f00:1::',
+      '2002:a9fe:a9fe::',
+      '2002:0a00:0001::',
+      // IPv4-compatible ::/96 (::a.b.c.d and ::hhhh:hhhh)
+      '::7f00:1',
+      '::127.0.0.1',
+      '::a9fe:a9fe',
+      '::169.254.169.254',
+      // fec0::/10 deprecated site-local (not caught by the fe80::/10 regex)
+      'fec0::1',
+      'feff::1',
       'fe80::1',
       'fc00::1',
       'ff02::1',
@@ -65,7 +95,14 @@ describe('notification webhook SSRF guard', () => {
       assert.equal(isBlockedNotificationResolvedAddress(address), true, `api helper must block ${address}`);
       assert.equal(scriptSsrf.isBlockedResolvedAddress(address), true, `script helper must block ${address}`);
     }
-    for (const address of ['93.184.216.34', '2606:2800:220:1:248:1893:25c8:1946']) {
+    for (const address of [
+      '93.184.216.34',
+      '2606:2800:220:1:248:1893:25c8:1946',
+      // 6to4 wrapping a public IPv4 (93.184.216.34) must still be allowed
+      '2002:5db8:d822::',
+      // NAT64 wrapping a public IPv4 (93.184.216.34) must still be allowed
+      '64:ff9b::5db8:d822',
+    ]) {
       assert.equal(isBlockedNotificationResolvedAddress(address), false, `api helper must allow ${address}`);
       assert.equal(scriptSsrf.isBlockedResolvedAddress(address), false, `script helper must allow ${address}`);
     }
