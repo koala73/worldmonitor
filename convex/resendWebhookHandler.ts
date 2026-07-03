@@ -8,6 +8,24 @@ const BROADCAST_TRACKED_SET: ReadonlySet<string> = new Set(
   BROADCAST_TRACKED_EVENT_TYPES,
 );
 
+async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.generateKey(
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const [sigA, sigB] = await Promise.all([
+    crypto.subtle.sign("HMAC", keyMaterial, enc.encode(a)),
+    crypto.subtle.sign("HMAC", keyMaterial, enc.encode(b)),
+  ]);
+  const aArr = new Uint8Array(sigA);
+  const bArr = new Uint8Array(sigB);
+  let diff = 0;
+  for (let i = 0; i < aArr.length; i++) diff |= aArr[i]! ^ bArr[i]!;
+  return diff === 0;
+}
+
 async function verifySignature(
   payload: string,
   headers: Headers,
@@ -43,10 +61,14 @@ async function verifySignature(
   const expected = btoa(String.fromCharCode(...new Uint8Array(sig)));
 
   const signatures = signature.split(" ");
-  return signatures.some((s) => {
-    const [, val] = s.split(",");
-    return val === expected;
-  });
+  for (const s of signatures) {
+    const parts = s.split(",");
+    if (parts.length !== 2) continue;
+    const [version, val] = parts;
+    if (version !== "v1" || !val) continue;
+    if (await timingSafeEqualStrings(val, expected)) return true;
+  }
+  return false;
 }
 
 export const resendWebhookHandler = httpAction(async (ctx, request) => {
