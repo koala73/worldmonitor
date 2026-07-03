@@ -993,7 +993,7 @@ describe('PRO widget — relay auth and configuration', () => {
       'getWidgetAgentProvidedProKey function must be defined',
     );
     // The PRO key comparison is near the 403 rejection — find it directly
-    const keyCompareIdx = relay.indexOf('providedProKey !== PRO_WIDGET_KEY');
+    const keyCompareIdx = relay.indexOf('!safeTokenEquals(providedProKey, PRO_WIDGET_KEY)');
     assert.ok(keyCompareIdx !== -1, 'PRO key comparison must be present');
     const region = relay.slice(keyCompareIdx, keyCompareIdx + 200);
     assert.ok(region.includes('403'), 'Wrong PRO key must return 403');
