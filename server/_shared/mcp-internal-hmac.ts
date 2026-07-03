@@ -79,9 +79,16 @@ export function getInternalMcpVerifiedNonce(): string {
  *  Loosen via env if production observes clock skew. */
 export const INTERNAL_MCP_TIMESTAMP_WINDOW_SECONDS = 30;
 
-/** Replay-cache TTL. Slightly longer than the accepted timestamp window so
- * duplicate signatures are rejected for the whole freshness interval. */
-export const INTERNAL_MCP_REPLAY_CACHE_TTL_SECONDS = INTERNAL_MCP_TIMESTAMP_WINDOW_SECONDS + 5;
+/** Replay-cache TTL. The verify timestamp check is SYMMETRIC — a signature
+ * is accepted whenever `Math.abs(nowSec - ts) <= WINDOW`, i.e. across a full
+ * `2 * WINDOW` span (up to WINDOW seconds "in the past" and WINDOW seconds
+ * "in the future" relative to the gateway clock). The nonce entry MUST
+ * outlive that entire acceptance span regardless of clock-skew direction:
+ * if the signer's clock leads the gateway's, a nonce cached at first sight
+ * could otherwise expire while the same signature is still inside the
+ * acceptance window, reopening the replay. So the TTL must be at least
+ * `2 * WINDOW`; the small margin absorbs Redis EX rounding / propagation. */
+export const INTERNAL_MCP_REPLAY_CACHE_TTL_SECONDS = 2 * INTERNAL_MCP_TIMESTAMP_WINDOW_SECONDS + 5;
 
 // ---------------------------------------------------------------------------
 // Canonicalisation primitives — exported so U8's verifier produces byte-

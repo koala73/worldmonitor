@@ -899,7 +899,7 @@ export function createDomainGateway(
       if (replayClaim === 'unavailable') {
         // Fail closed: without an atomic replay-cache claim, a valid captured
         // signature could be reused throughout the timestamp window.
-        emitRequest(503, 'auth_401', null);
+        emitRequest(503, 'replay_cache_unavailable', null);
         return new Response(
           JSON.stringify({ error: 'internal_mcp_replay_cache_unavailable' }),
           { status: 503, headers: { 'Content-Type': 'application/json', ...corsHeaders } },

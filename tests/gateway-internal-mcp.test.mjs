@@ -29,6 +29,8 @@ import {
   INTERNAL_MCP_NONCE_HEADER,
   INTERNAL_MCP_VERIFIED_HEADER,
   TRUSTED_USER_ID_HEADER,
+  INTERNAL_MCP_TIMESTAMP_WINDOW_SECONDS,
+  INTERNAL_MCP_REPLAY_CACHE_TTL_SECONDS,
 } from '../server/_shared/mcp-internal-hmac.ts';
 import { isCallerPremium } from '../server/_shared/premium-check.ts';
 
@@ -50,7 +52,9 @@ const ORIGINAL_ENV = { ...process.env };
 // to the handler so tests can assert what propagated through.
 // ---------------------------------------------------------------------------
 let lastHandlerRequest = null;
-let replayCacheKeys = new Set();
+// Map<key, expiryMs> — models Redis EX-based expiry so tests can exercise
+// TTL-vs-acceptance-window interactions, not just presence/absence.
+let replayCacheKeys = new Map();
 
 function makeGateway() {
   return createDomainGateway([
@@ -133,8 +137,13 @@ function installFetchStub(opts = {}) {
         if (cmd?.[0] === 'SET' && cmd?.[3] === 'EX' && cmd?.[5] === 'NX') {
           if (replayCacheCommandError) return { error: 'WRONGTYPE Operation against a key holding the wrong kind of value' };
           const key = String(cmd[1]);
-          if (replayCacheKeys.has(key)) return { result: null };
-          replayCacheKeys.add(key);
+          const ttlSeconds = Number(cmd[4]);
+          const nowMs = Date.now();
+          const existingExpiry = replayCacheKeys.get(key);
+          // Honor Redis EX expiry: a key past its TTL is treated as absent, so
+          // a claim after expiry succeeds exactly as production Redis would.
+          if (existingExpiry !== undefined && existingExpiry > nowMs) return { result: null };
+          replayCacheKeys.set(key, nowMs + ttlSeconds * 1000);
           return { result: 'OK' };
         }
         return { result: 0 };
@@ -174,7 +183,7 @@ function disableRedisForLegacyGatewayCheck() {
 
 beforeEach(() => {
   lastHandlerRequest = null;
-  replayCacheKeys = new Set();
+  replayCacheKeys = new Map();
   process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
   process.env.CONVEX_SITE_URL = CONVEX_SITE;
   process.env.CONVEX_SERVER_SHARED_SECRET = CONVEX_SECRET;
@@ -324,6 +333,61 @@ describe('gateway internal-MCP HMAC verify — happy paths', () => {
     assert.equal(replay.status, 401, 'duplicate signed nonce must be rejected within the timestamp window');
     assert.deepEqual(await replay.json(), { error: 'invalid_internal_mcp_signature' });
     assert.equal(lastHandlerRequest, null, 'replay must not reach the handler or trusted-marker path');
+  });
+
+  it('replay inside the symmetric acceptance span but past the old short TTL is still rejected', async () => {
+    // Regression for the P2 finding. The verify timestamp check is SYMMETRIC
+    // (|nowSec - ts| <= WINDOW), so a signature stays acceptable across a full
+    // 2*WINDOW span. The old TTL (WINDOW + 5 = 35s) could expire the nonce
+    // while the signature was still fresh when the signer's clock LEADS the
+    // gateway's, reopening the replay. The TTL must cover the whole 2*WINDOW
+    // acceptance span (now 2*WINDOW + 5 = 65s).
+    assert.ok(
+      INTERNAL_MCP_REPLAY_CACHE_TTL_SECONDS >= 2 * INTERNAL_MCP_TIMESTAMP_WINDOW_SECONDS,
+      'replay-cache TTL must cover the full 2*WINDOW symmetric acceptance span',
+    );
+
+    const WINDOW = INTERNAL_MCP_TIMESTAMP_WINDOW_SECONDS;
+    const handler = makeGateway();
+    const url = 'https://api.worldmonitor.app/api/news/v1/summarize-article';
+    const body = JSON.stringify({ provider: 'auto', mode: 'brief' });
+    const tsSec = 1_800_000_000; // fixed signer timestamp (unix seconds)
+    const signed = await signInternalMcpRequest({
+      method: 'POST',
+      url,
+      body,
+      userId: PRO_USER_ID,
+      secret: HMAC_SECRET,
+      now: tsSec,
+      nonce: 'replay_nonce_skew_4681',
+    });
+    const headers = {
+      'Content-Type': 'application/json',
+      [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+      [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+      [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
+    };
+
+    const realDateNow = Date.now;
+    try {
+      // Signer clock leads the gateway by WINDOW seconds: first sighting sits
+      // at the earliest edge of the acceptance window; the nonce is cached here.
+      Date.now = () => (tsSec - WINDOW) * 1000;
+      const first = await handler(new Request(url, { method: 'POST', headers, body }));
+      assert.equal(first.status, 200, `first request at acceptance-window start should pass, body=${await first.clone().text()}`);
+
+      // Replay arrives 2*WINDOW seconds later — the latest edge of the SAME
+      // acceptance window. That is past the old (WINDOW + 5) TTL, but the
+      // signature is still fresh, so the nonce MUST still be cached → 401.
+      lastHandlerRequest = null;
+      Date.now = () => (tsSec + WINDOW) * 1000;
+      const replay = await handler(new Request(url, { method: 'POST', headers, body }));
+      assert.equal(replay.status, 401, 'replay inside the acceptance span but past the old short TTL must still be rejected');
+      assert.deepEqual(await replay.json(), { error: 'invalid_internal_mcp_signature' });
+      assert.equal(lastHandlerRequest, null, 'replay must not reach the handler');
+    } finally {
+      Date.now = realDateNow;
+    }
   });
 
   it('same request shape with unique signed nonces continues to succeed', async () => {

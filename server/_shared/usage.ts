@@ -70,6 +70,10 @@ export type RequestReason =
   // Distinct from auth_401 so telemetry separates malformed requests
   // from auth failures.
   | 'malformed_request'
+  // Fail-closed rejection when the internal-MCP replay-nonce cache (Redis)
+  // is unavailable so an atomic claim can't be made. Distinct from auth_401
+  // so a Redis outage is not conflated with genuine signature/auth failures.
+  | 'replay_cache_unavailable'
   | 'unknown_route'
   | 'method_not_allowed'
   | 'cors_error'
