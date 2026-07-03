@@ -4,6 +4,7 @@ import {
   categoryOf,
   normalizeCompleteEvents,
   pickRendererMainThread,
+  selectRendererMainThreadEvents,
   computeSelfTimeByName,
   categorize,
   buildDecomposition,
@@ -79,6 +80,19 @@ test('pickRendererMainThread picks the busiest CrRendererMain (#4539)', () => {
 
 test('pickRendererMainThread scores normalized B/E events and skips null entries (#4539)', () => {
   assert.equal(pickRendererMainThread(fixtureBeginEndTraceEvents()), '1:1');
+});
+
+test('selectRendererMainThreadEvents returns the selected normalized thread events (#4539)', () => {
+  const { mainThread, completeEvents } = selectRendererMainThreadEvents(fixtureBeginEndTraceEvents());
+
+  assert.equal(mainThread, '1:1');
+  assert.deepEqual(
+    completeEvents.map((event) => ({ name: event.name, dur: event.dur, thread: `${event.pid}:${event.tid}` })),
+    [
+      { name: 'Layout', dur: 150, thread: '1:1' },
+      { name: 'RunTask', dur: 500, thread: '1:1' },
+    ],
+  );
 });
 
 test('computeSelfTimeByName subtracts nested children from parents (#4539)', () => {

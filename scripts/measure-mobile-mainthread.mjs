@@ -25,8 +25,7 @@ import { pathToFileURL } from 'node:url';
 import {
   buildDecomposition,
   computeSelfTimeByName,
-  normalizeCompleteEvents,
-  pickRendererMainThread,
+  selectRendererMainThreadEvents,
   readTraceStream,
   TRACE_CATEGORIES,
   waitForTraceComplete,
@@ -259,7 +258,7 @@ async function measure(url, { cpu = 4, settle = 15000, device = 'iPhone 14 Pro M
 /** Build the structured report (pure — exported for tests). */
 export function buildReport(result) {
   const events = result?.trace?.traceEvents || (Array.isArray(result?.trace) ? result.trace : []);
-  const mainThread = pickRendererMainThread(events);
+  const { mainThread, completeEvents } = selectRendererMainThreadEvents(events);
   const traceWarning = result?.traceWarning
     || (mainThread ? "" : "no CrRendererMain thread found in trace; not attributing");
   const traceReport = (() => {
@@ -272,8 +271,7 @@ export function buildReport(result) {
         warning: traceWarning,
       };
     }
-    const complete = normalizeCompleteEvents(events).filter((e) => e.pid + ":" + e.tid === mainThread);
-    const { byName } = computeSelfTimeByName(complete);
+    const { byName } = computeSelfTimeByName(completeEvents);
     return {
       mainThread,
       ...buildDecomposition(byName),
