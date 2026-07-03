@@ -45,7 +45,10 @@ export interface SummarizeOptions {
 
 // ── Sebuf client (replaces direct fetch to /api/{provider}-summarize) ──
 
-const newsClient = new NewsServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
+const newsClient = new NewsServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+const premiumNewsClient = new NewsServiceClient(getRpcBaseUrl(), {
+  fetch: (input, init) => premiumFetch(input, { ...init, forcePremium: true }),
+});
 const summaryBreaker = createCircuitBreaker<SummarizeArticleResponse>({ name: 'News Summarization', cacheTtlMs: 0 });
 
 const summaryResultBreaker = createCircuitBreaker<SummarizationResult | null>({
@@ -86,7 +89,7 @@ async function tryApiProvider(
   lastAttemptedProvider = providerDef.provider;
   try {
     const resp: SummarizeArticleResponse = await summaryBreaker.execute(async () => {
-      return newsClient.summarizeArticle({
+      return premiumNewsClient.summarizeArticle({
         provider: providerDef.provider,
         headlines,
         mode: 'brief',

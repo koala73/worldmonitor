@@ -81,29 +81,10 @@ function makeGateway(handlerCalls: { summarize: number; cache: number }) {
   ]);
 }
 
-function allowTierOne(userId: string | null, pathname: string) {
-  if (pathname !== SUMMARIZE_PATH) {
-    return { response: null, entitlements: null };
-  }
-  if (!userId) {
-    return {
-      response: json({ error: "Authentication required", requiredTier: 1 }, 403),
-      entitlements: null,
-    };
-  }
-  if (userId === "pro_user") {
-    return { response: null, entitlements: null };
-  }
-  return {
-    response: json({ error: "Upgrade required", requiredTier: 1, currentTier: 0 }, 403),
-    entitlements: { planKey: "free", features: { tier: 0 }, validUntil: Date.now() + 60_000 },
-  };
-}
-
 beforeEach(() => {
   checkEndpointRateLimit.mockReset().mockResolvedValue(null);
   checkRateLimit.mockReset().mockResolvedValue(null);
-  checkEntitlementDetailed.mockReset().mockImplementation(allowTierOne);
+  checkEntitlementDetailed.mockReset().mockResolvedValue({ response: null, entitlements: null });
   getEntitlements.mockReset().mockResolvedValue(null);
   resolveClerkSession.mockReset().mockResolvedValue(null);
   validateApiKey.mockReset().mockResolvedValue({
@@ -119,18 +100,13 @@ afterEach(() => {
 
 describe("summarize-article gateway spend controls", () => {
   test("route is explicitly premium-gated and endpoint-rate-limited", () => {
-    expect(getRequiredTier(SUMMARIZE_PATH)).toBe(1);
-    expect(PREMIUM_RPC_PATHS.has(SUMMARIZE_PATH)).toBe(true);
+    expect(getRequiredTier(SUMMARIZE_PATH)).toBeNull();
+    expect(PREMIUM_RPC_PATHS.has(SUMMARIZE_PATH)).toBe(false);
     expect(ENDPOINT_RATE_POLICIES[SUMMARIZE_PATH]).toEqual({ limit: 30, window: "60 s" });
   });
 
-  test("anonymous wms_ sessions are rejected before the summarize handler can call a provider", async () => {
-    validateApiKey.mockResolvedValue({
-      valid: false,
-      required: true,
-      error: "Pro authentication required",
-      kind: "session",
-    });
+  test("anonymous wms_ sessions still hit the scoped endpoint limiter before the summarize handler", async () => {
+    validateApiKey.mockResolvedValue({ valid: true, required: false, kind: "session" });
     const calls = { summarize: 0, cache: 0 };
 
     const res = await makeGateway(calls)(
@@ -138,14 +114,18 @@ describe("summarize-article gateway spend controls", () => {
       { waitUntil: () => {} },
     );
 
-    expect(res.status).toBe(401);
-    await expect(res.json()).resolves.toMatchObject({ error: "Pro authentication required" });
-    expect(calls.summarize).toBe(0);
-    expect(checkEndpointRateLimit).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(calls.summarize).toBe(1);
+    expect(checkEndpointRateLimit).toHaveBeenCalledWith(
+      expect.any(Request),
+      SUMMARIZE_PATH,
+      expect.any(Object),
+    );
   });
 
-  test("basic bearer sessions are entitlement-blocked before the summarize handler can call a provider", async () => {
+  test("basic bearer sessions also pass through the scoped endpoint limiter", async () => {
     resolveClerkSession.mockResolvedValue({ userId: "free_user", orgId: null, role: "free" });
+    validateApiKey.mockResolvedValue({ valid: true, required: false, kind: "session" });
     const calls = { summarize: 0, cache: 0 };
 
     const res = await makeGateway(calls)(
@@ -153,20 +133,24 @@ describe("summarize-article gateway spend controls", () => {
       { waitUntil: () => {} },
     );
 
-    expect(res.status).toBe(403);
-    await expect(res.json()).resolves.toMatchObject({ error: "Upgrade required" });
-    expect(calls.summarize).toBe(0);
-    expect(checkEndpointRateLimit).not.toHaveBeenCalled();
-    expect(checkEntitlementDetailed).toHaveBeenCalledWith(
-      "free_user",
+    expect(res.status).toBe(200);
+    expect(calls.summarize).toBe(1);
+    expect(checkEndpointRateLimit).toHaveBeenCalledWith(
+      expect.any(Request),
       SUMMARIZE_PATH,
       expect.any(Object),
-      { clerkRole: "free" },
+    );
+    expect(checkEntitlementDetailed).toHaveBeenCalledWith(
+      null,
+      SUMMARIZE_PATH,
+      expect.any(Object),
+      { clerkRole: null },
     );
   });
 
   test("Pro bearer sessions pass entitlement and endpoint rate-limit before the summarize handler runs", async () => {
     resolveClerkSession.mockResolvedValue({ userId: "pro_user", orgId: null, role: "pro" });
+    validateApiKey.mockResolvedValue({ valid: true, required: false, kind: "session" });
     const calls = { summarize: 0, cache: 0 };
 
     const res = await makeGateway(calls)(
@@ -186,6 +170,7 @@ describe("summarize-article gateway spend controls", () => {
 
   test("Redis-degraded endpoint rate limiting fails closed before the provider handler", async () => {
     resolveClerkSession.mockResolvedValue({ userId: "pro_user", orgId: null, role: "pro" });
+    validateApiKey.mockResolvedValue({ valid: true, required: false, kind: "session" });
     checkEndpointRateLimit.mockResolvedValue(json({ error: "Rate-limit service temporarily unavailable" }, 503));
     const calls = { summarize: 0, cache: 0 };
 

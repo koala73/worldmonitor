@@ -13,10 +13,15 @@ describe('summarize-article premium client wiring', () => {
     const src = readFileSync(resolve(repoRoot, 'src/services/summarization.ts'), 'utf8');
     const ast = ts.createSourceFile('summarization.ts', src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 
-    assert.ok(PREMIUM_RPC_PATHS.has('/api/news/v1/summarize-article'));
+    assert.equal(
+      PREMIUM_RPC_PATHS.has('/api/news/v1/summarize-article'),
+      false,
+      'the path stays out of PREMIUM_RPC_PATHS so translateText remains available to existing free callers',
+    );
 
     let importsPremiumFetch = false;
-    let newsClientUsesPremiumFetch = false;
+    let premiumClientForcesPremiumFetch = false;
+    let publicClientUsesRawFetch = false;
 
     function visit(node: ts.Node): void {
       if (
@@ -35,11 +40,28 @@ describe('summarize-article premium client wiring', () => {
         node.expression.getText(ast) === 'NewsServiceClient' &&
         node.arguments?.length === 2
       ) {
+        const parent = node.parent;
+        const variableName = ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)
+          ? parent.name.text
+          : '';
         const options = node.arguments[1];
-        if (ts.isObjectLiteralExpression(options)) {
-          newsClientUsesPremiumFetch = options.properties.some((property) => {
+        if (variableName === 'premiumNewsClient' && ts.isObjectLiteralExpression(options)) {
+          premiumClientForcesPremiumFetch = options.properties.some((property) => {
             if (!ts.isPropertyAssignment(property)) return false;
-            return property.name.getText(ast) === 'fetch' && property.initializer.getText(ast) === 'premiumFetch';
+            return (
+              property.name.getText(ast) === 'fetch' &&
+              property.initializer.getText(ast).includes('premiumFetch') &&
+              property.initializer.getText(ast).includes('forcePremium: true')
+            );
+          });
+        }
+        if (variableName === 'newsClient' && ts.isObjectLiteralExpression(options)) {
+          publicClientUsesRawFetch = options.properties.some((property) => {
+            if (!ts.isPropertyAssignment(property)) return false;
+            return (
+              property.name.getText(ast) === 'fetch' &&
+              property.initializer.getText(ast).includes('globalThis.fetch')
+            );
           });
         }
       }
@@ -50,6 +72,7 @@ describe('summarize-article premium client wiring', () => {
     visit(ast);
 
     assert.equal(importsPremiumFetch, true, 'summarization.ts should import premiumFetch');
-    assert.equal(newsClientUsesPremiumFetch, true, 'NewsServiceClient should be constructed with fetch: premiumFetch');
+    assert.equal(premiumClientForcesPremiumFetch, true, 'summary client should force premiumFetch auth');
+    assert.equal(publicClientUsesRawFetch, true, 'translation/cache client should keep raw fetch behavior');
   });
 });
