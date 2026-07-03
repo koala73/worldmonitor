@@ -276,7 +276,7 @@ export function parseArgs(argv) {
   return args;
 }
 
-const TRACE_CATEGORIES = [
+export const TRACE_CATEGORIES = [
   'devtools.timeline',
   'disabled-by-default-devtools.timeline',
   'disabled-by-default-devtools.timeline.frame',
@@ -288,7 +288,7 @@ const TRACE_CATEGORIES = [
 ];
 
 /** Read a CDP IO stream to completion, decoding base64 chunks when flagged. */
-async function readTraceStream(client, handle) {
+export async function readTraceStream(client, handle) {
   let data = '';
   let eof = false;
   while (!eof) {
@@ -300,18 +300,36 @@ async function readTraceStream(client, handle) {
   return data;
 }
 
-function waitForTraceComplete(client, timeoutMs = TRACE_COMPLETE_TIMEOUT_MS) {
+export function waitForTraceComplete(client, timeoutMs = TRACE_COMPLETE_TIMEOUT_MS, { signal } = {}) {
   return new Promise((resolve, reject) => {
     let timer;
-    const onComplete = (event) => {
+    let settled = false;
+    const cleanup = () => {
       clearTimeout(timer);
-      resolve(event);
+      if (typeof client.off === "function") client.off("Tracing.tracingComplete", onComplete);
+      signal?.removeEventListener?.("abort", onAbort);
     };
+    const settle = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      fn(value);
+    };
+    const onComplete = (event) => {
+      settle(resolve, event);
+    };
+    const onAbort = () => {
+      settle(reject, new Error("Cancelled waiting for Tracing.tracingComplete"));
+    };
+    if (signal?.aborted) {
+      reject(new Error("Cancelled waiting for Tracing.tracingComplete"));
+      return;
+    }
     timer = setTimeout(() => {
-      if (typeof client.off === 'function') client.off('Tracing.tracingComplete', onComplete);
-      reject(new Error(`Timed out waiting ${timeoutMs}ms for Tracing.tracingComplete`));
+      settle(reject, new Error(`Timed out waiting ${timeoutMs}ms for Tracing.tracingComplete`));
     }, timeoutMs);
-    client.once('Tracing.tracingComplete', onComplete);
+    client.once("Tracing.tracingComplete", onComplete);
+    signal?.addEventListener?.("abort", onAbort, { once: true });
   });
 }
 

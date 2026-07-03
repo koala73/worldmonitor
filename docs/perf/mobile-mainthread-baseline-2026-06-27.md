@@ -13,10 +13,11 @@ throttling 4×-amplifies host-CPU contention; the same URL has scored 28/57/85):
    infra, zero local contention). Take the **median of ≥3** runs; discard the first-run outlier.
    This is the headline TBT / `mainthread-work` / `bootup-time` / `scriptEvaluation` /
    `styleLayout` and the per-script `bootup-time` ranking (R4).
-2. **Deterministic relative signal → `scripts/measure-mobile-mainthread.mjs`** (this harness;
-   Playwright mobile emulation + CPU throttle). DOM-node counts are stable run-to-run; total
-   long-task ms is a self-consistent *relative* signal for the same script before/after. This is
-   the per-PR R3 gate (reduce vs. reorder).
+2. **Deterministic relative decomposition → `scripts/measure-mobile-mainthread.mjs`** (this
+   harness; Playwright mobile emulation + CPU throttle). It now captures a Chrome DevTools trace
+   and aggregates renderer main-thread self-time by event name → category, itemizing the
+   Lighthouse "Other" bucket the same way the desktop harness did for #4539. It also retains the
+   long-task and DOM-node signals used by the original R3 gate (reduce vs. reorder).
 
 ```bash
 # deterministic harness (best-effort live capture)
@@ -24,11 +25,12 @@ node scripts/measure-mobile-mainthread.mjs https://worldmonitor.app/dashboard --
 # or against a local preview: node scripts/measure-mobile-mainthread.mjs http://127.0.0.1:4173/dashboard
 ```
 
-> **Per-script ms attribution comes from Lighthouse, not this script.** The browser
-> `PerformanceObserver('longtask')` attribution API returns `unknown`/`self` for first-party
-> same-origin script, so the harness cannot name *which* chunk owns each long task — it reports
-> total TBT + DOM-node attribution only. For the per-script ranking (Map-\*.js, main.js,
-> panel-layout) use Lighthouse's `bootup-time` audit, as #4443 did.
+> **Per-script chunk ownership still comes from Lighthouse, not this script.** The browser
+> `PerformanceObserver("longtask")` attribution API returns `unknown`/`self` for first-party
+> same-origin script, so the harness cannot name *which* chunk owns each long task. The local trace
+> path decomposes native main-thread event names/categories (`Layerize`, `RunTask`, layout, paint,
+> GC, etc.) and itemizes `Other`; for the per-script ranking (Map-*.js, main.js, panel-layout),
+> still use Lighthouse `bootup-time`, as #4443 did.
 
 ## Committed PSI baseline (the comparison point)
 
@@ -73,6 +75,52 @@ directional:
 Reading: `mainthread-work` ~10 s and `bootup-time` ~1.8 s remain the dominant budget (paint is fine
 at ~1.1 s) — consistent with the script-execution-bound finding above. Desktop TBT is noisy under
 contention; the authoritative mobile TBT still needs a clean PSI run.
+
+## Harness capture — 2026-07-03 (prod, mobile trace decomposition)
+
+Command:
+
+```bash
+node scripts/measure-mobile-mainthread.mjs https://worldmonitor.app/dashboard --cpu 4 --settle 14000 --json
+```
+
+First local capture, iPhone 14 Pro Max emulation, CPU 4×, 14 s settle. As above, treat absolute
+ms as host-contended lab values and use the relative split to decide what bucket to investigate.
+
+| Category | Share | Self-time |
+|---|---:|---:|
+| scripting | 50.7% | 7.52 s |
+| **other** | **31.9%** | **4.73 s** |
+| styleLayout | 12.1% | 1.80 s |
+| paintComposite | 4.8% | 0.71 s |
+| parseHTML | 0.4% | 0.05 s |
+| garbageCollection | 0.1% | 0.02 s |
+| main-thread self-time total | — | 14.82 s |
+| long tasks (>50 ms) / TBT | 63 / 10.74 s | — |
+
+A second same-command capture after the reuse cleanup was materially consistent: scripting 49.4%,
+`other` 31.7%, styleLayout 13.2%, `ThreadControllerImpl::RunTask` 9.7%,
+`SimpleWatcher::OnHandleReady` 7.0%, and `Layerize` 3.3%.
+
+### Mobile "Other" decomposed
+
+| "Other" component | Share | Self-time | What it suggests |
+|---|---:|---:|---|
+| `ThreadControllerImpl::RunTask` | 9.7% | 1.44 s | Scheduler task-runner self-time from running many renderer tasks. |
+| `SimpleWatcher::OnHandleReady` | 6.4% | 0.95 s | Chromium handle/socket readiness work; likely network or async plumbing around startup. |
+| `RunTask` | 3.7% | 0.55 s | More scheduler wrapper self-time. |
+| `Layerize` | 2.2% | 0.33 s | Compositor layerization; much smaller on mobile than desktop #4539. |
+| `v8.run` | 1.9% | 0.28 s | V8 native wrapper overhead; chunk ownership still comes from Lighthouse `bootup-time`. |
+| `IntersectionObserverController::computeIntersections` | 1.0% | 0.14 s | Panel mount / visibility observer work. |
+
+Findings from this run:
+
+1. The old mobile "Other" bucket is no longer a black box. In this current prod capture it is
+   **scheduler + Chromium watcher dominated**, not primarily compositor `Layerize` as on desktop.
+2. The largest total category is still **scripting** under CPU 4× (50.7% / 7.52 s). Use Lighthouse
+   `bootup-time` to map that to chunks; this harness maps native event categories and `Other`.
+3. DOM-node attribution remains close to the 2026-06-27 conclusion: panels 830 / 42.1%, map SVG
+   250 / 12.7%, total 1,971 nodes.
 
 ## Harness capture — 2026-06-27 (prod, post #4442/#4448)
 

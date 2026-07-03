@@ -8,6 +8,7 @@ import {
   categorize,
   buildDecomposition,
   buildReport,
+  waitForTraceComplete,
 } from '../scripts/measure-desktop-mainthread.mjs';
 
 // Deterministic fixture (CI-safe, no browser): a CrRendererMain thread (1:1) with
@@ -138,6 +139,26 @@ test('self-time handles ts-tie parent/child and adjacent siblings (guards the du
   assert.equal(byName.get('Layout'), 40, 'ts-tie child keeps its full duration');
   assert.equal(byName.get('Paint'), 60, 'adjacent sibling is not nested under Layout');
   assert.equal(total, 100);
+});
+
+test("waitForTraceComplete abort removes listener and rejects promptly (#4443)", async () => {
+  const listeners = new Set();
+  const client = {
+    once(name, callback) {
+      if (name === "Tracing.tracingComplete") listeners.add(callback);
+    },
+    off(name, callback) {
+      if (name === "Tracing.tracingComplete") listeners.delete(callback);
+    },
+  };
+  const controller = new AbortController();
+  const promise = waitForTraceComplete(client, 1000, { signal: controller.signal });
+
+  assert.equal(listeners.size, 1);
+  controller.abort();
+
+  await assert.rejects(promise, /Cancelled waiting for Tracing.tracingComplete/);
+  assert.equal(listeners.size, 0);
 });
 
 test('buildReport refuses to attribute when no CrRendererMain thread exists (#4539)', () => {

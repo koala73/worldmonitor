@@ -3,6 +3,7 @@
  * Mobile main-thread attribution harness (#4443 / U2).
  *
  * Loads /dashboard under mobile emulation + CPU throttle and attributes:
+ *   - Chrome trace renderer main-thread self-time by category + itemized Other events
  *   - long tasks (PerformanceObserver 'longtask') by source, with TBT contribution
  *   - DOM-node counts per source (map SVG subtree vs panels)
  *
@@ -21,6 +22,15 @@
  *   (default url: https://worldmonitor.app/dashboard)
  */
 import { pathToFileURL } from 'node:url';
+import {
+  buildDecomposition,
+  computeSelfTimeByName,
+  normalizeCompleteEvents,
+  pickRendererMainThread,
+  readTraceStream,
+  TRACE_CATEGORIES,
+  waitForTraceComplete,
+} from './measure-desktop-mainthread.mjs';
 
 const TBT_THRESHOLD_MS = 50;
 
@@ -187,8 +197,41 @@ async function measure(url, { cpu = 4, settle = 15000, device = 'iPhone 14 Pro M
         /* longtask unsupported */
       }
     });
+    let trace = null;
+    let traceWarning = "";
+    try {
+      await client.send("Tracing.start", {
+        transferMode: "ReturnAsStream",
+        traceConfig: { recordMode: "recordAsMuchAsPossible", includedCategories: TRACE_CATEGORIES },
+      });
+    } catch (err) {
+      traceWarning = "CDP tracing unavailable: " + (err?.message || String(err));
+    }
     await page.goto(url, { waitUntil: 'load', timeout: 60000 });
     await page.waitForTimeout(settle);
+    if (!traceWarning) {
+      try {
+        const traceAbort = new AbortController();
+        const completePromise = waitForTraceComplete(client, undefined, { signal: traceAbort.signal });
+        try {
+          await client.send("Tracing.end");
+        } catch (err) {
+          traceAbort.abort();
+          try {
+            await completePromise;
+          } catch {
+            /* expected when cancelling the trace-complete waiter */
+          }
+          throw err;
+        }
+        const { stream } = await completePromise;
+        if (!stream) throw new Error("Tracing completed without an IO stream");
+        const raw = await readTraceStream(client, stream);
+        trace = JSON.parse(raw);
+      } catch (err) {
+        traceWarning = "CDP trace capture failed: " + (err?.message || String(err));
+      }
+    }
     const longtasks = await page.evaluate(() => window.__longtasks || []);
     const lcpDebug = await page.evaluate(() => window.__wmLcpDebug?.getSnapshot?.() ?? null);
     const nodeCounts = await page.evaluate(() => {
@@ -207,7 +250,7 @@ async function measure(url, { cpu = 4, settle = 15000, device = 'iPhone 14 Pro M
         panels: uniqueCount('.panel, .panel *'),
       };
     });
-    return { url, cpu, longtasks, lcpDebug, nodeCounts };
+    return { url, cpu, trace, traceWarning, longtasks, lcpDebug, nodeCounts };
   } finally {
     await browser.close();
   }
@@ -215,9 +258,32 @@ async function measure(url, { cpu = 4, settle = 15000, device = 'iPhone 14 Pro M
 
 /** Build the structured report (pure — exported for tests). */
 export function buildReport(result) {
+  const events = result?.trace?.traceEvents || (Array.isArray(result?.trace) ? result.trace : []);
+  const mainThread = pickRendererMainThread(events);
+  const traceWarning = result?.traceWarning
+    || (mainThread ? "" : "no CrRendererMain thread found in trace; not attributing");
+  const traceReport = (() => {
+    if (traceWarning) {
+      return {
+        mainThread: null,
+        mainThreadMs: 0,
+        categories: [],
+        other: [],
+        warning: traceWarning,
+      };
+    }
+    const complete = normalizeCompleteEvents(events).filter((e) => e.pid + ":" + e.tid === mainThread);
+    const { byName } = computeSelfTimeByName(complete);
+    return {
+      mainThread,
+      ...buildDecomposition(byName),
+    };
+  })();
+
   return {
     url: result?.url,
     cpu: result?.cpu,
+    ...traceReport,
     lcp: summarizeLcpDebug(result?.lcpDebug),
     tasks: summarizeLongTasks(result?.longtasks),
     nodes: attributeDomNodes(result?.nodeCounts),
@@ -226,7 +292,24 @@ export function buildReport(result) {
 
 function printHuman(report) {
   const { lcp, tasks, nodes } = report;
-  console.log(`\nMobile main-thread attribution — ${report.url} (CPU ${report.cpu}x)\n`);
+  console.log("\nMobile main-thread attribution — " + report.url + " (CPU " + report.cpu + "x)\n");
+  console.log("Main-thread self-time total: " + report.mainThreadMs + "ms  (thread " + (report.mainThread || "unknown") + ")");
+  if (report.categories.length > 0) {
+    console.log("By category (share of attributed main-thread self-time):");
+    for (const c of report.categories) {
+      console.log("  " + c.category.padEnd(20) + " " + String(c.ms).padStart(9) + "ms  (" + c.pct + "%)");
+    }
+    console.log("\n\"Other\" decomposed (top events — this is the mobile #4443 black box):");
+    for (const o of report.other) {
+      console.log("  " + o.name.padEnd(36) + " " + String(o.ms).padStart(9) + "ms  (" + o.pct + "%)");
+    }
+    console.log("");
+  }
+  if (report.warning) {
+    console.log("Trace warning:");
+    console.log("  " + report.warning);
+    console.log("");
+  }
   if (lcp?.candidate) {
     const candidate = lcp.candidate;
     console.log(
@@ -254,7 +337,8 @@ function printHuman(report) {
   for (const r of nodes.rows) {
     console.log(`  ${r.source.padEnd(28)} ${String(r.nodes).padStart(7)}  (${r.sharePct}%)`);
   }
-  console.log('');
+  console.log("\nNote: absolute ms is host-contention-sensitive (#4486). Trust the RELATIVE");
+  console.log("shares here; take authoritative absolute mobile timings from PageSpeed/Calibre.\n");
 }
 
 async function main() {

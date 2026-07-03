@@ -164,4 +164,55 @@ describe('buildReport', () => {
     // round-trips cleanly for `--json | jq`
     assert.doesNotThrow(() => JSON.parse(JSON.stringify(report)));
   });
+
+  it("decomposes mobile trace self-time into categories and Other events (#4443)", () => {
+    const report = buildReport({
+      url: "http://x/dashboard",
+      cpu: 4,
+      trace: {
+        traceEvents: [
+          { ph: "M", name: "thread_name", pid: 7, tid: 11, args: { name: "CrRendererMain" } },
+          { ph: "M", name: "thread_name", pid: 7, tid: 12, args: { name: "CrRendererMain" } },
+          { ph: "X", name: "RunTask", pid: 7, tid: 11, ts: 0, dur: 1000 },
+          { ph: "X", name: "Layerize", pid: 7, tid: 11, ts: 100, dur: 500 },
+          { ph: "X", name: "FunctionCall", pid: 7, tid: 11, ts: 700, dur: 200 },
+          { ph: "X", name: "FunctionCall", pid: 7, tid: 12, ts: 0, dur: 50 },
+        ],
+      },
+      longtasks: [],
+      nodeCounts: { total: 1000, mapSvg: 100, panels: 800 },
+    });
+
+    assert.equal(report.mainThread, "7:11");
+    assert.equal(report.mainThreadMs, 1);
+    assert.deepEqual(report.categories.find((c) => c.category === "other"), {
+      category: "other",
+      ms: 0.8,
+      pct: 80,
+    });
+    assert.deepEqual(report.categories.find((c) => c.category === "scripting"), {
+      category: "scripting",
+      ms: 0.2,
+      pct: 20,
+    });
+    assert.deepEqual(report.other[0], { name: "Layerize", ms: 0.5, pct: 50 });
+    assert.deepEqual(report.other[1], { name: "RunTask", ms: 0.3, pct: 30 });
+    assert.equal(report.warning, undefined);
+  });
+
+  it("refuses trace attribution when CrRendererMain metadata is missing (#4443)", () => {
+    const report = buildReport({
+      url: "http://x/dashboard",
+      cpu: 4,
+      trace: { traceEvents: [{ ph: "X", name: "RunTask", pid: 1, tid: 1, ts: 0, dur: 1000 }] },
+      longtasks: [{ duration: 80 }],
+    });
+
+    assert.equal(report.mainThread, null);
+    assert.equal(report.mainThreadMs, 0);
+    assert.deepEqual(report.categories, []);
+    assert.deepEqual(report.other, []);
+    assert.match(report.warning, /no CrRendererMain/);
+    assert.equal(report.tasks.longTaskCount, 1);
+  });
 });
