@@ -119,6 +119,20 @@ function makeMcpFetch({ initStatus = 200, listStatus = 200, callStatus = 200, to
 }
 
 let handler;
+let setResolveHostnameForTest;
+
+const PUBLIC_TEST_ADDRESS = '93.184.216.34';
+
+function setResolvedAddresses(addresses) {
+  setResolveHostnameForTest(async () => addresses);
+}
+
+function dnsJsonResponse(records) {
+  return new Response(JSON.stringify({
+    Status: 0,
+    Answer: records.map(({ type, data }) => ({ type, data })),
+  }), { status: 200, headers: { 'Content-Type': 'application/dns-json' } });
+}
 
 describe('api/mcp-proxy', () => {
   beforeEach(async () => {
@@ -126,9 +140,12 @@ describe('api/mcp-proxy', () => {
     // isCallerPremium import from server/. Test must follow the rename.
     const mod = await import(`../api/mcp-proxy.ts?t=${Date.now()}`);
     handler = mod.default;
+    setResolveHostnameForTest = mod.__setMcpProxyResolveHostnameForTest;
+    setResolvedAddresses([PUBLIC_TEST_ADDRESS]);
   });
 
   afterEach(() => {
+    setResolveHostnameForTest?.(null);
     globalThis.fetch = originalFetch;
   });
 
@@ -298,6 +315,40 @@ describe('api/mcp-proxy', () => {
       assert.equal(res.status, 400);
     });
 
+    it('returns 400 when DNS resolves a hostname to blocked private/reserved addresses', async () => {
+      const cases = [
+        ['private IPv4', '10.0.0.5'],
+        ['link-local IPv4', '169.254.169.254'],
+        ['loopback IPv4', '127.0.0.1'],
+        ['ULA IPv6', 'fd00::1234'],
+        ['link-local IPv6', 'fe80::1'],
+      ];
+      for (const [label, address] of cases) {
+        setResolvedAddresses([address]);
+        const res = await handler(makeGetRequest({ serverUrl: `https://${label.toLowerCase().replaceAll(' ', '-')}.example/mcp` }));
+        assert.equal(res.status, 400, `${label} DNS result must be rejected`);
+        const data = await res.json();
+        assert.match(data.error, /invalid serverUrl/i);
+      }
+    });
+
+    it('allows a hostname whose DNS answers are public addresses', async () => {
+      setResolveHostnameForTest(null);
+      globalThis.fetch = async (url, opts) => {
+        const u = new URL(url.toString());
+        if (u.hostname === 'cloudflare-dns.com') {
+          const type = u.searchParams.get('type');
+          if (type === 'A') return dnsJsonResponse([{ type: 1, data: PUBLIC_TEST_ADDRESS }]);
+          if (type === 'AAAA') return dnsJsonResponse([{ type: 28, data: '2606:2800:220:1:248:1893:25c8:1946' }]);
+        }
+        return makeMcpFetch({ tools: [] })(url, opts);
+      };
+      const res = await handler(makeGetRequest({ serverUrl: 'https://public-mcp.example/mcp' }));
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.deepEqual(data.tools, []);
+    });
+
     it('returns 400 for garbled URL', async () => {
       const res = await handler(makeGetRequest({ serverUrl: 'not a url at all' }));
       assert.equal(res.status, 400);
@@ -391,6 +442,40 @@ describe('api/mcp-proxy', () => {
       for (const k of Object.keys(capturedHeaders)) {
         assert.ok(!k.includes('\r') && !k.includes('\n'), `Header key contains CRLF: ${JSON.stringify(k)}`);
       }
+    });
+
+    it('does not automatically follow upstream redirects', async () => {
+      const redirectModes = [];
+      globalThis.fetch = async (url, opts) => {
+        redirectModes.push(opts?.redirect);
+        return makeMcpFetch({ tools: [] })(url, opts);
+      };
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+      assert.equal(res.status, 200);
+      assert.deepEqual(redirectModes, ['manual', 'manual', 'manual']);
+    });
+
+    it('revalidates the same host before repeated streamable HTTP requests to block DNS rebinding', async () => {
+      const resolutions = [
+        [PUBLIC_TEST_ADDRESS], // request validation
+        [PUBLIC_TEST_ADDRESS], // initialize POST
+        ['10.0.0.9'],          // notifications/initialized would rebind
+      ];
+      setResolveHostnameForTest(async (hostname) => {
+        assert.equal(hostname, 'mcp.example.com');
+        return resolutions.shift() ?? [PUBLIC_TEST_ADDRESS];
+      });
+      let upstreamCalls = 0;
+      globalThis.fetch = async (url, opts) => {
+        upstreamCalls += 1;
+        return makeMcpFetch({ tools: [] })(url, opts);
+      };
+
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+      assert.equal(res.status, 422);
+      const data = await res.json();
+      assert.match(data.error, /private\/reserved/i);
+      assert.equal(upstreamCalls, 1, 'rebound same-host request must be blocked before the second upstream fetch');
     });
   });
 
