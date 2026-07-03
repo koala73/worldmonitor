@@ -322,6 +322,20 @@ describe('api/mcp-proxy', () => {
         ['loopback IPv4', '127.0.0.1'],
         ['ULA IPv6', 'fd00::1234'],
         ['link-local IPv6', 'fe80::1'],
+        // Embedded / reserved IPv6 encodings that previously slipped through
+        // the classifier (only dotted ::ffff: was decoded). Each decodes to a
+        // private/reserved IPv4 or is a reserved v6 range.
+        ['dotted v4-mapped loopback', '::ffff:127.0.0.1'],
+        ['hex v4-mapped loopback', '::ffff:7f00:1'],
+        ['hex v4-mapped metadata IP', '::ffff:a9fe:a9fe'],
+        ['uppercase hex v4-mapped RFC1918', '::FFFF:0A00:0001'],
+        ['NAT64 RFC1918', '64:ff9b::a00:1'],
+        ['NAT64 metadata IP', '64:ff9b::a9fe:a9fe'],
+        ['IPv4-compatible loopback', '::7f00:1'],
+        ['IPv4-compatible metadata IP', '::a9fe:a9fe'],
+        ['6to4 loopback', '2002:7f00:1::'],
+        ['6to4 metadata IP', '2002:a9fe:a9fe::'],
+        ['site-local IPv6', 'fec0::1'],
       ];
       for (const [label, address] of cases) {
         setResolvedAddresses([address]);
@@ -455,7 +469,14 @@ describe('api/mcp-proxy', () => {
       assert.deepEqual(redirectModes, ['manual', 'manual', 'manual']);
     });
 
-    it('revalidates the same host before repeated streamable HTTP requests to block DNS rebinding', async () => {
+    // NOTE: this validates the per-dispatch re-resolve + classifier path, NOT
+    // true socket-level rebind prevention. Vercel Edge fetch cannot pin the
+    // connection to a vetted IP (P1, issue #4674), so a residual rebind window
+    // between our resolve and fetch's own resolve is an accepted limitation.
+    // What this asserts: when a subsequent re-resolution returns a blocked
+    // address, revalidateBeforeFetch rejects it before the next upstream fetch,
+    // and the caller sees the GENERIC SSRF message (never the internal IP).
+    it('re-resolves and re-checks the same host before each streamable HTTP dispatch (classifier/revalidation path)', async () => {
       const resolutions = [
         [PUBLIC_TEST_ADDRESS], // request validation
         [PUBLIC_TEST_ADDRESS], // initialize POST
@@ -474,7 +495,10 @@ describe('api/mcp-proxy', () => {
       const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
       assert.equal(res.status, 422);
       const data = await res.json();
-      assert.match(data.error, /private\/reserved/i);
+      // Caller gets a generic message — the resolved internal IP (10.0.0.9)
+      // must never be echoed back (address-oracle SSRF review finding).
+      assert.match(data.error, /host is not allowed/i);
+      assert.doesNotMatch(data.error, /10\.0\.0\.9/, 'must NOT leak the blocked internal IP to the caller');
       assert.equal(upstreamCalls, 1, 'rebound same-host request must be blocked before the second upstream fetch');
     });
   });

@@ -107,6 +107,25 @@ class McpProxySsrfError extends Error {
   }
 }
 
+// Generic message surfaced to the caller when a serverUrl resolves to a
+// private/reserved address. The specific blocked IP is deliberately NOT echoed
+// back: returning it turns the proxy into an address oracle (the caller could
+// enumerate internal IPs by observing which hostnames get blocked). SSRF review
+// finding — log the concrete IP server-side for debugging, tell the caller only
+// that the host is disallowed.
+const SSRF_BLOCKED_PUBLIC_MESSAGE = 'serverUrl host is not allowed';
+
+function throwBlockedAddress(blockedAddress) {
+  // Server-side audit/debug log with the concrete blocked address. This is the
+  // only place the resolved internal IP appears; it never reaches the response.
+  console.error('[mcp-proxy]', {
+    event: 'mcp_proxy_ssrf_blocked',
+    ts: new Date().toISOString(),
+    blocked_address: blockedAddress,
+  });
+  throw new McpProxySsrfError(SSRF_BLOCKED_PUBLIC_MESSAGE);
+}
+
 async function resolveDnsJson(hostname, recordType) {
   const url = new URL(DNS_JSON_ENDPOINT);
   url.searchParams.set('name', hostname);
@@ -146,7 +165,7 @@ async function assertServerUrlSafe(url) {
     throw new McpProxySsrfError(`serverUrl hostname is blocked: ${hostname}`);
   }
   if (isBlockedResolvedAddress(hostname)) {
-    throw new McpProxySsrfError(`serverUrl resolves to a private/reserved address: ${hostname}`);
+    throwBlockedAddress(hostname);
   }
 
   let resolvedAddresses;
@@ -163,16 +182,20 @@ async function assertServerUrlSafe(url) {
 
   const blocked = resolvedAddresses.find(isBlockedResolvedAddress);
   if (blocked) {
-    throw new McpProxySsrfError(`serverUrl resolves to a private/reserved address: ${blocked}`);
+    throwBlockedAddress(blocked);
   }
 
   return { url, resolvedAddresses };
 }
 
-// Vercel Edge fetch does not expose a Node-style lookup hook, so this proxy
-// cannot pin the TLS connection to a previously vetted address. Instead, every
-// outbound MCP fetch re-resolves and re-checks the hostname immediately before
-// dispatch to narrow the DNS-rebinding window in the Edge runtime.
+// Vercel Edge fetch does not expose a Node-style lookup/socket hook, so this
+// proxy CANNOT pin the TLS connection to a previously vetted address. There is
+// no way to guarantee that the IP we validated is the IP fetch() ultimately
+// connects to; a DNS answer can change between our resolve and fetch's own
+// resolve. This re-resolve-and-recheck immediately before every outbound
+// dispatch NARROWS that DNS-rebinding window but does not close it. The
+// residual rebind window is an ACCEPTED limitation of the Edge runtime (no
+// socket-level pin available) — documented, not fixed here (P1, issue #4674).
 async function revalidateBeforeFetch(url) {
   await assertServerUrlSafe(url);
 }
