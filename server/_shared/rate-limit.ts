@@ -183,6 +183,11 @@ interface EndpointRatePolicy {
 // using checkEndpointRateLimit / hasEndpointRatePolicy below — the export is
 // for tooling, not new runtime callers.
 export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
+  // LLM-backed article summarization can trigger provider spend on cache
+  // misses, so it must not inherit the global fail-open fallback when Redis is
+  // unavailable. Keep this lower than general read traffic until #4675 makes a
+  // product-level entitlement decision.
+  '/api/news/v1/summarize-article': { limit: 60, window: '60 s' },
   '/api/news/v1/summarize-article-cache': { limit: 3000, window: '60 s' },
   '/api/intelligence/v1/classify-event': { limit: 600, window: '60 s' },
   // Legacy /api/sanctions-entity-search rate limit was 30/min per IP. Preserve
@@ -219,6 +224,53 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // resolves edge-function paths via api/api-route-exceptions.json instead
   // of the OpenAPI specs.
   '/api/mcp-proxy': { limit: 30, window: '60 s' },
+};
+
+interface RateLimitPolicyDecision {
+  reason: string;
+}
+
+// Repo-native guardrail for routes where the rate-limit is part of the abuse
+// defence. scripts/enforce-rate-limit-policies.mjs fails if any route listed
+// here can drift back to the gateway's availability-first global fallback.
+export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimitPolicyDecision> = {
+  '/api/news/v1/summarize-article': {
+    reason: 'LLM-backed summarization can drive provider spend on cache misses.',
+  },
+  '/api/intelligence/v1/classify-event': {
+    reason: 'AI classification performs expensive provider-backed analysis.',
+  },
+  '/api/sanctions/v1/lookup-sanction-entity': {
+    reason: 'Live sanctions lookup proxies an external provider.',
+  },
+  '/api/leads/v1/submit-contact': {
+    reason: 'Lead capture writes to Convex and sends email.',
+  },
+  '/api/leads/v1/register-interest': {
+    reason: 'Lead capture writes to Convex and sends email.',
+  },
+  '/api/scenario/v1/run-scenario': {
+    reason: 'Scenario runs are mutation-like jobs with a historical 10/min cap.',
+  },
+  '/api/forecast/v1/trigger-simulation': {
+    reason: 'Forecast simulation trigger starts expensive backend work.',
+  },
+  '/api/maritime/v1/get-vessel-snapshot': {
+    reason: 'Live vessel snapshots can generate high-frequency upstream load.',
+  },
+  '/api/resilience/v1/get-resilience-ranking': {
+    reason: 'Cold/stale cache paths can synchronously warm the full country table.',
+  },
+};
+
+// Explicit examples of read-only gateway routes where the global per-IP
+// fallback remains acceptable during Redis degradation. New expensive/provider
+// routes should not be added here; add them to ENDPOINT_RATE_POLICIES and
+// FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED instead.
+export const GLOBAL_RATE_LIMIT_FALLBACK_READ_ROUTES: Record<string, RateLimitPolicyDecision> = {
+  '/api/aviation/v1/list-airport-delays': {
+    reason: 'Read-only cache-backed airport delay listing; availability-first fallback is acceptable.',
+  },
 };
 
 const endpointLimiters = new Map<string, Ratelimit>();

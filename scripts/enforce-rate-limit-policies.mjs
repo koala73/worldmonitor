@@ -19,6 +19,12 @@
  * enforce it in-handler via `checkScopedRateLimit` without becoming invisible
  * to this audit. Without this branch, /api/mcp-proxy would silently slip
  * through future endpoint-coverage checks even though it has a live limit.
+ *
+ * Also validates two decision registries exported from rate-limit.ts:
+ *   - FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: expensive/sensitive routes
+ *     that must have an endpoint policy so Redis degradation fails closed.
+ *   - GLOBAL_RATE_LIMIT_FALLBACK_READ_ROUTES: deliberately read-only gateway
+ *     routes that are allowed to inherit the global fail-open fallback.
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -30,7 +36,7 @@ const OPENAPI_DIR = join(ROOT, 'docs/api');
 const RATE_LIMIT_SRC = join(ROOT, 'server/_shared/rate-limit.ts');
 const API_EXCEPTIONS = join(ROOT, 'api/api-route-exceptions.json');
 
-async function extractPolicyKeys() {
+async function extractRateLimitPolicyModule() {
   // Dynamic import via the file URL — works under tsx (the shebang) which
   // transparently transpiles TS. Importing the live object means any reformat
   // of the source literal can never desync the lint from the runtime.
@@ -40,7 +46,17 @@ async function extractPolicyKeys() {
       `${RATE_LIMIT_SRC} no longer exports ENDPOINT_RATE_POLICIES — the lint relies on it (#3278).`,
     );
   }
-  return Object.keys(mod.ENDPOINT_RATE_POLICIES);
+  if (!mod.FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED || typeof mod.FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED !== 'object') {
+    throw new Error(
+      `${RATE_LIMIT_SRC} no longer exports FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED — expensive routes need an auditable fail-closed registry (#4676).`,
+    );
+  }
+  if (!mod.GLOBAL_RATE_LIMIT_FALLBACK_READ_ROUTES || typeof mod.GLOBAL_RATE_LIMIT_FALLBACK_READ_ROUTES !== 'object') {
+    throw new Error(
+      `${RATE_LIMIT_SRC} no longer exports GLOBAL_RATE_LIMIT_FALLBACK_READ_ROUTES — accepted fail-open read routes need an auditable registry (#4676).`,
+    );
+  }
+  return mod;
 }
 
 function extractRoutesFromOpenApi() {
@@ -49,14 +65,22 @@ function extractRoutesFromOpenApi() {
   // indent, so any YAML formatter change (2-space indent, flow style, line
   // folding) would silently drop routes and let policy-drift slip through
   // (#3287 greptile nit 3).
-  const routes = new Set();
+  const routes = new Map();
   const files = readdirSync(OPENAPI_DIR).filter((f) => f.endsWith('.openapi.yaml'));
   for (const file of files) {
     const doc = parseYaml(readFileSync(join(OPENAPI_DIR, file), 'utf8'));
     const paths = doc?.paths;
     if (!paths || typeof paths !== 'object') continue;
-    for (const route of Object.keys(paths)) {
-      if (route.startsWith('/api/')) routes.add(route);
+    for (const [route, operations] of Object.entries(paths)) {
+      if (!route.startsWith('/api/') || !operations || typeof operations !== 'object') continue;
+      routes.set(
+        route,
+        new Set(
+          Object.keys(operations)
+            .map((method) => method.toLowerCase())
+            .filter((method) => ['get', 'post', 'put', 'patch', 'delete'].includes(method)),
+        ),
+      );
     }
   }
   return routes;
@@ -93,10 +117,14 @@ function extractEdgeFunctionRoutes() {
 }
 
 async function main() {
-  const keys = await extractPolicyKeys();
+  const rateLimitPolicyModule = await extractRateLimitPolicyModule();
+  const keys = Object.keys(rateLimitPolicyModule.ENDPOINT_RATE_POLICIES);
+  const failClosedRequired = Object.keys(rateLimitPolicyModule.FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED);
+  const globalFallbackReadRoutes = Object.keys(rateLimitPolicyModule.GLOBAL_RATE_LIMIT_FALLBACK_READ_ROUTES);
   const gatewayRoutes = extractRoutesFromOpenApi();
   const edgeRoutes = extractEdgeFunctionRoutes();
-  const missing = keys.filter((k) => !gatewayRoutes.has(k) && !edgeRoutes.has(k));
+  const gatewayRoutePaths = new Set(gatewayRoutes.keys());
+  const missing = keys.filter((k) => !gatewayRoutePaths.has(k) && !edgeRoutes.has(k));
 
   if (missing.length > 0) {
     console.error('✗ ENDPOINT_RATE_POLICIES key(s) do not match any gateway route OR edge-function exception:\n');
@@ -119,8 +147,47 @@ async function main() {
     process.exit(1);
   }
 
+  const requiredWithoutPolicy = failClosedRequired.filter((k) => !keys.includes(k));
+  if (requiredWithoutPolicy.length > 0) {
+    console.error('✗ fail-closed endpoint(s) are missing ENDPOINT_RATE_POLICIES entries:\n');
+    for (const key of requiredWithoutPolicy) {
+      console.error(`  - ${key}`);
+    }
+    console.error('\nRoutes listed in FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED perform expensive,');
+    console.error('provider-backed, mutation-like, checkout, lead-capture, live, or otherwise');
+    console.error('sensitive work. They must declare endpoint-specific policies so Redis');
+    console.error('missing/degraded windows return 503 instead of inheriting the global fail-open fallback.\n');
+    process.exit(1);
+  }
+
+  const fallbackWithPolicy = globalFallbackReadRoutes.filter((k) => keys.includes(k));
+  const fallbackMissingRoute = globalFallbackReadRoutes.filter((k) => !gatewayRoutePaths.has(k));
+  const fallbackNonGet = globalFallbackReadRoutes.filter((k) => {
+    const methods = gatewayRoutes.get(k);
+    return !methods || methods.size !== 1 || !methods.has('get');
+  });
+  if (fallbackWithPolicy.length > 0 || fallbackMissingRoute.length > 0 || fallbackNonGet.length > 0) {
+    console.error('✗ GLOBAL_RATE_LIMIT_FALLBACK_READ_ROUTES contains invalid route decisions:\n');
+    if (fallbackWithPolicy.length > 0) {
+      console.error('  Routes that already have endpoint-specific policies:');
+      for (const key of fallbackWithPolicy) console.error(`    - ${key}`);
+    }
+    if (fallbackMissingRoute.length > 0) {
+      console.error('  Routes that do not appear in generated OpenAPI gateway specs:');
+      for (const key of fallbackMissingRoute) console.error(`    - ${key}`);
+    }
+    if (fallbackNonGet.length > 0) {
+      console.error('  Routes that are not generated GET-only/read endpoints:');
+      for (const key of fallbackNonGet) console.error(`    - ${key}`);
+    }
+    console.error('\nOnly low-cost read-only gateway routes may document acceptance of the');
+    console.error('availability-first global fallback. Expensive or mutation-like routes belong');
+    console.error('in ENDPOINT_RATE_POLICIES and FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED.\n');
+    process.exit(1);
+  }
+
   console.log(
-    `✓ rate-limit policies clean: ${keys.length} policies validated against ${gatewayRoutes.size} gateway routes + ${edgeRoutes.size} edge-function exceptions.`,
+    `✓ rate-limit policies clean: ${keys.length} policies validated against ${gatewayRoutes.size} gateway routes + ${edgeRoutes.size} edge-function exceptions; ${failClosedRequired.length} fail-closed requirements and ${globalFallbackReadRoutes.length} global-fallback read decisions audited.`,
   );
 }
 
