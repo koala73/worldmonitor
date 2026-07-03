@@ -202,7 +202,7 @@ paths:
                                 "flights":
                                     - "actualArrival": 1
                                       "actualDeparture": 1
-                                      "aircraftIcao24": "example"
+                                      "aircraftIcao24": "a835af"
                                       "aircraftType": "all"
                                       "cancelled": true
                                 "source": "example"
@@ -332,7 +332,7 @@ paths:
                                 "flights":
                                     - "actualArrival": 1
                                       "actualDeparture": 1
-                                      "aircraftIcao24": "example"
+                                      "aircraftIcao24": "a835af"
                                       "aircraftType": "all"
                                       "cancelled": true
                                 "source": "example"
@@ -368,7 +368,7 @@ paths:
                   in: query
                   description: ICAO 24-bit transponder address (hex, e.g., "4b1805").
                   required: false
-                  example: "example"
+                  example: "a835af"
                   schema:
                     type: string
                 - name: callsign
@@ -420,7 +420,7 @@ paths:
                                     - "altitudeM": 1.5
                                       "callsign": "example"
                                       "groundSpeedKts": 1.5
-                                      "icao24": "example"
+                                      "icao24": "a835af"
                                       "lat": 40.7128
                                 "source": "example"
                                 "updatedAt": 1717200000000
@@ -2450,7 +2450,7 @@ paths:
                   in: query
                   description: FRED series ID (e.g., "GDP", "UNRATE", "CPIAUCSL").
                   required: true
-                  example: "example-id"
+                  example: "GDP"
                   schema:
                     type: string
                 - name: limit
@@ -2472,7 +2472,7 @@ paths:
                                     "observations":
                                         - "date": "2026-01-15"
                                           "value": 1.5
-                                    "seriesId": "example-id"
+                                    "seriesId": "GDP"
                                     "title": "example"
                                     "units": "example"
                             schema:
@@ -2907,7 +2907,7 @@ paths:
                                         "observations":
                                             - "date": "2026-01-15"
                                               "value": 1.5
-                                        "seriesId": "example-id"
+                                        "seriesId": "GDP"
                                         "title": "example"
                                         "units": "example"
                             schema:
@@ -3026,7 +3026,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetNationalDebt
-            description: GetNationalDebt retrieves national debt clock data for all countries.
+            description: GetNationalDebt retrieves national debt clock data for all countries. PRO-gated. Requires an active Pro subscription.
             operationId: GetNationalDebt
             security:
                 - WorldMonitorKey: []
@@ -3060,6 +3060,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: Pro subscription required.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -3895,7 +3901,11 @@ paths:
             parameters:
                 - name: runId
                   in: query
-                  description: Currently ignored; always returns the latest package. Reserved for Phase 3 per-run lookup.
+                  description: |-
+                    Optional run identifier. Does not select the package — the latest stored package is
+                     always returned regardless of this value. When supplied and it differs from the
+                     returned package's runId, the response `note` field is populated to warn that per-run
+                     filtering is not yet active. Reserved for Phase 3 per-run lookup.
                   required: false
                   example: "example-id"
                   schema:
@@ -5168,7 +5178,10 @@ paths:
                     type: string
                 - name: max_records
                   in: query
-                  description: Maximum number of articles to return (1-250).
+                  description: |-
+                    Maximum number of articles to return. Defaults to 10 when omitted or <= 0. The
+                     handler caps returned results at 20, so values above 20 (though accepted, up to the
+                     validation limit of 250) still return at most 20 articles.
                   required: false
                   example: 1
                   schema:
@@ -5241,7 +5254,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: DeductSituation
-            description: DeductSituation performs broad situational analysis using LLMs.
+            description: DeductSituation performs broad situational analysis using LLMs. PRO-gated. Requires an active Pro subscription.
             operationId: DeductSituation
             security:
                 - WorldMonitorKey: []
@@ -5280,6 +5293,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: Pro subscription required.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -5521,7 +5540,11 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetCompanyEnrichment
-            description: GetCompanyEnrichment aggregates company data from multiple public sources (GitHub, SEC, HN).
+            description: |-
+                GetCompanyEnrichment is DISABLED and returns an empty stub. The route is preserved
+                 for contract stability, but the handler no longer aggregates any external data
+                 (the prior domain-slug attribution heuristic was unsound). Deprecated pending a
+                 verified attribution model.
             operationId: GetCompanyEnrichment
             parameters:
                 - name: domain
@@ -5592,7 +5615,11 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListCompanySignals
-            description: ListCompanySignals discovers activity signals for a company from public sources.
+            description: |-
+                ListCompanySignals is DISABLED and returns an empty stub. The route is preserved
+                 for contract stability, but the handler no longer discovers any signals (the prior
+                 guessed-identity/keyword heuristic was unsound). Deprecated pending a verified
+                 attribution model.
             operationId: ListCompanySignals
             parameters:
                 - name: company
@@ -5851,7 +5878,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListMarketImplications
-            description: ListMarketImplications returns AI-generated trade-implication cards from live world state.
+            description: ListMarketImplications returns AI-generated trade-implication cards from live world state. PRO-gated. Requires an active Pro subscription.
             operationId: ListMarketImplications
             security:
                 - WorldMonitorKey: []
@@ -5894,6 +5921,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: Pro subscription required.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -6040,7 +6073,7 @@ paths:
                             example:
                                 "assessment": "example"
                                 "chokepointConfidence": "example"
-                                "chokepointId": "suez-canal"
+                                "chokepointId": "suez"
                                 "comtradeCoverage": true
                                 "countryCode": "US"
                             schema:
@@ -6121,6 +6154,7 @@ paths:
                 GetRegionalSnapshot returns the latest persisted RegionalSnapshot for a
                  region. The snapshot is written every 6h by scripts/seed-regional-snapshots.mjs;
                  this handler only reads canonical state. Premium-gated.
+                PRO-gated. Requires an active Pro subscription.
             operationId: GetRegionalSnapshot
             security:
                 - WorldMonitorKey: []
@@ -6193,6 +6227,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: Pro subscription required.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -6208,6 +6248,7 @@ paths:
                 GetRegimeHistory returns the region's regime transition log newest-first.
                  Entries are append-only from the seed writer, recorded only when
                  diffRegionalSnapshot reports regime_changed. Premium-gated.
+                PRO-gated. Requires an active Pro subscription.
             operationId: GetRegimeHistory
             security:
                 - WorldMonitorKey: []
@@ -6262,6 +6303,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: Pro subscription required.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -6276,6 +6323,7 @@ paths:
             description: |-
                 GetRegionalBrief returns the latest weekly intelligence brief for a region.
                  Written by scripts/seed-regional-briefs.mjs on a weekly cron. Premium-gated.
+                PRO-gated. Requires an active Pro subscription.
             operationId: GetRegionalBrief
             security:
                 - WorldMonitorKey: []
@@ -6317,6 +6365,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: Pro subscription required.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -6379,7 +6433,7 @@ paths:
             tags:
                 - LeadsService
             summary: RegisterInterest
-            description: RegisterInterest adds an email to the Pro waitlist and sends a confirmation email.
+            description: RegisterInterest adds an email to the Pro waitlist and sends a confirmation email. Turnstile-gated (desktop sources authenticate a bypass with a shared-secret HMAC instead). A failed Cloudflare Turnstile check returns 403 Bot verification failed; a desktop-source request with a missing or invalid HMAC signature returns 403 Desktop authentication failed.
             operationId: RegisterInterest
             security: []
             requestBody:
@@ -6414,6 +6468,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "403":
+                    description: Bot verification failed.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
                 default:
                     description: Error response
                     content:
@@ -8090,7 +8150,7 @@ paths:
                   in: query
                   description: ICAO 24-bit hex address (lowercase).
                   required: true
-                  example: "example"
+                  example: "a835af"
                   schema:
                     type: string
             responses:
@@ -8104,7 +8164,7 @@ paths:
                                     "built": "example"
                                     "categoryDescription": "cs.AI"
                                     "engines": "example"
-                                    "icao24": "example"
+                                    "icao24": "a835af"
                                     "icaoAircraftType": "all"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_military_v1_GetAircraftDetailsResponse'
@@ -8138,7 +8198,7 @@ paths:
                     application/json:
                         example:
                             "icao24s":
-                                - "example"
+                                - "a835af"
                         schema:
                             $ref: '#/components/schemas/worldmonitor_military_v1_GetAircraftDetailsBatchRequest'
                 required: true
@@ -8156,7 +8216,7 @@ paths:
                                         "built": "example"
                                         "categoryDescription": "cs.AI"
                                         "engines": "example"
-                                        "icao24": "example"
+                                        "icao24": "a835af"
                                         "icaoAircraftType": "all"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_military_v1_GetAircraftDetailsBatchResponse'
@@ -8415,7 +8475,7 @@ paths:
                   in: query
                   description: ICAO 24-bit hex address (lowercase, 6 characters).
                   required: true
-                  example: "example"
+                  example: "a835af"
                   schema:
                     type: string
             responses:
@@ -9165,7 +9225,9 @@ paths:
                     type: boolean
                 - name: limit
                   in: query
-                  description: Max events to return (0 = unlimited).
+                  description: |-
+                    Max events to return. The handler clamps this to the range 1-200 and defaults to 50
+                     when omitted; 0 is not unlimited (it clamps up to 1).
                   required: false
                   example: 25
                   schema:
@@ -9173,7 +9235,9 @@ paths:
                     format: int32
                 - name: days
                   in: query
-                  description: Events within N days from now (0 = unlimited).
+                  description: |-
+                    Events within N days from now. The handler clamps this to the range 1-365 and defaults
+                     to 90 when omitted; 0 is not unlimited (it clamps up to 1).
                   required: false
                   example: 7
                   schema:
@@ -9225,6 +9289,7 @@ paths:
             tags:
                 - ResilienceService
             summary: GetResilienceScore
+            description: PRO-gated. Requires an active Pro subscription.
             operationId: GetResilienceScore
             security:
                 - WorldMonitorKey: []
@@ -9274,6 +9339,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: Pro subscription required.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -9285,6 +9356,7 @@ paths:
             tags:
                 - ResilienceService
             summary: GetResilienceRanking
+            description: PRO-gated. Requires an active Pro subscription.
             operationId: GetResilienceRanking
             security:
                 - WorldMonitorKey: []
@@ -9325,6 +9397,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: Pro subscription required.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -9519,7 +9597,7 @@ paths:
                     application/json:
                         example:
                             "iso2": "US"
-                            "scenarioId": "oil-price-shock"
+                            "scenarioId": "hormuz-tanker-blockade"
                         schema:
                             $ref: '#/components/schemas/worldmonitor_scenario_v1_RunScenarioRequest'
                 required: true
@@ -9593,7 +9671,7 @@ paths:
                                 "error": "example"
                                 "result":
                                     "affectedChokepointIds":
-                                        - "suez-canal"
+                                        - "suez"
                                     "template":
                                         "costShockMultiplier": 75.25
                                         "disruptionPct": 1
@@ -9647,7 +9725,7 @@ paths:
                             example:
                                 "templates":
                                     - "affectedChokepointIds":
-                                        - "suez-canal"
+                                        - "suez"
                                       "affectedHs2":
                                           - "27"
                                       "costShockMultiplier": 75.25
@@ -9704,7 +9782,9 @@ paths:
                     format: int64
                 - name: page_size
                   in: query
-                  description: Maximum items per page (1-100).
+                  description: |-
+                    Maximum items per page. Defaults to 500 when omitted or 0; the handler applies no
+                     clamp, so the requested value directly limits the returned list (no enforced maximum).
                   required: false
                   example: 25
                   schema:
@@ -9772,6 +9852,7 @@ paths:
                  with the pre-migration JSON response documented at docs/api-shipping-v2.mdx.
                  Empty exposure/bypass arrays with empty fetched_at mean the route snapshot is
                  unavailable/degraded, not that the route has confirmed zero exposure.
+                PRO-gated. Requires an active Pro subscription.
             operationId: RouteIntelligence
             security:
                 - WorldMonitorKey: []
@@ -9827,7 +9908,7 @@ paths:
                                       "name": "WorldMonitor Analyst"
                                 "cargoType": "container"
                                 "chokepointExposures":
-                                    - "chokepointId": "suez-canal"
+                                    - "chokepointId": "suez"
                                       "chokepointName": "WorldMonitor Analyst"
                                       "exposurePct": 1
                                 "disruptionScore": 42
@@ -9846,6 +9927,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: Pro subscription required.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -9861,6 +9948,7 @@ paths:
                 ListWebhooks returns the caller's registered webhooks filtered by the
                  SHA-256 owner tag of the calling API key. The `secret` is intentionally
                  omitted from the response; use rotate-secret to obtain a new one.
+                PRO-gated. Requires an active Pro subscription.
             operationId: ListWebhooks
             security:
                 - WorldMonitorKey: []
@@ -9877,7 +9965,7 @@ paths:
                                       "alertThreshold": 1
                                       "callbackUrl": "https://example.com/worldmonitor-webhook"
                                       "chokepointIds":
-                                          - "suez-canal"
+                                          - "suez"
                                       "createdAt": "2026-01-15T12:00:00Z"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_shipping_v2_ListWebhooksResponse'
@@ -9893,6 +9981,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: Pro subscription required.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -9907,6 +10001,7 @@ paths:
                 RegisterWebhook subscribes a callback URL to chokepoint disruption alerts.
                  Returns the subscriberId and the raw HMAC secret — the secret is never
                  returned again except via rotate-secret.
+                PRO-gated. Requires an active Pro subscription.
             operationId: RegisterWebhook
             security:
                 - WorldMonitorKey: []
@@ -9919,7 +10014,7 @@ paths:
                             "alertThreshold": 1
                             "callbackUrl": "https://example.com/worldmonitor-webhook"
                             "chokepointIds":
-                                - "suez-canal"
+                                - "suez"
                         schema:
                             $ref: '#/components/schemas/worldmonitor_shipping_v2_RegisterWebhookRequest'
                 required: true
@@ -9945,6 +10040,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: Pro subscription required.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -10053,7 +10154,7 @@ paths:
                   in: query
                   description: Chokepoint identifier whose transit history should be returned.
                   required: true
-                  example: "suez-canal"
+                  example: "suez"
                   schema:
                     type: string
             responses:
@@ -10062,7 +10163,7 @@ paths:
                     content:
                         application/json:
                             example:
-                                "chokepointId": "suez-canal"
+                                "chokepointId": "suez"
                                 "fetchedAt": "1717200000000"
                                 "history":
                                     - "capContainer": 1.5
@@ -10212,7 +10313,7 @@ paths:
                         application/json:
                             example:
                                 "exposures":
-                                    - "chokepointId": "suez-canal"
+                                    - "chokepointId": "suez"
                                       "chokepointName": "WorldMonitor Analyst"
                                       "coastSide": "example"
                                       "exposureScore": 42.5
@@ -10220,7 +10321,7 @@ paths:
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "hs2": "27"
                                 "iso2": "US"
-                                "primaryChokepointId": "suez-canal"
+                                "primaryChokepointId": "suez"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_supply_chain_v1_GetCountryChokepointIndexResponse'
                 "400":
@@ -10263,7 +10364,7 @@ paths:
                   in: query
                   description: Chokepoint identifier to evaluate for bypass options.
                   required: true
-                  example: "suez-canal"
+                  example: "suez"
                   schema:
                     type: string
                 - name: cargoType
@@ -10288,7 +10389,7 @@ paths:
                         application/json:
                             example:
                                 "cargoType": "container"
-                                "chokepointId": "suez-canal"
+                                "chokepointId": "suez"
                                 "closurePct": 1
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "options":
@@ -10347,7 +10448,7 @@ paths:
                   in: query
                   description: Chokepoint identifier to model as disrupted.
                   required: true
-                  example: "suez-canal"
+                  example: "suez"
                   schema:
                     type: string
                 - name: hs2
@@ -10363,7 +10464,7 @@ paths:
                     content:
                         application/json:
                             example:
-                                "chokepointId": "suez-canal"
+                                "chokepointId": "suez"
                                 "coverageDays": 7
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "hasEnergyModel": true
@@ -10485,7 +10586,7 @@ paths:
                   in: query
                   description: Chokepoint identifier to model as disrupted.
                   required: true
-                  example: "suez-canal"
+                  example: "suez"
                   schema:
                     type: string
                 - name: closureDays
@@ -10502,7 +10603,7 @@ paths:
                     content:
                         application/json:
                             example:
-                                "chokepointId": "suez-canal"
+                                "chokepointId": "suez"
                                 "closureDays": 7
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "iso2": "US"
@@ -10667,7 +10768,7 @@ paths:
                                       "name": "WorldMonitor Analyst"
                                 "cargoType": "container"
                                 "chokepointExposures":
-                                    - "chokepointId": "suez-canal"
+                                    - "chokepointId": "suez"
                                       "chokepointName": "WorldMonitor Analyst"
                                       "exposurePct": 1
                                 "disruptionScore": 42.5
@@ -16478,7 +16579,11 @@ components:
             properties:
                 runId:
                     type: string
-                    description: Currently ignored; always returns the latest package. Reserved for Phase 3 per-run lookup.
+                    description: |-
+                        Optional run identifier. Does not select the package — the latest stored package is
+                         always returned regardless of this value. When supplied and it differs from the
+                         returned package's runId, the response `note` field is populated to warn that per-run
+                         filtering is not yet active. Reserved for Phase 3 per-run lookup.
         worldmonitor_forecast_v1_GetSimulationPackageResponse:
             type: object
             properties:
@@ -17982,7 +18087,10 @@ components:
                     maximum: 250
                     minimum: 1
                     format: int32
-                    description: Maximum number of articles to return (1-250).
+                    description: |-
+                        Maximum number of articles to return. Defaults to 10 when omitted or <= 0. The
+                         handler caps returned results at 20, so values above 20 (though accepted, up to the
+                         validation limit of 250) still return at most 20 articles.
                 timespan:
                     type: string
                     description: |-
@@ -18333,7 +18441,9 @@ components:
                     description: Company name to enrich when a domain is not available.
             description: |-
                 Request to fetch enrichment data for a company.
-                 Requires either domain (e.g. "github.com") or name (e.g. "GitHub").
+                 NOTE: This endpoint is DISABLED — the handler returns an empty stub regardless of
+                 input. Requires either domain (e.g. "github.com") or name (e.g. "GitHub") to pass
+                 validation, but no enrichment is performed.
         worldmonitor_intelligence_v1_GetCompanyEnrichmentResponse:
             type: object
             properties:
@@ -18360,7 +18470,9 @@ components:
                     items:
                         type: string
                         description: List of sources successfully reached (e.g. "github", "sec_edgar").
-            description: Aggregated company data from multiple public sources.
+            description: |-
+                Company enrichment data. DISABLED: the handler returns an empty stub — `company`
+                 echoes only the requested name/domain, and all other fields are empty/undefined.
         worldmonitor_intelligence_v1_EnrichedCompany:
             type: object
             properties:
@@ -18443,7 +18555,10 @@ components:
                 domain:
                     type: string
                     description: Company domain to discover signals for.
-            description: Request to discover and classify company signals (hiring, funding, tech changes).
+            description: |-
+                Request to discover and classify company signals (hiring, funding, tech changes).
+                 NOTE: This endpoint is DISABLED — the handler returns an empty stub regardless of
+                 input. `company` is still required to pass validation, but no signals are discovered.
         worldmonitor_intelligence_v1_ListCompanySignalsResponse:
             type: object
             properties:
@@ -18461,7 +18576,10 @@ components:
                     type: integer
                     format: int64
                     description: 'Unix timestamp in milliseconds when signals were discovered.. Warning: Values > 2^53 may lose precision in JavaScript'
-            description: Discovered company signals with classification and engagement metrics.
+            description: |-
+                Discovered company signals with classification and engagement metrics.
+                 DISABLED: the handler returns an empty stub — `signals` is always empty and `summary`
+                 reports zero counts; only the echoed `company`/`domain` are populated.
         worldmonitor_intelligence_v1_CompanySignal:
             type: object
             properties:
@@ -22071,7 +22189,9 @@ components:
                         type: string
                         maxItems: 20
                         minItems: 1
-                        description: ICAO 24-bit hex addresses (lowercase). Max 20.
+                        description: |-
+                            ICAO 24-bit hex addresses (lowercase). Up to 20 are accepted by validation, but the
+                             handler de-duplicates, sorts, and processes at most the first 10 addresses.
                     maxItems: 20
                     minItems: 1
             description: GetAircraftDetailsBatchRequest looks up multiple aircraft by ICAO 24-bit hex.
@@ -23414,12 +23534,16 @@ components:
                     maximum: 500
                     minimum: 0
                     format: int32
-                    description: Max events to return (0 = unlimited).
+                    description: |-
+                        Max events to return. The handler clamps this to the range 1-200 and defaults to 50
+                         when omitted; 0 is not unlimited (it clamps up to 1).
                 days:
                     type: integer
                     minimum: 0
                     format: int32
-                    description: Events within N days from now (0 = unlimited).
+                    description: |-
+                        Events within N days from now. The handler clamps this to the range 1-365 and defaults
+                         to 90 when omitted; 0 is not unlimited (it clamps up to 1).
             description: ListTechEventsRequest specifies filters for retrieving tech events.
         worldmonitor_research_v1_ListTechEventsResponse:
             type: object
@@ -24183,7 +24307,9 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page (1-100).
+                    description: |-
+                        Maximum items per page. Defaults to 500 when omitted or 0; the handler applies no
+                         clamp, so the requested value directly limits the returned list (no enforced maximum).
                 cursor:
                     type: string
                     description: |-
@@ -26857,6 +26983,9 @@ components:
                 lastUpdated:
                     type: string
                     format: int64
+                    description: |-
+                        ISO-8601 datetime string of the webcam's most recent update
+                         (e.g. "2026-07-03T12:00:00.000Z"); empty string when unknown or unavailable.
                 error:
                     type: string
         worldmonitor_wildfire_v1_ListFireDetectionsRequest:

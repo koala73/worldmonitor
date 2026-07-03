@@ -5,6 +5,8 @@ info:
 security:
     - WorldMonitorKey: []
     - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
 paths:
     /api/wildfire/v1/list-fire-detections:
         get:

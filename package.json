@@ -39,6 +39,7 @@
     "gen:openapi:security": "node scripts/openapi-inject-security.mjs",
     "gen:openapi:examples": "node scripts/openapi-inject-examples.mjs",
     "gen:openapi:required": "node scripts/openapi-inject-required.mjs",
+    "gen:openapi:servers": "node scripts/openapi-inject-servers.mjs",
     "build:agent-skills": "node scripts/build-agent-skills-index.mjs",
     "prebuild": "npm run build:openapi && npm run build:agent-skills",
     "build": "npm run build:blog && tsc && vite build",

@@ -5,6 +5,8 @@ info:
 security:
     - WorldMonitorKey: []
     - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
 paths:
     /api/natural/v1/list-natural-events:
         get:

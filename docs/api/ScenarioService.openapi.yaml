@@ -5,6 +5,8 @@ info:
 security:
     - WorldMonitorKey: []
     - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
 paths:
     /api/scenario/v1/run-scenario:
         post:
@@ -26,7 +28,7 @@ paths:
                     application/json:
                         example:
                             "iso2": "US"
-                            "scenarioId": "oil-price-shock"
+                            "scenarioId": "hormuz-tanker-blockade"
                         schema:
                             $ref: '#/components/schemas/RunScenarioRequest'
                 required: true
@@ -100,7 +102,7 @@ paths:
                                 "error": "example"
                                 "result":
                                     "affectedChokepointIds":
-                                        - "suez-canal"
+                                        - "suez"
                                     "template":
                                         "costShockMultiplier": 75.25
                                         "disruptionPct": 1
@@ -154,7 +156,7 @@ paths:
                             example:
                                 "templates":
                                     - "affectedChokepointIds":
-                                        - "suez-canal"
+                                        - "suez"
                                       "affectedHs2":
                                           - "27"
                                       "costShockMultiplier": 75.25

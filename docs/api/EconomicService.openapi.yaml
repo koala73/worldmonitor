@@ -5,6 +5,8 @@ info:
 security:
     - WorldMonitorKey: []
     - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
 paths:
     /api/economic/v1/get-fred-series:
         get:
@@ -18,7 +20,7 @@ paths:
                   in: query
                   description: FRED series ID (e.g., "GDP", "UNRATE", "CPIAUCSL").
                   required: true
-                  example: "example-id"
+                  example: "GDP"
                   schema:
                     type: string
                 - name: limit
@@ -40,7 +42,7 @@ paths:
                                     "observations":
                                         - "date": "2026-01-15"
                                           "value": 1.5
-                                    "seriesId": "example-id"
+                                    "seriesId": "GDP"
                                     "title": "example"
                                     "units": "example"
                             schema:
@@ -475,7 +477,7 @@ paths:
                                         "observations":
                                             - "date": "2026-01-15"
                                               "value": 1.5
-                                        "seriesId": "example-id"
+                                        "seriesId": "GDP"
                                         "title": "example"
                                         "units": "example"
                             schema:
@@ -594,7 +596,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetNationalDebt
-            description: GetNationalDebt retrieves national debt clock data for all countries.
+            description: GetNationalDebt retrieves national debt clock data for all countries. PRO-gated. Requires an active Pro subscription.
             operationId: GetNationalDebt
             security:
                 - WorldMonitorKey: []
@@ -628,6 +630,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: Pro subscription required.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -1395,6 +1403,26 @@ components:
                     type: string
                     description: Error message (e.g., 'user not found', 'database connection failed')
             description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        ForbiddenError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable entitlement failure reason.
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint.
+                currentTier:
+                    type: integer
+                    format: int32
+                    description: Caller entitlement tier when known.
+                planKey:
+                    type: string
+                    description: Caller plan key when known.
+            required:
+                - error
+            description: Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.
         FieldViolation:
             type: object
             properties:

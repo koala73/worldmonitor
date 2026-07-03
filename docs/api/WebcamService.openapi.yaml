@@ -5,6 +5,8 @@ info:
 security:
     - WorldMonitorKey: []
     - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
 paths:
     /api/webcam/v1/list-webcams:
         get:
@@ -280,5 +282,8 @@ components:
                 lastUpdated:
                     type: string
                     format: int64
+                    description: |-
+                        ISO-8601 datetime string of the webcam's most recent update
+                         (e.g. "2026-07-03T12:00:00.000Z"); empty string when unknown or unavailable.
                 error:
                     type: string

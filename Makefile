@@ -121,6 +121,7 @@ generate: clean ## Generate code from proto definitions
 	@node scripts/apply-openapi-filter-param-schemas.mjs
 	@node scripts/openapi-inject-required.mjs
 	@node scripts/openapi-inject-examples.mjs
+	@node scripts/openapi-inject-servers.mjs
 	@echo "Code generation complete!"
 
 breaking: ## Check for breaking changes against main

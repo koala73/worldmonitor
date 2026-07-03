@@ -5,6 +5,8 @@ info:
 security:
     - WorldMonitorKey: []
     - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
 paths:
     /api/seismology/v1/list-earthquakes:
         get:
@@ -37,7 +39,9 @@ paths:
                     format: int64
                 - name: page_size
                   in: query
-                  description: Maximum items per page (1-100).
+                  description: |-
+                    Maximum items per page. Defaults to 500 when omitted or 0; the handler applies no
+                     clamp, so the requested value directly limits the returned list (no enforced maximum).
                   required: false
                   example: 25
                   schema:
@@ -165,7 +169,9 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page (1-100).
+                    description: |-
+                        Maximum items per page. Defaults to 500 when omitted or 0; the handler applies no
+                         clamp, so the requested value directly limits the returned list (no enforced maximum).
                 cursor:
                     type: string
                     description: |-

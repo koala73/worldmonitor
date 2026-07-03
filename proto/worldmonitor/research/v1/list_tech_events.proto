@@ -11,13 +11,15 @@ message ListTechEventsRequest {
   string type = 1 [(sebuf.http.query) = { name: "type" }];
   // Only events with non-virtual coordinates.
   bool mappable = 2 [(sebuf.http.query) = { name: "mappable" }];
-  // Max events to return (0 = unlimited).
+  // Max events to return. The handler clamps this to the range 1-200 and defaults to 50
+  // when omitted; 0 is not unlimited (it clamps up to 1).
   int32 limit = 3 [
     (buf.validate.field).int32.gte = 0,
     (buf.validate.field).int32.lte = 500,
     (sebuf.http.query) = { name: "limit" }
   ];
-  // Events within N days from now (0 = unlimited).
+  // Events within N days from now. The handler clamps this to the range 1-365 and defaults
+  // to 90 when omitted; 0 is not unlimited (it clamps up to 1).
   int32 days = 4 [(buf.validate.field).int32.gte = 0, (sebuf.http.query) = { name: "days" }];
 }
 

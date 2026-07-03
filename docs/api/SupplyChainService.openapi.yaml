@@ -5,6 +5,8 @@ info:
 security:
     - WorldMonitorKey: []
     - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
 paths:
     /api/supply-chain/v1/get-shipping-rates:
         get:
@@ -108,7 +110,7 @@ paths:
                   in: query
                   description: Chokepoint identifier whose transit history should be returned.
                   required: true
-                  example: "suez-canal"
+                  example: "suez"
                   schema:
                     type: string
             responses:
@@ -117,7 +119,7 @@ paths:
                     content:
                         application/json:
                             example:
-                                "chokepointId": "suez-canal"
+                                "chokepointId": "suez"
                                 "fetchedAt": "1717200000000"
                                 "history":
                                     - "capContainer": 1.5
@@ -267,7 +269,7 @@ paths:
                         application/json:
                             example:
                                 "exposures":
-                                    - "chokepointId": "suez-canal"
+                                    - "chokepointId": "suez"
                                       "chokepointName": "WorldMonitor Analyst"
                                       "coastSide": "example"
                                       "exposureScore": 42.5
@@ -275,7 +277,7 @@ paths:
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "hs2": "27"
                                 "iso2": "US"
-                                "primaryChokepointId": "suez-canal"
+                                "primaryChokepointId": "suez"
                             schema:
                                 $ref: '#/components/schemas/GetCountryChokepointIndexResponse'
                 "400":
@@ -318,7 +320,7 @@ paths:
                   in: query
                   description: Chokepoint identifier to evaluate for bypass options.
                   required: true
-                  example: "suez-canal"
+                  example: "suez"
                   schema:
                     type: string
                 - name: cargoType
@@ -343,7 +345,7 @@ paths:
                         application/json:
                             example:
                                 "cargoType": "container"
-                                "chokepointId": "suez-canal"
+                                "chokepointId": "suez"
                                 "closurePct": 1
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "options":
@@ -402,7 +404,7 @@ paths:
                   in: query
                   description: Chokepoint identifier to model as disrupted.
                   required: true
-                  example: "suez-canal"
+                  example: "suez"
                   schema:
                     type: string
                 - name: hs2
@@ -418,7 +420,7 @@ paths:
                     content:
                         application/json:
                             example:
-                                "chokepointId": "suez-canal"
+                                "chokepointId": "suez"
                                 "coverageDays": 7
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "hasEnergyModel": true
@@ -540,7 +542,7 @@ paths:
                   in: query
                   description: Chokepoint identifier to model as disrupted.
                   required: true
-                  example: "suez-canal"
+                  example: "suez"
                   schema:
                     type: string
                 - name: closureDays
@@ -557,7 +559,7 @@ paths:
                     content:
                         application/json:
                             example:
-                                "chokepointId": "suez-canal"
+                                "chokepointId": "suez"
                                 "closureDays": 7
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "iso2": "US"
@@ -722,7 +724,7 @@ paths:
                                       "name": "WorldMonitor Analyst"
                                 "cargoType": "container"
                                 "chokepointExposures":
-                                    - "chokepointId": "suez-canal"
+                                    - "chokepointId": "suez"
                                       "chokepointName": "WorldMonitor Analyst"
                                       "exposurePct": 1
                                 "disruptionScore": 42.5

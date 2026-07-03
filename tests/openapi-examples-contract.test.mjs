@@ -20,6 +20,32 @@ const serviceSpecs = readdirSync(apiDir)
   .filter((f) => /Service\.openapi\.json$/.test(f))
   .sort();
 
+// Expected accepted-value sets for the curated example overrides, sourced from
+// the SAME server-side constants the injector reads so the test can't drift
+// from the handlers. Read as text (no TS/JSON import) to stay runner-agnostic.
+const CURATED = (() => {
+  const filterContract = JSON.parse(
+    readFileSync(resolve(root, 'shared/openapi-filter-param-contracts.json'), 'utf8'),
+  );
+  const chokepointIds = new Set(filterContract.intelligenceChokepointIds ?? []);
+  const scenarioSrc = readFileSync(
+    resolve(root, 'server/worldmonitor/supply-chain/v1/scenario-templates.ts'),
+    'utf8',
+  );
+  const scenarioIds = new Set([...scenarioSrc.matchAll(/\bid:\s*'([a-z0-9-]+)'/g)].map((m) => m[1]));
+  return { chokepointIds, scenarioIds };
+})();
+
+// Mirror of scripts/openapi-inject-examples.mjs normalizeKey + override routing.
+function curatedCategory(name) {
+  const key = String(name).replace(/[_\-\s]/g, '').toLowerCase();
+  if (key.includes('chokepointid')) return 'chokepoint';
+  if (key.includes('scenarioid')) return 'scenario';
+  if (key.includes('icao24')) return 'icao24';
+  if (key === 'seriesid') return 'series';
+  return null;
+}
+
 function refName(ref) {
   assert.ok(ref.startsWith('#/components/schemas/'), `unsupported ref ${ref}`);
   return decodeURIComponent(ref.slice('#/components/schemas/'.length));
@@ -127,6 +153,39 @@ function operationEntries(spec) {
   return entries;
 }
 
+// Collect every curated example occurrence (params + top-level request-body
+// fields, flattening array values) tagged with its category and op context.
+function collectCuratedExamples() {
+  const found = [];
+  for (const file of serviceSpecs) {
+    const spec = JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'));
+    for (const { path, method, op } of operationEntries(spec)) {
+      const opText = `${method} ${path}`.toLowerCase();
+      for (const param of op.parameters ?? []) {
+        const cat = curatedCategory(param.name);
+        if (!cat) continue;
+        const schema = resolveSchema(param.schema ?? {}, spec);
+        const values = Array.isArray(param.example) ? param.example : [param.example];
+        for (const value of values) {
+          found.push({ cat, value, opText, hasEnum: Array.isArray(schema.enum), enumValues: schema.enum, where: `${file} ${method.toUpperCase()} ${path} param ${param.name}` });
+        }
+      }
+      const bodyExample = op.requestBody?.content?.[JSON_MEDIA]?.example;
+      if (bodyExample && typeof bodyExample === 'object' && !Array.isArray(bodyExample)) {
+        for (const [field, raw] of Object.entries(bodyExample)) {
+          const cat = curatedCategory(field);
+          if (!cat) continue;
+          const values = Array.isArray(raw) ? raw : [raw];
+          for (const value of values) {
+            found.push({ cat, value, opText, hasEnum: false, enumValues: undefined, where: `${file} ${method.toUpperCase()} ${path} body ${field}` });
+          }
+        }
+      }
+    }
+  }
+  return found;
+}
+
 function assertOperationExamples(spec, label) {
   let operations = 0;
   let requestExpected = 0;
@@ -205,5 +264,56 @@ describe('OpenAPI examples contract', () => {
     const result = assertOperationExamples(bundle, 'worldmonitor.openapi.yaml');
     assert.equal(result.operations, 192);
     assert.equal(result.responseExpected, 192);
+  });
+});
+
+describe('OpenAPI curated example values', () => {
+  // These parameters have accepted-value sets the field-name heuristic can't
+  // infer; the injector's override map pins each to a real value the handlers
+  // accept. Guards against a regression to a rejected placeholder.
+  it('pins chokepoint / scenario / icao24 / FRED examples to accepted values', () => {
+    const found = collectCuratedExamples();
+    const byCat = (cat) => found.filter((f) => f.cat === cat);
+
+    // chokepointId (4 SupplyChain params) + chokepointIds (register-webhook body).
+    const chokepoints = byCat('chokepoint');
+    assert.ok(chokepoints.length >= 5, `expected >=5 chokepoint id examples, found ${chokepoints.length}`);
+    for (const f of chokepoints) {
+      assert.notEqual(f.value, 'suez-canal', `${f.where}: 'suez-canal' is not a registry chokepoint id`);
+      assert.ok(CURATED.chokepointIds.has(f.value), `${f.where}: chokepoint example '${f.value}' is not an accepted id`);
+    }
+
+    // scenarioId (run-scenario body) must be a registered SCENARIO_TEMPLATES id.
+    const scenarios = byCat('scenario');
+    assert.ok(scenarios.length >= 1, `expected >=1 scenario id example, found ${scenarios.length}`);
+    for (const f of scenarios) {
+      assert.notEqual(f.value, 'oil-price-shock', `${f.where}: 'oil-price-shock' is not a registered scenario template`);
+      assert.ok(CURATED.scenarioIds.has(f.value), `${f.where}: scenario example '${f.value}' is not a SCENARIO_TEMPLATES id`);
+    }
+
+    // icao24 (3 params) + icao24s (aircraft-details-batch body) — lowercase 6-hex.
+    const icaos = byCat('icao24');
+    assert.ok(icaos.length >= 4, `expected >=4 icao24 examples, found ${icaos.length}`);
+    for (const f of icaos) {
+      assert.notEqual(f.value, 'example', `${f.where}: placeholder icao24`);
+      assert.match(String(f.value), /^[0-9a-f]{6}$/, `${f.where}: icao24 example '${f.value}' is not a 6-hex Mode-S address`);
+    }
+
+    // series_id: FRED (no enum) needs a real series; BLS (enum) must stay valid.
+    const series = byCat('series');
+    const fred = series.filter((f) => f.opText.includes('fred'));
+    const bls = series.filter((f) => !f.opText.includes('fred'));
+    assert.ok(fred.length >= 1, `expected >=1 FRED series_id example, found ${fred.length}`);
+    for (const f of fred) {
+      assert.ok(!['example', 'example-id'].includes(f.value), `${f.where}: placeholder FRED series id '${f.value}'`);
+      assert.match(String(f.value), /^[A-Z][A-Z0-9._]*$/, `${f.where}: FRED series id '${f.value}' does not look like a real series`);
+    }
+    assert.ok(bls.length >= 1, `expected the BLS series_id example, found ${bls.length}`);
+    for (const f of bls) {
+      assert.ok(
+        f.hasEnum && Array.isArray(f.enumValues) && f.enumValues.includes(f.value),
+        `${f.where}: BLS series id '${f.value}' must stay within its schema enum`,
+      );
+    }
   });
 });

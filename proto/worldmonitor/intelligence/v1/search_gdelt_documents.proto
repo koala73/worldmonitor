@@ -13,7 +13,9 @@ message SearchGdeltDocumentsRequest {
     (buf.validate.field).string.min_len = 1,
     (sebuf.http.query) = { name: "query" }
   ];
-  // Maximum number of articles to return (1-250).
+  // Maximum number of articles to return. Defaults to 10 when omitted or <= 0. The
+  // handler caps returned results at 20, so values above 20 (though accepted, up to the
+  // validation limit of 250) still return at most 20 articles.
   int32 max_records = 2 [
     (buf.validate.field).int32.gte = 1,
     (buf.validate.field).int32.lte = 250,

@@ -32,6 +32,81 @@ const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options'
 const MAX_OBJECT_DEPTH = 6;
 const MAX_OPTIONAL_PROPERTIES = 5;
 
+// ── Curated per-parameter example overrides ───────────────────────────────
+// The field-name heuristic in stringExample() picks structurally-valid but
+// semantically WRONG string examples for a handful of parameters whose accepted
+// values the handlers enforce against server-side allowlists (chokepoint
+// registry, scenario templates) or external providers (FRED series, Mode-S
+// addresses). Those examples make the published request samples un-runnable —
+// the handlers reject them. This map pins each to a real accepted value and
+// takes precedence over the heuristic.
+//
+// Values are sourced from the same constants the handlers use wherever a
+// machine-readable one exists, so the examples can't silently drift; only the
+// two with no importable allowlist (a FRED series id, a sample Mode-S address)
+// are literals. This script runs under plain `node` in the `make generate`
+// codegen context, so it can't import the TypeScript modules — it reads the
+// committed source/JSON directly. Every lookup falls back to a documented
+// literal so codegen never breaks on a refactor.
+function readRepoText(rel) {
+  try {
+    return readFileSync(resolve(root, rel), 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+// chokepointId / chokepointIds: get-bypass-options & siblings (SupplyChain) and
+// register-webhook (ShippingV2) validate against the chokepoint registry
+// (VALID_CHOKEPOINT_IDS = CHOKEPOINT_REGISTRY ids). `intelligenceChokepointIds`
+// in the shared filter contract is a machine-readable subset that always
+// carries the canonical 'suez' id — use it as the drift-anchored source.
+const CHOKEPOINT_EXAMPLE_ID = (() => {
+  try {
+    const contract = JSON.parse(readRepoText('shared/openapi-filter-param-contracts.json'));
+    const ids = Array.isArray(contract.intelligenceChokepointIds) ? contract.intelligenceChokepointIds : [];
+    return ids.includes('suez') ? 'suez' : (ids[0] ?? 'suez');
+  } catch {
+    return 'suez';
+  }
+})();
+
+// scenarioId: run-scenario only accepts a registered SCENARIO_TEMPLATES id.
+// scenario-templates.ts is a .ts module (uncompilable under plain node), so
+// extract its ids from source text. The `id: '...'` shape only appears on the
+// template literals (the interface uses `id: string;`, no quotes).
+const SCENARIO_EXAMPLE_ID = (() => {
+  const src = readRepoText('server/worldmonitor/supply-chain/v1/scenario-templates.ts');
+  const ids = [...src.matchAll(/\bid:\s*'([a-z0-9-]+)'/g)].map((m) => m[1]);
+  return ids.includes('hormuz-tanker-blockade') ? 'hormuz-tanker-blockade' : (ids[0] ?? 'hormuz-tanker-blockade');
+})();
+
+// FRED series id: get-fred-series reads a seeded series by id; the OpenAPI
+// description lists GDP/UNRATE/CPIAUCSL. No importable allowlist (series live in
+// the seed cache) — pin a real, well-known series. BLS get-bls-series carries a
+// schema enum, so its series_id resolves upstream and never reaches this map.
+const FRED_SERIES_EXAMPLE_ID = 'GDP';
+
+// icao24 / icao24s: a 24-bit Mode-S address as lowercase 6-hex;
+// get-wingbits-live-flight enforces /^[0-9a-f]{6}$/ and the aircraft-detail
+// handlers lowercase it. No allowlist — pin a realistic sample address.
+const ICAO24_EXAMPLE = 'a835af';
+
+// key = normalizeKey(paramName); context carries { operationId, path, method }.
+// Returns a curated example that overrides the field-name heuristic, or
+// undefined to fall through. `series_id` is shared by FRED (no enum, needs an
+// override) and BLS (enum-resolved upstream) — disambiguate by operation.
+function overrideStringExample(key, context = {}) {
+  if (key.includes('chokepointid')) return CHOKEPOINT_EXAMPLE_ID;
+  if (key.includes('scenarioid')) return SCENARIO_EXAMPLE_ID;
+  if (key.includes('icao24')) return ICAO24_EXAMPLE;
+  if (key === 'seriesid') {
+    const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
+    if (where.includes('fred')) return FRED_SERIES_EXAMPLE_ID;
+  }
+  return undefined;
+}
+
 // Byte-faithful JSON serializer matching protoc-gen-openapiv3 output.
 const sortRec = (x) =>
   Array.isArray(x)
@@ -112,6 +187,8 @@ function patternString(pattern, key) {
 function stringExample(name, schema = {}, context = {}) {
   const key = normalizeKey(name || context.name || context.operationId);
   const description = String(schema.description ?? context.description ?? '').toLowerCase();
+  const override = overrideStringExample(key, context);
+  if (override !== undefined) return constrainedString(override, schema);
   if (schema.format === 'int64' || schema.format === 'uint64') return constrainedString('1717200000000', schema);
   if (schema.format === 'date-time') return constrainedString('2026-01-15T12:00:00Z', schema);
   if (schema.format === 'date') return constrainedString('2026-01-15', schema);
@@ -121,8 +198,6 @@ function stringExample(name, schema = {}, context = {}) {
   if (key.includes('callbackurl')) return constrainedString('https://example.com/worldmonitor-webhook', schema);
   if (key.includes('url') || key.includes('link')) return constrainedString('https://example.com/worldmonitor', schema);
   if (key.includes('jobid')) return constrainedString('scenario:1717200000000:abcd1234', schema);
-  if (key.includes('scenarioid')) return constrainedString('oil-price-shock', schema);
-  if (key.includes('chokepointid')) return constrainedString('suez-canal', schema);
   if (key.includes('pipelineid')) return constrainedString('transmed-pipeline', schema);
   if (key.includes('facilityid')) return constrainedString('rough-storage', schema);
   if (key.includes('assetid')) return constrainedString('asset-example-1', schema);

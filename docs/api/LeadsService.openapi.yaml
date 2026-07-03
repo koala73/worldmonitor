@@ -5,6 +5,8 @@ info:
 security:
     - WorldMonitorKey: []
     - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
 paths:
     /api/leads/v1/submit-contact:
         post:
@@ -62,7 +64,7 @@ paths:
             tags:
                 - LeadsService
             summary: RegisterInterest
-            description: RegisterInterest adds an email to the Pro waitlist and sends a confirmation email.
+            description: RegisterInterest adds an email to the Pro waitlist and sends a confirmation email. Turnstile-gated (desktop sources authenticate a bypass with a shared-secret HMAC instead). A failed Cloudflare Turnstile check returns 403 Bot verification failed; a desktop-source request with a missing or invalid HMAC signature returns 403 Desktop authentication failed.
             operationId: RegisterInterest
             security: []
             requestBody:
@@ -97,6 +99,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "403":
+                    description: Bot verification failed.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
                 default:
                     description: Error response
                     content:

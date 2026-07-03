@@ -14,7 +14,8 @@ message ListEarthquakesRequest {
   // End of time range (inclusive), Unix epoch milliseconds.
   // Accepted but currently ignored; no-op until this handler supports the parameter.
   int64 end = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER, (sebuf.http.query) = { name: "end" }, (sebuf.http.unimplemented) = true];
-  // Maximum items per page (1-100).
+  // Maximum items per page. Defaults to 500 when omitted or 0; the handler applies no
+  // clamp, so the requested value directly limits the returned list (no enforced maximum).
   int32 page_size = 3 [(sebuf.http.query) = { name: "page_size" }];
   // Cursor for next page.
   // Accepted but currently ignored; no-op until this handler supports the parameter.

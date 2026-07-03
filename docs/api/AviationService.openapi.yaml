@@ -5,6 +5,8 @@ info:
 security:
     - WorldMonitorKey: []
     - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
 paths:
     /api/aviation/v1/list-airport-delays:
         get:
@@ -196,7 +198,7 @@ paths:
                                 "flights":
                                     - "actualArrival": 1
                                       "actualDeparture": 1
-                                      "aircraftIcao24": "example"
+                                      "aircraftIcao24": "a835af"
                                       "aircraftType": "all"
                                       "cancelled": true
                                 "source": "example"
@@ -326,7 +328,7 @@ paths:
                                 "flights":
                                     - "actualArrival": 1
                                       "actualDeparture": 1
-                                      "aircraftIcao24": "example"
+                                      "aircraftIcao24": "a835af"
                                       "aircraftType": "all"
                                       "cancelled": true
                                 "source": "example"
@@ -362,7 +364,7 @@ paths:
                   in: query
                   description: ICAO 24-bit transponder address (hex, e.g., "4b1805").
                   required: false
-                  example: "example"
+                  example: "a835af"
                   schema:
                     type: string
                 - name: callsign
@@ -414,7 +416,7 @@ paths:
                                     - "altitudeM": 1.5
                                       "callsign": "example"
                                       "groundSpeedKts": 1.5
-                                      "icao24": "example"
+                                      "icao24": "a835af"
                                       "lat": 40.7128
                                 "source": "example"
                                 "updatedAt": 1717200000000
