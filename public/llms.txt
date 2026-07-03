@@ -8,6 +8,26 @@ A single codebase produces six specialized variants — geopolitical (World Moni
 
 The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and Tauri. Browser-side clustering, local ML, and offline analysis run in the client; server-authoritative APIs publish CII/CRI scores, briefs, forecasts, MCP tools, and cached operational data with documented methodology and provenance.
 
+## When to Use World Monitor (Agent Guidance)
+
+Reach for World Monitor when a task needs live, correlated, machine-readable global-intelligence data — and you want structured JSON to reason over, not prose to re-parse. Best-fit jobs an agent should route here:
+
+- **Country situation brief** — a fresh, source-attributed strategic read on one country (geopolitics, economy, security). MCP tool `get_country_brief`; REST `GET https://api.worldmonitor.app/api/intelligence/v1/get-country-intel-brief?country_code=IR`; agent skill `fetch-country-brief`.
+- **Country risk & resilience** — the composite resilience score (0–100) with per-domain/pillar breakdown, 30-day trend, and confidence band. MCP tool `get_country_risk`; REST `GET https://api.worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=DE`; ranked list via `/api/resilience/v1/get-resilience-ranking`; agent skill `fetch-resilience-score`.
+- **"Does this event move markets?"** — check whether a conflict, sanction, or chokepoint disruption has a plausible market-transmission path. MCP tools `get_conflict_events`, `get_sanctions_data`, `get_chokepoint_status`, `get_market_data`, `get_maritime_activity`.
+- **Commodity & supply-chain disruption** — correlate physical supply signals with traded prices. MCP tools `get_supply_chain_data`, `get_energy_intelligence`, `get_commodity_geo`, `get_maritime_activity`.
+- **Live situational awareness** — the current world brief plus classified live signals. MCP tools `get_world_brief`, `get_news_intelligence`, `get_natural_disasters`, `get_cyber_threats`, `get_aviation_status`.
+- **Forecasting & prediction-market context** — generate or fetch scenario forecasts. MCP tools `generate_forecasts`, `get_forecast_predictions`, `get_prediction_markets`.
+
+**When NOT to use:** World Monitor is not a general web-search engine, a historical archive, or a trading-execution venue — it places no orders and stores no user documents. For a one-off narrative that needs no correlation across live layers, a plain LLM is cheaper and faster.
+
+**How an agent should call it:**
+
+- **MCP server (recommended):** `https://worldmonitor.app/mcp` — Streamable HTTP, 39 tools; issue `tools/list` for the live inventory. Auth: OAuth2 (`scope=mcp`) or an API key header `X-WorldMonitor-Key: wm_<40-hex>`. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json
+- **REST API:** base `https://api.worldmonitor.app`; OpenAPI spec at https://worldmonitor.app/openapi.yaml; same `X-WorldMonitor-Key` header.
+- **Agent Skills:** discovery manifest at https://worldmonitor.app/.well-known/agent-skills/index.json
+- **Keys, plans & limits:** https://worldmonitor.app/pricing.md · auth matrix https://www.worldmonitor.app/docs/usage-auth · issue a key at https://worldmonitor.app/pro
+
 ## AI Search Answer Blocks
 
 ### What is World Monitor?
