@@ -20,11 +20,21 @@
  * to this audit. Without this branch, /api/mcp-proxy would silently slip
  * through future endpoint-coverage checks even though it has a live limit.
  *
- * Also validates two decision registries exported from rate-limit.ts:
+ * Also validates three decision registries exported from rate-limit.ts:
  *   - FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: expensive/sensitive routes
  *     that must have an endpoint policy so Redis degradation fails closed.
  *   - GLOBAL_RATE_LIMIT_FALLBACK_READ_ROUTES: deliberately read-only gateway
  *     routes that are allowed to inherit the global fail-open fallback.
+ *   - RATE_LIMIT_MUTATION_FALLBACK_EXEMPT: NON-GET routes deliberately allowed
+ *     to inherit the fail-open fallback (each with a justification).
+ *
+ * #4676 (systemic guardrail): enumerate EVERY non-GET (post/put/patch/delete)
+ * route from the generated OpenAPI metadata and require each to be either
+ * covered by ENDPOINT_RATE_POLICIES or explicitly listed in
+ * RATE_LIMIT_MUTATION_FALLBACK_EXEMPT. Previously the audit only checked
+ * registry internal consistency, so an expensive/mutation route omitted from
+ * every registry would pass CI and silently fail OPEN on a Redis outage. New
+ * non-GET routes now have to be triaged into one bucket or the other.
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -54,6 +64,11 @@ async function extractRateLimitPolicyModule() {
   if (!mod.GLOBAL_RATE_LIMIT_FALLBACK_READ_ROUTES || typeof mod.GLOBAL_RATE_LIMIT_FALLBACK_READ_ROUTES !== 'object') {
     throw new Error(
       `${RATE_LIMIT_SRC} no longer exports GLOBAL_RATE_LIMIT_FALLBACK_READ_ROUTES — accepted fail-open read routes need an auditable registry (#4676).`,
+    );
+  }
+  if (!mod.RATE_LIMIT_MUTATION_FALLBACK_EXEMPT || typeof mod.RATE_LIMIT_MUTATION_FALLBACK_EXEMPT !== 'object') {
+    throw new Error(
+      `${RATE_LIMIT_SRC} no longer exports RATE_LIMIT_MUTATION_FALLBACK_EXEMPT — non-GET routes that deliberately keep the fail-open fallback need an auditable exemption registry (#4676).`,
     );
   }
   return mod;
@@ -121,6 +136,7 @@ async function main() {
   const keys = Object.keys(rateLimitPolicyModule.ENDPOINT_RATE_POLICIES);
   const failClosedRequired = Object.keys(rateLimitPolicyModule.FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED);
   const globalFallbackReadRoutes = Object.keys(rateLimitPolicyModule.GLOBAL_RATE_LIMIT_FALLBACK_READ_ROUTES);
+  const mutationFallbackExempt = Object.keys(rateLimitPolicyModule.RATE_LIMIT_MUTATION_FALLBACK_EXEMPT);
   const gatewayRoutes = extractRoutesFromOpenApi();
   const edgeRoutes = extractEdgeFunctionRoutes();
   const gatewayRoutePaths = new Set(gatewayRoutes.keys());
@@ -187,8 +203,60 @@ async function main() {
     process.exit(1);
   }
 
+  // --- Systemic coverage: every non-GET route must be triaged (#4676) ---
+  // Build the set of generated non-GET (post/put/patch/delete) gateway routes.
+  const nonGetRoutes = [];
+  for (const [route, methods] of gatewayRoutes) {
+    const hasMutation = [...methods].some((m) => m !== 'get');
+    if (hasMutation) nonGetRoutes.push(route);
+  }
+  nonGetRoutes.sort();
+  const keySet = new Set(keys);
+  const exemptSet = new Set(mutationFallbackExempt);
+
+  // First: hygiene on the exemption registry itself so it can't rot into a
+  // rubber stamp. Every entry must (a) name a real generated non-GET gateway
+  // route and (b) not also carry an endpoint policy (redundant + contradictory).
+  const exemptNotNonGet = mutationFallbackExempt.filter((k) => !nonGetRoutes.includes(k));
+  const exemptWithPolicy = mutationFallbackExempt.filter((k) => keySet.has(k));
+  if (exemptNotNonGet.length > 0 || exemptWithPolicy.length > 0) {
+    console.error('✗ RATE_LIMIT_MUTATION_FALLBACK_EXEMPT contains invalid entries:\n');
+    if (exemptNotNonGet.length > 0) {
+      console.error('  Entries that are not generated non-GET (post/put/patch/delete) gateway routes:');
+      for (const key of exemptNotNonGet) console.error(`    - ${key}`);
+      console.error('  (A read-only route belongs in GLOBAL_RATE_LIMIT_FALLBACK_READ_ROUTES, and');
+      console.error('   a renamed/removed route should be dropped from the exemption set.)');
+    }
+    if (exemptWithPolicy.length > 0) {
+      console.error('  Entries that already have an ENDPOINT_RATE_POLICIES policy (remove the exemption):');
+      for (const key of exemptWithPolicy) console.error(`    - ${key}`);
+    }
+    console.error('');
+    process.exit(1);
+  }
+
+  // Then: the core guardrail — no non-GET route may be silently uncovered.
+  const uncoveredNonGet = nonGetRoutes.filter((r) => !keySet.has(r) && !exemptSet.has(r));
+  if (uncoveredNonGet.length > 0) {
+    console.error('✗ non-GET route(s) are neither rate-limited nor explicitly exempt:\n');
+    for (const key of uncoveredNonGet) {
+      const methods = [...gatewayRoutes.get(key)].filter((m) => m !== 'get').sort();
+      console.error(`  - ${key} [${methods.join(',')}]`);
+    }
+    console.error('\nEvery generated post/put/patch/delete route can mutate state or spend on');
+    console.error('external providers/LLMs, so it must NOT silently inherit the availability-first');
+    console.error('global fallback on a Redis outage. Triage each route above into exactly one of:\n');
+    console.error('  (a) ENDPOINT_RATE_POLICIES + FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED');
+    console.error('      (server/_shared/rate-limit.ts) — the route is expensive / provider-backed /');
+    console.error('      mutation-like and should return 503 when the limiter is unavailable, OR');
+    console.error('  (b) RATE_LIMIT_MUTATION_FALLBACK_EXEMPT (server/_shared/rate-limit.ts) — the');
+    console.error('      route is safe to fail open (add a justification comment/reason explaining');
+    console.error('      why: e.g. read-only despite POST, Redis-only write, already auth-gated).\n');
+    process.exit(1);
+  }
+
   console.log(
-    `✓ rate-limit policies clean: ${keys.length} policies validated against ${gatewayRoutes.size} gateway routes + ${edgeRoutes.size} edge-function exceptions; ${failClosedRequired.length} fail-closed requirements and ${globalFallbackReadRoutes.length} global-fallback read decisions audited.`,
+    `✓ rate-limit policies clean: ${keys.length} policies validated against ${gatewayRoutes.size} gateway routes + ${edgeRoutes.size} edge-function exceptions; ${failClosedRequired.length} fail-closed requirements, ${globalFallbackReadRoutes.length} global-fallback read decisions, and ${nonGetRoutes.length} non-GET routes (${mutationFallbackExempt.length} explicitly exempt) audited.`,
   );
 }
 
