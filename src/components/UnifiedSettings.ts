@@ -133,6 +133,23 @@ export class UnifiedSettings {
         return;
       }
 
+      if (target.closest('.upgrade-to-business-btn')) {
+        // Self-serve Starter→Business upgrade (#4634): open the Dodo customer
+        // portal, which surfaces the prorated plan change via the product
+        // collection ("Allow Subscription Updates" enabled). Same hosted open
+        // path as Manage Billing — Dodo owns payment + 3DS + proration; a failed
+        // charge (prevent_change) leaves the customer on Starter.
+        const reservedWin = prereserveBillingPortalTab();
+        void openBillingPortal(reservedWin).then((result) => {
+          if (result.outcome === 'no-customer') {
+            showToast(
+              'Subscription is managed outside Dodo. Email support@worldmonitor.app for help.',
+            );
+          }
+        });
+        return;
+      }
+
       if (target.closest('.manage-billing-btn')) {
         // Pre-reserve the portal tab synchronously inside the click
         // handler so the popup blocker doesn't suppress the eventual
@@ -650,6 +667,7 @@ export class UnifiedSettings {
             <span style="color:${statusColor};font-weight:600;font-size:13px;">${escapeHtml(planName)}</span>
           </div>
           ${statusLine ? `<div class="upgrade-pro-status-line">${escapeHtml(statusLine)}</div>` : ''}
+          ${sub?.planKey === 'api_starter' ? `<button class="upgrade-to-business-btn" style="margin-right:8px;">Upgrade to Business</button>` : ''}
           <button class="manage-billing-btn">Manage Billing</button>
         </div>
       `;

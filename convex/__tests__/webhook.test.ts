@@ -344,6 +344,38 @@ describe("webhook processWebhookEvent", () => {
     );
   });
 
+  test("subscription.plan_changed api_starter -> api_business resolves the Business entitlement (#4634)", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_api_starter", "api_starter", "API Starter");
+    await seedProductPlan(t, "pdt_test_api_business", "api_business", "API Business");
+
+    // Active on Starter, then the Dodo collection upgrade fires plan_changed.
+    await processEvent(
+      t,
+      "wh_up_01",
+      "subscription.active",
+      makeSubscriptionPayload({ product_id: "pdt_test_api_starter" }),
+      BASE_TIMESTAMP,
+    );
+    await processEvent(
+      t,
+      "wh_up_02",
+      "subscription.plan_changed",
+      makeSubscriptionPayload({ product_id: "pdt_test_api_business" }),
+      BASE_TIMESTAMP + 1000,
+    );
+
+    const subs = await t.run((ctx) => ctx.db.query("subscriptions").collect());
+    expect(subs).toHaveLength(1);
+    expect(subs[0].planKey).toBe("api_business");
+
+    const entitlements = await t.run((ctx) => ctx.db.query("entitlements").collect());
+    expect(entitlements).toHaveLength(1);
+    expect(entitlements[0].planKey).toBe("api_business");
+    expect(entitlements[0].features).toMatchObject({ apiAccess: true, apiRateLimit: 300 });
+  });
+
   test("subscription.plan_changed updates product and entitlements", async () => {
     const t = convexTest(schema, modules);
 
