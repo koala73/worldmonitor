@@ -11,9 +11,10 @@
  * side share canonicalisation primitives, so any drift between the two
  * surfaces immediately as a 401 here.
  *
- * Convex `getEntitlements` is stubbed by intercepting globalThis.fetch
- * for `${CONVEX_SITE_URL}/api/internal-entitlements`. Upstash is left
- * unset so the rate limiter / entitlement cache paths are no-ops.
+ * Convex `getEntitlements` and the internal-MCP replay cache are stubbed by
+ * intercepting globalThis.fetch. The replay cache stub implements Redis
+ * `SET ... EX ... NX` semantics so same-nonce replays exercise the production
+ * gateway decision point.
  */
 
 import { strict as assert } from 'node:assert';
@@ -25,6 +26,7 @@ import {
   getInternalMcpVerifiedNonce,
   INTERNAL_MCP_SIG_HEADER,
   INTERNAL_MCP_USER_ID_HEADER,
+  INTERNAL_MCP_NONCE_HEADER,
   INTERNAL_MCP_VERIFIED_HEADER,
   TRUSTED_USER_ID_HEADER,
 } from '../server/_shared/mcp-internal-hmac.ts';
@@ -48,6 +50,7 @@ const ORIGINAL_ENV = { ...process.env };
 // to the handler so tests can assert what propagated through.
 // ---------------------------------------------------------------------------
 let lastHandlerRequest = null;
+let replayCacheKeys = new Set();
 
 function makeGateway() {
   return createDomainGateway([
@@ -108,8 +111,43 @@ function entitlementForUser(userId) {
 
 function installFetchStub(opts = {}) {
   const overrideEntitlement = opts.entitlement;
+  const replayCacheUnavailable = opts.replayCacheUnavailable === true;
   globalThis.fetch = async (input, init) => {
     const url = typeof input === 'string' ? input : input?.url;
+    if (typeof url === 'string' && url.includes('redis.test/get/')) {
+      return new Response(JSON.stringify({ result: undefined }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (typeof url === 'string' && url.includes('redis.test/pipeline')) {
+      if (replayCacheUnavailable) {
+        return new Response(JSON.stringify([{ error: 'redis unavailable' }]), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      const commands = JSON.parse(String(init?.body ?? '[]'));
+      const results = commands.map((cmd) => {
+        if (cmd?.[0] === 'SET' && cmd?.[3] === 'EX' && cmd?.[5] === 'NX') {
+          const key = String(cmd[1]);
+          if (replayCacheKeys.has(key)) return { result: null };
+          replayCacheKeys.add(key);
+          return { result: 'OK' };
+        }
+        return { result: 0 };
+      });
+      return new Response(JSON.stringify(results), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (typeof url === 'string' && url === 'https://redis.test/') {
+      return new Response(JSON.stringify({ result: 'OK' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
     if (typeof url === 'string' && url.includes('/api/internal-entitlements')) {
       const body = JSON.parse(init?.body ?? '{}');
       const ent = overrideEntitlement ? overrideEntitlement(body.userId) : entitlementForUser(body.userId);
@@ -127,14 +165,19 @@ function resetEnv() {
   Object.assign(process.env, ORIGINAL_ENV);
 }
 
+function disableRedisForLegacyGatewayCheck() {
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+}
+
 beforeEach(() => {
   lastHandlerRequest = null;
+  replayCacheKeys = new Set();
   process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
   process.env.CONVEX_SITE_URL = CONVEX_SITE;
   process.env.CONVEX_SERVER_SHARED_SECRET = CONVEX_SECRET;
-  // Disable Upstash so rate-limit / cache paths are no-ops.
-  delete process.env.UPSTASH_REDIS_REST_URL;
-  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'redis-test-token';
   // The gateway's envelope expects WORLDMONITOR_VALID_KEYS to exist for the
   // legacy wm_ key path tests.
   process.env.WORLDMONITOR_VALID_KEYS = 'wm_test_key_123';
@@ -165,6 +208,7 @@ async function buildSignedRequest({
       'Content-Type': 'application/json',
       [INTERNAL_MCP_SIG_HEADER]: signed.signature,
       [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+      [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
       ...extraHeaders,
     },
     body: method === 'GET' ? undefined : body,
@@ -251,6 +295,56 @@ describe('gateway internal-MCP HMAC verify — happy paths', () => {
     );
   });
 
+  it('same signed internal-MCP request succeeds once, then replay is rejected before handler trust', async () => {
+    const handler = makeGateway();
+    const url = 'https://api.worldmonitor.app/api/news/v1/summarize-article';
+    const body = JSON.stringify({ provider: 'auto', mode: 'brief' });
+    const signed = await signInternalMcpRequest({
+      method: 'POST',
+      url,
+      body,
+      userId: PRO_USER_ID,
+      secret: HMAC_SECRET,
+      nonce: 'replay_nonce_4681',
+    });
+    const headers = {
+      'Content-Type': 'application/json',
+      [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+      [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+      [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
+    };
+
+    const first = await handler(new Request(url, { method: 'POST', headers, body }));
+    assert.equal(first.status, 200, `first signed request should pass, body=${await first.clone().text()}`);
+
+    lastHandlerRequest = null;
+    const replay = await handler(new Request(url, { method: 'POST', headers, body }));
+    assert.equal(replay.status, 401, 'duplicate signed nonce must be rejected within the timestamp window');
+    assert.deepEqual(await replay.json(), { error: 'invalid_internal_mcp_signature' });
+    assert.equal(lastHandlerRequest, null, 'replay must not reach the handler or trusted-marker path');
+  });
+
+  it('same request shape with unique signed nonces continues to succeed', async () => {
+    const handler = makeGateway();
+    const first = await buildSignedRequest();
+    const firstRes = await handler(first);
+    assert.equal(firstRes.status, 200, `first unique nonce should pass, body=${await firstRes.clone().text()}`);
+
+    const second = await buildSignedRequest();
+    const secondRes = await handler(second);
+    assert.equal(secondRes.status, 200, `second unique nonce should pass, body=${await secondRes.clone().text()}`);
+  });
+
+  it('valid HMAC fails closed when the replay cache is unavailable', async () => {
+    installFetchStub({ replayCacheUnavailable: true });
+    const handler = makeGateway();
+    const req = await buildSignedRequest();
+    const res = await handler(req);
+    assert.equal(res.status, 503, 'replay-cache outage must fail closed');
+    assert.deepEqual(await res.json(), { error: 'internal_mcp_replay_cache_unavailable' });
+    assert.equal(lastHandlerRequest, null, 'handler must not run when replay cache cannot claim the nonce');
+  });
+
   it('isCallerPremium returns true for a verified-marker request from tier-1 mcpAccess user', async () => {
     // Synthesize the post-gateway request shape: trusted markers set,
     // no inbound HMAC headers (gateway already consumed them).
@@ -300,6 +394,7 @@ describe('gateway internal-MCP HMAC verify — happy paths', () => {
       headers: {
         [INTERNAL_MCP_SIG_HEADER]: signed.signature,
         [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+        [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
       },
     });
     const res = await handler(req);
@@ -315,6 +410,7 @@ describe('gateway internal-MCP HMAC verify — happy paths', () => {
       headers: {
         [INTERNAL_MCP_SIG_HEADER]: signed.signature,
         [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+        [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
       },
     });
     const res = await handler(req);
@@ -342,6 +438,7 @@ describe('gateway internal-MCP HMAC verify — happy paths', () => {
       headers: {
         [INTERNAL_MCP_SIG_HEADER]: signed.signature,
         [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+        [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
       },
     });
     const res = await handler(req);
@@ -358,6 +455,7 @@ describe('gateway internal-MCP HMAC verify — happy paths', () => {
       headers: {
         [INTERNAL_MCP_SIG_HEADER]: signed.signature,
         [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+        [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
       },
     });
     const res = await handler(req);
@@ -374,6 +472,7 @@ describe('gateway internal-MCP HMAC verify — happy paths', () => {
       headers: {
         [INTERNAL_MCP_SIG_HEADER]: signed.signature,
         [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+        [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
       },
     });
     const res = await handler(req);
@@ -396,6 +495,7 @@ describe('gateway internal-MCP HMAC verify — happy paths', () => {
       headers: {
         [INTERNAL_MCP_SIG_HEADER]: signed.signature,
         [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+        [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
       },
     });
     const res = await handler(req);
@@ -457,6 +557,7 @@ describe('gateway internal-MCP HMAC verify — error paths', () => {
         'Content-Type': 'application/json',
         [INTERNAL_MCP_SIG_HEADER]: signed.signature,
         [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+        [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
       },
       body,
     });
@@ -475,6 +576,7 @@ describe('gateway internal-MCP HMAC verify — error paths', () => {
         'Content-Type': 'application/json',
         [INTERNAL_MCP_SIG_HEADER]: signed.signature,
         [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+        [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
       },
       body: JSON.stringify({ x: 1 }),
     });
@@ -494,6 +596,7 @@ describe('gateway internal-MCP HMAC verify — error paths', () => {
         'Content-Type': 'application/json',
         [INTERNAL_MCP_SIG_HEADER]: signed.signature,
         [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+        [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
       },
       body: tampered,
     });
@@ -605,6 +708,7 @@ describe('gateway internal-MCP HMAC verify — error paths', () => {
   it('legacy wm_ caller (no internal-MCP headers) → unaffected by missing MCP_INTERNAL_HMAC_SECRET', async () => {
     delete process.env.MCP_PRO_GRANT_HMAC_SECRET;
     delete process.env.MCP_INTERNAL_HMAC_SECRET;
+    disableRedisForLegacyGatewayCheck();
     const handler = makeGateway();
     // wm_-key flow: send a valid WORLDMONITOR_VALID_KEYS key on a non-tier-gated route.
     // Use list-feed-digest which is public-ish but in routes table.
@@ -627,6 +731,7 @@ describe('gateway internal-MCP HMAC verify — error paths', () => {
 // ===========================================================================
 describe('gateway internal-MCP — header injection defense', () => {
   it('client-injected x-wm-mcp-internal-verified is stripped before any logic', async () => {
+    disableRedisForLegacyGatewayCheck();
     const handler = makeGateway();
     // External attacker sends a guessed marker value (constant '1', the
     // pre-nonce design) with a hopeful spoof of x-user-id.
@@ -659,6 +764,7 @@ describe('gateway internal-MCP — header injection defense', () => {
   });
 
   it('attacker who somehow guesses the per-process nonce ALSO gets stripped at gateway entry', async () => {
+    disableRedisForLegacyGatewayCheck();
     const handler = makeGateway();
     const req = new Request('https://api.worldmonitor.app/api/news/v1/list-feed-digest', {
       method: 'GET',
@@ -727,6 +833,7 @@ describe('gateway internal-MCP — header injection defense', () => {
         'X-WorldMonitor-Key': 'wm_test_key_123',
         [INTERNAL_MCP_SIG_HEADER]: signed.signature,
         [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+        [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
       },
     });
     const res = await handler(req);
@@ -741,6 +848,7 @@ describe('gateway internal-MCP — header injection defense', () => {
 // ===========================================================================
 describe('gateway internal-MCP — legacy unaffected', () => {
   it('no internal-MCP headers at all → legacy validateApiKey path runs (request reaches handler when key is valid)', async () => {
+    disableRedisForLegacyGatewayCheck();
     const handler = makeGateway();
     const req = new Request('https://api.worldmonitor.app/api/news/v1/list-feed-digest', {
       method: 'GET',
@@ -803,6 +911,11 @@ describe('gateway internal-MCP — F7: HMAC headers stripped before handler sees
       null,
       'F7: inbound HMAC userId header MUST be stripped before handler',
     );
+    assert.equal(
+      lastHandlerRequest.headers.get(INTERNAL_MCP_NONCE_HEADER),
+      null,
+      'F7: inbound HMAC nonce header MUST be stripped before handler',
+    );
     // Trusted markers MUST still be present — those are the gateway's
     // outbound contract for downstream isCallerPremium checks.
     assert.equal(
@@ -839,6 +952,7 @@ describe('gateway internal-MCP — F8: body size cap', () => {
         'Content-Length': String(4 * 1024 * 1024), // 4MB — well over the cap
         [INTERNAL_MCP_SIG_HEADER]: signed.signature,
         [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+        [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
       },
       body,
     });
