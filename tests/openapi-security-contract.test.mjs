@@ -42,8 +42,8 @@ function readPublicForbiddenGates() {
   const src = readFileSync(resolve(root, 'scripts/openapi-inject-security.mjs'), 'utf8');
   const block = src.match(/PUBLIC_FORBIDDEN_GATES\s*=\s*new Map\(\[([\s\S]*?)\]\);/);
   assert.ok(block, 'could not parse PUBLIC_FORBIDDEN_GATES from scripts/openapi-inject-security.mjs');
-  const gates = [...block[1].matchAll(/\['([^']+)'\,\s*\{[\s\S]*?note:\s*'([^']+)'[\s\S]*?schema:\s*\{\s*\$ref:\s*'([^']+)'\s*\}/g)]
-    .map((m) => [m[1], { note: m[2], responseRef: m[3] }]);
+  const gates = [...block[1].matchAll(/\['([^']+)'\,\s*\{[\s\S]*?note:\s*'([^']+)'[\s\S]*?response:\s*\{[\s\S]*?description:\s*'([^']+)'[\s\S]*?schema:\s*\{\s*\$ref:\s*'([^']+)'\s*\}/g)]
+    .map((m) => [m[1], { note: m[2], responseDescription: m[3], responseRef: m[4] }]);
   assert.ok(gates.length > 0, 'expected at least one public forbidden gate');
   return new Map(gates);
 }
@@ -148,6 +148,11 @@ function assertPublicForbiddenGateContract(spec, label) {
       );
       const r403 = op.responses?.['403'];
       assert.ok(r403, opLabel + ': missing 403 response');
+      assert.equal(
+        String(r403.description ?? ''),
+        gate.responseDescription,
+        opLabel + ': 403 description must match the documented public gate',
+      );
       assert.equal(
         r403.content?.['application/json']?.schema?.$ref,
         gate.responseRef,

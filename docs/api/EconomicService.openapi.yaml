@@ -459,7 +459,7 @@ paths:
                         example:
                             "limit": 25
                             "seriesIds":
-                                - "example"
+                                - "GDP"
                         schema:
                             $ref: '#/components/schemas/GetFredSeriesBatchRequest'
                 required: true

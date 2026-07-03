@@ -523,14 +523,18 @@ const YAML_FORBIDDEN_RESPONSE = [
   "                                $ref: '#/components/schemas/ForbiddenError'",
 ];
 
-const YAML_BOT_FORBIDDEN_RESPONSE = [
-  '                "403":',
-  '                    description: Bot verification failed.',
-  '                    content:',
-  '                        application/json:',
-  '                            schema:',
-  "                                $ref: '#/components/schemas/Error'",
-];
+function yamlPublicForbiddenResponse(gate) {
+  const description = gate?.response?.description ?? 'Bot verification failed.';
+  const schemaRef = gate?.response?.content?.['application/json']?.schema?.$ref ?? '#/components/schemas/Error';
+  return [
+    '                "403":',
+    `                    description: ${JSON.stringify(description)}`,
+    '                    content:',
+    '                        application/json:',
+    '                            schema:',
+    `                                $ref: '${schemaRef}'`,
+  ];
+}
 
 const YAML_PREMIUM_FORBIDDEN_RESPONSE = [
   '                "403":',
@@ -857,7 +861,7 @@ function injectYamlEntitlementContract(text) {
     if (!methods) continue;
     for (const method of methods) {
       changed = ensureYamlGateDescription(lines, path, method, gate.note) || changed;
-      changed = ensureYamlForbiddenResponse(lines, path, method, YAML_BOT_FORBIDDEN_RESPONSE) || changed;
+      changed = ensureYamlForbiddenResponse(lines, path, method, yamlPublicForbiddenResponse(gate)) || changed;
     }
   }
 

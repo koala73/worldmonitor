@@ -94,13 +94,14 @@ const ICAO24_EXAMPLE = 'a835af';
 
 // key = normalizeKey(paramName); context carries { operationId, path, method }.
 // Returns a curated example that overrides the field-name heuristic, or
-// undefined to fall through. `series_id` is shared by FRED (no enum, needs an
-// override) and BLS (enum-resolved upstream) — disambiguate by operation.
+// undefined to fall through. `series_id` / `series_ids` is shared by FRED (no
+// enum, needs an override) and BLS (enum-resolved upstream) — disambiguate by
+// operation.
 function overrideStringExample(key, context = {}) {
   if (key.includes('chokepointid')) return CHOKEPOINT_EXAMPLE_ID;
   if (key.includes('scenarioid')) return SCENARIO_EXAMPLE_ID;
   if (key.includes('icao24')) return ICAO24_EXAMPLE;
-  if (key === 'seriesid') {
+  if (key === 'seriesid' || key === 'seriesids') {
     const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
     if (where.includes('fred')) return FRED_SERIES_EXAMPLE_ID;
   }
@@ -190,6 +191,7 @@ function stringExample(name, schema = {}, context = {}) {
   const override = overrideStringExample(key, context);
   if (override !== undefined) return constrainedString(override, schema);
   if (schema.format === 'int64' || schema.format === 'uint64') return constrainedString('1717200000000', schema);
+  if (key === 'lastupdated' || description.includes('iso-8601 datetime')) return constrainedString('2026-01-15T12:00:00.000Z', schema);
   if (schema.format === 'date-time') return constrainedString('2026-01-15T12:00:00Z', schema);
   if (schema.format === 'date') return constrainedString('2026-01-15', schema);
   const pattern = patternString(schema.pattern, key);

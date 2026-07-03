@@ -42,7 +42,7 @@ function curatedCategory(name) {
   if (key.includes('chokepointid')) return 'chokepoint';
   if (key.includes('scenarioid')) return 'scenario';
   if (key.includes('icao24')) return 'icao24';
-  if (key === 'seriesid') return 'series';
+  if (key === 'seriesid' || key === 'seriesids') return 'series';
   return null;
 }
 
@@ -299,11 +299,11 @@ describe('OpenAPI curated example values', () => {
       assert.match(String(f.value), /^[0-9a-f]{6}$/, `${f.where}: icao24 example '${f.value}' is not a 6-hex Mode-S address`);
     }
 
-    // series_id: FRED (no enum) needs a real series; BLS (enum) must stay valid.
+    // series_id / seriesIds: FRED (no enum) needs a real series; BLS (enum) must stay valid.
     const series = byCat('series');
     const fred = series.filter((f) => f.opText.includes('fred'));
     const bls = series.filter((f) => !f.opText.includes('fred'));
-    assert.ok(fred.length >= 1, `expected >=1 FRED series_id example, found ${fred.length}`);
+    assert.ok(fred.length >= 2, `expected >=2 FRED series examples, found ${fred.length}`);
     for (const f of fred) {
       assert.ok(!['example', 'example-id'].includes(f.value), `${f.where}: placeholder FRED series id '${f.value}'`);
       assert.match(String(f.value), /^[A-Z][A-Z0-9._]*$/, `${f.where}: FRED series id '${f.value}' does not look like a real series`);
@@ -315,5 +315,12 @@ describe('OpenAPI curated example values', () => {
         `${f.where}: BLS series id '${f.value}' must stay within its schema enum`,
       );
     }
+  });
+
+  it('uses an ISO datetime example for webcam lastUpdated', () => {
+    const spec = JSON.parse(readFileSync(resolve(apiDir, 'WebcamService.openapi.json'), 'utf8'));
+    const example = spec.paths?.['/api/webcam/v1/get-webcam-image']?.get
+      ?.responses?.['200']?.content?.[JSON_MEDIA]?.example?.lastUpdated;
+    assert.equal(example, '2026-01-15T12:00:00.000Z');
   });
 });

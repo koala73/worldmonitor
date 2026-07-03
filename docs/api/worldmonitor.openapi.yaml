@@ -2889,7 +2889,7 @@ paths:
                         example:
                             "limit": 25
                             "seriesIds":
-                                - "example"
+                                - "GDP"
                         schema:
                             $ref: '#/components/schemas/worldmonitor_economic_v1_GetFredSeriesBatchRequest'
                 required: true
@@ -6417,7 +6417,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
                 "403":
-                    description: Bot verification failed.
+                    description: "Bot verification failed."
                     content:
                         application/json:
                             schema:
@@ -6469,7 +6469,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
                 "403":
-                    description: Bot verification failed.
+                    description: "Bot verification or desktop authentication failed."
                     content:
                         application/json:
                             schema:
@@ -9263,7 +9263,7 @@ paths:
                                       "endDate": "2026-01-15"
                                       "id": "example-id"
                                       "location": "example"
-                                "lastUpdated": "2026-01-15"
+                                "lastUpdated": "2026-01-15T12:00:00.000Z"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_research_v1_ListTechEventsResponse'
                 "400":
@@ -12058,7 +12058,7 @@ paths:
                         application/json:
                             example:
                                 "error": "example"
-                                "lastUpdated": "2026-01-15"
+                                "lastUpdated": "2026-01-15T12:00:00.000Z"
                                 "playerUrl": "https://example.com/worldmonitor"
                                 "thumbnailUrl": "https://example.com/worldmonitor"
                                 "title": "example"

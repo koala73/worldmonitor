@@ -48,7 +48,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
                 "403":
-                    description: Bot verification failed.
+                    description: "Bot verification failed."
                     content:
                         application/json:
                             schema:
@@ -100,7 +100,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
                 "403":
-                    description: Bot verification failed.
+                    description: "Bot verification or desktop authentication failed."
                     content:
                         application/json:
                             schema:

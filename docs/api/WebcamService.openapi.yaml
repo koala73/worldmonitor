@@ -115,7 +115,7 @@ paths:
                         application/json:
                             example:
                                 "error": "example"
-                                "lastUpdated": "2026-01-15"
+                                "lastUpdated": "2026-01-15T12:00:00.000Z"
                                 "playerUrl": "https://example.com/worldmonitor"
                                 "thumbnailUrl": "https://example.com/worldmonitor"
                                 "title": "example"
