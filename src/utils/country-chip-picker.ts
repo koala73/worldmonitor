@@ -99,14 +99,17 @@ export function mountCountryChipPicker(
 
     const chipRow = COMMON_COUNTRIES.map(({ code, name }) => {
       const on = selectedSet.has(code);
-      return `<button type="button" class="us-notif-country-chip${on ? ' us-notif-country-chip-on' : ''}" data-code="${code}" aria-pressed="${on ? 'true' : 'false'}" title="${name}">${toFlagEmoji(code)} ${code}</button>`;
+      // Selected chips carry a ✕ so removal is discoverable (clicking anywhere
+      // on the chip toggles it off via the delegated handler). Decorative
+      // (aria-hidden) — screen readers get the toggle state from aria-pressed.
+      return `<button type="button" class="us-notif-country-chip${on ? ' us-notif-country-chip-on' : ''}" data-code="${code}" aria-pressed="${on ? 'true' : 'false'}" title="${on ? `Remove ${name}` : `Add ${name}`}">${toFlagEmoji(code)} ${code}${on ? ' <span class="us-notif-country-chip-x" aria-hidden="true">×</span>' : ''}</button>`;
     }).join('');
 
     // Custom-added codes that aren't in COMMON_COUNTRIES — render them so the
-    // user can deselect.
+    // user can deselect. Always selected, so always show the ✕ remove glyph.
     const extras = value.filter(code => !COMMON_COUNTRIES.some(c => c.code === code));
     const extraChips = extras.map(code =>
-      `<button type="button" class="us-notif-country-chip us-notif-country-chip-on" data-code="${code}" aria-pressed="true" title="${code}">${toFlagEmoji(code)} ${code}</button>`,
+      `<button type="button" class="us-notif-country-chip us-notif-country-chip-on" data-code="${code}" aria-pressed="true" title="Remove ${code}">${toFlagEmoji(code)} ${code} <span class="us-notif-country-chip-x" aria-hidden="true">×</span></button>`,
     ).join('');
 
     setTrustedHtml(root, trustedHtml(`

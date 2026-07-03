@@ -25608,6 +25608,58 @@ body.map-width-resizing {
   background: rgba(255, 255, 255, 0.11);
 }
 
+/* Country-scope chip picker (alertRules.countries). Toggle-cloud: every chip
+   is a button; the selected (-on) state must be visually distinct or removal
+   looks like a no-op. */
+.us-notif-country-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.us-notif-country-chip {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  border: 1px solid var(--settings-border-strong);
+  background: transparent;
+  color: var(--settings-text-secondary);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.us-notif-country-chip:hover {
+  background: var(--overlay-subtle);
+  color: var(--settings-text);
+  border-color: var(--settings-text-secondary);
+}
+
+.us-notif-country-chip-on {
+  background: rgba(52, 211, 153, 0.12);
+  border-color: rgba(52, 211, 153, 0.4);
+  color: var(--settings-green);
+}
+
+.us-notif-country-chip-on:hover {
+  background: rgba(52, 211, 153, 0.2);
+  color: var(--settings-green);
+}
+
+.us-notif-country-chip-x {
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.65;
+}
+
+.us-notif-country-chip-on:hover .us-notif-country-chip-x {
+  opacity: 1;
+}
+
 .us-notif-slack-wrap {
   width: 100%;
   display: flex;
