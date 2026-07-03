@@ -119,9 +119,17 @@ function makeMcpFetch({ initStatus = 200, listStatus = 200, callStatus = 200, to
 }
 
 let handler;
-let setResolveHostnameForTest;
+const TEST_RESOLVER_KEY = Symbol.for('worldmonitor.mcpProxy.resolveHostnameForTest');
 
 const PUBLIC_TEST_ADDRESS = '93.184.216.34';
+
+function setResolveHostnameForTest(resolver) {
+  if (typeof resolver === 'function') {
+    globalThis[TEST_RESOLVER_KEY] = resolver;
+  } else {
+    delete globalThis[TEST_RESOLVER_KEY];
+  }
+}
 
 function setResolvedAddresses(addresses) {
   setResolveHostnameForTest(async () => addresses);
@@ -140,7 +148,7 @@ describe('api/mcp-proxy', () => {
     // isCallerPremium import from server/. Test must follow the rename.
     const mod = await import(`../api/mcp-proxy.ts?t=${Date.now()}`);
     handler = mod.default;
-    setResolveHostnameForTest = mod.__setMcpProxyResolveHostnameForTest;
+    assert.equal(mod.__setMcpProxyResolveHostnameForTest, undefined);
     setResolvedAddresses([PUBLIC_TEST_ADDRESS]);
   });
 
@@ -361,6 +369,28 @@ describe('api/mcp-proxy', () => {
       assert.equal(res.status, 200);
       const data = await res.json();
       assert.deepEqual(data.tools, []);
+    });
+
+    it('ignores the test resolver outside NODE_TEST_CONTEXT', async () => {
+      const previousNodeTestContext = process.env.NODE_TEST_CONTEXT;
+      delete process.env.NODE_TEST_CONTEXT;
+      setResolvedAddresses(['10.0.0.5']);
+      globalThis.fetch = async (url, opts) => {
+        const u = new URL(url.toString());
+        if (u.hostname === 'cloudflare-dns.com') {
+          const type = u.searchParams.get('type');
+          if (type === 'A') return dnsJsonResponse([{ type: 1, data: PUBLIC_TEST_ADDRESS }]);
+          if (type === 'AAAA') return dnsJsonResponse([]);
+        }
+        return makeMcpFetch({ tools: [] })(url, opts);
+      };
+      try {
+        const res = await handler(makeGetRequest({ serverUrl: 'https://public-mcp.example/mcp' }));
+        assert.equal(res.status, 200);
+      } finally {
+        if (previousNodeTestContext === undefined) delete process.env.NODE_TEST_CONTEXT;
+        else process.env.NODE_TEST_CONTEXT = previousNodeTestContext;
+      }
     });
 
     it('returns 400 for garbled URL', async () => {

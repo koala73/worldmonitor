@@ -94,10 +94,12 @@ const BLOCKED_HOSTNAMES = new Set([
   '169.254.169.254',
 ]);
 
-let resolveHostnameForTest = null;
+const TEST_RESOLVER_KEY = Symbol.for('worldmonitor.mcpProxy.resolveHostnameForTest');
 
-export function __setMcpProxyResolveHostnameForTest(resolver) {
-  resolveHostnameForTest = typeof resolver === 'function' ? resolver : null;
+function getResolveHostnameForTest() {
+  if (!process.env.NODE_TEST_CONTEXT) return null;
+  const resolver = globalThis[TEST_RESOLVER_KEY];
+  return typeof resolver === 'function' ? resolver : null;
 }
 
 class McpProxySsrfError extends Error {
@@ -151,6 +153,7 @@ async function resolveDnsJson(hostname, recordType) {
 }
 
 async function defaultResolveHostname(hostname) {
+  const resolveHostnameForTest = getResolveHostnameForTest();
   if (resolveHostnameForTest) return resolveHostnameForTest(hostname);
   const records = await Promise.all([
     resolveDnsJson(hostname, 'A'),
