@@ -31,12 +31,13 @@ const CHECK = process.argv.includes('--check');
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head']);
 
 // ── Source of truth: proto RPCs carrying `option deprecated = true;` ─────────
-// Split each service.proto into `rpc … { … }` blocks; a block that carries both
-// `option deprecated = true` and an http `path: "…"` yields a deprecated path
-// suffix. Fails closed: if a service.proto can't be read it is skipped, never
-// silently marking an op deprecated.
-function readDeprecatedPathSuffixes() {
-  const suffixes = new Set();
+// Split each service.proto into `rpc ... { ... }` blocks; a block that carries
+// both `option deprecated = true` and an http `path: "..."` yields the exact
+// generated OpenAPI path (`base_path` + RPC path). Fails closed: if a
+// service.proto can't be read it is skipped, never silently marking an op
+// deprecated.
+function readDeprecatedPaths() {
+  const paths = new Set();
   const walk = (dir) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const full = resolve(dir, entry.name);
@@ -46,37 +47,45 @@ function readDeprecatedPathSuffixes() {
   };
   const scan = (file) => {
     const src = readFileSync(file, 'utf8');
-    // Match each `rpc … { … }` body (non-greedy to the first closing brace at
+    const serviceConfig = src.match(/\(sebuf\.http\.service_config\)\s*=\s*\{([\s\S]*?)\}/)?.[1] ?? '';
+    const basePath = serviceConfig.match(/\bbase_path:\s*"([^"]+)"/)?.[1] ?? '';
+    // Match each `rpc ... { ... }` body (non-greedy to the first closing brace at
     // the rpc's own indent).
     for (const block of src.matchAll(/\brpc\s+\w+\s*\([^)]*\)\s*returns\s*\([^)]*\)\s*\{([\s\S]*?)\n\s{2}\}/g)) {
       const body = block[1];
       if (!/option\s+deprecated\s*=\s*true\s*;/.test(body)) continue;
       const pathMatch = body.match(/path:\s*"([^"]+)"/);
-      if (pathMatch) suffixes.add(pathMatch[1]);
+      if (pathMatch) paths.add(joinOpenApiPath(basePath, pathMatch[1]));
     }
   };
   walk(protoDir);
-  return suffixes;
+  return paths;
 }
 
-const DEPRECATED_SUFFIXES = readDeprecatedPathSuffixes();
+function joinOpenApiPath(basePath, rpcPath) {
+  if (!basePath) return rpcPath;
+  if (rpcPath === basePath || rpcPath.startsWith(basePath + '/')) return rpcPath;
+  return basePath.replace(/\/+$/, '') + '/' + rpcPath.replace(/^\/+/, '');
+}
+
+const DEPRECATED_PATHS = readDeprecatedPaths();
 
 function isDeprecatedPath(path) {
-  for (const suffix of DEPRECATED_SUFFIXES) {
-    if (path === suffix || path.endsWith(suffix)) return true;
-  }
-  return false;
+  return DEPRECATED_PATHS.has(path);
 }
 
 // ── Per-service JSON ────────────────────────────────────────────────────────
 function injectJson(spec) {
   let changed = false;
   for (const [path, ops] of Object.entries(spec.paths ?? {})) {
-    if (!isDeprecatedPath(path)) continue;
+    const shouldBeDeprecated = isDeprecatedPath(path);
     for (const [method, op] of Object.entries(ops)) {
       if (!HTTP_METHODS.has(method) || !op || typeof op !== 'object') continue;
-      if (op.deprecated !== true) {
+      if (shouldBeDeprecated && op.deprecated !== true) {
         op.deprecated = true;
+        changed = true;
+      } else if (!shouldBeDeprecated && op.deprecated !== undefined) {
+        delete op.deprecated;
         changed = true;
       }
     }
@@ -92,29 +101,46 @@ function injectYaml(text) {
   const lines = text.split('\n');
   let changed = false;
   let currentPath = null;
-  const out = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const pathMatch = line.match(/^ {4}(\/\S+):\s*$/);
-    if (pathMatch) currentPath = pathMatch[1];
-    else if (/^\S/.test(line)) currentPath = null; // left the paths: block
-    out.push(line);
+    if (pathMatch) {
+      currentPath = pathMatch[1];
+      continue;
+    }
+    if (/^\S/.test(line)) {
+      currentPath = null; // left the paths: block
+      continue;
+    }
+
     const methodMatch = line.match(/^ {8}([a-z]+):\s*$/);
-    if (methodMatch && currentPath && isDeprecatedPath(currentPath) && HTTP_METHODS.has(methodMatch[1])) {
-      // Skip if the op already carries a 12-space `deprecated:` before its next
-      // sibling method / path (idempotency).
-      let already = false;
-      for (let j = i + 1; j < lines.length; j++) {
-        if (/^ {0,8}\S/.test(lines[j])) break; // next method (8) or path (4) or top-level
-        if (/^ {12}deprecated:/.test(lines[j])) { already = true; break; }
-      }
-      if (!already) {
-        out.push('            deprecated: true');
-        changed = true;
+    if (!methodMatch || !currentPath || !HTTP_METHODS.has(methodMatch[1])) continue;
+
+    const shouldBeDeprecated = isDeprecatedPath(currentPath);
+    let deprecatedIndex = -1;
+    for (let j = i + 1; j < lines.length; j++) {
+      if (/^ {0,8}\S/.test(lines[j])) break; // next method (8) or path (4) or top-level
+      if (/^ {12}deprecated:/.test(lines[j])) {
+        deprecatedIndex = j;
+        break;
       }
     }
+
+    if (shouldBeDeprecated) {
+      if (deprecatedIndex === -1) {
+        lines.splice(i + 1, 0, '            deprecated: true');
+        changed = true;
+        i++;
+      } else if (lines[deprecatedIndex] !== '            deprecated: true') {
+        lines[deprecatedIndex] = '            deprecated: true';
+        changed = true;
+      }
+    } else if (deprecatedIndex !== -1) {
+      lines.splice(deprecatedIndex, 1);
+      changed = true;
+    }
   }
-  return { text: out.join('\n'), changed };
+  return { text: lines.join('\n'), changed };
 }
 
 // ── Run ──────────────────────────────────────────────────────────────────────
@@ -151,9 +177,9 @@ if (CHECK) {
     console.error('  Run: npm run gen:openapi:deprecated');
     process.exit(1);
   }
-  console.log(`✓ deprecated flags in sync (${DEPRECATED_SUFFIXES.size} deprecated RPC path(s) tracked)`);
+  console.log(`✓ deprecated flags in sync (${DEPRECATED_PATHS.size} deprecated RPC path(s) tracked)`);
 } else {
   console.log(
-    `openapi-inject-deprecated: updated ${wouldChange} artifact(s) — ${DEPRECATED_SUFFIXES.size} deprecated RPC path(s): ${[...DEPRECATED_SUFFIXES].join(', ') || '(none)'}`,
+    `openapi-inject-deprecated: updated ${wouldChange} artifact(s) — ${DEPRECATED_PATHS.size} deprecated RPC path(s): ${[...DEPRECATED_PATHS].join(', ') || '(none)'}`,
   );
 }

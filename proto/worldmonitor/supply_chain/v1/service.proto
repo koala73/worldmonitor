@@ -93,6 +93,7 @@ service SupplyChainService {
     option (sebuf.http.config) = {path: "/get-route-explorer-lane", method: HTTP_METHOD_GET};
   }
 
+  // GetRouteImpact returns route-level trade exposure: lane value, primary exporter concentration, strategic products, resilience score, dependency flags, and Comtrade provenance. PRO-gated.
   rpc GetRouteImpact(GetRouteImpactRequest) returns (GetRouteImpactResponse) {
     option (sebuf.http.config) = {path: "/get-route-impact", method: HTTP_METHOD_GET};
   }

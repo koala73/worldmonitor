@@ -11662,7 +11662,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetRouteImpact
-            description: PRO-gated. Requires entitlement tier >= 1.
+            description: 'GetRouteImpact returns route-level trade exposure: lane value, primary exporter concentration, strategic products, resilience score, dependency flags, and Comtrade provenance. PRO-gated. Requires entitlement tier >= 1.'
             operationId: GetRouteImpact
             security:
                 - WorldMonitorKey: []
