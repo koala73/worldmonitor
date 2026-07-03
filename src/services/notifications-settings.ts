@@ -430,6 +430,17 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       let qhDebounceTimer: ReturnType<typeof setTimeout> | null = null;
       let digestDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
+      // Fire-and-forget settings writes MUST NOT surface as unhandled promise
+      // rejections. A debounced auto-save that 401s (expired Clerk session) or
+      // hits a transient network error is expected and non-fatal — swallow it
+      // here so it never reaches window.onunhandledrejection (WORLDMONITOR-SN).
+      // Logged for local debugging only; the setting simply isn't persisted.
+      function fireForgetSave(p: Promise<unknown>, label: string): void {
+        void p.catch((err) => {
+          console.warn(`[notifications] ${label} failed (not saved):`, err);
+        });
+      }
+
       function reloadNotifSection(): void {
         const loadingEl = container.querySelector<HTMLElement>('#usNotifLoading');
         const contentEl = container.querySelector<HTMLElement>('#usNotifContent');
@@ -544,10 +555,10 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       // getCurrentAlertRuleFormState so `countries` flows through every time.
       function saveCurrentAlertRule(): void {
         const state = getCurrentAlertRuleFormState();
-        void saveAlertRules({
+        fireForgetSave(saveAlertRules({
           variant: SITE_VARIANT,
           ...state,
-        });
+        }), 'save alert rules');
       }
 
       reloadNotifSection();
@@ -556,11 +567,11 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const state = getCurrentAlertRuleFormState();
         // Augment channels with the newly connected one (set semantics).
         const channels = [...new Set([...state.channels, newChannel])];
-        void saveAlertRules({
+        fireForgetSave(saveAlertRules({
           variant: SITE_VARIANT,
           ...state,
           channels,
-        });
+        }), 'save alert rules');
       }
 
       signal.addEventListener('abort', () => {
@@ -586,7 +597,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           const endEl = container.querySelector<HTMLSelectElement>('#usQhEnd');
           const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
           const overrideEl = container.querySelector<HTMLSelectElement>('#usQhOverride');
-          void setQuietHours({
+          fireForgetSave(setQuietHours({
             variant: SITE_VARIANT,
             quietHoursEnabled: enabledEl?.checked ?? false,
             quietHoursStart: startEl ? Number(startEl.value) : 22,
@@ -594,7 +605,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             quietHoursTimezone: tzEl?.value || detectedTz,
             quietHoursOverride: (overrideEl?.value ?? 'critical_only') as QuietHoursOverride,
             countries: countryPicker ? countryPicker.getValue() : undefined,
-          });
+          }), 'save quiet hours');
         }, 800);
       };
 
@@ -604,13 +615,13 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           const modeEl = container.querySelector<HTMLSelectElement>('#usDigestMode');
           const hourEl = container.querySelector<HTMLSelectElement>('#usDigestHour');
           const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
-          void setDigestSettings({
+          fireForgetSave(setDigestSettings({
             variant: SITE_VARIANT,
             digestMode: (modeEl?.value ?? 'realtime') as DigestMode,
             digestHour: hourEl ? Number(hourEl.value) : 8,
             digestTimezone: tzEl?.value || detectedTz,
             countries: countryPicker ? countryPicker.getValue() : undefined,
-          });
+          }), 'save digest settings');
         }, 800);
       };
 
@@ -730,11 +741,11 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             // reads from the DOM, which has already been updated by the time
             // the debounce fires, but explicit override avoids any race).
             const state = getCurrentAlertRuleFormState();
-            void saveAlertRules({
+            fireForgetSave(saveAlertRules({
               variant: SITE_VARIANT,
               ...state,
               aiDigestEnabled: target.checked,
-            });
+            }), 'save alert rules');
           }, 500);
           return;
         }
@@ -743,10 +754,10 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           alertRuleDebounceTimer = setTimeout(() => {
             // Source from the centralized helper so `countries` flows through.
             const state = getCurrentAlertRuleFormState();
-            void saveAlertRules({
+            fireForgetSave(saveAlertRules({
               variant: SITE_VARIANT,
               ...state,
-            });
+            }), 'save alert rules');
           }, 1000);
         }
       }, { signal });
