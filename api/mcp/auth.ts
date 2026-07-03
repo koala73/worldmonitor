@@ -5,6 +5,8 @@ import { resolveBearerToContext } from '../_oauth-token.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeIncludes } from '../_crypto.js';
 // @ts-expect-error — JS module, no declaration file
+import { getClientIp } from '../_client-ip.js';
+// @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 // @ts-expect-error — JS module, no declaration file
 import { redisPipeline as rawRedisPipeline } from '../_upstash-json.js';
@@ -34,6 +36,11 @@ import type {
 
 let mcpRatelimit: Ratelimit | null = null;
 let mcpProMinRatelimit: Ratelimit | null = null;
+// Anonymous MCP discovery limiter (initialize / tools/list without credentials).
+// Keyed by client IP so a public discovery surface can't be hammered by an
+// unauthenticated caller. Separate prefix from the authed per-key/per-user
+// limiters above so anon traffic never shares a bucket with a real principal.
+let mcpAnonRatelimit: Ratelimit | null = null;
 
 function getMcpRatelimit(): Ratelimit | null {
   if (mcpRatelimit) return mcpRatelimit;
@@ -61,6 +68,20 @@ function getMcpProMinRatelimit(): Ratelimit | null {
     analytics: false,
   });
   return mcpProMinRatelimit;
+}
+
+function getMcpAnonRatelimit(): Ratelimit | null {
+  if (mcpAnonRatelimit) return mcpAnonRatelimit;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  mcpAnonRatelimit = new Ratelimit({
+    redis: new Redis({ url, token, retry: false }),
+    limiter: Ratelimit.slidingWindow(60, '60 s'),
+    prefix: 'rl:mcp:anon',
+    analytics: false,
+  });
+  return mcpAnonRatelimit;
 }
 
 /**
@@ -255,6 +276,23 @@ export async function applyPerMinuteLimit(context: McpAuthContext, headers: Reco
   try {
     const { success } = await rl.limit(`pro-user:${context.userId}`);
     if (!success) return rpcError(null, -32029, 'Rate limit exceeded. Max 60 requests per minute per Pro user.', headers);
+  } catch { /* graceful degradation */ }
+  return null;
+}
+
+/** Per-IP rate limit for the UNAUTHENTICATED discovery path (initialize /
+ *  tools/list without credentials — the metadata surface agent scanners probe).
+ *  Keyed on the trusted client IP (cf-connecting-ip / x-real-ip; falls back to a
+ *  shared bucket so x-forwarded-for spoofing can't rotate identities). Fail-OPEN
+ *  on Upstash error, matching `applyPerMinuteLimit` — the discovery response is a
+ *  cheap in-memory payload, so availability beats strict enforcement here.
+ *  Returns null on success/skip, a Response on a real 60/min limit hit. */
+export async function applyAnonDiscoveryLimit(req: Request, headers: Record<string, string> = {}): Promise<Response | null> {
+  const rl = getMcpAnonRatelimit();
+  if (!rl) return null;
+  try {
+    const { success } = await rl.limit(`ip:${getClientIp(req)}`);
+    if (!success) return rpcError(null, -32029, 'Rate limit exceeded. Max 60 unauthenticated discovery requests per minute per IP.', headers);
   } catch { /* graceful degradation */ }
   return null;
 }

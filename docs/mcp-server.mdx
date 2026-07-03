@@ -54,6 +54,8 @@ The replay buffer is in-memory and bounded per edge instance. Treat `Last-Event-
 
 ## Authentication
 
+**Discovery is public.** `initialize`, `tools/list`, and the `notifications/initialized` handshake are servable **without credentials**, so any agent (or agent-readiness scanner) can connect to `https://worldmonitor.app/mcp`, read the server identity, and enumerate the full tool catalog before authenticating — the same metadata already published in the static [server card](https://worldmonitor.app/.well-known/mcp/server-card.json). Anonymous discovery is rate-limited to 60 requests/minute per client IP. Everything that returns data or spends quota (`tools/call`, `resources/read`) — and the gated metadata methods `prompts/list`, `resources/list`, and `logging/setLevel` — still requires one of the two auth modes below. A credential presented on a discovery method is still validated (a bad key returns `401`, never a silent anonymous downgrade).
+
 The MCP handler accepts two auth modes, in priority order:
 
 1. **OAuth 2.1 bearer** — `Authorization: Bearer <token>` where `<token>` was issued by `/api/oauth/token`. This is what Claude Desktop, claude.ai, Cursor, and MCP Inspector use automatically. Required for any client that hits MCP from a browser origin.

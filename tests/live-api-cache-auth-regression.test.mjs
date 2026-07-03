@@ -124,7 +124,7 @@ describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - 
     assertNoSentinelLeak(fake.bodyText, 'premium RPC fake auth');
   });
 
-  it('MCP OPTIONS and unauthenticated POST are protocol-valid no-store responses', async () => {
+  it('MCP OPTIONS, public discovery, and gated data method are protocol-valid no-store responses', async () => {
     const options = await fetchText(`${WEB_BASE}/mcp`, {
       method: 'OPTIONS',
       headers: {
@@ -136,7 +136,9 @@ describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - 
     assert.match(options.resp.headers.get('access-control-allow-methods') || '', /\bPOST\b/);
     assertNoStore(options.resp, 'MCP OPTIONS');
 
-    const post = await fetchText(`${WEB_BASE}/mcp`, {
+    // Discovery is public: unauthenticated `initialize` succeeds (200) and must
+    // still be no-store (the #4497 cached-200 hazard applies to any 200).
+    const discover = await fetchText(`${WEB_BASE}/mcp`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -153,9 +155,28 @@ describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - 
         },
       }),
     });
+    assert.equal(discover.resp.status, 200, 'unauthenticated initialize is public discovery');
+    assertNoStore(discover.resp, 'MCP anonymous initialize');
+    assert.notEqual(cfCacheStatus(discover.resp).toUpperCase(), 'HIT', 'anonymous discovery 200 must not be a shared-cache HIT');
+
+    // A DATA/quota method stays gated: unauthenticated `tools/call` must be a
+    // no-store, dynamic 401 carrying the OAuth resource_metadata hint.
+    const post = await fetchText(`${WEB_BASE}/mcp`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'tools/call',
+        params: { name: 'get_market_data', arguments: {} },
+      }),
+    });
     assert.equal(post.resp.status, 401);
     assert.match(post.resp.headers.get('www-authenticate') || '', /resource_metadata=/);
-    assertNoStore(post.resp, 'MCP unauthenticated POST');
+    assertNoStore(post.resp, 'MCP unauthenticated data method');
 
     const body = JSON.parse(post.bodyText);
     assert.equal(body.error?.code, -32001);

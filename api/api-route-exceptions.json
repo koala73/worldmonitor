@@ -328,6 +328,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/not-found.ts",
+      "category": "ops-admin",
+      "reason": "Structured JSON 404 responder for unmatched /api/* paths (via a vercel.json rewrite). Fixed-shape error envelope for agents/scanners in place of Vercel's native text/plain NOT_FOUND; not a product API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/cache-purge.js",
       "category": "ops-admin",
       "reason": "Admin-gated cache invalidation endpoint. Internal operator action, not a product API.",

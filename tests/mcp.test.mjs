@@ -71,16 +71,65 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   // --- Auth ---
 
-  it('returns HTTP 401 + WWW-Authenticate when no credentials provided', async () => {
+  // A DATA/quota method (tools/call) is the auth wall: unauthenticated → 401.
+  // Discovery methods (initialize / tools/list) are intentionally public — see
+  // the 'public discovery' block below — so they are NOT the probe here.
+  const protectedCallBody = (id = 1) => ({
+    jsonrpc: '2.0', id, method: 'tools/call',
+    params: { name: 'get_market_data', arguments: {} },
+  });
+
+  it('returns HTTP 401 + WWW-Authenticate when no credentials provided (protected method)', async () => {
     const req = new Request(BASE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(initBody()),
+      body: JSON.stringify(protectedCallBody()),
     });
     const res = await handler(req);
     assert.equal(res.status, 401);
     assert.ok(res.headers.get('www-authenticate')?.includes('Bearer realm="worldmonitor"'), 'must include WWW-Authenticate header');
     assert.match(res.headers.get('cache-control') || '', /\bno-store\b/i);
+    const body = await res.json();
+    assert.equal(body.error?.code, -32001);
+  });
+
+  // --- Public discovery (initialize + tools/list are servable without creds) ---
+
+  it('initialize succeeds WITHOUT credentials (public discovery)', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(initBody(1)),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated initialize must be public');
+    const body = await res.json();
+    assert.equal(body.result?.protocolVersion, '2025-03-26');
+    assert.equal(body.result?.serverInfo?.name, 'worldmonitor');
+    assert.ok(res.headers.get('mcp-session-id'), 'Mcp-Session-Id must be issued on the anonymous handshake');
+    assertNoStore(res, 'anonymous initialize');
+  });
+
+  it('tools/list succeeds WITHOUT credentials (public discovery) and returns tools', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated tools/list must be public');
+    const body = await res.json();
+    assert.ok(Array.isArray(body.result?.tools) && body.result.tools.length >= 3, 'must expose the tool catalog anonymously');
+  });
+
+  it('tools/call still requires credentials even though discovery is public', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(protectedCallBody(3)),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 401, 'tools/call is a data/quota method — must stay gated');
     const body = await res.json();
     assert.equal(body.error?.code, -32001);
   });
@@ -169,7 +218,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const unauthenticated = await handler(new Request(BASE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(initBody()),
+      body: JSON.stringify(protectedCallBody()),
     }));
     assert.equal(unauthenticated.status, 401);
     assertNoStore(unauthenticated, 'auth error');

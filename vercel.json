@@ -18,8 +18,10 @@
     { "source": "/oauth/authorize", "destination": "/api/oauth/authorize" },
     { "source": "/oauth/authorize-pro", "destination": "/api/oauth/authorize-pro" },
     { "source": "/.well-known/oauth-protected-resource", "destination": "/api/oauth-protected-resource" },
+    { "source": "/.well-known/mcp", "destination": "/.well-known/mcp/server-card.json" },
     { "source": "/embed", "destination": "/embed.html" },
     { "source": "/dashboard", "destination": "/dashboard.html" },
+    { "source": "/api/:path*", "destination": "/api/not-found" },
     { "source": "/((?!api|mcp|oauth|assets|blog|docs|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|openapi\\.json|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)", "destination": "/dashboard.html" }
   ],
   "headers": [
