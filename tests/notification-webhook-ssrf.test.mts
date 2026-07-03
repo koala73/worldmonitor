@@ -103,4 +103,12 @@ describe('notification webhook SSRF guard', () => {
       assert.match(source, /postJsonWithPinnedAddress/);
     }
   });
+
+  test('pinned delivery helper keeps hard timeout and response body caps', () => {
+    const source = readFileSync(resolve(process.cwd(), 'scripts/lib/notification-webhook-ssrf.cjs'), 'utf8');
+    assert.match(source, /MAX_WEBHOOK_RESPONSE_BYTES/);
+    assert.match(source, /totalBytes > MAX_WEBHOOK_RESPONSE_BYTES/);
+    assert.match(source, /hardDeadline = setTimeout/);
+    assert.match(source, /clearTimeout\(hardDeadline\)/);
+  });
 });

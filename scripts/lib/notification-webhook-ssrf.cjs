@@ -15,6 +15,7 @@ const BLOCKED_METADATA_HOSTNAMES = new Set([
 ]);
 
 const WEBHOOK_DELIVERY_TIMEOUT_MS = 10_000;
+const MAX_WEBHOOK_RESPONSE_BYTES = 1024 * 1024;
 
 class NotificationWebhookSsrfError extends Error {
   constructor(message) {
@@ -154,6 +155,14 @@ async function postJsonWithPinnedAddress(url, body, headers, resolvedAddresses) 
   const family = pinnedAddress.includes(':') ? 6 : 4;
 
   return new Promise((resolve, reject) => {
+    let settled = false;
+    let hardDeadline;
+    const settle = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      if (hardDeadline) clearTimeout(hardDeadline);
+      fn(value);
+    };
     const req = https.request({
       hostname: url.hostname,
       port: url.port || 443,
@@ -167,21 +176,33 @@ async function postJsonWithPinnedAddress(url, body, headers, resolvedAddresses) 
       lookup: (_hostname, _options, callback) => callback(null, pinnedAddress, family),
     }, (res) => {
       const chunks = [];
-      res.on('error', reject);
-      res.on('data', chunk => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+      let totalBytes = 0;
+      res.on('error', error => settle(reject, error));
+      res.on('data', chunk => {
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        totalBytes += buffer.length;
+        if (totalBytes > MAX_WEBHOOK_RESPONSE_BYTES) {
+          req.destroy(new Error('webhook response too large'));
+          return;
+        }
+        chunks.push(buffer);
+      });
       res.on('end', () => {
         const responseHeaders = new Headers();
         for (const [key, value] of Object.entries(res.headers)) {
           if (!value) continue;
           responseHeaders.set(key, Array.isArray(value) ? value.join(', ') : value);
         }
-        resolve(responseFromNode(res.statusCode, res.statusMessage, responseHeaders, Buffer.concat(chunks)));
+        settle(resolve, responseFromNode(res.statusCode, res.statusMessage, responseHeaders, Buffer.concat(chunks)));
       });
     });
-    req.on('error', reject);
+    req.on('error', error => settle(reject, error));
     req.setTimeout(WEBHOOK_DELIVERY_TIMEOUT_MS, () => {
       req.destroy(new Error('webhook delivery timed out'));
     });
+    hardDeadline = setTimeout(() => {
+      req.destroy(new Error('webhook delivery timed out'));
+    }, WEBHOOK_DELIVERY_TIMEOUT_MS);
     req.write(body);
     req.end();
   });
