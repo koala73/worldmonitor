@@ -5,6 +5,11 @@ const dns = require('node:dns').promises;
 const { ConvexHttpClient } = require('convex/browser');
 const { Resend } = require('resend');
 const { decrypt } = require('./lib/crypto.cjs');
+const {
+  assertNotificationWebhookDeliveryUrlSafe,
+  isBlockedResolvedAddress,
+  postJsonWithPinnedAddress,
+} = require('./lib/notification-webhook-ssrf.cjs');
 const { callLLM } = require('./lib/llm-chain.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
 const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
@@ -161,7 +166,7 @@ async function isUserPro(userId) {
 // ── Private IP guard ─────────────────────────────────────────────────────────
 
 function isPrivateIP(ip) {
-  return /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|::1|fc|fd)/.test(ip);
+  return isBlockedResolvedAddress(ip);
 }
 
 // ── Quiet hours ───────────────────────────────────────────────────────────────
@@ -486,28 +491,12 @@ async function sendWebhook(userId, webhookEnvelope, event) {
     return false;
   }
 
-  let parsed;
+  let safeUrl;
+  let resolvedAddresses;
   try {
-    parsed = new URL(url);
-  } catch {
-    console.warn(`[relay] Webhook invalid URL for ${userId}`);
-    await deactivateChannel(userId, 'webhook');
-    return false;
-  }
-
-  if (parsed.protocol !== 'https:') {
-    console.warn(`[relay] Webhook rejected non-HTTPS for ${userId}`);
-    return false;
-  }
-
-  try {
-    const addrs = await dns.resolve4(parsed.hostname);
-    if (addrs.some(isPrivateIP)) {
-      console.warn(`[relay] Webhook SSRF blocked (private IP) for ${userId}`);
-      return false;
-    }
+    ({ url: safeUrl, resolvedAddresses } = await assertNotificationWebhookDeliveryUrlSafe(url));
   } catch (err) {
-    console.warn(`[relay] Webhook DNS resolve failed for ${userId}:`, err.message);
+    console.warn(`[relay] Webhook URL rejected for ${userId}:`, err.message);
     return false;
   }
 
@@ -527,12 +516,12 @@ async function sendWebhook(userId, webhookEnvelope, event) {
   });
 
   try {
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
-      body: payload,
-      signal: AbortSignal.timeout(10000),
-    });
+    const resp = await postJsonWithPinnedAddress(
+      safeUrl,
+      payload,
+      { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
+      resolvedAddresses,
+    );
     if (resp.status === 404 || resp.status === 410 || resp.status === 403) {
       console.warn(`[relay] Webhook ${resp.status} for ${userId} — deactivating`);
       await deactivateChannel(userId, 'webhook');
