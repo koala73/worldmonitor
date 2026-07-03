@@ -38,51 +38,27 @@
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  serialize,
+  eq,
+  readPublicNoAuthPaths,
+  readEndpointEntitlements,
+  readPremiumRpcPaths,
+  PUBLIC_FORBIDDEN_GATES,
+} from './lib/openapi-codegen.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
 const bundlePath = resolve(apiDir, 'worldmonitor.openapi.yaml');
-const gatewayPath = resolve(root, 'server/gateway.ts');
-const entitlementPath = resolve(root, 'server/_shared/entitlement-check.ts');
-const premiumPathsPath = resolve(root, 'src/shared/premium-paths.ts');
 
 const CHECK = process.argv.includes('--check');
 
-// Genuinely public RPCs (no API key) — sourced from the single source of truth
-// in server/gateway.ts so the two can never drift. These operations opt out of
-// the root security requirement (security: []) and carry no 401. Fails closed:
-// if the set can't be parsed, we refuse to run rather than mislabel a public
-// endpoint as authenticated (or vice-versa).
-function readPublicNoAuthPaths() {
-  const src = readFileSync(gatewayPath, 'utf8');
-  const block = src.match(/PUBLIC_NO_AUTH_RPC_PATHS\s*=\s*new Set<string>\(\[([\s\S]*?)\]\)/);
-  if (!block) throw new Error(`could not locate PUBLIC_NO_AUTH_RPC_PATHS in ${gatewayPath}`);
-  const paths = [...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
-  if (paths.length === 0) throw new Error('PUBLIC_NO_AUTH_RPC_PATHS parsed as empty — refusing to run');
-  return new Set(paths);
-}
+// PUBLIC_PATHS / ENDPOINT_ENTITLEMENTS / PREMIUM_RPC_PATHS are parsed from the
+// gateway-adjacent source of truth (scripts/lib/openapi-codegen.mjs) so the
+// published auth contract can never drift from runtime; the parsers fail closed.
+// Bearer auth is stamped only on entitlement + legacy-Pro paths — the only ops
+// for which the gateway resolves a Clerk bearer session.
 const PUBLIC_PATHS = readPublicNoAuthPaths();
-
-// Bearer auth is not a universal replacement for an API key. The gateway only
-// resolves Clerk bearer sessions for endpoint-entitlement gates and legacy Pro
-// paths, so stamp BearerAuth at operation level only for those exact paths.
-function readEndpointEntitlements() {
-  const src = readFileSync(entitlementPath, 'utf8');
-  const block = src.match(/ENDPOINT_ENTITLEMENTS\s*:\s*Record<string,\s*number>\s*=\s*\{([\s\S]*?)\};/);
-  if (!block) throw new Error(`could not locate ENDPOINT_ENTITLEMENTS in ${entitlementPath}`);
-  const entries = [...block[1].matchAll(/'([^']+)'\s*:\s*(\d+)/g)]
-    .map((m) => [m[1], Number(m[2])]);
-  if (entries.length === 0) throw new Error('ENDPOINT_ENTITLEMENTS parsed as empty — refusing to run');
-  return new Map(entries);
-}
-
-function readPremiumRpcPaths() {
-  const src = readFileSync(premiumPathsPath, 'utf8');
-  const block = src.match(/PREMIUM_RPC_PATHS\s*=\s*new Set<string>\(\[([\s\S]*?)\]\)/);
-  if (!block) throw new Error(`could not locate PREMIUM_RPC_PATHS in ${premiumPathsPath}`);
-  return [...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
-}
-
 const ENDPOINT_ENTITLEMENTS = readEndpointEntitlements();
 const ENDPOINT_ENTITLEMENT_PATHS = new Set(ENDPOINT_ENTITLEMENTS.keys());
 const PREMIUM_RPC_PATHS = new Set(readPremiumRpcPaths());
@@ -102,41 +78,6 @@ if (BEARER_AUTH_PATHS.size === 0) {
 const PREMIUM_ONLY_PATHS = new Set(
   [...PREMIUM_RPC_PATHS].filter((path) => !ENDPOINT_ENTITLEMENT_PATHS.has(path)),
 );
-
-// Public RPCs can still have documented 403 gates. Lead capture intentionally
-// opts out of API-key auth at the gateway, then fails closed in the handler when
-// Cloudflare Turnstile verification fails.
-const PUBLIC_FORBIDDEN_GATES = new Map([
-  ['/api/leads/v1/submit-contact', {
-    note: 'Turnstile-gated. Missing or invalid Cloudflare Turnstile token returns 403 Bot verification failed.',
-    response: {
-      description: 'Bot verification failed.',
-      content: {
-        'application/json': {
-          schema: { $ref: '#/components/schemas/Error' },
-        },
-      },
-    },
-  }],
-  ['/api/leads/v1/register-interest', {
-    // The handler (server/worldmonitor/leads/v1/register-interest.ts) fails
-    // closed with two distinct 403s: browser callers that fail the Cloudflare
-    // Turnstile check get 403 Bot verification failed; desktop-source callers
-    // whose shared-secret HMAC bypass is missing/invalid get 403 Desktop
-    // authentication failed. Both are thrown as the sebuf ApiError, so the body
-    // is the generated Error schema (a `message` string) — same shape the
-    // submit-contact gate documents.
-    note: 'Turnstile-gated (desktop sources authenticate a bypass with a shared-secret HMAC instead). A failed Cloudflare Turnstile check returns 403 Bot verification failed; a desktop-source request with a missing or invalid HMAC signature returns 403 Desktop authentication failed.',
-    response: {
-      description: 'Bot verification or desktop authentication failed.',
-      content: {
-        'application/json': {
-          schema: { $ref: '#/components/schemas/Error' },
-        },
-      },
-    },
-  }],
-]);
 
 // A path cannot be both PRO-entitlement-gated (ForbiddenError 403) and
 // public-bot-gated (Error 403): the two passes emit different 403 bodies for
@@ -296,31 +237,6 @@ function appendGateNote(description, note) {
   if (text.includes(note)) return text;
   return `${text} ${note}`;
 }
-
-// ── Byte-faithful serializer (matches protoc-gen-openapiv3 JSON output) ─────
-const sortRec = (x) =>
-  Array.isArray(x)
-    ? x.map(sortRec)
-    : x && typeof x === 'object'
-      ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, sortRec(x[k])]))
-      : x;
-
-const goEscape = (s) => {
-  let r = '';
-  for (const ch of s) {
-    const c = ch.codePointAt(0);
-    r += c === 0x3c || c === 0x3e || c === 0x26 || c === 0x2028 || c === 0x2029
-      ? '\\u' + c.toString(16).padStart(4, '0')
-      : ch;
-  }
-  return r;
-};
-
-const serialize = (obj) => goEscape(JSON.stringify(sortRec(obj)));
-
-// Order-insensitive deep-equal (keys are sorted before compare) so change
-// detection is stable across the sort-on-write round-trip.
-const eq = (a, b) => JSON.stringify(sortRec(a)) === JSON.stringify(sortRec(b));
 
 // ── Per-service JSON injection ──────────────────────────────────────────────
 function injectJson(spec) {

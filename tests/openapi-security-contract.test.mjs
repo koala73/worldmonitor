@@ -4,6 +4,12 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load as loadYaml } from 'js-yaml';
+import {
+  readPublicNoAuthPaths,
+  readEndpointEntitlements,
+  readPremiumRpcPaths,
+  PUBLIC_FORBIDDEN_GATES,
+} from '../scripts/lib/openapi-codegen.mjs';
 
 // Guards the API contracts injected by the OpenAPI post-generation scripts:
 // auth/security (scripts/openapi-inject-security.mjs, #4599 root cause #1) and
@@ -15,42 +21,12 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
 const protoWorldmonitorDir = resolve(root, 'proto/worldmonitor');
 
-// Public (no-auth) RPCs — parsed from the same source of truth the injector
-// uses (server/gateway.ts). These opt out of the security requirement.
-function readPublicNoAuthPaths() {
-  const src = readFileSync(resolve(root, 'server/gateway.ts'), 'utf8');
-  const block = src.match(/PUBLIC_NO_AUTH_RPC_PATHS\s*=\s*new Set<string>\(\[([\s\S]*?)\]\)/);
-  assert.ok(block, 'could not parse PUBLIC_NO_AUTH_RPC_PATHS from server/gateway.ts');
-  return new Set([...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]));
-}
-
-function readEndpointEntitlements() {
-  const src = readFileSync(resolve(root, 'server/_shared/entitlement-check.ts'), 'utf8');
-  const block = src.match(/ENDPOINT_ENTITLEMENTS\s*:\s*Record<string,\s*number>\s*=\s*\{([\s\S]*?)\};/);
-  assert.ok(block, 'could not parse ENDPOINT_ENTITLEMENTS from server/_shared/entitlement-check.ts');
-  return new Map([...block[1].matchAll(/'([^']+)'\s*:\s*(\d+)/g)].map((m) => [m[1], Number(m[2])]));
-}
-
-function readPremiumRpcPaths() {
-  const src = readFileSync(resolve(root, 'src/shared/premium-paths.ts'), 'utf8');
-  const block = src.match(/PREMIUM_RPC_PATHS\s*=\s*new Set<string>\(\[([\s\S]*?)\]\)/);
-  assert.ok(block, 'could not parse PREMIUM_RPC_PATHS from src/shared/premium-paths.ts');
-  return [...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
-}
-
-function readPublicForbiddenGates() {
-  const src = readFileSync(resolve(root, 'scripts/openapi-inject-security.mjs'), 'utf8');
-  const block = src.match(/PUBLIC_FORBIDDEN_GATES\s*=\s*new Map\(\[([\s\S]*?)\]\);/);
-  assert.ok(block, 'could not parse PUBLIC_FORBIDDEN_GATES from scripts/openapi-inject-security.mjs');
-  const gates = [...block[1].matchAll(/\['([^']+)'\,\s*\{[\s\S]*?note:\s*'([^']+)'[\s\S]*?response:\s*\{[\s\S]*?description:\s*'([^']+)'[\s\S]*?schema:\s*\{\s*\$ref:\s*'([^']+)'\s*\}/g)]
-    .map((m) => [m[1], { note: m[2], responseDescription: m[3], responseRef: m[4] }]);
-  assert.ok(gates.length > 0, 'expected at least one public forbidden gate');
-  return new Map(gates);
-}
-
+// Source-of-truth sets/maps are imported from scripts/lib/openapi-codegen.mjs —
+// the SAME module the injector uses — so the contract test can't drift from the
+// injector via a divergent private regex, and asserting the specs against these
+// values catches any regenerate that drops an injection.
 const PUBLIC_PATHS = readPublicNoAuthPaths();
 const ENDPOINT_ENTITLEMENTS = readEndpointEntitlements();
-const PUBLIC_FORBIDDEN_GATES = readPublicForbiddenGates();
 const BEARER_AUTH_PATHS = new Set([...ENDPOINT_ENTITLEMENTS.keys(), ...readPremiumRpcPaths()]);
 // Legacy-Pro-gated paths NOT covered by the newer ENDPOINT_ENTITLEMENTS tier
 // map. These carry a "Pro subscription required" 403 (gateway
@@ -150,12 +126,12 @@ function assertPublicForbiddenGateContract(spec, label) {
       assert.ok(r403, opLabel + ': missing 403 response');
       assert.equal(
         String(r403.description ?? ''),
-        gate.responseDescription,
+        gate.response.description,
         opLabel + ': 403 description must match the documented public gate',
       );
       assert.equal(
         r403.content?.['application/json']?.schema?.$ref,
-        gate.responseRef,
+        gate.response.content?.['application/json']?.schema?.$ref,
         opLabel + ': 403 must reference the documented error schema',
       );
     }

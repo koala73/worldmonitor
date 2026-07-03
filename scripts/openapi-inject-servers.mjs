@@ -38,6 +38,7 @@
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { serialize, eq } from './lib/openapi-codegen.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
@@ -48,31 +49,6 @@ const CHECK = process.argv.includes('--check');
 // which stamps the same value onto the bundle. Keep the two in sync.
 const SERVER_URL = 'https://api.worldmonitor.app';
 const SERVERS = [{ url: SERVER_URL }];
-
-// ── Byte-faithful serializer (matches protoc-gen-openapiv3 JSON output) ─────
-const sortRec = (x) =>
-  Array.isArray(x)
-    ? x.map(sortRec)
-    : x && typeof x === 'object'
-      ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, sortRec(x[k])]))
-      : x;
-
-const goEscape = (s) => {
-  let r = '';
-  for (const ch of s) {
-    const c = ch.codePointAt(0);
-    r += c === 0x3c || c === 0x3e || c === 0x26 || c === 0x2028 || c === 0x2029
-      ? '\\u' + c.toString(16).padStart(4, '0')
-      : ch;
-  }
-  return r;
-};
-
-const serialize = (obj) => goEscape(JSON.stringify(sortRec(obj)));
-
-// Order-insensitive deep-equal (keys are sorted before compare) so change
-// detection is stable across the sort-on-write round-trip.
-const eq = (a, b) => JSON.stringify(sortRec(a)) === JSON.stringify(sortRec(b));
 
 // ── Per-service JSON injection ──────────────────────────────────────────────
 function injectJson(spec) {

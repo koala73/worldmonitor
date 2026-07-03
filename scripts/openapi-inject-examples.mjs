@@ -21,6 +21,7 @@
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { sortRec, serialize, eq, normalizeKey } from './lib/openapi-codegen.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
@@ -108,28 +109,6 @@ function overrideStringExample(key, context = {}) {
   return undefined;
 }
 
-// Byte-faithful JSON serializer matching protoc-gen-openapiv3 output.
-const sortRec = (x) =>
-  Array.isArray(x)
-    ? x.map(sortRec)
-    : x && typeof x === 'object'
-      ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, sortRec(x[k])]))
-      : x;
-
-const goEscape = (s) => {
-  let r = '';
-  for (const ch of s) {
-    const c = ch.codePointAt(0);
-    r += c === 0x3c || c === 0x3e || c === 0x26 || c === 0x2028 || c === 0x2029
-      ? '\\u' + c.toString(16).padStart(4, '0')
-      : ch;
-  }
-  return r;
-};
-
-const serialize = (obj) => goEscape(JSON.stringify(sortRec(obj)));
-const eq = (a, b) => JSON.stringify(sortRec(a)) === JSON.stringify(sortRec(b));
-
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
@@ -156,9 +135,6 @@ function schemaType(schema) {
   return undefined;
 }
 
-function normalizeKey(name = '') {
-  return String(name).replace(/[_\-\s]/g, '').toLowerCase();
-}
 
 function constrainedString(value, schema) {
   const min = Number.isFinite(schema?.minLength) ? schema.minLength : 0;

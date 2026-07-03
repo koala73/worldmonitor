@@ -4,6 +4,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load as loadYaml } from 'js-yaml';
+import { normalizeKey } from '../scripts/lib/openapi-codegen.mjs';
 
 // Guards the generated OpenAPI examples injected by
 // scripts/openapi-inject-examples.mjs (umbrella #4599, workstream #4610).
@@ -36,9 +37,10 @@ const CURATED = (() => {
   return { chokepointIds, scenarioIds };
 })();
 
-// Mirror of scripts/openapi-inject-examples.mjs normalizeKey + override routing.
+// Mirror of scripts/openapi-inject-examples.mjs override routing (normalizeKey is
+// imported from the shared codegen module the injector uses, so it can't drift).
 function curatedCategory(name) {
-  const key = String(name).replace(/[_\-\s]/g, '').toLowerCase();
+  const key = normalizeKey(name);
   if (key.includes('chokepointid')) return 'chokepoint';
   if (key.includes('scenarioid')) return 'scenario';
   if (key.includes('icao24')) return 'icao24';
