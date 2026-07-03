@@ -627,6 +627,12 @@ export class DeckGLMap {
   // returns the same FeatureCollection ref and Object.is short-circuits the
   // deck.gl re-tessellation (#4561 review P2).
   private conflictZoneContentKey: string | null = null;
+  // #4601: countries features + precomputed bounds, built once (cheap — no
+  // tessellation); the viewport cull filters this for the choropleth layers,
+  // mirroring conflictZoneBounded. Invalidated with countriesGeoJsonData.
+  private countriesBounded: BoundedFeature[] | null = null;
+  private culledCountriesGeoJson: GeoJSON.FeatureCollection | null = null;
+  private culledCountriesContentKey = '';
 
   // CII choropleth data
   private ciiScoresMap: Map<string, { score: number; level: string }> = new Map();
@@ -2741,6 +2747,43 @@ export class DeckGLMap {
   }
 
   /**
+   * Viewport-culled countries geojson for the choropleth layers (#4601). Mirrors the
+   * conflict-zone cull (#4561): build the bounded set once, cull to the current
+   * viewport, and content-key cache so an unchanged visible set reuses the FC ref
+   * (Object.is short-circuits the deck.gl re-tessellation). Re-culled on pan/zoom via
+   * updateLayers(). Cull-only — no RDP simplify, so country borders stay crisp; at
+   * world/low zoom every country is visible so the full ref is returned unchanged.
+   */
+  private getCulledCountriesGeoJson(): GeoJSON.FeatureCollection | null {
+    const data = this.countriesGeoJsonData;
+    if (!data) return null;
+    if (!this.countriesBounded) {
+      const bounded: BoundedFeature[] = [];
+      for (const feature of data.features) {
+        const bounds = geometryBounds(feature.geometry);
+        if (bounds) bounded.push({ bounds, feature });
+      }
+      this.countriesBounded = bounded;
+    }
+    const mapBounds = this.maplibreMap?.getBounds();
+    if (!mapBounds) return data; // pre-map-init: no viewport — render all (prior behavior)
+    const viewport: BBox = [
+      mapBounds.getWest(), mapBounds.getSouth(), mapBounds.getEast(), mapBounds.getNorth(),
+    ];
+    const indices = culledIndices(this.countriesBounded, viewport);
+    // All countries visible (world/low zoom) — return the full ref, no new FC alloc.
+    if (indices.length === this.countriesBounded.length) return data;
+    const contentKey = indices.join(',');
+    if (contentKey === this.culledCountriesContentKey && this.culledCountriesGeoJson) {
+      return this.culledCountriesGeoJson;
+    }
+    const features = indices.map((i) => this.countriesBounded![i]!.feature);
+    this.culledCountriesGeoJson = { type: 'FeatureCollection', features };
+    this.culledCountriesContentKey = contentKey;
+    return this.culledCountriesGeoJson;
+  }
+
+  /**
    * Two-phase heavy-layer data (#4558). On the immediate (deferHeavy) frame,
    * stage the freshly-computed data and render the previously-committed value
    * (or `empty` on first build) so the heavy deck.gl tessellation is deferred;
@@ -4418,7 +4461,7 @@ export class DeckGLMap {
     const scores = this.happinessScores;
     return new GeoJsonLayer({
       id: 'happiness-choropleth-layer',
-      data: this.countriesGeoJsonData,
+      data: this.getCulledCountriesGeoJson() ?? this.countriesGeoJsonData,
       filled: true,
       stroked: true,
       getFillColor: (feature: { properties?: Record<string, unknown> }) => {
@@ -4451,7 +4494,7 @@ export class DeckGLMap {
     const colors = CII_LEVEL_COLORS;
     return new GeoJsonLayer({
       id: 'cii-choropleth-layer',
-      data: this.countriesGeoJsonData,
+      data: this.getCulledCountriesGeoJson() ?? this.countriesGeoJsonData,
       filled: true,
       stroked: true,
       getFillColor: (feature: { properties?: Record<string, unknown> }) => {
@@ -4472,7 +4515,7 @@ export class DeckGLMap {
     const scores = this.resilienceScoresMap;
     return new GeoJsonLayer({
       id: 'resilience-choropleth-layer',
-      data: this.countriesGeoJsonData,
+      data: this.getCulledCountriesGeoJson() ?? this.countriesGeoJsonData,
       filled: true,
       stroked: true,
       getFillColor: (feature: { properties?: Record<string, unknown> }) => {
@@ -4492,7 +4535,7 @@ export class DeckGLMap {
     if (!this.countriesGeoJsonData) return null;
     return new GeoJsonLayer({
       id: 'sanctions-choropleth-layer',
-      data: this.countriesGeoJsonData,
+      data: this.getCulledCountriesGeoJson() ?? this.countriesGeoJsonData,
       filled: true,
       stroked: false,
       getFillColor: (feature: { properties?: Record<string, unknown> }) => {
@@ -4511,7 +4554,7 @@ export class DeckGLMap {
     if (!this.affectedIso2Set.size || !this.countriesGeoJsonData) return null;
     return new GeoJsonLayer({
       id: 'scenario-heat-layer',
-      data: this.countriesGeoJsonData,
+      data: this.getCulledCountriesGeoJson() ?? this.countriesGeoJsonData,
       stroked: false,
       filled: true,
       extruded: false,
@@ -7335,6 +7378,9 @@ export class DeckGLMap {
         this.conflictZoneGeoJson = null;
         this.conflictZoneBounded = null;
         this.conflictZoneContentKey = null;
+        this.countriesBounded = null;
+        this.culledCountriesGeoJson = null;
+        this.culledCountriesContentKey = '';
         this.maplibreMap.addSource('country-boundaries', {
           type: 'geojson',
           data: geojson,
