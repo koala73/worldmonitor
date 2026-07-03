@@ -48,4 +48,8 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   // stayed hidden until PR #3797 fixed the unlock-wipe so users could
   // actually type and click Send.
   '/api/chat-analyst',
+  // /api/news/v1/summarize-article: paid LLM summarization. The generated
+  // news client is wrapped with premiumFetch so Pro browser sessions attach
+  // Bearer auth while anonymous wms_ sessions are rejected by the gateway.
+  '/api/news/v1/summarize-article',
 ]);

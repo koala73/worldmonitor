@@ -18,6 +18,7 @@ import type { SummarizeArticleResponse } from '@/generated/client/worldmonitor/n
 import { createCircuitBreaker } from '@/utils';
 import { buildSummaryCacheKey } from '@/utils/summary-cache-key';
 import { NewsServiceClient } from '@/services/generated-rpc-clients';
+import { premiumFetch } from '@/services/premium-fetch';
 
 export type SummarizationProvider = 'ollama' | 'groq' | 'openrouter' | 'browser' | 'cache';
 
@@ -44,7 +45,7 @@ export interface SummarizeOptions {
 
 // ── Sebuf client (replaces direct fetch to /api/{provider}-summarize) ──
 
-const newsClient = new NewsServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+const newsClient = new NewsServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
 const summaryBreaker = createCircuitBreaker<SummarizeArticleResponse>({ name: 'News Summarization', cacheTtlMs: 0 });
 
 const summaryResultBreaker = createCircuitBreaker<SummarizationResult | null>({

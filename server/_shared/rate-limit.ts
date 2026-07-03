@@ -183,6 +183,10 @@ interface EndpointRatePolicy {
 // using checkEndpointRateLimit / hasEndpointRatePolicy below — the export is
 // for tooling, not new runtime callers.
 export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
+  // LLM article summarization is Pro-gated, but still needs a scoped,
+  // fail-closed budget so Redis degradation cannot silently lift the
+  // per-endpoint spend control.
+  '/api/news/v1/summarize-article': { limit: 30, window: '60 s' },
   '/api/news/v1/summarize-article-cache': { limit: 3000, window: '60 s' },
   '/api/intelligence/v1/classify-event': { limit: 600, window: '60 s' },
   // Legacy /api/sanctions-entity-search rate limit was 30/min per IP. Preserve

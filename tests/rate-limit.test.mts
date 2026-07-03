@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import {
+  ENDPOINT_RATE_POLICIES,
   RATE_LIMIT_DEGRADED_HEADERS,
   UNKNOWN_CLIENT_IP,
   checkEndpointRateLimit,
@@ -190,6 +191,26 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
     assert.ok(res, 'expected explicit endpoint policies to fail closed without Redis config');
     assert.equal(res.status, 503);
     assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
+  });
+
+  it('summarize-article has a scoped fail-closed endpoint budget for LLM spend control', async () => {
+    assert.deepEqual(ENDPOINT_RATE_POLICIES['/api/news/v1/summarize-article'], { limit: 30, window: '60 s' });
+
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    const mod = await importFreshRateLimitModule();
+
+    const res = await mod.checkEndpointRateLimit(
+      makeRequest({ 'cf-connecting-ip': '203.0.113.7' }),
+      '/api/news/v1/summarize-article',
+      { 'Access-Control-Allow-Origin': 'https://worldmonitor.app' },
+    );
+
+    assert.ok(res, 'expected summarize-article policy to fail closed when Redis config is unavailable');
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
+    assert.equal(res.headers.get('Retry-After'), '5');
+    assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
   });
 
   it('checkEndpointRateLimit keeps unrecognised paths unguarded even with fail-closed defaults', async () => {
