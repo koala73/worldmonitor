@@ -268,15 +268,95 @@ ${HIDE_SCRIPT}`;
 
 const welcomeContent = await renderWelcomeRoot();
 
+// Wired feature link, reused below.
+const WIRED_STORY_URL = 'https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map';
+
+// Crawler-facing prose block for welcome.html (served at the apex `/`). Unlike
+// index.html — where the React app REPLACES #root on mount, so the prose can be
+// injected inside #root — welcome.html HYDRATES its server-rendered React into
+// #root, so this block is injected as a SIBLING before #root (see `beforeRoot`
+// below) and never collides with hydration. It leads at <h2>: the hydrated Hero
+// already renders the page's single <h1>. AEO/RAG indexers read raw HTML without
+// executing JS, so this dense, link-rich, low-markup text lifts the page's
+// text-to-markup ratio and gives vector retrieval clean structure; the FAQ pulls
+// the same en.welcome.faq strings the React <FAQ> and the head FAQPage JSON-LD
+// use, so schema and visible copy stay in lockstep.
+const welcomeFaqEntries = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+  .map((n) => `    <dt>${en.welcome.faq['q' + n]}</dt><dd>${en.welcome.faq['a' + n]}</dd>`)
+  .join('\n');
+
+const welcomeSeoPrerender = `
+<div id="seo-prerender" lang="en">
+  <h2>World Monitor — free real-time global intelligence dashboard</h2>
+  <p>${en.welcome.hero.sub} It runs instantly in the browser with no signup, is used by 2M+ people, and is open source under AGPL-3.0. <a href="${WIRED_STORY_URL}">Featured in WIRED</a>.</p>
+
+  <h2>What World Monitor tracks</h2>
+  <p>World Monitor fuses 56 map layers across a dual 3D-globe and WebGL map: live conflict events, maritime AIS vessels, military and civilian flights, satellite passes, GPS jamming zones, submarine cables and landing stations, AI datacenters, pipelines, nuclear facilities, internet outages and BGP anomalies — alongside market quotes, sector heatmaps and a Country Instability Index across 196 countries. A daily AI brief and corroborated breaking alerts sit on top, and every panel cites its sources and timestamps inline.</p>
+  <ul>
+    <li><strong>See</strong> — 56 map layers across a dual 3D-globe and WebGL map: conflicts, vessels, flights, satellites, pipelines, submarine cables and AI datacenters.</li>
+    <li><strong>Understand</strong> — a daily AI brief, the Country Instability Index across 196 countries, cross-source correlation and the Scenario Engine.</li>
+    <li><strong>Act</strong> — custom monitors and alerts, Route Explorer, and a 39-tool MCP server and REST API for Claude, GPT and custom agents.</li>
+  </ul>
+
+  <h2>Where the data comes from</h2>
+  <p>65+ named providers, live: <a href="https://acleddata.com/">ACLED</a> and <a href="https://ucdp.uu.se/">UCDP</a> for conflict, <a href="https://aisstream.io/">AISStream</a> for vessels, <a href="https://opensky-network.org/">OpenSky</a> for aircraft, <a href="https://firms.modaps.eosdis.nasa.gov/">NASA FIRMS</a> for fires, <a href="https://www.usgs.gov/programs/earthquake-hazards">USGS</a> for earthquakes, and <a href="https://www.imf.org/en/Data">IMF</a>, <a href="https://www.bis.org/">BIS</a>, <a href="https://fred.stlouisfed.org/">FRED</a> and <a href="https://finnhub.io/">Finnhub</a> for markets and macro — plus 500+ curated news feeds, all active under one key with no separate registrations.</p>
+
+  <h2>Watch shipping chokepoints in real time</h2>
+  <p>Thirteen shipping chokepoints — including Hormuz, Bab el-Mandeb, Suez and Malacca — are tracked with live AIS vessel counts, week-over-week transit change and disruption scoring, with density anomalies flagged against each strait's rolling baseline.</p>
+
+  <h2>Built for AI agents</h2>
+  <p>World Monitor ships a 39-tool MCP server, so Claude, GPT or any MCP-compatible agent can query live country risk scores, chokepoint status, conflicts, markets and country briefs — with JMESPath projection so agents fetch exactly the fields they need. A public REST API and developer documentation are available for custom integrations.</p>
+
+  <h2>Who uses World Monitor</h2>
+  <p>Investors and analysts pricing geopolitical risk, traders watching supply-chain and energy disruptions, researchers and journalists corroborating events across independent sources, and government, defence and NGO teams tracking situational awareness — all from one live map instead of a dozen separate tools.</p>
+
+  <h2>Free, Pro and open source</h2>
+  <p>The full live map — every layer, 500+ feeds, country briefs and breaking alerts, all six monitors — is free with no signup and no trial clock. World Monitor Pro ($39.99/month or $399.99/year) adds WM Analyst chat, the Scenario Engine, Route Explorer, scheduled AI digests to Slack, Discord, Telegram, Email or webhook, a custom widget builder, and MCP and API access — 30+ services under one key. Native desktop apps for Windows, macOS and Linux and an Android TV app for wall displays are available too.</p>
+
+  <h2>Six dashboards, one platform</h2>
+  <ul>
+    <li><a href="https://www.worldmonitor.app/dashboard">World Monitor</a> — geopolitics, conflicts, military and infrastructure</li>
+    <li><a href="https://tech.worldmonitor.app/">Tech Monitor</a> — AI labs, startups, cloud and cybersecurity</li>
+    <li><a href="https://finance.worldmonitor.app/">Finance Monitor</a> — global markets, central banks, forex and crypto</li>
+    <li><a href="https://commodity.worldmonitor.app/">Commodity Monitor</a> — mining, energy, supply chains and freight</li>
+    <li><a href="https://happy.worldmonitor.app/">Happy Monitor</a> — positive news, breakthroughs and conservation</li>
+    <li><a href="https://energy.worldmonitor.app/">Energy Monitor</a> — oil, gas, chokepoints and energy security</li>
+  </ul>
+
+  <h2>${en.welcome.faq.title}</h2>
+  <dl>
+${welcomeFaqEntries}
+  </dl>
+
+  <h2>Learn more</h2>
+  <ul>
+    <li><a href="https://www.worldmonitor.app/pro">World Monitor Pro</a> — AI analyst, scheduled digests, MCP for Claude &amp; GPT</li>
+    <li><a href="https://www.worldmonitor.app/blog/">World Monitor Blog</a> — OSINT guides, geopolitics and market intelligence</li>
+    <li><a href="https://www.worldmonitor.app/blog/posts/what-is-worldmonitor-real-time-global-intelligence/">What is World Monitor?</a></li>
+    <li><a href="https://www.worldmonitor.app/blog/posts/osint-for-everyone-open-source-intelligence-democratized/">OSINT for everyone — open-source intelligence democratized</a></li>
+    <li><a href="https://github.com/koala73/worldmonitor">Open source on GitHub (AGPL-3.0)</a></li>
+    <li><a href="${WIRED_STORY_URL}">Featured in WIRED</a></li>
+  </ul>
+</div>
+${HIDE_SCRIPT}`;
+
 const PAGES = [
   { file: 'index.html', content: indexContent, rootAttributes: '' },
-  { file: 'welcome.html', content: welcomeContent, rootAttributes: ' data-wm-prerendered="welcome" data-wm-prerender-lang="en"' },
+  {
+    file: 'welcome.html',
+    content: welcomeContent,
+    rootAttributes: ' data-wm-prerendered="welcome" data-wm-prerender-lang="en"',
+    // Injected as a sibling BEFORE #root (not inside it) so React hydration of
+    // the SSR'd #root subtree is untouched. Hidden for JS users via the
+    // html.js #seo-prerender rule; visible to no-JS AEO/RAG crawlers.
+    beforeRoot: welcomeSeoPrerender,
+  },
 ];
 
-for (const { file, content, rootAttributes } of PAGES) {
+for (const { file, content, rootAttributes, beforeRoot = '' } of PAGES) {
   // Fail loudly if any key resolved to undefined — this prevents the build from
   // silently shipping "undefined" strings to crawlers.
-  if (content.includes('undefined')) {
+  if ((content + beforeRoot).includes('undefined')) {
     console.error(`[prerender] ERROR: SEO content for ${file} contains literal "undefined". Check that all en.json keys referenced in this file exist.`);
     process.exit(1);
   }
@@ -288,7 +368,7 @@ for (const { file, content, rootAttributes } of PAGES) {
     console.error(`[prerender] ERROR: ${file} has no empty <div id="root"></div> to inject into.`);
     process.exit(1);
   }
-  html = html.replace('<div id="root"></div>', `<div id="root"${rootAttributes}>${content}</div>`);
+  html = html.replace('<div id="root"></div>', `${beforeRoot}<div id="root"${rootAttributes}>${content}</div>`);
   writeFileSync(htmlPath, html, 'utf-8');
   console.log(`[prerender] Injected SEO content into public/pro/${file}`);
 }

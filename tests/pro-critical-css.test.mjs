@@ -193,10 +193,23 @@ describe('pro built HTML critical CSS contract', () => {
     assert.match(html, /html\.js #seo-prerender/);
   });
 
-  it('/ welcome preserves the prerendered shell and stays separate from the SEO block', () => {
+  it('/ welcome ships a crawler-visible SEO block kept OUT of the hydrated #root', () => {
     const html = builtSrc('public/pro/welcome.html');
     assert.match(html, /data-wm-prerendered="welcome"/);
-    assert.doesNotMatch(html, /id="seo-prerender"/);
+    // welcome.html now ships a prose-dense #seo-prerender block for AEO/RAG
+    // indexers (lifts the apex page's text-to-markup ratio), injected as a
+    // SIBLING BEFORE #root so React hydration of the SSR'd shell is untouched.
+    // Hidden for JS users via the .js class + html.js #seo-prerender rule,
+    // mirroring /pro (above). pro-welcome-prerender.test.mjs enforces that the
+    // hydrated #root CONTENT stays free of the block; here we guard placement
+    // (block must PRECEDE #root) and the JS-hide mechanism.
+    assert.match(html, /id="seo-prerender"/);
+    assert.match(html, /document\.documentElement\.classList\.add\('js'\)/);
+    assert.match(html, /html\.js #seo-prerender/);
+    assert.ok(
+      html.indexOf('id="seo-prerender"') < html.indexOf('<div id="root"'),
+      'the #seo-prerender block must precede #root (sibling, not nested — nesting it inside the hydrated root breaks hydration)',
+    );
     assert.match(html, /fetchPriority="high"/);
   });
 });
