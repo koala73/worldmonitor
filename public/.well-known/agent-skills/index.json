@@ -1,5 +1,6 @@
 {
   "$schema": "https://agentskills.io/schemas/v0.2.0/index.json",
+  "instructions": "World Monitor is a live, machine-readable global-intelligence API and MCP server. Reach for it when a task needs fresh, correlated, structured data about the state of the world — JSON to reason over, not prose to re-parse.\n\nWhen to use these skills:\n- Use `fetch-country-brief` when the user asks for a strategic read on one country’s geopolitical, economic, or security situation (a source-attributed narrative brief).\n- Use `fetch-resilience-score` when the user asks how resilient a country is, or wants its composite 0–100 resilience score, 30-day trend, or per-domain/pillar breakdown.\n\nBeyond these two skills the MCP server exposes a broad catalog of tools — conflict events, sanctions, shipping chokepoints, markets, commodities, energy, maritime and aviation activity, cyber threats, natural disasters, forecasts, and prediction markets. Use them together to check whether a live event (a conflict, sanction, or chokepoint disruption) has a plausible market or supply-chain transmission path.\n\nWhen NOT to use: World Monitor is not a general web-search engine, a historical archive, or a trading-execution venue — it places no orders and stores no user documents. For a one-off narrative that needs no correlation across live layers, a plain LLM is cheaper and faster.\n\nHow an agent should call it:\n- MCP server (recommended): https://worldmonitor.app/mcp — Streamable HTTP; issue `tools/list` for the live inventory.\n- REST API: base https://api.worldmonitor.app — OpenAPI spec at https://worldmonitor.app/openapi.yaml.\n- Auth: OAuth2 (`scope=mcp`) or an API-key header `X-WorldMonitor-Key: wm_<40-hex>`. Issue a key at https://worldmonitor.app/pro.",
   "skills": [
     {
       "name": "Iran.skill",
@@ -11,16 +12,16 @@
     {
       "name": "fetch-country-brief",
       "type": "task",
-      "description": "Retrieve the current AI-generated strategic intelligence brief for a country, keyed by ISO 3166-1 alpha-2 code.",
+      "description": "Retrieve the current AI-generated strategic intelligence brief for a country, keyed by ISO 3166-1 alpha-2 code. Use when the user asks for a summary of the current geopolitical, economic, or security situation in a specific country.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/fetch-country-brief/SKILL.md",
-      "sha256": "9c9c4d36db5684db3a03cf5465c7d9a65dfe1881c4a27c84e2f506aca9f509f0"
+      "sha256": "ac0a8abb3cf0d26845bbcec03f908f1752803a152ab22ba806db70d26bbe4d1e"
     },
     {
       "name": "fetch-resilience-score",
       "type": "task",
-      "description": "Retrieve the composite country resilience score (0-100) and its domain/pillar breakdown for a single country.",
+      "description": "Retrieve the composite country resilience score (0-100) and its domain/pillar breakdown for a single country. Use when the user asks how resilient a country is, or wants its numeric resilience score, trend, or per-domain breakdown.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/fetch-resilience-score/SKILL.md",
-      "sha256": "282b1c6fee09b6fbbb6422107c84658e071ccd767bfe526fe97942a673551abb"
+      "sha256": "1222bf74eabc9f4ff5a2abdb03871d47647e817ae58d41b99612e2b039b542cb"
     }
   ]
 }

@@ -1,7 +1,7 @@
 ---
 name: fetch-country-brief
 version: 1
-description: Retrieve the current AI-generated strategic intelligence brief for a country, keyed by ISO 3166-1 alpha-2 code.
+description: Retrieve the current AI-generated strategic intelligence brief for a country, keyed by ISO 3166-1 alpha-2 code. Use when the user asks for a summary of the current geopolitical, economic, or security situation in a specific country.
 ---
 
 # fetch-country-brief

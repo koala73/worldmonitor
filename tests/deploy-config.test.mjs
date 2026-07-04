@@ -16,7 +16,7 @@ const middlewareSource = readFileSync(resolve(__dirname, '../middleware.ts'), 'u
 const dockerfileSource = readFileSync(resolve(__dirname, '../Dockerfile'), 'utf-8');
 const dockerNginxSource = readFileSync(resolve(__dirname, '../docker/nginx.conf'), 'utf-8');
 const frontendDockerfileSource = readFileSync(resolve(__dirname, '../docker/Dockerfile'), 'utf-8');
-const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|oauth|assets|blog|docs|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|openapi\\.json|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
+const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|oauth|assets|blog|docs|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
 const GLOBAL_CSP_INLINE_SCRIPT_HTML_FILES = [
@@ -1340,6 +1340,151 @@ describe('agent readiness: MCP/OAuth origin alignment', () => {
     );
     assert.ok(rewrite, 'expected a rewrite for /.well-known/oauth-protected-resource');
     assert.equal(rewrite.destination, '/api/oauth-protected-resource');
+  });
+
+  // RFC 8414 authorization-server metadata is ALSO a dynamic edge fn (was a
+  // static file at public/.well-known/oauth-authorization-server). Host
+  // derivation keeps `issuer` == the origin the PRM advertises, so ora.ai/orank
+  // can cross-check that PRM `authorization_servers` resolves to an AS document
+  // whose `issuer` matches — while same-origin also satisfies isitagentready.
+  it('oauth-authorization-server handler returns host-derived RFC 8414 metadata + WorkOS agent_auth block', async () => {
+    const mod = await import('../api/oauth-authorization-server.ts');
+    const handler = mod.default;
+    assert.equal(typeof handler, 'function', 'handler must be the default export');
+
+    const hosts = ['worldmonitor.app', 'www.worldmonitor.app', 'api.worldmonitor.app'];
+    for (const host of hosts) {
+      const req = new Request(`https://${host}/.well-known/oauth-authorization-server`, {
+        headers: { host },
+      });
+      const res = await handler(req);
+      assert.equal(res.status, 200, `status 200 for ${host}`);
+      assert.equal(res.headers.get('content-type'), 'application/json', `JSON for ${host}`);
+      assert.equal(res.headers.get('vary'), 'Host', `Vary: Host for ${host}`);
+      assert.equal(res.headers.get('cache-control'), 'public, max-age=3600', `cacheable for ${host}`);
+      const json = await res.json();
+
+      // RFC 8414 issuer + endpoints are all self-origin.
+      assert.equal(json.issuer, `https://${host}`, `issuer matches ${host}`);
+      assert.equal(json.authorization_endpoint, `https://${host}/oauth/authorize`);
+      assert.equal(json.token_endpoint, `https://${host}/oauth/token`);
+      assert.equal(json.registration_endpoint, `https://${host}/oauth/register`);
+      assert.deepEqual(json.code_challenge_methods_supported, ['S256']);
+      assert.deepEqual(json.token_endpoint_auth_methods_supported, ['none']);
+      assert.deepEqual(json.scopes_supported, ['mcp']);
+
+      // WorkOS auth.md agent_auth discovery block (only `anonymous` is honest —
+      // WM has no ID-JAG identity endpoint, so identity_assertion is not advertised).
+      assert.ok(json.agent_auth, `agent_auth block present for ${host}`);
+      assert.equal(json.agent_auth.skill, `https://${host}/auth.md`, `skill round-trips to /auth.md for ${host}`);
+      assert.equal(json.agent_auth.register_uri, `https://${host}/oauth/register`);
+      assert.deepEqual(json.agent_auth.identity_types_supported, ['anonymous']);
+      // Only `access_token` — an api_key is user-minted (carries a user
+      // identity), so it is not an anonymous-registration credential.
+      assert.deepEqual(
+        json.agent_auth.anonymous.credential_types_supported,
+        ['access_token'],
+        `anonymous sibling block enumerates credential types for ${host}`
+      );
+    }
+  });
+
+  // The Host header is client-controlled; both discovery handlers derive their
+  // origin through the shared allowlist (api/_agent-metadata.ts) so a spoofed
+  // Host cannot be reflected into issuer/resource/endpoints. They also guard the
+  // HTTP method (read-only docs).
+  it('discovery handlers reject spoofed Host (apex fallback) and non-GET methods', async () => {
+    const prm = (await import('../api/oauth-protected-resource.ts')).default;
+    const as = (await import('../api/oauth-authorization-server.ts')).default;
+
+    // Spoofed / unrecognized Host → apex fallback, never reflected.
+    for (const host of ['evil.com', 'worldmonitor.app.evil.com', 'evilworldmonitor.app', 'x.y.worldmonitor.app']) {
+      const prmRes = await prm(new Request('https://worldmonitor.app/.well-known/oauth-protected-resource', { headers: { host } }));
+      const prmJson = await prmRes.json();
+      assert.equal(prmJson.resource, 'https://worldmonitor.app', `PRM must not reflect spoofed host ${host}`);
+      assert.deepEqual(prmJson.authorization_servers, ['https://worldmonitor.app']);
+
+      const asRes = await as(new Request('https://worldmonitor.app/.well-known/oauth-authorization-server', { headers: { host } }));
+      const asJson = await asRes.json();
+      assert.equal(asJson.issuer, 'https://worldmonitor.app', `AS must not reflect spoofed host ${host}`);
+      assert.equal(asJson.token_endpoint, 'https://worldmonitor.app/oauth/token', `AS token_endpoint must not carry spoofed host ${host}`);
+      assert.equal(asJson.agent_auth.register_uri, 'https://worldmonitor.app/oauth/register');
+    }
+
+    // Legit subdomain still self-describes.
+    const variant = await as(new Request('https://tech.worldmonitor.app/.well-known/oauth-authorization-server', { headers: { host: 'tech.worldmonitor.app' } }));
+    assert.equal((await variant.json()).issuer, 'https://tech.worldmonitor.app');
+
+    // Method guard: OPTIONS → 204 preflight, other verbs → 405 + Allow, GET → 200.
+    for (const handler of [prm, as]) {
+      const opt = await handler(new Request('https://worldmonitor.app/x', { method: 'OPTIONS', headers: { host: 'worldmonitor.app' } }));
+      assert.equal(opt.status, 204, 'OPTIONS is a CORS preflight');
+      assert.equal(opt.headers.get('access-control-allow-methods'), 'GET, HEAD, OPTIONS');
+
+      const post = await handler(new Request('https://worldmonitor.app/x', { method: 'POST', headers: { host: 'worldmonitor.app' } }));
+      assert.equal(post.status, 405, 'non-GET/HEAD is rejected');
+      assert.equal(post.headers.get('allow'), 'GET, HEAD, OPTIONS');
+
+      const get = await handler(new Request('https://worldmonitor.app/x', { headers: { host: 'worldmonitor.app' } }));
+      assert.equal(get.status, 200, 'GET is served');
+    }
+  });
+
+  it('vercel.json rewrites /.well-known/oauth-authorization-server to the edge fn and the static file is gone', () => {
+    const rewrite = vercelConfig.rewrites.find(
+      (r) => r.source === '/.well-known/oauth-authorization-server'
+    );
+    assert.ok(rewrite, 'expected a rewrite for /.well-known/oauth-authorization-server');
+    assert.equal(rewrite.destination, '/api/oauth-authorization-server');
+    // The static file MUST be deleted — Vercel serves real files before
+    // rewrites, so a leftover static doc would shadow the dynamic handler.
+    assert.ok(
+      !existsSync(resolve(__dirname, '../public/.well-known/oauth-authorization-server')),
+      'static public/.well-known/oauth-authorization-server must be removed so the edge fn is not shadowed'
+    );
+  });
+});
+
+// Agent readiness: a WorkOS-spec /auth.md walkthrough that agents can fetch to
+// learn the registration flow, cross-linked from the AS metadata agent_auth.skill.
+describe('agent readiness: auth.md walkthrough', () => {
+  const authMd = readFileSync(resolve(__dirname, '../public/auth.md'), 'utf-8');
+
+  it('publishes /auth.md with the WorkOS-prescribed sections', () => {
+    for (const heading of ['Discover', 'Pick a method', 'Register', 'Claim', 'Use the credential', 'Errors', 'Revocation']) {
+      assert.match(
+        authMd,
+        new RegExp(`^##\\s+${escapeRegExp(heading)}\\s*$`, 'm'),
+        `auth.md must have a "## ${heading}" section`
+      );
+    }
+  });
+
+  it('references the auth.md spec and carries the spec anchor keywords', () => {
+    assert.ok(authMd.includes('https://workos.com/auth-md'), 'auth.md must reference the WorkOS spec');
+    for (const keyword of ['agent_auth', 'register_uri', 'identity_assertion', 'id-jag', 'WWW-Authenticate']) {
+      assert.ok(authMd.includes(keyword), `auth.md must mention spec keyword: ${keyword}`);
+    }
+  });
+
+  it('advertises a register endpoint that resolves (matches the agent_auth register_uri path)', () => {
+    assert.match(
+      authMd,
+      /https:\/\/(?:api\.)?worldmonitor\.app\/oauth\/register/,
+      'auth.md must document the reachable /oauth/register endpoint so the discovery chain is not stale'
+    );
+  });
+
+  it('serves /auth.md as markdown and keeps it off the SPA catch-all', () => {
+    assert.equal(getHeaderValueForSource('/auth.md', 'Content-Type'), 'text/markdown; charset=utf-8');
+    assert.equal(getHeaderValueForSource('/auth.md', 'Access-Control-Allow-Origin'), '*');
+    // Excluded from the SPA catch-all rewrite + cache header (like openapi.json)
+    // so the real file is served instead of the dashboard HTML fallback.
+    const catchAll = vercelConfig.rewrites.find((r) =>
+      r.destination === DASHBOARD_HTML_DESTINATION && r.source.startsWith('/((?!')
+    );
+    assert.ok(catchAll.source.includes('|auth\\.md|'), 'SPA catch-all rewrite must exclude /auth.md');
+    assert.ok(SPA_HTML_CACHE_SOURCE.includes('|auth\\.md|'), 'HTML cache catch-all must exclude /auth.md');
   });
 });
 
