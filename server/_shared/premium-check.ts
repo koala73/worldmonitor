@@ -1,5 +1,7 @@
 // @ts-expect-error — JS module, no declaration file
 import { validateApiKey } from '../../api/_api-key.js';
+// @ts-expect-error — JS module, no declaration file
+import { timingSafeIncludes } from '../../api/_crypto.js';
 import { validateBearerToken } from '../auth-session';
 import { getEntitlements } from './entitlement-check';
 import {
@@ -74,7 +76,7 @@ export async function isCallerPremium(request: Request): Promise<boolean> {
   if (wmKey) {
     const validKeys = (process.env.WORLDMONITOR_VALID_KEYS ?? '')
       .split(',').map((k) => k.trim()).filter(Boolean);
-    if (validKeys.length > 0 && validKeys.includes(wmKey)) return true;
+    if (await timingSafeIncludes(wmKey, validKeys)) return true;
 
     // Check user-owned API keys (wm_ prefix) via Convex lookup.
     // Key existence alone is not sufficient — verify the owner's entitlement.

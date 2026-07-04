@@ -183,11 +183,10 @@ interface EndpointRatePolicy {
 // using checkEndpointRateLimit / hasEndpointRatePolicy below — the export is
 // for tooling, not new runtime callers.
 export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
-  // LLM-backed article summarization can trigger provider spend on cache
-  // misses, so it must not inherit the global fail-open fallback when Redis is
-  // unavailable. Keep this lower than general read traffic until #4675 makes a
-  // product-level entitlement decision.
-  '/api/news/v1/summarize-article': { limit: 60, window: '60 s' },
+  // LLM article summarization is Pro-gated, but still needs a scoped,
+  // fail-closed budget so Redis degradation cannot silently lift the
+  // per-endpoint spend control.
+  '/api/news/v1/summarize-article': { limit: 30, window: '60 s' },
   '/api/news/v1/summarize-article-cache': { limit: 3000, window: '60 s' },
   '/api/intelligence/v1/classify-event': { limit: 600, window: '60 s' },
   // LLM-backed situational deduction (imports callLlmReasoning) can drive

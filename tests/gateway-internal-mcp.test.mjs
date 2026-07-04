@@ -19,6 +19,7 @@
 
 import { strict as assert } from 'node:assert';
 import { describe, it, beforeEach, afterEach } from 'node:test';
+import { readFile } from 'node:fs/promises';
 
 import { createDomainGateway } from '../server/gateway.ts';
 import {
@@ -896,6 +897,47 @@ describe('gateway internal-MCP — header injection defense', () => {
     });
     const result = await isCallerPremium(req);
     assert.equal(result, false, 'guessed-constant marker rejected by nonce check');
+  });
+
+  it('isCallerPremium enterprise key path accepts exact keys and rejects length mismatches', async () => {
+    process.env.WORLDMONITOR_VALID_KEYS = 'enterprise-short,enterprise-key-with-a-distinct-length';
+
+    const exact = new Request('https://api.worldmonitor.app/api/mcp-proxy', {
+      method: 'GET',
+      headers: { 'X-WorldMonitor-Key': 'enterprise-key-with-a-distinct-length' },
+    });
+    assert.equal(await isCallerPremium(exact), true);
+
+    const prefixOnly = new Request('https://api.worldmonitor.app/api/mcp-proxy', {
+      method: 'GET',
+      headers: { 'X-WorldMonitor-Key': 'enterprise-key-with-a-distinct' },
+    });
+    assert.equal(await isCallerPremium(prefixOnly), false);
+
+    const longerMismatch = new Request('https://api.worldmonitor.app/api/mcp-proxy', {
+      method: 'GET',
+      headers: { 'X-WorldMonitor-Key': 'enterprise-short-extra' },
+    });
+    assert.equal(await isCallerPremium(longerMismatch), false);
+  });
+
+  it('premium-check enterprise allowlist uses the timing-safe helper', async () => {
+    const source = await readFile(new URL('../server/_shared/premium-check.ts', import.meta.url), 'utf8');
+    assert.match(
+      source,
+      /import\s*\{[^}]*\btimingSafeIncludes\b[^}]*\}\s*from\s*['"]\.\.\/\.\.\/api\/_crypto\.js['"]/,
+      'premium-check must import the shared timingSafeIncludes helper',
+    );
+    assert.match(
+      source,
+      /await\s+timingSafeIncludes\s*\(\s*wmKey\s*,\s*validKeys\s*\)/,
+      'premium-check must validate enterprise keys with timingSafeIncludes',
+    );
+    assert.doesNotMatch(
+      source,
+      /validKeys\.includes\s*\(\s*wmKey\s*\)/,
+      'premium-check must not use Array.includes for enterprise key auth',
+    );
   });
 
   it('present-but-invalid HMAC + valid wm_ key: invalid path fails closed (does not chain to legacy)', async () => {

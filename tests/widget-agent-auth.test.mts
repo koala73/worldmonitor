@@ -166,4 +166,41 @@ describe('widget-agent unified tester key auth', () => {
     const body = await res.json() as { error: string };
     assert.equal(body.error, 'Forbidden');
   });
+
+  it('rejects prefix and length mismatches for browser and legacy tester keys', async () => {
+    const browserPrefix = await handler(new Request('https://www.worldmonitor.app/api/widget-agent', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://www.worldmonitor.app',
+        'Content-Type': 'application/json',
+        'X-WorldMonitor-Key': 'browser-test',
+      },
+      body: JSON.stringify({ prompt: 'Build a widget', mode: 'create', tier: 'pro' }),
+    }));
+    assert.equal(browserPrefix.status, 403);
+
+    const proLonger = await handler(new Request('https://www.worldmonitor.app/api/widget-agent', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://www.worldmonitor.app',
+        'Content-Type': 'application/json',
+        'X-Pro-Key': 'server-pro-key-extra',
+      },
+      body: JSON.stringify({ prompt: 'Build a widget', mode: 'create', tier: 'pro' }),
+    }));
+    assert.equal(proLonger.status, 403);
+
+    const widgetLonger = await handler(new Request('https://www.worldmonitor.app/api/widget-agent', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://www.worldmonitor.app',
+        'Content-Type': 'application/json',
+        'X-Widget-Key': 'server-widget-key-extra',
+      },
+      body: JSON.stringify({ prompt: 'Build a widget', mode: 'create', tier: 'basic' }),
+    }));
+    assert.equal(widgetLonger.status, 403);
+
+    assert.equal(fetchMock.mock.calls.length, 0);
+  });
 });
