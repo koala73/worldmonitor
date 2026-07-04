@@ -27,7 +27,7 @@
  */
 export function mcpErrorFingerprint(step: string, toolName: string, err: unknown): string[] {
   const message = err instanceof Error ? err.message : String(err);
-  const siblingHttp = message.match(/^([A-Za-z0-9-]+) HTTP (\d{3})\b/);
+  const siblingHttp = message.match(/^([A-Za-z0-9_-]+) HTTP (\d{3})\b/);
   const signature = siblingHttp
     ? `${siblingHttp[1]}:${siblingHttp[2]}`
     : err instanceof Error

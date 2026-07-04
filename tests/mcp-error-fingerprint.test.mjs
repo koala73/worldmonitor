@@ -45,6 +45,13 @@ describe('mcpErrorFingerprint', () => {
     assert.notDeepEqual(a, b);
   });
 
+  it('keeps underscore sibling endpoints on the HTTP grouping path', () => {
+    assert.deepEqual(
+      mcpErrorFingerprint('tool-execution', 'get_world_brief', new Error('feed_digest HTTP 404')),
+      ['mcp-tool-execution', 'get_world_brief', 'feed_digest:404'],
+    );
+  });
+
   it('keys non-HTTP failures on the stable error name', () => {
     const timeout = new DOMException('The operation timed out', 'TimeoutError');
     const abort = new DOMException('The operation was aborted', 'AbortError');
