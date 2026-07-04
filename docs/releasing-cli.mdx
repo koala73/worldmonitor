@@ -38,6 +38,10 @@ Use the manual `workflow_dispatch` trigger with `dry_run: true` when you want to
 
 Use `dry_run: false` only when you intentionally want the manual workflow path to publish. Tag-triggered releases remain the normal path because the tag name is the release contract.
 
+<Warning>
+`dry_run: false` skips the version-match guard. That check is gated to tag pushes (`if: startsWith(github.ref, 'refs/tags/cli-v')`), so a manual `workflow_dispatch` publish runs **without** verifying `cli/package.json` against any tag — it publishes whatever version the package currently declares. Prefer the tag-triggered path above, which enforces the match; use manual `dry_run: false` only as a deliberate escape hatch after confirming the version by hand.
+</Warning>
+
 ## Failure Checklist
 
 | Symptom | Likely cause | Fix |
