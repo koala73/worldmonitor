@@ -76,7 +76,7 @@ GET /api/v2/shipping/route-intelligence?fromIso2=AE&toIso2=NL&cargoType=tanker&h
 
 ### `POST /api/v2/shipping/webhooks`
 
-Registers a webhook for chokepoint disruption alerts. Returns `201 Created`.
+Registers a webhook for chokepoint disruption alerts. Returns `200 OK`.
 
 **Request**:
 ```json
@@ -89,9 +89,9 @@ Registers a webhook for chokepoint disruption alerts. Returns `201 Created`.
 
 - `callbackUrl` — required, HTTPS only, must not resolve to a private/loopback address (SSRF guard at registration).
 - `chokepointIds` — optional. Omitting or passing an empty array subscribes to **all** registered chokepoints. Unknown IDs return `400`.
-- `alertThreshold` — numeric 0-100 (default `50`). Values outside that range return `400 "alertThreshold must be a number between 0 and 100"`.
+- `alertThreshold` — numeric 0-100 (default `50`). Values outside that range return a `400` validation response with description `alertThreshold must be between 0 and 100`.
 
-**Response (`201`)**:
+**Response (`200`)**:
 ```json
 {
   "subscriberId": "wh_a1b2c3d4e5f6a7b8c9d0e1f2",
