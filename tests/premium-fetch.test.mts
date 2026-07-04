@@ -202,6 +202,20 @@ describe('premiumFetch', () => {
     assert.equal(sentHeaders().get('X-WorldMonitor-Key'), null);
   });
 
+  it('forcePremium attaches Clerk JWT on a non-premium path without forwarding the option', async () => {
+    setup({ testerKey: '', clerkToken: 'forced-clerk-token' });
+
+    await premiumFetch(PUBLIC_TARGET, { forcePremium: true });
+
+    assert.equal(fetchMock.mock.calls.length, 1);
+    assert.equal(sentHeaders().get('Authorization'), 'Bearer forced-clerk-token');
+    assert.equal(
+      'forcePremium' in ((fetchMock.mock.calls[0].arguments[1] as RequestInit | undefined) ?? {}),
+      false,
+      'forcePremium is a premiumFetch-only control and must not be forwarded to native fetch',
+    );
+  });
+
   it('public insider transactions path: Clerk JWT NOT attached', async () => {
     setup({ testerKey: '', clerkToken: 'clerk-token-should-be-skipped' });
     await premiumFetch(PUBLIC_INSIDER_TRANSACTIONS_TARGET);

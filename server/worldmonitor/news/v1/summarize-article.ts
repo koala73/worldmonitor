@@ -41,6 +41,7 @@ export async function summarizeArticle(
   const isPremium = await isCallerPremium(ctx.request);
   const { provider, mode = 'brief', geoContext = '', variant = 'full', lang = 'en' } = req;
   const systemAppend = isPremium && typeof req.systemAppend === 'string' ? req.systemAppend : '';
+  const requiresPremium = mode !== 'translate';
 
   const MAX_HEADLINES = 10;
   const MAX_HEADLINE_LEN = 500;
@@ -71,6 +72,20 @@ export async function summarizeArticle(
     const b = rawBodies[i];
     return typeof b === 'string' ? sanitizeForPrompt(b.slice(0, MAX_BODY_LEN)) : '';
   });
+
+  if (requiresPremium && !isPremium) {
+    return {
+      summary: '',
+      model: '',
+      provider: provider,
+      tokens: 0,
+      fallback: true,
+      error: 'Pro subscription required',
+      errorType: 'AuthError',
+      status: 'SUMMARIZE_STATUS_ERROR',
+      statusDetail: 'Pro subscription required',
+    };
+  }
 
   // Provider credential check
   const skipReasons: Record<string, string> = {

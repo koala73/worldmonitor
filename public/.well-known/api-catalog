@@ -23,6 +23,10 @@
         {
           "href": "https://www.worldmonitor.app/openapi.yaml",
           "type": "application/vnd.oai.openapi"
+        },
+        {
+          "href": "https://www.worldmonitor.app/openapi.json",
+          "type": "application/json"
         }
       ],
       "service-doc": [

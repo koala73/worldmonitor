@@ -14,6 +14,8 @@ import { getCorsHeaders, isDisallowedOrigin, isAllowedOrigin } from './cors';
 // @ts-expect-error — JS module, no declaration file
 import { USER_API_KEY_GATEWAY_VALIDATION_ERROR, validateApiKey } from '../api/_api-key.js';
 // @ts-expect-error — JS module, no declaration file
+import { timingSafeEqualSecret } from '../api/_crypto.js';
+// @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../api/_sentry-edge.js';
 import { mapErrorToResponse } from './error-mapper';
 import { checkRateLimit, checkEndpointRateLimit, hasEndpointRatePolicy } from './_shared/rate-limit';
@@ -608,7 +610,7 @@ export function createDomainGateway(
     const rawWidgetKey = request.headers.get('x-widget-key') ?? null;
     const widgetAgentKey = process.env.WIDGET_AGENT_KEY ?? '';
     const validatedWidgetKey =
-      rawWidgetKey && widgetAgentKey && rawWidgetKey === widgetAgentKey ? rawWidgetKey : null;
+      await timingSafeEqualSecret(rawWidgetKey, widgetAgentKey) ? rawWidgetKey : null;
     const usage: UsageIdentityInput = {
       sessionUserId: null,
       isUserApiKey: false,
