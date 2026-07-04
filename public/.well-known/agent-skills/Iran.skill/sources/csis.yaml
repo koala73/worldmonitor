@@ -1,0 +1,46 @@
+source: "Center for Strategic and International Studies (CSIS)"
+type: "institution"
+last_verified: "2026-04-14"
+lean: |
+  跨党派但整体偏鹰派传统。董事会包含国防工业高管和前 Pentagon 官员。
+  资金来源混合：财团、国防承包商、私人捐赠。
+  伊朗政策分析倾向强硬立场，但研究质量和透明度高。
+
+core_framework: |
+  CSIS 采用"威胁评估 + 能力建模"框架分析伊朗。强调伊朗军事扩张、代理战争网络、核计划的长期威胁。
+  输出特点：政策简报多于学术报告，面向决策者，论据充分但结论预设性强。
+  对伊朗地缘政治扩张主义的评价更多基于安全威胁框架而非历史背景。
+
+key_concepts:
+  - Iranian regional expansionism thesis
+  - Proxy warfare network mapping (Houthis, Hezbollah, PMUs, etc.)
+  - Nuclear timeline and breakout scenarios
+  - Gulf state security dilemmas
+  - US military posture and deterrence gaps
+  - Economic pressure vs. behavior change
+
+blind_spots: |
+  董事会构成导致国防工业利益内化：扩张性威胁评估通常支撑更大国防预算论证。
+  项目差异：中东安全项目（鹰派倾向）vs. 中国战略项目（相对平衡）的逻辑框架差异明显。
+  缺乏伊朗国内经济困境和改革派声音的实时监测。
+  2026-02-28 之前关于伊朗内部分裂程度的评估可能已过时。
+
+best_for:
+  - 美国政策决策者的思路理解
+  - 伊朗代理网络结构和能力
+  - 中东安全竞争的大国视角
+  - 核政策和协议框架分析
+
+not_for:
+  - 伊朗经济韧性或非正式市场评估
+  - 伊朗国内改革力量和社会流动
+  - 区域冲突解决路径（偏向安全竞争而非对话）
+
+signal_vs_noise: |
+  信号：关于代理网络的细节部队结构、伊朗核项目的技术进展。
+  噪声：威胁评估中的"绝对值"转化为"相对价值"时产生的夸大。
+  资金驱动的仪式：关键词"威胁升级""扩张主义"频率高，用于政策正当化而非描述性分析。
+
+primary_urls:
+  - https://www.csis.org/programs/latest-analysis-war-iran
+  - https://www.csis.org/topics/iran

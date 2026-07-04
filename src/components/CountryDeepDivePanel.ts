@@ -2332,6 +2332,57 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (!this.briefBody || data.code !== this.currentCode) return;
     this.briefBody.replaceChildren();
 
+    if (data.code === 'IR') {
+      const skillCard = this.el('div', 'cdp-skill-link-card');
+      skillCard.style.cssText = `
+        background: rgba(142, 68, 173, 0.1);
+        border: 1px solid rgba(142, 68, 173, 0.3);
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        transition: all 0.2s ease;
+      `;
+      skillCard.addEventListener('mouseenter', () => {
+        skillCard.style.borderColor = 'rgba(142, 68, 173, 0.6)';
+        skillCard.style.background = 'rgba(142, 68, 173, 0.15)';
+      });
+      skillCard.addEventListener('mouseleave', () => {
+        skillCard.style.borderColor = 'rgba(142, 68, 173, 0.3)';
+        skillCard.style.background = 'rgba(142, 68, 173, 0.1)';
+      });
+
+      const icon = this.el('span');
+      icon.textContent = '🔮';
+      icon.style.fontSize = '24px';
+
+      const content = this.el('div');
+      content.style.flex = '1';
+
+      const title = this.el('div', '', 'Iran.skill Geopolitical Analysis OS');
+      title.style.fontWeight = 'bold';
+      title.style.fontSize = '12px';
+      title.style.color = '#e0aaff';
+
+      const desc = this.el('div', '', 'Structured analysis complement: 2,500 years of history, analyst models, and decision-maker predictions.');
+      desc.style.fontSize = '10px';
+      desc.style.color = 'var(--text-dim)';
+      desc.style.marginTop = '2px';
+
+      content.append(title, desc);
+
+      const link = this.el('a', 'cdp-market-link', 'View Context');
+      link.setAttribute('href', '/.well-known/agent-skills/Iran.skill/SKILL.md');
+      link.setAttribute('target', '_blank');
+      link.setAttribute('rel', 'noopener');
+      link.style.whiteSpace = 'nowrap';
+
+      skillCard.append(icon, content, link);
+      this.briefBody.append(skillCard);
+    }
+
     if (data.error || data.skipped || !data.brief) {
       this.currentBrief = null;
       this.currentBriefGeneratedAt = null;

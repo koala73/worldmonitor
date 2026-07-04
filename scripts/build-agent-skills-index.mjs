@@ -54,7 +54,7 @@ function collectSkills() {
       throw new Error(`Expected ${skillPath} to exist and be a file`);
     }
     const bytes = readFileSync(skillPath);
-    const md = bytes.toString('utf-8');
+    const md = bytes.toString('utf-8').replace(/\r\n/g, '\n');
     const fm = parseFrontmatter(md);
     if (!fm.description) {
       throw new Error(`${skillPath} missing "description" in frontmatter`);
@@ -101,6 +101,6 @@ function main() {
   process.stdout.write(`Wrote ${INDEX_PATH}\n`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   main();
 }

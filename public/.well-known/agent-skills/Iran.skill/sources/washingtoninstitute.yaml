@@ -1,0 +1,48 @@
+source: "Washington Institute for Near East Policy (WINEP)"
+type: "institution"
+last_verified: "2026-04-14"
+lean: |
+  明确的美国和以色列战略利益融合。资金来源：主要来自 AIPAC 相关捐赠人、以色列政府机构、美国国防承包商。
+  WINEP 成立于 1985 年，由 AIPAC 智库体系一部分，但在法律上独立。
+  伊朗分析框架明确倾向于以色列安全威胁评估，对伊朗核计划和导弹项目采取最大化风险解读。
+
+core_framework: |
+  WINEP 对伊朗的分析围绕"伊朗核野心和导弹能力对以色列生存的威胁"这一核心框架。
+  输出特点：政策建议直指美国-以色列联合遏制战略，伊朗经济政策分析多从"制裁应强化"的视角出发。
+  将伊朗代理网络（Hezbollah 等）视为以色列直接威胁，而非区域权力竞争的产物。
+
+key_concepts:
+  - Iran nuclear threat threshold
+  - Israeli security doctrine and deterrence
+  - Hezbollah as Iranian proxy and Israeli existential threat
+  - Missile programs and precision-guided weapon proliferation
+  - Arab-Israeli strategic consensus against Iran
+  - Nuclear dealmaking failure (JCPOA retrospective)
+
+blind_spots: |
+  资金来源完全透明但方向明确：所有分析都必须通过"以色列安全威胁"过滤。
+  对伊朗国内改革力量、经济理性、国际贸易动因的分析深度严重不足。
+  忽视中国对伊朗能源和经济的战略重要性（约 20% 的伊朗出口流向中国）。
+  关于伊朗导弹项目防御用途的解读被压制，总是作为进攻性威胁呈现。
+  2026-02-28 之前关于以色列-伊朗军事平衡的评估现已失效。
+
+best_for:
+  - 以色列战略关切和安全威胁评估
+  - 伊朗核项目的技术细节和时间线
+  - 美国-以色列军事协调的政策框架
+  - 中东稳定性和大国竞争视角
+
+not_for:
+  - 伊朗国内政治和经济改革评估
+  - 伊朗与阿拉伯国家的关系（被过度简化为对立）
+  - 中国和俄罗斯在伊朗的经济角色
+  - 冲突化解和外交路径
+
+signal_vs_noise: |
+  信号：伊朗导弹技术的具体参数、核燃料循环的技术细节。
+  噪声：所有信号都被强制性地转化为"以色列威胁"二元框架。
+  资金驱动的仪式：关键词"生存威胁""不可接受的核能力"始终出现在政策建议前，确保逻辑方向。
+
+primary_urls:
+  - https://www.washingtoninstitute.org/iran
+  - https://www.washingtoninstitute.org/experts/david-makovsky

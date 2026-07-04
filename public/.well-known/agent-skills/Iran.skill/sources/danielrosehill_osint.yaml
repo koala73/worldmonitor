@@ -1,0 +1,49 @@
+source: "danielrosehill/Iran-Israel-War-2026-OSINT-Data (GitHub)"
+type: "data"
+last_verified: "2026-04-14"
+lean: |
+  开源项目，个人 OSINT 数据汇总。作者身份和背景需自行调查。
+  数据聚合来源：公开军事数据库、新闻报道、社交媒体、官方防务公告。
+  本 YAML 不评估数据准确性——用户需自行验证每个数据点的源头和可靠性。
+
+core_framework: |
+  采用 Neo4j 图数据库模式表示战争参与者、武器系统、目标之间的关系。
+  核心聚焦伊朗和以色列的军事资产清单、导弹系统、防御网络，以及已知的作战行动。
+  提供事件时间线、损失评估、武器库存跟踪的结构化数据模型。
+  包含伊朗代理网络（Houthis, Hezbollah, PMUs 等）的人员和资产节点。
+
+key_concepts:
+  - Military asset graph database (weapons, platforms, personnel, locations)
+  - Missile and drone system specifications and capabilities
+  - Defensive network topology (air defense, early warning systems)
+  - Target prioritization and vulnerability mapping
+  - Casualty and equipment loss estimation
+  - Supply chain and logistics network analysis
+  - Proxy force structure and command relationships
+
+blind_spots: |
+  作者的军事专业背景和数据获取渠道不透明。许多技术规格来自假设而非官方确认。
+  关于伊朗军事能力的数据往往来自以色列和美国声称，缺乏独立验证。
+  对伊朗防御系统的逆向工程分析可能过度简化了电子战能力和应对策略。
+  图模型中的关系权重（重要性）是主观设置的，可能不反映实际战争中的优先级。
+  2026-02-28 之前的数据现已失效，损失评估需要用户实时更新。
+
+best_for:
+  - 开源 OSINT 数据模型的架构参考
+  - 已知军事资产的结构化查询
+  - 多源数据聚合的方法论学习
+  - 网络关系可视化的案例
+
+not_for:
+  - 当前战术军事规划（精度不足）
+  - 伊朗防御有效性的评估（偏向技术规格而非实际表现）
+  - 秘密或分类情报（仅包含公开数据）
+  - 决策支持（需要独立验证）
+
+signal_vs_noise: |
+  信号：关于已知军事平台、官方宣布的能力参数、时间线中可交叉验证的历史事件。
+  噪声：图模型中的因果关系推论、损失数字的准确性（通常基于估计而非确认）、伊朗防御有效性的假设。
+  关键警告：许多"伊朗军事能力"数据实际来自对手的声称，而非伊朗官方或独立评估。
+
+primary_urls:
+  - https://github.com/danielrosehill/Iran-Israel-War-2026-OSINT-Data

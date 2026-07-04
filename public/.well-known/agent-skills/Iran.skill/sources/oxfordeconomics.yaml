@@ -1,0 +1,49 @@
+source: "Oxford Economics"
+type: "institution"
+last_verified: "2026-04-14"
+lean: |
+  商业经济咨询公司，主要收入来自企业和投资机构订阅。
+  商业中立立场：客户遍布多国和多行业，没有明确政治资助。
+  伊朗分析聚焦宏观经济影响、增长预测、贸易流量、行业前景。
+
+core_framework: |
+  Oxford Economics 采用"宏观经济建模 + 行业影响评估"框架分析伊朗冲突的经济后果。
+  输出特点：季度和年度经济预报、行业特定风险、全球商业环境扫描报告。
+  包含对伊朗国内经济增长、失业、通胀的预测建模。
+
+key_concepts:
+  - Macroeconomic impact modeling (GDP, inflation, currency)
+  - Industry-specific risk and opportunity assessment
+  - Global trade flow disruption
+  - FDI and capital flight
+  - Sectoral employment and wage impacts
+  - Commodity market exposure (oil, metals, food)
+  - International value chain disruption
+
+blind_spots: |
+  伊朗本身的经济数据透明度有限，许多预测基于不完整的信息。
+  订阅模式驱动：需要维持足够的"需要咨询"的不确定性，可能高估经济风险。
+  对伊朗非正式经济和地下市场的评估有限（可能占 GDP 15-30%）。
+  关于中国对伊朗的经济支持程度的评估可能滞后（中国实际支持力度变化快）。
+  2026-02-28 之前的增长预测现已失效。
+
+best_for:
+  - 伊朗冲突对全球经济的宏观影响
+  - 行业层面的成本-收益分析
+  - 国际投资者的经济风险评估
+  - 全球供应链影响评估
+  - 能源和商品市场波动预测
+
+not_for:
+  - 伊朗政治或军事分析
+  - 伊朗国内经济实际状况（数据不足）
+  - 长期地缘政治战略
+
+signal_vs_noise: |
+  信号：关于已知贸易流量、全球能源市场结构、国际金融市场反应的定量分析。
+  噪声：伊朗经济预测（基于不完整数据的模型推测）、非正式市场适应能力的低估。
+  商业驱动：倾向于强调不确定性以维持咨询需求，可能夸大经济中断的程度。
+
+primary_urls:
+  - https://www.oxfordeconomics.com/iran-conflict
+  - https://www.oxfordeconomics.com/forecasts/global-economic-outlook

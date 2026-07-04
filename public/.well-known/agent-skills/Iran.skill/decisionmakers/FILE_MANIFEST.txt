@@ -1,0 +1,194 @@
+================================================================================
+Iran.skill Decision Makers Model - File Manifest
+Generated: 2026-04-14
+================================================================================
+
+PROJECT STRUCTURE
+─────────────────────────────────────────────────────────────────────────────
+
+Total: 13 files (1 README + 1 analysis doc + 11 decision maker models)
+Total Size: ~104 KB
+
+CORE REFERENCE
+───────────────────────────────────────────────────────────────────────────
+
+1. README.md (5.4 KB)
+   - Usage guide for the decision maker models
+   - Key field explanations (known_triggers, red_lines, etc.)
+   - Evidence quality scale
+   - File index with priority levels
+   - Monitoring scenarios and best practices
+
+2. rubio_witkoff_tension.md (7.4 KB) [SPECIAL ANALYSIS]
+   - In-depth examination of US internal policy divergence
+   - Rubio's "complete denuclearization" vs Witkoff's "JCPOA Plus" 
+   - Impact on Iran's judgment of true US bottom lines
+   - Observable signal indicators (real-time monitoring)
+   - Historical comparison with Obama-era Kerry vs Mattis tension
+
+================================================================================
+AMERICAN DECISION MAKERS (P0-P2)
+================================================================================
+
+3. trump.yaml (5.6 KB) [P0 - PRIORITY]
+   - Deal-maker psychology, not geopolitics
+   - 60% bluff rate in threats
+   - 2026-04-13 sea blockade as hard evidence (★★★)
+   - Known bluffs: 3 specific examples with gap analysis
+   - Negotiation goal: "enough victory to declare victory"
+
+4. witkoff.yaml (6.0 KB) [P1]
+   - Real estate background → deal-finder not strategist
+   - Oscillating position (restricted → zero-restricted → back)
+   - Trump special envoy authorization limit
+   - Role as intermediary without independent decision power
+   - Currently assessing Islamabad negotiation collapse (2026-04-12)
+
+5. vance.yaml (6.0 KB) [P2]
+   - Isolationist balance against war escalation
+   - Led Islamabad talks, evaluated Iran "lacks signing authority"
+   - Key signal: his public stance on "Iran's negotiation will"
+   - Internal cabinet tension with Rubio (Hawk) vs himself (Restraint)
+   - Watch frequency of "Iran has no peace intent" claims
+
+================================================================================
+IRANIAN DECISION MAKERS (P0-P1)
+================================================================================
+
+6. mojtaba_khamenei.yaml (8.5 KB) [P0 - HIGHEST UNCERTAINTY]
+   - ⚠️ DATA SCARCITY WARNING: 35 days in power, ~0.4% behavioral history
+   - Evidence quality: ★★☆ (maximum achievable)
+   - Power base: IRGC support, NOT religious legitimacy
+   - Survival-driven: needs to prove stronger than father
+   - Short-term compromise space MINIMAL (any retreat = weak successor)
+   - Key unknowns: 7 major information gaps requiring continuous monitoring
+   - Watch: Every public statement = rare first-hand data point
+
+7. araghchi.yaml (6.0 KB) [P1]
+   - Executor, not decision-maker
+   - Core question: Is "no" from Araghchi his stance or absence of authorization?
+   - Vance quote (2026-04-12): "they lack authority to sign" = KEY REFERENCE
+   - Authorization limit: Virtually none (must check every commitment with Mojtaba)
+   - Watch: Response delays indicate upward consultation
+
+8. irgc_command.yaml (8.7 KB) [P1]
+   - Collective decision body (not individual)
+   - Post-Khamenei: IRGC power relative position RISES
+   - Internal division: Hardliners vs Pragmatists (missile usage, negotiations)
+   - Watch for: Who truly controls missile launch authority?
+   - Economic pressure point: IRGC's corporate empire vulnerable to sanctions
+
+================================================================================
+CHINESE & RUSSIAN DECISION MAKERS (P1-P2)
+================================================================================
+
+9. xi_jinping.yaml (6.2 KB) [P1]
+   - Three competing interests: Energy security, anti-dollar narrative, Taiwan priority
+   - "Limited support" strategy (similar to Russia in Ukraine)
+   - Public-action gap large: "strategic partnership" ≠ actual aid delivery
+   - Watch: Belt & Road investment continuity / trade volume shifts
+   - Taiwan escalation = Iran deprioritization
+
+10. putin.yaml (6.0 KB) [P2]
+    - Opportunistic use of Iran crisis (oil price rise, US distraction)
+    - Actually lacks resources for material Iran support (Ukraine consuming it)
+    - 2026 Feb: NO substantive military aid delivered (100% gap)
+    - Watch: Bluff frequency indicator, indirect channel usage (Syria, Iraq)
+    - Economic constraint: Russia can't both sustain Ukraine war + Iran support
+
+================================================================================
+REGIONAL AXIS (P1-P2)
+================================================================================
+
+11. netanyahu.yaml (7.6 KB) [P1]
+    - Survival political actor (domestic constraints extreme)
+    - Next Israeli election: 2026 Q4 or 2027 Q1 → timing-dependent escalation
+    - Must maintain "hard against Iran" image for coalition politics
+    - Watch: Coalition stability + Trump personal relationship impact
+    - Trump military support signal = Netanyahu escalation likelihood
+
+12. mbs.yaml (7.5 KB) [P2]
+    - Two contradictory objectives: Iran weakened BUT region stable
+    - Vision 2030 economic goals constrain long war tolerance
+    - 2019 Aramco attack response: Quick pivot to US alignment (historical parallel)
+    - Watch: Aramco/energy asset vulnerability = trigger points
+    - Secret Iran channels (Iraq, Oman) remain active despite public hardline
+
+================================================================================
+PRIORITY MONITORING APPROACH
+================================================================================
+
+NEXT 7 DAYS (2026-04-14 to 2026-04-21):
+────────────────────────────────────────
+□ Mojtaba's response to Trump's sea blockade (2026-04-13)
+  → First real data point on his decision-making under pressure
+□ Rubio vs Witkoff public statement divergence tracking
+  → Determines which US faction is ascending
+□ IRGC signal check: Missile readiness level changes
+  → Indicates escalation/deescalation probability
+□ Vance's follow-up moves after Islamabad failure
+  → Does he push for new negotiation round or accept stalemate?
+
+NEXT 30 DAYS (2026-04-14 to 2026-05-14):
+─────────────────────────────────────────
+□ Araghchi's ability to return to talks + signs of authorization expansion
+□ Witkoff's Middle East travel frequency (>2x/week = negotiation heating)
+□ Xi/Putin statements about Iran: "support" words vs action delivery gap
+□ Netanyahu-Trump phone call impacts on Israeli military readiness
+□ MBS assessment of oil price stability under blockade conditions
+
+NEXT 90 DAYS (2026-04-14 to 2026-07-14):
+──────────────────────────────────────────
+□ IRGC internal messaging discipline: Can they align around single strategy?
+□ Mojtaba succession legitimacy: Faces any formal challenges?
+□ Witkoff's negotiation timeline: Is June target realistic?
+□ Israeli election calendar impact: Does campaign accelerate military escalation?
+□ Chinese investment flow: Actual money moving, not just promises?
+
+================================================================================
+EVIDENCE QUALITY SUMMARY
+================================================================================
+
+★★★ (High Confidence):
+- Trump: Public statements + recent sea blockade action
+- Netanyahu: Coalition politics clearly constrain behavior
+- Vance: Direct participation in 2026-04-12 Islamabad talks
+
+★★☆ (Medium Confidence):
+- Witkoff, Xi, Putin, MBS: Recent public positioning with behavioral interpretation
+- Araghchi: Behavior fits theorized constraints but limited direct observation
+- IRGC: Collective structure means multiple internal voices
+
+★☆☆ (Low-Medium Confidence):
+- Mojtaba: Minimal historical data, 35-day tenure
+- Putin's true capabilities: Ukraine drain vs Iran support capacity unclear
+
+================================================================================
+CRITICAL MONITORING TOOLS
+================================================================================
+
+1. Official Statements Tracking
+   - Trump: Truth Social, press briefings (realtime intent leakage)
+   - Mojtaba: IRGC TV, official spokesman (rare first-hand data)
+   - Vance: Public events, media interviews
+
+2. Action Signals
+   - Witkoff Middle East travel schedule
+   - IRGC military exercise announcements
+   - Araghchi negotiation response times (hours vs days = authorization width)
+
+3. Indirect Indicators
+   - Oil price fluctuations (reflects market assessment of escalation)
+   - Arab news media reporting (closer source for Gulf shifts)
+   - Israeli defense budget announcements
+   - Chinese tech transfer to Iran (subtle support signal)
+
+4. High-Risk Unknowns
+   - IRGC internal faction alignment
+   - Mojtaba's true authority over IRGC
+   - Secret Iran-Saudi channels activity level
+   - Trump's actual threshold for "enough victory"
+
+================================================================================
+This manifest will be updated as new decision point data arrives.
+Last confidence assessment: 2026-04-14 21:30 UTC

@@ -1,0 +1,147 @@
+name: "美伊关系关键决策节点"
+type: "historical_precedent_chain"
+last_updated: "2026-04-14"
+purpose: |
+  提取美伊关系中 7 个改变轨迹的决策节点，
+  每个节点记录：决策逻辑、替代方案、实际后果、当代映射。
+  功能：当分析当前美伊博弈时，快速检索历史先例。
+
+# ============================================================
+nodes:
+
+  - id: 1
+    event: "CIA/MI6 推翻摩萨台"
+    year: 1953
+    us_decision_logic: |
+      冷战框架：摩萨台可能倒向苏联（实际证据薄弱）。
+      英国石油利益：AIOC 失去控制权。
+      艾森豪威尔从杜鲁门的同情转向干预。
+    alternative_not_taken: "接受石油国有化，与摩萨台政府建立工作关系"
+    actual_consequence: |
+      短期：沙阿复辟，美国获得石油利益。
+      长期：25年独裁→1979极端化革命→45年敌对关系。
+      净效果：史上最昂贵的「成功」政变之一。
+    pattern_extracted: "短期战术胜利 → 长期战略灾难"
+    contemporary_mapping: |
+      2026 空战摧毁核设施 = 1953 模式的潜在重复：
+      短期「解决」核问题 → 长期强化伊朗的极端化和反美意志。
+      如果 skill 评估 C1 路径（核设施打击），必须标注 1953 教训。
+    skill_variable: "nuclear-calculus / escalation-ladder 9级"
+
+  - id: 2
+    event: "卡特允许沙阿入美就医 → 人质危机爆发"
+    year: 1979
+    us_decision_logic: |
+      人道主义考量 + 盟友义务 → 允许沙阿入境。
+      低估了伊朗学生/激进派的反应。
+    alternative_not_taken: "拒绝沙阿入境，或在第三国安排医疗"
+    actual_consequence: |
+      444 天人质危机 → 美伊关系彻底断裂 → 卡特连任失败。
+      霍梅尼利用危机消灭国内温和派 → 革命极端化。
+    pattern_extracted: "小决策触发大后果 + 美国低估对方国内政治动态"
+    contemporary_mapping: |
+      2026 如果美国在谈判中做出某个被伊朗解读为「侮辱」的举动
+      （如公开羞辱 Mojtaba / 援引政权更迭），
+      可能触发类似 1979 的极端化反应。
+      Trump 的 Twitter 发言是高风险触发点。
+    skill_variable: "Trump watch_for / Mojtaba red_lines"
+
+  - id: 3
+    event: "击落伊朗航空655客机"
+    year: 1988
+    us_decision_logic: |
+      波斯湾「Praying Mantis 行动」余波中。
+      文森斯号(USS Vincennes)舰长在压力下误判。
+      美国事后拒绝正式道歉（Reagan 的立场）。
+    alternative_not_taken: "正式道歉并赔偿"
+    actual_consequence: |
+      290 名平民死亡 → 伊朗集体记忆中的「美国不在乎伊朗人的命」。
+      美国最终在 ICJ 支付赔偿但从未正式道歉。
+      这一事件在伊朗国内教科书中被反复引用。
+    pattern_extracted: "美国低估「道歉缺失」的长期政治成本"
+    contemporary_mapping: |
+      2026 空战中的平民伤亡 → 如果美国不承认/不道歉 →
+      将成为伊朗未来 30 年反美叙事的新素材。
+      Skill 的 bias-check 叙事矩阵需要跟踪美方对平民伤亡的表态。
+    skill_variable: "bias-check 议题1（战争起因）/ Siyavush 殉道原型"
+
+  - id: 4
+    event: "伊朗-以色列-美国三方秘密交易（Iran-Contra）"
+    year: 1985-87
+    us_decision_logic: |
+      里根政府秘密向伊朗出售武器（换取黎巴嫩人质），
+      利润用于资助尼加拉瓜反政府武装。
+    alternative_not_taken: "通过正常外交渠道处理人质问题"
+    actual_consequence: |
+      暴露后重创美国信誉 → 证明美国的「不与伊朗交易」立场是虚伪的。
+      伊朗学到：美国的公开立场和私下行为经常矛盾。
+    pattern_extracted: "美国的双重标准会被对手永远记住并用作谈判筹码"
+    contemporary_mapping: |
+      当伊朗怀疑美国的谈判诚意时，Iran-Contra 是他们的参照：
+      「你们说一套做一套已经不是第一次了」。
+      Vaez 的「不信任是创伤后遗症」包含 Iran-Contra 层。
+    skill_variable: "Vaez 框架 / Parsi 框架"
+
+  - id: 5
+    event: "JCPOA 达成（奥巴马-鲁哈尼）"
+    year: 2015
+    us_decision_logic: |
+      外交优先 → 多边框架 → 限制浓缩换取制裁解除。
+      奥巴马赌注：给伊朗经济利益 → 强化温和派 → 长期行为改变。
+    alternative_not_taken: "继续施压/军事威胁路线"
+    actual_consequence: |
+      短期成功：伊朗浓缩从 20% 降到 3.67%，离心机削减 2/3。
+      但未解决：代理人网络 / 导弹计划 / 区域行为。
+      协议本身证明外交路线可行——如果能持续的话。
+    pattern_extracted: "外交能达成技术性协议，但无法改变对手的根本行为"
+    contemporary_mapping: |
+      2026 如果新协议只解决核浓缩而不解决代理人/导弹 →
+      JCPOA 模式会重复：短期冻结 + 长期问题不消失。
+      但 JCPOA 也证明了 A 路径是可能的——前提是双方都愿意「喝毒酒」。
+    skill_variable: "war-termination A 路径 / Witkoff negotiation_style"
+
+  - id: 6
+    event: "Trump 退出 JCPOA（「极限施压」开始）"
+    year: 2018
+    us_decision_logic: |
+      JCPOA「太软」→ 需要更全面的协议 → 先退出再施压。
+      Bolton/Pompeo 影响 → 真实目标可能是政权更迭而非新协议。
+    alternative_not_taken: "在 JCPOA 基础上追加谈判导弹/代理人问题"
+    actual_consequence: |
+      伊朗浓缩从 3.67% 逐步升至 60%。
+      温和派（鲁哈尼/扎里夫）政治空间被摧毁。
+      证实了伊朗最深的恐惧：美国签字的协议一文不值。
+      为 2026 的信任赤字直接负责。
+    pattern_extracted: "撕毁协议的成本 > 任何单边施压的收益"
+    contemporary_mapping: |
+      2026 任何新协议谈判中，伊朗的第一个问题就是：
+      「你们怎么保证不再撕毁？」
+      这个问题没有答案——因为美国宪法不允许总统做不可撤销的承诺。
+      这是当前谈判的结构性死锁之一。
+    skill_variable: "所有涉及信任/协议持久性的变量 / Malley 框架（信誉赤字）"
+
+  - id: 7
+    event: "2026 美以联合空袭伊朗"
+    year: 2026
+    us_decision_logic: |
+      Jacksonian 惩罚性远征 → 打击核设施 → 展示力量 → 回到谈判桌。
+      Trump: 「赢够了就宣布胜利」。
+    alternative_not_taken: "在 4/8 停火基础上继续谈判（而非 4/13 宣布封锁）"
+    actual_consequence: "（进行中——本节点是实时追踪对象）"
+    pattern_extracted: |
+      综合 1-6 所有教训：
+      - 军事胜利 ≠ 政治解决（1953/2003 教训）
+      - 撕毁协议的信誉损失极其长期（2018 教训）
+      - 施压不会让有民族主义/意识形态动机的政权屈服（越南/古巴/朝鲜教训）
+      - 选举周期会迫使 Trump 在 2026 Q3 前寻找退出（选举周期教训）
+      - 宣布的「胜利」和实际结果之间会有巨大落差（所有前例教训）
+    contemporary_mapping: "这是当前分析的核心场景——所有前 6 个节点都是它的背景信息"
+    skill_variable: "所有框架 + 所有 decisionmaker"
+
+# ============================================================
+meta:
+  evidence_quality: "★★★（大量解密档案、学术研究、多方验证）"
+  honest_limits:
+    - "历史节点的「替代方案」是反事实推理——无法验证"
+    - "每个节点的「教训」都有多种解读——本文件选取的是与 Iran.skill 最相关的解读"
+    - "美伊关系中也有正面时刻（如 2015 JCPOA），不应只看失败案例"
