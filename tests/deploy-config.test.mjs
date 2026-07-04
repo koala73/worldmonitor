@@ -1162,7 +1162,11 @@ describe('agent readiness: api-catalog + openapi build', () => {
     // through a JSON parser; YAML input trips them ("found but failed to
     // parse"). The JSON mirror is a second service-desc so those scanners
     // have a parseable spec. YAML stays at [0] (human-readable canonical).
-    const jsonDesc = apiCatalog.linkset[0]['service-desc'][1];
+    // Read from apiEntry (the api.worldmonitor.app context object), not
+    // linkset[0] — since #4691 added the RFC 9727 catalog anchor, linkset[0]
+    // is the catalog itself (item enumeration, no service-desc). The sibling
+    // /openapi.yaml assertion above already uses apiEntry for the same reason.
+    const jsonDesc = apiEntry['service-desc'][1];
     assert.ok(jsonDesc, 'api anchor must have a second service-desc entry (JSON mirror)');
     assert.ok(
       jsonDesc.href.endsWith('/openapi.json'),
