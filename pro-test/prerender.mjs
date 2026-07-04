@@ -51,6 +51,10 @@ const CRITICAL_CSS = [
   'main a[href*="welcome-hero"],main a[href*="moments"]{width:100%;justify-content:center;padding:.875rem 1.25rem;border-radius:.25rem;font:700 .875rem/1.25 var(--font-mono);letter-spacing:.025em;text-transform:uppercase}main a[href*="moments"]{background:transparent;color:#f3f4f6}',
   '@media (min-width:640px){nav>div{padding-inline:1.5rem}main>section:first-child{padding-top:8rem;padding-inline:1.5rem}main h1{font-size:3rem;line-height:1.05}main [class~="sm:flex-row"]{flex-direction:row}main [class~="sm:items-center"]{align-items:center}main [class~="sm:w-auto"]{width:auto}main [class~="sm:grid-cols-4"]{grid-template-columns:repeat(4,minmax(0,1fr))}main [class~="sm:max-w-3xl"]{max-width:48rem}main [class~="sm:max-w-none"]{max-width:none}main [class~="sm:px-4"]{padding-inline:1rem}main [class~="sm:px-6"]{padding-inline:1.5rem}main [class~="sm:px-8"]{padding-inline:2rem}main [class~="sm:tracking-wider"]{letter-spacing:.05em}main [class~="sm:block"]{display:block}}',
   '@media (min-width:768px){main h1{font-size:4.5rem}main p{font-size:1.125rem;line-height:1.75rem}main [class~="md:text-lg"]{font-size:1.125rem;line-height:1.75rem}nav [class~="md:flex"]{display:flex}}',
+  // The .js-gated #seo-prerender hide. welcome.html and index.html ALSO inline
+  // this exact rule in their <head> (before this critical CSS is injected) as a
+  // belt-and-suspenders guard, so the built output intentionally carries it
+  // twice — keep the two copies in sync if you ever change the hide technique.
   'html.js #seo-prerender{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden}'
 ].join('');
 
@@ -281,6 +285,11 @@ const WIRED_STORY_URL = 'https://www.wired.me/story/the-music-streaming-ceo-who-
 // text-to-markup ratio and gives vector retrieval clean structure; the FAQ pulls
 // the same en.welcome.faq strings the React <FAQ> and the head FAQPage JSON-LD
 // use, so schema and visible copy stay in lockstep.
+// The 1..9 range mirrors the three sibling surfaces that also hardcode nine
+// entries: the React <FAQ> (welcome/FAQ.tsx maps [1..9]) and the head FAQPage
+// JSON-LD in welcome.html. If en.welcome.faq gains a q10/a10, extend the range
+// HERE and in those two places together, or the FAQ will silently diverge
+// (the "undefined" guard below only catches MISSING keys, not omitted extras).
 const welcomeFaqEntries = [1, 2, 3, 4, 5, 6, 7, 8, 9]
   .map((n) => `    <dt>${en.welcome.faq['q' + n]}</dt><dd>${en.welcome.faq['a' + n]}</dd>`)
   .join('\n');
