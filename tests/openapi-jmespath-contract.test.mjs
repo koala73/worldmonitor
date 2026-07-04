@@ -31,10 +31,28 @@ function findJmespathParam(op) {
   return (op.parameters ?? []).filter((p) => p && p.name === 'jmespath');
 }
 
+function schemaIncludesRef(schema, ref) {
+  if (!schema || typeof schema !== 'object') return false;
+  if (schema.$ref === ref) return true;
+  return ['oneOf', 'anyOf', 'allOf'].some((key) =>
+    Array.isArray(schema[key]) && schema[key].some((item) => schemaIncludesRef(item, ref)));
+}
+
+function assertJmespathErrorSchema(spec, label) {
+  const schema = spec.components?.schemas?.JmespathProjectionError;
+  assert.ok(schema, `${label}: must define JmespathProjectionError`);
+  assert.equal(schema.type, 'object', `${label}: JmespathProjectionError must be an object`);
+  assert.equal(schema.properties?._jmespath_error?.type, 'string', `${label}: _jmespath_error must be a string`);
+  assert.equal(schema.properties?.original_keys?.type, 'array', `${label}: original_keys must be an array`);
+  assert.equal(schema.properties?.original_keys?.items?.type, 'string', `${label}: original_keys items must be strings`);
+  assert.deepEqual(schema.required, ['_jmespath_error', 'original_keys'], `${label}: error schema required fields drifted`);
+}
+
 // Every GET carries exactly one well-formed jmespath param; no other method does
 // (POSTs are already typed via their requestBody, and the gateway only projects
 // GET responses).
 function assertJmespathContract(spec, label) {
+  assertJmespathErrorSchema(spec, label);
   let getOps = 0;
   for (const [path, ops] of Object.entries(spec.paths ?? {})) {
     for (const [method, op] of Object.entries(ops ?? {})) {
@@ -53,6 +71,17 @@ function assertJmespathContract(spec, label) {
           String(param.description ?? ''),
           /JMESPath/,
           `${label}: GET ${path} jmespath must document the projection`,
+        );
+        assert.match(
+          String(param.description ?? ''),
+          /256 KB output cap/,
+          `${label}: GET ${path} jmespath must document the projected-output cap`,
+        );
+        const badRequestSchema = op.responses?.['400']?.content?.['application/json']?.schema;
+        assert.ok(badRequestSchema, `${label}: GET ${path} must document a JSON 400 response`);
+        assert.ok(
+          schemaIncludesRef(badRequestSchema, '#/components/schemas/JmespathProjectionError'),
+          `${label}: GET ${path} 400 response must include the JMESPath projection error envelope`,
         );
       } else {
         assert.equal(matches.length, 0, `${label}: ${method.toUpperCase()} ${path} must NOT carry a jmespath param`);

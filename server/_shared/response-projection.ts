@@ -6,15 +6,14 @@ import jmespath from 'jmespath';
 // (api/mcp/jmespath.ts). Agents reuse the SAME expressions across MCP and REST
 // to project/reduce a payload server-side before it crosses the wire.
 //
-// The expression byte cap is kept identical to the MCP contract
-// (JMESPATH_MAX_EXPR_BYTES) so an expression that is accepted on one surface is
-// accepted on the other. Unlike the MCP path there is no output-size gate: the
-// un-projected body was already going to be served in full, so a projection can
-// only shrink it (bounded expansion is limited by the ≤1024-byte expression).
+// The byte caps are kept identical to the MCP contract (JMESPATH_MAX_EXPR_BYTES
+// and JMESPATH_MAX_OUTPUT_BYTES) so an expression and its projected output have
+// the same acceptance envelope on both surfaces.
 
 // Mirrors api/mcp/constants.ts `JMESPATH_MAX_EXPR_BYTES`. Duplicated as a plain
 // constant so this edge-server helper stays free of MCP-module imports.
 export const REST_JMESPATH_MAX_EXPR_BYTES = 1024;
+export const REST_JMESPATH_MAX_OUTPUT_BYTES = 256 * 1024;
 
 function utf8ByteLength(value: string): number {
   return new TextEncoder().encode(value).length;
@@ -92,5 +91,16 @@ export function projectJsonResponse(bodyStr: string, expr: string): ProjectJsonR
   // `jmespath.search` returns `undefined` when a path misses; JSON.stringify of
   // that is the JS value `undefined`, not a document — coerce to `null` so the
   // wire payload is always valid JSON.
-  return { ok: true, body: text === undefined ? 'null' : text };
+  const body = text === undefined ? 'null' : text;
+  const outputBytes = utf8ByteLength(body);
+  if (outputBytes > REST_JMESPATH_MAX_OUTPUT_BYTES) {
+    return {
+      ok: false,
+      envelope: {
+        _jmespath_error: `projection_too_large: ${outputBytes} > ${REST_JMESPATH_MAX_OUTPUT_BYTES}`,
+        original_keys: originalKeys(value),
+      },
+    };
+  }
+  return { ok: true, body };
 }

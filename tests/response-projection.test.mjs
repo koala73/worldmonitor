@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { projectJsonResponse, REST_JMESPATH_MAX_EXPR_BYTES } from '../server/_shared/response-projection.ts';
+import {
+  projectJsonResponse,
+  REST_JMESPATH_MAX_EXPR_BYTES,
+  REST_JMESPATH_MAX_OUTPUT_BYTES,
+} from '../server/_shared/response-projection.ts';
 
 // Unit coverage for the REST gateway's universal `?jmespath=` projection helper
 // (server/gateway.ts applies it to every JSON GET response). Mirrors the MCP
@@ -45,6 +49,14 @@ describe('projectJsonResponse', () => {
     const r = projectJsonResponse(BODY, expr);
     assert.equal(r.ok, false);
     assert.match(r.envelope._jmespath_error, /^expression_too_long:/);
+  });
+
+  it('rejects a projection that expands beyond the REST output cap', () => {
+    const body = JSON.stringify({ blob: 'x'.repeat(Math.ceil(REST_JMESPATH_MAX_OUTPUT_BYTES / 2)) });
+    const r = projectJsonResponse(body, '[@,@,@]');
+    assert.equal(r.ok, false);
+    assert.match(r.envelope._jmespath_error, /^projection_too_large:/);
+    assert.deepEqual(r.envelope.original_keys, ['blob']);
   });
 
   it('passes an unparseable body through unchanged (never 400s on our own bug)', () => {

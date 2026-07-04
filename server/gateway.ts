@@ -1529,7 +1529,7 @@ export function createDomainGateway(
         const projection = projectJsonResponse(bodyStr, jmespathExpr);
         if (!projection.ok) {
           const errorBody = JSON.stringify(projection.envelope);
-          emitRequest(400, 'ok', resolvedCacheTier, errorBody.length);
+          emitRequest(400, 'malformed_request', null, errorBody.length);
           maybeAttachDevHealthHeader(mergedHeaders);
           return new Response(errorBody, {
             status: 400,

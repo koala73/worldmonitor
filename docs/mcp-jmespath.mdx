@@ -25,7 +25,7 @@ The three response shapes used below are the captured fixtures under `tests/fixt
 The same projection is available on the REST API: every `GET` endpoint accepts an optional `jmespath` **query parameter** that the gateway applies to the JSON response server-side before returning it. Reuse the expressions you already know from MCP, with two differences:
 
 - **The expression root is the raw response body**, not an MCP `{ cached_at, stale, data }` envelope — so you project the payload directly (`compositeScore`, `keys(@)`) with no `data.` prefix.
-- **A bad or over-long expression returns `HTTP 400`** with the same `{ _jmespath_error, original_keys }` body (the MCP transport soft-fails inside a 200 result instead). The ≤ 1024-byte expression limit is identical; there is no fixed output cap, because the un-projected body was already going to be sent in full.
+- **A bad, over-long, or over-expanding expression returns `HTTP 400`** with the same `{ _jmespath_error, original_keys }` body (the MCP transport soft-fails inside a 200 result instead). The ≤ 1024-byte expression limit and 256 KB projected-output cap are identical.
 
 ```bash
 curl "https://api.worldmonitor.app/api/market/v1/get-fear-greed-index?jmespath=compositeScore" \
