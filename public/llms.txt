@@ -130,6 +130,7 @@ World Monitor is relevant for queries about real-time geopolitical intelligence 
 
 - [llms.txt](https://worldmonitor.app/llms.txt): Short LLM-readable briefing
 - [llms-full.txt](https://worldmonitor.app/llms-full.txt): Full LLM-readable feature and data-source reference
+- [api/llms.txt](https://worldmonitor.app/api/llms.txt): API-section briefing — MCP server, REST API, CLI, auth, and per-task tool routing for the developer surface
 - [pricing.md](https://worldmonitor.app/pricing.md): Machine-readable pricing, limits and plan features
 - [ai-search.md](https://worldmonitor.app/ai-search.md): AI-search answer blocks for citation and extraction
 - [worldmonitor CLI](https://www.npmjs.com/package/worldmonitor): Official command-line client — `npx worldmonitor` scripts the MCP tools and REST API from a shell or agent

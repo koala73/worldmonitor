@@ -27,11 +27,17 @@ const LEGACY_DASHBOARD_ROOT_QUERY_KEYS = ['lat', 'lon', 'zoom', 'view', 'timeRan
 //   Node undici default UA, which is short enough to trip the "no UA or
 //   suspiciously short" 403 below (Railway log 2026-04-21 post-#3248 merge:
 //   every cron call returned 403 and silently fell back to legacy Gemini).
+// - /api/llms.txt: static, intentionally-public agent-discovery document
+//   (the section-level llms.txt for the developer/API surface, served from
+//   public/api/llms.txt). It MUST bypass the bot gate — AI crawlers (ClaudeBot,
+//   GPTBot, PerplexityBot, CCBot, …) are the entire audience for an llms.txt,
+//   yet every one of those UAs matches BOT_UA and would otherwise 403.
 const PUBLIC_API_PATHS = new Set([
   '/api/version',
   '/api/health',
   '/api/seed-contract-probe',
   '/api/internal/brief-why-matters',
+  '/api/llms.txt',
 ]);
 
 const SOCIAL_IMAGE_UA =
