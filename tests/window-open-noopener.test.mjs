@@ -16,7 +16,7 @@ function walkTsFiles(dir) {
     const stat = statSync(full);
     if (stat.isDirectory()) {
       files.push(...walkTsFiles(full));
-    } else if (entry.endsWith('.ts')) {
+    } else if (entry.endsWith('.ts') || entry.endsWith('.tsx')) {
       files.push(full);
     }
   }
@@ -48,8 +48,9 @@ function hasSafeBlankFeatures(node) {
 
 function collectUnsafeWindowOpenCalls(file) {
   const source = readFileSync(file, 'utf-8');
-  if (!source.includes('window.open(')) return [];
-  const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  if (!source.includes('window.open')) return [];
+  const scriptKind = file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, scriptKind);
   const unsafe = [];
 
   function visit(node) {
