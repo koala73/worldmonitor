@@ -35,6 +35,11 @@ const BEARER_AUTH_PATHS = new Set([...ENDPOINT_ENTITLEMENTS.keys(), ...readPremi
 // in scripts/openapi-inject-security.mjs.
 const PREMIUM_ONLY_PATHS = new Set(readPremiumRpcPaths().filter((p) => !ENDPOINT_ENTITLEMENTS.has(p)));
 const PREMIUM_FORBIDDEN_NOTE = 'PRO-gated. Requires an active Pro subscription.';
+const GATED_DESCRIPTION_PATHS = new Set([
+  ...ENDPOINT_ENTITLEMENTS.keys(),
+  ...PREMIUM_ONLY_PATHS,
+  ...PUBLIC_FORBIDDEN_GATES.keys(),
+]);
 
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head']);
 const API_KEY_SCHEMES = {
@@ -176,6 +181,33 @@ function assertPremiumForbiddenGateContract(spec, label) {
       label + ": ForbiddenError must require 'error'",
     );
   }
+}
+
+function gatedDescriptionParityFailures(referenceSpec, candidateSpec, referenceLabel, candidateLabel) {
+  const failures = [];
+  for (const path of GATED_DESCRIPTION_PATHS) {
+    const referenceOps = referenceSpec.paths?.[path];
+    if (!referenceOps) continue;
+    const candidateOps = candidateSpec.paths?.[path];
+    if (!candidateOps) {
+      failures.push(`${candidateLabel}: missing ${path} from ${referenceLabel}`);
+      continue;
+    }
+    for (const [method, referenceOp] of Object.entries(referenceOps)) {
+      if (!HTTP_METHODS.has(method) || !referenceOp || typeof referenceOp !== 'object') continue;
+      const candidateOp = candidateOps[method];
+      if (!candidateOp || typeof candidateOp !== 'object') {
+        failures.push(`${candidateLabel}: missing ${method.toUpperCase()} ${path} from ${referenceLabel}`);
+        continue;
+      }
+      const expected = String(referenceOp.description ?? '');
+      const actual = String(candidateOp.description ?? '');
+      if (actual !== expected) {
+        failures.push(`${candidateLabel}: ${method.toUpperCase()} ${path} description must exactly match ${referenceLabel}`);
+      }
+    }
+  }
+  return failures;
 }
 
 function toSnakeName(jsonName) {
@@ -498,6 +530,19 @@ describe('OpenAPI security contract', () => {
     assertEntitlementOperationContract(bundle, 'bundle');
     assertPremiumForbiddenGateContract(bundle, 'bundle');
     assertPublicForbiddenGateContract(bundle, 'bundle');
+  });
+
+  it('keeps gated operation descriptions byte-identical across JSON, YAML, and bundle', () => {
+    const bundle = loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'));
+    const failures = [];
+    for (const file of serviceSpecs) {
+      const jsonSpec = JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'));
+      const yamlFile = file.replace(/\.json$/, '.yaml');
+      const yamlSpec = loadYaml(readFileSync(resolve(apiDir, yamlFile), 'utf8'));
+      failures.push(...gatedDescriptionParityFailures(jsonSpec, yamlSpec, file, yamlFile));
+      failures.push(...gatedDescriptionParityFailures(jsonSpec, bundle, file, 'worldmonitor.openapi.yaml'));
+    }
+    assert.deepEqual(failures, []);
   });
 
   it('service YAML specs carry the full auth contract (parity with JSON)', () => {

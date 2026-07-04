@@ -18,8 +18,7 @@ paths:
                  and current disruption risk. Partner-facing; wire shape is byte-compatible
                  with the pre-migration JSON response documented at docs/api-shipping-v2.mdx.
                  Empty exposure/bypass arrays with empty fetched_at mean the route snapshot is
-                 unavailable/degraded, not that the route has confirmed zero exposure.
-                PRO-gated. Requires an active Pro subscription.
+                 unavailable/degraded, not that the route has confirmed zero exposure. PRO-gated. Requires an active Pro subscription.
             operationId: RouteIntelligence
             security:
                 - WorldMonitorKey: []
@@ -64,12 +63,11 @@ paths:
                 - name: jmespath
                   in: query
                   description: |-
-                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, oversized (> 1024-byte) expressions, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
                   required: false
                   example: "keys(@)"
                   schema:
                     type: string
-                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -125,8 +123,7 @@ paths:
             description: |-
                 ListWebhooks returns the caller's registered webhooks filtered by the
                  SHA-256 owner tag of the calling API key. The `secret` is intentionally
-                 omitted from the response; use rotate-secret to obtain a new one.
-                PRO-gated. Requires an active Pro subscription.
+                 omitted from the response; use rotate-secret to obtain a new one. PRO-gated. Requires an active Pro subscription.
             operationId: ListWebhooks
             security:
                 - WorldMonitorKey: []
@@ -136,12 +133,11 @@ paths:
                 - name: jmespath
                   in: query
                   description: |-
-                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, oversized (> 1024-byte) expressions, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
                   required: false
                   example: "keys(@)"
                   schema:
                     type: string
-                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -201,8 +197,7 @@ paths:
             description: |-
                 RegisterWebhook subscribes a callback URL to chokepoint disruption alerts.
                  Returns the subscriberId and the raw HMAC secret — the secret is never
-                 returned again except via rotate-secret.
-                PRO-gated. Requires an active Pro subscription.
+                 returned again except via rotate-secret. PRO-gated. Requires an active Pro subscription.
             operationId: RegisterWebhook
             security:
                 - WorldMonitorKey: []

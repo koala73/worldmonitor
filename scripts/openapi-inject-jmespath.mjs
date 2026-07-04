@@ -41,7 +41,7 @@ const CHECK = process.argv.includes('--check');
 const PARAM_NAME = 'jmespath';
 const PARAM_EXAMPLE = 'keys(@)';
 const PARAM_DESCRIPTION =
-  'Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, oversized (> 1024-byte) expressions, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.';
+  'Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.';
 const JMESPATH_ERROR_SCHEMA_NAME = 'JmespathProjectionError';
 const JMESPATH_ERROR_SCHEMA_REF = `#/components/schemas/${JMESPATH_ERROR_SCHEMA_NAME}`;
 
@@ -54,7 +54,7 @@ function jmespathParam() {
     description: PARAM_DESCRIPTION,
     required: false,
     example: PARAM_EXAMPLE,
-    schema: { type: 'string', maxLength: 1024 },
+    schema: { type: 'string' },
   };
 }
 
@@ -138,7 +138,6 @@ const JMESPATH_YAML_ITEM = [
   `                  example: "${PARAM_EXAMPLE}"`,
   '                  schema:',
   '                    type: string',
-  '                    maxLength: 1024',
 ];
 
 const JMESPATH_ERROR_YAML_SCHEMA = [

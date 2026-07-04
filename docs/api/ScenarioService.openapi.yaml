@@ -27,8 +27,7 @@ paths:
             description: |-
                 RunScenario enqueues a scenario job on scenario-queue:pending. PRO-gated.
                  The scenario-worker (scripts/scenario-worker.mjs) pulls jobs off the
-                 queue via BLMOVE and writes results under scenario-result:{job_id}.
-                Requires entitlement tier >= 1.
+                 queue via BLMOVE and writes results under scenario-result:{job_id}. Requires entitlement tier >= 1.
             operationId: RunScenario
             security:
                 - WorldMonitorKey: []
@@ -138,8 +137,7 @@ paths:
             description: |-
                 GetScenarioStatus polls a single job's result. PRO-gated.
                  Returns status="pending" when no result key exists, mirroring the
-                 worker's lifecycle state once the key is written.
-                Requires entitlement tier >= 1.
+                 worker's lifecycle state once the key is written. Requires entitlement tier >= 1.
             operationId: GetScenarioStatus
             security:
                 - WorldMonitorKey: []
@@ -159,12 +157,11 @@ paths:
                 - name: jmespath
                   in: query
                   description: |-
-                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, oversized (> 1024-byte) expressions, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
                   required: false
                   example: "keys(@)"
                   schema:
                     type: string
-                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -226,12 +223,11 @@ paths:
                 - name: jmespath
                   in: query
                   description: |-
-                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, oversized (> 1024-byte) expressions, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
                   required: false
                   example: "keys(@)"
                   schema:
                     type: string
-                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response

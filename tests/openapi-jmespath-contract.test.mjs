@@ -65,8 +65,17 @@ function assertJmespathContract(spec, label) {
         assert.equal(param.in, 'query', `${label}: GET ${path} jmespath must be a query param`);
         assert.equal(param.required, false, `${label}: GET ${path} jmespath must be optional`);
         assert.equal(param.schema?.type, 'string', `${label}: GET ${path} jmespath schema must be string`);
-        assert.equal(param.schema?.maxLength, 1024, `${label}: GET ${path} jmespath maxLength must be 1024`);
+        assert.equal(
+          Object.prototype.hasOwnProperty.call(param.schema ?? {}, 'maxLength'),
+          false,
+          `${label}: GET ${path} jmespath schema must not advertise a character maxLength for a UTF-8 byte limit`,
+        );
         assert.notEqual(param.example, undefined, `${label}: GET ${path} jmespath must have an example`);
+        assert.match(
+          String(param.description ?? ''),
+          /1024 UTF-8 bytes/,
+          `${label}: GET ${path} jmespath must document the expression byte limit`,
+        );
         assert.match(
           String(param.description ?? ''),
           /JMESPath/,
