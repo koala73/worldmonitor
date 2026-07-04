@@ -20,21 +20,36 @@ export {
 // REDIS_TEST_RETRY_OPTS in server/_shared/rate-limit.ts and PR #3963.
 const REDIS_TEST_RETRY_OPTS = process.env.NODE_TEST_CONTEXT ? { retry: false } : {};
 
-let ratelimit = null;
+const DEFAULT_RATE_LIMIT_SCOPE = 'global';
+const DEFAULT_RATE_LIMIT = 600;
+const DEFAULT_RATE_LIMIT_WINDOW = '60 s';
 
-function getRatelimit() {
-  if (ratelimit) return ratelimit;
+let ratelimits = new Map();
+
+function getRateLimitPolicy(opts = {}) {
+  return {
+    scope: opts.scope ?? DEFAULT_RATE_LIMIT_SCOPE,
+    limit: opts.limit ?? DEFAULT_RATE_LIMIT,
+    window: opts.window ?? DEFAULT_RATE_LIMIT_WINDOW,
+  };
+}
+
+function getRatelimit(policy) {
+  const cacheKey = `${policy.scope}|${policy.limit}|${policy.window}`;
+  const cached = ratelimits.get(cacheKey);
+  if (cached) return cached;
 
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
 
-  ratelimit = new Ratelimit({
+  const ratelimit = new Ratelimit({
     redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
-    limiter: Ratelimit.slidingWindow(600, '60 s'),
-    prefix: 'rl',
+    limiter: Ratelimit.slidingWindow(policy.limit, policy.window),
+    prefix: policy.scope === DEFAULT_RATE_LIMIT_SCOPE ? 'rl' : `rl:${policy.scope}`,
     analytics: false,
   });
+  ratelimits.set(cacheKey, ratelimit);
 
   return ratelimit;
 }
@@ -82,7 +97,7 @@ function rateLimitDegradedResponse(corsHeaders) {
 /**
  * @param {Request} request
  * @param {Record<string, string>} corsHeaders
- * @param {{ failClosed?: boolean, ctx?: { waitUntil: (p: Promise<unknown>) => void } }} [opts]
+ * @param {{ failClosed?: boolean, ctx?: { waitUntil: (p: Promise<unknown>) => void }, scope?: string, limit?: number, window?: import('@upstash/ratelimit').Duration }} [opts]
  *   When `failClosed` is true and Redis is unavailable, return a 503 with
  *   the `X-RateLimit-Mode: degraded` marker instead of allowing the
  *   request through. Pass `true` for endpoints where the rate-limit IS
@@ -90,10 +105,13 @@ function rateLimitDegradedResponse(corsHeaders) {
  *   availability-first posture for general traffic so a Redis blip
  *   doesn't black-hole the whole site. `ctx` is the Vercel handler
  *   context — passing it lets the Sentry envelope dispatch survive
- *   isolate teardown. (#3531)
+ *   isolate teardown. Top-level Edge handlers may pass `scope`, `limit`,
+ *   and `window` for explicit endpoint budgets while retaining the shared
+ *   degraded/429 response semantics. (#3531)
  */
 export async function checkRateLimit(request, corsHeaders, opts = {}) {
-  const rl = getRatelimit();
+  const policy = getRateLimitPolicy(opts);
+  const rl = getRatelimit(policy);
   if (!rl) {
     if (opts.failClosed) {
       logRateLimitDegraded('checkRateLimit:missing-config', new Error('Upstash Redis is not configured'), opts.ctx);
@@ -122,4 +140,8 @@ export async function checkRateLimit(request, corsHeaders, opts = {}) {
     if (opts.failClosed) return rateLimitDegradedResponse(corsHeaders);
     return null;
   }
+}
+
+export function __resetRateLimitForTest() {
+  ratelimits = new Map();
 }
