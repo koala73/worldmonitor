@@ -16,6 +16,46 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const en = JSON.parse(readFileSync(resolve(__dirname, 'src/locales/en.json'), 'utf-8'));
 const STATIC_SCRIPT_NONCE = 'wm-static-bootstrap';
+
+// Single source of truth for the brand's cross-site entity links + Organization
+// structured data, injected into BOTH pro pages (see PAGES) so the homepage and
+// /pro can't drift. Nonce'd to match the static-bootstrap CSP trust (otherwise
+// deploy-config.test.mjs would demand a script-src sha256 hash for it).
+const WM_SAMEAS = [
+  'https://github.com/koala73/worldmonitor',
+  'https://x.com/worldmonitorai',
+  'https://x.com/eliehabib',
+  'https://discord.gg/re63kWKxaz',
+  'https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map',
+];
+const ORGANIZATION_JSONLD = `    <script type="application/ld+json" nonce="${STATIC_SCRIPT_NONCE}">${JSON.stringify({
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  name: 'World Monitor',
+  alternateName: 'WorldMonitor',
+  url: 'https://www.worldmonitor.app/',
+  logo: 'https://www.worldmonitor.app/favico/apple-touch-icon.png',
+  description: 'Open-source real-time global intelligence platform aggregating conflicts, military movements, markets, infrastructure, and geopolitical data. Used by 2M+ people across 190+ countries.',
+  founder: {
+    '@type': 'Person',
+    name: 'Elie Habib',
+    url: 'https://x.com/eliehabib',
+    sameAs: ['https://x.com/eliehabib', 'https://github.com/koala73'],
+  },
+  sameAs: WM_SAMEAS,
+  contactPoint: {
+    '@type': 'ContactPoint',
+    contactType: 'customer support',
+    email: 'support@worldmonitor.app',
+    url: 'https://www.worldmonitor.app/pro',
+    availableLanguage: 'English',
+  },
+  address: {
+    '@type': 'PostalAddress',
+    addressLocality: 'Dubai',
+    addressCountry: 'AE',
+  },
+})}</script>`;
 const DASHBOARD_SCREENSHOT_BASENAME = 'worldmonitor-7-mar-2026';
 const DASHBOARD_SCREENSHOT_ASSETS = [
   { filenamePrefix: DASHBOARD_SCREENSHOT_BASENAME, extension: '.jpg' },
@@ -284,6 +324,11 @@ for (const { file, content, rootAttributes } of PAGES) {
   const htmlPath = resolve(__dirname, '../public/pro', file);
   let html = readFileSync(htmlPath, 'utf-8');
   html = inlineCriticalCss(html, file);
+  if (!html.includes('</head>')) {
+    console.error(`[prerender] ERROR: ${file} has no </head> to inject Organization JSON-LD into.`);
+    process.exit(1);
+  }
+  html = html.replace('</head>', `${ORGANIZATION_JSONLD}\n  </head>`);
   if (!html.includes('<div id="root"></div>')) {
     console.error(`[prerender] ERROR: ${file} has no empty <div id="root"></div> to inject into.`);
     process.exit(1);
