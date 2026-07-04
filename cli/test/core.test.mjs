@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
@@ -7,6 +8,7 @@ import {
   DEFAULT_MCP_URL,
   USER_AGENT,
   UsageError,
+  VERSION,
   formatOutput,
   parseArgs,
   planRequest,
@@ -15,6 +17,14 @@ import {
   summarizeSpec,
 } from '../src/core.mjs';
 import { run } from '../src/run.mjs';
+
+describe('version', () => {
+  it('core VERSION stays in sync with package.json (guards `npm version` bumps)', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    assert.equal(VERSION, pkg.version);
+    assert.ok(USER_AGENT.includes(VERSION), 'User-Agent should embed the version');
+  });
+});
 
 function rpcOf(plan) {
   return JSON.parse(plan.body);

@@ -1,6 +1,6 @@
 {
   "name": "worldmonitor",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Command-line client for the World Monitor global-intelligence API — script country briefs, risk scores, conflict/cyber/market feeds, and MCP tools without writing an API integration.",
   "keywords": [
     "worldmonitor",
