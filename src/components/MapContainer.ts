@@ -1517,7 +1517,7 @@ export class MapContainer {
               </div>
             </div>
           </div>
-        `));
+        `, "static map predictions overlay"));
         this.container.appendChild(this.iranSkillOverlay);
       }
       this.iranSkillOverlay.style.display = 'block';
