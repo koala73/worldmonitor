@@ -358,7 +358,7 @@ export class RouteExplorer {
         });
         void import('@/services/checkout')
           .then((m) => m.startCheckout('pro_monthly'))
-          .catch(() => window.open('https://worldmonitor.app/pro', '_blank'));
+          .catch(() => window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer'));
       }, { once: true });
     }
   }

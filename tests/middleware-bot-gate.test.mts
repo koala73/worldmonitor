@@ -163,6 +163,7 @@ describe('middleware PUBLIC_API_PATHS — secret-authed internal endpoints bypas
     '/api/health',
     '/api/seed-contract-probe',
     '/api/internal/brief-why-matters',
+    '/api/llms.txt',
   ];
 
   for (const path of ALLOWED_PATHS) {
@@ -194,4 +195,35 @@ describe('middleware PUBLIC_API_PATHS — secret-authed internal endpoints bypas
       });
     }
   }
+});
+
+// ── /api/llms.txt agent-discovery bypass ─────────────────────────────────────
+// The section-level llms.txt for the developer/API surface lives at
+// public/api/llms.txt, so it is served under the /api/* namespace where the
+// middleware's BOT_UA gate 403s crawlers. AI crawlers are the entire audience
+// for an llms.txt, so the bypass must let them through — otherwise the file is
+// published but unreadable by the agents it exists to serve.
+
+describe('middleware /api/llms.txt — AI crawlers reach the agent-discovery file', () => {
+  const CRAWLER_UAS = [
+    { label: 'ClaudeBot', ua: 'Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)' },
+    { label: 'GPTBot', ua: 'Mozilla/5.0 (compatible; GPTBot/1.1; +https://openai.com/gptbot)' },
+    { label: 'PerplexityBot', ua: 'Mozilla/5.0 (compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot)' },
+    { label: 'CCBot', ua: 'CCBot/2.0 (https://commoncrawl.org/faq/)' },
+    { label: 'generic scraper', ua: GENERIC_SCRAPER_UA },
+    { label: 'empty UA', ua: '' },
+  ];
+
+  for (const { label, ua } of CRAWLER_UAS) {
+    it(`passes ${label} through to /api/llms.txt`, () => {
+      const res = call('/api/llms.txt', ua);
+      assert.equal(res, undefined, '/api/llms.txt must pass through the bot gate for AI crawlers');
+    });
+  }
+
+  it('still 403s a crawler on a sibling /api path (bypass is exact, not a prefix)', () => {
+    const res = call('/api/llms', 'CCBot/2.0 (https://commoncrawl.org/faq/)');
+    assert.ok(res instanceof Response);
+    assert.equal(res.status, 403);
+  });
 });

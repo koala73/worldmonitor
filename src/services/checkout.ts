@@ -49,6 +49,7 @@ import { showCheckoutPendingDialog } from './checkout-pending-dialog';
 import { resolvePlanDisplayName } from './checkout-plan-names';
 import { createEntitlementWatchdog, type EntitlementWatchdog } from './entitlement-watchdog';
 import { buildDashboardCheckoutReturnUrl } from './checkout-return-url';
+import { saveAnonClaimToken } from './anonymous-identity-storage';
 
 export {
   EXTENDED_UNLOCK_TIMEOUT_MS,
@@ -919,6 +920,9 @@ export async function startCheckout(
     }
 
     const result = await resp.json();
+    if (typeof result?.anonymous_claim_token === 'string' && result.anonymous_claim_token.length > 0) {
+      saveAnonClaimToken(result.anonymous_claim_token);
+    }
     // #4449: navigate the top window to Dodo's HOSTED checkout instead of
     // opening the overlay iframe. The overlay cannot host Dodo's nested 3DS/
     // fraud stack (Hyperswitch → Airwallex → Sardine): our Permissions-Policy

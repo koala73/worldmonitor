@@ -1,0 +1,48 @@
+# World Monitor API
+
+> Machine-readable entry point for the World Monitor developer surface — the MCP server, REST API, CLI, and agent skills that expose the platform's real-time global-intelligence tools as structured JSON.
+
+World Monitor's data is available to agents and applications through four interchangeable surfaces that share one auth model and one tool inventory: an MCP server (Streamable HTTP), a versioned REST API, a zero-dependency CLI, and a set of published agent skills. Every surface returns source-attributed structured JSON and supports server-side JMESPath projection to cut response size 80–95%.
+
+This is the API-section companion to the site-wide briefing at https://worldmonitor.app/llms.txt and the human documentation at https://worldmonitor.app/docs/llms.txt.
+
+## Endpoints
+
+- **MCP server (recommended):** `https://worldmonitor.app/mcp` — Streamable HTTP, JSON-RPC 2.0. Issue `tools/list` for the live tool inventory, `prompts/list` for pre-built workflow templates, `resources/list` for read-only resources. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json
+- **REST API:** base `https://api.worldmonitor.app`. OpenAPI 3.1 spec at https://worldmonitor.app/openapi.yaml (JSON: https://worldmonitor.app/openapi.json). Machine-readable API catalog (RFC 9727): https://worldmonitor.app/.well-known/api-catalog
+- **CLI:** `npx worldmonitor tools` lists every tool with no key; `npm install -g worldmonitor` installs the `worldmonitor` command — a zero-dependency, MCP-first client for the tools and REST API above. https://www.npmjs.com/package/worldmonitor
+- **Agent Skills:** discovery manifest at https://worldmonitor.app/.well-known/agent-skills/index.json
+
+## Authentication
+
+- **API key:** send header `X-WorldMonitor-Key: wm_<40-hex>` on both MCP and REST data calls. Issue a key at https://worldmonitor.app/pro
+- **OAuth 2.1:** the MCP server supports OAuth (`scope=mcp`). Authorization-server metadata: https://worldmonitor.app/.well-known/oauth-authorization-server · protected-resource metadata: https://worldmonitor.app/.well-known/oauth-protected-resource
+- **Auth matrix, plans & limits:** https://www.worldmonitor.app/docs/usage-auth · machine-readable pricing: https://worldmonitor.app/pricing.md · human auth guide: https://worldmonitor.app/auth.md
+
+## Common Tasks → Tools
+
+- **Live world brief & signals** — `get_world_brief`, `get_news_intelligence`, `get_natural_disasters`, `get_cyber_threats`, `get_aviation_status`.
+- **Country situation brief** — `get_country_brief`. REST: `GET https://api.worldmonitor.app/api/intelligence/v1/get-country-intel-brief?country_code=IR`.
+- **Country risk & resilience** — `get_country_risk`. REST: `GET https://api.worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=DE`; ranked list at `/api/resilience/v1/get-resilience-ranking`.
+- **"Does this event move markets?"** — `get_conflict_events`, `get_sanctions_data`, `get_chokepoint_status`, `get_market_data`, `get_maritime_activity`.
+- **Commodity & supply-chain disruption** — `get_supply_chain_data`, `get_energy_intelligence`, `get_commodity_geo`, `get_maritime_activity`.
+- **Forecasting & prediction markets** — `generate_forecasts`, `get_forecast_predictions`, `get_prediction_markets`.
+- **Tool discovery** — `describe_tool` returns the full uncompressed definition for any tool name (quota-exempt).
+
+## Response Shaping
+
+- Every MCP tool and REST GET accepts an optional `jmespath` projection applied server-side after per-tool filtering — typically 80–95% fewer tokens. Guide + 12 worked examples: https://www.worldmonitor.app/docs/mcp-jmespath
+- Bad expressions soft-fail via a `{_jmespath_error, original_keys}` envelope so an agent can self-correct from the returned key list. Full envelope reference: https://www.worldmonitor.app/docs/mcp-error-catalog
+- Full tool reference with uncompressed definitions: https://www.worldmonitor.app/docs/mcp-tools-reference
+
+## Rate Limits & Quota
+
+- Discovery methods (`tools/list`, `prompts/list`, `describe_tool`) are quota-exempt but rate-limited to 60 requests/minute.
+- Data calls consume the plan's daily quota. Free, Pro, API, and Enterprise tier details: https://worldmonitor.app/pricing.md
+
+## Optional
+
+- [Site-wide llms.txt](https://worldmonitor.app/llms.txt): Full platform briefing and agent guidance
+- [Extended llms-full.txt](https://worldmonitor.app/llms-full.txt): All data layers, components, and data sources
+- [Human API docs](https://worldmonitor.app/docs/documentation): Mintlify documentation site
+- [Source Code](https://github.com/koala73/worldmonitor): GitHub repository (AGPL-3.0)

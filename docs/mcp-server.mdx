@@ -28,16 +28,15 @@ Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pas
 | `https://api.worldmonitor.app/.well-known/oauth-authorization-server` | AS metadata (RFC 8414) |
 | `https://worldmonitor.app/.well-known/oauth-protected-resource` | Resource server metadata (RFC 9728) |
 
-Server identifier: `worldmonitor` v1.10.0.
+Server identifier: `worldmonitor` v1.13.0.
 
 ### Protocol negotiation
 
-WorldMonitor's static server card at `/.well-known/mcp/server-card.json` advertises protocol version `2025-06-18`, matching the current published capability card. The live `initialize` handshake is intentionally more conservative during the rollout:
+WorldMonitor's static server card at `/.well-known/mcp/server-card.json` advertises protocol version `2025-06-18`, and the live `initialize` handshake negotiates it by default — so the advertised floor and the negotiated version stay in lock-step:
 
-- By default, `initialize` negotiates `2025-03-26`.
-- When `MCP_PROTOCOL_FLOOR_2025_06_18=on` is enabled for the deploy, the server supports both `2025-03-26` and `2025-06-18`.
-- With that flag on, clients requesting `2025-06-18` receive `2025-06-18`; clients pinned to `2025-03-26` continue receiving `2025-03-26`.
-- With that flag off, a client that requests `2025-06-18` receives the safe default `2025-03-26`.
+- By default, `initialize` supports both `2025-03-26` and `2025-06-18`.
+- Clients requesting `2025-06-18` receive `2025-06-18`; clients pinned to `2025-03-26` continue receiving `2025-03-26`.
+- Setting `MCP_PROTOCOL_FLOOR_2025_06_18=off` pins the server back to the legacy `2025-03-26`-only floor; a client that then requests `2025-06-18` receives the safe default `2025-03-26`.
 
 Tool `outputSchema` metadata is emitted on `tools/list` regardless of the negotiated protocol version. Older `2025-03-26` clients should ignore unknown fields, while newer clients can use the schema immediately.
 
@@ -48,14 +47,15 @@ WorldMonitor supports the Streamable HTTP POST flow with either JSON or SSE resp
 - Clients that omit `text/event-stream` from `Accept` receive the standard JSON-RPC JSON response body.
 - Clients that send `Accept: application/json, text/event-stream` can receive a `text/event-stream` response for successful JSON-RPC POSTs.
 - `initialize` SSE responses include `Mcp-Session-Id`; follow-up POSTs should send that same `Mcp-Session-Id` header.
-- Each SSE response starts with an empty priming event that has an event `id`, followed by the JSON-RPC response event. If the client disconnects after an event, it can resume by sending `GET /mcp` with `Accept: text/event-stream`, the same `Mcp-Session-Id`, and `Last-Event-ID`.
+- Each SSE response carries the JSON-RPC result as a single `message` event with an event `id`. There is no leading empty priming event — per the WHATWG SSE spec an empty `data:` field still dispatches a `message` (with `data === ""`), which causes strict handshake scanners to fail on `JSON.parse("")`.
+- If the client disconnects after the sole event, it can reconnect by sending `GET /mcp` with `Accept: text/event-stream`, the same `Mcp-Session-Id`, and `Last-Event-ID`; resuming after the delivered event returns an empty stream. A client that dropped before receiving the event has no acknowledged `Last-Event-ID` and re-issues the POST instead.
 - A **bare `GET /mcp`** — one **without** `Last-Event-ID` — is a client opening the optional standalone server→client SSE stream. This stateless edge route offers no server-initiated stream, so it answers `405 Method Not Allowed` (advertising `Allow`), which the MCP spec defines as the graceful "no standalone stream" signal. MCP SDK clients handle this transparently and complete the handshake; the `GET` verb itself is reserved for the authenticated `Last-Event-ID` replay above.
 
 The replay buffer is in-memory and bounded per edge instance. Treat `Last-Event-ID` resume as loss-tolerant transport recovery, not durable message storage.
 
 ## Authentication
 
-**Discovery is public.** `initialize`, `tools/list`, `resources/list`, and the `notifications/initialized` handshake are servable **without credentials**, so any agent (or agent-readiness scanner) can connect to `https://worldmonitor.app/mcp`, read the server identity, and enumerate the full tool and resource catalogs before authenticating — the same metadata already published in the static [server card](https://worldmonitor.app/.well-known/mcp/server-card.json). Both `tools/list` and `resources/list` return only public catalog metadata (names, descriptions, URIs — no data, no quota). Anonymous discovery is rate-limited to 60 requests/minute per client IP. Everything that returns data or spends quota (`tools/call`, `resources/read`) — and the gated metadata methods `prompts/list` and `logging/setLevel` — still requires one of the two auth modes below. A credential presented on a discovery method is still validated (a bad key returns `401`, never a silent anonymous downgrade).
+**Discovery is public.** `initialize`, `tools/list`, `resources/list`, `resources/templates/list`, and the `notifications/initialized` handshake are servable **without credentials**, so any agent (or agent-readiness scanner) can connect to `https://worldmonitor.app/mcp`, read the server identity, and enumerate the full tool and resource catalogs before authenticating — the same metadata already published in the static [server card](https://worldmonitor.app/.well-known/mcp/server-card.json). `tools/list`, `resources/list`, and `resources/templates/list` return only public catalog metadata (names, descriptions, URIs / URI templates — no data, no quota). `resources/read` of a **public** resource (a concrete, metadata-only freshness/health probe surfaced by `resources/list`, such as `worldmonitor://seed-meta/freshness`) is **also public and quota-free** — an anonymous agent can read it cleanly. Anonymous discovery is rate-limited to 60 requests/minute per client IP. Everything that returns data or spends quota (`tools/call`, and `resources/read` of a data-bearing **URI-template instantiation** — country risk, chokepoint status, market quote) — plus the gated metadata methods `prompts/list` and `logging/setLevel` — still requires one of the two auth modes below. A credential presented on a discovery method is still validated (a bad key returns `401`, never a silent anonymous downgrade).
 
 The MCP handler accepts two auth modes, in priority order:
 
@@ -104,8 +104,8 @@ If you'd rather paste an API key (Starter+ / scripted clients), expand "Use API 
 ### Daily limit (Pro tier)
 
 - **50 quota-consuming calls per UTC day**, reset at 00:00 UTC.
-- `tools/call` and `resources/read` consume the Pro daily quota, except the metadata helper `describe_tool`.
-- `initialize`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `logging/setLevel`, `notifications/initialized`, `ping`, and `describe_tool` do **not** count against the daily cap.
+- `tools/call` and `resources/read` of a data-bearing **URI-template instantiation** consume the Pro daily quota, except the metadata helper `describe_tool`.
+- `initialize`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `resources/templates/list`, `logging/setLevel`, `notifications/initialized`, `ping`, and `describe_tool` do **not** count against the daily cap. `resources/read` of a **public** resource (a metadata-only freshness/health probe, e.g. `worldmonitor://seed-meta/freshness`) is likewise exempt — it carries no billable data.
 - Hitting the cap returns JSON-RPC error `-32029` plus HTTP `429` with a `Retry-After` header pointing at the next UTC midnight.
 - The cap is hard: concurrent `tools/call` or `resources/read` requests near the boundary use an atomic Redis reservation, so exactly the call that crosses 50 rejects.
 
@@ -359,16 +359,37 @@ In addition to the 39 tools, WorldMonitor exposes MCP prompts and resources so c
 
 ### Resources
 
-`resources/list` returns four read-only URI shapes:
+Resources come in two tiers. **Concrete resources** are surfaced by `resources/list` and read anonymously and quota-free; **URI templates** (parameterised, data-bearing) are surfaced by `resources/templates/list` and each concrete instantiation reads under auth + the Pro daily quota.
 
-| Resource URI shape | Backing data |
-|--------------------|--------------|
+`resources/list` — concrete, anonymously readable, quota-free:
+
+| Resource URI | Backing data |
+|--------------|--------------|
+| `worldmonitor://seed-meta/freshness` | Market-data bootstrap freshness envelope only: `cached_at` and `stale`. A cheap health probe to detect a stuck seeder — no auth, no quota. |
+
+`resources/templates/list` — parameterised URI templates. Substitute the placeholder, then `resources/read` the concrete URI (auth required; consumes the Pro daily quota symmetrically with the equivalent `tools/call`):
+
+| Resource URI template | Backing data |
+|-----------------------|--------------|
 | `worldmonitor://countries/{iso2}/risk` | Country risk score, component breakdown, travel advisory, and sanctions exposure. `{iso2}` is lowercase alpha-2, for example `de` or `us`. |
 | `worldmonitor://chokepoints/{slug}/status` | Chokepoint transit summary and risk narrative. `{slug}` is one of the published kebab-case chokepoint slugs, such as `suez`, `strait-of-hormuz`, or `bab-el-mandeb`. |
-| `worldmonitor://seed-meta/freshness` | Market-data bootstrap freshness envelope only: `cached_at` and `stale`. |
 | `worldmonitor://markets/{symbol}/quote` | Single-symbol market quote slice. `{symbol}` is uppercase, for example `AAPL`, `GC=F`, or `BTC-USD`. |
 
-`resources/list` is metadata and does not consume the Pro daily quota. `resources/read` intentionally does consume the same daily quota slot as the equivalent `tools/call`; it routes through the same dispatcher so resources cannot bypass the Pro cap. As with every MCP method, both `resources/list` and `resources/read` still count toward the 60/minute limiter. For the exact `-32029` status/header differences between per-minute throttling and daily quota exhaustion, see the [MCP Error Catalog](/mcp-error-catalog#-32029--rate-limited-per-minute-or-daily).
+`resources/list` and `resources/templates/list` are metadata and do not consume the Pro daily quota. `resources/read` of a template instantiation intentionally consumes the same daily quota slot as the equivalent `tools/call`; it routes through the same dispatcher so a data-bearing resource cannot bypass the Pro cap. `resources/read` of a public (concrete) resource is quota-free — it returns only metadata. As with every MCP method, all of these still count toward the 60/minute limiter. For the exact `-32029` status/header differences between per-minute throttling and daily quota exhaustion, see the [MCP Error Catalog](/mcp-error-catalog#-32029--rate-limited-per-minute-or-daily).
+
+### MCP Apps (interactive UI)
+
+The server supports [MCP Apps](https://modelcontextprotocol.io/extensions/apps/build) (extension `io.modelcontextprotocol/ui`, spec `2026-01-26`) — interactive views a host renders in a sandboxed iframe when a linked tool is called. Three wire signals drive it:
+
+- **`initialize`** declares support in the handshake. The response's `capabilities.extensions` names the extension: `{"io.modelcontextprotocol/ui": {}}`. This is the negotiation signal a host (or agent-readiness scanner) reads to classify the endpoint as an MCP-App surface — the `tools/list` and `resources/list` entries below are the content it then renders.
+- **`tools/list`** advertises the linkage on the tool. `get_country_risk` carries `_meta.ui.resourceUri` (and the deprecated flat `ui/resourceUri` alias) pointing at its UI resource.
+- **`resources/list`** surfaces the UI resource itself, alongside the concrete data resource (the parameterised data templates live in `resources/templates/list`):
+
+| UI resource URI | mimeType | Renders |
+|-----------------|----------|---------|
+| `ui://worldmonitor/country-risk.html` | `text/html;profile=mcp-app` | The `get_country_risk` result as an interactive card: CII score, unrest/conflict/security/news component breakdown, travel-advisory level, and OFAC sanctions exposure. |
+
+`resources/read` on a `ui://` URI returns the self-contained HTML view. Unlike the data resources, a `ui://` read is **public and quota-exempt** — the template carries no data and spends no upstream call, so a host can preload it (and an agent-readiness scanner can fetch it) without credentials and without touching the Pro daily cap. The view is fully self-contained (no external assets) and communicates with the host over the standard MCP Apps `postMessage` bridge (`ui/initialize` → `ui/notifications/tool-result` → `ui/notifications/size-changed`).
 
 ## JSON-RPC example
 

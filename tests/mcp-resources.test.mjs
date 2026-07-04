@@ -49,6 +49,16 @@ function envKeyReq(body, headers = {}) {
   });
 }
 
+// Anonymous request (NO credentials) — exercises the public-discovery /
+// public-resource-read path an agent-readiness scanner (orank) uses.
+function anonReq(body, headers = {}) {
+  return new Request(BASE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(body),
+  });
+}
+
 // resources/read JSON-RPC body factory.
 function readBody(uri, id = 100) {
   return { jsonrpc: '2.0', id, method: 'resources/read', params: { uri } };
@@ -143,7 +153,8 @@ function installMockFetch({ riskPayload = null } = {}) {
 
 let handler;
 let mcpHandler;
-let RESOURCE_REGISTRY;
+let PUBLIC_RESOURCE_REGISTRY;
+let TEMPLATE_RESOURCE_REGISTRY;
 let TOOL_REGISTRY;
 let CHOKEPOINT_SLUGS;
 
@@ -160,7 +171,8 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     const mod = await import(`../api/mcp.ts?t=${Date.now()}-resources`);
     handler = mod.default;
     mcpHandler = mod.mcpHandler;
-    RESOURCE_REGISTRY = mod.__testing__.RESOURCE_REGISTRY;
+    PUBLIC_RESOURCE_REGISTRY = mod.__testing__.PUBLIC_RESOURCE_REGISTRY;
+    TEMPLATE_RESOURCE_REGISTRY = mod.__testing__.TEMPLATE_RESOURCE_REGISTRY;
     TOOL_REGISTRY = mod.__testing__.TOOL_REGISTRY;
     CHOKEPOINT_SLUGS = mod.CHOKEPOINT_SLUGS;
   });
@@ -195,34 +207,243 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
   });
 
   // -------------------------------------------------------------------------
+  // MCP Apps handshake — initialize declares the extension (the SIGNAL that
+  // pairs with the ui:// resource + tool `_meta` CONTENT asserted below).
+  // Hosts and agent-readiness scanners classify an MCP-App surface off this
+  // `capabilities.extensions` key; 1.11.0 shipped the ui:// artifacts but not
+  // this declaration, so the surface read as a plain MCP server. Guarding it
+  // here keeps the full MCP Apps triad (capability + resource + tool meta)
+  // enforced in one file.
+  // -------------------------------------------------------------------------
+  it('initialize declares the MCP Apps extension capabilities.extensions["io.modelcontextprotocol/ui"]', async () => {
+    const res = await handler(envKeyReq({
+      jsonrpc: '2.0', id: 1, method: 'initialize',
+      params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1.0' } },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    const extensions = body.result?.capabilities?.extensions;
+    assert.ok(extensions && typeof extensions === 'object',
+      'capabilities.extensions must be an object declaring supported MCP extensions');
+    assert.deepEqual(
+      extensions['io.modelcontextprotocol/ui'], {},
+      "capabilities.extensions['io.modelcontextprotocol/ui'] must be declared (empty object — the " +
+      'extension carries no negotiation parameters), signalling MCP Apps support to hosts/scanners',
+    );
+  });
+
+  // -------------------------------------------------------------------------
   // resources/list shape
   // -------------------------------------------------------------------------
-  it('resources/list returns exactly four entries with the documented URIs', async () => {
+  it('resources/list returns only concrete anon-readable resources: DATA freshness probe + ui:// shell, no {template} URIs', async () => {
     const res = await handler(envKeyReq({ jsonrpc: '2.0', id: 2, method: 'resources/list', params: {} }));
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.ok(Array.isArray(body.result?.resources), 'result.resources must be an array');
-    assert.equal(body.result.resources.length, 4, `Expected 4 resources, got ${body.result.resources.length}`);
-
-    const expectedUris = [
-      'worldmonitor://countries/{iso2}/risk',
-      'worldmonitor://chokepoints/{slug}/status',
-      'worldmonitor://seed-meta/freshness',
-      'worldmonitor://markets/{symbol}/quote',
-    ];
+    // resources/list = concrete DATA resource(s) (metadata-only, anon-readable)
+    // + the MCP Apps ui:// app-shell (v1.11.0). NO {placeholder} templates —
+    // those moved to resources/templates/list (a literal {iso2} can't resolve,
+    // which would break an anonymous validator's resources/read probe).
     const actualUris = body.result.resources.map((r) => r.uri);
-    assert.deepEqual(actualUris, expectedUris, 'resource URIs and order must match the documented set');
-
+    assert.deepEqual(actualUris, [
+      'worldmonitor://seed-meta/freshness',
+      'ui://worldmonitor/country-risk.html',
+    ], 'resources/list = concrete DATA freshness probe then ui:// shell, in order');
     for (const r of body.result.resources) {
       assert.equal(typeof r.uri, 'string', `resource ${r.uri}: uri must be a string`);
       assert.ok(r.uri.length > 0, `resource ${r.uri}: uri must be non-empty`);
+      assert.doesNotMatch(r.uri, /[{}]/,
+        `resource ${r.uri}: resources/list must not contain template {placeholder} URIs (use resources/templates/list)`);
       assert.equal(typeof r.name, 'string', `resource ${r.uri}: name must be a string`);
       assert.equal(typeof r.description, 'string', `resource ${r.uri}: description must be a string`);
-      assert.equal(r.mimeType, 'application/json', `resource ${r.uri}: mimeType must be application/json`);
+      // Per-uri mimeType: DATA resources are application/json; the MCP Apps
+      // ui:// shell is the extension's content profile text/html;profile=mcp-app.
+      const expectedMime = r.uri.startsWith('ui://') ? 'text/html;profile=mcp-app' : 'application/json';
+      assert.equal(r.mimeType, expectedMime, `resource ${r.uri}: mimeType must be ${expectedMime}`);
       // Internal authoring fields must NOT leak via resources/list.
+      assert.equal(r.read, undefined, `resource ${r.uri}: internal "read" must not leak via resources/list`);
       assert.equal(r.tool, undefined, `resource ${r.uri}: internal "tool" must not leak via resources/list`);
       assert.equal(r.paramExtractor, undefined, `resource ${r.uri}: internal "paramExtractor" must not leak via resources/list`);
       assert.equal(r.freshnessWrap, undefined, `resource ${r.uri}: internal "freshnessWrap" must not leak via resources/list`);
+      assert.equal(r.html, undefined, `resource ${r.uri}: internal "html" must not leak via resources/list`);
+      // ui:// shells advertise their CSP/render policy via _meta.ui; DATA
+      // resources carry no _meta.
+      if (r.uri.startsWith('ui://')) {
+        assert.ok(r._meta?.ui?.csp, `ui:// resource ${r.uri} must advertise _meta.ui.csp`);
+      } else {
+        assert.equal(r._meta, undefined, `DATA resource ${r.uri} must not carry _meta`);
+      }
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // MCP Apps ui:// resource — read is public + quota-exempt (v1.11.0)
+  // -------------------------------------------------------------------------
+  it('resources/read ui://worldmonitor/country-risk.html returns the app-shell HTML (mimeType text/html;profile=mcp-app)', async () => {
+    const res = await handler(envKeyReq(readBody('ui://worldmonitor/country-risk.html')));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error, undefined, `unexpected error: ${JSON.stringify(body.error)}`);
+    assert.equal(body.result.contents.length, 1);
+    const c = body.result.contents[0];
+    assert.equal(c.uri, 'ui://worldmonitor/country-risk.html');
+    assert.equal(c.mimeType, 'text/html;profile=mcp-app');
+    assert.match(c.text, /^<!doctype html>/i, 'ui:// resource must return self-contained HTML');
+    assert.match(c.text, /ui\/initialize/, 'app shell must implement the MCP Apps postMessage handshake');
+    assert.match(c.text, /ui\/notifications\/tool-result/, 'app shell must consume tool-result notifications');
+  });
+
+  it('ui:// app-shell HTML carries the orank view-quality + view-csp signals (uppercase DOCTYPE, color-scheme, scoped CSP)', async () => {
+    // orank Experience checks mcp-apps-ui-quality / mcp-view-domain / mcp-view-csp
+    // read the served HTML statically. Guard each required token so a future
+    // edit can't silently regress the score.
+    const res = await handler(envKeyReq(readBody('ui://worldmonitor/country-risk.html')));
+    const html = (await res.json()).result.contents[0].text;
+
+    // ui-quality + view-domain: UPPERCASE DOCTYPE + color-scheme meta.
+    assert.match(html, /^<!DOCTYPE html>/, 'HTML must open with an uppercase <!DOCTYPE html> (orank mcp-apps-ui-quality)');
+    assert.match(html, /<meta\s+name="color-scheme"\s+content="light dark">/, 'must declare <meta name="color-scheme" content="light dark">');
+    assert.doesNotMatch(html, /wm_[a-f0-9]{40}|X-WorldMonitor-Key|Bearer\s+[A-Za-z0-9]/, 'app shell must not hardcode secrets/keys');
+
+    // view-csp: a <meta http-equiv> CSP scoping all four required directive categories.
+    const cspMatch = html.match(/<meta\s+http-equiv="Content-Security-Policy"\s+content="([^"]+)">/);
+    assert.ok(cspMatch, 'must carry a <meta http-equiv="Content-Security-Policy"> tag');
+    const csp = cspMatch[1];
+    assert.match(csp, /connect-src[^;]*worldmonitor\.app/, 'connect-src must include the MCP server origin');
+    assert.match(csp, /frame-ancestors[^;]*https:\/\/chatgpt\.com/, 'frame-ancestors must include https://chatgpt.com');
+    assert.match(csp, /frame-ancestors[^;]*https:\/\/claude\.ai/, 'frame-ancestors must include https://claude.ai');
+    assert.match(csp, /form-action\s+'none'/, 'form-action must be scoped');
+    assert.match(csp, /(img|script|style)-src/, 'img/script/style-src must be present');
+    assert.doesNotMatch(csp, /default-src\s+\*/, 'must NOT use a permissive default-src * (loses orank credit)');
+  });
+
+  it('resources/read ui:// response carries spec _meta.ui.csp with secure empty allowlists', async () => {
+    const res = await handler(envKeyReq(readBody('ui://worldmonitor/country-risk.html')));
+    const meta = (await res.json()).result.contents[0]._meta;
+    assert.ok(meta?.ui?.csp, 'contents[0]._meta.ui.csp must be present (ext-apps UIResourceMeta)');
+    // connectDomains mirrors the HTML meta CSP's connect-src (the MCP origin);
+    // the other allowlists stay empty (secure default — app loads nothing external).
+    assert.deepEqual(meta.ui.csp.connectDomains, ['https://worldmonitor.app', 'https://www.worldmonitor.app'],
+      'connectDomains must mirror the HTML connect-src (MCP server origin)');
+    assert.deepEqual(meta.ui.csp.resourceDomains, [], 'resourceDomains empty = no external resources');
+    assert.deepEqual(meta.ui.csp.frameDomains, [], 'frameDomains empty = no nested frames');
+    assert.deepEqual(meta.ui.csp.baseUriDomains, [], 'baseUriDomains empty = base-uri self');
+
+    // Consistency guard: every connectDomain must actually appear in the
+    // served HTML's connect-src (catches the two CSP declarations drifting).
+    // Parse the CSP from the meta CONTENT attribute — not a bare `connect-src`
+    // grep, which would also hit the word in the head comment.
+    const htmlRes = await handler(envKeyReq(readBody('ui://worldmonitor/country-risk.html')));
+    const html = (await htmlRes.json()).result.contents[0].text;
+    const cspContent = html.match(/<meta\s+http-equiv="Content-Security-Policy"\s+content="([^"]+)">/)[1];
+    const connectSrc = cspContent.match(/connect-src([^;]+)/)[1];
+    for (const d of meta.ui.csp.connectDomains) {
+      assert.ok(connectSrc.includes(d), `_meta.ui.csp.connectDomains "${d}" must also be in the HTML connect-src`);
+    }
+  });
+
+  it('resources/read of the ui:// shell is PUBLIC — served with NO credentials', async () => {
+    const anonReq = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(readBody('ui://worldmonitor/country-risk.html')),
+    });
+    const res = await handler(anonReq);
+    assert.equal(res.status, 200, 'ui:// read must be servable without auth (static, data-free template)');
+    const body = await res.json();
+    assert.equal(body.error, undefined, `anon ui:// read must succeed, got: ${JSON.stringify(body.error)}`);
+    assert.equal(body.result.contents[0].mimeType, 'text/html;profile=mcp-app');
+  });
+
+  it('every tool _uiResourceUri resolves to a listed ui:// resource, and every ui:// resource is reachable (bidirectional integrity)', async () => {
+    // Enumerate the ui:// URIs the server actually advertises via resources/list.
+    const res = await handler(envKeyReq({ jsonrpc: '2.0', id: 9, method: 'resources/list', params: {} }));
+    const body = await res.json();
+    const listedUiUris = new Set(
+      body.result.resources.map((r) => r.uri).filter((u) => u.startsWith('ui://')),
+    );
+
+    // Every tool that declares a UI linkage must point at a listed resource
+    // (no dangling _meta.ui.resourceUri that 404s on resources/read).
+    const linkedByTools = new Set();
+    for (const tool of TOOL_REGISTRY) {
+      if (tool._uiResourceUri) {
+        linkedByTools.add(tool._uiResourceUri);
+        assert.ok(
+          listedUiUris.has(tool._uiResourceUri),
+          `tool "${tool.name}" links _uiResourceUri "${tool._uiResourceUri}" but resources/list does not advertise it`,
+        );
+        // And the read must actually resolve (public, static template).
+        const readRes = await handler(envKeyReq(readBody(tool._uiResourceUri)));
+        const readBodyJson = await readRes.json();
+        assert.equal(readBodyJson.error, undefined,
+          `resources/read of "${tool._uiResourceUri}" (linked by ${tool.name}) must resolve`);
+      }
+    }
+
+    // And every advertised ui:// resource must be linked by at least one tool
+    // — an orphan app shell no tool can trigger is dead surface.
+    for (const uri of listedUiUris) {
+      assert.ok(linkedByTools.has(uri),
+        `ui:// resource "${uri}" is advertised but no tool references it via _uiResourceUri`);
+    }
+  });
+
+  it('resources/templates/list returns the three data-bearing URI templates', async () => {
+    const res = await handler(envKeyReq({ jsonrpc: '2.0', id: 3, method: 'resources/templates/list', params: {} }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(Array.isArray(body.result?.resourceTemplates), 'result.resourceTemplates must be an array');
+
+    const expectedTemplates = [
+      'worldmonitor://countries/{iso2}/risk',
+      'worldmonitor://chokepoints/{slug}/status',
+      'worldmonitor://markets/{symbol}/quote',
+    ];
+    const actualTemplates = body.result.resourceTemplates.map((r) => r.uriTemplate);
+    assert.deepEqual(actualTemplates, expectedTemplates,
+      'resource template URIs and order must match the documented set');
+
+    for (const r of body.result.resourceTemplates) {
+      assert.equal(typeof r.uriTemplate, 'string', `template ${r.uriTemplate}: uriTemplate must be a string`);
+      assert.match(r.uriTemplate, /\{[a-z0-9]+\}/i, `template ${r.uriTemplate}: must contain a {placeholder}`);
+      assert.equal(typeof r.name, 'string', `template ${r.uriTemplate}: name must be a string`);
+      assert.equal(typeof r.description, 'string', `template ${r.uriTemplate}: description must be a string`);
+      assert.equal(r.mimeType, 'application/json', `template ${r.uriTemplate}: mimeType must be application/json`);
+      // Internal authoring fields must NOT leak via resources/templates/list.
+      assert.equal(r.tool, undefined, `template ${r.uriTemplate}: internal "tool" must not leak`);
+      assert.equal(r.paramExtractor, undefined, `template ${r.uriTemplate}: internal "paramExtractor" must not leak`);
+      assert.equal(r.freshnessWrap, undefined, `template ${r.uriTemplate}: internal "freshnessWrap" must not leak`);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // orank mcp-resource-quality — every resources/list entry must resources/read
+  // cleanly for an ANONYMOUS caller (no credentials). This is the exact probe
+  // an agent-readiness scanner runs; a 401 here is the failure it reports.
+  // -------------------------------------------------------------------------
+  it('ANON: every resources/list entry reads cleanly without credentials (orank mcp-resource-quality)', async () => {
+    const listRes = await handler(anonReq({ jsonrpc: '2.0', id: 1, method: 'resources/list', params: {} }));
+    assert.equal(listRes.status, 200, 'anonymous resources/list must be public');
+    const listBody = await listRes.json();
+    const uris = listBody.result.resources.map((r) => r.uri);
+    assert.ok(uris.length >= 1, 'resources/list must advertise at least one resource');
+
+    for (const uri of uris) {
+      const res = await handler(anonReq(readBody(uri)));
+      assert.equal(res.status, 200, `anonymous resources/read ${uri} must return 200, got ${res.status}`);
+      const body = await res.json();
+      assert.equal(body.error, undefined,
+        `anonymous resources/read ${uri} must not error, got ${JSON.stringify(body.error)}`);
+      const c = body.result?.contents?.[0];
+      assert.ok(c, `resources/read ${uri} must return a content entry`);
+      // Mixed catalog: concrete DATA resources are application/json; the ui://
+      // shell is text/html;profile=mcp-app. orank requires a valid declared
+      // mimeType + non-empty content for every entry.
+      assert.ok(typeof c.mimeType === 'string' && c.mimeType.length > 0,
+        `resources/read ${uri}: must declare a mimeType`);
+      assert.ok(typeof c.text === 'string' && c.text.length > 0, `resources/read ${uri}: content must be non-empty`);
+      if (c.mimeType === 'application/json') JSON.parse(c.text); // valid JSON for the declared type
     }
   });
 
@@ -422,11 +643,10 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       `auth symmetry: tools/call counter delta (${pipeT.count}) must equal resources/read counter delta (${pipeR.count})`);
   });
 
-  it('Pro resources/read on cache-tool-backed URIs (markets, chokepoints, seed-meta) also increments counter by 1 each', async () => {
+  it('Pro resources/read on data-bearing template URIs (markets, chokepoints) increments counter by 1 each', async () => {
     const uris = [
       'worldmonitor://markets/AAPL/quote',
       'worldmonitor://chokepoints/suez/status',
-      'worldmonitor://seed-meta/freshness',
     ];
     for (const uri of uris) {
       const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 0 } });
@@ -436,6 +656,58 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         `resources/read ${uri} should succeed, got error: ${JSON.stringify(body.error)}`);
       assert.equal(pipe.count, 1,
         `${uri} MUST increment Pro counter by exactly 1, got ${pipe.count}`);
+    }
+  });
+
+  it('PUBLIC seed-meta/freshness resources/read is quota-exempt (metadata-class, mirrors resources/list) even for Pro', async () => {
+    const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 0 } });
+    const res = await mcpHandler(proReq('POST', readBody('worldmonitor://seed-meta/freshness')), deps);
+    const body = await res.json();
+    assert.equal(body.error, undefined, `should succeed, got error: ${JSON.stringify(body.error)}`);
+    assert.equal(pipe.count, 0,
+      'seed-meta/freshness is a metadata-only freshness probe — it must NOT consume the Pro daily quota');
+    // Envelope-only content survives the public direct-read path.
+    const payload = JSON.parse(body.result.contents[0].text);
+    assert.equal(Object.keys(payload).sort().join(','), 'cached_at,stale',
+      'public freshness read must return exactly {cached_at, stale}');
+  });
+
+  it('ANON seed-meta/freshness resources/read succeeds (no credentials, no quota)', async () => {
+    const res = await handler(anonReq(readBody('worldmonitor://seed-meta/freshness')));
+    assert.equal(res.status, 200, 'anonymous public-resource read must return 200');
+    const body = await res.json();
+    assert.equal(body.error, undefined, `anonymous read must not error: ${JSON.stringify(body.error)}`);
+    const payload = JSON.parse(body.result.contents[0].text);
+    assert.equal(typeof payload.stale, 'boolean');
+    assert.equal(typeof payload.cached_at === 'string' || payload.cached_at === null, true);
+  });
+
+  it('ANON resources/read of a data-bearing TEMPLATE instantiation stays gated (401 — no quota bypass)', async () => {
+    // The data-leak / quota-bypass protection: only concrete PUBLIC resources
+    // are anon-readable. A template instantiation (country risk) requires auth.
+    const res = await handler(anonReq(readBody('worldmonitor://countries/de/risk')));
+    assert.equal(res.status, 401, 'anonymous read of a data-bearing template must be 401');
+    assert.ok(
+      res.headers.get('WWW-Authenticate')?.includes('Bearer'),
+      'gated resource read must advertise WWW-Authenticate: Bearer',
+    );
+  });
+
+  it('a PUBLIC resource whose read() throws surfaces a clean -32603 (contract enforced at the dispatcher boundary)', async () => {
+    // The PublicResourceDef `read` "MUST be robust" contract is documentation;
+    // the dispatcher enforces it so a future non-robust reader returns -32603
+    // rather than bubbling an unhandled rejection through mcpHandler to the edge.
+    const def = PUBLIC_RESOURCE_REGISTRY[0];
+    const originalRead = def.read;
+    def.read = async () => { throw new Error('simulated reader failure'); };
+    try {
+      const res = await handler(anonReq(readBody(def.uri)));
+      assert.equal(res.status, 200, 'JSON-RPC errors ride inside HTTP 200');
+      const body = await res.json();
+      assert.equal(body.error?.code, -32603,
+        'a throwing public reader must surface -32603, not an unhandled rejection');
+    } finally {
+      def.read = originalRead;
     }
   });
 
@@ -459,6 +731,22 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     const body = await res.json();
     assert.equal(body.error, undefined);
     assert.equal(pipe.count, 0, 'resources/list is metadata-class — must NOT count toward daily quota');
+  });
+
+  it('Pro resources/read of the ui:// shell does NOT increment the daily-quota counter (static template, quota-exempt)', async () => {
+    // Unlike a DATA resources/read (which reserves against the 50/day Pro cap
+    // symmetrically with tools/call), a ui:// read returns a static, data-free
+    // app shell and spends no quota — the load-bearing distinction that lets
+    // an unauthenticated host fetch the shell to render it.
+    const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 0 } });
+    const res = await mcpHandler(
+      proReq('POST', readBody('ui://worldmonitor/country-risk.html')),
+      deps,
+    );
+    const body = await res.json();
+    assert.equal(body.error, undefined, `ui:// read should succeed, got: ${JSON.stringify(body.error)}`);
+    assert.equal(body.result.contents[0].mimeType, 'text/html;profile=mcp-app');
+    assert.equal(pipe.count, 0, 'ui:// resources/read is quota-exempt — must NOT count toward the Pro daily cap');
   });
 
   it('Pro resources/read returns -32029 when the daily quota is exhausted (identical to tools/call)', async () => {
@@ -560,13 +848,21 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
   // -------------------------------------------------------------------------
   // Tool-existence parity (every resource.tool exists in TOOL_REGISTRY)
   // -------------------------------------------------------------------------
-  it('every RESOURCE_REGISTRY entry references a tool that exists in TOOL_REGISTRY', () => {
+  it('every TEMPLATE_RESOURCE_REGISTRY entry references a tool that exists in TOOL_REGISTRY', () => {
     const toolNames = new Set(TOOL_REGISTRY.map((t) => t.name));
-    for (const r of RESOURCE_REGISTRY) {
+    for (const r of TEMPLATE_RESOURCE_REGISTRY) {
       assert.ok(
         toolNames.has(r.tool),
-        `resource "${r.uri}" references unknown tool "${r.tool}". Known: [${[...toolNames].sort().join(', ')}]`,
+        `resource "${r.uriTemplate}" references unknown tool "${r.tool}". Known: [${[...toolNames].sort().join(', ')}]`,
       );
+    }
+  });
+
+  it('PUBLIC_RESOURCE_REGISTRY entries are concrete (no {template}) and expose a read() function', () => {
+    assert.ok(PUBLIC_RESOURCE_REGISTRY.length >= 1, 'at least one public resource must exist');
+    for (const r of PUBLIC_RESOURCE_REGISTRY) {
+      assert.doesNotMatch(r.uri, /[{}]/, `public resource ${r.uri} must be a concrete URI`);
+      assert.equal(typeof r.read, 'function', `public resource ${r.uri} must expose a read() function`);
     }
   });
 

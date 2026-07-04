@@ -1232,6 +1232,33 @@ export function shouldSkipEmptyExtraKey(ek, recordCount) {
   return Boolean(ek && ek.skipWhenEmpty) && recordCount === 0;
 }
 
+// Fleet-wide graceful-degradation backstop (issue #4786). A non-settling
+// await inside a seeder's fetchFn — e.g. an unguarded R2/S3 body stream whose
+// socket is silently reaped — never rejects, so the Phase-1 try/catch can't
+// catch it; the event loop drains and Node exits 13 ("Detected unsettled
+// top-level await"), painting a red Railway badge that is neither a graceful
+// skip nor a catchable failure. Racing the fetch against a wall-clock deadline
+// converts that hang into a normal rejection, which the existing graceful path
+// turns into exit 75 (TTL extended, last-good served, no data lost).
+//
+// The deadline is tied to lockTtlMs — never a fixed value — because seeders
+// legitimately run from ~1min to 40min. A healthy seeder is designed never to
+// outlive its own lock, so lockTtlMs + margin exceeds any legitimate run; the
+// only thing that trips it is a genuine hang. A false trip is itself graceful
+// (exit 75), so the margin errs generous.
+export const FETCH_PHASE_DEADLINE_MARGIN_MS = 120_000;
+
+export function raceFetchDeadline(promise, ms, label) {
+  let timer;
+  const guard = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${label} fetch phase exceeded ${ms}ms deadline (likely a non-settling await — see issue #4786)`)),
+      ms,
+    );
+  });
+  return Promise.race([promise, guard]).finally(() => clearTimeout(timer));
+}
+
 export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}) {
   const {
     validateFn,
@@ -1248,6 +1275,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     zeroIsValid = false,   // new — when true, recordCount=0 is OK_ZERO, not RETRY
     contentMeta,           // (rawData) => {newestItemAt, oldestItemAt} | null
     maxContentAgeMin,      // positive integer minutes — opts in together with contentMeta
+    fetchPhaseTimeoutMs,   // hard ceiling on the fetch phase; defaults to lockTtlMs + margin (#4786)
   } = opts;
   const contractMode = typeof declareRecords === 'function';
   if (contractMode) {
@@ -1338,10 +1366,16 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   };
   process.once('SIGTERM', sigTermHandler);
 
-  // Phase 1: Fetch data (graceful on failure — extend TTL on stale data)
+  // Phase 1: Fetch data (graceful on failure — extend TTL on stale data).
+  // Raced against a wall-clock deadline so a non-settling await inside fetchFn
+  // (see raceFetchDeadline above, issue #4786) surfaces as a catchable
+  // rejection instead of hanging the process into an exit-13 red badge.
+  const fetchDeadlineMs = Number.isFinite(fetchPhaseTimeoutMs) && fetchPhaseTimeoutMs > 0
+    ? fetchPhaseTimeoutMs
+    : lockTtlMs + FETCH_PHASE_DEADLINE_MARGIN_MS;
   let data;
   try {
-    data = await withRetry(fetchFn);
+    data = await raceFetchDeadline(withRetry(fetchFn), fetchDeadlineMs, `${domain}:${resource}`);
   } catch (err) {
     // Keep the SIGTERM handler installed across the fetch-failure
     // cleanup. Earlier code did `process.off('SIGTERM', sigTermHandler)`

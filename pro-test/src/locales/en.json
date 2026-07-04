@@ -256,6 +256,7 @@
     "restApi": "REST API across all 30+ service domains",
     "authenticated": "Authenticated per-key, rate-limited per tier",
     "structured": "Structured JSON with cache headers and OpenAPI 3.1 docs",
+    "cli": "Zero-dependency CLI to script every tool from your shell",
     "starter": "Starter",
     "starterReqs": "1,000 req/day",
     "starterWebhooks": "5 webhook rules",

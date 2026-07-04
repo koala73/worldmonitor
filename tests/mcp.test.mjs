@@ -139,6 +139,55 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       'anonymous resources/list must expose a non-empty resource catalog (advertised `resources` capability)');
   });
 
+  it('resources/templates/list succeeds WITHOUT credentials (public discovery) and returns URI templates', async () => {
+    // The data-bearing URI templates (country risk, chokepoint, market quote)
+    // moved from resources/list to resources/templates/list — this metadata
+    // method is public so agents can still discover them without auth.
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 5, method: 'resources/templates/list', params: {} }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated resources/templates/list must be public');
+    const body = await res.json();
+    assert.ok(Array.isArray(body.result?.resourceTemplates) && body.result.resourceTemplates.length >= 1,
+      'anonymous resources/templates/list must expose the URI-template catalog');
+    assert.ok(body.result.resourceTemplates.every((r) => typeof r.uriTemplate === 'string'),
+      'each template entry must carry a uriTemplate field');
+  });
+
+  it('resources/read of a PUBLIC resource succeeds WITHOUT credentials + never touches quota (orank mcp-resource-quality)', async () => {
+    // orank reads every resources/list entry via resources/read anonymously.
+    // The concrete PUBLIC resources (freshness/health probes) return
+    // metadata-only content, so they read cleanly without auth or quota.
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 6, method: 'resources/read', params: { uri: 'worldmonitor://seed-meta/freshness' } }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'anonymous resources/read of a public resource must be 200');
+    const body = await res.json();
+    assert.equal(body.error, undefined, `must not error: ${JSON.stringify(body.error)}`);
+    const c = body.result?.contents?.[0];
+    assert.equal(c?.mimeType, 'application/json');
+    assert.ok(typeof c?.text === 'string' && c.text.length > 0, 'content must be non-empty');
+    assertNoStore(res, 'anonymous public resources/read');
+  });
+
+  it('resources/read of a data-bearing TEMPLATE instantiation still requires credentials (no quota bypass)', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 7, method: 'resources/read', params: { uri: 'worldmonitor://countries/de/risk' } }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 401, 'resources/read of a data-bearing template is a data/quota method — must stay gated');
+    const body = await res.json();
+    assert.equal(body.error?.code, -32001);
+  });
+
   it('tools/call still requires credentials even though discovery is public', async () => {
     const req = new Request(BASE_URL, {
       method: 'POST',

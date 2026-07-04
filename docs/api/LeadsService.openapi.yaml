@@ -38,7 +38,6 @@ paths:
                             "phone": "example"
                             "source": "example"
                             "turnstileToken": "example"
-                            "website": "example"
                         schema:
                             $ref: '#/components/schemas/SubmitContactRequest'
                 required: true
@@ -150,7 +149,6 @@ paths:
                             "referredBy": "example"
                             "source": "example"
                             "turnstileToken": "example"
-                            "website": "example"
                         schema:
                             $ref: '#/components/schemas/RegisterInterestRequest'
                 required: true

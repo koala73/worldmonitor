@@ -42,6 +42,7 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 
 - [README](https://github.com/koala73/worldmonitor/blob/main/README.md): Full project documentation with architecture details, algorithm descriptions, and data source specifications
 - [Full Documentation](https://github.com/koala73/worldmonitor/blob/main/docs/DOCUMENTATION.md): Detailed feature documentation, data layer reference, panel descriptions, and clustering logic
+- [API llms.txt](https://worldmonitor.app/api/llms.txt): API-section briefing — MCP server, REST API, CLI, auth, and per-task tool routing for the developer surface
 
 ## Data Layers — Geopolitical
 

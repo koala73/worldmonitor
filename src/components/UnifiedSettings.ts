@@ -176,7 +176,7 @@ export class UnifiedSettings {
       const panelItem = target.closest<HTMLElement>('.panel-toggle-item');
       if (panelItem?.dataset.panel) {
         if (panelItem.dataset.proLocked) {
-          window.open('/pro', '_blank');
+          window.open('/pro', '_blank', 'noopener,noreferrer');
           return;
         }
         this.toggleDraftPanel(panelItem.dataset.panel);
@@ -684,11 +684,11 @@ export class UnifiedSettings {
     }
     this.close();
     if (this.config.isDesktopApp) {
-      window.open('https://worldmonitor.app/pro', '_blank');
+      window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
       return;
     }
     import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DEFAULT_UPGRADE_PRODUCT))).catch(() => {
-      window.open('https://worldmonitor.app/pro', '_blank');
+      window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
     });
   }
 
@@ -975,7 +975,7 @@ export class UnifiedSettings {
         } else {
           this.close();
           import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DODO_PRODUCTS.API_STARTER_MONTHLY))).catch(() => {
-            window.open('https://worldmonitor.app/pro', '_blank');
+            window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
           });
         }
       });

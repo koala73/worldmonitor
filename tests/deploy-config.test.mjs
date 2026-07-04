@@ -1386,6 +1386,21 @@ describe('agent readiness: MCP/OAuth origin alignment', () => {
         ['access_token'],
         `anonymous sibling block enumerates credential types for ${host}`
       );
+      // The anonymous registration method requires a claim URI (readiness
+      // scanners reject the method without it). Anonymous credentials are
+      // claimed at authorization time, so claim_uri == the authorization
+      // endpoint. Advertised both at the agent_auth top level (parallel to
+      // register_uri) and inside the anonymous method object.
+      assert.equal(
+        json.agent_auth.claim_uri,
+        `https://${host}/oauth/authorize`,
+        `agent_auth.claim_uri = authorization endpoint for ${host}`
+      );
+      assert.equal(
+        json.agent_auth.anonymous.claim_uri,
+        `https://${host}/oauth/authorize`,
+        `anonymous method advertises claim_uri for ${host}`
+      );
     }
   });
 
@@ -1409,6 +1424,8 @@ describe('agent readiness: MCP/OAuth origin alignment', () => {
       assert.equal(asJson.issuer, 'https://worldmonitor.app', `AS must not reflect spoofed host ${host}`);
       assert.equal(asJson.token_endpoint, 'https://worldmonitor.app/oauth/token', `AS token_endpoint must not carry spoofed host ${host}`);
       assert.equal(asJson.agent_auth.register_uri, 'https://worldmonitor.app/oauth/register');
+      assert.equal(asJson.agent_auth.claim_uri, 'https://worldmonitor.app/oauth/authorize', `AS claim_uri must not carry spoofed host ${host}`);
+      assert.equal(asJson.agent_auth.anonymous.claim_uri, 'https://worldmonitor.app/oauth/authorize');
     }
 
     // Legit subdomain still self-describes.
@@ -1462,8 +1479,27 @@ describe('agent readiness: auth.md walkthrough', () => {
 
   it('references the auth.md spec and carries the spec anchor keywords', () => {
     assert.ok(authMd.includes('https://workos.com/auth-md'), 'auth.md must reference the WorkOS spec');
-    for (const keyword of ['agent_auth', 'register_uri', 'identity_assertion', 'id-jag', 'WWW-Authenticate']) {
+    for (const keyword of ['agent_auth', 'register_uri', 'claim_uri', 'identity_assertion', 'id-jag', 'WWW-Authenticate']) {
       assert.ok(authMd.includes(keyword), `auth.md must mention spec keyword: ${keyword}`);
+    }
+  });
+
+  it('keeps every section header within the scanner read budget (~5 KB truncation)', () => {
+    // isitagentready / ora.ai reads only the first ~5 KB of auth.md; any `## `
+    // section header past that byte offset is dropped and the section reported
+    // missing (regressing auth-md-structure). This has bitten us before, so
+    // guard with a conservative ceiling — an edit that bloats an earlier
+    // section fails HERE instead of silently regressing the live scan.
+    const HEADER_BUDGET = 4800;
+    let offset = 0;
+    for (const line of authMd.split('\n')) {
+      if (line.startsWith('## ')) {
+        assert.ok(
+          offset < HEADER_BUDGET,
+          `"${line.trim()}" starts at byte ${offset}; must be < ${HEADER_BUDGET} to survive the ~5 KB scanner truncation`
+        );
+      }
+      offset += Buffer.byteLength(line, 'utf8') + 1; // + the newline that split() dropped
     }
   });
 

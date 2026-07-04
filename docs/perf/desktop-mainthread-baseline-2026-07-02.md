@@ -101,3 +101,47 @@ Re-run both harness invocations before/after any compositing-layer change and re
 `Layerize` self-time share delta in the PR. Take the authoritative absolute desktop `mainthread-work`
 from a clean PSI/Calibre run — this harness supplies the **relative** decomposition, not the headline
 absolute (KTD1). The `styleLayout` share is the #4536 gate; the `Layerize` share is the new one.
+
+## Composited layers (#4630) — named cause, 2026-07-03
+
+Measured with the new `scripts/measure-composited-layers.mjs` (CDP `LayerTree`) against prod
+`/dashboard`, CPU 1×, 9s settle:
+
+**517 composited layers** (430 draw content). Top owners by layer count:
+
+| Owner selector | Layers |
+|---|---:|
+| `div.nuclear-marker.active` | 226 |
+| `(detached)` | 113 |
+| `div.earthquake-marker` | 66 |
+| `div.nuclear-marker.decommissioned` | 43 |
+| `div.hotspot` + `div.hotspot-marker.high` | 37 |
+| `div.nuclear-marker.construction` | 10 |
+| base-markers / structural / doc | ~20 |
+
+> Note: this capture predated the `describeNodeCap` skipped-node bucket. Treat the `(detached)` row as
+> "unresolved owner" evidence until rerun with the current harness; the total layer count and compositing
+> reasons remain the stable signals.
+
+Compositing reasons (frequency across the 517 layers):
+
+| Reason | Layers |
+|---|---:|
+| **Has an active accelerated opacity animation or transition** | **385** |
+| Overlaps other composited content | 115 |
+| Has an active accelerated transform animation or transition | 20 |
+| Scrollable overflow using accelerated scrolling | 13 |
+| `will-change` hint (transform + opacity) | **4** |
+
+**Named cause:** the dominant `Layerize` driver is **infinite `opacity` pulse animations on hundreds
+of map markers** — `.nuclear-marker.active` (`animation: nuclear-pulse …infinite`, 226×),
+`.earthquake-marker` (`quake-pulse …infinite`, 66×), `.nuclear-marker.contested` (`nuclear-alert
+…infinite`). Each infinite opacity animation is a hard compositing trigger that holds a permanent
+per-marker layer; the 115 "overlaps composited content" layers are the cascade this forces on
+neighbouring markers. The `will-change` CSS-audit candidates (`.virtual-item`, `.panel-content`,
+`.widget-chat-footer`) contribute only **4** layers combined — negligible. This **refutes** the pre-
+measurement CSS-audit hypothesis (the #4630 U2 named-cause gate working as designed) and retargets the
+fix at the marker-animation layer explosion, which is a UX/design decision (shared root with #4545 —
+too many simultaneously-active markers). Lever options: time-box the pulse (animate only
+recently-changed markers, then settle → release the layer), cap the count of simultaneously-pulsing
+markers by severity/viewport, or gate pulsing by marker density.

@@ -120,30 +120,6 @@ async function readAllSseEvents(response) {
   return parseSseFrames(await response.text());
 }
 
-async function readFirstSseEventAndDrop(response, controller) {
-  assert.ok(response.body, 'SSE response must expose a readable body');
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const boundary = buffer.search(/\r?\n\r?\n/);
-    if (boundary !== -1) {
-      const separator = buffer.match(/\r?\n\r?\n/);
-      assert.ok(separator, 'SSE frame separator must be present');
-      const firstFrame = buffer.slice(0, boundary);
-      await reader.cancel();
-      controller.abort();
-      return parseSseFrames(`${firstFrame}\n\n`)[0];
-    }
-  }
-
-  assert.fail(`SSE stream ended before the first event: ${buffer}`);
-}
-
 describe('api/mcp.ts — transport conformance over real HTTP', () => {
   let mcpHandler;
   let deps;
@@ -169,13 +145,11 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     Object.assign(process.env, originalEnv);
   });
 
-  it('streams initialize over POST and resumes the dropped stream after Last-Event-ID', async () => {
-    const controller = new AbortController();
+  it('streams initialize as a single JSON-RPC event and guards the Last-Event-ID replay channel', async () => {
     const initialize = await fetch(server.url, {
       method: 'POST',
       headers: mcpHeaders(),
       body: JSON.stringify(initBody(1)),
-      signal: controller.signal,
     });
 
     assert.equal(initialize.status, 200);
@@ -185,17 +159,31 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     assert.ok(sessionId, 'initialize SSE response must emit Mcp-Session-Id');
     assert.match(initialize.headers.get('access-control-expose-headers') ?? '', /\bMcp-Session-Id\b/);
 
-    const priming = await readFirstSseEventAndDrop(initialize, controller);
-    assert.ok(priming.id, 'priming SSE event must carry an id for Last-Event-ID reconnect');
-    assert.equal(priming.data, '', 'priming SSE event must carry an empty data field');
+    // The stream carries EXACTLY ONE event and it is the JSON-RPC result — there
+    // is no leading empty-`data:` priming event (a strict handshake scanner
+    // reads the first event and JSON.parse()s its data; an empty first event is
+    // scored as a failed handshake — see the dedicated guard test below).
+    const events = await readAllSseEvents(initialize);
+    assert.equal(events.length, 1, 'initialize stream must be a single result event (no priming event)');
+    const resultEvent = events[0];
+    assert.ok(resultEvent.id, 'result SSE event must carry an id for the Last-Event-ID replay channel');
 
+    const body = JSON.parse(resultEvent.data);
+    assert.equal(body.jsonrpc, '2.0');
+    assert.equal(body.id, 1);
+    assert.equal(body.result?.protocolVersion, '2025-03-26');
+    assert.equal(body.result?.serverInfo?.name, 'worldmonitor');
+
+    // Resuming after the only event yields an empty stream (nothing follows the
+    // delivered response), but the replay channel still authenticates and stays
+    // session-scoped.
     const replay = await fetch(server.url, {
       method: 'GET',
       headers: {
         Accept: 'text/event-stream',
         Authorization: `Bearer ${PRO_BEARER}`,
         'Mcp-Session-Id': sessionId,
-        'Last-Event-ID': priming.id,
+        'Last-Event-ID': resultEvent.id,
       },
     });
 
@@ -203,14 +191,7 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     assert.match(replay.headers.get('content-type') ?? '', /text\/event-stream/i);
 
     const replayed = await readAllSseEvents(replay);
-    assert.equal(replayed.length, 1, 'resume after the priming event must replay only later events');
-    assert.notEqual(replayed[0].id, priming.id, 'resume must not duplicate the acknowledged event');
-
-    const body = JSON.parse(replayed[0].data);
-    assert.equal(body.jsonrpc, '2.0');
-    assert.equal(body.id, 1);
-    assert.equal(body.result?.protocolVersion, '2025-03-26');
-    assert.equal(body.result?.serverInfo?.name, 'worldmonitor');
+    assert.equal(replayed.length, 0, 'resume after the sole delivered event must replay nothing');
 
     const wrongSession = await fetch(server.url, {
       method: 'GET',
@@ -218,7 +199,7 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
         Accept: 'text/event-stream',
         Authorization: `Bearer ${PRO_BEARER}`,
         'Mcp-Session-Id': crypto.randomUUID(),
-        'Last-Event-ID': priming.id,
+        'Last-Event-ID': resultEvent.id,
       },
     });
     assert.equal(wrongSession.status, 404, 'a different session must not replay this stream');
@@ -235,11 +216,38 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
         Accept: 'text/event-stream',
         Authorization: `Bearer ${PRO_BEARER}`,
         'Mcp-Session-Id': sessionId,
-        'Last-Event-ID': priming.id,
+        'Last-Event-ID': resultEvent.id,
       },
     });
     assert.equal(revoked.status, 401, 'GET replay must revalidate the Pro token before serving buffered events');
     assert.equal((await revoked.json()).error?.code, -32001);
+  });
+
+  it('emits the JSON-RPC result as the FIRST SSE event so strict handshake scanners parse it', async () => {
+    // orank's `mcp-server` handshake check (and any non-SDK scanner) reads the
+    // FIRST SSE event of a POST initialize and JSON.parse()s its `data`. A
+    // leading empty-`data:` priming event dispatches a `message` with
+    // `data === ''` (WHATWG SSE spec still fires the event), so `JSON.parse('')`
+    // throws and the handshake is scored as failed — this was orank Access
+    // `mcp-server` 3/6 while every other MCP check passed. Guard that the first
+    // event is the real, non-empty JSON-RPC result.
+    const initialize = await fetch(server.url, {
+      method: 'POST',
+      headers: mcpHeaders(),
+      body: JSON.stringify(initBody(30)),
+    });
+    assert.equal(initialize.status, 200);
+    assert.match(initialize.headers.get('content-type') ?? '', /text\/event-stream/i);
+
+    const events = await readAllSseEvents(initialize);
+    assert.ok(events.length >= 1, 'stream must contain at least one event');
+
+    const first = events[0];
+    assert.notEqual(first.data, '', 'the FIRST SSE event must not be an empty-data priming event');
+    const parsed = JSON.parse(first.data); // must not throw — this is the orank handshake invariant
+    assert.equal(parsed.jsonrpc, '2.0');
+    assert.equal(parsed.id, 30);
+    assert.equal(parsed.result?.serverInfo?.name, 'worldmonitor');
   });
 
   it('uses replay-specific status codes for malformed GET replay requests', async () => {
@@ -301,7 +309,7 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     const sessionId = initialize.headers.get('mcp-session-id');
 
     assert.ok(sessionId, 'initialize must emit a session id');
-    assert.equal(initializeEvents.length, 2, 'initialize stream should include priming and response events');
+    assert.equal(initializeEvents.length, 1, 'initialize stream is a single result event');
 
     const ping = await fetch(server.url, {
       method: 'POST',
@@ -313,10 +321,9 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     assert.match(ping.headers.get('content-type') ?? '', /text\/event-stream/i);
 
     const pingEvents = await readAllSseEvents(ping);
-    assert.equal(pingEvents.length, 2, 'follow-up session request should stream priming and response events');
-    assert.equal(pingEvents[0].data, '');
+    assert.equal(pingEvents.length, 1, 'follow-up session request streams a single result event');
 
-    const pingBody = JSON.parse(pingEvents[1].data);
+    const pingBody = JSON.parse(pingEvents[0].data);
     assert.equal(pingBody.id, 11);
     assert.deepEqual(pingBody.result, {});
 
@@ -330,8 +337,7 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
       },
     });
     const replayed = await readAllSseEvents(replay);
-    assert.equal(replayed.length, 1, 'session replay should resume after the follow-up priming event');
-    assert.deepEqual(JSON.parse(replayed[0].data).result, {});
+    assert.equal(replayed.length, 0, 'resume after the sole follow-up event replays nothing');
   });
 
   it('honors Accept q=0 and preserves CORS on streamed JSON-RPC errors', async () => {
@@ -362,8 +368,8 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     assert.match(error.headers.get('access-control-expose-headers') ?? '', /\bMcp-Session-Id\b/);
 
     const events = await readAllSseEvents(error);
-    assert.equal(events.length, 2, 'streamed JSON-RPC error should still use priming + response events');
-    const errorBody = JSON.parse(events[1].data);
+    assert.equal(events.length, 1, 'streamed JSON-RPC error is a single result event');
+    const errorBody = JSON.parse(events[0].data);
     assert.equal(errorBody.id, 21);
     assert.equal(errorBody.error?.code, -32601);
   });

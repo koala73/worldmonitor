@@ -40,8 +40,8 @@ export interface BaseToolDef {
   // Wire behavior: emitted unconditionally on every `tools/list`. Per the
   // MCP JSON-RPC convention, clients negotiated to 2025-03-26 ignore
   // unknown fields, so emitting `outputSchema` on a 2025-03-26 session is
-  // practically safe and lets every LLM client benefit during the rollout
-  // window before MCP_PROTOCOL_FLOOR_2025_06_18 flips default-on.
+  // practically safe and lets every LLM client benefit even when a caller
+  // pins back to the legacy floor via MCP_PROTOCOL_FLOOR_2025_06_18=off.
   outputSchema: object;
   // Spec-defined `Tool.annotations` (MCP 2025-06-18+). Required object with
   // all four booleans declared so a new tool can't be added without an
@@ -92,6 +92,14 @@ export interface BaseToolDef {
     idempotentHint: boolean;
     openWorldHint: boolean;
   };
+  // MCP Apps (extension `io.modelcontextprotocol/ui`). When set, buildPublicTool
+  // derives the wire `_meta.ui.resourceUri` (+ the deprecated flat
+  // `ui/resourceUri` alias) from this value, linking the tool to a `ui://`
+  // HTML app shell an MCP-Apps host renders inline. SINGLE source of truth —
+  // internal-only, never enumerated onto the wire directly (buildPublicTool
+  // constructs the public `_meta` object from it). Optional: only tools with
+  // an interactive UI surface set it.
+  _uiResourceUri?: string;
 }
 
 export interface FreshnessCheck {
@@ -188,6 +196,12 @@ export interface PublicToolShape {
     idempotentHint: boolean;
     openWorldHint: boolean;
   };
+  // MCP Apps (`io.modelcontextprotocol/ui`) tool→UI linkage. Spec-reserved
+  // public `_meta` — present ONLY on tools that declare a `_uiResourceUri`.
+  // Both the nested `ui.resourceUri` (current form) and the flat
+  // `ui/resourceUri` (deprecated legacy alias ext-apps normalizes) are
+  // emitted so hosts on either revision resolve the app shell.
+  _meta?: { ui: { resourceUri: string }; 'ui/resourceUri': string };
 }
 
 // ---------------------------------------------------------------------------
@@ -281,8 +295,34 @@ export type McpResourceExtractResult =
   | { ok: true; args: Record<string, unknown> }
   | { ok: false; reason: string };
 
-export interface McpResourceDef {
+// Concrete, anonymously-readable, quota-exempt resource surfaced via
+// `resources/list`. Its `read()` returns ONLY non-sensitive freshness /
+// health metadata (never billable data), so an anonymous agent (or an
+// agent-readiness scanner) can `resources/read` it cleanly — the same
+// public + quota-exempt posture as `prompts/list` and `describe_tool`.
+// `read` returns the wire-ready `content[0].text` and MUST be robust:
+// it returns a valid envelope even when the upstream cache read fails, so
+// the read never surfaces empty content or a 5xx to the caller.
+export interface PublicResourceDef {
   uri: string;
+  name: string;
+  description: string;
+  mimeType: string;
+  read: () => Promise<string>;
+}
+
+// Data-bearing URI TEMPLATE surfaced via `resources/templates/list`. A
+// concrete instantiation `resources/read` routes through
+// `dispatchToolsCall`, inheriting Pro daily-quota symmetry with the
+// equivalent `tools/call` — asymmetric auth here is a known MCP data-leak /
+// quota-bypass vector (a Pro user at the daily cap could otherwise keep
+// reading data through resources for free), so these stay gated. Templates
+// live in `resources/templates/list` (NOT `resources/list`) because a
+// literal `{iso2}` URI can never resolve to data; only the substituted form
+// reads — surfacing a template in `resources/list` breaks an anonymous
+// validator's `resources/read` probe.
+export interface TemplateResourceDef {
+  uriTemplate: string;
   name: string;
   description: string;
   mimeType: string;

@@ -3,7 +3,13 @@ import { getClerkToken } from '@/services/clerk';
 
 const ENV = (() => {
   try {
-    return import.meta.env ?? {};
+    return {
+      VITE_DESKTOP_RUNTIME: import.meta.env.VITE_DESKTOP_RUNTIME,
+      VITE_TAURI_API_BASE_URL: import.meta.env.VITE_TAURI_API_BASE_URL,
+      VITE_TAURI_REMOTE_API_BASE_URL: import.meta.env.VITE_TAURI_REMOTE_API_BASE_URL,
+      VITE_WS_API_URL: import.meta.env.VITE_WS_API_URL,
+      VITE_WS_RELAY_URL: import.meta.env.VITE_WS_RELAY_URL,
+    };
   } catch {
     return {} as Record<string, string | undefined>;
   }

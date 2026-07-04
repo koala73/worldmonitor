@@ -6479,8 +6479,12 @@ paths:
             tags:
                 - IntelligenceService
             summary: ClassifyEvent
-            description: ClassifyEvent analyzes a news event using AI models.
+            description: ClassifyEvent analyzes a news event using AI models. PRO-gated. Requires entitlement tier >= 1.
             operationId: ClassifyEvent
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: title
                   in: query
@@ -6548,7 +6552,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: PRO entitlement access denied.
                     content:
                         application/json:
                             schema:
@@ -8292,7 +8296,6 @@ paths:
                             "phone": "example"
                             "source": "example"
                             "turnstileToken": "example"
-                            "website": "example"
                         schema:
                             $ref: '#/components/schemas/worldmonitor_leads_v1_SubmitContactRequest'
                 required: true
@@ -8404,7 +8407,6 @@ paths:
                             "referredBy": "example"
                             "source": "example"
                             "turnstileToken": "example"
-                            "website": "example"
                         schema:
                             $ref: '#/components/schemas/worldmonitor_leads_v1_RegisterInterestRequest'
                 required: true

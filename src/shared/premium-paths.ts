@@ -9,6 +9,10 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   '/api/market/v1/get-stock-analysis-history',
   '/api/market/v1/backtest-stock',
   '/api/market/v1/list-stored-stock-backtests',
+  // /api/intelligence/v1/classify-event: LLM-backed classifier. Keep in the
+  // premium path set so browser Pro callers attach the Clerk Bearer and
+  // anonymous wms_ sessions cannot mint cache-miss LLM spend.
+  '/api/intelligence/v1/classify-event',
   '/api/intelligence/v1/deduct-situation',
   '/api/intelligence/v1/list-market-implications',
   '/api/intelligence/v1/get-regional-snapshot',

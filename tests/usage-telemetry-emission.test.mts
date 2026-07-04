@@ -21,6 +21,7 @@ import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 
 import { createDomainGateway, type GatewayCtx } from '../server/gateway.ts';
 import { issueSessionToken } from '../api/_session.js';
+import { createRedisFetch } from './helpers/fake-upstash-redis.mts';
 
 // Anonymous browser access requires a wms_ session token (issue #3541).
 process.env.WM_SESSION_SECRET = process.env.WM_SESSION_SECRET
@@ -69,8 +70,14 @@ function installAxiomFetchSpy(
   restore: () => void;
 } {
   const events: CapturedEvent[] = [];
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+  const { fetchImpl: redisFetch } = createRedisFetch({});
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    if (url.startsWith(process.env.UPSTASH_REDIS_REST_URL || '')) {
+      return redisFetch(input, init);
+    }
     if (url.includes('api.axiom.co')) {
       const body = init?.body ? JSON.parse(init.body as string) as CapturedEvent[] : [];
       for (const ev of body) events.push(ev);
@@ -99,6 +106,8 @@ const ORIGINAL_AXIOM_TOKEN = process.env.AXIOM_API_TOKEN;
 const ORIGINAL_VALID_KEYS = process.env.WORLDMONITOR_VALID_KEYS;
 const ORIGINAL_CONVEX_SITE_URL = process.env.CONVEX_SITE_URL;
 const ORIGINAL_CONVEX_SHARED_SECRET = process.env.CONVEX_SERVER_SHARED_SECRET;
+const ORIGINAL_REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
+const ORIGINAL_REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 
 afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
@@ -112,6 +121,10 @@ afterEach(() => {
   else process.env.CONVEX_SITE_URL = ORIGINAL_CONVEX_SITE_URL;
   if (ORIGINAL_CONVEX_SHARED_SECRET == null) delete process.env.CONVEX_SERVER_SHARED_SECRET;
   else process.env.CONVEX_SERVER_SHARED_SECRET = ORIGINAL_CONVEX_SHARED_SECRET;
+  if (ORIGINAL_REDIS_URL == null) delete process.env.UPSTASH_REDIS_REST_URL;
+  else process.env.UPSTASH_REDIS_REST_URL = ORIGINAL_REDIS_URL;
+  if (ORIGINAL_REDIS_TOKEN == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  else process.env.UPSTASH_REDIS_REST_TOKEN = ORIGINAL_REDIS_TOKEN;
 });
 
 describe('gateway telemetry payload — domain extraction', () => {
