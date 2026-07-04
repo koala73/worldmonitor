@@ -183,15 +183,17 @@ PRs that don't follow the code style or introduce security issues will be asked 
 
 ## CLI Release Runbook
 
-This project publishes the CLI from the repo version metadata. Use this flow when cutting a new CLI release:
+World Monitor does not currently ship a publishable CLI package or a tag-driven CLI publish workflow in this repository. Before maintainers cut a `cli-vX.Y.Z` release, they should wire those pieces up explicitly and verify the release path end to end.
 
-1. Update the root `package.json` version to the release number.
-2. Run `npm install` and `npm run build` to make sure the repo still passes the release gate.
-3. Create a git tag in the `cli-vX.Y.Z` form, where `X.Y.Z` matches `package.json`.
-4. Push the tag so the publish automation can pick it up.
-5. Confirm `NPM_TOKEN` is configured for the publish job before you ship.
+Use this preflight checklist before documenting or automating CLI releases:
 
-Release checks should fail fast if the tag and package version drift, so the tag must always match the version exactly.
+1. Add the actual CLI package and make sure it is publishable. The current root `package.json` is marked `private`, so it cannot be published directly.
+2. Add the release workflow that should react to `cli-vX.Y.Z` tags and publish the CLI package.
+3. Confirm `NPM_TOKEN` and any other publish secrets are configured before pushing the release tag.
+4. Run `npm ci` and `npm run build` so the release starts from a clean, reproducible install.
+5. Make the package version and `cli-vX.Y.Z` tag match exactly, then push the tag only after the release automation exists and secrets are ready.
+
+Until that automation lands, a pushed `cli-vX.Y.Z` tag is only metadata. It will not publish a CLI release by itself.
 
 ## License
 
