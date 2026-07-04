@@ -55,6 +55,8 @@ import type { ScenarioVisualState, ScenarioResult } from '@/config/scenario-temp
 import { getAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 export type { ScenarioVisualState, ScenarioResult };
 
@@ -1467,7 +1469,7 @@ export class MapContainer {
           pointer-events: auto;
           transition: opacity 0.3s ease;
         `;
-        this.iranSkillOverlay.innerHTML = `
+        setTrustedHtml(this.iranSkillOverlay, trustedHtml(`
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
             <span style="font-weight: bold; font-size: 11px; color: #e0aaff; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
               🔮 Iran.skill Predictions
@@ -1515,7 +1517,7 @@ export class MapContainer {
               </div>
             </div>
           </div>
-        `;
+        `));
         this.container.appendChild(this.iranSkillOverlay);
       }
       this.iranSkillOverlay.style.display = 'block';
