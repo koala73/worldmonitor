@@ -131,7 +131,7 @@ import {
   clearStoredAnonIdentity,
   getStoredAnonClaimToken,
   getStoredAnonId,
-} from '@/services/user-identity';
+} from '@/services/anonymous-identity-storage';
 import { captureReferralFromUrl } from '@/services/referral-capture';
 // CorrelationEngine + its 4 adapters are dynamic-imported at the post-loadAllData
 // run site (#4486) so the engine bytes stay off the eager boot graph. The TYPE is

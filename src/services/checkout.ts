@@ -49,7 +49,7 @@ import { showCheckoutPendingDialog } from './checkout-pending-dialog';
 import { resolvePlanDisplayName } from './checkout-plan-names';
 import { createEntitlementWatchdog, type EntitlementWatchdog } from './entitlement-watchdog';
 import { buildDashboardCheckoutReturnUrl } from './checkout-return-url';
-import { saveAnonClaimToken } from './user-identity';
+import { saveAnonClaimToken } from './anonymous-identity-storage';
 
 export {
   EXTENDED_UNLOCK_TIMEOUT_MS,

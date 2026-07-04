@@ -28,9 +28,14 @@
 
 import { getCurrentClerkUser } from './clerk';
 import { migrateLegacyKeysToHttpOnlySession, readLegacySessionKey } from './browser-key-session';
+import { getStoredAnonId, saveAnonId } from './anonymous-identity-storage';
+export {
+  clearStoredAnonIdentity,
+  getStoredAnonClaimToken,
+  getStoredAnonId,
+  saveAnonClaimToken,
+} from './anonymous-identity-storage';
 
-const ANON_KEY = 'wm-anon-id';
-const ANON_CLAIM_TOKEN_KEY = 'wm-anon-claim-token';
 let legacyProMigrationStarted = false;
 
 function legacyProKeyForMigration(): string {
@@ -51,49 +56,15 @@ function legacyProKeyForMigration(): string {
  */
 export function getOrCreateAnonId(): string {
   try {
-    let id = localStorage.getItem(ANON_KEY);
+    let id = getStoredAnonId();
     if (!id) {
       id = crypto.randomUUID();
-      localStorage.setItem(ANON_KEY, id);
+      saveAnonId(id);
     }
     return id;
   } catch {
     // SSR or restricted context — return a one-off UUID
     return crypto.randomUUID();
-  }
-}
-
-export function getStoredAnonId(): string | null {
-  try {
-    return localStorage.getItem(ANON_KEY);
-  } catch {
-    return null;
-  }
-}
-
-export function getStoredAnonClaimToken(): string | null {
-  try {
-    return localStorage.getItem(ANON_CLAIM_TOKEN_KEY);
-  } catch {
-    return null;
-  }
-}
-
-export function saveAnonClaimToken(token: string): void {
-  try {
-    localStorage.setItem(ANON_CLAIM_TOKEN_KEY, token);
-  } catch {
-    // Restricted storage contexts cannot preserve anonymous claim proof. The
-    // server will fail closed if protected payment rows later need migration.
-  }
-}
-
-export function clearStoredAnonIdentity(): void {
-  try {
-    localStorage.removeItem(ANON_KEY);
-    localStorage.removeItem(ANON_CLAIM_TOKEN_KEY);
-  } catch {
-    // Ignore restricted storage cleanup failures.
   }
 }
 
