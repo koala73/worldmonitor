@@ -28,7 +28,7 @@ Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pas
 | `https://api.worldmonitor.app/.well-known/oauth-authorization-server` | AS metadata (RFC 8414) |
 | `https://worldmonitor.app/.well-known/oauth-protected-resource` | Resource server metadata (RFC 9728) |
 
-Server identifier: `worldmonitor` v1.11.0.
+Server identifier: `worldmonitor` v1.13.0.
 
 ### Protocol negotiation
 
@@ -378,8 +378,9 @@ Resources come in two tiers. **Concrete resources** are surfaced by `resources/l
 
 ### MCP Apps (interactive UI)
 
-The server supports [MCP Apps](https://modelcontextprotocol.io/extensions/apps/build) (extension `io.modelcontextprotocol/ui`, spec `2026-01-26`) — interactive views a host renders in a sandboxed iframe when a linked tool is called. Two wire signals drive it:
+The server supports [MCP Apps](https://modelcontextprotocol.io/extensions/apps/build) (extension `io.modelcontextprotocol/ui`, spec `2026-01-26`) — interactive views a host renders in a sandboxed iframe when a linked tool is called. Three wire signals drive it:
 
+- **`initialize`** declares support in the handshake. The response's `capabilities.extensions` names the extension: `{"io.modelcontextprotocol/ui": {}}`. This is the negotiation signal a host (or agent-readiness scanner) reads to classify the endpoint as an MCP-App surface — the `tools/list` and `resources/list` entries below are the content it then renders.
 - **`tools/list`** advertises the linkage on the tool. `get_country_risk` carries `_meta.ui.resourceUri` (and the deprecated flat `ui/resourceUri` alias) pointing at its UI resource.
 - **`resources/list`** surfaces the UI resource itself, alongside the concrete data resource (the parameterised data templates live in `resources/templates/list`):
 

@@ -207,6 +207,32 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
   });
 
   // -------------------------------------------------------------------------
+  // MCP Apps handshake — initialize declares the extension (the SIGNAL that
+  // pairs with the ui:// resource + tool `_meta` CONTENT asserted below).
+  // Hosts and agent-readiness scanners classify an MCP-App surface off this
+  // `capabilities.extensions` key; 1.11.0 shipped the ui:// artifacts but not
+  // this declaration, so the surface read as a plain MCP server. Guarding it
+  // here keeps the full MCP Apps triad (capability + resource + tool meta)
+  // enforced in one file.
+  // -------------------------------------------------------------------------
+  it('initialize declares the MCP Apps extension capabilities.extensions["io.modelcontextprotocol/ui"]', async () => {
+    const res = await handler(envKeyReq({
+      jsonrpc: '2.0', id: 1, method: 'initialize',
+      params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1.0' } },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    const extensions = body.result?.capabilities?.extensions;
+    assert.ok(extensions && typeof extensions === 'object',
+      'capabilities.extensions must be an object declaring supported MCP extensions');
+    assert.deepEqual(
+      extensions['io.modelcontextprotocol/ui'], {},
+      "capabilities.extensions['io.modelcontextprotocol/ui'] must be declared (empty object — the " +
+      'extension carries no negotiation parameters), signalling MCP Apps support to hosts/scanners',
+    );
+  });
+
+  // -------------------------------------------------------------------------
   // resources/list shape
   // -------------------------------------------------------------------------
   it('resources/list returns only concrete anon-readable resources: DATA freshness probe + ui:// shell, no {template} URIs', async () => {

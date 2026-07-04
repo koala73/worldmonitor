@@ -431,11 +431,22 @@ export async function mcpHandler(
         // `notifications/resources/list_changed`, so advertising `true`
         // would be a wire lie. `resources.subscribe: false` because
         // resources/subscribe is not implemented.
+        //
+        // `extensions['io.modelcontextprotocol/ui']` declares MCP Apps support
+        // (spec 2026-01-26). This is the extension's negotiation signal: a host
+        // (or agent-readiness scanner) reads it off `initialize.capabilities`
+        // to classify the server as an MCP-App surface — the ui:// app-shell
+        // resource + the tool `_meta.ui.resourceUri` are the content, this key
+        // is the handshake. Declared unconditionally: our ui:// shells
+        // and tool `_meta` are static and always present, so there is nothing
+        // to gate on the client advertising the extension. Value is an empty
+        // object per spec (extension carries no negotiation parameters here).
         capabilities: {
           tools: {},
           logging: {},
           prompts: { listChanged: false },
           resources: { subscribe: false, listChanged: false },
+          extensions: { 'io.modelcontextprotocol/ui': {} },
         },
         serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
         instructions: SERVER_INSTRUCTIONS,

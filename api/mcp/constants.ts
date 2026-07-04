@@ -216,11 +216,14 @@ export const SERVER_NAME = 'worldmonitor';
 //     and streams the tool result in via postMessage. resources/read of a
 //     ui:// URI is public + quota-exempt (static, data-free template); DATA
 //     reads (worldmonitor://…) stay gated + Pro-quota-symmetric.
-//   - Additive on the wire: `_meta` appears only on the linked tool; no new
-//     server capability key (the extension defines none — the signal is the
-//     ui:// resource + tool `_meta`). Clients that don't speak MCP Apps
-//     ignore the extra resource + the reserved `_meta` field. No input/output
-//     schema change to any existing tool.
+//   - Additive on the wire: `_meta` appears only on the linked tool. Clients
+//     that don't speak MCP Apps ignore the extra resource + the reserved
+//     `_meta` field. No input/output schema change to any existing tool.
+//     (NOTE: 1.11.0 shipped WITHOUT declaring the extension's initialize
+//     capability key — an incomplete handshake corrected in 1.13.0 below.
+//     Agent-readiness scanners classify an MCP-App surface off the negotiated
+//     `capabilities.extensions` key, so ui:// + `_meta` alone did not register
+//     as MCP Apps support.)
 // Bumped 1.11.0 → 1.12.0 (2026-07-04) reflecting:
 //   - Data resources split into two tiers by sensitivity, and a new
 //     `resources/templates/list` method:
@@ -247,9 +250,22 @@ export const SERVER_NAME = 'worldmonitor';
 //   - No initialize capability key added — resources/templates/list is
 //     covered by the existing `resources` capability (the spec has no
 //     separate templates capability flag).
+// Bumped 1.12.0 → 1.13.0 (2026-07-04) reflecting:
+//   - MCP Apps handshake completion: initialize.result.capabilities now
+//     declares `extensions: { 'io.modelcontextprotocol/ui': {} }` (spec
+//     2026-01-26). 1.11.0 shipped the ui:// app-shell resource + tool
+//     `_meta.ui.resourceUri` (the CONTENT of the extension) but never
+//     declared the extension in the capability handshake (the SIGNAL). Hosts
+//     and agent-readiness scanners negotiate/detect MCP Apps off this
+//     `capabilities.extensions` key, so the surface read as a plain MCP server
+//     despite carrying every ui:// artifact. Purely additive: clients that
+//     don't speak the extension ignore the extra capability key; no schema,
+//     envelope, or auth change. Mirrored into
+//     public/.well-known/mcp/server-card.json::capabilities.extensions so the
+//     static card and the live wire stay in parity.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-export const SERVER_VERSION = '1.12.0';
+export const SERVER_VERSION = '1.13.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not
