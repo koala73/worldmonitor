@@ -197,32 +197,103 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
   // -------------------------------------------------------------------------
   // resources/list shape
   // -------------------------------------------------------------------------
-  it('resources/list returns exactly four entries with the documented URIs', async () => {
+  it('resources/list leads with the four DATA URIs, then the ui:// MCP-Apps shell', async () => {
     const res = await handler(envKeyReq({ jsonrpc: '2.0', id: 2, method: 'resources/list', params: {} }));
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.ok(Array.isArray(body.result?.resources), 'result.resources must be an array');
-    assert.equal(body.result.resources.length, 4, `Expected 4 resources, got ${body.result.resources.length}`);
+    // Four DATA resources + one MCP Apps ui:// app-shell resource (v1.11.0).
+    assert.equal(body.result.resources.length, 5, `Expected 5 resources, got ${body.result.resources.length}`);
 
+    // DATA URIs lead, in documented order; the ui:// shell follows.
     const expectedUris = [
       'worldmonitor://countries/{iso2}/risk',
       'worldmonitor://chokepoints/{slug}/status',
       'worldmonitor://seed-meta/freshness',
       'worldmonitor://markets/{symbol}/quote',
+      'ui://worldmonitor/country-risk.html',
     ];
     const actualUris = body.result.resources.map((r) => r.uri);
-    assert.deepEqual(actualUris, expectedUris, 'resource URIs and order must match the documented set');
+    assert.deepEqual(actualUris, expectedUris, 'resource URIs and order must match the documented set (DATA first, ui:// last)');
 
     for (const r of body.result.resources) {
       assert.equal(typeof r.uri, 'string', `resource ${r.uri}: uri must be a string`);
       assert.ok(r.uri.length > 0, `resource ${r.uri}: uri must be non-empty`);
       assert.equal(typeof r.name, 'string', `resource ${r.uri}: name must be a string`);
       assert.equal(typeof r.description, 'string', `resource ${r.uri}: description must be a string`);
-      assert.equal(r.mimeType, 'application/json', `resource ${r.uri}: mimeType must be application/json`);
+      // Per-uri mimeType: DATA resources are application/json; the MCP Apps
+      // ui:// shell is the extension's content profile text/html;profile=mcp-app.
+      const expectedMime = r.uri.startsWith('ui://') ? 'text/html;profile=mcp-app' : 'application/json';
+      assert.equal(r.mimeType, expectedMime, `resource ${r.uri}: mimeType must be ${expectedMime}`);
       // Internal authoring fields must NOT leak via resources/list.
       assert.equal(r.tool, undefined, `resource ${r.uri}: internal "tool" must not leak via resources/list`);
       assert.equal(r.paramExtractor, undefined, `resource ${r.uri}: internal "paramExtractor" must not leak via resources/list`);
       assert.equal(r.freshnessWrap, undefined, `resource ${r.uri}: internal "freshnessWrap" must not leak via resources/list`);
+      assert.equal(r.html, undefined, `resource ${r.uri}: internal "html" must not leak via resources/list`);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // MCP Apps ui:// resource — read is public + quota-exempt (v1.11.0)
+  // -------------------------------------------------------------------------
+  it('resources/read ui://worldmonitor/country-risk.html returns the app-shell HTML (mimeType text/html;profile=mcp-app)', async () => {
+    const res = await handler(envKeyReq(readBody('ui://worldmonitor/country-risk.html')));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error, undefined, `unexpected error: ${JSON.stringify(body.error)}`);
+    assert.equal(body.result.contents.length, 1);
+    const c = body.result.contents[0];
+    assert.equal(c.uri, 'ui://worldmonitor/country-risk.html');
+    assert.equal(c.mimeType, 'text/html;profile=mcp-app');
+    assert.match(c.text, /^<!doctype html>/i, 'ui:// resource must return self-contained HTML');
+    assert.match(c.text, /ui\/initialize/, 'app shell must implement the MCP Apps postMessage handshake');
+    assert.match(c.text, /ui\/notifications\/tool-result/, 'app shell must consume tool-result notifications');
+  });
+
+  it('resources/read of the ui:// shell is PUBLIC — served with NO credentials', async () => {
+    const anonReq = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(readBody('ui://worldmonitor/country-risk.html')),
+    });
+    const res = await handler(anonReq);
+    assert.equal(res.status, 200, 'ui:// read must be servable without auth (static, data-free template)');
+    const body = await res.json();
+    assert.equal(body.error, undefined, `anon ui:// read must succeed, got: ${JSON.stringify(body.error)}`);
+    assert.equal(body.result.contents[0].mimeType, 'text/html;profile=mcp-app');
+  });
+
+  it('every tool _uiResourceUri resolves to a listed ui:// resource, and every ui:// resource is reachable (bidirectional integrity)', async () => {
+    // Enumerate the ui:// URIs the server actually advertises via resources/list.
+    const res = await handler(envKeyReq({ jsonrpc: '2.0', id: 9, method: 'resources/list', params: {} }));
+    const body = await res.json();
+    const listedUiUris = new Set(
+      body.result.resources.map((r) => r.uri).filter((u) => u.startsWith('ui://')),
+    );
+
+    // Every tool that declares a UI linkage must point at a listed resource
+    // (no dangling _meta.ui.resourceUri that 404s on resources/read).
+    const linkedByTools = new Set();
+    for (const tool of TOOL_REGISTRY) {
+      if (tool._uiResourceUri) {
+        linkedByTools.add(tool._uiResourceUri);
+        assert.ok(
+          listedUiUris.has(tool._uiResourceUri),
+          `tool "${tool.name}" links _uiResourceUri "${tool._uiResourceUri}" but resources/list does not advertise it`,
+        );
+        // And the read must actually resolve (public, static template).
+        const readRes = await handler(envKeyReq(readBody(tool._uiResourceUri)));
+        const readBodyJson = await readRes.json();
+        assert.equal(readBodyJson.error, undefined,
+          `resources/read of "${tool._uiResourceUri}" (linked by ${tool.name}) must resolve`);
+      }
+    }
+
+    // And every advertised ui:// resource must be linked by at least one tool
+    // — an orphan app shell no tool can trigger is dead surface.
+    for (const uri of listedUiUris) {
+      assert.ok(linkedByTools.has(uri),
+        `ui:// resource "${uri}" is advertised but no tool references it via _uiResourceUri`);
     }
   });
 
@@ -459,6 +530,22 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     const body = await res.json();
     assert.equal(body.error, undefined);
     assert.equal(pipe.count, 0, 'resources/list is metadata-class — must NOT count toward daily quota');
+  });
+
+  it('Pro resources/read of the ui:// shell does NOT increment the daily-quota counter (static template, quota-exempt)', async () => {
+    // Unlike a DATA resources/read (which reserves against the 50/day Pro cap
+    // symmetrically with tools/call), a ui:// read returns a static, data-free
+    // app shell and spends no quota — the load-bearing distinction that lets
+    // an unauthenticated host fetch the shell to render it.
+    const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 0 } });
+    const res = await mcpHandler(
+      proReq('POST', readBody('ui://worldmonitor/country-risk.html')),
+      deps,
+    );
+    const body = await res.json();
+    assert.equal(body.error, undefined, `ui:// read should succeed, got: ${JSON.stringify(body.error)}`);
+    assert.equal(body.result.contents[0].mimeType, 'text/html;profile=mcp-app');
+    assert.equal(pipe.count, 0, 'ui:// resources/read is quota-exempt — must NOT count toward the Pro daily cap');
   });
 
   it('Pro resources/read returns -32029 when the daily quota is exhausted (identical to tools/call)', async () => {

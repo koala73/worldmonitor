@@ -20,6 +20,7 @@ import { buildPromptResponse, PROMPT_LIST_RESPONSE } from './prompts/index';
 import { TOOL_LIST_BYTES, TOOL_LIST_RESPONSE } from './registry/index';
 import { buildResourceResponse, RESOURCE_LIST_RESPONSE } from './resources/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
+import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE } from './ui/registry';
 import { emitTelemetry, principalIdForLog } from './telemetry';
 import type { McpAuthContext, McpHandlerDeps } from './types';
 
@@ -340,10 +341,25 @@ export async function mcpHandler(
 
   const { id, method } = body;
 
+  // MCP Apps (`io.modelcontextprotocol/ui`) gate promotion. A resources/read of
+  // a `ui://` resource returns a STATIC, data-free HTML app shell (the live
+  // data arrives later via host postMessage after a normal gated tools/call),
+  // so it carries no data and spends no quota — exactly like tools/list and
+  // resources/list. Promote it onto the anonymous discovery path so an
+  // unauthenticated MCP-Apps host (or agent-readiness scanner) can fetch the
+  // shell to render it. DATA reads (worldmonitor://…) stay fully gated +
+  // Pro-quota-symmetric via the protected branch below.
+  const uiResourceReadUri = method === 'resources/read'
+    ? (() => {
+        const uri = (body.params as { uri?: unknown } | null)?.uri;
+        return typeof uri === 'string' && isUiResourceUri(uri) ? uri : null;
+      })()
+    : null;
+
   // Auth gate. `context` is null only on the anonymous discovery path; every
   // data/quota method below runs the full protected path and always sets it.
   let context: McpAuthContext | null = null;
-  if (PUBLIC_MCP_METHODS.has(method)) {
+  if (PUBLIC_MCP_METHODS.has(method) || uiResourceReadUri !== null) {
     if (hasCredentials(req)) {
       // Credentials presented on a public method are still validated so a
       // present-but-invalid key surfaces a 401 instead of a silent anon
@@ -443,9 +459,20 @@ export async function mcpHandler(
     // method (in PUBLIC_MCP_METHODS, quota-exempt, anon-rate-limited) that
     // returns only URIs/names/descriptions, never data. It uses no `context`.
     case 'resources/list':
-      return maybeStreamJsonRpcResponse(req, rpcOk(id, { resources: RESOURCE_LIST_RESPONSE }, corsHeaders));
+      // DATA resources (worldmonitor://…) lead; the MCP Apps `ui://` app-shell
+      // resources follow. Both are metadata-class (URIs/names/descriptions,
+      // no data) — anonymously enumerable so a scanner reading the `resources`
+      // capability sees the full catalog, including the ui:// surface that
+      // signals MCP Apps support.
+      return maybeStreamJsonRpcResponse(req, rpcOk(id, { resources: [...RESOURCE_LIST_RESPONSE, ...UI_RESOURCE_LIST_RESPONSE] }, corsHeaders));
     case 'resources/read':
-      // context is always set here — resources/read is never a PUBLIC_MCP_METHOD.
+      // MCP Apps `ui://` read: a static, data-free HTML app shell served on the
+      // public path (no context, no quota, no dispatch). Resolved above into
+      // `uiResourceReadUri`; DATA reads fall through to the gated dispatcher.
+      if (uiResourceReadUri) {
+        return maybeStreamJsonRpcResponse(req, buildUiResourceRead(id, uiResourceReadUri, corsHeaders));
+      }
+      // context is always set for DATA reads — those are never public.
       if (!context) return authRequiredResponse(id, resourceMetadataUrl, corsHeaders);
       return maybeStreamJsonRpcResponse(req, await buildResourceResponse(req, context, deps, body, corsHeaders, ctx));
     case 'logging/setLevel': {

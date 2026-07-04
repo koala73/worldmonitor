@@ -255,6 +255,11 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
         } else if (value && typeof value === 'object') {
           for (const k of Object.keys(value)) {
             if (k === 'outputSchema') continue;
+            // `_meta` is the MCP spec-reserved PUBLIC meta field (v1.11.0 MCP
+            // Apps emits `_meta.ui.resourceUri` on UI-linked tools). It is an
+            // intentional wire field, not an internal BaseToolDef leak — skip
+            // its subtree the same way outputSchema is skipped.
+            if (k === '_meta') continue;
             if (k.startsWith('_')) {
               throw new Error(`Internal field leak: tools/list contains key "${k}" at path ${pathStack.join('.')}`);
             }
@@ -265,6 +270,42 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       for (const t of tools) {
         scanForUnderscoreKey(t, [`tools[${t.name}]`]);
       }
+    });
+
+    // ============================================================
+    // MCP Apps (io.modelcontextprotocol/ui) — tool → ui:// linkage (v1.11.0)
+    // ============================================================
+    it('get_country_risk carries _meta.ui.resourceUri + the flat ui/resourceUri alias pointing at the ui:// app shell', async () => {
+      const tools = await getRegistry();
+      const t = tools.find(t => t.name === 'get_country_risk');
+      assert.ok(t, 'get_country_risk must be registered');
+      assert.ok(t._meta && typeof t._meta === 'object', 'UI-linked tool must carry a _meta object');
+      assert.equal(t._meta.ui?.resourceUri, 'ui://worldmonitor/country-risk.html',
+        'nested _meta.ui.resourceUri must point at the registered ui:// resource');
+      assert.equal(t._meta['ui/resourceUri'], 'ui://worldmonitor/country-risk.html',
+        'the deprecated flat ui/resourceUri alias must mirror the nested form');
+    });
+
+    it('a tool WITHOUT a UI surface (get_market_data) omits _meta entirely (no empty object on the wire)', async () => {
+      const tools = await getRegistry();
+      const t = tools.find(t => t.name === 'get_market_data');
+      assert.ok(t, 'get_market_data must be registered');
+      assert.ok(!('_meta' in t), 'non-UI tools must not carry a _meta key at all');
+    });
+
+    it('describe_tool(get_country_risk) carries the same _meta.ui linkage (uncompressed path)', async () => {
+      const res = await mod.default(new Request('https://worldmonitor.app/mcp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 1, method: 'tools/call',
+          params: { name: 'describe_tool', arguments: { tool_name: 'get_country_risk' } },
+        }),
+      }));
+      const body = await res.json();
+      const full = JSON.parse(body.result.content[0].text);
+      assert.equal(full._meta?.ui?.resourceUri, 'ui://worldmonitor/country-risk.html');
+      assert.equal(full._meta?.['ui/resourceUri'], 'ui://worldmonitor/country-risk.html');
     });
   });
 
@@ -361,14 +402,14 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
     // ============================================================
     // U4: Version bump + SERVER_INSTRUCTIONS + server-card sync
     // ============================================================
-    it('serverInfo.version === "1.10.0"', async () => {
+    it('serverInfo.version === "1.11.0"', async () => {
       const res = await mod.default(new Request('https://worldmonitor.app/mcp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 't', version: '1' } } }),
       }));
       const body = await res.json();
-      assert.equal(body.result?.serverInfo?.version, '1.10.0');
+      assert.equal(body.result?.serverInfo?.version, '1.11.0');
     });
 
     it('initialize.result.instructions mentions describe_tool AND the TOOL_DESCRIPTION_MAX_BYTES cap value', async () => {
@@ -385,9 +426,9 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
         'instructions should mention the TOOL_DESCRIPTION_MAX_BYTES cap');
     });
 
-    it('server-card.json version matches SERVER_VERSION (1.10.0) AND tools[] length matches (39)', () => {
+    it('server-card.json version matches SERVER_VERSION (1.11.0) AND tools[] length matches (39)', () => {
       const card = JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'));
-      assert.equal(card.serverInfo.version, '1.10.0');
+      assert.equal(card.serverInfo.version, '1.11.0');
       // orank (ora.ai) agent-readiness scanner reads the card's `tools` as an
       // ARRAY (tools[]) for pre-connection preview — not the old {count,categories}
       // object. Keep it an array; the count now derives from the length.
@@ -473,6 +514,9 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
         } else if (value && typeof value === 'object') {
           for (const k of Object.keys(value)) {
             if (k === 'outputSchema') continue;
+            // `_meta` is the MCP spec-reserved PUBLIC meta field (MCP Apps
+            // tool→UI linkage) — intentional wire field, not an internal leak.
+            if (k === '_meta') continue;
             if (k.startsWith('_')) {
               throw new Error(`describe_tool leaked internal key "${k}" at ${pathStack.join('.')}`);
             }

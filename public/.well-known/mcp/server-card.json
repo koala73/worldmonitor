@@ -1,11 +1,11 @@
 {
   "name": "worldmonitor",
   "description": "WorldMonitor's live global-intelligence stack as an MCP server: real-time markets, conflict events, aviation, maritime, energy, climate, health, displacement, supply chain, and AI-generated regional briefs.",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "serverUrl": "https://worldmonitor.app/mcp",
   "serverInfo": {
     "name": "worldmonitor",
-    "version": "1.10.0",
+    "version": "1.11.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server: real-time markets, conflict events, aviation, maritime, energy, climate, health, displacement, supply chain, and AI-generated regional briefs.",
     "vendor": "WorldMonitor",
     "homepage": "https://www.worldmonitor.app"
@@ -233,7 +233,15 @@
   "metadata": {
     "supportsToolAnnotations": true,
     "supportsStreamingResponses": true,
-    "toolListNote": "Issue a `tools/list` JSON-RPC call against the transport endpoint for the current authoritative tool inventory with input schemas and descriptions. Clients that advertise `text/event-stream` can receive Streamable HTTP SSE responses and resume a dropped stream with `Mcp-Session-Id` plus `Last-Event-ID`."
+    "toolListNote": "Issue a `tools/list` JSON-RPC call against the transport endpoint for the current authoritative tool inventory with input schemas and descriptions. Clients that advertise `text/event-stream` can receive Streamable HTTP SSE responses and resume a dropped stream with `Mcp-Session-Id` plus `Last-Event-ID`.",
+    "mcpApps": {
+      "supported": true,
+      "extension": "io.modelcontextprotocol/ui",
+      "specVersion": "2026-01-26",
+      "uiResourceMimeType": "text/html;profile=mcp-app",
+      "uiResources": ["ui://worldmonitor/country-risk.html"],
+      "note": "MCP Apps support: tools with an interactive surface carry `_meta.ui.resourceUri` (get_country_risk → ui://worldmonitor/country-risk.html). Issue `resources/list` to enumerate ui:// app shells and `resources/read` to fetch them — ui:// reads are public + quota-exempt (static, data-free templates); live data reaches the shell via host postMessage after a normal tools/call."
+    }
   },
   "features": {
     "responseProjection": "jmespath",

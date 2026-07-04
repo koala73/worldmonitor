@@ -92,6 +92,14 @@ export interface BaseToolDef {
     idempotentHint: boolean;
     openWorldHint: boolean;
   };
+  // MCP Apps (extension `io.modelcontextprotocol/ui`). When set, buildPublicTool
+  // derives the wire `_meta.ui.resourceUri` (+ the deprecated flat
+  // `ui/resourceUri` alias) from this value, linking the tool to a `ui://`
+  // HTML app shell an MCP-Apps host renders inline. SINGLE source of truth —
+  // internal-only, never enumerated onto the wire directly (buildPublicTool
+  // constructs the public `_meta` object from it). Optional: only tools with
+  // an interactive UI surface set it.
+  _uiResourceUri?: string;
 }
 
 export interface FreshnessCheck {
@@ -188,6 +196,12 @@ export interface PublicToolShape {
     idempotentHint: boolean;
     openWorldHint: boolean;
   };
+  // MCP Apps (`io.modelcontextprotocol/ui`) tool→UI linkage. Spec-reserved
+  // public `_meta` — present ONLY on tools that declare a `_uiResourceUri`.
+  // Both the nested `ui.resourceUri` (current form) and the flat
+  // `ui/resourceUri` (deprecated legacy alias ext-apps normalizes) are
+  // emitted so hosts on either revision resolve the app shell.
+  _meta?: { ui: { resourceUri: string }; 'ui/resourceUri': string };
 }
 
 // ---------------------------------------------------------------------------

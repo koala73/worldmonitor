@@ -203,9 +203,24 @@ export const SERVER_NAME = 'worldmonitor';
 //     change, no envelope-shape change. The constant emitted into
 //     initialize.result.instructions is the only wire-visible diff. The
 //     bump records it in the audit trail; rollback is git revert.
+// Bumped 1.10.0 → 1.11.0 (2026-07-04) reflecting:
+//   - MCP Apps support (extension `io.modelcontextprotocol/ui`, spec
+//     2026-01-26). Adds a `ui://worldmonitor/country-risk.html` app-shell
+//     resource (mimeType `text/html;profile=mcp-app`, served via
+//     resources/list + resources/read) and links it from the
+//     `get_country_risk` tool via `_meta.ui.resourceUri` (+ the deprecated
+//     flat `ui/resourceUri` alias). An MCP-Apps host renders the shell inline
+//     and streams the tool result in via postMessage. resources/read of a
+//     ui:// URI is public + quota-exempt (static, data-free template); DATA
+//     reads (worldmonitor://…) stay gated + Pro-quota-symmetric.
+//   - Additive on the wire: `_meta` appears only on the linked tool; no new
+//     server capability key (the extension defines none — the signal is the
+//     ui:// resource + tool `_meta`). Clients that don't speak MCP Apps
+//     ignore the extra resource + the reserved `_meta` field. No input/output
+//     schema change to any existing tool.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-export const SERVER_VERSION = '1.10.0';
+export const SERVER_VERSION = '1.11.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not
