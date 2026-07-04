@@ -85,11 +85,27 @@ describe('agent readiness: agent-skills index', () => {
     // How an agent should call it — the MCP endpoint and the API-key header.
     assert.match(index.instructions, /worldmonitor\.app\/mcp/, 'instructions must say how to call the MCP server');
     assert.match(index.instructions, /X-WorldMonitor-Key/, 'instructions must name the API-key header');
-    // Every advertised skill must be named in the guidance so the two stay in sync.
+    // Forward sync: every advertised skill must be named in the guidance.
     for (const skill of index.skills) {
       assert.ok(
         index.instructions.includes(skill.name),
         `instructions must reference skill "${skill.name}" so guidance and skills stay in sync`,
+      );
+    }
+    // Reverse sync: any skill-shaped `backtick` token in the guidance must be a
+    // real advertised skill, so a removed skill's name can't linger and mislead
+    // agents. Skill names are lowercase-hyphenated (dir-name shape); other
+    // backtick tokens (`tools/list`, `scope=mcp`, `X-WorldMonitor-Key: …`) are
+    // excluded by shape and are not mistaken for skills.
+    const skillNames = new Set(index.skills.map((s) => s.name));
+    const skillShaped = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$/;
+    const backtickedSkillTokens = [...index.instructions.matchAll(/`([^`]+)`/g)]
+      .map((m) => m[1])
+      .filter((token) => skillShaped.test(token));
+    for (const token of backtickedSkillTokens) {
+      assert.ok(
+        skillNames.has(token),
+        `instructions reference \`${token}\`, which is not an advertised skill — remove the stale guidance`,
       );
     }
   });
