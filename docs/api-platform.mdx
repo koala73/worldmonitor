@@ -68,7 +68,7 @@ Aggregated freshness report for **all registered seed keys**. Returns `HEALTHY`,
 
 All states except `REDIS_DOWN` return HTTP 200; `REDIS_DOWN` returns HTTP 503 because Redis was unreachable and the endpoint could not assess seed state. Responses are not cached (`private, no-store, max-age=0` plus `CDN-Cache-Control: no-store`).
 
-Monitor via UptimeRobot / Better Stack — alert on any status other than `HEALTHY`.
+Monitor via UptimeRobot / Better Stack with `?compact=1` — alert on any status other than `HEALTHY`. The full detailed view requires an operator/enterprise API key because it includes canonical cache key names and freshness thresholds.
 
 ```json
 {

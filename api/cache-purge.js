@@ -1,5 +1,6 @@
 import { getCorsHeaders } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
+import { timingSafeEqualSecret } from './_crypto.js';
 // @ts-expect-error — JS module, no declaration file
 import { getRedisCredentials } from './_upstash-json.js';
 
@@ -71,22 +72,6 @@ async function redisScan(pattern, maxIterations) {
   return { keys, truncated };
 }
 
-async function timingSafeEqual(a, b) {
-  const encoder = new TextEncoder();
-  const aBuf = encoder.encode(a);
-  const bBuf = encoder.encode(b);
-  if (aBuf.byteLength !== bBuf.byteLength) return false;
-  const key = await crypto.subtle.importKey('raw', aBuf, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const sig = await crypto.subtle.sign('HMAC', key, bBuf);
-  const expected = await crypto.subtle.sign('HMAC', key, aBuf);
-  const sigArr = new Uint8Array(sig);
-  const expArr = new Uint8Array(expected);
-  if (sigArr.length !== expArr.length) return false;
-  let diff = 0;
-  for (let i = 0; i < sigArr.length; i++) diff |= sigArr[i] ^ expArr[i];
-  return diff === 0;
-}
-
 export default async function handler(req) {
   const corsHeaders = getCorsHeaders(req, 'POST, OPTIONS');
 
@@ -100,7 +85,7 @@ export default async function handler(req) {
 
   const auth = req.headers.get('authorization') || '';
   const secret = process.env.RELAY_SHARED_SECRET;
-  if (!secret || !(await timingSafeEqual(auth, `Bearer ${secret}`))) {
+  if (!secret || !(await timingSafeEqualSecret(auth, `Bearer ${secret}`))) {
     return jsonResponse({ error: 'Unauthorized' }, 401, corsHeaders);
   }
 

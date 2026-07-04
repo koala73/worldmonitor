@@ -22,9 +22,12 @@ describe('api/health ?history=1', () => {
     // gracefully degrade to empty arrays/null when Upstash is unreachable.
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.WORLDMONITOR_VALID_KEYS = 'test-health-admin-key';
 
     const { default: handler } = await import('../api/health.js');
-    const req = new Request('https://api.worldmonitor.app/api/health?history=1');
+    const req = new Request('https://api.worldmonitor.app/api/health?history=1', {
+      headers: { 'x-worldmonitor-key': 'test-health-admin-key' },
+    });
     const res = await handler(req);
 
     assert.equal(res.status, 200);

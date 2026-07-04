@@ -25,19 +25,23 @@ import type { McpAuthContext, McpHandlerDeps } from './types';
 
 // MCP methods servable WITHOUT authentication. These are the zero-data
 // discovery surface an agent (or an agent-readiness scanner) needs to learn
-// what this server is and what tools it exposes BEFORE authenticating —
-// exactly the metadata already published in the static server-card.json and
-// the public docs. Everything that returns DATA or spends quota
-// (`tools/call`, `resources/read`) — and the metadata methods the product
-// deliberately keeps gated (`prompts/list`, `resources/list`,
-// `logging/setLevel`) — still requires credentials. `notifications/initialized`
-// is the client's post-`initialize` handshake notification (carries no data);
-// leaving it public lets a strict MCP client complete the handshake before
-// calling `tools/list`.
+// what this server is and what it exposes BEFORE authenticating — exactly the
+// metadata already published in the static server-card.json and the public
+// docs. `tools/list` and `resources/list` are BOTH catalog-enumeration methods
+// that return only public metadata (names, descriptions, URIs — no data, no
+// quota), so both are anonymously servable: a scanner that reads the
+// `resources` capability from `initialize` MUST be able to enumerate it, or the
+// capability reads as advertised-but-empty. Everything that returns DATA or
+// spends quota (`tools/call`, `resources/read`) — and the metadata methods the
+// product keeps gated (`prompts/list`, `logging/setLevel`) — still requires
+// credentials. `notifications/initialized` is the client's post-`initialize`
+// handshake notification (carries no data); leaving it public lets a strict MCP
+// client complete the handshake before calling `tools/list`.
 const PUBLIC_MCP_METHODS: ReadonlySet<string> = new Set([
   'initialize',
   'notifications/initialized',
   'tools/list',
+  'resources/list',
 ]);
 
 // Mirror of resolveAuthContext's credential-header contract: does the request
@@ -209,6 +213,12 @@ function handleSseReplay(req: Request, corsHeaders: Record<string, string>): Res
       { status: 406, headers: withMcpNoStore({ 'Content-Type': 'application/json', ...corsHeaders }) },
     );
   }
+  // Defensive + type-narrowing guard. The sole caller (the GET branch) now
+  // answers a bare GET without `Last-Event-ID` with 405 BEFORE reaching here, so
+  // this 400 is unreachable in practice — but the check is retained because it
+  // narrows `lastEventId` from `string | null` to `string` for
+  // `replayEventsAfter` below (whose `parseEventCursor` would TypeError on null),
+  // and keeps `handleSseReplay` independently safe if a future caller is added.
   if (!lastEventId) {
     return new Response(
       JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Missing Last-Event-ID for SSE replay' } }),
@@ -280,9 +290,28 @@ export async function mcpHandler(
   const requestHost = req.headers.get('host') ?? new URL(req.url).host;
   const resourceMetadataUrl = `https://${requestHost}/.well-known/oauth-protected-resource`;
 
-  // GET is the SSE-replay path — it re-serves previously-streamed (Pro) tool
-  // result data, so it stays fully authenticated (never a discovery surface).
+  // GET has two roles on the MCP endpoint:
+  //   1. A bare GET (no `Last-Event-ID`) is a client opening the OPTIONAL
+  //      server->client SSE stream of the Streamable HTTP transport. This
+  //      stateless edge route offers no server-initiated stream, so the MCP
+  //      spec requires HTTP 405 Method Not Allowed here — and MCP SDK clients
+  //      treat 405 as the graceful "no standalone stream" signal, completing
+  //      the handshake cleanly. Answering 401/400 instead makes a strict
+  //      client's `connect()` raise `Failed to open SSE stream` and an
+  //      agent-readiness scanner (orank) report "protocol handshake failed".
+  //      This 405 precedes auth so an UNauthenticated discovery client sees the
+  //      same spec-correct signal (405 leaks nothing). RFC 9110 §15.5.6 requires
+  //      the 405 to advertise `Allow`.
+  //   2. A GET WITH `Last-Event-ID` is our authenticated SSE-replay channel —
+  //      it re-serves previously-streamed (Pro) tool-result data, so it stays
+  //      fully authenticated (never a discovery surface).
   if (req.method === 'GET') {
+    if (!req.headers.get('last-event-id')) {
+      return new Response(null, {
+        status: 405,
+        headers: withMcpNoStore({ Allow: 'POST, GET, HEAD, OPTIONS', ...corsHeaders }),
+      });
+    }
     const auth = await resolveAuthContext(req, deps, resourceMetadataUrl, corsHeaders);
     if (!auth.ok) return auth.response;
     if (auth.context.kind === 'pro') {
@@ -410,8 +439,9 @@ export async function mcpHandler(
     // data via resources for free). The symmetry is structural:
     // buildResourceResponse synthesizes a tools/call body and routes
     // through dispatchToolsCall, inheriting the reservation + telemetry
-    // path. resources/list is metadata-class — quota-exempt like
-    // prompts/list, gated only by the per-minute rate limiter above.
+    // path. resources/list is metadata-class — a public catalog-enumeration
+    // method (in PUBLIC_MCP_METHODS, quota-exempt, anon-rate-limited) that
+    // returns only URIs/names/descriptions, never data. It uses no `context`.
     case 'resources/list':
       return maybeStreamJsonRpcResponse(req, rpcOk(id, { resources: RESOURCE_LIST_RESPONSE }, corsHeaders));
     case 'resources/read':

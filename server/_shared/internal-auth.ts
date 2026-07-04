@@ -1,10 +1,9 @@
 /**
  * Shared helper for internal-auth Vercel edge endpoints.
  *
- * Bearer-header authentication with a constant-time HMAC comparison —
- * the canonical pattern in this repo (see api/cache-purge.js:74-88).
- * The HMAC wrap guarantees a timing-safe compare without depending on
- * node:crypto's timingSafeEqual, which is unavailable in Edge Runtime.
+ * Bearer-header authentication with a fixed-digest comparison. Hashing both
+ * strings before the byte compare keeps the helper Edge-safe and avoids
+ * leaking the raw input length through early returns.
  *
  * Usage in an endpoint handler:
  *
@@ -31,27 +30,14 @@
  */
 export async function timingSafeEqual(a: string, b: string): Promise<boolean> {
   const encoder = new TextEncoder();
-  const aBuf = encoder.encode(a);
-  const bBuf = encoder.encode(b);
-  if (aBuf.byteLength !== bBuf.byteLength) return false;
-  const key = await crypto.subtle.importKey(
-    'raw',
-    aBuf,
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  );
-  const sig = await crypto.subtle.sign('HMAC', key, bBuf);
-  const expected = await crypto.subtle.sign('HMAC', key, aBuf);
-  const sigArr = new Uint8Array(sig);
-  const expArr = new Uint8Array(expected);
-  const n = sigArr.length;
-  if (n !== expArr.length) return false;
+  const aHash = new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(a)));
+  const bHash = new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(b)));
+  const n = bHash.length;
   let diff = 0;
   for (let i = 0; i < n; i++) {
     // non-null asserted: bounds checked via the for condition; TS just
     // doesn't narrow Uint8Array index access to number under strict mode.
-    diff |= (sigArr[i] as number) ^ (expArr[i] as number);
+    diff |= (aHash[i] as number) ^ (bHash[i] as number);
   }
   return diff === 0;
 }
