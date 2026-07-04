@@ -45,11 +45,16 @@ describe('mcpErrorFingerprint', () => {
     assert.notDeepEqual(a, b);
   });
 
-  it('keys non-HTTP failures on the error constructor name', () => {
+  it('keys non-HTTP failures on the stable error name', () => {
     const timeout = new DOMException('The operation timed out', 'TimeoutError');
+    const abort = new DOMException('The operation was aborted', 'AbortError');
     assert.deepEqual(
       mcpErrorFingerprint('tool-execution', 'get_world_brief', timeout),
-      ['mcp-tool-execution', 'get_world_brief', 'DOMException'],
+      ['mcp-tool-execution', 'get_world_brief', 'TimeoutError'],
+    );
+    assert.deepEqual(
+      mcpErrorFingerprint('tool-execution', 'get_world_brief', abort),
+      ['mcp-tool-execution', 'get_world_brief', 'AbortError'],
     );
     assert.deepEqual(
       mcpErrorFingerprint('post-filter', 'get_market_data', new TypeError('x is not a function')),

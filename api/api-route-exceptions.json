@@ -38,6 +38,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/error-fingerprint.ts",
+      "category": "external-protocol",
+      "reason": "MCP Sentry grouping helper for tools/call capture sites. Keeps MCP external-protocol failures grouped by step, tool, and stable inner error signature without introducing a sebuf product API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/registry/cache-tools.ts",
       "category": "external-protocol",
       "reason": "MCP TOOL_REGISTRY cache-tool entries (no _execute). Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",

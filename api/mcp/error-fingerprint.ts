@@ -17,7 +17,7 @@
  *    `HTTP 401: invalid_internal_mcp_signature` coalesce into one group rather
  *    than fragmenting on the variable reason token.
  *  - Any other failure (timeout, abort, TypeError from a bad _postFilter) keys
- *    on the error constructor name so distinct runtime faults stay separable.
+ *    on the stable error name so distinct runtime faults stay separable.
  *
  * The `step` distinguishes the two capture sites in dispatch.ts (`tool-execution`
  * vs `post-filter`) so a post-filter bug never re-merges with the fetch path.
@@ -31,7 +31,7 @@ export function mcpErrorFingerprint(step: string, toolName: string, err: unknown
   const signature = siblingHttp
     ? `${siblingHttp[1]}:${siblingHttp[2]}`
     : err instanceof Error
-      ? err.constructor.name
+      ? err.name || err.constructor.name
       : 'non-error';
   return [`mcp-${step}`, toolName, signature];
 }
