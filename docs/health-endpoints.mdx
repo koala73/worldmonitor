@@ -7,7 +7,7 @@ description: "World Monitor exposes two health endpoints for monitoring data pip
 
 Primary health endpoint. Checks all Redis-backed data keys and seed freshness metadata in a single pipeline call.
 
-**Authentication:** None required. Browser origins must still pass the CORS allowlist in `api/_cors.js`; requests with no `Origin` header, such as server-side monitors, are allowed. Health responses are never cached (`Cache-Control: private, no-store, max-age=0` and `CDN-Cache-Control: no-store`).
+**Authentication:** Compact health (`?compact=1`) is public for uptime and keyword monitors. Detailed health (`/api/health` without `compact=1`) and the operator history view (`?history=1`) require a valid operator/enterprise API key because they expose canonical Redis key names, record counts, and freshness thresholds. Browser origins must still pass the CORS allowlist in `api/_cors.js`; requests with no `Origin` header, such as server-side monitors, are allowed only for compact health unless they include an operator key. Health responses are never cached (`Cache-Control: private, no-store, max-age=0` and `CDN-Cache-Control: no-store`).
 
 **HTTP Method:** `GET`
 
@@ -25,6 +25,7 @@ Primary health endpoint. Checks all Redis-backed data keys and seed freshness me
 | `200` | `WARNING` | Some keys stale or on-demand keys empty, but no critical failures |
 | `200` | `DEGRADED` | Critical keys empty, but ≤3% of all probed keys |
 | `200` | `UNHEALTHY` | Critical keys empty, >3% of all probed keys |
+| `401` | - | Detailed health or history requested without a valid operator/enterprise API key |
 | `503` | `REDIS_DOWN` | Could not connect to Redis — the **only** state that returns a non-200 code |
 
 > The overall health verdict lives in the JSON `status` field, not the HTTP code. Every state except `REDIS_DOWN` returns `200` so warn-level seed jitter doesn't flap HTTP-status monitors (see PR #2699). `REDIS_DOWN` returns `503` because with Redis unreachable the endpoint can assess nothing, so a plain HTTP probe must see a failure.
@@ -126,14 +127,15 @@ Selected thresholds from `SEED_META`:
 ### Example Requests
 
 ```bash
-# Full health check
-curl -s https://api.worldmonitor.app/api/health | jq .
+# Full health check (requires an operator API key)
+curl -s https://api.worldmonitor.app/api/health \
+  -H "X-WorldMonitor-Key: $WORLDMONITOR_API_KEY" | jq .
 
 # Compact (problems only)
 curl -s "https://api.worldmonitor.app/api/health?compact=1" | jq .
 
 # UptimeRobot / monitoring: check HTTP status code
-curl -o /dev/null -s -w "%{http_code}" https://api.worldmonitor.app/api/health
+curl -o /dev/null -s -w "%{http_code}" "https://api.worldmonitor.app/api/health?compact=1"
 # Returns 503 only when Redis is unreachable (REDIS_DOWN); 200 for every other
 # state — the verdict (HEALTHY/WARNING/DEGRADED/UNHEALTHY) is in the body's `status`.
 ```
@@ -217,7 +219,7 @@ curl -s https://api.worldmonitor.app/api/seed-health \
 
 ### UptimeRobot
 
-Use `/api/health` as the monitor URL. The HTTP status code only distinguishes a total Redis outage from everything else:
+Use `/api/health?compact=1` as the public monitor URL. The HTTP status code only distinguishes a total Redis outage from everything else:
 
 - `503` = `REDIS_DOWN` (Redis unreachable — a true hard outage)
 - `200` = every other state, including `DEGRADED` and `UNHEALTHY`
@@ -226,7 +228,7 @@ So an HTTP-status-only monitor catches a full backend outage but **not** degrade
 
 Point the keyword monitor at `https://api.worldmonitor.app/api/health?compact=1` and alert when the compact token `"status":"HEALTHY"` (no space after the colon) is **absent** from the response body. Compact mode serializes with no indentation, so this exact token is stable regardless of formatting.
 
-> The bare `/api/health` URL pretty-prints the body, so the healthy token there is `"status": "HEALTHY"` **with a space** after the colon. If you monitor the non-compact URL, match that spaced token instead — the no-space `"status":"HEALTHY"` is absent even when healthy and will false-alert. Prefer `?compact=1`, or parse `summary.crit > 0`.
+> The bare `/api/health` URL is now an operator view and returns `401` without an API key. Public monitoring should always use `?compact=1`.
 
 ### Custom Alerting
 

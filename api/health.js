@@ -1,5 +1,6 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
+import { USER_API_KEY_GATEWAY_VALIDATION_ERROR, validateApiKey } from './_api-key.js';
 // Seed-envelope helper. PR 1 imports it here so PR 2 can wire envelope-aware
 // reads at specific call sites without further plumbing. It's a no-op on
 // legacy-shape seed-meta values (they have no `_seed` wrapper and pass through
@@ -777,6 +778,20 @@ export default async function handler(req, ctx) {
     return new Response(null, { status: 204, headers });
   }
 
+  const url = new URL(req.url);
+  const compact = url.searchParams.get('compact') === '1';
+  const wantsHistory = url.searchParams.get('history') === '1';
+
+  if (!compact || wantsHistory) {
+    const keyCheck = await validateApiKey(req, { forceKey: true });
+    if (keyCheck.required && !keyCheck.valid) {
+      const error = keyCheck.error === USER_API_KEY_GATEWAY_VALIDATION_ERROR
+        ? 'Invalid API key'
+        : keyCheck.error;
+      return jsonResponse({ error }, 401, headers);
+    }
+  }
+
   // ?history=1 — fast read of the failure-log persisted by previous /api/health
   // probes. Skips the full freshness check (which is expensive — fetches every
   // bootstrap key) and returns only the last-failure snapshot + the deduped
@@ -786,31 +801,28 @@ export default async function handler(req, ctx) {
   //   health:failure-log    — last 50 deduped incidents (7-day TTL)
   // See WM 2026-05-10 — added after a night of UptimeRobot flips that needed
   // direct Upstash inspection to diagnose.
-  {
-    const earlyUrl = new URL(req.url);
-    if (earlyUrl.searchParams.get('history') === '1') {
-      const results = await redisPipeline(
-        [
-          ['GET', 'health:last-failure'],
-          ['LRANGE', 'health:failure-log', '0', '-1'],
-        ],
-        4_000,
-      );
-      const parseJson = (raw) => {
-        if (typeof raw !== 'string') return null;
-        try { return JSON.parse(raw); } catch { return null; }
-      };
-      const lastFailureRaw = results?.[0]?.result;
-      const failureLogRaw = results?.[1]?.result;
-      const body = {
-        lastFailure: parseJson(lastFailureRaw),
-        failureLog: Array.isArray(failureLogRaw)
-          ? failureLogRaw.map(parseJson).filter((e) => e !== null)
-          : [],
-        checkedAt: new Date().toISOString(),
-      };
-      return new Response(JSON.stringify(body, null, 2), { status: 200, headers });
-    }
+  if (wantsHistory) {
+    const results = await redisPipeline(
+      [
+        ['GET', 'health:last-failure'],
+        ['LRANGE', 'health:failure-log', '0', '-1'],
+      ],
+      4_000,
+    );
+    const parseJson = (raw) => {
+      if (typeof raw !== 'string') return null;
+      try { return JSON.parse(raw); } catch { return null; }
+    };
+    const lastFailureRaw = results?.[0]?.result;
+    const failureLogRaw = results?.[1]?.result;
+    const body = {
+      lastFailure: parseJson(lastFailureRaw),
+      failureLog: Array.isArray(failureLogRaw)
+        ? failureLogRaw.map(parseJson).filter((e) => e !== null)
+        : [],
+      checkedAt: new Date().toISOString(),
+    };
+    return new Response(JSON.stringify(body, null, 2), { status: 200, headers });
   }
 
   const now = Date.now();
@@ -953,9 +965,6 @@ export default async function handler(req, ctx) {
     const clear = redisPipeline([['DEL', 'health:failure-log-sig']], 4_000).catch(() => {});
     if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(clear);
   }
-
-  const url = new URL(req.url);
-  const compact = url.searchParams.get('compact') === '1';
 
   const body = {
     status: overall,
