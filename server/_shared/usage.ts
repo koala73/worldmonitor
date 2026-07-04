@@ -83,7 +83,14 @@ export type RequestReason =
   | 'rl_min_429'
   | 'rl_ceiling_429'
   | 'rl_min_shadow'
-  | 'rl_ceiling_shadow';
+  | 'rl_ceiling_shadow'
+  // Idempotency-Key (server/_shared/idempotency.ts): a malformed key (400), a
+  // replayed response, an in-flight duplicate (409), or a key reused with a
+  // different body (422).
+  | 'idempotency_invalid'
+  | 'idempotent_replay'
+  | 'idempotency_conflict'
+  | 'idempotency_mismatch';
 
 export interface RequestEvent {
   _time: string;

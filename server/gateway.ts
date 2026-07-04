@@ -36,6 +36,12 @@ import {
 import { buildUsageIdentity, hashKeySync, type UsageIdentityInput } from './_shared/usage-identity';
 import { runRedisPipeline } from './_shared/redis';
 import {
+  beginIdempotency,
+  IDEMPOTENCY_HEADER,
+  IDEMPOTENT_REPLAYED_HEADER,
+  type IdempotencyOutcome,
+} from './_shared/idempotency';
+import {
   checkBurst,
   reserveDailyMeter,
   rateLimitHeaders,
@@ -1406,13 +1412,49 @@ export function createDomainGateway(
     }
 
     const requiredBboxDiagnostic = getRequiredBboxDiagnostic(request, pathname);
+    const identityForScope = buildUsageIdentity(usage);
+
+    // ── Idempotency-Key support (mutation retry-safety) ──────────────────────
+    // Opt-in: only a POST carrying the header. POST→GET-converted batch reads
+    // (compat block above) are already GET here and are skipped. Scope by the
+    // resolved principal so a key can never replay another caller's response.
+    // Fail-open: any Redis issue proceeds without idempotency (see the module).
+    let idempotency: IdempotencyOutcome | null = null;
+    // Gate on presence (not truthiness) so a present-but-empty header is
+    // rejected as malformed rather than silently ignored.
+    if (request.method === 'POST' && request.headers.has(IDEMPOTENCY_HEADER)) {
+      const idScope = identityForScope.principal_id ?? identityForScope.customer_id;
+      idempotency = await beginIdempotency({
+        request,
+        pathname,
+        // Tag the scope with the auth kind so value spaces (Clerk id vs hashed
+        // key vs customer ref) can never collide across authentication methods.
+        scope: idScope ? `${identityForScope.auth_kind}:${idScope}` : null,
+        idempotencyKey: request.headers.get(IDEMPOTENCY_HEADER) ?? '',
+        corsHeaders,
+      });
+      switch (idempotency.kind) {
+        case 'invalid':
+          emitRequest(400, 'idempotency_invalid', null);
+          return idempotency.response;
+        case 'replay':
+          emitRequest(idempotency.response.status, 'idempotent_replay', null);
+          return idempotency.response;
+        case 'conflict':
+          emitRequest(409, 'idempotency_conflict', null);
+          return idempotency.response;
+        case 'mismatch':
+          emitRequest(422, 'idempotency_mismatch', null);
+          return idempotency.response;
+        // 'disabled' (fail-open) and 'proceed' fall through to execution.
+      }
+    }
 
     // Execute handler with top-level error boundary.
     // Wrap in runWithUsageScope so deep fetch helpers (fetchJson,
     // cachedFetchJsonWithMeta) can attribute upstream calls to this customer
     // without leaf handlers having to thread a usage hook through every call.
     let response: Response;
-    const identityForScope = buildUsageIdentity(usage);
     const handlerCall = matchedHandler;
     const requestForHandler = request;
     try {
@@ -1546,6 +1588,28 @@ export function createDomainGateway(
         mergedHeaders.set('Cache-Control', 'no-store');
       }
       mergedHeaders.delete('X-No-Cache');
+    }
+
+    // Idempotent POST (opt-in): buffer the body so it can be persisted for
+    // replay, then echo the key. Only reached when the client sent a valid
+    // Idempotency-Key on a first request; normal POSTs keep the streaming path
+    // below untouched.
+    if (idempotency?.kind === 'proceed') {
+      const bodyBytes = response.body ? await response.arrayBuffer() : new ArrayBuffer(0);
+      mergedHeaders.set(IDEMPOTENCY_HEADER, idempotency.key);
+      mergedHeaders.set(IDEMPOTENT_REPLAYED_HEADER, 'false');
+      // Awaited (not waitUntil'd) so a sub-second retry sees the completed
+      // record rather than a lingering 'processing' lock → 409. store() is
+      // best-effort/fail-open, so a Redis blip degrades to a re-executable
+      // retry, never a failed response.
+      await idempotency.store(response.status, bodyBytes, response.headers.get('content-type'));
+      emitRequest(response.status, 'ok', resolvedCacheTier, bodyBytes.byteLength);
+      maybeAttachDevHealthHeader(mergedHeaders);
+      return new Response(bodyBytes, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: mergedHeaders,
+      });
     }
 
     // Streaming/non-GET-200 responses: res_bytes is best-effort 0 (Content-Length

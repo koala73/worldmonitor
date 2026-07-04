@@ -10,6 +10,15 @@ servers:
 paths:
     /api/scenario/v1/run-scenario:
         post:
+            parameters:
+                - name: Idempotency-Key
+                  in: header
+                  description: Optional client-generated idempotency key. Retrying a POST with the same key returns the original response instead of duplicating the side effect. Keys are scoped per caller and retained for 24 hours.
+                  required: false
+                  example: "4f8b9c2e-1a3d-4b6f-8e0a-2c5d7f9b1e34"
+                  schema:
+                    type: string
+                    maxLength: 255
             tags:
                 - ScenarioService
             summary: RunScenario

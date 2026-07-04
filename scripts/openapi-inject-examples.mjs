@@ -371,6 +371,12 @@ function injectSpecExamples(spec) {
         hasRequestExample = true;
         for (const param of op.parameters) {
           if (!param || typeof param !== 'object' || !param.schema) continue;
+          // Header params (e.g. Idempotency-Key, injected by
+          // openapi-inject-idempotency.mjs) carry their own curated example;
+          // a name-heuristic value is meaningless for an opaque client token,
+          // and clobbering it would fight that injector. That injector owns
+          // header-param examples.
+          if (param.in === 'header') continue;
           const example = exampleForSchema(param.schema, spec, {
             ...context,
             name: param.name,
@@ -619,6 +625,9 @@ function patchYamlExamples(raw, spec, label) {
 
       for (const param of op.parameters ?? []) {
         if (param?.example === undefined) continue;
+        // Header-param examples are owned by openapi-inject-idempotency.mjs
+        // (see the JSON pass above); leave them untouched here too.
+        if (param.in === 'header') continue;
         const loc = findOperation(lines, path, method, label);
         replaceParamExample(lines, loc.start, loc.end, param.name, param.example);
       }
