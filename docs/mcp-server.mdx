@@ -28,7 +28,7 @@ Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pas
 | `https://api.worldmonitor.app/.well-known/oauth-authorization-server` | AS metadata (RFC 8414) |
 | `https://worldmonitor.app/.well-known/oauth-protected-resource` | Resource server metadata (RFC 9728) |
 
-Server identifier: `worldmonitor` v1.10.0.
+Server identifier: `worldmonitor` v1.11.0.
 
 ### Protocol negotiation
 
@@ -367,7 +367,20 @@ In addition to the 39 tools, WorldMonitor exposes MCP prompts and resources so c
 | `worldmonitor://seed-meta/freshness` | Market-data bootstrap freshness envelope only: `cached_at` and `stale`. |
 | `worldmonitor://markets/{symbol}/quote` | Single-symbol market quote slice. `{symbol}` is uppercase, for example `AAPL`, `GC=F`, or `BTC-USD`. |
 
-`resources/list` is metadata and does not consume the Pro daily quota. `resources/read` intentionally does consume the same daily quota slot as the equivalent `tools/call`; it routes through the same dispatcher so resources cannot bypass the Pro cap. As with every MCP method, both `resources/list` and `resources/read` still count toward the 60/minute limiter. For the exact `-32029` status/header differences between per-minute throttling and daily quota exhaustion, see the [MCP Error Catalog](/mcp-error-catalog#-32029--rate-limited-per-minute-or-daily).
+`resources/list` is metadata and does not consume the Pro daily quota. `resources/read` on a `worldmonitor://` data URI intentionally does consume the same daily quota slot as the equivalent `tools/call`; it routes through the same dispatcher so resources cannot bypass the Pro cap. As with every MCP method, both `resources/list` and `resources/read` still count toward the 60/minute limiter. For the exact `-32029` status/header differences between per-minute throttling and daily quota exhaustion, see the [MCP Error Catalog](/mcp-error-catalog#-32029--rate-limited-per-minute-or-daily).
+
+### MCP Apps (interactive UI)
+
+The server supports [MCP Apps](https://modelcontextprotocol.io/extensions/apps/build) (extension `io.modelcontextprotocol/ui`, spec `2026-01-26`) — interactive views a host renders in a sandboxed iframe when a linked tool is called. Two wire signals drive it:
+
+- **`tools/list`** advertises the linkage on the tool. `get_country_risk` carries `_meta.ui.resourceUri` (and the deprecated flat `ui/resourceUri` alias) pointing at its UI resource.
+- **`resources/list`** surfaces the UI resource itself, after the four data URIs:
+
+| UI resource URI | mimeType | Renders |
+|-----------------|----------|---------|
+| `ui://worldmonitor/country-risk.html` | `text/html;profile=mcp-app` | The `get_country_risk` result as an interactive card: CII score, unrest/conflict/security/news component breakdown, travel-advisory level, and OFAC sanctions exposure. |
+
+`resources/read` on a `ui://` URI returns the self-contained HTML view. Unlike the data resources, a `ui://` read is **public and quota-exempt** — the template carries no data and spends no upstream call, so a host can preload it (and an agent-readiness scanner can fetch it) without credentials and without touching the Pro daily cap. The view is fully self-contained (no external assets) and communicates with the host over the standard MCP Apps `postMessage` bridge (`ui/initialize` → `ui/notifications/tool-result` → `ui/notifications/size-changed`).
 
 ## JSON-RPC example
 
