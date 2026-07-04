@@ -90,6 +90,10 @@ export type IdempotencyOutcome =
       store: (status: number, body: ArrayBuffer, contentType: string | null) => Promise<void>;
     };
 
+type IdempotencyTerminalOutcome = Exclude<IdempotencyOutcome, { kind: 'proceed' }>;
+
+export type IdempotencyPeekOutcome = IdempotencyTerminalOutcome | { kind: 'miss' };
+
 export interface BeginIdempotencyArgs {
   /** The matched POST request. Its body is read via `.clone()` for hashing. */
   request: Request;
@@ -107,6 +111,8 @@ export function isValidIdempotencyKey(key: string): boolean {
   return key.length <= KEY_MAX_LENGTH && KEY_PATTERN.test(key);
 }
 
+export const IDEMPOTENCY_KEY_PATTERN = '^[\\x21-\\x7e]{1,255}$';
+
 async function sha256Hex(input: string | ArrayBuffer): Promise<string> {
   const data = typeof input === 'string' ? new TextEncoder().encode(input) : input;
   const digest = await crypto.subtle.digest('SHA-256', data);
@@ -122,6 +128,10 @@ function isReplayableTextBody(contentType: string | null): boolean {
   // documented POST returns JSON; anything else is skipped (lock released) so a
   // retry re-executes rather than replaying a corrupted (mis-decoded) body.
   return ct.includes('json') || ct.startsWith('text/');
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 408 || status === 409 || status === 429 || status >= 500;
 }
 
 /**
@@ -158,70 +168,34 @@ function jsonResponse(
   });
 }
 
-/**
- * Claim-or-replay for a POST carrying an `Idempotency-Key`. See module docs.
- * The caller must have already confirmed `request.method === 'POST'` and that
- * the header is present.
- */
-export async function beginIdempotency(args: BeginIdempotencyArgs): Promise<IdempotencyOutcome> {
-  const { request, pathname, scope, idempotencyKey, corsHeaders } = args;
-
-  if (!isValidIdempotencyKey(idempotencyKey)) {
-    return {
-      kind: 'invalid',
-      response: jsonResponse(
-        400,
-        {
-          error: 'invalid_idempotency_key',
-          message: `The ${IDEMPOTENCY_HEADER} header must be 1-${KEY_MAX_LENGTH} printable ASCII characters.`,
-        },
-        corsHeaders,
-      ),
-    };
-  }
-
-  let reqHash: string;
-  let redisKey: string;
+async function getRequestHashAndRedisKey(
+  request: Request,
+  pathname: string,
+  scope: string | null,
+  idempotencyKey: string,
+): Promise<{ reqHash: string; redisKey: string } | null> {
   try {
     const bodyBuf = await request.clone().arrayBuffer();
-    reqHash = await sha256Hex(bodyBuf);
+    const reqHash = await sha256Hex(bodyBuf);
     const effectiveScope = scope || anonScope(request);
     // Hash the composite so client-controlled key material never lands in the
     // Redis keyspace verbatim and delimiter collisions are impossible.
-    redisKey = `idem:v1:${await sha256Hex(`${effectiveScope}\n${pathname}\n${idempotencyKey}`)}`;
+    const redisKey = `idem:v1:${await sha256Hex(`${effectiveScope}\n${pathname}\n${idempotencyKey}`)}`;
+    return { reqHash, redisKey };
   } catch {
     // Body unreadable / hashing failed → can't key the request. Fail-open.
-    return { kind: 'disabled' };
+    return null;
   }
+}
 
-  // Atomic claim (SET NX EX) + read-back in one round-trip. The GET reflects
-  // post-SET state: after a successful claim it returns our own marker (ignored);
-  // when the key already existed it returns the prior record.
-  const pipeline = await runRedisPipeline([
-    ['SET', redisKey, PROCESSING_MARKER, 'NX', 'EX', String(PROCESSING_TTL_SECONDS)],
-    ['GET', redisKey],
-  ]);
+function outcomeFromStoredRecord(
+  raw: unknown,
+  reqHash: string,
+  idempotencyKey: string,
+  corsHeaders: Record<string, string>,
+): IdempotencyPeekOutcome {
+  if (raw == null) return { kind: 'miss' };
 
-  // Empty result ⇒ Redis unavailable / not configured ⇒ fail-open.
-  if (pipeline.length < 2) return { kind: 'disabled' };
-
-  // A per-command error (mirrors claimInternalMcpReplayNonce) ⇒ fail-open
-  // rather than risk a false "claimed" / "exists" verdict.
-  const claim = pipeline[0] as { result?: unknown; error?: unknown } | undefined;
-  if (claim?.error) return { kind: 'disabled' };
-
-  const claimed = claim?.result === 'OK';
-  if (claimed) {
-    return {
-      kind: 'proceed',
-      key: idempotencyKey,
-      store: (status, body, contentType) =>
-        storeResult(redisKey, status, body, contentType, reqHash),
-    };
-  }
-
-  // Key already existed — inspect the stored record.
-  const raw = pipeline[1]?.result;
   let record: CompletedRecord | { state: 'processing' } | null = null;
   if (typeof raw === 'string') {
     try {
@@ -232,8 +206,7 @@ export async function beginIdempotency(args: BeginIdempotencyArgs): Promise<Idem
   }
 
   if (!record) {
-    // Corrupt value or the key expired between SET and GET (rare race).
-    // Fail-open rather than block.
+    // Corrupt value or the key expired between reads. Fail-open rather than block.
     return { kind: 'disabled' };
   }
 
@@ -283,6 +256,105 @@ export async function beginIdempotency(args: BeginIdempotencyArgs): Promise<Idem
   };
 }
 
+function isPipelineSuccess(entry: { result?: unknown; error?: unknown } | undefined, expected: unknown): boolean {
+  return entry?.error == null && entry?.result === expected;
+}
+
+async function releaseProcessingLock(redisKey: string): Promise<void> {
+  await runRedisPipeline([['DEL', redisKey]]);
+}
+
+/**
+ * Read-only idempotency lookup used before quota/rate-limit counters. It can
+ * replay an already-completed mutation or reject conflicts/mismatches without
+ * charging a duplicate retry, but it never claims a fresh key.
+ */
+export async function peekIdempotency(args: BeginIdempotencyArgs): Promise<IdempotencyPeekOutcome> {
+  const { request, pathname, scope, idempotencyKey, corsHeaders } = args;
+
+  if (!isValidIdempotencyKey(idempotencyKey)) {
+    return {
+      kind: 'invalid',
+      response: jsonResponse(
+        400,
+        {
+          error: 'invalid_idempotency_key',
+          message: `The ${IDEMPOTENCY_HEADER} header must be 1-${KEY_MAX_LENGTH} printable ASCII characters.`,
+        },
+        corsHeaders,
+      ),
+    };
+  }
+
+  const resolved = await getRequestHashAndRedisKey(request, pathname, scope, idempotencyKey);
+  if (!resolved) return { kind: 'disabled' };
+
+  const pipeline = await runRedisPipeline([['GET', resolved.redisKey]]);
+  if (pipeline.length < 1) return { kind: 'disabled' };
+
+  const entry = pipeline[0] as { result?: unknown; error?: unknown } | undefined;
+  if (entry?.error) return { kind: 'disabled' };
+
+  return outcomeFromStoredRecord(entry?.result, resolved.reqHash, idempotencyKey, corsHeaders);
+}
+
+/**
+ * Claim-or-replay for a POST carrying an `Idempotency-Key`. See module docs.
+ * The caller must have already confirmed `request.method === 'POST'` and that
+ * the header is present.
+ */
+export async function beginIdempotency(args: BeginIdempotencyArgs): Promise<IdempotencyOutcome> {
+  const { request, pathname, scope, idempotencyKey, corsHeaders } = args;
+
+  if (!isValidIdempotencyKey(idempotencyKey)) {
+    return {
+      kind: 'invalid',
+      response: jsonResponse(
+        400,
+        {
+          error: 'invalid_idempotency_key',
+          message: `The ${IDEMPOTENCY_HEADER} header must be 1-${KEY_MAX_LENGTH} printable ASCII characters.`,
+        },
+        corsHeaders,
+      ),
+    };
+  }
+
+  const resolved = await getRequestHashAndRedisKey(request, pathname, scope, idempotencyKey);
+  if (!resolved) return { kind: 'disabled' };
+
+  // Atomic claim (SET NX EX) + read-back in one round-trip. The GET reflects
+  // post-SET state: after a successful claim it returns our own marker (ignored);
+  // when the key already existed it returns the prior record.
+  const pipeline = await runRedisPipeline([
+    ['SET', resolved.redisKey, PROCESSING_MARKER, 'NX', 'EX', String(PROCESSING_TTL_SECONDS)],
+    ['GET', resolved.redisKey],
+  ]);
+
+  // Empty result ⇒ Redis unavailable / not configured ⇒ fail-open.
+  if (pipeline.length < 2) return { kind: 'disabled' };
+
+  // A per-command error (mirrors claimInternalMcpReplayNonce) ⇒ fail-open
+  // rather than risk a false "claimed" / "exists" verdict.
+  const claim = pipeline[0] as { result?: unknown; error?: unknown } | undefined;
+  if (claim?.error) return { kind: 'disabled' };
+
+  const claimed = claim?.result === 'OK';
+  if (claimed) {
+    return {
+      kind: 'proceed',
+      key: idempotencyKey,
+      store: (status, body, contentType) =>
+        storeResult(resolved.redisKey, status, body, contentType, resolved.reqHash),
+    };
+  }
+
+  // Key already existed — inspect the stored record.
+  const raw = pipeline[1]?.result;
+  const outcome = outcomeFromStoredRecord(raw, resolved.reqHash, idempotencyKey, corsHeaders);
+  return outcome.kind === 'miss' ? { kind: 'disabled' } : outcome;
+}
+
 async function storeResult(
   redisKey: string,
   status: number,
@@ -295,11 +367,11 @@ async function storeResult(
     // can't faithfully round-trip through a JS string — release the lock so a
     // retry re-executes instead.
     if (
-      status >= 500 ||
+      isRetryableStatus(status) ||
       body.byteLength > MAX_STORED_BODY_BYTES ||
       !isReplayableTextBody(contentType)
     ) {
-      await runRedisPipeline([['DEL', redisKey]]);
+      await releaseProcessingLock(redisKey);
       return;
     }
     const record: CompletedRecord = {
@@ -309,10 +381,18 @@ async function storeResult(
       reqHash,
       body: new TextDecoder().decode(body),
     };
-    await runRedisPipeline([
+    const pipeline = await runRedisPipeline([
       ['SET', redisKey, JSON.stringify(record), 'EX', String(COMPLETED_TTL_SECONDS)],
     ]);
+    if (!isPipelineSuccess(pipeline[0] as { result?: unknown; error?: unknown } | undefined, 'OK')) {
+      await releaseProcessingLock(redisKey);
+    }
   } catch {
     // Best-effort persistence; a failure just means a retry re-executes.
+    try {
+      await releaseProcessingLock(redisKey);
+    } catch {
+      // Ignore release failures; the processing marker still has a short TTL.
+    }
   }
 }

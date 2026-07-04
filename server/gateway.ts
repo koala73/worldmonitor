@@ -37,6 +37,7 @@ import { buildUsageIdentity, hashKeySync, type UsageIdentityInput } from './_sha
 import { runRedisPipeline } from './_shared/redis';
 import {
   beginIdempotency,
+  peekIdempotency,
   IDEMPOTENCY_HEADER,
   IDEMPOTENT_REPLAYED_HEADER,
   type IdempotencyOutcome,
@@ -1210,6 +1211,108 @@ export function createDomainGateway(
       }
     }
 
+    // Route matching — if POST doesn't match, convert to GET for stale clients
+    let matchedHandler = router.match(request);
+    if (!matchedHandler && request.method === 'POST') {
+      if (isPostToGetCompatibleBodySize(request.headers)) {
+        const url = new URL(request.url);
+        let oversizedKey: string | null = null;
+        try {
+          const bodyText = await request.clone().text();
+          if (new TextEncoder().encode(bodyText).byteLength >= POST_TO_GET_MAX_BODY_BYTES) {
+            emitRequest(400, 'malformed_request', null);
+            return new Response(JSON.stringify({ error: 'malformed_request' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            });
+          }
+          const body = JSON.parse(bodyText);
+          const isScalar = (x: unknown): x is string | number | boolean =>
+            typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean';
+          for (const [k, v] of Object.entries(body as Record<string, unknown>)) {
+            if (Array.isArray(v)) {
+              if (v.length > POST_TO_GET_MAX_ARRAY_VALUES_PER_KEY) {
+                oversizedKey = k;
+                break;
+              }
+              v.forEach((item) => { if (isScalar(item)) url.searchParams.append(k, String(item)); });
+            } else if (isScalar(v)) url.searchParams.set(k, String(v));
+          }
+        } catch { /* non-JSON body — preserve legacy POST→GET fallback */ }
+        if (oversizedKey !== null) {
+          emitRequest(400, 'malformed_request', null);
+          return new Response(JSON.stringify({
+            error: 'Too many values for POST compatibility parameter',
+            parameter: oversizedKey,
+            maxValues: POST_TO_GET_MAX_ARRAY_VALUES_PER_KEY,
+          }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          });
+        }
+        const getReq = new Request(url.toString(), { method: 'GET', headers: request.headers });
+        matchedHandler = router.match(getReq);
+        if (matchedHandler) request = getReq;
+      }
+    }
+    if (!matchedHandler) {
+      const allowed = router.allowedMethods(new URL(request.url).pathname);
+      if (allowed.length > 0) {
+        emitRequest(405, 'method_not_allowed', null);
+        return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+          status: 405,
+          headers: { 'Content-Type': 'application/json', Allow: allowed.join(', '), ...corsHeaders },
+        });
+      }
+      emitRequest(404, 'unknown_route', null);
+      return new Response(JSON.stringify({ error: 'Not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      });
+    }
+
+    const requiredBboxDiagnostic = getRequiredBboxDiagnostic(request, pathname);
+    const identityForScope = buildUsageIdentity(usage);
+
+    // ── Idempotency-Key support (mutation retry-safety) ──────────────────────
+    // Opt-in: only a POST carrying the header. POST→GET-converted batch reads
+    // (compat block above) are already GET here and are skipped. Scope by the
+    // resolved principal so a key can never replay another caller's response.
+    // Fail-open: any Redis issue proceeds without idempotency (see the module).
+    let idempotency: IdempotencyOutcome | null = null;
+    const hasIdempotencyKey = request.method === 'POST' && request.headers.has(IDEMPOTENCY_HEADER);
+    const idScope = identityForScope.principal_id ?? identityForScope.customer_id;
+    const idempotencyScope = idScope ? `${identityForScope.auth_kind}:${idScope}` : null;
+
+    // Look up an existing idempotency record before rate-limit/quota counters.
+    // This lets a retry of completed work replay without charging a duplicate
+    // unit. A miss does NOT claim the key; fresh executions still pass through
+    // the normal abuse controls before `beginIdempotency()` below.
+    if (hasIdempotencyKey) {
+      const peek = await peekIdempotency({
+        request,
+        pathname,
+        scope: idempotencyScope,
+        idempotencyKey: request.headers.get(IDEMPOTENCY_HEADER) ?? '',
+        corsHeaders,
+      });
+      switch (peek.kind) {
+        case 'invalid':
+          emitRequest(400, 'idempotency_invalid', null);
+          return peek.response;
+        case 'replay':
+          emitRequest(peek.response.status, 'idempotent_replay', null);
+          return peek.response;
+        case 'conflict':
+          emitRequest(409, 'idempotency_conflict', null);
+          return peek.response;
+        case 'mismatch':
+          emitRequest(422, 'idempotency_mismatch', null);
+          return peek.response;
+        // 'miss' proceeds to rate limiting; 'disabled' preserves fail-open behavior.
+      }
+    }
+
     // IP-based rate limiting — two-phase: endpoint-specific first, then global fallback.
     //
     // Internal-MCP verified path skips IP rate limiting: the MCP edge
@@ -1351,85 +1454,15 @@ export function createDomainGateway(
       }
     }
 
-    // Route matching — if POST doesn't match, convert to GET for stale clients
-    let matchedHandler = router.match(request);
-    if (!matchedHandler && request.method === 'POST') {
-      if (isPostToGetCompatibleBodySize(request.headers)) {
-        const url = new URL(request.url);
-        let oversizedKey: string | null = null;
-        try {
-          const bodyText = await request.clone().text();
-          if (new TextEncoder().encode(bodyText).byteLength >= POST_TO_GET_MAX_BODY_BYTES) {
-            emitRequest(400, 'malformed_request', null);
-            return new Response(JSON.stringify({ error: 'malformed_request' }), {
-              status: 400,
-              headers: { 'Content-Type': 'application/json', ...corsHeaders },
-            });
-          }
-          const body = JSON.parse(bodyText);
-          const isScalar = (x: unknown): x is string | number | boolean =>
-            typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean';
-          for (const [k, v] of Object.entries(body as Record<string, unknown>)) {
-            if (Array.isArray(v)) {
-              if (v.length > POST_TO_GET_MAX_ARRAY_VALUES_PER_KEY) {
-                oversizedKey = k;
-                break;
-              }
-              v.forEach((item) => { if (isScalar(item)) url.searchParams.append(k, String(item)); });
-            } else if (isScalar(v)) url.searchParams.set(k, String(v));
-          }
-        } catch { /* non-JSON body — preserve legacy POST→GET fallback */ }
-        if (oversizedKey !== null) {
-          emitRequest(400, 'malformed_request', null);
-          return new Response(JSON.stringify({
-            error: 'Too many values for POST compatibility parameter',
-            parameter: oversizedKey,
-            maxValues: POST_TO_GET_MAX_ARRAY_VALUES_PER_KEY,
-          }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json', ...corsHeaders },
-          });
-        }
-        const getReq = new Request(url.toString(), { method: 'GET', headers: request.headers });
-        matchedHandler = router.match(getReq);
-        if (matchedHandler) request = getReq;
-      }
-    }
-    if (!matchedHandler) {
-      const allowed = router.allowedMethods(new URL(request.url).pathname);
-      if (allowed.length > 0) {
-        emitRequest(405, 'method_not_allowed', null);
-        return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-          status: 405,
-          headers: { 'Content-Type': 'application/json', Allow: allowed.join(', '), ...corsHeaders },
-        });
-      }
-      emitRequest(404, 'unknown_route', null);
-      return new Response(JSON.stringify({ error: 'Not found' }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
-      });
-    }
-
-    const requiredBboxDiagnostic = getRequiredBboxDiagnostic(request, pathname);
-    const identityForScope = buildUsageIdentity(usage);
-
-    // ── Idempotency-Key support (mutation retry-safety) ──────────────────────
-    // Opt-in: only a POST carrying the header. POST→GET-converted batch reads
-    // (compat block above) are already GET here and are skipped. Scope by the
-    // resolved principal so a key can never replay another caller's response.
-    // Fail-open: any Redis issue proceeds without idempotency (see the module).
-    let idempotency: IdempotencyOutcome | null = null;
     // Gate on presence (not truthiness) so a present-but-empty header is
     // rejected as malformed rather than silently ignored.
-    if (request.method === 'POST' && request.headers.has(IDEMPOTENCY_HEADER)) {
-      const idScope = identityForScope.principal_id ?? identityForScope.customer_id;
+    if (hasIdempotencyKey) {
       idempotency = await beginIdempotency({
         request,
         pathname,
         // Tag the scope with the auth kind so value spaces (Clerk id vs hashed
         // key vs customer ref) can never collide across authentication methods.
-        scope: idScope ? `${identityForScope.auth_kind}:${idScope}` : null,
+        scope: idempotencyScope,
         idempotencyKey: request.headers.get(IDEMPOTENCY_HEADER) ?? '',
         corsHeaders,
       });

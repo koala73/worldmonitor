@@ -17,7 +17,7 @@ vi.mock('../_shared/redis', async (importActual) => {
   return { ...actual, runRedisPipeline: (...a: unknown[]) => runRedisPipeline(...a) };
 });
 
-import { beginIdempotency, isValidIdempotencyKey } from '../_shared/idempotency';
+import { beginIdempotency, isValidIdempotencyKey, peekIdempotency } from '../_shared/idempotency';
 
 const PATH = '/api/scenario/v1/run-scenario';
 const BODY = JSON.stringify({ scenario: 'x' });
@@ -32,6 +32,16 @@ function makeRequest(body: string = BODY): Request {
 
 function begin(key: string, opts: { request?: Request; scope?: string | null } = {}) {
   return beginIdempotency({
+    request: opts.request ?? makeRequest(),
+    pathname: PATH,
+    scope: opts.scope ?? 'user_api_key:acct_1',
+    idempotencyKey: key,
+    corsHeaders: {},
+  });
+}
+
+function peek(key: string, opts: { request?: Request; scope?: string | null } = {}) {
+  return peekIdempotency({
     request: opts.request ?? makeRequest(),
     pathname: PATH,
     scope: opts.scope ?? 'user_api_key:acct_1',
@@ -145,6 +155,37 @@ describe('beginIdempotency', () => {
   });
 });
 
+describe('peekIdempotency', () => {
+  test('completed + matching body hash → replay without claiming', async () => {
+    const reqHash = await sha256Hex(BODY);
+    runRedisPipeline.mockResolvedValueOnce([
+      {
+        result: JSON.stringify({
+          state: 'completed',
+          status: 202,
+          contentType: 'application/json',
+          reqHash,
+          body: JSON.stringify({ id: 'peeked' }),
+        }),
+      },
+    ]);
+    const out = await peek('k1');
+    expect(out.kind).toBe('replay');
+    if (out.kind === 'replay') {
+      expect(out.response.status).toBe(202);
+      expect(await out.response.json()).toEqual({ id: 'peeked' });
+    }
+    expect(runRedisPipeline.mock.calls[0][0][0][0]).toBe('GET');
+  });
+
+  test('missing record → miss without claiming', async () => {
+    runRedisPipeline.mockResolvedValueOnce([{ result: null }]);
+    const out = await peek('k1');
+    expect(out.kind).toBe('miss');
+    expect(runRedisPipeline.mock.calls[0][0][0][0]).toBe('GET');
+  });
+});
+
 describe('store() (returned by a successful claim)', () => {
   async function getStore() {
     runRedisPipeline.mockResolvedValueOnce([{ result: 'OK' }, { result: null }]);
@@ -167,9 +208,32 @@ describe('store() (returned by a successful claim)', () => {
     expect(JSON.parse(cmd[2]).state).toBe('completed');
   });
 
+  test('stored record round-trips through beginIdempotency replay', async () => {
+    const store = await getStore();
+    await store(201, new TextEncoder().encode('{"ok":true}').buffer, 'application/json');
+    const stored = runRedisPipeline.mock.calls.at(-1)![0][0][2];
+
+    runRedisPipeline.mockReset();
+    runRedisPipeline.mockResolvedValueOnce([{ result: null }, { result: stored }]);
+    const out = await begin('k1');
+
+    expect(out.kind).toBe('replay');
+    if (out.kind === 'replay') {
+      expect(out.response.status).toBe(201);
+      expect(out.response.headers.get('content-type')).toBe('application/json');
+      expect(await out.response.json()).toEqual({ ok: true });
+    }
+  });
+
   test('5xx → DEL (release lock)', async () => {
     const store = await getStore();
     await store(503, new TextEncoder().encode('{}').buffer, 'application/json');
+    expect(lastCmd()[0]).toBe('DEL');
+  });
+
+  test('transient 429 → DEL (release lock)', async () => {
+    const store = await getStore();
+    await store(429, new TextEncoder().encode('{"retry":true}').buffer, 'application/json');
     expect(lastCmd()[0]).toBe('DEL');
   });
 
@@ -184,5 +248,18 @@ describe('store() (returned by a successful claim)', () => {
     const store = await getStore();
     await store(200, new ArrayBuffer(8), 'application/octet-stream');
     expect(lastCmd()[0]).toBe('DEL');
+  });
+
+  test('completed SET failure releases the processing marker', async () => {
+    const store = await getStore();
+    runRedisPipeline.mockReset();
+    runRedisPipeline
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ result: 1 }]);
+
+    await store(200, new TextEncoder().encode('{"ok":true}').buffer, 'application/json');
+
+    expect(runRedisPipeline.mock.calls[0][0][0][0]).toBe('SET');
+    expect(runRedisPipeline.mock.calls[1][0][0][0]).toBe('DEL');
   });
 });

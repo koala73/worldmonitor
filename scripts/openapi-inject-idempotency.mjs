@@ -21,7 +21,7 @@
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { serialize } from './lib/openapi-codegen.mjs';
+import { eq, serialize } from './lib/openapi-codegen.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
@@ -30,6 +30,68 @@ const CHECK = process.argv.includes('--check');
 const DESCRIPTION =
   'Optional client-generated idempotency key. Retrying a POST with the same key returns the original response instead of duplicating the side effect. Keys are scoped per caller and retained for 24 hours.';
 const EXAMPLE = '4f8b9c2e-1a3d-4b6f-8e0a-2c5d7f9b1e34';
+const KEY_PATTERN = '^[\\x21-\\x7E]{1,255}$';
+
+const IDEMPOTENCY_ERROR_SCHEMA = {
+  type: 'object',
+  required: ['error', 'message'],
+  properties: {
+    error: { type: 'string' },
+    message: { type: 'string' },
+  },
+};
+
+const JSON_RESPONSES = {
+  '400': {
+    description: 'Validation error or invalid Idempotency-Key header',
+    content: {
+      'application/json': {
+        schema: {
+          oneOf: [
+            { $ref: '#/components/schemas/ValidationError' },
+            IDEMPOTENCY_ERROR_SCHEMA,
+          ],
+        },
+      },
+    },
+  },
+  '409': {
+    description: 'A request with this Idempotency-Key is still being processed',
+    headers: {
+      'Idempotency-Key': {
+        schema: { type: 'string' },
+        description: 'The idempotency key supplied by the client.',
+      },
+      'Retry-After': {
+        schema: { type: 'string' },
+        description: 'Seconds to wait before retrying the in-flight request.',
+      },
+    },
+    content: {
+      'application/json': {
+        schema: IDEMPOTENCY_ERROR_SCHEMA,
+      },
+    },
+  },
+  '422': {
+    description: 'The Idempotency-Key was already used with a different request body',
+    headers: {
+      'Idempotency-Key': {
+        schema: { type: 'string' },
+        description: 'The idempotency key supplied by the client.',
+      },
+    },
+    content: {
+      'application/json': {
+        schema: IDEMPOTENCY_ERROR_SCHEMA,
+      },
+    },
+  },
+};
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
 
 // ── Per-service JSON ────────────────────────────────────────────────────────
 // Object-key order is irrelevant (the shared serializer sorts recursively);
@@ -40,7 +102,7 @@ const JSON_PARAM = {
   description: DESCRIPTION,
   required: false,
   example: EXAMPLE,
-  schema: { type: 'string', maxLength: 255 },
+  schema: { type: 'string', minLength: 1, maxLength: 255, pattern: KEY_PATTERN },
 };
 
 function isIdempotencyParam(param) {
@@ -58,9 +120,22 @@ function injectJson(spec) {
     const post = ops && typeof ops === 'object' ? ops.post : null;
     if (!post || typeof post !== 'object') continue;
     const params = Array.isArray(post.parameters) ? post.parameters : [];
-    if (params.some(isIdempotencyParam)) continue;
-    post.parameters = [...params, JSON_PARAM];
-    changed = true;
+    const paramIndex = params.findIndex(isIdempotencyParam);
+    if (paramIndex === -1) {
+      post.parameters = [...params, clone(JSON_PARAM)];
+      changed = true;
+    } else if (!eq(params[paramIndex], JSON_PARAM)) {
+      post.parameters = [...params];
+      post.parameters[paramIndex] = clone(JSON_PARAM);
+      changed = true;
+    }
+    post.responses ??= {};
+    for (const [code, response] of Object.entries(JSON_RESPONSES)) {
+      if (!eq(post.responses[code], response)) {
+        post.responses[code] = clone(response);
+        changed = true;
+      }
+    }
   }
   return changed;
 }
@@ -77,8 +152,162 @@ const YAML_ITEM = [
   `                  example: "${EXAMPLE}"`,
   '                  schema:',
   '                    type: string',
+  '                    minLength: 1',
   '                    maxLength: 255',
+  '                    pattern: "^[\\\\x21-\\\\x7E]{1,255}$"',
 ];
+
+const YAML_400_RESPONSE = [
+  '                "400":',
+  '                    description: Validation error or invalid Idempotency-Key header',
+  '                    content:',
+  '                        application/json:',
+  '                            schema:',
+  '                                oneOf:',
+  "                                    - $ref: '#/components/schemas/ValidationError'",
+  '                                    - type: object',
+  '                                      required:',
+  '                                        - error',
+  '                                        - message',
+  '                                      properties:',
+  '                                        error:',
+  '                                            type: string',
+  '                                        message:',
+  '                                            type: string',
+];
+
+const YAML_409_RESPONSE = [
+  '                "409":',
+  '                    description: A request with this Idempotency-Key is still being processed',
+  '                    headers:',
+  '                        Idempotency-Key:',
+  '                            schema:',
+  '                                type: string',
+  '                            description: The idempotency key supplied by the client.',
+  '                        Retry-After:',
+  '                            schema:',
+  '                                type: string',
+  '                            description: Seconds to wait before retrying the in-flight request.',
+  '                    content:',
+  '                        application/json:',
+  '                            schema:',
+  '                                type: object',
+  '                                required:',
+  '                                    - error',
+  '                                    - message',
+  '                                properties:',
+  '                                    error:',
+  '                                        type: string',
+  '                                    message:',
+  '                                        type: string',
+];
+
+const YAML_422_RESPONSE = [
+  '                "422":',
+  '                    description: The Idempotency-Key was already used with a different request body',
+  '                    headers:',
+  '                        Idempotency-Key:',
+  '                            schema:',
+  '                                type: string',
+  '                            description: The idempotency key supplied by the client.',
+  '                    content:',
+  '                        application/json:',
+  '                            schema:',
+  '                                type: object',
+  '                                required:',
+  '                                    - error',
+  '                                    - message',
+  '                                properties:',
+  '                                    error:',
+  '                                        type: string',
+  '                                    message:',
+  '                                        type: string',
+];
+
+function findIndentedBlockEnd(lines, start, end, markerRegex, parentRegex) {
+  let blockEnd = start + 1;
+  while (blockEnd < end && !markerRegex.test(lines[blockEnd]) && !parentRegex.test(lines[blockEnd])) {
+    blockEnd++;
+  }
+  return blockEnd;
+}
+
+function replaceLinesIfDifferent(lines, start, blockEnd, replacement) {
+  const current = lines.slice(start, blockEnd);
+  if (current.length === replacement.length && current.every((line, idx) => line === replacement[idx])) {
+    return 0;
+  }
+  lines.splice(start, blockEnd - start, ...replacement);
+  return replacement.length - (blockEnd - start);
+}
+
+function ensureYamlIdempotencyParam(lines, postIndex, end) {
+  let paramsIndex = -1;
+  let paramIndex = -1;
+  for (let j = postIndex + 1; j < end; j++) {
+    if (/^ {16}- name: Idempotency-Key\s*$/.test(lines[j])) {
+      paramIndex = j;
+      break;
+    }
+    if (paramsIndex === -1 && /^ {12}parameters:\s*$/.test(lines[j])) paramsIndex = j;
+  }
+
+  if (paramIndex !== -1) {
+    const blockEnd = findIndentedBlockEnd(
+      lines,
+      paramIndex,
+      end,
+      /^ {16}- name: /,
+      /^ {0,12}\S/,
+    );
+    return replaceLinesIfDifferent(lines, paramIndex, blockEnd, YAML_ITEM);
+  }
+
+  if (paramsIndex !== -1) {
+    lines.splice(paramsIndex + 1, 0, ...YAML_ITEM);
+    return YAML_ITEM.length;
+  }
+
+  lines.splice(postIndex + 1, 0, '            parameters:', ...YAML_ITEM);
+  return 1 + YAML_ITEM.length;
+}
+
+function yamlResponseCodeRegex(code) {
+  return new RegExp(`^ {16}"${code}":\\s*$`);
+}
+
+function ensureYamlResponse(lines, responsesIndex, end, code, replacement, previousCode = null) {
+  const codeRegex = yamlResponseCodeRegex(code);
+  for (let j = responsesIndex + 1; j < end; j++) {
+    if (!codeRegex.test(lines[j])) continue;
+    const blockEnd = findIndentedBlockEnd(
+      lines,
+      j,
+      end,
+      /^ {16}"(?:[0-9]{3}|default)":/,
+      /^ {0,12}\S/,
+    );
+    return replaceLinesIfDifferent(lines, j, blockEnd, replacement);
+  }
+
+  let insertAt = responsesIndex + 1;
+  if (previousCode) {
+    const previousRegex = yamlResponseCodeRegex(previousCode);
+    for (let j = responsesIndex + 1; j < end; j++) {
+      if (!previousRegex.test(lines[j])) continue;
+      insertAt = findIndentedBlockEnd(
+        lines,
+        j,
+        end,
+        /^ {16}"(?:[0-9]{3}|default)":/,
+        /^ {0,12}\S/,
+      );
+      break;
+    }
+  }
+  lines.splice(insertAt, 0, ...replacement);
+  return replacement.length;
+}
 
 function injectYaml(text) {
   const lines = text.split('\n');
@@ -102,26 +331,33 @@ function injectYaml(text) {
     let end = i + 1;
     while (end < lines.length && !/^ {0,8}\S/.test(lines[end])) end++;
 
-    let alreadyPresent = false;
-    let paramsIndex = -1;
+    let delta = ensureYamlIdempotencyParam(lines, i, end);
+    if (delta !== 0) {
+      changed = true;
+      end += delta;
+    }
+
+    let responsesIndex = -1;
     for (let j = i + 1; j < end; j++) {
-      if (/^ {16}- name: Idempotency-Key\s*$/.test(lines[j])) {
-        alreadyPresent = true;
+      if (/^ {12}responses:\s*$/.test(lines[j])) {
+        responsesIndex = j;
         break;
       }
-      if (paramsIndex === -1 && /^ {12}parameters:\s*$/.test(lines[j])) paramsIndex = j;
     }
-    if (alreadyPresent) continue;
-
-    if (paramsIndex !== -1) {
-      // Append to an existing parameters list (none today — future-proofing).
-      lines.splice(paramsIndex + 1, 0, ...YAML_ITEM);
-      i = paramsIndex + YAML_ITEM.length;
-    } else {
-      lines.splice(i + 1, 0, '            parameters:', ...YAML_ITEM);
-      i += 1 + YAML_ITEM.length;
+    if (responsesIndex !== -1) {
+      for (const [code, replacement, previousCode] of [
+        ['400', YAML_400_RESPONSE, null],
+        ['409', YAML_409_RESPONSE, '400'],
+        ['422', YAML_422_RESPONSE, '409'],
+      ]) {
+        delta = ensureYamlResponse(lines, responsesIndex, end, code, replacement, previousCode);
+        if (delta !== 0) {
+          changed = true;
+          end += delta;
+        }
+      }
     }
-    changed = true;
+    i = end - 1;
   }
   return { text: lines.join('\n'), changed };
 }

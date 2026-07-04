@@ -19,6 +19,11 @@ const apiDir = resolve(root, 'docs/api');
 const serviceJson = readdirSync(apiDir)
   .filter((f) => /Service\.openapi\.json$/.test(f))
   .sort();
+const serviceYaml = readdirSync(apiDir)
+  .filter((f) => /Service\.openapi\.yaml$/.test(f))
+  .sort();
+
+const IDEMPOTENCY_PATTERN = '^[\\x21-\\x7E]{1,255}$';
 
 function idempotencyParam(op) {
   return (op?.parameters ?? []).find(
@@ -36,6 +41,34 @@ function postOps(spec) {
   return out;
 }
 
+function assertIdempotencyParam(param, label) {
+  assert.ok(param, `${label} is missing the Idempotency-Key header parameter`);
+  assert.equal(param.name, 'Idempotency-Key', `${label} exact header name`);
+  assert.equal(param.required, false, `${label} Idempotency-Key must be optional`);
+  assert.equal(param.schema?.type, 'string', `${label} Idempotency-Key schema type`);
+  assert.equal(param.schema?.minLength, 1, `${label} Idempotency-Key minLength`);
+  assert.equal(param.schema?.maxLength, 255, `${label} Idempotency-Key maxLength`);
+  assert.equal(param.schema?.pattern, IDEMPOTENCY_PATTERN, `${label} Idempotency-Key pattern`);
+}
+
+function assertIdempotencyResponses(op, label) {
+  assert.ok(op.responses?.['400'], `${label} must document invalid Idempotency-Key 400`);
+  assert.ok(op.responses?.['409'], `${label} must document in-flight Idempotency-Key 409`);
+  assert.ok(op.responses?.['422'], `${label} must document reused Idempotency-Key 422`);
+  assert.ok(
+    op.responses['409'].headers?.['Retry-After'],
+    `${label} 409 response must document Retry-After`,
+  );
+  assert.ok(
+    op.responses['409'].headers?.['Idempotency-Key'],
+    `${label} 409 response must document echoed Idempotency-Key`,
+  );
+  assert.ok(
+    op.responses['422'].headers?.['Idempotency-Key'],
+    `${label} 422 response must document echoed Idempotency-Key`,
+  );
+}
+
 describe('OpenAPI Idempotency-Key contract', () => {
   it('has at least one POST operation to protect', () => {
     const total = serviceJson.reduce(
@@ -49,12 +82,20 @@ describe('OpenAPI Idempotency-Key contract', () => {
     it(`${file}: every POST documents an Idempotency-Key header`, () => {
       const spec = JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'));
       for (const [path, op] of postOps(spec)) {
-        const param = idempotencyParam(op);
-        assert.ok(param, `${file} ${path} POST is missing the Idempotency-Key header parameter`);
-        assert.equal(param.name, 'Idempotency-Key', `${file} ${path} exact header name`);
-        assert.equal(param.required, false, `${file} ${path} Idempotency-Key must be optional`);
-        assert.equal(param.schema?.type, 'string', `${file} ${path} Idempotency-Key schema type`);
-        assert.equal(param.schema?.maxLength, 255, `${file} ${path} Idempotency-Key maxLength`);
+        const label = `${file} ${path} POST`;
+        assertIdempotencyParam(idempotencyParam(op), label);
+        assertIdempotencyResponses(op, label);
+      }
+    });
+  }
+
+  for (const file of serviceYaml) {
+    it(`${file}: every POST documents the full Idempotency-Key contract`, () => {
+      const spec = loadYaml(readFileSync(resolve(apiDir, file), 'utf8'));
+      for (const [path, op] of postOps(spec)) {
+        const label = `${file} ${path} POST`;
+        assertIdempotencyParam(idempotencyParam(op), label);
+        assertIdempotencyResponses(op, label);
       }
     });
   }
@@ -64,10 +105,9 @@ describe('OpenAPI Idempotency-Key contract', () => {
     const ops = postOps(bundle);
     assert.ok(ops.length > 0, 'bundle has POST operations');
     for (const [path, op] of ops) {
-      assert.ok(
-        idempotencyParam(op),
-        `bundle ${path} POST is missing the Idempotency-Key header parameter`,
-      );
+      const label = `bundle ${path} POST`;
+      assertIdempotencyParam(idempotencyParam(op), label);
+      assertIdempotencyResponses(op, label);
     }
   });
 

@@ -435,7 +435,9 @@ paths:
                   example: "4f8b9c2e-1a3d-4b6f-8e0a-2c5d7f9b1e34"
                   schema:
                     type: string
+                    minLength: 1
                     maxLength: 255
+                    pattern: "^[\\x21-\\x7E]{1,255}$"
             tags:
                 - IntelligenceService
             summary: DeductSituation
@@ -467,11 +469,63 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/DeductSituationResponse'
                 "400":
-                    description: Validation error
+                    description: Validation error or invalid Idempotency-Key header
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - type: object
+                                      required:
+                                        - error
+                                        - message
+                                      properties:
+                                        error:
+                                            type: string
+                                        message:
+                                            type: string
+                "409":
+                    description: A request with this Idempotency-Key is still being processed
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                        Retry-After:
+                            schema:
+                                type: string
+                            description: Seconds to wait before retrying the in-flight request.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "422":
+                    description: The Idempotency-Key was already used with a different request body
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
                 "401":
                     description: Missing or invalid API key.
                     content:

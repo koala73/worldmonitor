@@ -31,6 +31,21 @@ describe('cors helper', () => {
     });
     const headers = getCorsHeaders(req);
     assert.equal(headers['Access-Control-Allow-Origin'], 'https://worldmonitor.app');
+    assert.match(
+      headers['Access-Control-Allow-Headers'],
+      /(?:^|,\s*)Idempotency-Key(?:,|$)/,
+      'browser clients must be allowed to send Idempotency-Key on POST preflights',
+    );
+    assert.match(
+      headers['Access-Control-Expose-Headers'],
+      /(?:^|,\s*)Idempotency-Key(?:,|$)/,
+      'browser clients must be able to read echoed Idempotency-Key',
+    );
+    assert.match(
+      headers['Access-Control-Expose-Headers'],
+      /(?:^|,\s*)Idempotent-Replayed(?:,|$)/,
+      'browser clients must be able to read idempotent replay status',
+    );
   });
 
   it('propagates exceptions (caller must wrap in fail-closed try/catch)', () => {

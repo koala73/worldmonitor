@@ -19,9 +19,11 @@ vi.mock('../_shared/redis', async (importActual) => {
 });
 
 // Per-IP / per-endpoint rate limits are irrelevant here — pass them through.
+const checkRateLimit = vi.fn();
+const checkEndpointRateLimit = vi.fn();
 vi.mock('../_shared/rate-limit', () => ({
-  checkRateLimit: vi.fn().mockResolvedValue(null),
-  checkEndpointRateLimit: vi.fn().mockResolvedValue(null),
+  checkRateLimit: (...a: unknown[]) => checkRateLimit(...a),
+  checkEndpointRateLimit: (...a: unknown[]) => checkEndpointRateLimit(...a),
   hasEndpointRatePolicy: () => false,
 }));
 
@@ -63,6 +65,8 @@ async function sha256Hex(str: string): Promise<string> {
 
 beforeEach(() => {
   runRedisPipeline.mockReset();
+  checkRateLimit.mockReset().mockResolvedValue(null);
+  checkEndpointRateLimit.mockReset().mockResolvedValue(null);
   handler.mockClear();
 });
 
@@ -77,6 +81,7 @@ describe('gateway Idempotency-Key', () => {
 
   test('first request: claims, executes, stores the completed response, echoes headers', async () => {
     runRedisPipeline
+      .mockResolvedValueOnce([{ result: null }]) // read-only peek miss
       .mockResolvedValueOnce([{ result: 'OK' }, { result: null }]) // SET NX + GET (claimed)
       .mockResolvedValueOnce([{ result: 'OK' }]); // store SET
     const res = await makeGateway()(post('key-first'), ctx);
@@ -86,7 +91,7 @@ describe('gateway Idempotency-Key', () => {
     expect(res.headers.get(IDEMPOTENCY_HEADER)).toBe('key-first');
     expect(res.headers.get(IDEMPOTENT_REPLAYED_HEADER)).toBe('false');
 
-    const storeCmd = runRedisPipeline.mock.calls[1][0][0];
+    const storeCmd = runRedisPipeline.mock.calls[2][0][0];
     expect(storeCmd[0]).toBe('SET');
     const record = JSON.parse(storeCmd[2] as string);
     expect(record.state).toBe('completed');
@@ -103,7 +108,7 @@ describe('gateway Idempotency-Key', () => {
       reqHash,
       body: JSON.stringify({ ok: true, id: 'original' }),
     });
-    runRedisPipeline.mockResolvedValueOnce([{ result: null }, { result: stored }]);
+    runRedisPipeline.mockResolvedValueOnce([{ result: stored }]);
 
     const res = await makeGateway()(post('key-replay'), ctx);
     expect(handler).not.toHaveBeenCalled();
@@ -112,9 +117,30 @@ describe('gateway Idempotency-Key', () => {
     expect(await res.json()).toEqual({ ok: true, id: 'original' });
   });
 
+  test('completed replay bypasses endpoint rate-limit charging', async () => {
+    const reqHash = await sha256Hex(DEFAULT_BODY);
+    const stored = JSON.stringify({
+      state: 'completed',
+      status: 200,
+      contentType: 'application/json',
+      reqHash,
+      body: JSON.stringify({ ok: true, id: 'original' }),
+    });
+    runRedisPipeline.mockResolvedValueOnce([{ result: stored }]);
+    checkEndpointRateLimit.mockResolvedValue(
+      new Response(JSON.stringify({ error: 'Too many requests' }), { status: 429 }),
+    );
+
+    const res = await makeGateway()(post('key-replay'), ctx);
+
+    expect(res.status).toBe(200);
+    expect(handler).not.toHaveBeenCalled();
+    expect(checkEndpointRateLimit).not.toHaveBeenCalled();
+    expect(await res.json()).toEqual({ ok: true, id: 'original' });
+  });
+
   test('a concurrent in-flight duplicate returns 409', async () => {
     runRedisPipeline.mockResolvedValueOnce([
-      { result: null },
       { result: JSON.stringify({ state: 'processing' }) },
     ]);
     const res = await makeGateway()(post('key-inflight'), ctx);
@@ -125,7 +151,6 @@ describe('gateway Idempotency-Key', () => {
 
   test('same key with a different body returns 422', async () => {
     runRedisPipeline.mockResolvedValueOnce([
-      { result: null },
       {
         result: JSON.stringify({
           state: 'completed',
@@ -151,7 +176,9 @@ describe('gateway Idempotency-Key', () => {
   });
 
   test('Redis unavailable fails open — request executes without idempotency', async () => {
-    runRedisPipeline.mockResolvedValueOnce([]); // pipeline returns [] when Redis is down
+    runRedisPipeline
+      .mockResolvedValueOnce([]) // read-only peek fails open
+      .mockResolvedValueOnce([]); // claim also fails open
     const res = await makeGateway()(post('key-failopen'), ctx);
     expect(handler).toHaveBeenCalledTimes(1);
     expect(res.status).toBe(200);
@@ -166,11 +193,29 @@ describe('gateway Idempotency-Key', () => {
       }),
     );
     runRedisPipeline
+      .mockResolvedValueOnce([{ result: null }]) // read-only peek miss
       .mockResolvedValueOnce([{ result: 'OK' }, { result: null }]) // claim
       .mockResolvedValueOnce([{ result: 1 }]); // DEL
     const res = await makeGateway()(post('key-5xx'), ctx);
     expect(res.status).toBe(503);
-    const releaseCmd = runRedisPipeline.mock.calls[1][0][0];
+    const releaseCmd = runRedisPipeline.mock.calls[2][0][0];
+    expect(releaseCmd[0]).toBe('DEL');
+  });
+
+  test('a transient 429 response is not cached — the lock is released for a retry', async () => {
+    handler.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'busy' }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    runRedisPipeline
+      .mockResolvedValueOnce([{ result: null }]) // read-only peek miss
+      .mockResolvedValueOnce([{ result: 'OK' }, { result: null }]) // claim
+      .mockResolvedValueOnce([{ result: 1 }]); // DEL
+    const res = await makeGateway()(post('key-429'), ctx);
+    expect(res.status).toBe(429);
+    const releaseCmd = runRedisPipeline.mock.calls[2][0][0];
     expect(releaseCmd[0]).toBe('DEL');
   });
 });
