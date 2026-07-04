@@ -1379,11 +1379,54 @@ describe('agent readiness: MCP/OAuth origin alignment', () => {
       assert.equal(json.agent_auth.skill, `https://${host}/auth.md`, `skill round-trips to /auth.md for ${host}`);
       assert.equal(json.agent_auth.register_uri, `https://${host}/oauth/register`);
       assert.deepEqual(json.agent_auth.identity_types_supported, ['anonymous']);
+      // Only `access_token` — an api_key is user-minted (carries a user
+      // identity), so it is not an anonymous-registration credential.
       assert.deepEqual(
         json.agent_auth.anonymous.credential_types_supported,
-        ['access_token', 'api_key'],
+        ['access_token'],
         `anonymous sibling block enumerates credential types for ${host}`
       );
+    }
+  });
+
+  // The Host header is client-controlled; both discovery handlers derive their
+  // origin through the shared allowlist (api/_agent-metadata.ts) so a spoofed
+  // Host cannot be reflected into issuer/resource/endpoints. They also guard the
+  // HTTP method (read-only docs).
+  it('discovery handlers reject spoofed Host (apex fallback) and non-GET methods', async () => {
+    const prm = (await import('../api/oauth-protected-resource.ts')).default;
+    const as = (await import('../api/oauth-authorization-server.ts')).default;
+
+    // Spoofed / unrecognized Host → apex fallback, never reflected.
+    for (const host of ['evil.com', 'worldmonitor.app.evil.com', 'evilworldmonitor.app', 'x.y.worldmonitor.app']) {
+      const prmRes = await prm(new Request('https://worldmonitor.app/.well-known/oauth-protected-resource', { headers: { host } }));
+      const prmJson = await prmRes.json();
+      assert.equal(prmJson.resource, 'https://worldmonitor.app', `PRM must not reflect spoofed host ${host}`);
+      assert.deepEqual(prmJson.authorization_servers, ['https://worldmonitor.app']);
+
+      const asRes = await as(new Request('https://worldmonitor.app/.well-known/oauth-authorization-server', { headers: { host } }));
+      const asJson = await asRes.json();
+      assert.equal(asJson.issuer, 'https://worldmonitor.app', `AS must not reflect spoofed host ${host}`);
+      assert.equal(asJson.token_endpoint, 'https://worldmonitor.app/oauth/token', `AS token_endpoint must not carry spoofed host ${host}`);
+      assert.equal(asJson.agent_auth.register_uri, 'https://worldmonitor.app/oauth/register');
+    }
+
+    // Legit subdomain still self-describes.
+    const variant = await as(new Request('https://tech.worldmonitor.app/.well-known/oauth-authorization-server', { headers: { host: 'tech.worldmonitor.app' } }));
+    assert.equal((await variant.json()).issuer, 'https://tech.worldmonitor.app');
+
+    // Method guard: OPTIONS → 204 preflight, other verbs → 405 + Allow, GET → 200.
+    for (const handler of [prm, as]) {
+      const opt = await handler(new Request('https://worldmonitor.app/x', { method: 'OPTIONS', headers: { host: 'worldmonitor.app' } }));
+      assert.equal(opt.status, 204, 'OPTIONS is a CORS preflight');
+      assert.equal(opt.headers.get('access-control-allow-methods'), 'GET, HEAD, OPTIONS');
+
+      const post = await handler(new Request('https://worldmonitor.app/x', { method: 'POST', headers: { host: 'worldmonitor.app' } }));
+      assert.equal(post.status, 405, 'non-GET/HEAD is rejected');
+      assert.equal(post.headers.get('allow'), 'GET, HEAD, OPTIONS');
+
+      const get = await handler(new Request('https://worldmonitor.app/x', { headers: { host: 'worldmonitor.app' } }));
+      assert.equal(get.status, 200, 'GET is served');
     }
   });
 

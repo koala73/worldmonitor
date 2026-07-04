@@ -25,14 +25,21 @@
  * identity (identity is established interactively during authorization). WM does
  * not implement ID-JAG identity assertion endpoints, so only `anonymous` is
  * advertised. The `skill` field round-trips to the published /auth.md.
+ *
+ * The Host is client-controlled, so the origin is derived through
+ * `resolveMetadataOrigin` (apex + subdomain allowlist, apex fallback) so a
+ * spoofed Host cannot be reflected into `issuer`/`token_endpoint`.
  */
+
+import { guardMetadataMethod, resolveMetadataOrigin } from './_agent-metadata';
 
 export const config = { runtime: 'edge' };
 
 export default function handler(req: Request): Response {
-  const url = new URL(req.url);
-  const host = req.headers.get('host') ?? url.host;
-  const origin = `https://${host}`;
+  const guarded = guardMetadataMethod(req);
+  if (guarded) return guarded;
+
+  const origin = resolveMetadataOrigin(req);
 
   const body = JSON.stringify({
     issuer: origin,
@@ -49,7 +56,7 @@ export default function handler(req: Request): Response {
       register_uri: `${origin}/oauth/register`,
       identity_types_supported: ['anonymous'],
       anonymous: {
-        credential_types_supported: ['access_token', 'api_key'],
+        credential_types_supported: ['access_token'],
       },
     },
   });

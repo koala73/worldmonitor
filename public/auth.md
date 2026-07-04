@@ -66,7 +66,7 @@ request, then follow the discovery chain — no trial and error.
        "skill": "https://worldmonitor.app/auth.md",
        "register_uri": "https://worldmonitor.app/oauth/register",
        "identity_types_supported": ["anonymous"],
-       "anonymous": { "credential_types_supported": ["access_token", "api_key"] }
+       "anonymous": { "credential_types_supported": ["access_token"] }
      }
    }
    ```
@@ -83,13 +83,16 @@ registers without asserting a user identity up front; a human establishes and
 consents to the binding interactively during authorization (see
 [Claim](#claim)).
 
-An anonymous agent can hold either of two `credential_types_supported`:
+The anonymous identity type issues one `credential_type`:
 
 - **`access_token`** — an OAuth 2.1 bearer token obtained through Dynamic Client
   Registration + the authorization-code + PKCE flow (see [Register](#register)).
   Best for interactive, user-consented agents such as Claude.
-- **`api_key`** — a long-lived key minted by a signed-in user from the developer
-  dashboard. Best for headless / server-to-server automation.
+
+A second credential, an **`api_key`**, is also accepted by the API but is *not*
+an anonymous credential: it is a long-lived key minted by a signed-in user from
+the developer dashboard (see [Register](#register)), so it carries that user's
+identity. Best for headless / server-to-server automation.
 
 **`identity_assertion` is not supported.** WorldMonitor does not currently accept
 a pre-issued user-identity assertion (for example an
