@@ -471,7 +471,7 @@ paths:
             parameters:
                 - name: Idempotency-Key
                   in: header
-                  description: Optional client-generated idempotency key. Retrying a POST with the same key returns the original response instead of duplicating the side effect. Keys are scoped per caller and retained for 24 hours.
+                  description: Optional client-generated idempotency key. Retrying a POST with the same key and an identical request body replays the original response (only the status, body, and Content-Type are reproduced) instead of re-executing; reusing the key with a different body is rejected with 422. For mutations this avoids duplicating the side effect, while for batch-read POSTs it replays a cached snapshot that can be up to 24 hours stale. Keys are scoped per authenticated caller (falling back to the source IP for unauthenticated endpoints) and retained for 24 hours.
                   required: false
                   example: "4f8b9c2e-1a3d-4b6f-8e0a-2c5d7f9b1e34"
                   schema:
@@ -498,6 +498,15 @@ paths:
             responses:
                 "200":
                     description: Successful response
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key echoed from the request. Present only when the client opted into idempotency.
+                        Idempotent-Replayed:
+                            schema:
+                                type: boolean
+                            description: true when this response was replayed from an earlier request with the same key, false on the first (original) request. Present only when the client opted into idempotency.
                     content:
                         application/json:
                             example:

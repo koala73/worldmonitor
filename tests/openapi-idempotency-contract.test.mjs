@@ -49,6 +49,31 @@ function assertIdempotencyParam(param, label) {
   assert.equal(param.schema?.minLength, 1, `${label} Idempotency-Key minLength`);
   assert.equal(param.schema?.maxLength, 255, `${label} Idempotency-Key maxLength`);
   assert.equal(param.schema?.pattern, IDEMPOTENCY_PATTERN, `${label} Idempotency-Key pattern`);
+  // The description must be precise (issue #4769): the same-body precondition +
+  // the 422 mismatch, per-authenticated-caller / per-IP scoping, and that a
+  // batch-read POST replays a possibly-stale cached snapshot.
+  const description = param.description ?? '';
+  assert.match(
+    description,
+    /identical request body/i,
+    `${label} description must state the same-body replay precondition`,
+  );
+  assert.match(description, /\b422\b/, `${label} description must reference the 422 body-mismatch`);
+  assert.match(
+    description,
+    /authenticated caller/i,
+    `${label} description must state per-authenticated-caller scoping`,
+  );
+  assert.match(
+    description,
+    /source IP/i,
+    `${label} description must note the per-IP fallback for unauthenticated endpoints`,
+  );
+  assert.match(
+    description,
+    /stale/i,
+    `${label} description must note the batch-read replays a possibly-stale snapshot`,
+  );
 }
 
 function assertIdempotencyResponses(op, label) {
@@ -66,6 +91,21 @@ function assertIdempotencyResponses(op, label) {
   assert.ok(
     op.responses['422'].headers?.['Idempotency-Key'],
     `${label} 422 response must document echoed Idempotency-Key`,
+  );
+  // The 2xx (success) response must document the replay markers — the only
+  // observable signal for "was this a replay?" (issue #4769 P2).
+  const success = op.responses?.['200'];
+  assert.ok(success, `${label} must document a 200 success response`);
+  assert.ok(
+    success.headers?.['Idempotency-Key'],
+    `${label} 200 response must document the echoed Idempotency-Key header`,
+  );
+  const replayed = success.headers?.['Idempotent-Replayed'];
+  assert.ok(replayed, `${label} 200 response must document the Idempotent-Replayed marker`);
+  assert.equal(
+    replayed.schema?.type,
+    'boolean',
+    `${label} 200 Idempotent-Replayed must be a boolean header`,
   );
 }
 
