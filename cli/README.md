@@ -13,10 +13,12 @@ The CLI is a thin, dependency-free wrapper over the
 [MCP server](https://worldmonitor.app/mcp) (the recommended agent surface) with
 a REST escape hatch. It ships as ESM and runs on Node 18+.
 
+📖 **Full documentation:** [worldmonitor.app/docs/cli](https://www.worldmonitor.app/docs/cli)
+
 ## Install
 
 ```sh
-npm install -g worldmonitor
+npm install -g worldmonitor   # installs the `worldmonitor` command (alias: `wm`)
 # or run without installing:
 npx worldmonitor tools
 ```
@@ -65,6 +67,15 @@ MCP and REST:
 
 Any `--key value` pair you pass that is not a recognised flag becomes a tool or
 request parameter, so every tool argument is reachable without special wiring.
+
+Every tool also accepts a `jmespath` argument that projects the response
+server-side before it crosses the wire — typically 80–95% smaller:
+
+```sh
+worldmonitor markets --jmespath 'data."stocks-bootstrap".quotes[?symbol==`AAPL`].{s:symbol,p:price}'
+```
+
+See the [JMESPath guide](https://www.worldmonitor.app/docs/mcp-jmespath) for worked examples.
 
 ## Flags
 

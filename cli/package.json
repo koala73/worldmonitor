@@ -1,6 +1,6 @@
 {
   "name": "worldmonitor",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Command-line client for the World Monitor global-intelligence API — script country briefs, risk scores, conflict/cyber/market feeds, and MCP tools without writing an API integration.",
   "keywords": [
     "worldmonitor",
@@ -12,7 +12,7 @@
     "mcp",
     "agent"
   ],
-  "homepage": "https://worldmonitor.app",
+  "homepage": "https://www.worldmonitor.app/docs/cli",
   "bugs": "https://github.com/koala73/worldmonitor/issues",
   "license": "AGPL-3.0-or-later",
   "author": "World Monitor",
