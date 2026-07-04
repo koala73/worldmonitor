@@ -39,6 +39,15 @@ function normalizeEventCountryCode(raw) {
   return countryNameToIso2(raw);
 }
 
+const UNATTRIBUTED_GLOBAL_EVENT_TYPES = new Set([
+  'corridor_risk',
+  'shipping_stress',
+]);
+
+function isUnattributedGlobalEvent(event) {
+  return UNATTRIBUTED_GLOBAL_EVENT_TYPES.has(event?.eventType);
+}
+
 // Mirror the relay's eventMatchesCountryScope so we can run behavioural
 // assertions without requiring the .cjs module export. The relay file is a
 // runtime script (no exports) — we validate via source-grep AND a parallel
@@ -50,13 +59,13 @@ function eventMatchesCountryScope(event, rule) {
     ?? event?.payload?.country
     ?? event?.country
     ?? null;
-  // Unattributed → strict drop for country-scoped rules.
+  // Unattributed → drop known-global events, keep RSS permissive.
   if (typeof eventCountry !== 'string' || eventCountry.trim().length === 0) {
-    return false;
+    return !isUnattributedGlobalEvent(event);
   }
   const normalized = normalizeEventCountryCode(eventCountry);
-  // Unknown malformed → strict drop for country-scoped rules.
-  if (normalized === null) return false;
+  // Unknown malformed → treat as unattributed.
+  if (normalized === null) return !isUnattributedGlobalEvent(event);
   return rule.countries.includes(normalized);
 }
 
@@ -112,27 +121,27 @@ describe('notification-relay eventMatchesCountryScope — source-grep contract',
     );
   });
 
-  it('STRICT semantics: no country attribution → returns false for country-scoped rules', () => {
+  it('known global unattributed events return false for country-scoped rules', () => {
     // A populated country scope is a user opt-in to narrower delivery. Global
     // corridor-risk events that carry no country attribution must not leak to
     // Europe/Ukraine/Romania-scoped users.
     assert.match(
       relaySrc,
-      /STRICT/,
-      'relay must document strict-on-unattributed semantics inline',
+      /UNATTRIBUTED_GLOBAL_EVENT_TYPES/,
+      'relay must define known global unattributed event types',
     );
     assert.match(
       relaySrc,
-      /if\s*\(\s*typeof\s+eventCountry\s*!==\s*['"]string['"]\s*\|\|\s*eventCountry\.trim\(\)\.length\s*===\s*0\s*\)\s*{[\s\S]*?return\s+false/,
-      'missing/empty country attribution must return false for country-scoped rules',
+      /return\s+!\s*isUnattributedGlobalEvent\(event\)/,
+      'missing/empty country attribution must drop only known global events',
     );
   });
 
-  it('unknown malformed country (non-2-letter) → returns false for country-scoped rules', () => {
+  it('unknown malformed country (non-2-letter) follows the known-global unattributed gate', () => {
     assert.match(
       relaySrc,
-      /if\s*\(\s*normalized\s*===\s*null\s*\)\s*return\s+false/,
-      'unknown malformed country must return false for country-scoped rules',
+      /if\s*\(\s*normalized\s*===\s*null\s*\)\s*return\s+!\s*isUnattributedGlobalEvent\(event\)/,
+      'unknown malformed country must use the same known-global unattributed gate',
     );
   });
 
@@ -183,19 +192,19 @@ describe('notification-relay eventMatchesCountryScope — behavioural', () => {
     assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), true);
   });
 
-  it("rule.countries=['US'] + event with NO country attribution → false (strict scoped delivery)", () => {
+  it("rule.countries=['US'] + rss_alert with NO country attribution → true (RSS remains permissive until attribution exists)", () => {
     const event = { eventType: 'rss_alert', payload: { title: 'something' } };
-    assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), false);
+    assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), true);
   });
 
-  it("rule.countries=['US'] + event.payload.country='' (empty string) → false (strict scoped delivery)", () => {
+  it("rule.countries=['US'] + rss_alert payload.country='' (empty string) → true", () => {
     const event = { eventType: 'rss_alert', payload: { country: '' } };
-    assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), false);
+    assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), true);
   });
 
-  it("rule.countries=['US'] + event.payload.country='   ' (whitespace) → false (strict scoped delivery)", () => {
+  it("rule.countries=['US'] + rss_alert payload.country='   ' (whitespace) → true", () => {
     const event = { eventType: 'rss_alert', payload: { country: '   ' } };
-    assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), false);
+    assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), true);
   });
 
   it("rule.countries=['US'] + event.payload.countryCode='us' (lowercase) → true (normalized)", () => {
@@ -221,9 +230,9 @@ describe('notification-relay eventMatchesCountryScope — behavioural', () => {
     assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), false);
   });
 
-  it("rule.countries=['US'] + unknown malformed country 'United States of Whatever' → false (strict scoped delivery)", () => {
+  it("rule.countries=['US'] + rss_alert unknown malformed country 'United States of Whatever' → true", () => {
     const event = { eventType: 'rss_alert', payload: { country: 'United States of Whatever' } };
-    assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), false);
+    assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), true);
   });
 
   it("rule.countries=['UA','RO'] + global Corridor Risk alert with no country attribution → false", () => {
@@ -233,6 +242,31 @@ describe('notification-relay eventMatchesCountryScope — behavioural', () => {
       payload: {
         title: 'Suez / Bab el-Mandeb / Taiwan Strait corridor disruption risk rising',
         source: 'Corridor Risk',
+      },
+    };
+    assert.equal(eventMatchesCountryScope(event, { countries: ['UA', 'RO'] }), false);
+  });
+
+  it("rule.countries=['UA','RO'] + global Shipping Stress alert with no country attribution → false", () => {
+    const event = {
+      eventType: 'shipping_stress',
+      severity: 'critical',
+      payload: {
+        title: 'Global shipping stress: score 92/100',
+        source: 'Shipping Index',
+      },
+    };
+    assert.equal(eventMatchesCountryScope(event, { countries: ['UA', 'RO'] }), false);
+  });
+
+  it("rule.countries=['UA','RO'] + global Corridor Risk with unknown malformed country → false", () => {
+    const event = {
+      eventType: 'corridor_risk',
+      severity: 'critical',
+      payload: {
+        title: 'Suez Canal disruption risk rising',
+        source: 'Corridor Risk',
+        country: 'Global maritime corridor',
       },
     };
     assert.equal(eventMatchesCountryScope(event, { countries: ['UA', 'RO'] }), false);
