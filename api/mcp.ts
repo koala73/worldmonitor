@@ -67,20 +67,37 @@ export type {
 export { compressDescription, utf8ByteLength } from './mcp/utils';
 
 export { buildPromptResponse, PROMPT_LIST_RESPONSE, PROMPT_REGISTRY } from './mcp/prompts/index';
-export { buildResourceResponse, RESOURCE_LIST_RESPONSE, RESOURCE_REGISTRY } from './mcp/resources/index';
+export {
+  buildPublicResourceResponse,
+  buildResourceResponse,
+  isPublicResourceUri,
+  PUBLIC_RESOURCE_REGISTRY,
+  RESOURCE_LIST_RESPONSE,
+  RESOURCE_TEMPLATE_LIST_RESPONSE,
+  TEMPLATE_RESOURCE_REGISTRY,
+} from './mcp/resources/index';
 export { CHOKEPOINT_SLUGS } from './mcp/resources/slugs';
 
 // Test-only escape hatch. Exposes the TOOL_REGISTRY by REFERENCE so mutations
 // inside `tests/mcp-tool-output-contracts.test.mjs` (which monkey-patches
 // `_execute` on individual RPC tools) propagate through the live binding.
-// PROMPT_REGISTRY + RESOURCE_REGISTRY follow the same live-binding contract
-// so tests that monkey-patch one (e.g. sabotage cases) observe the same
-// array the handler dispatches against.
+// PROMPT_REGISTRY + the resource registries follow the same live-binding
+// contract so tests that monkey-patch one (e.g. sabotage cases) observe the
+// same array the handler dispatches against. `RESOURCE_REGISTRY` maps to what
+// `resources/list` surfaces (the concrete PUBLIC_RESOURCE_REGISTRY) so the
+// capability-parity test's "advertised → non-empty registry" check stays
+// aligned with the wire; the data-bearing URI templates are exposed
+// separately as TEMPLATE_RESOURCE_REGISTRY.
 import { PROMPT_REGISTRY as __PROMPT_REGISTRY } from './mcp/prompts/index';
-import { RESOURCE_REGISTRY as __RESOURCE_REGISTRY } from './mcp/resources/index';
+import {
+  PUBLIC_RESOURCE_REGISTRY as __PUBLIC_RESOURCE_REGISTRY,
+  TEMPLATE_RESOURCE_REGISTRY as __TEMPLATE_RESOURCE_REGISTRY,
+} from './mcp/resources/index';
 import { TOOL_REGISTRY as __TOOL_REGISTRY } from './mcp/registry/index';
 export const __testing__ = {
   TOOL_REGISTRY: __TOOL_REGISTRY,
   PROMPT_REGISTRY: __PROMPT_REGISTRY,
-  RESOURCE_REGISTRY: __RESOURCE_REGISTRY,
+  RESOURCE_REGISTRY: __PUBLIC_RESOURCE_REGISTRY,
+  PUBLIC_RESOURCE_REGISTRY: __PUBLIC_RESOURCE_REGISTRY,
+  TEMPLATE_RESOURCE_REGISTRY: __TEMPLATE_RESOURCE_REGISTRY,
 };

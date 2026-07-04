@@ -224,6 +224,7 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
       'prompts/list',
       'prompts/get',
       'resources/list',
+      'resources/templates/list',
       'logging/setLevel',
       'notifications/initialized',
       'ping',

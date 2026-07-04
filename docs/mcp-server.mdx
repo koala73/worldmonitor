@@ -54,7 +54,7 @@ The replay buffer is in-memory and bounded per edge instance. Treat `Last-Event-
 
 ## Authentication
 
-**Discovery is public.** `initialize`, `tools/list`, `resources/list`, and the `notifications/initialized` handshake are servable **without credentials**, so any agent (or agent-readiness scanner) can connect to `https://worldmonitor.app/mcp`, read the server identity, and enumerate the full tool and resource catalogs before authenticating — the same metadata already published in the static [server card](https://worldmonitor.app/.well-known/mcp/server-card.json). Both `tools/list` and `resources/list` return only public catalog metadata (names, descriptions, URIs — no data, no quota). Anonymous discovery is rate-limited to 60 requests/minute per client IP. Everything that returns data or spends quota (`tools/call`, `resources/read`) — and the gated metadata methods `prompts/list` and `logging/setLevel` — still requires one of the two auth modes below. A credential presented on a discovery method is still validated (a bad key returns `401`, never a silent anonymous downgrade).
+**Discovery is public.** `initialize`, `tools/list`, `resources/list`, `resources/templates/list`, and the `notifications/initialized` handshake are servable **without credentials**, so any agent (or agent-readiness scanner) can connect to `https://worldmonitor.app/mcp`, read the server identity, and enumerate the full tool and resource catalogs before authenticating — the same metadata already published in the static [server card](https://worldmonitor.app/.well-known/mcp/server-card.json). `tools/list`, `resources/list`, and `resources/templates/list` return only public catalog metadata (names, descriptions, URIs / URI templates — no data, no quota). `resources/read` of a **public** resource (a concrete, metadata-only freshness/health probe surfaced by `resources/list`, such as `worldmonitor://seed-meta/freshness`) is **also public and quota-free** — an anonymous agent can read it cleanly. Anonymous discovery is rate-limited to 60 requests/minute per client IP. Everything that returns data or spends quota (`tools/call`, and `resources/read` of a data-bearing **URI-template instantiation** — country risk, chokepoint status, market quote) — plus the gated metadata methods `prompts/list` and `logging/setLevel` — still requires one of the two auth modes below. A credential presented on a discovery method is still validated (a bad key returns `401`, never a silent anonymous downgrade).
 
 The MCP handler accepts two auth modes, in priority order:
 
@@ -103,8 +103,8 @@ If you'd rather paste an API key (Starter+ / scripted clients), expand "Use API 
 ### Daily limit (Pro tier)
 
 - **50 quota-consuming calls per UTC day**, reset at 00:00 UTC.
-- `tools/call` and `resources/read` consume the Pro daily quota, except the metadata helper `describe_tool`.
-- `initialize`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `logging/setLevel`, `notifications/initialized`, `ping`, and `describe_tool` do **not** count against the daily cap.
+- `tools/call` and `resources/read` of a data-bearing **URI-template instantiation** consume the Pro daily quota, except the metadata helper `describe_tool`.
+- `initialize`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `resources/templates/list`, `logging/setLevel`, `notifications/initialized`, `ping`, and `describe_tool` do **not** count against the daily cap. `resources/read` of a **public** resource (a metadata-only freshness/health probe, e.g. `worldmonitor://seed-meta/freshness`) is likewise exempt — it carries no billable data.
 - Hitting the cap returns JSON-RPC error `-32029` plus HTTP `429` with a `Retry-After` header pointing at the next UTC midnight.
 - The cap is hard: concurrent `tools/call` or `resources/read` requests near the boundary use an atomic Redis reservation, so exactly the call that crosses 50 rejects.
 
@@ -358,23 +358,30 @@ In addition to the 39 tools, WorldMonitor exposes MCP prompts and resources so c
 
 ### Resources
 
-`resources/list` returns four read-only URI shapes:
+Resources come in two tiers. **Concrete resources** are surfaced by `resources/list` and read anonymously and quota-free; **URI templates** (parameterised, data-bearing) are surfaced by `resources/templates/list` and each concrete instantiation reads under auth + the Pro daily quota.
 
-| Resource URI shape | Backing data |
-|--------------------|--------------|
+`resources/list` — concrete, anonymously readable, quota-free:
+
+| Resource URI | Backing data |
+|--------------|--------------|
+| `worldmonitor://seed-meta/freshness` | Market-data bootstrap freshness envelope only: `cached_at` and `stale`. A cheap health probe to detect a stuck seeder — no auth, no quota. |
+
+`resources/templates/list` — parameterised URI templates. Substitute the placeholder, then `resources/read` the concrete URI (auth required; consumes the Pro daily quota symmetrically with the equivalent `tools/call`):
+
+| Resource URI template | Backing data |
+|-----------------------|--------------|
 | `worldmonitor://countries/{iso2}/risk` | Country risk score, component breakdown, travel advisory, and sanctions exposure. `{iso2}` is lowercase alpha-2, for example `de` or `us`. |
 | `worldmonitor://chokepoints/{slug}/status` | Chokepoint transit summary and risk narrative. `{slug}` is one of the published kebab-case chokepoint slugs, such as `suez`, `strait-of-hormuz`, or `bab-el-mandeb`. |
-| `worldmonitor://seed-meta/freshness` | Market-data bootstrap freshness envelope only: `cached_at` and `stale`. |
 | `worldmonitor://markets/{symbol}/quote` | Single-symbol market quote slice. `{symbol}` is uppercase, for example `AAPL`, `GC=F`, or `BTC-USD`. |
 
-`resources/list` is metadata and does not consume the Pro daily quota. `resources/read` on a `worldmonitor://` data URI intentionally does consume the same daily quota slot as the equivalent `tools/call`; it routes through the same dispatcher so resources cannot bypass the Pro cap. As with every MCP method, both `resources/list` and `resources/read` still count toward the 60/minute limiter. For the exact `-32029` status/header differences between per-minute throttling and daily quota exhaustion, see the [MCP Error Catalog](/mcp-error-catalog#-32029--rate-limited-per-minute-or-daily).
+`resources/list` and `resources/templates/list` are metadata and do not consume the Pro daily quota. `resources/read` of a template instantiation intentionally consumes the same daily quota slot as the equivalent `tools/call`; it routes through the same dispatcher so a data-bearing resource cannot bypass the Pro cap. `resources/read` of a public (concrete) resource is quota-free — it returns only metadata. As with every MCP method, all of these still count toward the 60/minute limiter. For the exact `-32029` status/header differences between per-minute throttling and daily quota exhaustion, see the [MCP Error Catalog](/mcp-error-catalog#-32029--rate-limited-per-minute-or-daily).
 
 ### MCP Apps (interactive UI)
 
 The server supports [MCP Apps](https://modelcontextprotocol.io/extensions/apps/build) (extension `io.modelcontextprotocol/ui`, spec `2026-01-26`) — interactive views a host renders in a sandboxed iframe when a linked tool is called. Two wire signals drive it:
 
 - **`tools/list`** advertises the linkage on the tool. `get_country_risk` carries `_meta.ui.resourceUri` (and the deprecated flat `ui/resourceUri` alias) pointing at its UI resource.
-- **`resources/list`** surfaces the UI resource itself, after the four data URIs:
+- **`resources/list`** surfaces the UI resource itself, alongside the concrete data resource (the parameterised data templates live in `resources/templates/list`):
 
 | UI resource URI | mimeType | Renders |
 |-----------------|----------|---------|

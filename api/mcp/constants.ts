@@ -221,9 +221,35 @@ export const SERVER_NAME = 'worldmonitor';
 //     ui:// resource + tool `_meta`). Clients that don't speak MCP Apps
 //     ignore the extra resource + the reserved `_meta` field. No input/output
 //     schema change to any existing tool.
+// Bumped 1.11.0 → 1.12.0 (2026-07-04) reflecting:
+//   - Data resources split into two tiers by sensitivity, and a new
+//     `resources/templates/list` method:
+//       * `resources/list` now surfaces ONLY concrete, metadata-only DATA
+//         resources that are anonymously readable + quota-exempt (v1:
+//         `worldmonitor://seed-meta/freshness`, a market-bootstrap freshness
+//         probe returning only {cached_at, stale}). Alongside the v1.11.0
+//         ui:// app-shell resource, every `resources/list` entry now reads
+//         cleanly for an anonymous agent (or agent-readiness scanner) — a
+//         literal `{iso2}` template URI can never resolve, so the data
+//         templates no longer appear here.
+//       * `resources/templates/list` (new, in PUBLIC_MCP_METHODS, metadata-
+//         class, quota-exempt) surfaces the three data-bearing URI templates
+//         (country risk, chokepoint status, market quote). A concrete
+//         instantiation `resources/read` STILL routes through
+//         dispatchToolsCall and consumes the Pro daily quota symmetrically
+//         with the equivalent tools/call — the data-leak / quota-bypass
+//         protection is unchanged; only its discovery surface moved from
+//         resources/list to resources/templates/list.
+//   - `resources/read` of a PUBLIC (metadata-only) DATA resource is promoted
+//     to the anonymous + quota-exempt path per-request via
+//     `isPublicResourceUri` (parallel to the v1.11.0 `isUiResourceUri`
+//     promotion); data-bearing template reads stay fully gated.
+//   - No initialize capability key added — resources/templates/list is
+//     covered by the existing `resources` capability (the spec has no
+//     separate templates capability flag).
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-export const SERVER_VERSION = '1.11.0';
+export const SERVER_VERSION = '1.12.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not
@@ -275,7 +301,7 @@ export const SERVER_INSTRUCTIONS = [
   '',
   'Issue prompts/list to discover pre-built workflow templates (country-briefing, energy-shock-watch, market-open-prep, conflict-pulse, route-risk-check, freshness-audit). Each prompt pre-bakes a JMESPath projection per step so the first execution lands on the right shape. prompts/list + prompts/get are quota-exempt (per-minute limit only).',
   '',
-  'Issue resources/list to discover four read-only addressable resource URIs (country risk, chokepoint status, seed-meta freshness, market quote). resources/read consumes the Pro daily quota IDENTICALLY to the equivalent tools/call — there is no free path around the cap via resources.',
+  'Issue resources/list for concrete read-only resources (v1: seed-meta freshness — anonymous + quota-free) and resources/templates/list for parameterised URI templates (country risk, chokepoint status, market quote). Substitute the template placeholder, then resources/read the concrete URI; a template read consumes the Pro daily quota IDENTICALLY to the equivalent tools/call — there is no free path around the cap via those resources.',
 ].join('\n');
 
 // Country-code whitelist for get_consumer_prices. The consumer-prices seeder

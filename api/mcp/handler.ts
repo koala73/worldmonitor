@@ -18,7 +18,13 @@ import {
 import { dispatchToolsCall } from './dispatch';
 import { buildPromptResponse, PROMPT_LIST_RESPONSE } from './prompts/index';
 import { TOOL_LIST_BYTES, TOOL_LIST_RESPONSE } from './registry/index';
-import { buildResourceResponse, RESOURCE_LIST_RESPONSE } from './resources/index';
+import {
+  buildPublicResourceResponse,
+  buildResourceResponse,
+  isPublicResourceUri,
+  RESOURCE_LIST_RESPONSE,
+  RESOURCE_TEMPLATE_LIST_RESPONSE,
+} from './resources/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE } from './ui/registry';
 import { emitTelemetry, principalIdForLog } from './telemetry';
@@ -28,21 +34,28 @@ import type { McpAuthContext, McpHandlerDeps } from './types';
 // discovery surface an agent (or an agent-readiness scanner) needs to learn
 // what this server is and what it exposes BEFORE authenticating — exactly the
 // metadata already published in the static server-card.json and the public
-// docs. `tools/list` and `resources/list` are BOTH catalog-enumeration methods
-// that return only public metadata (names, descriptions, URIs — no data, no
-// quota), so both are anonymously servable: a scanner that reads the
-// `resources` capability from `initialize` MUST be able to enumerate it, or the
-// capability reads as advertised-but-empty. Everything that returns DATA or
-// spends quota (`tools/call`, `resources/read`) — and the metadata methods the
-// product keeps gated (`prompts/list`, `logging/setLevel`) — still requires
-// credentials. `notifications/initialized` is the client's post-`initialize`
-// handshake notification (carries no data); leaving it public lets a strict MCP
-// client complete the handshake before calling `tools/list`.
+// docs. `tools/list`, `resources/list`, and `resources/templates/list` are all
+// catalog-enumeration methods that return only public metadata (names,
+// descriptions, URIs / URI templates — no data, no quota), so all are
+// anonymously servable: a scanner that reads the `resources` capability from
+// `initialize` MUST be able to enumerate it, or the capability reads as
+// advertised-but-empty. `resources/read` of a PUBLIC resource (a concrete,
+// metadata-only freshness/health probe — see PUBLIC_RESOURCE_REGISTRY) is
+// ALSO anonymously servable + quota-exempt; it is promoted to the public path
+// per-request via `isPublicResourceUri` below because it carries no billable
+// data. Everything that returns DATA or spends quota (`tools/call`, and
+// `resources/read` of a data-bearing TEMPLATE instantiation) — plus the
+// metadata methods the product keeps gated (`prompts/list`,
+// `logging/setLevel`) — still requires credentials. `notifications/initialized`
+// is the client's post-`initialize` handshake notification (carries no data);
+// leaving it public lets a strict MCP client complete the handshake before
+// calling `tools/list`.
 const PUBLIC_MCP_METHODS: ReadonlySet<string> = new Set([
   'initialize',
   'notifications/initialized',
   'tools/list',
   'resources/list',
+  'resources/templates/list',
 ]);
 
 // Mirror of resolveAuthContext's credential-header contract: does the request
@@ -55,10 +68,12 @@ function hasCredentials(req: Request): boolean {
 }
 
 // Spec-correct 401 for the fail-closed guards on data methods. These guards are
-// unreachable today (tools/call / resources/read are never PUBLIC_MCP_METHODS,
-// so `context` is always resolved), but if that invariant is ever broken this
-// fails closed with the SAME 401 + WWW-Authenticate shape resolveAuthContext
-// emits — not a soft 200 JSON-RPC error.
+// unreachable today (tools/call always runs the gated path, and a data-bearing
+// resources/read reaches its `!context` guard only AFTER the public-read branch
+// has already returned — so `context` is always resolved when the guard runs),
+// but if that invariant is ever broken this fails closed with the SAME 401 +
+// WWW-Authenticate shape resolveAuthContext emits — not a soft 200 JSON-RPC
+// error.
 function authRequiredResponse(id: unknown, resourceMetadataUrl: string, corsHeaders: Record<string, string>): Response {
   return new Response(
     JSON.stringify({ jsonrpc: '2.0', id: id ?? null, error: { code: -32001, message: 'Authentication required.' } }),
@@ -341,25 +356,31 @@ export async function mcpHandler(
 
   const { id, method } = body;
 
-  // MCP Apps (`io.modelcontextprotocol/ui`) gate promotion. A resources/read of
-  // a `ui://` resource returns a STATIC, data-free HTML app shell (the live
-  // data arrives later via host postMessage after a normal gated tools/call),
-  // so it carries no data and spends no quota — exactly like tools/list and
-  // resources/list. Promote it onto the anonymous discovery path so an
-  // unauthenticated MCP-Apps host (or agent-readiness scanner) can fetch the
-  // shell to render it. DATA reads (worldmonitor://…) stay fully gated +
+  // Anonymous-servable resources/read promotions. Two kinds of resource carry
+  // NO data and spend NO quota, so they are served on the anonymous discovery
+  // path (like tools/list / resources/list) — an unauthenticated MCP-Apps host
+  // or agent-readiness scanner can read them cleanly:
+  //   1. MCP Apps (`io.modelcontextprotocol/ui`): a `ui://` read returns a
+  //      STATIC, data-free HTML app shell (live data arrives later via host
+  //      postMessage after a normal gated tools/call).
+  //   2. PUBLIC data resources: a concrete, metadata-only freshness/health
+  //      probe (see PUBLIC_RESOURCE_REGISTRY) — exact-matched, so a data-
+  //      bearing template instantiation never qualifies.
+  // DATA reads (a `worldmonitor://…` template instantiation) stay fully gated +
   // Pro-quota-symmetric via the protected branch below.
-  const uiResourceReadUri = method === 'resources/read'
-    ? (() => {
-        const uri = (body.params as { uri?: unknown } | null)?.uri;
-        return typeof uri === 'string' && isUiResourceUri(uri) ? uri : null;
-      })()
+  const resourceReadUri = method === 'resources/read'
+    ? ((body.params as { uri?: unknown } | null)?.uri)
+    : undefined;
+  const uiResourceReadUri = typeof resourceReadUri === 'string' && isUiResourceUri(resourceReadUri)
+    ? resourceReadUri
     : null;
+  const isPublicResourceRead = typeof resourceReadUri === 'string' && isPublicResourceUri(resourceReadUri);
+  const isAnonResourceRead = uiResourceReadUri !== null || isPublicResourceRead;
 
   // Auth gate. `context` is null only on the anonymous discovery path; every
   // data/quota method below runs the full protected path and always sets it.
   let context: McpAuthContext | null = null;
-  if (PUBLIC_MCP_METHODS.has(method) || uiResourceReadUri !== null) {
+  if (PUBLIC_MCP_METHODS.has(method) || isAnonResourceRead) {
     if (hasCredentials(req)) {
       // Credentials presented on a public method are still validated so a
       // present-but-invalid key surfaces a 401 instead of a silent anon
@@ -447,32 +468,46 @@ export async function mcpHandler(
       if (!built.ok) return maybeStreamJsonRpcResponse(req, rpcError(id, built.code, built.message, corsHeaders));
       return maybeStreamJsonRpcResponse(req, rpcOk(id, { description: built.description, messages: built.messages }, corsHeaders));
     }
-    // Resources surface DATA — unlike prompts (metadata-class, quota-exempt)
-    // and describe_tool (metadata-class, quota-exempt), resources/read MUST
-    // consume the Pro daily quota IDENTICALLY to a tools/call to the
-    // equivalent tool. Asymmetric auth here is a known MCP data-leak
-    // vector (a Pro user at the daily cap could otherwise keep reading
-    // data via resources for free). The symmetry is structural:
-    // buildResourceResponse synthesizes a tools/call body and routes
-    // through dispatchToolsCall, inheriting the reservation + telemetry
-    // path. resources/list is metadata-class — a public catalog-enumeration
-    // method (in PUBLIC_MCP_METHODS, quota-exempt, anon-rate-limited) that
-    // returns only URIs/names/descriptions, never data. It uses no `context`.
+    // Resources split by data sensitivity. resources/list + the new
+    // resources/templates/list are metadata-class — public catalog-enumeration
+    // methods (in PUBLIC_MCP_METHODS, quota-exempt, anon-rate-limited) that
+    // return only URIs / URI templates + names + descriptions, never data.
+    // They use no `context`. resources/list surfaces the concrete PUBLIC
+    // resources (metadata-only, anon-readable); resources/templates/list
+    // surfaces the data-bearing URI templates.
     case 'resources/list':
-      // DATA resources (worldmonitor://…) lead; the MCP Apps `ui://` app-shell
-      // resources follow. Both are metadata-class (URIs/names/descriptions,
-      // no data) — anonymously enumerable so a scanner reading the `resources`
-      // capability sees the full catalog, including the ui:// surface that
-      // signals MCP Apps support.
+      // Concrete DATA resources (worldmonitor://…, the metadata-only PUBLIC
+      // freshness probe) lead; the MCP Apps `ui://` app-shell resources follow.
+      // Both are metadata-class (URIs/names/descriptions, no data) and read
+      // cleanly for an anonymous scanner reading the `resources` capability —
+      // including the ui:// surface that signals MCP Apps support. The
+      // data-bearing URI templates are surfaced separately via
+      // resources/templates/list (a literal `{iso2}` URI can't resolve, so it
+      // must not appear in a list an anonymous validator reads back).
       return maybeStreamJsonRpcResponse(req, rpcOk(id, { resources: [...RESOURCE_LIST_RESPONSE, ...UI_RESOURCE_LIST_RESPONSE] }, corsHeaders));
+    case 'resources/templates/list':
+      return maybeStreamJsonRpcResponse(req, rpcOk(id, { resourceTemplates: RESOURCE_TEMPLATE_LIST_RESPONSE }, corsHeaders));
     case 'resources/read':
       // MCP Apps `ui://` read: a static, data-free HTML app shell served on the
       // public path (no context, no quota, no dispatch). Resolved above into
-      // `uiResourceReadUri`; DATA reads fall through to the gated dispatcher.
+      // `uiResourceReadUri`.
       if (uiResourceReadUri) {
         return maybeStreamJsonRpcResponse(req, buildUiResourceRead(id, uiResourceReadUri, corsHeaders));
       }
-      // context is always set for DATA reads — those are never public.
+      // A PUBLIC data resource read (concrete, metadata-only freshness/health
+      // probe) is likewise served anonymously + quota-exempt via its direct
+      // reader — no data, no dispatchToolsCall, no Pro reservation.
+      if (isPublicResourceRead) {
+        return maybeStreamJsonRpcResponse(req, await buildPublicResourceResponse(body, corsHeaders));
+      }
+      // A data-bearing TEMPLATE instantiation MUST consume the Pro daily quota
+      // IDENTICALLY to a tools/call to the equivalent tool. Asymmetric auth
+      // here is a known MCP data-leak vector (a Pro user at the daily cap could
+      // otherwise keep reading data via resources for free). The symmetry is
+      // structural: buildResourceResponse synthesizes a tools/call body and
+      // routes through dispatchToolsCall, inheriting the reservation +
+      // telemetry path. `context` is always set here — a non-public
+      // resources/read runs the gated path above; the guard fails closed.
       if (!context) return authRequiredResponse(id, resourceMetadataUrl, corsHeaders);
       return maybeStreamJsonRpcResponse(req, await buildResourceResponse(req, context, deps, body, corsHeaders, ctx));
     case 'logging/setLevel': {

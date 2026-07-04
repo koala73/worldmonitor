@@ -104,7 +104,7 @@ Example payload (Pro variant — env_key clients get the same envelope shape wit
 }
 ```
 
-**Pro/OAuth daily cap — HTTP 429 + `Retry-After`.** Hard daily cap (default **50 quota-consuming calls / UTC day**) enforced by an atomic Redis reservation BEFORE the tool runs, so the exact call that crosses the boundary rejects. Only `tools/call` and `resources/read` (the auth-symmetric resources path) count. `wm_…` API-key MCP callers do not enter this MCP daily reservation path; they are protected here by the 60 requests/minute/key limiter, while broader REST/API plan allowances are enforced outside the MCP handler. **Exempt from the Pro/OAuth daily cap:** `describe_tool`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `logging/setLevel`, `initialize`, `notifications/initialized`, `ping`. (These methods still count toward the per-minute limit above — daily and per-minute exemption sets are different.)
+**Pro/OAuth daily cap — HTTP 429 + `Retry-After`.** Hard daily cap (default **50 quota-consuming calls / UTC day**) enforced by an atomic Redis reservation BEFORE the tool runs, so the exact call that crosses the boundary rejects. Only `tools/call` and `resources/read` of a data-bearing **URI-template instantiation** (the auth-symmetric resources path) count. `wm_…` API-key MCP callers do not enter this MCP daily reservation path; they are protected here by the 60 requests/minute/key limiter, while broader REST/API plan allowances are enforced outside the MCP handler. **Exempt from the Pro/OAuth daily cap:** `describe_tool`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `resources/templates/list`, `logging/setLevel`, `initialize`, `notifications/initialized`, `ping`, and `resources/read` of a **public** (concrete, metadata-only) resource such as `worldmonitor://seed-meta/freshness`. (These methods still count toward the per-minute limit above — daily and per-minute exemption sets are different.)
 
 ```json
 {
@@ -141,7 +141,7 @@ Fires when the request body either isn't valid JSON or is valid JSON without a s
 
 ### `-32601` — Method not found
 
-The `method` field was a string but didn't match any handler. Methods this server speaks: `initialize`, `notifications/initialized`, `ping`, `tools/list`, `tools/call`, `prompts/list`, `prompts/get`, `resources/list`, `resources/read`, `logging/setLevel`.
+The `method` field was a string but didn't match any handler. Methods this server speaks: `initialize`, `notifications/initialized`, `ping`, `tools/list`, `tools/call`, `prompts/list`, `prompts/get`, `resources/list`, `resources/templates/list`, `resources/read`, `logging/setLevel`.
 
 ```json
 {
@@ -163,7 +163,7 @@ The most common error code, shared across `tools/call`, `prompts/get`, `resource
 | `tools/call` with `name` that isn't in the registry    | `api/mcp/dispatch.ts:117`         | `Unknown tool: get_foo`                                                    |
 | `prompts/get` with no/non-string `name`                | `api/mcp/handler.ts:133`          | `Invalid params: missing prompt name`                                      |
 | `prompts/get` with unknown name or missing required arg | `api/mcp/prompts/index.ts:302/310` | `Unknown prompt: …` / `Missing required argument "iso2" for prompt "country-briefing"` |
-| `resources/read` with no/unknown/malformed `uri`       | `api/mcp/resources/index.ts:200/223` | `Invalid params: missing resource uri` / `Unknown resource uri "..."` |
+| `resources/read` with no/unknown/malformed `uri`       | `api/mcp/resources/index.ts` (`buildPublicResourceResponse` / `buildResourceResponse`) | `Invalid params: missing resource uri` / `Unknown resource uri "..."` |
 | `logging/setLevel` with non-string or out-of-set level | `api/mcp/handler.ts:156`          | `Invalid params: level must be one of debug, info, notice, warning, error, critical, alert, emergency` |
 
 ```json
@@ -174,7 +174,7 @@ The most common error code, shared across `tools/call`, `prompts/get`, `resource
 }
 ```
 
-**What to do.** Read the `message` — it always tells you what was missing or wrong. For tools, names are in `tools/list`. For prompts, names + argument schemas are in `prompts/list`. For resources, the four supported URI shapes are in `resources/list`. For `logging/setLevel`, valid levels are the [RFC 5424 subset](https://www.rfc-editor.org/rfc/rfc5424#section-6.2.1) listed above.
+**What to do.** Read the `message` — it always tells you what was missing or wrong. For tools, names are in `tools/list`. For prompts, names + argument schemas are in `prompts/list`. For resources, the concrete URIs are in `resources/list` and the parameterised URI templates are in `resources/templates/list`. For `logging/setLevel`, valid levels are the [RFC 5424 subset](https://www.rfc-editor.org/rfc/rfc5424#section-6.2.1) listed above.
 
 ### `-32603` — Internal error
 
