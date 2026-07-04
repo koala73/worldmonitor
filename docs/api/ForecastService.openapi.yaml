@@ -13,7 +13,7 @@ paths:
             tags:
                 - ForecastService
             summary: GetForecasts
-            description: GetForecasts returns the latest generated probabilistic forecasts, with degraded/stale flags that distinguish a backend outage from a healthy empty set.
+            description: GetForecasts returns the latest generated probabilistic forecasts; the degraded flag distinguishes a backend outage from a healthy empty set.
             operationId: GetForecasts
             parameters:
                 - name: domain
@@ -190,7 +190,7 @@ paths:
             tags:
                 - ForecastService
             summary: GetSimulationOutcome
-            description: GetSimulationOutcome returns the stored outcome of a forecast simulation run; `found` is false when no outcome matches the requested runId.
+            description: GetSimulationOutcome returns the latest stored forecast simulation outcome; the response note is populated when a supplied runId does not match the returned outcome.
             operationId: GetSimulationOutcome
             parameters:
                 - name: runId

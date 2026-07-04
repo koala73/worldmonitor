@@ -229,6 +229,40 @@ function collectQueryParameters() {
   return rows;
 }
 
+const OPERATION_DESCRIPTION_CONTRACTS = [
+  {
+    path: '/api/forecast/v1/get-simulation-outcome',
+    includes: [/response note/i, /supplied runId/i, /does not match/i],
+    rejects: [/found[^.]*false[^.]*requested runId/i],
+  },
+  {
+    path: '/api/forecast/v1/get-forecasts',
+    includes: [/degraded flag/i, /backend outage/i, /healthy empty set/i],
+    rejects: [/stale/i],
+  },
+  {
+    path: '/api/resilience/v1/get-runtime-manifest',
+    includes: [/public resilience-scoring runtime manifest/i, /active formula tag/i],
+    rejects: [/commit SHA/i, /Vercel env/i, /deploy metadata/i],
+  },
+];
+
+function collectOperationDescriptions(path) {
+  const rows = [];
+  for (const { file, spec } of generatedQuerySpecs()) {
+    const pathItem = spec.paths?.[path];
+    if (!pathItem) continue;
+    for (const [method, operation] of Object.entries(pathItem)) {
+      if (!HTTP_OPERATION_KEYS.has(method)) continue;
+      rows.push({
+        key: file + ':' + method.toUpperCase() + ' ' + path,
+        description: String(operation?.description ?? ''),
+      });
+    }
+  }
+  return rows;
+}
+
 describe('generated OpenAPI description guard for high-risk documentation claims', () => {
   it('requires high-risk public fields to have generated descriptions or an explicit legacy-gap entry', () => {
     const actualGaps = collectHighRiskProperties()
@@ -288,5 +322,24 @@ describe('generated OpenAPI description guard for high-risk documentation claims
       [],
       'Generated OpenAPI query parameters have placeholder descriptions:\n' + placeholders.join('\n'),
     );
+  });
+
+  it('keeps generated operation descriptions aligned with handler behavior', () => {
+    for (const contract of OPERATION_DESCRIPTION_CONTRACTS) {
+      const rows = collectOperationDescriptions(contract.path);
+      assert.ok(
+        rows.length >= 2,
+        contract.path + ': expected per-service and unified OpenAPI operation descriptions',
+      );
+
+      for (const row of rows) {
+        for (const pattern of contract.includes) {
+          assert.match(row.description, pattern, row.key + ': description missing ' + pattern);
+        }
+        for (const pattern of contract.rejects) {
+          assert.doesNotMatch(row.description, pattern, row.key + ': description overclaims ' + pattern);
+        }
+      }
+    }
   });
 });
