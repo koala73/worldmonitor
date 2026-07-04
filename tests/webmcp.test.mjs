@@ -138,14 +138,20 @@ describe('webmcp App.ts binding: readiness + teardown', () => {
     );
   });
 
-  it('both bindings await the UI-readiness signal before touching state', () => {
-    // Before-fix regression: openSearch threw immediately on first
-    // invocation during startup. Both bindings must wait for Phase-4
-    // UI init to complete, then check the state, then dispatch.
+  it('both bindings reach UI readiness before acting (search via openSearch(), brief directly)', () => {
+    // openSearch binding delegates to App.openSearch(), which awaits
+    // waitForUiReady() internally — so the binding passes throwOnFailure rather
+    // than re-awaiting readiness itself (the redundant outer await + dead guards
+    // were removed in the #4403 review).
     assert.match(
       bindingBlock[0],
-      /openSearch:[\s\S]+?await this\.waitForUiReady\(\)[\s\S]+?this\.state\.searchModal/,
-      'openSearch must await waitForUiReady() before accessing searchModal',
+      /openSearch:[\s\S]+?this\.openSearch\(\{ throwOnFailure: true \}\)/,
+      'WebMCP openSearch must delegate to openSearch({ throwOnFailure: true })',
+    );
+    assert.match(
+      appSrc,
+      /private async openSearch\([\s\S]+?await this\.waitForUiReady\(\)[\s\S]+?await this\.ensureSearchManager\(\)/,
+      'openSearch() must await waitForUiReady() before loading/opening the search manager',
     );
     assert.match(
       bindingBlock[0],
@@ -154,17 +160,54 @@ describe('webmcp App.ts binding: readiness + teardown', () => {
     );
   });
 
-  it('bindings still throw (not silently succeed) when state is absent after readiness', () => {
-    // The silent-success guard from PR #3356 review must survive the
-    // readiness refactor. After awaiting readiness, a missing target is
-    // a real failure — throw so withInvocationLogging returns isError.
+  it('bindings surface failures (not silent success) when targets are absent', () => {
+    // The silent-success guard from PR #3356 review must survive the readiness
+    // refactor. For search this now lives in openSearch(): it throws on a
+    // missing modal and rethrows under throwOnFailure (which the binding sets),
+    // so withInvocationLogging returns isError.
     assert.match(
       bindingBlock[0],
-      /openSearch:[\s\S]+?if \(!this\.state\.searchModal\)[\s\S]+?throw new Error/,
+      /openSearch:[\s\S]+?throwOnFailure: true/,
+      'WebMCP openSearch must opt into throwOnFailure so load/open failures surface',
+    );
+    assert.match(
+      appSrc,
+      /private async openSearch\([\s\S]+?if \(!modal\) throw new Error\([\s\S]+?if \(options\.throwOnFailure\) throw error;/,
+      'openSearch() must throw on a missing modal and rethrow under throwOnFailure',
     );
     assert.match(
       bindingBlock[0],
       /openCountryBriefByCode:[\s\S]+?if \(!this\.state\.countryBriefPage\)[\s\S]+?throw new Error/,
+    );
+  });
+
+  it('first-load search toggles use an epoch + net-intent accumulator (not a stale snapshot)', () => {
+    // Runtime behavior (XOR parity, interleave, failure paths) is covered by
+    // tests/search-open-state-machine.test.mjs; here we pin the structural shape.
+    assert.match(
+      appSrc,
+      /private openSearchEpoch = 0;/,
+      'App must track a monotonic openSearch epoch',
+    );
+    assert.match(
+      appSrc,
+      /private searchToggleDesiredOpen = false;/,
+      'App must accumulate net toggle intent during first lazy load',
+    );
+    assert.match(
+      appSrc,
+      /this\.searchToggleDesiredOpen = !this\.searchToggleDesiredOpen;[\s\S]+?epoch = \+\+this\.openSearchEpoch;[\s\S]+?await this\.ensureSearchManager\(\)[\s\S]+?if \(this\.openSearchEpoch !== epoch\) return;/,
+      'openSearch must flip net intent before claiming an epoch and bail when superseded',
+    );
+    assert.doesNotMatch(
+      appSrc,
+      /const wasOpen = this\.state\.searchModal\?\.isOpen\(\) === true;/,
+      'openSearch must not capture searchModal state before awaiting UI readiness/import',
+    );
+    assert.doesNotMatch(
+      appSrc,
+      /pendingSearchToggleShouldOpen/,
+      'the superseded pending-toggle bookkeeping must be fully removed',
     );
   });
 

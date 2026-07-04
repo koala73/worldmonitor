@@ -22,7 +22,15 @@ import {
   mergeCloudWithLocalDirty,
   settledDirtyKeys,
 } from './cloud-prefs-migrations';
+import {
+  isTemporaryCloudPrefsStatus,
+  parseRetryAfterSeconds,
+  rearmTemporaryCloudPrefsRetry,
+} from './cloud-prefs-retry';
+import { applyObservableCloudPrefsFlushSuccess } from './cloud-prefs-flush';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
+export { isTemporaryCloudPrefsStatus, parseRetryAfterSeconds } from './cloud-prefs-retry';
 
 
 const ENABLED = import.meta.env.VITE_CLOUD_PREFS_ENABLED === 'true';
@@ -293,54 +301,19 @@ interface CloudPrefs {
 }
 
 /**
- * Typed 503 from the edge — Convex platform-level outage. Callers detect
+ * Typed temporary response from the edge. Callers detect
  * this via `instanceof ServiceUnavailableError` and back off using
  * `retryAfterSec` instead of treating it as a permanent error.
  */
 export class ServiceUnavailableError extends Error {
   retryAfterSec: number;
-  constructor(retryAfterSec: number) {
-    super(`service unavailable (retry after ${retryAfterSec}s)`);
+  status: number;
+  constructor(retryAfterSec: number, status = 503) {
+    super(`service temporarily unavailable (${status}; retry after ${retryAfterSec}s)`);
     this.name = 'ServiceUnavailableError';
     this.retryAfterSec = retryAfterSec;
+    this.status = status;
   }
-}
-
-// Bounds on the Retry-After value we'll honor. Lower bound prevents a
-// retry storm if the server sends 0 or a malformed value; upper bound
-// caps the delay so a misconfigured/extreme header doesn't strand sync
-// for minutes.
-const RETRY_AFTER_MIN_SEC = 1;
-const RETRY_AFTER_MAX_SEC = 60;
-const RETRY_AFTER_DEFAULT_SEC = 5;
-
-/**
- * Parse the `Retry-After` header per RFC 7231: either delta-seconds or an
- * HTTP-date. Returns a clamped number of seconds, with the configured
- * default for missing/malformed values. Exported for testability.
- */
-export function parseRetryAfterSeconds(headers: Headers): number {
-  const raw = headers.get('Retry-After');
-  if (!raw) return RETRY_AFTER_DEFAULT_SEC;
-  const trimmed = raw.trim();
-  // delta-seconds form: digits only.
-  if (/^\d+$/.test(trimmed)) {
-    const n = Number(trimmed);
-    if (!Number.isFinite(n)) return RETRY_AFTER_DEFAULT_SEC;
-    return Math.min(Math.max(n, RETRY_AFTER_MIN_SEC), RETRY_AFTER_MAX_SEC);
-  }
-  // HTTP-date form: parse and convert to delta-seconds from now.
-  // `Date.parse` is permissive — `Date.parse("-5")` parses as year -5 BCE,
-  // and other garbage strings can produce finite timestamps that then
-  // clamp to RETRY_AFTER_MIN_SEC, retrying in 1s instead of the safer
-  // default. Require the input to look like a real HTTP-date (must
-  // contain both a 4-digit year and a `:` time separator) so non-date
-  // garbage falls into the default-seconds branch instead.
-  if (!/\b\d{4}\b/.test(trimmed) || !trimmed.includes(':')) return RETRY_AFTER_DEFAULT_SEC;
-  const t = Date.parse(trimmed);
-  if (!Number.isFinite(t)) return RETRY_AFTER_DEFAULT_SEC;
-  const delta = Math.round((t - Date.now()) / 1000);
-  return Math.min(Math.max(delta, RETRY_AFTER_MIN_SEC), RETRY_AFTER_MAX_SEC);
 }
 
 async function fetchCloudPrefs(token: string, variant: string): Promise<CloudPrefs | null> {
@@ -348,7 +321,7 @@ async function fetchCloudPrefs(token: string, variant: string): Promise<CloudPre
     headers: { Authorization: `Bearer ${token}` },
   });
   if (res.status === 401) return null;
-  if (res.status === 503) throw new ServiceUnavailableError(parseRetryAfterSeconds(res.headers));
+  if (isTemporaryCloudPrefsStatus(res.status)) throw new ServiceUnavailableError(parseRetryAfterSeconds(res.headers), res.status);
   if (!res.ok) throw new Error(`fetch prefs: ${res.status}`);
   return (await res.json()) as CloudPrefs | null;
 }
@@ -376,7 +349,7 @@ async function postCloudPrefs(
     const actualSyncVersion = typeof body.actualSyncVersion === 'number' ? body.actualSyncVersion : undefined;
     return { conflict: true, actualSyncVersion };
   }
-  if (res.status === 503) throw new ServiceUnavailableError(parseRetryAfterSeconds(res.headers));
+  if (isTemporaryCloudPrefsStatus(res.status)) throw new ServiceUnavailableError(parseRetryAfterSeconds(res.headers), res.status);
   if (!res.ok) throw new Error(`post prefs: ${res.status}`);
   return (await res.json()) as { syncVersion: number };
 }
@@ -495,7 +468,7 @@ export async function onSignIn(userId: string, variant: string): Promise<void> {
     Storage.prototype.setItem.call(localStorage, KEY_LAST_SIGNED_IN_AS, userId);
   } catch (err) {
     if (err instanceof ServiceUnavailableError) {
-      // Convex platform 503 — transient. Set 'pending' (not 'error') and
+      // Temporary edge response — transient. Set 'pending' (not 'error') and
       // re-attempt sign-in sync after the server-suggested delay. This is
       // the user-facing "transient outage shouldn't be permanent" fix
       // (PR #3479): without this branch the catch would fall through to
@@ -508,7 +481,7 @@ export async function onSignIn(userId: string, variant: string): Promise<void> {
       // attempt began). Without the guard, a 5s delayed retry from user A
       // could fire after sign-out (no token) or after user B signed in
       // (wrong token in cache).
-      console.warn(`[cloud-prefs] onSignIn 503; retrying in ${err.retryAfterSec}s`);
+      console.warn(`[cloud-prefs] onSignIn ${err.status}; retrying in ${err.retryAfterSec}s`);
       setState('pending');
       clearRetryTimer();
       _retryTimer = setTimeout(() => {
@@ -594,7 +567,7 @@ async function uploadNow(variant: string): Promise<void> {
     }
   } catch (err) {
     if (err instanceof ServiceUnavailableError) {
-      // Convex platform 503 — transient. Re-queue the upload after the
+      // Temporary edge response — transient. Re-queue the upload after the
       // server-suggested delay so the unsaved blob isn't lost. Setting
       // 'pending' state matches the existing schedulePrefUpload UX.
       //
@@ -603,7 +576,7 @@ async function uploadNow(variant: string): Promise<void> {
       // but the closure's captured `myGeneration` no longer matches, so
       // the retry aborts. Without this, the upload would re-fire against
       // a now-empty token cache or a different user's token.
-      console.warn(`[cloud-prefs] uploadNow 503; retrying in ${err.retryAfterSec}s`);
+      console.warn(`[cloud-prefs] uploadNow ${err.status}; retrying in ${err.retryAfterSec}s`);
       setState('pending');
       clearRetryTimer();
       _retryTimer = setTimeout(() => {
@@ -724,27 +697,41 @@ export function install(variant: string): void {
       // the new version when the response is observable (true unloads never
       // get here; the next boot's onSignIn GET heals those instead).
       //
-      // Non-2xx (409/5xx): change nothing — keeping the stale version and
-      // the dirty keys is what routes the next upload through the
-      // conflict-merge path, which is the correct recovery.
-      if (!res.ok) return;
+      // Non-2xx: 409 keeps the stale version and dirty keys so the next
+      // upload resolves through the conflict-merge path. Temporary 429/5xx
+      // responses are observable during tab switches, so re-arm the normal
+      // retry machinery instead of stranding the final save.
+      if (!res.ok) {
+        rearmTemporaryCloudPrefsRetry({
+          status: res.status,
+          headers: res.headers,
+          myGeneration,
+          getAuthGeneration: () => _authGeneration,
+          setPending: () => setState('pending'),
+          clearRetryTimer,
+          setRetryTimer: (timer) => { _retryTimer = timer; },
+          uploadNow: () => uploadNow(_currentVariant),
+        });
+        return;
+      }
       const body = (await res.json().catch(() => null)) as { syncVersion?: number } | null;
-      if (typeof body?.syncVersion !== 'number') return;
-      // Auth generation: a sign-out or user switch while the flush was in
-      // flight already cleared/replaced sync state — don't resurrect a
-      // version marker for the previous session.
-      if (_authGeneration !== myGeneration) return;
-      // Monotonic: a slow flush response must not regress the version past
-      // a newer upload (or conflict-merge) that completed meanwhile.
-      if (body.syncVersion <= getSyncVersion()) return;
-      setSyncVersion(body.syncVersion);
-      clearSettledDirtyKeys(blob);
-      Storage.prototype.setItem.call(localStorage, KEY_LAST_SYNC_AT, String(Date.now()));
-      // Only claim 'synced' when no newer edit re-armed the debounce AND no
-      // uploadNow is mid-flight (the debounce callback nulls the timer
-      // synchronously before uploadNow's async work, so the timer alone
-      // can't distinguish "idle" from "upload in progress").
-      if (_debounceTimer === null && _uploadsInFlight === 0) setState('synced');
+      applyObservableCloudPrefsFlushSuccess({
+        syncVersion: body?.syncVersion,
+        myGeneration,
+        getAuthGeneration: () => _authGeneration,
+        getSyncVersion,
+        setSyncVersion,
+        clearSettledDirtyKeys: () => clearSettledDirtyKeys(blob),
+        setLastSyncAt: (timestampMs) => {
+          Storage.prototype.setItem.call(localStorage, KEY_LAST_SYNC_AT, String(timestampMs));
+        },
+        // Only claim 'synced' when no newer edit re-armed the debounce AND no
+        // uploadNow is mid-flight (the debounce callback nulls the timer
+        // synchronously before uploadNow's async work, so the timer alone
+        // can't distinguish "idle" from "upload in progress").
+        isIdle: () => _debounceTimer === null && _uploadsInFlight === 0,
+        setSynced: () => setState('synced'),
+      });
     }).catch(() => { /* best-effort on unload */ });
   };
 

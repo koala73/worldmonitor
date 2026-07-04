@@ -1,7 +1,10 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { enqueuePanelCall } from '@/app/pending-panel-data';
-import type { NewsItem, MapLayers, SocialUnrestEvent } from '@/types';
+import { markLcpDebug } from '@/utils/lcp-debug';
+import { getSignalAggregator, type SignalAggregator } from '@/app/lazy-services';
+import { getMilitaryVesselsModule, isVesselRuntimeStoppedError } from '@/services/military-vessels-lazy';
+import type { NewsItem, MapLayers, SocialUnrestEvent, MilitaryFlight } from '@/types';
 import type { MarketData } from '@/types';
 import type { TimeRange } from '@/components/MapContainer';
 import {
@@ -25,22 +28,9 @@ import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
 import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
 import { withTimeout } from '@/utils/with-timeout';
 import {
-  fetchCategoryFeeds,
-  getFeedFailures,
-  fetchMultipleStocks,
-  fetchCommodityQuotes,
-  fetchSectors,
-  warmCommodityCache,
-  warmSectorCache,
-  fetchCrypto,
-  fetchCryptoSectors,
-  fetchDefiTokens,
-  fetchAiTokens,
-  fetchOtherTokens,
   fetchPredictions,
   fetchEarthquakes,
   fetchWeatherAlerts,
-  fetchFredData,
   fetchInternetOutages,
   fetchTrafficAnomalies,
   fetchDdosAttacks,
@@ -48,15 +38,10 @@ import {
   fetchAisSignals,
   getAisStatus,
   isAisConfigured,
-  fetchCableActivity,
   fetchCableHealth,
   fetchProtestEvents,
   getProtestStatus,
-  fetchFlightDelays,
   fetchMilitaryFlights,
-  fetchMilitaryVessels,
-  initMilitaryVesselStream,
-  isMilitaryVesselTrackingConfigured,
   fetchUSNIFleetReport,
   updateBaseline,
   calculateDeviation,
@@ -66,26 +51,6 @@ import {
   fetchGdeltTensions,
   fetchNaturalEvents,
   fetchRecentAwards,
-  fetchOilAnalytics,
-  fetchCrudeInventoriesRpc,
-  fetchNatGasStorageRpc,
-  getEuGasStorageData,
-  getOilStocksAnalysisData,
-  fetchLngVulnerability,
-  getEcbFxRatesData,
-  fetchBisData,
-  fetchBlsData,
-  fetchCyberThreats,
-  drainTrendingSignals,
-  fetchTradeRestrictions,
-  fetchTariffTrends,
-  fetchTradeFlows,
-  fetchComtradeFlows,
-  fetchTradeBarriers,
-  fetchCustomsRevenue,
-  fetchShippingRates,
-  fetchChokepointStatus,
-  fetchCriticalMinerals,
   fetchSanctionsPressure,
   fetchRadiationWatch,
 } from '@/services';
@@ -112,16 +77,16 @@ import { displayPubDateMs, effectivePubDateMs } from '@/services/feed-date';
 import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid } from '@/services/clustering';
 import { ingestProtests, ingestFlights, ingestVessels, ingestEarthquakes, detectGeoConvergence, geoConvergenceToSignal } from '@/services/geo-convergence';
-import { signalAggregator } from '@/services/signal-aggregator';
 import { updateAndCheck, consumeServerAnomalies, fetchLiveAnomalies } from '@/services/temporal-baseline';
 import { fetchAllFires, flattenFires, computeRegionStats, toMapFires } from '@/services/wildfires';
-import { analyzeFlightsForSurge, surgeAlertToSignal, detectForeignMilitaryPresence, foreignPresenceToSignal, type TheaterPostureSummary } from '@/services/military-surge';
+import type { TheaterPostureSummary } from '@/services/military-surge';
 import { fetchCachedTheaterPosture } from '@/services/cached-theater-posture';
 import { ingestProtestsForCII, ingestMilitaryForCII, ingestNewsForCII, ingestOutagesForCII, ingestConflictsForCII, ingestUcdpForCII, ingestHapiForCII, ingestDisplacementForCII, ingestClimateForCII, ingestStrikesForCII, ingestOrefForCII, ingestAviationForCII, ingestAdvisoriesForCII, ingestGpsJammingForCII, ingestAisDisruptionsForCII, ingestSatelliteFiresForCII, ingestCyberThreatsForCII, ingestTemporalAnomaliesForCII, ingestEarthquakesForCII, ingestSanctionsForCII, isInLearningMode, resetHotspotActivity, calculateCII, type CountryScore } from '@/services/country-instability';
 import { fetchGpsInterference } from '@/services/gps-interference';
 import { fetchSatelliteTLEs, initSatRecs, propagatePositions, startPropagationLoop } from '@/services/satellites';
 import type { SatRecEntry } from '@/services/satellites';
 import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
+import type { CorrelationSignal } from '@/services/correlation';
 import { fetchConflictEvents, fetchUcdpClassifications, fetchHapiSummary, fetchUcdpEvents, deduplicateAgainstAcled, fetchIranEvents } from '@/services/conflict';
 import { fetchUnhcrPopulation } from '@/services/displacement';
 import { fetchClimateAnomalies } from '@/services/climate';
@@ -140,7 +105,6 @@ import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { t, getCurrentLanguage } from '@/services/i18n';
 import { getHydratedData } from '@/services/bootstrap';
-import { ingestHeadlines } from '@/services/trending-keywords';
 import type { ListFeedDigestResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
 import type { GetSectorSummaryResponse, ListMarketQuotesResponse, ListCommodityQuotesResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
 import type {
@@ -155,7 +119,7 @@ import type {
   SectorValuation,
 } from '@/components/MarketPanel';
 import { mountCommunityWidget } from '@/components/CommunityWidget';
-import { ResearchServiceClient } from '@/generated/client/worldmonitor/research/v1/service_client';
+
 import type { StockAnalysisPanel } from '@/components/StockAnalysisPanel';
 import type { StockBacktestPanel } from '@/components/StockBacktestPanel';
 import type { PredictionPanel } from '@/components/PredictionPanel';
@@ -180,7 +144,9 @@ import { classifyNewsItem } from '@/services/positive-classifier';
 import { fetchGivingSummary } from '@/services/giving';
 import { fetchProgressData } from '@/services/progress-data';
 import { fetchConservationWins } from '@/services/conservation-data';
-import { fetchRenewableEnergyData, fetchEnergyCapacity } from '@/services/renewable-energy-data';
+// #4571: renewable-energy-data (+ its transitive economic edge) dynamic-imported
+// inside loadRenewableData so it doesn't parse/execute at boot — the renewable
+// panel is below-fold and its load is viewport-gated (shouldLoad('renewable')).
 import { checkMilestones } from '@/services/celebration';
 import { fetchHappinessScores } from '@/services/happiness-data';
 import { fetchRenewableInstallations } from '@/services/renewable-installations';
@@ -191,14 +157,10 @@ import type { HappyContentCategory } from '@/services/positive-classifier';
 import { fetchKindnessData } from '@/services/kindness-data';
 import { getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
-import {
-  buildDailyMarketBrief,
-  cacheDailyMarketBrief,
-  getCachedDailyMarketBrief,
-  shouldRefreshDailyBrief,
-  type RegimeMacroContext,
-  type YieldCurveContext,
-  type SectorBriefContext,
+import type {
+  RegimeMacroContext,
+  YieldCurveContext,
+  SectorBriefContext,
 } from '@/services/daily-market-brief';
 import { fetchCachedRiskScores, getCachedScores, toCountryScore, type CachedRiskScores } from '@/services/cached-risk-scores';
 import type { ThreatLevel as ClientThreatLevel } from '@/types';
@@ -206,11 +168,13 @@ import type { NewsItem as ProtoNewsItem, ThreatLevel as ProtoThreatLevel } from 
 import { fetchMarketImplications } from '@/services/market-implications';
 import { fetchDiseaseOutbreaks } from '@/services/disease-outbreaks';
 import { fetchSocialVelocity } from '@/services/social-velocity';
-import { fetchShippingStress } from '@/services/supply-chain';
 import { getTopActiveGeoHubs } from '@/services/geo-activity';
-import { getTopActiveHubs } from '@/services/tech-activity';
+// getTopActiveHubs is lazy-imported at its call sites (applyTechHubActivities) so
+// the tech-activity → tech-hub-index → ~62KB tech-geo chain stays off the eager
+// dashboard critical path (#4404).
 import type { GeoHubsPanel } from '@/components/GeoHubsPanel';
 import type { TechHubsPanel } from '@/components/TechHubsPanel';
+import { ResearchServiceClient } from '@/services/generated-rpc-clients';
 
 const PROTO_TO_CLIENT_LEVEL: Record<ProtoThreatLevel, ClientThreatLevel> = {
   THREAT_LEVEL_UNSPECIFIED: 'info',
@@ -274,6 +238,76 @@ type HydrationTask = {
 };
 
 type HydrationTier = 1 | 2 | 3 | 4;
+type DailyMarketBriefModule = typeof import('@/services/daily-market-brief');
+type RssModule = Pick<typeof import('@/services/rss'), 'fetchCategoryFeeds' | 'getFeedFailures'>;
+type TrendingHeadlineInput = import('@/services/trending-keywords').TrendingHeadlineInput;
+type DrainTrendingSignals = typeof import('@/services/trending-keywords').drainTrendingSignals;
+
+let dailyMarketBriefModulePromise: Promise<DailyMarketBriefModule> | null = null;
+let rssModulePromise: Promise<RssModule> | null = null;
+let ingestHeadlinesPromise: Promise<(headlines: TrendingHeadlineInput[]) => void> | null = null;
+let drainTrendingSignalsPromise: Promise<DrainTrendingSignals> | null = null;
+
+function getDailyMarketBriefModule(): Promise<DailyMarketBriefModule> {
+  dailyMarketBriefModulePromise ??= import('@/services/daily-market-brief').catch((err) => {
+    dailyMarketBriefModulePromise = null;
+    throw err;
+  });
+  return dailyMarketBriefModulePromise;
+}
+
+function getRssModule(): Promise<RssModule> {
+  rssModulePromise ??= import('@/services/rss').catch((err) => {
+    rssModulePromise = null;
+    throw err;
+  });
+  return rssModulePromise;
+}
+
+async function ingestTrendingHeadlines(headlines: TrendingHeadlineInput[]): Promise<void> {
+  ingestHeadlinesPromise ??= import('@/services/trending-keywords')
+    .then(module => module.ingestHeadlines)
+    .catch((err) => {
+      ingestHeadlinesPromise = null;
+      throw err;
+    });
+  const ingestHeadlines = await ingestHeadlinesPromise;
+  ingestHeadlines(headlines);
+}
+
+async function drainTrendingSignalQueue(): Promise<ReturnType<DrainTrendingSignals>> {
+  try {
+    drainTrendingSignalsPromise ??= import('@/services/trending-keywords')
+      .then(module => module.drainTrendingSignals)
+      .catch((err) => {
+        drainTrendingSignalsPromise = null;
+        throw err;
+      });
+    const drainTrendingSignals = await drainTrendingSignalsPromise;
+    return drainTrendingSignals();
+  } catch (err) {
+    console.warn('[News] drainTrendingSignals failed (chunk load?):', err);
+    return [];
+  }
+}
+
+async function runSignalAggregator(
+  statusPanel: AppContext['statusPanel'] | undefined,
+  context: string,
+  ingest: (aggregator: SignalAggregator) => void,
+): Promise<void> {
+  try {
+    ingest(await getSignalAggregator());
+    statusPanel?.updateApi('Signal Aggregator', { status: 'ok', errorMessage: undefined });
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.warn(`[SignalAggregator] ${context} skipped:`, err);
+    statusPanel?.updateApi('Signal Aggregator', {
+      status: 'error',
+      errorMessage: `${context}: ${errorMessage}`,
+    });
+  }
+}
 
 const HYDRATION_TIER_ONE = new Set(['news', 'markets', 'intelligence']);
 const HYDRATION_TIER_TWO = new Set([
@@ -502,6 +536,83 @@ export class DataLoaderManager implements AppModule {
     this.refreshCiiAndBrief(false);
   }
 
+  public refreshGeometryDependentCiiAfterCountryGeometry(): void {
+    markLcpDebug('wm:data:country-geometry-replay-start');
+    const cache = this.ctx.intelligenceCache;
+    let replayed = 0;
+
+    if (cache.protests || cache.conflicts || cache.military || cache.iranEvents) {
+      resetHotspotActivity();
+    }
+    if (cache.protests) {
+      ingestProtestsForCII(cache.protests.events);
+      replayed += 1;
+    }
+    if (cache.conflicts) {
+      ingestConflictsForCII(cache.conflicts);
+      replayed += 1;
+    }
+    if (cache.military) {
+      ingestMilitaryForCII(cache.military.flights, cache.military.vessels);
+      replayed += 1;
+    }
+    if (cache.iranEvents) {
+      const coerced = cache.iranEvents.map(e => ({ ...e, timestamp: Number(e.timestamp) || 0 }));
+      ingestStrikesForCII(coerced);
+      replayed += 1;
+    }
+    if (cache.earthquakes) {
+      ingestEarthquakesForCII(cache.earthquakes);
+      replayed += 1;
+    }
+    if (cache.flightDelays) {
+      const severe = cache.flightDelays.filter(d => d.severity === 'major' || d.severity === 'severe' || d.delayType === 'closure');
+      if (severe.length > 0) {
+        ingestAviationForCII(severe);
+        replayed += 1;
+      }
+    }
+    if (cache.outages) {
+      ingestOutagesForCII(cache.outages);
+      replayed += 1;
+    }
+    if (cache.orefAlerts) {
+      ingestOrefForCII(cache.orefAlerts.alertCount, cache.orefAlerts.historyCount24h);
+      replayed += 1;
+    }
+    if (cache.advisories) {
+      ingestAdvisoriesForCII(cache.advisories);
+      replayed += 1;
+    }
+    if (cache.sanctions) {
+      ingestSanctionsForCII(cache.sanctions.countries);
+      replayed += 1;
+    }
+    if (this.ctx.cyberThreatsCache) {
+      ingestCyberThreatsForCII(this.ctx.cyberThreatsCache);
+      replayed += 1;
+    }
+    // Coordinate-only sources (no country hint) that resolve purely via
+    // precision geometry. Without this replay their first-pass attribution —
+    // computed during the fan-out before geometry was ready — stays empty until
+    // the next scheduled refresh (#4512).
+    if (cache.gpsJamming?.length) {
+      ingestGpsJammingForCII(cache.gpsJamming);
+      replayed += 1;
+    }
+    if (cache.aisDisruptions?.length) {
+      ingestAisDisruptionsForCII(cache.aisDisruptions);
+      replayed += 1;
+    }
+    if (cache.satelliteFires?.length) {
+      ingestSatelliteFiresForCII(cache.satelliteFires);
+      replayed += 1;
+    }
+
+    markLcpDebug('wm:data:country-geometry-replay-ready', { replayed });
+    if (replayed > 0) this.refreshCiiAndBrief(false);
+  }
+
   private async tryFetchDigest(): Promise<ListFeedDigestResponse | null> {
     const now = Date.now();
 
@@ -513,6 +624,7 @@ export class DataLoaderManager implements AppModule {
     }
 
     try {
+      markLcpDebug('wm:data:feed-digest-start');
       const resp = await fetch(
         toApiUrl(`/api/news/v1/list-feed-digest?variant=${SITE_VARIANT}&lang=${getCurrentLanguage()}`),
         { cache: 'no-cache', signal: AbortSignal.timeout(this.digestRequestTimeoutMs) },
@@ -520,12 +632,14 @@ export class DataLoaderManager implements AppModule {
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json() as ListFeedDigestResponse;
       const catCount = Object.keys(data.categories ?? {}).length;
+      markLcpDebug('wm:data:feed-digest-ready', { categories: catCount });
       console.info(`[News] Digest fetched: ${catCount} categories`);
       this.lastGoodDigest = data;
       this.persistDigest(data);
       this.digestBreaker = { state: 'closed', failures: 0, cooldownUntil: 0 };
       return data;
     } catch (e) {
+      markLcpDebug('wm:data:feed-digest-error');
       console.warn('[News] Digest fetch failed, using fallback:', e);
       this.digestBreaker.failures++;
       if (this.digestBreaker.failures >= 2) {
@@ -570,6 +684,16 @@ export class DataLoaderManager implements AppModule {
 
   private shouldShowIntelligenceNotifications(): boolean {
     return !this.ctx.isMobile && !!this.ctx.findingsBadge?.isPopupEnabled();
+  }
+
+  private showSignalNotification(signals: CorrelationSignal[], context: string): void {
+    void this.ctx.ensureSignalModal()
+      .then((signalModal) => {
+        if (!this.ctx.isDestroyed) signalModal.show(signals);
+      })
+      .catch((err) => {
+        console.warn(`[SignalModal] ${context} notification skipped:`, err);
+      });
   }
 
   private isPanelNearViewport(panelId: string, marginPx = 400): boolean {
@@ -801,7 +925,7 @@ export class DataLoaderManager implements AppModule {
 
     const bootstrapTemporal = consumeServerAnomalies();
     if (bootstrapTemporal.anomalies.length > 0 || bootstrapTemporal.trackedTypes.length > 0) {
-      signalAggregator.ingestTemporalAnomalies(bootstrapTemporal.anomalies, bootstrapTemporal.trackedTypes);
+      await runSignalAggregator(this.ctx.statusPanel, 'bootstrap temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(bootstrapTemporal.anomalies, bootstrapTemporal.trackedTypes));
       ingestTemporalAnomaliesForCII(bootstrapTemporal.anomalies);
       this.refreshCiiAndBrief();
     } else {
@@ -811,7 +935,7 @@ export class DataLoaderManager implements AppModule {
 
   async refreshTemporalBaseline(): Promise<void> {
     const { anomalies, trackedTypes } = await fetchLiveAnomalies();
-    signalAggregator.ingestTemporalAnomalies(anomalies, trackedTypes);
+    await runSignalAggregator(this.ctx.statusPanel, 'temporal baseline anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(anomalies, trackedTypes));
     ingestTemporalAnomaliesForCII(anomalies);
     this.refreshCiiAndBrief();
   }
@@ -903,7 +1027,14 @@ export class DataLoaderManager implements AppModule {
     this.stopSatellitePropagation();
     const data = await fetchSatelliteTLEs();
     if (!data || data.length === 0) return;
-    this.cachedSatRecs = initSatRecs(data);
+    try {
+      this.cachedSatRecs = await initSatRecs(data);
+    } catch (err) {
+      console.error('[satellites] failed to initialize satellite propagation', err);
+      this.cachedSatRecs = [];
+      this.ctx.map?.setSatellites([]);
+      return;
+    }
     const positions = propagatePositions(this.cachedSatRecs);
     this.ctx.map?.setSatellites(positions);
     this.satellitePropagationCleanup = startPropagationLoop(this.cachedSatRecs, (pos) => {
@@ -1099,7 +1230,10 @@ export class DataLoaderManager implements AppModule {
           .map(protoItemToNewsItem)
           .filter(i => enabledNames.has(i.source));
 
-        ingestHeadlines(items.map(i => ({ title: i.title, pubDate: i.pubDate, source: i.source, link: i.link })));
+        void ingestTrendingHeadlines(items.map(i => ({ title: i.title, pubDate: i.pubDate, source: i.source, link: i.link })))
+          .catch((err) => {
+            console.warn('[News] ingestTrendingHeadlines failed (chunk load?):', err);
+          });
 
         // Skip client-side AI reclassification for digest items.
         // The server already ran enrichWithAiCache() which checks the same Redis keys
@@ -1207,6 +1341,7 @@ export class DataLoaderManager implements AppModule {
         console.warn(`[News] Digest missing for "${category}", using per-feed fallback (${fallbackFeeds.length} feeds)`);
       }
 
+      const { fetchCategoryFeeds, getFeedFailures } = await getRssModule();
       const items = await fetchCategoryFeeds(fallbackFeeds, {
         batchSize: this.perFeedFallbackBatchSize,
         onBatch: (partialItems) => {
@@ -1325,6 +1460,7 @@ export class DataLoaderManager implements AppModule {
 
     let intel: NewsItem[];
     try {
+      const { fetchCategoryFeeds } = await getRssModule();
       intel = await fetchCategoryFeeds(fallbackIntelFeeds, { batchSize: this.perFeedFallbackBatchSize });
     } catch (e) {
       delete this.ctx.newsByCategory['intel'];
@@ -1436,8 +1572,7 @@ export class DataLoaderManager implements AppModule {
 
       (this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined)
         ?.setActivities(getTopActiveGeoHubs(this.ctx.latestClusters));
-      (this.ctx.panels['tech-hubs'] as TechHubsPanel | undefined)
-        ?.setActivities(getTopActiveHubs(this.ctx.latestClusters));
+      this.applyTechHubActivities();
 
       const geoLocated = this.ctx.latestClusters
         .filter((c): c is typeof c & { lat: number; lon: number } => c.lat != null && c.lon != null)
@@ -1630,6 +1765,35 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadMarkets(): Promise<void> {
+    // Method-scoped so all of loadMarkets' try blocks (stocks/sectors/commodities +
+    // crypto/defi/ai/other) see these; market is dynamic-imported off eager main.js (#4571).
+    // Guarded: loadMarkets must not reject (the init() watchlist handler calls it
+    // unguarded), so a chunk-load failure skips this cycle like the per-block catches do.
+    let marketMod: typeof import('@/services/market');
+    try {
+      marketMod = await import('@/services/market');
+    } catch (e) {
+      // Persistent failure mode: a stale-deploy chunk 404 would otherwise skip the
+      // whole markets/crypto/commodities cycle with no signal. Log so it's traceable,
+      // and mirror the downstream failure states before returning.
+      console.warn('[DataLoader] market chunk load failed', e);
+      this.ctx.statusPanel?.updateApi('Finnhub', { status: 'error' });
+      this.ctx.statusPanel?.updateApi('CoinGecko', { status: 'error' });
+      (this.ctx.panels['markets'] as MarketPanel | undefined)?.showRetrying(t('common.failedMarketData'));
+      (this.ctx.panels['heatmap'] as HeatmapPanel | undefined)?.showRetrying(t('common.failedSectorData'));
+      (this.ctx.panels['commodities'] as CommoditiesPanel | undefined)?.showRetrying(t('common.failedCommodities'));
+      (this.ctx.panels['energy-complex'] as EnergyComplexPanel | undefined)?.showRetrying(t('common.failedCommodities'));
+      (this.ctx.panels['crypto'] as CryptoPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+      (this.ctx.panels['crypto-heatmap'] as CryptoHeatmapPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+      (this.ctx.panels['defi-tokens'] as DefiTokensPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+      (this.ctx.panels['ai-tokens'] as AiTokensPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+      (this.ctx.panels['other-tokens'] as OtherTokensPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+      return;
+    }
+    const {
+      fetchMultipleStocks, fetchCommodityQuotes, fetchSectors, warmCommodityCache, warmSectorCache,
+      fetchCrypto, fetchCryptoSectors, fetchDefiTokens, fetchAiTokens, fetchOtherTokens,
+    } = marketMod;
     try {
       const customEntries = getMarketWatchlistEntries();
       const effectiveSymbols = (() => {
@@ -1645,7 +1809,6 @@ export class DataLoaderManager implements AppModule {
         }
         return base;
       })();
-
 
       // Hydrate markets from bootstrap (same pattern as sectors) — instant data on page load
       const hydratedMarkets = getHydratedData('marketQuotes') as ListMarketQuotesResponse | undefined;
@@ -1803,6 +1966,7 @@ export class DataLoaderManager implements AppModule {
       // Load ECB FX rates for CommoditiesPanel FX tab
       if (commoditiesPanel) {
         try {
+          const { getEcbFxRatesData } = await import('@/services/economic');
           const fxResp = await getEcbFxRatesData();
           if (!fxResp.unavailable && fxResp.rates?.length) {
             const EUR_FX_ORDER = ['USD', 'GBP', 'JPY', 'CHF', 'CAD', 'CNY', 'AUD'];
@@ -1866,13 +2030,15 @@ export class DataLoaderManager implements AppModule {
     this.dailyBriefGeneration++;
     const gen = this.dailyBriefGeneration;
     this.ctx.inFlight.add('dailyMarketBrief');
+    let dailyMarketBrief: DailyMarketBriefModule | null = null;
     try {
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      dailyMarketBrief = await getDailyMarketBriefModule();
       // Bound the IndexedDB cache read so a hung persistent-cache layer
       // can't keep the panel on its default Loading state forever — fall
       // through to "build from scratch" instead.
       const cached = await withTimeout(
-        getCachedDailyMarketBrief(timezone),
+        dailyMarketBrief.getCachedDailyMarketBrief(timezone),
         3_000,
         'daily-brief-cache-read',
       ).catch(() => null);
@@ -1881,7 +2047,7 @@ export class DataLoaderManager implements AppModule {
         this.callPanel('daily-market-brief', 'renderBrief', cached, 'cached');
       }
 
-      if (!force && cached && !shouldRefreshDailyBrief(cached, timezone)) {
+      if (!force && cached && !dailyMarketBrief.shouldRefreshDailyBrief(cached, timezone)) {
         return;
       }
 
@@ -1917,7 +2083,7 @@ export class DataLoaderManager implements AppModule {
       // resolves). On timeout the existing catch below serves the cached
       // version or shows an error, never letting the panel stay stuck.
       const brief = await withTimeout(
-        buildDailyMarketBrief({
+        dailyMarketBrief.buildDailyMarketBrief({
           markets: this.ctx.latestMarkets,
           newsByCategory: this.ctx.newsByCategory,
           timezone,
@@ -1945,7 +2111,7 @@ export class DataLoaderManager implements AppModule {
       }
 
       // Render first, persist after. The previous order `await
-      // cacheDailyMarketBrief(brief); render(brief)` meant a hung
+      // dailyMarketBrief.cacheDailyMarketBrief(brief); render(brief)` meant a hung
       // IndexedDB / Tauri-Store write blocked the panel from ever
       // displaying the finished brief — the build budget proved nothing
       // by itself. Now: user sees the brief immediately; the cache write
@@ -1954,7 +2120,7 @@ export class DataLoaderManager implements AppModule {
       // on Building forever."
       this.callPanel('daily-market-brief', 'renderBrief', brief, 'live');
       void withTimeout(
-        cacheDailyMarketBrief(brief),
+        dailyMarketBrief.cacheDailyMarketBrief(brief),
         5_000,
         'daily-brief-cache-write',
       ).catch((err) => {
@@ -1970,11 +2136,13 @@ export class DataLoaderManager implements AppModule {
       // state was. .catch(() => null) absorbs both the TimeoutError and
       // any persistent-cache read failure into the same null-result
       // branch that the existing showError fallback already handles.
-      const cached = await withTimeout(
-        getCachedDailyMarketBrief(timezone),
-        3_000,
-        'daily-brief-cache-read-recovery',
-      ).catch(() => null);
+      const cached = dailyMarketBrief
+        ? await withTimeout(
+          dailyMarketBrief.getCachedDailyMarketBrief(timezone),
+          3_000,
+          'daily-brief-cache-read-recovery',
+        ).catch(() => null)
+        : null;
       if (cached?.available) {
         this.callPanel('daily-market-brief', 'renderBrief', cached, 'cached');
         return;
@@ -2238,20 +2406,15 @@ export class DataLoaderManager implements AppModule {
         daysUntil: Math.ceil((new Date(e.startDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
       }));
 
+      this.ctx.latestTechEvents = mapEvents;
       this.ctx.map?.setTechEvents(mapEvents);
       this.ctx.map?.setLayerReady('techEvents', mapEvents.length > 0);
       this.ctx.statusPanel?.updateFeed('Tech Events', { status: 'ok', itemCount: mapEvents.length });
 
-      if (SITE_VARIANT === 'tech' && this.ctx.searchModal) {
-        this.ctx.searchModal.registerSource('techevent', mapEvents.map((e: { id: string; title: string; location: string; startDate: string }) => ({
-          id: e.id,
-          title: e.title,
-          subtitle: `${e.location} • ${new Date(e.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
-          data: e,
-        })));
-      }
+      this.updateSearchIndex();
     } catch (error) {
       console.error('[App] Failed to load tech events:', error);
+      this.ctx.latestTechEvents = [];
       this.ctx.map?.setTechEvents([]);
       this.ctx.map?.setLayerReady('techEvents', false);
       this.ctx.statusPanel?.updateFeed('Tech Events', { status: 'error', errorMessage: String(error) });
@@ -2282,7 +2445,7 @@ export class DataLoaderManager implements AppModule {
         const outages = await fetchInternetOutages();
         this.ctx.intelligenceCache.outages = outages;
         ingestOutagesForCII(outages);
-        signalAggregator.ingestOutages(outages);
+        await runSignalAggregator(this.ctx.statusPanel, 'outages', (aggregator) => aggregator.ingestOutages(outages));
         dataFreshness.recordUpdate('outages', outages.length);
         if (this.ctx.mapLayers.outages) {
           this.ctx.map?.setOutages(outages);
@@ -2310,7 +2473,7 @@ export class DataLoaderManager implements AppModule {
         this.ctx.intelligenceCache.protests = protestData;
         ingestProtests(protestData.events);
         ingestProtestsForCII(protestData.events);
-        signalAggregator.ingestProtests(protestData.events);
+        await runSignalAggregator(this.ctx.statusPanel, 'protests', (aggregator) => aggregator.ingestProtests(protestData.events));
         const protestCount = protestData.sources.acled + protestData.sources.gdelt;
         if (protestCount > 0) dataFreshness.recordUpdate('acled', protestCount);
         if (protestData.sources.gdelt > 0) dataFreshness.recordUpdate('gdelt', protestData.sources.gdelt);
@@ -2337,6 +2500,7 @@ export class DataLoaderManager implements AppModule {
     tasks.push((async () => {
       try {
         const conflictData = await fetchConflictEvents();
+        this.ctx.intelligenceCache.conflicts = conflictData.events;
         ingestConflictsForCII(conflictData.events);
         if (conflictData.count > 0) dataFreshness.recordUpdate('acled_conflict', conflictData.count);
       } catch (error) {
@@ -2371,12 +2535,13 @@ export class DataLoaderManager implements AppModule {
 
     tasks.push((async () => {
       try {
-        if (isMilitaryVesselTrackingConfigured()) {
-          initMilitaryVesselStream();
+        const militaryVessels = await getMilitaryVesselsModule();
+        if (militaryVessels.isMilitaryVesselTrackingConfigured()) {
+          militaryVessels.initMilitaryVesselStream();
         }
         const [flightData, vesselData] = await Promise.all([
           fetchMilitaryFlights(),
-          fetchMilitaryVessels(),
+          militaryVessels.fetchMilitaryVessels(),
         ]);
         this.ctx.intelligenceCache.military = {
           flights: flightData.flights,
@@ -2390,15 +2555,17 @@ export class DataLoaderManager implements AppModule {
         ingestFlights(flightData.flights);
         ingestVessels(vesselData.vessels);
         ingestMilitaryForCII(flightData.flights, vesselData.vessels);
-        signalAggregator.ingestFlights(flightData.flights);
-        signalAggregator.ingestVessels(vesselData.vessels);
+        await runSignalAggregator(this.ctx.statusPanel, 'military tracks', (aggregator) => {
+          aggregator.ingestFlights(flightData.flights);
+          aggregator.ingestVessels(vesselData.vessels);
+        });
         dataFreshness.recordUpdate('opensky', flightData.flights.length);
         updateAndCheck([
           { type: 'military_flights', region: 'global', count: flightData.flights.length },
           { type: 'vessels', region: 'global', count: vesselData.vessels.length },
-        ]).then(anomalies => {
+        ]).then(async anomalies => {
           if (anomalies.length > 0) {
-            signalAggregator.ingestTemporalAnomalies(anomalies);
+            await runSignalAggregator(this.ctx.statusPanel, 'temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(anomalies));
             ingestTemporalAnomaliesForCII(anomalies);
             this.refreshCiiAndBrief();
           }
@@ -2414,20 +2581,12 @@ export class DataLoaderManager implements AppModule {
           });
         }
         if (!isInLearningMode()) {
-          const surgeAlerts = analyzeFlightsForSurge(flightData.flights);
-          if (surgeAlerts.length > 0) {
-            const surgeSignals = surgeAlerts.map(surgeAlertToSignal);
-            addToSignalHistory(surgeSignals);
-            if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(surgeSignals);
-          }
-          const foreignAlerts = detectForeignMilitaryPresence(flightData.flights);
-          if (foreignAlerts.length > 0) {
-            const foreignSignals = foreignAlerts.map(foreignPresenceToSignal);
-            addToSignalHistory(foreignSignals);
-            if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(foreignSignals);
-          }
+          await this.runMilitarySurgeAnalysis(flightData.flights);
         }
       } catch (error) {
+        // A teardown that races an in-flight vessel load is a deliberate
+        // cancellation, not a real fetch failure — don't pollute freshness.
+        if (isVesselRuntimeStoppedError(error)) return;
         console.error('[Intelligence] Military fetch failed:', error);
         dataFreshness.recordError('opensky', String(error));
       }
@@ -2541,13 +2700,15 @@ export class DataLoaderManager implements AppModule {
         try {
           const data = await fetchGpsInterference();
           if (!data) {
+            this.ctx.intelligenceCache.gpsJamming = [];
             ingestGpsJammingForCII([]);
             this.ctx.map?.setLayerReady('gpsJamming', false);
             return;
           }
+          this.ctx.intelligenceCache.gpsJamming = data.hexes;
           ingestGpsJammingForCII(data.hexes);
           if (this.ctx.mapLayers.gpsJamming) {
-            this.ctx.map?.setGpsJamming(data.hexes);
+            await this.ctx.map?.setGpsJamming(data.hexes);
             this.ctx.map?.setLayerReady('gpsJamming', data.hexes.length > 0);
           }
           this.ctx.statusPanel?.updateFeed('GPS Jam', { status: 'ok', itemCount: data.hexes.length });
@@ -2603,7 +2764,7 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setOutages(outages);
       this.ctx.map?.setLayerReady('outages', outages.length > 0);
       ingestOutagesForCII(outages);
-      signalAggregator.ingestOutages(outages);
+      await runSignalAggregator(this.ctx.statusPanel, 'outages', (aggregator) => aggregator.ingestOutages(outages));
       this.ctx.statusPanel?.updateFeed('NetBlocks', { status: 'ok', itemCount: outages.length });
       dataFreshness.recordUpdate('outages', outages.length);
       (this.ctx.panels['internet-disruptions'] as InternetDisruptionsPanel)?.setOutages(outages);
@@ -2640,6 +2801,7 @@ export class DataLoaderManager implements AppModule {
     }
 
     try {
+      const { fetchCyberThreats } = await import('@/services/cyber');
       const threats = await fetchCyberThreats({ limit: 500, days: 14 });
       this.ctx.cyberThreatsCache = threats;
       this.ctx.map?.setCyberThreats(threats);
@@ -2664,7 +2826,7 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setIranEvents(events);
       this.ctx.map?.setLayerReady('iranAttacks', events.length > 0);
       const coerced = events.map(e => ({ ...e, timestamp: Number(e.timestamp) || 0 }));
-      signalAggregator.ingestConflictEvents(coerced);
+      await runSignalAggregator(this.ctx.statusPanel, 'iran conflict events', (aggregator) => aggregator.ingestConflictEvents(coerced));
       ingestStrikesForCII(coerced);
       this.refreshCiiAndBrief();
     } catch {
@@ -2678,14 +2840,15 @@ export class DataLoaderManager implements AppModule {
       const aisStatus = getAisStatus();
       console.log('[Ships] Events:', { disruptions: disruptions.length, density: density.length, vessels: aisStatus.vessels });
       this.ctx.map?.setAisData(disruptions, density);
-      signalAggregator.ingestAisDisruptions(disruptions);
+      this.ctx.intelligenceCache.aisDisruptions = disruptions;
+      await runSignalAggregator(this.ctx.statusPanel, 'AIS disruptions', (aggregator) => aggregator.ingestAisDisruptions(disruptions));
       ingestAisDisruptionsForCII(disruptions);
       this.refreshCiiAndBrief();
       updateAndCheck([
         { type: 'ais_gaps', region: 'global', count: disruptions.length },
-      ]).then(anomalies => {
+      ]).then(async anomalies => {
         if (anomalies.length > 0) {
-          signalAggregator.ingestTemporalAnomalies(anomalies);
+          await runSignalAggregator(this.ctx.statusPanel, 'temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(anomalies));
           ingestTemporalAnomaliesForCII(anomalies);
           this.refreshCiiAndBrief();
         }
@@ -2748,6 +2911,7 @@ export class DataLoaderManager implements AppModule {
 
   async loadCableActivity(): Promise<void> {
     try {
+      const { fetchCableActivity } = await import('@/services/cable-activity');
       const activity = await fetchCableActivity();
       this.ctx.map?.setCableActivity(activity.advisories, activity.repairShips);
       const itemCount = activity.advisories.length + activity.repairShips.length;
@@ -2797,7 +2961,7 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setLayerReady('protests', protestData.events.length > 0);
       ingestProtests(protestData.events);
       ingestProtestsForCII(protestData.events);
-      signalAggregator.ingestProtests(protestData.events);
+      await runSignalAggregator(this.ctx.statusPanel, 'protests', (aggregator) => aggregator.ingestProtests(protestData.events));
       const protestCount = protestData.sources.acled + protestData.sources.gdelt;
       if (protestCount > 0) dataFreshness.recordUpdate('acled', protestCount);
       if (protestData.sources.gdelt > 0) dataFreshness.recordUpdate('gdelt', protestData.sources.gdelt);
@@ -2869,6 +3033,7 @@ export class DataLoaderManager implements AppModule {
 
   async loadFlightDelays(): Promise<void> {
     try {
+      const { fetchFlightDelays } = await import('@/services/aviation');
       const delays = await fetchFlightDelays();
       this.ctx.map?.setFlightDelays(delays);
       this.ctx.map?.setLayerReady('flights', delays.length > 0);
@@ -2908,12 +3073,13 @@ export class DataLoaderManager implements AppModule {
       return;
     }
     try {
-      if (isMilitaryVesselTrackingConfigured()) {
-        initMilitaryVesselStream();
+      const militaryVessels = await getMilitaryVesselsModule();
+      if (militaryVessels.isMilitaryVesselTrackingConfigured()) {
+        militaryVessels.initMilitaryVesselStream();
       }
       const [flightData, vesselData] = await Promise.all([
         fetchMilitaryFlights(),
-        fetchMilitaryVessels(),
+        militaryVessels.fetchMilitaryVessels(),
       ]);
       this.ctx.intelligenceCache.military = {
         flights: flightData.flights,
@@ -2929,14 +3095,16 @@ export class DataLoaderManager implements AppModule {
       ingestFlights(flightData.flights);
       ingestVessels(vesselData.vessels);
       ingestMilitaryForCII(flightData.flights, vesselData.vessels);
-      signalAggregator.ingestFlights(flightData.flights);
-      signalAggregator.ingestVessels(vesselData.vessels);
+      await runSignalAggregator(this.ctx.statusPanel, 'military tracks', (aggregator) => {
+        aggregator.ingestFlights(flightData.flights);
+        aggregator.ingestVessels(vesselData.vessels);
+      });
       updateAndCheck([
         { type: 'military_flights', region: 'global', count: flightData.flights.length },
         { type: 'vessels', region: 'global', count: vesselData.vessels.length },
-      ]).then(anomalies => {
+      ]).then(async anomalies => {
         if (anomalies.length > 0) {
-          signalAggregator.ingestTemporalAnomalies(anomalies);
+          await runSignalAggregator(this.ctx.statusPanel, 'temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(anomalies));
           ingestTemporalAnomaliesForCII(anomalies);
           this.refreshCiiAndBrief();
         }
@@ -2944,18 +3112,7 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.updateMilitaryForEscalation(flightData.flights, vesselData.vessels);
       this.refreshCiiAndBrief();
       if (!isInLearningMode()) {
-        const surgeAlerts = analyzeFlightsForSurge(flightData.flights);
-        if (surgeAlerts.length > 0) {
-          const surgeSignals = surgeAlerts.map(surgeAlertToSignal);
-          addToSignalHistory(surgeSignals);
-          if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(surgeSignals);
-        }
-        const foreignAlerts = detectForeignMilitaryPresence(flightData.flights);
-        if (foreignAlerts.length > 0) {
-          const foreignSignals = foreignAlerts.map(foreignPresenceToSignal);
-          addToSignalHistory(foreignSignals);
-          if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(foreignSignals);
-        }
+        await this.runMilitarySurgeAnalysis(flightData.flights);
       }
 
       this.loadCachedPosturesForBanner();
@@ -2973,10 +3130,35 @@ export class DataLoaderManager implements AppModule {
       this.ctx.statusPanel?.updateApi('OpenSky', { status: 'ok' });
       dataFreshness.recordUpdate('opensky', flightData.flights.length);
     } catch (error) {
+      // A teardown that races an in-flight vessel load is a deliberate
+      // cancellation, not a real fetch failure — leave feed/api state intact.
+      if (isVesselRuntimeStoppedError(error)) return;
       this.ctx.map?.setLayerReady('military', false);
       this.ctx.statusPanel?.updateFeed('Military', { status: 'error', errorMessage: String(error) });
       this.ctx.statusPanel?.updateApi('OpenSky', { status: 'error' });
       dataFreshness.recordError('opensky', String(error));
+    }
+  }
+
+  private async runMilitarySurgeAnalysis(flights: MilitaryFlight[]): Promise<void> {
+    try {
+      // military-surge pulls bases-expanded, so keep it off the eager boot graph
+      // and make its optional enrichment non-fatal to the military fetch path.
+      const { analyzeFlightsForSurge, surgeAlertToSignal, detectForeignMilitaryPresence, foreignPresenceToSignal } = await import('@/services/military-surge');
+      const surgeAlerts = analyzeFlightsForSurge(flights);
+      if (surgeAlerts.length > 0) {
+        const surgeSignals = surgeAlerts.map(surgeAlertToSignal);
+        addToSignalHistory(surgeSignals);
+        if (this.shouldShowIntelligenceNotifications()) this.showSignalNotification(surgeSignals, 'Military surge');
+      }
+      const foreignAlerts = detectForeignMilitaryPresence(flights);
+      if (foreignAlerts.length > 0) {
+        const foreignSignals = foreignAlerts.map(foreignPresenceToSignal);
+        addToSignalHistory(foreignSignals);
+        if (this.shouldShowIntelligenceNotifications()) this.showSignalNotification(foreignSignals, 'Foreign presence');
+      }
+    } catch (error) {
+      console.warn('[Intelligence] Military surge analysis skipped:', error);
     }
   }
 
@@ -3004,6 +3186,7 @@ export class DataLoaderManager implements AppModule {
 
     try {
       economicPanel?.setLoading(true);
+      const { fetchFredData } = await import('@/services/economic');
       const data = await fetchFredData();
 
       const postInfo = getCircuitBreakerCooldownInfo('FRED Batch');
@@ -3036,6 +3219,10 @@ export class DataLoaderManager implements AppModule {
   async loadOilAnalytics(): Promise<void> {
     const energyPanel = this.ctx.panels['energy-complex'] as EnergyComplexPanel | undefined;
     try {
+      const {
+        fetchOilAnalytics, fetchCrudeInventoriesRpc, fetchNatGasStorageRpc,
+        getEuGasStorageData, getOilStocksAnalysisData, fetchLngVulnerability,
+      } = await import('@/services/economic');
       const [data, crudeResp, natGasResp, euGasResp, oilStocksResp] = await Promise.allSettled([
         fetchOilAnalytics(),
         fetchCrudeInventoriesRpc(),
@@ -3108,6 +3295,7 @@ export class DataLoaderManager implements AppModule {
   async loadBisData(): Promise<void> {
     const economicPanel = this.ctx.panels['economic'] as EconomicPanel;
     try {
+      const { fetchBisData } = await import('@/services/economic');
       const data = await fetchBisData();
       economicPanel?.updateBis(data);
       const hasData = data.policyRates?.length > 0;
@@ -3125,6 +3313,7 @@ export class DataLoaderManager implements AppModule {
   async loadBlsData(): Promise<void> {
     const economicPanel = this.ctx.panels['economic'] as EconomicPanel;
     try {
+      const { fetchBlsData } = await import('@/services/economic');
       const data = await fetchBlsData();
       if (data.length > 0) {
         economicPanel?.updateBls(data);
@@ -3149,6 +3338,10 @@ export class DataLoaderManager implements AppModule {
     if (!tradePanel) return;
 
     try {
+      const {
+        fetchTradeRestrictions, fetchTariffTrends, fetchTradeFlows,
+        fetchTradeBarriers, fetchCustomsRevenue, fetchComtradeFlows,
+      } = await import('@/services/trade');
       const [restrictions, tariffs, flows, barriers, revenue, comtrade] = await Promise.allSettled([
         fetchTradeRestrictions([], 50),
         fetchTariffTrends('840', '156', '', 10),
@@ -3198,6 +3391,9 @@ export class DataLoaderManager implements AppModule {
     if (!scPanel) return;
 
     try {
+      const {
+        fetchShippingRates, fetchChokepointStatus, fetchCriticalMinerals, fetchShippingStress,
+      } = await import('@/services/supply-chain');
       const [shipping, chokepoints, minerals, stress] = await Promise.allSettled([
         fetchShippingRates(),
         fetchChokepointStatus(),
@@ -3297,6 +3493,19 @@ export class DataLoaderManager implements AppModule {
     monitorPanel?.renderResults(this.ctx.allNews);
   }
 
+  // Lazy-load the tech-activity service (→ tech-hub-index → the ~62KB tech-geo
+  // table) only when the lazy tech-hubs panel is mounted, so the table stays off
+  // the eager dashboard critical path. Non-critical panel data — degrade silently
+  // on load failure. (#4404)
+  private applyTechHubActivities(): void {
+    const techHubsPanel = this.ctx.panels['tech-hubs'] as TechHubsPanel | undefined;
+    if (!techHubsPanel) return;
+    const clusters = this.ctx.latestClusters;
+    void import('@/services/tech-activity')
+      .then(({ getTopActiveHubs }) => techHubsPanel.setActivities(getTopActiveHubs(clusters)))
+      .catch(() => { /* non-critical */ });
+  }
+
   async runCorrelationAnalysis(): Promise<void> {
     try {
       if (this.ctx.latestClusters.length === 0 && this.ctx.allNews.length > 0) {
@@ -3311,8 +3520,7 @@ export class DataLoaderManager implements AppModule {
         this.refreshCiiAndBrief();
         (this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined)
           ?.setActivities(getTopActiveGeoHubs(this.ctx.latestClusters));
-        (this.ctx.panels['tech-hubs'] as TechHubsPanel | undefined)
-          ?.setActivities(getTopActiveHubs(this.ctx.latestClusters));
+        this.applyTechHubActivities();
       }
 
       const signals = await analysisWorker.analyzeCorrelations(
@@ -3327,11 +3535,11 @@ export class DataLoaderManager implements AppModule {
         geoSignals = geoAlerts.map(geoConvergenceToSignal);
       }
 
-      const keywordSpikeSignals = drainTrendingSignals();
+      const keywordSpikeSignals = await drainTrendingSignalQueue();
       const allSignals = [...signals, ...geoSignals, ...keywordSpikeSignals];
       if (allSignals.length > 0) {
         addToSignalHistory(allSignals);
-        if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(allSignals);
+        if (this.shouldShowIntelligenceNotifications()) this.showSignalNotification(allSignals, 'Correlation');
       }
     } catch (error) {
       console.error('[App] Correlation analysis failed:', error);
@@ -3359,7 +3567,8 @@ export class DataLoaderManager implements AppModule {
           acq_date: new Date(f.detectedAt).toISOString().slice(0, 10),
         }));
 
-        signalAggregator.ingestSatelliteFires(satelliteFires);
+        this.ctx.intelligenceCache.satelliteFires = satelliteFires;
+        await runSignalAggregator(this.ctx.statusPanel, 'satellite fires', (aggregator) => aggregator.ingestSatelliteFires(satelliteFires));
         ingestSatelliteFiresForCII(satelliteFires);
         this.refreshCiiAndBrief();
 
@@ -3369,6 +3578,7 @@ export class DataLoaderManager implements AppModule {
 
         dataFreshness.recordUpdate('firms', totalCount);
       } else {
+        this.ctx.intelligenceCache.satelliteFires = [];
         ingestSatelliteFiresForCII([]);
         this.refreshCiiAndBrief();
         (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update([], 0);
@@ -3573,6 +3783,7 @@ export class DataLoaderManager implements AppModule {
   }
 
   private async loadRenewableData(): Promise<void> {
+    const { fetchRenewableEnergyData, fetchEnergyCapacity } = await import('@/services/renewable-energy-data');
     const data = await fetchRenewableEnergyData();
     this.callPanel('renewable', 'setData', data);
     if (SITE_VARIANT === 'happy' && data?.globalPercentage) {
@@ -3607,7 +3818,7 @@ export class DataLoaderManager implements AppModule {
       const result = await fetchSanctionsPressure();
       this.callPanel('sanctions-pressure', 'setData', result);
       this.ctx.intelligenceCache.sanctions = result;
-      signalAggregator.ingestSanctionsPressure(result.countries);
+      await runSignalAggregator(this.ctx.statusPanel, 'sanctions pressure', (aggregator) => aggregator.ingestSanctionsPressure(result.countries));
       ingestSanctionsForCII(result.countries);
       if (result.totalCount > 0) {
         dataFreshness.recordUpdate('sanctions_pressure', result.totalCount);
@@ -3648,7 +3859,7 @@ export class DataLoaderManager implements AppModule {
       const anomalies = result.observations.filter((observation) => observation.severity !== 'normal');
       this.callPanel('radiation-watch', 'setData', result);
       this.ctx.intelligenceCache.radiation = result;
-      signalAggregator.ingestRadiationObservations(result.observations);
+      await runSignalAggregator(this.ctx.statusPanel, 'radiation observations', (aggregator) => aggregator.ingestRadiationObservations(result.observations));
       this.ctx.map?.setRadiationObservations(anomalies);
       this.ctx.map?.setLayerReady('radiationWatch', anomalies.length > 0);
       if (result.observations.length > 0) {

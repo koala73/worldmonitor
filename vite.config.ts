@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import type { OutputBundle } from 'rollup';
 import { resolve, dirname, extname } from 'path';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { brotliCompress } from 'zlib';
@@ -12,6 +13,7 @@ import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
 
 const brotliCompressAsync = promisify(brotliCompress);
 const BROTLI_EXTENSIONS = new Set(['.js', '.mjs', '.css', '.html', '.svg', '.json', '.txt', '.xml', '.wasm']);
+const STATIC_SCRIPT_NONCE = 'wm-static-bootstrap';
 
 // @clerk/clerk-js is loaded as a UMD bundle from the Clerk Frontend API at
 // runtime (src/services/clerk.ts), not bundled. Resolve the version from
@@ -55,12 +57,25 @@ type PanelManualChunkName = PanelChunkName | PanelSupportChunkName;
 // (filter regex is built from this list). Keeping them tied prevents the
 // silent-breakage failure mode where renaming a chunk in `manualChunks`
 // re-eagerises the WebGL stack without any build-time error.
-//   - maplibre, deck-stack: heavy WebGL deps, only reachable via MapContainer
+//   - maplibre, deck-stack, protomaps: heavy WebGL deps, only reachable via MapContainer
 //   - MapContainer: the dynamic-import target itself
 //   - panels-*: panel domain chunks; keep them out of the entry HTML preload
-const LAZY_HTML_PRELOAD_CHUNKS = ['maplibre', 'deck-stack', 'MapContainer', ...PANEL_CHUNK_NAMES, ...PANEL_SUPPORT_CHUNK_NAMES] as const;
+//   - UnifiedSettings, settings-window, checkout: secondary interaction flows;
+//     first paint only needs their header buttons and cheap event wiring
+const LAZY_HTML_PRELOAD_CHUNKS = [
+  'maplibre',
+  'deck-stack',
+  'protomaps',
+  'h3-js',
+  'MapContainer',
+  'UnifiedSettings',
+  'settings-window',
+  'checkout',
+  ...PANEL_CHUNK_NAMES,
+  ...PANEL_SUPPORT_CHUNK_NAMES,
+] as const;
 const LAZY_HTML_PRELOAD_RE = new RegExp(
-  `/(${LAZY_HTML_PRELOAD_CHUNKS.join('|')})-[A-Za-z0-9_-]+\\.js$`,
+  `/(?:${LAZY_HTML_PRELOAD_CHUNKS.join('|')}|rpc-client-[A-Za-z0-9_-]+)-[A-Za-z0-9_-]+\\.js$`,
 );
 
 // Panel-cluster manualChunks map. Splits the previously monolithic ~2.3MB
@@ -276,9 +291,47 @@ function dashboardHtmlOutputPlugin(): Plugin {
       const [bundleKey, dashboardHtml] = dashboardEntry;
       delete bundle[bundleKey];
       dashboardHtml.fileName = 'dashboard.html';
+      if (typeof dashboardHtml.source === 'string') {
+        dashboardHtml.source = deferDashboardStylesheetLinks(dashboardHtml.source, bundle);
+      }
       bundle['dashboard.html'] = dashboardHtml;
     },
   };
+}
+
+function shouldDeferDashboardStylesheet(tag: string, bundle: OutputBundle): boolean {
+  const href = tag.match(/\bhref=["']([^"']+\.css)["']/i)?.[1];
+  if (!href) return false;
+
+  const bundleKey = href.replace(/^\//, '');
+  const asset = bundle[bundleKey];
+  if (!asset || asset.type !== 'asset') return false;
+
+  const sourceLength = typeof asset.source === 'string'
+    ? Buffer.byteLength(asset.source)
+    : asset.source.byteLength;
+  return sourceLength >= 100 * 1024;
+}
+
+// Rewrite large render-blocking dashboard <link rel=stylesheet> tags into a
+// deferred form (media="print" + data-wm-deferred-style="dashboard") plus a
+// <noscript> copy of the original blocking link, so the ~492KB app CSS no
+// longer blocks first paint. src/main.ts activateDeferredDashboardStyles()
+// flips media -> "all" at startup; the attribute name + values written here MUST
+// stay in lockstep with that runtime selector. Only assets >=100KB are deferred
+// (shouldDeferDashboardStylesheet) so small stylesheets stay blocking; links
+// that already set media= (an intentionally print/screen-scoped sheet) or are
+// already deferred are skipped. NOTE: during the defer window only the UNLAYERED
+// inline critical CSS in index.html applies (the bundle is @layer base), so any
+// future *unconditional* inline rule will beat the bundle (see PR #4346) — keep
+// inline rules scoped to a transient/closed state.
+function deferDashboardStylesheetLinks(html: string, bundle: OutputBundle): string {
+  return html.replace(/<link\b(?=[^>]*\brel=["']stylesheet["'])(?=[^>]*\bhref=["'][^"']+\.css["'])[^>]*>/gi, (tag) => {
+    if (/\bdata-wm-deferred-style=/.test(tag) || /\bmedia=/.test(tag)) return tag;
+    if (!shouldDeferDashboardStylesheet(tag, bundle)) return tag;
+    const deferredTag = tag.replace(/\s*\/?>$/, ' media="print" data-wm-deferred-style="dashboard">');
+    return `${deferredTag}\n    <noscript>${tag}</noscript>`;
+  });
 }
 
 function polymarketPlugin(): Plugin {
@@ -827,12 +880,24 @@ export default defineConfig(({ mode }) => {
   // available to the dev server plugins and server-side handlers.
   Object.assign(process.env, env);
 
+  // Dev-server port: DEV_PORT overrides the 3000 default. Reject non-integer or
+  // out-of-range values (fall back to 3000) so a typo can't crash Vite's listen()
+  // with ERR_SOCKET_BAD_PORT. Not VITE_-prefixed, so it never reaches the client bundle.
+  const parsedDevPort = Number(env.DEV_PORT);
+  const devPort =
+    Number.isInteger(parsedDevPort) && parsedDevPort >= 1 && parsedDevPort <= 65535
+      ? parsedDevPort
+      : 3000;
+
   const isE2E = process.env.VITE_E2E === '1';
   const isDesktopBuild = process.env.VITE_DESKTOP_RUNTIME === '1';
   const activeVariant = process.env.VITE_VARIANT || 'full';
   const activeMeta = VARIANT_META[activeVariant] || VARIANT_META.full;
 
   return {
+    html: {
+      cspNonce: STATIC_SCRIPT_NONCE,
+    },
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version),
       // Resolved + build-time validated above (devDependencies fallback +
@@ -878,6 +943,10 @@ export default defineConfig(({ mode }) => {
           'favico/apple-touch-icon.png',
           'favico/favicon-32x32.png',
         ],
+        // Manifest install icons stay advertised in manifest.webmanifest, but
+        // they are fetched on demand instead of forced into first-visit SW
+        // precache with the rest of the dashboard shell.
+        includeManifestIcons: false,
 
         manifest: {
           name: `${activeMeta.siteName} - ${activeMeta.subject}`,
@@ -899,7 +968,18 @@ export default defineConfig(({ mode }) => {
 
         workbox: {
           globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
-          globIgnores: ['**/ml*.js', '**/onnx*.wasm', '**/locale-*.js', '**/clerk-*.js'],
+          globIgnores: [
+            '**/ml*.js',
+            '**/onnx*.wasm',
+            '**/locale-*.js',
+            '**/clerk-*.js',
+            // Keep off-page/static-heavy public assets out of the dashboard's
+            // first-visit precache. The small root favicons above remain
+            // explicit includeAssets entries.
+            'pro/**',
+            'favico/**',
+            'textures/**',
+          ],
           // globe.gl + three.js grows main bundle past the 2 MiB default limit
           maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
           navigateFallback: null,
@@ -957,23 +1037,6 @@ export default defineConfig(({ mode }) => {
               options: {
                 cacheName: 'protomaps-assets',
                 expiration: { maxEntries: 100, maxAgeSeconds: 365 * 24 * 60 * 60 },
-                cacheableResponse: { statuses: [0, 200] },
-              },
-            },
-            {
-              urlPattern: /^https:\/\/fonts\.googleapis\.com\//,
-              handler: 'StaleWhileRevalidate',
-              options: {
-                cacheName: 'google-fonts-css',
-                expiration: { maxEntries: 10, maxAgeSeconds: 365 * 24 * 60 * 60 },
-              },
-            },
-            {
-              urlPattern: /^https:\/\/fonts\.gstatic\.com\//,
-              handler: 'CacheFirst',
-              options: {
-                cacheName: 'google-fonts-woff',
-                expiration: { maxEntries: 30, maxAgeSeconds: 365 * 24 * 60 * 60 },
                 cacheableResponse: { statuses: [0, 200] },
               },
             },
@@ -1075,15 +1138,20 @@ export default defineConfig(({ mode }) => {
               // (top of file). The resolveDependencies filter relies on this string
               // identity; renaming here without updating the constant silently
               // re-eagerises the WebGL stack into the entry HTML's modulepreload list.
-              if (id.includes('/maplibre-gl/') || id.includes('/pmtiles/') || id.includes('/@protomaps/basemaps/')) {
+              if (id.includes('/maplibre-gl/')) {
                 return 'maplibre';
+              }
+              if (id.includes('/pmtiles/') || id.includes('/@protomaps/basemaps/')) {
+                return 'protomaps';
+              }
+              if (id.includes('/h3-js/')) {
+                return 'h3-js';
               }
               if (
                 id.includes('/@deck.gl/')
                 || id.includes('/@luma.gl/')
                 || id.includes('/@loaders.gl/')
                 || id.includes('/@math.gl/')
-                || id.includes('/h3-js/')
               ) {
                 return 'deck-stack';
               }
@@ -1104,6 +1172,79 @@ export default defineConfig(({ mode }) => {
                 // lets Workbox keep the large auth SDK out of precache.
                 return 'clerk';
               }
+            }
+            // Large static config DATA TABLE (~62KB) with only lazy consumers
+            // (search/map/globe/tech-hub services). Isolating it keeps it off the
+            // eager entry now that the @/config barrel no longer re-exports its
+            // values and data-loader lazy-loads the tech-activity chain. Pure
+            // data (type-only imports) → no unmatched-static-dep circular risk. (#4404)
+            if (id.endsWith('/src/config/tech-geo.ts')) {
+              return 'tech-geo-data';
+            }
+            // airports table (~14KB) — only consumer is the lazy AviationCommandBar
+            // (imports directly); kept off the eager @/config barrel above. (#4404)
+            if (id.endsWith('/src/config/airports.ts')) {
+              return 'airports-data';
+            }
+            // ai-datacenters table (~86KB) — consumers (map/globe/search) import
+            // directly and are lazy; related-assets lazy-imports it. Kept off the
+            // eager @/config barrel above. (#4404)
+            if (id.endsWith('/src/config/ai-datacenters.ts')) {
+              return 'ai-datacenters-data';
+            }
+            // geo-map table bulk (~150KB: UNDERSEA_CABLES + NUCLEAR_FACILITIES +
+            // ECONOMIC_CENTERS/SPACEPORTS/CRITICAL_MINERALS/SANCTIONED_*/MAP_URLS).
+            // Map/globe/search consumers import directly (lazy); the eager
+            // related-assets/infrastructure-cascade/cable-activity chains
+            // lazy-cache it. Kept off the eager @/config barrel above. (#4404)
+            if (id.endsWith('/src/config/geo-map.ts')) {
+              return 'geo-map-data';
+            }
+            // Military-bases bulk (~48KB MILITARY_BASES_EXPANDED + merged
+            // MILITARY_BASES). geo.ts no longer imports it; eager consumers
+            // (country-intel, related-assets, data-loader→military-surge)
+            // lazy-load it via dynamic import. Kept off the eager @/config
+            // barrel. Co-chunk both files so the merged list and its raw data
+            // ship together off the entry chunk. (#4478)
+            if (id.endsWith('/src/config/military-bases.ts') || id.endsWith('/src/config/bases-expanded.ts')) {
+              return 'military-bases-data';
+            }
+            // Correlation engine (engine + 4 adapters) is dynamic-imported at its
+            // post-loadAllData run site in App.ts (#4486), so it already forms a lazy
+            // chunk; this rule only gives that chunk a STABLE name — the dir-index
+            // would otherwise emit an ambiguous `index-*.js` the eager-chunk guard
+            // can't pin. Naming only; the deferral is the call-site import().
+            if (id.includes('/src/services/correlation-engine/')) {
+              return 'correlation-engine';
+            }
+            // Post-paint service tail split (#4487). These files are dynamic-imported
+            // from data-loader/country-intel/SignalModal; stable names let the
+            // dist guard prove they stay out of main rather than merely grepping src.
+            if (id.endsWith('/src/services/rss.ts')) {
+              return 'rss';
+            }
+            if (id.endsWith('/src/services/trending-keywords.ts')) {
+              return 'trending-keywords';
+            }
+            if (id.endsWith('/src/services/daily-market-brief.ts')) {
+              return 'daily-market-brief';
+            }
+            if (id.endsWith('/src/services/signal-aggregator.ts')) {
+              return 'signal-aggregator';
+            }
+            if (id.endsWith('/src/services/military-vessels.ts')) {
+              return 'military-vessels';
+            }
+            if (id.endsWith('/src/services/cross-module-integration.ts')) {
+              return 'cross-module-integration';
+            }
+            // Generated protobuf/RPC client modules are loaded through
+            // src/services/generated-rpc-clients.ts so real constructors parse only
+            // on first RPC use. Stable names let the eager-chunk guard prove they
+            // stay out of the dashboard entry and HTML modulepreload list. (#4493)
+            const rpcClientMatch = id.match(/\/src\/generated\/client\/worldmonitor\/(.+)\/service_client\.ts$/);
+            if (rpcClientMatch) {
+              return `rpc-client-${rpcClientMatch[1].replace(/_/g, '-').replace(/\//g, '-')}`;
             }
             // Co-locate the deck.gl renderer with the deck vendor chunk so
             // onlyExplicitManualChunks cannot split deck's transitive deps
@@ -1129,7 +1270,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      port: 3000,
+      port: devPort,
       open: !isE2E,
       hmr: isE2E ? false : undefined,
       watch: {

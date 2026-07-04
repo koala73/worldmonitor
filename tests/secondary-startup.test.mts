@@ -4,11 +4,18 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { buildDashboardFontStylesheetHref, scheduleAfterFirstPaint } from '../src/bootstrap/secondary-startup.ts';
+import { dashboardFontFamilies } from '../src/bootstrap/secondary-startup.ts';
+import { scheduleAfterFirstPaint } from '../src/utils/after-paint.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 const indexHtml = readFileSync(resolve(root, 'index.html'), 'utf8');
+const vercelConfig = JSON.parse(readFileSync(resolve(root, 'vercel.json'), 'utf8'));
+const dashboardCsp = vercelConfig.headers
+  .find((entry: { source: string }) => entry.source === '/((?!docs|embed|embed\\.html).*)')
+  ?.headers
+  ?.find((header: { key: string }) => header.key === 'Content-Security-Policy')
+  ?.value ?? '';
 const activeMarkup = indexHtml.replace(/<!--[\s\S]*?-->/g, '');
 
 describe('secondary dashboard startup', () => {
@@ -40,40 +47,30 @@ describe('secondary dashboard startup', () => {
     );
   });
 
-  it('retains CSP permission for the deferred loaders', () => {
-    assert.match(indexHtml, /script-src[^;]*https:\/\/abacus\.worldmonitor\.app/);
-    assert.match(indexHtml, /style-src[^;]*https:\/\/fonts\.googleapis\.com/);
-    assert.match(indexHtml, /font-src[^;]*https:/);
+  it('keeps secondary startup script hosts out of the dashboard script-src allowlist', () => {
+    const scriptSrc = dashboardCsp.match(/script-src\s+([^;]+)/)?.[1] ?? '';
+    assert.match(scriptSrc, /'strict-dynamic'/);
+    assert.doesNotMatch(scriptSrc, /https:\/\/abacus\.worldmonitor\.app/);
+    assert.doesNotMatch(scriptSrc, /https:\/\/static\.cloudflareinsights\.com/);
+    assert.doesNotMatch(dashboardCsp, /style-src[^;]*https:\/\/fonts\.googleapis\.com/);
+    assert.match(dashboardCsp, /font-src[^;]*'self'/);
+    assert.doesNotMatch(dashboardCsp, /font-src[^;]*https:/);
   });
 
-  it('does not request dashboard fonts for the default English dashboard', () => {
-    assert.equal(
-      buildDashboardFontStylesheetHref({ variant: 'full', lang: 'en', dir: '' }),
-      null,
-    );
+  it('does not load any web font for the default English dashboard', () => {
+    assert.deepEqual(dashboardFontFamilies({ variant: 'full', lang: 'en', dir: '' }), []);
   });
 
-  it('narrows happy dashboard fonts to the weights the UI uses', () => {
-    const href = buildDashboardFontStylesheetHref({ variant: 'happy', lang: 'en', dir: '' });
-    assert.equal(href, 'https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400;0,600;0,700;1,400&display=swap');
-    assert.equal(href?.includes('300'), false);
-    assert.equal(href?.includes('ital'), true);
+  it('loads only Nunito for the happy dashboard', () => {
+    assert.deepEqual(dashboardFontFamilies({ variant: 'happy', lang: 'en', dir: '' }), ['nunito']);
   });
 
-  it('narrows Arabic dashboard fonts without loading happy fonts by default', () => {
-    const href = buildDashboardFontStylesheetHref({ variant: 'full', lang: 'ar', dir: 'rtl' });
-    assert.equal(href, 'https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
-    assert.equal(href?.includes('Nunito'), false);
-    assert.equal(href?.includes('200'), false);
-    assert.equal(href?.includes('800'), false);
-    assert.equal(href?.includes('900'), false);
+  it('loads only Tajawal for the Arabic dashboard, not happy fonts', () => {
+    assert.deepEqual(dashboardFontFamilies({ variant: 'full', lang: 'ar', dir: 'rtl' }), ['tajawal']);
   });
 
-  it('combines only the needed families for the Arabic happy dashboard', () => {
-    assert.equal(
-      buildDashboardFontStylesheetHref({ variant: 'happy', lang: 'ar', dir: 'rtl' }),
-      'https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400;0,600;0,700;1,400&family=Tajawal:wght@400;500;700&display=swap',
-    );
+  it('combines Nunito + Tajawal for the Arabic happy dashboard', () => {
+    assert.deepEqual(dashboardFontFamilies({ variant: 'happy', lang: 'ar', dir: 'rtl' }), ['nunito', 'tajawal']);
   });
 });
 

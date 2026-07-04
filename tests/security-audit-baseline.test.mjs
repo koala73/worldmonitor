@@ -82,6 +82,19 @@ describe('security audit baseline', () => {
     ]);
   });
 
+  it('keeps consumer-prices-core on the Fastify v5 audit fix', () => {
+    const packageJson = readRepoJson('consumer-prices-core/package.json');
+    const lockfile = readRepoJson('consumer-prices-core/package-lock.json');
+
+    assert.match(packageJson.dependencies.fastify, /^\^5\./);
+    assert.match(packageJson.dependencies['@fastify/cors'], /^\^11\./);
+    assert.match(packageJson.dependencies['js-yaml'], /^\^4\.(?:[2-9]|\d{2,})\./);
+    assert.match(lockfile.packages['node_modules/fastify']?.version, /^5\./);
+    assert.match(lockfile.packages['node_modules/@fastify/cors']?.version, /^11\./);
+    assert.match(lockfile.packages['node_modules/js-yaml']?.version, /^4\.(?:[2-9]|\d{2,})\./);
+    assert.deepEqual(BASELINE_ADVISORIES_BY_LOCKFILE['consumer-prices-core/package-lock.json'], []);
+  });
+
   it('keeps the root esbuild audit fix scoped away from Vite build tooling', () => {
     const packageJson = readRepoJson('package.json');
     const lockfile = readRepoJson('package-lock.json');

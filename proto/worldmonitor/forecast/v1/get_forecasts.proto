@@ -6,7 +6,9 @@ import "sebuf/http/annotations.proto";
 import "worldmonitor/forecast/v1/forecast.proto";
 
 message GetForecastsRequest {
+  // Forecast domain to retrieve, such as geopolitics, markets, or climate.
   string domain = 1 [(sebuf.http.query) = { name: "domain" }];
+  // Optional geographic or thematic region filter for forecasts.
   string region = 2 [(sebuf.http.query) = { name: "region" }];
 }
 

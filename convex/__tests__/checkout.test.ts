@@ -2,6 +2,7 @@ import { convexTest } from "convex-test";
 import { expect, test, describe } from "vitest";
 import schema from "../schema";
 import { api, internal } from "../_generated/api";
+import { PRODUCT_CATALOG } from "../config/productCatalog";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -209,5 +210,117 @@ describe("E2E checkout-to-entitlement contract", () => {
     expect(entitlements.features.tier).toBe(0);
     expect(entitlements.features.apiAccess).toBe(false);
     expect(entitlements.validUntil).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #4438 — pending-payment guard enforcement in the checkout action. The blocked
+// path returns BEFORE any Dodo/signing call, so it is testable without a Dodo
+// key. DODO_API_KEY / DODO_IDENTITY_SIGNING_SECRET are intentionally unset in
+// the test env, so any path that reaches _createCheckoutSession rejects — which
+// is exactly how we prove the bypass and different-tier paths got PAST the guard.
+// ---------------------------------------------------------------------------
+
+const NOW = Date.now();
+const MIN_MS = 60 * 1000;
+
+async function seedPendingPayment(
+  t: ReturnType<typeof convexTest>,
+  opts: { planKey: string; suffix: string; occurredAt?: number },
+) {
+  await t.run(async (ctx) => {
+    await ctx.db.insert("paymentEvents", {
+      userId: TEST_USER_ID,
+      dodoPaymentId: `pay_pending_${opts.suffix}`,
+      type: "charge",
+      amount: 3999,
+      currency: "USD",
+      status: "requires_customer_action",
+      planKey: opts.planKey,
+      rawPayload: {},
+      occurredAt: opts.occurredAt ?? NOW - 2 * MIN_MS,
+    });
+  });
+}
+
+describe("checkout action pending-payment enforcement (#4438)", () => {
+  test("internalCreateCheckout returns a PAYMENT_IN_PROGRESS block for a recent pending same-tier payment", async () => {
+    const t = convexTest(schema, modules);
+    await seedPendingPayment(t, { planKey: "pro_monthly", suffix: "block" });
+
+    const result = await t.action(
+      internal.payments.checkout.internalCreateCheckout,
+      {
+        userId: TEST_USER_ID,
+        productId: PRODUCT_CATALOG.pro_annual.dodoProductId!,
+      },
+    );
+
+    expect(result).toMatchObject({
+      blocked: true,
+      code: "PAYMENT_IN_PROGRESS",
+    });
+  });
+
+  test("subscription guard wins: an active same-tier subscription is returned before the pending guard fires", async () => {
+    const t = convexTest(schema, modules);
+    // Both a pending payment AND an active subscription in the Pro tier group.
+    await seedPendingPayment(t, { planKey: "pro_monthly", suffix: "precedence" });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: TEST_USER_ID,
+        dodoSubscriptionId: "sub_precedence_001",
+        dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: NOW - 5 * MIN_MS,
+        currentPeriodEnd: NOW + 30 * 24 * 60 * MIN_MS,
+        rawPayload: {},
+        updatedAt: NOW,
+      });
+    });
+
+    const result = await t.action(
+      internal.payments.checkout.internalCreateCheckout,
+      {
+        userId: TEST_USER_ID,
+        productId: PRODUCT_CATALOG.pro_annual.dodoProductId!,
+      },
+    );
+
+    expect(result).toMatchObject({
+      blocked: true,
+      code: "ACTIVE_SUBSCRIPTION_EXISTS",
+    });
+  });
+
+  test("bypassPendingGuard skips the pending block (reaches session creation)", async () => {
+    const t = convexTest(schema, modules);
+    await seedPendingPayment(t, { planKey: "pro_monthly", suffix: "bypass" });
+
+    // With bypass, the guard is skipped; the action proceeds to session
+    // creation, which rejects because Dodo/signing secrets are unset in tests.
+    // The point is that it did NOT short-circuit with a PAYMENT_IN_PROGRESS block.
+    await expect(
+      t.action(internal.payments.checkout.internalCreateCheckout, {
+        userId: TEST_USER_ID,
+        productId: PRODUCT_CATALOG.pro_annual.dodoProductId!,
+        bypassPendingGuard: true,
+      }),
+    ).rejects.toThrow();
+  });
+
+  test("a pending Pro payment does not block an API checkout (different tier group)", async () => {
+    const t = convexTest(schema, modules);
+    await seedPendingPayment(t, { planKey: "pro_monthly", suffix: "cross_tier" });
+
+    // Different tier group → pending guard does not fire → proceeds to session
+    // creation → rejects on the missing Dodo/signing secrets (never returns a block).
+    await expect(
+      t.action(internal.payments.checkout.internalCreateCheckout, {
+        userId: TEST_USER_ID,
+        productId: PRODUCT_CATALOG.api_starter.dodoProductId!,
+      }),
+    ).rejects.toThrow();
   });
 });

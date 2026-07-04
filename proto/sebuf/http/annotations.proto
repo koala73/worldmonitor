@@ -89,4 +89,9 @@ extend google.protobuf.FieldOptions {
   // Use INT64_ENCODING_NUMBER for timestamp fields (Unix epoch milliseconds)
   // that safely fit within JavaScript's Number.MAX_SAFE_INTEGER.
   Int64Encoding int64_encoding = 50010;
+
+  // Marks a declared HTTP query field as accepted by the API surface but not
+  // currently implemented by the handler. Field comments must disclose the
+  // accepted-but-ignored/no-op behavior so generated OpenAPI stays honest.
+  bool unimplemented = 50011;
 }

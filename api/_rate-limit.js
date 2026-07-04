@@ -2,6 +2,15 @@ import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
+import {
+  RATE_LIMIT_DEGRADED_HEADERS,
+  getClientIp,
+} from './_client-ip.js';
+export {
+  RATE_LIMIT_DEGRADED_HEADERS,
+  UNKNOWN_CLIENT_IP,
+  getClientIp,
+} from './_client-ip.js';
 
 // @upstash/redis defaults to 5 retries with exponential backoff (~4.3s total)
 // before surfacing an unreachable-Redis error. Under the node test runner
@@ -28,43 +37,6 @@ function getRatelimit() {
   });
 
   return ratelimit;
-}
-
-// Sentinel returned when no trusted client-IP header is present. Routed
-// through the Upstash limiter as a single shared bucket so the entire
-// "no trusted identity" population is naturally rate-limited together —
-// an attacker who strips cf-connecting-ip / x-real-ip can no longer rotate
-// identities by toggling x-forwarded-for. (#3531) Mirrors the constant in
-// server/_shared/rate-limit.ts.
-export const UNKNOWN_CLIENT_IP = 'unknown';
-
-// Marker headers set on every degraded (fail-closed) response so observability
-// can correlate "rate-limit unavailable" windows with downstream behaviour
-// without parsing the JSON body. Mirrors RATE_LIMIT_DEGRADED_HEADERS in
-// server/_shared/rate-limit.ts.
-export const RATE_LIMIT_DEGRADED_HEADERS = Object.freeze({
-  'X-RateLimit-Mode': 'degraded',
-  'Retry-After': '5',
-});
-
-export function getClientIp(request) {
-  // With Cloudflare proxy → Vercel, x-real-ip is the CF edge IP (shared
-  // across users). cf-connecting-ip is the actual client IP set by
-  // Cloudflare — prefer it.
-  //
-  // x-forwarded-for is client-settable and MUST NOT be trusted for rate
-  // limiting (#3531) — without that fallback removed, a caller bypassing
-  // CF entirely (direct request) could rotate identities by toggling the
-  // header and beat the per-IP window. When neither trusted header is
-  // present we return the UNKNOWN_CLIENT_IP sentinel so Upstash treats
-  // the whole untrusted-identity population as one shared bucket.
-  //
-  // Trim each header value before falling through — a whitespace-only
-  // cf-connecting-ip would otherwise short-circuit past x-real-ip.
-  // (Mirrors getClientIp in server/_shared/rate-limit.ts.)
-  const cf = (request.headers.get('cf-connecting-ip') ?? '').trim();
-  const xr = (request.headers.get('x-real-ip') ?? '').trim();
-  return cf || xr || UNKNOWN_CLIENT_IP;
 }
 
 // Decide the Sentry level for a degraded-rate-limit capture. Upstash runtime

@@ -1,6 +1,8 @@
 import { isSessionTokenShape, validateSessionToken } from './_session.js';
 import { timingSafeIncludes } from './_crypto.js';
 
+export const USER_API_KEY_GATEWAY_VALIDATION_ERROR = 'User API key requires gateway validation';
+
 const DESKTOP_ORIGIN_PATTERNS = [
   /^https?:\/\/tauri\.localhost(:\d+)?$/,
   /^https?:\/\/[a-z0-9-]+\.tauri\.localhost(:\d+)?$/i,
@@ -10,6 +12,10 @@ const DESKTOP_ORIGIN_PATTERNS = [
 
 function isDesktopOrigin(origin) {
   return Boolean(origin) && DESKTOP_ORIGIN_PATTERNS.some(p => p.test(origin));
+}
+
+export function getHeaderApiKey(req) {
+  return req.headers.get('X-WorldMonitor-Key') || req.headers.get('X-Api-Key') || '';
 }
 
 async function isValidEnterpriseKey(key) {
@@ -55,7 +61,7 @@ function getCookie(req, name) {
 // All call sites await this — see grep for migration history.
 export async function validateApiKey(req, options = {}) {
   const forceKey = options.forceKey === true;
-  const headerKey = req.headers.get('X-WorldMonitor-Key') || req.headers.get('X-Api-Key') || '';
+  const headerKey = getHeaderApiKey(req);
   const sessionCookie = getCookie(req, 'wm-session');
   const testerCookie = getCookie(req, 'wm-pro-key') || getCookie(req, 'wm-widget-key');
   const key = headerKey || testerCookie || sessionCookie;
@@ -102,7 +108,7 @@ export async function validateApiKey(req, options = {}) {
   // table. We must return required:true / valid:false for the gateway's
   // fallback at server/gateway.ts:~440 to trigger validateUserApiKey().
   if (key && key.startsWith('wm_')) {
-    return { valid: false, required: true, error: 'User API key requires gateway validation' };
+    return { valid: false, required: true, error: USER_API_KEY_GATEWAY_VALIDATION_ERROR };
   }
 
   // Non-wm_ key that isn't in the enterprise allowlist.

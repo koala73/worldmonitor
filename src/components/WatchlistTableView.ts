@@ -16,6 +16,23 @@
 // localStorage — keeps the surface narrow).
 
 import { escapeHtml } from '@/utils/sanitize';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
+const VIRTUALIZE_ROW_THRESHOLD = 100;
+// MUST stay in sync with the pinned `--watchlist-row-height` custom property /
+// `.watchlist-row` height in panels.css. The CSS pins each data row to exactly
+// this height (single line, no wrap) so the spacer pixel math and the
+// scroll→index mapping below are exact instead of drifting with cell content.
+const VIRTUAL_ROW_HEIGHT_PX = 33;
+const VIRTUAL_VISIBLE_ROWS = 32;
+const VIRTUAL_OVERSCAN_ROWS = 6;
+
+// rAF gate that degrades to a 16ms timeout where rAF is unavailable (non-browser
+// hosts). bind() only runs in the browser, but this keeps the path defensive.
+const scheduleFrame: (cb: () => void) => void =
+  typeof requestAnimationFrame === 'function'
+    ? (cb) => { requestAnimationFrame(cb); }
+    : (cb) => { setTimeout(cb, 16); };
 
 export interface WatchlistColumn<T> {
   // Stable HTML-attribute-safe key. Used in data-sortkey attributes.
@@ -69,11 +86,21 @@ export interface WatchlistConfig<T> {
 
 export class WatchlistTableView<T> {
   private items: T[] = [];
+  // Single-slot memo of the filtered+sorted list, keyed on the inputs that
+  // affect it. Pure-scroll window shifts reuse it instead of re-running
+  // .slice()+filter+.sort() on every frame. Self-invalidates when items,
+  // sort, filter, or search change (the key no longer matches).
+  private sortedCache: { sort: string; filter: string; search: string; items: T[]; result: T[] } | null = null;
+  // Guards the scroll handler so at most one window update runs per frame.
+  private scrollRafPending = false;
   private state: {
     sort: string;
     filter: string;
     search: string;
     expandedKey: string | null;
+    virtualStart: number;
+    virtualScrollTop: number;
+    expandedDetailHeight: number;
   };
 
   constructor(private config: WatchlistConfig<T>) {
@@ -82,6 +109,9 @@ export class WatchlistTableView<T> {
       filter: config.defaultFilter,
       search: '',
       expandedKey: null,
+      virtualStart: 0,
+      virtualScrollTop: 0,
+      expandedDetailHeight: 0,
     };
   }
 
@@ -91,7 +121,10 @@ export class WatchlistTableView<T> {
     // (e.g. watchlist editor removed it between refreshes).
     if (this.state.expandedKey) {
       const stillPresent = items.some((item) => this.config.getKey(item) === this.state.expandedKey);
-      if (!stillPresent) this.state.expandedKey = null;
+      if (!stillPresent) {
+        this.state.expandedKey = null;
+        this.state.expandedDetailHeight = 0;
+      }
     }
   }
 
@@ -109,13 +142,18 @@ export class WatchlistTableView<T> {
 
   public render(): string {
     const list = this.getFilteredSorted();
+    // Clamp once, here, and thread the value through the render so render()
+    // stays pure (no state mutation) and renderTableBody / getRenderedRowCount
+    // can't disagree via an ordering dependency. The scroll handler clamps the
+    // stored virtualStart on write, so reads here are normally already valid;
+    // this read-time clamp only guards a stale value after setItems() shrinks
+    // the list, and never writes back.
+    const start = this.getClampedVirtualStart(list);
     const intro = this.config.intro
       ? `<div class="watchlist-intro">${this.config.intro}</div>`
       : '';
     const controls = this.renderControls();
-    const tableBody = list.length === 0
-      ? `<tr><td colspan="${this.config.columns.length}" class="watchlist-empty">${escapeHtml(this.config.emptyMessage || 'No symbols match the current filter.')}</td></tr>`
-      : list.map((item) => this.renderRow(item)).join('');
+    const tableBody = this.renderTableBody(list, start);
     const headers = this.config.columns.map((col) => {
       const sortKey = col.sortable ? (col.sortOptionKey || col.key) : '';
       // Build a SINGLE class string — pre-fix this code emitted two
@@ -132,15 +170,85 @@ export class WatchlistTableView<T> {
       return `<th${classAttr}${sortAttr}>${escapeHtml(col.label)}${activeSortIndicator}</th>`;
     }).join('');
     return `
-      <div class="watchlist-table-view">
+      <div class="watchlist-table-view" data-watchlist-totalrows="${list.length}" data-watchlist-renderedrows="${this.getRenderedRowCount(list, start)}">
         ${intro}
         ${controls}
-        <table class="watchlist-table">
-          <thead><tr>${headers}</tr></thead>
-          <tbody>${tableBody}</tbody>
-        </table>
+        <div class="watchlist-table-scroll" data-watchlist-scroll="1">
+          <table class="watchlist-table">
+            <thead><tr>${headers}</tr></thead>
+            <tbody>${tableBody}</tbody>
+          </table>
+        </div>
       </div>
     `;
+  }
+
+  // `start` is the already-clamped window start computed once by the caller
+  // (render() or the scroll handler). renderTableBody does not read or mutate
+  // state.virtualStart, so it is a pure function of (list, start, expandedKey).
+  private renderTableBody(list: T[], start: number): string {
+    if (list.length === 0) {
+      return `<tr><td colspan="${this.config.columns.length}" class="watchlist-empty">${escapeHtml(this.config.emptyMessage || 'No symbols match the current filter.')}</td></tr>`;
+    }
+    if (!this.shouldVirtualize(list)) {
+      return list.map((item) => this.renderRow(item)).join('');
+    }
+
+    const end = Math.min(list.length, start + VIRTUAL_VISIBLE_ROWS + VIRTUAL_OVERSCAN_ROWS * 2);
+    const expandedIndex = this.getExpandedIndex(list);
+    const topSpacerRows = start;
+    const bottomSpacerRows = Math.max(0, list.length - end);
+    const expandedDetailAbove = expandedIndex >= 0 && expandedIndex < start ? this.state.expandedDetailHeight : 0;
+    const expandedDetailBelow = expandedIndex >= end ? this.state.expandedDetailHeight : 0;
+    const topSpacer = this.renderSpacerRow(topSpacerRows, 'top', expandedDetailAbove);
+    const rows = list.slice(start, end).map((item) => this.renderRow(item)).join('');
+    const bottomSpacer = this.renderSpacerRow(bottomSpacerRows, 'bottom', expandedDetailBelow);
+    return `${topSpacer}${rows}${bottomSpacer}`;
+  }
+
+  private renderSpacerRow(rowCount: number, position: 'top' | 'bottom', extraHeight = 0): string {
+    const height = rowCount * VIRTUAL_ROW_HEIGHT_PX + extraHeight;
+    if (height <= 0) return '';
+    return `<tr class="watchlist-virtual-spacer watchlist-virtual-spacer-${position}" aria-hidden="true"><td colspan="${this.config.columns.length}" style="height:${height}px;padding:0;border:0"></td></tr>`;
+  }
+
+  private shouldVirtualize(list: T[]): boolean {
+    return list.length > VIRTUALIZE_ROW_THRESHOLD;
+  }
+
+  private getClampedVirtualStart(list: T[]): number {
+    if (!this.shouldVirtualize(list)) return 0;
+    const maxStart = Math.max(0, list.length - VIRTUAL_VISIBLE_ROWS);
+    return Math.min(Math.max(0, this.state.virtualStart), maxStart);
+  }
+
+  // Pure scrollTop → window-start mapping. Clamps to the same maxStart the
+  // render path uses (so the bottom never overshoots and re-renders forever),
+  // and subtracts the expanded-detail height when the expanded row sits above
+  // the window — the top spacer includes that height, so the raw scrollTop is
+  // offset by it and the uniform-row division would otherwise overshoot.
+  private computeVirtualStart(scrollTop: number, list: T[]): number {
+    if (!this.shouldVirtualize(list)) return 0;
+    const maxStart = Math.max(0, list.length - VIRTUAL_VISIBLE_ROWS);
+    const startFrom = (top: number): number =>
+      Math.min(maxStart, Math.max(0, Math.floor(top / VIRTUAL_ROW_HEIGHT_PX) - VIRTUAL_OVERSCAN_ROWS));
+    let start = startFrom(scrollTop);
+    const expandedIndex = this.getExpandedIndex(list);
+    if (expandedIndex >= 0 && expandedIndex < start && this.state.expandedDetailHeight > 0) {
+      start = startFrom(Math.max(0, scrollTop - this.state.expandedDetailHeight));
+    }
+    return start;
+  }
+
+  private getRenderedRowCount(list: T[], start: number): number {
+    if (list.length === 0) return 0;
+    if (!this.shouldVirtualize(list)) return list.length;
+    return Math.min(list.length - start, VIRTUAL_VISIBLE_ROWS + VIRTUAL_OVERSCAN_ROWS * 2);
+  }
+
+  private getExpandedIndex(list: T[]): number {
+    if (!this.state.expandedKey) return -1;
+    return list.findIndex((item) => this.config.getKey(item) === this.state.expandedKey);
   }
 
   private renderControls(): string {
@@ -183,6 +291,20 @@ export class WatchlistTableView<T> {
   }
 
   private getFilteredSorted(): T[] {
+    // Return the memoized result when nothing that affects it has changed.
+    // A scroll-driven window shift changes only virtualStart/scrollTop, so the
+    // sorted list is identical and we skip the full slice+filter+sort. The
+    // cached array is treated as read-only by every caller (slice/findIndex).
+    const cache = this.sortedCache;
+    if (
+      cache
+      && cache.items === this.items
+      && cache.sort === this.state.sort
+      && cache.filter === this.state.filter
+      && cache.search === this.state.search
+    ) {
+      return cache.result;
+    }
     let list = this.items.slice();
     const filter = this.config.filters.find((f) => f.key === this.state.filter);
     if (filter) list = list.filter((item) => filter.match(item));
@@ -192,6 +314,13 @@ export class WatchlistTableView<T> {
     }
     const sortOption = this.config.sortOptions.find((s) => s.key === this.state.sort);
     if (sortOption) list.sort(sortOption.cmp);
+    this.sortedCache = {
+      sort: this.state.sort,
+      filter: this.state.filter,
+      search: this.state.search,
+      items: this.items,
+      result: list,
+    };
     return list;
   }
 
@@ -200,14 +329,25 @@ export class WatchlistTableView<T> {
     if (!rootEl) return;
 
     // Row click → toggle expanded (one-at-a-time semantics: clicking a
-    // different row collapses the previous one).
-    rootEl.querySelectorAll<HTMLElement>('.watchlist-row').forEach((rowEl) => {
-      rowEl.addEventListener('click', () => {
+    // different row collapses the previous one). Delegated on the stable
+    // <table> element so it survives the in-place <tbody> swaps the scroll
+    // handler performs (a per-row listener would be lost on every window shift).
+    const tableEl = rootEl.querySelector('.watchlist-table') as HTMLElement | null;
+    if (tableEl) {
+      tableEl.addEventListener('click', (event) => {
+        const target = event.target as HTMLElement | null;
+        const rowEl = target?.closest<HTMLElement>('.watchlist-row');
+        if (!rowEl || !tableEl.contains(rowEl)) return;
         const key = rowEl.dataset.rowkey || '';
-        this.state.expandedKey = this.state.expandedKey === key ? null : key;
+        if (this.state.expandedKey === key) {
+          this.state.expandedKey = null;
+          this.state.expandedDetailHeight = 0;
+        } else {
+          this.state.expandedKey = key;
+        }
         onRerender();
       });
-    });
+    }
 
     // Sortable header click → set sort option, rerender.
     rootEl.querySelectorAll<HTMLElement>('.watchlist-th-sortable').forEach((thEl) => {
@@ -218,6 +358,7 @@ export class WatchlistTableView<T> {
         // a column wired to a sortOptionKey that's not in sortOptions).
         if (this.config.sortOptions.some((o) => o.key === key)) {
           this.state.sort = key;
+          this.resetVirtualWindow();
           onRerender();
         }
       });
@@ -229,6 +370,7 @@ export class WatchlistTableView<T> {
         const key = pillEl.dataset.filterkey || '';
         if (key && key !== this.state.filter) {
           this.state.filter = key;
+          this.resetVirtualWindow();
           onRerender();
         }
       });
@@ -239,9 +381,34 @@ export class WatchlistTableView<T> {
     if (sortSelect) {
       sortSelect.addEventListener('change', () => {
         this.state.sort = sortSelect.value;
+        this.resetVirtualWindow();
         onRerender();
       });
     }
+
+    const scrollEl = rootEl.querySelector('[data-watchlist-scroll="1"]') as HTMLElement | null;
+    if (scrollEl) {
+      const tbodyEl = scrollEl.querySelector('.watchlist-table tbody') as HTMLElement | null;
+      scrollEl.scrollTop = this.state.virtualScrollTop;
+      // Scroll updates the visible window IN PLACE (swap only the <tbody>) and
+      // never call onRerender(). Going through the owning panel's setSafeContent
+      // would (a) defer the swap behind a 150ms debounce that a fling never lets
+      // settle — freezing the window and showing blank rows — and (b) re-run the
+      // whole bind(), piling up duplicate listeners on the un-swapped DOM. The
+      // in-place path also skips the full re-sort and the focus/measure work that
+      // only a user-action rerender needs. rAF-gated to one update per frame.
+      scrollEl.addEventListener('scroll', () => {
+        this.state.virtualScrollTop = scrollEl.scrollTop;
+        if (this.scrollRafPending) return;
+        this.scrollRafPending = true;
+        scheduleFrame(() => {
+          this.scrollRafPending = false;
+          this.updateVirtualWindow(scrollEl, tbodyEl, rootEl);
+        });
+      }, { passive: true });
+    }
+
+    this.syncExpandedDetailHeight(rootEl);
 
     // Search input — focus restored after rerender (setContent destroys
     // the DOM, so we keep the cursor position by reading selection state
@@ -261,6 +428,7 @@ export class WatchlistTableView<T> {
       }
       searchInput.addEventListener('input', () => {
         this.state.search = searchInput.value;
+        this.resetVirtualWindow();
         this.searchWasFocused = true;
         onRerender();
       });
@@ -274,4 +442,38 @@ export class WatchlistTableView<T> {
   // content innerHTML, destroying focus state. Without this, typing in
   // the search box loses focus on every keystroke.
   private searchWasFocused = false;
+
+  private resetVirtualWindow(): void {
+    this.state.virtualStart = 0;
+    this.state.virtualScrollTop = 0;
+  }
+
+  private syncExpandedDetailHeight(rootEl: HTMLElement): void {
+    if (!this.state.expandedKey) {
+      this.state.expandedDetailHeight = 0;
+      return;
+    }
+    const detailEl = rootEl.querySelector('.watchlist-detail-row') as HTMLElement | null;
+    if (!detailEl) return;
+    const measured = Math.ceil(detailEl.getBoundingClientRect().height || detailEl.offsetHeight || 0);
+    if (measured > 0) this.state.expandedDetailHeight = measured;
+  }
+
+  // Scroll-driven window update: recompute the visible window and swap ONLY the
+  // <tbody> content, bypassing the panel's debounced full rerender + rebind.
+  // No re-sort (memoized list), no getBoundingClientRect, no focus restore — the
+  // detail-row height is stable across scroll, so it is not re-measured here.
+  private updateVirtualWindow(scrollEl: HTMLElement, tbodyEl: HTMLElement | null, rootEl: HTMLElement): void {
+    const list = this.getFilteredSorted();
+    if (!this.shouldVirtualize(list)) return;
+    const nextStart = this.computeVirtualStart(scrollEl.scrollTop, list);
+    if (nextStart === this.state.virtualStart) return;
+    this.state.virtualStart = nextStart;
+    if (!tbodyEl) return;
+    setTrustedHtml(
+      tbodyEl,
+      trustedHtml(this.renderTableBody(list, nextStart), 'watchlist virtual window scroll update'),
+    );
+    rootEl.dataset.watchlistRenderedrows = String(this.getRenderedRowCount(list, nextStart));
+  }
 }

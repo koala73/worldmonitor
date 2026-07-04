@@ -34,6 +34,7 @@ message ListStorageFacilitiesResponse {
 // bundle + revision log. Revisions land in Week 3 alongside the disruption
 // event log (Week 3 milestone — empty array in v1).
 message GetStorageFacilityDetailRequest {
+  // Storage facility identifier to load with full evidence details.
   string facility_id = 1 [
     (buf.validate.field).required = true,
     (sebuf.http.query) = {name: "facilityId"}

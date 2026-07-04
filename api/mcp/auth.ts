@@ -5,6 +5,8 @@ import { resolveBearerToContext } from '../_oauth-token.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeIncludes } from '../_crypto.js';
 // @ts-expect-error — JS module, no declaration file
+import { getClientIp } from '../_client-ip.js';
+// @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 // @ts-expect-error — JS module, no declaration file
 import { redisPipeline as rawRedisPipeline } from '../_upstash-json.js';
@@ -14,7 +16,7 @@ import {
   signInternalMcpRequest,
 } from '../../server/_shared/mcp-internal-hmac';
 import { validateProMcpTokenOrNull } from '../../server/_shared/pro-mcp-token';
-import { rpcError } from './rpc';
+import { rpcError, withMcpNoStore } from './rpc';
 import type {
   AuthResolution,
   AuthResolutionRejected,
@@ -34,6 +36,11 @@ import type {
 
 let mcpRatelimit: Ratelimit | null = null;
 let mcpProMinRatelimit: Ratelimit | null = null;
+// Anonymous MCP discovery limiter (initialize / tools/list without credentials).
+// Keyed by client IP so a public discovery surface can't be hammered by an
+// unauthenticated caller. Separate prefix from the authed per-key/per-user
+// limiters above so anon traffic never shares a bucket with a real principal.
+let mcpAnonRatelimit: Ratelimit | null = null;
 
 function getMcpRatelimit(): Ratelimit | null {
   if (mcpRatelimit) return mcpRatelimit;
@@ -61,6 +68,20 @@ function getMcpProMinRatelimit(): Ratelimit | null {
     analytics: false,
   });
   return mcpProMinRatelimit;
+}
+
+function getMcpAnonRatelimit(): Ratelimit | null {
+  if (mcpAnonRatelimit) return mcpAnonRatelimit;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  mcpAnonRatelimit = new Ratelimit({
+    redis: new Redis({ url, token, retry: false }),
+    limiter: Ratelimit.slidingWindow(60, '60 s'),
+    prefix: 'rl:mcp:anon',
+    analytics: false,
+  });
+  return mcpAnonRatelimit;
 }
 
 /**
@@ -140,7 +161,7 @@ export async function resolveAuthContext(
         ok: false,
         response: new Response(
           JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Auth service temporarily unavailable. Try again.' } }),
-          { status: 503, headers: { 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders } },
+          { status: 503, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders }) },
         ),
       };
     }
@@ -149,7 +170,7 @@ export async function resolveAuthContext(
         ok: false,
         response: new Response(
           JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Invalid or expired OAuth token. Re-authenticate via /oauth/token.' } }),
-          { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders } },
+          { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders }) },
         ),
       };
     }
@@ -162,7 +183,7 @@ export async function resolveAuthContext(
       ok: false,
       response: new Response(
         JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Authentication required. Use OAuth (/oauth/token) or pass your API key via X-WorldMonitor-Key header.' } }),
-        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl), ...corsHeaders } },
+        { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl), ...corsHeaders }) },
       ),
     };
   }
@@ -172,7 +193,7 @@ export async function resolveAuthContext(
       ok: false,
       response: new Response(
         JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Invalid API key' } }),
-        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders } },
+        { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders }) },
       ),
     };
   }
@@ -202,7 +223,7 @@ export async function runProPreChecks(
     });
     return new Response(
       JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Service temporarily unavailable, retry in a moment.' } }),
-      { status: 503, headers: { 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders } },
+      { status: 503, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders }) },
     );
   }
 
@@ -210,7 +231,7 @@ export async function runProPreChecks(
   if (!validation || validation.userId !== context.userId) {
     return new Response(
       JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'MCP authorization revoked. Re-authorize at https://worldmonitor.app/mcp-grant.' } }),
-      { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders } },
+      { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders }) },
     );
   }
 
@@ -222,7 +243,7 @@ export async function runProPreChecks(
     captureSilentError(err, { tags: { route: 'api/mcp', step: 'pro-entitlement-recheck' }, ctx });
     return new Response(
       JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Subscription not active.' } }),
-      { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders } },
+      { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders }) },
     );
   }
   const tier = ent?.features?.tier ?? 0;
@@ -231,7 +252,7 @@ export async function runProPreChecks(
   if (!ent || tier < 1 || !mcpAccess || validUntil < Date.now()) {
     return new Response(
       JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Subscription not active.' } }),
-      { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders } },
+      { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders }) },
     );
   }
   return null;
@@ -255,6 +276,23 @@ export async function applyPerMinuteLimit(context: McpAuthContext, headers: Reco
   try {
     const { success } = await rl.limit(`pro-user:${context.userId}`);
     if (!success) return rpcError(null, -32029, 'Rate limit exceeded. Max 60 requests per minute per Pro user.', headers);
+  } catch { /* graceful degradation */ }
+  return null;
+}
+
+/** Per-IP rate limit for the UNAUTHENTICATED discovery path (initialize /
+ *  tools/list without credentials — the metadata surface agent scanners probe).
+ *  Keyed on the trusted client IP (cf-connecting-ip / x-real-ip; falls back to a
+ *  shared bucket so x-forwarded-for spoofing can't rotate identities). Fail-OPEN
+ *  on Upstash error, matching `applyPerMinuteLimit` — the discovery response is a
+ *  cheap in-memory payload, so availability beats strict enforcement here.
+ *  Returns null on success/skip, a Response on a real 60/min limit hit. */
+export async function applyAnonDiscoveryLimit(req: Request, headers: Record<string, string> = {}): Promise<Response | null> {
+  const rl = getMcpAnonRatelimit();
+  if (!rl) return null;
+  try {
+    const { success } = await rl.limit(`ip:${getClientIp(req)}`);
+    if (!success) return rpcError(null, -32029, 'Rate limit exceeded. Max 60 unauthenticated discovery requests per minute per IP.', headers);
   } catch { /* graceful degradation */ }
   return null;
 }

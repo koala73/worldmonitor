@@ -238,7 +238,7 @@ export const RPC_TOOLS: ToolDef[] = [
       // Fetch current geopolitical headlines to ground the LLM (budget: 2 s — cached endpoint).
       // Without context the model hallucinates events — real headlines anchor it.
       // 2 s + 22 s brief = 24 s worst-case; 6 s margin before the 30 s Edge kill.
-      let contextParam = '';
+      let contextSnapshot = '';
       let sources: McpBriefSource[] = [];
       try {
         const digestUrl = `${base}/api/news/v1/list-feed-digest?variant=full&lang=en`;
@@ -263,15 +263,19 @@ export const RPC_TOOLS: ToolDef[] = [
           const sourceLines = sources.length > 0 ? ['Brief source articles:', ...briefSourceContextLines(sources)] : [];
           const headlineLines = groundingItems.map(item => item.title ?? '').filter(Boolean);
           const contextLines = [...sourceLines, 'Headlines:', ...headlineLines].join('\n');
-          if (contextLines.trim()) contextParam = encodeURIComponent(contextLines.slice(0, 4000));
+          if (contextLines.trim()) contextSnapshot = contextLines.slice(0, 4000);
         }
       } catch { /* proceed without context — better than failing */ }
 
-      const briefUrl = contextParam
-        ? `${base}/api/intelligence/v1/get-country-intel-brief?context=${contextParam}`
-        : `${base}/api/intelligence/v1/get-country-intel-brief`;
-
-      const briefBody = JSON.stringify({ country_code: countryCode, framework: String(params.framework ?? '') });
+      const briefUrl = `${base}/api/intelligence/v1/get-country-intel-brief`;
+      // Keep grounding context out of the signed URL; the gateway's POST-to-GET
+      // compatibility path promotes scalar JSON body fields for this GET handler.
+      const briefPayload: { country_code: string; framework: string; context?: string } = {
+        country_code: countryCode,
+        framework: String(params.framework ?? ''),
+      };
+      if (contextSnapshot) briefPayload.context = contextSnapshot;
+      const briefBody = JSON.stringify(briefPayload);
       const briefAuth = await buildAuthHeaders(context, 'POST', briefUrl, briefBody);
       const res = await fetch(briefUrl, {
         method: 'POST',
@@ -279,7 +283,24 @@ export const RPC_TOOLS: ToolDef[] = [
         body: briefBody,
         signal: AbortSignal.timeout(22_000),
       });
-      if (!res.ok) throw new Error(`get-country-intel-brief HTTP ${res.status}`);
+      if (!res.ok) {
+        // Surface the gateway's error code in the thrown message so Sentry
+        // groups the failure by root cause, not just status. Body reads are
+        // best-effort; a read failure must not mask the HTTP status.
+        const detail = await res.text().catch(() => '');
+        let code = '';
+        // `error` is usually a string (for example,
+        // `invalid_internal_mcp_signature`), but stringify non-string shapes so
+        // object envelopes remain readable. Bound both paths so Sentry titles
+        // cannot bloat on a long body.
+        try {
+          const error = (JSON.parse(detail) as { error?: unknown }).error ?? '';
+          code = (typeof error === 'string' ? error : JSON.stringify(error)).slice(0, 120);
+        } catch {
+          code = detail.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+        }
+        throw new Error(`get-country-intel-brief HTTP ${res.status}${code ? `: ${code}` : ''}`);
+      }
       const result = await res.json() as Record<string, unknown>;
       const resultSources = collectMcpBriefSources(Array.isArray(result.sources) ? result.sources as DigestItemForBrief[] : [], 6);
       return { ...result, sources: resultSources.length > 0 ? resultSources : sources };

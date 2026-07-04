@@ -809,6 +809,98 @@ export const getCheckoutBlockingSubscription = internalQuery({
   },
 });
 
+/**
+ * How recent a pending payment must be to block a new checkout (#4438).
+ *
+ * A pending 3DS/SCA payment older than this window no longer blocks — an
+ * abandoned attempt should not lock the user out of retrying for hours. The
+ * override dialog makes an over-long window tolerable (always escapable), so
+ * err slightly long if tuning. Single source of truth: change it here only.
+ */
+export const PENDING_PAYMENT_BLOCK_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+
+/**
+ * Internal query used by checkout creation to prevent DUPLICATE PENDING
+ * PAYMENTS (#4438) — the gap the subscription guard above cannot see.
+ *
+ * A pending 3DS/SCA payment (`paymentEvents.status` ∈ {processing,
+ * requires_customer_action}) never created a subscription row, so
+ * `getCheckoutBlockingSubscription` returns null and the customer can stack
+ * duplicate payments by retrying. This guard blocks a new checkout when the
+ * user has a recent pending payment in the SAME tier group as the product
+ * being purchased — identical tier-group scoping to the subscription guard
+ * (a pending Pro payment must NOT block an API checkout).
+ *
+ * Fails open: a pending row whose tier group is unresolvable (no `planKey`, or
+ * a planKey absent from the catalog) never blocks. A false block (locking a
+ * paying user out) is worse than a missed dedup (mitigated by the dialog on the
+ * next attempt and the eventual reconciliation cron).
+ */
+export const getBlockingPendingPayment = internalQuery({
+  args: {
+    userId: v.string(),
+    productId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const targetPlanKey = resolveProductToPlan(args.productId);
+    if (!targetPlanKey) return null;
+
+    const targetCatalogEntry = PRODUCT_CATALOG[targetPlanKey];
+    if (!targetCatalogEntry) return null;
+
+    const windowStart = Date.now() - PENDING_PAYMENT_BLOCK_WINDOW_MS;
+
+    // Time-bounded read: only rows within the staleness window. `paymentEvents`
+    // is append-only and carries full `rawPayload`, so collecting a user's whole
+    // history would grow unbounded and could throw (rejecting the checkout =
+    // fail-CLOSED). A terminal row always post-dates its own pending row, so any
+    // resolution of a recent pending payment is also within the window — this
+    // slice is sufficient to detect it.
+    const recent = await ctx.db
+      .query("paymentEvents")
+      .withIndex("by_userId_occurredAt", (q) =>
+        q.eq("userId", args.userId).gt("occurredAt", windowStart),
+      )
+      .collect();
+
+    // `paymentEvents` never patches/reconciles — a 3DS payment that went
+    // processing -> succeeded/failed leaves BOTH rows. A payment is only still
+    // "in progress" if its dodoPaymentId has NO terminal (non-pending) charge
+    // row. Without this, a failed/succeeded payment's lingering
+    // `requires_customer_action` row would falsely block the retry path for the
+    // whole window — degrading the exact flow this guard is meant to smooth.
+    const isPending = (status: string) =>
+      status === "processing" || status === "requires_customer_action";
+    const resolvedPaymentIds = new Set<string>();
+    for (const ev of recent) {
+      if (ev.type === "charge" && !isPending(ev.status)) {
+        resolvedPaymentIds.add(ev.dodoPaymentId);
+      }
+    }
+
+    const blocking = recent
+      .filter((ev) => {
+        if (ev.type !== "charge") return false;
+        if (!isPending(ev.status)) return false;
+        if (resolvedPaymentIds.has(ev.dodoPaymentId)) return false;
+        // Fail open when the tier group is unresolvable.
+        if (!ev.planKey) return false;
+        const entry = PRODUCT_CATALOG[ev.planKey];
+        if (!entry) return false;
+        return entry.tierGroup === targetCatalogEntry.tierGroup;
+      })
+      .sort((a, b) => b.occurredAt - a.occurredAt)[0];
+
+    if (!blocking || !blocking.planKey) return null;
+
+    return {
+      planKey: blocking.planKey,
+      displayName: PRODUCT_CATALOG[blocking.planKey]?.displayName ?? blocking.planKey,
+      occurredAt: blocking.occurredAt,
+    };
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Actions
 // ---------------------------------------------------------------------------

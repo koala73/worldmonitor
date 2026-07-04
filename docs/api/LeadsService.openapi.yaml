@@ -2,17 +2,32 @@ openapi: 3.1.0
 info:
     title: LeadsService API
     version: 1.0.0
+security:
+    - WorldMonitorKey: []
+    - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
 paths:
     /api/leads/v1/submit-contact:
         post:
             tags:
                 - LeadsService
             summary: SubmitContact
-            description: SubmitContact stores an enterprise contact submission in Convex and emails ops.
+            description: SubmitContact stores an enterprise contact submission in Convex and emails ops. Turnstile-gated. Missing or invalid Cloudflare Turnstile token returns 403 Bot verification failed.
             operationId: SubmitContact
+            security: []
             requestBody:
                 content:
                     application/json:
+                        example:
+                            "email": "analyst@example.com"
+                            "message": "Example WorldMonitor observation."
+                            "name": "WorldMonitor Analyst"
+                            "organization": "example"
+                            "phone": "example"
+                            "source": "example"
+                            "turnstileToken": "example"
+                            "website": "example"
                         schema:
                             $ref: '#/components/schemas/SubmitContactRequest'
                 required: true
@@ -21,6 +36,9 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "emailSent": true
+                                "status": "example"
                             schema:
                                 $ref: '#/components/schemas/SubmitContactResponse'
                 "400":
@@ -29,6 +47,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "403":
+                    description: "Bot verification failed."
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
                 default:
                     description: Error response
                     content:
@@ -40,11 +64,19 @@ paths:
             tags:
                 - LeadsService
             summary: RegisterInterest
-            description: RegisterInterest adds an email to the Pro waitlist and sends a confirmation email.
+            description: RegisterInterest adds an email to the Pro waitlist and sends a confirmation email. Turnstile-gated (desktop sources authenticate a bypass with a shared-secret HMAC instead). A failed Cloudflare Turnstile check returns 403 Bot verification failed; a desktop-source request with a missing or invalid HMAC signature returns 403 Desktop authentication failed.
             operationId: RegisterInterest
+            security: []
             requestBody:
                 content:
                     application/json:
+                        example:
+                            "appVersion": "example"
+                            "email": "analyst@example.com"
+                            "referredBy": "example"
+                            "source": "example"
+                            "turnstileToken": "example"
+                            "website": "example"
                         schema:
                             $ref: '#/components/schemas/RegisterInterestRequest'
                 required: true
@@ -53,6 +85,12 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "emailSuppressed": true
+                                "position": 1
+                                "referralCode": "example"
+                                "referralCount": 1
+                                "status": "example"
                             schema:
                                 $ref: '#/components/schemas/RegisterInterestResponse'
                 "400":
@@ -61,6 +99,12 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "403":
+                    description: "Bot verification or desktop authentication failed."
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
                 default:
                     description: Error response
                     content:
@@ -68,6 +112,17 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
 components:
+    securitySchemes:
+        WorldMonitorKey:
+            type: apiKey
+            in: header
+            name: X-WorldMonitor-Key
+            description: User-issued WorldMonitor API key.
+        ApiKeyHeader:
+            type: apiKey
+            in: header
+            name: X-Api-Key
+            description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
     schemas:
         Error:
             type: object
@@ -121,6 +176,12 @@ components:
                 turnstileToken:
                     type: string
                     description: Cloudflare Turnstile token proving the submitter is human.
+            required:
+                - email
+                - name
+                - organization
+                - phone
+                - turnstileToken
             description: SubmitContactRequest carries an enterprise contact form submission.
         SubmitContactResponse:
             type: object
@@ -149,6 +210,9 @@ components:
                 turnstileToken:
                     type: string
                     description: Cloudflare Turnstile token. Desktop sources bypass Turnstile; see handler.
+            required:
+                - email
+                - turnstileToken
             description: RegisterInterestRequest carries a Pro-waitlist signup.
         RegisterInterestResponse:
             type: object

@@ -19,11 +19,13 @@ export {
 // Market data (shared)
 export { SECTORS, COMMODITIES, MARKET_SYMBOLS, CRYPTO_MAP } from './markets';
 
-// Geo data (shared base)
-export { UNDERSEA_CABLES, MAP_URLS } from './geo';
+// Geo data (shared base). UNDERSEA_CABLES + MAP_URLS moved to the lazy geo-map
+// chunk (#4404) — import them directly from '@/config/geo-map', not via this barrel.
 
-// AI Datacenters (shared)
-export { AI_DATA_CENTERS } from './ai-datacenters';
+// AI Datacenters: NOT re-exported on the eager @/config barrel — the ~86KB table
+// is dragged onto the critical path via this re-export. Consumers (map/globe/
+// search) import directly from '@/config/ai-datacenters'; related-assets lazy-
+// loads it. (#4404)
 
 // Feeds configuration (shared functions, variant-specific data)
 export {
@@ -76,25 +78,22 @@ export {
 // can resolve its feeds. See src/config/feed-resolution.ts.
 export { CANONICAL_FEEDS } from './feeds';
 
+// MILITARY_BASES moved to the lazy military-bases chunk (#4478) — import it
+// directly from '@/config/military-bases', not via this barrel, so the ~48KB
+// bases-expanded table stays off the eager boot graph.
 export {
   INTEL_HOTSPOTS,
   CONFLICT_ZONES,
-
-  MILITARY_BASES,
-  NUCLEAR_FACILITIES,
   STRATEGIC_WATERWAYS,
-  ECONOMIC_CENTERS,
-  SANCTIONED_COUNTRIES,
-  SANCTIONED_COUNTRIES_ALPHA2,
-  SPACEPORTS,
-  CRITICAL_MINERALS,
 } from './geo';
 
 export { APT_GROUPS } from './apt-groups';
 export { GAMMA_IRRADIATORS } from './irradiators';
 export { PIPELINES, PIPELINE_COLORS } from './pipelines';
 export { PORTS } from './ports';
-export { MONITORED_AIRPORTS, FAA_AIRPORTS } from './airports';
+// MONITORED_AIRPORTS/FAA_AIRPORTS are NOT re-exported on the eager @/config
+// barrel — that pulls the airports table onto the critical path. The only
+// consumer (AviationCommandBar, lazy) imports directly from '@/config/airports'. (#4404)
 export {
   ENTITY_REGISTRY,
   getEntityById,
@@ -113,11 +112,11 @@ export {
   getUpcomingDeadlines,
   getRecentActions,
 } from './ai-regulations';
+// Value re-exports of the tech-geo tables are intentionally NOT on the eager
+// @/config barrel — they pull the ~62KB tech-geo chunk onto the dashboard
+// critical path. Every consumer (search/map/globe/tech-hub services) imports
+// directly from '@/config/tech-geo'. Type re-exports are erased, no edge. (#4404)
 export {
-  STARTUP_HUBS,
-  ACCELERATORS,
-  TECH_HQS,
-  CLOUD_REGIONS,
   type StartupHub,
   type Accelerator,
   type TechHQ,

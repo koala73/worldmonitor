@@ -1,12 +1,8 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import {
-  WildfireServiceClient,
-  type FireDetection,
-  type FireConfidence,
-  type ListFireDetectionsResponse,
-} from '@/generated/client/worldmonitor/wildfire/v1/service_client';
+import type { FireDetection, FireConfidence, ListFireDetectionsResponse } from '@/generated/client/worldmonitor/wildfire/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
+import { WildfireServiceClient } from '@/services/generated-rpc-clients';
 
 export type { FireDetection };
 
@@ -44,7 +40,7 @@ export interface MapFire {
 const client = new WildfireServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 const breaker = createCircuitBreaker<ListFireDetectionsResponse>({ name: 'Wildfires', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 
-const emptyFallback: ListFireDetectionsResponse = { fireDetections: [] };
+const emptyFallback: ListFireDetectionsResponse = { fireDetections: [], fetchedAt: 0, dataAvailable: false };
 
 // -- Public API --
 

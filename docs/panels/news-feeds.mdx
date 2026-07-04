@@ -133,6 +133,17 @@ All free. Stream configuration lives in `src/config/variants/happy.ts`.
 - **Cmd+K discoverability** — each panel is searchable by its title and category.
 - **Free by default** — none of the news-feed panels are PRO-gated.
 
+### Backed by endpoints
+
+| Feed family | Endpoint | Notes |
+|---|---|---|
+| Digest feed | `GET /api/news/v1/list-feed-digest` | Pre-aggregated RSS digest by site variant. |
+| Summary cache lookup | `GET /api/news/v1/summarize-article-cache` | Cache-only GET for deterministic article-summary keys; use `POST /api/news/v1/summarize-article` to generate. |
+| arXiv papers | `GET /api/research/v1/list-arxiv-papers` | ResearchService academic-paper feed. |
+| Trending repos | `GET /api/research/v1/list-trending-repos` | ResearchService GitHub trending feed. |
+| Hacker News items | `GET /api/research/v1/list-hackernews-items` | ResearchService Hacker News feed. |
+| Giving activity | `GET /api/giving/v1/get-giving-summary` | Global personal-giving and philanthropy summary used by happy-variant giving surfaces. |
+
 ## Related
 
 - [Signal Intelligence](/signal-intelligence) — structural overview of how news feeds are classified, deduplicated, and ranked.

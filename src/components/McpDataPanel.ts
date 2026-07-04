@@ -29,6 +29,7 @@ export class McpDataPanel extends Panel {
       title: spec.title,
       closable: true,
       className: 'mcp-data-panel',
+      defaultRowSpan: 2,
     });
     this.spec = spec;
     this.addHeaderButtons();

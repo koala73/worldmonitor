@@ -17,8 +17,10 @@ message GetEuFsiResponse {
   string label = 3;
   repeated EuFsiObservation history = 4;
   string seeded_at = 5;
+  // True when the upstream or seed-backed variant is unavailable; empty payload fields
+  // are graceful degradation, not confirmed zero data.
   bool unavailable = 6;
-  // True when latest_date is older than the CISS content-age budget — the ECB
+  // True when latest_date is older than the CISS content-age budget -- the ECB
   // series has stopped publishing (issue #3845). Consumers must not present a
   // stale reading as current. Seeder-side detection is content-age
   // (STALE_CONTENT in /api/health); this flag is the per-request equivalent.

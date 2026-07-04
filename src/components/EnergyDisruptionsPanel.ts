@@ -2,7 +2,7 @@ import { Panel } from './Panel';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
-import { SupplyChainServiceClient } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
+
 import type {
   ListEnergyDisruptionsResponse,
   EnergyDisruptionEntry,
@@ -13,6 +13,7 @@ import {
   statusForEvent,
   type DisruptionStatus,
 } from '@/shared/disruption-timeline';
+import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 
 const getSupplyChainClient = createLazyClient(() => new SupplyChainServiceClient(getRpcBaseUrl(), {
   fetch: rpcFetch,

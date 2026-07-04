@@ -2,22 +2,40 @@ openapi: 3.1.0
 info:
     title: ForecastService API
     version: 1.0.0
+security:
+    - WorldMonitorKey: []
+    - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
 paths:
     /api/forecast/v1/get-forecasts:
         get:
             tags:
                 - ForecastService
             summary: GetForecasts
+            description: GetForecasts returns the latest generated probabilistic forecasts, with degraded/stale flags that distinguish a backend outage from a healthy empty set.
             operationId: GetForecasts
             parameters:
                 - name: domain
                   in: query
+                  description: Forecast domain to retrieve, such as geopolitics, markets, or climate.
                   required: false
+                  example: "conflict"
                   schema:
                     type: string
+                    enum:
+                        - 'conflict'
+                        - 'market'
+                        - 'supply_chain'
+                        - 'political'
+                        - 'military'
+                        - 'cyber'
+                        - 'infrastructure'
                 - name: region
                   in: query
+                  description: Optional geographic or thematic region filter for forecasts.
                   required: false
+                  example: "example"
                   schema:
                     type: string
             responses:
@@ -25,6 +43,44 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "degraded": true
+                                "error": "example"
+                                "forecasts":
+                                    - "calibration":
+                                        "drift": 1.5
+                                        "marketPrice": 75.25
+                                        "marketTitle": "example"
+                                        "source": "example"
+                                      "cascades":
+                                          - "domain": "example"
+                                            "effect": "example"
+                                            "probability": 1.5
+                                      "caseFile":
+                                          "actorLenses":
+                                              - "example"
+                                          "actors":
+                                              - "category": "cs.AI"
+                                                "constraints":
+                                                    - "example"
+                                                "id": "example-id"
+                                                "influenceScore": 42.5
+                                                "likelyActions":
+                                                    - "example"
+                                          "baseCase": "example"
+                                          "branches":
+                                              - "kind": "example"
+                                                "outcome": "example"
+                                                "projectedProbability": 1.5
+                                                "rounds":
+                                                    - {}
+                                                "summary": "Example WorldMonitor observation."
+                                          "changeItems":
+                                              - "example"
+                                      "confidence": 0.82
+                                      "createdAt": 1717200000000
+                                "generatedAt": 1717200000000
+                                "stale": true
                             schema:
                                 $ref: '#/components/schemas/GetForecastsResponse'
                 "400":
@@ -33,6 +89,18 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -44,12 +112,18 @@ paths:
             tags:
                 - ForecastService
             summary: GetSimulationPackage
+            description: GetSimulationPackage returns the latest forecast simulation package; the response note is populated when a supplied runId does not match the returned package.
             operationId: GetSimulationPackage
             parameters:
                 - name: runId
                   in: query
-                  description: Currently ignored; always returns the latest package. Reserved for Phase 3 per-run lookup.
+                  description: |-
+                    Optional run identifier. Does not select the package — the latest stored package is
+                     always returned regardless of this value. When supplied and it differs from the
+                     returned package's runId, the response `note` field is populated to warn that per-run
+                     filtering is not yet active. Reserved for Phase 3 per-run lookup.
                   required: false
+                  example: "example-id"
                   schema:
                     type: string
             responses:
@@ -57,6 +131,12 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "error": "example"
+                                "found": true
+                                "generatedAt": 1717200000000
+                                "note": "example"
+                                "pkgKey": "example"
                             schema:
                                 $ref: '#/components/schemas/GetSimulationPackageResponse'
                 "400":
@@ -65,6 +145,18 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -76,6 +168,7 @@ paths:
             tags:
                 - ForecastService
             summary: GetSimulationOutcome
+            description: GetSimulationOutcome returns the stored outcome of a forecast simulation run; `found` is false when no outcome matches the requested runId.
             operationId: GetSimulationOutcome
             parameters:
                 - name: runId
@@ -91,6 +184,7 @@ paths:
                          expiry-or-mismatch.
                      If runId is empty: returns :latest (existing behavior).
                   required: false
+                  example: "example-id"
                   schema:
                     type: string
             responses:
@@ -98,6 +192,12 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "error": "example"
+                                "found": true
+                                "generatedAt": 1717200000000
+                                "note": "example"
+                                "outcomeKey": "example"
                             schema:
                                 $ref: '#/components/schemas/GetSimulationOutcomeResponse'
                 "400":
@@ -106,6 +206,18 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -124,10 +236,17 @@ paths:
                  (scripts/process-simulation-tasks.mjs) polls the queue and writes
                  outcomes; callers poll GetSimulationOutcome with the returned runId
                  to retrieve the result. Mirrors run-scenario.ts pattern. See #3734.
+                Requires entitlement tier >= 1.
             operationId: TriggerSimulation
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             requestBody:
                 content:
                     application/json:
+                        example:
+                            "clientVersion": "example"
                         schema:
                             $ref: '#/components/schemas/TriggerSimulationRequest'
                 required: true
@@ -136,6 +255,11 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "pkgFingerprint": "example"
+                                "queued": true
+                                "reason": "example"
+                                "runId": "example-id"
                             schema:
                                 $ref: '#/components/schemas/TriggerSimulationResponse'
                 "400":
@@ -144,6 +268,18 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -151,7 +287,31 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
 components:
+    securitySchemes:
+        WorldMonitorKey:
+            type: apiKey
+            in: header
+            name: X-WorldMonitor-Key
+            description: User-issued WorldMonitor API key.
+        ApiKeyHeader:
+            type: apiKey
+            in: header
+            name: X-Api-Key
+            description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
+        BearerAuth:
+            type: http
+            scheme: bearer
+            description: 'Bearer token: a Clerk-issued JWT for browser session flows, passed as Authorization: Bearer <token>.'
     schemas:
+        UnauthorizedError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable error message.
+            required:
+                - error
+            description: Returned when the API key is missing, malformed, or lacks current API access.
         Error:
             type: object
             properties:
@@ -159,6 +319,26 @@ components:
                     type: string
                     description: Error message (e.g., 'user not found', 'database connection failed')
             description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        ForbiddenError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable entitlement failure reason.
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint.
+                currentTier:
+                    type: integer
+                    format: int32
+                    description: Caller entitlement tier when known.
+                planKey:
+                    type: string
+                    description: Caller plan key when known.
+            required:
+                - error
+            description: Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.
         FieldViolation:
             type: object
             properties:
@@ -188,8 +368,10 @@ components:
             properties:
                 domain:
                     type: string
+                    description: Forecast domain to retrieve, such as geopolitics, markets, or climate.
                 region:
                     type: string
+                    description: Optional geographic or thematic region filter for forecasts.
         GetForecastsResponse:
             type: object
             properties:
@@ -477,7 +659,11 @@ components:
             properties:
                 runId:
                     type: string
-                    description: Currently ignored; always returns the latest package. Reserved for Phase 3 per-run lookup.
+                    description: |-
+                        Optional run identifier. Does not select the package — the latest stored package is
+                         always returned regardless of this value. When supplied and it differs from the
+                         returned package's runId, the response `note` field is populated to warn that per-run
+                         filtering is not yet active. Reserved for Phase 3 per-run lookup.
         GetSimulationPackageResponse:
             type: object
             properties:

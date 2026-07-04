@@ -9,12 +9,7 @@ import {
   MILITARY_QUERY_REGIONS,
 } from '@/config/military';
 import type { QueryRegion } from '@/config/military';
-import {
-  MilitaryServiceClient,
-  type MilitaryFlight as ProtoMilitaryFlight,
-  type MilitaryAircraftType as ProtoMilitaryAircraftType,
-  type MilitaryOperator as ProtoMilitaryOperator,
-} from '@/generated/client/worldmonitor/military/v1/service_client';
+import type { MilitaryFlight as ProtoMilitaryFlight, MilitaryAircraftType as ProtoMilitaryAircraftType, MilitaryOperator as ProtoMilitaryOperator } from '@/generated/client/worldmonitor/military/v1/service_client';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import {
   getAircraftDetailsBatch,
@@ -23,6 +18,7 @@ import {
 } from './wingbits';
 import { isFeatureAvailable } from './runtime-config';
 import { isDesktopRuntime, toApiUrl } from './runtime';
+import { MilitaryServiceClient } from '@/services/generated-rpc-clients';
 
 const militaryClient = new MilitaryServiceClient(getRpcBaseUrl(), {
   fetch: (...args) => globalThis.fetch(...args),

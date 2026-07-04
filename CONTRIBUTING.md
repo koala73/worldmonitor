@@ -57,12 +57,12 @@ Variants share all code but differ in default panels, map layers, and RSS feeds.
 
 | Directory | Purpose |
 |---|---|
-| `src/components/` | UI components — 155 top-level TypeScript component files |
+| `src/components/` | UI components — 159 top-level TypeScript component files |
 | `src/services/` | Data fetching modules — sebuf client wrappers, AI, signal analysis |
 | `src/config/` | Static data and variant configs (feeds, geo, military, pipelines, ports) |
 | `src/generated/` | Auto-generated sebuf client + server stubs (**do not edit by hand**) |
 | `src/types/` | TypeScript type definitions |
-| `src/locales/` | i18n JSON files (24 languages) |
+| `src/locales/` | i18n JSON files (25 languages) |
 | `src/workers/` | Web Workers for analysis |
 | `server/` | Sebuf handler implementations for all 34 server handler domains |
 | `api/` | Vercel Edge Functions (sebuf gateway + legacy endpoints) |
@@ -118,7 +118,7 @@ npm run build:happy
 npm run build:energy
 ```
 
-The dev server runs at `http://localhost:3000`. Run `make help` to see all available make targets.
+The dev server runs at `http://localhost:3000` (override the port with `DEV_PORT` in `.env.local`). Run `make help` to see all available make targets.
 
 ### Environment Variables (Optional)
 

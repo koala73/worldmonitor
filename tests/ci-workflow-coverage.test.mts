@@ -123,6 +123,13 @@ function collectPackageLockfiles(): string[] {
     .sort();
 }
 
+function collectDockerfiles(): string[] {
+  return execFileSync('git', ['ls-files', '*Dockerfile*'], { cwd: root, encoding: 'utf8' })
+    .split('\n')
+    .filter((file) => /(^|\/)Dockerfile(\.|$)/.test(file))
+    .sort();
+}
+
 function securityAuditMatrixLockfiles(): string[] {
   return Array.from(securityAuditWorkflow.matchAll(/^\s+lockfile:\s+(.+)$/gm), ([, value]) =>
     value.trim().replace(/^['"]|['"]$/g, ''),
@@ -252,5 +259,75 @@ describe('CI workflow coverage', () => {
         `security-audit.yml must cover ${lockfile}`,
       );
     }
+  });
+
+  it('keeps Docker base images pinned to immutable digests', () => {
+    const failures: string[] = [];
+
+    for (const dockerfile of collectDockerfiles()) {
+      const aliases = new Set<string>();
+      const source = readFileSync(resolve(root, dockerfile), 'utf8');
+      const lines = source.split('\n');
+
+      lines.forEach((line, index) => {
+        const match = line.match(/^FROM\s+(.+)$/i);
+        if (!match) return;
+
+        const parts = match[1].trim().split(/\s+/);
+        while (parts[0]?.startsWith('--')) {
+          parts.shift();
+        }
+
+        const image = parts[0];
+        const asIndex = parts.findIndex((part) => part.toUpperCase() === 'AS');
+        const alias = asIndex >= 0 ? parts[asIndex + 1] : undefined;
+        const isKnownStage = image ? aliases.has(image) : false;
+        if (alias) {
+          aliases.add(alias);
+        }
+
+        if (!image || image === 'scratch' || isKnownStage) return;
+
+        if (!/@sha256:[0-9a-f]{64}$/i.test(image)) {
+          failures.push(`${dockerfile}:${index + 1} ${line.trim()}`);
+        }
+      });
+    }
+
+    assert.deepEqual(
+      failures,
+      [],
+      `Docker FROM images must be pinned with full @sha256:<64 hex> digests:\n${failures.join('\n')}`,
+    );
+  });
+
+  it('keeps GitHub Actions external uses pinned to commit SHAs', () => {
+    const failures: string[] = [];
+    const workflowFiles = readdirSync(workflowsDir)
+      .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
+      .sort();
+
+    for (const workflowFile of workflowFiles) {
+      const source = readFileSync(resolve(workflowsDir, workflowFile), 'utf8');
+      const lines = source.split('\n');
+
+      lines.forEach((line, index) => {
+        const match = line.match(/^\s*uses:\s*([^@\s#]+)@([^\s#]+)/);
+        if (!match) return;
+
+        const [, action, ref] = match;
+        if (action.startsWith('./') || action.startsWith('docker://')) return;
+
+        if (!/^[0-9a-f]{40}$/i.test(ref)) {
+          failures.push(`${workflowFile}:${index + 1} ${line.trim()}`);
+        }
+      });
+    }
+
+    assert.deepEqual(
+      failures,
+      [],
+      `GitHub Actions uses refs must be 40-character commit SHAs:\n${failures.join('\n')}`,
+    );
   });
 });

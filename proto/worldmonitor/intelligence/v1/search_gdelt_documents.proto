@@ -13,19 +13,24 @@ message SearchGdeltDocumentsRequest {
     (buf.validate.field).string.min_len = 1,
     (sebuf.http.query) = { name: "query" }
   ];
-  // Maximum number of articles to return (1-250).
+  // Maximum number of articles to return. Defaults to 10 when omitted or <= 0. The
+  // handler caps returned results at 20, so values above 20 (though accepted, up to the
+  // validation limit of 250) still return at most 20 articles.
   int32 max_records = 2 [
     (buf.validate.field).int32.gte = 1,
     (buf.validate.field).int32.lte = 250,
     (sebuf.http.query) = { name: "max_records" }
   ];
   // Time span filter (e.g., "15min", "1h", "24h").
-  string timespan = 3 [(sebuf.http.query) = { name: "timespan" }];
+  // Accepted but currently ignored; no-op until this handler supports the parameter.
+  string timespan = 3 [(sebuf.http.query) = { name: "timespan" }, (sebuf.http.unimplemented) = true];
   // Tone filter appended to query (e.g., "tone>5" for positive, "tone<-5" for negative).
   // Left empty to skip tone filtering.
-  string tone_filter = 4 [(sebuf.http.query) = { name: "tone_filter" }];
+  // Accepted but currently ignored; no-op until this handler supports the parameter.
+  string tone_filter = 4 [(sebuf.http.query) = { name: "tone_filter" }, (sebuf.http.unimplemented) = true];
   // Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".
-  string sort = 5 [(sebuf.http.query) = { name: "sort" }];
+  // Accepted but currently ignored; no-op until this handler supports the parameter.
+  string sort = 5 [(sebuf.http.query) = { name: "sort" }, (sebuf.http.unimplemented) = true];
 }
 
 // GdeltArticle represents a single article from the GDELT document API.

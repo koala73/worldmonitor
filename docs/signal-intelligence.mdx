@@ -447,3 +447,12 @@ Convergence Zones: Baltic Sea (military_flight + military_vessel),
 Active Signal Types: 5 of 5
 Total Signals: 47
 ```
+
+### Backed by endpoints
+
+| Signal family | Endpoint | Notes |
+|---|---|---|
+| Company enrichment | `GET /api/intelligence/v1/get-company-enrichment` | Aggregates GitHub, SEC, Hacker News, and inferred stack context for one company. |
+| Company activity signals | `GET /api/intelligence/v1/list-company-signals` | Funding, hiring, expansion, executive, and open-source activity cards. |
+| GDELT topic timeline | `GET /api/intelligence/v1/get-gdelt-topic-timeline` | Tone and volume timeline for an intelligence topic. |
+| Market-implication cards | `GET /api/intelligence/v1/list-market-implications` | AI-generated implication cards from live world state; documented here to avoid duplicating market-domain panel ownership. |

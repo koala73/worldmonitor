@@ -2,18 +2,35 @@ openapi: 3.1.0
 info:
     title: SupplyChainService API
     version: 1.0.0
+security:
+    - WorldMonitorKey: []
+    - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
 paths:
     /api/supply-chain/v1/get-shipping-rates:
         get:
             tags:
                 - SupplyChainService
             summary: GetShippingRates
+            description: GetShippingRates returns current container shipping-rate indices; upstream_unavailable is set when the source could not be reached.
             operationId: GetShippingRates
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "indices":
+                                    - "changePct": 1.5
+                                      "currentValue": 1.5
+                                      "history":
+                                          - "date": "2026-01-15"
+                                            "value": 1.5
+                                      "indexId": "example-id"
+                                      "name": "WorldMonitor Analyst"
+                                "upstreamUnavailable": true
                             schema:
                                 $ref: '#/components/schemas/GetShippingRatesResponse'
                 "400":
@@ -22,6 +39,18 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -33,12 +62,26 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetChokepointStatus
+            description: |-
+                GetChokepointStatus retrieves seeded chokepoint status. Empty chokepoints
+                 with upstream_unavailable=true means the seed snapshot is unavailable/
+                 degraded, not that there are confirmed zero chokepoints.
             operationId: GetChokepointStatus
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "chokepoints":
+                                    - "activeWarnings": 1
+                                      "affectedRoutes":
+                                          - "example"
+                                      "aisDisruptions": 1
+                                      "congestionLevel": "example"
+                                      "description": "Example WorldMonitor observation."
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "upstreamUnavailable": true
                             schema:
                                 $ref: '#/components/schemas/GetChokepointStatusResponse'
                 "400":
@@ -47,6 +90,18 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -66,7 +121,9 @@ paths:
             parameters:
                 - name: chokepointId
                   in: query
-                  required: false
+                  description: Chokepoint identifier whose transit history should be returned.
+                  required: true
+                  example: "suez"
                   schema:
                     type: string
             responses:
@@ -74,6 +131,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "chokepointId": "suez"
+                                "fetchedAt": "1717200000000"
+                                "history":
+                                    - "capContainer": 1.5
+                                      "capDryBulk": 1.5
+                                      "capGeneralCargo": 1.5
+                                      "capRoro": 1.5
+                                      "capTanker": 1.5
                             schema:
                                 $ref: '#/components/schemas/GetChokepointHistoryResponse'
                 "400":
@@ -82,6 +148,18 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -93,12 +171,26 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetCriticalMinerals
+            description: GetCriticalMinerals returns critical-minerals supply indicators; upstream_unavailable is set when the source could not be reached.
             operationId: GetCriticalMinerals
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "minerals":
+                                    - "globalProduction": 1.5
+                                      "hhi": 1.5
+                                      "mineral": "example"
+                                      "riskRating": "example"
+                                      "topProducers":
+                                          - "country": "US"
+                                            "countryCode": "US"
+                                            "productionTonnes": 1.5
+                                            "sharePct": 1.5
+                                "upstreamUnavailable": true
                             schema:
                                 $ref: '#/components/schemas/GetCriticalMineralsResponse'
                 "400":
@@ -107,6 +199,18 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -125,6 +229,18 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "carriers":
+                                    - "carrierType": "all"
+                                      "changePct": 1.5
+                                      "name": "WorldMonitor Analyst"
+                                      "price": 75.25
+                                      "sparkline":
+                                          - 1.5
+                                "fetchedAt": 1717200000000
+                                "stressLevel": "example"
+                                "stressScore": 42.5
+                                "upstreamUnavailable": true
                             schema:
                                 $ref: '#/components/schemas/GetShippingStressResponse'
                 "400":
@@ -133,6 +249,18 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -144,19 +272,26 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetCountryChokepointIndex
-            description: GetCountryChokepointIndex returns per-chokepoint exposure scores for a country. PRO-gated.
+            description: GetCountryChokepointIndex returns per-chokepoint exposure scores for a country. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetCountryChokepointIndex
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: iso2
                   in: query
                   description: ISO 3166-1 alpha-2 country code (uppercase).
-                  required: false
+                  required: true
+                  example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter (2-digit string). Defaults to "27" (energy/mineral fuels) when absent.
                   required: false
+                  example: "27"
                   schema:
                     type: string
             responses:
@@ -164,6 +299,17 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "exposures":
+                                    - "chokepointId": "suez"
+                                      "chokepointName": "WorldMonitor Analyst"
+                                      "coastSide": "example"
+                                      "exposureScore": 42.5
+                                      "shockSupported": true
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "hs2": "27"
+                                "iso2": "US"
+                                "primaryChokepointId": "suez"
                             schema:
                                 $ref: '#/components/schemas/GetCountryChokepointIndexResponse'
                 "400":
@@ -172,6 +318,18 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -183,24 +341,32 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetBypassOptions
-            description: GetBypassOptions returns ranked bypass corridors for a chokepoint. PRO-gated.
+            description: GetBypassOptions returns ranked bypass corridors for a chokepoint. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetBypassOptions
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: chokepointId
                   in: query
-                  required: false
+                  description: Chokepoint identifier to evaluate for bypass options.
+                  required: true
+                  example: "suez"
                   schema:
                     type: string
                 - name: cargoType
                   in: query
                   description: 'container | tanker | bulk | roro  (default: "container")'
                   required: false
+                  example: "container"
                   schema:
                     type: string
                 - name: closurePct
                   in: query
                   description: '0-100, percent of capacity blocked (default: 100)'
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
@@ -209,6 +375,17 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "cargoType": "container"
+                                "chokepointId": "suez"
+                                "closurePct": 1
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "options":
+                                    - "activationThreshold": "example"
+                                      "addedCostMultiplier": 75.25
+                                      "addedTransitDays": 7
+                                      "bypassWarRiskTier": "WAR_RISK_TIER_NORMAL"
+                                      "capacityConstraintTonnage": "1717200000000"
                             schema:
                                 $ref: '#/components/schemas/GetBypassOptionsResponse'
                 "400":
@@ -217,6 +394,18 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -228,23 +417,33 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetCountryCostShock
-            description: GetCountryCostShock returns cost shock and war risk data for a country+chokepoint. PRO-gated.
+            description: GetCountryCostShock returns cost shock and war risk data for a country+chokepoint. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetCountryCostShock
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: iso2
                   in: query
-                  required: false
+                  description: ISO 3166-1 alpha-2 country code for the importing country.
+                  required: true
+                  example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: chokepointId
                   in: query
-                  required: false
+                  description: Chokepoint identifier to model as disrupted.
+                  required: true
+                  example: "suez"
                   schema:
                     type: string
                 - name: hs2
                   in: query
                   description: 'HS2 chapter (default: "27")'
                   required: false
+                  example: "27"
                   schema:
                     type: string
             responses:
@@ -252,6 +451,12 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "chokepointId": "suez"
+                                "coverageDays": 7
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "hasEnergyModel": true
+                                "hs2": "27"
                             schema:
                                 $ref: '#/components/schemas/GetCountryCostShockResponse'
                 "400":
@@ -260,6 +465,18 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -271,19 +488,39 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetCountryProducts
-            description: GetCountryProducts returns the seeded bilateral-HS4 import basket for a country. PRO-gated.
+            description: GetCountryProducts returns the seeded bilateral-HS4 import basket for a country. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetCountryProducts
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: iso2
                   in: query
-                  required: false
+                  description: ISO 3166-1 alpha-2 country code whose strategic products should be returned.
+                  required: true
+                  example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "iso2": "US"
+                                "products":
+                                    - "description": "Example WorldMonitor observation."
+                                      "hs4": "example"
+                                      "topExporters":
+                                          - "partnerCode": 1
+                                            "partnerIso2": "US"
+                                            "share": 1.5
+                                            "value": 1.5
+                                      "totalValue": 1
+                                      "year": 1
                             schema:
                                 $ref: '#/components/schemas/GetCountryProductsResponse'
                 "400":
@@ -292,6 +529,18 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -306,22 +555,33 @@ paths:
             description: |-
                 GetMultiSectorCostShock returns per-sector cost-shock estimates for a
                  country+chokepoint+closure-window. PRO-gated.
+                Requires entitlement tier >= 1.
             operationId: GetMultiSectorCostShock
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: iso2
                   in: query
-                  required: false
+                  description: ISO 3166-1 alpha-2 country code for the importing country.
+                  required: true
+                  example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: chokepointId
                   in: query
-                  required: false
+                  description: Chokepoint identifier to model as disrupted.
+                  required: true
+                  example: "suez"
                   schema:
                     type: string
                 - name: closureDays
                   in: query
                   description: Closure-window duration in days. Server clamps to [1, 365]. Defaults to 30.
                   required: false
+                  example: 7
                   schema:
                     type: integer
                     format: int32
@@ -330,6 +590,17 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "chokepointId": "suez"
+                                "closureDays": 7
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "iso2": "US"
+                                "sectors":
+                                    - "addedTransitDays": 7
+                                      "closureDays": 7
+                                      "freightAddedPctPerTon": 1.5
+                                      "hs2": "27"
+                                      "hs2Label": "27"
                             schema:
                                 $ref: '#/components/schemas/GetMultiSectorCostShockResponse'
                 "400":
@@ -338,6 +609,18 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -349,18 +632,26 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetSectorDependency
-            description: GetSectorDependency returns dependency flags and risk profile for a country+HS2 sector. PRO-gated.
+            description: GetSectorDependency returns dependency flags and risk profile for a country+HS2 sector. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetSectorDependency
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: iso2
                   in: query
-                  required: false
+                  description: ISO 3166-1 alpha-2 country code whose sector dependency should be analyzed.
+                  required: true
+                  example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter code, e.g. "27" (mineral fuels), "85" (electronics)
-                  required: false
+                  required: true
+                  example: "27"
                   schema:
                     type: string
             responses:
@@ -368,6 +659,13 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "flags":
+                                    - "DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL"
+                                "hasViableBypass": true
+                                "hs2": "27"
+                                "hs2Label": "27"
                             schema:
                                 $ref: '#/components/schemas/GetSectorDependencyResponse'
                 "400":
@@ -376,6 +674,18 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -393,28 +703,41 @@ paths:
                  a country pair + HS2 + cargo type. PRO-gated. Wraps the route-intelligence vendor
                  endpoint's compute with browser-callable auth and adds fields needed by the
                  Route Explorer UI.
+                Requires entitlement tier >= 1.
             operationId: GetRouteExplorerLane
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: fromIso2
                   in: query
-                  required: false
+                  description: ISO 3166-1 alpha-2 origin country code for the trade lane.
+                  required: true
+                  example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: toIso2
                   in: query
-                  required: false
+                  description: ISO 3166-1 alpha-2 destination country code for the trade lane.
+                  required: true
+                  example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter code, e.g. "27", "85"
-                  required: false
+                  required: true
+                  example: "27"
                   schema:
                     type: string
                 - name: cargoType
                   in: query
                   description: 'One of: container, tanker, bulk, roro'
-                  required: false
+                  required: true
+                  example: "container"
                   schema:
                     type: string
             responses:
@@ -422,6 +745,24 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "bypassOptions":
+                                    - "addedCostMultiplier": 75.25
+                                      "addedTransitDays": 7
+                                      "fromPort":
+                                          "lat": 40.7128
+                                          "lon": -74.006
+                                      "id": "example-id"
+                                      "name": "WorldMonitor Analyst"
+                                "cargoType": "container"
+                                "chokepointExposures":
+                                    - "chokepointId": "suez"
+                                      "chokepointName": "WorldMonitor Analyst"
+                                      "exposurePct": 1
+                                "disruptionScore": 42.5
+                                "estFreightUsdPerTeuRange":
+                                    "max": 1
+                                    "min": 1
                             schema:
                                 $ref: '#/components/schemas/GetRouteExplorerLaneResponse'
                 "400":
@@ -430,6 +771,18 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -441,21 +794,34 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetRouteImpact
+            description: 'GetRouteImpact returns route-level trade exposure: lane value, primary exporter concentration, strategic products, resilience score, dependency flags, and Comtrade provenance. PRO-gated. Requires entitlement tier >= 1.'
             operationId: GetRouteImpact
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: fromIso2
                   in: query
-                  required: false
+                  description: ISO 3166-1 alpha-2 origin country code for the route.
+                  required: true
+                  example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: toIso2
                   in: query
-                  required: false
+                  description: ISO 3166-1 alpha-2 destination country code for the route.
+                  required: true
+                  example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
-                  required: false
+                  description: HS2 chapter code for the product sector on the route.
+                  required: true
+                  example: "27"
                   schema:
                     type: string
             responses:
@@ -463,6 +829,13 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "comtradeSource": "example"
+                                "dependencyFlags":
+                                    - "DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL"
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "hs2InSeededUniverse": true
+                                "laneValueUsd": 1.5
                             schema:
                                 $ref: '#/components/schemas/GetRouteImpactResponse'
                 "400":
@@ -471,6 +844,18 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -493,6 +878,7 @@ paths:
                   in: query
                   description: Filter to one commodity. Omit (or pass empty) to receive both.
                   required: false
+                  example: "oil"
                   schema:
                     type: string
             responses:
@@ -500,6 +886,26 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "classifierVersion": "example"
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "pipelines":
+                                    - "capacityBcmYr": 1.5
+                                      "capacityMbd": 1.5
+                                      "commodityType": "oil"
+                                      "endPoint":
+                                          "lat": 40.7128
+                                          "lon": -74.006
+                                      "evidence":
+                                          "classifierConfidence": 0.82
+                                          "classifierVersion": "example"
+                                          "commercialState": "example"
+                                          "lastEvidenceUpdate": "2026-01-15"
+                                          "operatorStatement":
+                                              "date": "2026-01-15"
+                                              "text": "example"
+                                              "url": "https://example.com/worldmonitor"
+                                "upstreamUnavailable": true
                             schema:
                                 $ref: '#/components/schemas/ListPipelinesResponse'
                 "400":
@@ -508,6 +914,18 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -526,7 +944,9 @@ paths:
             parameters:
                 - name: pipelineId
                   in: query
-                  required: false
+                  description: Pipeline identifier to load with full evidence details.
+                  required: true
+                  example: "transmed-pipeline"
                   schema:
                     type: string
             responses:
@@ -534,6 +954,31 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "pipeline":
+                                    "capacityBcmYr": 1.5
+                                    "capacityMbd": 1.5
+                                    "commodityType": "oil"
+                                    "endPoint":
+                                        "lat": 40.7128
+                                        "lon": -74.006
+                                    "evidence":
+                                        "classifierConfidence": 0.82
+                                        "classifierVersion": "example"
+                                        "commercialState": "example"
+                                        "lastEvidenceUpdate": "2026-01-15"
+                                        "operatorStatement":
+                                            "date": "2026-01-15"
+                                            "text": "example"
+                                            "url": "https://example.com/worldmonitor"
+                                "revisions":
+                                    - "classifierVersion": "example"
+                                      "date": "2026-01-15"
+                                      "fieldChanged": "example"
+                                      "newValue": "example"
+                                      "previousValue": "example"
+                                "unavailable": true
                             schema:
                                 $ref: '#/components/schemas/GetPipelineDetailResponse'
                 "400":
@@ -542,6 +987,18 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -568,6 +1025,7 @@ paths:
                        "ugs" | "spr" | "lng_export" | "lng_import" | "crude_tank_farm"
                      Omit (or pass empty) to receive all types.
                   required: false
+                  example: "ugs"
                   schema:
                     type: string
             responses:
@@ -575,6 +1033,21 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "classifierVersion": "example"
+                                "facilities":
+                                    - "capacityMb": 1.5
+                                      "capacityMtpa": 1.5
+                                      "capacityTwh": 1.5
+                                      "country": "US"
+                                      "evidence":
+                                          "classifierConfidence": 0.82
+                                          "classifierVersion": "example"
+                                          "commercialState": "example"
+                                          "fillDisclosed": true
+                                          "fillSource": "example"
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "upstreamUnavailable": true
                             schema:
                                 $ref: '#/components/schemas/ListStorageFacilitiesResponse'
                 "400":
@@ -583,6 +1056,18 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -601,7 +1086,9 @@ paths:
             parameters:
                 - name: facilityId
                   in: query
-                  required: false
+                  description: Storage facility identifier to load with full evidence details.
+                  required: true
+                  example: "rough-storage"
                   schema:
                     type: string
             responses:
@@ -609,6 +1096,26 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "facility":
+                                    "capacityMb": 1.5
+                                    "capacityMtpa": 1.5
+                                    "capacityTwh": 1.5
+                                    "country": "US"
+                                    "evidence":
+                                        "classifierConfidence": 0.82
+                                        "classifierVersion": "example"
+                                        "commercialState": "example"
+                                        "fillDisclosed": true
+                                        "fillSource": "example"
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "revisions":
+                                    - "classifierVersion": "example"
+                                      "date": "2026-01-15"
+                                      "fieldChanged": "example"
+                                      "newValue": "example"
+                                      "previousValue": "example"
+                                "unavailable": true
                             schema:
                                 $ref: '#/components/schemas/GetStorageFacilityDetailResponse'
                 "400":
@@ -617,6 +1124,18 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -638,6 +1157,7 @@ paths:
                   in: query
                   description: Filter to one ISO 3166-1 alpha-2 country. Omit for global.
                   required: false
+                  example: "US"
                   schema:
                     type: string
                 - name: product
@@ -646,12 +1166,14 @@ paths:
                     Filter to one product. Accepts: "petrol" | "diesel" | "jet" | "heating_oil".
                      Omit for all products.
                   required: false
+                  example: "diesel"
                   schema:
                     type: string
                 - name: severity
                   in: query
                   description: 'Filter to one severity. Accepts: "confirmed" | "watch". Omit for both.'
                   required: false
+                  example: "watch"
                   schema:
                     type: string
             responses:
@@ -659,6 +1181,27 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "classifierVersion": "example"
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "shortages":
+                                    - "causeChain":
+                                        - "example"
+                                      "country": "US"
+                                      "evidence":
+                                          "classifierConfidence": 0.82
+                                          "classifierVersion": "example"
+                                          "evidenceSources":
+                                              - "authority": "example"
+                                                "date": "2026-01-15"
+                                                "sourceType": "all"
+                                                "title": "example"
+                                                "url": "https://example.com/worldmonitor"
+                                          "firstRegulatorConfirmation": "40.7128"
+                                          "lastEvidenceUpdate": "2026-01-15"
+                                      "firstSeen": "example"
+                                      "id": "example-id"
+                                "upstreamUnavailable": true
                             schema:
                                 $ref: '#/components/schemas/ListFuelShortagesResponse'
                 "400":
@@ -667,6 +1210,18 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -685,7 +1240,9 @@ paths:
             parameters:
                 - name: shortageId
                   in: query
-                  required: false
+                  description: Fuel-shortage identifier to load with full evidence details.
+                  required: true
+                  example: "example-id"
                   schema:
                     type: string
             responses:
@@ -693,6 +1250,26 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "shortage":
+                                    "causeChain":
+                                        - "example"
+                                    "country": "US"
+                                    "evidence":
+                                        "classifierConfidence": 0.82
+                                        "classifierVersion": "example"
+                                        "evidenceSources":
+                                            - "authority": "example"
+                                              "date": "2026-01-15"
+                                              "sourceType": "all"
+                                              "title": "example"
+                                              "url": "https://example.com/worldmonitor"
+                                        "firstRegulatorConfirmation": "40.7128"
+                                        "lastEvidenceUpdate": "2026-01-15"
+                                    "firstSeen": "example"
+                                    "id": "example-id"
+                                "unavailable": true
                             schema:
                                 $ref: '#/components/schemas/GetFuelShortageDetailResponse'
                 "400":
@@ -701,6 +1278,18 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -725,18 +1314,21 @@ paths:
                     Filter to one asset. Omit for all. When set, also narrows to the
                      matching asset_type if provided.
                   required: false
+                  example: "asset-example-1"
                   schema:
                     type: string
                 - name: assetType
                   in: query
                   description: 'Filter to one asset type. Accepts: "pipeline" | "storage".'
                   required: false
+                  example: "pipeline"
                   schema:
                     type: string
                 - name: ongoingOnly
                   in: query
                   description: If true, only return events with endAt empty (still ongoing).
                   required: false
+                  example: true
                   schema:
                     type: boolean
             responses:
@@ -744,6 +1336,17 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "classifierVersion": "example"
+                                "events":
+                                    - "assetId": "asset-example-1"
+                                      "assetType": "pipeline"
+                                      "capacityOfflineBcmYr": 1.5
+                                      "capacityOfflineMbd": 1.5
+                                      "causeChain":
+                                          - "example"
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "upstreamUnavailable": true
                             schema:
                                 $ref: '#/components/schemas/ListEnergyDisruptionsResponse'
                 "400":
@@ -752,6 +1355,18 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 default:
                     description: Error response
                     content:
@@ -759,7 +1374,31 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
 components:
+    securitySchemes:
+        WorldMonitorKey:
+            type: apiKey
+            in: header
+            name: X-WorldMonitor-Key
+            description: User-issued WorldMonitor API key.
+        ApiKeyHeader:
+            type: apiKey
+            in: header
+            name: X-Api-Key
+            description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
+        BearerAuth:
+            type: http
+            scheme: bearer
+            description: 'Bearer token: a Clerk-issued JWT for browser session flows, passed as Authorization: Bearer <token>.'
     schemas:
+        UnauthorizedError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable error message.
+            required:
+                - error
+            description: Returned when the API key is missing, malformed, or lacks current API access.
         Error:
             type: object
             properties:
@@ -767,6 +1406,26 @@ components:
                     type: string
                     description: Error message (e.g., 'user not found', 'database connection failed')
             description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        ForbiddenError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable entitlement failure reason.
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint.
+                currentTier:
+                    type: integer
+                    format: int32
+                    description: Caller entitlement tier when known.
+                planKey:
+                    type: string
+                    description: Caller plan key when known.
+            required:
+                - error
+            description: Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.
         FieldViolation:
             type: object
             properties:
@@ -847,8 +1506,14 @@ components:
                         $ref: '#/components/schemas/ChokepointInfo'
                 fetchedAt:
                     type: string
+                    description: |-
+                        ISO-8601 time the status snapshot was fetched. Empty string with
+                         upstream_unavailable=true means the snapshot is unavailable/degraded.
                 upstreamUnavailable:
                     type: boolean
+                    description: |-
+                        True when upstream seed/relay data is unavailable or partial. When true, an
+                         empty chokepoints array is graceful degradation, not confirmed zero data.
         ChokepointInfo:
             type: object
             properties:
@@ -1053,6 +1718,7 @@ components:
             properties:
                 chokepointId:
                     type: string
+                    description: Chokepoint identifier whose transit history should be returned.
             required:
                 - chokepointId
             description: |-
@@ -1232,6 +1898,7 @@ components:
             properties:
                 chokepointId:
                     type: string
+                    description: Chokepoint identifier to evaluate for bypass options.
                 cargoType:
                     type: string
                     description: 'container | tanker | bulk | roro  (default: "container")'
@@ -1326,8 +1993,10 @@ components:
                 iso2:
                     type: string
                     pattern: ^[A-Z]{2}$
+                    description: ISO 3166-1 alpha-2 country code for the importing country.
                 chokepointId:
                     type: string
+                    description: Chokepoint identifier to model as disrupted.
                 hs2:
                     type: string
                     description: 'HS2 chapter (default: "27")'
@@ -1384,6 +2053,7 @@ components:
                 iso2:
                     type: string
                     pattern: ^[A-Z]{2}$
+                    description: ISO 3166-1 alpha-2 country code whose strategic products should be returned.
             required:
                 - iso2
         GetCountryProductsResponse:
@@ -1435,8 +2105,10 @@ components:
                 iso2:
                     type: string
                     pattern: ^[A-Z]{2}$
+                    description: ISO 3166-1 alpha-2 country code for the importing country.
                 chokepointId:
                     type: string
+                    description: Chokepoint identifier to model as disrupted.
                 closureDays:
                     type: integer
                     format: int32
@@ -1531,6 +2203,7 @@ components:
                 iso2:
                     type: string
                     pattern: ^[A-Z]{2}$
+                    description: ISO 3166-1 alpha-2 country code whose sector dependency should be analyzed.
                 hs2:
                     type: string
                     description: HS2 chapter code, e.g. "27" (mineral fuels), "85" (electronics)
@@ -1583,9 +2256,11 @@ components:
                 fromIso2:
                     type: string
                     pattern: ^[A-Z]{2}$
+                    description: ISO 3166-1 alpha-2 origin country code for the trade lane.
                 toIso2:
                     type: string
                     pattern: ^[A-Z]{2}$
+                    description: ISO 3166-1 alpha-2 destination country code for the trade lane.
                 hs2:
                     type: string
                     description: HS2 chapter code, e.g. "27", "85"
@@ -1711,11 +2386,14 @@ components:
                 fromIso2:
                     type: string
                     pattern: ^[A-Z]{2}$
+                    description: ISO 3166-1 alpha-2 origin country code for the route.
                 toIso2:
                     type: string
                     pattern: ^[A-Z]{2}$
+                    description: ISO 3166-1 alpha-2 destination country code for the route.
                 hs2:
                     type: string
+                    description: HS2 chapter code for the product sector on the route.
             required:
                 - fromIso2
                 - toIso2
@@ -1908,6 +2586,7 @@ components:
             properties:
                 pipelineId:
                     type: string
+                    description: Pipeline identifier to load with full evidence details.
             required:
                 - pipelineId
             description: |-
@@ -2096,6 +2775,7 @@ components:
             properties:
                 facilityId:
                     type: string
+                    description: Storage facility identifier to load with full evidence details.
             required:
                 - facilityId
             description: |-
@@ -2248,6 +2928,7 @@ components:
             properties:
                 shortageId:
                     type: string
+                    description: Fuel-shortage identifier to load with full evidence details.
             required:
                 - shortageId
             description: |-

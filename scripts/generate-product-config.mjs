@@ -6,11 +6,12 @@
  * Writes:
  *   - src/config/products.generated.ts   (product IDs for dashboard)
  *   - pro-test/src/generated/tiers.json  (tier view model for /pro page)
+ *   - pro-test/src/locales/*.json       (English pricing feature placeholders)
  *
  * Usage: npx tsx scripts/generate-product-config.mjs
  */
 
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -86,6 +87,9 @@ console.log(`  ✓ ${fallbackPath}`);
 // ---------------------------------------------------------------------------
 
 // Group catalog entries by tierGroup, merge monthly/annual into Tier view model
+const tiersPath = join(ROOT, 'pro-test/src/generated/tiers.json');
+const previousGeneratedFeaturesByKey = readGeneratedTierFeatureSnapshot(tiersPath);
+
 const tierGroups = new Map();
 for (const entry of Object.values(PRODUCT_CATALOG)) {
   if (!entry.publicVisible) continue;
@@ -96,7 +100,8 @@ for (const entry of Object.values(PRODUCT_CATALOG)) {
 }
 
 const tiers = [];
-for (const [, entries] of tierGroups) {
+const localeFeaturesByKey = {};
+for (const [tierGroup, entries] of tierGroups) {
   const monthly = entries.find((e) => e.billingPeriod === 'monthly');
   const annual = entries.find((e) => e.billingPeriod === 'annual');
   const primary = monthly || entries[0];
@@ -107,7 +112,8 @@ for (const [, entries] of tierGroups) {
       ? primary.marketingFeatures
       : (annual?.marketingFeatures?.length > 0 ? annual.marketingFeatures : []);
 
-  const tier = { name: getTierDisplayName(primary.tierGroup) };
+  const localeKey = getTierLocaleKey(tierGroup);
+  const tier = { name: getTierDisplayName(primary.tierGroup), localeKey };
 
   if (primary.priceCents === 0) {
     // Free tier
@@ -127,6 +133,10 @@ for (const [, entries] of tierGroups) {
 
   tier.description = getDescription(primary.tierGroup);
   tier.features = marketingFeatures;
+  if (localeFeaturesByKey[localeKey]) {
+    throw new Error(`[product-config] Duplicate pro locale tier key "${localeKey}" generated for public tier group "${tierGroup}".`);
+  }
+  localeFeaturesByKey[localeKey] = marketingFeatures;
 
   if (primary.selfServe && primary.dodoProductId) {
     tier.monthlyProductId = primary.dodoProductId;
@@ -146,9 +156,13 @@ for (const [, entries] of tierGroups) {
   tiers.push(tier);
 }
 
-const tiersPath = join(ROOT, 'pro-test/src/generated/tiers.json');
 writeFileSync(tiersPath, JSON.stringify(tiers, null, 2) + '\n');
 console.log(`  ✓ ${tiersPath}`);
+
+const syncedLocaleCount = syncLocalePricingFeaturePlaceholders(join(ROOT, 'pro-test/src/locales'), localeFeaturesByKey, previousGeneratedFeaturesByKey);
+if (syncedLocaleCount > 0) {
+  console.log(`  ✓ refreshed pricing features in ${syncedLocaleCount} pro locale file(s)`);
+}
 
 console.log('\nDone. Remember to rebuild /pro: cd pro-test && npm run build');
 
@@ -167,6 +181,20 @@ function getTierDisplayName(tierGroup) {
   return names[tierGroup] || tierGroup;
 }
 
+function getTierLocaleKey(tierGroup) {
+  const keys = {
+    free: 'free',
+    pro: 'pro',
+    api_starter: 'api',
+    enterprise: 'enterprise',
+  };
+  const key = keys[tierGroup];
+  if (!key) {
+    throw new Error(`[product-config] Missing pro locale tier key mapping for public tier group "${tierGroup}".`);
+  }
+  return key;
+}
+
 function getDescription(tierGroup) {
   const descriptions = {
     free: 'Get started with the essentials',
@@ -176,4 +204,118 @@ function getDescription(tierGroup) {
     enterprise: 'Custom solutions for organizations',
   };
   return descriptions[tierGroup] || '';
+}
+
+function syncLocalePricingFeaturePlaceholders(localesDir, generatedFeaturesByKey, previousGeneratedFeaturesByKey) {
+  if (!existsSync(localesDir)) return 0;
+
+  const englishPath = join(localesDir, 'en.json');
+  if (!existsSync(englishPath)) {
+    throw new Error(`[product-config] Missing English pro locale file: ${englishPath}`);
+  }
+
+  const previousEnglishFeatures = pricingFeatureSnapshot(readJsonFile(englishPath));
+  const missingEnglishKeys = Object.keys(generatedFeaturesByKey)
+    .filter((key) => !Array.isArray(previousEnglishFeatures[key]));
+  if (missingEnglishKeys.length > 0) {
+    throw new Error(
+      `[product-config] Missing English pro locale pricing feature placeholder(s): ${missingEnglishKeys.join(', ')}. ` +
+        'Verify getTierLocaleKey() matches pro-test/src/locales/en.json pricing.tiers keys.',
+    );
+  }
+
+  let changedFiles = 0;
+  const preservedTranslations = [];
+  for (const file of readdirSync(localesDir).filter((name) => name.endsWith('.json')).sort()) {
+    const localePath = join(localesDir, file);
+    const locale = readJsonFile(localePath);
+    const pricingTiers = locale?.pricing?.tiers;
+    if (!pricingTiers || typeof pricingTiers !== 'object' || Array.isArray(pricingTiers)) continue;
+
+    let changed = false;
+    for (const [key, generatedFeatures] of Object.entries(generatedFeaturesByKey)) {
+      const tier = pricingTiers[key];
+      if (!tier || typeof tier !== 'object' || Array.isArray(tier)) continue;
+
+      const currentFeatures = tier.features;
+      if (!Array.isArray(currentFeatures)) continue;
+
+      const previousGeneratedFeatures = previousGeneratedFeaturesByKey[key] || previousEnglishFeatures[key];
+      const generatedFeaturesChanged = !sameStringArray(previousGeneratedFeatures, generatedFeatures);
+      const isEnglishSource = file === 'en.json';
+      const isGeneratedPlaceholder = sameStringArray(currentFeatures, previousGeneratedFeatures);
+      if ((isEnglishSource || isGeneratedPlaceholder) && !sameStringArray(currentFeatures, generatedFeatures)) {
+        tier.features = generatedFeatures;
+        changed = true;
+      } else if (!isEnglishSource && generatedFeaturesChanged && !sameStringArray(currentFeatures, generatedFeatures)) {
+        preservedTranslations.push(`${file}:pricing.tiers.${key}.features`);
+      }
+    }
+
+    if (changed) {
+      writeFileSync(localePath, JSON.stringify(locale, null, 2) + '\n');
+      changedFiles += 1;
+      console.log(`  ✓ ${localePath}`);
+    }
+  }
+
+  if (preservedTranslations.length > 0) {
+    console.warn(
+      `  ! preserved translated pricing features after catalog changes (${preservedTranslations.length}): ` +
+        preservedTranslations.join(', '),
+    );
+  }
+
+  return changedFiles;
+}
+
+function readGeneratedTierFeatureSnapshot(path) {
+  if (!existsSync(path)) return {};
+
+  const generatedTiers = readJsonFile(path);
+  if (!Array.isArray(generatedTiers)) return {};
+
+  const featuresByKey = {};
+  for (const tier of generatedTiers) {
+    if (!tier || typeof tier !== 'object' || Array.isArray(tier) || !Array.isArray(tier.features)) continue;
+
+    const key = typeof tier.localeKey === 'string' ? tier.localeKey : getLegacyTierLocaleKey(tier.name);
+    if (key) {
+      featuresByKey[key] = tier.features;
+    }
+  }
+
+  return featuresByKey;
+}
+
+function getLegacyTierLocaleKey(tierName) {
+  const keys = {
+    Free: 'free',
+    Pro: 'pro',
+    API: 'api',
+    Enterprise: 'enterprise',
+  };
+  return typeof tierName === 'string' ? keys[tierName] : undefined;
+}
+
+function readJsonFile(path) {
+  return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+function pricingFeatureSnapshot(locale) {
+  const tiers = locale?.pricing?.tiers;
+  if (!tiers || typeof tiers !== 'object' || Array.isArray(tiers)) return {};
+
+  return Object.fromEntries(
+    Object.entries(tiers)
+      .filter(([, tier]) => tier && typeof tier === 'object' && !Array.isArray(tier) && Array.isArray(tier.features))
+      .map(([key, tier]) => [key, tier.features]),
+  );
+}
+
+function sameStringArray(left, right) {
+  return Array.isArray(left) &&
+    Array.isArray(right) &&
+    left.length === right.length &&
+    left.every((value, index) => value === right[index]);
 }

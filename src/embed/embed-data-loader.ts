@@ -4,9 +4,10 @@ import { fetchEarthquakes } from '@/services/earthquakes';
 import { fetchNaturalEvents } from '@/services/eonet';
 import { fetchProtestEvents } from '@/services/unrest';
 import { fetchWeatherAlerts } from '@/services/weather';
-import { ConflictServiceClient } from '@/generated/client/worldmonitor/conflict/v1/service_client';
+
 import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/smart-poll-loop';
 import type { EmbedLayerId } from './embed-url';
+import { ConflictServiceClient } from '@/services/generated-rpc-clients';
 
 const REFRESH_MS = 10 * 60 * 1000;
 const CONFLICT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;

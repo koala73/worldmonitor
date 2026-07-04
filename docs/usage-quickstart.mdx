@@ -5,7 +5,7 @@ description: "Make your first WorldMonitor API call in under a minute — curl, 
 
 ## 1. Get an API key
 
-PRO subscribers get an API key from [worldmonitor.app/pro](https://www.worldmonitor.app/pro). User-issued keys are exactly `wm_` followed by 40 lowercase hex characters.
+API-tier subscribers get an API key from [worldmonitor.app/pro](https://www.worldmonitor.app/pro). User-issued keys are exactly `wm_` followed by 40 lowercase hex characters.
 
 <Tip>
 The dashboard browser session can call supported public endpoints without a user API key. You need a key for server-to-server use, untrusted browser origins, and routes that explicitly require an API key.
@@ -16,7 +16,7 @@ The dashboard browser session can call supported public endpoints without a user
 ### curl
 
 ```bash
-curl -s 'https://api.worldmonitor.app/api/conflict/v1/list-conflict-events?limit=5' \
+curl -s 'https://api.worldmonitor.app/api/conflict/v1/get-humanitarian-summary?country_code=SD' \
   -H 'X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567'
 ```
 
@@ -24,7 +24,7 @@ curl -s 'https://api.worldmonitor.app/api/conflict/v1/list-conflict-events?limit
 
 ```js
 const res = await fetch(
-  'https://api.worldmonitor.app/api/market/v1/get-quotes?symbols=AAPL,TSLA',
+  'https://api.worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL&symbols=TSLA',
   { headers: { 'X-WorldMonitor-Key': process.env.WM_KEY } }
 );
 const data = await res.json();
@@ -53,6 +53,8 @@ For dashboards, use `/api/bootstrap` to pull all seeded caches in one request:
 curl -s 'https://api.worldmonitor.app/api/bootstrap' \
   -H 'X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567'
 ```
+
+Use the same host and header form for server-to-server calls. `/api/bootstrap` does not require a separate gateway URL, token exchange, activation step, or IP allow-list.
 
 See [Platform endpoints](/api-platform#bootstrap) for the response shape.
 

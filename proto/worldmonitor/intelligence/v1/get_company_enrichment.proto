@@ -5,13 +5,18 @@ package worldmonitor.intelligence.v1;
 import "sebuf/http/annotations.proto";
 
 // Request to fetch enrichment data for a company.
-// Requires either domain (e.g. "github.com") or name (e.g. "GitHub").
+// NOTE: This endpoint is DISABLED — the handler returns an empty stub regardless of
+// input. Requires either domain (e.g. "github.com") or name (e.g. "GitHub") to pass
+// validation, but no enrichment is performed.
 message GetCompanyEnrichmentRequest {
+  // Company domain to enrich, such as "github.com".
   string domain = 1 [(sebuf.http.query) = {name: "domain"}];
+  // Company name to enrich when a domain is not available.
   string name = 2 [(sebuf.http.query) = {name: "name"}];
 }
 
-// Aggregated company data from multiple public sources.
+// Company enrichment data. DISABLED: the handler returns an empty stub — `company`
+// echoes only the requested name/domain, and all other fields are empty/undefined.
 message GetCompanyEnrichmentResponse {
   EnrichedCompany company = 1;
   EnrichedGithub github = 2;

@@ -160,6 +160,7 @@ service EconomicService {
     option (sebuf.http.config) = {path: "/get-oil-stocks-analysis", method: HTTP_METHOD_GET};
   }
 
+  // GetOilInventories returns recent oil-inventory series: US crude weeks, the SPR snapshot, natural-gas weeks, EU gas storage, and IEA stocks.
   rpc GetOilInventories(GetOilInventoriesRequest) returns (GetOilInventoriesResponse) {
     option (sebuf.http.config) = {path: "/get-oil-inventories", method: HTTP_METHOD_GET};
   }

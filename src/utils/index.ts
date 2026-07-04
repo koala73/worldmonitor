@@ -19,12 +19,17 @@ export function formatTime(date: Date): string {
   }
 }
 
+// Live feeds occasionally omit numeric fields (undefined) rather than sending
+// null, and `null`/NaN/Infinity slip through call-site `!` assertions on
+// `number | null` fields. Shared guard so every formatter renders the
+// unavailable state instead of throwing or emitting misleading output
+// (WORLDMONITOR-SH).
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
 export function formatPrice(price: number | null | undefined): string {
-  // Live feeds occasionally omit `price` (undefined) rather than sending null,
-  // and `null`/NaN slip through call-site `!` assertions on `number | null`
-  // fields. Guard here so a missing price renders the unavailable placeholder
-  // instead of throwing `undefined.toLocaleString()` (WORLDMONITOR-SH).
-  if (typeof price !== 'number' || !Number.isFinite(price)) return '--';
+  if (!isFiniteNumber(price)) return '--';
   if (price >= 1000) {
     return `$${price.toLocaleString(undefined, {
       minimumFractionDigits: 0,
@@ -37,16 +42,19 @@ export function formatPrice(price: number | null | undefined): string {
   })}`;
 }
 
-export function formatChange(change: number): string {
+export function formatChange(change: number | null | undefined): string {
+  if (!isFiniteNumber(change)) return '--';
   const sign = change >= 0 ? '+' : '';
   return `${sign}${change.toFixed(2)}%`;
 }
 
-export function getChangeClass(change: number): string {
+export function getChangeClass(change: number | null | undefined): string {
+  if (!isFiniteNumber(change)) return '';
   return change >= 0 ? 'up' : 'down';
 }
 
-export function getHeatmapClass(change: number): string {
+export function getHeatmapClass(change: number | null | undefined): string {
+  if (!isFiniteNumber(change)) return '';
   const abs = Math.abs(change);
   const direction = change >= 0 ? 'up' : 'down';
 
@@ -179,7 +187,6 @@ export function shuffle<T>(arr: T[]): T[] {
 }
 
 export { proxyUrl, fetchWithProxy, rssProxyUrl } from './proxy';
-export { exportToJSON, exportToCSV, ExportPanel } from './export';
 export { buildMapUrl, parseMapUrlState } from './urlState';
 export { withTimeout, TimeoutError } from './with-timeout';
 export type { ParsedMapUrlState } from './urlState';

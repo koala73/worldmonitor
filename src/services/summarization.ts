@@ -14,9 +14,11 @@ import { BETA_MODE } from '@/config/beta';
 import { isFeatureAvailable, type RuntimeFeatureId } from './runtime-config';
 import { trackLLMUsage, trackLLMFailure } from './analytics';
 import { getCurrentLanguage } from './i18n';
-import { NewsServiceClient, type SummarizeArticleResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
+import type { SummarizeArticleResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { buildSummaryCacheKey } from '@/utils/summary-cache-key';
+import { NewsServiceClient } from '@/services/generated-rpc-clients';
+import { premiumFetch } from '@/services/premium-fetch';
 
 export type SummarizationProvider = 'ollama' | 'groq' | 'openrouter' | 'browser' | 'cache';
 
@@ -44,6 +46,9 @@ export interface SummarizeOptions {
 // ── Sebuf client (replaces direct fetch to /api/{provider}-summarize) ──
 
 const newsClient = new NewsServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+const premiumNewsClient = new NewsServiceClient(getRpcBaseUrl(), {
+  fetch: (input, init) => premiumFetch(input, { ...init, forcePremium: true }),
+});
 const summaryBreaker = createCircuitBreaker<SummarizeArticleResponse>({ name: 'News Summarization', cacheTtlMs: 0 });
 
 const summaryResultBreaker = createCircuitBreaker<SummarizationResult | null>({
@@ -84,7 +89,7 @@ async function tryApiProvider(
   lastAttemptedProvider = providerDef.provider;
   try {
     const resp: SummarizeArticleResponse = await summaryBreaker.execute(async () => {
-      return newsClient.summarizeArticle({
+      return premiumNewsClient.summarizeArticle({
         provider: providerDef.provider,
         headlines,
         mode: 'brief',
@@ -320,7 +325,6 @@ async function generateSummaryInternal(
   console.warn('[Summarization] All providers failed');
   return null;
 }
-
 
 /**
  * Translate text using the fallback chain (via SummarizeArticle RPC with mode='translate')

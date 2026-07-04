@@ -7,6 +7,7 @@ import type {
   GetBlsSeriesRequest,
   GetBlsSeriesResponse,
 } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
+import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
 import { getCachedJson } from '../../../_shared/redis';
 
 const BLS_KEY_PREFIX = 'bls:series';
@@ -14,10 +15,7 @@ const BLS_KEY_PREFIX = 'bls:series';
 // Only allow series IDs that were seeded. Prevents unbounded Redis key enumeration.
 // National series now fetched via FRED (api.bls.gov is blocked from Railway IPs).
 // Metro-area LAUMT* series dropped — no FRED equivalent available.
-const KNOWN_SERIES_IDS = new Set([
-  'USPRIV',
-  'ECIALLCIV',
-]);
+const KNOWN_SERIES_IDS = new Set(filterParamContracts.economicBlsSeriesIds);
 
 function normalizeLimit(limit: number): number {
   return limit > 0 ? Math.min(limit, 500) : 60;

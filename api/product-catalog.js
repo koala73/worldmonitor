@@ -15,6 +15,8 @@ export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module
 import { getCorsHeaders } from './_cors.js';
+// @ts-expect-error — JS module
+import { timingSafeEqualSecret } from './_crypto.js';
 // @ts-expect-error — generated JS module
 import { FALLBACK_PRICES } from './_product-fallback-prices.js';
 // @ts-expect-error — JS module
@@ -53,13 +55,13 @@ const TIER_CONFIG = {
   pro: {
     name: 'Pro',
     description: 'Full intelligence dashboard',
-    features: ['Everything in Free', 'AI stock analysis & backtesting', 'Daily market briefs', 'Military & geopolitical tracking', 'Custom widget builder', 'MCP data connectors', 'Priority data refresh'],
+    features: ['Everything in Free', 'AI stock analysis & backtesting', 'Daily market briefs', 'Military & geopolitical tracking', 'Custom widget builder', 'MCP access for Claude Desktop & other AI clients (50 calls/day)', 'Priority data refresh'],
     highlighted: true,
   },
   api_starter: {
     name: 'API',
     description: 'Programmatic access to intelligence data',
-    features: ['REST API access', 'Real-time data streams', '1,000 requests/day', 'Webhook notifications', 'Custom data exports'],
+    features: ['REST API access', 'Real-time data streams', '60 requests/minute', '1,000 requests/day included', 'Webhook notifications', 'Custom data exports'],
     highlighted: false,
   },
   enterprise: {
@@ -235,7 +237,7 @@ export default async function handler(req) {
   // DELETE = purge cache (authenticated)
   if (req.method === 'DELETE') {
     const authHeader = req.headers.get('Authorization') ?? '';
-    if (!RELAY_SECRET || authHeader !== `Bearer ${RELAY_SECRET}`) {
+    if (!RELAY_SECRET || !(await timingSafeEqualSecret(authHeader, `Bearer ${RELAY_SECRET}`))) {
       return json({ error: 'Unauthorized' }, 401, cors);
     }
     await purgeCache();

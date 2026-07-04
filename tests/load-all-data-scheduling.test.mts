@@ -112,6 +112,7 @@ function findTasksSliceCalls(node: ts.Node): string[] {
 describe('loadAllData scheduler', () => {
   const loadAllDataMethod = findMethod(DATA_LOADER_SOURCE, 'loadAllData');
   const runLoadAllDataMethod = findMethod(DATA_LOADER_SOURCE, 'runLoadAllData');
+  const loadSatellitesMethod = findMethod(DATA_LOADER_SOURCE, 'loadSatellites');
 
   it('does not add a blanket inter-batch startup delay', () => {
     const batchIdentifiers = findBlockedBatchIdentifiers(runLoadAllDataMethod);
@@ -143,12 +144,37 @@ describe('loadAllData scheduler', () => {
     assert.match(text, /this\.loadAllDataQueuedForceAll\s*=\s*this\.loadAllDataQueuedForceAll\s*\|\|\s*forceAll/);
     assert.match(text, /return\s+this\.loadAllDataPromise/);
   });
+
+  it('keeps satellite.js chunk failures local to the satellite layer', () => {
+    const text = loadSatellitesMethod.getText(DATA_LOADER_SOURCE);
+    assert.match(
+      text,
+      /try\s*\{[\s\S]*?this\.cachedSatRecs\s*=\s*await\s+initSatRecs\(data\);[\s\S]*?\}\s*catch\s*\(err\)\s*\{/,
+      'loadSatellites must catch lazy satellite.js import/init failures locally',
+    );
+    assert.match(
+      text,
+      /this\.cachedSatRecs\s*=\s*\[\];/,
+      'failed satellite initialization should clear cached satellite records',
+    );
+    assert.match(
+      text,
+      /this\.ctx\.map\?\.setSatellites\(\[\]\);/,
+      'failed satellite initialization should clear the rendered satellite layer',
+    );
+    assert.match(
+      text,
+      /return;/,
+      'failed satellite initialization should return without starting propagation',
+    );
+  });
 });
 
 describe('viewport hydration scheduler lifecycle', () => {
   const destroyMethod = findMethod(PANEL_LAYOUT_SOURCE, 'destroy');
   const observeMethod = findMethod(PANEL_LAYOUT_SOURCE, 'observePanelsForViewport');
   const observePanelMethod = findMethod(PANEL_LAYOUT_SOURCE, 'observePanelForHydration');
+  const scheduleHydrationMethod = findMethod(PANEL_LAYOUT_SOURCE, 'scheduleHydrationForPanelElement');
 
   it('cancels pending idle hydration during teardown', () => {
     assert.match(
@@ -159,19 +185,35 @@ describe('viewport hydration scheduler lifecycle', () => {
   });
 
   it('keeps the no-window viewport fallback before reading window.innerHeight', () => {
-    assert.match(
-      observeMethod.getText(PANEL_LAYOUT_SOURCE),
-      /this\.observePanelForHydration\(panel\);/,
+    assert.ok(
+      observeMethod.getText(PANEL_LAYOUT_SOURCE).includes('this.observePanelForHydration(panel);'),
       'observePanelsForViewport should delegate per-panel viewport handling to observePanelForHydration',
     );
-    const text = observePanelMethod.getText(PANEL_LAYOUT_SOURCE);
+    assert.ok(
+      observePanelMethod.getText(PANEL_LAYOUT_SOURCE).includes("this.scheduleHydrationForPanelElement(panel.getElement(), 'near');"),
+      'observePanelForHydration should delegate measurement to the batched helper',
+    );
+    const text = scheduleHydrationMethod.getText(PANEL_LAYOUT_SOURCE);
     const guardIndex = text.indexOf("typeof window === 'undefined'");
     const innerHeightIndex = text.indexOf('window.innerHeight');
-    assert.ok(guardIndex >= 0, 'observer should preserve an explicit no-window guard');
-    assert.ok(innerHeightIndex >= 0, 'observer should still classify visible panels when window exists');
+    assert.ok(guardIndex >= 0, 'hydration helper should preserve an explicit no-window guard');
+    assert.ok(innerHeightIndex >= 0, 'hydration helper should still classify visible panels when window exists');
     assert.ok(
       guardIndex < innerHeightIndex,
-      'observer must not read window.innerHeight before the no-window fallback can schedule hydration',
+      'hydration helper must not read window.innerHeight before the no-window fallback can schedule hydration',
     );
   });
+
+  it('batches panel hydration layout reads before load scheduling writes', () => {
+    const text = scheduleHydrationMethod.getText(PANEL_LAYOUT_SOURCE);
+    const measureIndex = text.indexOf('measure(() => {');
+    const rectIndex = text.indexOf('element.getBoundingClientRect()');
+    const mutateIndex = text.indexOf('mutate(() => {');
+    const scheduleIndex = text.indexOf('this.scheduleLoadAllData(phase)');
+    assert.ok(measureIndex >= 0, 'hydration helper should queue layout reads in measure()');
+    assert.ok(rectIndex > measureIndex, 'panel rect should be read inside measure()');
+    assert.ok(mutateIndex > rectIndex, 'hydration scheduling should be deferred to mutate()');
+    assert.ok(scheduleIndex > mutateIndex, 'loadAllData scheduling should run in mutate()');
+  });
+
 });

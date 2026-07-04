@@ -1,14 +1,8 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import {
-  GivingServiceClient,
-  type GetGivingSummaryResponse as ProtoResponse,
-  type PlatformGiving as ProtoPlatform,
-  type CategoryBreakdown as ProtoCategory,
-  type CryptoGivingSummary as ProtoCrypto,
-  type InstitutionalGiving as ProtoInstitutional,
-} from '@/generated/client/worldmonitor/giving/v1/service_client';
+import type { GetGivingSummaryResponse as ProtoResponse, PlatformGiving as ProtoPlatform, CategoryBreakdown as ProtoCategory, CryptoGivingSummary as ProtoCrypto, InstitutionalGiving as ProtoInstitutional } from '@/generated/client/worldmonitor/giving/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
+import { GivingServiceClient } from '@/services/generated-rpc-clients';
 
 // ─── Consumer-friendly types ───
 

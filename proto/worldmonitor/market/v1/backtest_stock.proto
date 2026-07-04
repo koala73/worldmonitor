@@ -20,17 +20,20 @@ message BacktestStockEvaluation {
 }
 
 message BacktestStockRequest {
+  // Stock ticker symbol to backtest.
   string symbol = 1 [(sebuf.http.query) = { name: "symbol" },
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 1,
     (buf.validate.field).string.max_len = 32
   ];
 
+  // Optional company display name used to disambiguate the symbol.
   string name = 2 [
     (sebuf.http.query) = { name: "name" },
     (buf.validate.field).string.max_len = 120
   ];
 
+  // Evaluation window in days for simulated backtest outcomes.
   int32 eval_window_days = 3 [
     (sebuf.http.query) = { name: "eval_window_days" },
     (buf.validate.field).int32.gte = 3,

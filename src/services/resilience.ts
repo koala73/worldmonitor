@@ -1,21 +1,14 @@
-import {
-  ResilienceServiceClient,
-  type GetResilienceRankingResponse,
-  type GetResilienceScoreResponse,
-  type ResilienceDomain,
-  type ResilienceDimension,
-  type ResilienceRankingItem,
-  type ScoreInterval,
-} from '@/generated/client/worldmonitor/resilience/v1/service_client';
+import type { GetResilienceRankingResponse, GetResilienceScoreResponse, ResilienceDomain, ResilienceDimension, ResilienceRankingItem, ScoreInterval } from '@/generated/client/worldmonitor/resilience/v1/service_client';
 import { getRpcBaseUrl } from '@/services/rpc-client';
+import { ResilienceServiceClient } from '@/services/generated-rpc-clients';
 
 export type ResilienceScoreResponse = GetResilienceScoreResponse;
 export type ResilienceRankingResponse = GetResilienceRankingResponse;
 export type { ResilienceDomain, ResilienceDimension, ResilienceRankingItem, ScoreInterval };
 
-let _client: ResilienceServiceClient | null = null;
+let _client: InstanceType<typeof ResilienceServiceClient> | null = null;
 
-function getClient(): ResilienceServiceClient {
+function getClient(): InstanceType<typeof ResilienceServiceClient> {
   if (!_client) {
     _client = new ResilienceServiceClient(getRpcBaseUrl(), {
       fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),

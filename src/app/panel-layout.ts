@@ -1,11 +1,18 @@
 import type { AppContext, AppModule } from '@/app/app-context';
-import { applyAgentBusAction } from '@/app/agent-bus-applier';
 import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
 import { replayPendingCalls, clearAllPendingCalls } from '@/app/pending-panel-data';
 import {
   createDeferredPanelShell,
+  getDeferredPanelShellFootprint as resolveDeferredPanelShellFootprint,
+  reconcileDeferredPanelShellColSpan,
   shouldDeferInitialPanelMount,
+  type DeferredPanelShellFootprint,
 } from '@/app/panel-mount-deferral';
+import {
+  addResponsiveZoneListener,
+  removeResponsiveZoneListener,
+  type ResponsiveZoneListener,
+} from '@/app/responsive-zone-listener';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
 import { effectivePubDateMs } from '@/services/feed-date';
 import type { ClusteredEvent, MapLayers, PanelConfig } from '@/types';
@@ -35,16 +42,14 @@ import { t } from '@/services/i18n';
 import { getCurrentTheme } from '@/utils';
 import { trackCriticalBannerAction } from '@/services/analytics';
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
-import { openWidgetChatModal } from '@/components/WidgetChatModal';
 import { loadWidgets, saveWidget, isProUser } from '@/services/widget-store';
 import type { CustomWidgetSpec } from '@/services/widget-store';
 import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitled, hasTier, getEntitlementState, onEntitlementChange, shouldReloadOnEntitlementChange } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
 import { initPaymentFailureBanner } from '@/components/payment-failure-banner';
 import { handleCheckoutReturn } from '@/services/checkout-return';
-import { initCheckoutOverlay, destroyCheckoutOverlay, showCheckoutSuccess, consumePostCheckoutFlag, clearCheckoutAttempt } from '@/services/checkout';
+import { registerCheckoutSuccessCallback, destroyCheckoutOverlay, showCheckoutSuccess, consumePostCheckoutFlag, clearCheckoutAttempt } from '@/services/checkout';
 import { showCheckoutFailureBanner } from '@/components/checkout-failure-banner';
-import { openMcpConnectModal } from '@/components/McpConnectModal';
 import { PanelTabBar } from '@/components/PanelTabBar';
 import {
   loadTabsState,
@@ -59,8 +64,12 @@ import type { McpPanelSpec } from '@/services/mcp-store';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import type { AuthSession } from '@/services/auth-state';
 import { PanelGateReason, getPanelGateReason, hasPremiumAccess } from '@/services/panel-gating';
+import { markLcpDebug } from '@/utils/lcp-debug';
 import type { Panel } from '@/components/Panel';
+import type { SupplyChainPanel } from '@/components/SupplyChainPanel';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { loadPanelCollapsed, loadPanelColSpans, loadPanelSpans } from '@/utils/panel-storage';
+import { measure, mutate } from '@/utils/layout-batch';
 
 
 /**
@@ -112,6 +121,85 @@ const WEB_CLERK_PRO_ONLY_PANELS = new Set([
 
 const COLLIDING_NEWS_PANEL_KEYS = new Set(['markets', 'crypto', 'economic']);
 
+// TEMPORARY MIRROR of each panel constructor's footprint (`defaultRowSpan` /
+// `className: 'panel-wide'`, declared in src/components/*Panel.ts). A deferred
+// shell never instantiates its component, so it cannot read that footprint
+// directly and must reproduce it here to reserve the right grid space.
+//
+// This duplicates the authoritative per-component declaration. Two guards keep
+// it honest: `tests/panel-config-guardrails.test.mjs` fails CI on drift, and
+// `warnOnDeferredFootprintDrift` (below) logs in dev if a hydrated panel ends
+// up wider/taller than its reserved shell. The intended long-term fix is to
+// lift these defaults into one shared table imported by both the `Panel`
+// constructor and this map, removing the duplication entirely (see #4490).
+export const DEFERRED_PANEL_NATURAL_FOOTPRINTS: Readonly<Record<string, DeferredPanelShellFootprint>> = {
+  cii: { rowSpan: 2 },
+  'chat-analyst': { rowSpan: 2 },
+  'consumer-prices': { rowSpan: 2 },
+  displacement: { rowSpan: 2 },
+  economic: { rowSpan: 2 },
+  'energy-complex': { rowSpan: 2 },
+  'energy-crisis': { rowSpan: 2 },
+  'energy-disruptions': { rowSpan: 2 },
+  'fuel-shortages': { rowSpan: 2 },
+  'gdelt-intel': { rowSpan: 2 },
+  'internet-disruptions': { rowSpan: 2 },
+  'live-news': { className: 'panel-wide' },
+  'live-webcams': { className: 'panel-wide' },
+  'oil-inventories': { rowSpan: 2 },
+  'pipeline-status': { rowSpan: 2 },
+  'sanctions-pressure': { rowSpan: 2 },
+  'security-advisories': { rowSpan: 2 },
+  'storage-facility-map': { rowSpan: 2 },
+  'strategic-posture': { rowSpan: 2 },
+  'supply-chain': { rowSpan: 2 },
+  'telegram-intel': { rowSpan: 2 },
+  'threat-timeline': { rowSpan: 2 },
+  'trade-policy': { rowSpan: 2 },
+  'ucdp-events': { rowSpan: 2 },
+  'windy-webcams': { className: 'panel-wide' },
+};
+
+const DEFERRED_DYNAMIC_PANEL_FOOTPRINTS: Readonly<Record<string, DeferredPanelShellFootprint>> = {
+  'cw-': { rowSpan: 2 },
+  'mcp-': { rowSpan: 2 },
+};
+
+const DEFERRED_PANEL_RETRY_DELAY_MS = 1_000;
+const DEFERRED_PANEL_MAX_RETRY_ATTEMPTS = 3;
+
+function readRowSpanClass(element: HTMLElement): number {
+  if (element.classList.contains('span-4')) return 4;
+  if (element.classList.contains('span-3')) return 3;
+  if (element.classList.contains('span-2')) return 2;
+  return 1;
+}
+
+function readColSpanFootprint(element: HTMLElement): number {
+  if (element.classList.contains('col-span-3')) return 3;
+  if (element.classList.contains('col-span-2')) return 2;
+  if (element.classList.contains('col-span-1')) return 1;
+  return element.classList.contains('panel-wide') ? 2 : 1;
+}
+
+// Dev-only guard: if a hydrated panel ends up taller/wider than the shell we
+// reserved for it, the registry above drifted from the panel constructor and
+// the deferred shell just caused the layout shift it exists to prevent. Surface
+// it in the app (CI also catches drift via panel-config-guardrails).
+function warnOnDeferredFootprintDrift(key: string, placeholder: HTMLElement, real: HTMLElement): void {
+  const reservedRows = readRowSpanClass(placeholder);
+  const reservedCols = readColSpanFootprint(placeholder);
+  const realRows = readRowSpanClass(real);
+  const realCols = readColSpanFootprint(real);
+  if (realRows > reservedRows || realCols > reservedCols) {
+    console.warn(
+      `[PanelLayoutManager] Deferred shell footprint drift for "${key}": reserved ` +
+        `${reservedCols}x${reservedRows} (col x row) but panel hydrated to ${realCols}x${realRows}. ` +
+        'Update DEFERRED_PANEL_NATURAL_FOOTPRINTS to match the panel constructor.',
+    );
+  }
+}
+
 export interface PanelLayoutManagerCallbacks {
   openCountryStory: (code: string, name: string) => void;
   openCountryBrief: (code: string) => void;
@@ -127,6 +215,9 @@ interface DeferredPanelMount {
   observer: IntersectionObserver | null;
   mounted: boolean;
   loading: Promise<void> | null;
+  retryTimer: ReturnType<typeof setTimeout> | null;
+  retryAttempts: number;
+  failed: boolean;
 }
 
 interface LazyPanelRegistration {
@@ -163,6 +254,7 @@ export class PanelLayoutManager implements AppModule {
   private unsubscribePaymentFailureBanner: (() => void) | null = null;
   private scheduledLoadAllRaf: number | null = null;
   private scheduledLoadAllIdle: number | null = null;
+  private responsiveZoneListener: ResponsiveZoneListener | null = null;
 
   constructor(ctx: AppContext, callbacks: PanelLayoutManagerCallbacks) {
     this.ctx = ctx;
@@ -250,7 +342,7 @@ export class PanelLayoutManager implements AppModule {
     // email lazily at fire-time (not at register-time) so a just-signed-
     // in buyer who completes checkout in the same session still sees
     // the receipt acknowledgement.
-    initCheckoutOverlay(() => showCheckoutSuccess({
+    registerCheckoutSuccessCallback(() => showCheckoutSuccess({
       waitForEntitlement: true,
       email: getAuthState().user?.email ?? null,
     }));
@@ -298,6 +390,7 @@ export class PanelLayoutManager implements AppModule {
 
   async init(): Promise<void> {
     await this.renderLayout();
+    if (this.ctx.isDestroyed) return;
 
     // Subscribe to auth state for reactive panel gating on web
     this.unsubscribeAuth = subscribeAuthState((state) => {
@@ -306,12 +399,12 @@ export class PanelLayoutManager implements AppModule {
 
     // Handle analyst action chip "Create chart widget →" click
     this.boundWidgetCreatorHandler = ((e: CustomEvent<{ initialMessage?: string }>) => {
-      openWidgetChatModal({
+      void import('@/components/WidgetChatModal').then((m) => m.openWidgetChatModal({
         mode: 'create',
         tier: 'pro',
         initialMessage: e.detail.initialMessage,
         onComplete: (spec) => this.addCustomWidget(spec),
-      });
+      })).catch((err) => console.error('[widget-chat] failed to lazy-load WidgetChatModal', err));
     }) as EventListener;
     this.ctx.container.addEventListener('wm:open-widget-creator', this.boundWidgetCreatorHandler);
   }
@@ -333,6 +426,9 @@ export class PanelLayoutManager implements AppModule {
     this.panelDragCleanupHandlers = [];
     for (const deferred of this.deferredPanelMounts.values()) {
       deferred.observer?.disconnect();
+      if (deferred.retryTimer !== null) {
+        clearTimeout(deferred.retryTimer);
+      }
     }
     this.deferredPanelMounts.clear();
     this.lazyPanelRegistrations.clear();
@@ -382,7 +478,8 @@ export class PanelLayoutManager implements AppModule {
     // Reset checkout overlay so next layout init can register its callback
     destroyCheckoutOverlay();
 
-    window.removeEventListener('resize', this.ensureCorrectZones);
+    removeResponsiveZoneListener(this.responsiveZoneListener);
+    this.responsiveZoneListener = null;
   }
 
   /** Reactively update premium panel gating based on auth state. */
@@ -444,6 +541,7 @@ export class PanelLayoutManager implements AppModule {
   async renderLayout(): Promise<void> {
     const isGlobeMode = getStoredMapModePreference() === 'globe';
 
+    markLcpDebug('wm:layout:render-start');
     document.documentElement.classList.add('wm-layout-hydrated');
     setTrustedHtml(this.ctx.container, trustedHtml(`
       ${this.ctx.isDesktopApp ? '<div class="tauri-titlebar" data-tauri-drag-region></div>' : ''}
@@ -669,7 +767,7 @@ export class PanelLayoutManager implements AppModule {
       </main>
       <footer class="site-footer">
         <div class="site-footer-brand">
-          <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" class="site-footer-icon" />
+          <img src="/favico/android-chrome-96x96.png" alt="" width="28" height="28" loading="lazy" decoding="async" class="site-footer-icon" />
           <div class="site-footer-brand-text">
             <span class="site-footer-name">WORLD MONITOR</span>
             <span class="site-footer-sub">v${__APP_VERSION__} &middot; <a href="https://x.com/eliehabib" target="_blank" rel="noopener" class="site-footer-credit">@eliehabib</a></span>
@@ -688,6 +786,11 @@ export class PanelLayoutManager implements AppModule {
         <span class="site-footer-copy">&copy; ${new Date().getFullYear()} World Monitor</span>
       </footer>
     `, "legacy direct innerHTML migration"));
+    // Mark AFTER the innerHTML swap so the timestamp reflects when the new shell
+    // DOM is actually live — placing it before setTrustedHtml recorded a time
+    // earlier than any LCP candidate in the new shell, making it useless for
+    // ordering the LCP element against the shell swap (PR #4512 review).
+    markLcpDebug('wm:layout:shell-replaced');
 
     // Skip link: explicitly move focus to <main> on activation. Native
     // fragment focus on a tabindex="-1" target is inconsistent across
@@ -1188,6 +1291,7 @@ export class PanelLayoutManager implements AppModule {
     if (el.parentElement) return false;
     this.makeDraggable(el, key);
     if (placeholder?.parentNode) {
+      if (import.meta.env.DEV) warnOnDeferredFootprintDrift(key, placeholder, el);
       placeholder.parentNode.replaceChild(el, placeholder);
     } else {
       this.insertByOrder(grid, el, key);
@@ -1197,16 +1301,31 @@ export class PanelLayoutManager implements AppModule {
     return true;
   }
 
+  private getDeferredPanelShellFootprint(key: string): DeferredPanelShellFootprint {
+    return resolveDeferredPanelShellFootprint({
+      panelId: key,
+      naturalFootprints: DEFERRED_PANEL_NATURAL_FOOTPRINTS,
+      dynamicFootprints: DEFERRED_DYNAMIC_PANEL_FOOTPRINTS,
+      savedRowSpans: loadPanelSpans(),
+      savedColSpans: loadPanelColSpans(),
+      savedCollapsed: loadPanelCollapsed(),
+    });
+  }
+
   private deferPanelMount(key: string, panel: Panel | null, grid: HTMLElement | null, withShell: boolean): void {
     const placeholder = withShell && grid
-      ? createDeferredPanelShell(key, this.ctx.panelSettings[key]?.name ?? key)
+      ? createDeferredPanelShell(key, this.ctx.panelSettings[key]?.name ?? key, this.getDeferredPanelShellFootprint(key))
       : null;
     if (placeholder && grid) {
       this.insertByOrder(grid, placeholder, key);
+      reconcileDeferredPanelShellColSpan(placeholder);
       this.mobilePanelNav?.applyToNewPanel(placeholder);
     }
     const existing = this.deferredPanelMounts.get(key);
     existing?.observer?.disconnect();
+    if (existing?.retryTimer !== null && existing?.retryTimer !== undefined) {
+      clearTimeout(existing.retryTimer);
+    }
     if (existing?.placeholder && existing.placeholder !== placeholder) {
       existing.placeholder.remove();
     }
@@ -1216,6 +1335,9 @@ export class PanelLayoutManager implements AppModule {
       observer: null,
       mounted: false,
       loading: null,
+      retryTimer: null,
+      retryAttempts: 0,
+      failed: false,
     };
     this.deferredPanelMounts.set(key, deferred);
     if (placeholder) {
@@ -1226,6 +1348,10 @@ export class PanelLayoutManager implements AppModule {
   private observeDeferredPanelShell(key: string, deferred: DeferredPanelMount): void {
     const { placeholder } = deferred;
     if (!placeholder) return;
+    if (deferred.retryTimer !== null) {
+      clearTimeout(deferred.retryTimer);
+      deferred.retryTimer = null;
+    }
     if (typeof window === 'undefined' || typeof IntersectionObserver === 'undefined') {
       const ric = typeof window !== 'undefined'
         ? (window as unknown as { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback
@@ -1252,26 +1378,52 @@ export class PanelLayoutManager implements AppModule {
     return document.getElementById('panelsGrid');
   }
 
+  private scheduleDeferredPanelRetry(key: string, deferred: DeferredPanelMount): void {
+    if (this.ctx.isDestroyed || deferred.mounted || deferred.failed || deferred.retryTimer !== null) return;
+    if (!deferred.placeholder?.parentNode) return;
+    if (!deferred.panel && !this.lazyPanelRegistrations.has(key)) return;
+    if (deferred.retryAttempts >= DEFERRED_PANEL_MAX_RETRY_ATTEMPTS) {
+      // Give up after a bounded number of attempts so a permanently failing
+      // dynamic import (offline, stale chunk) cannot spin a 1s retry loop forever.
+      // The shell stays in place as a quiet fallback, matching the prior fail-safe.
+      deferred.failed = true;
+      return;
+    }
+    deferred.retryAttempts += 1;
+    deferred.retryTimer = setTimeout(() => {
+      deferred.retryTimer = null;
+      if (this.deferredPanelMounts.get(key) !== deferred || deferred.mounted || this.ctx.isDestroyed) return;
+      this.observeDeferredPanelShell(key, deferred);
+    }, DEFERRED_PANEL_RETRY_DELAY_MS);
+  }
+
   private mountDeferredPanel(key: string): boolean {
     const deferred = this.deferredPanelMounts.get(key);
-    if (!deferred || deferred.mounted || deferred.loading) return false;
+    if (!deferred || deferred.mounted || deferred.loading || deferred.failed) return false;
     const grid = this.getPanelMountGrid(key);
     if (!grid && !deferred.placeholder?.parentNode) return false;
 
     deferred.observer?.disconnect();
     deferred.observer = null;
+    if (deferred.retryTimer !== null) {
+      clearTimeout(deferred.retryTimer);
+      deferred.retryTimer = null;
+    }
     const targetGrid = grid ?? (deferred.placeholder!.parentNode as HTMLElement);
     const finish = (panel: Panel | null): void => {
-      if (!panel || this.ctx.isDestroyed) return;
       const current = this.deferredPanelMounts.get(key);
       if (current !== deferred || deferred.mounted) return;
+      deferred.loading = null;
+      if (!panel || this.ctx.isDestroyed) {
+        this.scheduleDeferredPanelRetry(key, deferred);
+        return;
+      }
       const placeholder = deferred.placeholder;
       if (this.mountPanelElement(targetGrid, key, panel, placeholder)) {
         this.afterPanelMounted(key, panel);
       }
       deferred.mounted = true;
       deferred.placeholder = null;
-      deferred.loading = null;
       this.deferredPanelMounts.delete(key);
     };
 
@@ -1279,7 +1431,7 @@ export class PanelLayoutManager implements AppModule {
       finish(deferred.panel);
       return true;
     }
-    deferred.loading = this.loadRegisteredPanel(key).then(finish);
+    deferred.loading = this.loadRegisteredPanel(key).then(finish, () => finish(null));
     return true;
   }
 
@@ -1293,17 +1445,28 @@ export class PanelLayoutManager implements AppModule {
     });
   }
 
+  private scheduleHydrationForPanelElement(element: HTMLElement, fallbackPhase: HydrationSchedulePhase = 'near'): void {
+    if (typeof window === 'undefined') {
+      this.scheduleLoadAllData(fallbackPhase);
+      return;
+    }
+
+    measure(() => {
+      const rect = element.getBoundingClientRect();
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+      const phase: HydrationSchedulePhase = rect.top < viewportHeight && rect.bottom > 0 ? 'visible' : 'near';
+      mutate(() => {
+        if (this.ctx.isDestroyed) return;
+        this.scheduleLoadAllData(phase);
+      });
+    });
+  }
+
   private observePanelForHydration(panel: Panel): void {
     if (this.observedHydrationPanels.has(panel)) return;
     this.observedHydrationPanels.add(panel);
     panel.observeNearViewport(() => {
-      if (typeof window === 'undefined') {
-        this.scheduleLoadAllData('near');
-        return;
-      }
-      const rect = panel.getElement?.().getBoundingClientRect();
-      const phase: HydrationSchedulePhase = rect && rect.top < window.innerHeight && rect.bottom > 0 ? 'visible' : 'near';
-      this.scheduleLoadAllData(phase);
+      this.scheduleHydrationForPanelElement(panel.getElement(), 'near');
     }, 200);
   }
 
@@ -1312,9 +1475,7 @@ export class PanelLayoutManager implements AppModule {
     if (config) panel.toggle(config.enabled);
     this.observePanelForHydration(panel);
     if (config?.enabled) {
-      const rect = typeof window !== 'undefined' ? panel.getElement().getBoundingClientRect() : null;
-      const phase: HydrationSchedulePhase = rect && rect.top < window.innerHeight && rect.bottom > 0 ? 'visible' : 'near';
-      this.scheduleLoadAllData(phase);
+      this.scheduleHydrationForPanelElement(panel.getElement(), 'near');
     }
   }
 
@@ -1334,36 +1495,20 @@ export class PanelLayoutManager implements AppModule {
 
     const mapContainer = document.getElementById('mapContainer') as HTMLElement;
     const preferGlobe = getStoredMapModePreference() === 'globe';
-    // Dynamic import: keeps maplibre-gl + @deck.gl/* + @loaders.gl + @luma.gl
-    // out of the entry chunk. Loads in parallel with paint, so the map mounts
-    // a beat after the panel grid renders instead of blocking it.
+    // Dynamic import: keeps maplibre-gl + @deck.gl/* + @loaders.gl + @luma.gl out of
+    // the entry chunk.
     //
-    // Residual-risk watchpoint (canary): this await also serializes the
-    // ~700 lines of panel construction below behind the map chunk fetch.
-    // Failure mode is covered by the chunk-reload guard at src/main.ts:690-758
-    // (catches `Failed to fetch dynamically imported module` and reloads).
-    // The slow-fetch mode (chunk fetches that succeed but are very slow) is
-    // worth watching in production canaries — if it shows up, restructure to
-    // kick off the import early and run non-map panel construction before the
-    // await (the only direct ctx.map dereferences in this function are
-    // initEscalationGetters / getTimeRange right after construction, plus
-    // onTimeRangeChanged later — every other ctx.map use is `?.`-guarded).
-    const { MapContainer } = await import('@/components/MapContainer');
-    this.ctx.map = new MapContainer(mapContainer, {
-      zoom: this.ctx.isMobile ? 2.5 : 1.0,
-      pan: { x: 0, y: 0 },
-      view: this.ctx.isMobile ? this.ctx.resolvedLocation : 'global',
-      layers: this.ctx.mapLayers,
-      timeRange: '7d',
-    }, preferGlobe);
-
-    if (this.ctx.mapLayers.resilienceScore && !this.ctx.map.isDeckGLActive?.()) {
-      this.ctx.mapLayers = { ...this.ctx.mapLayers, resilienceScore: false };
-      saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
-    }
-
-    this.ctx.map.initEscalationGetters();
-    this.ctx.currentTimeRange = this.ctx.map.getTimeRange();
+    // U3 (#4459): kick off the map chunk fetch HERE but await it only after the ~730
+    // lines of panel registration below, so registration runs concurrently with the
+    // fetch instead of serialized behind it. This is the restructure the prior canary
+    // comment called for: panel setup is map-tolerant: callback uses are `?.`-guarded,
+    // and the one eager bridge (SupplyChainPanel -> MapContainer) is replayed below.
+    // ctx.currentTimeRange already defaults to '7d' (App.ts:899). The map's direct
+    // uses — construction, the supply-chain bridge replay, the resilienceScore tweak,
+    // initEscalationGetters/getTimeRange and onTimeRangeChanged — are grouped together
+    // after the registration block (just before the onTimeRangeChanged wiring).
+    // Failed-fetch reload guard: src/main.ts:285-290 (installChunkReloadGuard).
+    const mapModulePromise = import('@/components/MapContainer');
 
     this.createNewsPanel('politics', 'panels.politics');
     this.createNewsPanel('tech', 'panels.tech');
@@ -1469,6 +1614,14 @@ export class PanelLayoutManager implements AppModule {
     for (const key of Object.keys(CANONICAL_FEEDS)) {
       if (this.ctx.newsPanels[key]) continue;
       if (!Array.isArray((CANONICAL_FEEDS as Record<string, unknown>)[key])) continue;
+      // 'live-news' is the dedicated LiveNewsPanel (24/7 video) key, registered
+      // lazily below — NOT a generic RSS feed panel. CANONICAL_FEEDS['live-news']
+      // exists only to feed the energy variant's headlines; if we let it spawn a
+      // NewsPanel here it registers first and lazyPanel()'s dedup guard then
+      // blocks the real video panel (regression #4382 → "LIVE NEWS / No items in
+      // the last 7 days" on the live dashboard). Skip it so the video panel owns
+      // the key on every variant (happy has no 'live-news' panel at all).
+      if (key === 'live-news') continue;
       const panelKey = COLLIDING_NEWS_PANEL_KEYS.has(key) && !this.ctx.newsPanels[key] ? `${key}-news` : key;
       if (this.ctx.panels[panelKey]) continue;
       // Gate on panelKey, NOT key. When `key` collided with a non-news data
@@ -1625,14 +1778,24 @@ export class PanelLayoutManager implements AppModule {
     // reactively by updatePanelGating() via auth state subscription (all in WEB_PREMIUM_PANELS).
 
     this.lazyPanel('chat-analyst', () =>
+      // agent-bus-applier (and its zod-backed shared/agent-bus-actions schemas, ~69KB)
+      // is only reachable through this lazy panel's action handler. Start loading it
+      // here so it stays off the eager main entry, but do not make plain chat depend
+      // on the optional dashboard-control chunk being available.
       import('@/components/ChatAnalystPanel').then(m => {
         const panel = new m.ChatAnalystPanel();
-        panel.setDashboardActionHandler((action) => applyAgentBusAction(this.ctx, action, {
-          getPanelConfig: (panelId) => getEffectivePanelConfig(panelId, SITE_VARIANT),
-          isPanelAllowed: (panelId, config) => isPanelEntitled(panelId, config, hasPremiumAccess(getAuthState())),
-          hasPremiumAccess: () => hasPremiumAccess(getAuthState()),
-          applyLayerChange: this.callbacks.applyMapLayerChange,
-        }));
+        void import('@/app/agent-bus-applier')
+          .then(({ applyAgentBusAction }) => {
+            panel.setDashboardActionHandler((action) => applyAgentBusAction(this.ctx, action, {
+              getPanelConfig: (panelId) => getEffectivePanelConfig(panelId, SITE_VARIANT),
+              isPanelAllowed: (panelId, config) => isPanelEntitled(panelId, config, hasPremiumAccess(getAuthState())),
+              hasPremiumAccess: () => hasPremiumAccess(getAuthState()),
+              applyLayerChange: this.callbacks.applyMapLayerChange,
+            }));
+          })
+          .catch((err) => {
+            console.error('[panel] failed to lazy-load "chat-analyst" dashboard action handler', err);
+          });
         return panel;
       }),
     );
@@ -2012,11 +2175,11 @@ export class PanelLayoutManager implements AppModule {
     proBlock.appendChild(proLabel);
     proBlock.appendChild(proBadge);
     proBlock.addEventListener('click', () => {
-      openWidgetChatModal({
+      void import('@/components/WidgetChatModal').then((m) => m.openWidgetChatModal({
         mode: 'create',
         tier: 'pro',
         onComplete: (spec) => this.addCustomWidget(spec),
-      });
+      })).catch((err) => console.error('[widget-chat] failed to lazy-load WidgetChatModal', err));
     });
     panelsGrid.appendChild(proBlock);
 
@@ -2036,9 +2199,9 @@ export class PanelLayoutManager implements AppModule {
     mcpBlock.appendChild(mcpLabel);
     mcpBlock.appendChild(mcpBadge);
     mcpBlock.addEventListener('click', () => {
-      openMcpConnectModal({
+      void import('@/components/McpConnectModal').then((m) => m.openMcpConnectModal({
         onComplete: (spec) => this.addMcpPanel(spec),
-      });
+      })).catch((err) => console.error('[mcp-connect] failed to lazy-load McpConnectModal', err));
     });
     panelsGrid.appendChild(mcpBlock);
 
@@ -2076,7 +2239,43 @@ export class PanelLayoutManager implements AppModule {
       });
     }
 
-    window.addEventListener('resize', () => this.ensureCorrectZones());
+    removeResponsiveZoneListener(this.responsiveZoneListener);
+    this.responsiveZoneListener = addResponsiveZoneListener(
+      window,
+      this.getUltraWideMinWidth(),
+      () => this.ensureCorrectZones(),
+    );
+
+    // Map's direct-deref block (kept here, after panel registration, by U3 #4459):
+    // awaited only after registration so the chunk fetch overlaps it. Everything above
+    // that touches the map does so via `?.` at mount/click time, so the map can be
+    // constructed here without breaking registration. The responsive zone listener is
+    // wired above (before this await) so a destroy() during the fetch tears it down;
+    // the isDestroyed guard below also stops a destroyed manager from building a map.
+    const { MapContainer } = await mapModulePromise;
+    if (this.ctx.isDestroyed) return;
+    markLcpDebug('wm:map:container-construct');
+    this.ctx.map = new MapContainer(mapContainer, {
+      zoom: this.ctx.isMobile ? 2.5 : 1.0,
+      pan: { x: 0, y: 0 },
+      view: this.ctx.isMobile ? this.ctx.resolvedLocation : 'global',
+      layers: this.ctx.mapLayers,
+      timeRange: '7d',
+    }, preferGlobe);
+
+    const eagerSupplyChainPanel = this.ctx.panels['supply-chain'] as SupplyChainPanel | undefined;
+    if (eagerSupplyChainPanel) {
+      this.ctx.map.setSupplyChainPanel(eagerSupplyChainPanel);
+    }
+
+    if (this.ctx.mapLayers.resilienceScore && !this.ctx.map.isDeckGLActive?.()) {
+      this.ctx.mapLayers = { ...this.ctx.mapLayers, resilienceScore: false };
+      saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
+    }
+
+    this.ctx.map.initEscalationGetters();
+    this.ctx.currentTimeRange = this.ctx.map.getTimeRange();
+    markLcpDebug('wm:map:container-ready');
 
     this.ctx.map.onTimeRangeChanged((range) => {
       this.ctx.currentTimeRange = range;
@@ -2463,11 +2662,14 @@ export class PanelLayoutManager implements AppModule {
     return new Set();
   }
 
+  private getUltraWideMinWidth(): number {
+    return this.ctx.isDesktopApp ? 900 : 1600;
+  }
+
   private getEffectiveUltraWide(): boolean {
     const mapSection = document.getElementById('mapSection');
     const mapEnabled = !mapSection?.classList.contains('hidden');
-    const minWidth = this.ctx.isDesktopApp ? 900 : 1600;
-    return window.innerWidth >= minWidth && mapEnabled;
+    return window.innerWidth >= this.getUltraWideMinWidth() && mapEnabled;
   }
 
   private insertByOrder(grid: HTMLElement, el: HTMLElement, key: string): void {
@@ -2931,7 +3133,7 @@ export class PanelLayoutManager implements AppModule {
               }
             }
 
-            document.removeEventListener('keydown', onKeyDown!);
+            document.removeEventListener('keydown', onKeyDown!, true);
             onKeyDown = null;
             isDragging = false;
             dragStarted = false;
@@ -2939,7 +3141,7 @@ export class PanelLayoutManager implements AppModule {
             if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
           }
         };
-        document.addEventListener('keydown', onKeyDown);
+        document.addEventListener('keydown', onKeyDown, true);
       }
 
       lastX = e.clientX;
@@ -2999,7 +3201,7 @@ export class PanelLayoutManager implements AppModule {
       document.body.classList.remove('panel-drag-active');
       originalRect = null;
       if (onKeyDown) {
-        document.removeEventListener('keydown', onKeyDown);
+        document.removeEventListener('keydown', onKeyDown, true);
         onKeyDown = null;
       }
     };
@@ -3013,7 +3215,7 @@ export class PanelLayoutManager implements AppModule {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
       if (onKeyDown) {
-        document.removeEventListener('keydown', onKeyDown);
+        document.removeEventListener('keydown', onKeyDown, true);
         onKeyDown = null;
       }
       if (rafId) {

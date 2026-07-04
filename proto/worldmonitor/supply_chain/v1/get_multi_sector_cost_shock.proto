@@ -28,12 +28,14 @@ message MultiSectorCostShock {
 }
 
 message GetMultiSectorCostShockRequest {
+  // ISO 3166-1 alpha-2 country code for the importing country.
   string iso2 = 1 [
     (buf.validate.field).required = true,
     (buf.validate.field).string.len = 2,
     (buf.validate.field).string.pattern = "^[A-Z]{2}$",
     (sebuf.http.query) = {name: "iso2"}
   ];
+  // Chokepoint identifier to model as disrupted.
   string chokepoint_id = 2 [
     (buf.validate.field).required = true,
     (sebuf.http.query) = {name: "chokepointId"}

@@ -7,12 +7,15 @@ import "sebuf/http/annotations.proto";
 import "worldmonitor/market/v1/analyze_stock.proto";
 
 message GetStockAnalysisHistoryRequest {
+  // Stock ticker symbols whose stored analysis history should be returned.
   repeated string symbols = 1 [(sebuf.http.query) = { name: "symbols" }];
+  // Maximum number of history snapshots to return per symbol.
   int32 limit_per_symbol = 2 [
     (sebuf.http.query) = { name: "limit_per_symbol" },
     (buf.validate.field).int32.gte = 1,
     (buf.validate.field).int32.lte = 32
   ];
+  // Whether history snapshots should include stored news summaries.
   bool include_news = 3 [(sebuf.http.query) = { name: "include_news" }];
 }
 

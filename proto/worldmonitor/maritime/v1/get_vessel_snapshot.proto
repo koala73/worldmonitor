@@ -31,4 +31,13 @@ message GetVesselSnapshotRequest {
 message GetVesselSnapshotResponse {
   // The vessel traffic snapshot.
   VesselSnapshot snapshot = 1;
+
+  // Time the relay snapshot was fetched, as Unix epoch milliseconds. A value
+  // of 0 means the snapshot is unavailable/degraded, not that vessel traffic is
+  // confirmed absent.
+  int64 fetched_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+
+  // True when snapshot is populated. False means an absent snapshot is
+  // graceful degradation because the relay snapshot is unavailable.
+  bool data_available = 3;
 }

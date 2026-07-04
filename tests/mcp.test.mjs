@@ -37,6 +37,10 @@ function initBody(id = 1) {
   };
 }
 
+function assertNoStore(res, label) {
+  assert.equal(res.headers.get('Cache-Control'), 'no-store', `${label} must include Cache-Control: no-store`);
+}
+
 let handler;
 let evaluateFreshness;
 
@@ -67,15 +71,65 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   // --- Auth ---
 
-  it('returns HTTP 401 + WWW-Authenticate when no credentials provided', async () => {
+  // A DATA/quota method (tools/call) is the auth wall: unauthenticated → 401.
+  // Discovery methods (initialize / tools/list) are intentionally public — see
+  // the 'public discovery' block below — so they are NOT the probe here.
+  const protectedCallBody = (id = 1) => ({
+    jsonrpc: '2.0', id, method: 'tools/call',
+    params: { name: 'get_market_data', arguments: {} },
+  });
+
+  it('returns HTTP 401 + WWW-Authenticate when no credentials provided (protected method)', async () => {
     const req = new Request(BASE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(initBody()),
+      body: JSON.stringify(protectedCallBody()),
     });
     const res = await handler(req);
     assert.equal(res.status, 401);
     assert.ok(res.headers.get('www-authenticate')?.includes('Bearer realm="worldmonitor"'), 'must include WWW-Authenticate header');
+    assert.match(res.headers.get('cache-control') || '', /\bno-store\b/i);
+    const body = await res.json();
+    assert.equal(body.error?.code, -32001);
+  });
+
+  // --- Public discovery (initialize + tools/list are servable without creds) ---
+
+  it('initialize succeeds WITHOUT credentials (public discovery)', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(initBody(1)),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated initialize must be public');
+    const body = await res.json();
+    assert.equal(body.result?.protocolVersion, '2025-03-26');
+    assert.equal(body.result?.serverInfo?.name, 'worldmonitor');
+    assert.ok(res.headers.get('mcp-session-id'), 'Mcp-Session-Id must be issued on the anonymous handshake');
+    assertNoStore(res, 'anonymous initialize');
+  });
+
+  it('tools/list succeeds WITHOUT credentials (public discovery) and returns tools', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated tools/list must be public');
+    const body = await res.json();
+    assert.ok(Array.isArray(body.result?.tools) && body.result.tools.length >= 3, 'must expose the tool catalog anonymously');
+  });
+
+  it('tools/call still requires credentials even though discovery is public', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(protectedCallBody(3)),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 401, 'tools/call is a data/quota method — must stay gated');
     const body = await res.json();
     assert.equal(body.error?.code, -32001);
   });
@@ -98,6 +152,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const res = await handler(req);
     assert.equal(res.status, 204);
     assert.ok(res.headers.get('access-control-allow-methods'));
+    assert.match(res.headers.get('cache-control') || '', /\bno-store\b/i);
   });
 
   it('initialize returns protocol version and Mcp-Session-Id header', async () => {
@@ -109,6 +164,24 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(body.result?.protocolVersion, '2025-03-26');
     assert.equal(body.result?.serverInfo?.name, 'worldmonitor');
     assert.ok(res.headers.get('mcp-session-id'), 'Mcp-Session-Id header must be present');
+  });
+
+  it('bakes Cache-Control: no-store into JSON-RPC success and SSE-upgraded responses', async () => {
+    // getMcpCorsHeaders() threads no-store into every branch; assert the positive
+    // 200 paths (the #4497 incident class is a CACHED 200), not just the 401/204
+    // negative paths the other two assertions cover.
+    const json = await handler(makeReq('POST', initBody(50)));
+    assert.equal(json.status, 200);
+    assert.match(json.headers.get('cache-control') || '', /\bno-store\b/i, 'JSON-RPC 200 success must be no-store');
+
+    // Accept: text/event-stream upgrades the 200 to SSE; it must keep no-transform
+    // (framing) AND carry no-store (payload), and preserve Mcp-Session-Id.
+    const sse = await handler(makeReq('POST', initBody(51), { Accept: 'text/event-stream' }));
+    assert.equal(sse.status, 200);
+    assert.match(sse.headers.get('content-type') || '', /text\/event-stream/, 'must upgrade to an SSE stream');
+    assert.equal(sse.headers.get('cache-control'), 'no-store, no-transform', 'SSE success must be no-store + no-transform');
+    assert.ok(sse.headers.get('mcp-session-id'), 'Mcp-Session-Id must survive the SSE envelope');
+    await sse.body?.cancel();
   });
 
   it('notifications/initialized returns 202 with no body', async () => {
@@ -132,6 +205,63 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const res = await handler(req);
     const body = await res.json();
     assert.equal(body.error?.code, -32600);
+  });
+
+  it('sets Cache-Control: no-store on representative MCP success and error responses', async () => {
+    const preflight = await handler(new Request(BASE_URL, {
+      method: 'OPTIONS',
+      headers: { origin: 'https://claude.ai' },
+    }));
+    assert.equal(preflight.status, 204);
+    assertNoStore(preflight, 'OPTIONS preflight');
+
+    const unauthenticated = await handler(new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(protectedCallBody()),
+    }));
+    assert.equal(unauthenticated.status, 401);
+    assertNoStore(unauthenticated, 'auth error');
+
+    const initialized = await handler(makeReq('POST', initBody(20)));
+    assert.equal(initialized.status, 200);
+    assertNoStore(initialized, 'initialize success');
+    assert.ok(initialized.headers.get('Mcp-Session-Id'), 'Mcp-Session-Id header must still be present');
+
+    const acknowledged = await handler(makeReq('POST', {
+      jsonrpc: '2.0',
+      method: 'notifications/initialized',
+      params: {},
+    }));
+    assert.equal(acknowledged.status, 202);
+    assertNoStore(acknowledged, 'notification acknowledgement');
+
+    const invalidMethod = await handler(makeReq('POST', {
+      jsonrpc: '2.0',
+      id: 21,
+      method: 'nonexistent/method',
+      params: {},
+    }));
+    assert.equal(invalidMethod.status, 200);
+    assertNoStore(invalidMethod, 'JSON-RPC error');
+  });
+
+  it('SSE-upgraded success carries no-store, no-transform and preserves the session id', async () => {
+    // Accept: text/event-stream makes maybeStreamJsonRpcResponse upgrade the 200
+    // initialize reply to an SSE stream. The streamed reply (which carries the
+    // tool/resource result data on tools/call) must keep no-transform for framing
+    // AND now carry no-store so the payload is not cached, and still expose the
+    // Mcp-Session-Id through the SSE envelope.
+    const res = await handler(makeReq('POST', initBody(40), { Accept: 'text/event-stream' }));
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('Content-Type') ?? '', /text\/event-stream/, 'must upgrade to an SSE stream');
+    assert.equal(
+      res.headers.get('Cache-Control'),
+      'no-store, no-transform',
+      'SSE success must be no-store (payload not cached) + no-transform (SSE framing preserved)',
+    );
+    assert.ok(res.headers.get('mcp-session-id'), 'Mcp-Session-Id must survive the SSE envelope');
+    await res.body?.cancel();
   });
 
   // --- logging/setLevel ---
@@ -2613,6 +2743,176 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.match(sig, /^\d{10}\.[A-Za-z0-9_-]+$/, 'signature must be <ts>.<base64url-sig>');
   });
 
+  it('edge: Pro get_country_brief signs a short URL and sends grounding context in the POST body', async () => {
+    const { deps } = makeProDeps();
+    const captured = [];
+    globalThis.fetch = async (url, init = {}) => {
+      const call = {
+        url: String(url),
+        method: init.method || 'GET',
+        headers: new Headers(init.headers),
+        body: typeof init.body === 'string' ? init.body : '',
+      };
+      captured.push(call);
+      const { pathname } = new URL(call.url);
+
+      if (pathname === '/api/news/v1/list-feed-digest') {
+        const items = Array.from({ length: 15 }, (_, index) => ({
+          title: `Iran ${index} ${'%'.repeat(300)}`,
+          source: 'Context Wire',
+          link: `https://example.com/iran-${index}`,
+          publishedAt: '2026-06-07T00:00:00.000Z',
+          snippet: 'Long Iran grounding item used to keep the MCP signed URL below proxy limits.',
+        }));
+        return new Response(JSON.stringify({ categories: { world: { items } } }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (pathname === '/api/intelligence/v1/get-country-intel-brief') {
+        return new Response(JSON.stringify({ brief: 'Grounded country brief.' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      throw new Error(`Unexpected fetch URL: ${call.url}`);
+    };
+
+    const res = await mcpHandler(proReq('POST', callBody('get_country_brief', {
+      country_code: 'IR',
+      framework: 'PMESII-PT',
+    })), deps);
+    assert.equal(res.status, 200);
+    const rpc = await res.json();
+    assert.ok(rpc.result?.content, 'tool call must return content');
+
+    const countryCall = captured.find((call) => new URL(call.url).pathname === '/api/intelligence/v1/get-country-intel-brief');
+    assert.ok(countryCall, 'country brief fetch must run');
+    const countryUrl = new URL(countryCall.url);
+    assert.equal(countryUrl.searchParams.has('context'), false, 'context must not be signed in the URL query');
+    assert.ok(countryCall.url.length < 200, `signed URL should stay short, got ${countryCall.url.length} chars`);
+
+    const body = JSON.parse(countryCall.body);
+    assert.equal(body.country_code, 'IR');
+    assert.equal(body.framework, 'PMESII-PT');
+    assert.match(body.context, /Brief source articles:/);
+    assert.match(body.context, /Headlines:/);
+    assert.match(body.context, /Iran/);
+    assert.ok(body.context.length > 1000, `expected large grounding context, got ${body.context.length} chars`);
+    assert.ok(body.context.length <= 4000, `grounding context should be bounded to 4000 chars, got ${body.context.length}`);
+
+    assert.ok(countryCall.headers.get('x-wm-mcp-internal'), 'X-WM-MCP-Internal must be set');
+    assert.equal(countryCall.headers.get('x-wm-mcp-user-id'), PRO_USER_ID);
+    assert.equal(countryCall.headers.get('x-worldmonitor-key'), null, 'X-WorldMonitor-Key must NOT be set for Pro');
+
+    const { verifyInternalMcpRequest } = await import(`../server/_shared/mcp-internal-hmac.ts?t=${Date.now()}`);
+    const signedReq = new Request(countryCall.url, {
+      method: 'POST',
+      headers: countryCall.headers,
+      body: countryCall.body,
+    });
+    assert.ok(await verifyInternalMcpRequest(signedReq, HMAC_SECRET), 'signature must verify for the short URL plus context body');
+
+    const tamperedUrl = `${countryCall.url}?context=${encodeURIComponent(body.context)}`;
+    const tamperedReq = new Request(tamperedUrl, {
+      method: 'POST',
+      headers: countryCall.headers,
+      body: countryCall.body,
+    });
+    assert.equal(await verifyInternalMcpRequest(tamperedReq, HMAC_SECRET), null, 'same signature must not verify if context is moved back into the URL');
+  });
+
+  it('edge: Pro get_country_brief surfaces gateway error detail for Sentry grouping', async () => {
+    const scenarios = [
+      {
+        name: 'structured HMAC 401',
+        expectedLog: 'warn',
+        makeResponse: () => new Response(
+          JSON.stringify({ error: 'invalid_internal_mcp_signature' }),
+          { status: 401, headers: { 'Content-Type': 'application/json' } },
+        ),
+        assertMessage: (message) => {
+          assert.equal(message, 'get-country-intel-brief HTTP 401: invalid_internal_mcp_signature');
+        },
+      },
+      {
+        name: 'HTML CDN 503',
+        expectedLog: 'error',
+        makeResponse: () => new Response(
+          '<!DOCTYPE html><html><head><title>Bad Gateway</title></head><body>Cloudflare outage</body></html>',
+          { status: 503, headers: { 'Content-Type': 'text/html' } },
+        ),
+        assertMessage: (message) => {
+          assert.equal(message, 'get-country-intel-brief HTTP 503: Bad Gateway Cloudflare outage');
+          assert.doesNotMatch(message, /<[^>]*>/, 'HTML tags must not leak into the Sentry/log title');
+        },
+      },
+      {
+        name: 'unreadable body 503',
+        expectedLog: 'error',
+        makeResponse: () => ({ ok: false, status: 503, text: async () => { throw new Error('body locked'); } }),
+        assertMessage: (message) => {
+          assert.equal(message, 'get-country-intel-brief HTTP 503');
+        },
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      const { deps } = makeProDeps();
+      const warnCalls = [];
+      const errorCalls = [];
+      const origWarn = console.warn;
+      const origError = console.error;
+      console.warn = (...args) => { warnCalls.push(args); };
+      console.error = (...args) => { errorCalls.push(args); };
+      try {
+        globalThis.fetch = async (url) => {
+          const { pathname } = new URL(String(url));
+          if (pathname === '/api/news/v1/list-feed-digest') {
+            return new Response(JSON.stringify({
+              categories: {
+                world: {
+                  items: [{
+                    title: 'Iran headline for failing country brief',
+                    source: 'Context Wire',
+                    link: 'https://example.com/iran-failure',
+                    publishedAt: '2026-06-07T00:00:00.000Z',
+                    snippet: 'Iran context item used before the brief endpoint fails.',
+                  }],
+                },
+              },
+            }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+          }
+          if (pathname === '/api/intelligence/v1/get-country-intel-brief') {
+            return scenario.makeResponse();
+          }
+          return new Response('', { status: 200 });
+        };
+
+        const res = await mcpHandler(proReq('POST', callBody('get_country_brief', {
+          country_code: 'IR',
+          framework: 'PMESII-PT',
+        })), deps);
+        assert.equal(res.status, 200, `${scenario.name}: JSON-RPC tool errors stay HTTP 200`);
+        const rpc = await res.json();
+        assert.equal(rpc.error?.code, -32603, `${scenario.name}: tool failure should be a JSON-RPC internal error`);
+
+        const expectedCalls = scenario.expectedLog === 'warn' ? warnCalls : errorCalls;
+        const unexpectedCalls = scenario.expectedLog === 'warn' ? errorCalls : warnCalls;
+        const mcpLogs = expectedCalls.filter((args) => args[0] === '[mcp] tool execution error:');
+        assert.equal(mcpLogs.length, 1, `${scenario.name}: expected one MCP execution log`);
+        assert.equal(unexpectedCalls.some((args) => args[0] === '[mcp] tool execution error:'), false, `${scenario.name}: wrong console severity`);
+        const loggedError = mcpLogs[0][1];
+        scenario.assertMessage(loggedError instanceof Error ? loggedError.message : String(loggedError));
+      } finally {
+        console.warn = origWarn;
+        console.error = origError;
+      }
+    }
+  });
+
   it('edge: cache-only tool for Pro user goes through INCR/DECR path (counts toward 50/day)', async () => {
     const { deps, pipe } = makeProDeps();
     process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
@@ -2692,6 +2992,7 @@ describe('api/mcp.ts — U7 Pro-path', () => {
       queryHash: await sha256Hex(canonicalQueryString(replayUrl)),
       bodyHash: await sha256Hex(JSON.stringify({ query: 'attacker' })),
       userId: PRO_USER_ID,
+      nonce: signed.nonce,
     });
     const replayExpected = await hmacSha256Base64Url(HMAC_SECRET, replayPayload);
     const replayActual = signed.signature.split('.')[1];

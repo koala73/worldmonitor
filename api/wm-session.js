@@ -4,6 +4,7 @@
 // short-lived HttpOnly cookies so they stop living in JS-readable storage.
 
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { timingSafeEqualSecret, timingSafeIncludes } from './_crypto.js';
 import { checkRateLimit } from './_rate-limit.js';
 import { issueSessionToken } from './_session.js';
 
@@ -65,21 +66,21 @@ function envList(name) {
     .filter(Boolean);
 }
 
-function matchesEnvSecret(key, name) {
+async function matchesEnvSecret(key, name) {
   const secret = process.env[name] || '';
-  return Boolean(key && secret && key === secret);
+  return timingSafeEqualSecret(key, secret);
 }
 
-function isValidEnterpriseKey(key) {
-  return Boolean(key && envList('WORLDMONITOR_VALID_KEYS').includes(key));
+async function isValidEnterpriseKey(key) {
+  return timingSafeIncludes(key, envList('WORLDMONITOR_VALID_KEYS'));
 }
 
-function isValidWidgetKey(key) {
-  return matchesEnvSecret(key, 'WIDGET_AGENT_KEY') || isValidEnterpriseKey(key);
+async function isValidWidgetKey(key) {
+  return (await matchesEnvSecret(key, 'WIDGET_AGENT_KEY')) || await isValidEnterpriseKey(key);
 }
 
-function isValidProKey(key) {
-  return matchesEnvSecret(key, 'PRO_WIDGET_KEY') || isValidEnterpriseKey(key);
+async function isValidProKey(key) {
+  return (await matchesEnvSecret(key, 'PRO_WIDGET_KEY')) || await isValidEnterpriseKey(key);
 }
 
 async function readBody(req) {
@@ -128,8 +129,8 @@ export default async function handler(req) {
   const proKey = normalizeLegacyKey(body.proKey);
 
   if (
-    (submittedLegacyKey(body.widgetKey) && !isValidWidgetKey(widgetKey)) ||
-    (submittedLegacyKey(body.proKey) && !isValidProKey(proKey))
+    (submittedLegacyKey(body.widgetKey) && !(await isValidWidgetKey(widgetKey))) ||
+    (submittedLegacyKey(body.proKey) && !(await isValidProKey(proKey)))
   ) {
     return jsonResponse({ error: 'Invalid session key' }, 401, cors);
   }

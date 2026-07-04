@@ -374,7 +374,7 @@
           "Rezumate zilnice de piață",
           "Urmărirea militară și geopolitică",
           "Constructor de widget-uri personalizate",
-          "Conectoare de date MCP",
+          "Acces MCP pentru Claude Desktop și alți clienți AI (50 apeluri/zi)",
           "Reîmprospătare prioritară a datelor"
         ]
       },
@@ -383,7 +383,8 @@
         "features": [
           "Acces REST API",
           "Fluxuri de date în timp real",
-          "1.000 de cereri/zi",
+          "60 de cereri/minut",
+          "1.000 de cereri/zi incluse",
           "Notificări webhook",
           "Exporturi de date personalizate"
         ]

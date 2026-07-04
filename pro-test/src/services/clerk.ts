@@ -6,6 +6,8 @@ const MONO_FONT = "'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace";
 
 let clerk: LoadedClerk | null = null;
 let clerkLoadPromise: Promise<LoadedClerk> | null = null;
+let scheduledClerkLoadPromise: Promise<LoadedClerk> | null = null;
+const clerkLoadSubscribers = new Set<(clerk: LoadedClerk) => void>();
 
 export async function ensureClerk(): Promise<LoadedClerk> {
   if (clerk) return clerk;
@@ -15,6 +17,60 @@ export async function ensureClerk(): Promise<LoadedClerk> {
     throw err;
   });
   return clerkLoadPromise;
+}
+
+export function scheduleClerkLoad(): Promise<LoadedClerk> | null {
+  if (clerk) return Promise.resolve(clerk);
+  if (clerkLoadPromise) return clerkLoadPromise;
+  if (scheduledClerkLoadPromise) return scheduledClerkLoadPromise;
+  if (typeof window === 'undefined') return null;
+  if (!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY) return null;
+
+  scheduledClerkLoadPromise = new Promise((resolve, reject) => {
+    const startLoad = (): void => {
+      ensureClerk().then((loadedClerk) => {
+        scheduledClerkLoadPromise = null;
+        resolve(loadedClerk);
+      }, (err) => {
+        scheduledClerkLoadPromise = null;
+        reject(err);
+      });
+    };
+
+    const ric = (window as unknown as {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+    }).requestIdleCallback;
+    if (typeof ric === 'function') {
+      ric(startLoad, { timeout: 4000 });
+      return;
+    }
+
+    if (document.readyState === 'complete') {
+      setTimeout(startLoad, 0);
+    } else {
+      window.addEventListener('load', () => setTimeout(startLoad, 0), { once: true });
+    }
+  });
+
+  return scheduledClerkLoadPromise;
+}
+
+export function subscribeClerkLoaded(cb: (clerk: LoadedClerk) => void): () => void {
+  clerkLoadSubscribers.add(cb);
+  if (clerk) cb(clerk);
+  return () => {
+    clerkLoadSubscribers.delete(cb);
+  };
+}
+
+function publishClerkLoaded(instance: LoadedClerk): void {
+  for (const cb of clerkLoadSubscribers) {
+    try {
+      cb(instance);
+    } catch (err) {
+      console.error('[auth] Clerk load subscriber threw:', err);
+    }
+  }
 }
 
 async function loadClerk(): Promise<LoadedClerk> {
@@ -49,5 +105,6 @@ async function loadClerk(): Promise<LoadedClerk> {
   // Only publish the instance after load() succeeds, so a failed load does not
   // wedge ensureClerk()'s retry path.
   clerk = instance;
+  publishClerkLoaded(clerk);
   return clerk;
 }

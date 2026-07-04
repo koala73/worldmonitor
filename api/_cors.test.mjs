@@ -55,5 +55,12 @@ test('CORS allow headers include MCP transport headers', () => {
     assert.match(exposed, /\bMcp-Session-Id\b/);
     assert.match(exposed, /\bWWW-Authenticate\b/);
     assert.match(exposed, /\bRetry-After\b/);
+    assert.match(exposed, /\bX-RateLimit-Limit\b/);
+    assert.match(exposed, /\bX-RateLimit-Remaining\b/);
+    assert.match(exposed, /\bX-RateLimit-Reset\b/);
+    assert.match(exposed, /\bX-WorldMonitor-Bbox\b/);
+    assert.match(exposed, /\bX-WorldMonitor-Bbox-Missing\b/);
+    assert.match(exposed, /\bX-WorldMonitor-Bbox-Invalid\b/);
+    assert.match(exposed, /\bX-Military-Bbox\b/);
   }
 });

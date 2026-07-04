@@ -31,6 +31,7 @@ function makeRequest(method, url, headers = {}) {
 const CANONICAL_FALLBACK = 'https://worldmonitor.app';
 const KNOWN_GOOD = 'https://www.worldmonitor.app';
 const ACAH_EXPECTED = 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, X-WorldMonitor-Desktop-Timestamp, X-WorldMonitor-Desktop-Signature';
+const ACEH_EXPECTED = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox';
 // Must be a superset of every method any api/* route advertises. Notably
 // includes DELETE for api/product-catalog.js — pinning this prevents the
 // regression that PR review caught (Worker omitted DELETE → product-catalog
@@ -100,6 +101,11 @@ test('buildCorsHeaders Access-Control-Allow-Headers matches api/_cors.js', () =>
   assert.equal(h['Access-Control-Allow-Headers'], ACAH_EXPECTED);
 });
 
+test('buildCorsHeaders Access-Control-Expose-Headers matches api/_cors.js', () => {
+  const h = buildCorsHeaders(KNOWN_GOOD);
+  assert.equal(h['Access-Control-Expose-Headers'], ACEH_EXPECTED);
+});
+
 // --- preflight short-circuit (the load-bearing branch) --------------------
 
 test('OPTIONS preflight returns 204 with Access-Control-Allow-Credentials: true', async () => {
@@ -114,6 +120,7 @@ test('OPTIONS preflight returns 204 with Access-Control-Allow-Credentials: true'
   assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
   assert.equal(resp.headers.get('access-control-allow-methods'), ACAM_EXPECTED);
   assert.equal(resp.headers.get('access-control-allow-headers'), ACAH_EXPECTED);
+  assert.equal(resp.headers.get('access-control-expose-headers'), ACEH_EXPECTED);
   assert.equal(resp.headers.get('vary'), 'Origin');
 });
 
@@ -194,6 +201,7 @@ test('GET response from origin has CORS headers stamped by the Worker', async ()
     assert.equal(resp.status, 200);
     assert.equal(resp.headers.get('access-control-allow-origin'), KNOWN_GOOD);
     assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
+    assert.equal(resp.headers.get('access-control-expose-headers'), ACEH_EXPECTED);
     assert.equal(resp.headers.get('content-type'), 'application/json');
   } finally {
     globalThis.fetch = original;

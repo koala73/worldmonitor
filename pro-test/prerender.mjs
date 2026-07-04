@@ -7,14 +7,200 @@
  * key, also remove it here, otherwise the build will inject the literal string
  * "undefined" into the page that crawlers index.
  */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createServer } from 'vite';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const en = JSON.parse(readFileSync(resolve(__dirname, 'src/locales/en.json'), 'utf-8'));
+const STATIC_SCRIPT_NONCE = 'wm-static-bootstrap';
 
+// Single source of truth for the brand's cross-site entity links + Organization
+// structured data, injected into BOTH pro pages (see PAGES) so the homepage and
+// /pro can't drift. Nonce'd to match the static-bootstrap CSP trust (otherwise
+// deploy-config.test.mjs would demand a script-src sha256 hash for it).
+const WM_SAMEAS = [
+  'https://github.com/koala73/worldmonitor',
+  'https://x.com/worldmonitorai',
+  'https://x.com/eliehabib',
+  'https://discord.gg/re63kWKxaz',
+  'https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map',
+];
+const ORGANIZATION_JSONLD = `    <script type="application/ld+json" nonce="${STATIC_SCRIPT_NONCE}">${JSON.stringify({
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  name: 'World Monitor',
+  alternateName: 'WorldMonitor',
+  url: 'https://www.worldmonitor.app/',
+  logo: 'https://www.worldmonitor.app/favico/apple-touch-icon.png',
+  description: 'Open-source real-time global intelligence platform aggregating conflicts, military movements, markets, infrastructure, and geopolitical data. Used by 2M+ people across 190+ countries.',
+  founder: {
+    '@type': 'Person',
+    name: 'Elie Habib',
+    url: 'https://x.com/eliehabib',
+    sameAs: ['https://x.com/eliehabib', 'https://github.com/koala73'],
+  },
+  sameAs: WM_SAMEAS,
+  contactPoint: {
+    '@type': 'ContactPoint',
+    contactType: 'customer support',
+    email: 'support@worldmonitor.app',
+    url: 'https://www.worldmonitor.app/pro',
+    availableLanguage: 'English',
+  },
+  address: {
+    '@type': 'PostalAddress',
+    addressLocality: 'Dubai',
+    addressCountry: 'AE',
+  },
+})}</script>`;
+const DASHBOARD_SCREENSHOT_BASENAME = 'worldmonitor-7-mar-2026';
+const DASHBOARD_SCREENSHOT_ASSETS = [
+  { filenamePrefix: DASHBOARD_SCREENSHOT_BASENAME, extension: '.jpg' },
+  { filenamePrefix: DASHBOARD_SCREENSHOT_BASENAME + '-640', extension: '.avif' },
+  { filenamePrefix: DASHBOARD_SCREENSHOT_BASENAME + '-960', extension: '.avif' },
+  { filenamePrefix: DASHBOARD_SCREENSHOT_BASENAME + '-1280', extension: '.avif' },
+  { filenamePrefix: DASHBOARD_SCREENSHOT_BASENAME + '-640', extension: '.webp' },
+  { filenamePrefix: DASHBOARD_SCREENSHOT_BASENAME + '-960', extension: '.webp' },
+  { filenamePrefix: DASHBOARD_SCREENSHOT_BASENAME + '-1280', extension: '.webp' },
+];
+
+// This inline critical CSS is UNLAYERED, so it wins the cascade over the
+// full Tailwind stylesheet (which lives in @layer utilities) regardless of
+// specificity/media -- even after the deferred sheet loads. That means any
+// `hidden <bp>:<display>` reveal (e.g. `hidden md:flex` nav rows, `hidden
+// sm:block`) must ALSO be re-shown here in the matching @media block, or the
+// unlayered `nav .hidden`/`main .hidden` rules keep those elements hidden at
+// ALL widths (regressed the pro/welcome desktop nav in #4603; see the
+// `nav [class~="md:flex"]`/`main [class~="sm:block"]` reveals below).
+const CRITICAL_CSS = [
+  ':root{--font-sans:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;--font-mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;--font-display:system-ui,sans-serif;--color-wm-bg:#050505;--color-wm-card:#111;--color-wm-border:#222;--color-wm-green:#4ade80;--color-wm-blue:#60a5fa;--color-wm-text:#f3f4f6;--color-wm-muted:#9ca3af}',
+  '*,::before,::after{box-sizing:border-box;border:0 solid #222}html{background:#050505;color:#f3f4f6;-webkit-text-size-adjust:100%;tab-size:4}body{margin:0;background:#050505;color:#f3f4f6;font-family:var(--font-sans);line-height:1.5;-webkit-font-smoothing:antialiased}a{color:inherit;text-decoration:none}img,svg{display:block;vertical-align:middle}img{max-width:100%;height:auto}h1,h2,h3,p{margin:0}',
+  '#root,#root>div{min-height:100vh}.glass-panel{background:rgba(17,17,17,.7);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid #222}.text-glow{text-shadow:0 0 20px rgba(74,222,128,.3)}.border-glow{box-shadow:0 0 20px rgba(74,222,128,.1)}',
+  'nav{position:fixed;top:0;left:0;right:0;z-index:50;background:rgba(17,17,17,.7);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid #222;border-inline-width:0;border-bottom-width:0}nav>div{max-width:80rem;margin-inline:auto;padding-inline:1rem;height:4rem;display:flex;align-items:center;justify-content:space-between;gap:.75rem}nav a{display:flex;align-items:center;gap:.5rem}nav a[aria-label*="Launch"]{flex-shrink:0;background:#4ade80;color:#050505;padding:.5rem .75rem;border-radius:.25rem;font:700 .75rem/1 ui-monospace,SFMono-Regular,monospace;text-transform:uppercase;letter-spacing:.025em}nav .hidden{display:none}nav [class~=font-display]{font-family:var(--font-display);font-weight:700}nav [class~=text-wm-muted],main [class~=text-wm-muted]{color:#9ca3af}nav [class~=text-wm-green],main [class~=text-wm-green]{color:#4ade80}nav [class~=text-wm-blue]{color:#60a5fa}',
+  'main>section:first-child{position:relative;overflow:hidden;padding:7rem 1rem 4rem}main>section:first-child>div:first-child{position:absolute;inset:0;background:radial-gradient(circle at 50% 0%,rgba(74,222,128,.10) 0%,transparent 55%);pointer-events:none}main>section:first-child>div:nth-child(2){position:relative;z-index:10;max-width:64rem;margin-inline:auto;text-align:center}main h1{font-family:var(--font-display);font-weight:700;font-size:2.25rem;line-height:1.08;letter-spacing:-.025em}main p{margin:1.5rem auto 0;max-width:42rem;color:#9ca3af;font-size:1rem;line-height:1.5}',
+  'main [class~=relative]{position:relative}main [class~=absolute]{position:absolute}main [class~=inset-0]{inset:0}main [class~=z-10]{z-index:10}main [class~=pointer-events-none]{pointer-events:none}main [class~=flex]{display:flex}main [class~=inline-flex]{display:inline-flex}main [class~=grid]{display:grid}main [class~=block]{display:block}main .hidden{display:none}main [class~=items-center]{align-items:center}main [class~=items-stretch]{align-items:stretch}main [class~=justify-center]{justify-content:center}main [class~=justify-between]{justify-content:space-between}main [class~=flex-col]{flex-direction:column}main [class~=flex-wrap]{flex-wrap:wrap}main [class~=grid-cols-2]{grid-template-columns:repeat(2,minmax(0,1fr))}',
+  'main [class~=mx-auto]{margin-inline:auto}main [class~=mt-1]{margin-top:.25rem}main [class~=mt-3]{margin-top:.75rem}main [class~=mt-6]{margin-top:1.5rem}main [class~=mt-8]{margin-top:2rem}main [class~=mt-9]{margin-top:2.25rem}main [class~=mt-10]{margin-top:2.5rem}main [class~=mb-5]{margin-bottom:1.25rem}main [class~=gap-1]{gap:.25rem}main [class~=gap-2]{gap:.5rem}main [class~=gap-3]{gap:.75rem}main [class~=gap-4]{gap:1rem}main [class~=gap-x-6]{column-gap:1.5rem}main [class~=gap-y-3]{row-gap:.75rem}',
+  'main [class~=w-full]{width:100%}main [class~=max-w-full]{max-width:100%}main [class~=max-w-2xl]{max-width:42rem}main [class~=max-w-3xl]{max-width:48rem}main [class~=max-w-5xl]{max-width:64rem}main [class~=min-w-0]{min-width:0}main [class~=shrink-0]{flex-shrink:0}main [class~=overflow-hidden]{overflow:hidden}',
+  'main [class~=rounded-full]{border-radius:9999px}main [class~=rounded-sm]{border-radius:.25rem}main [class~=rounded-md]{border-radius:.375rem}main .border{border-style:solid;border-width:1px;border-color:#222}main .border-l{border-left-style:solid;border-left-width:1px}main .border-t{border-top-style:solid;border-top-width:1px}main .border-b{border-bottom-style:solid;border-bottom-width:1px}main [class~=bg-wm-card]{background:#111}main [class~=bg-wm-bg]{background:#050505}main [class~=bg-wm-green]{background:#4ade80;color:#050505}main [class~="bg-[#ff5f57]"]{background:#ff5f57}main [class~="bg-[#febc2e]"]{background:#febc2e}main [class~="bg-[#28c840]"]{background:#28c840}',
+  'main [class~=px-3]{padding-inline:.75rem}main [class~=px-4]{padding-inline:1rem}main [class~=px-5]{padding-inline:1.25rem}main [class~=py-1]{padding-block:.25rem}main [class~=py-2]{padding-block:.5rem}main [class~=py-3]{padding-block:.75rem}main [class~="py-3.5"]{padding-block:.875rem}main [class~=font-mono]{font-family:var(--font-mono)}main [class~=font-display]{font-family:var(--font-display)}main [class~=font-bold]{font-weight:700}main [class~=uppercase]{text-transform:uppercase}main [class~=text-center]{text-align:center}main [class~=text-left]{text-align:left}',
+  'main [class~=text-2xl]{font-size:1.5rem;line-height:1.33}main [class~=text-4xl]{font-size:2.25rem;line-height:1.11}main [class~=text-base]{font-size:1rem;line-height:1.5}main [class~=text-sm]{font-size:.875rem;line-height:1.25rem}main [class~=text-xs]{font-size:.75rem;line-height:1rem}main [class~="text-[9px]"]{font-size:9px}main [class~="text-[10px]"]{font-size:10px}main [class~="text-[11px]"]{font-size:11px}main [class~=leading-none]{line-height:1}main [class~=leading-relaxed]{line-height:1.625}main [class~=tracking-tight]{letter-spacing:-.025em}main [class~=tracking-wide]{letter-spacing:.025em}main [class~=tracking-wider]{letter-spacing:.05em}main [class~=tracking-widest]{letter-spacing:.1em}main [class~="tracking-[1px]"]{letter-spacing:1px}main [class~="tracking-[4px]"]{letter-spacing:4px}main [class~=break-words]{overflow-wrap:break-word}',
+  'main [class~=text-wm-bg]{color:#050505}main [class~=text-wm-border]{color:#222}main [class~=text-wm-muted]{color:#9ca3af}main [class~=text-wm-text]{color:#f3f4f6}main [class~=text-wm-blue]{color:#60a5fa}main [class~=opacity-50]{opacity:.5}main [class~=opacity-60]{opacity:.6}main [class~=backdrop-blur-sm]{backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}main picture{display:block}main picture img{display:block;width:100%}',
+  'main a[href*="welcome-hero"],main a[href*="moments"]{width:100%;justify-content:center;padding:.875rem 1.25rem;border-radius:.25rem;font:700 .875rem/1.25 var(--font-mono);letter-spacing:.025em;text-transform:uppercase}main a[href*="moments"]{background:transparent;color:#f3f4f6}',
+  '@media (min-width:640px){nav>div{padding-inline:1.5rem}main>section:first-child{padding-top:8rem;padding-inline:1.5rem}main h1{font-size:3rem;line-height:1.05}main [class~="sm:flex-row"]{flex-direction:row}main [class~="sm:items-center"]{align-items:center}main [class~="sm:w-auto"]{width:auto}main [class~="sm:grid-cols-4"]{grid-template-columns:repeat(4,minmax(0,1fr))}main [class~="sm:max-w-3xl"]{max-width:48rem}main [class~="sm:max-w-none"]{max-width:none}main [class~="sm:px-4"]{padding-inline:1rem}main [class~="sm:px-6"]{padding-inline:1.5rem}main [class~="sm:px-8"]{padding-inline:2rem}main [class~="sm:tracking-wider"]{letter-spacing:.05em}main [class~="sm:block"]{display:block}}',
+  '@media (min-width:768px){main h1{font-size:4.5rem}main p{font-size:1.125rem;line-height:1.75rem}main [class~="md:text-lg"]{font-size:1.125rem;line-height:1.75rem}nav [class~="md:flex"]{display:flex}}',
+  // The .js-gated #seo-prerender hide. welcome.html and index.html ALSO inline
+  // this exact rule in their <head> (before this critical CSS is injected) as a
+  // belt-and-suspenders guard, so the built output intentionally carries it
+  // twice — keep the two copies in sync if you ever change the hide technique.
+  'html.js #seo-prerender{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden}'
+].join('');
+
+// Flip each deferred preload to a real stylesheet on load, on error (retry a
+// failed fetch as a stylesheet), and after a timeout (covers browsers that
+// ignore `rel=preload as=style` and never fire an event) -- without a timeout
+// or error arm a failed/unsupported preload leaves JS users on critical-CSS
+// only, with the full sheet never applied. Idempotent (guarded rel check) and
+// CSP-safe (no inline onload; runs inside the nonce'd bootstrap script).
+const DEFERRED_STYLES_SCRIPT = "(function(){var links=document.querySelectorAll('link[data-wm-deferred-style]');for(var i=0;i<links.length;i++){(function(l){function a(){if(l.rel!=='stylesheet'){l.rel='stylesheet';}}l.addEventListener('load',a,{once:true});l.addEventListener('error',a,{once:true});setTimeout(a,3000);})(links[i]);}})();";
+
+function findStylesheetTags(html) {
+  return [...html.matchAll(/<link\b[^>]*\brel="stylesheet"[^>]*>/gi)]
+    .map((match) => match[0]);
+}
+
+function tagAttribute(tag, name) {
+  const marker = name + '="';
+  const start = tag.indexOf(marker);
+  if (start === -1) return '';
+  const valueStart = start + marker.length;
+  const valueEnd = tag.indexOf('"', valueStart);
+  return valueEnd === -1 ? '' : tag.slice(valueStart, valueEnd);
+}
+
+function inlineCriticalCss(html, file) {
+  const stylesheetTags = findStylesheetTags(html);
+  if (stylesheetTags.length !== 1) {
+    console.error("[prerender] ERROR: Expected exactly one stylesheet tag for " + file + ", found " + stylesheetTags.length + ".");
+    process.exit(1);
+  }
+
+  const stylesheetTag = stylesheetTags[0];
+
+  const href = tagAttribute(stylesheetTag, 'href');
+  if (!href) {
+    console.error('[prerender] ERROR: Could not parse stylesheet href for ' + file + '.');
+    process.exit(1);
+  }
+
+  const crossorigin = stylesheetTag.includes(' crossorigin') ? ' crossorigin' : '';
+  const criticalTags = [
+    '    <style nonce="' + STATIC_SCRIPT_NONCE + '">' + CRITICAL_CSS + '</style>',
+    '    <link rel="preload" as="style" href="' + href + '"' + crossorigin + ' data-wm-deferred-style nonce="' + STATIC_SCRIPT_NONCE + '">',
+    '    <script nonce="' + STATIC_SCRIPT_NONCE + '">' + DEFERRED_STYLES_SCRIPT + '</script>',
+    '    <noscript><link rel="stylesheet" href="' + href + '"' + crossorigin + '></noscript>',
+  ].join('\n');
+  return html.replace(stylesheetTag, criticalTags);
+}
+
+async function renderWelcomeRoot() {
+  const server = await createServer({
+    configFile: resolve(__dirname, 'vite.config.ts'),
+    appType: 'custom',
+    logLevel: 'error',
+    server: { hmr: false, middlewareMode: true },
+  });
+  try {
+    const { renderWelcomeApp } = await server.ssrLoadModule('/src/welcome-prerender.tsx');
+    return rewriteBuiltAssetUrls(await renderWelcomeApp());
+  } finally {
+    await server.close();
+  }
+}
+
+function builtAssetHref(filenamePrefix, extension) {
+  const assetsDir = resolve(__dirname, '../public/pro/assets');
+  const file = readdirSync(assetsDir).find((candidate) => (
+    candidate.startsWith(`${filenamePrefix}-`) && candidate.endsWith(extension)
+  ));
+  if (!file) {
+    console.error(`[prerender] ERROR: Could not find built asset for ${filenamePrefix}${extension}`);
+    process.exit(1);
+  }
+  return `/pro/assets/${file}`;
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function rewriteBuiltAssetUrls(markup) {
+  let rewritten = markup;
+  for (const { filenamePrefix, extension } of DASHBOARD_SCREENSHOT_ASSETS) {
+    const builtHref = builtAssetHref(filenamePrefix, extension);
+    const sourceAssetPattern = new RegExp(
+      `(?:/pro/src/assets/|/@fs/[^"'<>\\s]*/)${escapeRegExp(filenamePrefix + extension)}`,
+      'g',
+    );
+    if (!rewritten.match(sourceAssetPattern)) {
+      console.error(`[prerender] ERROR: Could not find SSR asset URL for ${filenamePrefix}${extension} in welcome markup.`);
+      process.exit(1);
+    }
+    rewritten = rewritten.replace(sourceAssetPattern, builtHref);
+  }
+
+  // Catch any OTHER dev-only asset URL — a newly added asset import the rewrite
+  // map above doesn't cover would otherwise ship a broken /pro/src/assets or
+  // /@fs path into the static HTML and break hydration on the hashed client URL.
+  const leaked = rewritten.match(/(?:\/pro\/src\/assets\/|\/@fs\/)[^"'<>\s]+/);
+  if (leaked) {
+    console.error(`[prerender] ERROR: Unrewritten dev asset URL in welcome markup: ${leaked[0]}. Extend rewriteBuiltAssetUrls() to cover it.`);
+    process.exit(1);
+  }
+  return rewritten;
+}
 // Hides the prerender block from assistive tech once JS runs (the CSS in <head>
 // already hides it visually for .js browsers). Appended to every page's block.
 const HIDE_SCRIPT = `<script>(function(){try{var s=document.getElementById('seo-prerender');if(s){s.setAttribute('aria-hidden','true');s.setAttribute('inert','')}}catch(e){}})()</script>`;
@@ -124,128 +310,119 @@ const indexContent = `
 </div>
 ${HIDE_SCRIPT}`;
 
-// Root welcome landing page — reads ONLY en.welcome.* keys.
-const w = en.welcome;
-const momentTitle = (moment) => moment.title ?? `${moment.title1} ${moment.title2}`;
-const welcomeContent = `
+const welcomeContent = await renderWelcomeRoot();
+
+// Wired feature link, reused below.
+const WIRED_STORY_URL = 'https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map';
+
+// Crawler-facing prose block for welcome.html (served at the apex `/`). Unlike
+// index.html — where the React app REPLACES #root on mount, so the prose can be
+// injected inside #root — welcome.html HYDRATES its server-rendered React into
+// #root, so this block is injected as a SIBLING before #root (see `beforeRoot`
+// below) and never collides with hydration. It leads at <h2>: the hydrated Hero
+// already renders the page's single <h1>. AEO/RAG indexers read raw HTML without
+// executing JS, so this dense, link-rich, low-markup text lifts the page's
+// text-to-markup ratio and gives vector retrieval clean structure; the FAQ pulls
+// the same en.welcome.faq strings the React <FAQ> and the head FAQPage JSON-LD
+// use, so schema and visible copy stay in lockstep.
+// The 1..9 range mirrors the three sibling surfaces that also hardcode nine
+// entries: the React <FAQ> (welcome/FAQ.tsx maps [1..9]) and the head FAQPage
+// JSON-LD in welcome.html. If en.welcome.faq gains a q10/a10, extend the range
+// HERE and in those two places together, or the FAQ will silently diverge
+// (the "undefined" guard below only catches MISSING keys, not omitted extras).
+const welcomeFaqEntries = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+  .map((n) => `    <dt>${en.welcome.faq['q' + n]}</dt><dd>${en.welcome.faq['a' + n]}</dd>`)
+  .join('\n');
+
+const welcomeSeoPrerender = `
 <div id="seo-prerender" lang="en">
-  <h1>${w.hero.headline1} ${w.hero.headline2}</h1>
-  <p>${w.hero.eyebrow}. ${w.hero.sub}</p>
-  <p>${w.hero.trustUsers} · ${w.hero.trustOpenSource}. <a href="https://www.worldmonitor.app/dashboard">${w.hero.ctaPrimary}</a> — ${w.hero.ctaFree}.</p>
+  <h2>World Monitor — free real-time global intelligence dashboard</h2>
+  <p>${en.welcome.hero.sub} It runs instantly in the browser with no signup, is used by 2M+ people, and is open source under AGPL-3.0. <a href="${WIRED_STORY_URL}">Featured in WIRED</a>.</p>
 
-  <h2>${w.live.title}</h2>
-  <p>${w.live.subtitle}</p>
-  <p>${w.live.cardHeadlines} · ${w.live.cardCii} · ${w.live.cardChokepoints} · ${w.live.cardMarkets}</p>
-
-  <h2>What is World Monitor?</h2>
-  <p>World Monitor is a free real-time global intelligence dashboard that correlates geopolitics, markets, commodities, shipping, aviation, infrastructure, cyber threats, weather and live news on one map. It is designed for people who need to see when separate signals converge before they become a consensus headline.</p>
-
-  <h2>Best real-time geopolitical intelligence dashboard for markets</h2>
-  <p>For market analysis, World Monitor combines country risk, conflict events, sanctions, shipping chokepoints, military flight activity, macro indicators, FX, equities, crypto, energy and safe-haven assets. The value is the correlation layer: geopolitical pressure, transmission path and price action are visible together instead of split across news, maps and market terminals.</p>
-
-  <h2>Commodity disruption monitoring</h2>
-  <p>For commodity intelligence, World Monitor connects physical supply signals with traded markets: AIS vessel movement, ports, pipelines, LNG, refineries, waterways, chokepoints, weather, fires, earthquakes, outages, conflict layers, oil, gas, gold, metals, grains, miners, shipping names and commodity-linked currencies. Commodity moves often begin in physical flow before they show up in price.</p>
-
-  <h2>How World Monitor is different from a conflict map or market terminal</h2>
-  <p>Conflict maps show events. Market terminals show prices. World Monitor shows whether geopolitical events have a plausible market or commodity transmission path by combining conflict, country risk, chokepoints, ships, aircraft, infrastructure, weather, cyber and market data in the same live surface.</p>
-
-  <h2>Source-backed intelligence surfaces</h2>
-  <p>World Monitor cites sources inside the dashboard and uses public or documented feeds including <a href="https://acleddata.com/">ACLED</a>, <a href="https://ucdp.uu.se/">UCDP</a>, <a href="https://aisstream.io/">AISStream</a>, <a href="https://opensky-network.org/">OpenSky</a>, <a href="https://firms.modaps.eosdis.nasa.gov/">NASA FIRMS</a>, <a href="https://earthquake.usgs.gov/">USGS</a>, <a href="https://fred.stlouisfed.org/">FRED</a>, <a href="https://www.imf.org/en/Data">IMF</a>, <a href="https://www.bis.org/">BIS</a>, <a href="https://www.eia.gov/opendata/">EIA</a> and <a href="https://finnhub.io/">Finnhub</a>.</p>
-
-  <h2>${w.moments.title}</h2>
-  <p>${w.moments.sub}</p>
-  <h3>${momentTitle(w.moments.m1)}</h3><p>${w.moments.m1.kicker}.</p>
-  <p>${w.moments.m1.s1} ${w.moments.m1.s2} ${w.moments.m1.s3} ${w.moments.m1.s4}</p>
-  <h3>${momentTitle(w.moments.m2)}</h3><p>${w.moments.m2.kicker}.</p>
-  <p>${w.moments.m2.s1} ${w.moments.m2.s2} ${w.moments.m2.s3} ${w.moments.m2.s4}</p>
-  <h3>${momentTitle(w.moments.m3)}</h3><p>${w.moments.m3.kicker}.</p>
-  <p>${w.moments.m3.s1} ${w.moments.m3.s2} ${w.moments.m3.s3} ${w.moments.m3.s4}</p>
-  <h3>${momentTitle(w.moments.m4)}</h3><p>${w.moments.m4.kicker}.</p>
-  <p>${w.moments.m4.s1} ${w.moments.m4.s2} ${w.moments.m4.s3} ${w.moments.m4.s4}</p>
-  <p>${w.moments.bridge1} ${w.moments.bridge2}</p>
-
-  <h2>${w.firstFive.title}</h2>
-  <p>${w.firstFive.sub}</p>
-  <dl>
-    <dt>${w.firstFive.f1Title}</dt><dd>${w.firstFive.f1Desc}</dd>
-    <dt>${w.firstFive.f2Title}</dt><dd>${w.firstFive.f2Desc}</dd>
-    <dt>${w.firstFive.f3Title}</dt><dd>${w.firstFive.f3Desc}</dd>
-    <dt>${w.firstFive.f4Title}</dt><dd>${w.firstFive.f4Desc}</dd>
-    <dt>${w.firstFive.f5Title}</dt><dd>${w.firstFive.f5Desc}</dd>
-  </dl>
-
-  <h2>${w.depth.title}</h2>
-  <p>${w.depth.sub}</p>
-  <p>${w.depth.s1v} ${w.depth.s1l} · ${w.depth.s2v} ${w.depth.s2l} · ${w.depth.s3v} ${w.depth.s3l} · ${w.depth.s4v} ${w.depth.s4l} · ${w.depth.s5v} ${w.depth.s5l} · ${w.depth.s6v} ${w.depth.s6l} · ${w.depth.s7v} ${w.depth.s7l} · ${w.depth.s8v} ${w.depth.s8l} · ${w.depth.s9v} ${w.depth.s9l} · ${w.depth.s10v} ${w.depth.s10l} · ${w.depth.s11v} ${w.depth.s11l} · ${w.depth.s12v} ${w.depth.s12l} · ${w.depth.s13v} ${w.depth.s13l} · ${w.depth.s14v} ${w.depth.s14l} · ${w.depth.s15v} ${w.depth.s15l}</p>
-  <dl>
-    <dt>${w.depth.n1Title}</dt><dd>${w.depth.n1Desc}</dd>
-    <dt>${w.depth.n2Title}</dt><dd>${w.depth.n2Desc}</dd>
-    <dt>${w.depth.n3Title}</dt><dd>${w.depth.n3Desc}</dd>
-    <dt>${w.depth.n4Title}</dt><dd>${w.depth.n4Desc}</dd>
-    <dt>${w.depth.n5Title}</dt><dd>${w.depth.n5Desc}</dd>
-    <dt>${w.depth.n6Title}</dt><dd>${w.depth.n6Desc}</dd>
-  </dl>
-
-  <h2>${w.agents.title}</h2>
-  <p>${w.agents.sub}</p>
-  <p>${w.agents.b1} · ${w.agents.b2} · ${w.agents.b3} · ${w.agents.b4}</p>
-
-  <h2>${w.pricing.title1} ${w.pricing.title2}</h2>
-  <p>${w.pricing.sub}</p>
-  <h3>${w.pricing.freeTitle}</h3><p>${w.pricing.freeDesc}</p>
-  <p>${w.pricing.freeF1} · ${w.pricing.freeF2} · ${w.pricing.freeF3} · ${w.pricing.freeF4}</p>
-  <h3>${w.pricing.proTitle}</h3><p>${w.pricing.proDesc}</p>
-  <p>${w.pricing.proF1} · ${w.pricing.proF2} · ${w.pricing.proF3} · ${w.pricing.proF4} · ${w.pricing.proF5}</p>
-  <p>${w.pricing.note} — <a href="https://www.worldmonitor.app/pro">${w.pricing.cta}</a></p>
-
-  <h2>${w.faq.title}</h2>
-  <dl>
-    <dt>${w.faq.q1}</dt><dd>${w.faq.a1}</dd>
-    <dt>${w.faq.q2}</dt><dd>${w.faq.a2}</dd>
-    <dt>${w.faq.q3}</dt><dd>${w.faq.a3}</dd>
-    <dt>${w.faq.q4}</dt><dd>${w.faq.a4}</dd>
-    <dt>${w.faq.q5}</dt><dd>${w.faq.a5}</dd>
-    <dt>${w.faq.q6}</dt><dd>${w.faq.a6}</dd>
-    <dt>${w.faq.q7}</dt><dd>${w.faq.a7}</dd>
-    <dt>${w.faq.q8}</dt><dd>${w.faq.a8}</dd>
-    <dt>${w.faq.q9}</dt><dd>${w.faq.a9}</dd>
-  </dl>
-
-  <h2>${w.cta.title}</h2>
-  <p>${w.cta.subtitle}</p>
-  <p><a href="https://www.worldmonitor.app/dashboard">${w.cta.button}</a> — ${w.cta.note}. <a href="https://www.worldmonitor.app/pro">${w.cta.secondary}</a></p>
-
-  <h2>Explore more</h2>
+  <h2>What World Monitor tracks</h2>
+  <p>World Monitor fuses 56 map layers across a dual 3D-globe and WebGL map: live conflict events, maritime AIS vessels, military and civilian flights, satellite passes, GPS jamming zones, submarine cables and landing stations, AI datacenters, pipelines, nuclear facilities, internet outages and BGP anomalies — alongside market quotes, sector heatmaps and a Country Instability Index across 196 countries. A daily AI brief and corroborated breaking alerts sit on top, and every panel cites its sources and timestamps inline.</p>
   <ul>
-    <li><a href="https://www.worldmonitor.app/pro">World Monitor Pro — AI analyst, digest &amp; MCP</a></li>
-    <li><a href="https://www.worldmonitor.app/blog/">World Monitor Blog — OSINT guides &amp; analysis</a></li>
+    <li><strong>See</strong> — 56 map layers across a dual 3D-globe and WebGL map: conflicts, vessels, flights, satellites, pipelines, submarine cables and AI datacenters.</li>
+    <li><strong>Understand</strong> — a daily AI brief, the Country Instability Index across 196 countries, cross-source correlation and the Scenario Engine.</li>
+    <li><strong>Act</strong> — custom monitors and alerts, Route Explorer, and a 39-tool MCP server and REST API for Claude, GPT and custom agents.</li>
+  </ul>
+
+  <h2>Where the data comes from</h2>
+  <p>65+ named providers, live: <a href="https://acleddata.com/">ACLED</a> and <a href="https://ucdp.uu.se/">UCDP</a> for conflict, <a href="https://aisstream.io/">AISStream</a> for vessels, <a href="https://opensky-network.org/">OpenSky</a> for aircraft, <a href="https://firms.modaps.eosdis.nasa.gov/">NASA FIRMS</a> for fires, <a href="https://www.usgs.gov/programs/earthquake-hazards">USGS</a> for earthquakes, and <a href="https://www.imf.org/en/Data">IMF</a>, <a href="https://www.bis.org/">BIS</a>, <a href="https://fred.stlouisfed.org/">FRED</a> and <a href="https://finnhub.io/">Finnhub</a> for markets and macro — plus 500+ curated news feeds, all active under one key with no separate registrations.</p>
+
+  <h2>Watch shipping chokepoints in real time</h2>
+  <p>Thirteen shipping chokepoints — including Hormuz, Bab el-Mandeb, Suez and Malacca — are tracked with live AIS vessel counts, week-over-week transit change and disruption scoring, with density anomalies flagged against each strait's rolling baseline.</p>
+
+  <h2>Built for AI agents</h2>
+  <p>World Monitor ships a 39-tool MCP server, so Claude, GPT or any MCP-compatible agent can query live country risk scores, chokepoint status, conflicts, markets and country briefs — with JMESPath projection so agents fetch exactly the fields they need. A public REST API and developer documentation are available for custom integrations.</p>
+
+  <h2>Who uses World Monitor</h2>
+  <p>Investors and analysts pricing geopolitical risk, traders watching supply-chain and energy disruptions, researchers and journalists corroborating events across independent sources, and government, defence and NGO teams tracking situational awareness — all from one live map instead of a dozen separate tools.</p>
+
+  <h2>Free, Pro and open source</h2>
+  <p>The full live map — every layer, 500+ feeds, country briefs and breaking alerts, all six monitors — is free with no signup and no trial clock. World Monitor Pro ($39.99/month or $399.99/year) adds WM Analyst chat, the Scenario Engine, Route Explorer, scheduled AI digests to Slack, Discord, Telegram, Email or webhook, a custom widget builder, and MCP and API access — 30+ services under one key. Native desktop apps for Windows, macOS and Linux and an Android TV app for wall displays are available too.</p>
+
+  <h2>Six dashboards, one platform</h2>
+  <ul>
+    <li><a href="https://www.worldmonitor.app/dashboard">World Monitor</a> — geopolitics, conflicts, military and infrastructure</li>
+    <li><a href="https://tech.worldmonitor.app/">Tech Monitor</a> — AI labs, startups, cloud and cybersecurity</li>
+    <li><a href="https://finance.worldmonitor.app/">Finance Monitor</a> — global markets, central banks, forex and crypto</li>
+    <li><a href="https://commodity.worldmonitor.app/">Commodity Monitor</a> — mining, energy, supply chains and freight</li>
+    <li><a href="https://happy.worldmonitor.app/">Happy Monitor</a> — positive news, breakthroughs and conservation</li>
+    <li><a href="https://energy.worldmonitor.app/">Energy Monitor</a> — oil, gas, chokepoints and energy security</li>
+  </ul>
+
+  <h2>${en.welcome.faq.title}</h2>
+  <dl>
+${welcomeFaqEntries}
+  </dl>
+
+  <h2>Learn more</h2>
+  <ul>
+    <li><a href="https://www.worldmonitor.app/pro">World Monitor Pro</a> — AI analyst, scheduled digests, MCP for Claude &amp; GPT</li>
+    <li><a href="https://www.worldmonitor.app/blog/">World Monitor Blog</a> — OSINT guides, geopolitics and market intelligence</li>
     <li><a href="https://www.worldmonitor.app/blog/posts/what-is-worldmonitor-real-time-global-intelligence/">What is World Monitor?</a></li>
+    <li><a href="https://www.worldmonitor.app/blog/posts/osint-for-everyone-open-source-intelligence-democratized/">OSINT for everyone — open-source intelligence democratized</a></li>
     <li><a href="https://github.com/koala73/worldmonitor">Open source on GitHub (AGPL-3.0)</a></li>
-    <li><a href="https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map">Featured in WIRED</a></li>
+    <li><a href="${WIRED_STORY_URL}">Featured in WIRED</a></li>
   </ul>
 </div>
 ${HIDE_SCRIPT}`;
 
 const PAGES = [
-  { file: 'index.html', content: indexContent },
-  { file: 'welcome.html', content: welcomeContent },
+  { file: 'index.html', content: indexContent, rootAttributes: '' },
+  {
+    file: 'welcome.html',
+    content: welcomeContent,
+    rootAttributes: ' data-wm-prerendered="welcome" data-wm-prerender-lang="en"',
+    // Injected as a sibling BEFORE #root (not inside it) so React hydration of
+    // the SSR'd #root subtree is untouched. Hidden for JS users via the
+    // html.js #seo-prerender rule; visible to no-JS AEO/RAG crawlers.
+    beforeRoot: welcomeSeoPrerender,
+  },
 ];
 
-for (const { file, content } of PAGES) {
+for (const { file, content, rootAttributes, beforeRoot = '' } of PAGES) {
   // Fail loudly if any key resolved to undefined — this prevents the build from
   // silently shipping "undefined" strings to crawlers.
-  if (content.includes('undefined')) {
+  if ((content + beforeRoot).includes('undefined')) {
     console.error(`[prerender] ERROR: SEO content for ${file} contains literal "undefined". Check that all en.json keys referenced in this file exist.`);
     process.exit(1);
   }
 
   const htmlPath = resolve(__dirname, '../public/pro', file);
   let html = readFileSync(htmlPath, 'utf-8');
+  html = inlineCriticalCss(html, file);
+  if (!html.includes('</head>')) {
+    console.error(`[prerender] ERROR: ${file} has no </head> to inject Organization JSON-LD into.`);
+    process.exit(1);
+  }
+  html = html.replace('</head>', `${ORGANIZATION_JSONLD}\n  </head>`);
   if (!html.includes('<div id="root"></div>')) {
     console.error(`[prerender] ERROR: ${file} has no empty <div id="root"></div> to inject into.`);
     process.exit(1);
   }
-  html = html.replace('<div id="root"></div>', `<div id="root">${content}</div>`);
+  html = html.replace('<div id="root"></div>', `${beforeRoot}<div id="root"${rootAttributes}>${content}</div>`);
   writeFileSync(htmlPath, html, 'utf-8');
   console.log(`[prerender] Injected SEO content into public/pro/${file}`);
 }

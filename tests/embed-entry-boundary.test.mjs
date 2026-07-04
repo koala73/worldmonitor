@@ -37,7 +37,8 @@ describe('embed entry boundary', () => {
   it('loads public conflict events without importing the full conflict service into the embed entry', () => {
     const loaderSource = readFileSync(resolve(root, 'src/embed/embed-data-loader.ts'), 'utf-8');
     const mapSource = readFileSync(resolve(root, 'src/components/Map.ts'), 'utf-8');
-    assert.ok(loaderSource.includes('@/generated/client/worldmonitor/conflict/v1/service_client'), 'embed loader should use the generated public conflict client');
+    assert.ok(loaderSource.includes('@/services/generated-rpc-clients'), 'embed loader should use the lazy generated public conflict client helper');
+    assert.ok(loaderSource.includes('ConflictServiceClient'), 'embed loader should instantiate the public conflict RPC client through the lazy helper');
     assert.ok(loaderSource.includes('listAcledEvents'), 'conflicts layer should fetch public ACLED conflict events');
     assert.ok(loaderSource.includes('this.map.setConflictEvents'), 'conflicts layer should push fetched events into the flat map');
     assert.ok(!loaderSource.includes('@/services/conflict'), 'embed loader must not import the full conflict service because it pulls runtime app helpers');

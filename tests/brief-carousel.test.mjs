@@ -6,12 +6,73 @@
 // pure plumbing tests (URL derivation + page index mapping) we now
 // end-to-end each of the three layouts, asserting PNG magic bytes
 // and a plausible byte range. This catches Satori tree-shape
-// regressions, font-load breakage, and resvg-wasm init issues long
+// regressions, font parsing breakage, and resvg-wasm init issues long
 // before they'd surface in a Vercel deploy.
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { pageFromIndex, renderCarouselImageResponse } from '../server/_shared/brief-carousel-render.ts';
+
+const TEST_DIR = dirname(fileURLToPath(import.meta.url));
+const RENDERER_SOURCE_PATH = resolve(TEST_DIR, '../server/_shared/brief-carousel-render.ts');
+const LOCAL_RENDER_FONT_PATH = resolve(TEST_DIR, '../blog-site/scripts/fonts/inter-regular.ttf');
+const originalFetch = globalThis.fetch;
+
+let rendererSourcePromise;
+let rendererFontUrlPromise;
+let localFontPromise;
+let localFontFetchInstallPromise;
+
+function readRendererSource() {
+  rendererSourcePromise ??= readFile(RENDERER_SOURCE_PATH, 'utf-8');
+  return rendererSourcePromise;
+}
+
+async function rendererFontUrl() {
+  rendererFontUrlPromise ??= (async () => {
+    const src = await readRendererSource();
+    const fontUrlMatch = src.match(/const FONT_URL\s*=\s*['"]([^'"]+)['"]/);
+    assert.ok(fontUrlMatch, 'FONT_URL constant must exist');
+    return fontUrlMatch[1];
+  })();
+  return rendererFontUrlPromise;
+}
+
+function inputUrl(input) {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.toString();
+  if (input && typeof input === 'object' && 'url' in input) return input.url;
+  return String(input);
+}
+
+async function installLocalFontFetch() {
+  localFontFetchInstallPromise ??= (async () => {
+    const [fontUrl, localFont] = await Promise.all([
+      rendererFontUrl(),
+      (localFontPromise ??= readFile(LOCAL_RENDER_FONT_PATH)),
+    ]);
+
+    globalThis.fetch = async (input, init) => {
+      if (inputUrl(input) === fontUrl) {
+        return new Response(localFont, {
+          status: 200,
+          headers: { 'Content-Type': 'font/ttf' },
+        });
+      }
+      return originalFetch(input, init);
+    };
+  })();
+
+  await localFontFetchInstallPromise;
+}
+
+async function renderCarouselImageResponseForTest(...args) {
+  await installLocalFontFetch();
+  return renderCarouselImageResponse(...args);
+}
 
 // Import the URL helper via dynamic eval of the private function.
 // The digest cron is .mjs; we re-declare the same logic here to lock
@@ -134,17 +195,7 @@ describe('carousel route — no placeholder PNG on failure', () => {
     // ttf / otf / woff only — a woff2 buffer throws on every render,
     // the route returns 503, the carousel never delivers. Lock the
     // format here so a future swap can't regress.
-    const { readFileSync } = await import('node:fs');
-    const { fileURLToPath } = await import('node:url');
-    const { dirname, resolve } = await import('node:path');
-    const __d = dirname(fileURLToPath(import.meta.url));
-    const src = readFileSync(
-      resolve(__d, '../server/_shared/brief-carousel-render.ts'),
-      'utf-8',
-    );
-    const fontUrlMatch = src.match(/const FONT_URL\s*=\s*['"]([^'"]+)['"]/);
-    assert.ok(fontUrlMatch, 'FONT_URL constant must exist');
-    const url = fontUrlMatch[1];
+    const url = await rendererFontUrl();
     assert.doesNotMatch(url, /\.woff2($|\?|#)/i, 'woff2 is NOT supported by Satori — use ttf/otf/woff');
     assert.match(url, /\.(ttf|otf|woff)($|\?|#)/i, 'FONT_URL must end in .ttf, .otf, or .woff');
   });
@@ -175,14 +226,14 @@ describe('carousel route — no placeholder PNG on failure', () => {
 //
 // Exercises @vercel/og's ImageResponse against each layout. Catches:
 //   - Satori tree-shape regressions (bad style/children keys throw)
-//   - Font fetch breakage (jsdelivr down, wrong format, etc.)
+//   - Font parse breakage (wrong format, invalid bytes, etc.)
 //   - resvg-wasm init failure (rare but has happened)
 //   - PNG output corruption (wrong magic, zero bytes)
 //
-// Hits the real jsdelivr CDN for the Noto Serif TTF. Same network
-// footprint as the rest of the data suite (which calls FRED, IMF,
-// etc.). If that ever becomes a problem, swap loadFont() to an
-// embedded base64 TTF per the comment in brief-carousel-render.ts.
+// The production renderer still has an honest CDN font dependency, but
+// the unit smoke replaces that exact URL with a local Satori-readable TTF
+// fixture. That keeps CI focused on renderer behavior instead of jsdelivr
+// latency while still exercising @vercel/og with real font bytes.
 
 const SAMPLE_ENVELOPE = {
   version: 1,
@@ -215,7 +266,7 @@ const SAMPLE_ENVELOPE = {
 const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
 async function assertRendersPng(page) {
-  const res = await renderCarouselImageResponse(SAMPLE_ENVELOPE, page);
+  const res = await renderCarouselImageResponseForTest(SAMPLE_ENVELOPE, page);
   assert.equal(res.status, 200, `${page}: status should be 200`);
   assert.equal(
     res.headers.get('content-type'),
@@ -231,12 +282,10 @@ async function assertRendersPng(page) {
 }
 
 describe('renderCarouselImageResponse', () => {
-  // PNG cold-render (font + resvg-wasm init) measures ~10s on a warm
-  // machine under no load and longer under concurrent test load. The
-  // node:test default per-test timeout (5s in tsx --test) false-fails
-  // these in the pre-push full-suite sweep while they pass in isolation.
-  // 30s gives comfortable headroom without masking real regressions.
-  const PNG_RENDER_TIMEOUT = 30_000;
+  // PNG cold-render still initializes @vercel/og/resvg-wasm and can slow
+  // down under the full concurrent suite. Keep a bounded budget without
+  // relying on the live CDN font fetch that used to dominate this path.
+  const PNG_RENDER_TIMEOUT = 10_000;
 
   it('renders the cover page to a valid PNG', { timeout: PNG_RENDER_TIMEOUT }, async () => {
     await assertRendersPng('cover');
@@ -252,13 +301,13 @@ describe('renderCarouselImageResponse', () => {
 
   it('rejects a structurally empty envelope', async () => {
     await assert.rejects(
-      () => renderCarouselImageResponse({}, 'cover'),
+      () => renderCarouselImageResponseForTest({}, 'cover'),
       /invalid envelope/,
     );
   });
 
   it('threads the extraHeaders argument onto the Response', async () => {
-    const res = await renderCarouselImageResponse(SAMPLE_ENVELOPE, 'cover', {
+    const res = await renderCarouselImageResponseForTest(SAMPLE_ENVELOPE, 'cover', {
       'X-Test-Marker': 'carousel-smoke',
       'Referrer-Policy': 'no-referrer',
     });
@@ -272,7 +321,7 @@ describe('renderCarouselImageResponse', () => {
     // choice to rely on @vercel/og's 1-year immutable default instead
     // of stacking our own. If @vercel/og ever changes this semantics,
     // this test fails and the route needs a review.
-    const res = await renderCarouselImageResponse(SAMPLE_ENVELOPE, 'cover', {
+    const res = await renderCarouselImageResponseForTest(SAMPLE_ENVELOPE, 'cover', {
       'Cache-Control': 'public, max-age=60',
     });
     const cc = res.headers.get('cache-control') ?? '';

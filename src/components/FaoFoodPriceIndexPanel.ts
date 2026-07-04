@@ -3,8 +3,9 @@ import { t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
 import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
-import { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
+
 import type { GetFaoFoodPriceIndexResponse, FaoFoodPricePoint } from '@/generated/client/worldmonitor/economic/v1/service_client';
+import { EconomicServiceClient } from '@/services/generated-rpc-clients';
 
 const getEconomicClient = createLazyClient(() => new EconomicServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
 

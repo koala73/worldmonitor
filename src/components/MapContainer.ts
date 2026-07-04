@@ -5,6 +5,7 @@
  * Supports an optional 3D globe mode (globe.gl) selectable from Settings.
  */
 import { isMobileDevice } from '@/utils';
+import { markLcpDebug } from '@/utils/lcp-debug';
 import type { MapComponent } from './Map';
 import type { DeckGLMap, DeckMapView, CountryClickPayload } from './DeckGLMap';
 import type { GlobeMap } from './GlobeMap';
@@ -84,6 +85,15 @@ function loadMapLibreCss(): Promise<unknown> {
   return mapLibreCssPromise;
 }
 
+const DECK_RENDERER_VISIBLE_IDLE_DELAY_MS = 3_500;
+const DECK_RENDERER_IDLE_TIMEOUT_MS = 5_000;
+const DECK_RENDERER_NO_OBSERVER_DELAY_MS = 4_500;
+// Absolute upper bound for the demand gate when an IntersectionObserver is
+// available: longer than VISIBLE_IDLE + IDLE_TIMEOUT so the visible-idle path
+// wins for on-screen maps, but guarantees an off-screen / partially-visible /
+// deferred-mounted map still loads instead of hanging on the shell forever.
+const DECK_RENDERER_MAX_WAIT_MS = 12_000;
+
 export interface MapContainerState {
   zoom: number;
   pan: { x: number; y: number };
@@ -130,6 +140,7 @@ export class MapContainer {
   private readonly chrome: boolean;
   private isResizingInternal = false;
   private resizeObserver: ResizeObserver | null = null;
+  private rendererDemandCleanup: (() => void) | null = null;
   private globeInitToken = 0;
   private rendererInitToken = 0;
   private destroyed = false;
@@ -266,6 +277,7 @@ export class MapContainer {
   }
 
   private showRendererShell(kind: RendererKind): void {
+    markLcpDebug('wm:map:shell-shown', { kind });
     this.container.classList.remove('deckgl-mode', 'globe-mode', 'svg-mode');
     this.container.classList.add('map-renderer-shell');
     this.container.dataset.mapRendererPending = kind;
@@ -308,8 +320,137 @@ export class MapContainer {
     this.resizeObserver.observe(this.container);
   }
 
+  private waitForDeckRendererDemand(token: number): Promise<boolean> {
+    if (typeof window === 'undefined') return Promise.resolve(true);
+
+    this.rendererDemandCleanup?.();
+    this.rendererDemandCleanup = null;
+
+    return new Promise((resolve) => {
+      let resolved = false;
+      let observer: IntersectionObserver | null = null;
+      let visibleDelayId: number | null = null;
+      let fallbackDelayId: number | null = null;
+      let idleCallbackId: number | null = null;
+      let idleFallbackDelayId: number | null = null;
+      let cancelDemand: (() => void) | null = null;
+
+      const clearVisibleDelay = (): void => {
+        if (visibleDelayId !== null) {
+          window.clearTimeout(visibleDelayId);
+          visibleDelayId = null;
+        }
+        if (idleCallbackId !== null && typeof window.cancelIdleCallback === 'function') {
+          window.cancelIdleCallback(idleCallbackId);
+          idleCallbackId = null;
+        }
+        if (idleFallbackDelayId !== null) {
+          window.clearTimeout(idleFallbackDelayId);
+          idleFallbackDelayId = null;
+        }
+      };
+
+      const cleanup = (): void => {
+        clearVisibleDelay();
+        if (fallbackDelayId !== null) {
+          window.clearTimeout(fallbackDelayId);
+          fallbackDelayId = null;
+        }
+        observer?.disconnect();
+        observer = null;
+        this.container.removeEventListener('pointerdown', finishFromSignal);
+        this.container.removeEventListener('wheel', finishFromSignal);
+        this.container.removeEventListener('touchstart', finishFromSignal);
+        this.container.removeEventListener('keydown', finishFromSignal);
+        if (this.rendererDemandCleanup === cancelDemand) this.rendererDemandCleanup = null;
+      };
+
+      const settle = (shouldLoadDeck: boolean): void => {
+        if (resolved) return;
+        resolved = true;
+        cleanup();
+        resolve(shouldLoadDeck);
+      };
+
+      const finish = (): void => {
+        markLcpDebug('wm:map:renderer-demand', { kind: 'deck' });
+        settle(true);
+      };
+
+      const cancel = (): void => {
+        settle(false);
+      };
+
+      const finishIfCurrent = (): void => {
+        if (this.isCurrentRendererInit(token)) {
+          finish();
+        } else {
+          cancel();
+        }
+      };
+
+      function finishFromSignal(): void {
+        finishIfCurrent();
+      }
+
+      const requestIdle = (): void => {
+        if (idleCallbackId !== null || idleFallbackDelayId !== null) return;
+        if (typeof window.requestIdleCallback === 'function') {
+          idleCallbackId = window.requestIdleCallback(() => {
+            idleCallbackId = null;
+            finishIfCurrent();
+          }, { timeout: DECK_RENDERER_IDLE_TIMEOUT_MS });
+        } else {
+          idleFallbackDelayId = window.setTimeout(() => {
+            idleFallbackDelayId = null;
+            finishIfCurrent();
+          }, 1);
+        }
+      };
+
+      const scheduleVisibleIdle = (): void => {
+        if (visibleDelayId !== null || idleCallbackId !== null || idleFallbackDelayId !== null) return;
+        visibleDelayId = window.setTimeout(() => {
+          visibleDelayId = null;
+          requestIdle();
+        }, DECK_RENDERER_VISIBLE_IDLE_DELAY_MS);
+      };
+
+      cancelDemand = cancel;
+      this.rendererDemandCleanup = cancelDemand;
+      this.container.addEventListener('pointerdown', finishFromSignal, { once: true, passive: true });
+      this.container.addEventListener('wheel', finishFromSignal, { once: true, passive: true });
+      this.container.addEventListener('touchstart', finishFromSignal, { once: true, passive: true });
+      this.container.addEventListener('keydown', finishFromSignal, { once: true });
+
+      const hasIntersectionObserver = typeof IntersectionObserver === 'function';
+
+      // Absolute backstop so the renderer always loads even when the container
+      // never reaches the visibility threshold and no interaction fires (e.g.
+      // below-fold, only 1-14% visible, deferred-mount, or a hidden map panel).
+      // With an IntersectionObserver the visible-idle path resolves first; this
+      // longer timer is purely the safety net that prevents a permanent shell.
+      fallbackDelayId = window.setTimeout(
+        finishIfCurrent,
+        hasIntersectionObserver ? DECK_RENDERER_MAX_WAIT_MS : DECK_RENDERER_NO_OBSERVER_DELAY_MS,
+      );
+
+      if (hasIntersectionObserver) {
+        observer = new IntersectionObserver((entries) => {
+          if (entries.some((entry) => entry.isIntersecting)) {
+            scheduleVisibleIdle();
+          } else {
+            clearVisibleDelay();
+          }
+        }, { threshold: 0.15 });
+        observer.observe(this.container);
+      }
+    });
+  }
+
   private async initSvgMap(logMessage: string, token: number): Promise<void> {
     console.log(logMessage);
+    markLcpDebug('wm:map:svg-init-start');
     this.useDeckGL = false;
     this.deckGLMap = null;
     this.sanitizeNonDeckLayers();
@@ -318,13 +459,15 @@ export class MapContainer {
     this.prepareRendererDom('svg-mode');
     // DeckGLMap mutates DOM early during construction. If initialization throws,
     // clear partial WebGL nodes before creating the SVG fallback.
-    this.svgMap = new MapComponent(this.container, this.initialState, { chrome: this.chrome });
+    this.svgMap = new MapComponent(this.container, this.initialState, { chrome: this.chrome, isMobile: this.isMobile });
     this.rehydrateActiveMap();
+    markLcpDebug('wm:map:svg-ready');
   }
 
   private async createGlobeMap(rendererToken: number): Promise<void> {
     const globeToken = ++this.globeInitToken;
     try {
+      markLcpDebug('wm:map:globe-init-start');
       const { GlobeMap } = await import('./GlobeMap');
       if (!this.isCurrentRendererInit(rendererToken)) return;
       this.prepareRendererDom('globe-mode');
@@ -333,6 +476,7 @@ export class MapContainer {
         chrome: this.chrome,
       });
       this.rehydrateActiveMap();
+      markLcpDebug('wm:map:globe-ready');
     } catch (error) {
       this.handleGlobeInitFailure(globeToken, error);
     }
@@ -353,6 +497,7 @@ export class MapContainer {
   private async createDeckGLMap(token: number): Promise<void> {
     console.log('[MapContainer] Initializing deck.gl map (desktop mode)');
     try {
+      markLcpDebug('wm:map:deck-init-start');
       await loadMapLibreCss();
       const { DeckGLMap } = await import('./DeckGLMap');
       if (!this.isCurrentRendererInit(token)) return;
@@ -362,9 +507,19 @@ export class MapContainer {
         view: this.initialState.view as DeckMapView,
       }, { chrome: this.chrome });
       this.rehydrateActiveMap();
+      // DeckGLMap defers MapLibre construction behind an async init. Await it so
+      // a WebGL/map-construction throw still reaches this catch and degrades to
+      // SVG, instead of becoming an unhandled rejection behind a blank map.
+      await this.deckGLMap.whenReady();
+      if (!this.isCurrentRendererInit(token)) return;
+      markLcpDebug('wm:map:deck-ready');
     } catch (error) {
       if (!this.isCurrentRendererInit(token)) return;
       console.warn('[MapContainer] DeckGL initialization failed, falling back to SVG map', error);
+      // Tear down the half-built deck map so its listeners, timers and WebGL
+      // context do not leak; initSvgMap then nulls the reference and flips
+      // useDeckGL off.
+      this.deckGLMap?.destroy();
       await this.initSvgMap('[MapContainer] Initializing SVG map (DeckGL fallback mode)', token);
     }
   }
@@ -378,11 +533,14 @@ export class MapContainer {
     // the tab becomes visible — the lightweight shell is shown until then.
     await afterFirstPaint();
     if (!this.isCurrentRendererInit(token)) return;
+    markLcpDebug('wm:map:after-first-paint');
 
     if (this.useGlobe) {
       console.log('[MapContainer] Initializing 3D globe (globe.gl mode)');
       await this.createGlobeMap(token);
     } else if (this.useDeckGL) {
+      const shouldLoadDeck = await this.waitForDeckRendererDemand(token);
+      if (!shouldLoadDeck || !this.isCurrentRendererInit(token)) return;
       await this.createDeckGLMap(token);
     } else {
       await this.initSvgMap('[MapContainer] Initializing SVG map (mobile/fallback mode)', token);
@@ -425,6 +583,11 @@ export class MapContainer {
       ? { ...snapshot, layers: { ...snapshot.layers, resilienceScore: false } }
       : snapshot;
     this.pendingCenter = center ? { ...center, zoom: snapshot.zoom } : null;
+    // Cancel any pending deck demand gate from a prior flat init before
+    // re-initializing, mirroring destroyFlatMap(), so a stale gate can't abort
+    // the new init during the afterFirstPaint() window.
+    this.rendererDemandCleanup?.();
+    this.rendererDemandCleanup = null;
     void this.init();
   }
 
@@ -459,7 +622,11 @@ export class MapContainer {
     if (this.cachedDisplacementFlows) this.setDisplacementFlows(this.cachedDisplacementFlows);
     if (this.cachedClimateAnomalies) this.setClimateAnomalies(this.cachedClimateAnomalies);
     if (this.cachedRadiationObservations) this.setRadiationObservations(this.cachedRadiationObservations);
-    if (this.cachedGpsJamming) this.setGpsJamming(this.cachedGpsJamming);
+    if (this.cachedGpsJamming) {
+      void this.setGpsJamming(this.cachedGpsJamming).catch(err => {
+        console.warn('[MapContainer] GPS jamming re-init failed:', (err as Error)?.message);
+      });
+    }
     if (this.cachedSatellites) this.setSatellites(this.cachedSatellites);
     if (this.cachedDiseaseOutbreaks) this.setDiseaseOutbreaks(this.cachedDiseaseOutbreaks);
     if (this.cachedCyberThreats) this.setCyberThreats(this.cachedCyberThreats);
@@ -513,6 +680,8 @@ export class MapContainer {
   }
 
   private destroyFlatMap(): void {
+    this.rendererDemandCleanup?.();
+    this.rendererDemandCleanup = null;
     this.deckGLMap?.destroy();
     this.deckGLMap = null;
     this.svgMap?.destroy();
@@ -815,11 +984,11 @@ export class MapContainer {
     }
   }
 
-  public setGpsJamming(hexes: GpsJamHex[]): void {
+  public async setGpsJamming(hexes: GpsJamHex[]): Promise<void> {
     this.cachedGpsJamming = hexes;
     if (this.useGlobe) { this.globeMap?.setGpsJamming(hexes); return; }
     if (this.useDeckGL) {
-      this.deckGLMap?.setGpsJamming(hexes);
+      await this.deckGLMap?.setGpsJamming(hexes);
     }
   }
 
@@ -1362,6 +1531,8 @@ export class MapContainer {
     this.iranSkillOverlay?.remove();
     this.iranSkillOverlay = null;
     this.resizeObserver?.disconnect();
+    this.rendererDemandCleanup?.();
+    this.rendererDemandCleanup = null;
     this.globeInitToken++;
     this.rendererInitToken++;
     this.globeMap?.destroy();

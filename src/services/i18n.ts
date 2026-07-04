@@ -2,6 +2,7 @@ import i18next from 'i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
+import { readQueryLanguage, stripQueryLanguage } from '@/utils/i18n-url';
 
 // Keep only first-paint English strings in the entry chunk. The full English
 // dictionary is loaded through localeModules so it can split like other locales.
@@ -15,7 +16,7 @@ import enShellTranslation from '../locales/en.shell.json';
 // the moment they pick another language explicitly, that choice persists here.
 const EXPLICIT_LOCALE_KEY = 'wm-locale-explicit';
 
-const SUPPORTED_LANGUAGES = ['en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'ar', 'zh', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi'] as const;
+const SUPPORTED_LANGUAGES = ['en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'ar', 'fa', 'zh', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi'] as const;
 type SupportedLanguage = typeof SUPPORTED_LANGUAGES[number];
 type TranslationDictionary = Record<string, unknown>;
 
@@ -37,7 +38,7 @@ const localeModules = import.meta.glob<TranslationDictionary>(
   { import: 'default' },
 );
 
-const RTL_LANGUAGES = new Set(['ar']);
+const RTL_LANGUAGES = new Set(['ar', 'fa']);
 
 function normalizeLanguage(lng: string): SupportedLanguage {
   const base = (lng || 'en').split('-')[0]?.toLowerCase() || 'en';
@@ -156,12 +157,19 @@ export async function initI18n(): Promise<void> {
   // (`wm-locale-explicit`) is preserved untouched.
   try { localStorage.removeItem('i18nextLng'); } catch { /* private mode */ }
 
-  // Custom detector: reads ONLY the explicit-choice key. Returns undefined
-  // when unset so detection falls through to navigator. This replaces the
-  // default `localStorage` step (which would read i18next's auto-cache key)
-  // so a user whose browser is French always lands on French unless they've
-  // explicitly chosen otherwise via Settings → Language.
+  // Custom detectors:
+  // - wmQuery honors shareable/SEO language URLs such as /dashboard?lang=fa.
+  // - wmExplicit reads ONLY the explicit-choice key. Returns undefined when
+  //   unset so detection falls through to navigator. This replaces the default
+  //   `localStorage` step (which would read i18next's auto-cache key) so a user
+  //   whose browser is French always lands on French unless they've explicitly
+  //   chosen otherwise via Settings → Language.
   const detector = new LanguageDetector();
+  detector.addDetector({
+    name: 'wmQuery',
+    lookup: () => readQueryLanguage(window.location.href),
+    cacheUserLanguage: () => { /* URL language is explicit per request, not persisted */ },
+  });
   detector.addDetector({
     name: 'wmExplicit',
     lookup: () => {
@@ -185,7 +193,7 @@ export async function initI18n(): Promise<void> {
         escapeValue: false, // not needed for these simple strings
       },
       detection: {
-        order: ['wmExplicit', 'navigator'],
+        order: ['wmQuery', 'wmExplicit', 'navigator'],
         caches: [], // never auto-write — only changeLanguage() persists
       },
     });
@@ -223,6 +231,15 @@ export async function changeLanguage(lng: string): Promise<void> {
   try { localStorage.setItem(EXPLICIT_LOCALE_KEY, normalized); } catch { /* private mode */ }
   await i18next.changeLanguage(normalized);
   applyDocumentDirection(normalized);
+  // Drop any `?lang=` from the URL before reloading. `wmQuery` is first in
+  // detection.order, so a stale query param would out-rank the explicit choice
+  // we just persisted and silently revert the language on this very reload.
+  try {
+    const stripped = stripQueryLanguage(window.location.href);
+    if (stripped !== window.location.href) {
+      window.history.replaceState(window.history.state, '', stripped);
+    }
+  } catch { /* history unavailable */ }
   window.location.reload(); // Simple reload to update all components for now
 }
 
@@ -238,7 +255,7 @@ export function isRTL(): boolean {
 
 export function getLocale(): string {
   const lang = getCurrentLanguage();
-  const map: Record<string, string> = { en: 'en-US', bg: 'bg-BG', cs: 'cs-CZ', el: 'el-GR', zh: 'zh-CN', pt: 'pt-BR', ja: 'ja-JP', ko: 'ko-KR', ro: 'ro-RO', tr: 'tr-TR', th: 'th-TH', vi: 'vi-VN', hi: 'hi-IN' };
+  const map: Record<string, string> = { en: 'en-US', bg: 'bg-BG', cs: 'cs-CZ', el: 'el-GR', fa: 'fa-IR', zh: 'zh-CN', pt: 'pt-BR', ja: 'ja-JP', ko: 'ko-KR', ro: 'ro-RO', tr: 'tr-TR', th: 'th-TH', vi: 'vi-VN', hi: 'hi-IN' };
   return map[lang] || lang;
 }
 
@@ -246,6 +263,7 @@ export const LANGUAGES = [
   { code: 'en', label: 'English', flag: '🇬🇧' },
   { code: 'bg', label: 'Български', flag: '🇧🇬' },
   { code: 'ar', label: 'العربية', flag: '🇸🇦' },
+  { code: 'fa', label: 'فارسی', flag: '🇮🇷' },
   { code: 'cs', label: 'Čeština', flag: '🇨🇿' },
   { code: 'zh', label: '中文', flag: '🇨🇳' },
   { code: 'fr', label: 'Français', flag: '🇫🇷' },

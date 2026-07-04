@@ -34,7 +34,7 @@
 import type { McpAuthContext, McpHandlerDeps, McpResourceDef } from '../types';
 import { dispatchToolsCall } from '../dispatch';
 import { evaluateFreshness } from '../freshness';
-import { rpcError, rpcOk } from '../rpc';
+import { rpcError, rpcOk, withMcpNoStore } from '../rpc';
 // @ts-expect-error — JS module, no declaration file
 import { readJsonFromUpstash } from '../../_upstash-json.js';
 import { CHOKEPOINT_SLUGS } from './slugs';
@@ -258,7 +258,7 @@ export async function buildResourceResponse(
     // Without this, a correctly-implemented client back-off would retry
     // immediately on resources/read while waiting correctly on tools/call
     // — directly contradicting the auth-symmetry contract.
-    const errorHeaders: Record<string, string> = { 'Content-Type': 'application/json', ...corsHeaders };
+    const errorHeaders: Record<string, string> = withMcpNoStore({ 'Content-Type': 'application/json', ...corsHeaders });
     const retryAfter = dispatched.headers.get('Retry-After');
     if (retryAfter !== null) errorHeaders['Retry-After'] = retryAfter;
     return new Response(

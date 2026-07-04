@@ -162,6 +162,11 @@ function computeActivityIndex(platforms: PlatformGiving[], crypto: CryptoGivingS
   return Math.max(0, Math.min(100, Math.round(score)));
 }
 
+function responseFetchedAt(summary: GivingSummary | undefined): number {
+  const parsed = summary?.generatedAt ? Date.parse(summary.generatedAt) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
 function computeTrend(index: number): string {
   // Without historical data, use index level as proxy
   if (index >= 65) return 'rising';
@@ -201,13 +206,13 @@ export async function getGivingSummary(
         institutional,
       };
 
-      return { summary };
+      return { summary, fetchedAt: responseFetchedAt(summary), dataAvailable: true };
     });
 
-    if (!result) return { summary: undefined as unknown as GivingSummary };
+    if (!result) return { summary: undefined as unknown as GivingSummary, fetchedAt: 0, dataAvailable: false };
 
     const summary = result.summary;
-    if (!summary) return { summary };
+    if (!summary) return { summary, fetchedAt: 0, dataAvailable: false };
 
     return {
       summary: {
@@ -219,8 +224,10 @@ export async function getGivingSummary(
           ? summary.categories.slice(0, req.categoryLimit)
           : summary.categories,
       },
+      fetchedAt: result.fetchedAt || responseFetchedAt(summary),
+      dataAvailable: true,
     };
   } catch {
-    return { summary: undefined as unknown as GivingSummary };
+    return { summary: undefined as unknown as GivingSummary, fetchedAt: 0, dataAvailable: false };
   }
 }

@@ -2,17 +2,29 @@ openapi: 3.1.0
 info:
     title: NaturalService API
     version: 1.0.0
+security:
+    - WorldMonitorKey: []
+    - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
 paths:
     /api/natural/v1/list-natural-events:
         get:
             tags:
                 - NaturalService
             summary: ListNaturalEvents
+            description: |-
+                ListNaturalEvents retrieves seeded EONET/GDACS/NHC natural events. Empty
+                 events with fetched_at=0 or data_available=false means the seed snapshot is
+                 unavailable/degraded, not that there are confirmed zero events.
             operationId: ListNaturalEvents
+            security: []
             parameters:
                 - name: days
                   in: query
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: 7
                   schema:
                     type: integer
                     format: int32
@@ -21,6 +33,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "dataAvailable": true
+                                "events":
+                                    - "basin": "example"
+                                      "category": "cs.AI"
+                                      "categoryTitle": "cs.AI"
+                                      "classification": "example"
+                                      "closed": true
+                                "fetchedAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/ListNaturalEventsResponse'
                 "400":
@@ -36,6 +57,17 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
 components:
+    securitySchemes:
+        WorldMonitorKey:
+            type: apiKey
+            in: header
+            name: X-WorldMonitor-Key
+            description: User-issued WorldMonitor API key.
+        ApiKeyHeader:
+            type: apiKey
+            in: header
+            name: X-Api-Key
+            description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
     schemas:
         Error:
             type: object
@@ -74,6 +106,7 @@ components:
                 days:
                     type: integer
                     format: int32
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
         ListNaturalEventsResponse:
             type: object
             properties:
@@ -81,6 +114,18 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/NaturalEvent'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: |-
+                        Time the seed snapshot was fetched, as Unix epoch milliseconds. A value of
+                         0 means the snapshot is unavailable/degraded, not that there are confirmed
+                         zero natural events.. Warning: Values > 2^53 may lose precision in JavaScript
+                dataAvailable:
+                    type: boolean
+                    description: |-
+                        True when events came from a seed snapshot. False means an empty payload is
+                         graceful degradation because the snapshot is unavailable.
         NaturalEvent:
             type: object
             properties:

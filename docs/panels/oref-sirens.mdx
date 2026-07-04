@@ -32,6 +32,13 @@ Panel id is `oref-sirens`; canonical component is `src/components/OrefSirensPane
 - `fetchOrefHistory()` in `@/services/oref-alerts` — backed by `/api/oref-alerts` (a Railway relay that mirrors the OREF feed; documented under [Proxies](/api-proxies)).
 - Live sirens are delivered separately via the same relay; the panel's `setData()` path accepts an `OrefAlertsResponse` with the `configured` flag + active alert list.
 
+### Backed by endpoints
+
+| Surface | Endpoint | Notes |
+|---|---|---|
+| Panel relay path | `GET /api/oref-alerts` | Current browser path for active sirens and history. |
+| Generated service RPC | `GET /api/intelligence/v1/list-oref-alerts` | `mode=MODE_HISTORY` serves Redis history; live mode tries the relay and falls back to cached counts. |
+
 ## Refresh cadence
 
 Real-time for active sirens. History is client-cached for 3 minutes to damp re-fetch on re-render.

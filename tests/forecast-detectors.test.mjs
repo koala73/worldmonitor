@@ -1438,7 +1438,7 @@ describe('forecast llm overrides', () => {
 
     const result = await __callForecastLlmForTests('system', 'user', { stage: 'scenario', retryDelayMs: 0 });
 
-    assert.deepEqual(providers, ['groq', 'groq', 'groq', 'openrouter']);
+    assert.deepEqual(providers, ['groq', 'groq', 'groq', 'groq', 'openrouter']);
     assert.deepEqual(result, {
       text: 'OpenRouter fallback succeeded with enough narrative content.',
       model: 'openrouter/gemini-test',

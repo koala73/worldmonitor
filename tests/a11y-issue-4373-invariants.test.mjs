@@ -4,10 +4,10 @@
  *     role="tablist" element (PanelTabBar).
  *   - color-contrast: footer copyright, DEFCON badge, and live/webcam "active"
  *     pills must clear WCAG AA 4.5:1.
- *   - select-name: #regionSelect must carry an aria-label.
+ *   - select-name: #regionSelect and .cascade-select must carry aria-labels.
  *   - bypass: a <main> landmark and a skip link must exist.
  *   - target-size: map time-range buttons and the layer-help "?" button must
- *     present a >=24x24 hit area.
+ *     present a >=48x48 hit area.
  *
  * These are source-invariant assertions (the components render via
  * createElement / inline HTML strings with no DOM in the Node test runner,
@@ -31,6 +31,8 @@ const css = read('src', 'styles', 'main.css');
 const tabBar = read('src', 'components', 'PanelTabBar.ts');
 const pizzint = read('src', 'components', 'PizzIntIndicator.ts');
 const panelLayout = read('src', 'app', 'panel-layout.ts');
+const cascadePanel = read('src', 'components', 'CascadePanel.ts');
+const deckglMap = read('src', 'components', 'DeckGLMap.ts');
 
 // --- WCAG contrast helpers -------------------------------------------------
 
@@ -100,6 +102,14 @@ describe('select-name — #regionSelect is labelled', () => {
       .find((l) => l.includes('id="regionSelect"'));
     assert.ok(line, '#regionSelect must exist');
     assert.match(line, /aria-label=/, '#regionSelect must have an aria-label');
+  });
+
+  it('cascade-select carries an aria-label', () => {
+    const line = cascadePanel
+      .split('\n')
+      .find((l) => l.includes('class="cascade-select"'));
+    assert.ok(line, '.cascade-select must exist');
+    assert.match(line, /aria-label=/, '.cascade-select must have an aria-label');
   });
 });
 
@@ -233,17 +243,23 @@ describe('color-contrast — live/webcam active pills', () => {
 // --- 7. tap target sizes ----------------------------------------------------
 
 describe('target-size — small map controls', () => {
-  it('time-range buttons present a >=24px hit area', () => {
+  it('time-range buttons present a >=48px hit area', () => {
     const block = css.match(/\.deckgl-time-slider \.time-btn\s*\{([^}]*)\}/);
     assert.ok(block, '.deckgl-time-slider .time-btn rule must exist');
-    assert.match(block[1], /min-height:\s*24px/);
-    assert.match(block[1], /min-width:\s*24px/);
+    assert.match(block[1], /min-height:\s*48px/);
+    assert.match(block[1], /min-width:\s*48px/);
   });
 
-  it('layer-help "?" button is 24x24', () => {
+  it('layer-help "?" button is 48x48', () => {
     const block = css.match(/\.layer-help-btn\s*\{([^}]*)\}/);
     assert.ok(block, '.layer-help-btn rule must exist');
-    assert.match(block[1], /width:\s*24px/);
-    assert.match(block[1], /height:\s*24px/);
+    assert.match(block[1], /width:\s*48px/);
+    assert.match(block[1], /height:\s*48px/);
+    const line = deckglMap
+      .split('\n')
+      .find((l) => l.includes('class="layer-help-btn"'));
+    assert.ok(line, 'DeckGL layer help button must exist');
+    assert.ok(line.includes('aria-label='),
+      'DeckGL layer help button must expose an accessible name');
   });
 });

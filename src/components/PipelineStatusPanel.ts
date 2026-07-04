@@ -2,7 +2,7 @@ import { Panel } from './Panel';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
 import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
-import { SupplyChainServiceClient } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
+
 import type {
   ListPipelinesResponse,
   PipelineEntry,
@@ -21,6 +21,7 @@ import {
   setCachedPipelineRegistries,
   type RawPipelineRegistry,
 } from '@/shared/pipeline-registry-store';
+import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 
 const getSupplyChainClient = createLazyClient(() => new SupplyChainServiceClient(getRpcBaseUrl(), {
   fetch: rpcFetch,

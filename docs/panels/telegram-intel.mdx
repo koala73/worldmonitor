@@ -25,6 +25,13 @@ Panel id is `telegram-intel`; canonical component is `src/components/TelegramInt
 
 - `@/services/telegram-intel` — backed by `/api/telegram-feed` which proxies to a Railway relay that pulls the curated channel set. Channel coverage is curated rather than user-configurable.
 
+### Backed by endpoints
+
+| Surface | Endpoint | Notes |
+|---|---|---|
+| Panel relay path | `GET /api/telegram-feed` | Current browser path for the topic-tabbed feed. |
+| Generated service RPC | `GET /api/intelligence/v1/list-telegram-feed` | Direct IntelligenceService RPC with `topic`, `channel`, and `limit` query parameters; fetches the same Railway relay. |
+
 ## Refresh cadence
 
 Driven by the relay's poll cycle; the panel reads on mount and on relevant external refresh triggers.

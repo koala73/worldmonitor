@@ -5,8 +5,10 @@ package worldmonitor.market.v1;
 import "sebuf/http/annotations.proto";
 
 message ListEarningsCalendarRequest {
-  string from_date = 1 [(sebuf.http.query) = {name: "fromDate"}];
-  string to_date = 2 [(sebuf.http.query) = {name: "toDate"}];
+  // Accepted but currently ignored; no-op until this handler supports the parameter.
+  string from_date = 1 [(sebuf.http.query) = {name: "fromDate"}, (sebuf.http.unimplemented) = true];
+  // Accepted but currently ignored; no-op until this handler supports the parameter.
+  string to_date = 2 [(sebuf.http.query) = {name: "toDate"}, (sebuf.http.unimplemented) = true];
 }
 
 message EarningsEntry {
@@ -27,5 +29,7 @@ message ListEarningsCalendarResponse {
   string from_date = 2;
   string to_date = 3;
   int32 total = 4;
+  // True when the upstream or seed-backed variant is unavailable; empty payload fields
+  // are graceful degradation, not confirmed zero data.
   bool unavailable = 5;
 }

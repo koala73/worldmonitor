@@ -177,6 +177,40 @@ function assertSharedImportPanelGuard(source: string) {
   );
 }
 
+function assertChatAnalystLoadsWithoutAgentBusApplier(source: string) {
+  const registrationStart = source.indexOf("this.lazyPanel('chat-analyst'");
+  assert.notEqual(registrationStart, -1, 'chat-analyst lazy panel registration not found');
+  const registrationEnd = source.indexOf("this.lazyPanel('forecast'", registrationStart);
+  assert.ok(registrationEnd > registrationStart, 'chat-analyst lazy panel registration boundary not found');
+  const registration = source.slice(registrationStart, registrationEnd);
+
+  assert.match(
+    registration,
+    /import\('@\/components\/ChatAnalystPanel'\)\.then\(m => \{/,
+    'chat-analyst panel component should load independently',
+  );
+  assert.doesNotMatch(
+    registration,
+    /Promise\.all\(\s*\[[\s\S]*?@\/components\/ChatAnalystPanel[\s\S]*?@\/app\/agent-bus-applier/,
+    'chat-analyst must not couple panel mounting to agent-bus-applier through Promise.all',
+  );
+  assert.match(
+    registration,
+    /const panel = new m\.ChatAnalystPanel\(\);[\s\S]*?void import\('@\/app\/agent-bus-applier'\)/,
+    'chat-analyst should create the panel before loading the optional dashboard action handler',
+  );
+  assert.match(
+    registration,
+    /\.catch\(\(err\) => \{[\s\S]*?failed to lazy-load "chat-analyst" dashboard action handler/,
+    'agent-bus-applier lazy-load failure should be logged without rejecting the panel loader',
+  );
+  assert.match(
+    registration,
+    /return panel;/,
+    'chat-analyst loader should return the panel even while the optional action handler is loading',
+  );
+}
+
 const SPLIT_RISK_PANEL_IMPORTS: Array<[string, string, string]> = [
   ['pipeline-status', '@/components/PipelineStatusPanel', 'PipelineStatusPanel'],
   ['storage-facility-map', '@/components/StorageFacilityMapPanel', 'StorageFacilityMapPanel'],
@@ -210,6 +244,11 @@ describe('panel-layout lazy dynamic-import guard (WORLDMONITOR-R4)', () => {
       assertLazyPanelRegistration(source, panelKey, modulePath, exportName);
     }
     assertLazyLoaderHandlesFailedImports(source);
+  });
+
+  it('chat analyst mounts even if the dashboard action handler chunk fails', async () => {
+    const source = await readFile(filePath, 'utf8');
+    assertChatAnalystLoadsWithoutAgentBusApplier(source);
   });
 
   it('token-aware brace walker skips strings/templates/comments', () => {

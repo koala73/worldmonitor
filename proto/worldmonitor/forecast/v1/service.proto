@@ -11,14 +11,17 @@ import "worldmonitor/forecast/v1/trigger_simulation.proto";
 service ForecastService {
   option (sebuf.http.service_config) = {base_path: "/api/forecast/v1"};
 
+  // GetForecasts returns the latest generated probabilistic forecasts, with degraded/stale flags that distinguish a backend outage from a healthy empty set.
   rpc GetForecasts(GetForecastsRequest) returns (GetForecastsResponse) {
     option (sebuf.http.config) = {path: "/get-forecasts", method: HTTP_METHOD_GET};
   }
 
+  // GetSimulationPackage returns the latest forecast simulation package; the response note is populated when a supplied runId does not match the returned package.
   rpc GetSimulationPackage(GetSimulationPackageRequest) returns (GetSimulationPackageResponse) {
     option (sebuf.http.config) = {path: "/get-simulation-package", method: HTTP_METHOD_GET};
   }
 
+  // GetSimulationOutcome returns the stored outcome of a forecast simulation run; `found` is false when no outcome matches the requested runId.
   rpc GetSimulationOutcome(GetSimulationOutcomeRequest) returns (GetSimulationOutcomeResponse) {
     option (sebuf.http.config) = {path: "/get-simulation-outcome", method: HTTP_METHOD_GET};
   }

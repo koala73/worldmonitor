@@ -1,6 +1,7 @@
 [
   {
     "name": "Free",
+    "localeKey": "free",
     "price": 0,
     "period": "forever",
     "description": "Get started with the essentials",
@@ -16,6 +17,7 @@
   },
   {
     "name": "Pro",
+    "localeKey": "pro",
     "monthlyPrice": 39.99,
     "annualPrice": 399.99,
     "description": "Full intelligence dashboard",
@@ -34,13 +36,15 @@
   },
   {
     "name": "API",
+    "localeKey": "api",
     "monthlyPrice": 99.99,
     "annualPrice": 999,
     "description": "Programmatic access to intelligence data",
     "features": [
       "REST API access",
       "Real-time data streams",
-      "1,000 requests/day",
+      "60 requests/minute",
+      "1,000 requests/day included",
       "Webhook notifications",
       "Custom data exports"
     ],
@@ -50,6 +54,7 @@
   },
   {
     "name": "Enterprise",
+    "localeKey": "enterprise",
     "price": null,
     "description": "Custom solutions for organizations",
     "features": [

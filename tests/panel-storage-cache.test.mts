@@ -90,6 +90,50 @@ describe('Panel storage cache', () => {
     });
   });
 
+  it('retries saved column-span reconciliation until the connected grid has width', async () => {
+    await withHarness((harness) => {
+      invalidateAllPanelStorageCaches();
+      harness.localStorage.setItem(PANEL_COL_SPANS_KEY, JSON.stringify({ delayed: 3 }));
+
+      const grid = harness.document.createElement('div');
+      grid.className = 'panels-grid';
+      let gridWidth = 0;
+      Object.defineProperty(grid, 'getBoundingClientRect', {
+        configurable: true,
+        value: () => ({ width: gridWidth, height: 0, top: 0, left: 0, right: gridWidth, bottom: 0, x: 0, y: 0, toJSON: () => ({}) }),
+      });
+      harness.window.getComputedStyle = () => ({
+        display: '',
+        visibility: '',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+        columnGap: '0',
+      });
+
+      const frames: Array<() => void> = [];
+      globalThis.requestAnimationFrame = ((callback: () => void) => {
+        frames.push(callback);
+        return frames.length;
+      }) as typeof requestAnimationFrame;
+      globalThis.cancelAnimationFrame = (() => {}) as typeof cancelAnimationFrame;
+
+      const panel = harness.createPanel({ id: 'delayed' });
+      const root = panel.getElement();
+      assert.equal(root.classList.contains('col-span-3'), true);
+      assert.equal(frames.length, 1);
+
+      grid.appendChild(root);
+      harness.document.body.appendChild(grid);
+      frames.shift()?.();
+      assert.equal(root.classList.contains('col-span-3'), true);
+      assert.equal(frames.length, 1);
+
+      gridWidth = 560;
+      frames.shift()?.();
+      assert.equal(root.classList.contains('col-span-3'), false);
+      assert.equal(root.classList.contains('col-span-2'), true);
+    });
+  });
+
   it('keeps the warmed cache fresh after collapse and reset mutations', async () => {
     await withHarness((harness) => {
       harness.localStorage.setItem(PANEL_SPANS_KEY, JSON.stringify({ mutable: 4 }));

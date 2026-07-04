@@ -65,8 +65,8 @@ describe('default map mode', () => {
     );
     assert.match(
       mapContainer,
-      /else if \(this\.useDeckGL\)\s*{\s*await this\.createDeckGLMap\(token\);/m,
-      'flat desktop mode should route through the deferred DeckGL initializer',
+      /else if \(this\.useDeckGL\)\s*{\s*const shouldLoadDeck = await this\.waitForDeckRendererDemand\(token\);\s*if \(!shouldLoadDeck \|\| !this\.isCurrentRendererInit\(token\)\) return;\s*await this\.createDeckGLMap\(token\);/m,
+      'flat desktop mode should route through the demand-gated deferred DeckGL initializer',
     );
     assert.match(
       mapContainer,

@@ -34,6 +34,19 @@ export type PlanFeatures = {
    * (fail-closed). Catalog entries below ALWAYS set the field explicitly.
    */
   mcpAccess?: boolean;
+  /**
+   * Per-account daily REST request allowance (the "included" number). Read by
+   * the per-account rate-limit layer (#3199): the daily usage meter counts but
+   * never rejects at this value; the hard safety ceiling is 10× this number.
+   * `-1` means unlimited (no daily meter/ceiling), mirroring `maxDashboards: -1`.
+   *
+   * Optional for the same reason as `mcpAccess`: legacy/cached entitlement rows
+   * predate it. But unlike `mcpAccess`, consumers treat `undefined` as
+   * **no daily limit (fail-OPEN)** — never punish a paying customer for a stale
+   * cache; the 15-min cache + Dodo webhook self-heal. Catalog entries below
+   * ALWAYS set the field explicitly.
+   */
+  apiDailyAllowance?: number;
 };
 
 export interface CatalogEntry {
@@ -60,6 +73,7 @@ const FREE_FEATURES: PlanFeatures = {
   maxDashboards: 3,
   apiAccess: false,
   apiRateLimit: 0,
+  apiDailyAllowance: 0,
   prioritySupport: false,
   exportFormats: ["csv"],
   mcpAccess: false,
@@ -70,6 +84,7 @@ const PRO_FEATURES: PlanFeatures = {
   maxDashboards: 10,
   apiAccess: false,
   apiRateLimit: 0,
+  apiDailyAllowance: 0,
   prioritySupport: false,
   exportFormats: ["csv", "pdf"],
   mcpAccess: true,
@@ -80,6 +95,7 @@ const API_STARTER_FEATURES: PlanFeatures = {
   maxDashboards: 25,
   apiAccess: true,
   apiRateLimit: 60,
+  apiDailyAllowance: 1000,
   prioritySupport: false,
   exportFormats: ["csv", "pdf", "json"],
   mcpAccess: true,
@@ -90,6 +106,7 @@ const API_BUSINESS_FEATURES: PlanFeatures = {
   maxDashboards: 100,
   apiAccess: true,
   apiRateLimit: 300,
+  apiDailyAllowance: 10000,
   prioritySupport: true,
   exportFormats: ["csv", "pdf", "json", "xlsx"],
   mcpAccess: true,
@@ -100,6 +117,7 @@ const ENTERPRISE_FEATURES: PlanFeatures = {
   maxDashboards: -1,
   apiAccess: true,
   apiRateLimit: 1000,
+  apiDailyAllowance: -1,
   prioritySupport: true,
   exportFormats: ["csv", "pdf", "json", "xlsx", "api-stream"],
   mcpAccess: true,
@@ -178,7 +196,8 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     marketingFeatures: [
       "REST API access",
       "Real-time data streams",
-      "1,000 requests/day",
+      "60 requests/minute",
+      "1,000 requests/day included",
       "Webhook notifications",
       "Custom data exports",
     ],
@@ -211,7 +230,13 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     billingPeriod: "monthly",
     tierGroup: "api_business",
     features: API_BUSINESS_FEATURES,
-    marketingFeatures: [],
+    marketingFeatures: [
+      "Everything in API Starter",
+      "300 requests/minute",
+      "10,000 requests/day included",
+      "Priority support",
+      "XLSX exports",
+    ],
     selfServe: false,
     highlighted: false,
     currentForCheckout: false,

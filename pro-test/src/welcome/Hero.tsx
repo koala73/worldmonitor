@@ -4,6 +4,16 @@ import { WiredBadge } from '../components/WiredBadge';
 import { t } from '../i18n';
 import { DASHBOARD_PATH } from '../routes';
 import dashboardScreenshot from '../assets/worldmonitor-7-mar-2026.jpg';
+import dashboardScreenshotAvif640 from '../assets/worldmonitor-7-mar-2026-640.avif';
+import dashboardScreenshotAvif960 from '../assets/worldmonitor-7-mar-2026-960.avif';
+import dashboardScreenshotAvif1280 from '../assets/worldmonitor-7-mar-2026-1280.avif';
+import dashboardScreenshotWebp640 from '../assets/worldmonitor-7-mar-2026-640.webp';
+import dashboardScreenshotWebp960 from '../assets/worldmonitor-7-mar-2026-960.webp';
+import dashboardScreenshotWebp1280 from '../assets/worldmonitor-7-mar-2026-1280.webp';
+
+const HERO_IMAGE_SIZES = '(min-width: 1072px) 1024px, (min-width: 640px) calc(100vw - 3rem), calc(100vw - 2rem)';
+const HERO_IMAGE_AVIF_SRCSET = dashboardScreenshotAvif640 + ' 640w, ' + dashboardScreenshotAvif960 + ' 960w, ' + dashboardScreenshotAvif1280 + ' 1280w';
+const HERO_IMAGE_WEBP_SRCSET = dashboardScreenshotWebp640 + ' 640w, ' + dashboardScreenshotWebp960 + ' 960w, ' + dashboardScreenshotWebp1280 + ' 1280w';
 
 const HERO_PROOF_STATS = [
   { valueKey: 'welcome.depth.s1v', labelKey: 'welcome.depth.s1l' },
@@ -14,7 +24,7 @@ const HERO_PROOF_STATS = [
 
 const HeroProofRail = () => (
   <motion.div
-    initial={{ opacity: 0, y: 16 }}
+    initial={false}
     animate={{ opacity: 1, y: 0 }}
     transition={{ duration: 0.6, delay: 0.28 }}
     className="mt-8 mx-auto grid w-full max-w-[22rem] sm:max-w-3xl grid-cols-2 sm:grid-cols-4 overflow-hidden rounded-sm border border-wm-border bg-wm-card/70 text-left backdrop-blur-sm"
@@ -33,7 +43,7 @@ const HeroProofRail = () => (
 
 const ConsoleFrame = () => (
   <motion.div
-    initial={{ opacity: 0, y: 32 }}
+    initial={false}
     animate={{ opacity: 1, y: 0 }}
     transition={{ duration: 0.7, delay: 0.35 }}
     className="relative max-w-5xl mx-auto mt-10 sm:mt-14"
@@ -58,14 +68,19 @@ const ConsoleFrame = () => (
           <span>{t('welcome.hero.plateNote')}</span>
         </span>
       </div>
-      <img
-        src={dashboardScreenshot}
-        alt={t('welcome.hero.screenshotAlt')}
-        className="w-full block"
-        width="2752"
-        height="1538"
-        fetchPriority="high"
-      />
+      <picture>
+        <source type="image/avif" srcSet={HERO_IMAGE_AVIF_SRCSET} sizes={HERO_IMAGE_SIZES} />
+        <source type="image/webp" srcSet={HERO_IMAGE_WEBP_SRCSET} sizes={HERO_IMAGE_SIZES} />
+        <img
+          src={dashboardScreenshot}
+          alt={t('welcome.hero.screenshotAlt')}
+          className="w-full block"
+          width="2940"
+          height="1912"
+          fetchPriority="high"
+          decoding="async"
+        />
+      </picture>
     </a>
   </motion.div>
 );
@@ -74,7 +89,7 @@ export const Hero = () => (
   <section className="pt-28 sm:pt-32 pb-16 px-4 sm:px-6 relative overflow-hidden">
     <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(74,222,128,0.10)_0%,transparent_55%)] pointer-events-none" aria-hidden="true" />
     <div className="max-w-5xl mx-auto text-center relative z-10">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
+      <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
         <div className="inline-flex max-w-full flex-wrap items-center justify-center gap-2 font-mono text-[11px] uppercase tracking-[4px] text-wm-green mb-5 px-3 py-1.5 rounded-full border border-wm-green/30 bg-wm-green/10 leading-relaxed">
           <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-wm-green opacity-60" />
@@ -93,7 +108,7 @@ export const Hero = () => (
       </motion.div>
 
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={false}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.15 }}
         className="mt-9 mx-auto flex max-w-[22rem] sm:max-w-none flex-col sm:flex-row items-stretch sm:items-center justify-center gap-4"
@@ -112,7 +127,7 @@ export const Hero = () => (
         </a>
       </motion.div>
       <motion.div
-        initial={{ opacity: 0 }}
+        initial={false}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.6, delay: 0.25 }}
         className="mt-3 font-mono text-[11px] uppercase tracking-widest text-wm-muted"
@@ -122,7 +137,7 @@ export const Hero = () => (
       <HeroProofRail />
 
       <motion.div
-        initial={{ opacity: 0 }}
+        initial={false}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.6, delay: 0.3 }}
         className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-xs font-mono text-wm-muted"

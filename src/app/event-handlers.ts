@@ -1,7 +1,12 @@
-import type { AppContext, AppModule } from '@/app/app-context';
+import type {
+  AppContext,
+  AppModule,
+  UnifiedSettingsController,
+  UnifiedSettingsTabId,
+} from '@/app/app-context';
+import type { UnifiedSettingsConfig } from '@/components/UnifiedSettings';
 import type { AirlineIntelPanel } from '@/components/AirlineIntelPanel';
 import type { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
-import { openWidgetChatModal } from '@/components/WidgetChatModal';
 import { deleteWidget, getWidget, saveWidget, isProUser } from '@/services/widget-store';
 import {
   FREE_MAX_PANELS,
@@ -10,7 +15,6 @@ import {
   isFreePanelCapCounted,
 } from '@/config/panels';
 import type { McpDataPanel } from '@/components/McpDataPanel';
-import { openMcpConnectModal } from '@/components/McpConnectModal';
 import { deleteMcpPanel, getMcpPanel, saveMcpPanel } from '@/services/mcp-store';
 import type { PanelConfig, MapLayers, MilitaryFlight } from '@/types';
 import type { MapView } from '@/components/MapContainer';
@@ -25,7 +29,6 @@ import {
   buildMapUrl,
   debounce,
   saveToStorage,
-  ExportPanel,
   getCurrentTheme,
   setTheme,
   showToast,
@@ -81,7 +84,6 @@ import { invokeTauri } from '@/services/tauri-bridge';
 import { getCachedGpsInterference } from '@/services/gps-interference';
 import { dataFreshness } from '@/services/data-freshness';
 import { mlWorker } from '@/services/ml-worker';
-import { UnifiedSettings } from '@/components/UnifiedSettings';
 import { WM_OPEN_NOTIFICATIONS_FOR_COUNTRY } from '@/utils/notify-country-link';
 import { AuthLauncher } from '@/components/AuthLauncher';
 import { AuthHeaderWidget } from '@/components/AuthHeaderWidget';
@@ -91,9 +93,74 @@ import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { escapeHtml } from '@/utils/sanitize';
 import { buildEmbedIframeSnippet, buildEmbedMapUrl, type EmbedVariant } from '@/embed/embed-url';
+import { createSettingsButton } from '@/components/settings-button';
+
+type RealUnifiedSettings = import('@/components/UnifiedSettings').UnifiedSettings;
+
+class LazyUnifiedSettings implements UnifiedSettingsController {
+  private readonly button: HTMLButtonElement;
+  private instance: RealUnifiedSettings | null = null;
+  private loadPromise: Promise<RealUnifiedSettings> | null = null;
+  private destroyed = false;
+
+  constructor(private readonly config: UnifiedSettingsConfig) {
+    this.button = createSettingsButton(() => this.open());
+  }
+
+  getButton(): HTMLButtonElement {
+    return this.button;
+  }
+
+  open(tab?: UnifiedSettingsTabId): void {
+    void this.load().then((settings) => {
+      if (!this.destroyed) settings.open(tab);
+    }).catch((error) => {
+      // A rejection because the controller was torn down mid-load is a
+      // deliberate unmount, not a failure the user should be toasted about.
+      if (this.destroyed) return;
+      console.warn('[settings] Failed to load settings window:', error);
+      showToast(t('common.error'));
+    });
+  }
+
+  refreshPanelToggles(): void {
+    this.instance?.refreshPanelToggles();
+  }
+
+  destroy(): void {
+    this.destroyed = true;
+    this.instance?.destroy();
+    this.instance = null;
+  }
+
+  private load(): Promise<RealUnifiedSettings> {
+    if (this.destroyed) {
+      return Promise.reject(new Error('Settings controller destroyed'));
+    }
+    if (this.instance) return Promise.resolve(this.instance);
+    if (this.loadPromise) return this.loadPromise;
+
+    this.loadPromise = import('@/components/UnifiedSettings')
+      .then(({ UnifiedSettings }) => {
+        const settings = new UnifiedSettings(this.config);
+        if (this.destroyed) {
+          settings.destroy();
+          throw new Error('Settings controller destroyed during load');
+        }
+        this.instance = settings;
+        return settings;
+      })
+      .finally(() => {
+        this.loadPromise = null;
+      });
+
+    return this.loadPromise;
+  }
+}
 
 
 export interface EventHandlerCallbacks {
+  openSearch: (options?: { toggle?: boolean }) => void;
   updateSearchIndex: () => void;
   updateFlightSource?: (adsb: PositionSample[], military: MilitaryFlight[]) => void;
   loadAllData: () => Promise<void>;
@@ -130,6 +197,8 @@ export class EventHandlerManager implements AppModule {
   private boundMapWidthResizeMoveHandler: ((e: MouseEvent) => void) | null = null;
   private boundMapWidthEndResizeHandler: (() => void) | null = null;
   private boundMapFullscreenEscHandler: ((e: KeyboardEvent) => void) | null = null;
+  private readonly registeredSearchButtons = new Set<string>();
+  private boundSearchKeyHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundMobileMenuKeyHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundPanelCloseHandler: ((e: Event) => void) | null = null;
   private boundWidgetModifyHandler: ((e: Event) => void) | null = null;
@@ -141,6 +210,7 @@ export class EventHandlerManager implements AppModule {
   private missionPresetPopover: HTMLElement | null = null;
   private missionDataRefreshTimer: number | null = null;
   private proGateUnsubscribers: Array<() => void> = [];
+  private exportPanelLoad: Promise<NonNullable<AppContext['exportPanel']>> | null = null;
   private closedPanelStack: string[] = []; // max-items: 20
   private idleTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private snapshotIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -165,6 +235,7 @@ export class EventHandlerManager implements AppModule {
   }
 
   init(): void {
+    this.setupSearchControls();
     this.setupEventListeners();
     this.setupIdleDetection();
     this.setupTvMode();
@@ -340,6 +411,10 @@ export class EventHandlerManager implements AppModule {
       document.removeEventListener('keydown', this.boundMapFullscreenEscHandler);
       this.boundMapFullscreenEscHandler = null;
     }
+    if (this.boundSearchKeyHandler) {
+      document.removeEventListener('keydown', this.boundSearchKeyHandler);
+      this.boundSearchKeyHandler = null;
+    }
     if (this.boundMobileMenuKeyHandler) {
       document.removeEventListener('keydown', this.boundMobileMenuKeyHandler);
       this.boundMobileMenuKeyHandler = null;
@@ -380,24 +455,39 @@ export class EventHandlerManager implements AppModule {
     this.ctx.authModal = null;
   }
 
-  private setupEventListeners(): void {
-    const openSearch = () => {
-      this.callbacks.updateSearchIndex();
-      this.ctx.searchModal?.open();
+  setupSearchControls(): void {
+    // Wire each button independently and idempotently. setupSearchControls() is
+    // called across several init phases (buttons are injected at different
+    // times); tracking registered IDs in a Set means a button absent at an
+    // early call still gets wired when it appears, instead of being permanently
+    // skipped by a single latched boolean. (#4403 review)
+    const wireSearchButton = (id: string, source: string) => {
+      if (this.registeredSearchButtons.has(id)) return;
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('click', () => {
+        track('search-open', { source });
+        this.callbacks.openSearch();
+      });
+      this.registeredSearchButtons.add(id);
     };
-    document.getElementById('searchBtn')?.addEventListener('click', () => {
-      track('search-open', { source: 'desktop' });
-      openSearch();
-    });
-    document.getElementById('mobileSearchBtn')?.addEventListener('click', () => {
-      track('search-open', { source: 'mobile' });
-      openSearch();
-    });
-    document.getElementById('searchMobileFab')?.addEventListener('click', () => {
-      track('search-open', { source: 'fab' });
-      openSearch();
-    });
+    wireSearchButton('searchBtn', 'desktop');
+    wireSearchButton('mobileSearchBtn', 'mobile');
+    wireSearchButton('searchMobileFab', 'fab');
+    if (!this.boundSearchKeyHandler) {
+      this.boundSearchKeyHandler = (e: KeyboardEvent) => {
+        // !e.shiftKey so Cmd/Ctrl+Shift+K (e.g. Firefox web console) doesn't
+        // also toggle search; .toLowerCase() still tolerates CapsLock. (#4403)
+        if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'k') {
+          e.preventDefault();
+          this.callbacks.openSearch({ toggle: true });
+        }
+      };
+      document.addEventListener('keydown', this.boundSearchKeyHandler);
+    }
+  }
 
+  private setupEventListeners(): void {
     document.getElementById('copyLinkBtn')?.addEventListener('click', async () => {
       const shareUrl = this.getShareUrl();
       if (!shareUrl) return;
@@ -486,27 +576,27 @@ export class EventHandlerManager implements AppModule {
     this.boundWidgetModifyHandler = ((e: CustomEvent<{ widgetId: string }>) => {
       const spec = getWidget(e.detail.widgetId);
       if (!spec) return;
-      openWidgetChatModal({
+      void import('@/components/WidgetChatModal').then((m) => m.openWidgetChatModal({
         mode: 'modify',
         existingSpec: spec,
         onComplete: (updated) => {
           saveWidget(updated);
           (this.ctx.panels[updated.id] as CustomWidgetPanel | undefined)?.updateSpec(updated);
         },
-      });
+      })).catch((err) => console.error('[widget-chat] failed to lazy-load WidgetChatModal', err));
     }) as EventListener;
     this.ctx.container.addEventListener('wm:widget-modify', this.boundWidgetModifyHandler);
 
     this.ctx.container.addEventListener('wm:mcp-configure', ((e: CustomEvent<{ panelId: string }>) => {
       const spec = getMcpPanel(e.detail.panelId);
       if (!spec) return;
-      openMcpConnectModal({
+      void import('@/components/McpConnectModal').then((m) => m.openMcpConnectModal({
         existingSpec: spec,
         onComplete: (updated) => {
           saveMcpPanel(updated);
           (this.ctx.panels[updated.id] as McpDataPanel | undefined)?.updateSpec(updated);
         },
-      });
+      })).catch((err) => console.error('[mcp-connect] failed to lazy-load McpConnectModal', err));
     }) as EventListener);
 
     // undo via Ctrl/Cmd+Z
@@ -1538,8 +1628,7 @@ export class EventHandlerManager implements AppModule {
   }
 
   setupExportPanel(): void {
-    // Always create — show/hide reactively via auth state subscription below.
-    this.ctx.exportPanel = new ExportPanel(() => {
+    const getExportData = () => {
       const allCards = this.ctx.correlationEngine?.getAllCards() ?? [];
       const disabledCount = this.ctx.disabledSources.size;
       return {
@@ -1561,24 +1650,66 @@ export class EventHandlerManager implements AppModule {
         convergenceCards: allCards.map(({ assessment: _a, ...card }) => card),
         monitors: this.ctx.monitors.length > 0 ? this.ctx.monitors : undefined,
       };
-    });
-
-    const el = this.ctx.exportPanel.getElement();
-    const headerRight = this.ctx.container.querySelector('.header-right');
-    if (headerRight) {
-      headerRight.insertBefore(el, headerRight.firstChild);
-    }
-
-    const applyProGate = (isPro: boolean, initial = false) => {
-      el.style.display = isPro ? '' : 'none';
-      if (initial && !isPro) trackGateHit('export');
     };
-    applyProGate(getAuthState().user?.role === 'pro', true);
+
+    const attachExportPanel = (panel: NonNullable<AppContext['exportPanel']>): void => {
+      const el = panel.getElement();
+      if (el.parentElement) return;
+      const headerRight = this.ctx.container.querySelector('.header-right');
+      if (headerRight) {
+        headerRight.insertBefore(el, headerRight.firstChild);
+      }
+    };
+
+    const ensureExportPanel = (): Promise<NonNullable<AppContext['exportPanel']>> => {
+      if (this.ctx.exportPanel) {
+        attachExportPanel(this.ctx.exportPanel);
+        return Promise.resolve(this.ctx.exportPanel);
+      }
+      if (this.exportPanelLoad) return this.exportPanelLoad;
+
+      this.exportPanelLoad = import('@/utils/export')
+        .then(({ ExportPanel }) => {
+          if (this.ctx.isDestroyed) {
+            throw new Error('EventHandlerManager destroyed before export panel loaded');
+          }
+          const panel = new ExportPanel(getExportData);
+          this.ctx.exportPanel = panel;
+          attachExportPanel(panel);
+          return panel;
+        })
+        .catch((err) => {
+          this.exportPanelLoad = null;
+          throw err;
+        });
+
+      return this.exportPanelLoad;
+    };
+
+    let currentIsPro = getAuthState().user?.role === 'pro';
+    const applyProGate = (isPro: boolean, initial = false) => {
+      currentIsPro = isPro;
+      if (!isPro) {
+        const el = this.ctx.exportPanel?.getElement();
+        if (el) el.style.display = 'none';
+        if (initial) trackGateHit('export');
+        return;
+      }
+
+      void ensureExportPanel()
+        .then((panel) => {
+          panel.getElement().style.display = currentIsPro ? '' : 'none';
+        })
+        .catch((err) => {
+          console.warn('[export-panel] Failed to lazy-load ExportPanel:', err);
+        });
+    };
+    applyProGate(currentIsPro, true);
     this.proGateUnsubscribers.push(subscribeAuthState(state => applyProGate(state.user?.role === 'pro')));
   }
 
   setupUnifiedSettings(): void {
-    this.ctx.unifiedSettings = new UnifiedSettings({
+    this.ctx.unifiedSettings = new LazyUnifiedSettings({
       getPanelSettings: () => this.ctx.panelSettings,
       savePanelSettings: (panels: Record<string, PanelConfig>) => {
         Object.entries(panels).forEach(([key, nextConfig]) => {

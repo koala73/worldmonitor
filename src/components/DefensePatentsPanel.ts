@@ -3,8 +3,9 @@ import { t, getLocale } from '@/services/i18n';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { h, replaceChildren } from '@/utils/dom-utils';
 import { sanitizeUrl } from '@/utils/sanitize';
-import { MilitaryServiceClient } from '@/generated/client/worldmonitor/military/v1/service_client';
+
 import type { DefensePatentFiling } from '@/generated/client/worldmonitor/military/v1/service_client';
+import { MilitaryServiceClient } from '@/services/generated-rpc-clients';
 
 type ViewMode = 'all' | 'H04B' | 'H01L' | 'F42B' | 'G06N' | 'C12N';
 
@@ -32,8 +33,8 @@ const CPC_ICONS: Record<string, string> = {
 // Lazy singleton: top-level `new X(...)` evaluates at module-init time, which
 // TDZ'd under cluster-chunk splits when this panel's chunk initialised before
 // the chunk owning MilitaryServiceClient. Defer construction until first call.
-let _militaryClient: MilitaryServiceClient | null = null;
-function militaryClient(): MilitaryServiceClient {
+let _militaryClient: InstanceType<typeof MilitaryServiceClient> | null = null;
+function militaryClient(): InstanceType<typeof MilitaryServiceClient> {
   if (!_militaryClient) {
     _militaryClient = new MilitaryServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
   }

@@ -6,23 +6,11 @@
  */
 
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import {
-  MarketServiceClient,
-  type ListMarketQuotesResponse,
-  type ListCommodityQuotesResponse,
-  type GetSectorSummaryResponse,
-  type ListCryptoQuotesResponse,
-  type ListCryptoSectorsResponse,
-  type CryptoSector,
-  type ListDefiTokensResponse,
-  type ListAiTokensResponse,
-  type ListOtherTokensResponse,
-  type MarketQuote as ProtoMarketQuote,
-  type CryptoQuote as ProtoCryptoQuote,
-} from '@/generated/client/worldmonitor/market/v1/service_client';
+import type { ListMarketQuotesResponse, ListCommodityQuotesResponse, GetSectorSummaryResponse, ListCryptoQuotesResponse, ListCryptoSectorsResponse, CryptoSector, ListDefiTokensResponse, ListAiTokensResponse, ListOtherTokensResponse, MarketQuote as ProtoMarketQuote, CryptoQuote as ProtoCryptoQuote } from '@/generated/client/worldmonitor/market/v1/service_client';
 import type { MarketData, CryptoData, TokenData } from '@/types';
 import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
+import { MarketServiceClient } from '@/services/generated-rpc-clients';
 
 // ---- Client + Circuit Breakers ----
 

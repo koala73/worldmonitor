@@ -30,7 +30,7 @@ function parseArrayLiteral(source, declarationName) {
 }
 
 function parseNuclearFacilities() {
-  const source = src('src/config/geo.ts');
+  const source = src('src/config/geo-map.ts');
   const start = source.indexOf('export const NUCLEAR_FACILITIES');
   assert.notEqual(start, -1, 'expected NUCLEAR_FACILITIES export');
 

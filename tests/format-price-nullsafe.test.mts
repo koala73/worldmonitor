@@ -13,7 +13,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // src/components/resilience-widget-utils.ts). The pure formatters in the barrel
 // (formatPrice/formatChange/...) have no env or DOM dependency, so we strip the
 // side-effecting re-export/import lines and evaluate just the standalone code.
-async function loadUtils(): Promise<{ formatPrice: (p: number | null | undefined) => string }> {
+interface LoadedUtils {
+  formatPrice: (p: number | null | undefined) => string;
+  formatChange: (p: number | null | undefined) => string;
+  getChangeClass: (p: number | null | undefined) => string;
+  getHeatmapClass: (p: number | null | undefined) => string;
+}
+
+async function loadUtils(): Promise<LoadedUtils> {
   const src = readFileSync(resolve(__dirname, '../src/utils/index.ts'), 'utf-8');
   const stripped = src
     .split('\n')
@@ -55,5 +62,37 @@ describe('formatPrice null-safety (WORLDMONITOR-SH)', () => {
     assert.equal(formatPrice(1500), '$1,500');
     assert.equal(formatPrice(12.5), '$12.50');
     assert.equal(formatPrice(0), '$0.00');
+  });
+});
+
+describe('change formatting unavailable-state consistency', () => {
+  it('formats non-finite changes as unavailable without directional styling', async () => {
+    const { formatChange, getChangeClass, getHeatmapClass } = await loadUtils();
+    for (const value of [undefined, null, NaN, Infinity, -Infinity]) {
+      assert.equal(formatChange(value), '--');
+      assert.equal(getChangeClass(value), '');
+      assert.equal(getHeatmapClass(value), '');
+    }
+  });
+
+  it('preserves directional classes and heatmap buckets for valid changes', async () => {
+    const { formatChange, getChangeClass, getHeatmapClass } = await loadUtils();
+    assert.equal(formatChange(1.234), '+1.23%');
+    assert.equal(formatChange(-0.5), '-0.50%');
+    assert.equal(getChangeClass(0), 'up');
+    assert.equal(getChangeClass(-0.1), 'down');
+    assert.equal(getHeatmapClass(0.25), 'up-1');
+    assert.equal(getHeatmapClass(-1.25), 'down-2');
+    assert.equal(getHeatmapClass(2), 'up-3');
+  });
+
+  it('applies the correct heatmap bucket at the abs 1 and 2 boundaries', async () => {
+    const { getHeatmapClass } = await loadUtils();
+    assert.equal(getHeatmapClass(0), 'up-1');
+    assert.equal(getHeatmapClass(0.99), 'up-1');
+    assert.equal(getHeatmapClass(1), 'up-2');
+    assert.equal(getHeatmapClass(-1), 'down-2');
+    assert.equal(getHeatmapClass(1.99), 'up-2');
+    assert.equal(getHeatmapClass(-2), 'down-3');
   });
 });

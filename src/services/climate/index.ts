@@ -1,16 +1,5 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import {
-  ClimateServiceClient,
-  type ClimateAnomaly as ProtoClimateAnomaly,
-  type Co2DataPoint as ProtoCo2DataPoint,
-  type Co2Monitoring as ProtoCo2Monitoring,
-  type AnomalySeverity as ProtoAnomalySeverity,
-  type AnomalyType as ProtoAnomalyType,
-  type GetCo2MonitoringResponse,
-  type GetOceanIceDataResponse,
-  type ListClimateAnomaliesResponse,
-  type ListClimateDisastersResponse,
-} from '@/generated/client/worldmonitor/climate/v1/service_client';
+import type { ClimateAnomaly as ProtoClimateAnomaly, Co2DataPoint as ProtoCo2DataPoint, Co2Monitoring as ProtoCo2Monitoring, AnomalySeverity as ProtoAnomalySeverity, AnomalyType as ProtoAnomalyType, GetCo2MonitoringResponse, GetOceanIceDataResponse, ListClimateAnomaliesResponse, ListClimateDisastersResponse } from '@/generated/client/worldmonitor/climate/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
 import {
@@ -19,6 +8,7 @@ import {
   type OceanIceIndicators,
   type OceanIceSeedSnakeShape,
 } from './ocean-ice';
+import { ClimateServiceClient } from '@/services/generated-rpc-clients';
 
 // Re-export consumer-friendly type matching legacy shape exactly.
 // Consumers import this type from '@/services/climate' and see the same

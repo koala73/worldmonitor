@@ -374,7 +374,7 @@
           "Tóm tắt thị trường hàng ngày",
           "Theo dõi quân sự & địa chính trị",
           "Trình tạo widget tùy chỉnh",
-          "Trình kết nối dữ liệu MCP",
+          "Quyền truy cập MCP cho Claude Desktop và các ứng dụng khách AI khác (50 lượt gọi/ngày)",
           "Làm mới dữ liệu ưu tiên"
         ]
       },
@@ -383,7 +383,8 @@
         "features": [
           "Truy cập REST API",
           "Luồng dữ liệu thời gian thực",
-          "1.000 yêu cầu/ngày",
+          "60 yêu cầu/phút",
+          "Bao gồm 1.000 yêu cầu/ngày",
           "Thông báo Webhook",
           "Xuất dữ liệu tùy chỉnh"
         ]

@@ -171,6 +171,17 @@ Each pair shows:
 
 This provides context for the activity levels. A spike at Pentagon locations during a rising China-Taiwan tension score carries different weight than during a quiet period.
 
+### Backed by endpoints
+
+| Surface | Endpoint | Notes |
+|---|---|---|
+| Pentagon Pizza Index + GDELT pairs | `GET /api/intelligence/v1/get-pizzint-status` | Reads the seeded PizzINT cache; `include_gdelt=true` includes tension pairs. |
+| GPS/GNSS interference | `GET /api/intelligence/v1/list-gps-interference` | Reads normalized GPSJam Redis keys, with optional `region` filtering. |
+| OREF alerts for CII context | `GET /api/intelligence/v1/list-oref-alerts` | Direct RPC for live or history OREF data; see [Israel Sirens](/panels/oref-sirens) for the panel relay path. |
+| Security advisories | `GET /api/intelligence/v1/list-security-advisories` | Redis-backed advisory feed used by CII boosts and floors. |
+| Country energy profile | `GET /api/intelligence/v1/get-country-energy-profile` | Country-level energy context for country deep dives and strategic risk analysis. |
+| Energy shock scenario | `GET /api/intelligence/v1/compute-energy-shock` | On-demand country + chokepoint product supply shock. |
+
 ## Related Assets
 
 News clusters are automatically enriched with nearby critical infrastructure. When a story mentions a geographic region, the system identifies relevant assets within 600km, providing immediate operational context.

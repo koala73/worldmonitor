@@ -323,6 +323,12 @@ canvas,
   border-bottom: 1px solid var(--border);
   height: 40px;
   flex-shrink: 0;
+  /* Lift the header's stacking context above the content grid so its
+     dropdown panels (Intelligence Findings, Pentagon Pizza, etc.) are not
+     occluded by .panels-grid (z-index: 1) or .map-controls (z-index: 500).
+     Kept below .search-overlay (2000) and modals so they still cover the header. */
+  position: relative;
+  z-index: 600;
 }
 
 /* -- Tauri desktop: separate title bar for traffic lights -- */
@@ -1945,34 +1951,62 @@ body.panel-resize-active iframe {
 
 .panel-count {
   font-size: 10px;
-  color: var(--text-dim);
+  /* --text-dim (#888) on --border fails WCAG AA (4.04:1 on #2a2a2a / 3.6:1 light);
+     --text-secondary is tuned per-theme and clears 4.5:1 on every theme's --border. */
+  color: var(--text-secondary);
   background: var(--border);
   padding: 2px 6px;
   border-radius: 2px;
   transition: color 0.3s ease, background 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  z-index: 0;
+}
+
+.panel-count::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
+  /* Behind the count digit (bare text node, can't be z-lifted) so the bump tint
+     never washes out the number. Host isolation:isolate scopes this to the badge. */
+  z-index: -1;
 }
 
 .panel-count.bump {
   animation: count-bump 0.5s ease-out;
 }
 
+.panel-count.bump::before {
+  animation: count-bump-highlight 0.5s ease-out;
+}
+
 @keyframes count-bump {
   0% {
     transform: scale(1);
-    background: var(--border);
-    color: var(--text-dim);
   }
 
   40% {
     transform: scale(1.3);
-    background: var(--accent);
-    color: var(--bg);
   }
 
   100% {
     transform: scale(1);
-    background: var(--border);
-    color: var(--text-dim);
+  }
+}
+
+@keyframes count-bump-highlight {
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  40% {
+    opacity: 0.55;
   }
 }
 
@@ -2347,7 +2381,12 @@ body.panel-resize-active iframe {
   min-width: 0;
   user-select: none;
   content-visibility: auto;
+  /* #4580: field CLS attribution shows #panelsGrid + deferred panels re-shifting as
+     they scroll in/out of view. `auto <fallback>` makes the browser remember each
+     element's last rendered size, so re-entry reserves the real height instead of the
+     fallback and doesn't shift. The plain line stays first as the pre-Chrome-111 fallback. */
   contain-intrinsic-size: 260px;
+  contain-intrinsic-size: auto 260px;
 }
 
 .panel-deferred-shell {
@@ -2355,6 +2394,27 @@ body.panel-resize-active iframe {
   pointer-events: none;
   content-visibility: auto;
   contain-intrinsic-size: var(--dashboard-panel-row-min, 260px);
+  contain-intrinsic-size: auto var(--dashboard-panel-row-min, 260px);
+}
+
+.panel-deferred-shell.panel-wide,
+.panel-deferred-shell.span-2 {
+  contain-intrinsic-size: var(--dashboard-first-grid-reservation, 400px);
+  contain-intrinsic-size: auto var(--dashboard-first-grid-reservation, 400px);
+}
+
+.panel-deferred-shell.span-3 {
+  contain-intrinsic-size: 600px;
+  contain-intrinsic-size: auto 600px;
+}
+
+.panel-deferred-shell.span-4 {
+  contain-intrinsic-size: 800px;
+  contain-intrinsic-size: auto 800px;
+}
+
+.panel-deferred-shell.panel-collapsed .panel-deferred-content {
+  display: none;
 }
 
 .panel-deferred-content {
@@ -2465,7 +2525,6 @@ body.panel-resize-active iframe {
 }
 
 .live-channel-btn.offline {
-  opacity: 0.5;
   border-style: dashed;
 }
 
@@ -4705,6 +4764,23 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
 
 /* Header flash for signals */
 .header.signal-flash {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.header.signal-flash::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 170, 255, 0.3);
+  opacity: 0;
+  pointer-events: none;
+  /* Negative z-index keeps the flash tint behind all header content without
+     promoting every child to its own stacking layer (which could reorder
+     siblings that rely on natural DOM paint order). isolation: isolate on the
+     host bounds this so the overlay can't fall behind the header itself. */
+  z-index: -1;
   animation: header-flash 0.5s ease-out 3;
 }
 
@@ -4712,11 +4788,11 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
 
   0%,
   100% {
-    background: var(--panel-bg);
+    opacity: 0;
   }
 
   50% {
-    background: rgba(0, 170, 255, 0.3);
+    opacity: 1;
   }
 }
 
@@ -5179,12 +5255,16 @@ body.playback-mode .status-dot {
 }
 
 .layer-help-btn {
-  /* WCAG 2.5.8: ≥24×24 hit area (was 20×20). */
-  width: 24px;
-  height: 24px;
+  /* WCAG 2.5.8 / issue #3112: 48x48 hit area. margin:-12px 0 keeps the box
+     flush with its toggle-header siblings while ::before (inset:12px) renders
+     the visible 24px circle centred inside the 48px clickable target. */
+  position: relative;
+  width: 48px;
+  height: 48px;
+  margin: -12px 0;
   padding: 0;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: transparent;
+  border: 0;
   border-radius: 50%;
   color: var(--text-dim);
   font-family: inherit;
@@ -5197,10 +5277,22 @@ body.playback-mode .status-dot {
   justify-content: center;
 }
 
+.layer-help-btn::before {
+  content: '';
+  position: absolute;
+  inset: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
 .layer-help-btn:hover {
   color: var(--accent);
+}
+
+.layer-help-btn:hover::before {
   border-color: var(--accent);
-  background: var(--bg);
 }
 
 .layer-help-popup {
@@ -8733,6 +8825,19 @@ a.prediction-link:hover {
 .status-dot.signal-pulse {
   animation: signal-dot-pulse 0.5s ease-out 6;
   background: var(--defcon-4);
+  position: relative;
+  overflow: visible;
+}
+
+.status-dot.signal-pulse::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+  background: rgba(0, 170, 255, 0.45);
+  opacity: 0;
+  pointer-events: none;
+  animation: signal-dot-pulse-glow 0.5s ease-out 6;
 }
 
 @keyframes signal-dot-pulse {
@@ -8740,12 +8845,22 @@ a.prediction-link:hover {
   0%,
   100% {
     transform: scale(1);
-    box-shadow: 0 0 0 rgba(0, 170, 255, 0.8);
   }
 
   50% {
     transform: scale(1.8);
-    box-shadow: 0 0 8px rgba(0, 170, 255, 1);
+  }
+}
+
+@keyframes signal-dot-pulse-glow {
+
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 1;
   }
 }
 
@@ -12015,6 +12130,9 @@ a.prediction-link:hover {
   letter-spacing: 0.3px;
   text-transform: uppercase;
   white-space: nowrap;
+  position: relative;
+  isolation: isolate;
+  z-index: 0;
 }
 
 .panel-live-count {
@@ -12045,6 +12163,19 @@ a.prediction-link:hover {
 
 .panel-new-badge.pulse {
   animation: badge-pulse 1.5s ease-in-out infinite;
+  will-change: transform;
+}
+
+.panel-new-badge.pulse::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  box-shadow: 0 0 8px 2px var(--overlay-heavy);
+  opacity: 0;
+  pointer-events: none;
+  animation: badge-pulse-glow 1.5s ease-in-out infinite;
+  will-change: opacity;
 }
 
 @keyframes badge-pulse {
@@ -12052,12 +12183,22 @@ a.prediction-link:hover {
   0%,
   100% {
     transform: scale(1);
-    box-shadow: 0 0 0 0 var(--overlay-heavy);
   }
 
   50% {
     transform: scale(1.05);
-    box-shadow: 0 0 8px 2px var(--overlay-heavy);
+  }
+}
+
+@keyframes badge-pulse-glow {
+
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 1;
   }
 }
 
@@ -12199,16 +12340,30 @@ a.prediction-link:hover {
 .item.item-new-highlight {
   background: linear-gradient(90deg, rgba(68, 255, 136, 0.1) 0%, transparent 50%);
   border-left-color: var(--green) !important;
+  position: relative;
+  isolation: isolate;
+  z-index: 0;
+}
+
+.item.item-new-highlight::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(68, 255, 136, 0.15) 0%, transparent 60%);
+  opacity: 0;
+  pointer-events: none;
+  /* Behind item text, matching the pre-conversion host-background glow. */
+  z-index: -1;
   animation: item-glow 2s ease-out;
 }
 
 @keyframes item-glow {
   0% {
-    background: linear-gradient(90deg, rgba(68, 255, 136, 0.25) 0%, transparent 60%);
+    opacity: 1;
   }
 
   100% {
-    background: linear-gradient(90deg, rgba(68, 255, 136, 0.1) 0%, transparent 50%);
+    opacity: 0;
   }
 }
 
@@ -12218,50 +12373,83 @@ a.prediction-link:hover {
 }
 
 /* Search result highlight — glowing border pulse */
-.search-highlight {
+.search-highlight,
+.flash-highlight {
+  position: relative;
+  isolation: isolate;
+}
+
+.search-highlight::after,
+.flash-highlight::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid #3b82f6;
+  border-radius: inherit;
+  box-shadow: 0 0 20px 4px #3b82f6, inset 0 0 12px 0 rgba(59, 130, 246, 0.15);
+  opacity: 0;
+  pointer-events: none;
   animation: search-glow-pulse 3s ease-in-out forwards;
 }
 
 @keyframes search-glow-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 transparent;
-    border-color: var(--border);
+    opacity: 0;
   }
 
   15%,
   45%,
   75% {
-    box-shadow: 0 0 20px 4px #3b82f6, inset 0 0 12px 0 rgba(59, 130, 246, 0.15);
-    border-color: #3b82f6;
+    opacity: 1;
   }
 
   30%,
   60%,
   90% {
-    box-shadow: 0 0 6px 1px rgba(59, 130, 246, 0.3);
-    border-color: rgba(59, 130, 246, 0.4);
+    opacity: 0.45;
   }
 }
 
-/* Legacy alias */
-.flash-highlight {
-  animation: search-glow-pulse 3s ease-in-out forwards;
-}
-
-/* Panel flash when new items arrive */
-.panel.flash-new {
+/* Panel flash when new items arrive.
+   Static outer box-shadow (the green bloom) with an opacity-only animation, so no
+   non-composited property is animated. The panel host clips descendants, so the
+   .panel.flash-new override below lifts the clip while the flash is active. */
+.panel.flash-new::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 20px rgba(68, 255, 136, 0.4);
+  opacity: 0;
+  pointer-events: none;
   animation: panel-flash 0.5s ease-out;
 }
 
 @keyframes panel-flash {
   0% {
-    box-shadow: 0 0 20px rgba(68, 255, 136, 0.4);
+    opacity: 1;
   }
 
   100% {
-    box-shadow: none;
+    opacity: 0;
   }
+}
+
+/* Restore the outer glow on panel hosts.
+   .panel has overflow:hidden + contain:content, which clip a descendant pseudo's
+   box-shadow and would swallow the outer bloom of these finite highlight effects.
+   Lift the clip only while a highlight class is present. .panel-content keeps its
+   own overflow (overflow-y:auto, overflow-x computes to auto), so scrolling content
+   stays contained; only the thin header/padding band is briefly unclipped. contain
+   is relaxed to layout (drops paint/clip) to preserve layout isolation without
+   clipping. The glow itself animates opacity only — these overrides add no
+   animation to the host. */
+.panel.flash-new,
+.panel.search-highlight,
+.panel.flash-highlight {
+  overflow: visible;
+  contain: layout;
 }
 
 /* ============================================
@@ -12331,6 +12519,67 @@ a.prediction-link:hover {
 
 .mobile-warning-overlay.active {
   display: flex;
+}
+
+/* Non-blocking confirm dialog (#4559) — replaces native confirm(). Sits above
+   the settings modal; mirrors the mobile-warning overlay tokens. */
+.confirm-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-scrim, rgb(0 0 0 / 50%));
+  backdrop-filter: blur(2px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 4000;
+  padding: 20px;
+}
+
+.confirm-dialog-overlay.active {
+  display: flex;
+}
+
+.confirm-dialog {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-width: 360px;
+  width: 100%;
+  box-shadow: 0 8px 32px var(--shadow-color);
+  animation: mobile-warning-appear 0.2s ease-out;
+}
+
+.confirm-dialog-message {
+  margin: 0;
+  padding: 20px;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.confirm-dialog-btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--darken-medium);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.confirm-dialog-confirm {
+  background: var(--danger, #d64545);
+  border-color: var(--danger, #d64545);
+  color: #fff;
 }
 
 .mobile-warning-modal {
@@ -13104,6 +13353,29 @@ a.prediction-link:hover {
     width: 100% !important;
     min-height: 250px;
     max-height: min(70vh, 500px);
+  }
+
+  /*
+   * On mobile the grid is a single-column flexbox, so grid-row/column spans and
+   * .panel-wide are inert — every real panel renders within the 250-500px band
+   * above. Override the desktop span-based shell reservations (404/600/800px) so
+   * the deferred placeholder reserves the same floor the real mobile panel uses,
+   * otherwise tall/wide shells would shrink on mount and reintroduce CLS.
+   */
+  .panel-deferred-shell,
+  .panel-deferred-shell.panel-wide,
+  .panel-deferred-shell.span-2,
+  .panel-deferred-shell.span-3,
+  .panel-deferred-shell.span-4 {
+    contain-intrinsic-size: 250px;
+    contain-intrinsic-size: auto 250px; /* #4580: remember rendered size on mobile too */
+  }
+
+  .panel-deferred-shell.panel-collapsed,
+  .panel-deferred-shell.panel-collapsed.span-2,
+  .panel-deferred-shell.panel-collapsed.span-3,
+  .panel-deferred-shell.panel-collapsed.span-4 {
+    contain-intrinsic-size: auto;
   }
 
   .panel-content {
@@ -13960,6 +14232,24 @@ a.prediction-link:hover {
   background: var(--overlay-subtle);
   border-radius: 4px;
   animation: tech-item-pulse 2s ease-in-out infinite;
+  position: relative;
+  isolation: isolate;
+  z-index: 0;
+  will-change: opacity;
+}
+
+.tech-indicator-item::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(100, 200, 255, 0.08);
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
+  /* Behind the row icon/label, matching the pre-conversion host-background pulse. */
+  z-index: -1;
+  animation: tech-item-highlight-pulse 2s ease-in-out infinite;
+  animation-delay: inherit;
 }
 
 @keyframes tech-item-pulse {
@@ -13967,12 +14257,22 @@ a.prediction-link:hover {
   0%,
   100% {
     opacity: 0.4;
-    background: var(--overlay-subtle);
   }
 
   50% {
     opacity: 1;
-    background: rgba(100, 200, 255, 0.08);
+  }
+}
+
+@keyframes tech-item-highlight-pulse {
+
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 1;
   }
 }
 
@@ -15885,18 +16185,33 @@ a.prediction-link:hover {
 
 .tech-event-marker.upcoming-soon {
   background: var(--yellow);
+  overflow: visible;
+}
+
+.tech-event-marker.upcoming-soon::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(255, 170, 0, 0.5);
+  border-radius: inherit;
+  opacity: 0.5;
+  pointer-events: none;
+  transform: scale(1);
   animation: pulse-marker 2s ease-in-out infinite;
+  will-change: transform, opacity;
 }
 
 @keyframes pulse-marker {
 
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(255, 170, 0, 0.5);
+    opacity: 0.5;
+    transform: scale(1);
   }
 
   50% {
-    box-shadow: 0 0 0 6px rgba(255, 170, 0, 0);
+    opacity: 0;
+    transform: scale(2);
   }
 }
 
@@ -16405,6 +16720,9 @@ a.prediction-link:hover {
 
 .deckgl-time-slider .time-options {
   display: flex;
+  /* Wrap instead of overflowing the viewport: six 48px touch targets (issue
+     #3112) exceed the narrowest phone widths on a single row. */
+  flex-wrap: wrap;
   gap: 2px;
 }
 
@@ -16417,10 +16735,10 @@ a.prediction-link:hover {
   font-size: 10px;
   cursor: pointer;
   transition: all 0.2s ease;
-  /* WCAG 2.5.8: ≥24×24 hit area (was ~36×23.5). */
+  /* Issue #3112 requires a 48x48 touch target. */
   box-sizing: border-box;
-  min-width: 24px;
-  min-height: 24px;
+  min-width: 48px;
+  min-height: 48px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -18376,7 +18694,7 @@ a.prediction-link:hover {
   padding: 0 16px 12px;
 }
 
-.us-data-mgmt .settings-btn {
+.us-data-mgmt .btn {
   flex: 1;
 }
 
@@ -19648,11 +19966,21 @@ body.has-breaking-alert .panels-grid {
 
 .intel-skeleton {
   height: 14px;
-  background: linear-gradient(90deg, var(--overlay-light) 25%, var(--overlay-medium) 50%, var(--overlay-light) 75%);
-  background-size: 200% 100%;
-  animation: skeleton-shimmer 1.5s infinite;
+  background: var(--overlay-light);
   border-radius: 4px;
   margin-bottom: 10px;
+  position: relative;
+  overflow: hidden;
+}
+
+.intel-skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, var(--overlay-medium) 50%, transparent 100%);
+  transform: translateX(-100%);
+  animation: skeleton-shimmer 1.5s infinite;
+  will-change: transform;
 }
 
 .intel-skeleton.short {
@@ -19669,11 +19997,11 @@ body.has-breaking-alert .panels-grid {
 
 @keyframes skeleton-shimmer {
   0% {
-    background-position: 200% 0;
+    transform: translateX(-100%);
   }
 
   100% {
-    background-position: -200% 0;
+    transform: translateX(100%);
   }
 }
 
@@ -21049,6 +21377,21 @@ body.has-breaking-alert .panels-grid {
   background: hsl(229, 48%, 55%);
   flex-shrink: 0;
   animation: cw-dot-pulse 2s ease-in-out infinite;
+  position: relative;
+  overflow: visible;
+}
+
+.cw-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid hsla(229, 48%, 55%, 0.4);
+  border-radius: inherit;
+  opacity: 0.4;
+  pointer-events: none;
+  transform: scale(1);
+  animation: cw-dot-ring 2s ease-in-out infinite;
+  will-change: transform, opacity;
 }
 
 @keyframes cw-dot-pulse {
@@ -21056,12 +21399,24 @@ body.has-breaking-alert .panels-grid {
   0%,
   100% {
     opacity: 1;
-    box-shadow: 0 0 0 0 hsla(229, 48%, 55%, 0.4);
   }
 
   50% {
     opacity: 0.6;
-    box-shadow: 0 0 8px 2px hsla(229, 48%, 55%, 0.3);
+  }
+}
+
+@keyframes cw-dot-ring {
+
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0;
+    transform: scale(2.4);
   }
 }
 
@@ -25128,4 +25483,390 @@ body.map-width-resizing {
 .dashboard-tab-add:hover {
   color: var(--green);
   border-color: var(--green);
+}
+
+/* ── Notification channel cards (relocated from settings-window.css in PR #4385 follow-up) ──
+   Rendered by the in-dashboard UnifiedSettings modal (notifications-settings.ts), so these
+   rules + the --settings-* tokens they use must live on the dashboard entry, not in the
+   standalone settings-window.css. The standalone settings page resolves the same tokens
+   from .settings-shell; the dashboard modal resolves them from .unified-settings-modal. */
+.unified-settings-modal {
+  --settings-bg: var(--bg-secondary);
+  --settings-surface: var(--surface-hover);
+  --settings-surface-inset: var(--surface);
+  --settings-border: var(--overlay-medium);
+  --settings-border-strong: var(--overlay-heavy);
+  --settings-text: #e8eaed;
+  --settings-text-secondary: #9aa0a6;
+  --settings-accent: var(--semantic-info);
+  --settings-green: #34d399;
+  --settings-yellow: #fbbf24;
+  --settings-red: var(--semantic-critical);
+  --settings-blue: #60a5fa;
+}
+
+/* ── Notification channel cards ── */
+
+.us-notif-ch-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--settings-surface);
+  border: 1px solid var(--settings-border);
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.us-notif-ch-row.us-notif-ch-on {
+  background: rgba(52, 211, 153, 0.06);
+  border-color: rgba(52, 211, 153, 0.2);
+}
+
+.us-notif-ch-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.07);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--settings-text-secondary);
+}
+
+.us-notif-ch-on .us-notif-ch-icon {
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--settings-green);
+}
+
+.us-notif-ch-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.us-notif-ch-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--settings-text);
+  line-height: 1.2;
+}
+
+.us-notif-ch-sub {
+  font-size: 10px;
+  color: var(--settings-text-secondary);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.us-notif-ch-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.us-notif-ch-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--settings-green);
+  background: rgba(52, 211, 153, 0.12);
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.us-notif-ch-btn {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  border: 1px solid var(--settings-border-strong);
+  background: transparent;
+  color: var(--settings-text-secondary);
+  transition: background 0.15s, color 0.15s;
+}
+
+.us-notif-ch-btn:hover {
+  background: var(--overlay-subtle);
+  color: var(--settings-text);
+}
+
+.us-notif-ch-btn-primary {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--settings-border-strong);
+  color: var(--settings-text);
+}
+
+.us-notif-ch-btn-primary:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
+
+/* Country-scope chip picker (alertRules.countries). Toggle-cloud: every chip
+   is a button; the selected (-on) state must be visually distinct or removal
+   looks like a no-op. */
+.us-notif-country-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.us-notif-country-chip {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  border: 1px solid var(--settings-border-strong);
+  background: transparent;
+  color: var(--settings-text-secondary);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.us-notif-country-chip:hover {
+  background: var(--overlay-subtle);
+  color: var(--settings-text);
+  border-color: var(--settings-text-secondary);
+}
+
+.us-notif-country-chip-on {
+  background: rgba(52, 211, 153, 0.12);
+  border-color: rgba(52, 211, 153, 0.4);
+  color: var(--settings-green);
+}
+
+.us-notif-country-chip-on:hover {
+  background: rgba(52, 211, 153, 0.2);
+  color: var(--settings-green);
+}
+
+.us-notif-country-chip-x {
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.65;
+}
+
+.us-notif-country-chip-on:hover .us-notif-country-chip-x {
+  opacity: 1;
+}
+
+.us-notif-slack-wrap {
+  width: 100%;
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.us-notif-slack-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 10px;
+  padding: 5px 8px;
+  background: var(--settings-surface-inset);
+  border: 1px solid var(--settings-border);
+  border-radius: 5px;
+  color: var(--settings-text);
+}
+
+.us-notif-slack-input::placeholder {
+  color: var(--settings-text-secondary);
+  opacity: 0.7;
+}
+
+.us-notif-slack-input:focus {
+  outline: none;
+  border-color: var(--settings-accent);
+}
+
+.us-notif-error {
+  font-size: 10px;
+  color: var(--settings-red);
+  margin-top: 4px;
+  display: block;
+  width: 100%;
+}
+
+.us-notif-tg-link {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  background: var(--settings-accent);
+  border: 1px solid var(--settings-accent);
+  border-radius: 5px;
+  color: #fff;
+  text-decoration: none;
+  display: inline-block;
+  transition: background 0.15s;
+}
+
+.us-notif-tg-link:hover {
+  background: color-mix(in srgb, var(--settings-accent) 85%, white);
+}
+
+.us-notif-tg-inline-link {
+  color: var(--settings-accent);
+  text-decoration: none;
+}
+
+.us-notif-tg-inline-link:hover {
+  text-decoration: underline;
+}
+
+.us-notif-tg-pair-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.us-notif-tg-qr {
+  flex-shrink: 0;
+  width: 88px;
+  height: 88px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+  padding: 3px;
+  box-sizing: border-box;
+}
+
+.us-notif-tg-qr svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.us-notif-tg-cmd-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  justify-content: center;
+  min-width: 0;
+}
+
+.us-notif-tg-cmd-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.us-notif-tg-cmd {
+  font-family: monospace;
+  font-size: 11px;
+  background: var(--settings-bg-secondary, rgba(0,0,0,0.15));
+  border: 1px solid var(--settings-border, rgba(255,255,255,0.1));
+  border-radius: 4px;
+  padding: 2px 6px;
+  color: var(--settings-text-primary);
+  user-select: all;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.us-notif-tg-copy-btn {
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--settings-accent);
+  border-radius: 4px;
+  color: var(--settings-accent);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.us-notif-tg-copy-btn:hover {
+  background: var(--settings-accent);
+  color: #fff;
+}
+
+.us-notif-tg-expired {
+  color: var(--settings-text-secondary);
+  font-style: italic;
+}
+
+.us-notif-tg-countdown {
+  font-size: 10px;
+  color: var(--settings-text-secondary);
+  white-space: nowrap;
+}
+
+.us-notif-signin {
+  font-size: 12px;
+  color: var(--settings-text-secondary);
+  padding: 8px 0;
+}
+
+/* Slack OAuth button */
+.us-notif-slack-oauth {
+  display: inline-flex;
+  align-items: center;
+  background: #4a154b;
+  border: 1px solid #4a154b;
+  color: #fff;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.us-notif-slack-oauth:hover {
+  background: #611f69;
+  border-color: #611f69;
+}
+
+/* Discord OAuth button */
+.us-notif-discord-oauth {
+  display: inline-flex;
+  align-items: center;
+  background: #5865f2;
+  border: 1px solid #5865f2;
+  color: #fff;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.us-notif-discord-oauth:hover {
+  background: #4752c4;
+  border-color: #4752c4;
+}
+
+/* Manage in Slack link */
+.us-notif-manage-link {
+  font-size: 10px;
+  color: var(--settings-text-secondary);
+  text-decoration: none;
+  border: 1px solid var(--settings-border);
+  padding: 2px 7px;
+  border-radius: 4px;
+  margin-left: 4px;
+  white-space: nowrap;
+}
+
+.us-notif-manage-link:hover {
+  color: var(--settings-text);
+  border-color: var(--settings-border-strong);
 }

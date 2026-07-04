@@ -3,9 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Tag <html> with .js so the seo-prerender content (visible by default
-         for AEO scanners that don't execute JS) is CSS-hidden for real users.
-         Mirrors the same pattern in the SPA's index.html. -->
+    <!-- Tag <html> with .js so the #seo-prerender block (prerender.mjs injects
+         it as a sibling of #root; crawler-visible by default for AEO/RAG
+         scanners that don't execute JS) is CSS-hidden for real users. Mirrors
+         the same pattern in the SPA's index.html and /pro. -->
     <script>document.documentElement.classList.add('js')</script>
     <style>html.js #seo-prerender{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden}</style>
     <title>World Monitor — Free Real-Time Global Intelligence Dashboard</title>
@@ -15,6 +16,7 @@
     <link rel="alternate" hreflang="x-default" href="https://www.worldmonitor.app/" />
     <link rel="alternate" hreflang="en" href="https://www.worldmonitor.app/" />
     <link rel="alternate" hreflang="ar" href="https://www.worldmonitor.app/?lang=ar" />
+    <link rel="alternate" hreflang="fa" href="https://www.worldmonitor.app/?lang=fa" />
     <link rel="alternate" hreflang="de" href="https://www.worldmonitor.app/?lang=de" />
     <link rel="alternate" hreflang="es" href="https://www.worldmonitor.app/?lang=es" />
     <link rel="alternate" hreflang="fr" href="https://www.worldmonitor.app/?lang=fr" />
@@ -61,9 +63,10 @@
       "description": "Free real-time global intelligence dashboard. 500+ news feeds, conflict tracking, market data, shipping chokepoints, satellite passes and cyber signals fused into one live map of the world, with AI analysis layered on top.",
       "author": {
         "@type": "Person",
-        "name": "Someone.ceo",
-        "url": "https://someone.ceo",
-        "jobTitle": "CEO of Anghami"
+        "name": "Elie Habib",
+        "url": "https://x.com/eliehabib",
+        "jobTitle": "CEO",
+        "sameAs": ["https://x.com/eliehabib", "https://github.com/koala73"]
       },
       "screenshot": "https://www.worldmonitor.app/favico/og-image.png",
       "datePublished": "2024-10-01",
@@ -72,7 +75,7 @@
         { "@type": "Offer", "price": "39.99", "priceCurrency": "USD", "name": "Pro Monthly", "description": "WM Analyst chat, Scenario Engine, Route Explorer, AI digest (daily/twice-daily/weekly), custom widget builder, MCP connectors, equity research, macro analytics — 30+ services under one key" },
         { "@type": "Offer", "price": "399.99", "priceCurrency": "USD", "name": "Pro Annual", "description": "Pro yearly plan — 2 months free vs monthly billing" }
       ],
-      "featureList": "Real-time global map with 56 data layers, 500+ curated news feeds, Country Instability Index across 196 countries, live conflict tracking, market quotes and sector heatmaps, 13 shipping chokepoints with vessel transit intelligence, real-time satellite tracking, GPS jamming zones, submarine cable map, AI datacenter map, daily AI brief, Scenario Engine, custom monitors and alerts, 39-tool MCP server, desktop apps, Android TV app, 24 language support"
+      "featureList": "Real-time global map with 56 data layers, 500+ curated news feeds, Country Instability Index across 196 countries, live conflict tracking, market quotes and sector heatmaps, 13 shipping chokepoints with vessel transit intelligence, real-time satellite tracking, GPS jamming zones, submarine cable map, AI datacenter map, daily AI brief, Scenario Engine, custom monitors and alerts, 39-tool MCP server, desktop apps, Android TV app, 25 language support"
     }
     </script>
     <script type="application/ld+json">
