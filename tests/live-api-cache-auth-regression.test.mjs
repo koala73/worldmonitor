@@ -136,6 +136,19 @@ describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - 
     assert.match(options.resp.headers.get('access-control-allow-methods') || '', /\bPOST\b/);
     assertNoStore(options.resp, 'MCP OPTIONS');
 
+    // A bare GET (no Last-Event-ID) is a client opening the OPTIONAL standalone
+    // server->client SSE stream. This stateless route offers none, so the MCP
+    // Streamable HTTP spec requires 405 (SDK clients treat it as the graceful
+    // "no standalone stream" signal). Returning 401 here surfaces to a strict
+    // client as `Failed to open SSE stream: Unauthorized` and is scored as a
+    // failed protocol handshake by agent-readiness scanners.
+    const bareGet = await fetchText(`${WEB_BASE}/mcp`, {
+      method: 'GET',
+      headers: { Accept: 'text/event-stream' },
+    });
+    assert.equal(bareGet.resp.status, 405, 'unauthenticated standalone SSE-stream open must be 405, never 401');
+    assert.match(bareGet.resp.headers.get('allow') || '', /\bPOST\b/, '405 must advertise Allow (RFC 9110 §15.5.6)');
+
     // Discovery is public: unauthenticated `initialize` succeeds (200) and must
     // still be no-store (the #4497 cached-200 hazard applies to any 200).
     const discover = await fetchText(`${WEB_BASE}/mcp`, {

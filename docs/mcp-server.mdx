@@ -49,6 +49,7 @@ WorldMonitor supports the Streamable HTTP POST flow with either JSON or SSE resp
 - Clients that send `Accept: application/json, text/event-stream` can receive a `text/event-stream` response for successful JSON-RPC POSTs.
 - `initialize` SSE responses include `Mcp-Session-Id`; follow-up POSTs should send that same `Mcp-Session-Id` header.
 - Each SSE response starts with an empty priming event that has an event `id`, followed by the JSON-RPC response event. If the client disconnects after an event, it can resume by sending `GET /mcp` with `Accept: text/event-stream`, the same `Mcp-Session-Id`, and `Last-Event-ID`.
+- A **bare `GET /mcp`** — one **without** `Last-Event-ID` — is a client opening the optional standalone server→client SSE stream. This stateless edge route offers no server-initiated stream, so it answers `405 Method Not Allowed` (advertising `Allow`), which the MCP spec defines as the graceful "no standalone stream" signal. MCP SDK clients handle this transparently and complete the handshake; the `GET` verb itself is reserved for the authenticated `Last-Event-ID` replay above.
 
 The replay buffer is in-memory and bounded per edge instance. Treat `Last-Event-ID` resume as loss-tolerant transport recovery, not durable message storage.
 

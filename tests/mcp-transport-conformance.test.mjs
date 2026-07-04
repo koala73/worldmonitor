@@ -256,7 +256,13 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     assert.equal(missingAccept.headers.get('allow'), null, 'GET replay header errors must not advertise Allow');
     assert.match((await missingAccept.json()).error?.message ?? '', /Accept: text\/event-stream/);
 
-    const missingLastEventId = await fetch(server.url, {
+    // A GET WITHOUT Last-Event-ID is NOT a malformed replay — it is a client
+    // opening the OPTIONAL standalone server->client SSE stream. This route
+    // offers none, so the MCP Streamable HTTP spec requires 405 Method Not
+    // Allowed (MCP SDK clients treat 405 as the graceful "no standalone stream"
+    // signal and complete the handshake). Unlike the replay-specific 400/406
+    // header errors, a 405 MUST advertise Allow (RFC 9110 §15.5.6).
+    const bareGetNoStream = await fetch(server.url, {
       method: 'GET',
       headers: {
         Accept: 'text/event-stream',
@@ -265,9 +271,24 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
       },
     });
 
-    assert.equal(missingLastEventId.status, 400);
-    assert.equal(missingLastEventId.headers.get('allow'), null, 'GET replay header errors must not advertise Allow');
-    assert.match((await missingLastEventId.json()).error?.message ?? '', /Missing Last-Event-ID/);
+    assert.equal(bareGetNoStream.status, 405);
+    assert.match(bareGetNoStream.headers.get('allow') ?? '', /\bPOST\b/, '405 must advertise Allow (RFC 9110 §15.5.6)');
+  });
+
+  it('answers a bare GET (standalone SSE stream open) with 405 even when unauthenticated', async () => {
+    // The exact agent-readiness-scanner / SDK path: the transport opens the
+    // optional standalone GET SSE stream with `resumptionToken: undefined` (no
+    // Last-Event-ID) and no credentials during connect(). It MUST see 405, not
+    // 401 — a 401 here surfaces as `Failed to open SSE stream: Unauthorized` and
+    // is reported as a failed protocol handshake.
+    const bareGet = await fetch(server.url, {
+      method: 'GET',
+      headers: { Accept: 'text/event-stream' },
+    });
+
+    assert.equal(bareGet.status, 405, 'unauthenticated standalone SSE-stream open must be 405, never 401');
+    assert.match(bareGet.headers.get('allow') ?? '', /\bPOST\b/, '405 must advertise Allow (RFC 9110 §15.5.6)');
+    assert.equal(bareGet.headers.get('access-control-allow-origin'), '*', 'CORS preserved on the 405');
   });
 
   it('accepts the initialized Mcp-Session-Id on a follow-up POST stream', async () => {
