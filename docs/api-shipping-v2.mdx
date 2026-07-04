@@ -153,7 +153,7 @@ Flips `active: true` on the record (use after investigating and fixing a deliver
 POST <callbackUrl>
 Content-Type: application/json
 X-WM-Signature: sha256=<HMAC-SHA256(body, secret)>
-X-WM-Delivery-Id: <ulid>
+X-WM-Delivery-Id: whd_<32 lowercase hex chars>
 X-WM-Event: chokepoint.disruption
 
 {
@@ -168,3 +168,24 @@ X-WM-Event: chokepoint.disruption
 ```
 
 The delivery worker re-resolves `callbackUrl` before each send and re-checks against `PRIVATE_HOSTNAME_PATTERNS` to mitigate DNS rebinding. Delivery is at-least-once — consumers must handle duplicates via `X-WM-Delivery-Id`.
+
+### Verifying deliveries
+
+Every delivery is signed so you can confirm it genuinely came from WorldMonitor. `X-WM-Signature` is `sha256=<hex>`, where `<hex>` is the lowercase-hex **HMAC-SHA256 of the exact raw request body**, keyed by the `secret` returned at registration.
+
+To verify: recompute `sha256=` + `hex(HMAC_SHA256(key=secret, message=rawBody))` over the bytes **exactly as received** (do not re-serialize the JSON), and compare against `X-WM-Signature` in constant time. Use the `secret` string **verbatim** as the HMAC key — do not hex-decode it. Reject the delivery if the signatures differ.
+
+```js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+// rawBody: the exact request body bytes; header: the X-WM-Signature value;
+// secret: the value returned by RegisterWebhook (used verbatim as the key).
+function verifyWorldMonitorWebhook(rawBody, header, secret) {
+  const expected = 'sha256=' + createHmac('sha256', secret).update(rawBody).digest('hex');
+  const a = Buffer.from(header ?? '');
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+```
+
+The signature contract is also published machine-readably as the `chokepoint.disruption` entry under `webhooks` in the [OpenAPI spec](https://worldmonitor.app/openapi.json).
