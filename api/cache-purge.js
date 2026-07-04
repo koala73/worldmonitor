@@ -1,6 +1,6 @@
 import { getCorsHeaders } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
-import { timingSafeEqual } from './_timing-safe-equal.js';
+import { timingSafeEqualSecret } from './_crypto.js';
 // @ts-expect-error — JS module, no declaration file
 import { getRedisCredentials } from './_upstash-json.js';
 
@@ -85,7 +85,7 @@ export default async function handler(req) {
 
   const auth = req.headers.get('authorization') || '';
   const secret = process.env.RELAY_SHARED_SECRET;
-  if (!secret || !(await timingSafeEqual(auth, `Bearer ${secret}`))) {
+  if (!secret || !(await timingSafeEqualSecret(auth, `Bearer ${secret}`))) {
     return jsonResponse({ error: 'Unauthorized' }, 401, corsHeaders);
   }
 

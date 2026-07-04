@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { timingSafeEqual, authenticateInternalRequest } from '../server/_shared/internal-auth.ts';
-import { timingSafeEqual as apiTimingSafeEqual } from '../api/_timing-safe-equal.js';
+import { timingSafeEqualSecret as apiTimingSafeEqual } from '../api/_crypto.js';
 
 async function withDigestSpy<T>(fn: (calls: Array<{ algorithm: AlgorithmIdentifier; bytes: number }>) => Promise<T>): Promise<T> {
   const originalDigest = globalThis.crypto.subtle.digest.bind(globalThis.crypto.subtle);
@@ -46,25 +46,31 @@ describe('internal auth timing-safe comparison (#4679)', () => {
   });
 
   it('keeps authenticateInternalRequest fail-closed behavior', async () => {
-    delete process.env.WM_TEST_INTERNAL_AUTH_SECRET;
-    const missingSecret = await authenticateInternalRequest(
-      new Request('https://worldmonitor.app/api/test', { headers: { Authorization: 'Bearer anything' } }),
-      'WM_TEST_INTERNAL_AUTH_SECRET',
-    );
-    assert.equal(missingSecret?.status, 401);
+    const prev = process.env.WM_TEST_INTERNAL_AUTH_SECRET;
+    try {
+      delete process.env.WM_TEST_INTERNAL_AUTH_SECRET;
+      const missingSecret = await authenticateInternalRequest(
+        new Request('https://worldmonitor.app/api/test', { headers: { Authorization: 'Bearer anything' } }),
+        'WM_TEST_INTERNAL_AUTH_SECRET',
+      );
+      assert.equal(missingSecret?.status, 401);
 
-    process.env.WM_TEST_INTERNAL_AUTH_SECRET = 'shared-secret';
-    const wrong = await authenticateInternalRequest(
-      new Request('https://worldmonitor.app/api/test', { headers: { Authorization: 'Bearer wrong-secret' } }),
-      'WM_TEST_INTERNAL_AUTH_SECRET',
-    );
-    assert.equal(wrong?.status, 401);
+      process.env.WM_TEST_INTERNAL_AUTH_SECRET = 'shared-secret';
+      const wrong = await authenticateInternalRequest(
+        new Request('https://worldmonitor.app/api/test', { headers: { Authorization: 'Bearer wrong-secret' } }),
+        'WM_TEST_INTERNAL_AUTH_SECRET',
+      );
+      assert.equal(wrong?.status, 401);
 
-    const ok = await authenticateInternalRequest(
-      new Request('https://worldmonitor.app/api/test', { headers: { Authorization: 'Bearer shared-secret' } }),
-      'WM_TEST_INTERNAL_AUTH_SECRET',
-    );
-    assert.equal(ok, null);
+      const ok = await authenticateInternalRequest(
+        new Request('https://worldmonitor.app/api/test', { headers: { Authorization: 'Bearer shared-secret' } }),
+        'WM_TEST_INTERNAL_AUTH_SECRET',
+      );
+      assert.equal(ok, null);
+    } finally {
+      if (prev === undefined) delete process.env.WM_TEST_INTERNAL_AUTH_SECRET;
+      else process.env.WM_TEST_INTERNAL_AUTH_SECRET = prev;
+    }
   });
 
   it('uses the same fixed-digest path for the api/cache-purge helper', async () => {
