@@ -5,18 +5,15 @@
       "item": [
         {
           "href": "https://api.worldmonitor.app/",
-          "title": "World Monitor REST API",
-          "type": "application/vnd.oai.openapi"
+          "title": "World Monitor REST API"
         },
         {
           "href": "https://worldmonitor.app/mcp",
-          "title": "World Monitor MCP server",
-          "type": "application/json"
+          "title": "World Monitor MCP server"
         },
         {
           "href": "https://worldmonitor.app/",
-          "title": "World Monitor agent skills",
-          "type": "application/json"
+          "title": "World Monitor agent skills"
         }
       ]
     },
