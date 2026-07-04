@@ -91,13 +91,9 @@ npm run lint:premium-fetch || exit 1
 
 echo "Running edge function bundle check..."
 while IFS= read -r f; do
-  platform="browser"
-  if grep -Eq "runtime[[:space:]]*:[[:space:]]*['\"]nodejs['\"]" "$f"; then
-    platform="node"
-  fi
-  npx esbuild "$f" --bundle --format=esm --platform="$platform" --outfile=/dev/null 2>/dev/null || {
+  npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null 2>/dev/null || {
     echo "ERROR: esbuild failed to bundle $f — this will break Vercel deployment"
-    npx esbuild "$f" --bundle --format=esm --platform="$platform" --outfile=/dev/null
+    npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null
     exit 1
   }
 done < <(find api/ -name "*.js" -not -name "_*"; find api/ -maxdepth 1 -name "*.ts" -not -name "_*")

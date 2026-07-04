@@ -2,16 +2,13 @@
 // `isCallerPremium` import from server/ (PR #3768 review). Body remains
 // JS-shaped; not annotating types in this commit. Future PR can add
 // types incrementally; behaviour is unchanged.
-import http from 'node:http';
-import https from 'node:https';
-import { Readable } from 'node:stream';
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 import { isCallerPremium } from '../server/_shared/premium-check';
 import { isBlockedResolvedAddress } from '../server/_shared/ip-address-classification';
 import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, getClientIp } from '../server/_shared/rate-limit';
 
-export const config = { runtime: 'nodejs' };
+export const config = { runtime: 'edge' };
 
 // Per-IP rate limit for the MCP proxy (issue #3805 defense-in-depth).
 // 30/min/IP is generous for normal MCP polling (most clients refresh every
@@ -21,7 +18,7 @@ export const config = { runtime: 'nodejs' };
 //
 // PR #3821 r2: source the limit from ENDPOINT_RATE_POLICIES so the
 // `enforce-rate-limit-policies` audit can see this endpoint. mcp-proxy is a
-// top-level Vercel Function (not gateway-routed), so it can't use
+// top-level Vercel Edge Function (not gateway-routed), so it can't use
 // `checkEndpointRateLimit`; we keep `checkScopedRateLimit` for in-handler
 // enforcement but the *policy* lives in the registry. Single source of
 // truth — tweak the limit there, this handler picks it up.
@@ -70,35 +67,6 @@ const DNS_JSON_ENDPOINT = 'https://cloudflare-dns.com/dns-query';
 // exercise the timeout→reject (504) path, just without the wall-clock stall.
 const SSE_RPC_TIMEOUT_MS = process.env.NODE_TEST_CONTEXT ? 200 : 12_000;
 const MCP_PROTOCOL_VERSION = '2025-03-26';
-const DEFAULT_HTTPS_PORT = 443;
-const DEFAULT_HTTP_PORT = 80;
-const TEST_NODE_REQUEST_KEY = Symbol.for('worldmonitor.mcpProxy.nodeRequestForTest');
-const DEFAULT_FETCH = globalThis.fetch;
-const FORBIDDEN_CUSTOM_HEADER_NAMES = new Set([
-  'connection',
-  'content-length',
-  'host',
-  'keep-alive',
-  'proxy-authenticate',
-  'proxy-authorization',
-  'te',
-  'trailer',
-  'transfer-encoding',
-  'upgrade',
-]);
-
-// Cloud-metadata gate headers (GHSA-887j defence-in-depth on top of the socket
-// pin): GCP `Metadata-Flavor: Google`, Azure `Metadata: true`, AWS IMDSv2
-// `X-aws-ec2-metadata-token[-ttl-seconds]`. The pin already stops a DNS rebind
-// from reaching 169.254.169.254; never forwarding these is the belt to that
-// suspenders, so a credential-less metadata request can't be constructed even
-// if the pin were ever bypassed. Matched case-insensitively.
-const DENIED_FORWARD_HEADERS = new Set([
-  'metadata-flavor',
-  'metadata',
-  'x-aws-ec2-metadata-token',
-  'x-aws-ec2-metadata-token-ttl-seconds',
-]);
 
 function withProxyNoStore(headers: Record<string, string> = {}): Record<string, string> {
   return { ...headers, 'Cache-Control': 'no-store' };
@@ -212,106 +180,16 @@ async function assertServerUrlSafe(url) {
   return { url, resolvedAddresses };
 }
 
+// Vercel Edge fetch does not expose a Node-style lookup/socket hook, so this
+// proxy CANNOT pin the TLS connection to a previously vetted address. There is
+// no way to guarantee that the IP we validated is the IP fetch() ultimately
+// connects to; a DNS answer can change between our resolve and fetch's own
+// resolve. This re-resolve-and-recheck immediately before every outbound
+// dispatch NARROWS that DNS-rebinding window but does not close it. The
+// residual rebind window is an ACCEPTED limitation of the Edge runtime (no
+// socket-level pin available) — documented, not fixed here (P1, issue #4674).
 async function revalidateBeforeFetch(url) {
-  return assertServerUrlSafe(url);
-}
-
-function getFetchForTest() {
-  if (!process.env.NODE_TEST_CONTEXT) return null;
-  return globalThis.fetch !== DEFAULT_FETCH ? globalThis.fetch : null;
-}
-
-function getNodeRequestForTest() {
-  if (!process.env.NODE_TEST_CONTEXT) return null;
-  const requestForTest = globalThis[TEST_NODE_REQUEST_KEY];
-  return typeof requestForTest === 'function' ? requestForTest : null;
-}
-
-function choosePinnedAddress(resolvedAddresses) {
-  const pinnedAddress = resolvedAddresses.find(address => address.includes('.')) || resolvedAddresses[0];
-  if (!pinnedAddress) {
-    throw new McpProxySsrfError('serverUrl DNS resolution returned no addresses');
-  }
-  if (isBlockedResolvedAddress(pinnedAddress)) {
-    throwBlockedAddress(pinnedAddress);
-  }
-  return pinnedAddress;
-}
-
-function responseHeadersFromNode(headers) {
-  const responseHeaders = new Headers();
-  for (const [key, value] of Object.entries(headers || {})) {
-    if (value === undefined) continue;
-    responseHeaders.set(key, Array.isArray(value) ? value.join(', ') : String(value));
-  }
-  return responseHeaders;
-}
-
-function nodeStreamResponse(res) {
-  return new Response(Readable.toWeb(res), {
-    status: res.statusCode || 502,
-    statusText: res.statusMessage,
-    headers: responseHeadersFromNode(res.headers),
-  });
-}
-
-async function nodePinnedFetch(url, init, resolvedAddresses) {
-  const pinnedAddress = choosePinnedAddress(resolvedAddresses);
-  const family = pinnedAddress.includes(':') ? 6 : 4;
-  const body = init?.body;
-  const bodyBuffer = body === undefined || body === null
-    ? null
-    : Buffer.isBuffer(body)
-      ? body
-      : Buffer.from(String(body));
-  const headers = { ...(init?.headers || {}) };
-  if (bodyBuffer && headers['content-length'] === undefined && headers['Content-Length'] === undefined) {
-    headers['content-length'] = String(bodyBuffer.length);
-  }
-  const requestOptions = {
-    hostname: url.hostname,
-    port: url.port || (url.protocol === 'https:' ? DEFAULT_HTTPS_PORT : DEFAULT_HTTP_PORT),
-    path: `${url.pathname}${url.search}`,
-    method: init?.method || 'GET',
-    headers,
-    family,
-    lookup: (_hostname, _options, callback) => callback(null, pinnedAddress, family),
-  };
-  const requestFn = getNodeRequestForTest() || (url.protocol === 'https:' ? https.request : http.request);
-
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const settle = (fn, value) => {
-      if (settled) return;
-      settled = true;
-      init?.signal?.removeEventListener?.('abort', onAbort);
-      fn(value);
-    };
-    const onAbort = () => {
-      req.destroy(new DOMException('The operation was aborted.', 'AbortError'));
-    };
-    const req = requestFn(requestOptions, (res) => {
-      res.on('error', error => settle(reject, error));
-      settle(resolve, nodeStreamResponse(res));
-    });
-    req.on('error', error => settle(reject, error));
-    if (init?.signal) {
-      if (init.signal.aborted) {
-        req.destroy(new DOMException('The operation was aborted.', 'AbortError'));
-      } else {
-        init.signal.addEventListener('abort', onAbort, { once: true });
-      }
-    }
-    if (bodyBuffer) req.write(bodyBuffer);
-    req.end();
-  });
-}
-
-async function pinnedFetch(url, init = {}) {
-  const { resolvedAddresses } = await revalidateBeforeFetch(url);
-  const fetchForTest = getFetchForTest();
-  if (fetchForTest) return fetchForTest(url.toString(), init);
-  return nodePinnedFetch(url, init, resolvedAddresses);
+  await assertServerUrlSafe(url);
 }
 
 function buildInitPayload() {
@@ -338,6 +216,20 @@ async function validateServerUrl(raw) {
   }
 }
 
+// Cloud-metadata gate headers (GHSA-887j, Edge-safe defence-in-depth): GCP
+// `Metadata-Flavor: Google`, Azure `Metadata: true`, AWS IMDSv2
+// `X-aws-ec2-metadata-token[-ttl-seconds]`. The proxy never forwards them, so
+// even if a DNS rebind slipped a fetch onto 169.254.169.254 the credential-less
+// request is refused by the metadata service. Matched case-insensitively. (The
+// full socket-pin fix that closes resolve!=connect is a Node-runtime follow-up;
+// this Edge mitigation kills the demonstrated PoC without a runtime switch.)
+const DENIED_FORWARD_HEADERS = new Set([
+  'metadata-flavor',
+  'metadata',
+  'x-aws-ec2-metadata-token',
+  'x-aws-ec2-metadata-token-ttl-seconds',
+]);
+
 function buildHeaders(customHeaders) {
   const h = {
     'Content-Type': 'application/json',
@@ -350,9 +242,16 @@ function buildHeaders(customHeaders) {
         // Strip CRLF to prevent header injection
         const safeKey = k.replace(/[\r\n]/g, '');
         const safeVal = v.replace(/[\r\n]/g, '');
-        const lowerKey = safeKey.toLowerCase();
-        if (FORBIDDEN_CUSTOM_HEADER_NAMES.has(lowerKey) || DENIED_FORWARD_HEADERS.has(lowerKey)) continue;
-        if (safeKey) h[safeKey] = safeVal;
+        // Hop-by-hop / authority headers (Host, Content-Length, Connection, TE,
+        // Trailer, Upgrade, Keep-Alive, Transfer-Encoding, Proxy-*) are NOT
+        // filtered here: on the Edge runtime the spec-compliant `fetch()` treats
+        // them as forbidden header names and silently drops them, so they never
+        // reach the upstream. (The Node-runtime socket-pin follow-up uses raw
+        // `http.request`, which does NOT auto-drop them, so that PR must add an
+        // explicit hop-by-hop filter — see #4674.)
+        if (safeKey && !DENIED_FORWARD_HEADERS.has(safeKey.toLowerCase())) {
+          h[safeKey] = safeVal;
+        }
       }
     }
   }
@@ -364,7 +263,8 @@ function buildHeaders(customHeaders) {
 async function postJson(url, body, headers, sessionId) {
   const h = { ...headers };
   if (sessionId) h['Mcp-Session-Id'] = sessionId;
-  const resp = await pinnedFetch(url, {
+  await revalidateBeforeFetch(url);
+  const resp = await fetch(url.toString(), {
     method: 'POST',
     headers: h,
     body: JSON.stringify(body),
@@ -471,7 +371,8 @@ class SseSession {
   }
 
   async connect() {
-    const resp = await pinnedFetch(new URL(this._sseUrl), {
+    await revalidateBeforeFetch(new URL(this._sseUrl));
+    const resp = await fetch(this._sseUrl, {
       headers: { ...this._headers, Accept: 'text/event-stream', 'Cache-Control': 'no-cache' },
       redirect: 'manual',
       signal: AbortSignal.timeout(SSE_CONNECT_TIMEOUT_MS),
@@ -567,7 +468,8 @@ class SseSession {
       }
     }, SSE_RPC_TIMEOUT_MS);
     try {
-      const postResp = await pinnedFetch(new URL(this._endpointUrl), {
+      await revalidateBeforeFetch(new URL(this._endpointUrl));
+      const postResp = await fetch(this._endpointUrl, {
         method: 'POST',
         headers: { ...this._headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
@@ -585,7 +487,8 @@ class SseSession {
   }
 
   async notify(method, params) {
-    await pinnedFetch(new URL(this._endpointUrl), {
+    await revalidateBeforeFetch(new URL(this._endpointUrl));
+    await fetch(this._endpointUrl, {
       method: 'POST',
       headers: { ...this._headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', method, params }),

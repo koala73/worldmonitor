@@ -40,8 +40,8 @@ export interface BaseToolDef {
   // Wire behavior: emitted unconditionally on every `tools/list`. Per the
   // MCP JSON-RPC convention, clients negotiated to 2025-03-26 ignore
   // unknown fields, so emitting `outputSchema` on a 2025-03-26 session is
-  // practically safe and lets every LLM client benefit during the rollout
-  // window before MCP_PROTOCOL_FLOOR_2025_06_18 flips default-on.
+  // practically safe and lets every LLM client benefit even when a caller
+  // pins back to the legacy floor via MCP_PROTOCOL_FLOOR_2025_06_18=off.
   outputSchema: object;
   // Spec-defined `Tool.annotations` (MCP 2025-06-18+). Required object with
   // all four booleans declared so a new tool can't be added without an

@@ -5,8 +5,6 @@
 // this is expected; use tsx (the project's standard test runner).
 import { strict as assert } from 'node:assert';
 import { describe, it, beforeEach, afterEach, before } from 'node:test';
-import { EventEmitter } from 'node:events';
-import { PassThrough } from 'node:stream';
 
 // validateApiKey runs with forceKey:true on this endpoint (PR #3768 review
 // finding — wms_ session tokens are anonymous and freely mintable via
@@ -121,60 +119,8 @@ function makeMcpFetch({ initStatus = 200, listStatus = 200, callStatus = 200, to
   };
 }
 
-function makeMcpNodeRequest({ tools = [], callResult = { content: [] }, seen = [] } = {}) {
-  return (options, onResponse) => {
-    let body = '';
-    const req = new EventEmitter();
-    req.write = (chunk) => { body += chunk.toString(); };
-    req.setTimeout = () => req;
-    req.destroy = (error) => {
-      if (error) queueMicrotask(() => req.emit('error', error));
-    };
-    req.end = () => {
-      options.lookup(options.hostname, {}, (error, address, family) => {
-        if (error) {
-          req.destroy(error);
-          return;
-        }
-        seen.push({ options, address, family });
-        const jsonBody = body ? JSON.parse(body) : {};
-        const res = new PassThrough();
-        res.statusCode = 200;
-        res.statusMessage = 'OK';
-        res.headers = { 'content-type': 'application/json' };
-        queueMicrotask(() => {
-          onResponse(res);
-          if (jsonBody.method === 'initialize') {
-            res.end(JSON.stringify({
-              jsonrpc: '2.0',
-              id: jsonBody.id,
-              result: {
-                protocolVersion: '2025-03-26',
-                capabilities: {},
-                serverInfo: { name: 'test', version: '1' },
-              },
-            }));
-            return;
-          }
-          if (jsonBody.method === 'tools/list') {
-            res.end(JSON.stringify({ jsonrpc: '2.0', id: jsonBody.id, result: { tools } }));
-            return;
-          }
-          if (jsonBody.method === 'tools/call') {
-            res.end(JSON.stringify({ jsonrpc: '2.0', id: jsonBody.id, result: callResult }));
-            return;
-          }
-          res.end('{}');
-        });
-      });
-    };
-    return req;
-  };
-}
-
 let handler;
 const TEST_RESOLVER_KEY = Symbol.for('worldmonitor.mcpProxy.resolveHostnameForTest');
-const TEST_NODE_REQUEST_KEY = Symbol.for('worldmonitor.mcpProxy.nodeRequestForTest');
 
 const PUBLIC_TEST_ADDRESS = '93.184.216.34';
 
@@ -183,14 +129,6 @@ function setResolveHostnameForTest(resolver) {
     globalThis[TEST_RESOLVER_KEY] = resolver;
   } else {
     delete globalThis[TEST_RESOLVER_KEY];
-  }
-}
-
-function setNodeRequestForTest(request) {
-  if (typeof request === 'function') {
-    globalThis[TEST_NODE_REQUEST_KEY] = request;
-  } else {
-    delete globalThis[TEST_NODE_REQUEST_KEY];
   }
 }
 
@@ -217,7 +155,6 @@ describe('api/mcp-proxy', () => {
 
   afterEach(() => {
     setResolveHostnameForTest?.(null);
-    setNodeRequestForTest?.(null);
     globalThis.fetch = originalFetch;
   });
 
@@ -325,7 +262,7 @@ describe('api/mcp-proxy', () => {
       return captured;
     }
 
-    it('drops Metadata-Flavor / X-aws-ec2-metadata-token but forwards legit headers (pin + strip)', async () => {
+    it('drops Metadata-Flavor / X-aws-ec2-metadata-token but forwards legit headers', async () => {
       const captured = captureForwardedHeaders();
       const res = await handler(makeGetRequest({
         serverUrl: 'https://mcp.example.com/mcp',
@@ -481,19 +418,19 @@ describe('api/mcp-proxy', () => {
     it('ignores the test resolver outside NODE_TEST_CONTEXT', async () => {
       const previousNodeTestContext = process.env.NODE_TEST_CONTEXT;
       delete process.env.NODE_TEST_CONTEXT;
-      setResolvedAddresses([PUBLIC_TEST_ADDRESS]);
-      globalThis.fetch = async (url) => {
+      setResolvedAddresses(['10.0.0.5']);
+      globalThis.fetch = async (url, opts) => {
         const u = new URL(url.toString());
         if (u.hostname === 'cloudflare-dns.com') {
           const type = u.searchParams.get('type');
-          if (type === 'A') return dnsJsonResponse([{ type: 1, data: '10.0.0.5' }]);
+          if (type === 'A') return dnsJsonResponse([{ type: 1, data: PUBLIC_TEST_ADDRESS }]);
           if (type === 'AAAA') return dnsJsonResponse([]);
         }
-        throw new Error(`unexpected fetch to ${url}`);
+        return makeMcpFetch({ tools: [] })(url, opts);
       };
       try {
         const res = await handler(makeGetRequest({ serverUrl: 'https://public-mcp.example/mcp' }));
-        assert.equal(res.status, 400);
+        assert.equal(res.status, 200);
       } finally {
         if (previousNodeTestContext === undefined) delete process.env.NODE_TEST_CONTEXT;
         else process.env.NODE_TEST_CONTEXT = previousNodeTestContext;
@@ -579,36 +516,6 @@ describe('api/mcp-proxy', () => {
       assert.equal(capturedHeaders['Authorization'], 'Bearer test-key');
     });
 
-    it('does not pass authority or hop-by-hop custom headers to upstream', async () => {
-      let capturedHeaders = {};
-      globalThis.fetch = async (url, opts) => {
-        capturedHeaders = Object.fromEntries(Object.entries(opts?.headers || {}));
-        return makeMcpFetch({ tools: [] })(url, opts);
-      };
-      const res = await handler(makeGetRequest({
-        serverUrl: 'https://mcp.example.com/mcp',
-        headers: JSON.stringify({
-          Authorization: 'Bearer test-key',
-          Host: 'internal.example',
-          'Content-Length': '999',
-          Connection: 'upgrade',
-          'Proxy-Authorization': 'Basic secret',
-          TE: 'trailers',
-          Trailer: 'x-extra',
-          Upgrade: 'websocket',
-        }),
-      }));
-      assert.equal(res.status, 200);
-      assert.equal(capturedHeaders['Authorization'], 'Bearer test-key');
-      assert.equal(capturedHeaders.Host, undefined);
-      assert.equal(capturedHeaders['Content-Length'], undefined);
-      assert.equal(capturedHeaders.Connection, undefined);
-      assert.equal(capturedHeaders['Proxy-Authorization'], undefined);
-      assert.equal(capturedHeaders.TE, undefined);
-      assert.equal(capturedHeaders.Trailer, undefined);
-      assert.equal(capturedHeaders.Upgrade, undefined);
-    });
-
     it('strips CRLF from injected headers', async () => {
       let capturedHeaders = {};
       globalThis.fetch = async (url, opts) => {
@@ -636,27 +543,13 @@ describe('api/mcp-proxy', () => {
       assert.deepEqual(redirectModes, ['manual', 'manual', 'manual']);
     });
 
-    it('pins streamable HTTP upstream requests to the vetted resolver address', async () => {
-      const seen = [];
-      setResolvedAddresses([PUBLIC_TEST_ADDRESS]);
-      setNodeRequestForTest(makeMcpNodeRequest({ tools: [], seen }));
-
-      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
-
-      assert.equal(res.status, 200);
-      assert.equal(seen.length, 3, 'initialize, initialized notification, and tools/list should each use pinned transport');
-      for (const entry of seen) {
-        assert.equal(entry.options.hostname, 'mcp.example.com');
-        assert.equal(entry.address, PUBLIC_TEST_ADDRESS);
-        assert.equal(entry.family, 4);
-        assert.equal(entry.options.family, 4);
-      }
-    });
-
-    // This validates the per-dispatch re-resolve + classifier path: when a
-    // subsequent re-resolution returns a blocked address, revalidateBeforeFetch
-    // rejects it before the next upstream dispatch, and the caller sees the
-    // GENERIC SSRF message (never the internal IP).
+    // NOTE: this validates the per-dispatch re-resolve + classifier path, NOT
+    // true socket-level rebind prevention. Vercel Edge fetch cannot pin the
+    // connection to a vetted IP (P1, issue #4674), so a residual rebind window
+    // between our resolve and fetch's own resolve is an accepted limitation.
+    // What this asserts: when a subsequent re-resolution returns a blocked
+    // address, revalidateBeforeFetch rejects it before the next upstream fetch,
+    // and the caller sees the GENERIC SSRF message (never the internal IP).
     it('re-resolves and re-checks the same host before each streamable HTTP dispatch (classifier/revalidation path)', async () => {
       const resolutions = [
         [PUBLIC_TEST_ADDRESS], // request validation

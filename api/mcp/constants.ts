@@ -1,12 +1,15 @@
 // MCP protocol versions this server can speak on the initialize handshake.
 // Bumping the supported set is a wire-visible default-behavior change, so the
-// bumped floor ships behind an env-var gate (`MCP_PROTOCOL_FLOOR_2025_06_18`)
-// per the operational rollout cadence: off default → staging `on` ≥24h →
-// prod `on` ≥48h → follow-up commit flips the default → remove the env var
-// the version after. The published server-card
+// bumped floor shipped behind an env-var gate (`MCP_PROTOCOL_FLOOR_2025_06_18`)
+// and has now completed its rollout (off default → staging `on` → prod `on` →
+// this commit flips the default): 2025-06-18 is negotiated by DEFAULT and the
+// env var survives only as an explicit `=off` kill-switch that pins the server
+// back to the legacy [2025-03-26] floor. The published server-card
 // (public/.well-known/mcp/server-card.json) advertises the bumped floor
 // unconditionally — the card is a static capability declaration; the live
-// initialize handler is what actually negotiates with each client.
+// initialize handler is what actually negotiates with each client. Keeping the
+// default in lock-step with the card is what lets a strict scanner's handshake
+// (which validates the negotiated version against the advertised floor) pass.
 //
 // Negotiation rule (per MCP lifecycle spec): if the client's requested
 // `protocolVersion` is in MCP_SUPPORTED_PROTOCOL_VERSIONS, the server MUST
@@ -17,10 +20,10 @@
 //
 // Version history (protocol floor — distinct from SERVER_VERSION below):
 //   - 2025-03-26 — initial floor; streamable HTTP transport.
-//   - 2025-06-18 (declared 2026-05-23, env-var gated, default off) — unlocks
-//     spec-native `outputSchema` per tool in a follow-up. When the env var
-//     is on, the server supports BOTH 2025-03-26 and 2025-06-18 so old and
-//     new clients are both served correctly during the rollout window.
+//   - 2025-06-18 (declared 2026-05-23; default-on since 2026-07-04) — unlocks
+//     spec-native `outputSchema` per tool. The server supports BOTH
+//     2025-03-26 and 2025-06-18 so old and new clients are both served; set
+//     `MCP_PROTOCOL_FLOOR_2025_06_18=off` to pin back to the legacy floor.
 //
 // Env is read at CALL time (not module-init) so dynamic re-imports of the
 // thin shim under different `process.env` snapshots — see
@@ -30,14 +33,14 @@
 // `mod.MCP_SUPPORTED_PROTOCOL_VERSIONS` / `mod.MCP_PROTOCOL_VERSION`
 // exports also reflect the per-import env state.
 function supportedProtocolVersions(): readonly string[] {
-  return process.env.MCP_PROTOCOL_FLOOR_2025_06_18 === 'on'
-    ? ['2025-03-26', '2025-06-18']
-    : ['2025-03-26'];
+  return process.env.MCP_PROTOCOL_FLOOR_2025_06_18 === 'off'
+    ? ['2025-03-26']
+    : ['2025-03-26', '2025-06-18'];
 }
 function latestProtocolVersion(): string {
-  return process.env.MCP_PROTOCOL_FLOOR_2025_06_18 === 'on'
-    ? '2025-06-18'
-    : '2025-03-26';
+  return process.env.MCP_PROTOCOL_FLOOR_2025_06_18 === 'off'
+    ? '2025-03-26'
+    : '2025-06-18';
 }
 
 // Negotiate the protocol version returned in the initialize response.

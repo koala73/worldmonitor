@@ -32,12 +32,11 @@ Server identifier: `worldmonitor` v1.10.0.
 
 ### Protocol negotiation
 
-WorldMonitor's static server card at `/.well-known/mcp/server-card.json` advertises protocol version `2025-06-18`, matching the current published capability card. The live `initialize` handshake is intentionally more conservative during the rollout:
+WorldMonitor's static server card at `/.well-known/mcp/server-card.json` advertises protocol version `2025-06-18`, and the live `initialize` handshake negotiates it by default — so the advertised floor and the negotiated version stay in lock-step:
 
-- By default, `initialize` negotiates `2025-03-26`.
-- When `MCP_PROTOCOL_FLOOR_2025_06_18=on` is enabled for the deploy, the server supports both `2025-03-26` and `2025-06-18`.
-- With that flag on, clients requesting `2025-06-18` receive `2025-06-18`; clients pinned to `2025-03-26` continue receiving `2025-03-26`.
-- With that flag off, a client that requests `2025-06-18` receives the safe default `2025-03-26`.
+- By default, `initialize` supports both `2025-03-26` and `2025-06-18`.
+- Clients requesting `2025-06-18` receive `2025-06-18`; clients pinned to `2025-03-26` continue receiving `2025-03-26`.
+- Setting `MCP_PROTOCOL_FLOOR_2025_06_18=off` pins the server back to the legacy `2025-03-26`-only floor; a client that then requests `2025-06-18` receives the safe default `2025-03-26`.
 
 Tool `outputSchema` metadata is emitted on `tools/list` regardless of the negotiated protocol version. Older `2025-03-26` clients should ignore unknown fields, while newer clients can use the schema immediately.
 

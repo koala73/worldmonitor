@@ -10,7 +10,6 @@ const apiDir = join(root, 'api');
 const apiOauthDir = join(root, 'api', 'oauth');
 const sharedDir = join(root, 'shared');
 const scriptsSharedDir = join(root, 'scripts', 'shared');
-const prePushHookPath = join(root, '.husky', 'pre-push');
 
 // All .js files in api/ except underscore-prefixed helpers (_cors.js, _api-key.js)
 const edgeFunctions = readdirSync(apiDir)
@@ -24,10 +23,11 @@ const oauthEdgeFunctions = readdirSync(apiOauthDir)
 
 const allEdgeFunctions = [...edgeFunctions, ...oauthEdgeFunctions];
 
-// ALL .js AND .ts files under api/ (recursively) — used for runtime/built-in checks.
+// ALL .js AND .ts files under api/ (recursively) — used for node: built-in checks.
 // Note: .ts edge functions are intentionally excluded from the
 // module-isolation describe below because Vercel bundles them at build time, so
-// imports from '../server/' are valid.
+// imports from '../server/' are valid. The node: built-in check still applies
+// regardless of depth, since Vercel Edge Runtime rejects node: imports at runtime.
 function walkApi(dir, relPrefix = '') {
   const out = [];
   for (const entry of readdirSync(dir)) {
@@ -44,10 +44,6 @@ function walkApi(dir, relPrefix = '') {
 }
 
 const allApiFiles = walkApi(apiDir);
-
-function declaresNodeRuntime(src) {
-  return /runtime\s*:\s*['"]nodejs['"]/.test(src);
-}
 
 describe('scripts/shared/ stays in sync with shared/', () => {
   // Historical scope: .json (data) + .cjs (helpers).
@@ -88,28 +84,15 @@ describe('Edge Function shared helpers resolve', () => {
 
 describe('Edge Function no node: built-ins', () => {
   for (const { name, path } of allApiFiles) {
-    it(`${name} does not import node: built-ins unless it declares Node runtime`, () => {
+    it(`${name} does not import node: built-ins (unsupported in Vercel Edge Runtime)`, () => {
       const src = readFileSync(path, 'utf-8');
       const match = src.match(/from\s+['"]node:(\w+)['"]/);
-      if (declaresNodeRuntime(src)) {
-        return;
-      }
       assert.ok(
         !match,
-        `${name}: imports node:${match?.[1]} without runtime: 'nodejs' — Vercel Edge Runtime does not support node: built-in modules. Use an edge-compatible alternative or declare Node runtime deliberately.`,
+        `${name}: imports node:${match?.[1]} — Vercel Edge Runtime does not support node: built-in modules. Use an edge-compatible alternative.`,
       );
     });
   }
-});
-
-describe('pre-push API bundle check', () => {
-  it('bundles explicit Node runtime routes with esbuild platform=node', () => {
-    const src = readFileSync(prePushHookPath, 'utf-8');
-    assert.match(src, /platform="browser"/);
-    assert.match(src, /runtime\[\[:space:\]\]\*:\[\[:space:\]\]\*\['\\?"\]nodejs\['\\?"\]/);
-    assert.match(src, /platform="node"/);
-    assert.match(src, /--platform="\$platform"/);
-  });
 });
 
 // The legacy api/*.js allowlist that previously lived here was replaced by
