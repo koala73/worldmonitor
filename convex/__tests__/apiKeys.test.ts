@@ -123,6 +123,43 @@ describe("createApiKey", () => {
     await expect(
       asApiUser.mutation(api.apiKeys.createApiKey, makeKeyArgs(6)),
     ).rejects.toThrow(/KEY_LIMIT_REACHED/);
+
+    const keys = await asApiUser.query(api.apiKeys.listApiKeys, {});
+    expect(keys.filter((k: any) => !k.revokedAt)).toHaveLength(5);
+    expect(keys.filter((k: any) => k.revokedAt)).toHaveLength(0);
+  });
+
+  test("race-leftover overflow converges back to 5 active keys while creating", async () => {
+    // Models the post-race state: concurrent create calls left 6 active keys.
+    // convex-test serializes mutations, so seed the over-cap state directly.
+    const t = convexTest(schema, modules);
+    await seedApiEntitlement(t, "user-api");
+
+    await t.run(async (ctx) => {
+      const now = Date.now();
+      for (let i = 1; i <= 6; i++) {
+        const args = makeKeyArgs(i);
+        await ctx.db.insert("userApiKeys", {
+          userId: "user-api",
+          name: args.name,
+          keyPrefix: args.keyPrefix,
+          keyHash: args.keyHash,
+          createdAt: now - (6 - i) * 1000,
+        });
+      }
+    });
+
+    const asApiUser = t.withIdentity(API_USER);
+    const created = await asApiUser.mutation(api.apiKeys.createApiKey, makeKeyArgs(7));
+    expect(created.name).toBe("test-key-7");
+
+    const keys = await asApiUser.query(api.apiKeys.listApiKeys, {});
+    const active = keys.filter((k: any) => !k.revokedAt);
+    const revoked = keys.filter((k: any) => k.revokedAt);
+    expect(active).toHaveLength(5);
+    expect(revoked).toHaveLength(2);
+    expect(revoked.map((k: any) => k.name).sort()).toEqual(["test-key-1", "test-key-2"]);
+    expect(active.some((k: any) => k.name === "test-key-7")).toBe(true);
   });
 
   test("revoked keys do not count toward the limit", async () => {
