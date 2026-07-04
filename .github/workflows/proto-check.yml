@@ -25,7 +25,7 @@ jobs:
           cache: false
 
       - name: Cache Go binaries (buf, protoc plugins)
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/go/bin
           key: go-bin-${{ runner.os }}-${{ hashFiles('Makefile') }}
