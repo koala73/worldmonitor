@@ -242,6 +242,49 @@ describe('api/mcp-proxy', () => {
     // path is exercised in tests/chat-analyst.test.mts / production E2E.
   });
 
+  // ── SSRF defence-in-depth: cloud-metadata header stripping (GHSA-887j) ─────
+
+  describe('customHeaders — cloud-metadata header stripping (GHSA-887j)', () => {
+    function captureForwardedHeaders() {
+      const captured = { headers: null };
+      globalThis.fetch = async (_url, opts) => {
+        captured.headers = opts?.headers ?? {};
+        const body = opts?.body ? JSON.parse(opts.body) : {};
+        if (body.method === 'tools/list') {
+          return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { tools: [] } }), {
+            status: 200, headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { protocolVersion: '2025-03-26', capabilities: {}, serverInfo: { name: 't', version: '1' } } }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        });
+      };
+      return captured;
+    }
+
+    it('drops Metadata-Flavor / X-aws-ec2-metadata-token but forwards legit headers', async () => {
+      const captured = captureForwardedHeaders();
+      const res = await handler(makeGetRequest({
+        serverUrl: 'https://mcp.example.com/mcp',
+        headers: JSON.stringify({
+          'Metadata-Flavor': 'Google',
+          'metadata': 'true',
+          'X-aws-ec2-metadata-token': 'stolen-token',
+          'X-aws-ec2-metadata-token-ttl-seconds': '21600',
+          'Authorization': 'Bearer legit-mcp-token',
+        }),
+      }));
+      assert.equal(res.status, 200);
+      assert.ok(captured.headers, 'target fetch must have been called');
+      const lowerKeys = Object.keys(captured.headers).map((k) => k.toLowerCase());
+      assert.ok(!lowerKeys.includes('metadata-flavor'), 'Metadata-Flavor must be stripped');
+      assert.ok(!lowerKeys.includes('metadata'), 'Azure Metadata header must be stripped');
+      assert.ok(!lowerKeys.includes('x-aws-ec2-metadata-token'), 'AWS IMDSv2 token header must be stripped');
+      assert.ok(!lowerKeys.includes('x-aws-ec2-metadata-token-ttl-seconds'), 'AWS IMDSv2 ttl header must be stripped');
+      assert.ok(lowerKeys.includes('authorization'), 'legitimate Authorization must pass through');
+    });
+  });
+
   // ── CORS / method guards ──────────────────────────────────────────────────
 
   describe('CORS and method handling', () => {

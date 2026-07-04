@@ -216,6 +216,20 @@ async function validateServerUrl(raw) {
   }
 }
 
+// Cloud-metadata gate headers (GHSA-887j, Edge-safe defence-in-depth): GCP
+// `Metadata-Flavor: Google`, Azure `Metadata: true`, AWS IMDSv2
+// `X-aws-ec2-metadata-token[-ttl-seconds]`. The proxy never forwards them, so
+// even if a DNS rebind slipped a fetch onto 169.254.169.254 the credential-less
+// request is refused by the metadata service. Matched case-insensitively. (The
+// full socket-pin fix that closes resolve!=connect is a Node-runtime follow-up;
+// this Edge mitigation kills the demonstrated PoC without a runtime switch.)
+const DENIED_FORWARD_HEADERS = new Set([
+  'metadata-flavor',
+  'metadata',
+  'x-aws-ec2-metadata-token',
+  'x-aws-ec2-metadata-token-ttl-seconds',
+]);
+
 function buildHeaders(customHeaders) {
   const h = {
     'Content-Type': 'application/json',
@@ -228,7 +242,9 @@ function buildHeaders(customHeaders) {
         // Strip CRLF to prevent header injection
         const safeKey = k.replace(/[\r\n]/g, '');
         const safeVal = v.replace(/[\r\n]/g, '');
-        if (safeKey) h[safeKey] = safeVal;
+        if (safeKey && !DENIED_FORWARD_HEADERS.has(safeKey.toLowerCase())) {
+          h[safeKey] = safeVal;
+        }
       }
     }
   }
