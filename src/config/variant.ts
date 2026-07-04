@@ -1,6 +1,6 @@
 const buildVariant = (() => {
   try {
-    return import.meta.env?.VITE_VARIANT || 'full';
+    return import.meta.env.VITE_VARIANT || 'full';
   } catch {
     return 'full';
   }

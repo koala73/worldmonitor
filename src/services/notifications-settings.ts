@@ -67,6 +67,14 @@ function appendNotificationError(rowEl: HTMLElement, message: string): void {
   rowEl.appendChild(errorEl);
 }
 
+function getTelegramBotUsername(): string {
+  try {
+    return import.meta.env.VITE_TELEGRAM_BOT_USERNAME || 'WorldMonitorBot';
+  } catch {
+    return 'WorldMonitorBot';
+  }
+}
+
 export function renderNotificationsSettings(host: NotificationsSettingsHost): NotificationsSettingsResult {
   const isPro = !!host.isSignedIn && hasTier(1);
   const preselectCountry = normalizePreselectCountry(host.preselectCountry);
@@ -793,7 +801,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           setTrustedHtml(rowEl, trustedHtml(`<div class="us-notif-ch-icon">${channelIcon('telegram')}</div><div class="us-notif-ch-body"><div class="us-notif-ch-name">Telegram</div><div class="us-notif-ch-sub">Generating code…</div></div>`, "legacy direct innerHTML migration"));
           createPairingToken().then(({ token, expiresAt }) => {
             if (signal.aborted) return;
-            const botUsername = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TELEGRAM_BOT_USERNAME as string | undefined) ?? 'WorldMonitorBot';
+            const botUsername = getTelegramBotUsername();
             const deepLink = `https://t.me/${String(botUsername)}?start=${token}`;
             const startCmd = `/start ${token}`;
             const secsLeft = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
