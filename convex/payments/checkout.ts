@@ -14,7 +14,7 @@ import { action, internalAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { checkout } from "../lib/dodo";
 import { requireUserId, resolveUserIdentity } from "../lib/auth";
-import { signUserId } from "../lib/identitySigning";
+import { ANON_ID_V4_REGEX, signAnonClaimToken, signUserId } from "../lib/identitySigning";
 import { resolveProductToPlan } from "../config/productCatalog";
 
 const ACTIVE_SUBSCRIPTION_EXISTS = "ACTIVE_SUBSCRIPTION_EXISTS";
@@ -192,6 +192,12 @@ async function _createCheckoutSession(
   const metadata: Record<string, string> = {};
   metadata.wm_user_id = user.userId;
   metadata.wm_user_id_sig = await signUserId(user.userId);
+  const anonymousClaimToken = ANON_ID_V4_REGEX.test(user.userId)
+    ? await signAnonClaimToken(user.userId)
+    : null;
+  if (anonymousClaimToken) {
+    metadata.wm_anon_claim = "v1";
+  }
   // Tier-group bridge for the duplicate-payment guard (#4438): the pending
   // `payment.processing` webhook echoes `data.metadata.wm_plan_key` and persists
   // it on the `paymentEvents` row, so a later checkout can resolve a pending
@@ -231,7 +237,9 @@ async function _createCheckoutSession(
         },
       },
     });
-    return result;
+    return anonymousClaimToken
+      ? { ...result, anonymous_claim_token: anonymousClaimToken }
+      : result;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(

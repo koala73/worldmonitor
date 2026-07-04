@@ -18,10 +18,10 @@
  * there is no automatic way to reconnect the purchase to the user.
  *
  * Migration path: After Clerk auth lands, the client should call
- * `claimSubscription(anonId)` (convex/payments/billing.ts) on first
- * authenticated session to reassign payment records from the anon ID to
- * the real Clerk user ID. The anon ID should be read from localStorage
- * before it is replaced by the real identity.
+ * `claimSubscription(anonId, claimToken)` (convex/payments/billing.ts) on
+ * first authenticated session to reassign payment records from the anon ID
+ * to the real Clerk user ID. The anon ID and server-issued claim token
+ * should be read from localStorage before they are cleared.
  *
  * @see https://github.com/koala73/worldmonitor/issues/2078
  */
@@ -30,6 +30,7 @@ import { getCurrentClerkUser } from './clerk';
 import { migrateLegacyKeysToHttpOnlySession, readLegacySessionKey } from './browser-key-session';
 
 const ANON_KEY = 'wm-anon-id';
+const ANON_CLAIM_TOKEN_KEY = 'wm-anon-claim-token';
 let legacyProMigrationStarted = false;
 
 function legacyProKeyForMigration(): string {
@@ -59,6 +60,40 @@ export function getOrCreateAnonId(): string {
   } catch {
     // SSR or restricted context — return a one-off UUID
     return crypto.randomUUID();
+  }
+}
+
+export function getStoredAnonId(): string | null {
+  try {
+    return localStorage.getItem(ANON_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function getStoredAnonClaimToken(): string | null {
+  try {
+    return localStorage.getItem(ANON_CLAIM_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function saveAnonClaimToken(token: string): void {
+  try {
+    localStorage.setItem(ANON_CLAIM_TOKEN_KEY, token);
+  } catch {
+    // Restricted storage contexts cannot preserve anonymous claim proof. The
+    // server will fail closed if protected payment rows later need migration.
+  }
+}
+
+export function clearStoredAnonIdentity(): void {
+  try {
+    localStorage.removeItem(ANON_KEY);
+    localStorage.removeItem(ANON_CLAIM_TOKEN_KEY);
+  } catch {
+    // Ignore restricted storage cleanup failures.
   }
 }
 
