@@ -141,6 +141,110 @@ describe('homepage WebMCP registration (pro-test welcome)', () => {
   });
 });
 
+// Runtime behaviour of the homepage WebMCP registration. The inline script is
+// plain ES5 with zero imports, so (unlike the TS module above) we execute it
+// directly against a stub provider to lock in behaviour, not just structure.
+describe('homepage WebMCP registration — runtime behaviour', () => {
+  const welcomeSrc = readFileSync(resolve(ROOT, 'pro-test/welcome.html'), 'utf-8');
+  const iifeMatch = welcomeSrc.match(/\(function \(\) \{[\s\S]*?\}\)\(\);/);
+  const IIFE = iifeMatch && iifeMatch[0];
+  // Inject navigator/window/document as params so they shadow the read-only globals.
+  const runInline = IIFE ? new Function('navigator', 'window', 'document', IIFE) : null;
+
+  // Execute the inline script with stub globals. providerFactory(registered,
+  // provided) returns the value of navigator.modelContext (or null for the
+  // no-provider case). Returns captured effects, any DOMContentLoaded handler
+  // armed for the late-provider retry, and the mutable navigator.
+  function run(providerFactory) {
+    const registered = [];
+    const provided = [];
+    let navigatedTo = null;
+    let domHandler = null;
+    const navigator = { modelContext: providerFactory ? providerFactory(registered, provided) : null };
+    const window = {
+      location: { assign: (u) => { navigatedTo = u; } },
+      addEventListener: () => {},
+    };
+    const document = {
+      addEventListener: (evt, fn) => { if (evt === 'DOMContentLoaded') domHandler = fn; },
+    };
+    runInline(navigator, window, document);
+    return { registered, provided, get navigatedTo() { return navigatedTo; }, domHandler, navigator };
+  }
+  const collectRegister = (registered) => ({ registerTool: (t) => registered.push(t) });
+  const collectProvide = (registered, provided) => ({ provideContext: (ctx) => provided.push(ctx) });
+
+  it('the inline IIFE is extractable and executable', () => {
+    assert.ok(runInline, 'could not extract the WebMCP IIFE from welcome.html');
+  });
+
+  it('registers both tools via registerTool when a provider is present', () => {
+    const r = run(collectRegister);
+    assert.deepEqual(r.registered.map((t) => t.name), ['launchWorldMonitor', 'getWorldMonitorMcpEndpoint']);
+    for (const t of r.registered) {
+      assert.equal(typeof t.description, 'string');
+      assert.equal(t.inputSchema.type, 'object');
+      assert.equal(typeof t.execute, 'function');
+    }
+  });
+
+  it('launchWorldMonitor navigates to the requested variant and defaults to world', async () => {
+    const finance = run(collectRegister);
+    const res = await finance.registered.find((t) => t.name === 'launchWorldMonitor').execute({ monitor: 'finance' });
+    assert.equal(res.isError, false);
+    assert.equal(finance.navigatedTo, 'https://finance.worldmonitor.app/dashboard');
+
+    const dflt = run(collectRegister);
+    await dflt.registered.find((t) => t.name === 'launchWorldMonitor').execute({});
+    assert.equal(dflt.navigatedTo, 'https://www.worldmonitor.app/dashboard');
+  });
+
+  it('launchWorldMonitor never resolves off-enum or prototype keys into navigation', async () => {
+    // "constructor"/"__proto__" are truthy on a plain object's prototype chain;
+    // an own-property guard must keep them (and any unknown key) on the world map.
+    for (const bad of ['xyz', 'constructor', '__proto__', 'toString', 'valueOf']) {
+      const r = run(collectRegister);
+      await r.registered.find((t) => t.name === 'launchWorldMonitor').execute({ monitor: bad });
+      assert.equal(
+        r.navigatedTo,
+        'https://www.worldmonitor.app/dashboard',
+        `monitor="${bad}" must fall back to the world dashboard, not a prototype value`,
+      );
+    }
+  });
+
+  it('getWorldMonitorMcpEndpoint returns the remote transport with no hardcoded tool count', async () => {
+    const r = run(collectRegister);
+    const res = await r.registered.find((t) => t.name === 'getWorldMonitorMcpEndpoint').execute({});
+    const payload = JSON.parse(res.content[0].text);
+    assert.equal(payload.endpoint, 'https://worldmonitor.app/mcp');
+    assert.equal(payload.transport, 'streamableHttp');
+    assert.equal(payload.tools, undefined, 'must not hardcode a tool count that drifts from the server card');
+  });
+
+  it('falls back to provideContext when registerTool is unavailable', () => {
+    const r = run(collectProvide);
+    assert.equal(r.registered.length, 0);
+    assert.equal(r.provided.length, 1);
+    assert.equal(r.provided[0].tools.length, 2);
+  });
+
+  it('is a clean no-op without a provider, and arms a DOMContentLoaded retry', () => {
+    const r = run(() => null);
+    assert.equal(r.registered.length, 0);
+    assert.equal(typeof r.domHandler, 'function', 'must arm a DOMContentLoaded retry when no provider is present at parse time');
+  });
+
+  it('registers on the retry when a provider is installed after head parse', () => {
+    const r = run(() => null); // no provider at parse time
+    assert.equal(r.registered.length, 0);
+    const late = [];
+    r.navigator.modelContext = { registerTool: (t) => late.push(t) }; // provider appears later
+    r.domHandler(); // DOMContentLoaded fires
+    assert.deepEqual(late.map((t) => t.name), ['launchWorldMonitor', 'getWorldMonitorMcpEndpoint']);
+  });
+});
+
 // Behavioural tests against buildWebMcpTools() — we can exercise the pure
 // builder by re-implementing the minimal shape it needs. This is a sanity
 // check that the exported surface behaves the way the contract claims.
