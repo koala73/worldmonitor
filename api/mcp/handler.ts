@@ -6,6 +6,7 @@ import {
   PRODUCTION_DEPS,
   resolveAuthContext,
   runProPreChecks,
+  wwwAuthHeader,
 } from './auth';
 import {
   MCP_LOG_LEVELS,
@@ -46,6 +47,18 @@ const PUBLIC_MCP_METHODS: ReadonlySet<string> = new Set([
 function hasCredentials(req: Request): boolean {
   if ((req.headers.get('Authorization') ?? '').startsWith('Bearer ')) return true;
   return (req.headers.get('X-WorldMonitor-Key') ?? '') !== '';
+}
+
+// Spec-correct 401 for the fail-closed guards on data methods. These guards are
+// unreachable today (tools/call / resources/read are never PUBLIC_MCP_METHODS,
+// so `context` is always resolved), but if that invariant is ever broken this
+// fails closed with the SAME 401 + WWW-Authenticate shape resolveAuthContext
+// emits — not a soft 200 JSON-RPC error.
+function authRequiredResponse(id: unknown, resourceMetadataUrl: string, corsHeaders: Record<string, string>): Response {
+  return new Response(
+    JSON.stringify({ jsonrpc: '2.0', id: id ?? null, error: { code: -32001, message: 'Authentication required.' } }),
+    { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl), ...corsHeaders }) },
+  );
 }
 
 type StoredSseEvent = {
@@ -371,7 +384,7 @@ export async function mcpHandler(
     case 'tools/call':
       // context is always set here — tools/call is never a PUBLIC_MCP_METHOD.
       // The guard narrows the type and hard-fails closed if that ever changes.
-      if (!context) return rpcError(id, -32001, 'Authentication required.', corsHeaders);
+      if (!context) return authRequiredResponse(id, resourceMetadataUrl, corsHeaders);
       return maybeStreamJsonRpcResponse(req, await dispatchToolsCall(req, context, deps, body, corsHeaders, ctx));
     // Prompts are metadata-class — they ship a workflow template, not data.
     // Symmetric posture with `describe_tool`: quota-exempt (counting template
@@ -403,7 +416,7 @@ export async function mcpHandler(
       return maybeStreamJsonRpcResponse(req, rpcOk(id, { resources: RESOURCE_LIST_RESPONSE }, corsHeaders));
     case 'resources/read':
       // context is always set here — resources/read is never a PUBLIC_MCP_METHOD.
-      if (!context) return rpcError(id, -32001, 'Authentication required.', corsHeaders);
+      if (!context) return authRequiredResponse(id, resourceMetadataUrl, corsHeaders);
       return maybeStreamJsonRpcResponse(req, await buildResourceResponse(req, context, deps, body, corsHeaders, ctx));
     case 'logging/setLevel': {
       const level = (body.params as { level?: string } | null)?.level;

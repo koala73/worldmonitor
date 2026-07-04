@@ -10,6 +10,7 @@ describe('api/not-found.ts — structured JSON 404 for unmatched /api/* paths', 
     const res = handler(new Request(`${URL_BASE}/api/does-not-exist`, { method: 'GET' }));
     assert.equal(res.status, 404);
     assert.match(res.headers.get('content-type') ?? '', /application\/json/);
+    assert.equal(res.headers.get('x-content-type-options'), 'nosniff', 'reflected-path body must be nosniff');
     const body = await res.json();
     assert.equal(body.error?.code, 'not_found');
     assert.ok(typeof body.error?.message === 'string' && body.error.message.length > 0, 'message must be present');

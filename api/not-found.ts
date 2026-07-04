@@ -44,6 +44,9 @@ export default function handler(req: Request): Response {
     status: 404,
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
+      // The body echoes the requested pathname (JSON-escaped, so no injection);
+      // nosniff stops a client from content-type-sniffing it to HTML anyway.
+      'X-Content-Type-Options': 'nosniff',
       'Cache-Control': 'no-store',
       ...corsHeaders,
     },
