@@ -84,7 +84,6 @@ function authRequiredResponse(id: unknown, resourceMetadataUrl: string, corsHead
 type StoredSseEvent = {
   id: string;
   data: string;
-  retry?: number;
 };
 
 const SSE_CONTENT_TYPE = 'text/event-stream; charset=utf-8';
@@ -117,7 +116,6 @@ function clientAcceptsSse(req: Request): boolean {
 
 function formatSseEvent(event: StoredSseEvent): string {
   const lines = [`id: ${event.id}`];
-  if (event.retry !== undefined) lines.push(`retry: ${event.retry}`);
   if (event.data === '') {
     lines.push('data:');
   } else {
@@ -209,11 +207,21 @@ async function maybeStreamJsonRpcResponse(req: Request, response: Response): Pro
 
   const streamId = crypto.randomUUID();
   const responseBody = await response.text();
-  const events: StoredSseEvent[] = [
-    // MCP Streamable HTTP recommends this empty data event to prime Last-Event-ID reconnect.
-    { id: `${streamId}:0`, data: '', retry: 1000 },
-    { id: `${streamId}:1`, data: responseBody },
-  ];
+  // A single `message` event carrying the fully-computed JSON-RPC response. The
+  // body is already resolved (`await response.text()` above) before the stream
+  // is constructed, so there is no slow-result window a separate priming event
+  // could usefully cover. A leading empty-`data:` priming event here BREAKS
+  // strict agent-readiness scanners: per the WHATWG SSE spec an empty `data:`
+  // field still dispatches a `message` event (with `data === ''`), so a scanner
+  // that reads the first event and `JSON.parse()`s its data hits
+  // `JSON.parse('')` → "handshake failed" (this was orank Access `mcp-server`
+  // 3/6). The MCP SDK tolerates the empty event, but the reference Streamable
+  // HTTP server transport also emits a single `message` event — so one event
+  // matches the spec's own client. The event still carries an id, so the
+  // GET-with-Last-Event-ID replay channel (handleSseReplay) resumes correctly:
+  // a reconnect after this event yields an empty stream (nothing follows the
+  // already-delivered response).
+  const events: StoredSseEvent[] = [{ id: `${streamId}:0`, data: responseBody }];
   storeSseStream(sessionId, streamId, events);
   return new Response(createSseStream(events), {
     status: 200,
