@@ -815,6 +815,145 @@ export const getCheckoutBlockingSubscription = internalQuery({
  * err slightly long if tuning. Single source of truth: change it here only.
  */
 export const PENDING_PAYMENT_BLOCK_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+export const STUCK_PAYMENT_RECONCILIATION_THRESHOLD_MS = 6 * 60 * 60 * 1000; // 6 hours
+export const STUCK_PAYMENT_RECONCILIATION_LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
+export const STUCK_PAYMENT_RECONCILIATION_BATCH_SIZE = 25;
+const MAX_STUCK_PAYMENT_RECONCILIATION_BATCH_SIZE = 100;
+const MAX_STUCK_PAYMENT_RECONCILIATION_SCAN_ROWS = 500;
+const RESEND_EMAILS_URL = "https://api.resend.com/emails";
+const STUCK_PAYMENT_EMAIL_FROM = "World Monitor <noreply@worldmonitor.app>";
+const STUCK_PAYMENT_SUPPORT_EMAIL = "support@worldmonitor.app";
+
+function isPendingPaymentStatus(status: string): boolean {
+  return status === "processing" || status === "requires_customer_action";
+}
+
+function isTerminalPaymentStatus(status: string): status is "succeeded" | "failed" | "cancelled" {
+  return status === "succeeded" || status === "failed" || status === "cancelled";
+}
+
+function boundedPositiveInteger(value: number | undefined, fallback: number, max: number): number {
+  if (!Number.isFinite(value) || value === undefined) return fallback;
+  return Math.max(1, Math.min(max, Math.floor(value)));
+}
+
+function boundedPositiveMs(value: number | undefined, fallback: number): number {
+  if (!Number.isFinite(value) || value === undefined) return fallback;
+  return Math.max(1, Math.floor(value));
+}
+
+type DodoPaymentLookup = {
+  status?: unknown;
+  payment_id?: unknown;
+  subscription_id?: unknown;
+  total_amount?: unknown;
+  amount?: unknown;
+  currency?: unknown;
+  payment_link?: unknown;
+  customer?: {
+    email?: unknown;
+    name?: unknown;
+  } | null;
+};
+
+type StuckPaymentCandidate = {
+  userId: string;
+  dodoPaymentId: string;
+  dodoSubscriptionId?: string;
+  planKey?: string;
+  amount: number;
+  currency: string;
+  pendingStatus: "processing" | "requires_customer_action";
+  pendingOccurredAt: number;
+};
+
+type ReconcileStuckPendingPaymentsSummary = {
+  candidates: number;
+  terminalReconciled: number;
+  customerNotified: number;
+  opsNotified: number;
+  alreadySkipped: number;
+  unknownStatus: number;
+  pollFailed: number;
+};
+
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function readNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function extractDodoPaymentStatus(payment: unknown): string | null {
+  if (!payment || typeof payment !== "object") return null;
+  const rawStatus = (payment as DodoPaymentLookup).status;
+  return typeof rawStatus === "string" && rawStatus.length > 0 ? rawStatus : null;
+}
+
+async function retrieveDodoPayment(dodoPaymentId: string): Promise<unknown> {
+  const client = getDodoClient();
+  return await client.payments.retrieve(dodoPaymentId);
+}
+
+async function sendStuckPaymentEmail(
+  payment: DodoPaymentLookup,
+  planKey: string | undefined,
+): Promise<"customer_notified" | "ops_notified"> {
+  const email = readString(payment.customer?.email);
+  const checkoutUrl = readString(payment.payment_link);
+  const apiKey = process.env.RESEND_API_KEY;
+
+  if (!email || !checkoutUrl) return "ops_notified";
+  if (!apiKey) {
+    console.warn("[billing/reconciliation] RESEND_API_KEY not set; skipping stuck-payment customer email.");
+    return "ops_notified";
+  }
+
+  const planName = planKey ? PRODUCT_CATALOG[planKey]?.displayName ?? "World Monitor" : "World Monitor";
+  const safePlanName = escapeHtml(planName);
+  const safeCheckoutUrl = escapeHtml(checkoutUrl);
+  const safeSupportEmail = escapeHtml(STUCK_PAYMENT_SUPPORT_EMAIL);
+  const html = `
+    <div style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111; line-height: 1.5;">
+      <h1 style="font-size: 20px;">Your World Monitor checkout still needs action</h1>
+      <p>Your ${safePlanName} payment is still waiting for bank or card verification.</p>
+      <p>You can safely continue checkout here:</p>
+      <p><a href="${safeCheckoutUrl}" style="display: inline-block; background: #111; color: #fff; padding: 10px 14px; text-decoration: none;">Continue checkout</a></p>
+      <p>If you already completed payment, you can ignore this email or contact <a href="mailto:${safeSupportEmail}">${safeSupportEmail}</a>.</p>
+    </div>`;
+
+  const res = await fetch(RESEND_EMAILS_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      from: STUCK_PAYMENT_EMAIL_FROM,
+      to: [email],
+      subject: "Complete your World Monitor checkout",
+      html,
+      reply_to: STUCK_PAYMENT_SUPPORT_EMAIL,
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    console.warn(`[billing/reconciliation] Resend stuck-payment email ${res.status}: ${body}`);
+    return "ops_notified";
+  }
+
+  return "customer_notified";
+}
 
 /**
  * Internal query used by checkout creation to prevent DUPLICATE PENDING
@@ -895,6 +1034,240 @@ export const getBlockingPendingPayment = internalQuery({
       displayName: PRODUCT_CATALOG[blocking.planKey]?.displayName ?? blocking.planKey,
       occurredAt: blocking.occurredAt,
     };
+  },
+});
+
+export const listStuckPendingPaymentCandidates = internalQuery({
+  args: {
+    thresholdMs: v.optional(v.number()),
+    lookbackMs: v.optional(v.number()),
+    batchSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const thresholdMs = boundedPositiveMs(args.thresholdMs, STUCK_PAYMENT_RECONCILIATION_THRESHOLD_MS);
+    const lookbackMs = boundedPositiveMs(args.lookbackMs, STUCK_PAYMENT_RECONCILIATION_LOOKBACK_MS);
+    const batchSize = boundedPositiveInteger(
+      args.batchSize,
+      STUCK_PAYMENT_RECONCILIATION_BATCH_SIZE,
+      MAX_STUCK_PAYMENT_RECONCILIATION_BATCH_SIZE,
+    );
+
+    const now = Date.now();
+    const staleBefore = now - thresholdMs;
+    const lookbackStart = now - lookbackMs;
+    const paymentEvents = await ctx.db
+      .query("paymentEvents")
+      .withIndex("by_occurredAt", (q) =>
+        q.gt("occurredAt", lookbackStart).lt("occurredAt", staleBefore),
+      )
+      .take(MAX_STUCK_PAYMENT_RECONCILIATION_SCAN_ROWS);
+
+    const candidates: StuckPaymentCandidate[] = [];
+    const seenPaymentIds = new Set<string>();
+    for (const ev of paymentEvents) {
+      if (candidates.length >= batchSize) break;
+      if (ev.type !== "charge") continue;
+      if (!isPendingPaymentStatus(ev.status)) continue;
+      if (seenPaymentIds.has(ev.dodoPaymentId)) continue;
+      seenPaymentIds.add(ev.dodoPaymentId);
+
+      const marker = await ctx.db
+        .query("paymentReconciliationAttempts")
+        .withIndex("by_dodoPaymentId", (q) => q.eq("dodoPaymentId", ev.dodoPaymentId))
+        .first();
+      if (marker) continue;
+
+      const history = await ctx.db
+        .query("paymentEvents")
+        .withIndex("by_dodoPaymentId", (q) => q.eq("dodoPaymentId", ev.dodoPaymentId))
+        .collect();
+      if (history.some((row) => row.type === "charge" && isTerminalPaymentStatus(row.status))) {
+        continue;
+      }
+
+      candidates.push({
+        userId: ev.userId,
+        dodoPaymentId: ev.dodoPaymentId,
+        dodoSubscriptionId: ev.dodoSubscriptionId,
+        planKey: ev.planKey,
+        amount: ev.amount,
+        currency: ev.currency,
+        pendingStatus: ev.status as "processing" | "requires_customer_action",
+        pendingOccurredAt: ev.occurredAt,
+      });
+    }
+
+    return candidates;
+  },
+});
+
+export const recordStuckPaymentReconciliationOutcome = internalMutation({
+  args: {
+    userId: v.string(),
+    dodoPaymentId: v.string(),
+    dodoSubscriptionId: v.optional(v.string()),
+    planKey: v.optional(v.string()),
+    amount: v.number(),
+    currency: v.string(),
+    pendingOccurredAt: v.number(),
+    observedStatus: v.string(),
+    staleAction: v.optional(v.union(v.literal("customer_notified"), v.literal("ops_notified"))),
+    rawPayload: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const existingMarker = await ctx.db
+      .query("paymentReconciliationAttempts")
+      .withIndex("by_dodoPaymentId", (q) => q.eq("dodoPaymentId", args.dodoPaymentId))
+      .first();
+    if (existingMarker) return { action: "already_marked" as const };
+
+    const history = await ctx.db
+      .query("paymentEvents")
+      .withIndex("by_dodoPaymentId", (q) => q.eq("dodoPaymentId", args.dodoPaymentId))
+      .collect();
+    if (history.some((row) => row.type === "charge" && isTerminalPaymentStatus(row.status))) {
+      return { action: "already_terminal" as const };
+    }
+
+    const now = Date.now();
+    if (isTerminalPaymentStatus(args.observedStatus)) {
+      await ctx.db.insert("paymentEvents", {
+        userId: args.userId,
+        dodoPaymentId: args.dodoPaymentId,
+        type: "charge",
+        amount: args.amount,
+        currency: args.currency,
+        status: args.observedStatus,
+        dodoSubscriptionId: args.dodoSubscriptionId,
+        planKey: args.planKey,
+        rawPayload: args.rawPayload,
+        occurredAt: now,
+      });
+      await ctx.db.insert("paymentReconciliationAttempts", {
+        dodoPaymentId: args.dodoPaymentId,
+        userId: args.userId,
+        planKey: args.planKey,
+        action: "terminal_reconciled",
+        observedStatus: args.observedStatus,
+        pendingOccurredAt: args.pendingOccurredAt,
+        reconciledAt: now,
+      });
+      return { action: "terminal_reconciled" as const };
+    }
+
+    if (isPendingPaymentStatus(args.observedStatus)) {
+      const action = args.staleAction ?? "ops_notified";
+      await ctx.db.insert("paymentReconciliationAttempts", {
+        dodoPaymentId: args.dodoPaymentId,
+        userId: args.userId,
+        planKey: args.planKey,
+        action,
+        observedStatus: args.observedStatus,
+        pendingOccurredAt: args.pendingOccurredAt,
+        reconciledAt: now,
+      });
+      console.warn(
+        `[billing/reconciliation] stale Dodo payment still pending after threshold: ` +
+        `paymentId=${args.dodoPaymentId} userId=${args.userId} status=${args.observedStatus} ` +
+        `pendingOccurredAt=${args.pendingOccurredAt}. Ops follow-up required.`,
+      );
+      return { action };
+    }
+
+    return { action: "unknown_status" as const };
+  },
+});
+
+export const reportPaymentReconciliationPollFailure = internalMutation({
+  args: {
+    dodoPaymentId: v.string(),
+    errorMessage: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    throw new Error(
+      `[billing/reconciliation] Dodo payment poll failed paymentId=${args.dodoPaymentId}: ${args.errorMessage}`,
+    );
+  },
+});
+
+export const reconcileStuckPendingPayments = internalAction({
+  args: {
+    thresholdMs: v.optional(v.number()),
+    lookbackMs: v.optional(v.number()),
+    batchSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<ReconcileStuckPendingPaymentsSummary> => {
+    const candidates = await ctx.runQuery(
+      (internal as any).payments.billing.listStuckPendingPaymentCandidates,
+      args,
+    ) as StuckPaymentCandidate[];
+
+    const summary: ReconcileStuckPendingPaymentsSummary = {
+      candidates: candidates.length,
+      terminalReconciled: 0,
+      customerNotified: 0,
+      opsNotified: 0,
+      alreadySkipped: 0,
+      unknownStatus: 0,
+      pollFailed: 0,
+    };
+
+    for (const candidate of candidates) {
+      try {
+        const payment = await retrieveDodoPayment(candidate.dodoPaymentId);
+        const observedStatus = extractDodoPaymentStatus(payment);
+        if (!observedStatus) {
+          summary.unknownStatus++;
+          console.warn(
+            `[billing/reconciliation] Dodo payment ${candidate.dodoPaymentId} returned no status; skipping.`,
+          );
+          continue;
+        }
+
+        const dodoPayment = payment as DodoPaymentLookup;
+        const staleAction = isPendingPaymentStatus(observedStatus)
+          ? await sendStuckPaymentEmail(dodoPayment, candidate.planKey)
+          : undefined;
+        const outcome = await ctx.runMutation(
+          (internal as any).payments.billing.recordStuckPaymentReconciliationOutcome,
+          {
+            userId: candidate.userId,
+            dodoPaymentId: candidate.dodoPaymentId,
+            dodoSubscriptionId: readString(dodoPayment.subscription_id) ?? candidate.dodoSubscriptionId,
+            planKey: candidate.planKey,
+            amount: readNumber(dodoPayment.total_amount) ?? readNumber(dodoPayment.amount) ?? candidate.amount,
+            currency: readString(dodoPayment.currency) ?? candidate.currency,
+            pendingOccurredAt: candidate.pendingOccurredAt,
+            observedStatus,
+            staleAction,
+            rawPayload: payment,
+          },
+        );
+
+        if (outcome.action === "terminal_reconciled") summary.terminalReconciled++;
+        else if (outcome.action === "customer_notified") summary.customerNotified++;
+        else if (outcome.action === "ops_notified") summary.opsNotified++;
+        else if (outcome.action === "unknown_status") summary.unknownStatus++;
+        else summary.alreadySkipped++;
+      } catch (err) {
+        // sentry-coverage-ok: schedule a throwing mutation below so Convex auto-Sentry captures this payment without aborting the whole batch.
+        summary.pollFailed++;
+        const message = err instanceof Error ? err.message : String(err);
+        await ctx.scheduler.runAfter(
+          0,
+          (internal as any).payments.billing.reportPaymentReconciliationPollFailure,
+          { dodoPaymentId: candidate.dodoPaymentId, errorMessage: message },
+        );
+        console.warn(
+          `[billing/reconciliation] Failed to poll Dodo payment ${candidate.dodoPaymentId}: ${message}`,
+        );
+      }
+    }
+
+    if (summary.candidates > 0 || summary.pollFailed > 0) {
+      console.warn(`[billing/reconciliation] summary ${JSON.stringify(summary)}`);
+    }
+    return summary;
   },
 });
 

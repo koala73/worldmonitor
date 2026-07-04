@@ -35,6 +35,13 @@ crons.daily(
   {},
 );
 
+crons.daily(
+  "payments-stuck-pending-reconciliation",
+  { hourUTC: 4, minuteUTC: 30 },
+  internal.payments.billing.reconcileStuckPendingPayments,
+  {},
+);
+
 // Idempotent daily seed of the `followedCountriesShards` lock table
 // (Codex round-4 P0 v2). Skips existing shards; inserts any missing
 // shard ids in `[0, SHARD_COUNT)`. Defends against a deploy-time seed
