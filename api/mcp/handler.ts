@@ -209,6 +209,12 @@ function handleSseReplay(req: Request, corsHeaders: Record<string, string>): Res
       { status: 406, headers: withMcpNoStore({ 'Content-Type': 'application/json', ...corsHeaders }) },
     );
   }
+  // Defensive + type-narrowing guard. The sole caller (the GET branch) now
+  // answers a bare GET without `Last-Event-ID` with 405 BEFORE reaching here, so
+  // this 400 is unreachable in practice — but the check is retained because it
+  // narrows `lastEventId` from `string | null` to `string` for
+  // `replayEventsAfter` below (whose `parseEventCursor` would TypeError on null),
+  // and keeps `handleSseReplay` independently safe if a future caller is added.
   if (!lastEventId) {
     return new Response(
       JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Missing Last-Event-ID for SSE replay' } }),
