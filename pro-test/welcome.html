@@ -9,6 +9,113 @@
          the same pattern in the SPA's index.html and /pro. -->
     <script>document.documentElement.classList.add('js')</script>
     <style>html.js #seo-prerender{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden}</style>
+    <!-- WebMCP — in-page agent tools on the homepage (worldmonitor.app).
+         Registers a small tool set via navigator.modelContext.registerTool so
+         browser-based AI agents (Chrome/Edge WebMCP, agent-readiness scanners)
+         that land on the apex page can act on and discover World Monitor
+         WITHOUT executing the dashboard SPA — the SPA registers its own richer
+         WebMCP tools separately (src/services/webmcp.ts), but the apex serves
+         this static welcome page, not the SPA. Spec:
+         https://webmachinelearning.github.io/webmcp/. Registers synchronously at
+         parse time when the provider is already present (native WebMCP), and
+         retries once on DOMContentLoaded/load for a provider installed later
+         (e.g. a scanner polyfill); the `registered` guard keeps it idempotent, and
+         it is a no-op in browsers without navigator.modelContext. The MCP server is
+         the remote HTTP (Streamable HTTP) transport at https://worldmonitor.app/mcp
+         — getWorldMonitorMcpEndpoint hands agents that endpoint. The nonce is added
+         by Vite (html.cspNonce) at build time, so this inline script needs no CSP
+         script-src hash (deploy-config.test). -->
+    <script>
+      (function () {
+        function text(t, isError) {
+          return { content: [{ type: 'text', text: t }], isError: !!isError };
+        }
+        var MONITORS = {
+          world: 'https://www.worldmonitor.app/dashboard',
+          tech: 'https://tech.worldmonitor.app/dashboard',
+          finance: 'https://finance.worldmonitor.app/dashboard',
+          commodity: 'https://commodity.worldmonitor.app/dashboard',
+          energy: 'https://energy.worldmonitor.app/dashboard',
+          happy: 'https://happy.worldmonitor.app/dashboard'
+        };
+        var tools = [
+          {
+            name: 'launchWorldMonitor',
+            description: 'Open the live World Monitor intelligence dashboard in this tab. Optionally choose a specialized monitor variant (world, tech, finance, commodity, energy, happy). Navigates to the real-time map — conflicts, markets, shipping chokepoints, flights and cyber on one surface.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                monitor: {
+                  type: 'string',
+                  enum: ['world', 'tech', 'finance', 'commodity', 'energy', 'happy'],
+                  description: 'Which monitor to open. Defaults to "world".'
+                }
+              },
+              additionalProperties: false
+            },
+            execute: function (args) {
+              var key = args && typeof args.monitor === 'string' ? args.monitor.toLowerCase() : 'world';
+              // Own-property lookup only — self-validate here rather than trust the
+              // host to enforce inputSchema, so an off-enum key (incl. prototype
+              // keys like "constructor"/"__proto__") can never resolve into
+              // window.location. Unknown keys fall back to the world map.
+              var url = Object.prototype.hasOwnProperty.call(MONITORS, key) ? MONITORS[key] : MONITORS.world;
+              if (url === MONITORS.world) key = 'world';
+              try {
+                window.location.assign(url);
+              } catch (e) {
+                return Promise.resolve(text('Could not open the dashboard: ' + ((e && e.message) || e), true));
+              }
+              return Promise.resolve(text('Opening the ' + key + ' monitor: ' + url));
+            }
+          },
+          {
+            name: 'getWorldMonitorMcpEndpoint',
+            description: "Return connection details for World Monitor's remote MCP server so an agent can pull live geopolitical, market, maritime, aviation, cyber and economic intelligence directly. Includes the Streamable HTTP endpoint, the discovery server card, supported auth modes, and docs.",
+            inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+            execute: function () {
+              // No tool count here — the live server card is the source of truth
+              // (a hardcoded number would drift). Agents read the catalog from it.
+              return Promise.resolve(text(JSON.stringify({
+                endpoint: 'https://worldmonitor.app/mcp',
+                transport: 'streamableHttp',
+                serverCard: 'https://worldmonitor.app/.well-known/mcp/server-card.json',
+                auth: ['OAuth 2.1 bearer (Authorization: Bearer <token>)', 'API key (X-WorldMonitor-Key: wm_...)'],
+                publicDiscovery: 'initialize, tools/list and notifications/initialized are servable without credentials',
+                docs: 'https://worldmonitor.app/docs/mcp-server'
+              }, null, 2)));
+            }
+          }
+        ];
+        var registered = false;
+        function register() {
+          if (registered) return;
+          var provider = typeof navigator !== 'undefined' ? navigator.modelContext : null;
+          if (!provider) return;
+          try {
+            if (typeof provider.registerTool === 'function') {
+              for (var i = 0; i < tools.length; i++) provider.registerTool(tools[i]);
+              registered = true;
+            } else if (typeof provider.provideContext === 'function') {
+              provider.provideContext({ tools: tools });
+              registered = true;
+            }
+          } catch (e) {
+            /* Progressive enhancement — never break page load for an optional API. */
+          }
+        }
+        register();
+        // Retry once for a provider installed after this head script runs (e.g. a
+        // scanner polyfill injected around DOMContentLoaded). The `registered`
+        // guard keeps it idempotent — a present-at-parse provider never re-registers.
+        if (!registered && typeof document !== 'undefined' && document.addEventListener) {
+          document.addEventListener('DOMContentLoaded', register, { once: true });
+          if (typeof window !== 'undefined' && window.addEventListener) {
+            window.addEventListener('load', register, { once: true });
+          }
+        }
+      })();
+    </script>
     <title>World Monitor — Free Real-Time Global Intelligence Dashboard</title>
     <meta name="description" content="By the time it's news, you already knew. Conflicts, shipping chokepoints, military flights, markets and cyber on one free live world map, with AI analysis. No signup." />
     <meta name="keywords" content="global intelligence dashboard, real-time world map, geopolitical monitoring, conflict tracking, OSINT dashboard, market monitoring, shipping chokepoints, satellite tracking, situational awareness, free intelligence platform, world news dashboard, AI news analysis" />

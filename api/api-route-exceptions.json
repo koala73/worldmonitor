@@ -185,6 +185,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/oauth-authorization-server.ts",
+      "category": "external-protocol",
+      "reason": "RFC 8414 OAuth Authorization Server metadata + WorkOS auth.md agent_auth block. Dynamic per-host so issuer/endpoints match the request origin and align with the host-derived RFC 9728 PRM — shape dictated by RFC 8414 / workos.com/auth-md.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/discord/oauth/callback.ts",
       "category": "external-protocol",
       "reason": "Discord OAuth redirect target — response is an HTML popup-closer page, query-param shape fixed by Discord.",
