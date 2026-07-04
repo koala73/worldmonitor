@@ -119,6 +119,10 @@ Measured with the new `scripts/measure-composited-layers.mjs` (CDP `LayerTree`) 
 | `div.nuclear-marker.construction` | 10 |
 | base-markers / structural / doc | ~20 |
 
+> Note: this capture predated the `describeNodeCap` skipped-node bucket. Treat the `(detached)` row as
+> "unresolved owner" evidence until rerun with the current harness; the total layer count and compositing
+> reasons remain the stable signals.
+
 Compositing reasons (frequency across the 517 layers):
 
 | Reason | Layers |

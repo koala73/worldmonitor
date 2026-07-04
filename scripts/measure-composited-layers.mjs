@@ -27,6 +27,16 @@
 import { pathToFileURL } from 'node:url';
 
 const DESCRIBE_NODE_CAP = 400;
+const DESCRIBE_NODE_CAP_SKIPPED_SELECTOR = '(describe-cap-skipped)';
+const CAP_SKIPPED_NODE = Object.freeze({ skippedByDescribeNodeCap: true });
+
+function parsePositiveNumberFlag(name, raw) {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error(`${name} must be a finite positive number`);
+  }
+  return n;
+}
 
 export function parseArgs(argv) {
   const args = { url: 'https://www.worldmonitor.app/dashboard', cpu: 1, settle: 15000, json: false };
@@ -34,11 +44,9 @@ export function parseArgs(argv) {
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     if (a === '--cpu') {
-      const n = Number(rest[++i]);
-      if (!Number.isNaN(n)) args.cpu = n;
+      args.cpu = parsePositiveNumberFlag('--cpu', rest[++i]);
     } else if (a === '--settle') {
-      const n = Number(rest[++i]);
-      if (!Number.isNaN(n)) args.settle = n;
+      args.settle = parsePositiveNumberFlag('--settle', rest[++i]);
     } else if (a === '--json') {
       args.json = true;
     } else if (!a.startsWith('--')) {
@@ -87,6 +95,7 @@ export function selectorForNode(node) {
 /**
  * Attribute each layer to a selector. A layer with a resolvable backend node
  * gets its selector; one whose node failed to resolve is '(detached)'; one with
+ * a node skipped by the describe cap is '(describe-cap-skipped)'; one with
  * no backend node at all is '(structural)' (compositor root/scroll layer). Every
  * layer is kept — nothing is dropped — so the count stays honest.
  */
@@ -94,7 +103,13 @@ export function attributeLayers(layers, nodes) {
   return (Array.isArray(layers) ? layers : []).map((l) => {
     const hasNode = l?.backendNodeId != null;
     const node = hasNode ? nodes?.[l.backendNodeId] : null;
-    const selector = node ? selectorForNode(node) : hasNode ? '(detached)' : '(structural)';
+    const selector = !hasNode
+      ? '(structural)'
+      : node?.skippedByDescribeNodeCap
+        ? DESCRIBE_NODE_CAP_SKIPPED_SELECTOR
+        : node
+          ? selectorForNode(node)
+          : '(detached)';
     return { layerId: l?.layerId, selector, width: l?.width, height: l?.height, paintCount: l?.paintCount };
   });
 }
@@ -136,6 +151,7 @@ export function buildLayerReport(result) {
     };
   }
   const attributed = attributeLayers(layers, result?.nodes);
+  const describeNodeSkippedCount = attributed.filter((a) => a.selector === DESCRIBE_NODE_CAP_SKIPPED_SELECTOR).length;
   return {
     url: result?.url,
     cpu: result?.cpu,
@@ -143,6 +159,13 @@ export function buildLayerReport(result) {
     contentLayerCount: layers.filter((l) => l?.drawsContent).length,
     owners: groupBySelector(attributed).slice(0, 25),
     reasons: summarizeReasons(result?.reasons).slice(0, 20),
+    ...(describeNodeSkippedCount > 0
+      ? {
+          describeNodeCap: DESCRIBE_NODE_CAP,
+          describeNodeSkippedCount,
+          warning: `DOM.describeNode cap reached; ${describeNodeSkippedCount} layers are bucketed as ${DESCRIBE_NODE_CAP_SKIPPED_SELECTOR}`,
+        }
+      : {}),
   };
 }
 
@@ -181,13 +204,17 @@ async function measure(url, { cpu = 1, settle = 15000 } = {}) {
     const reasons = {};
     let described = 0;
     for (const layer of layers) {
-      if (layer.backendNodeId != null && nodes[layer.backendNodeId] === undefined && described < DESCRIBE_NODE_CAP) {
-        described++;
-        try {
-          const { node } = await client.send('DOM.describeNode', { backendNodeId: layer.backendNodeId });
-          nodes[layer.backendNodeId] = { nodeName: node?.nodeName, attributes: node?.attributes || [] };
-        } catch {
-          nodes[layer.backendNodeId] = null;
+      if (layer.backendNodeId != null && nodes[layer.backendNodeId] === undefined) {
+        if (described < DESCRIBE_NODE_CAP) {
+          described++;
+          try {
+            const { node } = await client.send('DOM.describeNode', { backendNodeId: layer.backendNodeId });
+            nodes[layer.backendNodeId] = { nodeName: node?.nodeName, attributes: node?.attributes || [] };
+          } catch {
+            nodes[layer.backendNodeId] = null;
+          }
+        } else {
+          nodes[layer.backendNodeId] = CAP_SKIPPED_NODE;
         }
       }
       try {
@@ -213,12 +240,13 @@ async function measure(url, { cpu = 1, settle = 15000 } = {}) {
 
 function printHuman(report) {
   console.log(`\nComposited-layer audit — ${report.url} (CPU ${report.cpu}x)\n`);
-  if (report.warning) {
+  if (report.warning && report.layerCount === 0) {
     console.log('Warning:');
     console.log('  ' + report.warning + '\n');
     return;
   }
   console.log(`Composited layers: ${report.layerCount}  (${report.contentLayerCount} draw content)\n`);
+  if (report.warning) console.log(`Warning: ${report.warning}\n`);
   console.log('Top owners (layers per selector — over-promotion shows up here):');
   for (const o of report.owners) {
     console.log(`  ${String(o.count).padStart(4)}  ${o.selector}`);

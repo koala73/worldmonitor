@@ -57,6 +57,15 @@ test('parseArgs reads url + flags with sane defaults', () => {
   assert.equal(a.json, true);
 });
 
+test('parseArgs rejects non-positive, non-finite, and missing numeric flags', () => {
+  for (const value of ['0', '-1', 'Infinity']) {
+    assert.throws(() => parseArgs(['node', 's.mjs', '--cpu', value]), /--cpu must be a finite positive number/);
+    assert.throws(() => parseArgs(['node', 's.mjs', '--settle', value]), /--settle must be a finite positive number/);
+  }
+  assert.throws(() => parseArgs(['node', 's.mjs', '--cpu']), /--cpu must be a finite positive number/);
+  assert.throws(() => parseArgs(['node', 's.mjs', '--settle']), /--settle must be a finite positive number/);
+});
+
 test('parseAttributes turns the flat CDP attribute array into {id, className}', () => {
   assert.deepEqual(parseAttributes(['class', 'virtual-item', 'id', 'foo']), { id: 'foo', className: 'virtual-item' });
   assert.deepEqual(parseAttributes([]), { id: '', className: '' });
@@ -91,6 +100,32 @@ test('groupBySelector attributes structural + detached layers to their own bucke
   assert.equal(byName['canvas#map'], 1); // id wins over class
   assert.equal(byName['(structural)'], 1); // no backendNodeId
   assert.equal(byName['(detached)'], 1); // backendNodeId present but node null
+});
+
+test('cap-skipped nodes are reported separately from detached nodes', () => {
+  const result = {
+    url: 'http://x/dashboard',
+    cpu: 1,
+    layers: [
+      { layerId: '1', backendNodeId: 10, width: 20, height: 20, paintCount: 1, drawsContent: true },
+      { layerId: '2', backendNodeId: 99, width: 20, height: 20, paintCount: 1, drawsContent: true },
+      { layerId: '3', backendNodeId: 100, width: 20, height: 20, paintCount: 1, drawsContent: true },
+    ],
+    nodes: {
+      10: { nodeName: 'DIV', attributes: ['class', 'known-owner'] },
+      99: null,
+      100: { skippedByDescribeNodeCap: true },
+    },
+    reasons: {},
+  };
+  const report = buildLayerReport(result);
+  const byName = Object.fromEntries(report.owners.map((o) => [o.selector, o.count]));
+  assert.equal(byName['div.known-owner'], 1);
+  assert.equal(byName['(detached)'], 1);
+  assert.equal(byName['(describe-cap-skipped)'], 1);
+  assert.equal(report.describeNodeCap, 400);
+  assert.equal(report.describeNodeSkippedCount, 1);
+  assert.match(report.warning, /DOM\.describeNode cap reached/);
 });
 
 test('edge: only the two unavoidable map canvases → count 2, no excess owner', () => {
