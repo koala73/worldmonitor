@@ -58,6 +58,11 @@ describe('OpenAPI webhooks contract', () => {
     assert.equal(sig.schema.pattern, '^sha256=[0-9a-f]{64}$');
   });
 
+  it('the delivery id header schema constrains the whd_<32hex> format', () => {
+    const deliveryId = webhook.parameters.find((p) => p.name === DELIVERY_ID_HEADER);
+    assert.equal(deliveryId.schema.pattern, '^whd_[0-9a-f]{32}$');
+  });
+
   it('documents a verification recipe (HMAC-SHA256, constant-time compare)', () => {
     const desc = webhook.description ?? '';
     for (const needle of ['HMAC-SHA256', 'constant time', 'secret', 'do not hex-decode']) {

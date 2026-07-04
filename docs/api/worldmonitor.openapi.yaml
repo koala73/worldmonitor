@@ -13211,6 +13211,7 @@ webhooks:
                       dedupe retries and process deliveries idempotently.
                   schema:
                       type: string
+                      pattern: ^whd_[0-9a-f]{32}$
                       example: whd_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d
             requestBody:
                 required: true
