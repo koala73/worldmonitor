@@ -872,12 +872,12 @@ const ApiSection = () => (
           <li className="flex items-start gap-3">
             <Terminal className="w-5 h-5 text-wm-muted shrink-0" aria-hidden="true" />
             <span className="text-sm">
-              {t('apiSection.cli')}{' '}
+              {t('apiSection.cli')}{' — '}
               <a
                 href="https://www.npmjs.com/package/worldmonitor"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-wm-green hover:underline"
+                className="font-mono text-wm-green hover:underline"
               >
                 npx worldmonitor
               </a>
