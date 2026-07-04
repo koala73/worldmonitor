@@ -337,30 +337,94 @@ const welcomeFaqEntries = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 const welcomeSeoPrerender = `
 <div id="seo-prerender" lang="en">
   <h2>World Monitor — free real-time global intelligence dashboard</h2>
-  <p>${en.welcome.hero.sub} It runs instantly in the browser with no signup, is used by 2M+ people, and is open source under AGPL-3.0. <a href="${WIRED_STORY_URL}">Featured in WIRED</a>.</p>
+  <p>${en.welcome.hero.sub} It runs instantly in the browser with no signup, is used by 2M+ people across 190+ countries, and is open source under AGPL-3.0. <a href="${WIRED_STORY_URL}">Featured in WIRED</a>.</p>
 
   <h2>What World Monitor tracks</h2>
-  <p>World Monitor fuses 56 map layers across a dual 3D-globe and WebGL map: live conflict events, maritime AIS vessels, military and civilian flights, satellite passes, GPS jamming zones, submarine cables and landing stations, AI datacenters, pipelines, nuclear facilities, internet outages and BGP anomalies — alongside market quotes, sector heatmaps and a Country Instability Index across 196 countries. A daily AI brief and corroborated breaking alerts sit on top, and every panel cites its sources and timestamps inline.</p>
+  <p>World Monitor fuses 56 live map layers on a dual 3D-globe and WebGL map, then scores how they move together. Everything is normalized onto one surface: you see the raw signals, understand them through a daily AI brief and the Country Instability Index, and act with custom monitors, a Scenario Engine, Route Explorer and a 39-tool MCP server for AI agents. Every panel cites its sources and timestamps inline.</p>
+  <h3>Conflict &amp; security</h3>
+  <p>Live conflict events from ACLED and UCDP with escalation scoring, 29 scored geopolitical hotspots, military-posture and troop-movement signals, and corroborated breaking alerts that fire only when independent origin types agree.</p>
+  <h3>Maritime &amp; trade</h3>
+  <p>Live AIS vessel tracking, 13 shipping chokepoints — Hormuz, Bab el-Mandeb, Suez, Malacca and more — with transit counts, week-over-week change and disruption scoring, plus port activity and cargo inference.</p>
+  <h3>Aviation &amp; aerospace</h3>
+  <p>ADS-B tracking of global flights, satellite passes computed in-browser with SGP4 — watch ISS, Starlink and military birds overhead — and a live map of GPS jamming and spoofing zones.</p>
+  <h3>Energy &amp; infrastructure</h3>
+  <p>88 pipelines and LNG terminals, nuclear facilities, power grids and refineries, 313 mapped AI datacenters with power and operator metadata, and 86 submarine cables with landing stations, overlaid with outage and threat signals.</p>
+  <h3>Markets &amp; macro</h3>
+  <p>92 exchanges and assets — equities, commodities, crypto, ETF flows and analyst targets — alongside FRED, IMF and BIS macro data, central-bank and monetary-policy tracking, and GDP, inflation and interest-rate cycles.</p>
+  <h3>Climate &amp; natural hazards</h3>
+  <p>NASA FIRMS near-real-time fire and hotspot detection, USGS earthquakes, volcanic activity and severe-weather layers — mapped against the infrastructure and supply routes they can disrupt.</p>
+  <h3>Cyber &amp; connectivity</h3>
+  <p>Ransomware feeds, BGP hijack and route-anomaly detection, internet-outage monitoring and DDoS signals — the digital layer of global risk, tied to the physical cables and datacenters beneath it.</p>
+
+  <h2>See the signals move together</h2>
+  <p>${en.welcome.moments.sub} The edge is one surface where a country-risk spike, a chokepoint anomaly and a Brent move can explain each other in real time, before it becomes a consensus note.</p>
   <ul>
-    <li><strong>See</strong> — 56 map layers across a dual 3D-globe and WebGL map: conflicts, vessels, flights, satellites, pipelines, submarine cables and AI datacenters.</li>
-    <li><strong>Understand</strong> — a daily AI brief, the Country Instability Index across 196 countries, cross-source correlation and the Scenario Engine.</li>
-    <li><strong>Act</strong> — custom monitors and alerts, Route Explorer, and a 39-tool MCP server and REST API for Claude, GPT and custom agents.</li>
+    <li><strong>Markets</strong> — country risk, sanctions and hotspot escalation show where geopolitical pressure is rising; ships, cables and flights show whether it can hit supply, trade or capital routes; rates, FX, equities and safe-haven assets show which market regime is repricing.</li>
+    <li><strong>Commodities</strong> — AIS, ports, pipelines, LNG and chokepoints show when physical supply slows or reroutes, weather and fires show the disruptions, and oil, gas, grains and miners show how the shock prices through.</li>
+    <li><strong>AI infrastructure</strong> — AI datacenters sit beside grids, pipelines and nuclear power, and grid-stress, heat and fire layers show which compute corridors are under pressure and which companies are exposed.</li>
+    <li><strong>Connectivity</strong> — subsea cables, landing stations and BGP-anomaly feeds show whether a physical fault is becoming a digital outage, and which trade corridors lose their fallback routes first.</li>
   </ul>
+
+  <h2>Your first five minutes on the live map</h2>
+  <p>There is no tour, no empty state and no signup wall. The map is already moving as the page loads — conflicts, vessels, flights, fires and outages render immediately, with nothing to configure first. Click any country to open its dossier. Press the command palette (Ctrl-K or Cmd-K) for 154 commands that jump straight to any layer, panel or country. Switch lens between World, Tech, Finance, Commodity, Energy and Happy — the same engine tuned into six monitors, one click apart. What loads first is maybe a tenth of what is there; the rest surfaces as the world moves — satellite passes, GPS-jamming zones, dark ships, protest clusters and siren alerts.</p>
+
+  <h2>Country briefs, instability scores and corroborated alerts</h2>
+  <p>Click any country and a full dossier opens: a Country Instability Index with its component signals, an AI brief with cited headlines, active signals and a 7-day timeline, plus resilience rankings across 196 countries. Breaking alerts are deliberately quiet — a banner fires only when five independent origin types corroborate an event (news classification, keyword velocity, hotspot escalation, military surges and official sirens), deduplicated and rate-limited, so you get fewer alerts and real ones.</p>
 
   <h2>Where the data comes from</h2>
   <p>65+ named providers, live: <a href="https://acleddata.com/">ACLED</a> and <a href="https://ucdp.uu.se/">UCDP</a> for conflict, <a href="https://aisstream.io/">AISStream</a> for vessels, <a href="https://opensky-network.org/">OpenSky</a> for aircraft, <a href="https://firms.modaps.eosdis.nasa.gov/">NASA FIRMS</a> for fires, <a href="https://www.usgs.gov/programs/earthquake-hazards">USGS</a> for earthquakes, and <a href="https://www.imf.org/en/Data">IMF</a>, <a href="https://www.bis.org/">BIS</a>, <a href="https://fred.stlouisfed.org/">FRED</a> and <a href="https://finnhub.io/">Finnhub</a> for markets and macro — plus 500+ curated news feeds, all active under one key with no separate registrations.</p>
+
+  <h2>How World Monitor works</h2>
+  <p>World Monitor ingests 500+ curated feeds and 65+ named providers on independent refresh cycles, normalizes every event into a common schema, geolocates it and deduplicates it across sources. A breaking-news banner fires only when five independent origin types corroborate the same event, so alerts stay rare and real. The Country Instability Index fuses weighted signals per country, the daily AI brief cites the specific headlines behind each assessment, and the correlation engine surfaces when separate systems — geopolitics, shipping, energy and markets — start moving together. Nothing is a black box: every panel shows its sources and the timestamp of its most recent update.</p>
 
   <h2>Watch shipping chokepoints in real time</h2>
   <p>Thirteen shipping chokepoints — including Hormuz, Bab el-Mandeb, Suez and Malacca — are tracked with live AIS vessel counts, week-over-week transit change and disruption scoring, with density anomalies flagged against each strait's rolling baseline.</p>
 
   <h2>Built for AI agents</h2>
-  <p>World Monitor ships a 39-tool MCP server, so Claude, GPT or any MCP-compatible agent can query live country risk scores, chokepoint status, conflicts, markets and country briefs — with JMESPath projection so agents fetch exactly the fields they need. A public REST API and developer documentation are available for custom integrations.</p>
+  <p>World Monitor ships a 39-tool MCP server, so Claude, GPT or any MCP-compatible agent can query live country risk scores, chokepoint status, conflicts, markets and country briefs — researching with live data instead of training-data memories. Every tool accepts a JMESPath projection so agents fetch exactly the fields they need, a single OAuth key reaches 65+ upstream providers, and the whole platform is open source under AGPL-3.0. A public REST API with OpenAPI 3.1 documentation is available for custom integrations.</p>
+  <p>Representative MCP tools include country risk, country brief and world brief; conflict events, military posture and cyber threats; maritime activity, chokepoint status and supply-chain data; market data, economic data and consumer prices; energy intelligence, commodity geography and tariff trends; natural disasters, climate and health signals; news intelligence, prediction markets, situation analysis and forecast generation — each accepting an optional JMESPath projection, with a describe_tool call that returns its full schema. Read-only resources expose country risk, chokepoint status, seed-freshness metadata and market quotes at addressable URIs, and prompt templates pre-package common workflows such as country briefings, energy-shock watch, market-open prep and route-risk checks.</p>
 
   <h2>Who uses World Monitor</h2>
   <p>Investors and analysts pricing geopolitical risk, traders watching supply-chain and energy disruptions, researchers and journalists corroborating events across independent sources, and government, defence and NGO teams tracking situational awareness — all from one live map instead of a dozen separate tools.</p>
 
   <h2>Free, Pro and open source</h2>
-  <p>The full live map — every layer, 500+ feeds, country briefs and breaking alerts, all six monitors — is free with no signup and no trial clock. World Monitor Pro ($39.99/month or $399.99/year) adds WM Analyst chat, the Scenario Engine, Route Explorer, scheduled AI digests to Slack, Discord, Telegram, Email or webhook, a custom widget builder, and MCP and API access — 30+ services under one key. Native desktop apps for Windows, macOS and Linux and an Android TV app for wall displays are available too.</p>
+  <p>The full live map — every layer, 500+ feeds, country briefs and breaking alerts, all six monitors — is free with no signup and no trial clock. World Monitor Pro ($39.99/month or $399.99/year) adds the decision layer described below, and native desktop apps for Windows, macOS and Linux plus an Android TV app for wall displays are available too.</p>
+
+  <h2>What World Monitor Pro and Enterprise add</h2>
+  <p>Pro turns the observatory into an operations room. WM Analyst answers questions across 30+ live services with citations; a Scenario Engine and Route Explorer let you game disruptions before they hit; a personal AI digest sends up to 30 ranked items daily, twice-daily or weekly to Slack, Discord, Telegram, Email or webhook; a custom widget builder assembles your own panels from HTML, CSS and JavaScript with AI assistance; and MCP plus a REST API expose 39 tools under one key. Enterprise adds team workspaces with SSO, MFA and RBAC; cloud, on-premises or air-gapped deployment; satellite imagery with change detection and SAR; tens of thousands of mapped infrastructure assets; and 100+ data connectors including Snowflake, Splunk and Sentinel.</p>
+
+  <h2>The numbers, live in the dashboard today</h2>
+  <p>Every figure below is live now, not a roadmap — open the app and count. Sources are cited on every panel.</p>
+  <ul>
+    <li>56 live map layers</li>
+    <li>500+ curated news and data feeds</li>
+    <li>65+ named data providers under one key</li>
+    <li>13 maritime chokepoints tracked with live AIS</li>
+    <li>86 submarine cables mapped</li>
+    <li>88 pipelines and LNG terminals</li>
+    <li>313 AI datacenters mapped</li>
+    <li>29 scored geopolitical hotspots</li>
+    <li>92 exchanges and market assets</li>
+    <li>196 countries with resilience rankings</li>
+    <li>39 MCP tools for AI agents</li>
+    <li>154 command-palette actions</li>
+    <li>24 interface languages, including right-to-left</li>
+    <li>5 independent origin types behind every breaking alert</li>
+  </ul>
+
+  <h2>Key terms</h2>
+  <dl>
+    <dt>Country Instability Index (CII)</dt><dd>A composite score that fuses weighted per-country signals — conflict, unrest, economic and governance indicators — into a single, comparable measure of instability.</dd>
+    <dt>Chokepoint</dt><dd>A narrow maritime strait such as Hormuz, Bab el-Mandeb, Suez or Malacca where global shipping concentrates, so a disruption there ripples through world trade and energy prices.</dd>
+    <dt>AIS (Automatic Identification System)</dt><dd>Transponder signals broadcast by ships, used to track vessel positions, port calls and chokepoint transits in real time.</dd>
+    <dt>ADS-B</dt><dd>Automatic Dependent Surveillance–Broadcast, the transponder feed used to track aircraft positions and flight patterns worldwide.</dd>
+    <dt>BGP anomaly</dt><dd>An irregularity in the internet's Border Gateway Protocol routing that can reveal a route hijack, leak or large-scale outage.</dd>
+    <dt>OSINT</dt><dd>Open-source intelligence — analysis assembled entirely from publicly available data, which is what World Monitor makes accessible on one map.</dd>
+    <dt>MCP (Model Context Protocol)</dt><dd>An open standard that lets AI agents call external tools; World Monitor ships a 39-tool MCP server so agents can query live data directly.</dd>
+    <dt>JMESPath</dt><dd>A JSON query language agents use to project just the fields they need from a tool response, cutting token usage on every call.</dd>
+    <dt>SGP4</dt><dd>The orbital-propagation model World Monitor runs in the browser to compute live satellite positions and overhead passes.</dd>
+    <dt>SAR (Synthetic Aperture Radar)</dt><dd>All-weather, day-and-night satellite radar imaging, available on Enterprise for change detection where optical imagery cannot see.</dd>
+  </dl>
 
   <h2>Six dashboards, one platform</h2>
   <ul>
@@ -375,6 +439,16 @@ const welcomeSeoPrerender = `
   <h2>${en.welcome.faq.title}</h2>
   <dl>
 ${welcomeFaqEntries}
+  </dl>
+
+  <h2>More questions analysts and agents ask</h2>
+  <dl>
+    <dt>How fresh is the data?</dt><dd>Feeds refresh on independent cycles ranging from seconds to minutes, and every panel shows the timestamp of its most recent update. The free tier refreshes every 5–15 minutes; Pro runs near real time.</dd>
+    <dt>Can I get alerts on Slack, Telegram or email?</dt><dd>Yes. Pro delivers scheduled AI digests and real-time alerts to Slack, Discord, Telegram, Email or webhook, AES-256 encrypted, with quiet hours and per-rule triggers.</dd>
+    <dt>Does it work on mobile, desktop and TV?</dt><dd>Yes. World Monitor runs in any modern browser, with native desktop apps for Windows, macOS and Linux and an Android TV app for SOC walls and trading floors.</dd>
+    <dt>What languages does it support?</dt><dd>24 interface languages, including right-to-left scripts such as Arabic, Farsi and Hebrew.</dd>
+    <dt>Can I self-host World Monitor?</dt><dd>Yes. The platform is open source under AGPL-3.0 on GitHub — read the code, self-host it or build on it. Enterprise adds on-premises and air-gapped deployment.</dd>
+    <dt>Is there an API for developers?</dt><dd>Yes. A REST API spans all 30+ service domains with structured JSON, cache headers and OpenAPI 3.1 docs, authenticated per key and rate-limited per tier, alongside the 39-tool MCP server.</dd>
   </dl>
 
   <h2>Learn more</h2>
