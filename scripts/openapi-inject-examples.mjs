@@ -152,6 +152,21 @@ function resolveRef(schema, spec) {
   return resolved;
 }
 
+// Honeypot fields are hidden anti-bot inputs: the handlers silently discard any
+// non-empty value (server/worldmonitor/leads/v1/{register-interest,submit-contact}.ts),
+// so a populated example is a fake-success trap — a developer copying the sample
+// gets a 200 but nothing is registered/emailed, and the value contradicts the
+// field's own "real submissions leave it empty" description. They're detected by
+// the schema-description marker (general — auto-covers any future honeypot) and
+// DROPPED from the generated example object entirely. An empty-string override is
+// insufficient: constrainedString('') coerces '' back to the 'example' placeholder.
+function isHoneypotField(propSchema, spec) {
+  if (!propSchema || typeof propSchema !== 'object') return false;
+  const resolved = propSchema.$ref ? resolveRef(propSchema, spec) : propSchema;
+  const description = String(resolved?.description ?? propSchema.description ?? '').toLowerCase();
+  return description.includes('honeypot');
+}
+
 function schemaType(schema) {
   if (!schema || typeof schema !== 'object') return undefined;
   const t = Array.isArray(schema.type) ? schema.type.find((v) => v !== 'null') : schema.type;
@@ -317,8 +332,13 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   }
   if (type === 'object') {
     const props = schema.properties ?? {};
-    const required = new Set(Array.isArray(schema.required) ? schema.required : []);
-    const optional = Object.keys(props).filter((key) => !required.has(key)).slice(0, MAX_OPTIONAL_PROPERTIES);
+    // Drop honeypot fields before slot selection so they never appear in the
+    // example and never consume a MAX_OPTIONAL_PROPERTIES slot from a real field.
+    const isHoneypot = (key) => isHoneypotField(props[key], spec);
+    const required = new Set((Array.isArray(schema.required) ? schema.required : []).filter((key) => !isHoneypot(key)));
+    const optional = Object.keys(props)
+      .filter((key) => !required.has(key) && !isHoneypot(key))
+      .slice(0, MAX_OPTIONAL_PROPERTIES);
     const keys = [...required, ...optional];
     if (keys.length === 0) {
       if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
