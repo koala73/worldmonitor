@@ -1,7 +1,7 @@
 import * as Sentry from '@sentry/react';
 
 /**
- * Shared Sentry bootstrap for both marketing entries (/pro and /welcome).
+ * Shared Sentry bootstrap for both marketing entries (/pro and root welcome).
  * Must be imported before the React render in every entry's main file.
  */
 export function initSentry(): void {

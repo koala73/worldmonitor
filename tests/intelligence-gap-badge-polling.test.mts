@@ -16,3 +16,31 @@ describe('IntelligenceGapBadge polling', () => {
     );
   });
 });
+
+describe('IntelligenceGapBadge teardown', () => {
+  it('tracks the findings modal overlay and its Esc listener on the instance', () => {
+    assert.match(src, /this\.findingsModalOverlay = overlay;/, 'showAllFindings must store the overlay on the instance');
+    assert.match(src, /this\.findingsModalEscListener = onEsc;/, 'showAllFindings must store the Esc listener on the instance');
+  });
+
+  it('dismissFindingsModal removes the document keydown listener and the overlay', () => {
+    const idx = src.indexOf('private dismissFindingsModal(): void');
+    assert.notEqual(idx, -1, 'dismissFindingsModal() must exist');
+    const body = src.slice(idx, idx + 400);
+    assert.match(
+      body,
+      /removeEventListener\(\s*'keydown'\s*,\s*this\.findingsModalEscListener\b/,
+      'dismissFindingsModal must remove the document keydown (Esc) listener',
+    );
+    assert.match(
+      body,
+      /this\.findingsModalOverlay\??\.remove\(\)/,
+      'dismissFindingsModal must remove the overlay element',
+    );
+  });
+
+  it('destroy tears down an open findings modal so it cannot outlive the badge', () => {
+    const destroyBody = src.slice(src.indexOf('public destroy(): void'));
+    assert.match(destroyBody, /this\.dismissFindingsModal\(\);/, 'destroy() must dismiss the findings modal');
+  });
+});

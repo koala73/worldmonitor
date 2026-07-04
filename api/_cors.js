@@ -34,6 +34,13 @@ const EXPOSED_HEADERS = [
   'Mcp-Session-Id',
   'WWW-Authenticate',
   'Retry-After',
+  'X-RateLimit-Limit',
+  'X-RateLimit-Remaining',
+  'X-RateLimit-Reset',
+  'X-WorldMonitor-Bbox',
+  'X-WorldMonitor-Bbox-Missing',
+  'X-WorldMonitor-Bbox-Invalid',
+  'X-Military-Bbox',
 ].join(', ');
 
 function isAllowedOrigin(origin) {

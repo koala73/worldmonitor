@@ -17,7 +17,7 @@
  * `/api/news/v1/list-feed-digest?lang=en` cannot be replayed against
  * `/api/intelligence/v1/deduct-situation` (Codex round-2 review finding).
  *
- *   payload   = `${ts}:${method}:${pathname}:${queryHash}:${bodyHash}:${userId}`
+ *   payload   = `${ts}:${method}:${pathname}:${queryHash}:${bodyHash}:${userId}:${nonce}`
  *   queryHash = SHA-256(canonicalQueryString(URL))
  *   bodyHash  = SHA-256(bodyBytes)        // SHA-256("") for GET / no body
  *   sig       = HMAC-SHA-256(secret, payload)
@@ -38,6 +38,9 @@ export const INTERNAL_MCP_SIG_HEADER = 'X-WM-MCP-Internal';
 
 /** Header carrying the userId the signature claims to represent. */
 export const INTERNAL_MCP_USER_ID_HEADER = 'X-WM-MCP-User-Id';
+
+/** Header carrying the one-shot request nonce bound into the HMAC payload. */
+export const INTERNAL_MCP_NONCE_HEADER = 'X-WM-MCP-Nonce';
 
 /** Trusted markers set by the gateway AFTER successful verify. Downstream
  *  handlers (`isCallerPremium`) read these — never the inbound headers.
@@ -75,6 +78,17 @@ export function getInternalMcpVerifiedNonce(): string {
 /** Timestamp window (seconds) for replay defense. Default per plan: 30s.
  *  Loosen via env if production observes clock skew. */
 export const INTERNAL_MCP_TIMESTAMP_WINDOW_SECONDS = 30;
+
+/** Replay-cache TTL. The verify timestamp check is SYMMETRIC — a signature
+ * is accepted whenever `Math.abs(nowSec - ts) <= WINDOW`, i.e. across a full
+ * `2 * WINDOW` span (up to WINDOW seconds "in the past" and WINDOW seconds
+ * "in the future" relative to the gateway clock). The nonce entry MUST
+ * outlive that entire acceptance span regardless of clock-skew direction:
+ * if the signer's clock leads the gateway's, a nonce cached at first sight
+ * could otherwise expire while the same signature is still inside the
+ * acceptance window, reopening the replay. So the TTL must be at least
+ * `2 * WINDOW`; the small margin absorbs Redis EX rounding / propagation. */
+export const INTERNAL_MCP_REPLAY_CACHE_TTL_SECONDS = 2 * INTERNAL_MCP_TIMESTAMP_WINDOW_SECONDS + 5;
 
 // ---------------------------------------------------------------------------
 // Canonicalisation primitives — exported so U8's verifier produces byte-
@@ -153,8 +167,9 @@ export function buildHmacPayload(args: {
   queryHash: string;
   bodyHash: string;
   userId: string;
+  nonce: string;
 }): string {
-  return `${args.ts}:${args.method.toUpperCase()}:${args.pathname}:${args.queryHash}:${args.bodyHash}:${args.userId}`;
+  return `${args.ts}:${args.method.toUpperCase()}:${args.pathname}:${args.queryHash}:${args.bodyHash}:${args.userId}:${args.nonce}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -195,8 +210,21 @@ export interface SignedInternalMcpHeaders {
   signature: string;
   /** UserId the signature claims; sent as `X-WM-MCP-User-Id`. */
   userId: string;
+  /** One-shot nonce bound into the signature payload. */
+  nonce: string;
   /** Unix-seconds timestamp embedded in the signature payload. */
   ts: number;
+}
+
+function makeInternalMcpNonce(): string {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function isValidInternalMcpNonce(nonce: string): boolean {
+  return /^[A-Za-z0-9_-]{16,128}$/.test(nonce);
 }
 
 /**
@@ -214,6 +242,8 @@ export interface SignedInternalMcpHeaders {
  * @param userId  The Pro userId being attributed to this request.
  * @param secret  `MCP_INTERNAL_HMAC_SECRET`. The function does NOT read env
  *                directly — caller passes it explicitly so tests can inject.
+ * @param nonce   Optional test injection. Production callers get a fresh
+ *                random UUID per signed request.
  * @param now     Override Unix-seconds (test injection); defaults to `Date.now()/1000`.
  */
 export async function signInternalMcpRequest(args: {
@@ -222,10 +252,13 @@ export async function signInternalMcpRequest(args: {
   body?: BodyInit | null | undefined;
   userId: string;
   secret: string;
+  nonce?: string;
   now?: number;
 }): Promise<SignedInternalMcpHeaders> {
   if (!args.userId) throw new Error('signInternalMcpRequest: userId is required');
   if (!args.secret) throw new Error('signInternalMcpRequest: secret is required');
+  const nonce = args.nonce ?? makeInternalMcpNonce();
+  if (!isValidInternalMcpNonce(nonce)) throw new Error('signInternalMcpRequest: nonce must be 16-128 URL-safe characters');
 
   const url = args.url instanceof URL ? args.url : new URL(args.url);
   const ts = Math.floor(args.now ?? Date.now() / 1000);
@@ -238,9 +271,10 @@ export async function signInternalMcpRequest(args: {
     queryHash,
     bodyHash,
     userId: args.userId,
+    nonce,
   });
   const sig = await hmacSha256Base64Url(args.secret, payload);
-  return { signature: `${ts}.${sig}`, userId: args.userId, ts };
+  return { signature: `${ts}.${sig}`, userId: args.userId, nonce, ts };
 }
 
 /**
@@ -295,6 +329,7 @@ export function buildInternalMcpHeaders(signed: SignedInternalMcpHeaders): Recor
   return {
     [INTERNAL_MCP_SIG_HEADER]: signed.signature,
     [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+    [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
   };
 }
 
@@ -310,6 +345,8 @@ export function buildInternalMcpHeaders(signed: SignedInternalMcpHeaders): Recor
 export interface VerifiedInternalMcpRequest {
   /** UserId carried by the verified `X-WM-MCP-User-Id` header. */
   userId: string;
+  /** One-shot nonce carried by `X-WM-MCP-Nonce` and bound into the HMAC. */
+  nonce: string;
 }
 
 /**
@@ -354,16 +391,17 @@ function parseSignatureHeader(value: string | null): { ts: number; sigB64u: stri
 /**
  * Verify an inbound internal-MCP request signed by U7's sign helpers.
  *
- * Reads `X-WM-MCP-Internal` (`<ts>.<base64url-sig>`) and `X-WM-MCP-User-Id`
- * from the request. Re-canonicalises the inbound request the SAME way the
- * signer did — exporting/importing canonicalQueryString, sha256Hex,
- * buildHmacPayload from this module is the single-source-of-truth invariant.
+ * Reads `X-WM-MCP-Internal` (`<ts>.<base64url-sig>`), `X-WM-MCP-User-Id`,
+ * and `X-WM-MCP-Nonce` from the request. Re-canonicalises the inbound request
+ * the SAME way the signer did — exporting/importing canonicalQueryString,
+ * sha256Hex, buildHmacPayload from this module is the single-source-of-truth
+ * invariant.
  *
  * Body handling: `req.clone().bytes()` reads the body as raw bytes; cloning
  * preserves the original body for the downstream handler. Body-less requests
  * (GET) hash to SHA-256("") consistently between sign and verify.
  *
- * Returns `{userId}` on success, `null` on ANY verification failure
+ * Returns `{userId, nonce}` on success, `null` on ANY verification failure
  * (missing headers, malformed signature, timestamp out of window, signature
  * mismatch). The gateway treats null as 401 `invalid_internal_mcp_signature`
  * and MUST NOT fall through to other auth paths.
@@ -383,7 +421,8 @@ export async function verifyInternalMcpRequest(
 
   const sigHeader = req.headers.get(INTERNAL_MCP_SIG_HEADER);
   const userId = req.headers.get(INTERNAL_MCP_USER_ID_HEADER);
-  if (!sigHeader || !userId) return null;
+  const nonce = req.headers.get(INTERNAL_MCP_NONCE_HEADER);
+  if (!sigHeader || !userId || !nonce || !isValidInternalMcpNonce(nonce)) return null;
 
   const parsed = parseSignatureHeader(sigHeader);
   if (!parsed) return null;
@@ -444,10 +483,11 @@ export async function verifyInternalMcpRequest(
     queryHash,
     bodyHash,
     userId,
+    nonce,
   });
   const expectedSig = await hmacSha256Base64Url(secret, expectedPayload);
 
   const ok = await timingSafeStringEqual(expectedSig, sigB64u);
   if (!ok) return null;
-  return { userId };
+  return { userId, nonce };
 }

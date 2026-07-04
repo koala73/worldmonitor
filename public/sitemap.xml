@@ -7,6 +7,12 @@
     <priority>1.0</priority>
   </url>
   <url>
+    <loc>https://www.worldmonitor.app/dashboard</loc>
+    <lastmod>2026-06-13</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://www.worldmonitor.app/pro</loc>
     <lastmod>2026-03-19</lastmod>
     <changefreq>weekly</changefreq>
@@ -37,34 +43,34 @@
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://www.worldmonitor.app/welcome</loc>
-    <lastmod>2026-06-13</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://tech.worldmonitor.app/</loc>
+    <loc>https://tech.worldmonitor.app/dashboard</loc>
     <lastmod>2026-03-19</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://finance.worldmonitor.app/</loc>
+    <loc>https://finance.worldmonitor.app/dashboard</loc>
     <lastmod>2026-03-19</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://commodity.worldmonitor.app/</loc>
+    <loc>https://commodity.worldmonitor.app/dashboard</loc>
     <lastmod>2026-03-26</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://happy.worldmonitor.app/</loc>
+    <loc>https://happy.worldmonitor.app/dashboard</loc>
     <lastmod>2026-03-19</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://energy.worldmonitor.app/dashboard</loc>
+    <lastmod>2026-06-13</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://www.worldmonitor.app/blog/</loc>

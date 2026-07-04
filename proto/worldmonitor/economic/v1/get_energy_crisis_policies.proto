@@ -43,5 +43,7 @@ message GetEnergyCrisisPoliciesResponse {
   // UTC ISO-8601 timestamp when this data was last updated.
   string updated_at = 5;
   // True when upstream seed data is unavailable (fallback result).
+  // True when the upstream or seed-backed variant is unavailable; empty payload fields
+  // are graceful degradation, not confirmed zero data.
   bool unavailable = 6;
 }

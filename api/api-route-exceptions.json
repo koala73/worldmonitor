@@ -38,6 +38,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/error-fingerprint.ts",
+      "category": "external-protocol",
+      "reason": "MCP Sentry grouping helper for tools/call capture sites. Keeps MCP external-protocol failures grouped by step, tool, and stable inner error signature without introducing a sebuf product API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/registry/cache-tools.ts",
       "category": "external-protocol",
       "reason": "MCP TOOL_REGISTRY cache-tool entries (no _execute). Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
@@ -185,6 +192,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/oauth-authorization-server.ts",
+      "category": "external-protocol",
+      "reason": "RFC 8414 OAuth Authorization Server metadata + WorkOS auth.md agent_auth block. Dynamic per-host so issuer/endpoints match the request origin and align with the host-derived RFC 9728 PRM — shape dictated by RFC 8414 / workos.com/auth-md.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/discord/oauth/callback.ts",
       "category": "external-protocol",
       "reason": "Discord OAuth redirect target — response is an HTML popup-closer page, query-param shape fixed by Discord.",
@@ -328,6 +342,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/not-found.ts",
+      "category": "ops-admin",
+      "reason": "Structured JSON 404 responder for unmatched /api/* paths (via a vercel.json rewrite). Fixed-shape error envelope for agents/scanners in place of Vercel's native text/plain NOT_FOUND; not a product API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/cache-purge.js",
       "category": "ops-admin",
       "reason": "Admin-gated cache invalidation endpoint. Internal operator action, not a product API.",
@@ -373,7 +394,7 @@
     {
       "path": "api/bootstrap.js",
       "category": "internal-helper",
-      "reason": "Dashboard-internal config bundle assembled at request time. Exposing as a user-facing API would implicitly commit us to its shape; keep it deliberately unversioned and out of the API surface.",
+      "reason": "Aggregate seeded-cache hydration bundle assembled at request time. Kept outside sebuf because the shape is intentionally unversioned and aggregate, not a typed domain RPC; the added user-API-key validation does not change that shape.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },

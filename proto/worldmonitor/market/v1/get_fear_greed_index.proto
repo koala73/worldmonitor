@@ -45,6 +45,8 @@ message GetFearGreedIndexResponse {
   double aaii_bull = 22;
   double aaii_bear = 23;
   string fed_rate = 24;
+  // True when the upstream or seed-backed variant is unavailable; empty payload fields
+  // are graceful degradation, not confirmed zero data.
   bool unavailable = 25;
   // Bespoke Fear & Greed header stress ratio, not the KCFSI/ECB FSI panel
   // composite. Formula: (HYG / TLT) / (VIX * HY OAS / 100).

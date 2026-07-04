@@ -66,14 +66,16 @@ services:
       EIA_API_KEY: ""             # https://www.eia.gov/opendata/ (free)
 
       # ⚔️ Conflict & Unrest
-      ACLED_ACCESS_TOKEN: ""      # https://acleddata.com (free for researchers)
+      ACLED_EMAIL: ""             # https://acleddata.com (free for researchers)
+      ACLED_PASSWORD: ""          # OAuth flow — tokens auto-refresh (preferred over ACLED_ACCESS_TOKEN)
+      ACLED_ACCESS_TOKEN: ""      # Alternative: static token (expires every 24h)
 
       # 🛰️ Earth Observation
       NASA_FIRMS_API_KEY: ""      # REQUIRED for seed-fire-detections.mjs — https://firms.modaps.eosdis.nasa.gov (free)
 
       # ✈️ Aviation
       AVIATIONSTACK_API: ""       # https://aviationstack.com (free tier)
-
+      TRAVELPAYOUTS_API_TOKEN: "" # https://travelpayouts.com (flight price search — optional)
       # 🚢 Maritime
       AISSTREAM_API_KEY: ""       # https://aisstream.io (free)
 
@@ -116,6 +118,13 @@ To automate, add a cron job:
 # Re-seed every 30 minutes
 */30 * * * * cd /path/to/worldmonitor && ./scripts/run-seeders.sh >> /tmp/wm-seeders.log 2>&1
 ```
+
+**Per-seeder timeout (`SEED_TIMEOUT`):** standalone seeders are each wrapped in a
+wall-clock cap so one hung upstream can't starve the rest of the run. It defaults
+to `1800` (30 min); override with `SEED_TIMEOUT=<seconds>`, or `SEED_TIMEOUT=0` to
+disable. Bundle seeders (`seed-bundle-*.mjs`) are exempt — they already bound each
+section internally. Requires the `timeout` command (GNU coreutils); if it's absent
+the cap is silently skipped.
 
 ### 🔧 Manual seeder invocation
 

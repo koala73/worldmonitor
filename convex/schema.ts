@@ -10,10 +10,17 @@ const subscriptionStatus = v.union(
   v.literal("expired"),
 );
 
-// Payment event status enum — covers charge outcomes and dispute lifecycle
+// Payment event status enum — covers charge outcomes and dispute lifecycle.
+// `processing` / `requires_customer_action` are NON-terminal states (3DS/SCA
+// in flight); persisting them gives the app a pending-payment signal for
+// duplicate-prevention (#4438) and reconciliation (#4439). `cancelled` is a
+// terminal-but-uncharged outcome. See convex/payments/webhookMutations.ts.
 const paymentEventStatus = v.union(
   v.literal("succeeded"),
   v.literal("failed"),
+  v.literal("processing"),
+  v.literal("requires_customer_action"),
+  v.literal("cancelled"),
   v.literal("dispute_opened"),
   v.literal("dispute_won"),
   v.literal("dispute_lost"),
@@ -29,6 +36,13 @@ export default defineSchema({
     updatedAt: v.number(),
     syncVersion: v.number(),
   }).index("by_user_variant", ["userId", "variant"]),
+
+  userPreferenceWriteRateLimits: defineTable({
+    userId: v.string(),
+    windowStart: v.number(),
+    count: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user_window", ["userId", "windowStart"]),
 
   notificationChannels: defineTable(
     v.union(
@@ -543,6 +557,12 @@ export default defineSchema({
       // the next subscription event; legacy rows return undefined and
       // every consumer treats undefined as "no MCP access" (fail-closed).
       mcpAccess: v.optional(v.boolean()),
+      // Optional — per-account daily REST allowance (#3199). Legacy rows
+      // predate it; the rate-limit consumer treats undefined as "no daily
+      // limit" (fail-OPEN). Catalog-sourced writes always set it, so this
+      // validator MUST accept it or the webhook's entitlement write is
+      // rejected (v.object is strict on extra keys).
+      apiDailyAllowance: v.optional(v.number()),
     }),
     validUntil: v.number(),
     // Optional complimentary-entitlement floor. When set and in the future,
@@ -617,11 +637,22 @@ export default defineSchema({
     currency: v.string(),
     status: paymentEventStatus,
     dodoSubscriptionId: v.optional(v.string()),
+    // Plan key (e.g. "pro_monthly") threaded through the checkout-session
+    // metadata bridge (metadata.wm_plan_key) so a pending 3DS payment row can be
+    // resolved to its PRODUCT_CATALOG tierGroup for the duplicate-payment guard
+    // (#4438). Optional: legacy rows and sessions created before the bridge
+    // shipped simply have none (the guard fails open for those — see #4438 plan).
+    planKey: v.optional(v.string()),
     rawPayload: v.any(),
     occurredAt: v.number(),
   })
     .index("by_userId", ["userId"])
-    .index("by_dodoPaymentId", ["dodoPaymentId"]),
+    .index("by_dodoPaymentId", ["dodoPaymentId"])
+    // Time-bounded read for the duplicate-payment guard (#4438): it only needs
+    // recent rows (within the staleness window), so it queries this index with a
+    // range on occurredAt instead of collecting the user's whole (unbounded,
+    // rawPayload-carrying) payment history — keeps the guard fail-open.
+    .index("by_userId_occurredAt", ["userId", "occurredAt"]),
 
   productPlans: defineTable({
     dodoProductId: v.string(),

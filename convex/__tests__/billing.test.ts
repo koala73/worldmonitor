@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import schema from "../schema";
 import { internal } from "../_generated/api";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
+import { PENDING_PAYMENT_BLOCK_WINDOW_MS } from "../payments/billing";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -170,6 +171,361 @@ describe("payments billing duplicate-checkout guard", () => {
     );
 
     expect(result).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #4438 — pending-payment dedup guard. The original incident let a customer
+// stack 4–5 payments all in "Requires customer action" because the subscription
+// guard above is blind to pending 3DS payments (no subscription row exists yet).
+// This guard blocks a NEW checkout when a recent pending payment exists in the
+// SAME tier group, fails open when a pending row's tier group is unresolvable,
+// and never blocks across tier groups (a pending Pro payment must not block an
+// API checkout — the reviewer's case).
+// ---------------------------------------------------------------------------
+
+const MIN_MS = 60 * 1000;
+
+async function seedPaymentEvent(
+  t: ReturnType<typeof convexTest>,
+  opts: {
+    status:
+      | "processing"
+      | "requires_customer_action"
+      | "succeeded"
+      | "failed"
+      | "cancelled";
+    planKey?: string;
+    occurredAt: number;
+    suffix: string;
+    type?: "charge" | "refund";
+    userId?: string;
+    // Override to model the append-only history of ONE payment (same Dodo
+    // payment id transitioning processing -> succeeded/failed across rows).
+    dodoPaymentId?: string;
+  },
+) {
+  await t.run(async (ctx) => {
+    await ctx.db.insert("paymentEvents", {
+      userId: opts.userId ?? TEST_USER_ID,
+      dodoPaymentId: opts.dodoPaymentId ?? `pay_billing_${opts.suffix}`,
+      type: opts.type ?? "charge",
+      amount: 3999,
+      currency: "USD",
+      status: opts.status,
+      planKey: opts.planKey,
+      rawPayload: {},
+      occurredAt: opts.occurredAt,
+    });
+  });
+}
+
+describe("payments pending-payment dedup guard", () => {
+  test("does not block when the user has no pending payments", async () => {
+    const t = convexTest(schema, modules);
+
+    const result = await t.query(
+      internal.payments.billing.getBlockingPendingPayment,
+      {
+        userId: TEST_USER_ID,
+        productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      },
+    );
+
+    expect(result).toBeNull();
+  });
+
+  test("blocks a Pro checkout when a recent pending Pro payment exists", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedPaymentEvent(t, {
+      status: "requires_customer_action",
+      planKey: "pro_monthly",
+      occurredAt: NOW - 5 * MIN_MS,
+      suffix: "pending_pro",
+    });
+
+    const result = await t.query(
+      internal.payments.billing.getBlockingPendingPayment,
+      {
+        userId: TEST_USER_ID,
+        productId: PRODUCT_CATALOG.pro_annual.dodoProductId!,
+      },
+    );
+
+    expect(result).toMatchObject({
+      planKey: "pro_monthly",
+      displayName: "Pro Monthly",
+    });
+  });
+
+  test("does NOT block an API checkout when the pending payment is Pro (different tier group)", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedPaymentEvent(t, {
+      status: "processing",
+      planKey: "pro_monthly",
+      occurredAt: NOW - 5 * MIN_MS,
+      suffix: "pending_pro_vs_api",
+    });
+
+    const result = await t.query(
+      internal.payments.billing.getBlockingPendingPayment,
+      {
+        userId: TEST_USER_ID,
+        productId: PRODUCT_CATALOG.api_starter.dodoProductId!,
+      },
+    );
+
+    expect(result).toBeNull();
+  });
+
+  test("does not block when the pending payment is older than the staleness window", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedPaymentEvent(t, {
+      status: "requires_customer_action",
+      planKey: "pro_monthly",
+      // Anchored to the real window so a retune of PENDING_PAYMENT_BLOCK_WINDOW_MS
+      // can't silently flip this "stale" case to within-window and pass falsely.
+      occurredAt: NOW - (PENDING_PAYMENT_BLOCK_WINDOW_MS + 5 * MIN_MS),
+      suffix: "pending_stale",
+    });
+
+    const result = await t.query(
+      internal.payments.billing.getBlockingPendingPayment,
+      {
+        userId: TEST_USER_ID,
+        productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      },
+    );
+
+    expect(result).toBeNull();
+  });
+
+  test("does not block on a terminal (succeeded) payment row", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedPaymentEvent(t, {
+      status: "succeeded",
+      planKey: "pro_monthly",
+      occurredAt: NOW - 2 * MIN_MS,
+      suffix: "succeeded_recent",
+    });
+
+    const result = await t.query(
+      internal.payments.billing.getBlockingPendingPayment,
+      {
+        userId: TEST_USER_ID,
+        productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      },
+    );
+
+    expect(result).toBeNull();
+  });
+
+  test("fails open: a pending row with no planKey never blocks", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedPaymentEvent(t, {
+      status: "requires_customer_action",
+      planKey: undefined,
+      occurredAt: NOW - 2 * MIN_MS,
+      suffix: "pending_no_plankey",
+    });
+
+    const result = await t.query(
+      internal.payments.billing.getBlockingPendingPayment,
+      {
+        userId: TEST_USER_ID,
+        productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      },
+    );
+
+    expect(result).toBeNull();
+  });
+
+  test("monthly/annual parity: a pending api_starter payment blocks an api_starter_annual checkout", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedPaymentEvent(t, {
+      status: "processing",
+      planKey: "api_starter",
+      occurredAt: NOW - 3 * MIN_MS,
+      suffix: "pending_api_parity",
+    });
+
+    const result = await t.query(
+      internal.payments.billing.getBlockingPendingPayment,
+      {
+        userId: TEST_USER_ID,
+        productId: PRODUCT_CATALOG.api_starter_annual.dodoProductId!,
+      },
+    );
+
+    expect(result).toMatchObject({ planKey: "api_starter" });
+  });
+
+  test("does NOT block an api_business checkout when the pending payment is api_starter (distinct tier groups)", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedPaymentEvent(t, {
+      status: "processing",
+      planKey: "api_starter",
+      occurredAt: NOW - 3 * MIN_MS,
+      suffix: "pending_api_starter_vs_business",
+    });
+
+    const result = await t.query(
+      internal.payments.billing.getBlockingPendingPayment,
+      {
+        userId: TEST_USER_ID,
+        productId: PRODUCT_CATALOG.api_business.dodoProductId!,
+      },
+    );
+
+    expect(result).toBeNull();
+  });
+
+  test("fails open: a pending row whose planKey is absent from PRODUCT_CATALOG never blocks", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedPaymentEvent(t, {
+      status: "requires_customer_action",
+      planKey: "legacy_plan_no_longer_in_catalog",
+      occurredAt: NOW - 2 * MIN_MS,
+      suffix: "pending_unknown_plankey",
+    });
+
+    const result = await t.query(
+      internal.payments.billing.getBlockingPendingPayment,
+      {
+        userId: TEST_USER_ID,
+        productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      },
+    );
+
+    expect(result).toBeNull();
+  });
+
+  // paymentEvents is append-only: a 3DS payment that goes processing -> failed
+  // (or -> succeeded) leaves BOTH rows. The guard must not block on the lingering
+  // pending row once the SAME dodoPaymentId reached a terminal state — otherwise
+  // the failure-retry path this feature exists to smooth gets falsely blocked.
+  test("does not block when the same payment later FAILED (append-only terminal row)", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedPaymentEvent(t, {
+      status: "requires_customer_action",
+      planKey: "pro_monthly",
+      occurredAt: NOW - 5 * MIN_MS,
+      suffix: "appendonly_pending",
+      dodoPaymentId: "pay_appendonly_001",
+    });
+    await seedPaymentEvent(t, {
+      status: "failed",
+      planKey: "pro_monthly",
+      occurredAt: NOW - 4 * MIN_MS,
+      suffix: "appendonly_failed",
+      dodoPaymentId: "pay_appendonly_001",
+    });
+
+    const result = await t.query(
+      internal.payments.billing.getBlockingPendingPayment,
+      {
+        userId: TEST_USER_ID,
+        productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      },
+    );
+
+    expect(result).toBeNull();
+  });
+
+  test("does not block when the same payment later SUCCEEDED (append-only terminal row)", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedPaymentEvent(t, {
+      status: "processing",
+      planKey: "pro_monthly",
+      occurredAt: NOW - 5 * MIN_MS,
+      suffix: "appendonly_pending2",
+      dodoPaymentId: "pay_appendonly_002",
+    });
+    await seedPaymentEvent(t, {
+      status: "succeeded",
+      planKey: "pro_monthly",
+      occurredAt: NOW - 3 * MIN_MS,
+      suffix: "appendonly_succeeded",
+      dodoPaymentId: "pay_appendonly_002",
+    });
+
+    const result = await t.query(
+      internal.payments.billing.getBlockingPendingPayment,
+      {
+        userId: TEST_USER_ID,
+        productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      },
+    );
+
+    expect(result).toBeNull();
+  });
+
+  // A genuinely-pending payment (no terminal row for its dodoPaymentId) must
+  // still block, even when an UNRELATED payment has a terminal row.
+  test("still blocks a genuinely-pending payment alongside an unrelated terminal payment", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedPaymentEvent(t, {
+      status: "failed",
+      planKey: "pro_monthly",
+      occurredAt: NOW - 6 * MIN_MS,
+      suffix: "unrelated_failed",
+      dodoPaymentId: "pay_unrelated_terminal",
+    });
+    await seedPaymentEvent(t, {
+      status: "requires_customer_action",
+      planKey: "pro_monthly",
+      occurredAt: NOW - 2 * MIN_MS,
+      suffix: "genuinely_pending",
+      dodoPaymentId: "pay_genuinely_pending",
+    });
+
+    const result = await t.query(
+      internal.payments.billing.getBlockingPendingPayment,
+      {
+        userId: TEST_USER_ID,
+        productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      },
+    );
+
+    expect(result).toMatchObject({ planKey: "pro_monthly" });
+  });
+
+  test("returns the most recent matching pending payment", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedPaymentEvent(t, {
+      status: "processing",
+      planKey: "pro_monthly",
+      occurredAt: NOW - 10 * MIN_MS,
+      suffix: "pending_older",
+    });
+    await seedPaymentEvent(t, {
+      status: "requires_customer_action",
+      planKey: "pro_annual",
+      occurredAt: NOW - 1 * MIN_MS,
+      suffix: "pending_newer",
+    });
+
+    const result = await t.query(
+      internal.payments.billing.getBlockingPendingPayment,
+      {
+        userId: TEST_USER_ID,
+        productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      },
+    );
+
+    expect(result).toMatchObject({ planKey: "pro_annual" });
   });
 });
 

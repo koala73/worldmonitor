@@ -7,7 +7,7 @@
 # Set AISSTREAM_API_KEY in docker-compose.yml or Railway env.
 # =============================================================================
 
-FROM node:22-alpine
+FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2
 
 # curl required by OREF polling (Node.js JA3 fingerprint blocked by Akamai; curl passes)
 RUN apk add --no-cache curl

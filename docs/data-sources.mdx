@@ -251,7 +251,7 @@ Events from both sources are **Haversine-deduplicated** on a 0.1° grid (~10km) 
 
 Protest scoring is regime-aware: democratic countries use logarithmic scaling (routine protests don't trigger instability), while authoritarian states use linear scoring (every protest is significant). Fatalities and concurrent internet outages apply severity boosts.
 
-ACLED is authenticated: set either `ACLED_EMAIL` + `ACLED_PASSWORD` (OAuth, auto-refreshed) or a static `ACLED_ACCESS_TOKEN` on the API project. When ACLED auth is absent the fetch degrades gracefully to an empty result — but ACLED is also the **real-time conflict source** for the Country Instability Index, so without it CII conflict scoring falls back to UCDP alone. Since UCDP GED ships as lagging annual releases, that fallback can leave no conflict events inside the CII 2-year recency window, which `/api/health.riskScores` reports as `COVERAGE_PARTIAL` (cyber and news families still cover, so the metric reads 2 of 3). The `get-risk-scores` RPC logs a `[CII] ACLED returned 0 events` warning when this happens.
+ACLED is authenticated: set either `ACLED_EMAIL` + `ACLED_PASSWORD` (OAuth, auto-refreshed) or a static `ACLED_ACCESS_TOKEN` on the API project. When ACLED auth is absent the fetch degrades gracefully to an empty result — but ACLED is also the **real-time conflict source** for the Country Instability Index, so without it CII conflict scoring falls back to UCDP alone. Since UCDP GED ships as lagging annual releases, that fallback can leave no conflict events inside the CII 2-year recency window, which the `riskScores` health/cache signal reports as `COVERAGE_PARTIAL` (cyber and news families still cover, so the metric reads 2 of 3). The `get-risk-scores` RPC logs a `[CII] ACLED returned 0 events` warning when this happens.
 
 ### Climate Anomaly Detection
 
@@ -444,7 +444,7 @@ Feeds also carry a **propaganda risk rating** and **state affiliation flag**. St
 
 ### Data Freshness & Intelligence Gaps
 
-A singleton tracker monitors 35 data sources (GDELT, GDELT Doc, RSS, AIS, OpenSky, Wingbits, USGS, weather, outages, ACLED, ACLED conflict, Polymarket, predictions, PizzINT, economic, oil, spending, NASA FIRMS, cyber threats, UCDP, UCDP events, HAPI, UNHCR, climate, WorldPop, giving, BIS, BLS, WTO trade, supply chain, security advisories, sanctions pressure, radiation, GPS jamming, Treasury revenue) with status categorization: fresh (&lt;15 min), stale (2h), very_stale (6h), no_data, error, disabled. Two browser-tracker sources (GDELT, RSS) are flagged as `requiredForRisk`; that flag drives the Strategic Risk panel's hard insufficient-data gate, not the exhaustive list of CII score inputs. Score-relevant feeds such as UCDP events, ACLED conflict, news summaries, and cyber threats are tracked through source-specific health plus `/api/health.riskScores` signal-density coverage. The tracker explicitly reports **intelligence gaps** — what analysts can't see — preventing false confidence when critical data sources are down or degraded.
+A singleton tracker monitors 35 data sources (GDELT, GDELT Doc, RSS, AIS, OpenSky, Wingbits, USGS, weather, outages, ACLED, ACLED conflict, Polymarket, predictions, PizzINT, economic, oil, spending, NASA FIRMS, cyber threats, UCDP, UCDP events, HAPI, UNHCR, climate, WorldPop, giving, BIS, BLS, WTO trade, supply chain, security advisories, sanctions pressure, radiation, GPS jamming, Treasury revenue) with status categorization: fresh (&lt;15 min), stale (2h), very_stale (6h), no_data, error, disabled. Two browser-tracker sources (GDELT, RSS) are flagged as `requiredForRisk`; that flag drives the Strategic Risk panel's hard insufficient-data gate, not the exhaustive list of CII score inputs. Score-relevant feeds such as UCDP events, ACLED conflict, news summaries, and cyber threats are tracked through source-specific health plus the `riskScores` health/cache signal-density coverage. The tracker explicitly reports **intelligence gaps** — what analysts can't see — preventing false confidence when critical data sources are down or degraded.
 
 ---
 
@@ -457,7 +457,7 @@ Polymarket geopolitical markets are queried using tag-based filters (Ukraine, Ir
 **4-tier fetch strategy** — prediction markets use a cascading fetch chain to maximize data availability:
 
 1. **Bootstrap hydration** — zero-network, page-load-embedded data from the Redis-cached `predictions` key. If fresh (&lt;20 min), the panel renders instantly without any API call
-2. **Sebuf RPC** — `POST /api/prediction/v1/list-prediction-markets` queries Redis for the seed-script-maintained cache. Single request, sub-100ms cold start
+2. **Sebuf RPC** — `GET /api/prediction/v1/list-prediction-markets` queries Redis for the seed-script-maintained cache. Single request, sub-100ms cold start
 3. **Browser-direct Polymarket** — the browser fetches Polymarket's Gamma API directly, bypassing JA3 fingerprinting (browser TLS passes Cloudflare)
 4. **Sidecar native TLS** — on Tauri desktop, Rust's `reqwest` TLS fingerprint differs from Node.js, providing another bypass vector
 

@@ -79,13 +79,13 @@ The `mark` element highlighting in search escapes text *before* wrapping matches
 
 ### Proxy Endpoint Validation
 
-Serverless proxy functions validate and clamp all parameters:
+Public API entry points validate and clamp all parameters:
 
 | Endpoint | Validation |
 |----------|------------|
-| `/api/yahoo-finance` | Symbol format `[A-Za-z0-9.^=-]`, max 20 chars |
-| `/api/coingecko` | Coin IDs alphanumeric+hyphen, max 20 IDs |
-| `/api/polymarket` | Order field allowlist, limit clamped 1-100 |
+| `GET /api/market/v1/list-market-quotes` | Stock/index `symbols` list; empty returns defaults |
+| `GET /api/market/v1/list-crypto-quotes` | CoinGecko `ids` list; empty returns defaults |
+| `GET /api/polymarket` | Legacy Polymarket proxy: order field allowlist, limit clamped 1-100 |
 
 This prevents upstream API abuse and rate limit exhaustion from malformed requests.
 

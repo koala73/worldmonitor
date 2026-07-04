@@ -96,6 +96,26 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
     });
   });
 
+  describe('media-src tts.baidu.com extension injection — WORLDMONITOR-TW', () => {
+    // Baidu read-aloud / TTS extensions inject `<audio src="http://tts.baidu.com/
+    // text2audio?...&text=...">` to speak page content. http: mixed-content the
+    // CSP correctly blocks; we never load tts.baidu.com, so it is third-party
+    // noise. Host-pinned (not protocol-gated) — works even with cspMediaSrcAllowsHttps
+    // false because the http: block can never originate from our own bundle.
+    it('suppresses http: media-src for tts.baidu.com regardless of policy detection', () => {
+      assert.ok(suppress('enforce', 'media-src', 'http://tts.baidu.com/text2audio?lan=en&text=hello', '', false, null, false));
+      assert.ok(suppress('enforce', 'media-src', 'http://tts.baidu.com/text2audio?lan=en&text=hello', '', false, null, true));
+    });
+
+    it('does NOT suppress a tts.baidu.com.evil.com lookalike host', () => {
+      assert.ok(!suppress('enforce', 'media-src', 'http://tts.baidu.com.evil.com/text2audio?text=x', '', false, null, true));
+    });
+
+    it('does NOT suppress http: media-src for an unrelated host (real mixed-content)', () => {
+      assert.ok(!suppress('enforce', 'media-src', 'http://insecure.example.com/stream.m3u8', '', false, null, true));
+    });
+  });
+
   describe('default-src HTTP mixed-content suppression — WORLDMONITOR-S0', () => {
     // Browser link-prefetch / extension fetching a feed-supplied http article
     // URL; falls to the default-src fallback (no prefetch-src set). HTTPS-only
@@ -191,6 +211,36 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
   describe('third-party noise', () => {
     it('suppresses Google Translate', () => {
       assert.ok(suppress('enforce', 'connect-src', 'https://translate.gstatic.com/_/translate_http', '', false));
+    });
+
+    it('suppresses Google Fonts font files from stale or injected stylesheets', () => {
+      assert.ok(suppress('enforce', 'font-src', 'https://fonts.gstatic.com/s/mulish/v18/1Ptvg83HX_SGhgqk2wotcqA.woff2', '', false));
+    });
+
+    it('suppresses Google Fonts font files with query params', () => {
+      assert.ok(suppress('enforce', 'font-src', 'https://fonts.gstatic.com/s/mulish/v18/1Ptvg83HX_SGhgqk2wotcqA.woff2?display=swap', '', false));
+    });
+
+    it('does NOT suppress non-woff2 Google Fonts paths with woff2 query values', () => {
+      assert.ok(!suppress('enforce', 'font-src', 'https://fonts.gstatic.com/s/mulish/v18/font.woff?kit=abc.woff2', '', false));
+    });
+
+    it('does NOT suppress arbitrary third-party font-src hosts', () => {
+      assert.ok(!suppress('enforce', 'font-src', 'https://fonts.evil.example/s/mulish/v18/font.woff2', '', false));
+    });
+
+    it('suppresses Perplexity Comet overlay webfont injection (WORLDMONITOR-TR)', () => {
+      assert.ok(suppress('enforce', 'font-src', 'https://frontend-cdn.perplexity.ai/_agi_assets/fonts/FKGroteskNeue.woff2', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://frontend-cdn.perplexity.ai/_agi_assets/fonts/FKGroteskNeue.woff', '', false));
+    });
+
+    it('does NOT suppress a perplexity.ai lookalike host or non-font path', () => {
+      assert.ok(!suppress('enforce', 'font-src', 'https://frontend-cdn.perplexity.ai.evil.com/x.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://frontend-cdn.perplexity.ai/_agi_assets/app.js', '', false));
+    });
+
+    it('does NOT suppress Google Fonts under unrelated directives', () => {
+      assert.ok(!suppress('enforce', 'script-src', 'https://fonts.gstatic.com/s/mulish/v18/1Ptvg83HX_SGhgqk2wotcqA.woff2', '', false));
     });
 
     it('suppresses Facebook Pixel', () => {

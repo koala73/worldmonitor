@@ -14,6 +14,7 @@ message InsiderTransaction {
 }
 
 message GetInsiderTransactionsRequest {
+  // Stock ticker symbol for insider transaction lookup.
   string symbol = 1 [(sebuf.http.query) = { name: "symbol" },
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 1,
@@ -22,6 +23,8 @@ message GetInsiderTransactionsRequest {
 }
 
 message GetInsiderTransactionsResponse {
+  // True when the upstream or seed-backed variant is unavailable; empty payload fields
+  // are graceful degradation, not confirmed zero data.
   bool unavailable = 1;
   string symbol = 2;
   double total_buys = 3;

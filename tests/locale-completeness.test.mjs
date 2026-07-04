@@ -13,7 +13,7 @@ describe('locale completeness', () => {
   const en = JSON.parse(readFileSync(join(LOCALES_DIR, 'en.json'), 'utf8'));
   const enKeys = flattenKeys(en);
   const localeFiles = readdirSync(LOCALES_DIR)
-    .filter((name) => name.endsWith('.json') && name !== 'en.json')
+    .filter((name) => name.endsWith('.json') && name !== 'en.json' && name !== 'en.shell.json')
     .sort();
 
   // Sanity tripwire: en is the source catalog (~2400 keys today). A drop below

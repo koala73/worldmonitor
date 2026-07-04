@@ -690,7 +690,9 @@
         "space": "VESMÍR"
       },
       "paused": "Webkamery pozastaveny",
-      "pausedIdle": "Webkamery pozastaveny — pohněte myší pro obnovení"
+      "pausedIdle": "Webkamery pozastaveny — pohněte myší pro obnovení",
+      "play": "Přehrát",
+      "previewStatus": "Živý náhled"
     },
     "monitor": {
       "placeholder": "Klíčová slova (oddělená čárkou)",
@@ -1245,8 +1247,8 @@
       "badgeAnimDesc": "Animovat odznáčky aktualizací v záhlaví panelů",
       "headlineMemoryLabel": "Paměť titulků",
       "headlineMemoryDesc": "Zapamatovat si zobrazené titulky pro zvýraznění nových",
-      "streamAlwaysOnLabel": "Ponechat živé streamy spuštěné",
-      "streamAlwaysOnDesc": "Zabrání automatickému pozastavení Live Cams a Live News při nečinnosti. Doporučeno pro druhý monitor / nástěnný dashboard. Vypněte (Eco) pro úsporu CPU a přenosu dat.",
+      "streamAlwaysOnLabel": "Automaticky přehrávat živé streamy na dashboardu",
+      "streamAlwaysOnDesc": "Spustí Live News a Live Webcams automaticky, když jsou viditelné. Nechte vypnuto, aby se video načetlo až po kliknutí na Přehrát.",
       "globeRenderScaleOptions": {
         "1": "Eco (1x)",
         "2": "4K (2x)",
@@ -1754,7 +1756,9 @@
       "verifying": "Ověřování…",
       "noResults": "Nebyly nalezeny žádné kanály odpovídající \"{{term}}\"",
       "hlsUrl": "URL HLS streamu (volitelné)",
-      "invalidHlsUrl": "Zadejte platnou URL HLS streamu (.m3u8)"
+      "invalidHlsUrl": "Zadejte platnou URL HLS streamu (.m3u8)",
+      "playLiveFeed": "Přehrát živý přenos",
+      "readyStatus": "Připraveno, až budete"
     },
     "map": {
       "showMap": "Zobrazit mapu",
@@ -3168,5 +3172,18 @@
     "or": "nebo zadejte vlastní server",
     "generatingVisualization": "Vytváření vizualizace...",
     "visualizationFailed": "Vizualizace selhala"
+  },
+  "dashboardTabs": {
+    "ariaLabel": "Dashboard tabs",
+    "defaultName": "Main",
+    "newTabName": "New Tab",
+    "newTabCreated": "New tab created",
+    "tabDeleted": "Tab \"{{name}}\" deleted",
+    "addTab": "Add tab",
+    "addTabTitle": "New tab (starts with the default panels)",
+    "renameHint": "{{name}} — double-click to rename",
+    "deleteTab": "Delete tab",
+    "deleteTabAria": "Delete tab {{name}}",
+    "tabNameAria": "Tab name"
   }
 }

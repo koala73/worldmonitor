@@ -29,14 +29,25 @@ Panel id is `airline-intel`; canonical component is `src/components/AirlineIntel
 
 ## Data sources
 
-Eight RPCs back the six tabs via `@/services/aviation`:
+The panel uses `@/services/aviation`, which wraps the generated
+`AviationServiceClient`. Flight-delay alerts can arrive through bootstrap
+hydration first; the tab-specific calls below are direct REST RPCs.
 
-- `fetchAirportOpsSummary`, `fetchAirportFlights`, `fetchCarrierOps`
-- `fetchAircraftPositions`, `fetchFlightStatus`
-- `fetchAviationNews`
-- `fetchGoogleFlights`, `fetchGoogleDates`
+### Backed by endpoints
 
-All are backed by the **Aviation service** (`/api/aviation/v1/*`) — see the API reference below.
+| Capability | Endpoint | Panel path |
+|---|---|---|
+| Airport delay alerts | `GET /api/aviation/v1/list-airport-delays` | Bootstrap-backed disruption layer and service fallback. |
+| Airport ops summaries | `GET /api/aviation/v1/get-airport-ops-summary` | `ops` tab for watched airports. |
+| Airport flight instances | `GET /api/aviation/v1/list-airport-flights` | `flights` tab for one watched airport. |
+| Carrier delay / cancellation rollups | `GET /api/aviation/v1/get-carrier-ops` | `airlines` tab for watched airports. |
+| Specific flight status | `GET /api/aviation/v1/get-flight-status` | `tracking` tab lookup. |
+| Aircraft position tracking | `GET /api/aviation/v1/track-aircraft` | `tracking` tab and civil-airspace map workflows. |
+| YouTube live stream metadata | `GET /api/aviation/v1/get-youtube-live-stream-info` | Service RPC for aviation live-stream metadata; not part of the six-tab auto-refresh loop. |
+| Legacy flight price quotes | `GET /api/aviation/v1/search-flight-prices` | Direct quote search path with provider/degraded-state metadata. |
+| Aviation news | `GET /api/aviation/v1/list-aviation-news` | `news` tab. |
+| Google Flights itinerary search | `GET /api/aviation/v1/search-google-flights` | `prices` tab explicit search. |
+| Google Flights date grid | `GET /api/aviation/v1/search-google-dates` | `prices` tab cheapest-date grid. |
 
 ## Refresh cadence
 
@@ -52,5 +63,5 @@ Three distinct refresh paths in `src/components/AirlineIntelPanel.ts`:
 
 ## API reference
 
-- [Aviation service](/api/AviationService.openapi.yaml) — 11 RPCs: airport delays, ops summary, airport flights, carrier ops, flight status, aircraft tracking, aviation news, Google Flights search / date grid.
+- [Aviation service](/api/AviationService.openapi.yaml) — generated OpenAPI for the 11 RPCs above.
 - Related map layer: [Military & Civilian Flight Tracking](/military-tracking) for the live flights overlay that the `tracking` tab complements.

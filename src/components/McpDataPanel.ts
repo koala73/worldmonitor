@@ -29,6 +29,7 @@ export class McpDataPanel extends Panel {
       title: spec.title,
       closable: true,
       className: 'mcp-data-panel',
+      defaultRowSpan: 2,
     });
     this.spec = spec;
     this.addHeaderButtons();
@@ -72,6 +73,10 @@ export class McpDataPanel extends Panel {
 
   private scheduleRefresh(immediate = false): void {
     this.clearRefreshTimer();
+    if (!this.element.isConnected) {
+      this.runWhenConnected(() => this.scheduleRefresh(immediate));
+      return;
+    }
     if (immediate) {
       void this.fetchData();
     }
@@ -88,6 +93,10 @@ export class McpDataPanel extends Panel {
   }
 
   async fetchData(): Promise<void> {
+    if (!this.element.isConnected) {
+      this.runWhenConnected(() => { void this.fetchData(); });
+      return;
+    }
     this.showLoading();
     try {
       // premiumFetch attaches the Clerk Pro Bearer for normal web Pro
@@ -103,7 +112,7 @@ export class McpDataPanel extends Panel {
           toolArgs: this.spec.toolArgs,
           customHeaders: this.spec.customHeaders,
         }),
-        signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.any([this.destroyController.signal, AbortSignal.timeout(20_000)]),
       });
       const data = await resp.json() as { result?: McpResult; error?: string };
       if (!resp.ok || data.error) throw new Error(data.error || `HTTP ${resp.status}`);

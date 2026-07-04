@@ -14,24 +14,24 @@ const root = resolve(__dirname, '..');
 const readSrc = (relPath: string) => readFileSync(resolve(root, relPath), 'utf-8');
 
 describe('default map mode', () => {
-  it('defaults fresh sessions to the globe renderer at runtime', () => {
+  it('defaults fresh sessions to the new 2D map preference at runtime', () => {
     const seen: Array<{ key: string; fallback: string }> = [];
     const load = <T>(key: string, fallback: T): T => {
       seen.push({ key, fallback: String(fallback) });
       return fallback;
     };
 
-    assert.equal(DEFAULT_MAP_MODE, 'globe');
-    assert.equal(getStoredMapModePreference(load), 'globe');
-    assert.deepEqual(seen, [{ key: STORAGE_KEYS.mapMode, fallback: 'globe' }]);
+    assert.equal(DEFAULT_MAP_MODE, 'flat');
+    assert.equal(getStoredMapModePreference(load), 'flat');
+    assert.deepEqual(seen, [{ key: STORAGE_KEYS.mapMode, fallback: 'flat' }]);
   });
 
-  it('preserves an explicit flat preference but normalizes unknown values to globe', () => {
+  it('preserves an explicit globe preference but normalizes unknown values to the new 2D map', () => {
     const loadValue = (value: string) => <T>(_key: string, _fallback: T): T => value as T;
 
     assert.equal(normalizeMapModePreference('flat'), 'flat');
     assert.equal(normalizeMapModePreference('globe'), 'globe');
-    assert.equal(normalizeMapModePreference('legacy-2d'), 'globe');
+    assert.equal(normalizeMapModePreference('legacy-2d'), 'flat');
     assert.equal(getStoredMapModePreference(loadValue('flat')), 'flat');
     assert.equal(getStoredMapModePreference(loadValue('globe')), 'globe');
   });
@@ -45,8 +45,33 @@ describe('default map mode', () => {
 
     assert.doesNotMatch(
       `${panelLayout}\n${app}`,
-      /loadFromStorage<string>\(\s*STORAGE_KEYS\.mapMode\s*,\s*['"]flat['"]\s*\)/,
-      'map mode callers must not reintroduce the old flat-map fallback',
+      /loadFromStorage<string>\(\s*STORAGE_KEYS\.mapMode\s*,\s*['"]globe['"]\s*\)/,
+      'map mode callers must not reintroduce the 3D globe fallback',
+    );
+  });
+
+  it('routes the default desktop flat preference to DeckGL when supported, not the SVG fallback', () => {
+    const mapContainer = readSrc('src/components/MapContainer.ts');
+
+    assert.match(
+      mapContainer,
+      /this\.useDeckGL\s*=\s*!this\.useGlobe\s*&&\s*this\.shouldUseDeckGL\(\)/,
+      'flat mode should select DeckGL when the capability gate passes',
+    );
+    assert.match(
+      mapContainer,
+      /createDeckGLMap\(token: number\)[\s\S]*Initializing deck\.gl map \(desktop mode\)[\s\S]*await loadMapLibreCss\(\)[\s\S]*await import\('\.\/DeckGLMap'\)/,
+      'DeckGL should be the primary non-globe desktop renderer and load its runtime on demand',
+    );
+    assert.match(
+      mapContainer,
+      /else if \(this\.useDeckGL\)\s*{\s*const shouldLoadDeck = await this\.waitForDeckRendererDemand\(token\);\s*if \(!shouldLoadDeck \|\| !this\.isCurrentRendererInit\(token\)\) return;\s*await this\.createDeckGLMap\(token\);/m,
+      'flat desktop mode should route through the demand-gated deferred DeckGL initializer',
+    );
+    assert.match(
+      mapContainer,
+      /DeckGL initialization failed[\s\S]*Initializing SVG map \(DeckGL fallback mode\)/,
+      'SVG should stay a DeckGL failure fallback, not the default 2D renderer',
     );
   });
 

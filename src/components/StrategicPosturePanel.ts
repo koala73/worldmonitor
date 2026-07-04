@@ -1,7 +1,7 @@
 import { Panel } from './Panel';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { fetchCachedTheaterPosture, type CachedTheaterPosture } from '@/services/cached-theater-posture';
-import { fetchMilitaryVessels } from '@/services/military-vessels';
+import { getMilitaryVesselsModule, isVesselRuntimeStoppedError } from '@/services/military-vessels-lazy';
 import { recalcPostureWithVessels, type TheaterPostureSummary } from '@/services/military-surge';
 import { isDesktopRuntime } from '@/services/runtime';
 import { t } from '../services/i18n';
@@ -165,6 +165,7 @@ export class StrategicPosturePanel extends Panel {
 
   private async augmentWithVessels(): Promise<void> {
     try {
+      const { fetchMilitaryVessels } = await getMilitaryVesselsModule();
       const { vessels } = await fetchMilitaryVessels();
       console.log(`[StrategicPosturePanel] Got ${vessels.length} total military vessels`);
       if (vessels.length === 0) {
@@ -216,6 +217,9 @@ export class StrategicPosturePanel extends Panel {
       recalcPostureWithVessels(this.postures);
       console.log('[StrategicPosturePanel] Augmented with', vessels.length, 'vessels, posture levels recalculated');
     } catch (error) {
+      // Deliberate teardown of the lazy vessel runtime — leave the cached
+      // posture as-is rather than logging a misleading fetch failure.
+      if (isVesselRuntimeStoppedError(error)) return;
       console.warn('[StrategicPosturePanel] Failed to fetch vessels:', error);
       // Restore cached vessel counts if live fetch failed
       this.restoreVesselCounts();

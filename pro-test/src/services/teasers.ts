@@ -1,5 +1,5 @@
 /**
- * Live data teasers for the /welcome landing page.
+ * Live data teasers for the root welcome landing page.
  *
  * Strategy: render the committed fallback (src/generated/teasers.json)
  * immediately, then upgrade each card in place when its live fetch succeeds.

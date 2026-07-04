@@ -6,16 +6,16 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Extract the beforeSend function body from src/bootstrap/sentry-defer.ts.
+// Extract the beforeSend function body from src/bootstrap/sentry-init.ts.
 // Sentry.init({...}) was moved out of main.ts when init was deferred off the
 // critical path (#3994 / PR-4005); the beforeSend closure now lives inside
-// the build factory in sentry-defer.ts. We parse it as a standalone function
-// to avoid importing Sentry/App bootstrap.
-const mainSrc = readFileSync(resolve(__dirname, '../src/bootstrap/sentry-defer.ts'), 'utf-8');
+// the dynamically imported build factory in sentry-init.ts. We parse it as a
+// standalone function to avoid importing Sentry/App bootstrap.
+const mainSrc = readFileSync(resolve(__dirname, '../src/bootstrap/sentry-init.ts'), 'utf-8');
 
 // Extract everything between `beforeSend(event) {` and the matching closing `},`
 const bsStart = mainSrc.indexOf('beforeSend(event) {');
-assert.ok(bsStart !== -1, 'beforeSend must exist in src/bootstrap/sentry-defer.ts');
+assert.ok(bsStart !== -1, 'beforeSend must exist in src/bootstrap/sentry-init.ts');
 let braceDepth = 0;
 let bsEnd = -1;
 for (let i = bsStart + 'beforeSend(event) '.length; i < mainSrc.length; i++) {
@@ -35,7 +35,7 @@ const fnBody = mainSrc.slice(bsStart + 'beforeSend(event) '.length, bsEnd)
 // Extract the THIRD_PARTY_FETCH_HOST_ALLOWLIST Set so the test harness can evaluate
 // beforeSend with the same allowlist the real module has.
 const tpMatch = mainSrc.match(/const THIRD_PARTY_FETCH_HOST_ALLOWLIST = new Set\(\[[^\]]*\]\);/);
-assert.ok(tpMatch, 'THIRD_PARTY_FETCH_HOST_ALLOWLIST must be defined in src/bootstrap/sentry-defer.ts');
+assert.ok(tpMatch, 'THIRD_PARTY_FETCH_HOST_ALLOWLIST must be defined in src/bootstrap/sentry-init.ts');
 
 // Build a callable version. Input: a Sentry-shaped event object. Returns event or null.
 // eslint-disable-next-line no-new-func
@@ -46,7 +46,7 @@ const beforeSend = new Function('event', `${tpMatch[0]}\n${fnBody}`);
 // regex/string literals and `//` comments — all valid inside a JS array literal,
 // so it eval's directly. Closing token is the deferred builder's `\n    ],`.
 const ieStart = mainSrc.indexOf('ignoreErrors: [');
-assert.ok(ieStart !== -1, 'ignoreErrors array must exist in src/bootstrap/sentry-defer.ts');
+assert.ok(ieStart !== -1, 'ignoreErrors array must exist in src/bootstrap/sentry-init.ts');
 const ieEnd = mainSrc.indexOf('\n    ],', ieStart);
 assert.ok(ieEnd > ieStart, 'Failed to find ignoreErrors closing bracket');
 const ieBody = mainSrc.slice(ieStart + 'ignoreErrors: ['.length, ieEnd);
@@ -236,27 +236,79 @@ describe('empty-stack network/timeout errors are NOT suppressed', () => {
 // (WORLDMONITOR-Q / WORLDMONITOR-15).
 
 describe('dynamic-module-import failures (stale chunk after deploy)', () => {
-  const dynamicImportErrors = [
+  // URL-bearing FETCH-failure phrasings whose message names one of our own
+  // hashed `/assets/*.js` chunks are deploy-skew / transient-network — never a
+  // first-party logic bug. The `import()` call site is ALWAYS first-party
+  // (MapContainer.initDeck, lazy panel/video loaders), so these ride a
+  // first-party frame; matching the asset URL suppresses them regardless of
+  // stack (WORLDMONITOR-TN: Map chunk, WORLDMONITOR-S1: hls chunk — both leaked
+  // because the old `!hasFirstParty`-only gate let first-party-framed ones
+  // through).
+  const assetUrlImportErrors = [
     'Failed to fetch dynamically imported module: https://worldmonitor.app/assets/panels-abc.js',
     'Failed to fetch dynamically imported module: https://www.worldmonitor.app/assets/index-DSkSc57y.js',
+    'error loading dynamically imported module: https://www.worldmonitor.app/assets/Map-eKJvyIxN.js',
+    'error loading dynamically imported module: https://www.worldmonitor.app/assets/hls-jw_vZdHi.js',
+  ];
+
+  for (const msg of assetUrlImportErrors) {
+    for (const [label, frames] of [
+      ['empty stack', []],
+      ['confirmed third-party stack', [extensionFrame()]],
+      ['first-party stack', [firstPartyFrame()]],
+    ]) {
+      it(`suppresses "${msg.slice(0, 55)}..." with ${label}`, () => {
+        const event = makeEvent(msg, 'TypeError', frames);
+        assert.equal(beforeSend(event), null, `asset-URL chunk-load failure should be suppressed regardless of stack (${label})`);
+      });
+    }
+  }
+
+  it('lets through off-origin /assets dynamic-import failures even with first-party stack', () => {
+    const event = makeEvent(
+      'Failed to fetch dynamically imported module: https://cdn.example.com/assets/vendor-abc.js',
+      'TypeError',
+      [firstPartyFrame()],
+    );
+    assert.ok(beforeSend(event) !== null, 'off-origin asset URL must not be treated as WorldMonitor deploy skew');
+  });
+
+  it('lets through non-hashed /assets dynamic-import failures even on owned origins', () => {
+    const event = makeEvent(
+      'Failed to fetch dynamically imported module: https://worldmonitor.app/assets/runtime.js',
+      'TypeError',
+      [firstPartyFrame()],
+    );
+    assert.ok(beforeSend(event) !== null, 'non-hashed asset URL must not be treated as a stale Vite chunk');
+  });
+
+  // No-URL phrasings (Safari `Importing a module script failed.`, bare Firefox
+  // `error loading dynamically imported module`, and the module-LINK export
+  // mismatch `Importing binding name '<x>' is not found.` — WORLDMONITOR-TM)
+  // throw at fetch/link time with no first-party call site, so they're gated on
+  // `!hasFirstParty`: suppressed with an empty or third-party stack, preserved
+  // when a genuine first-party frame is present.
+  const noUrlImportErrors = [
     'Importing a module script failed.',
     'TypeError: Importing a module script failed.',
     'error loading dynamically imported module',
+    "Importing binding name 'f' is not found.",
   ];
 
-  for (const msg of dynamicImportErrors) {
-    it(`suppresses "${msg.slice(0, 60)}..." with empty stack`, () => {
-      const event = makeEvent(msg, 'TypeError', []);
-      assert.equal(beforeSend(event), null, `"${msg}" with empty stack should be suppressed (chunk-reload guard handles it)`);
+  for (const msg of noUrlImportErrors) {
+    const type = msg.startsWith('Importing binding name') ? 'SyntaxError' : 'TypeError';
+    it(`suppresses "${msg.slice(0, 55)}..." with empty stack`, () => {
+      const event = makeEvent(msg, type, []);
+      assert.equal(beforeSend(event), null, `"${msg}" with empty stack should be suppressed (chunk-reload guard / deploy-skew)`);
     });
 
-    it(`suppresses "${msg.slice(0, 60)}..." with confirmed third-party stack`, () => {
-      const event = makeEvent(msg, 'TypeError', [extensionFrame()]);
+    it(`suppresses "${msg.slice(0, 55)}..." with confirmed third-party stack`, () => {
+      const event = makeEvent(msg, type, [extensionFrame()]);
       assert.equal(beforeSend(event), null);
     });
 
-    it(`lets through "${msg.slice(0, 60)}..." with first-party stack`, () => {
-      const event = makeEvent(msg, 'TypeError', [firstPartyFrame()]);
+    it(`lets through "${msg.slice(0, 55)}..." with first-party stack`, () => {
+      const event = makeEvent(msg, type, [firstPartyFrame()]);
       assert.ok(beforeSend(event) !== null, `"${msg}" with first-party stack should NOT be suppressed`);
     });
   }
@@ -916,5 +968,33 @@ describe('SyntaxError via deck.gl/maplibre init path (WORLDMONITOR-SP)', () => {
     const event = makeEvent('something broke', 'TypeError', mapInitStack);
     assert.ok(beforeSend(event) !== null,
       'non-SyntaxError with a map frame must not be swept up by the SP gate');
+  });
+});
+
+// ─── WORLDMONITOR-TG: mainWorldSdk extension-global ReferenceError ─────────
+//
+// A browser-extension SDK injected into the page's main world references its
+// `mainWorldSdk` global before defining it (Edge 148 / Windows, anonymous-
+// frames-only stack). `mainWorldSdk` is nowhere in our bundle, so the message
+// can never originate from our own code — it goes in ignoreErrors alongside the
+// other named extension/webview globals (crusoe, vc_request_action, nmhCrx).
+describe('ignoreErrors — mainWorldSdk extension global (WORLDMONITOR-TG)', () => {
+  const PROD_MSG = 'mainWorldSdk is not defined';
+  const pattern = ignoreErrors.find(p => p instanceof RegExp && /mainWorldSdk/.test(p.source));
+
+  it('defines a mainWorldSdk ignore pattern', () => {
+    assert.ok(pattern, 'a /mainWorldSdk/ ignoreErrors pattern must exist');
+  });
+
+  it('suppresses the production "mainWorldSdk is not defined" message', () => {
+    assert.ok(isIgnored(PROD_MSG), `ignoreErrors must drop: ${PROD_MSG}`);
+  });
+
+  it('is scoped so a longer first-party identifier still surfaces', () => {
+    // The literal " is not defined" suffix must follow `mainWorldSdk` directly,
+    // so a real "mainWorldSdkLoader is not defined" bug from our own code is not
+    // swallowed by this pattern.
+    assert.ok(!isIgnored('mainWorldSdkLoader is not defined'),
+      'pattern must not swallow a longer identifier with the same prefix');
   });
 });

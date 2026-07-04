@@ -1,5 +1,5 @@
 ---
-title: "Five Dashboards, One Platform: How World Monitor Serves Every Intelligence Need"
+title: "Five Intelligence Dashboards on One Platform"
 description: "World Monitor offers 5 free intelligence dashboards: geopolitical, tech, finance, commodity, and positive news. Switch between them instantly from one platform."
 metaTitle: "5 Intelligence Dashboards, One Platform | World Monitor"
 keywords: "intelligence dashboard variants, tech monitoring dashboard, positive news dashboard, multi-purpose intelligence platform, specialized monitoring tools"

@@ -12,23 +12,36 @@
 import { createRouter, type RouteDescriptor } from './router';
 import { getCorsHeaders, isDisallowedOrigin, isAllowedOrigin } from './cors';
 // @ts-expect-error — JS module, no declaration file
-import { validateApiKey } from '../api/_api-key.js';
+import { USER_API_KEY_GATEWAY_VALIDATION_ERROR, validateApiKey } from '../api/_api-key.js';
+// @ts-expect-error — JS module, no declaration file
+import { timingSafeEqualSecret } from '../api/_crypto.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../api/_sentry-edge.js';
 import { mapErrorToResponse } from './error-mapper';
 import { checkRateLimit, checkEndpointRateLimit, hasEndpointRatePolicy } from './_shared/rate-limit';
 import { drainResponseHeaders } from './_shared/response-headers';
-import { checkEntitlement, getRequiredTier, getEntitlements } from './_shared/entitlement-check';
+import { checkEntitlementDetailed, getRequiredTier, getEntitlements, type CachedEntitlements } from './_shared/entitlement-check';
 import { resolveClerkSession } from './_shared/auth-session';
 import {
   INTERNAL_MCP_SIG_HEADER,
   INTERNAL_MCP_USER_ID_HEADER,
+  INTERNAL_MCP_NONCE_HEADER,
   INTERNAL_MCP_VERIFIED_HEADER,
   TRUSTED_USER_ID_HEADER,
+  INTERNAL_MCP_REPLAY_CACHE_TTL_SECONDS,
   getInternalMcpVerifiedNonce,
+  sha256Hex,
   verifyInternalMcpRequest,
 } from './_shared/mcp-internal-hmac';
-import { buildUsageIdentity, type UsageIdentityInput } from './_shared/usage-identity';
+import { buildUsageIdentity, hashKeySync, type UsageIdentityInput } from './_shared/usage-identity';
+import { runRedisPipeline } from './_shared/redis';
+import {
+  checkBurst,
+  reserveDailyMeter,
+  rateLimitHeaders,
+  ENTERPRISE_API_RATE_LIMIT,
+  CEILING_MULTIPLIER,
+} from './_shared/api-key-rate-limit';
 import {
   deliverUsageEvents,
   buildRequestEvent,
@@ -71,6 +84,20 @@ export const serverOptions: ServerOptions = { onError: mapErrorToResponse };
  * F8 (U7+U8 review pass).
  */
 const MAX_INTERNAL_MCP_BODY = 256 * 1024;
+
+type InternalMcpReplayClaim = 'fresh' | 'replay' | 'unavailable';
+
+async function claimInternalMcpReplayNonce(userId: string, nonce: string): Promise<InternalMcpReplayClaim> {
+  const digest = await sha256Hex(`${userId}:${nonce}`);
+  const key = `internal-mcp-replay:v1:${digest}`;
+  const result = await runRedisPipeline([
+    ['SET', key, '1', 'EX', INTERNAL_MCP_REPLAY_CACHE_TTL_SECONDS, 'NX'],
+  ]);
+  if (result.length === 0) return 'unavailable';
+  const claim = result[0] as { result?: unknown; error?: unknown } | undefined;
+  if (claim?.error) return 'unavailable';
+  return claim?.result === 'OK' ? 'fresh' : 'replay';
+}
 
 // --- Edge cache tier definitions ---
 // NOTE: This map is shared across all domain bundles (~3KB). Kept centralised for
@@ -378,12 +405,90 @@ export type GatewayCtx = { waitUntil: (p: Promise<unknown>) => void };
 const POST_TO_GET_MAX_BODY_BYTES = 1_048_576;
 const POST_TO_GET_MAX_ARRAY_VALUES_PER_KEY = 200;
 
+export const REQUIRED_BBOX_QUERY_PARAMS = ['sw_lat', 'sw_lon', 'ne_lat', 'ne_lon'] as const;
+
+// Issue #4595 is scoped to military RPCs whose handlers require bbox.
+// Other bbox-capable RPCs support lookup/global modes and must not emit this diagnostic.
+export const REQUIRED_BBOX_RPC_PATHS = [
+  '/api/military/v1/list-military-bases',
+  '/api/military/v1/list-military-flights',
+] as const;
+
+const REQUIRED_BBOX_RPC_PATH_SET = new Set<string>(REQUIRED_BBOX_RPC_PATHS);
+const MILITARY_BBOX_DIAGNOSTIC_PATH_SET = new Set<string>(REQUIRED_BBOX_RPC_PATHS);
+
 function isPostToGetCompatibleBodySize(headers: Headers): boolean {
   const rawContentLength = headers.get('Content-Length');
   if (rawContentLength === null || !/^\d+$/.test(rawContentLength)) return false;
 
   const contentLength = Number(rawContentLength);
   return Number.isSafeInteger(contentLength) && contentLength < POST_TO_GET_MAX_BODY_BYTES;
+}
+
+function getRequiredBboxQueryProblems(searchParams: URLSearchParams): { missing: string[]; invalid: string[]; allZero: boolean } {
+  const absent: string[] = [];
+  const invalid: string[] = [];
+  const values: number[] = [];
+
+  for (const param of REQUIRED_BBOX_QUERY_PARAMS) {
+    const raw = searchParams.get(param);
+    if (raw == null) {
+      absent.push(param);
+      continue;
+    }
+    if (raw.trim() === '') {
+      invalid.push(param);
+      continue;
+    }
+    const value = Number(raw);
+    if (!Number.isFinite(value)) {
+      invalid.push(param);
+      continue;
+    }
+    values.push(value);
+  }
+
+  const missing = absent.length === REQUIRED_BBOX_QUERY_PARAMS.length ? [...REQUIRED_BBOX_QUERY_PARAMS] : [];
+  return {
+    missing,
+    invalid,
+    allZero: absent.length === 0 && invalid.length === 0 && values.every((value) => value === 0),
+  };
+}
+
+type RequiredBboxDiagnostic = {
+  status: 'missing' | 'invalid';
+  missing: string[];
+  invalid: string[];
+};
+
+function getRequiredBboxDiagnostic(request: Request, pathname: string): RequiredBboxDiagnostic | null {
+  if (!REQUIRED_BBOX_RPC_PATH_SET.has(pathname)) return null;
+
+  const { searchParams } = new URL(request.url);
+  const { missing, invalid, allZero } = getRequiredBboxQueryProblems(searchParams);
+  if (missing.length === 0 && invalid.length === 0 && !allZero) return null;
+
+  return {
+    status: missing.length > 0 ? 'missing' : 'invalid',
+    missing,
+    invalid: allZero ? [...REQUIRED_BBOX_QUERY_PARAMS] : invalid,
+  };
+}
+
+function attachRequiredBboxDiagnosticHeaders(
+  headers: Headers,
+  pathname: string,
+  diagnostic: RequiredBboxDiagnostic | null,
+): void {
+  if (!diagnostic) return;
+  headers.set('X-WorldMonitor-Bbox', diagnostic.status);
+  if (diagnostic.missing.length > 0) headers.set('X-WorldMonitor-Bbox-Missing', diagnostic.missing.join(','));
+  if (diagnostic.invalid.length > 0) headers.set('X-WorldMonitor-Bbox-Invalid', diagnostic.invalid.join(','));
+  if (MILITARY_BBOX_DIAGNOSTIC_PATH_SET.has(pathname)) {
+    // Issue #4595 explicitly requested the military alias; keep it as a stable consumer affordance.
+    headers.set('X-Military-Bbox', diagnostic.status);
+  }
 }
 
 // `TRUSTED_USER_ID_HEADER` (a.k.a. `x-user-id`) is gateway-internal: the
@@ -409,6 +514,42 @@ function withAuthenticatedUserId(request: Request, userId: string): Request {
   const headers = new Headers(request.headers);
   headers.set(TRUSTED_USER_ID_HEADER, userId);
   return cloneRequestWithHeaders(request, headers);
+}
+
+function normalizeAuthError(error: string | undefined): string {
+  if (!error || error === USER_API_KEY_GATEWAY_VALIDATION_ERROR) return 'Invalid API key';
+  return error;
+}
+
+function createGatewayAuthErrorResponse(
+  status: 401 | 403,
+  error: string | undefined,
+  corsHeaders: Record<string, string>,
+): Response {
+  return new Response(JSON.stringify({ error: normalizeAuthError(error) }), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+      ...corsHeaders,
+    },
+  });
+}
+
+function markAuthErrorNoStore(response: Response): Response {
+  response.headers.set('Cache-Control', 'no-store');
+  response.headers.delete('CDN-Cache-Control');
+  response.headers.delete('Vercel-CDN-Cache-Control');
+  return response;
+}
+
+function hasCredentialBearingHeader(request: Request): boolean {
+  return Boolean(
+    request.headers.get('Authorization') ||
+    request.headers.get('X-WorldMonitor-Key') ||
+    request.headers.get('X-Api-Key') ||
+    request.headers.get('Cookie'),
+  );
 }
 
 async function isResilienceRankingSeedRefreshRequest(request: Request, pathname: string): Promise<boolean> {
@@ -469,7 +610,7 @@ export function createDomainGateway(
     const rawWidgetKey = request.headers.get('x-widget-key') ?? null;
     const widgetAgentKey = process.env.WIDGET_AGENT_KEY ?? '';
     const validatedWidgetKey =
-      rawWidgetKey && widgetAgentKey && rawWidgetKey === widgetAgentKey ? rawWidgetKey : null;
+      await timingSafeEqualSecret(rawWidgetKey, widgetAgentKey) ? rawWidgetKey : null;
     const usage: UsageIdentityInput = {
       sessionUserId: null,
       isUserApiKey: false,
@@ -478,7 +619,13 @@ export function createDomainGateway(
       clerkOrgId: null,
       userApiKeyCustomerRef: null,
       tier: null,
+      planKey: null,
     };
+    function recordUsageEntitlement(ent: CachedEntitlements | null): void {
+      if (!ent) return;
+      usage.tier = typeof ent.features.tier === 'number' ? ent.features.tier : 0;
+      usage.planKey = ent.planKey;
+    }
     // Domain segment for telemetry. Path layouts:
     //   /api/<domain>/v1/<rpc>          → parts[2] = domain
     //   /api/v2/<domain>/<rpc>          → parts[2] = "v2", parts[3] = domain
@@ -486,8 +633,15 @@ export function createDomainGateway(
     const domain = (/^v\d+$/.test(_parts[2] ?? '') ? _parts[3] : _parts[2]) ?? '';
     const reqBytes = deriveReqBytes(request);
 
+    // #3199: in shadow mode a per-account limit that WOULD have triggered is
+    // recorded on the single terminal success emit (never a second event) so the
+    // volume signal Phase-2 pricing reuses isn't double-counted. Overrides only
+    // a successful terminal reason (status < 400); a real 4xx/5xx outcome wins.
+    let pendingShadowReason: RequestReason | null = null;
     function emitRequest(status: number, reason: RequestReason, cacheTier: UsageCacheTier | null, resBytes = 0): void {
       if (!ctx?.waitUntil) return;
+      const effectiveReason: RequestReason =
+        pendingShadowReason && status < 400 ? pendingShadowReason : reason;
       const identity = buildUsageIdentity(usage);
       // Single ctx.waitUntil() registered synchronously in the request phase.
       // The IIFE awaits ua_hash (SHA-256) then awaits delivery directly via
@@ -509,6 +663,7 @@ export function createDomainGateway(
             principalId: identity.principal_id,
             authKind: identity.auth_kind,
             tier: identity.tier,
+            planKey: identity.plan_key,
             country: deriveCountry(originalRequest),
             ipCity: deriveIpCity(originalRequest),
             ipRegion: deriveIpRegion(originalRequest),
@@ -523,7 +678,7 @@ export function createDomainGateway(
             acceptLanguage: deriveAcceptLanguage(originalRequest),
             host: deriveHost(originalRequest),
             sentryTraceId: deriveSentryTraceId(originalRequest),
-            reason,
+            reason: effectiveReason,
           }),
         ]);
       })());
@@ -742,6 +897,23 @@ export function createDomainGateway(
           { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
         );
       }
+      const replayClaim = await claimInternalMcpReplayNonce(verified.userId, verified.nonce);
+      if (replayClaim === 'unavailable') {
+        // Fail closed: without an atomic replay-cache claim, a valid captured
+        // signature could be reused throughout the timestamp window.
+        emitRequest(503, 'replay_cache_unavailable', null);
+        return new Response(
+          JSON.stringify({ error: 'internal_mcp_replay_cache_unavailable' }),
+          { status: 503, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
+        );
+      }
+      if (replayClaim === 'replay') {
+        emitRequest(401, 'auth_401', null);
+        return new Response(
+          JSON.stringify({ error: 'invalid_internal_mcp_signature' }),
+          { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
+        );
+      }
       // Entitlement re-check at the gateway: the MCP edge already verifies
       // tier ≥ 1 + mcpAccess + validUntil before signing the outbound
       // fetch (api/mcp.ts). This second check defends against (a) the
@@ -793,15 +965,14 @@ export function createDomainGateway(
       const trusted = new Headers(request.headers);
       trusted.delete(INTERNAL_MCP_SIG_HEADER);
       trusted.delete(INTERNAL_MCP_USER_ID_HEADER);
+      trusted.delete(INTERNAL_MCP_NONCE_HEADER);
       trusted.set(INTERNAL_MCP_VERIFIED_HEADER, getInternalMcpVerifiedNonce());
       trusted.set(TRUSTED_USER_ID_HEADER, verified.userId);
       const rebuildInit: RequestInit = { method: request.method, headers: trusted };
       if (bodyBytes !== null) rebuildInit.body = bodyBytes;
       request = new Request(request.url, rebuildInit);
       usage.sessionUserId = verified.userId;
-      if (typeof ent.features.tier === 'number') {
-        usage.tier = ent.features.tier;
-      }
+      recordUsageEntitlement(ent);
       internalMcpVerified = true;
     }
 
@@ -821,9 +992,11 @@ export function createDomainGateway(
     // Session resolution — extract userId from bearer token (Clerk JWT) if present.
     // Only runs for tier-gated endpoints to avoid JWKS lookup on every request.
     let sessionUserId: string | null = null;
+    let sessionRole: 'free' | 'pro' | null = null;
     if (isTierGated) {
       const session = await resolveClerkSession(request);
       sessionUserId = session?.userId ?? null;
+      sessionRole = session?.role ?? null;
       usage.sessionUserId = sessionUserId;
       usage.clerkOrgId = session?.orgId ?? null;
       if (sessionUserId) {
@@ -846,16 +1019,13 @@ export function createDomainGateway(
           forceKey: (isTierGated && !sessionUserId) || needsLegacyProBearerGate,
         })) as { valid: boolean; required: boolean; error?: string; kind?: 'enterprise' | 'session' | 'user' });
 
-    // Clerk session is itself proof of authentication (validated at line 410).
-    // validateApiKey is strict-no-trust-of-headers per #3541 and would 401 every
-    // Clerk-authenticated user who hasn't also minted a wms_ session token.
-    // Override: tier-gated routes with a resolved sessionUserId pass this layer.
-    if (isTierGated && sessionUserId && keyCheck.required && !keyCheck.valid) {
-      keyCheck = { valid: true, required: false };
-    }
-
     // User-owned API keys (wm_ prefix): when the static WORLDMONITOR_VALID_KEYS
     // check fails, try async Convex-backed validation for user-issued keys.
+    //
+    // Run this before the Clerk-session override below. A request can carry both
+    // a valid bearer session and an X-Api-Key wm_ header; when that happens, the
+    // wm_ key is still an explicit authenticating credential and its owner must
+    // pass the #4611 apiAccess gate.
     let isUserApiKey = false;
     const wmKey =
       request.headers.get('X-WorldMonitor-Key') ??
@@ -874,12 +1044,23 @@ export function createDomainGateway(
         // userId argument directly (see checkEntitlement(sessionUserId, …))
         // so it no longer depends on this header — the header is now for
         // handler consumption + the internal-MCP `isCallerPremium` path.
-        if (!sessionUserId) {
-          sessionUserId = userKeyResult.userId;
-          usage.sessionUserId = sessionUserId;
-          request = withAuthenticatedUserId(request, sessionUserId);
-        }
+        sessionUserId = userKeyResult.userId;
+        // The Clerk role belongs to the bearer subject, not the user-key owner.
+        // Once the explicit wm_ key becomes the identity source, require the
+        // key owner's Convex entitlement to drive tier-gated access.
+        sessionRole = null;
+        usage.sessionUserId = sessionUserId;
+        usage.clerkOrgId = null;
+        request = withAuthenticatedUserId(request, sessionUserId);
       }
+    }
+
+    // Clerk session is itself proof of authentication (validated at line 410).
+    // validateApiKey is strict-no-trust-of-headers per #3541 and would 401 every
+    // Clerk-authenticated user who hasn't also minted a wms_ session token.
+    // Override: tier-gated routes with a resolved sessionUserId pass this layer.
+    if (isTierGated && sessionUserId && keyCheck.required && !keyCheck.valid) {
+      keyCheck = { valid: true, required: false };
     }
 
     // Enterprise API key (WORLDMONITOR_VALID_KEYS): require kind === 'enterprise'.
@@ -891,17 +1072,51 @@ export function createDomainGateway(
       usage.enterpriseApiKey = wmKey;
     }
 
-    // User API keys on PREMIUM_RPC_PATHS need verified pro-tier entitlement.
-    // Admin keys (WORLDMONITOR_VALID_KEYS) bypass this since they are operator-issued.
-    if (isUserApiKey && needsLegacyProBearerGate && sessionUserId) {
-      const ent = await getEntitlements(sessionUserId);
-      if (ent) usage.tier = typeof ent.features.tier === 'number' ? ent.features.tier : 0;
-      if (!ent || !ent.features.apiAccess) {
+    // ── Active-subscription gate for user API keys (#4611) ──────────────────
+    // A wm_ user key that authenticated this request must map to an owner with
+    // ACTIVE apiAccess on EVERY keyed route — not just PREMIUM_RPC_PATHS. A
+    // cancelled/downgraded customer keeps a valid (un-revoked) key that still
+    // resolves to their userId, so without a route-wide gate the key keeps
+    // serving the whole paid programmatic surface for free: the API Starter
+    // product leaks past churn. Runs BEFORE the #3199 per-account rate-limit
+    // block so an expired key is rejected outright, never metered — and the
+    // resolved entitlement is reused there to avoid a second lookup.
+    //
+    // Scoped to isUserApiKey: the wm_ key IS the authenticating credential
+    // (isUserApiKey ⇒ sessionUserId is the resolved key owner, set above).
+    // This intentionally does NOT re-validate wm_ keys on any other route class:
+    //   - Enterprise operator keys (kind 'enterprise', incl. legacy wm_-prefixed
+    //     relay keys) never set isUserApiKey and carry no user entitlement row.
+    //   - Verified internal paths (MCP / seed-refresh / relay warm-ping) never
+    //     set isUserApiKey.
+    //   - PUBLIC_NO_AUTH_RPC_PATHS serve free data to everyone; the key is not
+    //     the authenticator there. Re-validating an arbitrary header key on that
+    //     anonymous surface would add an unauthenticated Convex-lookup
+    //     amplification vector (a rotating fake wm_ key per request defeats the
+    //     negative cache, ahead of any rate limit) for no revenue gain — public
+    //     data is not the paid product — and would wrongly gate the
+    //     intentionally-anonymous lead-capture forms.
+    let userKeyEntitlement: CachedEntitlements | null | undefined;
+    if (isUserApiKey && sessionUserId) {
+      userKeyEntitlement = await getEntitlements(sessionUserId);
+      recordUsageEntitlement(userKeyEntitlement);
+      // Fail-OPEN on an unresolved entitlement (null ⇒ transient Convex/cache
+      // failure, indistinguishable from "no row"): mirrors the #3199 block below
+      // and avoids 403-ing an ACTIVE subscriber fleet-wide during a backend
+      // blip. Reject only on an AFFIRMATIVELY inactive/expired entitlement — the
+      // systematic churn case (#4611), always resolvable under normal operation
+      // (the warm 15-min entitlement cache closes the leak; an outage degrades
+      // to prior behavior rather than denying paying customers).
+      if (
+        userKeyEntitlement &&
+        (!userKeyEntitlement.features.apiAccess || userKeyEntitlement.validUntil < Date.now())
+      ) {
         emitRequest(403, 'tier_403', null);
-        return new Response(JSON.stringify({ error: 'API access subscription required' }), {
-          status: 403,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders },
-        });
+        return createGatewayAuthErrorResponse(
+          403,
+          'API access requires an active subscription',
+          corsHeaders,
+        );
       }
     }
 
@@ -913,10 +1128,7 @@ export function createDomainGateway(
           const session = await validateBearerToken(authHeader.slice(7));
           if (!session.valid) {
             emitRequest(401, 'auth_401', null);
-            return new Response(JSON.stringify({ error: 'Invalid or expired session' }), {
-              status: 401,
-              headers: { 'Content-Type': 'application/json', ...corsHeaders },
-            });
+            return createGatewayAuthErrorResponse(401, 'Invalid or expired session', corsHeaders);
           }
           // Capture identity for telemetry — legacy bearer auth bypasses the
           // earlier resolveClerkSession() block (only runs for tier-gated routes),
@@ -945,30 +1157,21 @@ export function createDomainGateway(
           let allowed = session.role === 'pro';
           if (!allowed && session.userId) {
             const ent = await getEntitlements(session.userId);
-            if (ent) usage.tier = typeof ent.features.tier === 'number' ? ent.features.tier : 0;
+            recordUsageEntitlement(ent);
             allowed = !!ent && ent.features.tier >= 1 && ent.validUntil >= Date.now();
           }
           if (!allowed) {
             emitRequest(403, 'tier_403', null);
-            return new Response(JSON.stringify({ error: 'Pro subscription required' }), {
-              status: 403,
-              headers: { 'Content-Type': 'application/json', ...corsHeaders },
-            });
+            return createGatewayAuthErrorResponse(403, 'Pro subscription required', corsHeaders);
           }
           // Valid pro session (Clerk role OR Dodo entitlement) — fall through to route handling.
         } else {
           emitRequest(401, 'auth_401', null);
-          return new Response(JSON.stringify({ error: keyCheck.error }), {
-            status: 401,
-            headers: { 'Content-Type': 'application/json', ...corsHeaders },
-          });
+          return createGatewayAuthErrorResponse(401, keyCheck.error, corsHeaders);
         }
       } else {
         emitRequest(401, 'auth_401', null);
-        return new Response(JSON.stringify({ error: keyCheck.error }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders },
-        });
+        return createGatewayAuthErrorResponse(401, keyCheck.error, corsHeaders);
       }
     }
 
@@ -984,21 +1187,20 @@ export function createDomainGateway(
     // through the MCP edge's whitelisted tool set.
     const isEnterpriseAuth = keyCheck.valid && wmKey && !isUserApiKey && keyCheck.kind === 'enterprise';
     if (!isEnterpriseAuth && !internalMcpVerified && !seedRefreshVerified && !relayWarmPingVerified) {
-      const entitlementResponse = await checkEntitlement(sessionUserId, pathname, corsHeaders);
+      const entitlementCheck = await checkEntitlementDetailed(sessionUserId, pathname, corsHeaders, {
+        clerkRole: sessionRole,
+      });
+      recordUsageEntitlement(entitlementCheck.entitlements);
+      const entitlementResponse = entitlementCheck.response;
       if (entitlementResponse) {
         const entReason: RequestReason =
           entitlementResponse.status === 401 ? 'auth_401'
           : entitlementResponse.status === 403 ? 'tier_403'
           : 'ok';
         emitRequest(entitlementResponse.status, entReason, null);
-        return entitlementResponse;
-      }
-      // Allowed → record the resolved tier for telemetry. getEntitlements has
-      // its own Redis cache + in-flight coalescing, so the second lookup here
-      // does not double the cost when checkEntitlement already fetched.
-      if (isTierGated && sessionUserId && usage.tier === null) {
-        const ent = await getEntitlements(sessionUserId);
-        if (ent) usage.tier = typeof ent.features.tier === 'number' ? ent.features.tier : 0;
+        return entitlementResponse.status === 401 || entitlementResponse.status === 403
+          ? markAuthErrorNoStore(entitlementResponse)
+          : entitlementResponse;
       }
     }
 
@@ -1020,7 +1222,116 @@ export function createDomainGateway(
         return endpointRlResponse;
       }
 
-      if (!hasEndpointRatePolicy(pathname)) {
+      // ── Per-account API rate limit (#3199) ──────────────────────────────
+      // Eligible authenticated keys — a valid user key (which carries NO
+      // keyCheck.kind, so `isUserApiKey` is the discriminator) or an enterprise
+      // env key — are governed by a per-account burst + daily meter + 10×
+      // safety ceiling instead of the global per-IP cap. In ENFORCE they bypass
+      // the per-IP fallback below; in SHADOW they only record telemetry and
+      // still fall through to per-IP, so protection never drops below today.
+      // Limits are NOT in scope here (checkEntitlement discards `features`), so
+      // user keys resolve getEntitlements explicitly (cached); enterprise keys
+      // carry no entitlement and use hardcoded limits.
+      let governedByApiKeyLayer = false;
+      if (keyCheck.valid && (isUserApiKey || isEnterpriseAuth)) {
+        const enforce = process.env.API_RATE_LIMIT_ENFORCE === 'true';
+        let perMinute = 0;
+        let allowance = -1;
+        let identity = '';
+        if (isEnterpriseAuth) {
+          perMinute = ENTERPRISE_API_RATE_LIMIT; // hardcoded — no entitlement row
+          allowance = -1; // unlimited daily / no ceiling
+          usage.tier = 3; // enterprise tier — no entitlement row to read it from
+          // (plan_key defaults to 'enterprise' in buildUsageIdentity)
+          // Enterprise burst is keyed PER KEY (not per account) by design:
+          // these are operator-issued WORLDMONITOR_VALID_KEYS with no shared
+          // userId, and unlimited daily — so there's no quota to multiply by
+          // minting keys, and each operator key gets its own 1,000/min budget
+          // rather than contending for one shared bucket. (User keys below key
+          // on userId so a customer can't multiply their allowance.)
+          identity = wmKey ? hashKeySync(wmKey) : '';
+        } else if (sessionUserId) {
+          // Reuse the entitlement the #4611 gate above already resolved for this
+          // same user key (undefined ⇒ the gate didn't run, e.g. a Clerk-session
+          // caller with no wm_ key — resolve it now). Avoids a duplicate lookup
+          // on the hot active-key path.
+          const ent =
+            userKeyEntitlement !== undefined
+              ? userKeyEntitlement
+              : await getEntitlements(sessionUserId);
+          if (ent) {
+            // #4572 — attribute the usage event to the caller's real tier +
+            // plan (recorded even for downgraded keys), so the limit-abuse
+            // audit can compare each request to the customer's actual cap.
+            recordUsageEntitlement(ent);
+          }
+          if (ent && ent.features.apiAccess && ent.features.apiRateLimit > 0) {
+            perMinute = ent.features.apiRateLimit;
+            // undefined ⇒ fail-open (no daily limit); -1 ⇒ unlimited.
+            allowance =
+              typeof ent.features.apiDailyAllowance === 'number'
+                ? ent.features.apiDailyAllowance
+                : -1;
+            identity = sessionUserId;
+          }
+          // else: downgraded / null entitlement ⇒ not eligible (perMinute = 0),
+          // falls through to the per-IP path — never a slidingWindow(0).
+        }
+
+        if (perMinute > 0 && identity) {
+          // 1. Per-minute burst (hard limit).
+          const burst = await checkBurst(perMinute, identity);
+          if (!burst.ok) {
+            if (enforce) {
+              const retryAfterSec = Math.max(1, Math.ceil((burst.reset - Date.now()) / 1000));
+              emitRequest(429, 'rl_min_429', null);
+              return new Response(JSON.stringify({ error: 'Too many requests' }), {
+                status: 429,
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Cache-Control': 'no-store',
+                  ...rateLimitHeaders({ limit: burst.limit, remaining: 0, resetMs: burst.reset, retryAfterSec }),
+                  ...corsHeaders,
+                },
+              });
+            }
+            pendingShadowReason = 'rl_min_shadow';
+          } else if (allowance >= 0) {
+            // 2. Daily meter + 10× ceiling (skipped for unlimited allowance).
+            const meter = await reserveDailyMeter({
+              userId: identity,
+              allowance,
+              pipeline: (cmds) => runRedisPipeline(cmds),
+            });
+            if (meter.overCeiling) {
+              if (enforce) {
+                await meter.rollback();
+                emitRequest(429, 'rl_ceiling_429', null);
+                return new Response(JSON.stringify({ error: 'Daily request ceiling exceeded' }), {
+                  status: 429,
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-store',
+                    ...rateLimitHeaders({
+                      limit: allowance * CEILING_MULTIPLIER,
+                      remaining: 0,
+                      resetMs: Date.now() + meter.retryAfterSec * 1000,
+                      retryAfterSec: meter.retryAfterSec,
+                    }),
+                    ...corsHeaders,
+                  },
+                });
+              }
+              pendingShadowReason = 'rl_ceiling_shadow';
+            }
+          }
+          // Eligible + enforce + not rejected ⇒ the per-account layer governs
+          // this request; skip the per-IP fallback. In shadow, keep per-IP on.
+          if (enforce) governedByApiKeyLayer = true;
+        }
+      }
+
+      if (!governedByApiKeyLayer && !hasEndpointRatePolicy(pathname)) {
         const rateLimitResponse = await checkRateLimit(request, corsHeaders);
         if (rateLimitResponse) {
           const reason =
@@ -1094,6 +1405,8 @@ export function createDomainGateway(
       });
     }
 
+    const requiredBboxDiagnostic = getRequiredBboxDiagnostic(request, pathname);
+
     // Execute handler with top-level error boundary.
     // Wrap in runWithUsageScope so deep fetch helpers (fetchJson,
     // cachedFetchJsonWithMeta) can attribute upstream calls to this customer
@@ -1132,6 +1445,7 @@ export function createDomainGateway(
         mergedHeaders.set(key, value);
       }
     }
+    attachRequiredBboxDiagnosticHeaders(mergedHeaders, pathname, requiredBboxDiagnostic);
 
     // For GET 200 responses: read body once for cache-header decisions + ETag
     let resolvedCacheTier: CacheTier | null = null;
@@ -1141,12 +1455,14 @@ export function createDomainGateway(
       // Skip CDN caching for upstream-unavailable / empty responses so CF
       // doesn't serve stale error data for hours.
       //
-      // Two field names are in active use across the RPC handlers because the
-      // codebase grew two fallback conventions in parallel:
+      // Three field names are in active use across the RPC handlers because the
+      // codebase grew three fallback conventions in parallel:
       //   - `upstreamUnavailable: true` — used by consumer-prices/intelligence/
       //     trade handlers that return ad-hoc JSON shapes.
       //   - `unavailable: true` — proto-typed handlers (every economic RPC
       //     including get-macro-signals — `bool unavailable = N` in the proto).
+      //   - `dataAvailable: false` — seed-backed handlers that distinguish
+      //     a real empty snapshot from a degraded or missing seed.
       // The original check only matched the first form, so proto-typed
       // fallback responses were getting full `medium` cache tier (CF s-maxage
       // 1200s, browser max-age 1800s). Production incident 2026-05-03: a
@@ -1155,21 +1471,25 @@ export function createDomainGateway(
       // cached for 30 min. Even after auth was fixed (PR #3574), browsers
       // and CF POPs kept serving "Upstream API unavailable" until the cache
       // TTL expired naturally — 30 min of false-bad UX per affected user.
-      // Detecting both field names closes that window.
+      // Detecting all three field names closes that window.
       const bodyStr = new TextDecoder().decode(bodyBytes);
       const isUpstreamUnavailable =
         bodyStr.includes('"upstreamUnavailable":true') ||
-        bodyStr.includes('"unavailable":true');
+        bodyStr.includes('"unavailable":true') ||
+        bodyStr.includes('"dataAvailable":false');
 
       if (mergedHeaders.get('X-No-Cache') || isUpstreamUnavailable) {
         mergedHeaders.set('Cache-Control', 'no-store');
+        mergedHeaders.delete('CDN-Cache-Control');
+        mergedHeaders.delete('Vercel-CDN-Cache-Control');
         mergedHeaders.set('X-Cache-Tier', 'no-store');
         resolvedCacheTier = 'no-store';
       } else {
         const rpcName = pathname.split('/').pop() ?? '';
         const envOverride = process.env[`CACHE_TIER_OVERRIDE_${rpcName.replace(/-/g, '_').toUpperCase()}`] as CacheTier | undefined;
         const isPremium = PREMIUM_RPC_PATHS.has(pathname) || getRequiredTier(pathname) !== null;
-        const tier = isPremium ? 'slow-browser' as CacheTier
+        const hasCredentialedNonPublicGet = !isPublicNoAuthRpc && hasCredentialBearingHeader(request);
+        const tier = isPremium || hasCredentialedNonPublicGet ? 'slow-browser' as CacheTier
           : (envOverride && envOverride in TIER_HEADERS ? envOverride : null) ?? RPC_CACHE_TIER[pathname] ?? 'medium';
         resolvedCacheTier = tier;
         mergedHeaders.set('Cache-Control', TIER_HEADERS[tier]);
@@ -1179,7 +1499,9 @@ export function createDomainGateway(
         // 200 from a trusted-origin browser request could be served to a no-origin scraper,
         // bypassing auth entirely.
         const reqOrigin = request.headers.get('origin') || '';
-        const cdnCache = !isPremium && isAllowedOrigin(reqOrigin) ? TIER_CDN_CACHE[tier] : null;
+        const cdnCache = !isPremium && !hasCredentialedNonPublicGet && isAllowedOrigin(reqOrigin) ? TIER_CDN_CACHE[tier] : null;
+        mergedHeaders.delete('CDN-Cache-Control');
+        mergedHeaders.delete('Vercel-CDN-Cache-Control');
         if (cdnCache) mergedHeaders.set('CDN-Cache-Control', cdnCache);
         mergedHeaders.set('X-Cache-Tier', tier);
 

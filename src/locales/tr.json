@@ -690,7 +690,9 @@
         "americas": "AMERIKA",
         "asia": "ASYA",
         "space": "UZAY"
-      }
+      },
+      "play": "Oynat",
+      "previewStatus": "Canlı önizleme"
     },
     "positiveNewsFeed": {
       "noStories": "Bu kategoride henüz haber yok"
@@ -1264,8 +1266,8 @@
       "badgeAnimDesc": "Panel başlıklarındaki güncelleme rozetlerini canlandır",
       "headlineMemoryLabel": "Başlık hafızası",
       "headlineMemoryDesc": "Yenileri vurgulamak için görülen başlıkları hatırla",
-      "streamAlwaysOnLabel": "Canlı yayınları çalışır tut",
-      "streamAlwaysOnDesc": "Boştayken Live Cams ve Live News akışlarının otomatik duraklatılmasını engeller. İkinci monitör / wallboard kullanımı için önerilir. CPU/bant genişliği tasarrufu için (Eco) modunu kapatın.",
+      "streamAlwaysOnLabel": "Panoda canlı yayınları otomatik oynat",
+      "streamAlwaysOnDesc": "Görünür olduklarında Live News ve Live Webcams otomatik olarak başlar. Videoyu yalnızca Oynat’a tıkladıktan sonra yüklemek için kapalı bırakın.",
       "analysisFrameworksLabel": "Analiz Çerçeveleri",
       "analysisFrameworksActivePerPanel": "Panel başına etkin",
       "analysisFrameworksSkillLibrary": "Beceri kütüphanesi",
@@ -1773,7 +1775,9 @@
       "invalidHandle": "Geçerli bir YouTube tanıtıcısı girin (örn. @KanalAdı)",
       "verifying": "Doğrulanıyor…",
       "hlsUrl": "HLS Akış URL (isteğe bağlı)",
-      "invalidHlsUrl": "Geçerli bir HLS akış URL'si girin (.m3u8)"
+      "invalidHlsUrl": "Geçerli bir HLS akış URL'si girin (.m3u8)",
+      "playLiveFeed": "Canlı yayını oynat",
+      "readyStatus": "Hazır olduğunuzda hazır"
     },
     "map": {
       "showMap": "Haritayı Göster",
@@ -3136,5 +3140,18 @@
     "or": "ya da özel bir sunucu girin",
     "generatingVisualization": "Görselleştirme oluşturuluyor...",
     "visualizationFailed": "Görselleştirme başarısız"
+  },
+  "dashboardTabs": {
+    "ariaLabel": "Dashboard tabs",
+    "defaultName": "Main",
+    "newTabName": "New Tab",
+    "newTabCreated": "New tab created",
+    "tabDeleted": "Tab \"{{name}}\" deleted",
+    "addTab": "Add tab",
+    "addTabTitle": "New tab (starts with the default panels)",
+    "renameHint": "{{name}} — double-click to rename",
+    "deleteTab": "Delete tab",
+    "deleteTabAria": "Delete tab {{name}}",
+    "tabNameAria": "Tab name"
   }
 }

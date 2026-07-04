@@ -12,6 +12,7 @@ const jsonLd = {
   "name": "World Monitor Blog",
   "description": "Analysis, guides, and deep dives on real-time intelligence, OSINT, geopolitics, markets, and the open-source tools behind World Monitor.",
   "url": "https://www.worldmonitor.app/blog/",
+  "inLanguage": "en-US",
   "publisher": {
     "@type": "Organization",
     "name": "World Monitor",
@@ -26,6 +27,7 @@ const jsonLd = {
     "headline": post.data.title,
     "description": post.data.description,
     "datePublished": post.data.pubDate.toISOString(),
+    ...(post.data.modifiedDate ? { "dateModified": post.data.modifiedDate.toISOString() } : {}),
     "url": `https://www.worldmonitor.app/blog/posts/${post.id}/`,
     "image": post.data.heroImage ? `https://www.worldmonitor.app${post.data.heroImage}` : "https://www.worldmonitor.app/favico/og-image.png"
   }))

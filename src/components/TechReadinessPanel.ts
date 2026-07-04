@@ -58,6 +58,10 @@ export class TechReadinessPanel extends Panel {
     if (Date.now() - this.lastFetch < this.REFRESH_INTERVAL && this.rankings.length > 0) {
       return;
     }
+    if (!this.element.isConnected) {
+      this.runWhenConnected(() => { void this.refresh(isRetry); });
+      return;
+    }
     if (!isRetry) this.localRetryAttempt = 0;
 
     this.loading = true;

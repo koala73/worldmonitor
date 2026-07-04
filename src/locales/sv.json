@@ -486,7 +486,9 @@
         "space": "RYMDEN"
       },
       "paused": "Webbkameror pausade",
-      "pausedIdle": "Webbkameror pausade — flytta musen för att återuppta"
+      "pausedIdle": "Webbkameror pausade — flytta musen för att återuppta",
+      "play": "Spela",
+      "previewStatus": "Liveförhandsvisning"
     },
     "playback": {
       "live": "LIVE",
@@ -1229,8 +1231,8 @@
       "badgeAnimDesc": "Animera uppdateringsemblem i panelrubriker",
       "headlineMemoryLabel": "Rubrikminne",
       "headlineMemoryDesc": "Kom ihåg sedda rubriker för att markera nya",
-      "streamAlwaysOnLabel": "Håll liveströmmar igång",
-      "streamAlwaysOnDesc": "Förhindrar att Live Cams och Live News pausas automatiskt när du är inaktiv. Rekommenderas för andra skärmen / wallboard-användning. Stäng av (Eco) för att spara CPU/bandbredd.",
+      "streamAlwaysOnLabel": "Spela upp liveströmmar automatiskt på instrumentpanelen",
+      "streamAlwaysOnDesc": "Startar Live News och Live Webcams automatiskt när de är synliga. Lämna avstängt för att ladda video först efter att du klickar på Spela.",
       "globeRenderScaleOptions": {
         "1": "Eco (1x)",
         "2": "4K (2x)",
@@ -1443,7 +1445,9 @@
       "verifying": "Verifierar…",
       "noResults": "Inga kanaler hittades för \"{{term}}\"",
       "hlsUrl": "HLS-ström-URL (valfritt)",
-      "invalidHlsUrl": "Ange en giltig HLS-ström-URL (.m3u8)"
+      "invalidHlsUrl": "Ange en giltig HLS-ström-URL (.m3u8)",
+      "playLiveFeed": "Spela liveflöde",
+      "readyStatus": "Redo när du är det"
     },
     "securityAdvisories": {
       "loading": "Hämtar resevarningar...",
@@ -3136,5 +3140,18 @@
     "or": "eller ange en anpassad server",
     "generatingVisualization": "Skapar visualisering...",
     "visualizationFailed": "Visualiseringen misslyckades"
+  },
+  "dashboardTabs": {
+    "ariaLabel": "Dashboard tabs",
+    "defaultName": "Main",
+    "newTabName": "New Tab",
+    "newTabCreated": "New tab created",
+    "tabDeleted": "Tab \"{{name}}\" deleted",
+    "addTab": "Add tab",
+    "addTabTitle": "New tab (starts with the default panels)",
+    "renameHint": "{{name}} — double-click to rename",
+    "deleteTab": "Delete tab",
+    "deleteTabAria": "Delete tab {{name}}",
+    "tabNameAria": "Tab name"
   }
 }

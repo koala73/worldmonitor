@@ -690,7 +690,9 @@
         "americas": "CHÂU MỸ",
         "asia": "CHÂU Á",
         "space": "KHÔNG GIAN"
-      }
+      },
+      "play": "Phát",
+      "previewStatus": "Xem trước trực tiếp"
     },
     "positiveNewsFeed": {
       "noStories": "Chưa có bài viết trong danh mục này"
@@ -1264,8 +1266,8 @@
       "badgeAnimDesc": "Hoạt ảnh huy hiệu cập nhật trên tiêu đề bảng",
       "headlineMemoryLabel": "Bộ nhớ tiêu đề",
       "headlineMemoryDesc": "Ghi nhớ tiêu đề đã xem để làm nổi bật tin mới",
-      "streamAlwaysOnLabel": "Giữ luồng trực tiếp luôn chạy",
-      "streamAlwaysOnDesc": "Ngăn Live Cams và Live News tự động tạm dừng khi bạn không hoạt động. Khuyến nghị cho màn hình phụ / bảng tường. Tắt (Eco) để tiết kiệm CPU/băng thông.",
+      "streamAlwaysOnLabel": "Tự động phát luồng trực tiếp trên bảng điều khiển",
+      "streamAlwaysOnDesc": "Tự động khởi động Live News và Live Webcams khi chúng hiển thị. Tắt tùy chọn này để chỉ tải video sau khi bạn nhấp Phát.",
       "analysisFrameworksLabel": "Khung phân tích",
       "analysisFrameworksActivePerPanel": "Hoạt động theo bảng điều khiển",
       "analysisFrameworksSkillLibrary": "Thư viện kỹ năng",
@@ -1773,7 +1775,9 @@
       "invalidHandle": "Nhập handle YouTube hợp lệ (ví dụ: @TênKênh)",
       "verifying": "Đang xác minh…",
       "hlsUrl": "URL luồng HLS (tùy chọn)",
-      "invalidHlsUrl": "Nhập URL luồng HLS hợp lệ (.m3u8)"
+      "invalidHlsUrl": "Nhập URL luồng HLS hợp lệ (.m3u8)",
+      "playLiveFeed": "Phát luồng trực tiếp",
+      "readyStatus": "Sẵn sàng khi bạn sẵn sàng"
     },
     "map": {
       "showMap": "Hiển thị bản đồ",
@@ -3136,5 +3140,18 @@
     "or": "hoặc nhập máy chủ tùy chỉnh",
     "generatingVisualization": "Đang xây dựng trực quan hóa...",
     "visualizationFailed": "Trực quan hóa thất bại"
+  },
+  "dashboardTabs": {
+    "ariaLabel": "Dashboard tabs",
+    "defaultName": "Main",
+    "newTabName": "New Tab",
+    "newTabCreated": "New tab created",
+    "tabDeleted": "Tab \"{{name}}\" deleted",
+    "addTab": "Add tab",
+    "addTabTitle": "New tab (starts with the default panels)",
+    "renameHint": "{{name}} — double-click to rename",
+    "deleteTab": "Delete tab",
+    "deleteTabAria": "Delete tab {{name}}",
+    "tabNameAria": "Tab name"
   }
 }

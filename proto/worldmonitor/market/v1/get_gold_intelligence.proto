@@ -102,6 +102,8 @@ message GetGoldIntelligenceResponse {
   repeated GoldCrossCurrencyPrice cross_currency_prices = 9;
   GoldCotPositioning cot = 10;
   string updated_at = 11;
+  // True when the upstream or seed-backed variant is unavailable; empty payload fields
+  // are graceful degradation, not confirmed zero data.
   bool unavailable = 12;
   GoldSessionRange session = 13;
   GoldReturns returns = 14;

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed, sleep } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed, sleep, coingeckoEndpoint } from './_seed-utils.mjs';
 
 const sectorsConfig = loadSharedConfig('crypto-sectors.json');
 
@@ -29,11 +29,8 @@ async function fetchWithRateLimitRetry(url, maxAttempts = 5, headers = { Accept:
 async function fetchSectorData() {
   const allIds = [...new Set(SECTORS.flatMap(s => s.tokens))];
 
-  const apiKey = process.env.COINGECKO_API_KEY;
-  const baseUrl = apiKey ? 'https://pro-api.coingecko.com/api/v3' : 'https://api.coingecko.com/api/v3';
+  const { baseUrl, headers } = coingeckoEndpoint();
   const url = `${baseUrl}/coins/markets?vs_currency=usd&ids=${allIds.join(',')}&order=market_cap_desc&sparkline=false&price_change_percentage=24h`;
-  const headers = { Accept: 'application/json', 'User-Agent': CHROME_UA };
-  if (apiKey) headers['x-cg-pro-api-key'] = apiKey;
 
   const resp = await fetchWithRateLimitRetry(url, 5, headers);
   const data = await resp.json();

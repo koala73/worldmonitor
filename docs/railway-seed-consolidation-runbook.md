@@ -27,6 +27,22 @@
 
 Each "bundle" is a single Railway cron service that replaces N individual services. The bundle script spawns each member seed sequentially via `child_process.execFile`, checking Redis `seed-meta:` timestamps to skip seeds that ran recently. Original seed scripts are unchanged.
 
+**Graceful fetch failures:** `runSeed` now treats transient upstream fetch
+failures as non-zero graceful failures after extending the last-good Redis TTL.
+This applies to bundled members and standalone `runSeed` cron seeders: Railway
+may mark that cron run failed, but `/api/health` and seed-contract probes still
+read the preserved `seed-meta:` freshness. Alerting should either tolerate these
+transient cron failures or key sustained data-health pages off those freshness
+checks. Bundle member logs use `status=GRACEFUL_FAIL`; external log consumers
+that match only `status=FAILED` should include `GRACEFUL_FAIL`. The bundle
+summary still reports these under `failed:N`, so use per-section status when
+distinguishing graceful upstream outages from hard failures.
+
+**Standalone follow-up:** `scripts/seed-military-flights.mjs` and
+`scripts/seed-service-statuses.mjs` still have manual graceful failure paths
+that exit `0`. Track those separately if the standalone graceful-failure
+contract needs to be made fully uniform beyond shared `runSeed` users.
+
 **Per-bundle migration:**
 
 1. Delete ONE old member first (to free a slot under the 100 limit)
@@ -167,11 +183,19 @@ All new services share these settings:
 |---|---|
 | **Service name** | `seed-bundle-ecb-eu` |
 | **Start command** | `node scripts/seed-bundle-ecb-eu.mjs` |
-| **Cron schedule** | `0 6 * * *` (daily 06:00 UTC) |
+| **Cron schedule** | `0 13 * * *` (daily 13:00 UTC) |
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 4 services (ecb-fx-rates, ecb-short-rates, yield-curve-eu, fsi-eu) |
 | **Net savings** | 3 slots |
 | **Members** | ECB FX Rates (daily), ECB Short Rates (daily), Yield Curve EU (daily), FSI EU (daily) |
+
+> **Why 13:00 UTC (not 06:00):** the daily ECB SDMX series (€STR, yield curve,
+> CISS) are rebuilt during ECB's early-morning refresh window. A `0 6 * * *`
+> run (08:00 CEST — exactly €STR's publication moment) intermittently hit that
+> window and got empty/incomplete datasets, so those three sections failed
+> gracefully (TTL extended, no data loss) while the bundle exited non-zero and
+> showed red on Railway. 13:00 UTC (15:00 CEST) clears €STR (08:00 CET), the
+> yield curve (~12:00 CET) and CISS morning publication. Changed 2026-07-01.
 
 ### Bundle 2: seed-bundle-portwatch
 

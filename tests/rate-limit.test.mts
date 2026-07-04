@@ -11,6 +11,9 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import {
+  ENDPOINT_RATE_POLICIES,
+  FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED,
+  GLOBAL_RATE_LIMIT_FALLBACK_READ_ROUTES,
   RATE_LIMIT_DEGRADED_HEADERS,
   UNKNOWN_CLIENT_IP,
   checkEndpointRateLimit,
@@ -192,6 +195,67 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
     assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
   });
 
+  it('summarize-article is an explicit fail-closed endpoint policy route', async () => {
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    const mod = await importFreshRateLimitModule();
+    const pathname = '/api/news/v1/summarize-article';
+
+    assert.deepEqual(ENDPOINT_RATE_POLICIES[pathname], { limit: 30, window: '60 s' });
+    assert.ok(
+      pathname in FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED,
+      'LLM-backed summarize-article must stay in the fail-closed requirement registry',
+    );
+
+    const res = await mod.checkEndpointRateLimit(
+      makeRequest({ 'cf-connecting-ip': '203.0.113.7' }),
+      pathname,
+      { 'Access-Control-Allow-Origin': 'https://worldmonitor.app' },
+    );
+
+    assert.ok(res, 'expected summarize-article endpoint policy to fail closed without Redis config');
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
+    assert.equal(
+      res.headers.get('Access-Control-Allow-Origin'),
+      'https://worldmonitor.app',
+      'CORS headers should be propagated on the degraded response',
+    );
+    assert.equal(res.headers.get('Retry-After'), '5');
+  });
+
+  it('deduct-situation is an explicit fail-closed endpoint policy route (#4676)', async () => {
+    // LLM-backed situational deduction (imports callLlmReasoning) must fail
+    // closed on a Redis outage rather than inherit the availability-first
+    // global fallback — mirrors summarize-article / classify-event. Regression
+    // guard for the #4676 finding where it was absent from both registries.
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    const mod = await importFreshRateLimitModule();
+    const pathname = '/api/intelligence/v1/deduct-situation';
+
+    assert.deepEqual(ENDPOINT_RATE_POLICIES[pathname], { limit: 600, window: '60 s' });
+    assert.ok(
+      pathname in FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED,
+      'LLM-backed deduct-situation must stay in the fail-closed requirement registry',
+    );
+
+    const res = await mod.checkEndpointRateLimit(
+      makeRequest({ 'cf-connecting-ip': '203.0.113.7' }),
+      pathname,
+      { 'Access-Control-Allow-Origin': 'https://worldmonitor.app' },
+    );
+
+    assert.ok(res, 'expected deduct-situation endpoint policy to fail closed without Redis config');
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
+    assert.equal(
+      res.headers.get('Access-Control-Allow-Origin'),
+      'https://worldmonitor.app',
+      'CORS headers should be propagated on the degraded response',
+    );
+  });
+
   it('checkEndpointRateLimit keeps unrecognised paths unguarded even with fail-closed defaults', async () => {
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -206,6 +270,29 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
     assert.equal(res, null);
   });
 
+  it('documented read-only global fallback routes remain fail-open when Redis config is missing', async () => {
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    const mod = await importFreshRateLimitModule();
+    const pathname = '/api/aviation/v1/list-airport-delays';
+
+    assert.ok(
+      pathname in GLOBAL_RATE_LIMIT_FALLBACK_READ_ROUTES,
+      'the intentionally fail-open read route must be documented in the global fallback registry',
+    );
+    assert.equal(mod.hasEndpointRatePolicy(pathname), false);
+
+    const endpointRes = await mod.checkEndpointRateLimit(
+      makeRequest({ 'cf-connecting-ip': '203.0.113.7' }),
+      pathname,
+      {},
+    );
+    const globalRes = await mod.checkRateLimit(makeRequest({ 'cf-connecting-ip': '203.0.113.7' }), {});
+
+    assert.equal(endpointRes, null, 'no endpoint policy should be applied to the documented read route');
+    assert.equal(globalRes, null, 'global fallback keeps read traffic fail-open without Redis config');
+  });
+
   it('server rate-limit degraded logs are also sent through Sentry capture', async () => {
     const fs = await import('node:fs');
     const src = fs.readFileSync(new URL('../server/_shared/rate-limit.ts', import.meta.url), 'utf8');
@@ -216,15 +303,23 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
     assert.match(src, /fingerprint:\s*\['rate-limit',\s*'redis-error',\s*stage\]/);
   });
 
-  it('checkScopedRateLimit reports degraded when Upstash env is missing', async () => {
+  it('checkScopedRateLimit reports and captures degraded missing-config once per scope', async () => {
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
     const mod = await importFreshRateLimitModule();
 
     const result = await mod.checkScopedRateLimit('test-scope', 5, '60 s', 'identifier');
+    const secondResult = await mod.checkScopedRateLimit('test-scope', 5, '60 s', 'identifier-2');
 
     assert.equal(result.allowed, true);
     assert.equal(result.degraded, true);
+    assert.equal(secondResult.allowed, true);
+    assert.equal(secondResult.degraded, true);
+    const missingConfigLogs = consoleErrors.filter((line) =>
+      line.includes('stage=checkScopedRateLimit:test-scope:missing-config'),
+    );
+    assert.equal(missingConfigLogs.length, 1, 'missing config should be observable without logging every request');
+    assert.match(missingConfigLogs[0], /UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN missing/);
   });
 
   it('checkScopedRateLimit returns degraded:true on Redis error so callers can fail-closed locally', async () => {
@@ -271,6 +366,11 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
       path: 'api/mcp-proxy.ts',
       expected: /Redis-degraded scoped limits intentionally stay availability-first/,
       reason: 'MCP proxy is already premium-auth gated; scoped limit degradation is logged and remains availability-first',
+    },
+    {
+      path: 'api/user-prefs.ts',
+      expected: /Redis-degraded scoped limits intentionally fail open for prefs writes/,
+      reason: 'cloud prefs writes are low-stakes, so Redis degradation should not block legitimate settings sync',
     },
   ];
 

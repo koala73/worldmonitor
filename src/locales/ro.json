@@ -690,7 +690,9 @@
         "americas": "AMERICA",
         "asia": "ASIA",
         "space": "SPAȚIU"
-      }
+      },
+      "play": "Redă",
+      "previewStatus": "Previzualizare live"
     },
     "positiveNewsFeed": {
       "noStories": "Încă nu există povești în această categorie"
@@ -1264,8 +1266,8 @@
       "badgeAnimDesc": "Animați insigne de actualizare pe anteturile panoului",
       "headlineMemoryLabel": "Memorie titlu",
       "headlineMemoryDesc": "Amintiți-vă titlurile văzute pentru a evidenția povești noi",
-      "streamAlwaysOnLabel": "Menține fluxurile live active",
-      "streamAlwaysOnDesc": "Împiedică oprirea automată a camerelor și știrilor live când nu interacționați. Recomandat pentru monitorizare continuă. Dezactivați (Eco) pentru a economisi CPU/lățime de bandă.",
+      "streamAlwaysOnLabel": "Redă automat fluxurile live în tabloul de bord",
+      "streamAlwaysOnDesc": "Pornește automat Live News și Live Webcams când sunt vizibile. Lasă dezactivat pentru a încărca video doar după ce dai clic pe Redă.",
       "analysisFrameworksLabel": "Cadre de Analiză",
       "analysisFrameworksActivePerPanel": "Activ per panou",
       "analysisFrameworksSkillLibrary": "Bibliotecă de Abilități",
@@ -1774,7 +1776,9 @@
       "invalidHandle": "Introduceți un handle YouTube valid (de exemplu, @ChannelName)",
       "verifying": "Se verifică...",
       "hlsUrl": "URL flux HLS (opțional)",
-      "invalidHlsUrl": "Introduceți un URL valid de flux HLS (.m3u8)"
+      "invalidHlsUrl": "Introduceți un URL valid de flux HLS (.m3u8)",
+      "playLiveFeed": "Redă fluxul live",
+      "readyStatus": "Gata când ești și tu"
     },
     "map": {
       "showMap": "Arată harta",
@@ -3152,5 +3156,18 @@
     "or": "sau introduceți un server personalizat",
     "generatingVisualization": "Se construiește vizualizarea...",
     "visualizationFailed": "Vizualizarea a eșuat"
+  },
+  "dashboardTabs": {
+    "ariaLabel": "Dashboard tabs",
+    "defaultName": "Main",
+    "newTabName": "New Tab",
+    "newTabCreated": "New tab created",
+    "tabDeleted": "Tab \"{{name}}\" deleted",
+    "addTab": "Add tab",
+    "addTabTitle": "New tab (starts with the default panels)",
+    "renameHint": "{{name}} — double-click to rename",
+    "deleteTab": "Delete tab",
+    "deleteTabAria": "Delete tab {{name}}",
+    "tabNameAria": "Tab name"
   }
 }

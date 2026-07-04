@@ -37,6 +37,9 @@ const ALLOWED_ORIGIN_PATTERNS = [
 // Keep in sync with api/_cors.js#getCorsHeaders Access-Control-Allow-Headers.
 const ALLOW_HEADERS = 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, X-WorldMonitor-Desktop-Timestamp, X-WorldMonitor-Desktop-Signature';
 
+// Keep in sync with api/_cors.js#getCorsHeaders Access-Control-Expose-Headers.
+const EXPOSE_HEADERS = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox';
+
 // Superset of every method any api/* route advertises. The Worker stamps ONE
 // fixed Allow-Methods on every preflight, so if a route handles DELETE but
 // Allow-Methods omits it, the browser rejects the preflight before the
@@ -101,6 +104,7 @@ export function buildCorsHeaders(origin) {
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Methods': ALLOW_METHODS,
     'Access-Control-Allow-Headers': ALLOW_HEADERS,
+    'Access-Control-Expose-Headers': EXPOSE_HEADERS,
     'Access-Control-Max-Age': '3600',
     'Vary': 'Origin',
   };

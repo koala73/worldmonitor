@@ -374,7 +374,7 @@
           "Tägliche Marktübersichten",
           "Militär- & geopolitische Verfolgung",
           "Custom-Widget-Builder",
-          "MCP-Datenconnectors",
+          "MCP-Zugriff für Claude Desktop und andere KI-Clients (50 Aufrufe/Tag)",
           "Priorisierte Datenaktualisierung"
         ]
       },
@@ -383,7 +383,8 @@
         "features": [
           "REST-API-Zugriff",
           "Echtzeit-Datenströme",
-          "1.000 Anfragen/Tag",
+          "60 Anfragen/Minute",
+          "1.000 Anfragen/Tag inklusive",
           "Webhook-Benachrichtigungen",
           "Custom-Datenexporte"
         ]

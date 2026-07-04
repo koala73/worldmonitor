@@ -1,5 +1,5 @@
 ---
-title: "Country Risk Monitoring for Due Diligence: A Practical WorldMonitor Workflow"
+title: "Country Risk Due Diligence with WorldMonitor"
 description: "Use CII, advisory provenance, sanctions, macro indicators, and conflict events to screen country exposure before investments, suppliers, trips, or market entry."
 metaTitle: "Country Risk Monitoring for Due Diligence | WorldMonitor"
 keywords: "country risk monitoring, country risk API, geopolitical due diligence, country instability index, sanctions risk screening"

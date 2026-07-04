@@ -15,7 +15,7 @@
   "dependencies": {
     "@astrojs/rss": "^4.0.18",
     "@astrojs/sitemap": "^3.7.1",
-    "astro": "^6.4.2",
+    "astro": "^6.4.7",
     "gray-matter": "^4.0.3",
     "satori": "^0.25.0",
     "sharp": "^0.34.5"

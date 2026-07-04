@@ -22,18 +22,35 @@ describe('embed URL contract', () => {
     assert.equal(parsed.variant, 'full');
   });
 
-  it('accepts only explicit v1 public layers and maps earthquakes to the natural map layer', () => {
-    const parsed = parseEmbedParams('?layers=conflicts,earthquakes,protests,weather');
-    assert.deepEqual(parsed.layerIds, ['conflicts', 'earthquakes', 'protests', 'weather']);
+  it('accepts public live and static map layers while mapping earthquakes to the natural map layer', () => {
+    const parsed = parseEmbedParams('?layers=conflicts,earthquakes,protests,weather,pipelines,waterways,tradeRoutes,stockExchanges,financialCenters,centralBanks');
+    assert.deepEqual(parsed.layerIds, [
+      'conflicts',
+      'earthquakes',
+      'protests',
+      'weather',
+      'pipelines',
+      'waterways',
+      'tradeRoutes',
+      'stockExchanges',
+      'financialCenters',
+      'centralBanks',
+    ]);
     assert.equal(parsed.layers.conflicts, true);
     assert.equal(parsed.layers.natural, true);
     assert.equal(parsed.layers.protests, true);
     assert.equal(parsed.layers.weather, true);
+    assert.equal(parsed.layers.pipelines, true);
+    assert.equal(parsed.layers.waterways, true);
+    assert.equal(parsed.layers.tradeRoutes, true);
+    assert.equal(parsed.layers.stockExchanges, true);
+    assert.equal(parsed.layers.financialCenters, true);
+    assert.equal(parsed.layers.centralBanks, true);
   });
 
-  it('keeps legacy natural as an input alias but emits the canonical earthquakes id', () => {
-    const parsed = parseEmbedParams('?layers=natural,conflict,protest,earthquake');
-    assert.deepEqual(parsed.layerIds, ['earthquakes', 'conflicts', 'protests']);
+  it('keeps aliases as inputs but emits canonical layer ids', () => {
+    const parsed = parseEmbedParams('?layers=natural,conflict,protest,earthquake,trade-route,stock-exchanges,central-bank');
+    assert.deepEqual(parsed.layerIds, ['earthquakes', 'conflicts', 'protests', 'tradeRoutes', 'stockExchanges', 'centralBanks']);
   });
 
   it('drops premium, authenticated, and high-frequency layers from public embeds', () => {
@@ -93,9 +110,11 @@ describe('embed URL contract', () => {
     const layers = createBlankMapLayers();
     layers.weather = true;
     layers.protests = true;
+    layers.pipelines = true;
+    layers.stockExchanges = true;
     layers.ais = true;
     layers.ciiChoropleth = true;
-    assert.deepEqual(embedLayerIdsFromMapLayers(layers), ['protests', 'weather']);
+    assert.deepEqual(embedLayerIdsFromMapLayers(layers), ['protests', 'weather', 'pipelines', 'stockExchanges']);
   });
 
   it('escapes iframe snippet attributes', () => {

@@ -356,6 +356,14 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
       export function saveToStorage(key, value) {
         try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
       }
+      export function loadFromStorage(key, fallback) {
+        try {
+          const raw = localStorage.getItem(key);
+          return raw == null ? fallback : JSON.parse(raw);
+        } catch {
+          return fallback;
+        }
+      }
       export function rssProxyUrl(url) { return url; }
       export function getCSSColor(_name, fallback) { return fallback || '#000000'; }
       export class ExportPanel {}
@@ -367,10 +375,44 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
       }
     `],
     ['@/utils/dom-utils', `
+      export function h(tagName, props, ...children) {
+        const el = document.createElement(tagName);
+        if (props && typeof props === 'object') {
+          for (const [key, value] of Object.entries(props)) {
+            if (key === 'className') el.className = String(value);
+            else if (key.startsWith('on') && typeof value === 'function') el.addEventListener(key.slice(2).toLowerCase(), value);
+            else if (value !== false && value != null) el.setAttribute(key, String(value));
+          }
+        }
+        for (const child of children.flat()) {
+          if (child == null) continue;
+          if (typeof child === 'string') {
+            const text = document.createElement('span');
+            text.textContent = child;
+            el.appendChild(text);
+          } else {
+            el.appendChild(child);
+          }
+        }
+        return el;
+      }
+      export function replaceChildren(el, ...children) {
+        el.innerHTML = '';
+        for (const child of children.flat()) {
+          if (child == null) continue;
+          if (typeof child === 'string') {
+            const text = document.createElement('span');
+            text.textContent = child;
+            el.appendChild(text);
+          } else {
+            el.appendChild(child);
+          }
+        }
+      }
       export function trustedHtml(html) { return String(html); }
       export function setTrustedHtml(el, html) { el.innerHTML = String(html); }
     `],
-    ['@/utils/sanitize', 'export function escapeHtml(value) { return String(value); }'],
+    ['@/utils/sanitize', 'export function escapeHtml(value) { return String(value); } export function safeHtmlToString(value) { return String(value); }'],
     ['@/services/analytics', `
       const push = (name, args) => {
         globalThis.__missionAnalytics = globalThis.__missionAnalytics || [];
@@ -385,6 +427,7 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
       export function trackPanelToggled(...args) { push('trackPanelToggled', args); }
       export function trackDownloadClicked(...args) { push('trackDownloadClicked', args); }
       export function trackGateHit(...args) { push('trackGateHit', args); }
+      export function trackPanelResized(...args) { push('trackPanelResized', args); }
     `],
     ['@/services', `
       export async function saveSnapshot() {}
@@ -424,6 +467,10 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
       export class LlmStatusIndicator {}
       export class PredictionPanel { renderPredictions(){} }
     `],
+    ['@/components/PlaybackControl', 'export class PlaybackControl { onSnapshot(){} getElement(){ return document.createElement("div"); } }'],
+    ['@/components/StatusPanel', 'export class StatusPanel {}'],
+    ['@/components/PizzIntIndicator', 'export class PizzIntIndicator { getElement(){ return document.createElement("div"); } update(){} }'],
+    ['@/components/LlmStatusIndicator', 'export class LlmStatusIndicator { getElement(){ return document.createElement("div"); } update(){} }'],
     ['@/components/CustomWidgetPanel', 'export class CustomWidgetPanel { constructor(spec){ this.spec = spec; } getElement(){ return document.createElement("div"); } }'],
     ['@/components/WidgetChatModal', 'export function openWidgetChatModal(){}'],
     ['@/components/McpDataPanel', 'export class McpDataPanel { constructor(spec){ this.spec = spec; } getElement(){ return document.createElement("div"); } }'],

@@ -1,5 +1,5 @@
 ---
-title: "Earthquake, Fire, Flood: Real-Time Natural Disaster Monitoring with World Monitor"
+title: "Real-Time Natural Disaster Monitoring with World Monitor"
 description: "Track earthquakes, satellite-detected fires, volcanic eruptions, and floods in real time. Free disaster monitoring with geopolitical context on World Monitor."
 metaTitle: "Natural Disaster Monitoring Dashboard | World Monitor"
 keywords: "real-time earthquake map, natural disaster monitoring dashboard, NASA fire detection map, disaster tracking tool free, earthquake volcano flood tracker"

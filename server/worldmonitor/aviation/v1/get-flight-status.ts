@@ -6,6 +6,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { cachedFetchJson } from '../../../_shared/redis';
 import { getRelayBaseUrl, getRelayHeaders } from './_shared';
+import { aviationStackBudgetMonth, reserveAviationStackCalls } from './_avstack-budget';
 
 const CACHE_TTL = 120; // 2 minutes
 
@@ -59,7 +60,7 @@ export async function getFlightStatus(
         .replace(/^([A-Z]{2,3})0+(\d+)$/, '$1$2');
     const date = req.date || new Date().toISOString().slice(0, 10);
     const origin = req.origin?.toUpperCase() || '';
-    const cacheKey = `aviation:status:${flightNumber}:${date}:${origin}:v1`;
+    const cacheKey = `aviation:status:${flightNumber}:${date}:${origin}:v1:${aviationStackBudgetMonth()}`;
     const now = Date.now();
 
     if (!flightNumber || flightNumber.length > 10) {
@@ -74,6 +75,12 @@ export async function getFlightStatus(
                     return { flights: [], source: 'no-relay' };
                 }
 
+                // Monthly quota guard — once the request-time budget is spent,
+                // serve empty (cached briefly) rather than calling upstream.
+                if (!(await reserveAviationStackCalls(1, 'request'))) {
+                    return { flights: [], source: 'budget' };
+                }
+
                 const params = new URLSearchParams({
                     flight_iata: flightNumber,
                     flight_date: date,
@@ -81,16 +88,21 @@ export async function getFlightStatus(
                 });
                 if (origin) params.set('dep_iata', origin);
 
-                const resp = await fetch(`${relayBase}/aviationstack?${params}`, {
-                    headers: getRelayHeaders(),
-                    signal: AbortSignal.timeout(15_000),
-                });
-                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                const json = await resp.json() as { data?: AVSFlight[]; error?: { message?: string } };
-                if (json.error) throw new Error(json.error.message);
+                try {
+                    const resp = await fetch(`${relayBase}/aviationstack?${params}`, {
+                        headers: getRelayHeaders(),
+                        signal: AbortSignal.timeout(15_000),
+                    });
+                    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                    const json = await resp.json() as { data?: AVSFlight[]; error?: { message?: string } };
+                    if (json.error) throw new Error(json.error.message);
 
-                const flights = (json.data ?? []).map(f => normalizeFlight(f, now));
-                return { flights, source: 'aviationstack' };
+                    const flights = (json.data ?? []).map(f => normalizeFlight(f, now));
+                    return { flights, source: 'aviationstack' };
+                } catch (err) {
+                    console.warn(`[Aviation] Flight status relay fetch failed for ${flightNumber}: ${err instanceof Error ? err.message : err}`);
+                    return { flights: [], source: 'error' };
+                }
             }
         );
 

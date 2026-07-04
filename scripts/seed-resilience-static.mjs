@@ -19,7 +19,7 @@ import {
   resolveIso2,
 } from './_country-resolver.mjs';
 import { isInRankableUniverse } from './shared/rankable-universe.mjs';
-import wgiIndicatorKeys from '../shared/wgi-indicator-keys.json' with { type: 'json' };
+import wgiIndicatorKeys from './shared/wgi-indicator-keys.json' with { type: 'json' };
 
 export { createCountryResolvers, resolveIso2 } from './_country-resolver.mjs';
 

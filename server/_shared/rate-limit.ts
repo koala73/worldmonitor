@@ -3,6 +3,16 @@ import { Redis } from '@upstash/redis';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../api/_sentry-edge.js';
 
+// @upstash/redis defaults to 5 retries with exponential backoff (~4.3s total)
+// before surfacing an unreachable-Redis error. The node test runner sets
+// NODE_TEST_CONTEXT in the child that executes each file; in that context the
+// fail-open / fail-closed rate-limit tests point UPSTASH_REDIS_REST_URL at a
+// fake host and would otherwise burn that full backoff on every limiter call.
+// Skip retries under the test runner only — production (env unset) keeps the
+// resilient default untouched. Mirrors the retry:false already shipped on the
+// MCP limiter to unblock the suite (PR #3963).
+const REDIS_TEST_RETRY_OPTS: { retry?: false } = process.env.NODE_TEST_CONTEXT ? { retry: false } : {};
+
 let ratelimit: Ratelimit | null = null;
 
 function getRatelimit(): Ratelimit | null {
@@ -12,7 +22,7 @@ function getRatelimit(): Ratelimit | null {
   if (!url || !token) return null;
 
   ratelimit = new Ratelimit({
-    redis: new Redis({ url, token }),
+    redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
     limiter: Ratelimit.slidingWindow(600, '60 s'),
     prefix: 'rl',
     analytics: false,
@@ -57,6 +67,15 @@ function logRateLimitDegraded(stage: string, err: unknown): void {
     fingerprint: ['rate-limit', 'redis-error', stage],
     level: rateLimitErrorLevel(stage, msg),
   });
+}
+
+const scopedMissingConfigStages = new Set<string>();
+
+function logScopedRateLimitMissingConfig(scope: string): void {
+  const stage = `checkScopedRateLimit:${scope}:missing-config`;
+  if (scopedMissingConfigStages.has(stage)) return;
+  scopedMissingConfigStages.add(stage);
+  logRateLimitDegraded(stage, new Error('UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN missing'));
 }
 
 // Marker header set on every degraded (fail-closed) response so observability
@@ -164,8 +183,27 @@ interface EndpointRatePolicy {
 // using checkEndpointRateLimit / hasEndpointRatePolicy below — the export is
 // for tooling, not new runtime callers.
 export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
+  // LLM article summarization is Pro-gated, but still needs a scoped,
+  // fail-closed budget so Redis degradation cannot silently lift the
+  // per-endpoint spend control.
+  '/api/news/v1/summarize-article': { limit: 30, window: '60 s' },
   '/api/news/v1/summarize-article-cache': { limit: 3000, window: '60 s' },
   '/api/intelligence/v1/classify-event': { limit: 600, window: '60 s' },
+  // LLM-backed situational deduction (imports callLlmReasoning) can drive
+  // provider spend on cache misses, so it must fail closed on Redis outage
+  // rather than inherit the global fail-open fallback. Mirror the sibling
+  // classify-event budget (same limit/window) — both are AI-backed Intelligence
+  // RPCs. (#4676)
+  '/api/intelligence/v1/deduct-situation': { limit: 600, window: '60 s' },
+  // Batch humanitarian-summary fans out to the external HAPI (humdata) provider
+  // on cache miss — up to 25 countries per request, 5 concurrent upstream
+  // fetches. Batch aircraft-details fans out to the external Wingbits provider —
+  // up to 10 ICAO24 lookups per request. Both proxy external providers, so keep
+  // them at the same 30/min budget as the other provider-proxy routes
+  // (sanctions lookup / resilience ranking); conservative because a single
+  // request already amplifies into many upstream calls. (#4676)
+  '/api/conflict/v1/get-humanitarian-summary-batch': { limit: 30, window: '60 s' },
+  '/api/military/v1/get-aircraft-details-batch': { limit: 30, window: '60 s' },
   // Legacy /api/sanctions-entity-search rate limit was 30/min per IP. Preserve
   // that budget now that LookupSanctionEntity proxies OpenSanctions live.
   '/api/sanctions/v1/lookup-sanction-entity': { limit: 30, window: '60 s' },
@@ -202,6 +240,86 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/mcp-proxy': { limit: 30, window: '60 s' },
 };
 
+interface RateLimitPolicyDecision {
+  reason: string;
+}
+
+// Repo-native guardrail for routes where the rate-limit is part of the abuse
+// defence. scripts/enforce-rate-limit-policies.mjs fails if any route listed
+// here can drift back to the gateway's availability-first global fallback.
+export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimitPolicyDecision> = {
+  '/api/news/v1/summarize-article': {
+    reason: 'LLM-backed summarization can drive provider spend on cache misses.',
+  },
+  '/api/intelligence/v1/classify-event': {
+    reason: 'AI classification performs expensive provider-backed analysis.',
+  },
+  '/api/intelligence/v1/deduct-situation': {
+    reason: 'LLM-backed situational deduction can drive provider spend on cache misses.',
+  },
+  '/api/conflict/v1/get-humanitarian-summary-batch': {
+    reason: 'Batch summary fans out to the external HAPI (humdata) provider on cache miss.',
+  },
+  '/api/military/v1/get-aircraft-details-batch': {
+    reason: 'Batch enrichment fans out to the external Wingbits provider on cache miss.',
+  },
+  '/api/sanctions/v1/lookup-sanction-entity': {
+    reason: 'Live sanctions lookup proxies an external provider.',
+  },
+  '/api/leads/v1/submit-contact': {
+    reason: 'Lead capture writes to Convex and sends email.',
+  },
+  '/api/leads/v1/register-interest': {
+    reason: 'Lead capture writes to Convex and sends email.',
+  },
+  '/api/scenario/v1/run-scenario': {
+    reason: 'Scenario runs are mutation-like jobs with a historical 10/min cap.',
+  },
+  '/api/forecast/v1/trigger-simulation': {
+    reason: 'Forecast simulation trigger starts expensive backend work.',
+  },
+  '/api/maritime/v1/get-vessel-snapshot': {
+    reason: 'Live vessel snapshots can generate high-frequency upstream load.',
+  },
+  '/api/resilience/v1/get-resilience-ranking': {
+    reason: 'Cold/stale cache paths can synchronously warm the full country table.',
+  },
+};
+
+// Explicit examples of read-only gateway routes where the global per-IP
+// fallback remains acceptable during Redis degradation. New expensive/provider
+// routes should not be added here; add them to ENDPOINT_RATE_POLICIES and
+// FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED instead.
+export const GLOBAL_RATE_LIMIT_FALLBACK_READ_ROUTES: Record<string, RateLimitPolicyDecision> = {
+  '/api/aviation/v1/list-airport-delays': {
+    reason: 'Read-only cache-backed airport delay listing; availability-first fallback is acceptable.',
+  },
+};
+
+// Explicit allow-list of NON-GET (post/put/patch/delete) gateway routes that are
+// permitted to inherit the global availability-first fallback during a Redis
+// outage instead of declaring an ENDPOINT_RATE_POLICIES entry. The audit
+// scripts/enforce-rate-limit-policies.mjs fails CI if any generated non-GET
+// route is neither in ENDPOINT_RATE_POLICIES nor listed here — so a newly added
+// expensive/mutation route can no longer silently fail open. Every entry MUST
+// carry a justification for why fail-open is safe for that route. When a route
+// becomes provider-backed / spend-bearing, move it to ENDPOINT_RATE_POLICIES +
+// FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED instead of keeping it here. (#4676)
+export const RATE_LIMIT_MUTATION_FALLBACK_EXEMPT: Record<string, RateLimitPolicyDecision> = {
+  '/api/economic/v1/get-fred-series-batch': {
+    reason:
+      'Read-only despite POST shape: reads seeded FRED data from the Redis seed cache only; all external FRED API calls happen in the Railway seed job, so a cache miss never fans out to an external provider.',
+  },
+  '/api/infrastructure/v1/record-baseline-snapshot': {
+    reason:
+      'Redis-only write (setCachedJson) with no external provider or LLM call; if Redis is degraded the write itself cannot land, so the fail-open fallback carries no spend/abuse risk.',
+  },
+  '/api/v2/shipping/webhooks': {
+    reason:
+      'Webhook registration is API-key authenticated (validateApiKey) and premium-gated before any work, so unauthenticated abuse is already blocked; the handler only writes to Redis, with no external provider or LLM spend.',
+  },
+};
+
 const endpointLimiters = new Map<string, Ratelimit>();
 
 function getEndpointRatelimit(pathname: string): Ratelimit | null {
@@ -216,7 +334,7 @@ function getEndpointRatelimit(pathname: string): Ratelimit | null {
   if (!url || !token) return null;
 
   const rl = new Ratelimit({
-    redis: new Redis({ url, token }),
+    redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
     limiter: Ratelimit.slidingWindow(policy.limit, policy.window),
     prefix: 'rl:ep',
     analytics: false,
@@ -283,7 +401,7 @@ function getScopedRatelimit(scope: string, limit: number, window: Duration): Rat
   if (!url || !token) return null;
 
   const rl = new Ratelimit({
-    redis: new Redis({ url, token }),
+    redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
     limiter: Ratelimit.slidingWindow(limit, window),
     prefix: 'rl:scope',
     analytics: false,
@@ -316,7 +434,10 @@ export interface ScopedRateLimitResult {
  */
 export async function checkScopedRateLimit(scope: string, limit: number, window: Duration, identifier: string): Promise<ScopedRateLimitResult> {
   const rl = getScopedRatelimit(scope, limit, window);
-  if (!rl) return { allowed: true, limit, reset: 0, degraded: true };
+  if (!rl) {
+    logScopedRateLimitMissingConfig(scope);
+    return { allowed: true, limit, reset: 0, degraded: true };
+  }
   try {
     const result = await rl.limit(`${scope}:${identifier}`);
     return {

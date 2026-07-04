@@ -264,7 +264,10 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
     // call doesn't need bbox filtering — it wants the global density +
     // disruption surface — so pass zeros and skip both candidate and tanker
     // payload tiers.
-    getVesselSnapshot(ctx, { neLat: 0, neLon: 0, swLat: 0, swLon: 0, includeCandidates: false, includeTankers: false }).catch((): GetVesselSnapshotResponse => { vesselFailed = true; return { snapshot: undefined }; }),
+    getVesselSnapshot(ctx, { neLat: 0, neLon: 0, swLat: 0, swLon: 0, includeCandidates: false, includeTankers: false }).catch((): GetVesselSnapshotResponse => {
+      vesselFailed = true;
+      return { snapshot: undefined, fetchedAt: 0, dataAvailable: false };
+    }),
     getCachedJson(TRANSIT_SUMMARIES_KEY, true).catch(() => null) as Promise<TransitSummariesPayload | null>,
     getCachedJson(FLOWS_KEY, true).catch(() => null) as Promise<Record<string, FlowEstimateEntry> | null>,
   ]);
@@ -401,8 +404,8 @@ export async function getChokepointStatus(
       },
     );
 
-    return result ?? { chokepoints: [], fetchedAt: new Date().toISOString(), upstreamUnavailable: true };
+    return result ?? { chokepoints: [], fetchedAt: '', upstreamUnavailable: true };
   } catch {
-    return { chokepoints: [], fetchedAt: new Date().toISOString(), upstreamUnavailable: true };
+    return { chokepoints: [], fetchedAt: '', upstreamUnavailable: true };
   }
 }

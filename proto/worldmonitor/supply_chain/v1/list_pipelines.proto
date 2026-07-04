@@ -32,6 +32,7 @@ message ListPipelinesResponse {
 // is designed for the map layer's compact shape; detail is designed for the
 // click-through drawer.
 message GetPipelineDetailRequest {
+  // Pipeline identifier to load with full evidence details.
   string pipeline_id = 1 [
     (buf.validate.field).required = true,
     (sebuf.http.query) = {name: "pipelineId"}

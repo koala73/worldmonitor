@@ -7,6 +7,8 @@ export interface ListNaturalEventsRequest {
 
 export interface ListNaturalEventsResponse {
   events: NaturalEvent[];
+  fetchedAt: number;
+  dataAvailable: boolean;
 }
 
 export interface NaturalEvent {

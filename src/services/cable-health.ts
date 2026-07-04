@@ -1,11 +1,8 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import {
-  InfrastructureServiceClient,
-  type GetCableHealthResponse,
-  type CableHealthRecord as ProtoCableHealthRecord,
-} from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
+import type { GetCableHealthResponse, CableHealthRecord as ProtoCableHealthRecord } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
 import type { CableHealthRecord, CableHealthResponse, CableHealthStatus } from '@/types';
 import { createCircuitBreaker } from '@/utils';
+import { InfrastructureServiceClient } from '@/services/generated-rpc-clients';
 
 const client = new InfrastructureServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 const breaker = createCircuitBreaker<GetCableHealthResponse>({ name: 'Cable Health', cacheTtlMs: 10 * 60 * 1000, persistCache: true });

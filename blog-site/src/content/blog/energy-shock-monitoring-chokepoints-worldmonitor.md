@@ -1,5 +1,5 @@
 ---
-title: "Energy Shock Monitoring: Track Chokepoints, Fuel Shortages, and Market Stress"
+title: "Energy Shock Monitoring: Chokepoints, Fuel, and Markets"
 description: "How analysts can monitor oil, gas, electricity, maritime chokepoints, fuel shortages, and policy responses with WorldMonitor before an energy shock spreads."
 metaTitle: "Energy Shock Monitoring: Chokepoints | WorldMonitor"
 keywords: "energy shock monitoring, oil chokepoint dashboard, fuel shortage tracker, energy security intelligence, geopolitical energy risk"

@@ -11,7 +11,8 @@ message ListMilitaryFlightsRequest {
   // Maximum items per page (1-100).
   int32 page_size = 1 [(sebuf.http.query) = { name: "page_size" }];
   // Cursor for next page.
-  string cursor = 2 [(sebuf.http.query) = { name: "cursor" }];
+  // Accepted but currently ignored; no-op until this handler supports the parameter.
+  string cursor = 2 [(sebuf.http.query) = { name: "cursor" }, (sebuf.http.unimplemented) = true];
   // North-east corner latitude of bounding box.
   double ne_lat = 3 [(sebuf.http.query) = { name: "ne_lat" }];
   // North-east corner longitude of bounding box.
@@ -21,9 +22,11 @@ message ListMilitaryFlightsRequest {
   // South-west corner longitude of bounding box.
   double sw_lon = 6 [(sebuf.http.query) = { name: "sw_lon" }];
   // Optional operator filter.
-  MilitaryOperator operator = 7 [(sebuf.http.query) = { name: "operator" }];
+  // Accepted but currently ignored; no-op until this handler supports the parameter.
+  MilitaryOperator operator = 7 [(sebuf.http.query) = { name: "operator" }, (sebuf.http.unimplemented) = true];
   // Optional aircraft type filter.
-  MilitaryAircraftType aircraft_type = 8 [(sebuf.http.query) = { name: "aircraft_type" }];
+  // Accepted but currently ignored; no-op until this handler supports the parameter.
+  MilitaryAircraftType aircraft_type = 8 [(sebuf.http.query) = { name: "aircraft_type" }, (sebuf.http.unimplemented) = true];
 }
 
 // ListMilitaryFlightsResponse contains military flights and clusters.

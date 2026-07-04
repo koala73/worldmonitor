@@ -4,6 +4,7 @@ import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
 const hydrationCache = new Map<string, unknown>();
 const BOOTSTRAP_CACHE_PREFIX = 'bootstrap:tier:';
 const BOOTSTRAP_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+type CommitGuard = () => boolean;
 
 export type BootstrapDataSource = 'live' | 'cached' | 'mixed' | 'none';
 
@@ -28,6 +29,9 @@ let lastHydrationState: BootstrapHydrationState = {
     slow: { ...EMPTY_TIER_STATE },
   },
 };
+let bootstrapGeneration = 0;
+let activeSlowCtrl: AbortController | null = null;
+let slowTierSettled: Promise<void> | null = null;
 
 export function getHydratedData(key: string): unknown | undefined {
   const val = hydrationCache.get(key);
@@ -62,7 +66,8 @@ export function getBootstrapHydrationState(): BootstrapHydrationState {
   };
 }
 
-function populateCache(data: Record<string, unknown>): void {
+function populateCache(data: Record<string, unknown>, shouldCommit: CommitGuard): void {
+  if (!shouldCommit()) return;
   for (const [k, v] of Object.entries(data)) {
     if (v !== null && v !== undefined) {
       hydrationCache.set(k, v);
@@ -93,11 +98,15 @@ function combineHydrationSources(states: BootstrapTierHydrationState[]): Bootstr
   return 'mixed';
 }
 
-async function fetchTier(tier: 'fast' | 'slow', signal: AbortSignal): Promise<BootstrapTierHydrationState> {
+async function fetchTier(
+  tier: 'fast' | 'slow',
+  signal: AbortSignal,
+  shouldCommit: CommitGuard = () => true,
+): Promise<BootstrapTierHydrationState> {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     const cached = await readCachedTier(tier, true); // age gate skipped: any snapshot beats blank offline
     if (cached) {
-      populateCache(cached.data);
+      populateCache(cached.data, shouldCommit);
       return { source: 'cached', updatedAt: cached.updatedAt };
     }
     return { ...EMPTY_TIER_STATE };
@@ -123,7 +132,7 @@ async function fetchTier(tier: 'fast' | 'slow', signal: AbortSignal): Promise<Bo
   if (Object.keys(liveData).length === 0) {
     const cached = await readCachedTier(tier);
     if (cached) {
-      populateCache(cached.data);
+      populateCache(cached.data, shouldCommit);
       return { source: 'cached', updatedAt: cached.updatedAt };
     }
     return { ...EMPTY_TIER_STATE };
@@ -149,12 +158,135 @@ async function fetchTier(tier: 'fast' | 'slow', signal: AbortSignal): Promise<Bo
     }
   }
 
-  populateCache(mergedData);
-  void setPersistentCache(getTierCacheKey(tier), mergedData, saveUpdatedAt).catch(() => {});
+  populateCache(mergedData, shouldCommit);
+  if (shouldCommit()) {
+    void setPersistentCache(getTierCacheKey(tier), mergedData, saveUpdatedAt).catch(() => {});
+  }
   return tierState;
 }
 
-export async function fetchBootstrapData(): Promise<void> {
+function scheduleAfterNextPaint(fn: () => void): () => void {
+  let cancelled = false;
+  let started = false;
+  let rafId: number | null = null;
+  let postPaintTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  let fallbackTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  const run = (): void => {
+    if (cancelled || started) return;
+    started = true;
+    if (rafId !== null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(rafId);
+    if (postPaintTimeoutId !== null) clearTimeout(postPaintTimeoutId);
+    if (fallbackTimeoutId !== null) clearTimeout(fallbackTimeoutId);
+    fn();
+  };
+
+  if (typeof requestAnimationFrame === 'function') {
+    rafId = requestAnimationFrame(() => {
+      postPaintTimeoutId = setTimeout(run, 0);
+    });
+    fallbackTimeoutId = setTimeout(run, 250);
+    return () => {
+      cancelled = true;
+      if (rafId !== null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(rafId);
+      if (postPaintTimeoutId !== null) clearTimeout(postPaintTimeoutId);
+      if (fallbackTimeoutId !== null) clearTimeout(fallbackTimeoutId);
+    };
+  }
+
+  postPaintTimeoutId = setTimeout(run, 0);
+  return () => {
+    cancelled = true;
+    if (postPaintTimeoutId !== null) clearTimeout(postPaintTimeoutId);
+  };
+}
+
+function scheduleSlowTierFetch(generation: number, onSlowSettled?: () => void): Promise<void> {
+  const desktop = isDesktopRuntime();
+  const isCurrentGeneration = (): boolean => generation === bootstrapGeneration;
+
+  return new Promise<void>((resolve) => {
+    const cancelScheduledStart = scheduleAfterNextPaint(() => {
+      if (!isCurrentGeneration()) {
+        resolve();
+        return;
+      }
+
+      const slowCtrl = new AbortController();
+      activeSlowCtrl = slowCtrl;
+      const slowTimeout = setTimeout(() => slowCtrl.abort(), desktop ? 8_000 : 3_000);
+
+      void fetchTier('slow', slowCtrl.signal, isCurrentGeneration)
+        .then((slowState) => {
+          if (!isCurrentGeneration()) return;
+          lastHydrationState = {
+            source: combineHydrationSources([lastHydrationState.tiers.fast, slowState]),
+            tiers: { fast: lastHydrationState.tiers.fast, slow: slowState },
+          };
+        })
+        .catch(() => {
+          // Background failure: leave the slow keys un-hydrated; consumers refetch on demand.
+        })
+        .finally(() => {
+          clearTimeout(slowTimeout);
+          if (activeSlowCtrl === slowCtrl) activeSlowCtrl = null;
+          if (isCurrentGeneration()) onSlowSettled?.();
+          resolve();
+        });
+    });
+
+    if (!isCurrentGeneration()) {
+      cancelScheduledStart();
+      resolve();
+    }
+  });
+}
+
+export async function waitForBootstrapSlowTier(timeoutMs = 0): Promise<boolean> {
+  const pending = slowTierSettled;
+  if (!pending) return true;
+  if (timeoutMs <= 0) {
+    await pending;
+    return true;
+  }
+
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timedOut = Symbol('timedOut');
+  const result = await Promise.race([
+    pending.then(() => true),
+    new Promise<typeof timedOut>((resolve) => {
+      timeoutId = setTimeout(() => resolve(timedOut), timeoutMs);
+    }),
+  ]);
+  if (timeoutId !== null) clearTimeout(timeoutId);
+  return result !== timedOut;
+}
+
+export function cancelBootstrapSlowTier(): void {
+  bootstrapGeneration += 1;
+  activeSlowCtrl?.abort();
+  activeSlowCtrl = null;
+  slowTierSettled = null;
+}
+
+/**
+ * Hydrate the in-memory cache from the bootstrap endpoint.
+ *
+ * The boot awaits ONLY the small fast tier, commits that state, then schedules the
+ * ~410 KB slow tier after the next paint (#4488). A later app checkpoint can wait for
+ * the slow tier before visible slow-key consumers start fallback RPCs, but the payload
+ * stays off the first-paint critical path.
+ *
+ * `onSlowSettled` lets the caller (App.ts) re-snapshot the hydration state and refresh
+ * the connectivity indicator when the background slow tier lands — `getBootstrapHydrationState`
+ * is read via a one-shot snapshot, with no reactive emitter, so a passive update is invisible.
+ */
+export async function fetchBootstrapData(onSlowSettled?: () => void): Promise<void> {
+  const generation = ++bootstrapGeneration;
+  const isCurrentGeneration = (): boolean => generation === bootstrapGeneration;
+
+  activeSlowCtrl?.abort();
+  activeSlowCtrl = null;
+  slowTierSettled = null;
   hydrationCache.clear();
   lastHydrationState = {
     source: 'none',
@@ -165,7 +297,6 @@ export async function fetchBootstrapData(): Promise<void> {
   };
 
   const fastCtrl = new AbortController();
-  const slowCtrl = new AbortController();
   const desktop = isDesktopRuntime();
   // Tier abort budgets:
   // - Fast tier (~10 keys, small payload) keeps an aggressive 1.2 s browser cap; it already meets that budget.
@@ -177,23 +308,34 @@ export async function fetchBootstrapData(): Promise<void> {
   //   data once available; do not move this without evidence.
   // - Desktop budgets (5 s / 8 s) are unchanged — different network and dependency-loading constraints.
   const fastTimeout = setTimeout(() => fastCtrl.abort(), desktop ? 5_000 : 1_200);
-  const slowTimeout = setTimeout(() => slowCtrl.abort(), desktop ? 8_000 : 3_000);
-
   try {
-    const [slowState, fastState] = await Promise.all([
-      fetchTier('slow', slowCtrl.signal),
-      fetchTier('fast', fastCtrl.signal),
-    ]);
-
+    const fastState = await fetchTier('fast', fastCtrl.signal, isCurrentGeneration);
+    if (!isCurrentGeneration()) return;
     lastHydrationState = {
-      source: combineHydrationSources([fastState, slowState]),
-      tiers: {
-        fast: fastState,
-        slow: slowState,
-      },
+      source: combineHydrationSources([fastState, lastHydrationState.tiers.slow]),
+      tiers: { fast: fastState, slow: lastHydrationState.tiers.slow },
     };
   } finally {
     clearTimeout(fastTimeout);
-    clearTimeout(slowTimeout);
   }
+
+  if (!isCurrentGeneration()) return;
+  slowTierSettled = scheduleSlowTierFetch(generation, onSlowSettled);
 }
+
+export const __testing__ = {
+  resetBootstrapForTests(): void {
+    cancelBootstrapSlowTier();
+    hydrationCache.clear();
+    lastHydrationState = {
+      source: 'none',
+      tiers: {
+        fast: { ...EMPTY_TIER_STATE },
+        slow: { ...EMPTY_TIER_STATE },
+      },
+    };
+  },
+  getBootstrapGeneration(): number {
+    return bootstrapGeneration;
+  },
+};

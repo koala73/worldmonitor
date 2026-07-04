@@ -1,5 +1,5 @@
 import { escapeHtml } from '@/utils/sanitize';
-import { shuffle } from '@/utils';
+import { shuffle, debounce } from '@/utils';
 import { t } from '@/services/i18n';
 import { trackSearchUsed } from '@/services/analytics';
 import { getAllCommands, type Command } from '@/config/commands';
@@ -88,6 +88,10 @@ interface SearchModalOptions {
   placeholder?: string;
 }
 
+// Trailing-debounce window for per-keystroke search (#4537). Long enough to
+// coalesce fast typing, short enough to feel responsive on settle.
+const SEARCH_DEBOUNCE_MS = 180;
+
 export class SearchModal {
   private container: HTMLElement;
   private overlay: HTMLElement | null = null;
@@ -95,6 +99,14 @@ export class SearchModal {
   private resultsList: HTMLElement | null = null;
   private chipsContainer: HTMLElement | null = null;
   private closeTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  // Debounce the per-keystroke search so fast typing runs the command match +
+  // sort once after settle, not on every input event — cuts INP processing
+  // time (#4537). Programmatic handleSearch() calls (filters, category select)
+  // stay immediate; only the input listener routes through this.
+  private debouncedSearch = debounce((): void => this.handleSearch(), SEARCH_DEBOUNCE_MS);
+  // The query last passed through handleSearch — lets keyboard nav detect when a
+  // debounced keystroke search is still pending (results stale vs. current input).
+  private lastSearchedQuery = '';
   private viewportHandler: (() => void) | null = null;
   private sources: SearchableSource[] = [];
   private results: SearchResult[] = [];
@@ -211,6 +223,8 @@ export class SearchModal {
   }
 
   public close(): void {
+    // Drop any pending debounced search so it can't fire against a torn-down modal.
+    this.debouncedSearch.cancel();
     if (this.viewportHandler && window.visualViewport) {
       window.visualViewport.removeEventListener('resize', this.viewportHandler);
       this.viewportHandler = null;
@@ -312,7 +326,7 @@ export class SearchModal {
     this.input = this.overlay.querySelector('.search-input');
     this.resultsList = this.overlay.querySelector('.search-results');
 
-    this.input?.addEventListener('input', () => this.handleSearch());
+    this.input?.addEventListener('input', () => this.debouncedSearch());
     this.input?.addEventListener('keydown', (e) => this.handleKeydown(e));
   }
 
@@ -353,6 +367,8 @@ export class SearchModal {
   private handleSearch(): void {
     const rawInput = this.input?.value.toLowerCase() || '';
     const query = rawInput.trim();
+    // Record what we actually searched so flushPendingSearch can detect stale results.
+    this.lastSearchedQuery = query;
 
     if (!query) {
       this.showingAllCommands = false;
@@ -808,7 +824,23 @@ export class SearchModal {
     return escapedText.replace(regex, '<mark>$1</mark>');
   }
 
+  // Run a pending debounced search synchronously when the input has changed since
+  // the last search, so keyboard nav/selection acts on current results.
+  private flushPendingSearch(): void {
+    const current = (this.input?.value.toLowerCase() ?? '').trim();
+    if (current !== this.lastSearchedQuery) {
+      this.debouncedSearch.cancel();
+      this.handleSearch();
+    }
+  }
+
   private handleKeydown(e: KeyboardEvent): void {
+    // The keystroke search is debounced (180ms). Flush it before Arrow/Enter so
+    // selection runs against results for the CURRENT query, not stale ones from
+    // before the debounce fired (#4537 follow-up — review #4556).
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter') {
+      this.flushPendingSearch();
+    }
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();

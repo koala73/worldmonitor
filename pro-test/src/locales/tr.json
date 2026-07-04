@@ -374,7 +374,7 @@
           "Günlük pazar özeti",
           "Askeri ve jeopolitik izleme",
           "Özel widget oluşturucu",
-          "MCP veri bağlayıcıları",
+          "Claude Desktop ve diğer AI istemcileri için MCP erişimi (50 çağrı/gün)",
           "Öncelikli veri yenileme"
         ]
       },
@@ -383,7 +383,8 @@
         "features": [
           "REST API erişimi",
           "Gerçek zamanlı veri akışları",
-          "Günde 1.000 istek",
+          "Dakikada 60 istek",
+          "Günde 1.000 istek dahil",
           "Webhook bildirimleri",
           "Özel veri dışa aktarımı"
         ]

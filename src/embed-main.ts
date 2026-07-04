@@ -1,7 +1,7 @@
 import './styles/base-layer.css';
 import './styles/happy-theme.css';
 import './styles/embed.css';
-import { MapComponent, type MapState } from '@/components/Map';
+import { MapContainer, type MapContainerState } from '@/components/MapContainer';
 import { initI18n } from '@/services/i18n';
 import { EmbedDataLoader } from '@/embed/embed-data-loader';
 import {
@@ -42,23 +42,22 @@ async function bootEmbed(): Promise<void> {
     mapMount.className = 'wm-embed-map';
     root.appendChild(mapMount);
 
-    const initialState: MapState = {
+    const initialState: MapContainerState = {
       zoom: params.zoom,
       pan: { x: 0, y: 0 },
       view: 'global',
       layers: params.layers,
       timeRange: '7d',
     };
-    const map = new MapComponent(mapMount, initialState, { chrome: false });
+    const map = new MapContainer(mapMount, initialState, false, { chrome: false });
 
     window.requestAnimationFrame(() => {
-      map.setZoom(params.zoom);
-      map.setCenter(params.center.lat, params.center.lon);
+      map.setCenter(params.center.lat, params.center.lon, params.zoom);
     });
 
     const attribution = document.createElement('a');
     attribution.className = 'wm-embed-attribution';
-    attribution.href = buildWorldMonitorAttributionUrl(new URL('/', window.location.origin).toString(), getReferrerHost());
+    attribution.href = buildWorldMonitorAttributionUrl(new URL('/dashboard', window.location.origin).toString(), getReferrerHost());
     attribution.target = '_blank';
     attribution.rel = 'noopener noreferrer';
     attribution.textContent = 'Live map by World Monitor';

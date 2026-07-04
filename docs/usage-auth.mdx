@@ -43,7 +43,7 @@ See [CORS](/cors) for the origin patterns.
 
 ### Generate a key
 
-PRO subscribers get a key automatically on subscription. To rotate, contact support.
+API-tier subscribers get a key automatically on subscription. To rotate, contact support.
 
 ### Use it
 
@@ -53,7 +53,9 @@ X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567
 
 User-issued keys are exactly `wm_` followed by 40 lowercase hex characters. Enterprise keys are opaque operator-issued strings and are only distributed out of band. Keep keys out of client-side code — use a server-side proxy if you need to call from the browser to a `forceKey` endpoint.
 
-`X-WorldMonitor-Key` is the canonical header. API-key-authenticated endpoints also accept `X-Api-Key` as an alias for compatibility with generic API clients, including standalone edge functions that use `validateApiKey()` and gateway-backed routes.
+`X-WorldMonitor-Key` is the canonical header. API-key-authenticated endpoints also accept `X-Api-Key` as an alias for compatibility with generic API clients, including standalone edge functions that use `validateApiKey()` and gateway-backed routes. Do not send user API keys as bearer tokens or query-string parameters unless an endpoint explicitly documents that form.
+
+For `/api/bootstrap`, server-side callers should use `https://api.worldmonitor.app/api/bootstrap` with one of these API-key headers. There is no separate gateway host, token-exchange step, activation step, or IP allow-list requirement for standard server-to-server access. The endpoint's anonymous weather path (`?keys=weatherAlerts`) is public **only when no key header is sent** — once you attach `X-WorldMonitor-Key`/`X-Api-Key`, the request is validated even for weather, so a key without current API access returns `403` rather than falling back to anonymous data.
 
 ### Server-side validation
 
@@ -62,7 +64,7 @@ The edge function calls `validateApiKey(req, { forceKey?: boolean })`:
 1. Desktop origins must send an enterprise key in `X-WorldMonitor-Key`.
 2. If `forceKey` is false, a valid `wms_` browser session cookie satisfies the anonymous/public gate.
 3. Enterprise keys are checked against `WORLDMONITOR_VALID_KEYS`.
-4. User keys with the `wm_` + 40-hex shape are validated by the gateway against the user-key table and entitlement cache (`invalidate-user-api-key-cache` flushes this).
+4. User keys with the `wm_` + 40-hex shape are validated against the user-key table and current `apiAccess` entitlement. Gateway-backed routes use the gateway fallback; `/api/bootstrap` performs the same user-key lookup in its Edge-safe platform helper.
 5. If none passes → 401.
 
 ## OAuth bearer (MCP only)

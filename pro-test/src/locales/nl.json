@@ -374,7 +374,7 @@
           "Dagelijkse marktbriefings",
           "Militair- en geopolitieke tracking",
           "Aangepaste widget builder",
-          "MCP-gegevensconnectoren",
+          "MCP-toegang voor Claude Desktop en andere AI-clients (50 aanroepen/dag)",
           "Prioriteit gegevensvernieuwing"
         ]
       },
@@ -383,7 +383,8 @@
         "features": [
           "REST API-toegang",
           "Real-time gegevensstromen",
-          "1.000 aanvragen/dag",
+          "60 aanvragen/minuut",
+          "1.000 aanvragen/dag inbegrepen",
           "Webhook-meldingen",
           "Aangepaste gegevensexports"
         ]

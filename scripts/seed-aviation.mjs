@@ -36,6 +36,7 @@ import {
   acquireLockSafely,
   releaseLock,
   getRedisCredentials,
+  readCanonicalValue,
 } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
@@ -62,6 +63,29 @@ const FAA_TTL       = 7_200;  // 2h
 const NOTAM_TTL     = 7_200;  // 2h
 const NEWS_TTL      = 2_400;  // 40min
 const BOOTSTRAP_TTL = 7_200;  // 2h — matches FAA/NOTAM; survives ~4 missed cron ticks
+
+function nonNegativeEnv(name, fallback, max = Number.POSITIVE_INFINITY) {
+  const value = process.env[name]?.trim();
+  if (!value) return fallback;
+  const raw = Number(value);
+  return Number.isFinite(raw) && raw >= 0 ? Math.min(raw, max) : fallback;
+}
+
+// AviationStack quota guard. AviationStack is a PAID, per-airport API: one call
+// per airport (~55 today) on EVERY cron tick, with no upstream batching. Intl
+// airport-delay data moves slowly (already cached 30min client-side, 3h Redis
+// TTL), so re-buying all 55 airports on a 10–30min cron burns quota for data we
+// already hold. When the last successful intl publish is younger than this, we
+// SKIP the fetch entirely and just extend the last-good TTLs — turning the cron
+// cadence into an effective floor of INTL_MIN_REFRESH_MIN between paid fetches.
+//
+// Keep at or below runSeed's maxStaleMin (90) minus one 30min cron interval so
+// seed-meta fetchedAt never ages into a false STALE_SEED: 55min default leaves
+// headroom even on a 30min cron (worst-case fetchedAt age ≈ 55+30 = 85 < 90).
+// Set to 0 to disable the gate (fetch every tick, legacy behaviour). Override
+// via AVIATIONSTACK_MIN_REFRESH_MIN.
+const MAX_INTL_MIN_REFRESH_MIN = 60;
+const INTL_MIN_REFRESH_MIN = nonNegativeEnv('AVIATIONSTACK_MIN_REFRESH_MIN', 55, MAX_INTL_MIN_REFRESH_MIN);
 
 // health.js expects these exact meta keys (api/health.js:222,223,269)
 const INTL_META_KEY  = 'seed-meta:aviation:intl';
@@ -1110,13 +1134,104 @@ async function runNewsSideCar() {
 // last-good snapshot. FAA/NOTAM/news already ran via their side-cars and are
 // independent — an intl outage does NOT freeze their freshness.
 
+// Quota guard: returns true when the last successful intl publish is younger
+// than INTL_MIN_REFRESH_MIN, meaning we can serve last-good and skip the paid
+// AviationStack fetch this tick. Reads seed-meta:aviation:intl, whose fetchedAt
+// runSeed refreshes ONLY on a successful publish — the graceful-failure path
+// leaves it stale, so a real upstream outage still retries every tick rather
+// than being suppressed by the gate. Fail-open: any read error / missing meta /
+// non-numeric fetchedAt → false (fetch), so we never trade freshness for a
+// flaky Redis read.
+export async function intlIsFresh() {
+  if (INTL_MIN_REFRESH_MIN <= 0) return false;
+  try {
+    const meta = await readCanonicalValue(INTL_META_KEY);
+    const fetchedAt = meta?.fetchedAt;
+    if (typeof fetchedAt !== 'number' || !Number.isFinite(fetchedAt)) return false;
+    const ageMin = (Date.now() - fetchedAt) / 60_000;
+    if (ageMin < 0) return false; // clock skew — treat as stale, fetch
+    return ageMin < INTL_MIN_REFRESH_MIN;
+  } catch {
+    return false;
+  }
+}
+
+// Monthly AviationStack budget backstop. Mirrors reserveAviationStackCalls() in
+// server/worldmonitor/aviation/v1/_avstack-budget.ts — SAME Redis key + env
+// names so the seeder and the request-time RPCs share one counter and one hard
+// ceiling. Keep the two in lockstep. 'seed' kind reserves against the full
+// AVIATIONSTACK_MONTHLY_BUDGET; request-time stops earlier (see
+// _avstack-budget.ts), reserving headroom for this curated feed.
+export function avstackMonthlyBudget() {
+  return nonNegativeEnv('AVIATIONSTACK_MONTHLY_BUDGET', 130_000);
+}
+
+export async function reserveAviationStackBudget(count) {
+  const cap = avstackMonthlyBudget();
+  if (cap <= 0 || count <= 0) return true; // disabled
+  const { url, token } = getRedisCredentials();
+  if (!url || !token) return true; // fail-open (gate already bounds spend)
+  const now = new Date();
+  const ym = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  const key = `aviation:avstack:calls:${ym}`;
+  const ttl = 40 * 24 * 60 * 60; // 40d
+  try {
+    const resp = await fetch(`${url}/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify([['INCRBY', key, count], ['EXPIRE', key, ttl]]),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!resp.ok) return true; // fail-open
+    const results = await resp.json();
+    const total = Number(results?.[0]?.result);
+    if (!Number.isFinite(total)) return true;
+    if (total > cap) {
+      // Return the reservation so the counter reflects calls actually made.
+      try {
+        const refundResp = await fetch(`${url}/pipeline`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify([['DECRBY', key, count]]),
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (!refundResp.ok) {
+          console.warn(`[Aviation] AviationStack seed budget refund failed with HTTP ${refundResp.status}; counter may be inflated`);
+        } else {
+          const refundResults = await refundResp.json();
+          const refundedTotal = Number(refundResults?.[0]?.result);
+          if (!Number.isFinite(refundedTotal)) {
+            console.warn(`[Aviation] AviationStack seed budget refund returned no counter; counter may be inflated`);
+          }
+        }
+      } catch (err) {
+        console.warn(`[Aviation] AviationStack seed budget refund failed: ${err instanceof Error ? err.message : err}; counter may be inflated`);
+      }
+      return false;
+    }
+    return true;
+  } catch {
+    return true; // fail-open
+  }
+}
+
 async function fetchIntl() {
   const result = await seedIntlDelays();
   if (!result.healthy || result.skipped) {
     const why = result.skipped
       ? 'no AVIATIONSTACK_API key'
       : 'systemic fetch failure (failures > successes)';
-    throw new Error(`intl unpublishable: ${why}`);
+    // nonRetryable is load-bearing for the budget cap. Without it, runSeed's
+    // withRetry re-runs fetchIntl up to 4x on an unhealthy tick, and EACH run
+    // sweeps the FULL airport list again — so a degraded upstream costs up to
+    // 4x the paid AviationStack calls while the budget counter (reserved once
+    // in main()) only saw one batch, letting actual spend run past the ceiling
+    // exactly when the cap matters most. Tagging the error makes withRetry exit
+    // after one attempt, keeping actual calls bounded by the single
+    // reservation. We lose nothing: the seeder already re-runs every cron tick.
+    const err = new Error(`intl unpublishable: ${why}`);
+    err.nonRetryable = true;
+    throw err;
   }
   return result;
 }
@@ -1168,6 +1283,36 @@ async function main() {
   // intl on success.
   await writeDelaysBootstrap();
 
+  // Quota guard — skip the paid AviationStack fetch when last-good intl is still
+  // fresh. Just extend the TTLs on the canonical key + its freshness meta so
+  // consumers and /api/health keep serving last-good, then exit clean. The
+  // FAA/NOTAM/news side-cars (free) and the bootstrap write above already ran,
+  // so the page-load aggregate is still refreshed this tick.
+  if (await intlIsFresh()) {
+    await extendExistingTtl([INTL_KEY, INTL_META_KEY], INTL_TTL);
+    console.log(
+      `[Intl] SKIPPED AviationStack fetch — last publish < ${INTL_MIN_REFRESH_MIN}min old; ` +
+      `saved ${AVIATIONSTACK_LIST.length} API call(s), extended TTLs on last-good.`,
+    );
+    process.exit(0);
+  }
+
+  // Monthly budget backstop — reserve this tick's batch (one call per airport)
+  // against the shared AviationStack counter. If we'd breach the monthly
+  // ceiling, skip the fetch and serve last-good, same as the freshness gate.
+  // Belt-and-braces: the freshness gate already bounds normal spend; this caps
+  // the worst case (misconfigured gate, traffic spike on the shared counter).
+  // Only reserve when a key is present — seedIntlDelays no-ops without one, so
+  // reserving would overcount calls that never happen.
+  if (process.env.AVIATIONSTACK_API && !(await reserveAviationStackBudget(AVIATIONSTACK_LIST.length))) {
+    await extendExistingTtl([INTL_KEY, INTL_META_KEY], INTL_TTL);
+    console.log(
+      `[Intl] SKIPPED AviationStack fetch — monthly budget (${avstackMonthlyBudget()}) reached; ` +
+      `extended TTLs on last-good.`,
+    );
+    process.exit(0);
+  }
+
   return runSeed('aviation', 'intl', INTL_KEY, fetchIntl, {
     validateFn: validate,
     ttlSeconds: INTL_TTL,
@@ -1181,7 +1326,14 @@ async function main() {
   });
 }
 
-main().catch((err) => {
+// isMain guard so tests/agents can `import` the pure helpers (intlIsFresh,
+// reserveAviationStackBudget, declareRecords) without firing the side-cars +
+// runSeed on module load (which would touch Redis and process.exit). Matches
+// the repo convention (see scripts/seed-token-panels.mjs, seed-cyber-threats).
+// Railway still runs the seed via `node scripts/seed-aviation.mjs` because
+// argv[1] resolves to this file.
+const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^.*[\\/]/, ''));
+if (isMain) main().catch((err) => {
   const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
   console.error('FATAL:', (err.message || err) + cause);
   process.exit(1);

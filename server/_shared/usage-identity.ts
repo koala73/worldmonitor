@@ -20,6 +20,7 @@ export interface UsageIdentity {
   principal_id: string | null;
   customer_id: string | null;
   tier: number;
+  plan_key: string | null;
 }
 
 export interface UsageIdentityInput {
@@ -30,6 +31,9 @@ export interface UsageIdentityInput {
   clerkOrgId: string | null;
   userApiKeyCustomerRef: string | null;
   tier: number | null;
+  // #4572 — entitlement planKey (api_starter / api_business / …) when the
+  // gateway resolved one; null otherwise. 'enterprise' for env keys.
+  planKey: string | null;
 }
 
 // Static enterprise-key → customer map. Explicit so attribution is reviewable in code,
@@ -48,6 +52,7 @@ export function buildUsageIdentity(input: UsageIdentityInput): UsageIdentity {
       principal_id: input.sessionUserId,
       customer_id: input.userApiKeyCustomerRef ?? input.sessionUserId,
       tier,
+      plan_key: input.planKey,
     };
   }
 
@@ -57,6 +62,7 @@ export function buildUsageIdentity(input: UsageIdentityInput): UsageIdentity {
       principal_id: input.sessionUserId,
       customer_id: input.clerkOrgId ?? input.sessionUserId,
       tier,
+      plan_key: input.planKey,
     };
   }
 
@@ -67,6 +73,7 @@ export function buildUsageIdentity(input: UsageIdentityInput): UsageIdentity {
       principal_id: hashKeySync(input.enterpriseApiKey),
       customer_id: customer,
       tier,
+      plan_key: input.planKey ?? 'enterprise',
     };
   }
 
@@ -76,6 +83,7 @@ export function buildUsageIdentity(input: UsageIdentityInput): UsageIdentity {
       principal_id: hashKeySync(input.widgetKey),
       customer_id: input.widgetKey,
       tier,
+      plan_key: null,
     };
   }
 
@@ -84,6 +92,7 @@ export function buildUsageIdentity(input: UsageIdentityInput): UsageIdentity {
     principal_id: null,
     customer_id: null,
     tier: 0,
+    plan_key: null,
   };
 }
 

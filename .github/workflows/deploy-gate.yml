@@ -25,8 +25,13 @@ jobs:
           required='["changes","docs-stats","unit","sidecar","convex-tests","variant-smoke-full","resilience-validation-smoke","digest-image","typecheck","biome","security-audit"]'
 
           # Poll check-runs for this SHA and find the latest result for each required job.
+          # Project to just the three fields the gate logic reads. A SHA can
+          # accumulate dozens of full check-run objects across re-runs; passing
+          # the un-projected JSON to python3 via the RUNS_JSON env var overflowed
+          # Linux's 128KB-per-arg/env limit (MAX_ARG_STRLEN) once it crossed
+          # ~131KB, failing the gate with "Argument list too long" (exit 126).
           runs=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" \
-            --jq ".check_runs | map(select(.name as \$name | $required | index(\$name)))")
+            --jq ".check_runs | map(select(.name as \$name | $required | index(\$name)) | {name, conclusion, completed_at})")
 
           status=$(RUNS_JSON="$runs" REQUIRED_JOBS="$required" python3 -c "
           import json

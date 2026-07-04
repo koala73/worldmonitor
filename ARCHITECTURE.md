@@ -17,7 +17,7 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
 │                        Browser / Desktop                        │
 │  ┌──────────┐  ┌──────────┐  ┌────────────┐  ┌──────────────┐  │
 │  │ DeckGLMap│  │ GlobeMap │  │  Panels    │  │  Workers     │  │
-│  │(deck.gl) │  │(globe.gl)│  │(86 classes)│  │(ML, analysis)│  │
+│  │(deck.gl) │  │(globe.gl)│  │(Panel base)│  │(ML, analysis)│  │
 │  └────┬─────┘  └────┬─────┘  └─────┬──────┘  └──────────────┘  │
 │       └──────────────┴──────────────┘                           │
 │                         │ fetch /api/*                          │
@@ -58,14 +58,16 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
 | Service | Platform | Role |
 |---------|----------|------|
 | SPA + Edge Functions | Vercel | Static files, API endpoints, middleware (bot filtering, social OG) |
+| CORS Preflight Worker | Cloudflare | Edge CORS for `api.worldmonitor.app` — short-circuits OPTIONS, stamps CORS headers on responses |
 | AIS Relay | Railway | WebSocket proxy (AIS stream), seed loops (market, aviation, GPSJAM, risk scores, UCDP, positive events), RSS proxy, OREF polling |
+| Consumer Prices | Railway | Containerized price scrapers (Playwright, per-country baskets) + Redis publisher for the consumer-prices dataset |
 | Redis | Upstash | Cache layer with stampede protection, seed-meta freshness tracking, rate limiting |
 | Convex | Convex Cloud | Contact form submissions, waitlist registrations |
 | Documentation | Mintlify | Public docs, proxied through Vercel at `/docs` |
 | Desktop App | Tauri 2.x | macOS (ARM64, x64), Windows (x64), Linux (x64, ARM64) with bundled Node.js sidecar |
 | Container Image | GHCR | Multi-arch Docker image (nginx serving built SPA, proxies API to upstream) |
 
-**Source files**: `vercel.json`, `docker/Dockerfile`, `scripts/ais-relay.cjs`, `convex/schema.ts`, `src-tauri/tauri.conf.json`
+**Source files**: `vercel.json`, `docker/Dockerfile`, `scripts/ais-relay.cjs`, `consumer-prices-core/Dockerfile`, `workers/api-cors-preflight/wrangler.toml`, `convex/schema.ts`, `src-tauri/tauri.conf.json`
 
 ---
 
@@ -88,7 +90,7 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
 
 ### Component Model
 
-All panels extend the `Panel` base class. Panels render via `setContent(html)` (debounced 150ms) and use event delegation on a stable `this.content` element. Panels support resizable row/col spans persisted to localStorage.
+All panels extend the `Panel` base class (104 classes across `src/components`). Panels render via `setContent(html)` (debounced 150ms) and use event delegation on a stable `this.content` element. Panels support resizable row/col spans persisted to localStorage.
 
 ### Dual Map System
 
@@ -380,16 +382,19 @@ Runs before every `git push`:
 ```
 .
 ├── api/                    Vercel Edge Functions (self-contained JS)
-│   ├── _*.js               Shared helpers (CORS, rate-limit, API key, relay)
+│   ├── _*.js               Shared helpers (CORS, rate-limit, API key, relay, Sentry, session)
 │   └── <domain>/           Domain endpoints (aviation/, climate/, conflict/, ...)
 ├── blog-site/              Static blog (built into public/blog/)
+├── consumer-prices-core/   Consumer-price collection service (Playwright scrapers, per-country baskets; Railway/Docker)
 ├── convex/                 Convex backend (contact form, waitlist)
-├── data/                   Static data files (conservation, renewable, happiness)
-├── deploy/                 Deployment configs
+├── data/                   Static data (telegram channels, OREF threat translations, gamma irradiators)
+├── deploy/                 Deployment configs (nginx)
 ├── docker/                 Dockerfile + nginx config for Railway
 ├── docs/                   Mintlify documentation site
 ├── e2e/                    Playwright E2E specs
+├── pro-test/               Standalone Pro QA app (separate package)
 ├── proto/                  Protobuf service definitions (sebuf framework)
+├── public/                 Static assets served as-is (favicons, textures, .well-known agent-skills/MCP, llms.txt)
 ├── scripts/                Seed scripts, build helpers, relay service
 ├── server/                 Server-side code (bundled into Edge Functions)
 │   ├── _shared/            Redis, rate-limit, LLM, caching utilities
@@ -399,16 +404,23 @@ Runs before every `git push`:
 ├── shared/                 Cross-platform JSON configs (markets, RSS domains)
 ├── src/                    Browser SPA (TypeScript)
 │   ├── app/                App orchestration managers
-│   ├── bootstrap/          Chunk reload recovery
+│   ├── bootstrap/          Startup/recovery (chunk reload, deferred Sentry, SW update)
 │   ├── components/         Panel subclasses + map components
 │   ├── config/             Variant, panel, layer, market configurations
+│   ├── data/               Static JSON datasets (conservation, renewable, happiness)
+│   ├── e2e/                Map test harnesses (consumed by Playwright specs)
+│   ├── embed/              Embeddable widget loader
 │   ├── generated/          Proto-generated client/server stubs (DO NOT EDIT)
 │   ├── locales/            i18n translation files
 │   ├── services/           Business logic organized by domain
+│   ├── shared/             Cross-cutting helpers (premium paths, registries, staleness)
+│   ├── shims/              Runtime shims (child-process for sidecar)
+│   ├── styles/             Global CSS (layers, themes, panel styles)
 │   ├── types/              TypeScript type definitions
 │   ├── utils/              Shared utilities (circuit-breaker, theme, URL state)
 │   └── workers/            Web Workers (analysis, ML, vector DB)
 ├── src-tauri/              Tauri desktop shell (Rust)
 │   └── sidecar/            Node.js sidecar API server
-└── tests/                  Unit/integration tests (node:test)
+├── tests/                  Unit/integration tests (node:test)
+└── workers/                Cloudflare Workers (edge CORS preflight for api.worldmonitor.app)
 ```

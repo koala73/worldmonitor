@@ -30,15 +30,15 @@ function readRepoJson(relativePath) {
 }
 
 describe('security audit baseline', () => {
-  it('allows currently baselined high and critical advisories', () => {
+  it('allows currently baselined high advisories', () => {
     const report = auditReportWith({
-      name: 'shell-quote',
-      severity: 'critical',
-      title: 'known shell-quote advisory',
-      url: 'https://github.com/advisories/GHSA-w7jw-789q-3m8p',
+      name: '@clerk/clerk-js',
+      severity: 'high',
+      title: 'known clerk advisory',
+      url: 'https://github.com/advisories/GHSA-w24r-5266-9c3c',
     });
 
-    assert.deepEqual(collectUnbaselinedFindings(report, 'package-lock.json'), []);
+    assert.deepEqual(collectUnbaselinedFindings(report, 'pro-test/package-lock.json'), []);
   });
 
   it('ignores moderate production advisories for the high-severity PR gate', () => {
@@ -82,6 +82,19 @@ describe('security audit baseline', () => {
     ]);
   });
 
+  it('keeps consumer-prices-core on the Fastify v5 audit fix', () => {
+    const packageJson = readRepoJson('consumer-prices-core/package.json');
+    const lockfile = readRepoJson('consumer-prices-core/package-lock.json');
+
+    assert.match(packageJson.dependencies.fastify, /^\^5\./);
+    assert.match(packageJson.dependencies['@fastify/cors'], /^\^11\./);
+    assert.match(packageJson.dependencies['js-yaml'], /^\^4\.(?:[2-9]|\d{2,})\./);
+    assert.match(lockfile.packages['node_modules/fastify']?.version, /^5\./);
+    assert.match(lockfile.packages['node_modules/@fastify/cors']?.version, /^11\./);
+    assert.match(lockfile.packages['node_modules/js-yaml']?.version, /^4\.(?:[2-9]|\d{2,})\./);
+    assert.deepEqual(BASELINE_ADVISORIES_BY_LOCKFILE['consumer-prices-core/package-lock.json'], []);
+  });
+
   it('keeps the root esbuild audit fix scoped away from Vite build tooling', () => {
     const packageJson = readRepoJson('package.json');
     const lockfile = readRepoJson('package-lock.json');
@@ -100,19 +113,16 @@ describe('security audit baseline', () => {
 
   it('flags baseline entries that no longer match any current advisory', () => {
     const report = auditReportWith({
-      name: 'shell-quote',
-      severity: 'critical',
-      title: 'known shell-quote advisory',
-      url: 'https://github.com/advisories/GHSA-w7jw-789q-3m8p',
+      name: '@clerk/clerk-js',
+      severity: 'high',
+      title: 'known clerk advisory',
+      url: 'https://github.com/advisories/GHSA-w24r-5266-9c3c',
     });
 
     // The still-present id is not reported as stale.
+    assert.deepEqual(collectStaleBaselineEntries(report, 'pro-test/package-lock.json'), ['GHSA-qjx8-664m-686j']);
+    // The empty root baseline has nothing to mark stale.
     assert.deepEqual(collectStaleBaselineEntries(report, 'package-lock.json'), []);
-    // The other pro-test baseline ids matched nothing this run, so they are stale.
-    assert.deepEqual(collectStaleBaselineEntries(report, 'pro-test/package-lock.json').sort(), [
-      'GHSA-qjx8-664m-686j',
-      'GHSA-w24r-5266-9c3c',
-    ]);
   });
 
   it('treats a symlinked entry path as direct invocation (no silent fail-open)', () => {

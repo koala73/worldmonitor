@@ -690,7 +690,9 @@
         "americas": "미주",
         "asia": "아시아",
         "space": "우주"
-      }
+      },
+      "play": "재생",
+      "previewStatus": "라이브 미리보기"
     },
     "positiveNewsFeed": {
       "noStories": "이 카테고리에 아직 기사가 없습니다"
@@ -1264,8 +1266,8 @@
       "badgeAnimDesc": "패널 헤더의 업데이트 배지 애니메이션",
       "headlineMemoryLabel": "헤드라인 메모리",
       "headlineMemoryDesc": "본 헤드라인을 기억하여 새 기사 강조",
-      "streamAlwaysOnLabel": "라이브 스트림 계속 실행",
-      "streamAlwaysOnDesc": "유휴 상태일 때 Live Cams와 Live News가 자동으로 일시중지되는 것을 방지합니다. 보조 모니터 / 월보드 용도에 권장됩니다. CPU/대역폭 절약을 위해 (Eco)를 끄세요.",
+      "streamAlwaysOnLabel": "대시보드에서 라이브 스트림 자동 재생",
+      "streamAlwaysOnDesc": "Live News와 Live Webcams가 표시될 때 자동으로 시작합니다. 동영상을 재생 클릭 후에만 로드하려면 꺼 둡니다.",
       "analysisFrameworksLabel": "분석 프레임워크",
       "analysisFrameworksActivePerPanel": "패널당 활성",
       "analysisFrameworksSkillLibrary": "스킬 라이브러리",
@@ -1773,7 +1775,9 @@
       "invalidHandle": "유효한 YouTube 핸들을 입력하세요 (예: @ChannelName)",
       "verifying": "확인 중…",
       "hlsUrl": "HLS 스트림 URL (선택사항)",
-      "invalidHlsUrl": "유효한 HLS 스트림 URL (.m3u8)을 입력하세요"
+      "invalidHlsUrl": "유효한 HLS 스트림 URL (.m3u8)을 입력하세요",
+      "playLiveFeed": "라이브 피드 재생",
+      "readyStatus": "준비되면 시작"
     },
     "map": {
       "showMap": "지도 표시",
@@ -3136,5 +3140,18 @@
     "or": "또는 사용자 지정 서버 입력",
     "generatingVisualization": "시각화 구성 중...",
     "visualizationFailed": "시각화 실패"
+  },
+  "dashboardTabs": {
+    "ariaLabel": "Dashboard tabs",
+    "defaultName": "Main",
+    "newTabName": "New Tab",
+    "newTabCreated": "New tab created",
+    "tabDeleted": "Tab \"{{name}}\" deleted",
+    "addTab": "Add tab",
+    "addTabTitle": "New tab (starts with the default panels)",
+    "renameHint": "{{name}} — double-click to rename",
+    "deleteTab": "Delete tab",
+    "deleteTabAria": "Delete tab {{name}}",
+    "tabNameAria": "Tab name"
   }
 }

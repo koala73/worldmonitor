@@ -15,6 +15,7 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureEdgeException, captureSilentError } from './_sentry-edge.js';
+import { blockedNotificationWebhookUrlReason } from './_notification-webhook-ssrf';
 import { validateBearerToken } from '../server/auth-session';
 import { getEntitlements } from '../server/_shared/entitlement-check';
 
@@ -251,16 +252,9 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         if (!channelType) return json({ error: 'channelType required' }, 400, corsHeaders);
 
         if (channelType === 'webhook' && webhookEnvelope) {
-          try {
-            const parsed = new URL(webhookEnvelope);
-            if (parsed.protocol !== 'https:') {
-              return json({ error: 'Webhook URL must use HTTPS' }, 400, corsHeaders);
-            }
-            if (/^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|::1|0\.0\.0\.0)/.test(parsed.hostname)) {
-              return json({ error: 'Webhook URL must not point to a private/local address' }, 400, corsHeaders);
-            }
-          } catch {
-            return json({ error: 'Invalid webhook URL' }, 400, corsHeaders);
+          const blockedReason = blockedNotificationWebhookUrlReason(webhookEnvelope);
+          if (blockedReason) {
+            return json({ error: blockedReason }, 400, corsHeaders);
           }
         }
 

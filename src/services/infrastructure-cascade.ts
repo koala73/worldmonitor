@@ -9,7 +9,7 @@ import type {
   Pipeline,
   Port,
 } from '@/types';
-import { UNDERSEA_CABLES, STRATEGIC_WATERWAYS } from '@/config/geo';
+import { STRATEGIC_WATERWAYS } from '@/config/geo';
 import { PIPELINES } from '@/config/pipelines';
 import { PORTS } from '@/config/ports';
 
@@ -48,8 +48,41 @@ export function clearGraphCache(): void {
   cachedGraph = null;
 }
 
+// UNDERSEA_CABLES (~130KB) lives in the lazy geo-map chunk. infrastructure-cascade
+// is reached eagerly via country-intel, so a static import would pin it to the
+// entry chunk. Lazy-cache: the graph builds without cables until the import
+// resolves, then clearGraphCache() forces a rebuild with cables on the next call.
+// A failed import leaves the cache empty so the next entry retries (no permanent
+// suppression — same pattern as related-assets).
+let cablesData: UnderseaCable[] = [];
+let cablesPromise: Promise<void> | null = null;
+
+// Await this before building the graph when cables must be present (e.g. the
+// cascade panel, which visualizes cable dependencies). The sync graph entry
+// points below also trigger the load via ensureCables() and self-heal on the
+// next call once it resolves.
+export function preloadCables(): Promise<void> {
+  if (cablesData.length > 0) return Promise.resolve();
+  if (!cablesPromise) {
+    cablesPromise = import('@/config/geo-map')
+      .then(({ UNDERSEA_CABLES }) => {
+        cablesData = UNDERSEA_CABLES;
+        clearGraphCache();
+      })
+      .catch((error) => {
+        cablesPromise = null;
+        throw error;
+      });
+  }
+  return cablesPromise;
+}
+
+function ensureCables(): void {
+  void preloadCables().catch(() => {});
+}
+
 function addCablesAsNodes(graph: DependencyGraph): void {
-  for (const cable of UNDERSEA_CABLES) {
+  for (const cable of cablesData) {
     const firstPoint = cable.points?.[0];
     graph.nodes.set(`cable:${cable.id}`, {
       id: `cable:${cable.id}`,
@@ -118,7 +151,7 @@ function addChokepointsAsNodes(graph: DependencyGraph): void {
 function addCountriesAsNodes(graph: DependencyGraph): void {
   const countries = new Set<string>();
 
-  for (const cable of UNDERSEA_CABLES) {
+  for (const cable of cablesData) {
     cable.countriesServed?.forEach(c => countries.add(c.country));
     cable.landingPoints?.forEach(lp => countries.add(lp.country));
   }
@@ -151,7 +184,7 @@ function addEdge(graph: DependencyGraph, edge: DependencyEdge): void {
 }
 
 function buildCableCountryEdges(graph: DependencyGraph): void {
-  for (const cable of UNDERSEA_CABLES) {
+  for (const cable of cablesData) {
     const cableId = `cable:${cable.id}`;
 
     cable.countriesServed?.forEach(cs => {
@@ -459,6 +492,7 @@ function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 export function buildDependencyGraph(): DependencyGraph {
+  ensureCables();
   if (cachedGraph) return cachedGraph;
 
   const graph: DependencyGraph = {
@@ -577,7 +611,7 @@ function getCapacityForCountry(
 ): number {
   if (sourceId.startsWith('cable:')) {
     const cableId = sourceId.replace('cable:', '');
-    const cable = UNDERSEA_CABLES.find(c => c.id === cableId);
+    const cable = cablesData.find(c => c.id === cableId);
     const countryData = cable?.countriesServed?.find(cs => cs.country === countryCode);
     return countryData?.capacityShare || 0;
   }
@@ -616,13 +650,13 @@ function findRedundancies(sourceId: string): CascadeResult['redundancies'] {
   if (!sourceId.startsWith('cable:')) return [];
 
   const cableId = sourceId.replace('cable:', '');
-  const sourceCable = UNDERSEA_CABLES.find(c => c.id === cableId);
+  const sourceCable = cablesData.find(c => c.id === cableId);
   if (!sourceCable) return [];
 
   const sourceCountries = new Set(sourceCable.countriesServed?.map(c => c.country) || []);
   const alternatives: CascadeResult['redundancies'] = [];
 
-  for (const cable of UNDERSEA_CABLES) {
+  for (const cable of cablesData) {
     if (cable.id === cableId) continue;
 
     const sharedCountries = cable.countriesServed?.filter(c => sourceCountries.has(c.country)) || [];
@@ -640,7 +674,8 @@ function findRedundancies(sourceId: string): CascadeResult['redundancies'] {
 }
 
 export function getCableById(id: string): UnderseaCable | undefined {
-  return UNDERSEA_CABLES.find(c => c.id === id);
+  ensureCables();
+  return cablesData.find(c => c.id === id);
 }
 
 export function getPipelineById(id: string): Pipeline | undefined {

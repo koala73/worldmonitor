@@ -24,9 +24,15 @@ Panel id is `hormuz-tracker`; canonical component is `src/components/HormuzPanel
 
 ## Data sources
 
-`fetchHormuzTracker()` in `@/services/hormuz-tracker` — backed by the Railway AIS relay that tallies AIS vessel transits through the Strait. The seeder produces both live tanker counts and weekly flow deltas; disruption events surface through the status field.
+`fetchHormuzTracker()` in `@/services/hormuz-tracker` is backed by the Railway AIS relay that tallies AIS vessel transits through the Strait. The seeder produces both live tanker counts and weekly flow deltas; disruption events surface through the status field.
 
-For the public HTTP surface see `/api/supply-chain/hormuz-tracker` under [Proxies](/api-proxies).
+This panel uses a legacy/special platform proxy rather than a generated `SupplyChainService` RPC:
+
+| Method + route | Feeds |
+|---|---|
+| `GET /api/supply-chain/hormuz-tracker` | Real-time Hormuz status, tanker transit series, weekly flow deltas, and disruption events. |
+
+For the proxy catalog entry, see [Proxies](/api-proxies). For generated chokepoint and lane-risk RPCs, see [Supply Chain](/panels/supply-chain) and [Route Explorer](/route-explorer).
 
 ## Refresh cadence
 

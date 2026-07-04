@@ -8,6 +8,9 @@ import "worldmonitor/natural/v1/list_natural_events.proto";
 service NaturalService {
   option (sebuf.http.service_config) = {base_path: "/api/natural/v1"};
 
+  // ListNaturalEvents retrieves seeded EONET/GDACS/NHC natural events. Empty
+  // events with fetched_at=0 or data_available=false means the seed snapshot is
+  // unavailable/degraded, not that there are confirmed zero events.
   rpc ListNaturalEvents(ListNaturalEventsRequest) returns (ListNaturalEventsResponse) {
     option (sebuf.http.config) = {path: "/list-natural-events", method: HTTP_METHOD_GET};
   }

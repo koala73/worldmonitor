@@ -8,6 +8,7 @@ export interface ListRadiationObservationsRequest {
 export interface ListRadiationObservationsResponse {
   observations: RadiationObservation[];
   fetchedAt: number;
+  dataAvailable: boolean;
   epaCount: number;
   safecastCount: number;
   anomalyCount: number;

@@ -3,6 +3,7 @@ import { t } from '@/services/i18n';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { postProcessAnalystHtml } from '@/utils/analyst-markdown';
+import { yieldToMain } from '@/utils/after-paint';
 import { premiumFetch } from '@/services/premium-fetch';
 import { trackAnalystControlAction } from '@/services/analytics';
 import { h, replaceChildren, setTrustedHtml, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
@@ -323,7 +324,7 @@ export class ChatAnalystPanel extends Panel {
     const label = role === 'user' ? 'YOU' : 'ANALYST';
     const body = h('div', { className: 'chat-msg-body' });
     if (role === 'assistant') {
-      setTrustedHtml(body, renderMarkdown(content));
+      this.renderMarkdownDeferred(body, content);
     } else {
       body.textContent = content;
     }
@@ -332,7 +333,9 @@ export class ChatAnalystPanel extends Panel {
       body,
     );
     this.messagesEl.appendChild(bubble);
-    this.scrollToBottom();
+    // The assistant branch scrolls inside renderMarkdownDeferred (after its DOM
+    // lands); the user branch renders synchronously above, so scroll now.
+    if (role !== 'assistant') this.scrollToBottom();
   }
 
   private appendStreamingBubble(): { bubble: HTMLElement; body: HTMLElement } {
@@ -599,10 +602,25 @@ export class ChatAnalystPanel extends Panel {
     return 'incomplete';
   }
 
+  // Defer the synchronous DOMPurify+marked sanitize off the current task so the
+  // interaction/stream paint lands first — cuts INP processing time (#4537).
+  // Fire-and-forget (no async ripple through the sync streaming call sites);
+  // guarded so a detached bubble (panel closed mid-flight) is skipped.
+  private renderMarkdownDeferred(el: HTMLElement, content: string): void {
+    void yieldToMain().then(() => {
+      if (!el.isConnected) return;
+      setTrustedHtml(el, renderMarkdown(content));
+      // Scroll AFTER the markdown DOM lands — rendered markdown (headers, code
+      // fences, lists) is taller than the raw streaming text, so scrolling before
+      // this undershoots the true bottom on every completion (#4537 follow-up).
+      this.scrollToBottom();
+    });
+  }
+
   private finalizeStreamingBubble(bodyEl: HTMLElement, text: string, success: boolean): void {
-    setTrustedHtml(bodyEl, renderMarkdown(text));
     if (!success) bodyEl.classList.add('chat-msg-error');
-    this.scrollToBottom();
+    // renderMarkdownDeferred scrolls to bottom after the markdown DOM is written.
+    this.renderMarkdownDeferred(bodyEl, text);
   }
 
   clear(): void {

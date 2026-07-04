@@ -1,21 +1,10 @@
-import { getRpcBaseUrl } from '@/services/rpc-client';
-import {
-  ConflictServiceClient,
-  ApiError,
-  type AcledConflictEvent as ProtoAcledEvent,
-  type UcdpViolenceEvent as ProtoUcdpEvent,
-  type HumanitarianCountrySummary as ProtoHumanSummary,
-  type ListAcledEventsResponse,
-  type ListUcdpEventsResponse,
-  type GetHumanitarianSummaryResponse,
-  type GetHumanitarianSummaryBatchResponse,
-  type IranEvent,
-  type ListIranEventsResponse,
-} from '@/generated/client/worldmonitor/conflict/v1/service_client';
+import { getRpcBaseUrl, getRpcErrorStatusCode } from '@/services/rpc-client';
+import type { AcledConflictEvent as ProtoAcledEvent, UcdpViolenceEvent as ProtoUcdpEvent, HumanitarianCountrySummary as ProtoHumanSummary, ListAcledEventsResponse, ListUcdpEventsResponse, GetHumanitarianSummaryResponse, GetHumanitarianSummaryBatchResponse, IranEvent, ListIranEventsResponse } from '@/generated/client/worldmonitor/conflict/v1/service_client';
 import type { UcdpGeoEvent, UcdpEventType } from '@/types';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
 import { toApiUrl } from '@/services/runtime';
+import { ConflictServiceClient } from '@/services/generated-rpc-clients';
 
 // ---- Client + Circuit Breakers (per-RPC; HAPI uses per-country map) ----
 
@@ -307,7 +296,7 @@ export async function fetchHapiSummary(): Promise<Map<string, HapiConflictSummar
       );
     } catch (err: unknown) {
       // 404 deploy-skew fallback: batch endpoint not yet deployed, use per-item calls
-      if (err instanceof ApiError && err.statusCode === 404) {
+      if (getRpcErrorStatusCode(err) === 404) {
         const HAPI_CONCURRENT = 5;
         const allFallback: Array<{ iso2: string; r: GetHumanitarianSummaryResponse }> = [];
         for (let i = 0; i < HAPI_COUNTRY_CODES.length; i += HAPI_CONCURRENT) {
@@ -400,6 +389,34 @@ export function deduplicateAgainstAcled(
     }
     return true;
   });
+}
+
+const CONFLICT_HISTORY_RADIUS_DEG = 3;
+
+/**
+ * Derive the figures shown in a conflict zone's "Historical Profile" popup.
+ *
+ * `conflictSince` is taken from the zone's static `startDate` — the UCDP feed is
+ * only a ~1-year trailing window (scripts/seed-ucdp-events.mjs), so its earliest
+ * event is NOT the conflict's inception and must not be used for "CONFLICT SINCE".
+ * `recordedFatalities` sums `deaths_best` for events within ~3° of the zone
+ * centre, applying a cos(latitude) correction so the radius is roughly isotropic
+ * in real distance (a raw degree radius is ~24% too narrow E–W at 40°N).
+ */
+export function deriveConflictHistory(
+  zone: { center: [number, number]; startDate?: string },
+  events: UcdpGeoEvent[],
+): { conflictSince: string | null; recordedFatalities: number } {
+  const [cLon, cLat] = zone.center;
+  const cosLat = Math.cos((cLat * Math.PI) / 180);
+  const recordedFatalities = events.reduce((sum, e) => {
+    const dLat = e.latitude - cLat;
+    const dLon = (e.longitude - cLon) * cosLat;
+    if (Math.sqrt(dLat * dLat + dLon * dLon) >= CONFLICT_HISTORY_RADIUS_DEG) return sum;
+    return sum + (e.deaths_best ?? 0);
+  }, 0);
+  const conflictSince = zone.startDate?.match(/\b(\d{4})\b/)?.[1] ?? null;
+  return { conflictSince, recordedFatalities };
 }
 
 export function groupByCountry(events: UcdpGeoEvent[]): Map<string, UcdpGeoEvent[]> {

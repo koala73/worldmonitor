@@ -18,6 +18,40 @@ const __seed_dirname = dirname(fileURLToPath(import.meta.url));
 export { CHROME_UA };
 
 /**
+ * Resolve the CoinGecko base URL + auth header for the configured key tier.
+ *
+ * CoinGecko's free **Demo** plan and paid **Pro** plan share the `CG-` key
+ * prefix but use *different* hosts and auth headers — a Demo key sent to the
+ * Pro host fails with `HTTP 400` (error 10011: "change your root URL from
+ * pro-api.coingecko.com to api.coingecko.com"), and a Pro key on the public
+ * host is unauthenticated. The key string alone can't tell the tiers apart,
+ * so the tier is selected explicitly by which env var is set:
+ *
+ *   - `COINGECKO_API_KEY`      → Pro    (pro-api.coingecko.com, x-cg-pro-api-key)
+ *   - `COINGECKO_DEMO_API_KEY` → Demo   (api.coingecko.com,     x-cg-demo-api-key)
+ *   - neither                  → keyless public endpoint (shared IP, 429-prone)
+ *
+ * Pro takes precedence so existing Pro deployments are unaffected.
+ *
+ * @param {Record<string, string>} [extraHeaders] merged into the returned headers
+ * @returns {{ baseUrl: string, headers: Record<string, string>, tier: 'pro' | 'demo' | 'keyless' }}
+ */
+export function coingeckoEndpoint(extraHeaders = {}) {
+  const proKey = process.env.COINGECKO_API_KEY;
+  const demoKey = process.env.COINGECKO_DEMO_API_KEY;
+  const headers = { Accept: 'application/json', 'User-Agent': CHROME_UA, ...extraHeaders };
+  if (proKey) {
+    headers['x-cg-pro-api-key'] = proKey;
+    return { baseUrl: 'https://pro-api.coingecko.com/api/v3', headers, tier: 'pro' };
+  }
+  if (demoKey) {
+    headers['x-cg-demo-api-key'] = demoKey;
+    return { baseUrl: 'https://api.coingecko.com/api/v3', headers, tier: 'demo' };
+  }
+  return { baseUrl: 'https://api.coingecko.com/api/v3', headers, tier: 'keyless' };
+}
+
+/**
  * Unwrap fetch / network errors so log lines surface the actual cause
  * (DNS / TCP reset / TLS abort) instead of undici's bare "fetch failed".
  * Pulls `err.cause.code` (preferred — `ENOTFOUND`, `ECONNRESET`, etc.),
@@ -459,6 +493,11 @@ export async function readCanonicalEnvelopeMeta(canonicalKey) {
 // rate-limits into immediate seed failures (especially under parallel
 // fetches like seed-imf-* WEO bundles).
 export const PERMANENT_4XX_STATUSES = new Set([400, 401, 403, 404, 410, 422, 451]);
+
+// sysexits.h EX_TEMPFAIL: fetch failed, last-good TTL was extended, and the
+// bundle runner should retry/report non-OK without treating the seeder as a
+// generic crash.
+export const GRACEFUL_FETCH_FAILURE_EXIT_CODE = 75;
 
 // Cap upstream Retry-After hints so a stuck/abusive header can't park the
 // bundle past its section timeoutMs. Mirrors _yahoo-fetch.mjs convention.
@@ -1314,8 +1353,8 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     // releases at most once for a given runId, and EXPIRE pipelines on
     // existing keys are safely re-runnable — so a race between the
     // catch path and the handler converges on the correct end state.
-    // process.exit(0) below terminates before any pending SIGTERM can
-    // fire on the success path of cleanup.
+    // process.exit below terminates before any pending SIGTERM can fire
+    // on the success path of cleanup.
     await releaseLock(`${domain}:${resource}`, runId);
     const durationMs = Date.now() - startMs;
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
@@ -1327,7 +1366,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     await extendExistingTtl(keys, ttl);
 
     console.log(`\n=== Failed gracefully (${Math.round(durationMs)}ms) ===`);
-    process.exit(0);
+    process.exit(GRACEFUL_FETCH_FAILURE_EXIT_CODE);
   }
   // Transition to publish phase — handler stays installed but switches
   // behavior via the phase tracker.

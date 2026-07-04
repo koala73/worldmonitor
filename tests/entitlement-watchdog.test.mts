@@ -211,6 +211,61 @@ describe('createEntitlementWatchdog', () => {
     assert.equal(h.fetchCalls, 0, 'no fetches should happen after stop()');
   });
 
+  it('stop(): invalidates an in-flight tick before onPro can fire', async () => {
+    let activeCb: (() => void) | null = null;
+    let activeId: number | null = null;
+    let resolveFetch: ((value: Response) => void) | null = null;
+    let onProCalls = 0;
+    let resolveStarted: (() => void) | null = null;
+    const fetchStarted = new Promise<void>((resolve) => {
+      resolveStarted = resolve;
+    });
+    const wd = createEntitlementWatchdog(
+      { endpoint: '/api/me/entitlement', intervalMs: 3_000, timeoutMs: 600_000 },
+      {
+        getToken: async () => 'tok_test',
+        fetch: async () => {
+          resolveStarted?.();
+          return await new Promise<Response>((resolve) => {
+            resolveFetch = resolve;
+          });
+        },
+        setInterval: ((cb: () => void, _ms: number) => {
+          activeCb = cb;
+          activeId = 1;
+          return activeId;
+        }) as typeof setInterval,
+        clearInterval: ((id: number) => {
+          if (id === activeId) {
+            activeCb = null;
+            activeId = null;
+          }
+        }) as typeof clearInterval,
+        now: () => 1_000,
+        onPro: () => {
+          onProCalls++;
+        },
+      },
+    );
+
+    wd.start();
+    assert.ok(activeCb, 'start should register an interval callback');
+    activeCb();
+
+    await fetchStarted;
+    wd.stop();
+    assert.ok(resolveFetch, 'fetch should be pending before stop');
+    resolveFetch({
+      ok: true,
+      json: async () => ({ isPro: true }),
+    } as Response);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.equal(onProCalls, 0, 'stopped in-flight tick must not fire onPro');
+  });
+
   it('double-start is a no-op while active', async () => {
     const h = buildHarness(() => ({ ok: true, body: { isPro: false } }));
     const wd = createEntitlementWatchdog(

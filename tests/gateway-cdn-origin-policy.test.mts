@@ -25,12 +25,20 @@ afterEach(() => {
   process.env.WM_SESSION_SECRET = 'test-secret-must-be-at-least-32-chars-long-xxx';
 });
 
-function createHandler() {
+function createHandler(options: { handlerCdnCacheHeader?: string; publicRouteBody?: unknown } = {}) {
   return createDomainGateway([
     {
       method: 'GET',
       path: '/api/market/v1/list-market-quotes',
-      handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      handler: async () => new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: options.handlerCdnCacheHeader ? { 'CDN-Cache-Control': options.handlerCdnCacheHeader } : undefined,
+      }),
+    },
+    {
+      method: 'GET',
+      path: '/api/conflict/v1/list-acled-events',
+      handler: async () => new Response(JSON.stringify(options.publicRouteBody ?? { ok: true }), { status: 200 }),
     },
     {
       method: 'GET',
@@ -47,42 +55,47 @@ async function requestPublicRoute(origin: string) {
   }));
 }
 
+function assertNoSharedCacheHeaders(res: Response) {
+  assert.equal(res.headers.get('CDN-Cache-Control'), null);
+  assert.doesNotMatch(res.headers.get('Cache-Control') ?? '', /\bpublic\b|\bs-maxage=/i);
+}
+
 describe('gateway CDN origin policy', () => {
-  it('keeps per-origin CORS and enables CDN caching for worldmonitor.app', async () => {
+  it('keeps per-origin CORS without shared CDN caching for session-bearing worldmonitor.app GETs', async () => {
     const res = await requestPublicRoute('https://worldmonitor.app');
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
     assert.equal(res.headers.get('Vary'), 'Origin');
-    assert.match(res.headers.get('CDN-Cache-Control') ?? '', /s-maxage=/);
+    assertNoSharedCacheHeaders(res);
   });
 
-  it('keeps per-origin CORS and enables CDN caching for production subdomains', async () => {
+  it('keeps per-origin CORS without shared CDN caching for session-bearing production subdomain GETs', async () => {
     const res = await requestPublicRoute('https://tech.worldmonitor.app');
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://tech.worldmonitor.app');
     assert.equal(res.headers.get('Vary'), 'Origin');
-    assert.match(res.headers.get('CDN-Cache-Control') ?? '', /s-maxage=/);
+    assertNoSharedCacheHeaders(res);
   });
 
-  it('enables CDN caching for preview origins', async () => {
+  it('avoids shared CDN caching for session-bearing preview origin GETs', async () => {
     const origin = 'https://worldmonitor-git-feature-eliewm.vercel.app';
     const res = await requestPublicRoute(origin);
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('Access-Control-Allow-Origin'), origin);
     assert.equal(res.headers.get('Vary'), 'Origin');
-    assert.match(res.headers.get('CDN-Cache-Control') ?? '', /s-maxage=/);
+    assertNoSharedCacheHeaders(res);
   });
 
-  it('enables CDN caching for localhost origins', async () => {
+  it('avoids shared CDN caching for session-bearing localhost GETs', async () => {
     const origin = 'http://127.0.0.1:5173';
     const res = await requestPublicRoute(origin);
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('Access-Control-Allow-Origin'), origin);
     assert.equal(res.headers.get('Vary'), 'Origin');
-    assert.match(res.headers.get('CDN-Cache-Control') ?? '', /s-maxage=/);
+    assertNoSharedCacheHeaders(res);
   });
 
-  it('enables CDN caching for Tauri origins', async () => {
+  it('avoids shared CDN caching for enterprise-key Tauri GETs', async () => {
     const origin = 'tauri://localhost';
     process.env.WORLDMONITOR_VALID_KEYS = 'real-key-123';
     const handler = createHandler();
@@ -95,7 +108,49 @@ describe('gateway CDN origin policy', () => {
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('Access-Control-Allow-Origin'), origin);
     assert.equal(res.headers.get('Vary'), 'Origin');
+    assertNoSharedCacheHeaders(res);
+  });
+
+  it('preserves CDN caching for explicit anonymous public no-auth GETs', async () => {
+    const origin = 'https://worldmonitor.app';
+    const handler = createHandler();
+    const res = await handler(new Request('https://worldmonitor.app/api/conflict/v1/list-acled-events', {
+      headers: { Origin: origin },
+    }));
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('Access-Control-Allow-Origin'), origin);
+    assert.equal(res.headers.get('Vary'), 'Origin');
     assert.match(res.headers.get('CDN-Cache-Control') ?? '', /s-maxage=/);
+  });
+
+  it('skips CDN caching for degraded dataAvailable=false 200 responses', async () => {
+    const origin = 'https://worldmonitor.app';
+    const handler = createHandler({
+      publicRouteBody: { events: [], fetchedAt: 0, dataAvailable: false },
+    });
+    const res = await handler(new Request('https://worldmonitor.app/api/conflict/v1/list-acled-events?_debug=1', {
+      headers: { Origin: origin },
+    }));
+    const body = await res.json();
+
+    assert.equal(res.status, 200);
+    assert.equal(body.dataAvailable, false);
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.equal(res.headers.get('X-Cache-Tier'), 'no-store');
+    assert.equal(res.headers.get('CDN-Cache-Control'), null);
+    assert.equal(res.headers.get('Vercel-CDN-Cache-Control'), null);
+  });
+
+  it('strips handler-supplied shared CDN headers on credential-bearing GETs', async () => {
+    const handler = createHandler({
+      handlerCdnCacheHeader: 'public, s-maxage=9999, stale-while-revalidate=9999',
+    });
+    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
+      headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': sessionToken },
+    }));
+
+    assert.equal(res.status, 200);
+    assertNoSharedCacheHeaders(res);
   });
 
   it('still blocks disallowed origins before route handling', async () => {
@@ -114,6 +169,7 @@ describe('gateway CDN origin policy', () => {
       headers: { Origin: 'https://worldmonitor.app' },
     }));
     assert.equal(noCreds.status, 401);
+    assert.equal(noCreds.headers.get('Cache-Control'), 'no-store');
 
     const withKey = await handler(new Request('https://worldmonitor.app/api/market/v1/analyze-stock?symbol=AAPL', {
       headers: {
@@ -125,5 +181,39 @@ describe('gateway CDN origin policy', () => {
     assert.equal(withKey.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
     assert.equal(withKey.headers.get('Vary'), 'Origin');
     assert.equal(withKey.headers.get('CDN-Cache-Control'), null, 'premium endpoints must NOT have CDN caching');
+  });
+
+  it('normalizes invalid wm_ gateway-validation sentinel to non-cacheable invalid key response', async () => {
+    const handler = createHandler();
+    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        'X-WorldMonitor-Key': 'wm_revoked_or_unknown_key',
+      },
+    }));
+    const body = await res.json();
+
+    assert.equal(res.status, 401);
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.equal(res.headers.get('CDN-Cache-Control'), null);
+    assert.equal(body.error, 'Invalid API key');
+    assert.doesNotMatch(JSON.stringify(body), /gateway validation|Convex|keyHash/i);
+  });
+
+  it('normalizes invalid wm_ gateway-validation sentinel on premium RPCs', async () => {
+    const handler = createHandler();
+    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/analyze-stock?symbol=AAPL', {
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        'X-WorldMonitor-Key': 'wm_revoked_or_unknown_key',
+      },
+    }));
+    const body = await res.json();
+
+    assert.equal(res.status, 401);
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.equal(res.headers.get('CDN-Cache-Control'), null);
+    assert.equal(body.error, 'Invalid API key');
+    assert.doesNotMatch(JSON.stringify(body), /gateway validation|Convex|keyHash/i);
   });
 });

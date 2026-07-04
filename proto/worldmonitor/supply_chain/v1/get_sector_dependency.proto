@@ -18,6 +18,7 @@ enum DependencyFlag {
 }
 
 message GetSectorDependencyRequest {
+  // ISO 3166-1 alpha-2 country code whose sector dependency should be analyzed.
   string iso2 = 1 [
     (buf.validate.field).required = true,
     (buf.validate.field).string.len = 2,

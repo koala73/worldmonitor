@@ -32,14 +32,33 @@ function sourceFilesContaining(rootDir, needle) {
     const dir = stack.pop();
     for (const entry of readdirSync(dir)) {
       const path = join(dir, entry);
-      const stat = statSync(path);
+      // The parallel test runner churns short-lived fixtures under scripts/
+      // (bundle-runner, seed-utils-sigterm-cleanup), so a file readdirSync
+      // just listed can vanish before we stat/read it. Such files are never
+      // real source — skip them rather than letting a transient ENOENT crash
+      // the whole audit (flaky under --test-concurrency); re-throw anything
+      // else so a genuine fs error still surfaces.
+      let stat;
+      try {
+        stat = statSync(path);
+      } catch (err) {
+        if (err?.code === 'ENOENT') continue;
+        throw err;
+      }
       if (stat.isDirectory()) {
         if (!shouldScanSourceDir(path)) continue;
         stack.push(path);
         continue;
       }
       if (!/\.(?:cjs|mjs|js|mts|ts)$/.test(path)) continue;
-      if (readFileSync(path, 'utf8').includes(needle)) matches.push(path);
+      let text;
+      try {
+        text = readFileSync(path, 'utf8');
+      } catch (err) {
+        if (err?.code === 'ENOENT') continue;
+        throw err;
+      }
+      if (text.includes(needle)) matches.push(path);
     }
   }
   return matches.sort();

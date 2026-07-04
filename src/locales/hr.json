@@ -813,7 +813,9 @@
         "americas": "AMERIKE",
         "asia": "AZIJA",
         "space": "SVEMIR"
-      }
+      },
+      "play": "Pokreni",
+      "previewStatus": "Pregled uživo"
     },
     "pinnedWebcams": {
       "pinFromMap": "Prikvačite web kameru sa karte"
@@ -1547,8 +1549,8 @@
       "analysisFrameworksFromAgentskills": "Iz agentskills.io",
       "analysisFrameworksPasteJson": "Zalijepi JSON",
       "analysisFrameworksSaveToLibrary": "Spremi u knjižnicu",
-      "streamAlwaysOnLabel": "Održi užive tokove aktivnima",
-      "streamAlwaysOnDesc": "Sprječava automatsku pauziranje živih kamera i živih vijesti kada ste neaktivni. Preporučeno za uporabu na drugim monitorima / tablicama. Onemogući (Eko) za uštedu CPU/propusnosti.",
+      "streamAlwaysOnLabel": "Automatski pokreni prijenose uživo na nadzornoj ploči",
+      "streamAlwaysOnDesc": "Automatski pokreće Live News i Live Webcams kada su vidljivi. Ostavite isključeno kako bi se video učitao tek nakon klika na Pokreni.",
       "frameworkNote": "Primjenjuje se samo na analizu generirane od strane klijenta",
       "loadingServerInsights": "Učitavanje server uvida...",
       "usingCachedBrief": "Korištenje keširanih sažetaka...",
@@ -2163,7 +2165,9 @@
       "channelNotFound": "YouTube kanal nije pronađen",
       "verifying": "Provjera…",
       "hlsUrl": "HLS Stream URL (neobavezno)",
-      "invalidHlsUrl": "Unesite validan HLS stream URL (.m3u8)"
+      "invalidHlsUrl": "Unesite validan HLS stream URL (.m3u8)",
+      "playLiveFeed": "Pokreni prijenos uživo",
+      "readyStatus": "Spremno kad ste vi spremni"
     },
     "map": {
       "showMap": "Prikaži mapu",
@@ -3352,5 +3356,18 @@
     "or": "ili unesite prilagođeni poslužitelj",
     "generatingVisualization": "Izrada vizualizacije...",
     "visualizationFailed": "Vizualizacija nije uspjela"
+  },
+  "dashboardTabs": {
+    "ariaLabel": "Dashboard tabs",
+    "defaultName": "Main",
+    "newTabName": "New Tab",
+    "newTabCreated": "New tab created",
+    "tabDeleted": "Tab \"{{name}}\" deleted",
+    "addTab": "Add tab",
+    "addTabTitle": "New tab (starts with the default panels)",
+    "renameHint": "{{name}} — double-click to rename",
+    "deleteTab": "Delete tab",
+    "deleteTabAria": "Delete tab {{name}}",
+    "tabNameAria": "Tab name"
   }
 }

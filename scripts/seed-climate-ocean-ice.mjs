@@ -49,16 +49,38 @@ function midYearMs(yearWithFraction) {
   return Math.round(yearStart + fraction * 365.2425 * 24 * 60 * 60 * 1000);
 }
 
-async function fetchText(url, label, { timeoutMs = 20_000 } = {}) {
-  const resp = await fetch(url, {
-    headers: {
-      Accept: 'text/plain,text/csv,application/json,text/html;q=0.9,*/*;q=0.8',
-      'User-Agent': CHROME_UA,
-    },
-    signal: AbortSignal.timeout(timeoutMs),
+export async function fetchText(url, label, { timeoutMs = 20_000 } = {}) {
+  // AbortSignal.timeout cancels the connect/read phase but NOT a hung DNS
+  // lookup: getaddrinfo runs on libuv's threadpool and is uncancellable, so a
+  // slow/flapping resolver sails straight past timeoutMs (measured: a dead
+  // resolver stalls ~22s regardless of a 3s AbortSignal). Race the whole
+  // fetch+read against a real wall-clock deadline as a backstop — set slightly
+  // above timeoutMs so the AbortSignal stays the primary path for ordinary
+  // connection stalls. A lookup thread left running after the deadline is
+  // reaped when runSeed exits the process.
+  let deadlineId;
+  const deadline = new Promise((_resolve, reject) => {
+    deadlineId = setTimeout(
+      () => reject(new Error(`${label} timed out after ${timeoutMs + 1_000}ms (DNS backstop)`)),
+      timeoutMs + 1_000,
+    );
   });
-  if (!resp.ok) throw new Error(`${label} HTTP ${resp.status}`);
-  return resp.text();
+  const read = (async () => {
+    const resp = await fetch(url, {
+      headers: {
+        Accept: 'text/plain,text/csv,application/json,text/html;q=0.9,*/*;q=0.8',
+        'User-Agent': CHROME_UA,
+      },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!resp.ok) throw new Error(`${label} HTTP ${resp.status}`);
+    return resp.text();
+  })();
+  try {
+    return await Promise.race([read, deadline]);
+  } finally {
+    clearTimeout(deadlineId);
+  }
 }
 
 export function parseSeaIceDailyRows(text) {

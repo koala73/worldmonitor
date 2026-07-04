@@ -1,7 +1,7 @@
 ---
 name: fetch-resilience-score
 version: 1
-description: Retrieve the composite country resilience score (0-100) and its domain/pillar breakdown for a single country.
+description: Retrieve the composite country resilience score (0-100) and its domain/pillar breakdown for a single country. Use when the user asks how resilient a country is, or wants its numeric resilience score, trend, or per-domain breakdown.
 ---
 
 # fetch-resilience-score

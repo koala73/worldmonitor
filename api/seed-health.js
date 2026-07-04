@@ -64,7 +64,7 @@ const SEED_DOMAINS = {
   'supply_chain:chokepoints': { key: 'seed-meta:supply_chain:chokepoints', intervalMin: 30 },
   'cable-health':             { key: 'seed-meta:cable-health',             intervalMin: 30 },
   'prediction:markets':       { key: 'seed-meta:prediction:markets',       intervalMin: 8 },
-  'aviation:intl':            { key: 'seed-meta:aviation:intl',            intervalMin: 15 },
+  'aviation:intl':            { key: 'seed-meta:aviation:intl',            intervalMin: 45 }, // intervalMin*2 = 90min staleness. seed-aviation's freshness gate (AVIATIONSTACK_MIN_REFRESH_MIN, default 55) lets fetchedAt age to ~55+cron between paid fetches; 90min matches the aviation:faa sibling + api/health.js intlDelays maxStaleMin:90. Was 15 (30min) and false-WARNed every cycle once the gate landed.
   'theater-posture':          { key: 'seed-meta:theater-posture',          intervalMin: 8 },
   'economic:worldbank-techreadiness': { key: 'seed-meta:economic:worldbank-techreadiness:v1', intervalMin: 5040 },
   'economic:worldbank-progress':      { key: 'seed-meta:economic:worldbank-progress:v1',     intervalMin: 5040 },

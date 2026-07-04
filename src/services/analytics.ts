@@ -1,13 +1,38 @@
 /**
  * Analytics facade — wired to Umami.
  *
- * All functions use window.umami?.track() so they are safe to call
- * even if the Umami script has not loaded yet (e.g. ad blockers, SSR).
+ * Dashboard analytics load after first paint; calls made before the script
+ * arrives are kept in a small bounded queue and replayed on script load.
  */
 
+import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 import { subscribeAuthState, type AuthSession } from './auth-state';
 import { onSubscriptionChange, type SubscriptionInfo } from './billing';
 import { getClerkUserCreatedAt } from './clerk';
+
+const UMAMI_SCRIPT_SRC = 'https://abacus.worldmonitor.app/script.js';
+const UMAMI_WEBSITE_ID = 'e8800335-c853-46a8-8497-c993ed2f58bc';
+// data-domains is temporarily reduced to worldmonitor.app + happy.worldmonitor.app
+// while upstream Umami issue #4183 (https://github.com/umami-software/umami/issues/4183)
+// is open — v3.1.0 has a race in prisma.sessionData.updateMany() that returns HTTP 500
+// from /api/send for 4-8% of requests across all listed hosts. Self-hosted Umami has no
+// fix tag yet (master since 2026-04-17 has 22 commits but none touch sessionData). The
+// tracker self-disables when the current hostname isn't in data-domains — the same
+// mechanism that keeps energy.worldmonitor.app silent. Restore tech, finance, and
+// commodity once #4183 ships in a tagged release.
+const UMAMI_DOMAINS = 'worldmonitor.app,happy.worldmonitor.app';
+const UMAMI_QUEUE_LIMIT = 50;
+const UMAMI_LOAD_ATTEMPT_LIMIT = 2;
+const UMAMI_LOAD_RETRY_DELAY_MS = 5_000;
+
+type QueuedUmamiCall =
+  | { kind: 'track'; event: UmamiEvent; data?: Record<string, unknown> }
+  | { kind: 'identify'; data: Record<string, unknown> };
+
+const pendingUmamiCalls: QueuedUmamiCall[] = [];
+let umamiLoadScheduled = false;
+let umamiLoadStarted = false;
+let umamiLoadAttempts = 0;
 
 // ---------------------------------------------------------------------------
 // Type-safe event catalog — every event name lives here.
@@ -79,13 +104,83 @@ const EVENTS = {
 
 export type UmamiEvent = keyof typeof EVENTS;
 
-/** Type-safe Umami wrapper. Safe to call even if the script hasn't loaded. */
-export function track(event: UmamiEvent, data?: Record<string, unknown>): void {
-  window.umami?.track(event, data);
+function queueUmamiCall(call: QueuedUmamiCall): void {
+  if (pendingUmamiCalls.length >= UMAMI_QUEUE_LIMIT) {
+    pendingUmamiCalls.shift();
+  }
+  pendingUmamiCalls.push(call);
 }
 
-export async function initAnalytics(): Promise<void> {
-  // No-op: Umami initialises itself via the script tag in index.html.
+function sendUmamiCall(call: QueuedUmamiCall): boolean {
+  if (typeof window === 'undefined') return false;
+  const umami = window.umami;
+  if (!umami) return false;
+  try {
+    if (call.kind === 'track') {
+      umami.track(call.event, call.data);
+    } else {
+      umami.identify(call.data);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function flushPendingUmamiCalls(): void {
+  if (pendingUmamiCalls.length === 0) return;
+  if (typeof window === 'undefined' || !window.umami) return;
+  const calls = pendingUmamiCalls.splice(0, pendingUmamiCalls.length);
+  for (const call of calls) sendUmamiCall(call);
+}
+
+function loadUmamiScript(): void {
+  if (umamiLoadStarted || typeof document === 'undefined') return;
+  const existing = document.querySelector<HTMLScriptElement>(`script[src="${UMAMI_SCRIPT_SRC}"]`);
+  if (existing) {
+    // A script tag already exists (e.g. re-entry after a soft navigation).
+    // Mark load as started so the guard above short-circuits future calls.
+    // If Umami already initialised, flush now; otherwise wait for its load
+    // event. Flushing unconditionally before window.umami is set is a no-op
+    // and a dead {once:true} listener if load already fired.
+    umamiLoadStarted = true;
+    if (typeof window !== 'undefined' && window.umami) {
+      flushPendingUmamiCalls();
+    } else {
+      existing.addEventListener('load', flushPendingUmamiCalls, { once: true });
+    }
+    return;
+  }
+
+  umamiLoadStarted = true;
+  umamiLoadAttempts += 1;
+  const script = document.createElement('script');
+  script.async = true;
+  script.src = UMAMI_SCRIPT_SRC;
+  script.dataset.websiteId = UMAMI_WEBSITE_ID;
+  script.dataset.domains = UMAMI_DOMAINS;
+  script.addEventListener('load', flushPendingUmamiCalls, { once: true });
+  script.addEventListener('error', () => {
+    umamiLoadStarted = false;
+    script.remove();
+    if (umamiLoadAttempts < UMAMI_LOAD_ATTEMPT_LIMIT) {
+      setTimeout(loadUmamiScript, UMAMI_LOAD_RETRY_DELAY_MS);
+    }
+  }, { once: true });
+  document.head.appendChild(script);
+}
+
+/** Type-safe Umami wrapper. Safe to call even if the script hasn't loaded. */
+export function track(event: UmamiEvent, data?: Record<string, unknown>): void {
+  if (!sendUmamiCall({ kind: 'track', event, data })) {
+    queueUmamiCall({ kind: 'track', event, data });
+  }
+}
+
+export function initAnalytics(): void {
+  if (umamiLoadScheduled || typeof window === 'undefined' || typeof document === 'undefined') return;
+  umamiLoadScheduled = true;
+  scheduleAfterFirstPaint(loadUmamiScript, 3000);
 }
 
 // ---------------------------------------------------------------------------
@@ -99,16 +194,21 @@ export function identifyUser(
   subStatus?: SubscriptionInfo['status'] | null,
   planKey?: string | null,
 ): void {
-  window.umami?.identify({
+  const data = {
     userId,
     plan,
     ...(subStatus != null && { subStatus }),
     ...(planKey != null && { planKey }),
-  });
+  };
+  if (!sendUmamiCall({ kind: 'identify', data })) {
+    queueUmamiCall({ kind: 'identify', data });
+  }
 }
 
 export function clearIdentity(): void {
-  window.umami?.identify({});
+  if (!sendUmamiCall({ kind: 'identify', data: {} })) {
+    queueUmamiCall({ kind: 'identify', data: {} });
+  }
 }
 
 let _unsubAuth: (() => void) | null = null;
@@ -286,6 +386,18 @@ export function isLikelyFreshSignup(
 
 export function trackSignOut(): void {
   track('sign-out');
+}
+
+/**
+ * Test-only: reset module-level deferred-load state so each test starts from
+ * a clean slate. The queue and load guards are module singletons that persist
+ * across the shared module import in tests/secondary-startup.test.mts.
+ */
+export function resetAnalyticsForTesting(): void {
+  pendingUmamiCalls.length = 0;
+  umamiLoadScheduled = false;
+  umamiLoadStarted = false;
+  umamiLoadAttempts = 0;
 }
 
 export function trackGateHit(feature: string): void {

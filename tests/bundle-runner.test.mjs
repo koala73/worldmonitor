@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
+import { GRACEFUL_FETCH_FAILURE_EXIT_CODE } from '../scripts/_seed-utils.mjs';
 
 const SCRIPTS_DIR = new URL('../scripts/', import.meta.url).pathname;
 
@@ -141,6 +142,47 @@ test('non-zero exit without timeout reports exit code', async () => {
     const combined = stdout + stderr;
     assert.match(combined, /\[FAIL\] boom/);
     assert.match(combined, /Failed after .*s: exit 2/);
+  } finally {
+    cleanup();
+  }
+});
+
+test('graceful fetch failure exit reports a distinct non-OK bundle status', async () => {
+  const cleanup = writeFixture(
+    '_bundle-fixture-graceful-fail.mjs',
+    `console.error('FETCH FAILED: upstream unavailable');\nconsole.log('=== Failed gracefully (42ms) ===');\nprocess.exit(${GRACEFUL_FETCH_FAILURE_EXIT_CODE});\n`,
+  );
+  try {
+    const { code, stdout, stderr } = await runBundleWith([
+      { label: 'GRACEFUL', script: '_bundle-fixture-graceful-fail.mjs', intervalMs: 1, timeoutMs: 5000 },
+    ]);
+    const combined = stdout + stderr;
+    assert.equal(code, 1, 'graceful fetch failure must make the bundle non-zero');
+    assert.match(combined, /\[GRACEFUL\] FETCH FAILED: upstream unavailable/);
+    assert.match(combined, new RegExp(`Failed after .*s: graceful fetch failure \\(exit ${GRACEFUL_FETCH_FAILURE_EXIT_CODE}\\)`));
+    assert.match(combined, new RegExp(`\\[Bundle:test\\] section=GRACEFUL status=GRACEFUL_FAIL .*reason=graceful fetch failure \\(exit ${GRACEFUL_FETCH_FAILURE_EXIT_CODE}\\)`));
+    assert.match(stdout, /\[Bundle:test\] Finished .* ran:0 skipped:0 deferred:0 failed:1/);
+    assert.doesNotMatch(combined, /\[Bundle:test\] section=GRACEFUL status=OK/);
+  } finally {
+    cleanup();
+  }
+});
+
+test('lock-skip-like exit zero remains OK even without seed_complete', async () => {
+  const cleanup = writeFixture(
+    '_bundle-fixture-lock-skip.mjs',
+    `console.log('SKIPPED: another seed run in progress');\nprocess.exit(0);\n`,
+  );
+  try {
+    const { code, stdout, stderr } = await runBundleWith([
+      { label: 'LOCK_SKIP', script: '_bundle-fixture-lock-skip.mjs', intervalMs: 1, timeoutMs: 5000 },
+    ]);
+    const combined = stdout + stderr;
+    assert.equal(code, 0, 'lock-skip exit zero must remain a successful bundle outcome');
+    assert.match(combined, /\[LOCK_SKIP\] SKIPPED: another seed run in progress/);
+    assert.match(combined, /\[Bundle:test\] section=LOCK_SKIP status=OK elapsed=/);
+    assert.match(stdout, /\[Bundle:test\] Finished .* ran:1 skipped:0 deferred:0 failed:0/);
+    assert.doesNotMatch(combined, /GRACEFUL_FAIL/);
   } finally {
     cleanup();
   }

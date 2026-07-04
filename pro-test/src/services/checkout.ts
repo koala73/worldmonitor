@@ -1,19 +1,24 @@
 /**
  * Checkout service for the /pro marketing page.
  *
- * Handles: Clerk sign-in → edge endpoint → Dodo overlay.
+ * ACTIVE FLOW (#4449): Clerk sign-in → edge endpoint → top-level redirect to
+ * Dodo's HOSTED checkout (`window.location.assign`). The overlay iframe could
+ * not host Dodo's nested 3DS/fraud stack (it hung at "Processing…"), so we
+ * navigate full-page; the buyer returns to the dashboard via the guarded
+ * `?wm_checkout=return` contract. The Dodo overlay SDK Initialize/onEvent
+ * machinery below is DORMANT, pending removal.
  * No Convex client needed — the edge endpoint handles relay.
  */
 
 import * as Sentry from '@sentry/react';
-import type { Clerk } from '@clerk/clerk-js';
 import type { CheckoutEvent } from 'dodopayments-checkout';
+import { ensureClerk, type LoadedClerk } from './clerk';
+export { ensureClerk } from './clerk';
 
 const API_BASE = 'https://api.worldmonitor.app/api';
 const DODO_PORTAL_FALLBACK_URL = 'https://customer.dodopayments.com';
 const ACTIVE_SUBSCRIPTION_EXISTS = 'ACTIVE_SUBSCRIPTION_EXISTS';
-
-const MONO_FONT = "'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace";
+const PAYMENT_IN_PROGRESS = 'PAYMENT_IN_PROGRESS';
 
 import {
   parseCheckoutIntentFromSearch,
@@ -21,10 +26,9 @@ import {
   buildCheckoutReturnUrl,
 } from './checkout-intent-url';
 import { createEntitlementWatchdog, type EntitlementWatchdog } from './entitlement-watchdog';
+import { DASHBOARD_CHECKOUT_SUCCESS_URL, DASHBOARD_CHECKOUT_RETURN_URL } from '../routes';
 
-let clerk: InstanceType<typeof Clerk> | null = null;
 let checkoutInFlight = false;
-let clerkLoadPromise: Promise<InstanceType<typeof Clerk>> | null = null;
 
 /**
  * Phase machine for the checkout flow. Only `creating_checkout` drives
@@ -59,65 +63,6 @@ export function subscribeCheckoutPhase(cb: (phase: CheckoutPhase) => void): () =
   phaseSubscribers.add(cb);
   cb(_phase);
   return () => { phaseSubscribers.delete(cb); };
-}
-
-export async function ensureClerk(): Promise<InstanceType<typeof Clerk>> {
-  if (clerk) return clerk;
-  if (clerkLoadPromise) return clerkLoadPromise;
-  clerkLoadPromise = _loadClerk().catch((err) => {
-    clerkLoadPromise = null;
-    throw err;
-  });
-  return clerkLoadPromise;
-}
-
-async function _loadClerk(): Promise<InstanceType<typeof Clerk>> {
-  const { Clerk: C } = await import('@clerk/clerk-js');
-  const key = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-  if (!key) throw new Error('VITE_CLERK_PUBLISHABLE_KEY not set');
-  const instance = new C(key);
-  await instance.load({
-    appearance: {
-      variables: {
-        colorBackground: '#0f0f0f',
-        colorInputBackground: '#141414',
-        colorInputText: '#e8e8e8',
-        colorText: '#e8e8e8',
-        colorTextSecondary: '#aaaaaa',
-        colorPrimary: '#44ff88',
-        colorNeutral: '#e8e8e8',
-        colorDanger: '#ff4444',
-        borderRadius: '4px',
-        fontFamily: MONO_FONT,
-        fontFamilyButtons: MONO_FONT,
-      },
-      elements: {
-        card: { backgroundColor: '#111111', border: '1px solid #2a2a2a', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' },
-        formButtonPrimary: { color: '#000000', fontWeight: '600' },
-        footerActionLink: { color: '#44ff88' },
-        socialButtonsBlockButton: { borderColor: '#2a2a2a', color: '#e8e8e8', backgroundColor: '#141414' },
-      },
-    },
-  });
-
-  // Only publish the instance after load() succeeds, so a failed load
-  // doesn't wedge ensureClerk()'s `if (clerk) return clerk;` short-circuit
-  // and bypass the retry path.
-  clerk = instance;
-
-  // NO addListener-based auto-resume. That was the source of the
-  // surprise-purchase bug: any sign-in event (checkout-initiated OR
-  // generic "Sign In" CTA on /pro) would fire the listener; with
-  // module-scoped pendingProductId the stale intent from a dismissed
-  // checkout modal would run when the user signed in later for
-  // unrelated reasons.
-  //
-  // Intent is bound to the specific sign-in attempt via Clerk's
-  // afterSignInUrl / afterSignUpUrl (see startCheckout). On dismissal
-  // there's no redirect; only successful sign-in FROM OUR openSignIn
-  // call navigates to a URL carrying the intent params. Generic sign-
-  // in paths don't set these URLs, so they can't trigger resume.
-  return clerk;
 }
 
 /**
@@ -219,10 +164,10 @@ export function initOverlay(onSuccess?: () => void): void {
       // status endpoint is authoritative for the entitlement; the
       // URL params are informational at this point.
       if (reason === 'event-redirect') {
-        window.location.href = redirectTo || 'https://worldmonitor.app/?wm_checkout=success';
+        window.location.href = redirectTo || DASHBOARD_CHECKOUT_SUCCESS_URL;
       } else {
         safeCloseOverlay();
-        window.location.href = 'https://worldmonitor.app/?wm_checkout=success';
+        window.location.href = DASHBOARD_CHECKOUT_SUCCESS_URL;
       }
     };
 
@@ -289,11 +234,11 @@ export function initOverlay(onSuccess?: () => void): void {
         }
         if (event.event_type === 'checkout.redirect_requested') {
           const redirectTo = msg?.redirect_to as string | undefined;
-          // Dodo builds redirect_to from the return_url we sent, appending
-          // payment_id/subscription_id/status/license_key/email per
-          // changelog v1.84.0. Our return_url carries `?wm_checkout=success`
-          // so the dashboard bridge (src/services/checkout-return.ts) fires
-          // regardless of Dodo's appended params.
+          // DORMANT (#4449): this overlay handler no longer runs — checkout now
+          // redirects top-level to the hosted page (see startCheckout). The
+          // live return_url is the GUARDED `?wm_checkout=return` marker, which
+          // reconciles success only against authoritative Dodo evidence; it does
+          // NOT fire regardless of Dodo's appended params. Kept pending removal.
           fireTerminalSuccess('event-redirect', redirectTo);
         }
         if (event.event_type === 'checkout.closed') {
@@ -318,11 +263,11 @@ export function initOverlay(onSuccess?: () => void): void {
 
 export async function startCheckout(
   productId: string,
-  options?: { referralCode?: string; discountCode?: string },
+  options?: { referralCode?: string; discountCode?: string; bypassPendingGuard?: boolean },
 ): Promise<boolean> {
   if (checkoutInFlight) return false;
 
-  let c: InstanceType<typeof Clerk>;
+  let c: LoadedClerk;
   try {
     c = await ensureClerk();
   } catch (err) {
@@ -361,7 +306,7 @@ export async function tryResumeCheckoutFromUrl(): Promise<boolean> {
   const cleanUrl = window.location.pathname + cleanSearch + window.location.hash;
   window.history.replaceState({}, '', cleanUrl);
 
-  let c: InstanceType<typeof Clerk>;
+  let c: LoadedClerk;
   try {
     c = await ensureClerk();
   } catch {
@@ -374,7 +319,7 @@ export async function tryResumeCheckoutFromUrl(): Promise<boolean> {
 
 async function doCheckout(
   productId: string,
-  options: { referralCode?: string; discountCode?: string },
+  options: { referralCode?: string; discountCode?: string; bypassPendingGuard?: boolean },
 ): Promise<boolean> {
   if (checkoutInFlight) return false;
   checkoutInFlight = true;
@@ -417,9 +362,18 @@ async function doCheckout(
       },
       body: JSON.stringify({
         productId,
-        returnUrl: 'https://worldmonitor.app/?wm_checkout=success',
+        // #4449 review: use the GUARDED return contract, not the bare
+        // `?wm_checkout=success` marker. With hosted redirect now the primary
+        // flow, Dodo sends the buyer to this URL for EVERY outcome (success,
+        // failure, cancel, pending) — `?wm_checkout=success` would false-succeed
+        // a failed/pending/no-ID return. `?wm_checkout=return` only reconciles
+        // success against authoritative Dodo evidence. See checkout-return.ts.
+        returnUrl: DASHBOARD_CHECKOUT_RETURN_URL,
         discountCode: options.discountCode,
         referralCode: options.referralCode,
+        // #4438: only set when the user confirmed "start a new checkout anyway"
+        // from the pending-payment dialog. Skips the backend pending guard.
+        ...(options.bypassPendingGuard ? { bypassPendingGuard: true } : {}),
       }),
       signal: AbortSignal.timeout(15_000),
     });
@@ -465,55 +419,52 @@ async function doCheckout(
           tags: { surface: 'pro-marketing', code: 'duplicate_subscription' },
           extra: { serverMessage: err?.message },
         });
+      } else if (resp.status === 409 && err?.error === PAYMENT_IN_PROGRESS) {
+        // #4438: a recent same-tier 3DS payment is still pending. Confirm before
+        // stacking a duplicate — the pending one may still be completing. On
+        // confirm, re-run with bypassPendingGuard so the backend skips the guard
+        // and the redirect proceeds. Inline dialog (no shared component — /pro is
+        // a separate build); whitelisted plan name only, raw message to Sentry.
+        const planKey = err?.pendingPayment?.planKey;
+        showProPendingPaymentDialog({
+          planDisplayName: resolveProPlanDisplayName(planKey),
+          onConfirm: () => {
+            void doCheckout(productId, { ...options, bypassPendingGuard: true });
+          },
+          onDismiss: () => { /* stay on /pro; pending payment may still complete */ },
+        });
+        Sentry.captureMessage('Pending-payment checkout attempt', {
+          level: 'info',
+          tags: { surface: 'pro-marketing', code: 'payment_in_progress' },
+          extra: { serverMessage: err?.message },
+        });
       }
       return false;
     }
 
     const result = await resp.json();
-    if (!result?.checkout_url) {
-      console.error('[checkout] No checkout_url in response');
+    const hostedCheckoutUrl = safeHostedCheckoutUrl(result?.checkout_url);
+    if (!hostedCheckoutUrl) {
+      // 200 OK but no usable checkout_url (missing, or an untrusted/unparseable
+      // origin rejected by safeHostedCheckoutUrl). Report to Sentry for parity
+      // with the dashboard's missing-checkout-url path — otherwise this
+      // server-contract violation is invisible (was console.error only).
+      console.error('[checkout] No usable checkout_url in response');
+      Sentry.captureMessage('Checkout returned 200 without a usable checkout_url', {
+        level: 'error',
+        tags: { surface: 'pro-marketing', code: 'missing_checkout_url' },
+      });
       return false;
     }
 
-    const { DodoPayments } = await import('dodopayments-checkout');
-    DodoPayments.Checkout.open({
-      checkoutUrl: result.checkout_url,
-      options: {
-        // manualRedirect: true — Dodo emits `checkout.redirect_requested`
-        // with the final redirect URL and the MERCHANT performs the
-        // navigation. Reverting PR #3298's `false`: that mode disables
-        // both `checkout.status` and `checkout.redirect_requested` events
-        // (docs: "only when manualRedirect is enabled") and depends on
-        // the SDK's internal redirect, which fails for Safari users
-        // (stuck on a spinner with an orphaned about:blank tab). The
-        // correct flow per docs is manualRedirect:true + a
-        // checkout.redirect_requested handler — see onEvent above.
-        manualRedirect: true,
-        themeConfig: {
-          dark: {
-            bgPrimary: '#0d0d0d',
-            bgSecondary: '#1a1a1a',
-            borderPrimary: '#323232',
-            textPrimary: '#ffffff',
-            textSecondary: '#909090',
-            buttonPrimary: '#22c55e',
-            buttonPrimaryHover: '#16a34a',
-            buttonTextPrimary: '#0d0d0d',
-          },
-          light: {
-            bgPrimary: '#ffffff',
-            bgSecondary: '#f8f9fa',
-            borderPrimary: '#d4d4d4',
-            textPrimary: '#1a1a1a',
-            textSecondary: '#555555',
-            buttonPrimary: '#16a34a',
-            buttonPrimaryHover: '#15803d',
-            buttonTextPrimary: '#ffffff',
-          },
-          radius: '4px',
-        },
-      },
-    });
+    // #4449: navigate the top window to Dodo's HOSTED checkout instead of the
+    // overlay iframe. The overlay cannot host Dodo's nested 3DS/fraud stack
+    // (Hyperswitch → Airwallex → Sardine) — the device sensors it needs are
+    // blocked two frames deep, so card payments requiring 3DS hung forever at
+    // "Processing…" (HAR-confirmed; see #4449/#4450). Dodo documents redirect as
+    // the primary flow. The overlay Initialize/onEvent machinery above is left
+    // dormant pending removal.
+    window.location.assign(hostedCheckoutUrl);
 
     return true;
   } catch (err) {
@@ -523,6 +474,27 @@ async function doCheckout(
     checkoutInFlight = false;
     unmountCheckoutInterstitial();
     setPhase({ kind: 'idle' });
+  }
+}
+
+// Dodo's hosted-checkout origins. Redirect mode (#4449) navigates the top
+// window to the hosted checkout, so validate the server-provided `checkout_url`
+// before `window.location.assign` (open-redirect guard against an unexpected
+// origin / `javascript:` URL).
+const HOSTED_CHECKOUT_HOSTS = new Set([
+  'checkout.dodopayments.com',
+  'test.checkout.dodopayments.com',
+]);
+
+function safeHostedCheckoutUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:') return null;
+    if (!HOSTED_CHECKOUT_HOSTS.has(url.hostname)) return null;
+    return url.toString();
+  } catch {
+    return null;
   }
 }
 
@@ -614,12 +586,15 @@ function showCheckoutLoadingToast(): void {
 }
 
 async function getAuthToken(): Promise<string | null> {
-  let token = await clerk?.session?.getToken({ template: 'convex' }).catch(() => null)
-    ?? await clerk?.session?.getToken().catch(() => null);
+  const c = await ensureClerk().catch(() => null);
+  if (!c) return null;
+
+  let token = await c.session?.getToken({ template: 'convex' }).catch(() => null)
+    ?? await c.session?.getToken().catch(() => null);
   if (!token) {
     await new Promise((r) => setTimeout(r, 2000));
-    token = await clerk?.session?.getToken({ template: 'convex' }).catch(() => null)
-      ?? await clerk?.session?.getToken().catch(() => null);
+    token = await c.session?.getToken({ template: 'convex' }).catch(() => null)
+      ?? await c.session?.getToken().catch(() => null);
   }
   return token;
 }
@@ -775,6 +750,86 @@ function showProDuplicateSubscriptionDialog(options: ProDuplicateDialogOptions):
     options.onConfirm();
   });
   document.getElementById(`${PRO_DUP_DIALOG_ID}-dismiss`)?.addEventListener('click', dismiss);
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) dismiss(); });
+  document.addEventListener('keydown', keyHandler, true);
+}
+
+// Pending-payment dialog (inline to /pro — separate build from main app). Same
+// shape + styling as the duplicate-subscription dialog; different copy + action
+// (#4438). Confirm → start a new checkout with the pending guard bypassed.
+const PRO_PENDING_DIALOG_ID = 'wm-pro-pending-payment-dialog';
+
+function showProPendingPaymentDialog(options: ProDuplicateDialogOptions): void {
+  if (document.getElementById(PRO_PENDING_DIALOG_ID)) return;
+
+  const backdrop = document.createElement('div');
+  backdrop.id = PRO_PENDING_DIALOG_ID;
+  backdrop.setAttribute('role', 'dialog');
+  backdrop.setAttribute('aria-modal', 'true');
+  backdrop.setAttribute('aria-labelledby', `${PRO_PENDING_DIALOG_ID}-title`);
+  Object.assign(backdrop.style, {
+    position: 'fixed',
+    inset: '0',
+    zIndex: '99990',
+    background: 'rgba(10, 10, 10, 0.72)',
+    backdropFilter: 'blur(4px)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '24px',
+  });
+
+  const card = document.createElement('div');
+  Object.assign(card.style, {
+    background: '#141414',
+    border: '1px solid #2a2a2a',
+    borderRadius: '8px',
+    padding: '20px 22px',
+    maxWidth: '440px',
+    width: '100%',
+    color: '#e8e8e8',
+    fontFamily: "'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace",
+    boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+  });
+
+  card.innerHTML = `
+    <h2 id="${PRO_PENDING_DIALOG_ID}-title" style="font-size:16px;font-weight:600;margin:0 0 10px 0;color:#fff;">Payment in progress</h2>
+    <p style="font-size:13px;line-height:1.5;margin:0 0 18px 0;color:#c8c8c8;">
+      You have a ${escapeHtml(options.planDisplayName)} payment in progress. It may still be completing — if it does and you're charged twice, contact support and we'll refund the duplicate. Start a new checkout anyway?
+    </p>
+    <div style="display:flex;justify-content:flex-end;gap:10px;">
+      <button id="${PRO_PENDING_DIALOG_ID}-dismiss" type="button" style="background:transparent;color:#aaa;border:1px solid #2a2a2a;border-radius:4px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">Cancel</button>
+      <button id="${PRO_PENDING_DIALOG_ID}-confirm" type="button" style="background:#44ff88;color:#0a0a0a;border:none;border-radius:4px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">Start new checkout</button>
+    </div>
+  `;
+
+  backdrop.appendChild(card);
+  // MUST append to document BEFORE attaching listeners via getElementById,
+  // otherwise the ID lookups return null and the buttons are dead.
+  document.body.appendChild(backdrop);
+
+  let resolved = false;
+  const keyHandler = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') dismiss();
+  };
+  const close = () => {
+    document.removeEventListener('keydown', keyHandler, true);
+    backdrop.remove();
+  };
+  const dismiss = () => {
+    if (resolved) return;
+    resolved = true;
+    close();
+    options.onDismiss();
+  };
+
+  document.getElementById(`${PRO_PENDING_DIALOG_ID}-confirm`)?.addEventListener('click', () => {
+    if (resolved) return;
+    resolved = true;
+    close();
+    options.onConfirm();
+  });
+  document.getElementById(`${PRO_PENDING_DIALOG_ID}-dismiss`)?.addEventListener('click', dismiss);
   backdrop.addEventListener('click', (e) => { if (e.target === backdrop) dismiss(); });
   document.addEventListener('keydown', keyHandler, true);
 }

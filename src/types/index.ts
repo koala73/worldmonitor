@@ -359,6 +359,8 @@ export interface ConflictZone {
   location?: string;
   description?: string;
   keyDevelopments?: string[];
+  peaceAgreements?: string[];
+  totalFatalities?: string;
 }
 
 
@@ -548,6 +550,10 @@ export interface NuclearFacility {
   type: NuclearFacilityType;
   status: 'active' | 'contested' | 'inactive' | 'decommissioned' | 'construction';
   operator?: string;  // Operating country
+  operationalSince?: string;
+  treaties?: string[];
+  iaeaStatus?: string;
+  keyEvents?: string[];
 }
 
 export interface GammaIrradiator {

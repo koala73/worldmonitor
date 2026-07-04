@@ -374,7 +374,7 @@
           "Resumos diários do mercado",
           "Rastreamento militar e geopolítico",
           "Construtor de widgets personalizado",
-          "Conectores de dados MCP",
+          "Acesso MCP para Claude Desktop e outros clientes de IA (50 chamadas/dia)",
           "Atualização de dados prioritária"
         ]
       },
@@ -383,7 +383,8 @@
         "features": [
           "Acesso à API REST",
           "Fluxos de dados em tempo real",
-          "1.000 requisições/dia",
+          "60 requisições/minuto",
+          "1.000 requisições/dia incluídas",
           "Notificações por webhook",
           "Exportações de dados personalizadas"
         ]

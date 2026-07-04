@@ -21,7 +21,7 @@ function rpcTool(name) {
   return tool;
 }
 
-async function captureRpcFetches(toolName, params) {
+async function captureRpcFetches(toolName, params, opts = {}) {
   const calls = [];
   let result;
   globalThis.fetch = async (input, init = {}) => {
@@ -35,6 +35,13 @@ async function captureRpcFetches(toolName, params) {
         categories: {
           world: {
             items: [
+              ...(opts.longCountryHeadline ? [{
+                title: `United States ${'%'.repeat(3900)}`,
+                source: 'Long Wire',
+                link: 'https://example.com/long-context',
+                publishedAt: '2026-06-07T00:00:00.000Z',
+                snippet: 'Large context headline used to prove the signed URL stays short.',
+              }] : []),
               {
                 title: 'United States headline used for MCP grounding',
                 source: 'Example Wire',
@@ -122,9 +129,24 @@ describe('MCP news/auth public contract', () => {
     assert.deepEqual(countryResult.sources, worldResult.sources);
     const countryBriefCall = countryCalls.find((call) => new URL(call.url).pathname === '/api/intelligence/v1/get-country-intel-brief');
     assert.ok(countryBriefCall, 'get_country_brief should call country brief endpoint');
-    const context = new URL(countryBriefCall.url).searchParams.get('context') || '';
-    assert.match(decodeURIComponent(context), /Source \[1\]: \{"title":"United States headline used for MCP grounding","source":"Example Wire","url":"https:\/\/example\.com\/world-grounding","publishedAt":"2026-06-07T00:00:00.000Z"\}/);
-    assert.doesNotMatch(decodeURIComponent(context), /russia-house/);
+    const context = JSON.parse(String(countryBriefCall.init.body)).context || '';
+    assert.match(context, /Source \[1\]: \{"title":"United States headline used for MCP grounding","source":"Example Wire","url":"https:\/\/example\.com\/world-grounding","publishedAt":"2026-06-07T00:00:00.000Z"\}/);
+    assert.doesNotMatch(context, /russia-house/);
+  });
+
+  it('get_country_brief keeps large grounding context out of the signed URL', async () => {
+    const { calls } = await captureRpcFetches('get_country_brief', { country_code: 'US' }, { longCountryHeadline: true });
+    const countryBriefCall = calls.find((call) => new URL(call.url).pathname === '/api/intelligence/v1/get-country-intel-brief');
+    assert.ok(countryBriefCall, 'get_country_brief should call country brief endpoint');
+
+    const url = new URL(countryBriefCall.url);
+    assert.equal(url.searchParams.has('context'), false, 'grounding context must not travel in the signed URL query');
+    assert.ok(countryBriefCall.url.length < 512, `signed URL should stay short, got ${countryBriefCall.url.length} chars`);
+
+    const body = JSON.parse(String(countryBriefCall.init.body));
+    assert.equal(body.country_code, 'US');
+    assert.match(body.context, /Brief source articles:/);
+    assert.ok(body.context.length >= 3900, `expected large body context, got ${body.context.length} chars`);
   });
 
   it('RPC brief output schemas expose structured sources', () => {

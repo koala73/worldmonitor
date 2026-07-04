@@ -11,6 +11,7 @@ const AI_CRAWLER_UA =
   /gptbot|claudebot|ccbot|google-extended|perplexitybot|anthropic-ai|bytespider|cohere-ai|youbot|applebot-extended|amazonbot/i;
 
 const SOCIAL_PREVIEW_PATHS = new Set(['/api/story', '/api/og-story']);
+const LEGACY_DASHBOARD_ROOT_QUERY_KEYS = ['lat', 'lon', 'zoom', 'view', 'timeRange', 'layers'] as const;
 
 // Paths that bypass bot/script UA filtering below. Each must carry its own
 // auth (API key, shared secret, or intentionally-public semantics) because
@@ -64,35 +65,35 @@ const VARIANT_OG: Record<string, { name: string; title: string; description: str
     title: 'Tech Monitor - Real-Time AI & Tech Industry Dashboard',
     description: 'Real-time AI and tech industry dashboard tracking tech giants, AI labs, startup ecosystems, funding rounds, and tech events worldwide.',
     image: 'https://tech.worldmonitor.app/favico/tech/og-image.png',
-    url: 'https://tech.worldmonitor.app/',
+    url: 'https://tech.worldmonitor.app/dashboard',
   },
   finance: {
     name: 'Finance Monitor',
     title: 'Finance Monitor - Real-Time Markets & Trading Dashboard',
     description: 'Real-time finance and trading dashboard tracking global markets, stock exchanges, central banks, commodities, forex, crypto, and economic indicators worldwide.',
     image: 'https://finance.worldmonitor.app/favico/finance/og-image.png',
-    url: 'https://finance.worldmonitor.app/',
+    url: 'https://finance.worldmonitor.app/dashboard',
   },
   commodity: {
     name: 'Commodity Monitor',
     title: 'Commodity Monitor - Real-Time Commodity Markets & Supply Chain Dashboard',
     description: 'Real-time commodity markets dashboard tracking mining sites, processing plants, commodity ports, supply chains, and global commodity trade flows.',
     image: 'https://commodity.worldmonitor.app/favico/commodity/og-image.png',
-    url: 'https://commodity.worldmonitor.app/',
+    url: 'https://commodity.worldmonitor.app/dashboard',
   },
   happy: {
     name: 'Happy Monitor',
     title: 'Happy Monitor - Good News & Global Progress',
     description: 'Curated positive news, progress data, and uplifting stories from around the world.',
     image: 'https://happy.worldmonitor.app/favico/happy/og-image.png',
-    url: 'https://happy.worldmonitor.app/',
+    url: 'https://happy.worldmonitor.app/dashboard',
   },
   energy: {
     name: 'Energy Atlas',
     title: 'Energy Atlas - Real-Time Global Energy Intelligence Dashboard',
     description: 'Real-time global energy atlas tracking oil and gas pipelines, storage facilities, chokepoints, fuel shortages, tanker flows, and disruption events worldwide.',
     image: 'https://energy.worldmonitor.app/favico/energy/og-image.png',
-    url: 'https://energy.worldmonitor.app/',
+    url: 'https://energy.worldmonitor.app/dashboard',
   },
 };
 
@@ -108,6 +109,10 @@ function normalizeHost(raw: string): string {
 
 function isAllowedHost(host: string): boolean {
   return ALLOWED_HOSTS.has(host) || VERCEL_PREVIEW_RE.test(host);
+}
+
+function hasLegacyDashboardRootState(searchParams: URLSearchParams): boolean {
+  return LEGACY_DASHBOARD_ROOT_QUERY_KEYS.some((key) => searchParams.has(key));
 }
 
 // HTML-escape a string for safe interpolation into BOTH text content and
@@ -128,6 +133,12 @@ export default function middleware(request: Request) {
   const ua = request.headers.get('user-agent') ?? '';
   const path = url.pathname;
   const host = normalizeHost(request.headers.get('host') ?? url.hostname);
+
+  if (path === '/' && hasLegacyDashboardRootState(url.searchParams)) {
+    const dashboardUrl = new URL(request.url);
+    dashboardUrl.pathname = '/dashboard';
+    return Response.redirect(dashboardUrl.toString(), 308);
+  }
 
   // Variant-aware crawlable stub for social preview bots AND AI crawlers
   // (GPTBot, ClaudeBot, PerplexityBot, etc.) when hitting variant subdomain
@@ -174,11 +185,11 @@ export default function middleware(request: Request) {
 <p>${eDesc}</p>
 <h2>Explore the platform</h2>
 <ul>
-<li><a href="https://www.worldmonitor.app/">World Monitor — geopolitics &amp; intelligence</a></li>
-<li><a href="https://tech.worldmonitor.app/">Tech Monitor</a></li>
-<li><a href="https://finance.worldmonitor.app/">Finance Monitor</a></li>
-<li><a href="https://commodity.worldmonitor.app/">Commodity Monitor</a></li>
-<li><a href="https://happy.worldmonitor.app/">Happy Monitor</a></li>
+<li><a href="https://www.worldmonitor.app/dashboard">World Monitor — geopolitics &amp; intelligence</a></li>
+<li><a href="https://tech.worldmonitor.app/dashboard">Tech Monitor</a></li>
+<li><a href="https://finance.worldmonitor.app/dashboard">Finance Monitor</a></li>
+<li><a href="https://commodity.worldmonitor.app/dashboard">Commodity Monitor</a></li>
+<li><a href="https://happy.worldmonitor.app/dashboard">Happy Monitor</a></li>
 <li><a href="https://www.worldmonitor.app/pro">World Monitor Pro</a></li>
 <li><a href="https://www.worldmonitor.app/blog/">Blog</a></li>
 <li><a href="https://github.com/koala73/worldmonitor">Open source on GitHub</a></li>

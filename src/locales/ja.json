@@ -690,7 +690,9 @@
         "americas": "アメリカ",
         "asia": "アジア",
         "space": "宇宙"
-      }
+      },
+      "play": "再生",
+      "previewStatus": "ライブプレビュー"
     },
     "positiveNewsFeed": {
       "noStories": "このカテゴリにはまだ記事がありません"
@@ -1264,8 +1266,8 @@
       "badgeAnimDesc": "パネルヘッダーの更新バッジをアニメーション表示",
       "headlineMemoryLabel": "ヘッドラインメモリ",
       "headlineMemoryDesc": "閲覧済みの見出しを記憶して新着を強調",
-      "streamAlwaysOnLabel": "ライブ配信を常に実行",
-      "streamAlwaysOnDesc": "アイドル時に Live Cams と Live News が自動一時停止されるのを防ぎます。セカンドモニター / 壁面ダッシュボード用途に推奨。CPU/帯域を節約するには（Eco）を無効にしてください。",
+      "streamAlwaysOnLabel": "ダッシュボードでライブストリームを自動再生",
+      "streamAlwaysOnDesc": "Live News と Live Webcams が表示されたときに自動的に開始します。動画を「再生」をクリックした後だけ読み込むにはオフのままにしてください。",
       "analysisFrameworksLabel": "分析フレームワーク",
       "analysisFrameworksActivePerPanel": "パネルごとのアクティブ",
       "analysisFrameworksSkillLibrary": "スキルライブラリ",
@@ -1773,7 +1775,9 @@
       "invalidHandle": "有効なYouTubeハンドルを入力してください（例: @ChannelName）",
       "verifying": "確認中…",
       "hlsUrl": "HLSストリームURL（任意）",
-      "invalidHlsUrl": "有効なHLSストリームURL（.m3u8）を入力してください"
+      "invalidHlsUrl": "有効なHLSストリームURL（.m3u8）を入力してください",
+      "playLiveFeed": "ライブフィードを再生",
+      "readyStatus": "準備ができたら再生できます"
     },
     "map": {
       "showMap": "地図を表示",
@@ -3136,5 +3140,18 @@
     "or": "またはカスタムサーバーを入力",
     "generatingVisualization": "ビジュアライゼーションを生成中...",
     "visualizationFailed": "ビジュアライゼーションに失敗しました"
+  },
+  "dashboardTabs": {
+    "ariaLabel": "Dashboard tabs",
+    "defaultName": "Main",
+    "newTabName": "New Tab",
+    "newTabCreated": "New tab created",
+    "tabDeleted": "Tab \"{{name}}\" deleted",
+    "addTab": "Add tab",
+    "addTabTitle": "New tab (starts with the default panels)",
+    "renameHint": "{{name}} — double-click to rename",
+    "deleteTab": "Delete tab",
+    "deleteTabAria": "Delete tab {{name}}",
+    "tabNameAria": "Tab name"
   }
 }

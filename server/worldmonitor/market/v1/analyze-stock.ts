@@ -299,12 +299,18 @@ export async function fetchDividendProfile(symbol: string, currentPrice: number)
     const now = Date.now();
     const oneYearAgo = now - 365.25 * 24 * 3600 * 1000;
     const recentDivs = entries.filter((d) => (d.date ?? 0) * 1000 >= oneYearAgo);
-    const trailingAnnual = recentDivs.reduce((sum, d) => sum + (d.amount ?? 0), 0);
-    const dividendYield = currentPrice > 0 ? (trailingAnnual / currentPrice) * 100 : 0;
-    // Suppress frequency entirely when there is no active dividend program:
-    // no payment in the trailing year means dividendYield/trailingAnnualRate
-    // are both 0, and emitting a 'Quarterly' badge derived from suspended
-    // history would contradict the accompanying zeros in the UI.
+    // `let`, not `const`: the recent=0 branch below backfills these from the
+    // INDICATED annual rate when it detects an active low-frequency payer that
+    // is merely between scheduled payments (last payment just outside the
+    // trailing-365-day window). Without that, an annual payer past its
+    // anniversary would read "Annual / $0 rate / 0% yield".
+    let trailingAnnual = recentDivs.reduce((sum, d) => sum + (d.amount ?? 0), 0);
+    let dividendYield = currentPrice > 0 ? (trailingAnnual / currentPrice) * 100 : 0;
+    // Suppress frequency entirely when the program is genuinely suspended: no
+    // payment in the trailing year AND the last payment too old to be a
+    // between-payments gap (see the recent=0 branch). Then dividendYield/
+    // trailingAnnualRate stay 0, and emitting a frequency badge derived from
+    // stale history would contradict the accompanying zeros in the UI.
     // Frequency reconciliation:
     //   recent=0          → program suspended, leave frequency empty
     //   recent >= 3       → trust interval (robust to calendar-boundary drift)
@@ -338,6 +344,43 @@ export async function fetchDividendProfile(symbol: string, currentPrice: number)
       } else {
         const byInterval = paymentsPerYearFromInterval(entries);
         paymentsPerYear = byInterval > 0 ? byInterval : recentDivs.length;
+      }
+    } else {
+      // recentDivs.length === 0: no payment in the trailing 365 days. This is
+      // EITHER a suspended program OR a low-frequency payer (annual / semi-
+      // annual) observed BETWEEN scheduled payments — its last payment fell
+      // just outside the 365-day window and the next one is still pending.
+      // Distinguish the two by recency relative to the payer's OWN historical
+      // cadence: a last payment within ~1.5x its median interval is between
+      // payments, not suspended. Quarterly/monthly payers with a >365-day gap
+      // have skipped many payments, so they blow past 1.5x their (much
+      // shorter) interval and correctly stay '' (see the suspended-program
+      // test). Without this, annual payers collapse to '' for the weeks each
+      // year after their payment anniversary — the trailing-year window is
+      // empty even though the program is healthy.
+      const byInterval = paymentsPerYearFromInterval(entries);
+      if (byInterval > 0) {
+        const expectedGapDays = 365.25 / byInterval;
+        const daysSinceLast =
+          (now / 1000 - (entries[entries.length - 1]!.date ?? 0)) / (24 * 3600);
+        if (daysSinceLast <= expectedGapDays * 1.5) {
+          paymentsPerYear = byInterval;
+          // The trailing-12-month window is empty for this between-payments
+          // payer, so trailingAnnual/dividendYield computed above are both 0.
+          // Backfill them with the INDICATED annual rate — the most recent
+          // regular payment(s) annualized — so the badge, rate, and yield are
+          // mutually coherent instead of "Annual / $0 / 0%". Genuinely
+          // suspended payers never reach here (paymentsPerYear stays 0), so
+          // their zeros are preserved.
+          const indicatedPayments = Math.max(1, Math.round(paymentsPerYear));
+          const indicatedAnnual = entries
+            .slice(-indicatedPayments)
+            .reduce((sum, e) => sum + (e.amount ?? 0), 0);
+          if (indicatedAnnual > 0) {
+            trailingAnnual = indicatedAnnual;
+            dividendYield = currentPrice > 0 ? (indicatedAnnual / currentPrice) * 100 : 0;
+          }
+        }
       }
     }
 

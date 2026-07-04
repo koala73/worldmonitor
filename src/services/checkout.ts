@@ -1,23 +1,28 @@
 /**
- * Checkout overlay orchestration service.
+ * Checkout orchestration service (vanilla TS dashboard).
  *
- * Manages the full checkout lifecycle in the vanilla TS dashboard:
- * - Lazy-initializes the Dodo Payments overlay SDK
- * - Creates checkout sessions via the Convex createCheckout action
- * - Opens the overlay with dark-theme styling matching the dashboard
- * - Stores pending checkout intents for /pro handoff flows
- * - Handles overlay events (success, error, close)
+ * ACTIVE FLOW — redirect mode (#4449): `startCheckout(productId)` creates a Dodo
+ * checkout session via the Convex createCheckout action and then navigates the
+ * top window to Dodo's HOSTED checkout (`window.location.assign`). The overlay
+ * iframe could not host Dodo's nested 3DS/fraud stack, so card payments hung at
+ * "Processing…"; redirect runs 3DS/fraud unconstrained and #4447 returns the
+ * buyer to `/dashboard?wm_checkout=return` to reconcile.
+ *
+ * DORMANT — the Dodo overlay SDK machinery below (ensureCheckoutOverlayInitialized,
+ * the onEvent handler, the entitlement watchdog, openCheckout) is no longer on
+ * any live path (openCheckout has zero callers) and is kept pending removal. Do
+ * NOT assume the overlay is the checkout path when reading the handlers below.
  *
  * UI code calls startCheckout(productId) -- everything else is internal.
  */
 
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
-import { DodoPayments } from 'dodopayments-checkout';
 import type { CheckoutEvent } from 'dodopayments-checkout';
 import { openBillingPortal, prereserveBillingPortalTab } from './billing';
 import { getCurrentClerkUser, getClerkToken, openSignIn } from './clerk';
 import { subscribeAuthState } from './auth-state';
 import { saveCheckoutAttempt, clearCheckoutAttempt } from './checkout-attempt';
+import { safeHostedCheckoutUrl } from './hosted-checkout-url';
 import {
   classifyHttpCheckoutError,
   classifySyntheticCheckoutError,
@@ -25,7 +30,6 @@ import {
   parseCheckoutErrorBody,
   snapshotUpstreamResponse,
   type CheckoutError,
-  type CheckoutErrorBody,
   type CheckoutErrorCode,
   type UpstreamSnapshot,
 } from './checkout-errors';
@@ -41,8 +45,10 @@ import {
 } from './checkout-banner-state';
 import { loadActiveReferral } from './referral-capture';
 import { showDuplicateSubscriptionDialog } from './checkout-duplicate-dialog';
+import { showCheckoutPendingDialog } from './checkout-pending-dialog';
 import { resolvePlanDisplayName } from './checkout-plan-names';
 import { createEntitlementWatchdog, type EntitlementWatchdog } from './entitlement-watchdog';
+import { buildDashboardCheckoutReturnUrl } from './checkout-return-url';
 
 export {
   EXTENDED_UNLOCK_TIMEOUT_MS,
@@ -63,7 +69,7 @@ const CHECKOUT_REFERRAL_PARAM = 'checkoutReferral';
 const CHECKOUT_DISCOUNT_PARAM = 'checkoutDiscount';
 const PENDING_CHECKOUT_KEY = 'wm-pending-checkout';
 const POST_CHECKOUT_FLAG_KEY = 'wm-post-checkout';
-const APP_CHECKOUT_BASE_URL = 'https://worldmonitor.app/';
+const APP_CHECKOUT_BASE_URL = 'https://worldmonitor.app/dashboard';
 
 /**
  * Session flag set just before the post-overlay reload. Lets panel-layout
@@ -131,11 +137,41 @@ interface PendingCheckoutIntent {
  */
 const PENDING_INTENT_TTL_MS = 15 * 60 * 1000;
 
+// Overlay lifecycle state. The two init flags below have DIFFERENT reset
+// semantics — keep them distinct or the #4387 double-Initialize bug returns:
+//   - `initialized`: UI/overlay session lifecycle. RESET to false in
+//     destroyCheckoutOverlay() so a remount re-runs ensureCheckoutOverlayInitialized.
+//   - `dodoPaymentsInitialized` (below): SDK singleton guard. NEVER reset.
+//     DodoPayments.Initialize must run exactly once per page load (it registers
+//     a page-lifetime postMessage listener); the per-session event handler is
+//     swapped via `currentCheckoutEventHandler`, never by re-Initializing.
 let initialized = false;
+let checkoutOverlayGeneration = 0;
+let overlayInitPromise: Promise<void> | null = null;
+let dodoPayments: (typeof import('dodopayments-checkout'))['DodoPayments'] | null = null;
+let dodoPaymentsPromise: Promise<(typeof import('dodopayments-checkout'))['DodoPayments']> | null = null;
+let dodoPaymentsInitialized = false;
+let currentCheckoutEventHandler: ((event: CheckoutEvent) => void) | null = null;
 let onSuccessCallback: (() => void) | null = null;
 let _resetOverlaySession: (() => void) | null = null;
 let _watchersInitialized = false;
 let _escapeHandler: ((e: KeyboardEvent) => void) | null = null;
+
+async function loadDodoPayments(): Promise<(typeof import('dodopayments-checkout'))['DodoPayments']> {
+  if (dodoPayments) return dodoPayments;
+  if (!dodoPaymentsPromise) {
+    dodoPaymentsPromise = import('dodopayments-checkout')
+      .then((mod) => {
+        dodoPayments = mod.DodoPayments;
+        return mod.DodoPayments;
+      })
+      .catch((error) => {
+        dodoPaymentsPromise = null;
+        throw error;
+      });
+  }
+  return dodoPaymentsPromise;
+}
 
 /**
  * Entitlement watchdog tuning (mirrors pro-test/src/services/checkout.ts).
@@ -164,8 +200,8 @@ const WATCHDOG_TIMEOUT_MS = 10 * 60 * 1000;
  */
 function safeCloseOverlay(): void {
   try {
-    if (DodoPayments.Checkout.isOpen?.()) {
-      DodoPayments.Checkout.close();
+    if (dodoPayments?.Checkout.isOpen?.()) {
+      dodoPayments.Checkout.close();
     }
   } catch {
     // Swallow — the overlay is already gone or the SDK is mid-teardown.
@@ -173,122 +209,133 @@ function safeCloseOverlay(): void {
 }
 
 /**
- * Initialize the Dodo overlay SDK. Idempotent -- second+ calls are no-ops.
- * Optionally accepts a success callback that fires when payment succeeds.
+ * Register the checkout success callback. The Dodo overlay SDK itself is
+ * initialized lazily on first checkout open (see ensureCheckoutOverlayInitialized)
+ * so it stays off the startup path — this call no longer initializes anything.
  */
-export function initCheckoutOverlay(onSuccess?: () => void): void {
-  if (initialized) return;
-
+export function registerCheckoutSuccessCallback(onSuccess?: () => void): void {
   if (onSuccess) {
     onSuccessCallback = onSuccess;
   }
+}
 
-  const env = import.meta.env.VITE_DODO_ENVIRONMENT;
+async function ensureCheckoutOverlayInitialized(): Promise<void> {
+  if (initialized) return;
+  if (overlayInitPromise) return overlayInitPromise;
 
-  // `successFired` must be scoped per-overlay-session, NOT module.
-  // Previously this was `let _successFired = false;` at module scope,
-  // which leaked state across sessions: if a user's success path ran
-  // and then a later `openCheckout` call re-entered the overlay, the
-  // stale `true` made the close handler skip the pending-intent clear,
-  // leaving PENDING_CHECKOUT_KEY populated for a silent auto-retry.
-  // DodoPayments.Initialize is idempotent (guarded by `initialized`),
-  // so there's only ever one onEvent closure — but ONE session's state
-  // must reset when a new overlay opens. `openCheckout` resets this
-  // flag via the exported `resetOverlaySessionState()` helper below.
-  let successFired = false;
-  let navigationFired = false;
-  let watchdog: EntitlementWatchdog | null = null;
+  const generation = checkoutOverlayGeneration;
 
-  const stopWatchdog = (): void => {
-    watchdog?.stop();
-    watchdog = null;
-  };
+  const thisInitPromise = (async () => {
+    const DodoPayments = await loadDodoPayments();
+    if (generation !== checkoutOverlayGeneration) {
+      throw new Error('Checkout overlay initialization cancelled');
+    }
 
-  _resetOverlaySession = () => {
-    successFired = false;
-    navigationFired = false;
-    stopWatchdog();
-  };
+    const env = import.meta.env.VITE_DODO_ENVIRONMENT;
 
-  // Shared terminal-success side effects (run ONCE per overlay session).
-  // Called from: `checkout.status=succeeded` (event path), the
-  // watchdog when entitlement flips to pro (fallback path), and the
-  // watchdog-free `checkout.redirect_requested` handler when it arrives
-  // before status (rare but possible per docs). The `successFired` flag
-  // makes subsequent callers no-op, preserving prior single-fire semantics.
-  //
-  // The entitlement watcher in panel-layout.ts owns the free→pro reload
-  // (REQUIRES_SKIP_INITIAL_SNAPSHOT_BEHAVIOR; see mirror marker in
-  // panel-layout.ts) — this block does NOT reload or navigate on its own.
-  const runTerminalSuccessSideEffects = (reason: 'event-status' | 'event-redirect' | 'watchdog'): void => {
-    if (successFired) return;
-    successFired = true;
-    stopWatchdog();
+    // `successFired` must be scoped per-overlay-session, NOT module.
+    // Previously this was `let _successFired = false;` at module scope,
+    // which leaked state across sessions: if a user's success path ran
+    // and then a later `openCheckout` call re-entered the overlay, the
+    // stale `true` made the close handler skip the pending-intent clear,
+    // leaving PENDING_CHECKOUT_KEY populated for a silent auto-retry.
+    // DodoPayments.Initialize is registered once per page load; its stable
+    // onEvent callback forwards into this per-session handler. ONE session's
+    // state must reset when a new overlay opens, so destroy/reopen replaces
+    // the forwarded handler without registering a second SDK handler.
+    // `openCheckout` resets these per-session flags by invoking the
+    // module-level `_resetOverlaySession` closure assigned just below.
+    let successFired = false;
+    let navigationFired = false;
+    let watchdog: EntitlementWatchdog | null = null;
 
-    enqueueSentryCall((s) => s.addBreadcrumb({
-      category: 'checkout',
-      message: `terminal success (${reason})`,
-      level: 'info',
-      data: { reason },
-    }));
-    if (reason === 'watchdog') {
-      // Counter-signal so Dodo's wallet-return deadlock prevalence is
-      // measurable in Sentry. `info` level, not `error`, per
-      // feedback_sentry_level_expected_user_states.
-      enqueueSentryCall((s) => s.captureMessage('Dodo wallet-return deadlock — watchdog resolved', {
+    const stopWatchdog = (): void => {
+      watchdog?.stop();
+      watchdog = null;
+    };
+
+    _resetOverlaySession = () => {
+      successFired = false;
+      navigationFired = false;
+      stopWatchdog();
+    };
+
+    // Shared terminal-success side effects (run ONCE per overlay session).
+    // Called from: `checkout.status=succeeded` (event path), the
+    // watchdog when entitlement flips to pro (fallback path), and the
+    // watchdog-free `checkout.redirect_requested` handler when it arrives
+    // before status (rare but possible per docs). The `successFired` flag
+    // makes subsequent callers no-op, preserving prior single-fire semantics.
+    //
+    // The entitlement watcher in panel-layout.ts owns the free→pro reload
+    // (REQUIRES_SKIP_INITIAL_SNAPSHOT_BEHAVIOR; see mirror marker in
+    // panel-layout.ts) — this block does NOT reload or navigate on its own.
+    const runTerminalSuccessSideEffects = (reason: 'event-status' | 'event-redirect' | 'watchdog'): void => {
+      if (successFired) return;
+      successFired = true;
+      stopWatchdog();
+
+      enqueueSentryCall((s) => s.addBreadcrumb({
+        category: 'checkout',
+        message: `terminal success (${reason})`,
         level: 'info',
-        tags: { component: 'dodo-checkout', code: 'watchdog_resolved' },
+        data: { reason },
       }));
-    }
+      if (reason === 'watchdog') {
+        // Counter-signal so Dodo's wallet-return deadlock prevalence is
+        // measurable in Sentry. `info` level, not `error`, per
+        // feedback_sentry_level_expected_user_states.
+        enqueueSentryCall((s) => s.captureMessage('Dodo wallet-return deadlock — watchdog resolved', {
+          level: 'info',
+          tags: { component: 'dodo-checkout', code: 'watchdog_resolved' },
+        }));
+      }
 
-    try {
-      onSuccessCallback?.();
-    } catch (err) {
-      console.error('[checkout] onSuccessCallback threw:', err);
-      enqueueSentryCall((s) => s.captureException(err, {
-        tags: { component: 'dodo-checkout', action: 'on-success' },
-      }));
-    }
-    // Terminal success: clear both keys. LAST_CHECKOUT_ATTEMPT_KEY
-    // is no longer needed (no retry context required); PENDING is
-    // cleared to avoid auto-opening the overlay on the reload.
-    clearCheckoutAttempt('success');
-    clearPendingCheckoutIntent();
-    // Session flag so the reloaded page seeds the entitlement transition
-    // detector as post-checkout — see comment block preserved from the
-    // original inlined handler below for the full rationale.
-    markPostCheckout();
-  };
+      try {
+        onSuccessCallback?.();
+      } catch (err) {
+        console.error('[checkout] onSuccessCallback threw:', err);
+        enqueueSentryCall((s) => s.captureException(err, {
+          tags: { component: 'dodo-checkout', action: 'on-success' },
+        }));
+      }
+      // Terminal success: clear both keys. LAST_CHECKOUT_ATTEMPT_KEY
+      // is no longer needed (no retry context required); PENDING is
+      // cleared to avoid auto-opening the overlay on the reload.
+      clearCheckoutAttempt('success');
+      clearPendingCheckoutIntent();
+      // Session flag so the reloaded page seeds the entitlement transition
+      // detector as post-checkout — see comment block preserved from the
+      // original inlined handler below for the full rationale.
+      markPostCheckout();
+    };
 
-  const startWatchdog = (): void => {
-    if (watchdog !== null || successFired) return;
-    watchdog = createEntitlementWatchdog(
-      {
-        endpoint: '/api/me/entitlement',
-        intervalMs: WATCHDOG_INTERVAL_MS,
-        timeoutMs: WATCHDOG_TIMEOUT_MS,
-      },
-      {
-        getToken: getClerkToken,
-        fetch: (input, init) => fetch(input, init),
-        setInterval: (cb, ms) => window.setInterval(cb, ms),
-        clearInterval: (id) => window.clearInterval(id),
-        now: () => Date.now(),
-        onPro: () => {
-          runTerminalSuccessSideEffects('watchdog');
-          // Close the stuck overlay so the entitlement watcher's reload
-          // is not hidden behind Dodo's "payment successful" page.
-          safeCloseOverlay();
+    const startWatchdog = (): void => {
+      if (watchdog !== null || successFired) return;
+      watchdog = createEntitlementWatchdog(
+        {
+          endpoint: '/api/me/entitlement',
+          intervalMs: WATCHDOG_INTERVAL_MS,
+          timeoutMs: WATCHDOG_TIMEOUT_MS,
         },
-      },
-    );
-    watchdog.start();
-  };
+        {
+          getToken: getClerkToken,
+          fetch: (input, init) => fetch(input, init),
+          setInterval: (cb, ms) => window.setInterval(cb, ms),
+          clearInterval: (id) => window.clearInterval(id),
+          now: () => Date.now(),
+          onPro: () => {
+            runTerminalSuccessSideEffects('watchdog');
+            // Close the stuck overlay so the entitlement watcher's reload
+            // is not hidden behind Dodo's "payment successful" page.
+            safeCloseOverlay();
+          },
+        },
+      );
+      watchdog.start();
+    };
 
-  DodoPayments.Initialize({
-    mode: env === 'live_mode' ? 'live' : 'test',
-    displayType: 'overlay',
-    onEvent: (event: CheckoutEvent) => {
+    currentCheckoutEventHandler = (event: CheckoutEvent) => {
       switch (event.event_type) {
         case 'checkout.opened':
           // Arm the watchdog at the earliest safe moment. HAR 2026-04-23
@@ -369,17 +416,36 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
           safeCloseOverlay();
           break;
       }
-    },
-  });
+    };
 
-  _escapeHandler = (e: KeyboardEvent) => {
-    if (e.key === 'Escape' && DodoPayments.Checkout.isOpen?.()) {
-      safeCloseOverlay();
+    if (!dodoPaymentsInitialized) {
+      DodoPayments.Initialize({
+        mode: env === 'live_mode' ? 'live' : 'test',
+        displayType: 'overlay',
+        onEvent: (event: CheckoutEvent) => currentCheckoutEventHandler?.(event),
+      });
+      dodoPaymentsInitialized = true;
     }
-  };
-  window.addEventListener('keydown', _escapeHandler);
 
-  initialized = true;
+    _escapeHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && dodoPayments?.Checkout.isOpen?.()) {
+        safeCloseOverlay();
+      }
+    };
+    window.addEventListener('keydown', _escapeHandler);
+
+    initialized = true;
+  })();
+
+  overlayInitPromise = thisInitPromise;
+
+  try {
+    await thisInitPromise;
+  } finally {
+    if (overlayInitPromise === thisInitPromise) {
+      overlayInitPromise = null;
+    }
+  }
 }
 
 /**
@@ -387,6 +453,7 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
  * stored success callback so a new layout can register its own callback.
  */
 export function destroyCheckoutOverlay(): void {
+  checkoutOverlayGeneration += 1;
   // Stop any in-flight watchdog BEFORE we drop references. If the layout
   // unmounts mid-checkout, the watchdog's setInterval would otherwise
   // keep running inside the closed-over scope and, on entitlement flip,
@@ -396,7 +463,19 @@ export function destroyCheckoutOverlay(): void {
   // stopWatchdog.
   _resetOverlaySession?.();
   _resetOverlaySession = null;
+  currentCheckoutEventHandler = null;
+  // Tear down the Dodo iframe itself. The SDK registers ONE page-lifetime
+  // message listener at Initialize and never removes it on close(); an iframe
+  // left mounted by a destroy-mid-checkout would otherwise (a) make the next
+  // openCheckout's Checkout.open() a silent no-op (the SDK ignores open() while
+  // an iframe already exists, so the reopened overlay never appears) and
+  // (b) emit a late terminal event from the orphaned iframe into the NEXT
+  // session's handler via the stable onEvent forwarder. The handler is nulled
+  // first so this teardown can't re-enter session cleanup — we intentionally
+  // preserve PENDING_CHECKOUT_KEY for auto-resume after a remount.
+  safeCloseOverlay();
   initialized = false;
+  overlayInitPromise = null;
   onSuccessCallback = null;
   if (_escapeHandler) {
     window.removeEventListener('keydown', _escapeHandler);
@@ -607,13 +686,18 @@ export async function resumePendingCheckout(options?: {
  * Open the Dodo checkout overlay for a given checkout URL.
  * Lazily initializes the SDK if not already done.
  */
-export function openCheckout(checkoutUrl: string): void {
-  initCheckoutOverlay();
+export async function openCheckout(checkoutUrl: string): Promise<void> {
+  await ensureCheckoutOverlayInitialized();
   // Reset the per-session successFired flag so a prior session's
   // terminal state can't leak into this one. (The flag lives in a
-  // closure inside initCheckoutOverlay's event handler; this resets
+  // closure inside ensureCheckoutOverlayInitialized's event handler; this resets
   // it.)
   _resetOverlaySession?.();
+
+  const DodoPayments = dodoPayments;
+  if (!DodoPayments) {
+    throw new Error('Checkout overlay SDK is unavailable after initialization');
+  }
 
   DodoPayments.Checkout.open({
     checkoutUrl,
@@ -657,7 +741,7 @@ let _checkoutInFlight = false;
  */
 export async function startCheckout(
   productId: string,
-  options?: { discountCode?: string; referralCode?: string },
+  options?: { discountCode?: string; referralCode?: string; bypassPendingGuard?: boolean },
   behavior?: { fallbackToPricingPage?: boolean },
 ): Promise<boolean> {
   if (_checkoutInFlight) return false;
@@ -731,9 +815,12 @@ export async function startCheckout(
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
         productId,
-        returnUrl: window.location.origin,
+        returnUrl: buildDashboardCheckoutReturnUrl(window.location.origin),
         discountCode: options?.discountCode,
         referralCode: effectiveReferral,
+        // #4438: only set when the user confirmed "start a new checkout anyway"
+        // from the pending-payment dialog. Skips the backend pending guard.
+        ...(options?.bypassPendingGuard ? { bypassPendingGuard: true } : {}),
       }),
       signal: AbortSignal.timeout(15_000),
     });
@@ -763,8 +850,7 @@ export async function startCheckout(
       if (error.code === 'duplicate_subscription') {
         clearPendingCheckoutIntent();
         clearCheckoutAttempt('duplicate');
-        const planKey = (body as CheckoutErrorBody & { subscription?: { planKey?: unknown } })
-          ?.subscription?.planKey;
+        const planKey = body?.subscription?.planKey;
         const planDisplayName = resolvePlanDisplayName(planKey);
         showDuplicateSubscriptionDialog({
           planDisplayName,
@@ -779,6 +865,28 @@ export async function startCheckout(
             void openBillingPortal(reservedWin);
           },
           onDismiss: () => { /* user stays on the dashboard */ },
+        });
+        return false;
+      }
+      // 409 payment-in-progress (#4438) — a recent same-tier 3DS payment is
+      // still pending. Confirm BEFORE starting a duplicate: the pending one may
+      // still be completing. Do NOT clear the attempt (the flow is recoverable —
+      // unlike the duplicate-subscription path). On confirm, re-invoke with
+      // bypassPendingGuard so the backend skips this guard and the redirect
+      // proceeds. Dialog content uses only the whitelisted plan name.
+      if (error.code === 'payment_in_progress') {
+        const pendingPlanKey = body?.pendingPayment?.planKey;
+        const planDisplayName = resolvePlanDisplayName(pendingPlanKey);
+        showCheckoutPendingDialog({
+          planDisplayName,
+          onConfirm: () => {
+            void startCheckout(
+              productId,
+              { ...options, bypassPendingGuard: true },
+              behavior,
+            );
+          },
+          onDismiss: () => { /* user stays put; pending payment may still complete */ },
         });
         return false;
       }
@@ -811,12 +919,24 @@ export async function startCheckout(
     }
 
     const result = await resp.json();
-    if (result?.checkout_url) {
-      openCheckout(result.checkout_url);
+    // #4449: navigate the top window to Dodo's HOSTED checkout instead of
+    // opening the overlay iframe. The overlay cannot host Dodo's nested 3DS/
+    // fraud stack (Hyperswitch → Airwallex → Sardine): our Permissions-Policy
+    // plus the Dodo SDK's own iframe `allow` attribute block the device sensors
+    // it needs two frames deep, so card payments requiring 3DS hung forever at
+    // "Processing…" (HAR-confirmed — see #4449/#4450). Dodo documents redirect
+    // as the primary flow; 3DS/fraud run unconstrained top-level and #4447
+    // returns the customer to /dashboard?wm_checkout=return to reconcile. The
+    // overlay machinery (openCheckout / ensureCheckoutOverlayInitialized / the
+    // event handler / watchdog) is left dormant pending removal.
+    const hostedCheckoutUrl = safeHostedCheckoutUrl(result?.checkout_url);
+    if (hostedCheckoutUrl) {
+      window.location.assign(hostedCheckoutUrl);
       return true;
     }
-    // 200 OK but no checkout_url is a server contract violation (the
-    // edge relayer returned success but the payload is unusable). Used
+    // 200 OK but no usable checkout_url — missing, or an untrusted/unparseable
+    // origin rejected by safeHostedCheckoutUrl — is a server contract violation
+    // (the edge relayer returned success but the payload is unusable). Used
     // to silently `return false` — the user saw nothing happen and the
     // bug was invisible in Sentry. Classify as service_unavailable
     // (closest accurate user-facing copy) and tag action so engineers
@@ -826,7 +946,7 @@ export async function startCheckout(
     const missingUrlError: CheckoutError = {
       code: 'service_unavailable',
       userMessage: 'Checkout is temporarily unavailable. Please try again in a moment.',
-      serverMessage: 'Server returned 200 without a checkout_url',
+      serverMessage: 'Server returned 200 without a usable checkout_url',
       httpStatus: resp.status,
       retryable: true,
     };

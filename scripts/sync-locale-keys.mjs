@@ -20,6 +20,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOCALES_DIR = join(__dirname, '..', 'src', 'locales');
 const EN_PATH = join(LOCALES_DIR, 'en.json');
 const CHECK_ONLY = process.argv.includes('--check');
+// Shell bundles (*.shell.json) are intentionally partial first-paint resources, not full locales.
 
 /**
  * Merge en (template) into a locale, preserving the locale's EXISTING key order
@@ -95,7 +96,7 @@ function main() {
   const en = readJson(EN_PATH, 'en.json');
   const enKeys = new Set(flattenKeys(en));
   const localeFiles = readdirSync(LOCALES_DIR)
-    .filter((name) => name.endsWith('.json') && name !== 'en.json')
+    .filter((name) => name.endsWith('.json') && name !== 'en.json' && !name.endsWith('.shell.json'))
     .sort();
 
   let totalMissing = 0;

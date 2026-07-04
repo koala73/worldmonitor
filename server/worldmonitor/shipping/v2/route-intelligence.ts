@@ -31,6 +31,7 @@ interface ChokepointStatusEntry {
 
 interface ChokepointStatusResponse {
   chokepoints?: ChokepointStatusEntry[];
+  upstreamUnavailable?: boolean;
 }
 
 const VALID_CARGO_TYPES = new Set(['container', 'tanker', 'bulk', 'roro']);
@@ -66,6 +67,10 @@ export async function routeIntelligence(
   const primaryRouteId = sharedRoutes[0] ?? fromCluster?.nearestRouteIds[0] ?? '';
 
   const statusRaw = (await getCachedJson(CHOKEPOINT_STATUS_KEY).catch(() => null)) as ChokepointStatusResponse | null;
+  const statusAvailable =
+    Array.isArray(statusRaw?.chokepoints) &&
+    statusRaw.chokepoints.length > 0 &&
+    statusRaw.upstreamUnavailable !== true;
   const statusMap = new Map<string, ChokepointStatusEntry>(
     (statusRaw?.chokepoints ?? []).map(cp => [cp.id, cp]),
   );
@@ -111,6 +116,6 @@ export async function routeIntelligence(
     bypassOptions,
     warRiskTier,
     disruptionScore,
-    fetchedAt: new Date().toISOString(),
+    fetchedAt: statusAvailable ? new Date().toISOString() : '',
   };
 }

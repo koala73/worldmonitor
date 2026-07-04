@@ -252,13 +252,34 @@ describe('extractConvexErrorKind — Convex client error → kind', () => {
       assert.equal(extractConvexErrorKind(err, err.message), 'UNAUTHENTICATED');
     });
 
-    it('does NOT match a generic "Server Error" message (the bug pre-fix)', () => {
-      // This is the exact symptom the structured-data fix exists to address:
-      // Convex's `[Request ID: X] Server Error` wrapper used to bypass every
-      // catch branch in the edge handler. Confirm the fallback still returns
-      // null for it (so the caller treats it as a real 500).
-      const err = new Error('[Request ID: 9fee2a2bfa791253] Server Error');
-      assert.equal(extractConvexErrorKind(err, err.message), null);
+    it('maps opaque Convex request-id server errors to SERVICE_UNAVAILABLE', () => {
+      // Convex generic platform/internal 5xx wrapper carries no JSON `code`
+      // field, but it has the same transient retry profile as the classified
+      // platform 5xx shapes above. Map it to SERVICE_UNAVAILABLE so callers
+      // return 503 + Retry-After instead of a hard 500.
+      const hits = [
+        '[Request ID: 9fee2a2bfa791253] Server Error',
+        '[Request ID: ABCdef_123-456] Server Error',
+      ];
+      for (const msg of hits) {
+        const err = new Error(msg);
+        assert.equal(extractConvexErrorKind(err, err.message), 'SERVICE_UNAVAILABLE');
+      }
+    });
+
+    it('does NOT match partial or decorated request-id server error variants', () => {
+      const misses = [
+        '[Request ID: 9fee2a2bfa791253] Server Error: extra details',
+        'prefix [Request ID: 9fee2a2bfa791253] Server Error',
+        '[Request ID: ] Server Error',
+      ];
+      for (const msg of misses) {
+        const err = new Error(msg);
+        assert.equal(
+          extractConvexErrorKind(err, err.message), null,
+          `expected null for: ${msg}`,
+        );
+      }
     });
   });
 

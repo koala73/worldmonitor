@@ -2454,13 +2454,27 @@ async function fetchCryptoCoinPaprika() {
   }));
 }
 
+// CoinGecko's free Demo and paid Pro plans share the `CG-` key prefix but use
+// different hosts + auth headers (a Demo key on the Pro host 400s). Resolve the
+// tier explicitly by which env var is set — Pro wins, else Demo, else keyless.
+// Mirrors scripts/_seed-utils.mjs `coingeckoEndpoint()`; this relay is CommonJS
+// and cannot import the .mjs helper, so the logic is duplicated.
+function coingeckoEndpoint() {
+  const proKey = process.env.COINGECKO_API_KEY;
+  const demoKey = process.env.COINGECKO_DEMO_API_KEY;
+  const headers = { Accept: 'application/json' };
+  if (proKey) {
+    headers['x-cg-pro-api-key'] = proKey;
+    return { base: 'https://pro-api.coingecko.com/api/v3', headers };
+  }
+  if (demoKey) headers['x-cg-demo-api-key'] = demoKey;
+  return { base: 'https://api.coingecko.com/api/v3', headers };
+}
+
 async function seedCryptoQuotes() {
   let data;
   try {
-    const apiKey = process.env.COINGECKO_API_KEY;
-    const base = apiKey ? 'https://pro-api.coingecko.com/api/v3' : 'https://api.coingecko.com/api/v3';
-    const headers = { Accept: 'application/json' };
-    if (apiKey) headers['x-cg-pro-api-key'] = apiKey;
+    const { base, headers } = coingeckoEndpoint();
     const url = `${base}/coins/markets?vs_currency=usd&ids=${CRYPTO_IDS.join(',')}&order=market_cap_desc&sparkline=true&price_change_percentage=24h`;
     data = await cyberHttpGetJson(url, headers, 15000);
     if (!Array.isArray(data) || data.length === 0) throw new Error('CoinGecko returned no data');
@@ -2517,10 +2531,7 @@ async function fetchStablecoinCoinPaprika() {
 async function seedStablecoinMarkets() {
   let data;
   try {
-    const apiKey = process.env.COINGECKO_API_KEY;
-    const base = apiKey ? 'https://pro-api.coingecko.com/api/v3' : 'https://api.coingecko.com/api/v3';
-    const headers = { Accept: 'application/json' };
-    if (apiKey) headers['x-cg-pro-api-key'] = apiKey;
+    const { base, headers } = coingeckoEndpoint();
     const url = `${base}/coins/markets?vs_currency=usd&ids=${STABLECOIN_IDS}&order=market_cap_desc&sparkline=false&price_change_percentage=7d`;
     data = await cyberHttpGetJson(url, headers, 15000);
     if (!Array.isArray(data) || data.length === 0) throw new Error('CoinGecko returned no data');
@@ -2553,10 +2564,7 @@ async function seedCryptoSectors() {
   const allIds = [...new Set(SECTORS_LIST.flatMap((s) => s.tokens))];
   let data;
   try {
-    const apiKey = process.env.COINGECKO_API_KEY;
-    const base = apiKey ? 'https://pro-api.coingecko.com/api/v3' : 'https://api.coingecko.com/api/v3';
-    const headers = { Accept: 'application/json' };
-    if (apiKey) headers['x-cg-pro-api-key'] = apiKey;
+    const { base, headers } = coingeckoEndpoint();
     const url = `${base}/coins/markets?vs_currency=usd&ids=${allIds.join(',')}&order=market_cap_desc&sparkline=false&price_change_percentage=24h`;
     data = await cyberHttpGetJson(url, headers, 15000);
     if (!Array.isArray(data) || data.length === 0) throw new Error('CoinGecko returned no data');
@@ -2626,10 +2634,7 @@ async function seedTokenPanels() {
   const allIds = [...new Set([..._defiCfg.ids, ..._aiCfg.ids, ..._otherCfg.ids])];
   let data;
   try {
-    const apiKey = process.env.COINGECKO_API_KEY;
-    const base = apiKey ? 'https://pro-api.coingecko.com/api/v3' : 'https://api.coingecko.com/api/v3';
-    const headers = { Accept: 'application/json' };
-    if (apiKey) headers['x-cg-pro-api-key'] = apiKey;
+    const { base, headers } = coingeckoEndpoint();
     const url = `${base}/coins/markets?vs_currency=usd&ids=${allIds.join(',')}&order=market_cap_desc&sparkline=false&price_change_percentage=24h,7d`;
     data = await cyberHttpGetJson(url, headers, 15000);
     if (!Array.isArray(data) || data.length === 0) throw new Error('CoinGecko returned no data');
@@ -6490,9 +6495,9 @@ const DODO_PRODUCT_IDS = [
 ];
 
 const DODO_TIER_CONFIG = {
-  free: { name: 'Free', description: 'Get started with the essentials', features: ['Core dashboard panels', 'Global news feed', 'Earthquake & weather alerts', 'Basic map view'], cta: 'Get Started', href: 'https://worldmonitor.app', highlighted: false },
-  pro: { name: 'Pro', description: 'Full intelligence dashboard', features: ['Everything in Free', 'AI stock analysis & backtesting', 'Daily market briefs', 'Military & geopolitical tracking', 'Custom widget builder', 'MCP data connectors', 'Priority data refresh'], highlighted: true },
-  api_starter: { name: 'API', description: 'Programmatic access to intelligence data', features: ['REST API access', 'Real-time data streams', '1,000 requests/day', 'Webhook notifications', 'Custom data exports'], highlighted: false },
+  free: { name: 'Free', description: 'Get started with the essentials', features: ['Core dashboard panels', 'Global news feed', 'Earthquake & weather alerts', 'Basic map view'], cta: 'Get Started', href: 'https://worldmonitor.app/dashboard', highlighted: false },
+  pro: { name: 'Pro', description: 'Full intelligence dashboard', features: ['Everything in Free', 'AI stock analysis & backtesting', 'Daily market briefs', 'Military & geopolitical tracking', 'Custom widget builder', 'MCP access for Claude Desktop & other AI clients (50 calls/day)', 'Priority data refresh'], highlighted: true },
+  api_starter: { name: 'API', description: 'Programmatic access to intelligence data', features: ['REST API access', 'Real-time data streams', '60 requests/minute', '1,000 requests/day included', 'Webhook notifications', 'Custom data exports'], highlighted: false },
   enterprise: { name: 'Enterprise', description: 'Custom solutions for organizations', features: ['Everything in Pro + API', 'Unlimited API requests', 'Dedicated support', 'Custom integrations', 'SLA guarantee', 'On-premise option'], cta: 'Contact Sales', href: 'mailto:enterprise@worldmonitor.app', highlighted: false },
 };
 
@@ -10779,8 +10784,8 @@ function requireWidgetAgentAccess(req, res) {
 
   const providedKey = getWidgetAgentProvidedKey(req);
   const providedProKey = getWidgetAgentProvidedProKey(req);
-  const hasValidWidgetKey = status.widgetKeyConfigured && providedKey && providedKey === WIDGET_AGENT_KEY;
-  const hasValidProKey = status.proKeyConfigured && providedProKey && providedProKey === PRO_WIDGET_KEY;
+  const hasValidWidgetKey = Boolean(status.widgetKeyConfigured && providedKey && safeTokenEquals(providedKey, WIDGET_AGENT_KEY));
+  const hasValidProKey = Boolean(status.proKeyConfigured && providedProKey && safeTokenEquals(providedProKey, PRO_WIDGET_KEY));
   if (!hasValidWidgetKey && !hasValidProKey) {
     safeEnd(res, 403, { 'Content-Type': 'application/json' }, JSON.stringify({ ...status, error: 'Forbidden' }));
     return null;
@@ -10859,7 +10864,7 @@ async function handleWidgetAgentRequest(req, res) {
     }
     if (status.admittedAs !== 'pro') {
       const providedProKey = getWidgetAgentProvidedProKey(req);
-      if (!providedProKey || providedProKey !== PRO_WIDGET_KEY) {
+      if (!providedProKey || !safeTokenEquals(providedProKey, PRO_WIDGET_KEY)) {
         return safeEnd(res, 403, { 'Content-Type': 'application/json' }, JSON.stringify({ error: 'Forbidden' }));
       }
     }

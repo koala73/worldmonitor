@@ -1,13 +1,14 @@
 // End-to-end MCP session lifecycle (in-process). Walks a single thread:
 //
-//   unauth → initialize → tools/list → describe_tool (quota-exempt)
+//   unauth tools/call (gated 401) → unauth initialize + tools/list (public 200)
+//   → initialize → tools/list → describe_tool (quota-exempt)
 //   → tools/call (pre-seeded near cap, success) → tools/call (cap exceeded)
 //   → re-initialize → tools/call (still cap exceeded)
 //
 // Asserts the JSON-RPC envelope at each hop, the `Mcp-Session-Id` response
-// header on `initialize`, the 401-vs-200 auth split, and that the Pro daily
-// quota counter is the load-bearing reservoir — neither `describe_tool` nor
-// re-`initialize` mutates it.
+// header on `initialize`, the auth split (discovery is public; tools/call is
+// gated), and that the Pro daily quota counter is the load-bearing reservoir —
+// neither `describe_tool` nor re-`initialize` mutates it.
 //
 // Why one `it()` for the whole sequence: the value here is the LIFECYCLE
 // thread, not any single envelope check (those are covered per-method in
@@ -95,10 +96,11 @@ describe('api/mcp.ts — protocol conformance lifecycle (in-process)', () => {
   });
 
   it('walks initialize → tools/list → describe_tool → tools/call × N → re-init → still-locked-out', async () => {
-    // Step 1 — unauthenticated POST is gated BEFORE the session starts.
-    // Asserts the 401 envelope (HTTP status, WWW-Authenticate Bearer realm,
-    // JSON-RPC code -32001) so a regression that drops the gate is caught
-    // at the very first hop.
+    // Step 1 — the auth wall is a DATA/quota method (tools/call). An
+    // unauthenticated tools/call is gated BEFORE the session touches any
+    // backend. Asserts the 401 envelope (HTTP status, WWW-Authenticate Bearer
+    // realm, JSON-RPC code -32001) so a regression that drops the gate is
+    // caught at the very first hop.
     //
     // Deps bundle is intentionally a thrower-stub: `resolveAuthContext` must
     // return 401 BEFORE consulting any dep — no Bearer header means no
@@ -117,24 +119,47 @@ describe('api/mcp.ts — protocol conformance lifecycle (in-process)', () => {
       getEntitlements: unreachable('getEntitlements'),
       redisPipeline: unreachable('redisPipeline'),
     };
+    const unauthReq = (body) => new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
     const step1Res = await mcpHandler(
-      new Request(BASE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0', id: 1, method: 'initialize',
-          params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'lifecycle-test', version: '1.0' } },
-        }),
+      unauthReq({
+        jsonrpc: '2.0', id: 1, method: 'tools/call',
+        params: { name: 'get_market_data', arguments: {} },
       }),
       step1Deps,
     );
-    assert.equal(step1Res.status, 401, 'step 1 (unauth initialize): expected HTTP 401');
+    assert.equal(step1Res.status, 401, 'step 1 (unauth tools/call): expected HTTP 401');
     assert.ok(
       (step1Res.headers.get('www-authenticate') ?? '').includes('Bearer realm="worldmonitor"'),
-      'step 1 (unauth initialize): WWW-Authenticate Bearer realm missing',
+      'step 1 (unauth tools/call): WWW-Authenticate Bearer realm missing',
     );
     const step1Body = await step1Res.json();
-    assert.equal(step1Body.error?.code, -32001, 'step 1 (unauth initialize): JSON-RPC code must be -32001');
+    assert.equal(step1Body.error?.code, -32001, 'step 1 (unauth tools/call): JSON-RPC code must be -32001');
+
+    // Step 1b — discovery is PUBLIC. Unauthenticated initialize + tools/list
+    // succeed WITHOUT touching any dep (thrower-stub bundle stays untouched),
+    // proving the discovery surface bypasses the auth wall cleanly.
+    const step1bInit = await mcpHandler(
+      unauthReq({
+        jsonrpc: '2.0', id: '1b', method: 'initialize',
+        params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'lifecycle-test', version: '1.0' } },
+      }),
+      step1Deps,
+    );
+    assert.equal(step1bInit.status, 200, 'step 1b (unauth initialize): discovery must be public');
+    assert.ok(step1bInit.headers.get('mcp-session-id'), 'step 1b: anonymous initialize must still issue a session id');
+
+    const step1bList = await mcpHandler(
+      unauthReq({ jsonrpc: '2.0', id: '1c', method: 'tools/list', params: {} }),
+      step1Deps,
+    );
+    assert.equal(step1bList.status, 200, 'step 1b (unauth tools/list): discovery must be public');
+    const step1bListBody = await step1bList.json();
+    assert.ok(Array.isArray(step1bListBody.result?.tools) && step1bListBody.result.tools.length >= 3,
+      'step 1b: anonymous tools/list must expose the tool catalog');
 
     // Steps 2-4 share one Pro deps bundle with the counter at 0. `describe_tool`
     // is the metadata-exempt tool — using the same deps proves the counter

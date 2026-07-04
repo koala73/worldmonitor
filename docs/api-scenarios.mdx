@@ -6,7 +6,7 @@ description: "Run pre-defined supply-chain disruption scenarios against a scoped
 The **scenarios** API is a PRO-only, job-queued surface on top of the WorldMonitor chokepoint + trade dataset. Callers enqueue a named scenario template against an optional country, then poll a job-id until the worker completes. If no country is supplied, v1 computes across the seeded reporter set only: `US`, `CN`, `RU`, `IR`, `IN`, and `TW`.
 
 <Info>
-This service is proto-backed — see `proto/worldmonitor/scenario/v1/service.proto`. Auto-generated reference will replace this page once the scenario service is included in the published OpenAPI bundle.
+This service is proto-backed and included in the published OpenAPI bundle — see `proto/worldmonitor/scenario/v1/service.proto` and `/api/ScenarioService.openapi.yaml`. This page adds migration notes and examples on top of the generated reference.
 </Info>
 
 <Note>

@@ -690,7 +690,9 @@
         "americas": "อเมริกา",
         "asia": "เอเชีย",
         "space": "อวกาศ"
-      }
+      },
+      "play": "เล่น",
+      "previewStatus": "ตัวอย่างสด"
     },
     "positiveNewsFeed": {
       "noStories": "ยังไม่มีเรื่องราวในหมวดนี้"
@@ -1264,8 +1266,8 @@
       "badgeAnimDesc": "แสดงแอนิเมชันป้ายอัปเดตบนส่วนหัวของแผง",
       "headlineMemoryLabel": "หน่วยความจำพาดหัว",
       "headlineMemoryDesc": "จดจำพาดหัวที่เคยดูเพื่อเน้นข่าวใหม่",
-      "streamAlwaysOnLabel": "ให้สตรีมสดทำงานต่อ",
-      "streamAlwaysOnDesc": "ป้องกันไม่ให้ Live Cams และ Live News หยุดอัตโนมัติเมื่อคุณไม่ได้ใช้งาน เหมาะสำหรับจอที่สอง / บอร์ดแสดงผลบนผนัง ปิด (Eco) เพื่อประหยัด CPU/แบนด์วิดท์",
+      "streamAlwaysOnLabel": "เล่นสตรีมสดบนแดชบอร์ดโดยอัตโนมัติ",
+      "streamAlwaysOnDesc": "เริ่ม Live News และ Live Webcams โดยอัตโนมัติเมื่อมองเห็น ปิดไว้เพื่อโหลดวิดีโอหลังจากคุณคลิกเล่นเท่านั้น",
       "analysisFrameworksLabel": "กรอบการวิเคราะห์",
       "analysisFrameworksActivePerPanel": "ใช้งานต่อแผง",
       "analysisFrameworksSkillLibrary": "ไลบรารีทักษะ",
@@ -1773,7 +1775,9 @@
       "invalidHandle": "ป้อนแฮนเดิล YouTube ที่ถูกต้อง (เช่น @ชื่อช่อง)",
       "verifying": "กำลังตรวจสอบ…",
       "hlsUrl": "URL สตรีม HLS (ไม่บังคับ)",
-      "invalidHlsUrl": "กรุณากรอก URL สตรีม HLS (.m3u8) ที่ถูกต้อง"
+      "invalidHlsUrl": "กรุณากรอก URL สตรีม HLS (.m3u8) ที่ถูกต้อง",
+      "playLiveFeed": "เล่นฟีดสด",
+      "readyStatus": "พร้อมเมื่อคุณพร้อม"
     },
     "map": {
       "showMap": "แสดงแผนที่",
@@ -3136,5 +3140,18 @@
     "or": "หรือป้อนเซิร์ฟเวอร์แบบกำหนดเอง",
     "generatingVisualization": "กำลังสร้างการแสดงผล...",
     "visualizationFailed": "การแสดงผลล้มเหลว"
+  },
+  "dashboardTabs": {
+    "ariaLabel": "Dashboard tabs",
+    "defaultName": "Main",
+    "newTabName": "New Tab",
+    "newTabCreated": "New tab created",
+    "tabDeleted": "Tab \"{{name}}\" deleted",
+    "addTab": "Add tab",
+    "addTabTitle": "New tab (starts with the default panels)",
+    "renameHint": "{{name}} — double-click to rename",
+    "deleteTab": "Delete tab",
+    "deleteTabAria": "Delete tab {{name}}",
+    "tabNameAria": "Tab name"
   }
 }

@@ -30,6 +30,15 @@ Panel id is `strategic-posture`; canonical component is `src/components/Strategi
 - **Military vessels**: live positions via `@/services/military-vessels` (the same feed that drives the military map layer).
 - **Surge recalculation**: `recalcPostureWithVessels()` in `@/services/military-surge` blends cached baseline with today's vessel positions to produce the displayed `TheaterPostureSummary`.
 
+## Backed by endpoints
+
+The panel does not call every military route directly. It reads bootstrap/cache posture data first, then uses the generated MilitaryService client only when the local posture cache needs a fresh server value.
+
+| Method | Route | What it feeds |
+|--------|-------|---------------|
+| `GET` | `/api/military/v1/get-theater-posture` | Primary posture RPC for the card list. The browser checks bootstrap `theaterPosture`, circuit-breaker cache, and IndexedDB before falling through to this route. |
+| `GET` | `/api/military/v1/list-military-flights` | Source feed for aircraft-driven posture and surge calculations upstream of the cached posture payload; the panel normally consumes the computed posture output rather than refetching flights itself. |
+
 ## Refresh cadence
 
 The panel is not on a polling timer — it fetches on mount and re-renders on relevant external triggers. The underlying posture seed refreshes on the military cron; live vessel positions refresh with the AIS relay.

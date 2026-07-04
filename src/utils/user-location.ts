@@ -138,17 +138,30 @@ function cacheRegion(region: MapView): void {
   try { sessionStorage.setItem(SESSION_KEY_REGION, region); } catch { /* ignore */ }
 }
 
-export function resolvePreciseUserCoordinates(timeout = 5000): Promise<PreciseCoordinates | null> {
-  if (typeof navigator === 'undefined' || !navigator.geolocation) return Promise.resolve(null);
+export async function resolvePreciseUserCoordinates(timeout = 5000): Promise<PreciseCoordinates | null> {
+  if (typeof navigator === 'undefined' || !navigator.geolocation) return null;
   const cached = getCachedCoords();
-  if (cached) return Promise.resolve(cached);
-  return getGeolocationPosition(timeout)
-    .then(pos => {
-      const coords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-      cacheCoords(coords);
-      return coords;
-    })
-    .catch(() => null);
+  if (cached) return cached;
+  // Never trigger a geolocation permission prompt on page load — only use precise
+  // coordinates when the user has ALREADY granted permission (e.g. a prior visit).
+  // Otherwise fall back to the timezone-based region (resolveUserRegion). This
+  // avoids the on-load prompt (poor UX, almost always denied) and the Lighthouse
+  // "Requests the geolocation permission on page load" Best-Practices penalty.
+  try {
+    if (!navigator.permissions) return null;
+    const status = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
+    if (status.state !== 'granted') return null;
+  } catch {
+    return null; // permissions.query unsupported → stay silent, no prompt
+  }
+  try {
+    const pos = await getGeolocationPosition(timeout);
+    const coords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+    cacheCoords(coords);
+    return coords;
+  } catch {
+    return null;
+  }
 }
 
 export async function resolveUserRegion(): Promise<MapView> {

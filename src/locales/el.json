@@ -690,7 +690,9 @@
         "americas": "ΑΜΕΡΙΚΗ",
         "asia": "ΑΣΙΑ",
         "space": "ΔΙΑΣΤΗΜΑ"
-      }
+      },
+      "play": "Αναπαραγωγή",
+      "previewStatus": "Ζωντανή προεπισκόπηση"
     },
     "positiveNewsFeed": {
       "noStories": "Δεν υπάρχουν ακόμα ιστορίες σε αυτή την κατηγορία"
@@ -1264,8 +1266,8 @@
       "badgeAnimDesc": "Κίνηση σημάτων ενημέρωσης στις κεφαλίδες πάνελ",
       "headlineMemoryLabel": "Μνήμη τίτλων",
       "headlineMemoryDesc": "Αποθήκευση τίτλων που είδατε για επισήμανση νέων",
-      "streamAlwaysOnLabel": "Διατήρηση ζωντανών ροών σε λειτουργία",
-      "streamAlwaysOnDesc": "Αποτρέπει την αυτόματη παύση των Live Cams και Live News όταν είστε ανενεργοί. Συνιστάται για χρήση σε δεύτερη οθόνη / wallboard. Απενεργοποιήστε το (Eco) για εξοικονόμηση CPU/εύρους ζώνης.",
+      "streamAlwaysOnLabel": "Αυτόματη αναπαραγωγή ζωντανών ροών στον πίνακα ελέγχου",
+      "streamAlwaysOnDesc": "Ξεκινά αυτόματα το Live News και το Live Webcams όταν είναι ορατά. Αφήστε το απενεργοποιημένο για φόρτωση βίντεο μόνο αφού κάνετε κλικ στην Αναπαραγωγή.",
       "analysisFrameworksLabel": "Πλαίσια Ανάλυσης",
       "analysisFrameworksActivePerPanel": "Ενεργό ανά πίνακα",
       "analysisFrameworksSkillLibrary": "Βιβλιοθήκη Δεξιοτήτων",
@@ -1773,7 +1775,9 @@
       "invalidHandle": "Εισάγετε ένα έγκυρο YouTube handle (π.χ. @ChannelName)",
       "verifying": "Επαλήθευση…",
       "hlsUrl": "URL ροής HLS (προαιρετικό)",
-      "invalidHlsUrl": "Εισάγετε ένα έγκυρο URL ροής HLS (.m3u8)"
+      "invalidHlsUrl": "Εισάγετε ένα έγκυρο URL ροής HLS (.m3u8)",
+      "playLiveFeed": "Αναπαραγωγή ζωντανής ροής",
+      "readyStatus": "Έτοιμο όταν είστε"
     },
     "map": {
       "showMap": "Εμφάνιση χάρτη",
@@ -3136,5 +3140,18 @@
     "or": "ή εισάγετε έναν προσαρμοσμένο διακομιστή",
     "generatingVisualization": "Δημιουργία απεικόνισης...",
     "visualizationFailed": "Η απεικόνιση απέτυχε"
+  },
+  "dashboardTabs": {
+    "ariaLabel": "Dashboard tabs",
+    "defaultName": "Main",
+    "newTabName": "New Tab",
+    "newTabCreated": "New tab created",
+    "tabDeleted": "Tab \"{{name}}\" deleted",
+    "addTab": "Add tab",
+    "addTabTitle": "New tab (starts with the default panels)",
+    "renameHint": "{{name}} — double-click to rename",
+    "deleteTab": "Delete tab",
+    "deleteTabAria": "Delete tab {{name}}",
+    "tabNameAria": "Tab name"
   }
 }

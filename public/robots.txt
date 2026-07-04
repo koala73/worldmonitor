@@ -1,8 +1,9 @@
 # World Monitor - protect API routes from crawlers
 
-# AI content-usage preferences (contentsignals.org draft RFC).
-# Origin-wide directive, NOT scoped under User-agent per the spec.
-Content-Signal: ai-train=no, search=yes, ai-input=yes
+# AI content-usage preferences (contentsignals.org draft RFC) are served as the
+# origin-wide `Content-Signal` HTTP response header (see vercel.json), NOT as a
+# robots.txt body directive — Lighthouse's robots.txt validator rejects unknown
+# directives and would drop the SEO score (#4471). Do not re-add it here.
 
 User-agent: *
 Allow: /

@@ -70,9 +70,20 @@ export type RequestReason =
   // Distinct from auth_401 so telemetry separates malformed requests
   // from auth failures.
   | 'malformed_request'
+  // Fail-closed rejection when the internal-MCP replay-nonce cache (Redis)
+  // is unavailable so an atomic claim can't be made. Distinct from auth_401
+  // so a Redis outage is not conflated with genuine signature/auth failures.
+  | 'replay_cache_unavailable'
   | 'unknown_route'
   | 'method_not_allowed'
-  | 'cors_error';
+  | 'cors_error'
+  // #3199 per-account API rate limit. `_429` = enforced reject; `_shadow` =
+  // would-have-rejected but served (shadow mode), threaded onto the single
+  // terminal success emit so the volume signal isn't double-counted.
+  | 'rl_min_429'
+  | 'rl_ceiling_429'
+  | 'rl_min_shadow'
+  | 'rl_ceiling_shadow';
 
 export interface RequestEvent {
   _time: string;
@@ -89,6 +100,11 @@ export interface RequestEvent {
   principal_id: string | null;
   auth_kind: AuthKind;
   tier: number;
+  // #4572 — API plan attribution. planKey of the caller's entitlement
+  // (api_starter / api_business / enterprise / …) or null. Distinguishes
+  // Starter from Business (both tier 2) so the limit-abuse audit can compare
+  // each request to the customer's actual cap without an external lookup.
+  plan_key: string | null;
   country: string | null;
   ip_city: string | null;
   ip_region: string | null;
@@ -140,6 +156,7 @@ export function buildRequestEvent(p: {
   principalId: string | null;
   authKind: AuthKind;
   tier: number;
+  planKey: string | null;
   country: string | null;
   ipCity: string | null;
   ipRegion: string | null;
@@ -171,6 +188,7 @@ export function buildRequestEvent(p: {
     principal_id: p.principalId,
     auth_kind: p.authKind,
     tier: p.tier,
+    plan_key: p.planKey,
     country: p.country,
     ip_city: p.ipCity,
     ip_region: p.ipRegion,

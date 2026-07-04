@@ -374,7 +374,7 @@
           "Codzienne briefingi rynkowe",
           "Śledzenie geopolityczne i wojskowe",
           "Konstruktor widżetów niestandardowych",
-          "Konektory danych MCP",
+          "Dostęp MCP dla Claude Desktop i innych klientów AI (50 wywołań/dzień)",
           "Priorytetowe odświeżanie danych"
         ]
       },
@@ -383,7 +383,8 @@
         "features": [
           "Dostęp do REST API",
           "Strumienie danych w czasie rzeczywistym",
-          "1000 żądań/dzień",
+          "60 żądań/minutę",
+          "1000 żądań/dzień w cenie",
           "Powiadomienia webhook",
           "Niestandardowe eksporty danych"
         ]

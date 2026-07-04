@@ -36,6 +36,24 @@ function hasConvexCode(msg, code) {
 }
 
 /**
+ * Match Convex opaque request-id server-error wrapper. The shape is ambiguous:
+ * it can represent platform/internal 5xxs or a deterministic function throw
+ * without structured ConvexError data. For /api/user-prefs, #4504 intentionally
+ * treats this exact wrapper as transient while Sentry keeps a distinct
+ * `convex_server_error` bucket for volume-based monitoring.
+ *
+ * Keep this helper shared between response classification and Sentry tagging so
+ * `SERVICE_UNAVAILABLE` responses never drift from the `convex_server_error`
+ * bucket.
+ *
+ * @param {string} msg
+ * @returns {boolean}
+ */
+export function isOpaqueConvexServerError(msg) {
+  return /^\[Request ID:\s*[\w-]+\]\s*Server Error$/i.test(msg);
+}
+
+/**
  * Extract the named-error `kind` from a Convex client throw. Prefers the
  * structured `err.data.kind` (server-side `ConvexError({ kind, ... })`),
  * falls back to substring-matching the legacy string-data error message
@@ -118,7 +136,15 @@ export function extractConvexErrorKind(err, msg) {
   // classifier tags these `convex_worker_overloaded` so they stay queryable
   // apart from genuine ServiceUnavailable 503s and InternalServerError 500s.
   if (hasConvexCode(msg, 'WorkerOverloaded')) return 'SERVICE_UNAVAILABLE';
+  // Convex generic platform/internal 5xx: when the SDK receives only an
+  // opaque request-id wrapper (`[Request ID: X] Server Error`) with no
+  // machine-readable `code` JSON and no structured ConvexError data, treat
+  // it like the recognized Convex platform 5xx family above. Keep the
+  // matcher exact-ish so unrelated free-form server errors still fall
+  // through to the unknown/500 path.
+  if (isOpaqueConvexServerError(msg)) return 'SERVICE_UNAVAILABLE';
   if (msg.includes('CONFLICT')) return 'CONFLICT';
+  if (msg.includes('RATE_LIMITED')) return 'RATE_LIMITED';
   if (msg.includes('BLOB_TOO_LARGE')) return 'BLOB_TOO_LARGE';
   if (msg.includes('UNAUTHENTICATED')) return 'UNAUTHENTICATED';
   return null;

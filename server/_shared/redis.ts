@@ -37,7 +37,7 @@ function hasRemoteRedisConfig(): boolean {
  * Environment-based key prefix to avoid collisions when multiple deployments
  * share the same Upstash Redis instance (M-6 fix).
  */
-function getKeyPrefix(): string {
+export function getKeyPrefix(): string {
   const env = process.env.VERCEL_ENV; // 'production' | 'preview' | 'development'
   if (!env || env === 'production') return '';
   const sha = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 8) || 'dev';

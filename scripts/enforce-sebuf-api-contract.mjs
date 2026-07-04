@@ -21,6 +21,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { collectQueryParamContractViolations } from './lib/sebuf-query-param-contract.mjs';
 
 const ROOT = process.cwd();
 const API_DIR = join(ROOT, 'api');
@@ -296,11 +297,18 @@ if (existsSync(GEN_SERVER_DIR)) {
   }
 }
 
+// --- Proto query-param implementation guard ---
+
+const queryParamContract = collectQueryParamContractViolations(ROOT);
+for (const v of queryParamContract.violations) {
+  violation(v.file, v.message, v.remedy);
+}
+
 // --- Output ---
 
 if (violations.length === 0) {
   console.log(
-    `✓ sebuf API contract clean: ${candidateFiles.length} api/ files checked, ${manifest.exceptions.length} manifest entries validated.`,
+    `✓ sebuf API contract clean: ${candidateFiles.length} api/ files checked, ${manifest.exceptions.length} manifest entries validated, ${queryParamContract.stats.queryFields} query params checked (${queryParamContract.stats.unimplementedFields} documented no-op).`,
   );
   process.exit(0);
 }

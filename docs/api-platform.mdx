@@ -11,9 +11,12 @@ These endpoints are not part of a domain RPC service — they sit at the root of
 
 Single round-trip hydration for the dashboard. Returns **all bootstrap-registered Redis cache keys** unwrapped from their seed envelopes in one response.
 
-- **Auth**: browser `wm-session` cookie OR `X-WorldMonitor-Key`
-- **Cache**: the default all-keys response uses `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` plus fast-tier `CDN-Cache-Control`; explicit `?tier=fast` / `?tier=slow` requests use browser `max-age=60` / `max-age=300` and CDN `s-maxage=600` / `s-maxage=7200`.
-- **Shape**: `{ earthquakes, outages, marketQuotes, commodityQuotes, imfMacro, bisPolicy, ... }` — ~40+ top-level fields, each the unwrapped payload of one seeded domain.
+- **Auth**: browser `wm-session` cookie, `X-WorldMonitor-Key`, or the `X-Api-Key` alias. User-issued keys are validated for current API access.
+- **Anonymous weather**: `?keys=weatherAlerts` is public **only when no API key header is sent**. If you attach `X-WorldMonitor-Key` / `X-Api-Key`, the request is fully validated even for weather — a malformed key returns `401`, a key without current API access returns `403`. Callers that always send a key must send a valid, entitled key (or omit the header to use the anonymous weather path).
+- **Server-to-server**: call `https://api.worldmonitor.app/api/bootstrap` directly with `X-WorldMonitor-Key: wm_...`. There is no separate gateway host, token exchange, activation step, or IP allow-list requirement for this endpoint.
+- **Cache**: browser/session responses keep the default tier cache policy: all-keys responses use `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` plus fast-tier `CDN-Cache-Control`; explicit `?tier=fast` / `?tier=slow` requests use browser `max-age=60` / `max-age=300` and CDN `s-maxage=600` / `s-maxage=7200`. Key-authenticated responses use `Cache-Control: no-store` and do not emit CDN cache headers.
+- **Rate limit**: user API key validation on this endpoint has a fail-closed fixed 60 s per-IP pre-validation limit of 600 attempts, separate from the default API sliding-window limiter.
+- **Shape**: `{ "data": { "earthquakes": ..., "outages": ..., "marketQuotes": ... }, "missing": [] }` — ~40+ unwrapped seeded-domain payloads nested under `data`, plus a `missing` list for cache keys not present in Redis.
 
 Use this on initial page load to avoid 40 parallel RPC calls.
 

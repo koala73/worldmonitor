@@ -27,11 +27,12 @@ Panel id is `fsi`; canonical component is `src/components/FSIPanel.ts`. Title fr
 
 ## Data sources
 
-The panel uses the generated RPC clients directly:
+The panel uses generated RPC clients directly and prefers bootstrap-hydrated values before fresh calls.
 
-- **Market service** (`MarketServiceClient`) — KCFSI series.
-- **Economic service** (`EconomicServiceClient.getEuFsi()`) — EU FSI (`GetEuFsiResponse`).
-- **Bootstrap-hydrated data** — the panel prefers `getHydratedData(...)` first and falls back to fresh RPC calls (the standard hydration pattern).
+| Reading | Method + route | Feeds |
+|---|---|---|
+| US KCFSI | `GET /api/market/v1/get-fear-greed-index` | KCFSI value and market-stress inputs from the Fear & Greed payload; bootstrap-first via `fearGreedIndex`. |
+| EU FSI | `GET /api/economic/v1/get-eu-fsi` | ECB CISS `SS_CIN` latest value and history; bootstrap-first via `euFsi`. |
 
 Upstream KCFSI data is from the Federal Reserve Bank of Kansas City; EU FSI is
 from the ECB CISS `SS_CIN` daily series, the live successor to the legacy

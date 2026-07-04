@@ -6,6 +6,7 @@ import "sebuf/http/annotations.proto";
 import "worldmonitor/resilience/v1/resilience.proto";
 
 message GetResilienceScoreRequest {
+  // ISO 3166-1 alpha-2 country code to score.
   string country_code = 1 [(sebuf.http.query) = { name: "countryCode", required: true }];
 }
 

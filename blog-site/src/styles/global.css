@@ -516,6 +516,68 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   padding: 0 2rem 3rem;
 }
 
+/* ─── Related Posts ─── */
+.related-posts {
+  max-width: var(--max-width);
+  margin: 0 auto 3rem;
+  padding: 0 2rem;
+}
+
+.related-posts h2 {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--wm-text);
+  margin-bottom: 1rem;
+}
+
+.related-post-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.related-post-card {
+  display: flex;
+  min-height: 190px;
+  flex-direction: column;
+  border: 1px solid var(--wm-border);
+  border-radius: var(--radius);
+  background: var(--wm-card);
+  padding: 1rem;
+  color: inherit;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.related-post-card:hover {
+  border-color: var(--wm-green);
+  background: #151515;
+}
+
+.related-post-card span {
+  color: var(--wm-green);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 0.55rem;
+}
+
+.related-post-card h3 {
+  color: var(--wm-text);
+  font-family: var(--font-display);
+  font-size: 0.94rem;
+  line-height: 1.35;
+  margin-bottom: 0.5rem;
+}
+
+.related-post-card p {
+  color: var(--wm-muted);
+  font-size: 0.76rem;
+  line-height: 1.55;
+}
+
 /* ─── CTA Banner ─── */
 .cta-banner {
   max-width: var(--max-width);
@@ -625,6 +687,7 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   .site-footer .footer-inner { flex-direction: column; text-align: center; }
   .site-footer .footer-links { justify-content: center; }
   .article-header { padding-top: 5rem; }
+  .related-post-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 480px) {
@@ -633,4 +696,5 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   .post-card { padding: 1.25rem; }
   .article-content { padding: 0 1.25rem 2rem; }
   .article-header { padding-left: 1.25rem; padding-right: 1.25rem; }
+  .related-posts { padding: 0 1.25rem; }
 }

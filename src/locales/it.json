@@ -699,7 +699,9 @@
         "space": "SPAZIO"
       },
       "paused": "Webcam in pausa",
-      "pausedIdle": "Webcam in pausa — muovi il mouse per riprendere"
+      "pausedIdle": "Webcam in pausa — muovi il mouse per riprendere",
+      "play": "Riproduci",
+      "previewStatus": "Anteprima live"
     },
     "regulation": {
       "timeline": "Cronologia",
@@ -1557,8 +1559,8 @@
       "badgeAnimDesc": "Animare i badge di aggiornamento nelle intestazioni dei pannelli",
       "headlineMemoryLabel": "Memoria titoli",
       "headlineMemoryDesc": "Ricordare i titoli visti per evidenziare quelli nuovi",
-      "streamAlwaysOnLabel": "Mantieni attivi i flussi live",
-      "streamAlwaysOnDesc": "Impedisce a Live Cams e Live News di andare in pausa automaticamente quando sei inattivo. Consigliato per uso su secondo monitor / wallboard. Disattiva (Eco) per risparmiare CPU/banda.",
+      "streamAlwaysOnLabel": "Riproduci automaticamente gli streaming live nella dashboard",
+      "streamAlwaysOnDesc": "Avvia automaticamente Live News e Live Webcams quando sono visibili. Lascia disattivato per caricare il video solo dopo aver fatto clic su Riproduci.",
       "globeRenderScaleOptions": {
         "1": "Eco (1x)",
         "2": "4K (2x)",
@@ -1721,7 +1723,9 @@
       "verifying": "Verifica in corso…",
       "noResults": "Nessun canale trovato per \"{{term}}\"",
       "hlsUrl": "URL stream HLS (opzionale)",
-      "invalidHlsUrl": "Inserisci un URL stream HLS valido (.m3u8)"
+      "invalidHlsUrl": "Inserisci un URL stream HLS valido (.m3u8)",
+      "playLiveFeed": "Riproduci feed live",
+      "readyStatus": "Pronto quando vuoi"
     },
     "securityAdvisories": {
       "loading": "Caricamento avvisi di viaggio...",
@@ -3152,5 +3156,18 @@
     "or": "oppure immetti un server personalizzato",
     "generatingVisualization": "Creazione visualizzazione in corso...",
     "visualizationFailed": "Visualizzazione non riuscita"
+  },
+  "dashboardTabs": {
+    "ariaLabel": "Dashboard tabs",
+    "defaultName": "Main",
+    "newTabName": "New Tab",
+    "newTabCreated": "New tab created",
+    "tabDeleted": "Tab \"{{name}}\" deleted",
+    "addTab": "Add tab",
+    "addTabTitle": "New tab (starts with the default panels)",
+    "renameHint": "{{name}} — double-click to rename",
+    "deleteTab": "Delete tab",
+    "deleteTabAria": "Delete tab {{name}}",
+    "tabNameAria": "Tab name"
   }
 }

@@ -33,7 +33,11 @@ function makeSubscriptionPayload(overrides: Record<string, unknown> = {}) {
 }
 
 function makePaymentPayload(
-  eventType: "payment.succeeded" | "payment.failed",
+  eventType:
+    | "payment.succeeded"
+    | "payment.failed"
+    | "payment.processing"
+    | "payment.cancelled",
   overrides: Record<string, unknown> = {},
 ) {
   return {
@@ -428,6 +432,121 @@ describe("webhook processWebhookEvent", () => {
     });
     expect(paymentEvents).toHaveLength(1);
     expect(paymentEvents[0].status).toBe("failed");
+  });
+
+  // #4436 — Dodo delivers the 3DS/SCA-pending state as a `payment.processing`
+  // event whose payload `data.status` (IntentStatus) is `requires_customer_action`
+  // (`payment.requires_customer_action` is NOT a Dodo event type). Before the
+  // fix `payment.processing` hit the `default` branch and was silently dropped,
+  // so the app had no pending-payment signal for duplicate-prevention (#4438) /
+  // reconciliation (#4439).
+  test.each([
+    ["requires_customer_action", "requires_customer_action"],
+    ["processing", "processing"],
+  ] as const)(
+    "payment.processing with data.status=%s persists status %s",
+    async (payloadStatus, expectedStatus) => {
+      const t = convexTest(schema, modules);
+
+      const payload = makePaymentPayload("payment.processing", { status: payloadStatus });
+      await processEvent(t, `wh_proc_${expectedStatus}`, "payment.processing", payload, BASE_TIMESTAMP);
+
+      const paymentEvents = await t.run(async (ctx) =>
+        ctx.db.query("paymentEvents").collect(),
+      );
+      expect(paymentEvents).toHaveLength(1);
+      expect(paymentEvents[0].status).toBe(expectedStatus);
+      expect(paymentEvents[0].type).toBe("charge");
+      expect(paymentEvents[0].dodoPaymentId).toBe("pay_test_001");
+    },
+  );
+
+  // #4438 — the pending-payment dedup guard needs to resolve a pending row to a
+  // tier group. The session-create metadata bridge carries `wm_plan_key` the
+  // same way it carries `wm_user_id`; the webhook persists it on the
+  // `paymentEvents` row so a later checkout can read PRODUCT_CATALOG[planKey].
+  test("payment.processing persists planKey from data.metadata.wm_plan_key", async () => {
+    const t = convexTest(schema, modules);
+
+    const payload = makePaymentPayload("payment.processing", {
+      status: "requires_customer_action",
+      metadata: { wm_user_id: "test-user-001", wm_plan_key: "pro_monthly" },
+    });
+    await processEvent(t, "wh_plankey_proc", "payment.processing", payload, BASE_TIMESTAMP);
+
+    const paymentEvents = await t.run(async (ctx) =>
+      ctx.db.query("paymentEvents").collect(),
+    );
+    expect(paymentEvents).toHaveLength(1);
+    expect(paymentEvents[0].status).toBe("requires_customer_action");
+    expect(paymentEvents[0].planKey).toBe("pro_monthly");
+  });
+
+  // Backward-compat: a session created before this shipped carries no
+  // `wm_plan_key`. The row must still persist (planKey simply undefined) — never
+  // throw — and the guard fails open for that legacy pending payment.
+  test("payment.processing without wm_plan_key persists row with undefined planKey", async () => {
+    const t = convexTest(schema, modules);
+
+    const payload = makePaymentPayload("payment.processing", { status: "processing" });
+    await processEvent(t, "wh_no_plankey", "payment.processing", payload, BASE_TIMESTAMP);
+
+    const paymentEvents = await t.run(async (ctx) =>
+      ctx.db.query("paymentEvents").collect(),
+    );
+    expect(paymentEvents).toHaveLength(1);
+    expect(paymentEvents[0].planKey).toBeUndefined();
+  });
+
+  test("payment.cancelled persists a cancelled paymentEvents row", async () => {
+    const t = convexTest(schema, modules);
+
+    const payload = makePaymentPayload("payment.cancelled");
+    await processEvent(t, "wh_pay_cancelled", "payment.cancelled", payload, BASE_TIMESTAMP);
+
+    const paymentEvents = await t.run(async (ctx) =>
+      ctx.db.query("paymentEvents").collect(),
+    );
+    expect(paymentEvents).toHaveLength(1);
+    expect(paymentEvents[0].status).toBe("cancelled");
+  });
+
+  // #4436 correction (validated): dedup is by webhookId ONLY. A later DISTINCT
+  // transition (new webhookId, same payment_id) must still process — it is not
+  // blocked by the earlier 3DS-pending webhook being recorded.
+  test("3DS-pending (payment.processing) then a distinct succeeded webhook both persist", async () => {
+    const t = convexTest(schema, modules);
+
+    await processEvent(
+      t,
+      "wh_3ds_pending",
+      "payment.processing",
+      makePaymentPayload("payment.processing", { status: "requires_customer_action" }),
+      BASE_TIMESTAMP,
+    );
+    await processEvent(
+      t,
+      "wh_3ds_succeeded",
+      "payment.succeeded",
+      makePaymentPayload("payment.succeeded"),
+      BASE_TIMESTAMP + 5000,
+    );
+
+    const paymentEvents = await t.run(async (ctx) =>
+      ctx.db
+        .query("paymentEvents")
+        .withIndex("by_dodoPaymentId", (q) => q.eq("dodoPaymentId", "pay_test_001"))
+        .collect(),
+    );
+    expect(paymentEvents.map((e) => e.status).sort()).toEqual([
+      "requires_customer_action",
+      "succeeded",
+    ]);
+
+    const webhookEvents = await t.run(async (ctx) =>
+      ctx.db.query("webhookEvents").collect(),
+    );
+    expect(webhookEvents).toHaveLength(2);
   });
 
   test("duplicate webhook-id is deduplicated", async () => {

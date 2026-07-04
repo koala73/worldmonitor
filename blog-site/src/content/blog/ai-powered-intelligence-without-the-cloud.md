@@ -1,5 +1,5 @@
 ---
-title: "AI-Powered Intelligence Without the Cloud: World Monitor's Privacy-First Approach"
+title: "Private AI Intelligence: World Monitor Without the Cloud"
 description: "Run AI-powered intelligence analysis on your own hardware. World Monitor supports Ollama, LM Studio, and in-browser ML for private geopolitical analysis."
 metaTitle: "Local AI Intelligence Analysis | World Monitor"
 keywords: "local LLM intelligence, private AI analysis, offline intelligence tool, Ollama OSINT, privacy-first AI dashboard"

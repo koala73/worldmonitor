@@ -758,7 +758,9 @@
         "americas": "AMERIKA",
         "asia": "ÁZSIA",
         "space": "VILÁGŰR"
-      }
+      },
+      "play": "Lejátszás",
+      "previewStatus": "Élő előnézet"
     },
     "pinnedWebcams": {
       "pinFromMap": "Rögzítsen egy webkamerát a térképről"
@@ -1413,8 +1415,8 @@
       "analysisFrameworksFromAgentskills": "Az agentskills.io-ból",
       "analysisFrameworksPasteJson": "JSON beillesztése",
       "analysisFrameworksSaveToLibrary": "Mentés a könyvtárba",
-      "streamAlwaysOnLabel": "Élő közvetítések folyamatosan futtatása",
-      "streamAlwaysOnDesc": "Megakadályozza, hogy az Élő kamerák és az Élő hírek automatikusan szüneteltessenek, ha inaktív vagy. Másodlagos monitor/falitábla használatához ajánlott. Letiltás (Ökö módban) a CPU-/sávszélesség-megtakarításhoz.",
+      "streamAlwaysOnLabel": "Élő streamek automatikus lejátszása az irányítópulton",
+      "streamAlwaysOnDesc": "Automatikusan elindítja a Live News és Live Webcams elemeket, amikor láthatók. Hagyja kikapcsolva, hogy a videó csak a Lejátszás gombra kattintás után töltődjön be.",
       "frameworkNote": "Csak az ügyfél által generált elemzésre vonatkozik",
       "loadingServerInsights": "Szerver insights betöltése...",
       "usingCachedBrief": "Gyorsítótározott összefoglalás használata...",
@@ -1997,7 +1999,9 @@
       "invalidHandle": "Adjon meg érvényes YouTube-fogantyút (például @ChannelName)",
       "verifying": "Ellenőrzés alatt…",
       "hlsUrl": "HLS Stream URL (opcionális)",
-      "invalidHlsUrl": "Adjon meg érvényes HLS stream URL-t (.m3u8)"
+      "invalidHlsUrl": "Adjon meg érvényes HLS stream URL-t (.m3u8)",
+      "playLiveFeed": "Élő adás lejátszása",
+      "readyStatus": "Készen áll, amikor Ön is"
     },
     "map": {
       "showMap": "Térkép megjelenítése",
@@ -3136,5 +3140,18 @@
     "or": "vagy adjon meg egyéni kiszolgálót",
     "generatingVisualization": "Vizualizáció készítése...",
     "visualizationFailed": "A vizualizáció sikertelen volt"
+  },
+  "dashboardTabs": {
+    "ariaLabel": "Dashboard tabs",
+    "defaultName": "Main",
+    "newTabName": "New Tab",
+    "newTabCreated": "New tab created",
+    "tabDeleted": "Tab \"{{name}}\" deleted",
+    "addTab": "Add tab",
+    "addTabTitle": "New tab (starts with the default panels)",
+    "renameHint": "{{name}} — double-click to rename",
+    "deleteTab": "Delete tab",
+    "deleteTabAria": "Delete tab {{name}}",
+    "tabNameAria": "Tab name"
   }
 }
