@@ -288,7 +288,7 @@ describe('CI workflow coverage', () => {
 
         if (!image || image === 'scratch' || isKnownStage) return;
 
-        if (!image.includes('@sha256:')) {
+        if (!/@sha256:[0-9a-f]{64}$/i.test(image)) {
           failures.push(`${dockerfile}:${index + 1} ${line.trim()}`);
         }
       });
@@ -297,7 +297,7 @@ describe('CI workflow coverage', () => {
     assert.deepEqual(
       failures,
       [],
-      `Docker FROM images must be pinned with @sha256 digests:\n${failures.join('\n')}`,
+      `Docker FROM images must be pinned with full @sha256:<64 hex> digests:\n${failures.join('\n')}`,
     );
   });
 
