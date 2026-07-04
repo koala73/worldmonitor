@@ -242,6 +242,13 @@ function buildHeaders(customHeaders) {
         // Strip CRLF to prevent header injection
         const safeKey = k.replace(/[\r\n]/g, '');
         const safeVal = v.replace(/[\r\n]/g, '');
+        // Hop-by-hop / authority headers (Host, Content-Length, Connection, TE,
+        // Trailer, Upgrade, Keep-Alive, Transfer-Encoding, Proxy-*) are NOT
+        // filtered here: on the Edge runtime the spec-compliant `fetch()` treats
+        // them as forbidden header names and silently drops them, so they never
+        // reach the upstream. (The Node-runtime socket-pin follow-up uses raw
+        // `http.request`, which does NOT auto-drop them, so that PR must add an
+        // explicit hop-by-hop filter — see #4674.)
         if (safeKey && !DENIED_FORWARD_HEADERS.has(safeKey.toLowerCase())) {
           h[safeKey] = safeVal;
         }
