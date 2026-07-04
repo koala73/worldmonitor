@@ -44,7 +44,9 @@ jobs:
 
       # Trusted publishing (OIDC) requires npm >= 11.5.1; Node 22 ships npm 10.x.
       - name: Upgrade npm for OIDC trusted publishing
-        run: npm install -g npm@latest
+        run: |
+          npm install -g npm@11
+          npm --version
 
       - name: Test
         run: node --test 'test/**/*.test.mjs'
@@ -59,9 +61,9 @@ jobs:
             exit 1
           fi
 
-      - name: Publish (dry run)
+      - name: Validate package tarball
         if: github.event_name == 'workflow_dispatch' && inputs.dry_run
-        run: npm publish --dry-run --access public
+        run: npm pack --dry-run
 
       # No NODE_AUTH_TOKEN: with a configured Trusted Publisher, npm mints a
       # short-lived token from the GitHub OIDC identity and attaches provenance
