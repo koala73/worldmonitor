@@ -31,17 +31,24 @@ describe('warm-ping seed scripts', () => {
   for (const script of ['scripts/seed-infra.mjs', 'scripts/seed-military-maritime-news.mjs']) {
     it(`${script} exits 0 (best-effort) and never hard-crashes on total warm-ping failure`, () => {
       const src = readScript(script);
-      assert.match(src, /process\.exit\(0\)/, 'must end with a best-effort exit(0)');
       assert.match(
         src,
         /WARN: all warm-pings failed/,
         'must emit a grep-able WARN marker so persistent breakage is caught via log alert, not exit code',
       );
-      assert.doesNotMatch(
-        src,
-        /exit\(\s*ok\s*>\s*0\s*\?\s*0\s*:\s*1\s*\)/,
-        'must not hard-crash (exit 1) when all warm-pings fail',
-      );
+      // Durable invariant: the script must call process.exit, and EVERY call
+      // must be exit(0). Extracting the literal arg catches exit(1), the old
+      // `exit(ok > 0 ? 0 : 1)` ternary, exit(143), etc. — not just one spelling —
+      // so no refactor can quietly re-introduce a hard crash on total failure.
+      const exitArgs = [...src.matchAll(/process\.exit\(([^)]*)\)/g)].map((m) => m[1].trim());
+      assert.ok(exitArgs.length > 0, 'must call process.exit');
+      for (const arg of exitArgs) {
+        assert.equal(
+          arg,
+          '0',
+          `warm-ping seeders must never exit non-zero (best-effort cache warmer — a missed ping loses no data); found process.exit(${arg})`,
+        );
+      }
     });
   }
 });
