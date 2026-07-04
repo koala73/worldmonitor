@@ -386,6 +386,7 @@ Runs before every `git push`:
 │   ├── _*.js               Shared helpers (CORS, rate-limit, API key, relay, Sentry, session)
 │   └── <domain>/           Domain endpoints (aviation/, climate/, conflict/, ...)
 ├── blog-site/              Static blog (built into public/blog/)
+├── cli/                    Official `worldmonitor` npm CLI (zero-dep ESM, MCP-first; published via cli-v* tag)
 ├── consumer-prices-core/   Consumer-price collection service (Playwright scrapers, per-country baskets; Railway/Docker)
 ├── convex/                 Convex backend (contact form, waitlist)
 ├── data/                   Static data (telegram channels, OREF threat translations, gamma irradiators)

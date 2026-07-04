@@ -13,6 +13,8 @@ https://api.worldmonitor.app/api/<service>/v1/<rpc-name>
 
 The grouped pages in the left sidebar render the full OpenAPI spec — request parameters, response schemas, and try-it-out — for each service.
 
+Prefer the terminal? The official [`worldmonitor` CLI](/cli) hits any of these paths (`worldmonitor get /api/<service>/v1/<rpc-name>`) and lists the live catalog with `worldmonitor list`.
+
 ## Machine-readable discovery
 
 Building an agent or codegen pipeline? Point at `https://worldmonitor.app/` and follow the `Link:` header — every OpenAPI spec, MCP server card, OAuth endpoint, and agent-skill bundle is discoverable from one root URL via standard `.well-known` paths. See [Agent Discovery](/agent-discovery) for the full walkthrough.

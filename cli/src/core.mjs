@@ -25,6 +25,11 @@ export const API_KEY_HEADER = 'X-WorldMonitor-Key';
 // JSON-RPC error code the MCP server returns when a call needs authentication.
 export const MCP_AUTH_ERROR_CODE = -32001;
 
+// Shown on any auth failure (MCP -32001 or a REST 401) so the fix is always one
+// hint away, whichever surface the user hit.
+export const AUTH_HINT =
+  'Hint: this call needs a key — pass --api-key or set WORLDMONITOR_API_KEY (get one at https://worldmonitor.app/pro).';
+
 // Thrown for bad invocations so run.mjs can exit with a distinct status (2) and
 // print usage rather than a stack trace.
 export class UsageError extends Error {
@@ -360,7 +365,7 @@ MCP
   prompts | resources      List MCP prompt / resource templates
 
 REST
-  health                   API status / health check
+  health                   API status / health check (needs --api-key)
   get <path> [--param val] Call a raw REST path (host-relative /api/…)
   list [service]           List documented REST operations (from the live spec)
 

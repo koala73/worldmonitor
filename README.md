@@ -115,8 +115,9 @@ World Monitor is built for agents and scripts as well as browsers:
 - **CLI** — the official [`worldmonitor`](https://www.npmjs.com/package/worldmonitor) npm package (source in [`cli/`](cli/)):
 
   ```sh
-  npx worldmonitor tools          # list every MCP tool (no key needed)
-  npx worldmonitor risk IR --api-key wm_xxx
+  npx worldmonitor tools          # run ad-hoc — list every MCP tool (no key needed)
+  npm install -g worldmonitor     # or install the `worldmonitor` (alias `wm`) command
+  worldmonitor risk IR --api-key wm_xxx
   ```
 
 Agent discovery files: [`llms.txt`](https://worldmonitor.app/llms.txt) · [agent-skills manifest](https://worldmonitor.app/.well-known/agent-skills/index.json) · [api-catalog](https://worldmonitor.app/.well-known/api-catalog). Get an API key at [worldmonitor.app/pro](https://worldmonitor.app/pro).

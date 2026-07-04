@@ -55,7 +55,7 @@ MCP and REST:
 - `tools` — list every MCP tool (public — no key needed)
 - `call <tool> [--arg val]` — call any MCP tool (`--args '<json>'` for typed args)
 - `prompts` / `resources` — list MCP prompt / resource templates
-- `health` — API status / health check
+- `health` — API status / health check (requires `--api-key`)
 - `get <path> [--param val]` — call a raw REST path (host-relative `/api/…`)
 - `list [service]` — list documented REST operations from the live OpenAPI spec
 

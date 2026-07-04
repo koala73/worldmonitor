@@ -187,6 +187,7 @@
             "pages": [
               "agent-discovery",
               "mcp-quickstart",
+              "cli",
               "mcp-server",
               "mcp-tools-reference",
               "mcp-jmespath",

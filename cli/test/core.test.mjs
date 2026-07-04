@@ -284,6 +284,17 @@ describe('run', () => {
     const code = await run(['get', '/api/nope'], { ...io, fetch: fetchImpl, env: {} });
     assert.equal(code, 1);
     assert.match(io.err, /not found/);
+    // A non-auth failure must NOT suggest a key — the hint is 401-scoped.
+    assert.doesNotMatch(io.err, /--api-key/);
+  });
+
+  it('hints to pass a key on a REST 401 (e.g. `health` with no key)', async () => {
+    const io = collect();
+    const { fetchImpl } = stubFetch({ ok: false, status: 401, body: '{"error":"API key required"}' });
+    const code = await run(['health'], { ...io, fetch: fetchImpl, env: {} });
+    assert.equal(code, 1);
+    assert.match(io.err, /API key required/);
+    assert.match(io.err, /--api-key/);
   });
 
   it('returns exit 2 on a usage error', async () => {
