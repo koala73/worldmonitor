@@ -457,6 +457,19 @@ function makeFakeElement(): FakeElement {
   return el;
 }
 
+function chipMarkup(html: string, code: string): string {
+  const match = html.match(new RegExp('<button[^>]*data-code="' + code + '"[^>]*>[\\s\\S]*?<\\/button>'));
+  assert.ok(match, `expected ${code} chip markup`);
+  return match[0];
+}
+
+function cssRuleBody(css: string, selector: string): string {
+  const selectorPattern = selector.replace(/\./g, '\\.');
+  const match = css.match(new RegExp(selectorPattern + '\\s*\\{([\\s\\S]*?)\\}'));
+  assert.ok(match, `expected ${selector} CSS rule`);
+  return match[1];
+}
+
 describe('mountCountryChipPicker', () => {
   it('renders chips for the initial selection', () => {
     const root = makeFakeElement() as unknown as HTMLElement;
@@ -594,5 +607,137 @@ describe('mountCountryChipPicker', () => {
     };
     root.dispatchEvent({ type: 'click', target: fakeChip });
     assert.equal(emitted, false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression — selected-chip removal affordance (visible ✕ + selected-state CSS)
+//
+// Field report: a Pro user could not remove default country chips — "chips do
+// not show an X and clicking them does not remove them." Root cause was purely
+// presentational: the toggle worked (see tests above), but the `-on` state had
+// NO CSS (a selected chip looked identical to an unselected one, so toggling
+// off appeared to do nothing) and there was no ✕ affordance. Guard both so the
+// widget can never regress back to an invisible selected state.
+// ---------------------------------------------------------------------------
+
+describe('country picker — removal affordance (regression)', () => {
+  it('selected chips render a ✕ remove glyph; unselected chips do not', () => {
+    const selected = makeFakeElement() as unknown as HTMLElement;
+    mountCountryChipPicker(selected, { initial: ['US'] });
+    const selectedUs = chipMarkup(selected.innerHTML, 'US');
+    assert.match(
+      selectedUs,
+      /us-notif-country-chip-on/,
+      'a selected chip must render the selected-state class',
+    );
+    assert.match(
+      selectedUs,
+      /us-notif-country-chip-x/,
+      'a selected chip must render the ✕ remove affordance',
+    );
+    assert.match(
+      selectedUs,
+      /title="Remove United States"/,
+      'a selected common chip must expose remove tooltip copy',
+    );
+
+    const empty = makeFakeElement() as unknown as HTMLElement;
+    mountCountryChipPicker(empty, { initial: [] });
+    const unselectedUs = chipMarkup(empty.innerHTML, 'US');
+    assert.doesNotMatch(
+      unselectedUs,
+      /us-notif-country-chip-on/,
+      'an unselected chip must not render the selected-state class',
+    );
+    assert.doesNotMatch(
+      unselectedUs,
+      /us-notif-country-chip-x/,
+      'no ✕ affordance should render when nothing is selected',
+    );
+    assert.match(
+      unselectedUs,
+      /title="Add United States"/,
+      'an unselected common chip must expose add tooltip copy',
+    );
+  });
+
+  it('clicking a selected chip visibly returns it to the unselected state', () => {
+    const root = makeFakeElement() as unknown as HTMLElement;
+    const picker = mountCountryChipPicker(root, { initial: ['US'] });
+    const fakeChip = {
+      dataset: { code: 'US' },
+      closest(sel: string) {
+        return sel === '.us-notif-country-chip' ? this : null;
+      },
+      matches(_sel: string) { return false; },
+    };
+
+    root.dispatchEvent({ type: 'click', target: fakeChip });
+
+    const usChip = chipMarkup(root.innerHTML, 'US');
+    assert.deepEqual(picker.getValue(), []);
+    assert.match(
+      usChip,
+      /aria-pressed="false"/,
+      'removing a selected chip must update its pressed state',
+    );
+    assert.doesNotMatch(
+      usChip,
+      /us-notif-country-chip-on/,
+      'removing a selected chip must clear the selected-state class',
+    );
+    assert.doesNotMatch(
+      usChip,
+      /us-notif-country-chip-x/,
+      'removing a selected chip must clear the ✕ affordance',
+    );
+    assert.match(
+      usChip,
+      /title="Add United States"/,
+      'removing a selected chip must restore add tooltip copy',
+    );
+    picker.destroy();
+  });
+
+  it('custom (non-common) selected codes also render the ✕ remove glyph', () => {
+    // RO is not in COMMON_COUNTRIES — it renders as an "extra" chip.
+    const root = makeFakeElement() as unknown as HTMLElement;
+    mountCountryChipPicker(root, { initial: ['RO'] });
+    assert.match(
+      root.innerHTML,
+      /data-code="RO"[\s\S]*?us-notif-country-chip-x/,
+      'a custom selected chip must render the ✕ remove affordance',
+    );
+  });
+
+  it('main.css defines a visible selected (-on) state — the missing rule that caused the bug', () => {
+    const css = readFileSync(
+      resolve(__dirname, '..', 'src', 'styles', 'main.css'),
+      'utf-8',
+    );
+    const baseRule = cssRuleBody(css, '.us-notif-country-chip');
+    const selectedRule = cssRuleBody(css, '.us-notif-country-chip-on');
+    assert.match(baseRule, /background:\s*transparent;/, 'base chip must render as unselected');
+    assert.match(
+      selectedRule,
+      /background:\s*rgba\(52,\s*211,\s*153,\s*0\.12\);/,
+      'selected chip must have a visible selected background',
+    );
+    assert.match(
+      selectedRule,
+      /border-color:\s*rgba\(52,\s*211,\s*153,\s*0\.4\);/,
+      'selected chip must have a visible selected border',
+    );
+    assert.match(
+      selectedRule,
+      /color:\s*var\(--settings-green\);/,
+      'selected chip must have a visible selected text color',
+    );
+    assert.match(
+      css,
+      /\.us-notif-country-chip-x\s*\{/,
+      'main.css must style the ✕ remove glyph',
+    );
   });
 });

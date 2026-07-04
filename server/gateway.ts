@@ -14,6 +14,8 @@ import { getCorsHeaders, isDisallowedOrigin, isAllowedOrigin } from './cors';
 // @ts-expect-error — JS module, no declaration file
 import { USER_API_KEY_GATEWAY_VALIDATION_ERROR, validateApiKey } from '../api/_api-key.js';
 // @ts-expect-error — JS module, no declaration file
+import { timingSafeEqualSecret } from '../api/_crypto.js';
+// @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../api/_sentry-edge.js';
 import { mapErrorToResponse } from './error-mapper';
 import { checkRateLimit, checkEndpointRateLimit, hasEndpointRatePolicy } from './_shared/rate-limit';
@@ -23,9 +25,12 @@ import { resolveClerkSession } from './_shared/auth-session';
 import {
   INTERNAL_MCP_SIG_HEADER,
   INTERNAL_MCP_USER_ID_HEADER,
+  INTERNAL_MCP_NONCE_HEADER,
   INTERNAL_MCP_VERIFIED_HEADER,
   TRUSTED_USER_ID_HEADER,
+  INTERNAL_MCP_REPLAY_CACHE_TTL_SECONDS,
   getInternalMcpVerifiedNonce,
+  sha256Hex,
   verifyInternalMcpRequest,
 } from './_shared/mcp-internal-hmac';
 import { buildUsageIdentity, hashKeySync, type UsageIdentityInput } from './_shared/usage-identity';
@@ -79,6 +84,20 @@ export const serverOptions: ServerOptions = { onError: mapErrorToResponse };
  * F8 (U7+U8 review pass).
  */
 const MAX_INTERNAL_MCP_BODY = 256 * 1024;
+
+type InternalMcpReplayClaim = 'fresh' | 'replay' | 'unavailable';
+
+async function claimInternalMcpReplayNonce(userId: string, nonce: string): Promise<InternalMcpReplayClaim> {
+  const digest = await sha256Hex(`${userId}:${nonce}`);
+  const key = `internal-mcp-replay:v1:${digest}`;
+  const result = await runRedisPipeline([
+    ['SET', key, '1', 'EX', INTERNAL_MCP_REPLAY_CACHE_TTL_SECONDS, 'NX'],
+  ]);
+  if (result.length === 0) return 'unavailable';
+  const claim = result[0] as { result?: unknown; error?: unknown } | undefined;
+  if (claim?.error) return 'unavailable';
+  return claim?.result === 'OK' ? 'fresh' : 'replay';
+}
 
 // --- Edge cache tier definitions ---
 // NOTE: This map is shared across all domain bundles (~3KB). Kept centralised for
@@ -591,7 +610,7 @@ export function createDomainGateway(
     const rawWidgetKey = request.headers.get('x-widget-key') ?? null;
     const widgetAgentKey = process.env.WIDGET_AGENT_KEY ?? '';
     const validatedWidgetKey =
-      rawWidgetKey && widgetAgentKey && rawWidgetKey === widgetAgentKey ? rawWidgetKey : null;
+      await timingSafeEqualSecret(rawWidgetKey, widgetAgentKey) ? rawWidgetKey : null;
     const usage: UsageIdentityInput = {
       sessionUserId: null,
       isUserApiKey: false,
@@ -878,6 +897,23 @@ export function createDomainGateway(
           { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
         );
       }
+      const replayClaim = await claimInternalMcpReplayNonce(verified.userId, verified.nonce);
+      if (replayClaim === 'unavailable') {
+        // Fail closed: without an atomic replay-cache claim, a valid captured
+        // signature could be reused throughout the timestamp window.
+        emitRequest(503, 'replay_cache_unavailable', null);
+        return new Response(
+          JSON.stringify({ error: 'internal_mcp_replay_cache_unavailable' }),
+          { status: 503, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
+        );
+      }
+      if (replayClaim === 'replay') {
+        emitRequest(401, 'auth_401', null);
+        return new Response(
+          JSON.stringify({ error: 'invalid_internal_mcp_signature' }),
+          { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
+        );
+      }
       // Entitlement re-check at the gateway: the MCP edge already verifies
       // tier ≥ 1 + mcpAccess + validUntil before signing the outbound
       // fetch (api/mcp.ts). This second check defends against (a) the
@@ -929,6 +965,7 @@ export function createDomainGateway(
       const trusted = new Headers(request.headers);
       trusted.delete(INTERNAL_MCP_SIG_HEADER);
       trusted.delete(INTERNAL_MCP_USER_ID_HEADER);
+      trusted.delete(INTERNAL_MCP_NONCE_HEADER);
       trusted.set(INTERNAL_MCP_VERIFIED_HEADER, getInternalMcpVerifiedNonce());
       trusted.set(TRUSTED_USER_ID_HEADER, verified.userId);
       const rebuildInit: RequestInit = { method: request.method, headers: trusted };

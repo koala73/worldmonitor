@@ -45,6 +45,8 @@ let _testProviders: {
   isClerkUserSignedIn?: () => boolean | Promise<boolean>;
 } | null = null;
 
+type PremiumFetchInit = RequestInit & { forcePremium?: boolean };
+
 export function _setTestProviders(
   p: typeof _testProviders,
 ): void {
@@ -81,7 +83,8 @@ function withCredentials(init?: RequestInit): RequestInit {
  * are a strict subset of PREMIUM_RPC_PATHS at the time of writing, so this
  * one check covers both.
  */
-function isPremiumRpcTarget(input: RequestInfo | URL): boolean {
+function isPremiumRpcTarget(input: RequestInfo | URL, forcePremium = false): boolean {
+  if (forcePremium) return true;
   try {
     const href = input instanceof Request ? input.url : String(input);
     const path = new URL(href, globalThis.location?.href ?? 'https://worldmonitor.app').pathname;
@@ -161,12 +164,16 @@ function delayBeforeClerkRetry(): Promise<void> {
 
 export async function premiumFetch(
   input: RequestInfo | URL,
-  init?: RequestInit,
+  init?: PremiumFetchInit,
 ): Promise<Response> {
+  const forcePremium = init?.forcePremium === true;
+  const requestInit = init ? { ...init } : undefined;
+  if (requestInit) delete requestInit.forcePremium;
+
   // Skip injection if the caller already set an auth header.
-  const existing = new Headers(init?.headers);
+  const existing = new Headers(requestInit?.headers);
   if (existing.has('Authorization') || existing.has('X-WorldMonitor-Key')) {
-    const res = await globalThis.fetch(input, withCredentials(init));
+    const res = await globalThis.fetch(input, withCredentials(requestInit));
     reportServerError(res, input);
     return res;
   }
@@ -177,7 +184,7 @@ export async function premiumFetch(
     const wmKey = getRuntimeConfigSnapshot().secrets['WORLDMONITOR_API_KEY']?.value;
     if (wmKey) {
       existing.set('X-WorldMonitor-Key', wmKey);
-      const res = await globalThis.fetch(input, { ...withCredentials(init), headers: existing });
+      const res = await globalThis.fetch(input, { ...withCredentials(requestInit), headers: existing });
       reportServerError(res, input);
       return res;
     }
@@ -189,7 +196,7 @@ export async function premiumFetch(
   for (const testerKey of testerKeys) {
     const testerHeaders = new Headers(existing);
     testerHeaders.set('X-WorldMonitor-Key', testerKey);
-    const res = await globalThis.fetch(input, { ...withCredentials(init), headers: testerHeaders });
+    const res = await globalThis.fetch(input, { ...withCredentials(requestInit), headers: testerHeaders });
     if (res.status !== 401) {
       reportServerError(res, input);
       return res;
@@ -202,7 +209,7 @@ export async function premiumFetch(
   //    interceptor's wms_ attach and produce a 401 (see the file-level
   //    comment for the full chain). Falling through to step 4 instead lets
   //    the interceptor attach wms_ and the gateway accept it.
-  if (isPremiumRpcTarget(input)) {
+  if (isPremiumRpcTarget(input, forcePremium)) {
     try {
       let token = await resolveClerkToken();
       // Boot-window auth race: while Clerk/Convex bootstrap the session,
@@ -220,7 +227,7 @@ export async function premiumFetch(
       }
       if (token) {
         existing.set('Authorization', `Bearer ${token}`);
-        const res = await globalThis.fetch(input, { ...withCredentials(init), headers: existing });
+        const res = await globalThis.fetch(input, { ...withCredentials(requestInit), headers: existing });
         reportServerError(res, input);
         return res;
       }
@@ -232,7 +239,7 @@ export async function premiumFetch(
   // attaches wms_) → gateway accepts → 200. For premium paths reached here
   // (no API key, no tester key, no Clerk Bearer) the gateway will return
   // 401, which is correct.
-  const res = await globalThis.fetch(input, withCredentials(init));
+  const res = await globalThis.fetch(input, withCredentials(requestInit));
   reportServerError(res, input);
   return res;
 }

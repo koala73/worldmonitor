@@ -15,6 +15,8 @@ export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module
 import { getCorsHeaders } from './_cors.js';
+// @ts-expect-error — JS module
+import { timingSafeEqualSecret } from './_crypto.js';
 // @ts-expect-error — generated JS module
 import { FALLBACK_PRICES } from './_product-fallback-prices.js';
 // @ts-expect-error — JS module
@@ -235,7 +237,7 @@ export default async function handler(req) {
   // DELETE = purge cache (authenticated)
   if (req.method === 'DELETE') {
     const authHeader = req.headers.get('Authorization') ?? '';
-    if (!RELAY_SECRET || authHeader !== `Bearer ${RELAY_SECRET}`) {
+    if (!RELAY_SECRET || !(await timingSafeEqualSecret(authHeader, `Bearer ${RELAY_SECRET}`))) {
       return json({ error: 'Unauthorized' }, 401, cors);
     }
     await purgeCache();

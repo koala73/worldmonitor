@@ -119,6 +119,28 @@ function makeMcpFetch({ initStatus = 200, listStatus = 200, callStatus = 200, to
 }
 
 let handler;
+const TEST_RESOLVER_KEY = Symbol.for('worldmonitor.mcpProxy.resolveHostnameForTest');
+
+const PUBLIC_TEST_ADDRESS = '93.184.216.34';
+
+function setResolveHostnameForTest(resolver) {
+  if (typeof resolver === 'function') {
+    globalThis[TEST_RESOLVER_KEY] = resolver;
+  } else {
+    delete globalThis[TEST_RESOLVER_KEY];
+  }
+}
+
+function setResolvedAddresses(addresses) {
+  setResolveHostnameForTest(async () => addresses);
+}
+
+function dnsJsonResponse(records) {
+  return new Response(JSON.stringify({
+    Status: 0,
+    Answer: records.map(({ type, data }) => ({ type, data })),
+  }), { status: 200, headers: { 'Content-Type': 'application/dns-json' } });
+}
 
 describe('api/mcp-proxy', () => {
   beforeEach(async () => {
@@ -126,9 +148,12 @@ describe('api/mcp-proxy', () => {
     // isCallerPremium import from server/. Test must follow the rename.
     const mod = await import(`../api/mcp-proxy.ts?t=${Date.now()}`);
     handler = mod.default;
+    assert.equal(mod.__setMcpProxyResolveHostnameForTest, undefined);
+    setResolvedAddresses([PUBLIC_TEST_ADDRESS]);
   });
 
   afterEach(() => {
+    setResolveHostnameForTest?.(null);
     globalThis.fetch = originalFetch;
   });
 
@@ -298,6 +323,76 @@ describe('api/mcp-proxy', () => {
       assert.equal(res.status, 400);
     });
 
+    it('returns 400 when DNS resolves a hostname to blocked private/reserved addresses', async () => {
+      const cases = [
+        ['private IPv4', '10.0.0.5'],
+        ['link-local IPv4', '169.254.169.254'],
+        ['loopback IPv4', '127.0.0.1'],
+        ['ULA IPv6', 'fd00::1234'],
+        ['link-local IPv6', 'fe80::1'],
+        // Embedded / reserved IPv6 encodings that previously slipped through
+        // the classifier (only dotted ::ffff: was decoded). Each decodes to a
+        // private/reserved IPv4 or is a reserved v6 range.
+        ['dotted v4-mapped loopback', '::ffff:127.0.0.1'],
+        ['hex v4-mapped loopback', '::ffff:7f00:1'],
+        ['hex v4-mapped metadata IP', '::ffff:a9fe:a9fe'],
+        ['uppercase hex v4-mapped RFC1918', '::FFFF:0A00:0001'],
+        ['NAT64 RFC1918', '64:ff9b::a00:1'],
+        ['NAT64 metadata IP', '64:ff9b::a9fe:a9fe'],
+        ['IPv4-compatible loopback', '::7f00:1'],
+        ['IPv4-compatible metadata IP', '::a9fe:a9fe'],
+        ['6to4 loopback', '2002:7f00:1::'],
+        ['6to4 metadata IP', '2002:a9fe:a9fe::'],
+        ['site-local IPv6', 'fec0::1'],
+      ];
+      for (const [label, address] of cases) {
+        setResolvedAddresses([address]);
+        const res = await handler(makeGetRequest({ serverUrl: `https://${label.toLowerCase().replaceAll(' ', '-')}.example/mcp` }));
+        assert.equal(res.status, 400, `${label} DNS result must be rejected`);
+        const data = await res.json();
+        assert.match(data.error, /invalid serverUrl/i);
+      }
+    });
+
+    it('allows a hostname whose DNS answers are public addresses', async () => {
+      setResolveHostnameForTest(null);
+      globalThis.fetch = async (url, opts) => {
+        const u = new URL(url.toString());
+        if (u.hostname === 'cloudflare-dns.com') {
+          const type = u.searchParams.get('type');
+          if (type === 'A') return dnsJsonResponse([{ type: 1, data: PUBLIC_TEST_ADDRESS }]);
+          if (type === 'AAAA') return dnsJsonResponse([{ type: 28, data: '2606:2800:220:1:248:1893:25c8:1946' }]);
+        }
+        return makeMcpFetch({ tools: [] })(url, opts);
+      };
+      const res = await handler(makeGetRequest({ serverUrl: 'https://public-mcp.example/mcp' }));
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.deepEqual(data.tools, []);
+    });
+
+    it('ignores the test resolver outside NODE_TEST_CONTEXT', async () => {
+      const previousNodeTestContext = process.env.NODE_TEST_CONTEXT;
+      delete process.env.NODE_TEST_CONTEXT;
+      setResolvedAddresses(['10.0.0.5']);
+      globalThis.fetch = async (url, opts) => {
+        const u = new URL(url.toString());
+        if (u.hostname === 'cloudflare-dns.com') {
+          const type = u.searchParams.get('type');
+          if (type === 'A') return dnsJsonResponse([{ type: 1, data: PUBLIC_TEST_ADDRESS }]);
+          if (type === 'AAAA') return dnsJsonResponse([]);
+        }
+        return makeMcpFetch({ tools: [] })(url, opts);
+      };
+      try {
+        const res = await handler(makeGetRequest({ serverUrl: 'https://public-mcp.example/mcp' }));
+        assert.equal(res.status, 200);
+      } finally {
+        if (previousNodeTestContext === undefined) delete process.env.NODE_TEST_CONTEXT;
+        else process.env.NODE_TEST_CONTEXT = previousNodeTestContext;
+      }
+    });
+
     it('returns 400 for garbled URL', async () => {
       const res = await handler(makeGetRequest({ serverUrl: 'not a url at all' }));
       assert.equal(res.status, 400);
@@ -391,6 +486,50 @@ describe('api/mcp-proxy', () => {
       for (const k of Object.keys(capturedHeaders)) {
         assert.ok(!k.includes('\r') && !k.includes('\n'), `Header key contains CRLF: ${JSON.stringify(k)}`);
       }
+    });
+
+    it('does not automatically follow upstream redirects', async () => {
+      const redirectModes = [];
+      globalThis.fetch = async (url, opts) => {
+        redirectModes.push(opts?.redirect);
+        return makeMcpFetch({ tools: [] })(url, opts);
+      };
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+      assert.equal(res.status, 200);
+      assert.deepEqual(redirectModes, ['manual', 'manual', 'manual']);
+    });
+
+    // NOTE: this validates the per-dispatch re-resolve + classifier path, NOT
+    // true socket-level rebind prevention. Vercel Edge fetch cannot pin the
+    // connection to a vetted IP (P1, issue #4674), so a residual rebind window
+    // between our resolve and fetch's own resolve is an accepted limitation.
+    // What this asserts: when a subsequent re-resolution returns a blocked
+    // address, revalidateBeforeFetch rejects it before the next upstream fetch,
+    // and the caller sees the GENERIC SSRF message (never the internal IP).
+    it('re-resolves and re-checks the same host before each streamable HTTP dispatch (classifier/revalidation path)', async () => {
+      const resolutions = [
+        [PUBLIC_TEST_ADDRESS], // request validation
+        [PUBLIC_TEST_ADDRESS], // initialize POST
+        ['10.0.0.9'],          // notifications/initialized would rebind
+      ];
+      setResolveHostnameForTest(async (hostname) => {
+        assert.equal(hostname, 'mcp.example.com');
+        return resolutions.shift() ?? [PUBLIC_TEST_ADDRESS];
+      });
+      let upstreamCalls = 0;
+      globalThis.fetch = async (url, opts) => {
+        upstreamCalls += 1;
+        return makeMcpFetch({ tools: [] })(url, opts);
+      };
+
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+      assert.equal(res.status, 422);
+      const data = await res.json();
+      // Caller gets a generic message — the resolved internal IP (10.0.0.9)
+      // must never be echoed back (address-oracle SSRF review finding).
+      assert.match(data.error, /host is not allowed/i);
+      assert.doesNotMatch(data.error, /10\.0\.0\.9/, 'must NOT leak the blocked internal IP to the caller');
+      assert.equal(upstreamCalls, 1, 'rebound same-host request must be blocked before the second upstream fetch');
     });
   });
 

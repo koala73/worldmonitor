@@ -26,6 +26,11 @@ import {
 const require = createRequire(import.meta.url);
 const DIGEST_DIPLOMACY_DATA = require('../shared/diplomacy-keywords.json');
 const { decrypt } = require('./lib/crypto.cjs');
+const {
+  assertNotificationWebhookDeliveryUrlSafe,
+  isBlockedResolvedAddress,
+  postJsonWithPinnedAddress,
+} = require('./lib/notification-webhook-ssrf.cjs');
 const { callLLM } = require('./lib/llm-chain.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
 const { fetchFollowedCountries } = require('./lib/followed-countries-fetch.cjs');
@@ -1221,7 +1226,7 @@ async function deactivateChannel(userId, channelType) {
 }
 
 function isPrivateIP(ip) {
-  return /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|::1|fc|fd)/.test(ip);
+  return isBlockedResolvedAddress(ip);
 }
 
 // ── Send functions ────────────────────────────────────────────────────────────
@@ -1445,21 +1450,12 @@ async function sendWebhook(userId, webhookEnvelope, stories, aiSummary) {
     console.warn(`[digest] Webhook decrypt failed for ${userId}:`, err.message);
     return false;
   }
-  let parsed;
-  try { parsed = new URL(url); } catch {
-    console.warn(`[digest] Webhook invalid URL for ${userId}`);
-    await deactivateChannel(userId, 'webhook');
-    return false;
-  }
-  if (parsed.protocol !== 'https:') {
-    console.warn(`[digest] Webhook rejected non-HTTPS for ${userId}`);
-    return false;
-  }
+  let safeUrl;
+  let resolvedAddresses;
   try {
-    const addrs = await dns.resolve4(parsed.hostname);
-    if (addrs.some(isPrivateIP)) { console.warn(`[digest] Webhook SSRF blocked for ${userId}`); return false; }
-  } catch {
-    console.warn(`[digest] Webhook DNS resolve failed for ${userId}`);
+    ({ url: safeUrl, resolvedAddresses } = await assertNotificationWebhookDeliveryUrlSafe(url));
+  } catch (err) {
+    console.warn(`[digest] Webhook URL rejected for ${userId}:`, err.message);
     return false;
   }
   const payload = JSON.stringify({
@@ -1470,12 +1466,12 @@ async function sendWebhook(userId, webhookEnvelope, stories, aiSummary) {
     storyCount: stories.length,
   });
   try {
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
-      body: payload,
-      signal: AbortSignal.timeout(10000),
-    });
+    const resp = await postJsonWithPinnedAddress(
+      safeUrl,
+      payload,
+      { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
+      resolvedAddresses,
+    );
     if (resp.status === 404 || resp.status === 410 || resp.status === 403) {
       console.warn(`[digest] Webhook ${resp.status} for ${userId} — deactivating`);
       await deactivateChannel(userId, 'webhook');

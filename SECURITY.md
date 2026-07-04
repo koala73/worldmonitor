@@ -48,7 +48,7 @@ World Monitor is a client-side intelligence dashboard that aggregates publicly a
 - **Desktop runtime**: API keys are stored in the OS keychain (macOS Keychain / Windows Credential Manager) via a consolidated vault entry, never on disk in plaintext
 - No API keys should ever be committed to the repository
 - Environment variables (`.env.local`) are gitignored
-- The RSS proxy uses domain allowlisting to prevent SSRF
+- The RSS proxy uses domain allowlisting to prevent SSRF. Both the Vercel Edge proxy and the Railway relay re-check the RSS allowlist on every redirect hop.
 
 ### Edge Functions & Sebuf Handlers
 

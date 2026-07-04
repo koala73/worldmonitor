@@ -16,7 +16,7 @@ const middlewareSource = readFileSync(resolve(__dirname, '../middleware.ts'), 'u
 const dockerfileSource = readFileSync(resolve(__dirname, '../Dockerfile'), 'utf-8');
 const dockerNginxSource = readFileSync(resolve(__dirname, '../docker/nginx.conf'), 'utf-8');
 const frontendDockerfileSource = readFileSync(resolve(__dirname, '../docker/Dockerfile'), 'utf-8');
-const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|oauth|assets|blog|docs|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
+const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|oauth|assets|blog|docs|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|openapi\\.json|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
 const GLOBAL_CSP_INLINE_SCRIPT_HTML_FILES = [
@@ -499,7 +499,7 @@ describe('docker runtime dependency guardrails', () => {
   const runtimeLock = JSON.parse(readFileSync(resolve(__dirname, '../docker/runtime-package-lock.json'), 'utf-8'));
 
   it('installs runtime node_modules from a minimal dependency stage', () => {
-    assert.match(dockerfileSource, /FROM node:22-alpine AS runtime-deps/);
+    assert.match(dockerfileSource, /^FROM\s+node:22-alpine@sha256:[a-f0-9]{64}\s+AS\s+runtime-deps$/m);
     assert.match(dockerfileSource, /npm ci --omit=dev --omit=optional --ignore-scripts/);
     assert.match(dockerfileSource, /COPY --from=runtime-deps \/app\/node_modules \.\/node_modules/);
     assert.doesNotMatch(dockerfileSource, /npm prune --omit=dev/);
@@ -1102,19 +1102,42 @@ describe('brief magazine CSP override', () => {
 //   (2) variant build scripts dropping the `npm run build:openapi`
 //       prefix and silently shipping web bundles without the spec;
 //   (3) the openapi source under docs/ being deleted without a
-//       matching removal of the build step.
+//       matching removal of the build step;
+//   (4) linkset[0] losing its RFC 9727 `item` enumeration (agent
+//       crawlers read the catalog anchor's item links to find every API).
 describe('agent readiness: api-catalog + openapi build', () => {
   const apiCatalog = JSON.parse(
     readFileSync(resolve(__dirname, '../public/.well-known/api-catalog'), 'utf-8')
   );
   const pkg = JSON.parse(readFileSync(resolve(__dirname, '../package.json'), 'utf-8'));
 
-  it('api anchor is first and points at the api host root', () => {
-    assert.equal(apiCatalog.linkset[0].anchor, 'https://api.worldmonitor.app/');
+  const catalogEntry = apiCatalog.linkset[0];
+  const apiEntry = apiCatalog.linkset.find((entry) => entry.anchor === 'https://api.worldmonitor.app/');
+
+  it('linkset[0] is the catalog anchor and enumerates each API via RFC 9727 item links', () => {
+    assert.equal(catalogEntry.anchor, 'https://worldmonitor.app/.well-known/api-catalog');
+    assert.ok(Array.isArray(catalogEntry.item), 'linkset[0] must carry an "item" array (RFC 9727 §4)');
+    assert.ok(catalogEntry.item.length > 0, 'linkset[0].item must enumerate at least one API');
+    // Each item MUST resolve to a linkset context object that describes that API.
+    const anchors = new Set(apiCatalog.linkset.map((entry) => entry.anchor));
+    for (const item of catalogEntry.item) {
+      assert.ok(item.href, 'each item entry must carry an href');
+      assert.ok(
+        anchors.has(item.href),
+        `item href ${item.href} must match a linkset context anchor`
+      );
+    }
+    const itemHrefs = catalogEntry.item.map((i) => i.href);
+    assert.ok(itemHrefs.includes('https://api.worldmonitor.app/'), 'item list must enumerate the REST API host root');
+    assert.ok(itemHrefs.includes('https://worldmonitor.app/mcp'), 'item list must enumerate the MCP server');
+  });
+
+  it('the api host root has its own context object', () => {
+    assert.ok(apiEntry, 'linkset must contain a context object anchored at https://api.worldmonitor.app/');
   });
 
   it('status href points at /api/health (SPA lives at /health — would 200 HTML and look healthy)', () => {
-    const statusHref = apiCatalog.linkset[0].status[0].href;
+    const statusHref = apiEntry.status[0].href;
     assert.ok(
       statusHref.startsWith('https://api.worldmonitor.app'),
       `status href must be on api.worldmonitor.app, got: ${statusHref}`
@@ -1126,12 +1149,30 @@ describe('agent readiness: api-catalog + openapi build', () => {
   });
 
   it('service-desc points at /openapi.yaml with the OpenAPI media type', () => {
-    const serviceDesc = apiCatalog.linkset[0]['service-desc'][0];
+    const serviceDesc = apiEntry['service-desc'][0];
     assert.ok(
       serviceDesc.href.endsWith('/openapi.yaml'),
       `service-desc href must end with /openapi.yaml, got: ${serviceDesc.href}`
     );
     assert.equal(serviceDesc.type, 'application/vnd.oai.openapi');
+  });
+
+  it('also advertises a JSON service-desc at /openapi.json for JSON-only parsers', () => {
+    // Some agent-readiness scanners (ora.ai / orank) run the spec straight
+    // through a JSON parser; YAML input trips them ("found but failed to
+    // parse"). The JSON mirror is a second service-desc so those scanners
+    // have a parseable spec. YAML stays at [0] (human-readable canonical).
+    // Read from apiEntry (the api.worldmonitor.app context object), not
+    // linkset[0] — since #4691 added the RFC 9727 catalog anchor, linkset[0]
+    // is the catalog itself (item enumeration, no service-desc). The sibling
+    // /openapi.yaml assertion above already uses apiEntry for the same reason.
+    const jsonDesc = apiEntry['service-desc'][1];
+    assert.ok(jsonDesc, 'api anchor must have a second service-desc entry (JSON mirror)');
+    assert.ok(
+      jsonDesc.href.endsWith('/openapi.json'),
+      `second service-desc href must end with /openapi.json, got: ${jsonDesc.href}`
+    );
+    assert.equal(jsonDesc.type, 'application/json');
   });
 
   it('has a second anchor for the MCP server-card', () => {
@@ -1145,7 +1186,7 @@ describe('agent readiness: api-catalog + openapi build', () => {
     );
   });
 
-  it('exposes a build:openapi script that copies docs/api → public/openapi.yaml', () => {
+  it('exposes a build:openapi script that copies docs/api → public/openapi.yaml AND emits public/openapi.json', () => {
     const buildOpenapi = pkg.scripts['build:openapi'];
     assert.ok(buildOpenapi, 'package.json must define scripts["build:openapi"]');
     assert.ok(
@@ -1155,6 +1196,31 @@ describe('agent readiness: api-catalog + openapi build', () => {
     assert.ok(
       buildOpenapi.includes('public/openapi.yaml'),
       `build:openapi must write to public/openapi.yaml, got: ${buildOpenapi}`
+    );
+    // The JSON mirror (served at /openapi.json for JSON-only scanners) is
+    // generated by scripts/build-openapi-json.mjs in the same step.
+    assert.ok(
+      buildOpenapi.includes('build-openapi-json.mjs'),
+      `build:openapi must run scripts/build-openapi-json.mjs to emit public/openapi.json, got: ${buildOpenapi}`
+    );
+    assert.ok(
+      existsSync(resolve(__dirname, '../scripts/build-openapi-json.mjs')),
+      'scripts/build-openapi-json.mjs must exist'
+    );
+  });
+
+  it('SPA catch-all rewrite excludes /openapi.json so it serves the static JSON spec, not the app shell', () => {
+    const catchAll = vercelConfig.rewrites.find((r) =>
+      r.destination === DASHBOARD_HTML_DESTINATION && r.source.startsWith('/((?!')
+    );
+    assert.ok(catchAll, 'expected the SPA catch-all rewrite');
+    assert.ok(
+      catchAll.source.includes('openapi\\.json'),
+      'SPA catch-all must exclude openapi.json so /openapi.json serves the static spec'
+    );
+    assert.ok(
+      SPA_HTML_CACHE_SOURCE.includes('openapi\\.json'),
+      'HTML cache catch-all must exclude openapi.json'
     );
   });
 
@@ -1347,12 +1413,28 @@ describe('agent readiness: homepage Link headers', () => {
         'mcp-server-card rel must carry anchor="/mcp"'
       );
 
-      // Target URIs must be root-relative (start with /, not http://)
+      // `service-desc` is advertised twice — the JSON spec (/openapi.json,
+      // parseable by JSON-only scanners like ora.ai/orank) first, then the
+      // human-readable YAML (/openapi.yaml). Both must be present.
+      assert.match(
+        linkHeader.value,
+        /<\/openapi\.json>; rel="service-desc"; type="application\/json"/,
+        'Link header must advertise /openapi.json as a JSON service-desc'
+      );
+      assert.match(
+        linkHeader.value,
+        /<\/openapi\.yaml>; rel="service-desc"; type="application\/vnd\.oai\.openapi"/,
+        'Link header must still advertise /openapi.yaml as the OpenAPI service-desc'
+      );
+
+      // Target URIs must be root-relative (start with /, not http://).
+      // One target per required rel, plus the extra /openapi.json service-desc
+      // (service-desc is the only rel advertised with two targets).
       const targetMatches = [...linkHeader.value.matchAll(/<([^>]+)>/g)];
       assert.strictEqual(
         targetMatches.length,
-        requiredRels.length,
-        `expected exactly ${requiredRels.length} link targets, got ${targetMatches.length}`
+        requiredRels.length + 1,
+        `expected exactly ${requiredRels.length + 1} link targets, got ${targetMatches.length}`
       );
       for (const [, target] of targetMatches) {
         assert.ok(

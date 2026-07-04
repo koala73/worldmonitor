@@ -2943,6 +2943,7 @@ describe('api/mcp.ts — U7 Pro-path', () => {
       queryHash: await sha256Hex(canonicalQueryString(replayUrl)),
       bodyHash: await sha256Hex(JSON.stringify({ query: 'attacker' })),
       userId: PRO_USER_ID,
+      nonce: signed.nonce,
     });
     const replayExpected = await hmacSha256Base64Url(HMAC_SECRET, replayPayload);
     const replayActual = signed.signature.split('.')[1];
