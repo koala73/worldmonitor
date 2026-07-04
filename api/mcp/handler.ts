@@ -25,19 +25,23 @@ import type { McpAuthContext, McpHandlerDeps } from './types';
 
 // MCP methods servable WITHOUT authentication. These are the zero-data
 // discovery surface an agent (or an agent-readiness scanner) needs to learn
-// what this server is and what tools it exposes BEFORE authenticating —
-// exactly the metadata already published in the static server-card.json and
-// the public docs. Everything that returns DATA or spends quota
-// (`tools/call`, `resources/read`) — and the metadata methods the product
-// deliberately keeps gated (`prompts/list`, `resources/list`,
-// `logging/setLevel`) — still requires credentials. `notifications/initialized`
-// is the client's post-`initialize` handshake notification (carries no data);
-// leaving it public lets a strict MCP client complete the handshake before
-// calling `tools/list`.
+// what this server is and what it exposes BEFORE authenticating — exactly the
+// metadata already published in the static server-card.json and the public
+// docs. `tools/list` and `resources/list` are BOTH catalog-enumeration methods
+// that return only public metadata (names, descriptions, URIs — no data, no
+// quota), so both are anonymously servable: a scanner that reads the
+// `resources` capability from `initialize` MUST be able to enumerate it, or the
+// capability reads as advertised-but-empty. Everything that returns DATA or
+// spends quota (`tools/call`, `resources/read`) — and the metadata methods the
+// product keeps gated (`prompts/list`, `logging/setLevel`) — still requires
+// credentials. `notifications/initialized` is the client's post-`initialize`
+// handshake notification (carries no data); leaving it public lets a strict MCP
+// client complete the handshake before calling `tools/list`.
 const PUBLIC_MCP_METHODS: ReadonlySet<string> = new Set([
   'initialize',
   'notifications/initialized',
   'tools/list',
+  'resources/list',
 ]);
 
 // Mirror of resolveAuthContext's credential-header contract: does the request
@@ -410,8 +414,9 @@ export async function mcpHandler(
     // data via resources for free). The symmetry is structural:
     // buildResourceResponse synthesizes a tools/call body and routes
     // through dispatchToolsCall, inheriting the reservation + telemetry
-    // path. resources/list is metadata-class — quota-exempt like
-    // prompts/list, gated only by the per-minute rate limiter above.
+    // path. resources/list is metadata-class — a public catalog-enumeration
+    // method (in PUBLIC_MCP_METHODS, quota-exempt, anon-rate-limited) that
+    // returns only URIs/names/descriptions, never data. It uses no `context`.
     case 'resources/list':
       return maybeStreamJsonRpcResponse(req, rpcOk(id, { resources: RESOURCE_LIST_RESPONSE }, corsHeaders));
     case 'resources/read':

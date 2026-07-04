@@ -93,7 +93,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(body.error?.code, -32001);
   });
 
-  // --- Public discovery (initialize + tools/list are servable without creds) ---
+  // --- Public discovery (initialize + tools/list + resources/list servable without creds) ---
 
   it('initialize succeeds WITHOUT credentials (public discovery)', async () => {
     const req = new Request(BASE_URL, {
@@ -120,6 +120,23 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(res.status, 200, 'unauthenticated tools/list must be public');
     const body = await res.json();
     assert.ok(Array.isArray(body.result?.tools) && body.result.tools.length >= 3, 'must expose the tool catalog anonymously');
+  });
+
+  it('resources/list succeeds WITHOUT credentials (public discovery) and returns resources', async () => {
+    // Mirrors orank's `mcp-resource-listing` check, which drives this
+    // anonymously: `initialize` advertises the `resources` capability, so an
+    // unauthenticated resources/list MUST enumerate the catalog rather than
+    // 401 — otherwise the capability reads as advertised-but-empty.
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 4, method: 'resources/list', params: {} }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated resources/list must be public');
+    const body = await res.json();
+    assert.ok(Array.isArray(body.result?.resources) && body.result.resources.length >= 1,
+      'anonymous resources/list must expose a non-empty resource catalog (advertised `resources` capability)');
   });
 
   it('tools/call still requires credentials even though discovery is public', async () => {
