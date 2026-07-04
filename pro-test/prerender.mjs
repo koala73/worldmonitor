@@ -334,6 +334,31 @@ const welcomeFaqEntries = [1, 2, 3, 4, 5, 6, 7, 8, 9]
   .map((n) => `    <dt>${en.welcome.faq['q' + n]}</dt><dd>${en.welcome.faq['a' + n]}</dd>`)
   .join('\n');
 
+// The "live numbers" list is generated from the SAME en.welcome.depth values the
+// visible React "depth" section renders, so the crawler block's stat table can't
+// silently drift from the app (the undefined-guard below also then covers a
+// removed key). Each entry pairs a depth value (s<N>v) with its own prose label;
+// we deliberately don't reuse the depth *labels* (s<N>l) — those are terse
+// dashboard captions ("Pipelines & LNG"), not crawler prose.
+const welcomeNumbers = [
+  [en.welcome.depth.s1v, 'live map layers'],
+  [en.welcome.depth.s2v, 'curated news and data feeds'],
+  [en.welcome.depth.s3v, 'named data providers under one key'],
+  [en.welcome.depth.s4v, 'maritime chokepoints tracked with live AIS'],
+  [en.welcome.depth.s7v, 'submarine cables mapped'],
+  [en.welcome.depth.s8v, 'pipelines and LNG terminals'],
+  [en.welcome.depth.s9v, 'AI datacenters mapped'],
+  [en.welcome.depth.s10v, 'scored geopolitical hotspots'],
+  [en.welcome.depth.s11v, 'exchanges and market assets'],
+  [en.welcome.depth.s6v, 'countries with resilience rankings'],
+  [en.welcome.depth.s12v, 'MCP tools for AI agents'],
+  [en.welcome.depth.s13v, 'command-palette actions'],
+  [en.welcome.depth.s14v, 'interface languages, including right-to-left'],
+  [en.welcome.depth.s15v, 'independent origin types behind every breaking alert'],
+]
+  .map(([value, label]) => `    <li>${value} ${label}</li>`)
+  .join('\n');
+
 const welcomeSeoPrerender = `
 <div id="seo-prerender" lang="en">
   <h2>World Monitor — free real-time global intelligence dashboard</h2>
@@ -396,20 +421,7 @@ const welcomeSeoPrerender = `
   <h2>The numbers, live in the dashboard today</h2>
   <p>Every figure below is live now, not a roadmap — open the app and count. Sources are cited on every panel.</p>
   <ul>
-    <li>56 live map layers</li>
-    <li>500+ curated news and data feeds</li>
-    <li>65+ named data providers under one key</li>
-    <li>13 maritime chokepoints tracked with live AIS</li>
-    <li>86 submarine cables mapped</li>
-    <li>88 pipelines and LNG terminals</li>
-    <li>313 AI datacenters mapped</li>
-    <li>29 scored geopolitical hotspots</li>
-    <li>92 exchanges and market assets</li>
-    <li>196 countries with resilience rankings</li>
-    <li>39 MCP tools for AI agents</li>
-    <li>154 command-palette actions</li>
-    <li>24 interface languages, including right-to-left</li>
-    <li>5 independent origin types behind every breaking alert</li>
+${welcomeNumbers}
   </ul>
 
   <h2>Key terms</h2>
@@ -446,7 +458,7 @@ ${welcomeFaqEntries}
     <dt>How fresh is the data?</dt><dd>Feeds refresh on independent cycles ranging from seconds to minutes, and every panel shows the timestamp of its most recent update. The free tier refreshes every 5–15 minutes; Pro runs near real time.</dd>
     <dt>Can I get alerts on Slack, Telegram or email?</dt><dd>Yes. Pro delivers scheduled AI digests and real-time alerts to Slack, Discord, Telegram, Email or webhook, AES-256 encrypted, with quiet hours and per-rule triggers.</dd>
     <dt>Does it work on mobile, desktop and TV?</dt><dd>Yes. World Monitor runs in any modern browser, with native desktop apps for Windows, macOS and Linux and an Android TV app for SOC walls and trading floors.</dd>
-    <dt>What languages does it support?</dt><dd>24 interface languages, including right-to-left scripts such as Arabic, Farsi and Hebrew.</dd>
+    <dt>What languages does it support?</dt><dd>24 interface languages, including right-to-left scripts such as Arabic and Farsi.</dd>
     <dt>Can I self-host World Monitor?</dt><dd>Yes. The platform is open source under AGPL-3.0 on GitHub — read the code, self-host it or build on it. Enterprise adds on-premises and air-gapped deployment.</dd>
     <dt>Is there an API for developers?</dt><dd>Yes. A REST API spans all 30+ service domains with structured JSON, cache headers and OpenAPI 3.1 docs, authenticated per key and rate-limited per tier, alongside the 39-tool MCP server.</dd>
   </dl>
