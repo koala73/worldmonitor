@@ -238,7 +238,17 @@ export async function buildPublicResourceResponse(
   if (!def) {
     return rpcError(outerId, -32602, `Unknown public resource uri "${params.uri}".`, corsHeaders);
   }
-  const text = await def.read();
+  // `read()` is documented "MUST be robust", but enforce it at the boundary so
+  // a future PUBLIC_RESOURCE_REGISTRY entry whose reader throws surfaces a clean
+  // -32603 (mirroring the sibling fail-explicit guards in buildResourceResponse)
+  // instead of bubbling an unhandled rejection through mcpHandler to the edge
+  // runtime. The current reader (readMarketFreshness) already catches internally.
+  let text: string;
+  try {
+    text = await def.read();
+  } catch {
+    return rpcError(outerId, -32603, 'Internal error: resource reader failed', corsHeaders);
+  }
   return rpcOk(
     outerId,
     { contents: [{ uri: def.uri, mimeType: def.mimeType, text }] },

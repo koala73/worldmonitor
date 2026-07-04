@@ -667,6 +667,24 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     );
   });
 
+  it('a PUBLIC resource whose read() throws surfaces a clean -32603 (contract enforced at the dispatcher boundary)', async () => {
+    // The PublicResourceDef `read` "MUST be robust" contract is documentation;
+    // the dispatcher enforces it so a future non-robust reader returns -32603
+    // rather than bubbling an unhandled rejection through mcpHandler to the edge.
+    const def = PUBLIC_RESOURCE_REGISTRY[0];
+    const originalRead = def.read;
+    def.read = async () => { throw new Error('simulated reader failure'); };
+    try {
+      const res = await handler(anonReq(readBody(def.uri)));
+      assert.equal(res.status, 200, 'JSON-RPC errors ride inside HTTP 200');
+      const body = await res.json();
+      assert.equal(body.error?.code, -32603,
+        'a throwing public reader must surface -32603, not an unhandled rejection');
+    } finally {
+      def.read = originalRead;
+    }
+  });
+
   it('env-key resources/read on countries/de/risk does NOT touch the Pro quota path (env-key tier is its own quota)', async () => {
     // env-key auth path uses X-WorldMonitor-Key. The dispatcher's INCR
     // reservation only fires for context.kind === 'pro'. This test asserts
