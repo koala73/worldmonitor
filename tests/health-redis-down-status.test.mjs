@@ -16,13 +16,55 @@ for (const k of [
   'UPSTASH_REDIS_REST_URL', 'KV_REST_API_URL', 'REDIS_REST_URL',
   'UPSTASH_REDIS_REST_TOKEN', 'KV_REST_API_TOKEN', 'REDIS_REST_TOKEN',
 ]) delete process.env[k];
+process.env.WORLDMONITOR_VALID_KEYS = 'test-health-admin-key';
 
 const { default: handler } = await import('../api/health.js');
 
-test('REDIS_DOWN returns HTTP 503 with status REDIS_DOWN', async () => {
+test('detailed health requires an operator API key before Redis is queried', async () => {
   // Real Request (no Origin header) — the handler reads req.headers.get('origin')
   // via isDisallowedOrigin/getCorsHeaders, so a plain object would crash.
   const req = new Request('https://api.worldmonitor.app/api/health');
+  const res = await handler(req);
+  assert.equal(res.status, 401);
+  const body = await res.json();
+  assert.equal(body.error, 'API key required');
+  assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
+});
+
+test('health history requires an operator API key before Redis is queried', async () => {
+  const req = new Request('https://api.worldmonitor.app/api/health?history=1');
+  const res = await handler(req);
+  assert.equal(res.status, 401);
+  const body = await res.json();
+  assert.equal(body.error, 'API key required');
+});
+
+test('detailed health does not expose user-key gateway fallback internals', async () => {
+  const req = new Request('https://api.worldmonitor.app/api/health', {
+    headers: { 'x-worldmonitor-key': 'wm_user_abc123' },
+  });
+  const res = await handler(req);
+  assert.equal(res.status, 401);
+  const body = await res.json();
+  assert.equal(body.error, 'Invalid API key');
+});
+
+test('compact health remains public and REDIS_DOWN returns HTTP 503', async () => {
+  const req = new Request('https://api.worldmonitor.app/api/health?compact=1');
+  const res = await handler(req);
+  assert.equal(res.status, 503);
+  const body = await res.json();
+  assert.equal(body.status, 'REDIS_DOWN');
+  assert.ok('checkedAt' in body, 'snapshot must carry checkedAt');
+  // No Origin → getCorsHeaders falls back to the canonical app origin (the
+  // origin-gated handler does not emit ACAO:* for unknown/absent origins).
+  assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
+});
+
+test('authenticated detailed health can reach the Redis-down probe', async () => {
+  const req = new Request('https://api.worldmonitor.app/api/health', {
+    headers: { 'x-worldmonitor-key': 'test-health-admin-key' },
+  });
   const res = await handler(req);
   assert.equal(res.status, 503);
   const body = await res.json();

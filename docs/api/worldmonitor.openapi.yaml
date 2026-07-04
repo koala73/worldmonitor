@@ -13158,6 +13158,112 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+webhooks:
+    chokepoint.disruption:
+        post:
+            tags:
+                - ShippingV2Service
+            summary: Chokepoint disruption alert (outbound, signed)
+            description: |-
+                WorldMonitor POSTs this event to the `callbackUrl` you register via
+                RegisterWebhook whenever a subscribed chokepoint's disruption score
+                crosses your `alertThreshold`. Every delivery is signed so you can
+                confirm it genuinely came from WorldMonitor.
+
+                Verification: the `X-WM-Signature` header is
+                `sha256=<hex>`, where `<hex>` is the lowercase hex HMAC-SHA256 of the
+                exact raw request body, keyed by the `secret` returned when you
+                registered the webhook. To verify, recompute
+                `sha256=` + hex(HMAC_SHA256(key=secret, message=rawRequestBody)) over
+                the bytes exactly as received (do not re-serialize the JSON) and
+                compare against `X-WM-Signature` in constant time. Use the
+                `secret` string verbatim as the HMAC key — do not hex-decode it.
+                Reject the delivery if the signatures differ.
+
+                Respond with any 2xx to acknowledge receipt; a non-2xx response or a
+                timeout marks the delivery failed. `X-WM-Delivery-Id` uniquely
+                identifies each delivery for idempotent processing.
+            operationId: ChokepointDisruptionWebhook
+            security: []
+            parameters:
+                - name: X-WM-Signature
+                  in: header
+                  required: true
+                  description: |-
+                      HMAC-SHA256 signature of the raw request body, keyed by the
+                      subscription `secret`, formatted as `sha256=<lowercase-hex>`.
+                  schema:
+                      type: string
+                      pattern: ^sha256=[0-9a-f]{64}$
+                      example: sha256=2b8c0d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c
+                - name: X-WM-Event
+                  in: header
+                  required: true
+                  description: Event type. Currently always `chokepoint.disruption`.
+                  schema:
+                      type: string
+                      example: chokepoint.disruption
+                - name: X-WM-Delivery-Id
+                  in: header
+                  required: true
+                  description: |-
+                      Unique delivery identifier (`whd_` + 32 hex chars). Use it to
+                      dedupe retries and process deliveries idempotently.
+                  schema:
+                      type: string
+                      pattern: ^whd_[0-9a-f]{32}$
+                      example: whd_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            required:
+                                - subscriberId
+                                - chokepointId
+                                - score
+                                - alertThreshold
+                                - triggeredAt
+                                - reason
+                            properties:
+                                subscriberId:
+                                    type: string
+                                    description: The `wh_`-prefixed subscription receiving this alert.
+                                chokepointId:
+                                    type: string
+                                    description: Chokepoint that breached the threshold (e.g. `suez`).
+                                score:
+                                    type: number
+                                    description: Current disruption score of the chokepoint, 0-100.
+                                alertThreshold:
+                                    type: number
+                                    description: The subscription's configured alert threshold, 0-100.
+                                triggeredAt:
+                                    type: string
+                                    format: date-time
+                                    description: ISO-8601 timestamp when the alert fired.
+                                reason:
+                                    type: string
+                                    description: Human-readable explanation for the alert.
+                                details:
+                                    type: object
+                                    additionalProperties: true
+                                    description: Optional structured context for the disruption.
+                        example:
+                            "subscriberId": "wh_1a2b3c4d5e6f7a8b9c0d1e2f"
+                            "chokepointId": "suez"
+                            "score": 72
+                            "alertThreshold": 50
+                            "triggeredAt": "2026-07-04T12:34:56Z"
+                            "reason": "Disruption score 72 crossed alert threshold 50"
+                            "details":
+                                "trend": "rising"
+            responses:
+                "2XX":
+                    description: |-
+                        Any 2xx acknowledges receipt. A non-2xx response or a delivery
+                        timeout marks the delivery failed.
 components:
     securitySchemes:
         WorldMonitorKey:
