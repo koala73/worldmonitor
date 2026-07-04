@@ -772,6 +772,35 @@ http.route({
   }),
 });
 
+// Service-to-service: the notification relay fetches ALL enabled rules (it
+// fans out alerts + drains quiet-hours batches). Wraps the INTERNAL
+// `alertRules.getByEnabled` (GHSA-r649-4cqj-w93h) behind the shared secret so
+// the cross-tenant scan is never reachable anonymously. `?enabled=false`
+// selects the disabled set; defaults to enabled=true (all the relay ever asks).
+http.route({
+  path: "/relay/enabled-rules",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const secret = process.env.RELAY_SHARED_SECRET ?? "";
+    const provided = (request.headers.get("Authorization") ?? "").replace(/^Bearer\s+/, "");
+    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
+      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const enabled = new URL(request.url).searchParams.get("enabled") !== "false";
+    const rules = await ctx.runQuery(
+      (internal as any).alertRules.getByEnabled,
+      { enabled },
+    );
+    return new Response(JSON.stringify(rules), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
 http.route({
   path: "/relay/user-preferences",
   method: "POST",

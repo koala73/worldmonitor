@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
@@ -7,6 +8,7 @@ import {
   DEFAULT_MCP_URL,
   USER_AGENT,
   UsageError,
+  VERSION,
   formatOutput,
   parseArgs,
   planRequest,
@@ -15,6 +17,14 @@ import {
   summarizeSpec,
 } from '../src/core.mjs';
 import { run } from '../src/run.mjs';
+
+describe('version', () => {
+  it('core VERSION stays in sync with package.json (guards `npm version` bumps)', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    assert.equal(VERSION, pkg.version);
+    assert.ok(USER_AGENT.includes(VERSION), 'User-Agent should embed the version');
+  });
+});
 
 function rpcOf(plan) {
   return JSON.parse(plan.body);
@@ -267,6 +277,16 @@ describe('run', () => {
     assert.equal(code, 1);
     assert.equal(io.out, '');
     assert.match(io.err, /challenge/);
+    assert.doesNotMatch(io.err, /--api-key/);
+  });
+
+  it('hints to pass a key on MCP HTTP 401 transport errors', async () => {
+    const io = collect();
+    const { fetchImpl } = stubFetch({ ok: false, status: 401, body: '{"error":"API key required"}' });
+    const code = await run(['tools'], { ...io, fetch: fetchImpl, env: {} });
+    assert.equal(code, 1);
+    assert.match(io.err, /API key required/);
+    assert.match(io.err, /--api-key/);
   });
 
   it('performs a REST health check', async () => {
@@ -284,6 +304,17 @@ describe('run', () => {
     const code = await run(['get', '/api/nope'], { ...io, fetch: fetchImpl, env: {} });
     assert.equal(code, 1);
     assert.match(io.err, /not found/);
+    // A non-auth failure must NOT suggest a key — the hint is 401-scoped.
+    assert.doesNotMatch(io.err, /--api-key/);
+  });
+
+  it('hints to pass a key on a REST 401 (e.g. `health` with no key)', async () => {
+    const io = collect();
+    const { fetchImpl } = stubFetch({ ok: false, status: 401, body: '{"error":"API key required"}' });
+    const code = await run(['health'], { ...io, fetch: fetchImpl, env: {} });
+    assert.equal(code, 1);
+    assert.match(io.err, /API key required/);
+    assert.match(io.err, /--api-key/);
   });
 
   it('returns exit 2 on a usage error', async () => {
@@ -301,5 +332,23 @@ describe('run', () => {
     assert.equal(code, 0);
     assert.equal(calls[0].init.headers['user-agent'], USER_AGENT);
     assert.match(io.out, /list-cyber-threats/);
+  });
+
+  it('passes the API key when listing operations from a protected spec URL', async () => {
+    const io = collect();
+    const spec = JSON.stringify({ paths: { '/api/cyber/v1/list-cyber-threats': { get: { summary: 'x' } } } });
+    const { fetchImpl, calls } = stubFetch({ body: spec });
+    const code = await run(['list', 'cyber', '--api-key', 'wm_k'], { ...io, fetch: fetchImpl, env: {} });
+    assert.equal(code, 0);
+    assert.equal(calls[0].init.headers[API_KEY_HEADER], 'wm_k');
+  });
+
+  it('hints to pass a key on a protected spec listing 401', async () => {
+    const io = collect();
+    const { fetchImpl } = stubFetch({ ok: false, status: 401, body: '{"error":"API key required"}' });
+    const code = await run(['list'], { ...io, fetch: fetchImpl, env: {} });
+    assert.equal(code, 1);
+    assert.match(io.err, /API key required/);
+    assert.match(io.err, /--api-key/);
   });
 });

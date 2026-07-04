@@ -344,7 +344,14 @@
     {
       "path": "api/not-found.ts",
       "category": "ops-admin",
-      "reason": "Structured JSON 404 responder for unmatched /api/* paths (via a vercel.json rewrite). Fixed-shape error envelope for agents/scanners in place of Vercel's native text/plain NOT_FOUND; not a product API.",
+      "reason": "Structured JSON 404 responder for unmatched /api/* paths (mounted by api/[...notfound].ts). Fixed-shape error envelope for agents/scanners in place of Vercel's native text/plain NOT_FOUND; not a product API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/[...notfound].ts",
+      "category": "ops-admin",
+      "reason": "Filesystem catch-all mount for api/not-found.ts. Exists solely to preserve the structured JSON 404 for genuinely unmatched /api/* paths without using an afterFiles rewrite that can shadow dynamic sebuf gateways; not a product API.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },

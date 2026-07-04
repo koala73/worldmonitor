@@ -88,23 +88,45 @@ export const RATE_LIMIT_DEGRADED_HEADERS = {
   'Retry-After': '5',
 } as const;
 
+// Header a Cloudflare Transform Rule injects on every proxied request to prove
+// the request actually transited CF. Keep in sync with api/_client-ip.js.
+const CF_EDGE_PROOF_HEADER = 'x-wm-edge-proof';
+
+// Constant-time comparison for the edge-proof secret. Synchronous so getClientIp
+// stays sync (per-request rate-limit hot path, several non-awaiting callers).
+function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+// True only when the request proves it transited Cloudflare. If
+// CF_EDGE_PROOF_SECRET is unset, do not trust cf-connecting-ip; fall back to
+// x-real-ip/UNKNOWN so a missing deployment secret cannot silently reopen
+// GHSA-c267.
+function cfTransitProven(request: Request): boolean {
+  const secret = (process.env.CF_EDGE_PROOF_SECRET ?? '').trim();
+  if (!secret) return false;
+  return constantTimeEqual((request.headers.get(CF_EDGE_PROOF_HEADER) ?? '').trim(), secret);
+}
+
 export function getClientIp(request: Request): string {
-  // With Cloudflare proxy → Vercel, x-real-ip is the CF edge IP (shared across
-  // users). cf-connecting-ip is the actual client IP set by Cloudflare —
-  // prefer it.
-  //
-  // x-forwarded-for is client-settable and MUST NOT be trusted for
-  // rate limiting (#3531) — without that fallback removed, a caller bypassing
-  // CF entirely (direct request) could rotate identities by toggling the
-  // header and beat the per-IP window. When neither trusted header is
-  // present we return the UNKNOWN_CLIENT_IP sentinel so Upstash treats the
-  // whole untrusted-identity population as one shared bucket.
+  // cf-connecting-ip is only unforgeable for traffic that actually transited
+  // Cloudflare (x-real-ip is then the CF edge IP, shared across users). On a
+  // direct-to-origin hit (bypassing CF) cf-connecting-ip is fully client-
+  // controlled, so a caller sending a fresh value per request rotates the
+  // per-IP window and neutralises the limit (GHSA-c267). Trust it only with
+  // proof of CF transit. Otherwise fall back to x-real-ip (the real peer IP)
+  // then the UNKNOWN_CLIENT_IP sentinel — the spoofable cf-connecting-ip and
+  // the client-settable x-forwarded-for (#3531) are deliberately NOT fallbacks.
   //
   // Trim each header value before falling through — a whitespace-only
   // cf-connecting-ip would otherwise short-circuit past x-real-ip.
   const cf = (request.headers.get('cf-connecting-ip') ?? '').trim();
   const xr = (request.headers.get('x-real-ip') ?? '').trim();
-  return cf || xr || UNKNOWN_CLIENT_IP;
+  if (cf && cfTransitProven(request)) return cf;
+  return xr || UNKNOWN_CLIENT_IP;
 }
 
 function tooManyRequestsResponse(limit: number, reset: number, corsHeaders: Record<string, string>): Response {

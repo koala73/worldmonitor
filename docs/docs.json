@@ -187,6 +187,7 @@
             "pages": [
               "agent-discovery",
               "mcp-quickstart",
+              "cli",
               "mcp-server",
               "mcp-tools-reference",
               "mcp-jmespath",
@@ -213,6 +214,7 @@
               "authentication",
               "adding-endpoints",
               "api-key-deployment",
+              "releasing-cli",
               "release-packaging",
               "cors",
               "health-endpoints",

@@ -10,14 +10,24 @@ servers:
 paths:
     /api/scenario/v1/run-scenario:
         post:
+            parameters:
+                - name: Idempotency-Key
+                  in: header
+                  description: Optional client-generated idempotency key. Retrying a POST with the same key returns the original response instead of duplicating the side effect. Keys are scoped per caller and retained for 24 hours.
+                  required: false
+                  example: "4f8b9c2e-1a3d-4b6f-8e0a-2c5d7f9b1e34"
+                  schema:
+                    type: string
+                    minLength: 1
+                    maxLength: 255
+                    pattern: "^[\\x21-\\x7E]{1,255}$"
             tags:
                 - ScenarioService
             summary: RunScenario
             description: |-
                 RunScenario enqueues a scenario job on scenario-queue:pending. PRO-gated.
                  The scenario-worker (scripts/scenario-worker.mjs) pulls jobs off the
-                 queue via BLMOVE and writes results under scenario-result:{job_id}.
-                Requires entitlement tier >= 1.
+                 queue via BLMOVE and writes results under scenario-result:{job_id}. Requires entitlement tier >= 1.
             operationId: RunScenario
             security:
                 - WorldMonitorKey: []
@@ -44,11 +54,63 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/RunScenarioResponse'
                 "400":
-                    description: Validation error
+                    description: Validation error or invalid Idempotency-Key header
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - type: object
+                                      required:
+                                        - error
+                                        - message
+                                      properties:
+                                        error:
+                                            type: string
+                                        message:
+                                            type: string
+                "409":
+                    description: A request with this Idempotency-Key is still being processed
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                        Retry-After:
+                            schema:
+                                type: string
+                            description: Seconds to wait before retrying the in-flight request.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "422":
+                    description: The Idempotency-Key was already used with a different request body
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
                 "401":
                     description: Missing or invalid API key.
                     content:
@@ -75,8 +137,7 @@ paths:
             description: |-
                 GetScenarioStatus polls a single job's result. PRO-gated.
                  Returns status="pending" when no result key exists, mirroring the
-                 worker's lifecycle state once the key is written.
-                Requires entitlement tier >= 1.
+                 worker's lifecycle state once the key is written. Requires entitlement tier >= 1.
             operationId: GetScenarioStatus
             security:
                 - WorldMonitorKey: []
@@ -93,6 +154,14 @@ paths:
                   schema:
                     type: string
                     pattern: '^scenario:[0-9]{13}:[a-z0-9]{8}$'
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -120,7 +189,9 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
                 "401":
                     description: Missing or invalid API key.
                     content:
@@ -148,6 +219,15 @@ paths:
                 ListScenarioTemplates returns the catalog of pre-defined scenarios.
                  Not PRO-gated — used by documented public API consumers.
             operationId: ListScenarioTemplates
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -169,7 +249,9 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
                 "401":
                     description: Missing or invalid API key.
                     content:
@@ -205,6 +287,21 @@ components:
             scheme: bearer
             description: 'Bearer token: a Clerk-issued JWT for browser session flows, passed as Authorization: Bearer <token>.'
     schemas:
+        JmespathProjectionError:
+            description: Returned when a REST jmespath projection is invalid or exceeds the expression/output byte limits.
+            properties:
+                _jmespath_error:
+                    description: Projection error discriminator and details.
+                    type: string
+                original_keys:
+                    description: Top-level keys or shape of the unprojected response.
+                    items:
+                        type: string
+                    type: array
+            required:
+                - _jmespath_error
+                - original_keys
+            type: object
         UnauthorizedError:
             type: object
             properties:

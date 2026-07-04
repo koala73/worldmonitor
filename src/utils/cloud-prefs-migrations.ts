@@ -102,6 +102,35 @@ export function settledDirtyKeys(
   return settled;
 }
 
+export function parsePersistedDirtyKeys(
+  raw: string | null,
+  allowedKeys: Iterable<string>,
+  expectedUserId: string,
+): string[] {
+  if (!raw) return [];
+
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return []; }
+  if (
+    !parsed ||
+    typeof parsed !== 'object' ||
+    (parsed as { userId?: unknown }).userId !== expectedUserId ||
+    !Array.isArray((parsed as { keys?: unknown }).keys)
+  ) {
+    return [];
+  }
+
+  const allowed = new Set(allowedKeys);
+  const seen = new Set<string>();
+  const keys: string[] = [];
+  for (const key of (parsed as { keys: unknown[] }).keys) {
+    if (typeof key !== 'string' || !allowed.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    keys.push(key);
+  }
+  return keys;
+}
+
 /**
  * Schema-2 migrations map. Used both inline by cloud-prefs-sync.ts (against
  * the variant-aware FEEDS) and by tests (against fixture FEEDS).

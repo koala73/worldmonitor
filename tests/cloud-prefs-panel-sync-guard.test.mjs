@@ -67,6 +67,11 @@ describe('cloud prefs panel sync guardrails', () => {
     );
     assert.match(
       appSrc,
+      /monitorPanel\?\.setMonitors\(this\.state\.monitors\)/,
+      'App must update an already-mounted My Monitors panel when cloud prefs change monitors',
+    );
+    assert.match(
+      appSrc,
       /const panelOrderKey = this\.state\.PANEL_ORDER_KEY;/,
       'App must derive the panel order key from PANEL_ORDER_KEY',
     );
@@ -79,6 +84,66 @@ describe('cloud prefs panel sync guardrails', () => {
       appSrc,
       /keySet\.has\('panel-order'\)/,
       'App must not hard-code the panel-order key in the cloud apply path',
+    );
+  });
+
+  it('persists dirty cloud preference keys across reloads until upload settles', () => {
+    const cloudSyncSrc = readSrc('src/utils/cloud-prefs-sync.ts');
+
+    assert.match(
+      cloudSyncSrc,
+      /const KEY_DIRTY_KEYS = 'wm-cloud-prefs-dirty-keys'/,
+      'cloud prefs sync must store pending dirty-key metadata outside the uploaded blob',
+    );
+    assert.match(
+      cloudSyncSrc,
+      /hydrateDirtyKeysFromStorage\(userId\);/,
+      'cloud prefs sync must restore dirty keys for the signed-in user before resolving sign-in conflicts',
+    );
+    assert.match(
+      cloudSyncSrc,
+      /userId: _dirtyKeysUserId,[\s\S]*keys: \[\.\.\._dirtyKeys\]/,
+      'persisted dirty-key metadata must be scoped to the user that made the edit',
+    );
+    assert.doesNotMatch(
+      cloudSyncSrc,
+      /export function install[\s\S]*hydrateDirtyKeysFromStorage\(/,
+      'cloud prefs sync must not restore ownerless dirty keys at install time',
+    );
+    assert.match(
+      cloudSyncSrc,
+      /markDirtyKey\(key as CloudSyncKey\);/,
+      'local pref writes must persist their dirty-key marker before debounce upload',
+    );
+    assert.match(
+      cloudSyncSrc,
+      /if \(changed\) persistDirtyKeys\(\);/,
+      'successful uploads must clear only the dirty keys that actually settled',
+    );
+    assert.match(
+      cloudSyncSrc,
+      /if \(_dirtyKeys\.size === 0\) \{[\s\S]*Storage\.prototype\.removeItem\.call\(localStorage, KEY_DIRTY_KEYS\);[\s\S]*return;[\s\S]*\}[\s\S]*if \(!_dirtyKeysUserId\) return;/,
+      'ownerless dirty writes before sign-in must not delete the previous persisted dirty-key marker',
+    );
+    assert.match(
+      cloudSyncSrc,
+      /_dirtyKeys\.clear\(\);\s*persistDirtyKeys\(\);\s*_dirtyKeysUserId = null;/,
+      'sign-out must clear the persisted dirty-key marker before dropping the current user id',
+    );
+  });
+
+  it('does not clear/persist settled dirty keys after a mid-upload account switch', () => {
+    const cloudSyncSrc = readSrc('src/utils/cloud-prefs-sync.ts');
+
+    assert.match(
+      cloudSyncSrc,
+      /if \(_authGeneration !== myGeneration\) return;[\s\S]*clearSettledDirtyKeys\(postedBlob\)/,
+      'uploadNow success branch must bail before clearing settled dirty keys when the auth generation advanced (sign-out / account switch mid-upload)',
+    );
+    assert.match(
+      cloudSyncSrc,
+      /if \(_authGeneration !== callerGeneration\) return false;[\s\S]*clearSettledDirtyKeys\(merged\)/,
+      'resolveConflictWithMerge must bail before clearing settled dirty keys when the caller auth generation advanced',
     );
   });
 });

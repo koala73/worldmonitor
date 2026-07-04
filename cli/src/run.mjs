@@ -3,6 +3,8 @@
 // tests, and returns a numeric exit code:
 //   0 success · 1 request/transport error · 2 usage error
 import {
+  API_KEY_HEADER,
+  AUTH_HINT,
   DEFAULT_SPEC_URL,
   HELP,
   MCP_AUTH_ERROR_CODE,
@@ -74,16 +76,21 @@ export async function run(argv, io = {}) {
       throw new Error('global fetch is unavailable — Node 18+ is required');
     }
 
-    const plan = planRequest(parsed, resolveConfig(env));
+    const config = resolveConfig(env);
+    const plan = planRequest(parsed, config);
 
     if (plan.kind === 'list') {
       const specUrl = plan.specUrl || DEFAULT_SPEC_URL;
+      const headers = { 'user-agent': USER_AGENT, accept: 'application/json' };
+      const apiKey = options.apiKey || config.apiKey;
+      if (apiKey) headers[API_KEY_HEADER] = apiKey;
       const res = await withTimeout(options.timeout, (signal) =>
-        fetchImpl(specUrl, { headers: { 'user-agent': USER_AGENT, accept: 'application/json' }, signal }),
+        fetchImpl(specUrl, { headers, signal }),
       );
       const spec = parseBody(await res.text(), res.headers);
       if (!res.ok) {
         stderr(`${formatOutput(spec, options)}\n`);
+        if (res.status === 401) stderr(`${AUTH_HINT}\n`);
         return 1;
       }
       stdout(`${renderListing(summarizeSpec(spec, plan.service))}\n`);
@@ -96,15 +103,16 @@ export async function run(argv, io = {}) {
     const value = parseBody(await res.text(), res.headers);
 
     if (plan.kind === 'mcp') {
-      if (value && typeof value === 'object' && value.error) {
+      if (value && typeof value === 'object' && value.error && typeof value.error === 'object') {
         stderr(`${formatOutput(value.error, options)}\n`);
         if (value.error.code === MCP_AUTH_ERROR_CODE) {
-          stderr('Hint: this call needs a key — pass --api-key or set WORLDMONITOR_API_KEY (get one at https://worldmonitor.app/pro).\n');
+          stderr(`${AUTH_HINT}\n`);
         }
         return 1;
       }
       if (!res.ok) {
         stderr(`${formatOutput(value, options)}\n`);
+        if (res.status === 401) stderr(`${AUTH_HINT}\n`);
         return 1;
       }
       const result = value && typeof value === 'object' && 'result' in value ? value.result : value;
@@ -115,6 +123,7 @@ export async function run(argv, io = {}) {
     // plan.kind === 'rest'
     if (!res.ok) {
       stderr(`${formatOutput(value, options)}\n`);
+      if (res.status === 401) stderr(`${AUTH_HINT}\n`);
       return 1;
     }
     stdout(`${formatOutput(value, options)}\n`);

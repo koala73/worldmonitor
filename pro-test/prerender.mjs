@@ -40,7 +40,13 @@ const ORGANIZATION_JSONLD = `    <script type="application/ld+json" nonce="${STA
     '@type': 'Person',
     name: 'Elie Habib',
     url: 'https://x.com/eliehabib',
-    sameAs: ['https://x.com/eliehabib', 'https://github.com/koala73'],
+    sameAs: [
+      'https://x.com/eliehabib',
+      'https://github.com/koala73',
+      'https://www.linkedin.com/in/elie-habib-7047b931',
+      'https://www.wikidata.org/wiki/Q121365724',
+      'https://www.crunchbase.com/person/elie-habib-2',
+    ],
   },
   sameAs: WM_SAMEAS,
   contactPoint: {

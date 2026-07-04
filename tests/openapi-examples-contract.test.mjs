@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { describe, it } from 'node:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -34,7 +35,12 @@ const CURATED = (() => {
     'utf8',
   );
   const scenarioIds = new Set([...scenarioSrc.matchAll(/\bid:\s*['"`]([a-z0-9-]+)['"`]/g)].map((m) => m[1]));
-  return { chokepointIds, scenarioIds };
+  const llmSrc = readFileSync(resolve(root, 'server/_shared/llm.ts'), 'utf8');
+  const llmProviderType = llmSrc.match(/export type LlmProviderName = ([^;]+);/);
+  assert.ok(llmProviderType, 'expected LlmProviderName union in server/_shared/llm.ts');
+  const llmProviders = new Set([...llmProviderType[1].matchAll(/'([^']+)'/g)].map((m) => m[1]));
+  assert.ok(llmProviders.size > 0, 'expected at least one LLM provider in LlmProviderName');
+  return { chokepointIds, scenarioIds, llmProviders };
 })();
 
 // Mirror of scripts/openapi-inject-examples.mjs override routing (normalizeKey is
@@ -155,6 +161,12 @@ function operationEntries(spec) {
   return entries;
 }
 
+function successResponses(op) {
+  return Object.entries(op.responses ?? {}).filter(([code, response]) =>
+    String(code).startsWith('2') && String(code).length === 3 && response?.content?.[JSON_MEDIA]?.schema,
+  );
+}
+
 // Collect every curated example occurrence (params + top-level request-body
 // fields, flattening array values) tagged with its category and op context.
 function collectCuratedExamples() {
@@ -244,6 +256,52 @@ function assertRecordBaselineSampleTypes(spec, label, validTypes) {
   assert.ok(checked > 0, label + ': expected at least one record-baseline-snapshot update example to check');
 }
 
+function collectTopLevelFieldExamples(spec, label, opPredicate, field) {
+  const found = [];
+  for (const { path, method, op } of operationEntries(spec)) {
+    if (!opPredicate({ path, method, op })) continue;
+    const where = `${label} ${method.toUpperCase()} ${path}`;
+    const requestExample = op.requestBody?.content?.[JSON_MEDIA]?.example;
+    if (requestExample && typeof requestExample === 'object' && !Array.isArray(requestExample) && Object.hasOwn(requestExample, field)) {
+      found.push({ value: requestExample[field], where: `${where} request body ${field}` });
+    }
+    for (const [code, response] of successResponses(op)) {
+      const responseExample = response.content?.[JSON_MEDIA]?.example;
+      if (responseExample && typeof responseExample === 'object' && !Array.isArray(responseExample) && Object.hasOwn(responseExample, field)) {
+        found.push({ value: responseExample[field], where: `${where} ${code} response ${field}` });
+      }
+    }
+  }
+  return found;
+}
+
+function assertSummarizeProviderExamples(spec, label) {
+  const examples = collectTopLevelFieldExamples(
+    spec,
+    label,
+    ({ op }) => String(op.operationId ?? '').includes('SummarizeArticle'),
+    'provider',
+  );
+  assert.ok(examples.length >= 3, `${label}: expected SummarizeArticle provider examples`);
+  for (const { value, where } of examples) {
+    assert.notEqual(value, 'worldmonitor', `${where}: worldmonitor is not accepted by getProviderCredentials()`);
+    assert.ok(CURATED.llmProviders.has(value), `${where}: provider '${value}' is not an LlmProviderName`);
+  }
+}
+
+function assertRouteIntelligenceHs2Example(spec, label) {
+  let checked = 0;
+  for (const { path, method, op } of operationEntries(spec)) {
+    if (op.operationId !== 'RouteIntelligence') continue;
+    const param = (op.parameters ?? []).find((p) => p?.name === 'hs2');
+    assert.ok(param, `${label}: ${method.toUpperCase()} ${path} missing hs2 parameter`);
+    assert.equal(param.example, '27', `${label}: ${method.toUpperCase()} ${path} hs2 example must use the 2-digit default`);
+    assert.match(String(param.example), /^\d{2}$/, `${label}: ${method.toUpperCase()} ${path} hs2 example must be two digits`);
+    checked++;
+  }
+  assert.ok(checked > 0, `${label}: expected RouteIntelligence hs2 example to check`);
+}
+
 describe('OpenAPI examples contract', () => {
   // Bump these exact surface counts when adding or removing proto services/RPCs.
   it('audits the known service operation surface', () => {
@@ -314,6 +372,18 @@ describe('OpenAPI examples contract', () => {
     assert.equal(result.operations, 192);
     assert.equal(result.responseExpected, 192);
   });
+
+  it('the examples injector reports the specs as in-sync (idempotent)', () => {
+    try {
+      execFileSync('node', [resolve(root, 'scripts/openapi-inject-examples.mjs'), '--check'], {
+        cwd: root,
+        stdio: 'pipe',
+      });
+    } catch (err) {
+      const detail = err.stderr?.toString().trim() || err.stdout?.toString().trim() || '';
+      throw new Error(`openapi-inject-examples --check failed:\n${detail}`);
+    }
+  });
 });
 
 describe('OpenAPI curated example values', () => {
@@ -371,5 +441,35 @@ describe('OpenAPI curated example values', () => {
     const example = spec.paths?.['/api/webcam/v1/get-webcam-image']?.get
       ?.responses?.['200']?.content?.[JSON_MEDIA]?.example?.lastUpdated;
     assert.equal(example, '2026-01-15T12:00:00.000Z');
+  });
+
+  it('uses accepted LLM providers in SummarizeArticle examples', () => {
+    const specs = [
+      ['NewsService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'NewsService.openapi.json'), 'utf8'))],
+      ['NewsService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'NewsService.openapi.yaml'), 'utf8'))],
+      ['worldmonitor.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'))],
+    ];
+
+    for (const [label, spec] of specs) {
+      assertSummarizeProviderExamples(spec, label);
+    }
+  });
+
+  it('uses a two-digit hs2 example for RouteIntelligence', () => {
+    const specs = [
+      [
+        'ShippingV2Service.openapi.json',
+        JSON.parse(readFileSync(resolve(apiDir, 'ShippingV2Service.openapi.json'), 'utf8')),
+      ],
+      [
+        'ShippingV2Service.openapi.yaml',
+        loadYaml(readFileSync(resolve(apiDir, 'ShippingV2Service.openapi.yaml'), 'utf8')),
+      ],
+      ['worldmonitor.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'))],
+    ];
+
+    for (const [label, spec] of specs) {
+      assertRouteIntelligenceHs2Example(spec, label);
+    }
   });
 });

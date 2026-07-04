@@ -214,6 +214,42 @@ describe('gateway telemetry payload — domain extraction', () => {
     assert.equal(ev.auth_kind, 'anon', `wms_ tokens must telemeter as anon, got '${ev.auth_kind}'`);
     assert.notEqual(ev.customer_id, 'enterprise-unmapped');
   });
+
+  it("invalid REST jmespath projection emits reason='malformed_request'", async () => {
+    process.env.USAGE_TELEMETRY = '1';
+    process.env.AXIOM_API_TOKEN = 'test-token';
+    const spy = installAxiomFetchSpy(ORIGINAL_FETCH);
+
+    const handler = createDomainGateway([
+      {
+        method: 'GET',
+        path: '/api/market/v1/list-market-quotes',
+        handler: async () => new Response('{"ok":true}', {
+          status: 200,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        }),
+      },
+    ]);
+
+    const recorder = makeRecordingCtx();
+    const res = await handler(
+      new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL&jmespath=a[[[', {
+        headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
+      }),
+      recorder.ctx,
+    );
+    assert.equal(res.status, 400);
+    assert.match(await res.text(), /"invalid_expression:/);
+
+    await recorder.settled;
+    spy.restore();
+
+    assert.equal(spy.events.length, 1);
+    const ev = spy.events[0]!;
+    assert.equal(ev.status, 400);
+    assert.equal(ev.reason, 'malformed_request');
+    assert.equal(ev.domain, 'market');
+  });
 });
 
 describe('gateway telemetry payload — bearer identity propagation', () => {

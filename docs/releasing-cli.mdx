@@ -1,0 +1,53 @@
+---
+title: "CLI Release Runbook"
+description: "How maintainers publish the worldmonitor npm CLI from cli/ with cli-v* tags and npm trusted publishing."
+---
+This runbook covers maintainer releases of the official [`worldmonitor`](https://www.npmjs.com/package/worldmonitor) npm CLI from `cli/`. CLI releases are intentionally independent from desktop app releases: a `cli-vX.Y.Z` Git tag triggers `.github/workflows/publish-cli.yml`.
+
+## Prerequisites
+
+- The `worldmonitor` package already exists on npm.
+- npm Trusted Publishing is configured for this repository and `.github/workflows/publish-cli.yml`.
+- The workflow keeps `permissions.id-token: write` so npm can mint the short-lived OIDC credential and attach provenance.
+
+No `NPM_TOKEN` repository secret is required for the current workflow. If Trusted Publishing is not configured, the publish step fails authentication until an npm package owner adds the GitHub Actions trusted publisher in npm package settings.
+
+## Release Steps
+
+1. Update `cli/package.json` so `version` is the exact version you intend to publish.
+2. Commit the version bump, and include any CLI docs or changelog updates that should ship with that version.
+3. After the release commit is on `main` or the intended release ref, create a tag named `cli-vX.Y.Z`, where `X.Y.Z` exactly matches `cli/package.json`:
+
+   ```bash
+   git tag cli-vX.Y.Z
+   ```
+
+4. Push the tag:
+
+   ```bash
+   git push origin cli-vX.Y.Z
+   ```
+
+5. Watch the `Publish CLI to npm` workflow. It runs the CLI tests, verifies the tag version matches `cli/package.json`, and publishes with provenance.
+
+The version-match guard is strict: `cli-v0.1.3` only publishes when `cli/package.json` also says `"version": "0.1.3"`.
+
+## Dry Run
+
+Use the manual `workflow_dispatch` trigger with `dry_run: true` when you want to validate the package tarball without publishing. The workflow runs from `cli/` and executes `npm pack --dry-run`.
+
+Use `dry_run: false` only when you intentionally want the manual workflow path to publish. Tag-triggered releases remain the normal path because the tag name is the release contract.
+
+<Warning>
+`dry_run: false` skips the version-match guard. That check is gated to tag pushes (`if: startsWith(github.ref, 'refs/tags/cli-v')`), so a manual `workflow_dispatch` publish runs **without** verifying `cli/package.json` against any tag — it publishes whatever version the package currently declares. Prefer the tag-triggered path above, which enforces the match; use manual `dry_run: false` only as a deliberate escape hatch after confirming the version by hand.
+</Warning>
+
+## Failure Checklist
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| Version-match step fails | The `cli-v*` tag does not match `cli/package.json` | Delete or supersede the bad tag, bump or correct the package version, then push the matching tag |
+| Publish step fails authentication | npm Trusted Publishing is missing or points at the wrong workflow/repository | Configure the package trusted publisher for this repo and `.github/workflows/publish-cli.yml` |
+| CLI tests fail | The package is not release-ready | Fix `cli/`, rerun tests locally, commit, and push a new release tag |
+
+After the workflow succeeds, confirm the new version appears on npm and that `npx worldmonitor --version` resolves to the published version.

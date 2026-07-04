@@ -233,8 +233,8 @@ export async function buildResourceResponse(
     params: { name: matched.def.tool, arguments: matched.args },
   };
 
-  // dispatchToolsCall handles auth-symmetric quota reservation + rollback
-  // + per-tool budget gate + telemetry emission. Returns a Response with
+  // dispatchToolsCall handles auth-symmetric quota reservation, per-tool
+  // budget gate, and telemetry emission. Returns a Response with
   // the standard JSON-RPC envelope. We parse, repackage, and re-emit
   // under the OUTER id.
   const dispatched = await dispatchToolsCall(req, context, deps, innerBody, corsHeaders, ctx);

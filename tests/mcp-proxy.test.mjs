@@ -36,8 +36,9 @@ function buildHeaders(origin, { authed = true, extra = {} } = {}) {
 // subsequent tests reusing the same IP stay blocked even if Redis is mocked
 // to allow them. The pool must therefore span the full test suite without
 // recycling. We use a /16 (10.<high>.<low>.0 = 65,536 IPs), which is the
-// TEST-NET-3-style spirit applied to RFC1918 space; the proxy's getClientIp
-// prefers cf-connecting-ip so the value is consumed verbatim (no DNS).
+// TEST-NET-3-style spirit applied to RFC1918 space. Tests that need
+// cf-connecting-ip to key the limiter must include the Cloudflare proof header;
+// otherwise the hardened helper falls back to x-real-ip / unknown.
 //
 // Earlier this helper used `203.0.113.${counter % 250}` and wrapped at 250
 // requests — flaky as soon as the suite grew past ~250 rate-limit-touching
@@ -239,6 +240,49 @@ describe('api/mcp-proxy', () => {
     // users). End-to-end coverage would need a stubbed Clerk
     // validateBearerToken — out of scope for this unit test. The Bearer
     // path is exercised in tests/chat-analyst.test.mts / production E2E.
+  });
+
+  // ── SSRF defence-in-depth: cloud-metadata header stripping (GHSA-887j) ─────
+
+  describe('customHeaders — cloud-metadata header stripping (GHSA-887j)', () => {
+    function captureForwardedHeaders() {
+      const captured = { headers: null };
+      globalThis.fetch = async (_url, opts) => {
+        captured.headers = opts?.headers ?? {};
+        const body = opts?.body ? JSON.parse(opts.body) : {};
+        if (body.method === 'tools/list') {
+          return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { tools: [] } }), {
+            status: 200, headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { protocolVersion: '2025-03-26', capabilities: {}, serverInfo: { name: 't', version: '1' } } }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        });
+      };
+      return captured;
+    }
+
+    it('drops Metadata-Flavor / X-aws-ec2-metadata-token but forwards legit headers', async () => {
+      const captured = captureForwardedHeaders();
+      const res = await handler(makeGetRequest({
+        serverUrl: 'https://mcp.example.com/mcp',
+        headers: JSON.stringify({
+          'Metadata-Flavor': 'Google',
+          'metadata': 'true',
+          'X-aws-ec2-metadata-token': 'stolen-token',
+          'X-aws-ec2-metadata-token-ttl-seconds': '21600',
+          'Authorization': 'Bearer legit-mcp-token',
+        }),
+      }));
+      assert.equal(res.status, 200);
+      assert.ok(captured.headers, 'target fetch must have been called');
+      const lowerKeys = Object.keys(captured.headers).map((k) => k.toLowerCase());
+      assert.ok(!lowerKeys.includes('metadata-flavor'), 'Metadata-Flavor must be stripped');
+      assert.ok(!lowerKeys.includes('metadata'), 'Azure Metadata header must be stripped');
+      assert.ok(!lowerKeys.includes('x-aws-ec2-metadata-token'), 'AWS IMDSv2 token header must be stripped');
+      assert.ok(!lowerKeys.includes('x-aws-ec2-metadata-token-ttl-seconds'), 'AWS IMDSv2 ttl header must be stripped');
+      assert.ok(lowerKeys.includes('authorization'), 'legitimate Authorization must pass through');
+    });
   });
 
   // ── CORS / method guards ──────────────────────────────────────────────────
@@ -769,10 +813,12 @@ describe('api/mcp-proxy', () => {
   describe('Rate limit (#3805)', () => {
     let savedRedisUrl;
     let savedRedisTok;
+    let savedCfProofSecret;
 
     beforeEach(() => {
       savedRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
       savedRedisTok = process.env.UPSTASH_REDIS_REST_TOKEN;
+      savedCfProofSecret = process.env.CF_EDGE_PROOF_SECRET;
     });
 
     afterEach(() => {
@@ -780,11 +826,14 @@ describe('api/mcp-proxy', () => {
       else process.env.UPSTASH_REDIS_REST_URL = savedRedisUrl;
       if (savedRedisTok === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
       else process.env.UPSTASH_REDIS_REST_TOKEN = savedRedisTok;
+      if (savedCfProofSecret === undefined) delete process.env.CF_EDGE_PROOF_SECRET;
+      else process.env.CF_EDGE_PROOF_SECRET = savedCfProofSecret;
     });
 
     it('returns 429 + JSON-RPC -32029 + Retry-After when rate-limited', async () => {
       process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
       process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+      process.env.CF_EDGE_PROOF_SECRET = 'edge-secret-xyz';
 
       // Mock Upstash REST — @upstash/ratelimit's sliding-window EVAL
       // returns `[remainingTokens, effectiveLimit]` per command, wrapped in
@@ -805,7 +854,7 @@ describe('api/mcp-proxy', () => {
       const res = await handler(makeGetRequest(
         { serverUrl: 'https://mcp.example.com/mcp' },
         'https://worldmonitor.app',
-        { extra: { 'cf-connecting-ip': ip } },
+        { extra: { 'cf-connecting-ip': ip, 'x-wm-edge-proof': 'edge-secret-xyz' } },
       ));
       assert.equal(res.status, 429, 'must return HTTP 429 on rate-limit hit');
       assertNoStore(res, 'rate-limit error');
@@ -819,6 +868,7 @@ describe('api/mcp-proxy', () => {
     it('rate-limit fail-opens when Upstash is unreachable (graceful degradation)', async () => {
       process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
       process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+      process.env.CF_EDGE_PROOF_SECRET = 'edge-secret-xyz';
 
       // Simulate Upstash hard-failure: scoped limiter should fail-open and
       // the request still completes. Mock fetch returns network error for
@@ -833,9 +883,66 @@ describe('api/mcp-proxy', () => {
       const res = await handler(makeGetRequest(
         { serverUrl: 'https://mcp.example.com/mcp' },
         'https://worldmonitor.app',
-        { extra: { 'cf-connecting-ip': ip } },
+        { extra: { 'cf-connecting-ip': ip, 'x-wm-edge-proof': 'edge-secret-xyz' } },
       ));
       assert.equal(res.status, 200, 'rate-limit must fail-open on Redis error');
+    });
+
+    it('uses cf-connecting-ip for scoped limiter only when Cloudflare proof is valid', async () => {
+      process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+      process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+      process.env.CF_EDGE_PROOF_SECRET = 'edge-secret-xyz';
+      const ip = uniqueCallerIp();
+      const redisBodies = [];
+
+      globalThis.fetch = async (url, opts) => {
+        const u = url.toString();
+        if (u.includes('fake.upstash.io')) {
+          redisBodies.push(String(opts?.body ?? ''));
+          return new Response(
+            JSON.stringify([{ result: [29, 30] }]),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        return makeMcpFetch({ tools: [] })(url, opts);
+      };
+
+      const res = await handler(makeGetRequest(
+        { serverUrl: 'https://mcp.example.com/mcp' },
+        'https://worldmonitor.app',
+        { extra: { 'cf-connecting-ip': ip, 'x-wm-edge-proof': 'edge-secret-xyz' } },
+      ));
+      assert.equal(res.status, 200);
+      assert.ok(redisBodies.some((body) => body.includes(`/api/mcp-proxy:${ip}`)), 'scoped limiter key should include the proofed CF client IP');
+    });
+
+    it('does not let missing Cloudflare proof rotate the MCP proxy scoped limiter key', async () => {
+      process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+      process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+      process.env.CF_EDGE_PROOF_SECRET = 'edge-secret-xyz';
+      const spoofedIp = uniqueCallerIp();
+      const redisBodies = [];
+
+      globalThis.fetch = async (url, opts) => {
+        const u = url.toString();
+        if (u.includes('fake.upstash.io')) {
+          redisBodies.push(String(opts?.body ?? ''));
+          return new Response(
+            JSON.stringify([{ result: [29, 30] }]),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        return makeMcpFetch({ tools: [] })(url, opts);
+      };
+
+      const res = await handler(makeGetRequest(
+        { serverUrl: 'https://mcp.example.com/mcp' },
+        'https://worldmonitor.app',
+        { extra: { 'cf-connecting-ip': spoofedIp, 'x-real-ip': '192.0.2.5' } },
+      ));
+      assert.equal(res.status, 200);
+      assert.ok(redisBodies.some((body) => body.includes('/api/mcp-proxy:192.0.2.5')), 'scoped limiter should fall back to x-real-ip without proof');
+      assert.ok(!redisBodies.some((body) => body.includes(`/api/mcp-proxy:${spoofedIp}`)), 'spoofed cf-connecting-ip must not reach the scoped limiter key without proof');
     });
   });
 
@@ -925,8 +1032,10 @@ describe('api/mcp-proxy', () => {
     it('emits audit log with status: 429 on a rate-limit block', async () => {
       const savedRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
       const savedRedisTok = process.env.UPSTASH_REDIS_REST_TOKEN;
+      const savedCfProofSecret = process.env.CF_EDGE_PROOF_SECRET;
       process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
       process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+      process.env.CF_EDGE_PROOF_SECRET = 'edge-secret-xyz';
       try {
         globalThis.fetch = async (url) => {
           const u = url.toString();
@@ -941,7 +1050,7 @@ describe('api/mcp-proxy', () => {
         const res = await handler(makeGetRequest(
           { serverUrl: 'https://mcp.example.com/mcp' },
           'https://worldmonitor.app',
-          { extra: { 'cf-connecting-ip': uniqueCallerIp() } },
+          { extra: { 'cf-connecting-ip': uniqueCallerIp(), 'x-wm-edge-proof': 'edge-secret-xyz' } },
         ));
         assert.equal(res.status, 429);
         const log = findProxyLog();
@@ -953,6 +1062,8 @@ describe('api/mcp-proxy', () => {
         else process.env.UPSTASH_REDIS_REST_URL = savedRedisUrl;
         if (savedRedisTok === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
         else process.env.UPSTASH_REDIS_REST_TOKEN = savedRedisTok;
+        if (savedCfProofSecret === undefined) delete process.env.CF_EDGE_PROOF_SECRET;
+        else process.env.CF_EDGE_PROOF_SECRET = savedCfProofSecret;
       }
     });
 
@@ -960,7 +1071,7 @@ describe('api/mcp-proxy', () => {
       const res = await handler(makeGetRequest(
         { serverUrl: 'http://localhost/mcp' },
         'https://worldmonitor.app',
-        { extra: { 'cf-connecting-ip': uniqueCallerIp() } },
+        { extra: { 'cf-connecting-ip': uniqueCallerIp(), 'x-real-ip': uniqueCallerIp() } },
       ));
       assert.equal(res.status, 400);
       const log = findProxyLog();

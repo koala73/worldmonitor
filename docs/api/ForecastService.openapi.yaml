@@ -13,7 +13,7 @@ paths:
             tags:
                 - ForecastService
             summary: GetForecasts
-            description: GetForecasts returns the latest generated probabilistic forecasts, with degraded/stale flags that distinguish a backend outage from a healthy empty set.
+            description: GetForecasts returns the latest generated probabilistic forecasts; the degraded flag distinguishes a backend outage from a healthy empty set.
             operationId: GetForecasts
             parameters:
                 - name: domain
@@ -36,6 +36,14 @@ paths:
                   description: Optional geographic or thematic region filter for forecasts.
                   required: false
                   example: "example"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -88,7 +96,9 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
                 "401":
                     description: Missing or invalid API key.
                     content:
@@ -126,6 +136,14 @@ paths:
                   example: "example-id"
                   schema:
                     type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -144,7 +162,9 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
                 "401":
                     description: Missing or invalid API key.
                     content:
@@ -168,7 +188,7 @@ paths:
             tags:
                 - ForecastService
             summary: GetSimulationOutcome
-            description: GetSimulationOutcome returns the stored outcome of a forecast simulation run; `found` is false when no outcome matches the requested runId.
+            description: GetSimulationOutcome returns the latest stored forecast simulation outcome; the response note is populated when a supplied runId does not match the returned outcome.
             operationId: GetSimulationOutcome
             parameters:
                 - name: runId
@@ -185,6 +205,14 @@ paths:
                      If runId is empty: returns :latest (existing behavior).
                   required: false
                   example: "example-id"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -205,7 +233,9 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
                 "401":
                     description: Missing or invalid API key.
                     content:
@@ -226,6 +256,17 @@ paths:
                                 $ref: '#/components/schemas/Error'
     /api/forecast/v1/trigger-simulation:
         post:
+            parameters:
+                - name: Idempotency-Key
+                  in: header
+                  description: Optional client-generated idempotency key. Retrying a POST with the same key returns the original response instead of duplicating the side effect. Keys are scoped per caller and retained for 24 hours.
+                  required: false
+                  example: "4f8b9c2e-1a3d-4b6f-8e0a-2c5d7f9b1e34"
+                  schema:
+                    type: string
+                    minLength: 1
+                    maxLength: 255
+                    pattern: "^[\\x21-\\x7E]{1,255}$"
             tags:
                 - ForecastService
             summary: TriggerSimulation
@@ -235,8 +276,7 @@ paths:
                  is server-derived; callers cannot supply one. The Railway worker
                  (scripts/process-simulation-tasks.mjs) polls the queue and writes
                  outcomes; callers poll GetSimulationOutcome with the returned runId
-                 to retrieve the result. Mirrors run-scenario.ts pattern. See #3734.
-                Requires entitlement tier >= 1.
+                 to retrieve the result. Mirrors run-scenario.ts pattern. See #3734. Requires entitlement tier >= 1.
             operationId: TriggerSimulation
             security:
                 - WorldMonitorKey: []
@@ -263,11 +303,63 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/TriggerSimulationResponse'
                 "400":
-                    description: Validation error
+                    description: Validation error or invalid Idempotency-Key header
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - type: object
+                                      required:
+                                        - error
+                                        - message
+                                      properties:
+                                        error:
+                                            type: string
+                                        message:
+                                            type: string
+                "409":
+                    description: A request with this Idempotency-Key is still being processed
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                        Retry-After:
+                            schema:
+                                type: string
+                            description: Seconds to wait before retrying the in-flight request.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "422":
+                    description: The Idempotency-Key was already used with a different request body
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
                 "401":
                     description: Missing or invalid API key.
                     content:
@@ -303,6 +395,21 @@ components:
             scheme: bearer
             description: 'Bearer token: a Clerk-issued JWT for browser session flows, passed as Authorization: Bearer <token>.'
     schemas:
+        JmespathProjectionError:
+            description: Returned when a REST jmespath projection is invalid or exceeds the expression/output byte limits.
+            properties:
+                _jmespath_error:
+                    description: Projection error discriminator and details.
+                    type: string
+                original_keys:
+                    description: Top-level keys or shape of the unprojected response.
+                    items:
+                        type: string
+                    type: array
+            required:
+                - _jmespath_error
+                - original_keys
+            type: object
         UnauthorizedError:
             type: object
             properties:

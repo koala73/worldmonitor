@@ -10,6 +10,17 @@ servers:
 paths:
     /api/news/v1/summarize-article:
         post:
+            parameters:
+                - name: Idempotency-Key
+                  in: header
+                  description: Optional client-generated idempotency key. Retrying a POST with the same key returns the original response instead of duplicating the side effect. Keys are scoped per caller and retained for 24 hours.
+                  required: false
+                  example: "4f8b9c2e-1a3d-4b6f-8e0a-2c5d7f9b1e34"
+                  schema:
+                    type: string
+                    minLength: 1
+                    maxLength: 255
+                    pattern: "^[\\x21-\\x7E]{1,255}$"
             tags:
                 - NewsService
             summary: SummarizeArticle
@@ -26,7 +37,7 @@ paths:
                                 - "example"
                             "lang": "en"
                             "mode": "example"
-                            "provider": "worldmonitor"
+                            "provider": "openrouter"
                         schema:
                             $ref: '#/components/schemas/SummarizeArticleRequest'
                 required: true
@@ -40,15 +51,67 @@ paths:
                                 "errorType": "all"
                                 "fallback": true
                                 "model": "example"
-                                "provider": "worldmonitor"
+                                "provider": "openrouter"
                             schema:
                                 $ref: '#/components/schemas/SummarizeArticleResponse'
                 "400":
-                    description: Validation error
+                    description: Validation error or invalid Idempotency-Key header
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - type: object
+                                      required:
+                                        - error
+                                        - message
+                                      properties:
+                                        error:
+                                            type: string
+                                        message:
+                                            type: string
+                "409":
+                    description: A request with this Idempotency-Key is still being processed
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                        Retry-After:
+                            schema:
+                                type: string
+                            description: Seconds to wait before retrying the in-flight request.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "422":
+                    description: The Idempotency-Key was already used with a different request body
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
                 "401":
                     description: Missing or invalid API key.
                     content:
@@ -83,6 +146,14 @@ paths:
                   schema:
                     type: string
                     pattern: '^summary:v\d+:[a-z0-9:_-]{3,120}$'
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -93,7 +164,7 @@ paths:
                                 "errorType": "all"
                                 "fallback": true
                                 "model": "example"
-                                "provider": "worldmonitor"
+                                "provider": "openrouter"
                             schema:
                                 $ref: '#/components/schemas/SummarizeArticleResponse'
                 "400":
@@ -101,7 +172,9 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
                 "401":
                     description: Missing or invalid API key.
                     content:
@@ -142,6 +215,14 @@ paths:
                   example: "en"
                   schema:
                     type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -170,7 +251,9 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
                 "401":
                     description: Missing or invalid API key.
                     content:
@@ -202,6 +285,21 @@ components:
             name: X-Api-Key
             description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
     schemas:
+        JmespathProjectionError:
+            description: Returned when a REST jmespath projection is invalid or exceeds the expression/output byte limits.
+            properties:
+                _jmespath_error:
+                    description: Projection error discriminator and details.
+                    type: string
+                original_keys:
+                    description: Top-level keys or shape of the unprojected response.
+                    items:
+                        type: string
+                    type: array
+            required:
+                - _jmespath_error
+                - original_keys
+            type: object
         UnauthorizedError:
             type: object
             properties:

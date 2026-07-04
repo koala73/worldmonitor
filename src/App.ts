@@ -41,6 +41,7 @@ import { BreakingNewsBanner } from '@/components/BreakingNewsBanner';
 import { initBreakingNewsAlerts, destroyBreakingNewsAlerts } from '@/services/breaking-news-alerts';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import type { ServiceStatusPanel } from '@/components/ServiceStatusPanel';
+import type { MonitorPanel } from '@/components/MonitorPanel';
 import type { StablecoinPanel } from '@/components/StablecoinPanel';
 import type { EnergyCrisisPanel } from '@/components/EnergyCrisisPanel';
 import type { ETFFlowsPanel } from '@/components/ETFFlowsPanel';
@@ -264,6 +265,8 @@ export class App {
 
     if (keySet.has(STORAGE_KEYS.monitors)) {
       this.state.monitors = loadFromStorage<Monitor[]>(STORAGE_KEYS.monitors, []);
+      const monitorPanel = this.state.panels['monitors'] as MonitorPanel | undefined;
+      monitorPanel?.setMonitors(this.state.monitors);
       this.dataLoader.updateMonitorResults();
     }
   }

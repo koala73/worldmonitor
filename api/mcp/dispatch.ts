@@ -42,8 +42,9 @@ export async function executeTool(
 
   // F6: if every cache key returned null/undefined AND the tool actually
   // had keys configured, this is a degenerate-empty result (Redis transient
-  // / stampede). Throw so dispatchToolsCall's catch fires the DECR rollback
-  // — without this, the user's quota burns silently on a useless response.
+  // / stampede). Throw so dispatchToolsCall reports a normal tool-execution
+  // failure; for Pro callers the already-reserved daily slot stays charged
+  // because this check runs after the tool has executed.
   //
   // Cache-tools always have at least one key (validated in the registry
   // type). The all-null case is structurally distinguishable from "the
@@ -133,7 +134,6 @@ export async function dispatchToolsCall(
   // 50/day cap from even seeing tool definitions. Exempt by name; rate-
   // limiter (60/min) still applies as the abuse guard.
   const isMetadataTool = p.name === 'describe_tool';
-  let proRollback: (() => Promise<void>) | null = null;
   if (context.kind === 'pro' && !isMetadataTool) {
     const reservation = await reserveQuota(context.userId, deps.redisPipeline);
     if (!reservation.ok) {
@@ -149,14 +149,15 @@ export async function dispatchToolsCall(
         { status: 503, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders }) },
       );
     }
-    proRollback = reservation.rollback;
+    // No caller-side rollback of the reservation: once we pass this point the
+    // tool runs and the daily slot is charged for good (GHSA-hcq5). The only
+    // rollback is INSIDE reserveQuota, for the pre-dispatch cap-exceeded case.
   }
 
   const jmespathArg = p.arguments?.jmespath;
   const jmespathUsed = typeof jmespathArg === 'string' && jmespathArg.length > 0;
   // tStart is captured AFTER the Pro reservation round-trip — `latency_ms`
   // reports time-in-tool, not time-in-tool-plus-time-in-quota-reservation.
-  // Mirrors the error-path rollback exclusion below.
   // TODO(v1.6.x): include `mcpTokenId` in the telemetry payload for Pro
   // contexts so downstream per-tenant aggregation can join on it. Out of
   // scope for v1 since the dashboards we ship next only need `auth_kind`.
@@ -174,11 +175,10 @@ export async function dispatchToolsCall(
     //
     // Universal JMESPath projection (v1.4.0). `applyJmespath` never throws
     // — soft-failure modes return a `_jmespath_error` envelope as `text`
-    // inside the normal response. So this stays INSIDE the try/catch but
-    // does NOT participate in the quota DECR path: a bad expression is a
-    // *user* error after a successful tool dispatch, not a system error.
-    // Genuine tool-execution throws (e.g. `cache_all_null`) still hit the
-    // catch below and rollback. Single JSON.stringify per request when
+    // inside the normal response, so a bad expression is a *user* error after
+    // a successful dispatch, not a thrown system error. Genuine tool-execution
+    // throws (e.g. `cache_all_null`) still hit the catch below. Single
+    // JSON.stringify per request when
     // telemetry is off; one extra stringify when MCP_TELEMETRY is enabled
     // so we can report `bytes_pre_jmespath` separately from the projected
     // size.
@@ -195,7 +195,7 @@ export async function dispatchToolsCall(
       if (jmespathUsed) {
         // Telemetry stringify must never escape into the outer catch — a
         // circular `result` with a clean JMESPath projection would otherwise
-        // turn a successful request into a 5xx + Pro-quota rollback. On
+        // turn a successful request into a 5xx tool error. On
         // failure, report `bytes_pre_jmespath: -1` (sentinel: measurement
         // unavailable) and keep the response intact.
         try {
@@ -221,9 +221,10 @@ export async function dispatchToolsCall(
       });
     }
     if (budgetExceeded) {
-      // Rollback Pro quota — the user received no usable data, so the
-      // daily slot should not be consumed (mirrors the catch-block rollback).
-      if (proRollback) await proRollback();
+      // GHSA-hcq5: do NOT refund the Pro daily slot here. `_execute()` already
+      // ran its full upstream fetch/compute before we measured the output, so
+      // the cost is sunk — refunding let a Pro token drive unlimited real cost
+      // by always exceeding the budget. The user still gets an actionable hint.
       const hint = jmespathUsed
         ? 'Response still exceeds tool output budget after JMESPath projection. Use a more selective expression to project fewer fields, or apply tool-level filters to narrow the result set.'
         : 'Response exceeds tool output budget. Use the jmespath argument to project only the fields you need, or apply filters to narrow the result set.';
@@ -236,13 +237,15 @@ export async function dispatchToolsCall(
     }
     return rpcOk(id, { content: [{ type: 'text', text }] }, corsHeaders);
   } catch (err: unknown) {
-    // Capture tool-execution latency BEFORE the rollback round-trip — the
-    // P95 dashboard reads `latency_ms` as time-in-tool, not time-in-tool-
-    // plus-time-in-Convex-rollback. Rollback can add hundreds of ms on a
-    // slow upstream and would otherwise silently inflate the error-path
-    // percentile.
+    // `latency_ms` is time-in-tool (from tStart, captured after the quota
+    // reservation) so the P95 error-path dashboard isn't skewed by reservation
+    // latency.
     const latencyMs = Date.now() - tStart;
-    if (proRollback) await proRollback();
+    // GHSA-hcq5: do NOT refund the Pro daily slot on a tool-execution error.
+    // `_execute()` above already incurred the upstream cost, so the slot stays
+    // charged — refunding let a Pro token bypass the daily cap by driving calls
+    // that reliably error after the costly fetch. Pre-execution failures
+    // (reservation/validation) are handled before dispatch and never reach here.
     // HTTP 4xx from an internal sibling fetch (e.g. `feed-digest HTTP 401`)
     // is expected-but-trackable: transient HMAC/auth/quota drift, replay-window
     // skew, or a single user's expired context. Report at `warning` so single

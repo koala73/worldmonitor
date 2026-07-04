@@ -456,9 +456,9 @@ export const RPC_TOOLS: ToolDef[] = [
       // F6 contract parity with the cache-tool path (executeTool, ~line 1139):
       // if every data read is null/undefined, this is a degenerate-empty
       // response (Redis transient / stampede / pre-seed). Throw so
-      // dispatchToolsCall's catch fires proRollback — without this, the Pro
-      // user's daily MCP counter increments by 1 for a useless result while
-      // every other cache-tool refunds via the same code path.
+      // dispatchToolsCall reports a normal tool-execution failure. For Pro
+      // callers the already-reserved slot stays charged because the tool has
+      // executed.
       if (dataResults.every((v: unknown) => v === null || v === undefined)) {
         throw new Error('cache_all_null');
       }

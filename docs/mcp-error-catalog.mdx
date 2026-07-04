@@ -13,9 +13,9 @@ description: "Every error shape WorldMonitor's MCP server can emit — JSON-RPC 
   - Top-level dispatch / -32600/-32601  api/mcp/handler.ts:66-164
   - Auth -32001 / -32603 emitters       api/mcp/auth.ts:126-238
   - Per-minute -32029                   api/mcp/auth.ts:243-260
-  - Pro daily-cap -32029 (HTTP 429)     api/mcp/dispatch.ts:130-144
-  - Tool exec -32603                    api/mcp/dispatch.ts:231-269
-  - _budget_exceeded envelope           api/mcp/dispatch.ts:183-229
+  - Pro daily-cap -32029 (HTTP 429)     api/mcp/dispatch.ts:136-149
+  - Tool exec -32603                    api/mcp/dispatch.ts:239-282
+  - _budget_exceeded envelope           api/mcp/dispatch.ts:223-236
   - _jmespath_error envelope            api/mcp/jmespath.ts:46-94
   - JMESPath caps                       api/mcp/constants.ts:232-233
   - Prompts -32602                      api/mcp/prompts/index.ts:296-316
@@ -31,7 +31,7 @@ For the projection grammar itself, see the [JMESPath guide](/mcp-jmespath). For 
 - **HTTP status** is the transport-layer answer. Most JSON-RPC replies — successes AND errors — come back as **HTTP 200**, per the JSON-RPC 2.0 convention. The handler only escalates the status when the failure is something a generic HTTP client must react to (auth, daily cap, service unavailable) and benefits from a `Retry-After` / `WWW-Authenticate` header.
 - **JSON-RPC `error.code`** is the application-layer answer. Six codes are in use: `-32001`, `-32029`, `-32600`, `-32601`, `-32602`, `-32603`. The handler never emits another code — if you see one, treat it as a wire bug and file an issue.
 - **Soft-behavior envelopes** are the high-volume failure mode. `tools/call` succeeds at the JSON-RPC layer (HTTP 200, no `error` field), but the JSON sitting inside `result.content[0].text` carries a `_budget_exceeded` or `_jmespath_error` discriminator. Clients that only inspect the JSON-RPC envelope will silently treat these as successes — parse `result.content[0].text` and check for a leading `_` key before consuming the payload as data.
-- **Quota rollback is automatic** for soft envelopes. `_budget_exceeded` and tool-execution errors (`-32603`) refund the Pro daily-quota slot — you do not pay for a response you cannot use. `_jmespath_error` does NOT refund, because the tool fetch succeeded; the user-supplied projection is what failed.
+- **Executed calls stay charged.** `_budget_exceeded`, `_jmespath_error`, and tool-execution errors (`-32603`) all happen after the tool has run, so they consume the Pro daily-quota slot. Only pre-dispatch failures such as daily-cap rejection or quota-reservation service failure avoid charging the slot.
 - **Both 401 paths set `WWW-Authenticate`** with `realm="worldmonitor"` and a `resource_metadata` pointer at `/.well-known/oauth-protected-resource`. RFC 9728-aware clients (Claude Desktop, MCP Inspector) bounce through the OAuth flow on this header without further intervention.
 
 ## JSON-RPC error codes
@@ -180,7 +180,7 @@ The most common error code, shared across `tools/call`, `prompts/get`, `resource
 
 Three distinct conditions share this code; the HTTP status disambiguates whether retry is reasonable.
 
-**HTTP 200 — tool-execution failure.** A tool dispatcher threw. Most commonly: every Redis key the tool reads returned null (`cache_all_null` — transient Redis blip or a still-warming seeder), or a sibling internal fetch failed mid-call. Pro quota is rolled back automatically; you do not pay for this.
+**HTTP 200 — tool-execution failure.** A tool dispatcher threw. Most commonly: every Redis key the tool reads returned null (`cache_all_null` — transient Redis blip or a still-warming seeder), or a sibling internal fetch failed mid-call. Pro quota is not rolled back: the tool already executed, so retrying consumes another slot.
 
 ```json
 {
@@ -285,7 +285,7 @@ Fields:
 - `actual_bytes: number` — UTF-8 byte length of the serialised response after all narrowing.
 - `hint: string` — recovery advice. The text varies based on whether the caller already passed a `jmespath` argument; both phrasings tell you to narrow the result.
 
-**Quota.** The Pro daily-quota slot is rolled back automatically. You do not pay for a response you cannot use.
+**Quota.** The Pro daily-quota slot is not rolled back. The tool already executed before the server measured the serialized output size, so the slot stays charged even though the response is an error envelope.
 
 **Recovery.** Make the projection more selective, layer a tool-level filter (`country`, `since`, `limit`), or both. The [JMESPath guide](/mcp-jmespath) has worked examples for projection. The `summary: true` flag (every cache tool accepts it) returns a server-built counts-and-samples digest that is always under budget.
 

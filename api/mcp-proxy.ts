@@ -6,7 +6,7 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 import { isCallerPremium } from '../server/_shared/premium-check';
 import { isBlockedResolvedAddress } from '../server/_shared/ip-address-classification';
-import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit } from '../server/_shared/rate-limit';
+import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, getClientIp } from '../server/_shared/rate-limit';
 
 export const config = { runtime: 'edge' };
 
@@ -35,17 +35,6 @@ if (!RATE_LIMIT_POLICY) {
 const RATE_LIMIT_MAX = RATE_LIMIT_POLICY.limit;
 const RATE_LIMIT_WINDOW = RATE_LIMIT_POLICY.window;
 const RATE_LIMIT_ERROR_CODE = -32029; // JSON-RPC code mirrored from api/mcp.ts
-
-function getClientIp(req: Request): string {
-  // cf-connecting-ip is the only header that survives Cloudflare → Vercel
-  // unforged. x-forwarded-for is client-settable and must NOT be trusted
-  // for rate limiting — see api/_rate-limit.js notes (#3721).
-  return (
-    req.headers.get('cf-connecting-ip') ||
-    req.headers.get('x-real-ip') ||
-    '0.0.0.0'
-  );
-}
 
 function logProxyCall(entry: {
   ip: string;
@@ -227,6 +216,20 @@ async function validateServerUrl(raw) {
   }
 }
 
+// Cloud-metadata gate headers (GHSA-887j, Edge-safe defence-in-depth): GCP
+// `Metadata-Flavor: Google`, Azure `Metadata: true`, AWS IMDSv2
+// `X-aws-ec2-metadata-token[-ttl-seconds]`. The proxy never forwards them, so
+// even if a DNS rebind slipped a fetch onto 169.254.169.254 the credential-less
+// request is refused by the metadata service. Matched case-insensitively. (The
+// full socket-pin fix that closes resolve!=connect is a Node-runtime follow-up;
+// this Edge mitigation kills the demonstrated PoC without a runtime switch.)
+const DENIED_FORWARD_HEADERS = new Set([
+  'metadata-flavor',
+  'metadata',
+  'x-aws-ec2-metadata-token',
+  'x-aws-ec2-metadata-token-ttl-seconds',
+]);
+
 function buildHeaders(customHeaders) {
   const h = {
     'Content-Type': 'application/json',
@@ -239,7 +242,16 @@ function buildHeaders(customHeaders) {
         // Strip CRLF to prevent header injection
         const safeKey = k.replace(/[\r\n]/g, '');
         const safeVal = v.replace(/[\r\n]/g, '');
-        if (safeKey) h[safeKey] = safeVal;
+        // Hop-by-hop / authority headers (Host, Content-Length, Connection, TE,
+        // Trailer, Upgrade, Keep-Alive, Transfer-Encoding, Proxy-*) are NOT
+        // filtered here: on the Edge runtime the spec-compliant `fetch()` treats
+        // them as forbidden header names and silently drops them, so they never
+        // reach the upstream. (The Node-runtime socket-pin follow-up uses raw
+        // `http.request`, which does NOT auto-drop them, so that PR must add an
+        // explicit hop-by-hop filter — see #4674.)
+        if (safeKey && !DENIED_FORWARD_HEADERS.has(safeKey.toLowerCase())) {
+          h[safeKey] = safeVal;
+        }
       }
     }
   }

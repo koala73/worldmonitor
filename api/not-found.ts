@@ -2,14 +2,16 @@
 //
 // Vercel serves its native `text/plain` "NOT_FOUND" body for any `/api/...`
 // path that doesn't resolve to a function. Agents (and agent-readiness
-// scanners) can't parse an HTML/plain error page, so a `vercel.json` rewrite
-// funnels every otherwise-unmatched `/api/*` request here to return a
+// scanners) can't parse an HTML/plain error page, so this handler returns a
 // machine-readable JSON error with a code, a message, and a resolution hint.
 //
-// Filesystem precedence guarantees this only ever runs for paths with NO real
-// function: Vercel matches concrete + dynamic function routes before applying
-// `rewrites` (verified against production), so a live endpoint is never
-// shadowed by this catch-all.
+// It is mounted as the filesystem catch-all `api/[...notfound].ts`, which
+// re-exports this handler. A root-level catch-all (`[...slug]`) has the LOWEST
+// dynamic-route precedence, so concrete functions AND nested dynamic gateways
+// (`api/<service>/v1/[rpc].ts`) resolve first — a live endpoint is never
+// shadowed. It was previously wired via a `/api/:path*` rewrite, an afterFiles
+// rewrite that Vercel applied BEFORE dynamic routes, which shadowed every
+// `[rpc].ts` gateway and 404'd the whole versioned REST surface (#4724).
 
 export const config = { runtime: 'edge' };
 

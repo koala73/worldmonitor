@@ -1,5 +1,9 @@
 # worldmonitor
 
+[![npm version](https://img.shields.io/npm/v/worldmonitor?logo=npm)](https://www.npmjs.com/package/worldmonitor)
+[![npm downloads](https://img.shields.io/npm/dm/worldmonitor)](https://www.npmjs.com/package/worldmonitor)
+[![license](https://img.shields.io/npm/l/worldmonitor)](https://github.com/koala73/worldmonitor/blob/main/cli/LICENSE)
+
 Official command-line client for the [World Monitor](https://worldmonitor.app)
 global-intelligence API. Script country briefs, risk scores, and
 conflict / cyber / market / news feeds — plus any of the 39 MCP tools — from
@@ -9,10 +13,12 @@ The CLI is a thin, dependency-free wrapper over the
 [MCP server](https://worldmonitor.app/mcp) (the recommended agent surface) with
 a REST escape hatch. It ships as ESM and runs on Node 18+.
 
+📖 **Full documentation:** [worldmonitor.app/docs/cli](https://worldmonitor.app/docs/cli)
+
 ## Install
 
 ```sh
-npm install -g worldmonitor
+npm install -g worldmonitor   # installs the `worldmonitor` command (alias: `wm`)
 # or run without installing:
 npx worldmonitor tools
 ```
@@ -55,12 +61,21 @@ MCP and REST:
 - `tools` — list every MCP tool (public — no key needed)
 - `call <tool> [--arg val]` — call any MCP tool (`--args '<json>'` for typed args)
 - `prompts` / `resources` — list MCP prompt / resource templates
-- `health` — API status / health check
+- `health` — API status / health check (requires `--api-key`)
 - `get <path> [--param val]` — call a raw REST path (host-relative `/api/…`)
 - `list [service]` — list documented REST operations from the live OpenAPI spec
 
 Any `--key value` pair you pass that is not a recognised flag becomes a tool or
 request parameter, so every tool argument is reachable without special wiring.
+
+Every tool also accepts a `jmespath` argument that projects the response
+server-side before it crosses the wire — typically 80–95% smaller:
+
+```sh
+worldmonitor markets --jmespath 'data."stocks-bootstrap".quotes[?symbol==`AAPL`].{s:symbol,p:price}'
+```
+
+See the [JMESPath guide](https://worldmonitor.app/docs/mcp-jmespath) for worked examples.
 
 ## Flags
 
