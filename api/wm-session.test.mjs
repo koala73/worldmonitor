@@ -1,4 +1,5 @@
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, test } from 'node:test';
 
 const SECRET = 'test-secret-must-be-at-least-32-chars-long-xxx';
@@ -124,6 +125,17 @@ test('OPTIONS preflight returns 204 with CORS', async () => {
   assert.equal(resp.status, 204);
   assert.equal(resp.headers.get('access-control-allow-methods'), 'POST, OPTIONS');
   assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
+});
+
+test('POST fail-closed limiter receives Vercel ctx for degraded telemetry', () => {
+  const src = readFileSync(new URL('./wm-session.js', import.meta.url), 'utf8');
+
+  assert.match(src, /export\s+default\s+async\s+function\s+handler\s*\(\s*req\s*,\s*ctx\s*\)/);
+  assert.match(
+    src,
+    /checkRateLimit\(req,\s*cors,\s*\{[\s\S]*?failClosed:\s*true,[\s\S]*?ctx,/,
+    'wm-session must pass Vercel ctx to the fail-closed rate limiter so Sentry delivery can use waitUntil',
+  );
 });
 
 test('GET method is rejected with 405', async () => {

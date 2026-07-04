@@ -97,7 +97,7 @@ async function readBody(req) {
   }
 }
 
-export default async function handler(req) {
+export default async function handler(req, ctx) {
   if (isDisallowedOrigin(req)) {
     return new Response('Forbidden', { status: 403 });
   }
@@ -117,6 +117,7 @@ export default async function handler(req) {
   // instead of inheriting the availability-first global fallback.
   const rl = await checkRateLimit(req, cors, {
     failClosed: true,
+    ctx,
     scope: SESSION_RATE_LIMIT_SCOPE,
     limit: SESSION_RATE_LIMIT_PER_MINUTE,
     window: SESSION_RATE_LIMIT_WINDOW,
