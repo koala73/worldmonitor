@@ -6,6 +6,7 @@ import {
   DEFAULT_SPEC_URL,
   HELP,
   MCP_AUTH_ERROR_CODE,
+  USER_AGENT,
   UsageError,
   VERSION,
   formatOutput,
@@ -78,7 +79,7 @@ export async function run(argv, io = {}) {
     if (plan.kind === 'list') {
       const specUrl = plan.specUrl || DEFAULT_SPEC_URL;
       const res = await withTimeout(options.timeout, (signal) =>
-        fetchImpl(specUrl, { headers: { accept: 'application/json' }, signal }),
+        fetchImpl(specUrl, { headers: { 'user-agent': USER_AGENT, accept: 'application/json' }, signal }),
       );
       const spec = parseBody(await res.text(), res.headers);
       if (!res.ok) {
@@ -100,6 +101,10 @@ export async function run(argv, io = {}) {
         if (value.error.code === MCP_AUTH_ERROR_CODE) {
           stderr('Hint: this call needs a key — pass --api-key or set WORLDMONITOR_API_KEY (get one at https://worldmonitor.app/pro).\n');
         }
+        return 1;
+      }
+      if (!res.ok) {
+        stderr(`${formatOutput(value, options)}\n`);
         return 1;
       }
       const result = value && typeof value === 'object' && 'result' in value ? value.result : value;

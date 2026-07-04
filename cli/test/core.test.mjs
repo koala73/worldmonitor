@@ -260,6 +260,15 @@ describe('run', () => {
     assert.match(io.err, /--api-key/);
   });
 
+  it('returns exit 1 on MCP HTTP transport errors', async () => {
+    const io = collect();
+    const { fetchImpl } = stubFetch({ ok: false, status: 403, contentType: 'text/html', body: '<html>challenge</html>' });
+    const code = await run(['tools'], { ...io, fetch: fetchImpl, env: {} });
+    assert.equal(code, 1);
+    assert.equal(io.out, '');
+    assert.match(io.err, /challenge/);
+  });
+
   it('performs a REST health check', async () => {
     const io = collect();
     const { fetchImpl, calls } = stubFetch({ body: '{"status":"OK"}' });
@@ -287,9 +296,10 @@ describe('run', () => {
   it('lists operations from the live spec', async () => {
     const io = collect();
     const spec = JSON.stringify({ paths: { '/api/cyber/v1/list-cyber-threats': { get: { summary: 'x' } } } });
-    const { fetchImpl } = stubFetch({ body: spec });
+    const { fetchImpl, calls } = stubFetch({ body: spec });
     const code = await run(['list', 'cyber'], { ...io, fetch: fetchImpl, env: {} });
     assert.equal(code, 0);
+    assert.equal(calls[0].init.headers['user-agent'], USER_AGENT);
     assert.match(io.out, /list-cyber-threats/);
   });
 });
