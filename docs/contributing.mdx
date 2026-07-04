@@ -181,6 +181,18 @@ This prevents upstream API abuse and rate limit exhaustion from malformed reques
 
 PRs that don't follow the code style or introduce security issues will be asked to revise.
 
+## CLI Release Runbook
+
+This project publishes the CLI from the repo version metadata. Use this flow when cutting a new CLI release:
+
+1. Update the root `package.json` version to the release number.
+2. Run `npm install` and `npm run build` to make sure the repo still passes the release gate.
+3. Create a git tag in the `cli-vX.Y.Z` form, where `X.Y.Z` matches `package.json`.
+4. Push the tag so the publish automation can pick it up.
+5. Confirm `NPM_TOKEN` is configured for the publish job before you ship.
+
+Release checks should fail fast if the tag and package version drift, so the tag must always match the version exactly.
+
 ## License
 
 By contributing to World Monitor, you agree that your contributions are licensed under AGPL-3.0. See the [License](/license) page for full terms, commercial licensing, and common scenarios.
