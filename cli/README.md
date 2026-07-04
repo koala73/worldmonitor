@@ -1,5 +1,9 @@
 # worldmonitor
 
+[![npm version](https://img.shields.io/npm/v/worldmonitor?logo=npm)](https://www.npmjs.com/package/worldmonitor)
+[![npm downloads](https://img.shields.io/npm/dm/worldmonitor)](https://www.npmjs.com/package/worldmonitor)
+[![license](https://img.shields.io/npm/l/worldmonitor)](https://github.com/koala73/worldmonitor/blob/main/cli/LICENSE)
+
 Official command-line client for the [World Monitor](https://worldmonitor.app)
 global-intelligence API. Script country briefs, risk scores, and
 conflict / cyber / market / news feeds — plus any of the 39 MCP tools — from
