@@ -102,4 +102,15 @@ crons.daily(
   {},
 );
 
+// Missed-renewal reconciliation (#4765): a renewal that succeeded at Dodo
+// but whose webhook was lost leaves the local sub with a lapsed period —
+// wrongly cutting off a paying customer. Daily sweep refreshes those from
+// Dodo's authoritative state and recomputes entitlements.
+crons.daily(
+  "dodo-renewal-reconciliation",
+  { hourUTC: 3, minuteUTC: 17 },
+  internal.payments.billing.reconcileMissedDodoRenewals,
+  {},
+);
+
 export default crons;

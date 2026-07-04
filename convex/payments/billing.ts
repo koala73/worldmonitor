@@ -13,6 +13,8 @@ import { ConvexError, v } from "convex/values";
 import { action, mutation, query, internalAction, internalMutation, internalQuery, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { DodoPayments } from "dodopayments";
+import type { Subscription as DodoSubscription } from "dodopayments/resources/subscriptions";
+import type { Id } from "../_generated/dataModel";
 import { resolveUserId, requireUserId } from "../lib/auth";
 import { getFeaturesForPlan } from "../lib/entitlements";
 import { ANON_ID_V4_REGEX, verifyAnonClaimToken } from "../lib/identitySigning";
@@ -33,7 +35,9 @@ import { recomputeEntitlementFromAllSubs } from "./subscriptionHelpers";
  *
  * Canonical env var: DODO_API_KEY.
  */
-function getDodoClient(): DodoPayments {
+function getDodoClient(
+  options: { timeout?: number; maxRetries?: number } = {},
+): DodoPayments {
   const apiKey = process.env.DODO_API_KEY;
   if (!apiKey) {
     // Structured throw (object-typed `data`) so the client receives
@@ -46,7 +50,129 @@ function getDodoClient(): DodoPayments {
   return new DodoPayments({
     bearerToken: apiKey,
     ...(isLive ? {} : { environment: "test_mode" as const }),
+    ...options,
   });
+}
+
+const DODO_RENEWAL_RECONCILIATION_BATCH_SIZE = 50;
+const DODO_RENEWAL_RECONCILIATION_TIMEOUT_MS = 10_000;
+const DODO_RECONCILIATION_FALLBACK_PLAN_KEY = "enterprise";
+
+const dodoReconciliationRemoteSubscriptionValidator = v.object({
+  subscription_id: v.string(),
+  product_id: v.string(),
+  status: v.string(),
+  previous_billing_date: v.union(v.string(), v.number()),
+  next_billing_date: v.union(v.string(), v.number()),
+  customer: v.optional(v.object({
+    customer_id: v.optional(v.string()),
+    email: v.optional(v.string()),
+  })),
+  metadata: v.optional(v.record(v.string(), v.string())),
+  recurring_pre_tax_amount: v.optional(v.number()),
+  currency: v.optional(v.string()),
+  tax_inclusive: v.optional(v.boolean()),
+  discount_id: v.optional(v.union(v.string(), v.null())),
+  cancelled_at: v.optional(v.union(v.string(), v.number(), v.null())),
+});
+
+type DodoReconciliationRemoteSubscription = {
+  subscription_id: string;
+  product_id: string;
+  status: string;
+  previous_billing_date: string | number;
+  next_billing_date: string | number;
+  customer?: { customer_id?: string; email?: string };
+  metadata?: Record<string, string>;
+  recurring_pre_tax_amount?: number;
+  currency?: string;
+  tax_inclusive?: boolean;
+  discount_id?: string | null;
+  cancelled_at?: string | number | null;
+};
+
+type LocalSubscriptionStatus = "active" | "on_hold" | "cancelled" | "expired";
+
+type StaleActiveSubscriptionForRenewalReconciliation = {
+  _id: Id<"subscriptions">;
+  userId: string;
+  dodoSubscriptionId: string;
+};
+
+type ReconciliationMutationResult =
+  | {
+      kind: "reconciled";
+      status: LocalSubscriptionStatus;
+      planKey: string;
+      currentPeriodEnd: number;
+    }
+  | { kind: "skipped"; reason: string };
+
+type ReconciliationSummary = {
+  inspected: number;
+  reconciled: number;
+  skipped: number;
+  failed: number;
+  limit: number;
+  hasMore: boolean;
+  failures: Array<{ dodoSubscriptionId: string; error: string }>;
+};
+
+function normalizeDodoStatus(status: string): LocalSubscriptionStatus | null {
+  switch (status) {
+    case "active":
+    case "on_hold":
+    case "cancelled":
+    case "expired":
+      return status;
+    default:
+      return null;
+  }
+}
+
+function toReconciliationEpochMs(value: string | number, fieldName: string): number {
+  const ms = typeof value === "number" ? value : new Date(value).getTime();
+  if (!Number.isFinite(ms)) {
+    throw new Error(`[billing/reconcile] invalid Dodo ${fieldName}: ${String(value)}`);
+  }
+  return ms;
+}
+
+function normalizeRemoteSubscription(
+  remote: DodoSubscription | DodoReconciliationRemoteSubscription,
+) {
+  const status = normalizeDodoStatus(remote.status);
+  if (!status) {
+    return {
+      kind: "unsupported-status" as const,
+      status: remote.status,
+      dodoSubscriptionId: remote.subscription_id,
+    };
+  }
+
+  const cancelledAt = remote.cancelled_at == null
+    ? undefined
+    : toReconciliationEpochMs(remote.cancelled_at, "cancelled_at");
+
+  return {
+    kind: "supported" as const,
+    value: {
+      dodoSubscriptionId: remote.subscription_id,
+      productId: remote.product_id,
+      status,
+      currentPeriodStart: toReconciliationEpochMs(
+        remote.previous_billing_date,
+        "previous_billing_date",
+      ),
+      currentPeriodEnd: toReconciliationEpochMs(
+        remote.next_billing_date,
+        "next_billing_date",
+      ),
+      dodoCustomerId: remote.customer?.customer_id,
+      cancelledAt,
+      rawPayload: remote,
+    },
+  };
 }
 
 /**
@@ -308,6 +434,223 @@ export const getDodoCustomerIdForUserPortal = internalQuery({
     }
 
     return null;
+  },
+});
+
+export const listStaleActiveSubscriptionsForRenewalReconciliation = internalQuery({
+  args: {
+    now: v.number(),
+    limit: v.number(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("subscriptions")
+      // Reuses the by_status_currentPeriodEnd index added by the dunning/
+      // winback work (#4935) — same ["status","currentPeriodEnd"] shape, so
+      // no duplicate index is needed for renewal reconciliation.
+      .withIndex("by_status_currentPeriodEnd", (q) =>
+        q.eq("status", "active").lt("currentPeriodEnd", args.now),
+      )
+      .order("asc")
+      .take(args.limit);
+  },
+});
+
+export const applyDodoSubscriptionReconciliation = internalMutation({
+  args: {
+    subscriptionId: v.id("subscriptions"),
+    dodoSubscriptionId: v.string(),
+    observedAt: v.number(),
+    remote: v.object({
+      dodoSubscriptionId: v.string(),
+      productId: v.string(),
+      status: v.union(
+        v.literal("active"),
+        v.literal("on_hold"),
+        v.literal("cancelled"),
+        v.literal("expired"),
+      ),
+      currentPeriodStart: v.number(),
+      currentPeriodEnd: v.number(),
+      dodoCustomerId: v.optional(v.string()),
+      cancelledAt: v.optional(v.number()),
+      rawPayload: v.any(),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db.get(args.subscriptionId);
+    if (!existing) {
+      return { kind: "skipped", reason: "local_missing" };
+    }
+    if (existing.dodoSubscriptionId !== args.dodoSubscriptionId) {
+      throw new Error(
+        `[billing/reconcile] subscription id mismatch: expected ${existing.dodoSubscriptionId}, got ${args.dodoSubscriptionId}`,
+      );
+    }
+
+    if (existing.status !== "active" || existing.currentPeriodEnd >= args.observedAt) {
+      return { kind: "skipped", reason: "local_no_longer_stale" };
+    }
+
+    if (
+      args.remote.status === existing.status &&
+      args.remote.productId === existing.dodoProductId &&
+      args.remote.currentPeriodEnd <= existing.currentPeriodEnd &&
+      (args.remote.dodoCustomerId ?? existing.dodoCustomerId) === existing.dodoCustomerId
+    ) {
+      return { kind: "skipped", reason: "remote_not_newer" };
+    }
+
+    let planKey = existing.planKey;
+    if (args.remote.productId !== existing.dodoProductId) {
+      const mapping = await ctx.db
+        .query("productPlans")
+        .withIndex("by_dodoProductId", (q) =>
+          q.eq("dodoProductId", args.remote.productId),
+        )
+        .first();
+      const mappedPlanKey =
+        mapping?.planKey ?? resolveProductToPlan(args.remote.productId);
+      if (mappedPlanKey) {
+        planKey = mappedPlanKey;
+      } else {
+        planKey = DODO_RECONCILIATION_FALLBACK_PLAN_KEY;
+        console.error(
+          `[billing/reconcile] Unknown Dodo product ID "${args.remote.productId}" for subscription ${args.remote.dodoSubscriptionId}; falling back to "${DODO_RECONCILIATION_FALLBACK_PLAN_KEY}" so a paid customer is not under-granted while catalog mapping is fixed.`,
+        );
+      }
+    }
+
+    await ctx.db.patch(existing._id, {
+      status: args.remote.status,
+      dodoProductId: args.remote.productId,
+      planKey,
+      currentPeriodStart: args.remote.currentPeriodStart,
+      currentPeriodEnd: args.remote.currentPeriodEnd,
+      dodoCustomerId: args.remote.dodoCustomerId ?? existing.dodoCustomerId,
+      rawPayload: args.remote.rawPayload,
+      updatedAt: args.observedAt,
+      ...(args.remote.status === "cancelled"
+        ? { cancelledAt: args.remote.cancelledAt ?? existing.cancelledAt ?? args.observedAt }
+        : {}),
+    });
+
+    await recomputeEntitlementFromAllSubs(ctx, existing.userId, args.observedAt);
+    return {
+      kind: "reconciled",
+      status: args.remote.status,
+      planKey,
+      currentPeriodEnd: args.remote.currentPeriodEnd,
+    };
+  },
+});
+
+export const reconcileMissedDodoRenewals = internalAction({
+  args: {
+    now: v.optional(v.number()),
+    limit: v.optional(v.number()),
+    remoteSubscriptionsForTest: v.optional(
+      v.array(dodoReconciliationRemoteSubscriptionValidator),
+    ),
+  },
+  handler: async (ctx, args): Promise<ReconciliationSummary> => {
+    if (args.remoteSubscriptionsForTest && process.env.NODE_ENV !== "test") {
+      throw new Error(
+        "[billing/reconcile] remoteSubscriptionsForTest is only allowed under test",
+      );
+    }
+
+    const now = args.now ?? Date.now();
+    const limit = Math.max(
+      1,
+      Math.min(
+        args.limit ?? DODO_RENEWAL_RECONCILIATION_BATCH_SIZE,
+        DODO_RENEWAL_RECONCILIATION_BATCH_SIZE,
+      ),
+    );
+    const stale = (await ctx.runQuery(
+      internal.payments.billing.listStaleActiveSubscriptionsForRenewalReconciliation,
+      { now, limit },
+    )) as StaleActiveSubscriptionForRenewalReconciliation[];
+
+    const remoteById = new Map(
+      (args.remoteSubscriptionsForTest ?? []).map((remote) => [
+        remote.subscription_id,
+        remote,
+      ]),
+    );
+    const client = args.remoteSubscriptionsForTest
+      ? null
+      : getDodoClient({
+          timeout: DODO_RENEWAL_RECONCILIATION_TIMEOUT_MS,
+          maxRetries: 1,
+        });
+
+    const summary = {
+      inspected: stale.length,
+      reconciled: 0,
+      skipped: 0,
+      failed: 0,
+      limit,
+      hasMore: stale.length === limit,
+      failures: [] as Array<{ dodoSubscriptionId: string; error: string }>,
+    };
+
+    for (const sub of stale) {
+      try {
+        const remote = args.remoteSubscriptionsForTest
+          ? remoteById.get(sub.dodoSubscriptionId)
+          : await client!.subscriptions.retrieve(sub.dodoSubscriptionId);
+        if (!remote) {
+          throw new Error("missing test remote subscription");
+        }
+
+        const normalized = normalizeRemoteSubscription(remote);
+        if (normalized.kind === "unsupported-status") {
+          summary.skipped++;
+          console.warn(
+            `[billing/reconcile] Skipping subscription ${normalized.dodoSubscriptionId}: unsupported Dodo status "${normalized.status}"`,
+          );
+          continue;
+        }
+
+        const result = (await ctx.runMutation(
+          internal.payments.billing.applyDodoSubscriptionReconciliation,
+          {
+            subscriptionId: sub._id,
+            dodoSubscriptionId: sub.dodoSubscriptionId,
+            observedAt: now,
+            remote: normalized.value,
+          },
+        )) as ReconciliationMutationResult;
+        if (result.kind === "reconciled") {
+          summary.reconciled++;
+        } else {
+          summary.skipped++;
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        summary.failed++;
+        summary.failures.push({
+          dodoSubscriptionId: sub.dodoSubscriptionId,
+          error: message,
+        });
+        // sentry-coverage-ok: structured console.error is forwarded by Convex
+        // auto-Sentry. We intentionally do not re-throw here because one bad
+        // Dodo lookup must not block reconciliation for other stale subscribers.
+        console.error(
+          `[billing/reconcile] Failed to reconcile dodoSubscriptionId=${sub.dodoSubscriptionId} userId=${sub.userId}: ${message}`,
+        );
+      }
+    }
+
+    if (summary.failed > 0) {
+      console.error(
+        `[billing/reconcile] ${summary.failed}/${summary.inspected} stale active subscriptions failed reconciliation`,
+      );
+    }
+
+    return summary;
   },
 });
 

@@ -2514,3 +2514,155 @@ describe("payments billing backfillSubscriptionDodoCustomerId", () => {
     });
   });
 });
+
+describe("payments billing missed renewal reconciliation", () => {
+  test("extends a stale local active subscription from active Dodo truth and recomputes entitlement", async () => {
+    const t = convexTest(schema, modules);
+    const stalePeriodEnd = NOW - DAY_MS;
+    const remotePeriodStart = NOW;
+    const remotePeriodEnd = NOW + 30 * DAY_MS;
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: TEST_USER_ID,
+        dodoSubscriptionId: "sub_missed_renewal",
+        dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: NOW - 31 * DAY_MS,
+        currentPeriodEnd: stalePeriodEnd,
+        dodoCustomerId: "cus_missed_renewal",
+        rawPayload: { subscription_id: "sub_missed_renewal" },
+        updatedAt: NOW - DAY_MS,
+      });
+      await ctx.db.insert("entitlements", {
+        userId: TEST_USER_ID,
+        planKey: "pro_monthly",
+        features: getFeaturesForPlan("pro_monthly"),
+        validUntil: stalePeriodEnd,
+        updatedAt: NOW - DAY_MS,
+      });
+    });
+
+    const summary = await t.action(
+      internal.payments.billing.reconcileMissedDodoRenewals,
+      {
+        now: NOW,
+        remoteSubscriptionsForTest: [
+          {
+            subscription_id: "sub_missed_renewal",
+            product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+            status: "active",
+            previous_billing_date: new Date(remotePeriodStart).toISOString(),
+            next_billing_date: new Date(remotePeriodEnd).toISOString(),
+            customer: {
+              customer_id: "cus_missed_renewal",
+              email: "renewal@example.com",
+            },
+            metadata: { wm_user_id: TEST_USER_ID },
+            recurring_pre_tax_amount: 1200,
+            currency: "USD",
+            tax_inclusive: false,
+          },
+        ],
+      },
+    );
+
+    expect(summary).toMatchObject({
+      inspected: 1,
+      reconciled: 1,
+      failed: 0,
+      skipped: 0,
+    });
+
+    const rows = await t.run(async (ctx) => {
+      const [sub, entitlement] = await Promise.all([
+        ctx.db
+          .query("subscriptions")
+          .withIndex("by_dodoSubscriptionId", (q) =>
+            q.eq("dodoSubscriptionId", "sub_missed_renewal"),
+          )
+          .unique(),
+        ctx.db
+          .query("entitlements")
+          .withIndex("by_userId", (q) => q.eq("userId", TEST_USER_ID))
+          .first(),
+      ]);
+      return { sub, entitlement };
+    });
+
+    expect(rows.sub?.currentPeriodStart).toBe(remotePeriodStart);
+    expect(rows.sub?.currentPeriodEnd).toBe(remotePeriodEnd);
+    expect(rows.sub?.updatedAt).toBe(NOW);
+    expect(rows.entitlement?.planKey).toBe("pro_monthly");
+    expect(rows.entitlement?.validUntil).toBe(remotePeriodEnd);
+    expect(rows.entitlement?.updatedAt).toBe(NOW);
+  });
+
+  test("continues reconciling other stale subscriptions when one Dodo lookup fails", async () => {
+    const t = convexTest(schema, modules);
+    const stalePeriodEnd = NOW - DAY_MS;
+    const remotePeriodEnd = NOW + 14 * DAY_MS;
+
+    await t.run(async (ctx) => {
+      for (const suffix of ["ok", "missing"]) {
+        const userId = `user_reconcile_${suffix}`;
+        await ctx.db.insert("subscriptions", {
+          userId,
+          dodoSubscriptionId: `sub_reconcile_${suffix}`,
+          dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+          planKey: "pro_monthly",
+          status: "active",
+          currentPeriodStart: NOW - 31 * DAY_MS,
+          currentPeriodEnd: stalePeriodEnd,
+          rawPayload: { subscription_id: `sub_reconcile_${suffix}` },
+          updatedAt: NOW - DAY_MS,
+        });
+        await ctx.db.insert("entitlements", {
+          userId,
+          planKey: "pro_monthly",
+          features: getFeaturesForPlan("pro_monthly"),
+          validUntil: stalePeriodEnd,
+          updatedAt: NOW - DAY_MS,
+        });
+      }
+    });
+
+    const summary = await t.action(
+      internal.payments.billing.reconcileMissedDodoRenewals,
+      {
+        now: NOW,
+        remoteSubscriptionsForTest: [
+          {
+            subscription_id: "sub_reconcile_ok",
+            product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+            status: "active",
+            previous_billing_date: new Date(NOW).toISOString(),
+            next_billing_date: new Date(remotePeriodEnd).toISOString(),
+          },
+        ],
+      },
+    );
+
+    expect(summary).toMatchObject({
+      inspected: 2,
+      reconciled: 1,
+      failed: 1,
+      skipped: 0,
+    });
+    expect(summary.failures).toEqual([
+      {
+        dodoSubscriptionId: "sub_reconcile_missing",
+        error: "missing test remote subscription",
+      },
+    ]);
+
+    const okEntitlement = await t.run(async (ctx) =>
+      ctx.db
+        .query("entitlements")
+        .withIndex("by_userId", (q) => q.eq("userId", "user_reconcile_ok"))
+        .first(),
+    );
+    expect(okEntitlement?.validUntil).toBe(remotePeriodEnd);
+  });
+});
