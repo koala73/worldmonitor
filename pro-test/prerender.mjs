@@ -23,6 +23,7 @@ const STATIC_SCRIPT_NONCE = 'wm-static-bootstrap';
 // deploy-config.test.mjs would demand a script-src sha256 hash for it).
 const WM_SAMEAS = [
   'https://github.com/koala73/worldmonitor',
+  'https://www.npmjs.com/package/worldmonitor',
   'https://x.com/worldmonitorai',
   'https://x.com/eliehabib',
   'https://discord.gg/re63kWKxaz',
