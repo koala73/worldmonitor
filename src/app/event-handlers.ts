@@ -702,7 +702,7 @@ export class EventHandlerManager implements AppModule {
         e.preventDefault();
         e.stopPropagation();
         void invokeTauri<void>('open_url', { url: url.toString() }).catch(() => {
-          window.open(url.toString(), '_blank');
+          window.open(url.toString(), '_blank', 'noopener,noreferrer');
         });
       };
       document.addEventListener('click', this.boundDesktopExternalLinkHandler, true);
@@ -1432,7 +1432,7 @@ export class EventHandlerManager implements AppModule {
           e.preventDefault();
           const plat = new URL(a.href, location.origin).searchParams.get('platform') || 'unknown';
           trackDownloadClicked(plat);
-          window.open(a.href, '_blank');
+          window.open(a.href, '_blank', 'noopener,noreferrer');
           dropdown.classList.remove('open');
         });
       });
@@ -1486,7 +1486,7 @@ export class EventHandlerManager implements AppModule {
       e.preventDefault();
       const plat = new URL(btn.href, location.origin).searchParams.get('platform') || 'unknown';
       trackDownloadClicked(plat);
-      window.open(btn.href, '_blank');
+      window.open(btn.href, '_blank', 'noopener,noreferrer');
     });
     mount.replaceWith(a);
   }

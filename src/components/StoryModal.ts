@@ -157,18 +157,18 @@ async function shareWhatsApp(data: StoryData): Promise<void> {
     downloadStory();
     flashButton('.story-whatsapp', t('modals.story.saved'), t('modals.story.whatsapp'));
   }
-  window.open(urls.whatsapp, '_blank');
+  window.open(urls.whatsapp, '_blank', 'noopener,noreferrer');
 }
 
 async function shareTwitter(data: StoryData): Promise<void> {
   const urls = getShareUrls(data);
-  window.open(urls.twitter, '_blank');
+  window.open(urls.twitter, '_blank', 'noopener,noreferrer');
   flashButton('.story-twitter', t('modals.story.opening'), t('modals.story.twitter'));
 }
 
 async function shareLinkedIn(data: StoryData): Promise<void> {
   const urls = getShareUrls(data);
-  window.open(urls.linkedin, '_blank');
+  window.open(urls.linkedin, '_blank', 'noopener,noreferrer');
   flashButton('.story-linkedin', t('modals.story.opening'), t('modals.story.linkedin'));
 }
 

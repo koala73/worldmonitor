@@ -1869,7 +1869,7 @@ export class App {
         .closest<HTMLElement>('[data-action]')
         ?.dataset.action;
       if (clickedAction === 'upgrade') {
-        window.open('/pro#pricing', '_blank', 'noopener');
+        window.open('/pro#pricing', '_blank', 'noopener,noreferrer');
         if (this.followedCountriesCapDropToastTimer !== null) {
           window.clearTimeout(this.followedCountriesCapDropToastTimer);
           this.followedCountriesCapDropToastTimer = null;

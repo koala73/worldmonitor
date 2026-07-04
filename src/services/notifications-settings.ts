@@ -96,12 +96,12 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           upgradeBtn.addEventListener('click', () => {
             if (!host.isSignedIn) {
               import('@/services/clerk').then(m => m.openSignIn()).catch(() => {
-                window.open('https://worldmonitor.app/pro', '_blank');
+                window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
               });
               return;
             }
             import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DEFAULT_UPGRADE_PRODUCT))).catch(() => {
-              window.open('https://worldmonitor.app/pro', '_blank');
+              window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
             });
           }, { signal });
         }

@@ -532,7 +532,7 @@ export class PanelLayoutManager implements AppModule {
       case PanelGateReason.ANONYMOUS:
         return () => this.ctx.authModal?.open();
       case PanelGateReason.FREE_TIER:
-        return () => window.open('https://worldmonitor.app/pro', '_blank');
+        return () => window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
       default:
         return () => {};
     }
