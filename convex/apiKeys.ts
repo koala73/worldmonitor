@@ -71,7 +71,8 @@ export const createApiKey = mutation({
       for (const key of toRevoke) {
         await ctx.db.patch(key._id, { revokedAt: now });
       }
-      activeCount = active.length - toRevoke.length;
+      // After revoking overflow keys there is always exactly one slot free.
+      activeCount = MAX_KEYS_PER_USER - 1;
     }
     if (activeCount >= MAX_KEYS_PER_USER) {
       throw new ConvexError("KEY_LIMIT_REACHED");

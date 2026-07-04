@@ -46,6 +46,26 @@ async function seedApiEntitlement(
   });
 }
 
+async function seedActiveApiKeys(
+  t: ReturnType<typeof convexTest>,
+  userId: string,
+  count: number,
+) {
+  await t.run(async (ctx) => {
+    const now = Date.now();
+    for (let i = 1; i <= count; i++) {
+      const args = makeKeyArgs(i);
+      await ctx.db.insert("userApiKeys", {
+        userId,
+        name: args.name,
+        keyPrefix: args.keyPrefix,
+        keyHash: args.keyHash,
+        createdAt: now - (count - i) * 1000,
+      });
+    }
+  });
+}
+
 /** Seed entitlement with apiAccess=false (Pro plan, tier 1). */
 async function seedProEntitlement(
   t: ReturnType<typeof convexTest>,
@@ -129,38 +149,36 @@ describe("createApiKey", () => {
     expect(keys.filter((k: any) => k.revokedAt)).toHaveLength(0);
   });
 
-  test("race-leftover overflow converges back to 5 active keys while creating", async () => {
-    // Models the post-race state: concurrent create calls left 6 active keys.
-    // convex-test serializes mutations, so seed the over-cap state directly.
-    const t = convexTest(schema, modules);
-    await seedApiEntitlement(t, "user-api");
+  for (const overflow of [
+    { seededActive: 6, nextKey: 7, revokedNames: ["test-key-1", "test-key-2"] },
+    {
+      seededActive: 8,
+      nextKey: 9,
+      revokedNames: ["test-key-1", "test-key-2", "test-key-3", "test-key-4"],
+    },
+  ]) {
+    test(`race-leftover overflow from ${overflow.seededActive} active keys converges back to 5 active keys while creating`, async () => {
+      // convex-test serializes mutations, so seed the post-race over-cap state directly.
+      const t = convexTest(schema, modules);
+      await seedApiEntitlement(t, "user-api");
+      await seedActiveApiKeys(t, "user-api", overflow.seededActive);
 
-    await t.run(async (ctx) => {
-      const now = Date.now();
-      for (let i = 1; i <= 6; i++) {
-        const args = makeKeyArgs(i);
-        await ctx.db.insert("userApiKeys", {
-          userId: "user-api",
-          name: args.name,
-          keyPrefix: args.keyPrefix,
-          keyHash: args.keyHash,
-          createdAt: now - (6 - i) * 1000,
-        });
-      }
+      const asApiUser = t.withIdentity(API_USER);
+      const created = await asApiUser.mutation(
+        api.apiKeys.createApiKey,
+        makeKeyArgs(overflow.nextKey),
+      );
+      expect(created.name).toBe(`test-key-${overflow.nextKey}`);
+
+      const keys = await asApiUser.query(api.apiKeys.listApiKeys, {});
+      const active = keys.filter((k: any) => !k.revokedAt);
+      const revoked = keys.filter((k: any) => k.revokedAt);
+      expect(active).toHaveLength(5);
+      expect(revoked).toHaveLength(overflow.revokedNames.length);
+      expect(revoked.map((k: any) => k.name).sort()).toEqual(overflow.revokedNames);
+      expect(active.some((k: any) => k.name === `test-key-${overflow.nextKey}`)).toBe(true);
     });
-
-    const asApiUser = t.withIdentity(API_USER);
-    const created = await asApiUser.mutation(api.apiKeys.createApiKey, makeKeyArgs(7));
-    expect(created.name).toBe("test-key-7");
-
-    const keys = await asApiUser.query(api.apiKeys.listApiKeys, {});
-    const active = keys.filter((k: any) => !k.revokedAt);
-    const revoked = keys.filter((k: any) => k.revokedAt);
-    expect(active).toHaveLength(5);
-    expect(revoked).toHaveLength(2);
-    expect(revoked.map((k: any) => k.name).sort()).toEqual(["test-key-1", "test-key-2"]);
-    expect(active.some((k: any) => k.name === "test-key-7")).toBe(true);
-  });
+  }
 
   test("revoked keys do not count toward the limit", async () => {
     const t = convexTest(schema, modules);
