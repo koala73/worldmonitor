@@ -72,6 +72,28 @@ describe('agent readiness: agent-skills index', () => {
     assert.ok(index.skills.length >= 2, `expected >=2 skills, got ${index.skills.length}`);
   });
 
+  // Discovery graders (orank/ora.ai Identity `agent-instruction` check) read
+  // this manifest as "the agent instruction file" and downgrade it when it
+  // carries no explicit when-to-use guidance. A "when to use" section in
+  // llms.txt does NOT satisfy the check — the guidance must live in the file
+  // the grader detected. Lock the top-level `instructions` field so it stays.
+  it('carries top-level when-to-use guidance for agent discovery', () => {
+    assert.equal(typeof index.instructions, 'string', 'index.instructions must be a string');
+    assert.ok(index.instructions.length > 200, 'instructions must be substantive, not a stub');
+    assert.match(index.instructions, /when to use/i, 'instructions must include explicit when-to-use guidance');
+    assert.match(index.instructions, /when not to use/i, 'instructions must state when NOT to use');
+    // How an agent should call it — the MCP endpoint and the API-key header.
+    assert.match(index.instructions, /worldmonitor\.app\/mcp/, 'instructions must say how to call the MCP server');
+    assert.match(index.instructions, /X-WorldMonitor-Key/, 'instructions must name the API-key header');
+    // Every advertised skill must be named in the guidance so the two stay in sync.
+    for (const skill of index.skills) {
+      assert.ok(
+        index.instructions.includes(skill.name),
+        `instructions must reference skill "${skill.name}" so guidance and skills stay in sync`,
+      );
+    }
+  });
+
   it('every entry points at a real SKILL.md whose bytes match the declared sha256', () => {
     for (const skill of index.skills) {
       assert.ok(skill.name, 'skill entry missing name');
