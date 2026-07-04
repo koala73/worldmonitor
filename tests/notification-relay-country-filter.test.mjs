@@ -50,13 +50,13 @@ function eventMatchesCountryScope(event, rule) {
     ?? event?.payload?.country
     ?? event?.country
     ?? null;
-  // Unattributed → permissive (deliver).
+  // Unattributed → strict drop for country-scoped rules.
   if (typeof eventCountry !== 'string' || eventCountry.trim().length === 0) {
-    return true;
+    return false;
   }
   const normalized = normalizeEventCountryCode(eventCountry);
-  // Unknown malformed → permissive (deliver).
-  if (normalized === null) return true;
+  // Unknown malformed → strict drop for country-scoped rules.
+  if (normalized === null) return false;
   return rule.countries.includes(normalized);
 }
 
@@ -112,26 +112,27 @@ describe('notification-relay eventMatchesCountryScope — source-grep contract',
     );
   });
 
-  it('PERMISSIVE semantics: no country attribution → returns true (delivered)', () => {
-    // Documented inline so the next reader doesn't flip this back to drop
-    // "for safety." See the RATIONALE block in the relay source.
+  it('STRICT semantics: no country attribution → returns false for country-scoped rules', () => {
+    // A populated country scope is a user opt-in to narrower delivery. Global
+    // corridor-risk events that carry no country attribution must not leak to
+    // Europe/Ukraine/Romania-scoped users.
     assert.match(
       relaySrc,
-      /PERMISSIVE/,
-      'relay must document permissive-on-unattributed semantics inline',
+      /STRICT/,
+      'relay must document strict-on-unattributed semantics inline',
     );
     assert.match(
       relaySrc,
-      /if\s*\(\s*typeof\s+eventCountry\s*!==\s*['"]string['"]\s*\|\|\s*eventCountry\.trim\(\)\.length\s*===\s*0\s*\)\s*{[\s\S]*?return\s+true/,
-      'missing/empty country attribution must return true (permissive)',
+      /if\s*\(\s*typeof\s+eventCountry\s*!==\s*['"]string['"]\s*\|\|\s*eventCountry\.trim\(\)\.length\s*===\s*0\s*\)\s*{[\s\S]*?return\s+false/,
+      'missing/empty country attribution must return false for country-scoped rules',
     );
   });
 
-  it('unknown malformed country (non-2-letter) → returns true (permissive, treated as unattributed)', () => {
+  it('unknown malformed country (non-2-letter) → returns false for country-scoped rules', () => {
     assert.match(
       relaySrc,
-      /if\s*\(\s*normalized\s*===\s*null\s*\)\s*return\s+true/,
-      'unknown malformed country must return true (permissive)',
+      /if\s*\(\s*normalized\s*===\s*null\s*\)\s*return\s+false/,
+      'unknown malformed country must return false for country-scoped rules',
     );
   });
 
@@ -182,23 +183,19 @@ describe('notification-relay eventMatchesCountryScope — behavioural', () => {
     assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), true);
   });
 
-  it("rule.countries=['US'] + event with NO country attribution → true (permissive)", () => {
-    // PERMISSIVE: when the publisher gives no country info, deliver. Most
-    // current publishers (rss_alert, ais-relay generic events) don't attribute,
-    // so dropping these would mean ZERO alerts for a user who set
-    // countries=['US'] — worse UX than over-delivery.
+  it("rule.countries=['US'] + event with NO country attribution → false (strict scoped delivery)", () => {
     const event = { eventType: 'rss_alert', payload: { title: 'something' } };
-    assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), true);
+    assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), false);
   });
 
-  it("rule.countries=['US'] + event.payload.country='' (empty string) → true (permissive)", () => {
+  it("rule.countries=['US'] + event.payload.country='' (empty string) → false (strict scoped delivery)", () => {
     const event = { eventType: 'rss_alert', payload: { country: '' } };
-    assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), true);
+    assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), false);
   });
 
-  it("rule.countries=['US'] + event.payload.country='   ' (whitespace) → true (permissive)", () => {
+  it("rule.countries=['US'] + event.payload.country='   ' (whitespace) → false (strict scoped delivery)", () => {
     const event = { eventType: 'rss_alert', payload: { country: '   ' } };
-    assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), true);
+    assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), false);
   });
 
   it("rule.countries=['US'] + event.payload.countryCode='us' (lowercase) → true (normalized)", () => {
@@ -224,9 +221,21 @@ describe('notification-relay eventMatchesCountryScope — behavioural', () => {
     assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), false);
   });
 
-  it("rule.countries=['US'] + unknown malformed country 'United States of Whatever' → true (permissive)", () => {
+  it("rule.countries=['US'] + unknown malformed country 'United States of Whatever' → false (strict scoped delivery)", () => {
     const event = { eventType: 'rss_alert', payload: { country: 'United States of Whatever' } };
-    assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), true);
+    assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), false);
+  });
+
+  it("rule.countries=['UA','RO'] + global Corridor Risk alert with no country attribution → false", () => {
+    const event = {
+      eventType: 'corridor_risk',
+      severity: 'critical',
+      payload: {
+        title: 'Suez / Bab el-Mandeb / Taiwan Strait corridor disruption risk rising',
+        source: 'Corridor Risk',
+      },
+    };
+    assert.equal(eventMatchesCountryScope(event, { countries: ['UA', 'RO'] }), false);
   });
 
   it('extraction priority: payload.countryCode wins over payload.country', () => {
