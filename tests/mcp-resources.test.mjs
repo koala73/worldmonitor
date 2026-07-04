@@ -230,6 +230,13 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       assert.equal(r.paramExtractor, undefined, `resource ${r.uri}: internal "paramExtractor" must not leak via resources/list`);
       assert.equal(r.freshnessWrap, undefined, `resource ${r.uri}: internal "freshnessWrap" must not leak via resources/list`);
       assert.equal(r.html, undefined, `resource ${r.uri}: internal "html" must not leak via resources/list`);
+      // ui:// shells advertise their CSP/render policy via _meta.ui; DATA
+      // resources carry no _meta.
+      if (r.uri.startsWith('ui://')) {
+        assert.ok(r._meta?.ui?.csp, `ui:// resource ${r.uri} must advertise _meta.ui.csp`);
+      } else {
+        assert.equal(r._meta, undefined, `DATA resource ${r.uri} must not carry _meta`);
+      }
     }
   });
 
@@ -248,6 +255,40 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     assert.match(c.text, /^<!doctype html>/i, 'ui:// resource must return self-contained HTML');
     assert.match(c.text, /ui\/initialize/, 'app shell must implement the MCP Apps postMessage handshake');
     assert.match(c.text, /ui\/notifications\/tool-result/, 'app shell must consume tool-result notifications');
+  });
+
+  it('ui:// app-shell HTML carries the orank view-quality + view-csp signals (uppercase DOCTYPE, color-scheme, scoped CSP)', async () => {
+    // orank Experience checks mcp-apps-ui-quality / mcp-view-domain / mcp-view-csp
+    // read the served HTML statically. Guard each required token so a future
+    // edit can't silently regress the score.
+    const res = await handler(envKeyReq(readBody('ui://worldmonitor/country-risk.html')));
+    const html = (await res.json()).result.contents[0].text;
+
+    // ui-quality + view-domain: UPPERCASE DOCTYPE + color-scheme meta.
+    assert.match(html, /^<!DOCTYPE html>/, 'HTML must open with an uppercase <!DOCTYPE html> (orank mcp-apps-ui-quality)');
+    assert.match(html, /<meta\s+name="color-scheme"\s+content="light dark">/, 'must declare <meta name="color-scheme" content="light dark">');
+    assert.doesNotMatch(html, /wm_[a-f0-9]{40}|X-WorldMonitor-Key|Bearer\s+[A-Za-z0-9]/, 'app shell must not hardcode secrets/keys');
+
+    // view-csp: a <meta http-equiv> CSP scoping all four required directive categories.
+    const cspMatch = html.match(/<meta\s+http-equiv="Content-Security-Policy"\s+content="([^"]+)">/);
+    assert.ok(cspMatch, 'must carry a <meta http-equiv="Content-Security-Policy"> tag');
+    const csp = cspMatch[1];
+    assert.match(csp, /connect-src[^;]*worldmonitor\.app/, 'connect-src must include the MCP server origin');
+    assert.match(csp, /frame-ancestors[^;]*https:\/\/chatgpt\.com/, 'frame-ancestors must include https://chatgpt.com');
+    assert.match(csp, /frame-ancestors[^;]*https:\/\/claude\.ai/, 'frame-ancestors must include https://claude.ai');
+    assert.match(csp, /form-action\s+'none'/, 'form-action must be scoped');
+    assert.match(csp, /(img|script|style)-src/, 'img/script/style-src must be present');
+    assert.doesNotMatch(csp, /default-src\s+\*/, 'must NOT use a permissive default-src * (loses orank credit)');
+  });
+
+  it('resources/read ui:// response carries spec _meta.ui.csp with secure empty allowlists', async () => {
+    const res = await handler(envKeyReq(readBody('ui://worldmonitor/country-risk.html')));
+    const meta = (await res.json()).result.contents[0]._meta;
+    assert.ok(meta?.ui?.csp, 'contents[0]._meta.ui.csp must be present (ext-apps UIResourceMeta)');
+    assert.deepEqual(meta.ui.csp.connectDomains, [], 'connectDomains empty = no external network (secure default)');
+    assert.deepEqual(meta.ui.csp.resourceDomains, [], 'resourceDomains empty = no external resources');
+    assert.deepEqual(meta.ui.csp.frameDomains, [], 'frameDomains empty = no nested frames');
+    assert.deepEqual(meta.ui.csp.baseUriDomains, [], 'baseUriDomains empty = base-uri self');
   });
 
   it('resources/read of the ui:// shell is PUBLIC — served with NO credentials', async () => {

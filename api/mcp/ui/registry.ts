@@ -28,11 +28,39 @@ export const UI_RESOURCE_MIME_TYPE = 'text/html;profile=mcp-app';
 // so the tool linkage and the registered resource can never drift.
 export const COUNTRY_RISK_UI_URI = 'ui://worldmonitor/country-risk.html';
 
+// Per-resource `_meta.ui` (ext-apps `UIResourceMeta`). The `csp` block is the
+// spec-native complement to the HTML `<meta http-equiv>` CSP: it declares which
+// external origins the view needs so the HOST can enforce an iframe CSP.
+// Empty allowlists = the secure default (no external network / resources /
+// nested frames) — correct here because the app is fully self-contained
+// (postMessage only, inline CSS/JS, no fetch, no external assets). `prefersBorder`
+// asks the host to frame the card. Surfaced on BOTH resources/list and the
+// resources/read response so a host learns the policy at discovery time.
+export interface UiResourceMeta {
+  ui: {
+    csp: {
+      connectDomains: string[];
+      resourceDomains: string[];
+      frameDomains: string[];
+      baseUriDomains: string[];
+    };
+    prefersBorder: boolean;
+  };
+}
+
+const COUNTRY_RISK_UI_META: UiResourceMeta = {
+  ui: {
+    csp: { connectDomains: [], resourceDomains: [], frameDomains: [], baseUriDomains: [] },
+    prefersBorder: true,
+  },
+};
+
 interface UiResourceDef {
   uri: string;
   name: string;
   description: string;
   mimeType: string;
+  _meta: UiResourceMeta;
   // The verbatim self-contained HTML served on resources/read.
   html: string;
 }
@@ -44,6 +72,7 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
     description:
       'Interactive in-conversation app shell for get_country_risk: renders the Composite Instability Index (CII 0-100), the unrest/conflict/security/news component breakdown, travel-advisory level, and sanctions exposure. Linked from the get_country_risk tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
     mimeType: UI_RESOURCE_MIME_TYPE,
+    _meta: COUNTRY_RISK_UI_META,
     html: COUNTRY_RISK_APP_HTML,
   },
 ];
@@ -55,13 +84,15 @@ export function isUiResourceUri(uri: string): boolean {
   return UI_RESOURCE_BY_URI.has(uri);
 }
 
-// resources/list public shape — same {uri, name, description, mimeType}
-// projection the DATA resources use; the internal `html` field never leaks.
+// resources/list public shape — {uri, name, description, mimeType} plus the
+// spec `_meta.ui` (CSP + render prefs) so a host learns the view policy at
+// discovery time. The internal `html` field never leaks.
 export interface PublicUiResourceShape {
   uri: string;
   name: string;
   description: string;
   mimeType: string;
+  _meta: UiResourceMeta;
 }
 
 export const UI_RESOURCE_LIST_RESPONSE: PublicUiResourceShape[] = UI_RESOURCE_REGISTRY.map((r) => ({
@@ -69,6 +100,7 @@ export const UI_RESOURCE_LIST_RESPONSE: PublicUiResourceShape[] = UI_RESOURCE_RE
   name: r.name,
   description: r.description,
   mimeType: r.mimeType,
+  _meta: r._meta,
 }));
 
 // resources/read responder for a ui:// URI. Returns the static HTML verbatim
@@ -88,7 +120,7 @@ export function buildUiResourceRead(
   }
   return rpcOk(
     id,
-    { contents: [{ uri: def.uri, mimeType: def.mimeType, text: def.html }] },
+    { contents: [{ uri: def.uri, mimeType: def.mimeType, text: def.html, _meta: def._meta }] },
     corsHeaders,
   );
 }

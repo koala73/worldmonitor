@@ -33,11 +33,22 @@
 
 export const COUNTRY_RISK_UI_PROTOCOL_VERSION = '2026-01-26';
 
-export const COUNTRY_RISK_APP_HTML = `<!doctype html>
+export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- MCP Apps view quality: uppercase DOCTYPE + color-scheme so the host renders
+     light/dark correctly (orank mcp-apps-ui-quality + mcp-view-domain checks). -->
+<meta name="color-scheme" content="light dark">
+<!-- MCP Apps view CSP (orank mcp-view-csp). Scopes all 4 required directive
+     categories: connect-src pins the MCP origin; frame-ancestors allowlists the
+     agent hosts that embed this shell; form-action is locked ('none' — no forms);
+     img/script/style-src are specific ('unsafe-inline' keeps the inline bridge +
+     styles working) rather than '*'. default-src 'none' earns full credit over a
+     permissive default. frame-ancestors is advisory in a <meta> CSP (browsers honor
+     it only via HTTP header) but the static scanner reads it here. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://worldmonitor.app https://www.worldmonitor.app; frame-ancestors https://chatgpt.com https://claude.ai https://claude.com; form-action 'none'; base-uri 'none'">
 <title>Country Risk — WorldMonitor</title>
 <style>
   :root {
