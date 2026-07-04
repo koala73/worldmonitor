@@ -28,6 +28,15 @@ paths:
                     type: array
                     items:
                         type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -91,6 +100,15 @@ paths:
                     type: array
                     items:
                         type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -151,6 +169,15 @@ paths:
                     type: array
                     items:
                         type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -208,6 +235,15 @@ paths:
                   example: "daily"
                   schema:
                     type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -264,6 +300,15 @@ paths:
                     type: array
                     items:
                         type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -318,6 +363,16 @@ paths:
             summary: ListEtfFlows
             description: ListEtfFlows retrieves BTC spot ETF flow estimates from Yahoo Finance.
             operationId: ListEtfFlows
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -426,6 +481,15 @@ paths:
                         - 'PT'
                         - 'CZ'
                         - 'HU'
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -470,6 +534,16 @@ paths:
             summary: ListGulfQuotes
             description: ListGulfQuotes retrieves Gulf region market quotes (indices, currencies, oil).
             operationId: ListGulfQuotes
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -542,6 +616,15 @@ paths:
                   example: true
                   schema:
                     type: boolean
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -623,6 +706,15 @@ paths:
                   example: true
                   schema:
                     type: boolean
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -702,6 +794,15 @@ paths:
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -771,6 +872,15 @@ paths:
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -816,6 +926,16 @@ paths:
             summary: ListCryptoSectors
             description: ListCryptoSectors retrieves crypto sector performance averages.
             operationId: ListCryptoSectors
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -859,6 +979,16 @@ paths:
             summary: ListDefiTokens
             description: ListDefiTokens retrieves DeFi token prices and changes.
             operationId: ListDefiTokens
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -906,6 +1036,16 @@ paths:
             summary: ListAiTokens
             description: ListAiTokens retrieves AI-focused crypto token prices and changes.
             operationId: ListAiTokens
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -953,6 +1093,16 @@ paths:
             summary: ListOtherTokens
             description: ListOtherTokens retrieves other/trending crypto token prices and changes.
             operationId: ListOtherTokens
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -1000,6 +1150,16 @@ paths:
             summary: GetFearGreedIndex
             description: GetFearGreedIndex retrieves the composite Fear & Greed sentiment index.
             operationId: GetFearGreedIndex
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -1064,6 +1224,15 @@ paths:
                   example: "2026-01-15"
                   schema:
                     type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -1113,6 +1282,16 @@ paths:
             summary: GetCotPositioning
             description: GetCotPositioning retrieves CFTC COT institutional positioning data.
             operationId: GetCotPositioning
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -1168,6 +1347,15 @@ paths:
                   example: "AAPL"
                   schema:
                     type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -1212,6 +1400,16 @@ paths:
             summary: GetMarketBreadthHistory
             description: GetMarketBreadthHistory retrieves historical % of S&P 500 stocks above 20/50/200-day SMAs.
             operationId: GetMarketBreadthHistory
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -1260,6 +1458,16 @@ paths:
             summary: GetGoldIntelligence
             description: GetGoldIntelligence retrieves gold pricing, cross-currency XAU, ratios, and CFTC positioning.
             operationId: GetGoldIntelligence
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -1347,6 +1555,16 @@ paths:
             summary: GetHyperliquidFlow
             description: GetHyperliquidFlow retrieves Hyperliquid perp positioning flow (funding/OI/basis composite scores).
             operationId: GetHyperliquidFlow
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response

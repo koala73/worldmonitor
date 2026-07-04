@@ -20,6 +20,7 @@ import { captureSilentError } from '../api/_sentry-edge.js';
 import { mapErrorToResponse } from './error-mapper';
 import { checkRateLimit, checkEndpointRateLimit, hasEndpointRatePolicy } from './_shared/rate-limit';
 import { drainResponseHeaders } from './_shared/response-headers';
+import { projectJsonResponse } from './_shared/response-projection';
 import { checkEntitlementDetailed, getRequiredTier, getEntitlements, type CachedEntitlements } from './_shared/entitlement-check';
 import { resolveClerkSession } from './_shared/auth-session';
 import {
@@ -1515,9 +1516,41 @@ export function createDomainGateway(
         mergedHeaders.delete('X-Cache-Tier');
       }
 
+      // Universal optional JMESPath projection (REST parity with the MCP
+      // server's `jmespath` tool argument). Applied to the JSON body BEFORE the
+      // ETag hash so the ETag reflects the projected payload; the ?jmespath=
+      // expression is part of the request URL, so Vercel's CDN keys each
+      // projection separately. GET-only: mutating POSTs are already fully typed
+      // via their requestBody and their responses are not cached/ETagged here.
+      // See server/_shared/response-projection.ts + /docs/mcp-jmespath.
+      let responseView = new Uint8Array(bodyBytes);
+      const jmespathExpr = new URL(request.url).searchParams.get('jmespath');
+      if (jmespathExpr && (mergedHeaders.get('Content-Type') ?? '').includes('application/json')) {
+        const projection = projectJsonResponse(bodyStr, jmespathExpr);
+        if (!projection.ok) {
+          const errorBody = JSON.stringify(projection.envelope);
+          emitRequest(400, 'ok', resolvedCacheTier, errorBody.length);
+          maybeAttachDevHealthHeader(mergedHeaders);
+          return new Response(errorBody, {
+            status: 400,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json; charset=utf-8',
+              'X-Content-Type-Options': 'nosniff',
+              'Cache-Control': 'no-store',
+            },
+          });
+        }
+        responseView = new TextEncoder().encode(projection.body);
+        // The projected body has a different length than the handler's — drop any
+        // stale Content-Length so the runtime recomputes it (a leftover value
+        // would truncate the response).
+        mergedHeaders.delete('Content-Length');
+      }
+
       // FNV-1a inspired fast hash — good enough for cache validation
       let hash = 2166136261;
-      const view = new Uint8Array(bodyBytes);
+      const view = responseView;
       for (let i = 0; i < view.length; i++) {
         hash ^= view[i]!;
         hash = Math.imul(hash, 16777619);
@@ -1534,7 +1567,7 @@ export function createDomainGateway(
 
       emitRequest(response.status, 'ok', resolvedCacheTier, view.length);
       maybeAttachDevHealthHeader(mergedHeaders);
-      return new Response(bodyBytes, {
+      return new Response(responseView, {
         status: response.status,
         statusText: response.statusText,
         headers: mergedHeaders,

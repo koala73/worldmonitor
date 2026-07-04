@@ -66,6 +66,15 @@ paths:
                         - 'FLIGHT_DELAY_SEVERITY_MAJOR'
                         - 'FLIGHT_DELAY_SEVERITY_SEVERE'
                         - 'FLIGHT_DELAY_SEVERITY_UNKNOWN'
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -128,6 +137,15 @@ paths:
                     type: array
                     items:
                         type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -201,6 +219,15 @@ paths:
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -270,6 +297,15 @@ paths:
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -342,6 +378,15 @@ paths:
                   example: "JFK"
                   schema:
                     type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -436,6 +481,15 @@ paths:
                   schema:
                     type: number
                     format: double
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -498,6 +552,15 @@ paths:
                   example: "example-id"
                   schema:
                     type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -620,6 +683,15 @@ paths:
                   example: "example"
                   schema:
                     type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -693,6 +765,15 @@ paths:
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -818,6 +899,15 @@ paths:
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
@@ -961,6 +1051,15 @@ paths:
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid or oversized (> 1024-byte) expressions return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+                    maxLength: 1024
             responses:
                 "200":
                     description: Successful response
