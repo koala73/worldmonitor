@@ -116,7 +116,6 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
 (function () {
   "use strict";
   var parentWin = window.parent;
-  var initialized = false;
 
   function post(msg) {
     // Opaque sandbox origin: the host expects "*" and validates on its side.
@@ -273,7 +272,6 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
     if (msg.id === 1 && msg.result) {
       applyTheme(msg.result.hostContext);
       notify("ui/notifications/initialized", {});
-      initialized = true;
       reportSize();
       return;
     }
@@ -295,6 +293,11 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
         break;
     }
   });
+
+  // Apply the OS/browser color preference up front so the theme is correct
+  // from first paint regardless of host message ordering; the host's
+  // ui/initialize result (hostContext.theme) overrides it if provided.
+  applyTheme(null);
 
   // Kick off the handshake.
   post({

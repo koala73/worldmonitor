@@ -285,10 +285,25 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     const res = await handler(envKeyReq(readBody('ui://worldmonitor/country-risk.html')));
     const meta = (await res.json()).result.contents[0]._meta;
     assert.ok(meta?.ui?.csp, 'contents[0]._meta.ui.csp must be present (ext-apps UIResourceMeta)');
-    assert.deepEqual(meta.ui.csp.connectDomains, [], 'connectDomains empty = no external network (secure default)');
+    // connectDomains mirrors the HTML meta CSP's connect-src (the MCP origin);
+    // the other allowlists stay empty (secure default — app loads nothing external).
+    assert.deepEqual(meta.ui.csp.connectDomains, ['https://worldmonitor.app', 'https://www.worldmonitor.app'],
+      'connectDomains must mirror the HTML connect-src (MCP server origin)');
     assert.deepEqual(meta.ui.csp.resourceDomains, [], 'resourceDomains empty = no external resources');
     assert.deepEqual(meta.ui.csp.frameDomains, [], 'frameDomains empty = no nested frames');
     assert.deepEqual(meta.ui.csp.baseUriDomains, [], 'baseUriDomains empty = base-uri self');
+
+    // Consistency guard: every connectDomain must actually appear in the
+    // served HTML's connect-src (catches the two CSP declarations drifting).
+    // Parse the CSP from the meta CONTENT attribute — not a bare `connect-src`
+    // grep, which would also hit the word in the head comment.
+    const htmlRes = await handler(envKeyReq(readBody('ui://worldmonitor/country-risk.html')));
+    const html = (await htmlRes.json()).result.contents[0].text;
+    const cspContent = html.match(/<meta\s+http-equiv="Content-Security-Policy"\s+content="([^"]+)">/)[1];
+    const connectSrc = cspContent.match(/connect-src([^;]+)/)[1];
+    for (const d of meta.ui.csp.connectDomains) {
+      assert.ok(connectSrc.includes(d), `_meta.ui.csp.connectDomains "${d}" must also be in the HTML connect-src`);
+    }
   });
 
   it('resources/read of the ui:// shell is PUBLIC — served with NO credentials', async () => {

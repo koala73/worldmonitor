@@ -30,10 +30,12 @@ export const COUNTRY_RISK_UI_URI = 'ui://worldmonitor/country-risk.html';
 
 // Per-resource `_meta.ui` (ext-apps `UIResourceMeta`). The `csp` block is the
 // spec-native complement to the HTML `<meta http-equiv>` CSP: it declares which
-// external origins the view needs so the HOST can enforce an iframe CSP.
-// Empty allowlists = the secure default (no external network / resources /
-// nested frames) — correct here because the app is fully self-contained
-// (postMessage only, inline CSS/JS, no fetch, no external assets). `prefersBorder`
+// external origins the view needs so the HOST can enforce an iframe CSP. It is
+// kept CONSISTENT with the HTML meta: `connectDomains` mirrors the meta's
+// `connect-src` (the MCP server origin — the app's data ultimately originates
+// there); `resourceDomains` / `frameDomains` / `baseUriDomains` stay empty (the
+// secure default) because the app loads no external assets, embeds no frames,
+// and needs no external base URI (postMessage only, inline CSS/JS). `prefersBorder`
 // asks the host to frame the card. Surfaced on BOTH resources/list and the
 // resources/read response so a host learns the policy at discovery time.
 export interface UiResourceMeta {
@@ -50,7 +52,13 @@ export interface UiResourceMeta {
 
 const COUNTRY_RISK_UI_META: UiResourceMeta = {
   ui: {
-    csp: { connectDomains: [], resourceDomains: [], frameDomains: [], baseUriDomains: [] },
+    csp: {
+      // Mirrors the HTML meta CSP's connect-src (the MCP server origin).
+      connectDomains: ['https://worldmonitor.app', 'https://www.worldmonitor.app'],
+      resourceDomains: [],
+      frameDomains: [],
+      baseUriDomains: [],
+    },
     prefersBorder: true,
   },
 };
