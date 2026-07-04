@@ -73,6 +73,74 @@ describe('webmcp.ts: draft-spec contract', () => {
   });
 });
 
+// Homepage WebMCP — the apex `/` serves the static pro-test welcome page
+// (public/pro/welcome.html), NOT the dashboard SPA, so App.ts's
+// registerWebMcpTools never runs there. The apex therefore inlines its own
+// synchronous WebMCP registration in the <head> (pro-test/welcome.html) so
+// browser agents and agent-readiness scanners that land on the homepage see
+// registered tools. These guards keep that signal from silently regressing.
+describe('homepage WebMCP registration (pro-test welcome)', () => {
+  const welcomeSrc = readFileSync(resolve(ROOT, 'pro-test/welcome.html'), 'utf-8');
+  const welcomeBuilt = readFileSync(resolve(ROOT, 'public/pro/welcome.html'), 'utf-8');
+
+  // Isolate the WebMCP inline <script> body (the one that touches the WebMCP
+  // provider) from both the source and the built HTML.
+  const scriptRe = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
+  const findWebMcpScript = (html) => {
+    for (const m of html.matchAll(scriptRe)) {
+      if (m[2].includes('navigator.modelContext')) return { attrs: m[1], body: m[2] };
+    }
+    return null;
+  };
+
+  it('source registers WebMCP tools synchronously in the homepage head', () => {
+    const script = findWebMcpScript(welcomeSrc);
+    assert.ok(script, 'welcome.html must inline a script that touches navigator.modelContext');
+    // Guards non-WebMCP browsers: bail before touching the provider.
+    assert.match(script.body, /if \(!provider\) return;/);
+    // Prefers the Chrome-implemented registerTool, with the legacy
+    // provideContext batch form as a fallback (mirrors src/services/webmcp.ts).
+    const registerIdx = script.body.indexOf('provider.registerTool');
+    const provideIdx = script.body.indexOf('provider.provideContext');
+    assert.ok(registerIdx >= 0, 'must call provider.registerTool');
+    assert.ok(provideIdx >= 0, 'must keep provider.provideContext fallback');
+    assert.ok(registerIdx < provideIdx, 'registerTool must be attempted before provideContext');
+  });
+
+  it('ships at least two homepage tools (act + discover)', () => {
+    const script = findWebMcpScript(welcomeSrc);
+    const toolNames = [...script.body.matchAll(/name: '([a-zA-Z]+)'/g)].map((m) => m[1]);
+    assert.ok(toolNames.length >= 2, `expected >=2 homepage tools, found ${toolNames.length}`);
+    assert.ok(toolNames.includes('launchWorldMonitor'), 'must expose launchWorldMonitor (act)');
+    assert.ok(
+      toolNames.includes('getWorldMonitorMcpEndpoint'),
+      'must expose getWorldMonitorMcpEndpoint (discovery bridge to the remote MCP transport)',
+    );
+  });
+
+  it('discovery tool points agents at the live remote MCP transport', () => {
+    const script = findWebMcpScript(welcomeSrc);
+    // The homepage WebMCP surface is a gateway to the full HTTP MCP server;
+    // the discovery tool must hand agents the real /mcp endpoint.
+    assert.match(script.body, /https:\/\/worldmonitor\.app\/mcp/);
+  });
+
+  it('the built homepage carries the WebMCP script under the static nonce (no CSP hash needed)', () => {
+    // deploy-config.test.mjs only exempts inline scripts that carry
+    // nonce="wm-static-bootstrap" from the exact CSP script-src hash set.
+    // If the build ever stops noncing this script, that test would demand a
+    // new hash; assert the invariant here at its source so the failure is
+    // legible rather than surfacing as an opaque CSP-hash mismatch.
+    const script = findWebMcpScript(welcomeBuilt);
+    assert.ok(script, 'built welcome.html must still contain the WebMCP script');
+    assert.match(
+      script.attrs,
+      /\bnonce="wm-static-bootstrap"/,
+      'built WebMCP script must carry the static bootstrap nonce so it needs no CSP hash',
+    );
+  });
+});
+
 // Behavioural tests against buildWebMcpTools() — we can exercise the pure
 // builder by re-implementing the minimal shape it needs. This is a sanity
 // check that the exported surface behaves the way the contract claims.
