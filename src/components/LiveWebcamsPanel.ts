@@ -9,6 +9,7 @@ import { isMobileDevice, loadFromStorage, saveToStorage } from '@/utils';
 import { playAllLiveMedia, registerLiveMediaStarter, unregisterLiveMediaStarter, type LiveMediaStopReason } from '@/services/live-media-controller';
 import { getLiveStreamsAlwaysOn, subscribeLiveStreamsSettingsChange } from '@/services/live-stream-settings';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { isAllowedWebcamEmbedMessageOrigin } from './_live-webcams-origin';
 
 
 type WebcamRegion = 'middle-east' | 'europe' | 'asia' | 'americas' | 'space';
@@ -598,6 +599,7 @@ export class LiveWebcamsPanel extends Panel {
   private handleEmbedMessage(e: MessageEvent): void {
     const iframe = this.findIframeBySource(e.source);
     if (!iframe) return;
+    if (!isAllowedWebcamEmbedMessageOrigin(e.origin, iframe.src)) return;
 
     // Desktop sidecar posts { type: 'yt-ready' | 'yt-state' | 'yt-error' }
     const msg = e.data as { type?: string; state?: number; code?: number; event?: string; info?: unknown } | string | null;

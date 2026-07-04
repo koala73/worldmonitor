@@ -295,8 +295,34 @@ export type McpResourceExtractResult =
   | { ok: true; args: Record<string, unknown> }
   | { ok: false; reason: string };
 
-export interface McpResourceDef {
+// Concrete, anonymously-readable, quota-exempt resource surfaced via
+// `resources/list`. Its `read()` returns ONLY non-sensitive freshness /
+// health metadata (never billable data), so an anonymous agent (or an
+// agent-readiness scanner) can `resources/read` it cleanly — the same
+// public + quota-exempt posture as `prompts/list` and `describe_tool`.
+// `read` returns the wire-ready `content[0].text` and MUST be robust:
+// it returns a valid envelope even when the upstream cache read fails, so
+// the read never surfaces empty content or a 5xx to the caller.
+export interface PublicResourceDef {
   uri: string;
+  name: string;
+  description: string;
+  mimeType: string;
+  read: () => Promise<string>;
+}
+
+// Data-bearing URI TEMPLATE surfaced via `resources/templates/list`. A
+// concrete instantiation `resources/read` routes through
+// `dispatchToolsCall`, inheriting Pro daily-quota symmetry with the
+// equivalent `tools/call` — asymmetric auth here is a known MCP data-leak /
+// quota-bypass vector (a Pro user at the daily cap could otherwise keep
+// reading data through resources for free), so these stay gated. Templates
+// live in `resources/templates/list` (NOT `resources/list`) because a
+// literal `{iso2}` URI can never resolve to data; only the substituted form
+// reads — surfacing a template in `resources/list` breaks an anonymous
+// validator's `resources/read` probe.
+export interface TemplateResourceDef {
+  uriTemplate: string;
   name: string;
   description: string;
   mimeType: string;
