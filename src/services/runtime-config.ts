@@ -306,10 +306,9 @@ function readClientEnvOpenskyRelayUrl(): string {
 }
 
 function readEnvSecret(key: RuntimeSecretKey): string {
-  const envValue = key === 'VITE_OPENSKY_RELAY_URL'
+  return key === 'VITE_OPENSKY_RELAY_URL'
     ? readClientEnvOpenskyRelayUrl()
     : '';
-  return typeof envValue === 'string' ? envValue.trim() : '';
 }
 
 function readStoredToggles(): Record<RuntimeFeatureId, boolean> {

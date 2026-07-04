@@ -33,6 +33,7 @@ import assert from 'node:assert/strict';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as ts from 'typescript';
 
 // Server-side secrets that MUST NOT cross into the browser bundle. Each
 // of these grants access to worldmonitor.app infrastructure. They are
@@ -143,10 +144,29 @@ async function listFiles(root: string, extensions: Set<string>): Promise<string[
 
 function extractViteEnvNames(source: string): string[] {
   const keys = new Set<string>();
-  const directEnvRef = /\.env(?:\?)?\.(VITE_[A-Z0-9_]+)/g;
-  for (const match of source.matchAll(directEnvRef)) {
-    keys.add(match[1]);
+  const sourceFile = ts.createSourceFile('client-source.ts', source, ts.ScriptTarget.Latest, true);
+
+  function isImportMetaEnvExpression(expression: ts.Expression): boolean {
+    if (!ts.isPropertyAccessExpression(expression) || expression.name.text !== 'env') {
+      return false;
+    }
+    const receiver = expression.expression;
+    return ts.isMetaProperty(receiver)
+      && receiver.keywordToken === ts.SyntaxKind.ImportKeyword
+      && receiver.name.text === 'meta';
   }
+
+  function visit(node: ts.Node): void {
+    if (ts.isPropertyAccessExpression(node)) {
+      const envName = node.name.text;
+      if (/^VITE_[A-Z0-9_]+$/.test(envName) && isImportMetaEnvExpression(node.expression)) {
+        keys.add(envName);
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
   return [...keys].sort();
 }
 
