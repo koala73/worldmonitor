@@ -10784,8 +10784,8 @@ function requireWidgetAgentAccess(req, res) {
 
   const providedKey = getWidgetAgentProvidedKey(req);
   const providedProKey = getWidgetAgentProvidedProKey(req);
-  const hasValidWidgetKey = status.widgetKeyConfigured && providedKey && providedKey === WIDGET_AGENT_KEY;
-  const hasValidProKey = status.proKeyConfigured && providedProKey && providedProKey === PRO_WIDGET_KEY;
+  const hasValidWidgetKey = Boolean(status.widgetKeyConfigured && providedKey && safeTokenEquals(providedKey, WIDGET_AGENT_KEY));
+  const hasValidProKey = Boolean(status.proKeyConfigured && providedProKey && safeTokenEquals(providedProKey, PRO_WIDGET_KEY));
   if (!hasValidWidgetKey && !hasValidProKey) {
     safeEnd(res, 403, { 'Content-Type': 'application/json' }, JSON.stringify({ ...status, error: 'Forbidden' }));
     return null;
@@ -10864,7 +10864,7 @@ async function handleWidgetAgentRequest(req, res) {
     }
     if (status.admittedAs !== 'pro') {
       const providedProKey = getWidgetAgentProvidedProKey(req);
-      if (!providedProKey || providedProKey !== PRO_WIDGET_KEY) {
+      if (!providedProKey || !safeTokenEquals(providedProKey, PRO_WIDGET_KEY)) {
         return safeEnd(res, 403, { 'Content-Type': 'application/json' }, JSON.stringify({ error: 'Forbidden' }));
       }
     }

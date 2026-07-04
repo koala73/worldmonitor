@@ -145,6 +145,60 @@ test('enterprise key can be exchanged into a short-lived HttpOnly pro cookie', a
   assert.match(cookies.join('\n'), /wm-pro-key=enterprise-secret;.*HttpOnly/);
 });
 
+test('legacy widget/pro secret checks reject prefix and length mismatches', async () => {
+  const previousWidget = process.env.WIDGET_AGENT_KEY;
+  const previousPro = process.env.PRO_WIDGET_KEY;
+  const previousEnterprise = process.env.WORLDMONITOR_VALID_KEYS;
+  process.env.WIDGET_AGENT_KEY = 'widget-secret-with-a-distinct-length';
+  process.env.PRO_WIDGET_KEY = 'pro-secret-with-a-longer-distinct-length';
+  process.env.WORLDMONITOR_VALID_KEYS = 'enterprise-short,enterprise-secret-with-a-longer-length';
+
+  try {
+    const accepted = await handler(new Request('https://api.worldmonitor.app/api/wm-session', {
+      method: 'POST',
+      headers: {
+        origin: 'https://worldmonitor.app',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        widgetKey: 'widget-secret-with-a-distinct-length',
+        proKey: 'enterprise-secret-with-a-longer-length',
+      }),
+    }));
+    assert.equal(accepted.status, 200);
+
+    const prefixOnly = await handler(new Request('https://api.worldmonitor.app/api/wm-session', {
+      method: 'POST',
+      headers: {
+        origin: 'https://worldmonitor.app',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        widgetKey: 'widget-secret-with-a-distinct',
+        proKey: 'enterprise-secret-with-a-longer',
+      }),
+    }));
+    assert.equal(prefixOnly.status, 401);
+
+    const differentLength = await handler(new Request('https://api.worldmonitor.app/api/wm-session', {
+      method: 'POST',
+      headers: {
+        origin: 'https://worldmonitor.app',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        widgetKey: 'widget-secret-with-a-distinct-length-extra',
+        proKey: 'enterprise-short-extra',
+      }),
+    }));
+    assert.equal(differentLength.status, 401);
+  } finally {
+    process.env.WIDGET_AGENT_KEY = previousWidget;
+    process.env.PRO_WIDGET_KEY = previousPro;
+    process.env.WORLDMONITOR_VALID_KEYS = previousEnterprise;
+  }
+});
+
 test('invalid legacy keys are rejected and not persisted as HttpOnly cookies', async () => {
   const req = new Request('https://api.worldmonitor.app/api/wm-session', {
     method: 'POST',

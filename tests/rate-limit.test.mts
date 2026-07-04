@@ -201,7 +201,7 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
     const mod = await importFreshRateLimitModule();
     const pathname = '/api/news/v1/summarize-article';
 
-    assert.deepEqual(ENDPOINT_RATE_POLICIES[pathname], { limit: 60, window: '60 s' });
+    assert.deepEqual(ENDPOINT_RATE_POLICIES[pathname], { limit: 30, window: '60 s' });
     assert.ok(
       pathname in FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED,
       'LLM-backed summarize-article must stay in the fail-closed requirement registry',
@@ -221,6 +221,7 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
       'https://worldmonitor.app',
       'CORS headers should be propagated on the degraded response',
     );
+    assert.equal(res.headers.get('Retry-After'), '5');
   });
 
   it('deduct-situation is an explicit fail-closed endpoint policy route (#4676)', async () => {
