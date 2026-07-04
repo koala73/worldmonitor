@@ -46,6 +46,21 @@ describe('cors helper', () => {
       /(?:^|,\s*)Idempotent-Replayed(?:,|$)/,
       'browser clients must be able to read idempotent replay status',
     );
+    assert.match(
+      headers['Access-Control-Expose-Headers'],
+      /(?:^|,\s*)X-RateLimit-Limit(?:,|$)/,
+      'browser clients must be able to read rate-limit ceilings',
+    );
+    assert.match(
+      headers['Access-Control-Expose-Headers'],
+      /(?:^|,\s*)X-RateLimit-Remaining(?:,|$)/,
+      'browser clients must be able to read remaining rate-limit budget',
+    );
+    assert.match(
+      headers['Access-Control-Expose-Headers'],
+      /(?:^|,\s*)X-RateLimit-Reset(?:,|$)/,
+      'browser clients must be able to read rate-limit reset timestamps',
+    );
   });
 
   it('propagates exceptions (caller must wrap in fail-closed try/catch)', () => {
