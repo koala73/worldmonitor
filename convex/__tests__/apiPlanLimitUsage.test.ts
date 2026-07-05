@@ -173,6 +173,36 @@ describe("api plan-limit usage scanner", () => {
     expect(notices[0].blockedReason).toBeUndefined();
   });
 
+  test("an over-limit annual API Starter notice routes to contact_support, not a portal dead-end", async () => {
+    const t = convexTest(schema, modules);
+    await seedEntitlement(t, "user-annual", "api_starter_annual");
+
+    // api_starter_annual carries API_STARTER_FEATURES (planLimits: 1000/day), so it
+    // IS scanner-reachable. Its self-serve portal upgrade path to Business is
+    // unverified, so the CTA must be contact_support (never a billing_portal
+    // dead-end), matching the Settings button that renders only for 'api_starter'.
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, {
+      now: NOW,
+      rows: [{
+        userId: "user-annual",
+        dimension: "api_daily_requests",
+        usage: 1_200,
+        source: "test",
+      }],
+    });
+
+    expect(summary.notified).toBe(1);
+    const notices = await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect());
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({
+      planKey: "api_starter_annual",
+      state: "over_limit",
+      ctaKind: "contact_support",
+      blockedReason: "api_business_not_self_serve",
+      upgradeTargetPlanKey: "api_business",
+    });
+  });
+
   test("does not emit MCP minute notices without durable limiter-hit buckets", async () => {
     const t = convexTest(schema, modules);
     await seedEntitlement(t, "user-pro", "pro_monthly");
