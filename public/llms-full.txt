@@ -262,7 +262,7 @@ Native desktop app built with Tauri (Rust + Node.js sidecar). The sidecar mirror
 - 8 live news streams and 19 live webcams from geopolitical hotspots
 - 7-signal macro market radar with BUY/CASH verdict
 - Country brief pages with exportable intelligence dossiers (JSON, CSV, PNG)
-- Multilingual UI in 24 languages with RTL support
+- Multilingual UI in 25 languages with RTL support
 - Prediction market integration (Polymarket) with 3-tier JA3 bypass
 - Temporal baseline anomaly detection using Welford's algorithm
 - Dual-source protest tracking (ACLED + GDELT) with regime-aware scoring

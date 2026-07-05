@@ -1,6 +1,6 @@
 ---
 title: "API Reference"
-description: "Catalog of every WorldMonitor REST service. All endpoints follow /api/<service>/v1/<rpc-name>."
+description: "Catalog of documented WorldMonitor REST service groups. All endpoints follow /api/<service>/v1/<rpc-name>."
 ---
 
 WorldMonitor exposes its data through a family of versioned REST services. Every endpoint follows the same shape:
@@ -11,7 +11,7 @@ https://api.worldmonitor.app/api/<service>/v1/<rpc-name>
 
 `<rpc-name>` is kebab-case (e.g. `list-acled-events`, `get-resilience-ranking`). Auth is the same on every service — pass a user API key such as `X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567`, an operator-issued enterprise key, or use the dashboard's browser session where supported. See [Authentication](/usage-auth) for details.
 
-The grouped pages in the left sidebar render the full OpenAPI spec — request parameters, response schemas, and try-it-out — for each service.
+The grouped pages in the left sidebar render OpenAPI specs — request parameters, response schemas, and try-it-out — for the documented service groups. The bundled spec remains the complete machine-readable source.
 
 Prefer the terminal? The official [`worldmonitor` CLI](/cli) hits any of these paths (`worldmonitor get /api/<service>/v1/<rpc-name>`) and lists the live catalog with `worldmonitor list`.
 
@@ -19,7 +19,7 @@ Prefer the terminal? The official [`worldmonitor` CLI](/cli) hits any of these p
 
 Building an agent or codegen pipeline? Point at `https://worldmonitor.app/` and follow the `Link:` header — every OpenAPI spec, MCP server card, OAuth endpoint, and agent-skill bundle is discoverable from one root URL via standard `.well-known` paths. See [Agent Discovery](/agent-discovery) for the full walkthrough.
 
-The single bundled spec is at [`/openapi.yaml`](https://www.worldmonitor.app/openapi.yaml) — feed it to any OpenAPI generator to produce typed clients for all 35 services in one pass.
+The single bundled spec is at [`/openapi.yaml`](https://www.worldmonitor.app/openapi.yaml) — feed it to any OpenAPI generator to produce typed clients for all 35 generated services in one pass, including platform services that do not have dedicated sidebar pages.
 
 ## Service catalog
 
@@ -33,7 +33,7 @@ The single bundled spec is at [`/openapi.yaml`](https://www.worldmonitor.app/ope
 
 **Health and environment** — Public Health, Imagery, Webcams
 
-**Other** — News (feed digest, article summaries), Research, Positive Events, Giving, Batch (bulk read fan-out)
+**Other** — News (feed digest, article summaries), Research, Positive Events, Giving, Batch (bulk read fan-out), Leads (contact and Pro-waitlist mutations documented under Platform Endpoints)
 
 Open any group in the sidebar to browse its operations.
 

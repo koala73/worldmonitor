@@ -64,8 +64,9 @@ POST /oauth/register  {"client_name":"My Agent","redirect_uris":["https://claude
 
 `redirect_uris` are allowlisted (Claude callbacks + `http://localhost` /
 `http://127.0.0.1` on any port). Clients are public — no secret; use PKCE
-(`S256`). **API-key path:** self-issue a key at
-<https://worldmonitor.app/developers> — no registration call.
+(`S256`). **API-key path:** start at <https://worldmonitor.app/pro>, then use
+the signed-in dashboard's API Keys settings to self-issue or revoke keys — no
+registration call.
 
 ## Claim
 
@@ -108,8 +109,9 @@ The same credentials authorize the REST API. Catalog:
 
 - **Expiry** — access tokens last 1 hour, refresh tokens 7 days; let them lapse
   to de-authorize an agent.
-- **User revoke** — a signed-in user revokes an agent from the dashboard
-  (<https://worldmonitor.app/developers>); the token is then rejected with `401`
+- **User revoke** — a signed-in user revokes an agent from the dashboard's API
+  Keys or Connected MCP Clients settings; start at <https://worldmonitor.app/pro>.
+  The token is then rejected with `401`
   / `invalid_grant`.
 - **Refresh rotation** — refresh tokens rotate on every use with token-family
   revocation, so a stolen token dies once the real client next refreshes.
