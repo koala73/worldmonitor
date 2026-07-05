@@ -415,7 +415,7 @@ function isFeatureFlagEnabled(): boolean {
   // Default ON in dev/preview; OFF only when explicitly set to '0'.
   // Plan U2: use `!== '0'` (default-on).
   try {
-    const flag = import.meta.env?.VITE_FOLLOW_COUNTRIES_ENABLED;
+    const flag = import.meta.env.VITE_FOLLOW_COUNTRIES_ENABLED;
     return flag !== '0';
   } catch {
     return true;

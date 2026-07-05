@@ -295,9 +295,20 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
   },
 ];
 
+function readClientEnvOpenskyRelayUrl(): string {
+  try {
+    return typeof import.meta.env.VITE_OPENSKY_RELAY_URL === 'string'
+      ? import.meta.env.VITE_OPENSKY_RELAY_URL.trim()
+      : '';
+  } catch {
+    return '';
+  }
+}
+
 function readEnvSecret(key: RuntimeSecretKey): string {
-  const envValue = (import.meta as { env?: Record<string, unknown> }).env?.[key];
-  return typeof envValue === 'string' ? envValue.trim() : '';
+  return key === 'VITE_OPENSKY_RELAY_URL'
+    ? readClientEnvOpenskyRelayUrl()
+    : '';
 }
 
 function readStoredToggles(): Record<RuntimeFeatureId, boolean> {

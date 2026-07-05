@@ -3,6 +3,7 @@ import type { ThreatLevel, EventCategory, ThreatClassification } from '@/types';
 
 import { getCSSColor } from '@/utils';
 import { getRpcBaseUrl, getRpcErrorStatusCode } from '@/services/rpc-client';
+import { premiumFetch } from '@/services/premium-fetch';
 
 /** @deprecated Use getThreatColor() instead for runtime CSS variable reads */
 export const THREAT_COLORS: Record<ThreatLevel, string> = {
@@ -377,7 +378,7 @@ import type { ClassifyEventResponse } from '@/generated/client/worldmonitor/inte
 import { createCircuitBreaker } from '@/utils';
 import { IntelligenceServiceClient } from '@/services/generated-rpc-clients';
 
-const classifyClient = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+const classifyClient = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
 
 const classifyBreaker = createCircuitBreaker<ThreatClassification | null>({
   name: 'AIClassify',

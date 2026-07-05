@@ -53,12 +53,27 @@ export const createApiKey = mutation({
       throw new ConvexError("INVALID_HASH");
     }
 
-    // Enforce per-user key limit (count only non-revoked keys)
+    // Enforce per-user key limit (count only non-revoked keys).
+    //
+    // API keys intentionally reject at the cap instead of silently rotating a
+    // valid key. If a prior race left too many active rows, converge by
+    // revoking enough oldest overflow rows to make room for this create.
     const existing = await ctx.db
       .query("userApiKeys")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
       .collect();
-    const activeCount = existing.filter((k) => !k.revokedAt).length;
+    const active = existing.filter((k) => !k.revokedAt);
+    let activeCount = active.length;
+    if (active.length > MAX_KEYS_PER_USER) {
+      active.sort((a, b) => a.createdAt - b.createdAt);
+      const toRevoke = active.slice(0, active.length - (MAX_KEYS_PER_USER - 1));
+      const now = Date.now();
+      for (const key of toRevoke) {
+        await ctx.db.patch(key._id, { revokedAt: now });
+      }
+      // After revoking overflow keys there is always exactly one slot free.
+      activeCount = MAX_KEYS_PER_USER - 1;
+    }
     if (activeCount >= MAX_KEYS_PER_USER) {
       throw new ConvexError("KEY_LIMIT_REACHED");
     }

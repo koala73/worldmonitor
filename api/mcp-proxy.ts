@@ -208,7 +208,7 @@ function buildInitPayload() {
 async function validateServerUrl(raw) {
   let url;
   try { url = new URL(raw); } catch { return null; }
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+  if (url.protocol !== 'https:') return null;
   try {
     return (await assertServerUrlSafe(url)).url;
   } catch {

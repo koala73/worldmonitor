@@ -61,6 +61,7 @@ function makeEntitlements(tier: number, planKey = "free") {
 
 describe("gateway entitlement check", () => {
   test.each([
+    "/api/intelligence/v1/classify-event",
     "/api/market/v1/analyze-stock",
     "/api/market/v1/get-stock-analysis-history",
     "/api/market/v1/backtest-stock",

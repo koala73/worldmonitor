@@ -9,6 +9,7 @@ User-agent: *
 Allow: /
 Allow: /api/story
 Allow: /api/og-story
+Allow: /api/llms.txt
 Disallow: /api/
 Disallow: /tests/
 

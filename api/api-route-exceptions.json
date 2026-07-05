@@ -138,7 +138,7 @@
     {
       "path": "api/mcp/resources/index.ts",
       "category": "external-protocol",
-      "reason": "MCP RESOURCE_REGISTRY + buildResourceResponse + resources/list public-shape projection. Read-only addressable URIs surfaced via resources/list + resources/read JSON-RPC methods, shape dictated by the MCP spec. Routes resources/read through dispatchToolsCall for auth-symmetric Pro daily-quota deduction.",
+      "reason": "MCP resource registries (PUBLIC_RESOURCE_REGISTRY + TEMPLATE_RESOURCE_REGISTRY) + buildResourceResponse/buildPublicResourceResponse + resources/list + resources/templates/list public-shape projections. Read-only addressable URIs surfaced via the resources/list, resources/templates/list, and resources/read JSON-RPC methods, shape dictated by the MCP spec. Concrete public resources (metadata-only freshness probes) read anonymously + quota-free; data-bearing template instantiations route resources/read through dispatchToolsCall for auth-symmetric Pro daily-quota deduction.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },

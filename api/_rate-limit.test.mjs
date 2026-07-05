@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import {
   RATE_LIMIT_DEGRADED_HEADERS,
   UNKNOWN_CLIENT_IP,
+  __resetRateLimitForTest,
   checkRateLimit,
   getClientIp,
 } from './_rate-limit.js';
@@ -114,6 +115,7 @@ describe('api/_rate-limit checkRateLimit fail-open / fail-closed (#3531 M9)', ()
   afterEach(() => {
     globalThis.fetch = originalFetch;
     console.error = originalConsoleError;
+    __resetRateLimitForTest();
     restoreEnv();
   });
 
@@ -161,6 +163,52 @@ describe('api/_rate-limit checkRateLimit fail-open / fail-closed (#3531 M9)', ()
     assert.equal(res.status, 503);
     assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
     assert.equal(res.headers.get('Retry-After'), '5');
+    assert.equal(
+      res.headers.get('Access-Control-Allow-Origin'),
+      'https://worldmonitor.app',
+    );
+  });
+
+  it('custom scoped policy uses the caller-supplied lower limit', async () => {
+    const redisBodies = [];
+    globalThis.fetch = async (_input, init) => {
+      redisBodies.push(String(init?.body ?? ''));
+      return new Response(
+        JSON.stringify([{ result: [29, 30] }]),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    };
+
+    const res = await checkRateLimit(
+      makeRequest({ 'cf-connecting-ip': '203.0.113.7' }),
+      {},
+      { scope: 'wm-session', limit: 30, window: '60 s', failClosed: true },
+    );
+
+    assert.equal(res, null);
+    assert.ok(
+      redisBodies.some((body) => body.includes('rl:wm-session') && body.includes('30')),
+      `expected scoped 30/min limiter command, got: ${redisBodies.join('\n')}`,
+    );
+  });
+
+  it('custom scoped policy returns 429 with the configured lower limit when exhausted', async () => {
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify([{ result: [-1, 30] }]),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+
+    const res = await checkRateLimit(
+      makeRequest({ 'cf-connecting-ip': '203.0.113.7' }),
+      { 'Access-Control-Allow-Origin': 'https://worldmonitor.app' },
+      { scope: 'wm-session', limit: 30, window: '60 s', failClosed: true },
+    );
+
+    assert.ok(res, 'expected a Response when the scoped policy is exhausted');
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get('X-RateLimit-Limit'), '30');
+    assert.equal(res.headers.get('X-RateLimit-Remaining'), '0');
     assert.equal(
       res.headers.get('Access-Control-Allow-Origin'),
       'https://worldmonitor.app',

@@ -330,40 +330,59 @@ describe('api/mcp-proxy', () => {
       assert.match(data.error, /serverUrl/i);
     });
 
-    it('returns 400 for non-http(s) protocol', async () => {
+    it('returns 400 for non-HTTPS protocol', async () => {
       const res = await handler(makeGetRequest({ serverUrl: 'ftp://mcp.example.com/mcp' }));
       assert.equal(res.status, 400);
       const data = await res.json();
       assert.match(data.error, /invalid serverUrl/i);
     });
 
+    it('returns 400 for plain HTTP public upstreams before DNS or fetch', async () => {
+      let resolverCalled = false;
+      let fetchCalled = false;
+      setResolveHostnameForTest(async () => {
+        resolverCalled = true;
+        return [PUBLIC_TEST_ADDRESS];
+      });
+      globalThis.fetch = async () => {
+        fetchCalled = true;
+        return new Response('{}', { status: 200 });
+      };
+      const res = await handler(makeGetRequest({ serverUrl: 'http://public-mcp.example/mcp' }));
+      assert.equal(res.status, 400);
+      const data = await res.json();
+      assert.match(data.error, /invalid serverUrl/i);
+      assert.equal(resolverCalled, false, 'HTTP upstream validation must reject before DNS resolution');
+      assert.equal(fetchCalled, false, 'HTTP upstream validation must reject before upstream fetch');
+    });
+
     it('returns 400 for localhost', async () => {
-      const res = await handler(makeGetRequest({ serverUrl: 'http://localhost/mcp' }));
+      const res = await handler(makeGetRequest({ serverUrl: 'https://localhost/mcp' }));
       assert.equal(res.status, 400);
     });
 
     it('returns 400 for 127.x.x.x', async () => {
-      const res = await handler(makeGetRequest({ serverUrl: 'http://127.0.0.1:8080/mcp' }));
+      const res = await handler(makeGetRequest({ serverUrl: 'https://127.0.0.1:8080/mcp' }));
       assert.equal(res.status, 400);
     });
 
     it('returns 400 for 10.x.x.x (RFC1918)', async () => {
-      const res = await handler(makeGetRequest({ serverUrl: 'http://10.0.0.1/mcp' }));
+      const res = await handler(makeGetRequest({ serverUrl: 'https://10.0.0.1/mcp' }));
       assert.equal(res.status, 400);
     });
 
     it('returns 400 for 192.168.x.x (RFC1918)', async () => {
-      const res = await handler(makeGetRequest({ serverUrl: 'http://192.168.1.1/mcp' }));
+      const res = await handler(makeGetRequest({ serverUrl: 'https://192.168.1.1/mcp' }));
       assert.equal(res.status, 400);
     });
 
     it('returns 400 for 172.16.x.x (RFC1918)', async () => {
-      const res = await handler(makeGetRequest({ serverUrl: 'http://172.16.0.1/mcp' }));
+      const res = await handler(makeGetRequest({ serverUrl: 'https://172.16.0.1/mcp' }));
       assert.equal(res.status, 400);
     });
 
     it('returns 400 for link-local 169.254.x.x (cloud metadata)', async () => {
-      const res = await handler(makeGetRequest({ serverUrl: 'http://169.254.169.254/latest/meta-data/' }));
+      const res = await handler(makeGetRequest({ serverUrl: 'https://169.254.169.254/latest/meta-data/' }));
       assert.equal(res.status, 400);
     });
 
@@ -597,10 +616,32 @@ describe('api/mcp-proxy', () => {
 
     it('returns 400 for blocked host in POST body', async () => {
       const res = await handler(makePostRequest({
-        serverUrl: 'http://localhost/mcp',
+        serverUrl: 'https://localhost/mcp',
         toolName: 'search',
       }));
       assert.equal(res.status, 400);
+    });
+
+    it('returns 400 for plain HTTP public upstreams in POST before DNS or fetch', async () => {
+      let resolverCalled = false;
+      let fetchCalled = false;
+      setResolveHostnameForTest(async () => {
+        resolverCalled = true;
+        return [PUBLIC_TEST_ADDRESS];
+      });
+      globalThis.fetch = async () => {
+        fetchCalled = true;
+        return new Response('{}', { status: 200 });
+      };
+      const res = await handler(makePostRequest({
+        serverUrl: 'http://public-mcp.example/mcp',
+        toolName: 'search',
+      }));
+      assert.equal(res.status, 400);
+      const data = await res.json();
+      assert.match(data.error, /invalid serverUrl/i);
+      assert.equal(resolverCalled, false, 'HTTP upstream validation must reject before DNS resolution');
+      assert.equal(fetchCalled, false, 'HTTP upstream validation must reject before upstream fetch');
     });
 
     it('returns 200 with result on successful tool call', async () => {
@@ -1069,7 +1110,7 @@ describe('api/mcp-proxy', () => {
 
     it('emits audit log on validation failure (status: 400)', async () => {
       const res = await handler(makeGetRequest(
-        { serverUrl: 'http://localhost/mcp' },
+        { serverUrl: 'https://localhost/mcp' },
         'https://worldmonitor.app',
         { extra: { 'cf-connecting-ip': uniqueCallerIp(), 'x-real-ip': uniqueCallerIp() } },
       ));

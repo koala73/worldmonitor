@@ -1,15 +1,31 @@
 import { convexTest } from "convex-test";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import schema from "../schema";
-import { internal } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
 import { PENDING_PAYMENT_BLOCK_WINDOW_MS } from "../payments/billing";
+import { getFeaturesForPlan } from "../lib/entitlements";
+import { signAnonClaimToken } from "../lib/identitySigning";
 
 const modules = import.meta.glob("../**/*.ts");
 
 const TEST_USER_ID = "user_billing_test_001";
 const NOW = Date.now();
 const DAY_MS = 24 * 60 * 60 * 1000;
+const SIGNING_SECRET = "test-dodo-identity-signing-secret";
+const ANON_USER_ID = "11111111-1111-4111-8111-111111111111";
+const CLAIMANT_A = { subject: "user_claimant_a", tokenIdentifier: "clerk|user_claimant_a" };
+const CLAIMANT_B = { subject: "user_claimant_b", tokenIdentifier: "clerk|user_claimant_b" };
+type PlanKey = keyof typeof PRODUCT_CATALOG;
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+  delete process.env.DODO_IDENTITY_SIGNING_SECRET;
+  delete process.env.DODO_ANON_CLAIM_TOKEN_TTL_MS;
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+});
 
 async function seedSubscription(
   t: ReturnType<typeof convexTest>,
@@ -37,6 +53,249 @@ async function seedSubscription(
     });
   });
 }
+
+async function seedAnonClaimState(
+  t: ReturnType<typeof convexTest>,
+  opts: {
+    anonId?: string;
+    planKey?: PlanKey;
+    validUntil?: number;
+    existingRealEntitlement?: {
+      userId: string;
+      planKey: PlanKey;
+      validUntil: number;
+    };
+  } = {},
+) {
+  const anonId = opts.anonId ?? ANON_USER_ID;
+  const planKey = opts.planKey ?? "pro_monthly";
+  const dodoProductId = PRODUCT_CATALOG[planKey].dodoProductId!;
+  await t.run(async (ctx) => {
+    await ctx.db.insert("subscriptions", {
+      userId: anonId,
+      dodoSubscriptionId: "sub_anon_claim_001",
+      dodoProductId,
+      planKey,
+      status: "active",
+      currentPeriodStart: NOW - DAY_MS,
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      rawPayload: { metadata: { wm_anon_claim: "v2" } },
+      updatedAt: NOW,
+    });
+    await ctx.db.insert("entitlements", {
+      userId: anonId,
+      planKey,
+      features: getFeaturesForPlan(planKey),
+      validUntil: opts.validUntil ?? NOW + 30 * DAY_MS,
+      updatedAt: NOW,
+    });
+    await ctx.db.insert("customers", {
+      userId: anonId,
+      dodoCustomerId: "cus_anon_claim_001",
+      email: "anon@example.com",
+      normalizedEmail: "anon@example.com",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    await ctx.db.insert("paymentEvents", {
+      userId: anonId,
+      dodoPaymentId: "pay_anon_claim_001",
+      type: "charge",
+      amount: 3999,
+      currency: "USD",
+      status: "succeeded",
+      dodoSubscriptionId: "sub_anon_claim_001",
+      planKey,
+      rawPayload: { metadata: { wm_anon_claim: "v2" } },
+      occurredAt: NOW,
+    });
+
+    if (opts.existingRealEntitlement) {
+      await ctx.db.insert("entitlements", {
+        userId: opts.existingRealEntitlement.userId,
+        planKey: opts.existingRealEntitlement.planKey,
+        features: getFeaturesForPlan(opts.existingRealEntitlement.planKey),
+        validUntil: opts.existingRealEntitlement.validUntil,
+        updatedAt: NOW - DAY_MS,
+      });
+    }
+  });
+}
+
+describe("claimSubscription anonymous ownership proof", () => {
+  test("rejects a bare anon UUID when protected payment rows exist", async () => {
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    await seedAnonClaimState(t);
+
+    await expect(
+      t.withIdentity(CLAIMANT_B).mutation(api.payments.billing.claimSubscription, {
+        anonId: ANON_USER_ID,
+      }),
+    ).rejects.toThrow(/ANON_CLAIM_PROOF_REQUIRED/);
+
+    const rows = await t.run(async (ctx) => {
+      const [sub, entitlement, customer, payment] = await Promise.all([
+        ctx.db.query("subscriptions").withIndex("by_userId", (q) => q.eq("userId", ANON_USER_ID)).first(),
+        ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", ANON_USER_ID)).first(),
+        ctx.db.query("customers").withIndex("by_userId", (q) => q.eq("userId", ANON_USER_ID)).first(),
+        ctx.db.query("paymentEvents").withIndex("by_userId", (q) => q.eq("userId", ANON_USER_ID)).first(),
+      ]);
+      return { sub, entitlement, customer, payment };
+    });
+    expect(rows.sub?.userId).toBe(ANON_USER_ID);
+    expect(rows.entitlement?.userId).toBe(ANON_USER_ID);
+    expect(rows.customer?.userId).toBe(ANON_USER_ID);
+    expect(rows.payment?.userId).toBe(ANON_USER_ID);
+  });
+
+  test("rejects the wrong proof token and leaves rows on the anon owner", async () => {
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    await seedAnonClaimState(t);
+    const wrongToken = await signAnonClaimToken("22222222-2222-4222-8222-222222222222");
+
+    await expect(
+      t.withIdentity(CLAIMANT_B).mutation(api.payments.billing.claimSubscription, {
+        anonId: ANON_USER_ID,
+        claimToken: wrongToken,
+      }),
+    ).rejects.toThrow(/ANON_CLAIM_PROOF_REQUIRED/);
+
+    const realSub = await t.run(async (ctx) =>
+      ctx.db.query("subscriptions").withIndex("by_userId", (q) => q.eq("userId", CLAIMANT_B.subject)).first(),
+    );
+    expect(realSub).toBeNull();
+  });
+
+  test("rejects an expired proof token and leaves rows on the anon owner", async () => {
+    vi.useFakeTimers();
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    await seedAnonClaimState(t);
+    vi.setSystemTime(NOW - 31 * DAY_MS);
+    const expiredToken = await signAnonClaimToken(ANON_USER_ID);
+    vi.setSystemTime(NOW);
+
+    await expect(
+      t.withIdentity(CLAIMANT_B).mutation(api.payments.billing.claimSubscription, {
+        anonId: ANON_USER_ID,
+        claimToken: expiredToken,
+      }),
+    ).rejects.toThrow(/ANON_CLAIM_PROOF_REQUIRED/);
+
+    const realSub = await t.run(async (ctx) =>
+      ctx.db.query("subscriptions").withIndex("by_userId", (q) => q.eq("userId", CLAIMANT_B.subject)).first(),
+    );
+    expect(realSub).toBeNull();
+  });
+
+  test("accepts a valid proof token and migrates all anonymous payment rows", async () => {
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    await seedAnonClaimState(t);
+    const claimToken = await signAnonClaimToken(ANON_USER_ID);
+
+    const result = await t.withIdentity(CLAIMANT_A).mutation(
+      api.payments.billing.claimSubscription,
+      { anonId: ANON_USER_ID, claimToken },
+    );
+
+    expect(result).toEqual({
+      claimed: { subscriptions: 1, entitlements: 1, customers: 1, payments: 1 },
+    });
+    const rows = await t.run(async (ctx) => {
+      const [sub, entitlement, customer, payment, oldSub] = await Promise.all([
+        ctx.db.query("subscriptions").withIndex("by_userId", (q) => q.eq("userId", CLAIMANT_A.subject)).first(),
+        ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", CLAIMANT_A.subject)).first(),
+        ctx.db.query("customers").withIndex("by_userId", (q) => q.eq("userId", CLAIMANT_A.subject)).first(),
+        ctx.db.query("paymentEvents").withIndex("by_userId", (q) => q.eq("userId", CLAIMANT_A.subject)).first(),
+        ctx.db.query("subscriptions").withIndex("by_userId", (q) => q.eq("userId", ANON_USER_ID)).first(),
+      ]);
+      return { sub, entitlement, customer, payment, oldSub };
+    });
+    expect(rows.sub?.userId).toBe(CLAIMANT_A.subject);
+    expect(rows.entitlement?.planKey).toBe("pro_monthly");
+    expect(rows.customer?.userId).toBe(CLAIMANT_A.subject);
+    expect(rows.payment?.userId).toBe(CLAIMANT_A.subject);
+    expect(rows.oldSub).toBeNull();
+  });
+
+  test("keeps existing higher-tier entitlement precedence when proof is valid", async () => {
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    await seedAnonClaimState(t, {
+      planKey: "pro_monthly",
+      validUntil: NOW + 90 * DAY_MS,
+      existingRealEntitlement: {
+        userId: CLAIMANT_A.subject,
+        planKey: "api_business",
+        validUntil: NOW + 10 * DAY_MS,
+      },
+    });
+    const claimToken = await signAnonClaimToken(ANON_USER_ID);
+
+    await t.withIdentity(CLAIMANT_A).mutation(api.payments.billing.claimSubscription, {
+      anonId: ANON_USER_ID,
+      claimToken,
+    });
+
+    const entitlement = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", CLAIMANT_A.subject)).first(),
+    );
+    expect(entitlement?.planKey).toBe("api_business");
+    expect(entitlement?.features.tier).toBe(getFeaturesForPlan("api_business").tier);
+  });
+
+  test("schedules anon cache delete and real-user cache sync after a proven claim", async () => {
+    vi.useFakeTimers();
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    process.env.UPSTASH_REDIS_REST_URL = "https://redis.example";
+    process.env.UPSTASH_REDIS_REST_TOKEN = "redis-token";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("OK", { status: 200 }),
+    );
+    const t = convexTest(schema, modules);
+    await seedAnonClaimState(t);
+    const claimToken = await signAnonClaimToken(ANON_USER_ID);
+
+    await t.withIdentity(CLAIMANT_A).mutation(api.payments.billing.claimSubscription, {
+      anonId: ANON_USER_ID,
+      claimToken,
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls.some((url) => url.includes("/del/") && url.includes(encodeURIComponent(ANON_USER_ID)))).toBe(true);
+    expect(urls.some((url) => url.includes("/set/") && url.includes(encodeURIComponent(CLAIMANT_A.subject)))).toBe(true);
+  });
+
+  test("returns a quiet zero claim for bare UUIDs with no payment rows", async () => {
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+
+    await expect(
+      t.withIdentity(CLAIMANT_B).mutation(api.payments.billing.claimSubscription, {
+        anonId: ANON_USER_ID,
+      }),
+    ).resolves.toEqual({
+      claimed: { subscriptions: 0, entitlements: 0, customers: 0, payments: 0 },
+    });
+  });
+
+  test("rejects an invalid proof token even when there are no payment rows", async () => {
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const wrongToken = await signAnonClaimToken("22222222-2222-4222-8222-222222222222");
+
+    await expect(
+      t.withIdentity(CLAIMANT_B).mutation(api.payments.billing.claimSubscription, {
+        anonId: ANON_USER_ID,
+        claimToken: wrongToken,
+      }),
+    ).rejects.toThrow(/ANON_CLAIM_PROOF_REQUIRED/);
+  });
+});
 
 describe("payments billing duplicate-checkout guard", () => {
   test("does not block checkout when the user has no subscriptions", async () => {

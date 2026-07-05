@@ -48,8 +48,8 @@ describe('followed countries cap-drop toast wiring', () => {
     );
     assert.match(
       appSrc,
-      /window\.open\('\/pro#pricing', '_blank', 'noopener'\)/,
-      'toast must give the user an upgrade action without exposing window.opener',
+      /window\.open\('\/pro#pricing', '_blank', 'noopener,noreferrer'\)/,
+      'toast must give the user an upgrade action without exposing window.opener or referrer',
     );
     assert.match(
       appSrc,

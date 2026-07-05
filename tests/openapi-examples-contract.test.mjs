@@ -302,6 +302,61 @@ function assertRouteIntelligenceHs2Example(spec, label) {
   assert.ok(checked > 0, `${label}: expected RouteIntelligence hs2 example to check`);
 }
 
+// Honeypot fields are hidden anti-bot inputs (marked by a schema description
+// containing "honeypot"). The handlers silently discard any non-empty value, so
+// a populated request example is a fake-success trap and contradicts the field's
+// own "real submissions leave it empty" description (#4768). Walk a request
+// example against its schema and flag any populated honeypot-marked property.
+function collectHoneypotViolations(example, schema, spec, label, seen = new Set()) {
+  const violations = [];
+  if (!schema || typeof schema !== 'object') return violations;
+  if (schema.$ref) {
+    if (seen.has(schema.$ref)) return violations;
+    seen = new Set([...seen, schema.$ref]);
+    schema = resolveSchema(schema, spec);
+  }
+  if (Array.isArray(schema.allOf)) {
+    for (const part of schema.allOf) violations.push(...collectHoneypotViolations(example, part, spec, label, seen));
+    return violations;
+  }
+  const type = schemaType(schema);
+  if (type === 'object' && example && typeof example === 'object' && !Array.isArray(example)) {
+    for (const [key, child] of Object.entries(example)) {
+      const propSchema = schema.properties?.[key];
+      if (!propSchema) continue;
+      const resolved = propSchema.$ref ? resolveSchema(propSchema, spec) : propSchema;
+      const description = String(resolved?.description ?? propSchema.description ?? '').toLowerCase();
+      if (description.includes('honeypot')) violations.push(`${label}.${key}`);
+      violations.push(...collectHoneypotViolations(child, propSchema, spec, `${label}.${key}`, seen));
+    }
+  } else if (type === 'array' && Array.isArray(example)) {
+    for (const item of example) violations.push(...collectHoneypotViolations(item, schema.items ?? {}, spec, `${label}[]`, seen));
+  }
+  return violations;
+}
+
+function countHoneypotSchemaFields(spec) {
+  let count = 0;
+  for (const s of Object.values(spec.components?.schemas ?? {})) {
+    for (const p of Object.values(s?.properties ?? {})) {
+      if (String(p?.description ?? '').toLowerCase().includes('honeypot')) count++;
+    }
+  }
+  return count;
+}
+
+function honeypotRequestViolations(spec, label) {
+  const violations = [];
+  for (const { path, method, op } of operationEntries(spec)) {
+    const media = op.requestBody?.content?.[JSON_MEDIA];
+    if (!media?.schema || media.example === undefined) continue;
+    violations.push(
+      ...collectHoneypotViolations(media.example, media.schema, spec, `${label} ${method.toUpperCase()} ${path} requestBody`),
+    );
+  }
+  return violations;
+}
+
 describe('OpenAPI examples contract', () => {
   // Bump these exact surface counts when adding or removing proto services/RPCs.
   it('audits the known service operation surface', () => {
@@ -371,6 +426,30 @@ describe('OpenAPI examples contract', () => {
     const result = assertOperationExamples(bundle, 'worldmonitor.openapi.yaml');
     assert.equal(result.operations, 192);
     assert.equal(result.responseExpected, 192);
+  });
+
+  // A honeypot field (hidden anti-bot input) is silently discarded by the
+  // handlers when non-empty, so a populated request example is a fake-success
+  // trap and contradicts the field's own "leave it empty" description (#4768).
+  // The injector must drop honeypot-marked fields from every generated request
+  // example across the JSON specs, per-service YAML, and unified bundle.
+  it('omits honeypot fields from every request example', () => {
+    const violations = [];
+    let guardedFields = 0;
+    for (const file of serviceSpecs) {
+      const spec = JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'));
+      guardedFields += countHoneypotSchemaFields(spec);
+      violations.push(...honeypotRequestViolations(spec, file));
+
+      const yamlFile = file.replace(/\.json$/, '.yaml');
+      const yamlSpec = loadYaml(readFileSync(resolve(apiDir, yamlFile), 'utf8'));
+      violations.push(...honeypotRequestViolations(yamlSpec, yamlFile));
+    }
+    const bundle = loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'));
+    violations.push(...honeypotRequestViolations(bundle, 'worldmonitor.openapi.yaml'));
+
+    assert.ok(guardedFields >= 2, `expected honeypot-marked schema fields to guard, found ${guardedFields}`);
+    assert.deepEqual(violations, [], `request examples must omit honeypot fields; populated: ${violations.join(', ')}`);
   });
 
   it('the examples injector reports the specs as in-sync (idempotent)', () => {

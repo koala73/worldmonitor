@@ -51,6 +51,11 @@ import {
   CEILING_MULTIPLIER,
 } from './_shared/api-key-rate-limit';
 import {
+  DIRECT_LLM_DAILY_QUOTA_LIMIT,
+  DIRECT_LLM_GATEWAY_QUOTA_PATHS,
+  reserveDirectLlmQuota,
+} from './_shared/direct-llm-quota';
+import {
   deliverUsageEvents,
   buildRequestEvent,
   deriveRequestId,
@@ -544,6 +549,68 @@ function createGatewayAuthErrorResponse(
   });
 }
 
+const GATEWAY_DIRECT_LLM_QUOTA_METHODS: Record<string, string> = {
+  '/api/intelligence/v1/classify-event': 'GET',
+  '/api/intelligence/v1/deduct-situation': 'POST',
+  '/api/intelligence/v1/get-country-intel-brief': 'GET',
+  '/api/market/v1/analyze-stock': 'GET',
+  '/api/news/v1/summarize-article': 'POST',
+};
+
+async function shouldReserveGatewayDirectLlmQuota(request: Request, pathname: string): Promise<boolean> {
+  if (!DIRECT_LLM_GATEWAY_QUOTA_PATHS.has(pathname)) return false;
+  if (GATEWAY_DIRECT_LLM_QUOTA_METHODS[pathname] !== request.method) return false;
+  if (pathname !== '/api/news/v1/summarize-article') return true;
+
+  const contentLength = Number(request.headers.get('Content-Length') ?? '0');
+  if (Number.isFinite(contentLength) && contentLength >= POST_TO_GET_MAX_BODY_BYTES) {
+    return true;
+  }
+  try {
+    const body = await request.clone().json() as { mode?: unknown };
+    return body.mode !== 'translate';
+  } catch {
+    // Malformed summarize requests cannot reach provider spend; let the handler
+    // return the established validation error without charging quota.
+    return false;
+  }
+}
+
+function createDirectLlmQuotaFailureResponse(
+  reservation: Awaited<ReturnType<typeof reserveDirectLlmQuota>>,
+  corsHeaders: Record<string, string>,
+): Response {
+  if (reservation.ok) {
+    throw new Error('createDirectLlmQuotaFailureResponse called for successful reservation');
+  }
+
+  if (reservation.reason === 'cap-exceeded') {
+    return new Response(JSON.stringify({
+      error: 'Direct LLM daily quota exceeded',
+      limit: DIRECT_LLM_DAILY_QUOTA_LIMIT,
+      resetsAt: 'next UTC midnight',
+    }), {
+      status: 429,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+        'Retry-After': String(reservation.retryAfterSec),
+        ...corsHeaders,
+      },
+    });
+  }
+
+  return new Response(JSON.stringify({ error: 'Direct LLM quota unavailable' }), {
+    status: 503,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+      'Retry-After': String(reservation.retryAfterSec),
+      ...corsHeaders,
+    },
+  });
+}
+
 function markAuthErrorNoStore(response: Response): Response {
   response.headers.set('Cache-Control', 'no-store');
   response.headers.delete('CDN-Cache-Control');
@@ -994,14 +1061,15 @@ export function createDomainGateway(
     const isPublicNoAuthRpc = PUBLIC_NO_AUTH_RPC_PATHS.has(pathname);
     const seedRefreshVerified = await isResilienceRankingSeedRefreshRequest(request, pathname);
     const relayWarmPingVerified = await isRelayWarmPingRequest(request, pathname);
+    const requiresDirectLlmQuota = !internalMcpVerified && await shouldReserveGatewayDirectLlmQuota(request, pathname);
     const isTierGated = !internalMcpVerified && !isPublicNoAuthRpc && !seedRefreshVerified && !relayWarmPingVerified && getRequiredTier(pathname) !== null;
     const needsLegacyProBearerGate = !internalMcpVerified && !isPublicNoAuthRpc && PREMIUM_RPC_PATHS.has(pathname) && !isTierGated;
 
     // Session resolution — extract userId from bearer token (Clerk JWT) if present.
-    // Only runs for tier-gated endpoints to avoid JWKS lookup on every request.
+    // Only runs for tier-gated or direct-LLM endpoints to avoid JWKS lookup on every request.
     let sessionUserId: string | null = null;
     let sessionRole: 'free' | 'pro' | null = null;
-    if (isTierGated) {
+    if (isTierGated || requiresDirectLlmQuota) {
       const session = await resolveClerkSession(request);
       sessionUserId = session?.userId ?? null;
       sessionRole = session?.role ?? null;
@@ -1067,7 +1135,7 @@ export function createDomainGateway(
     // validateApiKey is strict-no-trust-of-headers per #3541 and would 401 every
     // Clerk-authenticated user who hasn't also minted a wms_ session token.
     // Override: tier-gated routes with a resolved sessionUserId pass this layer.
-    if (isTierGated && sessionUserId && keyCheck.required && !keyCheck.valid) {
+    if ((isTierGated || requiresDirectLlmQuota) && sessionUserId && keyCheck.required && !keyCheck.valid) {
       keyCheck = { valid: true, required: false };
     }
 
@@ -1452,6 +1520,23 @@ export function createDomainGateway(
           emitRequest(rateLimitResponse.status, reason, null);
           return rateLimitResponse;
         }
+      }
+    }
+
+    if (requiresDirectLlmQuota && !isEnterpriseAuth) {
+      if (!sessionUserId) {
+        emitRequest(401, 'auth_401', null);
+        return createGatewayAuthErrorResponse(401, 'Pro authentication required', corsHeaders);
+      }
+
+      const reservation = await reserveDirectLlmQuota({
+        userId: sessionUserId,
+        pipeline: (cmds) => runRedisPipeline(cmds, true),
+      });
+      if (!reservation.ok) {
+        const response = createDirectLlmQuotaFailureResponse(reservation, corsHeaders);
+        emitRequest(response.status, response.status === 429 ? 'rate_limit_429' : 'rate_limit_degraded', null);
+        return response;
       }
     }
 

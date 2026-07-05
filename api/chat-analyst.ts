@@ -18,8 +18,10 @@ export const config = { runtime: 'edge', regions: ['iad1', 'lhr1', 'fra1', 'sfo1
 import { getCorsHeaders } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from './_sentry-edge.js';
-import { isCallerPremium } from '../server/_shared/premium-check';
+import { resolvePremiumCallerIdentity } from '../server/_shared/premium-check';
 import { checkRateLimit } from '../server/_shared/rate-limit';
+import { runRedisPipeline } from '../server/_shared/redis';
+import { DIRECT_LLM_DAILY_QUOTA_LIMIT, reserveDirectLlmQuota } from '../server/_shared/direct-llm-quota';
 import { assembleAnalystContext } from '../server/worldmonitor/intelligence/v1/chat-analyst-context';
 import { buildAnalystSystemPrompt } from '../server/worldmonitor/intelligence/v1/chat-analyst-prompt';
 import { buildActionEvents } from '../server/worldmonitor/intelligence/v1/chat-analyst-actions';
@@ -48,6 +50,25 @@ function json(body: unknown, status: number, cors: Record<string, string>): Resp
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'Content-Type': 'application/json', ...cors },
+  });
+}
+
+function directLlmQuotaError(status: 429 | 503, retryAfterSec: number, cors: Record<string, string>): Response {
+  const body = status === 429
+    ? {
+        error: 'Direct LLM daily quota exceeded',
+        limit: DIRECT_LLM_DAILY_QUOTA_LIMIT,
+        resetsAt: 'next UTC midnight',
+      }
+    : { error: 'Direct LLM quota unavailable' };
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+      'Retry-After': String(retryAfterSec),
+      ...cors,
+    },
   });
 }
 
@@ -91,7 +112,7 @@ export default async function handler(req: Request): Promise<Response> {
   // escape: an uncaught throw becomes an opaque Vercel platform 500 that — for
   // the cross-origin api.worldmonitor.app caller — also drops our CORS headers,
   // so the browser sees an opaque failure rather than a readable status. The
-  // pre-stream auth/entitlement lookups (isCallerPremium) are network-backed
+  // pre-stream auth/entitlement lookups (resolvePremiumCallerIdentity) are network-backed
   // and, while individually fail-soft today, this route had NO server-side
   // capture, so any 5xx surfaced only as the browser's `API 500` message with
   // no stack (WORLDMONITOR-SV). Mirror the sibling premium edge route
@@ -100,9 +121,22 @@ export default async function handler(req: Request): Promise<Response> {
   // transient dependency blip never misclassifies a paying Pro user as
   // unsubscribed.
   try {
-    const isPremium = await isCallerPremium(req);
-    if (!isPremium) {
+    const premiumIdentity = await resolvePremiumCallerIdentity(req);
+    if (!premiumIdentity.isPremium) {
       return json({ error: 'Pro subscription required' }, 403, corsHeaders);
+    }
+    if (!premiumIdentity.quotaExempt) {
+      const reservation = await reserveDirectLlmQuota({
+        userId: premiumIdentity.userId,
+        pipeline: (cmds) => runRedisPipeline(cmds, true),
+      });
+      if (!reservation.ok) {
+        return directLlmQuotaError(
+          reservation.reason === 'cap-exceeded' ? 429 : 503,
+          reservation.retryAfterSec,
+          corsHeaders,
+        );
+      }
     }
 
     // Streaming LLM endpoint — the rate-limit IS the abuse defence (each

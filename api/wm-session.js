@@ -15,6 +15,9 @@ const WIDGET_KEY_COOKIE = 'wm-widget-key';
 const PRO_KEY_COOKIE = 'wm-pro-key';
 const COOKIE_MAX_AGE_SECONDS = 12 * 60 * 60;
 const LEGACY_KEY_MAX_LEN = 512;
+const SESSION_RATE_LIMIT_SCOPE = 'wm-session';
+const SESSION_RATE_LIMIT_PER_MINUTE = 30;
+const SESSION_RATE_LIMIT_WINDOW = '60 s';
 
 function jsonResponse(body, status, headers) {
   const out = headers instanceof Headers ? headers : new Headers(headers);
@@ -94,7 +97,7 @@ async function readBody(req) {
   }
 }
 
-export default async function handler(req) {
+export default async function handler(req, ctx) {
   if (isDisallowedOrigin(req)) {
     return new Response('Forbidden', { status: 403 });
   }
@@ -110,9 +113,15 @@ export default async function handler(req) {
   }
 
   // Rate-limit per IP. Without this, an attacker can farm tokens cheaply.
-  // Token TTL is 12h, so a sustained ~1 RPS yields 86400 tokens/day per IP —
-  // the existing IP cap (600/min) keeps that bounded.
-  const rl = await checkRateLimit(req, cors);
+  // Token TTL is 12h, so this route uses a lower, fail-closed issuance budget
+  // instead of inheriting the availability-first global fallback.
+  const rl = await checkRateLimit(req, cors, {
+    failClosed: true,
+    ctx,
+    scope: SESSION_RATE_LIMIT_SCOPE,
+    limit: SESSION_RATE_LIMIT_PER_MINUTE,
+    window: SESSION_RATE_LIMIT_WINDOW,
+  });
   if (rl) return rl;
 
   let issued;

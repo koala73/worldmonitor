@@ -57,7 +57,7 @@ Variants share all code but differ in default panels, map layers, and RSS feeds.
 
 | Directory | Purpose |
 |---|---|
-| `src/components/` | UI components — 159 top-level TypeScript component files |
+| `src/components/` | UI components — 160 top-level TypeScript component files |
 | `src/services/` | Data fetching modules — sebuf client wrappers, AI, signal analysis |
 | `src/config/` | Static data and variant configs (feeds, geo, military, pipelines, ports) |
 | `src/generated/` | Auto-generated sebuf client + server stubs (**do not edit by hand**) |
