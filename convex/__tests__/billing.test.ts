@@ -3497,6 +3497,66 @@ describe("payments billing missed renewal reconciliation", () => {
     errorSpy.mockRestore();
   });
 
+  test("mass-404 breaker is per cron cycle: halt latches across continuations", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    const N = 12;
+    await t.run(async (ctx) => {
+      for (let i = 0; i < N; i++) {
+        await ctx.db.insert("subscriptions", {
+          userId: `user_cycle_${i}`,
+          dodoSubscriptionId: `sub_cycle_${i}`,
+          dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+          planKey: "pro_monthly",
+          status: "active",
+          currentPeriodStart: NOW - 31 * DAY_MS,
+          currentPeriodEnd: NOW - (i + 1) * DAY_MS,
+          rawPayload: { subscription_id: `sub_cycle_${i}` },
+          updatedAt: NOW - 10 * DAY_MS,
+          lastReconcileAttemptAt: NOW - 10 * DAY_MS,
+          reconcileFailureCount: 1,
+          reconcileNotFoundCount: 1,
+        });
+      }
+    });
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    // limit 3 -> the per-invocation majority cap is ceil(3/2)=2, so the FIRST
+    // invocation downgrades 2 then latches the halt. If the breaker state did NOT
+    // thread through continuations, each of the ~4 continuations would downgrade
+    // another 2 (~8 total). With per-cycle threading, the whole cycle stops at 2.
+    await t.action(internal.payments.billing.reconcileMissedDodoRenewals, {
+      now: NOW,
+      limit: 3,
+      errorInjectionForTest: Object.fromEntries(
+        Array.from({ length: N }, (_, i) => [`sub_cycle_${i}`, "not_found" as const]),
+      ),
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    errorSpy.mockRestore();
+
+    const statuses = await t.run(async (ctx) => {
+      const rows = await Promise.all(
+        Array.from({ length: N }, (_, i) =>
+          ctx.db
+            .query("subscriptions")
+            .withIndex("by_dodoSubscriptionId", (q) =>
+              q.eq("dodoSubscriptionId", `sub_cycle_${i}`),
+            )
+            .unique(),
+        ),
+      );
+      return rows.map((r) => r?.status);
+    });
+    // At most the absolute per-cycle cap, and specifically 2 here (majority cap
+    // latched in invocation 1). NOT 2-per-continuation.
+    const expiredCount = statuses.filter((s) => s === "expired").length;
+    expect(expiredCount).toBe(2);
+    expect(statuses.filter((s) => s === "active").length).toBe(N - 2);
+
+    vi.useRealTimers();
+  });
+
   test("safeMarkReconcileAttempt swallows a throwing bookkeeping mutation", async () => {
     // Reliability P1-1: a failed best-effort backoff write must never propagate
     // out of the per-row loop (which would abort the batch AND skip continuation

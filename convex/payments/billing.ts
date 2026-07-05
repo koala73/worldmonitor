@@ -580,6 +580,7 @@ export const listStaleActiveSubscriptionsForRenewalReconciliation = internalQuer
       // (position-based), so the index range is just the stale-active window.
       .withIndex("by_status_currentPeriodEnd", (q) =>
         q.eq("status", "active").lt("currentPeriodEnd", args.now),
+      )
       .order("asc")
       .paginate({ cursor: args.cursor ?? null, numItems: args.scanLimit });
     // Slim projection — the action only needs identity + the reconcile
@@ -958,6 +959,10 @@ export const reconcileMissedDodoRenewals = internalAction({
     // forward by document position — see the scheduling block. Omitted on a
     // fresh cron tick.
     cursor: v.optional(v.union(v.string(), v.null())),
+    // Mass-404 circuit-breaker state threaded through continuations so the bound
+    // is per cron CYCLE, not per invocation. Omitted on a fresh cron tick.
+    notFoundDowngradesSoFar: v.optional(v.number()),
+    massNotFoundHalted: v.optional(v.boolean()),
     // Per-query scan window size, clamped to the const ceiling. Defaults to the
     // ceiling; a smaller value is an ops knob (and the test seam that exercises
     // the window-paging / saturation logic without seeding 500 rows). Threaded
@@ -1056,16 +1061,20 @@ export const reconcileMissedDodoRenewals = internalAction({
       failures: [],
     };
 
-    // Mass-404 circuit breaker budget, sized to the work we plan to attempt this
-    // invocation: a genuine handful of deleted subs downgrades; a batch that is
-    // mostly/entirely 404 (a probable misconfig) self-halts at the threshold.
+    // Mass-404 circuit breaker. The running downgrade count and the halt latch
+    // are threaded through continuations so the bound is PER CRON CYCLE, not per
+    // invocation: a genuine handful of deleted subs downgrades; a batch/cycle
+    // that is mostly/entirely 404 (a probable misconfig) self-halts.
+    //   - Per-cycle: at most DODO_RENEWAL_MASS_NOTFOUND_ABSOLUTE_CAP downgrades
+    //     total across the whole continuation chain.
+    //   - Per-invocation: if downgrades in a single invocation reach a majority
+    //     of what it planned to attempt, latch the halt for the rest of the cycle
+    //     (a mostly-404 batch is a strong misconfig signal even under the cap).
     const plannedAttempts = Math.min(limit, eligible.length);
-    const maxNotFoundDowngrades = Math.min(
-      DODO_RENEWAL_MASS_NOTFOUND_ABSOLUTE_CAP,
-      Math.ceil(plannedAttempts / 2),
-    );
-    let notFoundDowngrades = 0;
-    let massNotFoundHalted = false;
+    const perInvocationMajorityCap = Math.ceil(plannedAttempts / 2);
+    let notFoundDowngrades = args.notFoundDowngradesSoFar ?? 0;
+    let massNotFoundHalted = args.massNotFoundHalted ?? false;
+    let downgradesThisInvocation = 0;
 
     let attempted = 0;
     for (const sub of eligible) {
@@ -1102,9 +1111,13 @@ export const reconcileMissedDodoRenewals = internalAction({
           });
           break;
         case "terminal_not_found": {
-          if (notFoundDowngrades >= maxNotFoundDowngrades) {
-            // Circuit breaker tripped — too many confirmed 404s this run. Treat
-            // this (and every subsequent 404) as a transient failure: keep the
+          const breakerTripped =
+            massNotFoundHalted ||
+            notFoundDowngrades >= DODO_RENEWAL_MASS_NOTFOUND_ABSOLUTE_CAP ||
+            downgradesThisInvocation >= perInvocationMajorityCap;
+          if (breakerTripped) {
+            // Circuit breaker tripped — too many confirmed 404s. Treat this (and
+            // every subsequent 404 this cycle) as a transient failure: keep the
             // row active and on backoff instead of downgrading a possibly-live
             // customer during a suspected wrong-environment/API-key misconfig.
             if (!massNotFoundHalted) {
@@ -1113,7 +1126,7 @@ export const reconcileMissedDodoRenewals = internalAction({
               // this is the page that must fire BEFORE a second daily run could
               // downgrade the base under a config error.
               console.error(
-                `[billing/reconcile] mass Dodo 404s (${notFoundDowngrades + 1}/${attempted} attempted) — possible wrong-environment/API-key misconfig; further downgrades halted this run.`,
+                `[billing/reconcile] mass Dodo 404s (${notFoundDowngrades} downgraded this cycle) — possible wrong-environment/API-key misconfig; further downgrades halted for the rest of this cycle.`,
               );
             }
             summary.failed++;
@@ -1126,16 +1139,40 @@ export const reconcileMissedDodoRenewals = internalAction({
             await safeMarkReconcileAttempt(ctx, sub._id, now, true);
             break;
           }
-          const expireResult = (await ctx.runMutation(
-            internal.payments.billing.expireMissingDodoSubscription,
-            {
-              subscriptionId: sub._id,
+          // Guard the downgrade mutation: an OCC rejection (concurrent webhook on
+          // the same sub/entitlement) or a recompute error must NOT propagate out
+          // of the loop — that would abort the batch AND skip the continuation
+          // scheduling below. Route a failed downgrade to the backoff path.
+          let expireResult:
+            | { kind: "expired" }
+            | { kind: "skipped"; reason: ReconciliationSkipReason };
+          try {
+            expireResult = (await ctx.runMutation(
+              internal.payments.billing.expireMissingDodoSubscription,
+              {
+                subscriptionId: sub._id,
+                dodoSubscriptionId: sub.dodoSubscriptionId,
+                observedAt: now,
+              },
+            )) as { kind: "expired" } | { kind: "skipped"; reason: ReconciliationSkipReason };
+          } catch (expireErr) {
+            const expireMsg =
+              expireErr instanceof Error ? expireErr.message : String(expireErr);
+            // sentry-coverage-ok: Convex auto-Sentry captures console.error.
+            console.error(
+              `[billing/reconcile] expireMissingDodoSubscription failed for dodoSubscriptionId=${sub.dodoSubscriptionId} userId=${sub.userId}: ${expireMsg}`,
+            );
+            summary.failed++;
+            summary.failures.push({
               dodoSubscriptionId: sub.dodoSubscriptionId,
-              observedAt: now,
-            },
-          )) as { kind: "expired" } | { kind: "skipped"; reason: ReconciliationSkipReason };
+              error: expireMsg,
+            });
+            await safeMarkReconcileAttempt(ctx, sub._id, now, true);
+            break;
+          }
           if (expireResult.kind === "expired") {
             notFoundDowngrades++;
+            downgradesThisInvocation++;
             summary.expiredMissing++;
             // sentry-coverage-ok: Convex auto-Sentry captures console.error so
             // ops sees confirmed-gone subscriptions being downgraded.
@@ -1204,6 +1241,9 @@ export const reconcileMissedDodoRenewals = internalAction({
           scanLimit,
           continuationBudget: continuationBudget - 1,
           cursor: nextCursor ?? null,
+          // Carry the mass-404 breaker state so the cap is per cron cycle.
+          notFoundDowngradesSoFar: notFoundDowngrades,
+          massNotFoundHalted,
           ...(args.remoteSubscriptionsForTest
             ? { remoteSubscriptionsForTest: args.remoteSubscriptionsForTest }
             : {}),
