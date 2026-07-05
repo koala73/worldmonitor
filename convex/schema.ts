@@ -553,9 +553,15 @@ export default defineSchema({
     // when the reconciliation cron attempts (and fails/skips) a row. Used to
     // back off permanently-failing rows (e.g. test-mode-era subs that 404
     // against the live Dodo client) so they stop starving the batch's scan
-    // slots. Cleared on a successful reconcile.
+    // slots. Cleared on a successful reconcile AND on a webhook that renews the
+    // sub (so a new stale episode starts from a clean slate).
     lastReconcileAttemptAt: v.optional(v.number()),
     reconcileFailureCount: v.optional(v.number()),
+    // Count of CONSECUTIVE definitive Dodo 404s (reset by any non-404 reconcile
+    // outcome). Distinct from `reconcileFailureCount` (which counts all failure
+    // kinds for backoff) so the terminal "subscription deleted in Dodo"
+    // downgrade requires repeated 404s specifically, not just any prior failure.
+    reconcileNotFoundCount: v.optional(v.number()),
   })
     .index("by_userId", ["userId"])
     .index("by_dodoSubscriptionId", ["dodoSubscriptionId"])

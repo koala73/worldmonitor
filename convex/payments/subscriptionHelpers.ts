@@ -566,6 +566,13 @@ export async function handleSubscriptionActive(
       dodoCustomerId: incomingDodoCustomerId ?? existing.dodoCustomerId,
       rawPayload: data,
       updatedAt: eventTimestamp,
+      // A live webhook proves the sub exists and (re)activates it — clear the
+      // renewal-reconciliation bookkeeping so a future stale episode starts
+      // from a clean slate (esp. the consecutive-404 streak). See
+      // payments/billing:reconcileMissedDodoRenewals.
+      lastReconcileAttemptAt: undefined,
+      reconcileFailureCount: undefined,
+      reconcileNotFoundCount: undefined,
     });
   } else {
     await ctx.db.insert("subscriptions", {
@@ -716,6 +723,12 @@ export async function handleSubscriptionRenewed(
     dodoCustomerId: mergeDodoCustomerId(data, existing),
     rawPayload: data,
     updatedAt: eventTimestamp,
+    // Renewal proves the sub exists — clear renewal-reconciliation bookkeeping
+    // so a future stale episode starts from a clean slate (esp. the
+    // consecutive-404 streak). See payments/billing:reconcileMissedDodoRenewals.
+    lastReconcileAttemptAt: undefined,
+    reconcileFailureCount: undefined,
+    reconcileNotFoundCount: undefined,
   });
 
   // Recompute from ALL subs — a renewal on a lower-tier sub must NOT

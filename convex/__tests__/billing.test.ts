@@ -3390,6 +3390,113 @@ describe("payments billing missed renewal reconciliation", () => {
     expect(sub?.reconcileFailureCount).toBe(2);
   });
 
+  test("a single 404 after an unrelated prior failure does NOT downgrade (needs consecutive 404s)", async () => {
+    const t = convexTest(schema, modules);
+    // The row already has a prior NON-404 failure (a 5xx yesterday): failureCount
+    // 1 but the consecutive-404 streak (reconcileNotFoundCount) is 0.
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: TEST_USER_ID,
+        dodoSubscriptionId: "sub_mixed",
+        dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: NOW - 31 * DAY_MS,
+        currentPeriodEnd: NOW - DAY_MS,
+        rawPayload: { subscription_id: "sub_mixed" },
+        updatedAt: NOW - 5 * DAY_MS,
+        lastReconcileAttemptAt: NOW - DAY_MS,
+        reconcileFailureCount: 1,
+        reconcileNotFoundCount: 0,
+      });
+    });
+
+    // First 404: because the prior failure was NOT a 404, the streak is still 0
+    // -> must be treated as unconfirmed (no downgrade), even though failureCount
+    // already >= 1. This is the fix for conflating 404s with other failures.
+    const s1 = await t.action(internal.payments.billing.reconcileMissedDodoRenewals, {
+      now: NOW,
+      errorInjectionForTest: { sub_mixed: "not_found" },
+    });
+    expect(s1).toMatchObject({ inspected: 1, failed: 1, expiredMissing: 0 });
+    let sub = await readSub(t, "mixed");
+    expect(sub?.status).toBe("active");
+    expect(sub?.reconcileNotFoundCount).toBe(1); // streak now started
+
+    // Second consecutive 404 -> confirmed -> downgrade. (failureCount is now 2,
+    // so wait past the 2-day backoff before the row is eligible again.)
+    const s2 = await t.action(internal.payments.billing.reconcileMissedDodoRenewals, {
+      now: NOW + 3 * DAY_MS,
+      errorInjectionForTest: { sub_mixed: "not_found" },
+    });
+    expect(s2).toMatchObject({ inspected: 1, expiredMissing: 1 });
+    sub = await readSub(t, "mixed");
+    expect(sub?.status).toBe("expired");
+  });
+
+  test("mass-404 circuit breaker caps downgrades per run and halts the rest", async () => {
+    const t = convexTest(schema, modules);
+    const N = 10;
+    // All 10 rows are already confirmed (reconcileNotFoundCount 1) and eligible,
+    // so every one is a confirmed-404 downgrade candidate this run — the shape a
+    // wrong-environment misconfig would produce.
+    await t.run(async (ctx) => {
+      for (let i = 0; i < N; i++) {
+        await ctx.db.insert("subscriptions", {
+          userId: `user_mass_${i}`,
+          dodoSubscriptionId: `sub_mass_${i}`,
+          dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+          planKey: "pro_monthly",
+          status: "active",
+          currentPeriodStart: NOW - 31 * DAY_MS,
+          currentPeriodEnd: NOW - (i + 1) * DAY_MS,
+          rawPayload: { subscription_id: `sub_mass_${i}` },
+          updatedAt: NOW - 10 * DAY_MS,
+          lastReconcileAttemptAt: NOW - 10 * DAY_MS,
+          reconcileFailureCount: 1,
+          reconcileNotFoundCount: 1,
+        });
+      }
+    });
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const summary = await t.action(internal.payments.billing.reconcileMissedDodoRenewals, {
+      now: NOW,
+      errorInjectionForTest: Object.fromEntries(
+        Array.from({ length: N }, (_, i) => [`sub_mass_${i}`, "not_found" as const]),
+      ),
+    });
+
+    // Threshold = min(5, ceil(min(limit, eligible)/2)) = min(5, ceil(10/2)) = 5.
+    expect(summary.expiredMissing).toBe(5);
+    expect(summary.inspected).toBe(N);
+    // The 5 halted rows are routed to the backoff (failed) path.
+    expect(summary.failed).toBe(N - 5);
+
+    const statuses = await t.run(async (ctx) => {
+      const rows = await Promise.all(
+        Array.from({ length: N }, (_, i) =>
+          ctx.db
+            .query("subscriptions")
+            .withIndex("by_dodoSubscriptionId", (q) =>
+              q.eq("dodoSubscriptionId", `sub_mass_${i}`),
+            )
+            .unique(),
+        ),
+      );
+      return rows.map((r) => r?.status);
+    });
+    expect(statuses.filter((s) => s === "expired").length).toBe(5);
+    expect(statuses.filter((s) => s === "active").length).toBe(5);
+
+    // The mass-404 alert fired.
+    const massLogged = errorSpy.mock.calls.some((c) =>
+      String(c[0]).includes("mass Dodo 404s"),
+    );
+    expect(massLogged).toBe(true);
+    errorSpy.mockRestore();
+  });
+
   test("safeMarkReconcileAttempt swallows a throwing bookkeeping mutation", async () => {
     // Reliability P1-1: a failed best-effort backoff write must never propagate
     // out of the per-row loop (which would abort the batch AND skip continuation
@@ -3405,6 +3512,7 @@ describe("payments billing missed renewal reconciliation", () => {
         throwingCtx as never,
         "sub_placeholder" as never,
         NOW,
+        false,
       ),
     ).resolves.toBeUndefined();
     expect(errorSpy).toHaveBeenCalledTimes(1);

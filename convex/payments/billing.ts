@@ -114,11 +114,19 @@ function isReconcileEligible(
 // Confirmation threshold before a definitive Dodo not-found downgrades the local
 // row: only when the row ALREADY has >= this many recorded failures (i.e. this
 // is at least the 2nd consecutive definitive 404, across >= 2 daily runs) do we
-// expire it. Blocks a single flaky 404 from revoking a paying customer. NOTE the
-// residual: a sustained wrong-environment/API-key misconfig that 404s every live
-// sub would still downgrade the base after two runs — that is a sev1 the
-// per-expiry error logs surface loudly.
+// expire it. Blocks a single flaky 404 from revoking a paying customer. The
+// batch-level mass-404 circuit breaker (below) bounds the correlated case where
+// a misconfig makes every live sub 404 at once.
 const DODO_RENEWAL_TERMINAL_NOTFOUND_MIN_PRIOR_FAILURES = 1;
+
+// Mass-404 circuit breaker: the max confirmed-not-found DOWNGRADES a single
+// invocation will perform. Beyond `min(this, ceil(plannedAttempts / 2))` the run
+// stops downgrading and routes the rest to the backoff path, on the theory that
+// a whole batch 404ing is far more likely a wrong-environment/API-key misconfig
+// than that many subscriptions genuinely vanishing at once. A real handful of
+// deleted subs still gets cleaned; a config error downgrades at most the
+// threshold before self-halting (and the loud console.error pages ops first).
+const DODO_RENEWAL_MASS_NOTFOUND_ABSOLUTE_CAP = 5;
 
 // A definitive "this subscription does not exist in Dodo" — the SDK throws
 // `NotFoundError extends APIError<404>` (a `.status` of 404). Transient failures
@@ -173,6 +181,13 @@ type StaleActiveSubscriptionForRenewalReconciliation = {
   currentPeriodEnd: number;
   lastReconcileAttemptAt?: number;
   reconcileFailureCount?: number;
+  reconcileNotFoundCount?: number;
+};
+
+type StaleActiveSubscriptionsPage = {
+  page: StaleActiveSubscriptionForRenewalReconciliation[];
+  continueCursor: string;
+  isDone: boolean;
 };
 
 type ReconciliationSkipReason =
@@ -548,41 +563,41 @@ export const listStaleActiveSubscriptionsForRenewalReconciliation = internalQuer
   args: {
     now: v.number(),
     scanLimit: v.number(),
-    // Resume cursor: only rows with currentPeriodEnd strictly greater than this
-    // are returned, so a continuation can page PAST a window already drained or
-    // saturated by backoff instead of re-scanning the same stalest rows. Omitted
-    // (undefined) on the first invocation of a cron cycle. Uses the same
-    // `by_status_currentPeriodEnd` index — the currentPeriodEnd range is just
-    // lower-bounded when the cursor is set.
-    cursorPeriodEnd: v.optional(v.number()),
+    // Opaque Convex pagination cursor threaded through continuations so a cron
+    // cycle pages forward by DOCUMENT POSITION rather than by currentPeriodEnd.
+    // Position-based paging is why >scanLimit rows sharing one currentPeriodEnd
+    // (a tie) can't strand rows behind them, and why a page fully consumed or
+    // fully backed-off is skipped without re-scanning. `null` (or omitted)
+    // starts from the beginning of the stale set.
+    cursor: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
-    const rows = await ctx.db
+    const result = await ctx.db
       .query("subscriptions")
       // Reuses the by_status_currentPeriodEnd index added by the dunning/
       // winback work (#4935) — same ["status","currentPeriodEnd"] shape, so
-      // no duplicate index is needed for renewal reconciliation.
+      // no duplicate index is needed. The cron pages by opaque Convex cursor
+      // (position-based), so the index range is just the stale-active window.
       .withIndex("by_status_currentPeriodEnd", (q) =>
-        args.cursorPeriodEnd === undefined
-          ? q.eq("status", "active").lt("currentPeriodEnd", args.now)
-          : q
-              .eq("status", "active")
-              .gt("currentPeriodEnd", args.cursorPeriodEnd)
-              .lt("currentPeriodEnd", args.now),
-      )
+        q.eq("status", "active").lt("currentPeriodEnd", args.now),
       .order("asc")
-      .take(args.scanLimit);
+      .paginate({ cursor: args.cursor ?? null, numItems: args.scanLimit });
     // Slim projection — the action only needs identity + the reconcile
     // bookkeeping fields to decide eligibility. Dropping `rawPayload` (v.any(),
     // potentially large) keeps the query→action transfer bounded.
-    return rows.map((row) => ({
-      _id: row._id,
-      userId: row.userId,
-      dodoSubscriptionId: row.dodoSubscriptionId,
-      currentPeriodEnd: row.currentPeriodEnd,
-      lastReconcileAttemptAt: row.lastReconcileAttemptAt,
-      reconcileFailureCount: row.reconcileFailureCount,
-    }));
+    return {
+      page: result.page.map((row) => ({
+        _id: row._id,
+        userId: row.userId,
+        dodoSubscriptionId: row.dodoSubscriptionId,
+        currentPeriodEnd: row.currentPeriodEnd,
+        lastReconcileAttemptAt: row.lastReconcileAttemptAt,
+        reconcileFailureCount: row.reconcileFailureCount,
+        reconcileNotFoundCount: row.reconcileNotFoundCount,
+      })),
+      continueCursor: result.continueCursor,
+      isDone: result.isDone,
+    };
   },
 });
 
@@ -607,6 +622,10 @@ export const markDodoReconcileAttempt = internalMutation({
   args: {
     subscriptionId: v.id("subscriptions"),
     observedAt: v.number(),
+    // Whether THIS attempt was a definitive Dodo 404. Advances the
+    // consecutive-not-found counter that gates the terminal downgrade; a
+    // non-404 attempt resets that streak (a 404 must REPEAT consecutively).
+    notFound: v.boolean(),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db.get(args.subscriptionId);
@@ -614,6 +633,9 @@ export const markDodoReconcileAttempt = internalMutation({
     await ctx.db.patch(args.subscriptionId, {
       lastReconcileAttemptAt: args.observedAt,
       reconcileFailureCount: (existing.reconcileFailureCount ?? 0) + 1,
+      reconcileNotFoundCount: args.notFound
+        ? (existing.reconcileNotFoundCount ?? 0) + 1
+        : 0,
     });
   },
 });
@@ -665,6 +687,9 @@ export const applyDodoSubscriptionReconciliation = internalMutation({
       await ctx.db.patch(existing._id, {
         lastReconcileAttemptAt: args.observedAt,
         reconcileFailureCount: (existing.reconcileFailureCount ?? 0) + 1,
+        // These skips prove the sub still EXISTS in Dodo, so any prior 404
+        // streak is broken.
+        reconcileNotFoundCount: 0,
       });
     };
 
@@ -716,16 +741,20 @@ export const applyDodoSubscriptionReconciliation = internalMutation({
       dodoCustomerId: args.remote.dodoCustomerId ?? existing.dodoCustomerId,
       rawPayload: args.remote.rawPayload,
       updatedAt: args.observedAt,
+      // A successful lookup proves the sub EXISTS in Dodo → any 404 streak is
+      // broken (reset to 0 while still stale, cleared once it leaves the set).
       ...(stillStaleAfterPatch
         ? {
             lastReconcileAttemptAt: args.observedAt,
             reconcileFailureCount: (existing.reconcileFailureCount ?? 0) + 1,
+            reconcileNotFoundCount: 0,
           }
         : {
             // Row left the stale-active set — clear bookkeeping so a later miss
             // starts from a clean slate.
             lastReconcileAttemptAt: undefined,
             reconcileFailureCount: undefined,
+            reconcileNotFoundCount: undefined,
           }),
       ...(args.remote.status === "cancelled"
         ? { cancelledAt: args.remote.cancelledAt ?? existing.cancelledAt ?? args.observedAt }
@@ -785,6 +814,7 @@ export const expireMissingDodoSubscription = internalMutation({
       updatedAt: args.observedAt,
       lastReconcileAttemptAt: undefined,
       reconcileFailureCount: undefined,
+      reconcileNotFoundCount: undefined,
     });
     await recomputeEntitlementFromAllSubs(ctx, existing.userId, args.observedAt);
     return { kind: "expired" };
@@ -793,9 +823,13 @@ export const expireMissingDodoSubscription = internalMutation({
 
 type StaleRowOutcome =
   | { kind: "reconciled" }
-  | { kind: "expired" }
   | { kind: "skipped" }
-  | { kind: "failed"; error: string };
+  | { kind: "failed"; error: string }
+  // Confirmed terminal not-found (definitive 404 past the confirmation
+  // threshold). The row is NOT downgraded here — the action loop decides,
+  // gated by the mass-404 circuit breaker, whether to expire it or route it to
+  // the backoff path.
+  | { kind: "terminal_not_found"; error: string };
 
 // Best-effort backoff bookkeeping for the paths that never reach
 // `applyDodoSubscriptionReconciliation` (Dodo lookup failure, unsupported/pending
@@ -805,11 +839,13 @@ export async function safeMarkReconcileAttempt(
   ctx: Pick<ActionCtx, "runMutation">,
   subscriptionId: Id<"subscriptions">,
   observedAt: number,
+  notFound: boolean,
 ): Promise<void> {
   try {
     await ctx.runMutation(internal.payments.billing.markDodoReconcileAttempt, {
       subscriptionId,
       observedAt,
+      notFound,
     });
   } catch (markErr) {
     // sentry-coverage-ok: structured console.error is forwarded by Convex
@@ -865,8 +901,8 @@ async function reconcileOneStaleRow(
       console.error(
         `[billing/reconcile] Skipping subscription ${normalized.dodoSubscriptionId}: ${normalized.reason} Dodo status "${normalized.status}"`,
       );
-      // Row is still stale-active — back it off.
-      await safeMarkReconcileAttempt(ctx, sub._id, now);
+      // Row is still stale-active — back it off (not a 404, resets the streak).
+      await safeMarkReconcileAttempt(ctx, sub._id, now, false);
       return { kind: "skipped" };
     }
 
@@ -883,43 +919,29 @@ async function reconcileOneStaleRow(
     return result.kind === "reconciled" ? { kind: "reconciled" } : { kind: "skipped" };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    // Confirmed terminal not-found: the subscription no longer exists in Dodo.
-    // Only after >= the confirmation threshold of prior failures so a single
-    // flaky 404 can't downgrade a paying customer. Downgrade the row to expired
-    // so it leaves the active set permanently.
+    const notFound = isDefinitiveDodoNotFound(err);
+    // Confirmed terminal not-found: a definitive 404 AND the row already has
+    // >= the confirmation threshold of CONSECUTIVE prior 404s (so a single
+    // flaky 404 — or a 404 preceded by an unrelated 5xx — can't downgrade a
+    // paying customer). Hand it to the loop, which applies the mass-404 circuit
+    // breaker before actually downgrading. Do NOT back it off here — the loop
+    // either downgrades it or routes it to backoff.
     if (
-      isDefinitiveDodoNotFound(err) &&
-      (sub.reconcileFailureCount ?? 0) >= DODO_RENEWAL_TERMINAL_NOTFOUND_MIN_PRIOR_FAILURES
+      notFound &&
+      (sub.reconcileNotFoundCount ?? 0) >= DODO_RENEWAL_TERMINAL_NOTFOUND_MIN_PRIOR_FAILURES
     ) {
-      const expireResult = (await ctx.runMutation(
-        internal.payments.billing.expireMissingDodoSubscription,
-        {
-          subscriptionId: sub._id,
-          dodoSubscriptionId: sub.dodoSubscriptionId,
-          observedAt: now,
-        },
-      )) as { kind: "expired" } | { kind: "skipped"; reason: ReconciliationSkipReason };
-      if (expireResult.kind === "expired") {
-        // sentry-coverage-ok: structured console.error is forwarded by Convex
-        // auto-Sentry so ops sees confirmed-gone subscriptions being downgraded
-        // (also the signal that would spike on a wrong-environment misconfig).
-        console.error(
-          `[billing/reconcile] dodoSubscriptionId=${sub.dodoSubscriptionId} userId=${sub.userId} confirmed not-found in Dodo after ${(sub.reconcileFailureCount ?? 0) + 1} attempts; downgraded local row to expired.`,
-        );
-        return { kind: "expired" };
-      }
-      // A concurrent webhook already moved the row out of the stale-active set.
-      return { kind: "skipped" };
+      return { kind: "terminal_not_found", error: message };
     }
-    // Transient (5xx / network / timeout) OR an unconfirmed first 404 → back off
-    // and retry; never downgrade on an ambiguous signal.
+    // Transient (5xx / network / timeout) OR an unconfirmed 404 → back off and
+    // retry; never downgrade on an ambiguous signal. Pass `notFound` so a 404
+    // advances the consecutive-404 streak while any other failure resets it.
     // sentry-coverage-ok: structured console.error is forwarded by Convex
     // auto-Sentry. We intentionally do not re-throw here because one bad Dodo
     // lookup must not block reconciliation for other stale subscribers.
     console.error(
       `[billing/reconcile] Failed to reconcile dodoSubscriptionId=${sub.dodoSubscriptionId} userId=${sub.userId}: ${message}`,
     );
-    await safeMarkReconcileAttempt(ctx, sub._id, now);
+    await safeMarkReconcileAttempt(ctx, sub._id, now, notFound);
     return { kind: "failed", error: message };
   }
 }
@@ -932,10 +954,10 @@ export const reconcileMissedDodoRenewals = internalAction({
     // fresh cron tick omits it (defaults to the max) and each continuation
     // passes one fewer. Bounds total work + guarantees termination.
     continuationBudget: v.optional(v.number()),
-    // Scan resume cursor (currentPeriodEnd) threaded through continuations to
-    // page PAST a window already drained or saturated by backoff — see the
-    // scheduling block. Omitted on a fresh cron tick.
-    cursorPeriodEnd: v.optional(v.number()),
+    // Opaque Convex pagination cursor threaded through continuations to page
+    // forward by document position — see the scheduling block. Omitted on a
+    // fresh cron tick.
+    cursor: v.optional(v.union(v.string(), v.null())),
     // Per-query scan window size, clamped to the const ceiling. Defaults to the
     // ceiling; a smaller value is an ops knob (and the test seam that exercises
     // the window-paging / saturation logic without seeding 500 rows). Threaded
@@ -986,20 +1008,19 @@ export const reconcileMissedDodoRenewals = internalAction({
     const continuationBudget =
       args.continuationBudget ?? DODO_RENEWAL_RECONCILIATION_MAX_CONTINUATIONS;
 
-    const scanned = (await ctx.runQuery(
+    const scanResult = (await ctx.runQuery(
       internal.payments.billing.listStaleActiveSubscriptionsForRenewalReconciliation,
       {
         now,
         scanLimit,
-        ...(args.cursorPeriodEnd !== undefined
-          ? { cursorPeriodEnd: args.cursorPeriodEnd }
-          : {}),
+        ...(args.cursor !== undefined ? { cursor: args.cursor } : {}),
       },
-    )) as StaleActiveSubscriptionForRenewalReconciliation[];
+    )) as StaleActiveSubscriptionsPage;
+    const page = scanResult.page;
 
     // Skip rows still inside their post-failure backoff window so a
     // permanently-failing (poison) row can't re-occupy a scan slot every run.
-    const eligible = scanned.filter((sub) => isReconcileEligible(sub, now));
+    const eligible = page.filter((sub) => isReconcileEligible(sub, now));
 
     const remoteById = new Map(
       (args.remoteSubscriptionsForTest ?? []).map((remote) => [
@@ -1035,6 +1056,17 @@ export const reconcileMissedDodoRenewals = internalAction({
       failures: [],
     };
 
+    // Mass-404 circuit breaker budget, sized to the work we plan to attempt this
+    // invocation: a genuine handful of deleted subs downgrades; a batch that is
+    // mostly/entirely 404 (a probable misconfig) self-halts at the threshold.
+    const plannedAttempts = Math.min(limit, eligible.length);
+    const maxNotFoundDowngrades = Math.min(
+      DODO_RENEWAL_MASS_NOTFOUND_ABSOLUTE_CAP,
+      Math.ceil(plannedAttempts / 2),
+    );
+    let notFoundDowngrades = 0;
+    let massNotFoundHalted = false;
+
     let attempted = 0;
     for (const sub of eligible) {
       if (attempted >= limit) {
@@ -1059,9 +1091,6 @@ export const reconcileMissedDodoRenewals = internalAction({
         case "reconciled":
           summary.reconciled++;
           break;
-        case "expired":
-          summary.expiredMissing++;
-          break;
         case "skipped":
           summary.skipped++;
           break;
@@ -1072,41 +1101,82 @@ export const reconcileMissedDodoRenewals = internalAction({
             error: outcome.error,
           });
           break;
+        case "terminal_not_found": {
+          if (notFoundDowngrades >= maxNotFoundDowngrades) {
+            // Circuit breaker tripped — too many confirmed 404s this run. Treat
+            // this (and every subsequent 404) as a transient failure: keep the
+            // row active and on backoff instead of downgrading a possibly-live
+            // customer during a suspected wrong-environment/API-key misconfig.
+            if (!massNotFoundHalted) {
+              massNotFoundHalted = true;
+              // sentry-coverage-ok: Convex auto-Sentry captures console.error —
+              // this is the page that must fire BEFORE a second daily run could
+              // downgrade the base under a config error.
+              console.error(
+                `[billing/reconcile] mass Dodo 404s (${notFoundDowngrades + 1}/${attempted} attempted) — possible wrong-environment/API-key misconfig; further downgrades halted this run.`,
+              );
+            }
+            summary.failed++;
+            summary.failures.push({
+              dodoSubscriptionId: sub.dodoSubscriptionId,
+              error: outcome.error,
+            });
+            // Still a 404 — keep the streak so it downgrades once the breaker
+            // clears (config fixed), rather than resetting confirmation.
+            await safeMarkReconcileAttempt(ctx, sub._id, now, true);
+            break;
+          }
+          const expireResult = (await ctx.runMutation(
+            internal.payments.billing.expireMissingDodoSubscription,
+            {
+              subscriptionId: sub._id,
+              dodoSubscriptionId: sub.dodoSubscriptionId,
+              observedAt: now,
+            },
+          )) as { kind: "expired" } | { kind: "skipped"; reason: ReconciliationSkipReason };
+          if (expireResult.kind === "expired") {
+            notFoundDowngrades++;
+            summary.expiredMissing++;
+            // sentry-coverage-ok: Convex auto-Sentry captures console.error so
+            // ops sees confirmed-gone subscriptions being downgraded.
+            console.error(
+              `[billing/reconcile] dodoSubscriptionId=${sub.dodoSubscriptionId} userId=${sub.userId} confirmed not-found in Dodo after ${(sub.reconcileFailureCount ?? 0) + 1} attempts; downgraded local row to expired.`,
+            );
+          } else {
+            // A concurrent webhook already moved the row out of the stale set.
+            summary.skipped++;
+          }
+          break;
+        }
       }
     }
 
-    const scanWasFull = scanned.length >= scanLimit;
-    // Every eligible row in this window has been attempted (we didn't stop on
-    // the batch/time budget), but the window was full so more rows — eligible or
-    // not — may sort beyond it. Also fires the "saturated" case (eligible was
-    // empty: all scanned rows are inside their backoff window).
-    const windowDrainedButFull = scanWasFull && eligible.length <= attempted;
-    summary.windowSaturated = scanWasFull && eligible.length === 0;
+    // Did we finish this page's eligible rows (none left un-attempted due to the
+    // batch/time budget)? If so, and more pages exist, page forward via the
+    // opaque cursor. Otherwise keep the cursor so the continuation re-fetches
+    // this page and finishes draining it — the rows we just attempted are backed
+    // off now, so the eligible set strictly shrinks.
+    const pageDrained = eligible.length <= attempted;
+    const advanceToNextPage = pageDrained && !scanResult.isDone;
+    // Whole non-empty page was ineligible (all inside their backoff window) and
+    // more pages remain — surfaced so an operator can tell "cooldown-saturated"
+    // from "nothing stale". Position-based paging advances past it regardless,
+    // so it never strands the rows behind it.
+    summary.windowSaturated = page.length > 0 && eligible.length === 0 && !scanResult.isDone;
 
     if (summary.windowSaturated) {
-      // Distinguishable from an idle cron: the read budget was spent but every
-      // stale row in the window is cooling down. The cursor advances past it
-      // below so healthy rows sorted behind the poison window still get reached.
+      // sentry-coverage-ok: Convex auto-Sentry captures console.error.
       console.error(
-        `[billing/reconcile] scan window saturated: all ${scanned.length} scanned stale rows are within their reconcile backoff window; advancing scan cursor past currentPeriodEnd<=${scanned[scanned.length - 1]?.currentPeriodEnd} to reach rows behind them.`,
+        `[billing/reconcile] scan page saturated: all ${page.length} scanned stale rows are within their reconcile backoff window; paging forward to reach rows behind them.`,
       );
     }
 
-    // Cursor advance: page PAST this window (its eligible rows are all attempted
-    // or it's fully backed-off) so the next invocation reads new rows instead of
-    // re-scanning the same stalest window. When there are still un-attempted
-    // eligible rows in THIS window (we stopped on the batch/time budget), keep
-    // the cursor so the continuation re-scans and finishes draining it — those
-    // rows are backed off now, so the eligible set strictly shrinks.
-    // `scanned` is currentPeriodEnd-ascending, so its last element is the max.
-    const nextCursorPeriodEnd = windowDrainedButFull
-      ? scanned[scanned.length - 1]!.currentPeriodEnd
-      : args.cursorPeriodEnd;
-    const cursorAdvanced = nextCursorPeriodEnd !== args.cursorPeriodEnd;
+    const nextCursor = advanceToNextPage ? scanResult.continueCursor : args.cursor;
+    const cursorAdvanced = advanceToNextPage;
 
-    // More work remains if we couldn't attempt every eligible row in this
-    // window, or the window was full (rows may sort beyond it).
-    summary.hasMore = eligible.length > attempted || scanWasFull;
+    // More work remains if we couldn't attempt every eligible row on this page,
+    // or more pages exist beyond it.
+    summary.hasMore = eligible.length > attempted || !scanResult.isDone;
 
     if (summary.failed > 0) {
       console.error(
@@ -1116,10 +1186,10 @@ export const reconcileMissedDodoRenewals = internalAction({
 
     // Chain a continuation when work remains AND we are guaranteed to make
     // progress next invocation: either we attempted rows this pass (the current
-    // window's eligible set shrank) or the cursor advanced (the next scan reads
-    // a strictly higher currentPeriodEnd range). Advancing on a saturated window
-    // is what stops a fully-backed-off window from silently stranding the
-    // healthy rows behind it. `continuationBudget` is the hard termination cap.
+    // page's eligible set shrank) or the cursor advanced to a new page.
+    // Advancing on a saturated page is what stops a fully-backed-off page from
+    // silently stranding the healthy rows behind it. `continuationBudget` is the
+    // hard termination cap.
     if (
       summary.hasMore &&
       continuationBudget > 0 &&
@@ -1133,9 +1203,7 @@ export const reconcileMissedDodoRenewals = internalAction({
           limit,
           scanLimit,
           continuationBudget: continuationBudget - 1,
-          ...(nextCursorPeriodEnd !== undefined
-            ? { cursorPeriodEnd: nextCursorPeriodEnd }
-            : {}),
+          cursor: nextCursor ?? null,
           ...(args.remoteSubscriptionsForTest
             ? { remoteSubscriptionsForTest: args.remoteSubscriptionsForTest }
             : {}),
