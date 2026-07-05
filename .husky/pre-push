@@ -65,12 +65,15 @@ RUN_ALL_REASON=""
 if CHANGED_FILES=$(git diff --name-only origin/main...HEAD 2>/dev/null); then
   :
 else
+  # origin/main is not resolvable (offline, fresh clone, missing remote ref).
+  # Force EVERYTHING: the HEAD~1 fallback only sees the last commit, so using
+  # it to scope safety gates would silently skip typechecks/lints for earlier
+  # commits in the push — and then the green-tree cache would stamp that tree.
+  # HEAD~1 is kept ONLY to narrow the changed-test list (informational).
   CHANGED_FILES=$(git diff --name-only HEAD~1 2>/dev/null || echo "")
-  RUN_ALL_REASON="changed files could not be resolved from origin/main"
-fi
-if [ -z "$CHANGED_FILES" ] && [ -n "$RUN_ALL_REASON" ]; then
-  echo "WARNING: Could not determine changed files, running broad invariant checks as safety fallback."
   RUN_ALL=true
+  RUN_ALL_REASON="changed files could not be resolved from origin/main"
+  echo "WARNING: Could not resolve branch diff from origin/main — running ALL invariant checks as safety fallback."
 fi
 if echo "$CHANGED_FILES" | grep -q "package.json\|tsconfig"; then
   RUN_ALL=true
@@ -98,11 +101,13 @@ else
   echo "Type check skipped (no frontend-surface changes)."
 fi
 
-if changed '^(api/|server/|scripts/|middleware)'; then
+if changed '^(api/|server/|scripts/|middleware|src/generated/)'; then
+  # tsconfig.api.json includes api, src/generated, AND server — a generated
+  # client/contract change alone can break API compilation.
   echo "Running API type check..."
   npm run typecheck:api || exit 1
 else
-  echo "API type check skipped (no api/server/scripts changes)."
+  echo "API type check skipped (no api/server/scripts/src-generated changes)."
 fi
 
 if changed '^convex/'; then
@@ -126,32 +131,37 @@ fi
 echo "Running Unicode safety check..."
 node scripts/check-unicode-safety.mjs || exit 1
 
-if changed '^(src/|server/|api/)'; then
+# Each guardrail also fires when its OWN implementation script changes, so a
+# broken gate can't push locally and only fail later in CI.
+if changed '^(src/|server/|api/|scripts/lint-boundaries\.mjs$)'; then
   echo "Running architectural boundary check..."
   npm run lint:boundaries || exit 1
 fi
 
-if changed '^src/'; then
+if changed '^(src/|scripts/enforce-safe-html\.mjs$)'; then
   echo "Running safe HTML sink check..."
   npm run lint:safe-html || exit 1
 fi
 
-if changed '^(src/|api/|server/)'; then
+if changed '^(src/|api/|server/|scripts/check-sentry-coverage\.mjs$)'; then
   echo "Running Sentry-coverage check..."
   node scripts/check-sentry-coverage.mjs || exit 1
 fi
 
-if changed '^(api/|server/)'; then
+if changed '^(api/|server/|scripts/enforce-rate-limit-policies\.mjs$)'; then
   echo "Running rate-limit policy coverage check..."
   npm run lint:rate-limit-policies || exit 1
 fi
 
-if changed '^(src/|api/)'; then
+if changed '^(src/|api/|scripts/enforce-premium-fetch\.mjs$)'; then
   echo "Running premium-fetch parity check..."
   npm run lint:premium-fetch || exit 1
 fi
 
-if changed '^api/'; then
+if changed '^(api/|server/|src/generated/)'; then
+  # Edge RPC entries under api/ bundle-import server/gateway, domain handlers,
+  # and generated stubs — a server-only Node-ism breaks the Vercel bundle with
+  # zero api/ diff, so those paths must trigger the esbuild check too.
   echo "Running edge function bundle check..."
   while IFS= read -r f; do
     npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null 2>/dev/null || {
@@ -161,7 +171,7 @@ if changed '^api/'; then
     }
   done < <(find api/ -name "*.js" -not -name "_*"; find api/ -maxdepth 1 -name "*.ts" -not -name "_*")
 else
-  echo "Edge function bundle check skipped (no api/ changes)."
+  echo "Edge function bundle check skipped (no api/, server/, or src/generated changes)."
 fi
 
 # Determine which test categories to run based on changed files

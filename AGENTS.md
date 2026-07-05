@@ -201,11 +201,11 @@ Variant is set via `VITE_VARIANT` env var. Config lives in `src/config/variants/
 
 Runs automatically before `git push`. Two tiers:
 
-**Always (state-dependent, fast):** local Vercel env-dump guard, PR-state check (no pushes to merged/closed PR branches), branch-contamination guard (>20 commits ahead), `scripts/` lockfile sync, Unicode safety, version sync.
+**Always (state-dependent, fast — run even on a cache hit):** local Vercel env-dump guard, PR-state check (no pushes to merged/closed PR branches), branch-contamination guard (>20 commits ahead), `scripts/` lockfile sync.
 
-**Scoped to the branch diff (tree-dependent):** TypeScript checks (frontend tsc on `src/`-surface changes; `typecheck:api` on `api/|server/|scripts/`; Convex tsc on `convex/`), CJS syntax, boundary/safe-html/Sentry-coverage/rate-limit/premium-fetch lints, edge esbuild check (`api/`), markdown/MDX lint, proto + pro-test bundle freshness, change-scoped tests. `package.json`/`tsconfig` changes force everything.
+**Tree-dependent (skipped entirely on a green-tree cache hit):** Unicode safety and version sync (always run for uncached trees), plus the diff-scoped checks: TypeScript (frontend tsc on `src/`-surface changes; `typecheck:api` on `api/|server/|scripts/|src/generated/`; Convex tsc on `convex/`), CJS syntax, boundary/safe-html/Sentry-coverage/rate-limit/premium-fetch lints (each also fires when its own guardrail script changes), edge esbuild check (`api/|server/|src/generated/` — edge entries bundle-import server code), markdown/MDX lint, proto + pro-test bundle freshness, change-scoped tests. `package.json`/`tsconfig` changes — or an unresolvable `origin/main` diff — force everything.
 
-**Green-tree cache:** a tree that passed the full gate is recorded (`$GIT_DIR/wm-prepush-green`); re-pushing the identical tree (remote failure, message-only amend) skips the tree-dependent checks. Delete that file to force a full re-run.
+**Green-tree cache:** a tree that passed the full gate is recorded (`$GIT_DIR/wm-prepush-green`); re-pushing the identical tree (remote failure, message-only amend) skips all tree-dependent checks — same tree, same result. Delete that file to force a full re-run.
 
 Heavy checks (`test:data`, typechecks, edge-bundle) must run **sequentially** in worktrees — parallel runs OOM (exit 137).
 
