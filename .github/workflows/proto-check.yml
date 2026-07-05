@@ -13,11 +13,66 @@ permissions:
   contents: read
 
 jobs:
-  proto-freshness:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+  fork-proto-check:
+    if: github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Checkout fork PR merge commit
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Check generated artifacts are included
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          CHANGED_FILES=$(git diff --name-only "$BASE_SHA"...HEAD -- proto src/generated docs/api Makefile .github/workflows/proto-check.yml || true)
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No proto or generated artifact changes detected."
+            exit 0
+          fi
+
+          echo "Changed proto/codegen files:"
+          echo "$CHANGED_FILES"
+
+          PROTO_CHANGED=$(printf '%s\n' "$CHANGED_FILES" | grep -E '^proto/' || true)
+          GENERATED_CHANGED=$(printf '%s\n' "$CHANGED_FILES" | grep -E '^(src/generated/|docs/api/)' || true)
+
+          if [ -n "$PROTO_CHANGED" ] && [ -z "$GENERATED_CHANGED" ]; then
+            echo ""
+            echo "============================================================"
+            echo "ERROR: Proto files changed without committed generated artifacts."
+            echo "This PR comes from a fork, so CI does not execute the fork's Makefile,"
+            echo "buf.gen.yaml, or code generator configuration."
+            echo "Run 'make generate' locally and commit any changes under:"
+            echo "  - src/generated/"
+            echo "  - docs/api/"
+            echo "A maintainer can run the full freshness check from an internal branch."
+            echo "============================================================"
+            exit 1
+          fi
+
+          echo ""
+          echo "Fork PR proto safety check passed."
+          echo "CI did not execute generator code from the fork."
+
+  internal-auto-generate:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      pushed: ${{ steps.commit.outputs.pushed }}
+    concurrency:
+      group: proto-freshness-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - name: Checkout internal PR branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
@@ -39,13 +94,60 @@ jobs:
       - name: Run proto generation
         run: make generate
 
-      - name: Verify generated code is up to date
+      - name: Commit generated artifacts
+        id: commit
+        env:
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
-          if ! git diff --exit-code src/generated/ docs/api/; then
+          if git diff --quiet -- src/generated/ docs/api/ && [ -z "$(git ls-files --others --exclude-standard src/generated/ docs/api/)" ]; then
+            echo "Proto-generated code is up to date on the PR branch."
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/generated/ docs/api/
+          git commit -m "chore(proto): update generated artifacts"
+          git push origin HEAD:"$PR_HEAD_REF"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+
+  internal-merge-freshness:
+    needs: internal-auto-generate
+    if: github.event.pull_request.head.repo.full_name == github.repository && needs.internal-auto-generate.outputs.pushed != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout internal PR merge commit
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.23'
+          cache: false
+
+      - name: Cache Go binaries (buf, protoc plugins)
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5
+        with:
+          path: ~/go/bin
+          key: go-bin-${{ runner.os }}-${{ hashFiles('Makefile') }}
+
+      - name: Install buf and protoc plugins
+        run: make install-buf install-plugins
+        env:
+          GOPROXY: direct
+          GOPRIVATE: github.com/SebastienMelki
+
+      - name: Run proto generation against merge commit
+        run: make generate
+
+      - name: Verify generated code is fresh against merge result
+        run: |
+          if ! git diff --exit-code -- src/generated/ docs/api/; then
             echo ""
             echo "============================================================"
-            echo "ERROR: Proto-generated code is out of date."
-            echo "Run 'make generate' locally and commit the updated files."
+            echo "ERROR: Proto-generated code is stale against the PR merge result."
+            echo "Re-run this workflow after the generated artifact commit lands,"
+            echo "or rebase the PR branch on the latest base branch and retry."
             echo "============================================================"
             exit 1
           fi
@@ -54,11 +156,10 @@ jobs:
           if [ -n "$UNTRACKED" ]; then
             echo ""
             echo "============================================================"
-            echo "ERROR: Untracked generated files found:"
+            echo "ERROR: Untracked generated files found against the PR merge result:"
             echo "$UNTRACKED"
-            echo "Run 'make generate' locally and commit the new files."
             echo "============================================================"
             exit 1
           fi
 
-          echo "Proto-generated code is up to date."
+          echo "Proto-generated code is fresh against the PR merge result."
