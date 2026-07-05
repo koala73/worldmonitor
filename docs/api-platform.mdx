@@ -113,6 +113,8 @@ Per-user dashboard preferences (layout, toggles, filters). Clerk bearer required
 }
 ```
 
+- **Idempotency**: optional `Idempotency-Key` supported on `POST /api/user-prefs`. Retrying the same key with an identical body replays the original preferences response instead of applying the update again.
+
 ## API key cache invalidation
 
 ### `POST /api/invalidate-user-api-key-cache`

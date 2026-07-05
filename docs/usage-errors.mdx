@@ -35,7 +35,8 @@ OAuth endpoints follow [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rf
 | `403` | Authenticated but not entitled (usually `pro_required`) | No — upgrade |
 | `404` | Resource / tool / brief / entity not found | No |
 | `405` | Method not allowed | No |
-| `409` | Conflict (duplicate webhook registration, etc.) | No |
+| `409` | `Idempotency-Key` request still in progress, or another conflict such as duplicate webhook registration. | Yes for keyed in-flight requests - honor `Retry-After: 2`; otherwise no |
+| `422` | `Idempotency-Key` reused with a different request body. | No - resend the original body or use a new key |
 | `413` | Payload too large | No |
 | `429` | Rate limited | Yes — honor `Retry-After` |
 | `500` | Server bug | Yes — with backoff, then report |
@@ -56,12 +57,25 @@ OAuth endpoints follow [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rf
 | `Service temporarily unavailable` | Upstash or another hard dependency missing at request time. |
 | `service_unavailable` | Signing secret / required env not configured. |
 | `Failed to enqueue scenario job` | Redis pipeline failure on `/api/scenario/v1/run-scenario`. |
+| `idempotency_conflict` | A POST with this `Idempotency-Key` is still processing. Retry after `Retry-After: 2`. |
+| `idempotency_key_reused` | The same `Idempotency-Key` was already used with a different request body. |
+| `invalid_idempotency_key` | The `Idempotency-Key` header is too long or contains non-printable characters. Generated OpenAPI POSTs also reject an empty key. |
+
+## Idempotency-Key
+
+All generated OpenAPI POST operations and these standalone write endpoints accept an optional `Idempotency-Key` request header: `POST /api/create-checkout`, `POST /api/customer-portal`, `POST /api/notify`, `POST /api/user-prefs`, and `POST /api/notification-channels`. Use a client-generated key for any POST that your client may retry after a network timeout or retryable 5xx.
+
+Retrying a POST with the same key and an identical request body replays the original completed response instead of re-executing the operation. The replay contract reproduces the original status, body, and Content-Type; success responses echo `Idempotency-Key` and set `Idempotent-Replayed: false` on the first response or `Idempotent-Replayed: true` on replay. Keys are scoped per authenticated caller, fall back to the source IP for unauthenticated endpoints, and are retained for 24 hours after a completed response unless the endpoint documents a shorter replay window.
+
+If the first request is still running, the retry returns `409 idempotency_conflict` with `Retry-After: 2`; retry after that delay with the same key and identical body. If the same key is reused with a different request body, the API returns `422 idempotency_key_reused`; do not retry unchanged, because the client must either send the original body or choose a new key for the new operation.
+
+For mutations this avoids duplicating the side effect, including async enqueues such as `POST /api/scenario/v1/run-scenario`. For batch-read POSTs, replay returns the cached snapshot and that snapshot can be up to 24 hours stale. A `409 idempotency_conflict` means the original keyed request is still running and keeps its in-flight lock until it completes. If the original execution itself returns a retryable status (`408`, `409`, `429`, or 5xx), that response is not cached and the processing lock is released, so a later retry may re-execute the operation and should only be sent when the endpoint contract is safe for that retry or the client can tolerate re-execution.
 
 ## Retry strategy
 
 **Idempotent reads** (`GET`): retry 429/5xx with exponential backoff (1s, 2s, 4s, cap 30s, 5 attempts). Most GET responses are cached at the edge, so the retry usually goes faster.
 
-**Writes**: never auto-retry 4xx. For 5xx on writes, inspect: `POST /api/brief/share-url` and `POST /api/v2/shipping/webhooks` are idempotent; `POST /api/scenario/v1/run-scenario` is **not** — it enqueues a new job on each call. Retrying a 5xx on `run-scenario` may double-charge the rate-limit counter.
+**Writes**: send `Idempotency-Key` on any POST you may retry. Never auto-retry most 4xx responses; the exception is `409 idempotency_conflict`, which means a keyed request is still in flight and can be retried after `Retry-After: 2` with the same key and identical body. 5xx responses are not cached for replay even when a key is present; retry with exponential backoff only when the endpoint contract is safe for a repeated execution or the client can tolerate that possibility. Without a key, inspect the endpoint contract before retrying because an unkeyed repeat can duplicate the side effect.
 
 **MCP**: the server returns tool errors in the JSON-RPC result with `isError: true` and a text explanation — those are not HTTP errors. Handle them at the tool-call layer.
 

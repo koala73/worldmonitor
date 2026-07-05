@@ -17,6 +17,7 @@ Creates a Dodo checkout session and returns the hosted-checkout URL.
   { "productId": "pro-monthly", "returnUrl": "https://www.worldmonitor.app/pro/success" }
   ```
 - **Response**: `{ "checkoutUrl": "https://checkout.dodopayments.com/..." }`
+- **Idempotency**: optional `Idempotency-Key` supported for 10 minutes after a successful response. Retrying the same key with an identical body replays the original checkout response instead of creating another checkout attempt.
 - **returnUrl** is validated against an allowlist on the Convex side.
 
 ### `POST /api/customer-portal`
@@ -25,6 +26,7 @@ Creates a Dodo customer-portal session for an existing subscriber (update card, 
 
 - **Auth**: Clerk bearer + active entitlement
 - **Response**: `{ "portalUrl": "..." }`
+- **Idempotency**: optional `Idempotency-Key` supported. Retrying the same key replays the original portal response instead of creating another portal attempt.
 
 ## Product catalog
 
@@ -84,6 +86,7 @@ Returns the tier view-model used by the `/pro` pricing page. Cached in Redis und
 ```
 
 Notes:
+
 - Price fields are flat on the tier. Paid tiers expose `monthlyPrice` / `monthlyProductId` and `annualPrice` / `annualProductId`. Free uses `price: 0, period: "forever"`; Enterprise uses `price: null`.
 - Prices are dollars (Dodo returns cents; the handler divides by 100). Currency is implicit USD for the published catalog.
 
@@ -105,6 +108,7 @@ Returns the caller's deterministic referral code (an 8-char HMAC of the Clerk us
 ```
 
 Errors:
+
 - `401 UNAUTHENTICATED` — missing or invalid Clerk JWT.
 - `503 service_unavailable` — `BRIEF_URL_SIGNING_SECRET` not configured (the referral-code HMAC reuses that secret).
 
