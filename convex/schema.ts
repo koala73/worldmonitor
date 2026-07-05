@@ -547,6 +547,15 @@ export default defineSchema({
     onHoldAt: v.optional(v.number()),
     rawPayload: v.any(),
     updatedAt: v.number(),
+    // Renewal-reconciliation bookkeeping (see
+    // `payments/billing:reconcileMissedDodoRenewals`). Orthogonal to
+    // `updatedAt` — these are NEVER bumped on a webhook state change, only
+    // when the reconciliation cron attempts (and fails/skips) a row. Used to
+    // back off permanently-failing rows (e.g. test-mode-era subs that 404
+    // against the live Dodo client) so they stop starving the batch's scan
+    // slots. Cleared on a successful reconcile.
+    lastReconcileAttemptAt: v.optional(v.number()),
+    reconcileFailureCount: v.optional(v.number()),
   })
     .index("by_userId", ["userId"])
     .index("by_dodoSubscriptionId", ["dodoSubscriptionId"])

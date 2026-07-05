@@ -19,7 +19,7 @@ import { resolveUserId, requireUserId } from "../lib/auth";
 import { getFeaturesForPlan } from "../lib/entitlements";
 import { ANON_ID_V4_REGEX, verifyAnonClaimToken } from "../lib/identitySigning";
 import { PRODUCT_CATALOG, resolveProductToPlan } from "../config/productCatalog";
-import { recomputeEntitlementFromAllSubs } from "./subscriptionHelpers";
+import { isNewerEvent, recomputeEntitlementFromAllSubs, resolvePlanKey } from "./subscriptionHelpers";
 
 // ---------------------------------------------------------------------------
 // Shared SDK config (direct REST SDK, not the Convex component from lib/dodo.ts)
@@ -54,9 +54,47 @@ function getDodoClient(
   });
 }
 
+// Max Dodo lookups attempted per action INVOCATION (each retrieve is a paid
+// REST round-trip). The daily cron drains a larger backlog across continuation
+// invocations (see MAX_CONTINUATIONS).
 const DODO_RENEWAL_RECONCILIATION_BATCH_SIZE = 50;
+// Max candidate rows the stale-scan query returns per call. Bounds the query's
+// read cost and, more importantly, must comfortably exceed the number of
+// permanently-failing (poison) rows so healthy stale rows ordered behind them
+// are still within the scanned window. Realistic poison volume (test-mode-era
+// subs) is far under this; a backlog that ever exceeds it is drained across
+// daily runs as reconciled rows leave the set.
+const DODO_RENEWAL_RECONCILIATION_SCAN_LIMIT = 500;
 const DODO_RENEWAL_RECONCILIATION_TIMEOUT_MS = 10_000;
-const DODO_RECONCILIATION_FALLBACK_PLAN_KEY = "enterprise";
+// Wall-clock budget per invocation. Worst case a full batch of slow Dodo
+// lookups (retry/timeout) could exceed Convex's 10-min action cap, so we bail
+// with a summary and continuation-schedule the remainder well before it.
+const DODO_RENEWAL_RECONCILIATION_TIME_BUDGET_MS = 8 * 60 * 1000;
+// Hard ceiling on self-scheduled continuations per cron cycle. Bounds total
+// Dodo calls to MAX_CONTINUATIONS * BATCH_SIZE and guarantees termination.
+const DODO_RENEWAL_RECONCILIATION_MAX_CONTINUATIONS = 25;
+// Exponential backoff applied to a row after a failed/no-progress reconcile
+// attempt so a permanently-failing row is retried geometrically less often
+// (base after the 1st failure, doubling, capped) instead of every run.
+const DODO_RENEWAL_RECONCILIATION_BACKOFF_BASE_MS = 2 * 24 * 60 * 60 * 1000;
+const DODO_RENEWAL_RECONCILIATION_BACKOFF_MAX_MS = 30 * 24 * 60 * 60 * 1000;
+
+function reconcileBackoffMs(failureCount: number): number {
+  if (failureCount <= 0) return 0;
+  const exponent = Math.min(failureCount - 1, 5);
+  return Math.min(
+    DODO_RENEWAL_RECONCILIATION_BACKOFF_BASE_MS * 2 ** exponent,
+    DODO_RENEWAL_RECONCILIATION_BACKOFF_MAX_MS,
+  );
+}
+
+function isReconcileEligible(
+  candidate: { lastReconcileAttemptAt?: number; reconcileFailureCount?: number },
+  now: number,
+): boolean {
+  if (candidate.lastReconcileAttemptAt == null) return true;
+  return now - candidate.lastReconcileAttemptAt >= reconcileBackoffMs(candidate.reconcileFailureCount ?? 0);
+}
 
 const dodoReconciliationRemoteSubscriptionValidator = v.object({
   subscription_id: v.string(),
@@ -97,6 +135,9 @@ type StaleActiveSubscriptionForRenewalReconciliation = {
   _id: Id<"subscriptions">;
   userId: string;
   dodoSubscriptionId: string;
+  currentPeriodEnd: number;
+  lastReconcileAttemptAt?: number;
+  reconcileFailureCount?: number;
 };
 
 type ReconciliationMutationResult =
@@ -115,6 +156,8 @@ type ReconciliationSummary = {
   failed: number;
   limit: number;
   hasMore: boolean;
+  timeBudgetExhausted: boolean;
+  continuationScheduled: boolean;
   failures: Array<{ dodoSubscriptionId: string; error: string }>;
 };
 
@@ -125,7 +168,18 @@ function normalizeDodoStatus(status: string): LocalSubscriptionStatus | null {
     case "cancelled":
     case "expired":
       return status;
+    case "failed":
+      // Dodo `failed` = the subscription's mandate/payment permanently failed.
+      // The SDK `SubscriptionStatus` union carries it separately from `expired`,
+      // but locally it means the same thing: no longer covering. Map to
+      // `expired` so `recomputeEntitlementFromAllSubs` downgrades the user
+      // (a local-active row would otherwise keep full entitlement forever via
+      // `isCoveringAt`).
+      return "expired";
     default:
+      // `pending` and any unknown status → caller skips + escalates. `pending`
+      // is a real SDK status (initial payment in flight) but not a state we act
+      // on from the reconciler.
       return null;
   }
 }
@@ -144,7 +198,8 @@ function normalizeRemoteSubscription(
   const status = normalizeDodoStatus(remote.status);
   if (!status) {
     return {
-      kind: "unsupported-status" as const,
+      kind: "skip" as const,
+      reason: remote.status === "pending" ? ("pending" as const) : ("unsupported-status" as const),
       status: remote.status,
       dodoSubscriptionId: remote.subscription_id,
     };
@@ -440,10 +495,10 @@ export const getDodoCustomerIdForUserPortal = internalQuery({
 export const listStaleActiveSubscriptionsForRenewalReconciliation = internalQuery({
   args: {
     now: v.number(),
-    limit: v.number(),
+    scanLimit: v.number(),
   },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const rows = await ctx.db
       .query("subscriptions")
       // Reuses the by_status_currentPeriodEnd index added by the dunning/
       // winback work (#4935) — same ["status","currentPeriodEnd"] shape, so
@@ -452,7 +507,46 @@ export const listStaleActiveSubscriptionsForRenewalReconciliation = internalQuer
         q.eq("status", "active").lt("currentPeriodEnd", args.now),
       )
       .order("asc")
-      .take(args.limit);
+      .take(args.scanLimit);
+    // Slim projection — the action only needs identity + the reconcile
+    // bookkeeping fields to decide eligibility. Dropping `rawPayload` (v.any(),
+    // potentially large) keeps the query→action transfer bounded.
+    return rows.map((row) => ({
+      _id: row._id,
+      userId: row.userId,
+      dodoSubscriptionId: row.dodoSubscriptionId,
+      currentPeriodEnd: row.currentPeriodEnd,
+      lastReconcileAttemptAt: row.lastReconcileAttemptAt,
+      reconcileFailureCount: row.reconcileFailureCount,
+    }));
+  },
+});
+
+/**
+ * Marks a reconcile attempt on a stale-active subscription row: bumps
+ * `reconcileFailureCount` and stamps `lastReconcileAttemptAt`. Called for every
+ * NO-PROGRESS outcome (failed Dodo lookup, unsupported/pending remote status,
+ * remote-not-newer on a still-stale row) so the exponential backoff in
+ * `isReconcileEligible` de-prioritises permanently-failing rows and they stop
+ * hogging the scan window.
+ *
+ * Deliberately does NOT touch `updatedAt` — that field carries webhook
+ * ordering semantics (`isNewerEvent`) and must not be perturbed by a
+ * bookkeeping write. Skips rows a concurrent webhook already moved out of the
+ * active set.
+ */
+export const markDodoReconcileAttempt = internalMutation({
+  args: {
+    subscriptionId: v.id("subscriptions"),
+    observedAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db.get(args.subscriptionId);
+    if (!existing || existing.status !== "active") return;
+    await ctx.db.patch(args.subscriptionId, {
+      lastReconcileAttemptAt: args.observedAt,
+      reconcileFailureCount: (existing.reconcileFailureCount ?? 0) + 1,
+    });
   },
 });
 
@@ -488,6 +582,16 @@ export const applyDodoSubscriptionReconciliation = internalMutation({
       );
     }
 
+    // Out-of-order guard, identical to every webhook handler. Between the
+    // stale-scan read and this mutation a concurrent lifecycle webhook (e.g.
+    // `subscription.plan_changed`, which patches planKey/productId but NOT
+    // currentPeriodEnd) may have written a newer state. Our `observedAt` is the
+    // cron's read time; if the row was updated at/after it, the cron holds a
+    // stale snapshot and must not clobber the webhook's write.
+    if (!isNewerEvent(existing.updatedAt, args.observedAt)) {
+      return { kind: "skipped", reason: "local_updated_concurrently" };
+    }
+
     if (existing.status !== "active" || existing.currentPeriodEnd >= args.observedAt) {
       return { kind: "skipped", reason: "local_no_longer_stale" };
     }
@@ -501,24 +605,13 @@ export const applyDodoSubscriptionReconciliation = internalMutation({
       return { kind: "skipped", reason: "remote_not_newer" };
     }
 
+    // Reuse the shared webhook resolver so reconciliation and organic webhook
+    // ingestion resolve a Dodo product ID to a plan key IDENTICALLY —
+    // productPlans table → LEGACY_PRODUCT_ALIASES → enterprise over-grant
+    // fallback (with the same structured console.error escalation).
     let planKey = existing.planKey;
     if (args.remote.productId !== existing.dodoProductId) {
-      const mapping = await ctx.db
-        .query("productPlans")
-        .withIndex("by_dodoProductId", (q) =>
-          q.eq("dodoProductId", args.remote.productId),
-        )
-        .first();
-      const mappedPlanKey =
-        mapping?.planKey ?? resolveProductToPlan(args.remote.productId);
-      if (mappedPlanKey) {
-        planKey = mappedPlanKey;
-      } else {
-        planKey = DODO_RECONCILIATION_FALLBACK_PLAN_KEY;
-        console.error(
-          `[billing/reconcile] Unknown Dodo product ID "${args.remote.productId}" for subscription ${args.remote.dodoSubscriptionId}; falling back to "${DODO_RECONCILIATION_FALLBACK_PLAN_KEY}" so a paid customer is not under-granted while catalog mapping is fixed.`,
-        );
-      }
+      planKey = await resolvePlanKey(ctx, args.remote.productId);
     }
 
     await ctx.db.patch(existing._id, {
@@ -530,6 +623,10 @@ export const applyDodoSubscriptionReconciliation = internalMutation({
       dodoCustomerId: args.remote.dodoCustomerId ?? existing.dodoCustomerId,
       rawPayload: args.remote.rawPayload,
       updatedAt: args.observedAt,
+      // Clear reconcile bookkeeping — this row made progress and (usually)
+      // leaves the stale-active set; a later miss starts from a clean slate.
+      lastReconcileAttemptAt: undefined,
+      reconcileFailureCount: undefined,
       ...(args.remote.status === "cancelled"
         ? { cancelledAt: args.remote.cancelledAt ?? existing.cancelledAt ?? args.observedAt }
         : {}),
@@ -549,6 +646,10 @@ export const reconcileMissedDodoRenewals = internalAction({
   args: {
     now: v.optional(v.number()),
     limit: v.optional(v.number()),
+    // Remaining self-scheduled continuations this cron cycle. Internal — a
+    // fresh cron tick omits it (defaults to the max) and each continuation
+    // passes one fewer. Bounds total work + guarantees termination.
+    continuationBudget: v.optional(v.number()),
     remoteSubscriptionsForTest: v.optional(
       v.array(dodoReconciliationRemoteSubscriptionValidator),
     ),
@@ -560,7 +661,11 @@ export const reconcileMissedDodoRenewals = internalAction({
       );
     }
 
+    // Logical clock for staleness + backoff (threaded unchanged through
+    // continuations so a cycle stays coherent). Wall-clock is tracked
+    // separately below for the action-runtime budget.
     const now = args.now ?? Date.now();
+    const startedAtWallClock = Date.now();
     const limit = Math.max(
       1,
       Math.min(
@@ -568,10 +673,17 @@ export const reconcileMissedDodoRenewals = internalAction({
         DODO_RENEWAL_RECONCILIATION_BATCH_SIZE,
       ),
     );
-    const stale = (await ctx.runQuery(
+    const continuationBudget =
+      args.continuationBudget ?? DODO_RENEWAL_RECONCILIATION_MAX_CONTINUATIONS;
+
+    const scanned = (await ctx.runQuery(
       internal.payments.billing.listStaleActiveSubscriptionsForRenewalReconciliation,
-      { now, limit },
+      { now, scanLimit: DODO_RENEWAL_RECONCILIATION_SCAN_LIMIT },
     )) as StaleActiveSubscriptionForRenewalReconciliation[];
+
+    // Skip rows still inside their post-failure backoff window so a
+    // permanently-failing (poison) row can't re-occupy a scan slot every run.
+    const eligible = scanned.filter((sub) => isReconcileEligible(sub, now));
 
     const remoteById = new Map(
       (args.remoteSubscriptionsForTest ?? []).map((remote) => [
@@ -586,17 +698,37 @@ export const reconcileMissedDodoRenewals = internalAction({
           maxRetries: 1,
         });
 
-    const summary = {
-      inspected: stale.length,
+    const summary: ReconciliationSummary = {
+      inspected: 0,
       reconciled: 0,
       skipped: 0,
       failed: 0,
       limit,
-      hasMore: stale.length === limit,
-      failures: [] as Array<{ dodoSubscriptionId: string; error: string }>,
+      hasMore: false,
+      timeBudgetExhausted: false,
+      continuationScheduled: false,
+      failures: [],
     };
 
-    for (const sub of stale) {
+    const markAttempt = (subscriptionId: Id<"subscriptions">) =>
+      ctx.runMutation(internal.payments.billing.markDodoReconcileAttempt, {
+        subscriptionId,
+        observedAt: now,
+      });
+
+    let attempted = 0;
+    for (const sub of eligible) {
+      if (attempted >= limit) {
+        summary.hasMore = true;
+        break;
+      }
+      if (Date.now() - startedAtWallClock >= DODO_RENEWAL_RECONCILIATION_TIME_BUDGET_MS) {
+        summary.timeBudgetExhausted = true;
+        summary.hasMore = true;
+        break;
+      }
+      attempted++;
+      summary.inspected++;
       try {
         const remote = args.remoteSubscriptionsForTest
           ? remoteById.get(sub.dodoSubscriptionId)
@@ -606,11 +738,17 @@ export const reconcileMissedDodoRenewals = internalAction({
         }
 
         const normalized = normalizeRemoteSubscription(remote);
-        if (normalized.kind === "unsupported-status") {
+        if (normalized.kind === "skip") {
           summary.skipped++;
-          console.warn(
-            `[billing/reconcile] Skipping subscription ${normalized.dodoSubscriptionId}: unsupported Dodo status "${normalized.status}"`,
+          // sentry-coverage-ok: escalated to error (Convex auto-Sentry captures
+          // error, not warn) so a `pending`/unknown remote status that a
+          // local-active row is stuck on gets triaged rather than silently
+          // skipped daily.
+          console.error(
+            `[billing/reconcile] Skipping subscription ${normalized.dodoSubscriptionId}: ${normalized.reason} Dodo status "${normalized.status}"`,
           );
+          // Row is still stale-active — back it off.
+          await markAttempt(sub._id);
           continue;
         }
 
@@ -627,6 +765,12 @@ export const reconcileMissedDodoRenewals = internalAction({
           summary.reconciled++;
         } else {
           summary.skipped++;
+          // `remote_not_newer` / `local_updated_concurrently` leave the row
+          // stale-active with no change — back off so it doesn't hog a slot
+          // every run. `local_no_longer_stale` already left the set.
+          if (result.reason !== "local_no_longer_stale") {
+            await markAttempt(sub._id);
+          }
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -641,13 +785,38 @@ export const reconcileMissedDodoRenewals = internalAction({
         console.error(
           `[billing/reconcile] Failed to reconcile dodoSubscriptionId=${sub.dodoSubscriptionId} userId=${sub.userId}: ${message}`,
         );
+        // Poison row (e.g. test-mode-era sub 404ing the live client) — back off.
+        await markAttempt(sub._id);
       }
+    }
+
+    // More work remains if we couldn't attempt every eligible row, or the scan
+    // hit its cap (rows may exist beyond the window). We only chain when we made
+    // forward progress this invocation (attempted > 0) to guarantee termination.
+    if (eligible.length > attempted || scanned.length >= DODO_RENEWAL_RECONCILIATION_SCAN_LIMIT) {
+      summary.hasMore = true;
     }
 
     if (summary.failed > 0) {
       console.error(
-        `[billing/reconcile] ${summary.failed}/${summary.inspected} stale active subscriptions failed reconciliation`,
+        `[billing/reconcile] ${summary.failed}/${summary.inspected} attempted stale active subscriptions failed reconciliation`,
       );
+    }
+
+    if (summary.hasMore && attempted > 0 && continuationBudget > 0) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.payments.billing.reconcileMissedDodoRenewals,
+        {
+          now,
+          limit,
+          continuationBudget: continuationBudget - 1,
+          ...(args.remoteSubscriptionsForTest
+            ? { remoteSubscriptionsForTest: args.remoteSubscriptionsForTest }
+            : {}),
+        },
+      );
+      summary.continuationScheduled = true;
     }
 
     return summary;

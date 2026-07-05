@@ -366,7 +366,7 @@ const FALLBACK_PLAN_KEY = "enterprise";
  * runs on a schedule and detects "Dodo has products our catalog doesn't"
  * BEFORE a webhook arrives, so most cases are caught proactively.
  */
-async function resolvePlanKey(
+export async function resolvePlanKey(
   ctx: MutationCtx,
   dodoProductId: string,
 ): Promise<string> {

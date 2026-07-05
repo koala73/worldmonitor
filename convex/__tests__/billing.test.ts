@@ -2665,4 +2665,451 @@ describe("payments billing missed renewal reconciliation", () => {
     );
     expect(okEntitlement?.validUntil).toBe(remotePeriodEnd);
   });
+
+  async function seedStaleActiveForReconcile(
+    t: ReturnType<typeof convexTest>,
+    opts: {
+      suffix: string;
+      userId?: string;
+      planKey?: string;
+      dodoProductId?: string;
+      currentPeriodEnd?: number;
+      updatedAt?: number;
+      dodoCustomerId?: string;
+      seedEntitlement?: boolean;
+    },
+  ) {
+    const userId = opts.userId ?? TEST_USER_ID;
+    const planKey = opts.planKey ?? "pro_monthly";
+    const currentPeriodEnd = opts.currentPeriodEnd ?? NOW - DAY_MS;
+    const updatedAt = opts.updatedAt ?? NOW - DAY_MS;
+    const id = await t.run(async (ctx) => {
+      const subId = await ctx.db.insert("subscriptions", {
+        userId,
+        dodoSubscriptionId: `sub_${opts.suffix}`,
+        dodoProductId: opts.dodoProductId ?? PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        planKey,
+        status: "active",
+        currentPeriodStart: NOW - 31 * DAY_MS,
+        currentPeriodEnd,
+        ...(opts.dodoCustomerId ? { dodoCustomerId: opts.dodoCustomerId } : {}),
+        rawPayload: { subscription_id: `sub_${opts.suffix}` },
+        updatedAt,
+      });
+      if (opts.seedEntitlement !== false) {
+        await ctx.db.insert("entitlements", {
+          userId,
+          planKey,
+          features: getFeaturesForPlan(planKey),
+          validUntil: currentPeriodEnd,
+          updatedAt,
+        });
+      }
+      return subId;
+    });
+    return id;
+  }
+
+  const readSub = (t: ReturnType<typeof convexTest>, suffix: string) =>
+    t.run(async (ctx) =>
+      ctx.db
+        .query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) =>
+          q.eq("dodoSubscriptionId", `sub_${suffix}`),
+        )
+        .unique(),
+    );
+
+  const readEntitlement = (t: ReturnType<typeof convexTest>, userId: string) =>
+    t.run(async (ctx) =>
+      ctx.db
+        .query("entitlements")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
+        .first(),
+    );
+
+  test("maps a remote `failed` status to local expired and downgrades entitlement", async () => {
+    const t = convexTest(schema, modules);
+    const stalePeriodEnd = NOW - DAY_MS;
+    await seedStaleActiveForReconcile(t, { suffix: "failed", currentPeriodEnd: stalePeriodEnd });
+
+    const summary = await t.action(
+      internal.payments.billing.reconcileMissedDodoRenewals,
+      {
+        now: NOW,
+        remoteSubscriptionsForTest: [
+          {
+            subscription_id: "sub_failed",
+            product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+            status: "failed",
+            previous_billing_date: new Date(NOW - 31 * DAY_MS).toISOString(),
+            next_billing_date: new Date(stalePeriodEnd).toISOString(),
+          },
+        ],
+      },
+    );
+
+    expect(summary).toMatchObject({ inspected: 1, reconciled: 1, skipped: 0, failed: 0 });
+
+    const sub = await readSub(t, "failed");
+    const entitlement = await readEntitlement(t, TEST_USER_ID);
+    expect(sub?.status).toBe("expired");
+    expect(entitlement?.planKey).toBe("free");
+  });
+
+  test("marks a remote-cancelled subscription cancelled and downgrades once the period has ended", async () => {
+    const t = convexTest(schema, modules);
+    const stalePeriodEnd = NOW - DAY_MS;
+    await seedStaleActiveForReconcile(t, { suffix: "cancelled", currentPeriodEnd: stalePeriodEnd });
+
+    const summary = await t.action(
+      internal.payments.billing.reconcileMissedDodoRenewals,
+      {
+        now: NOW,
+        remoteSubscriptionsForTest: [
+          {
+            subscription_id: "sub_cancelled",
+            product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+            status: "cancelled",
+            previous_billing_date: new Date(NOW - 31 * DAY_MS).toISOString(),
+            next_billing_date: new Date(stalePeriodEnd).toISOString(),
+            cancelled_at: new Date(NOW - 2 * DAY_MS).toISOString(),
+          },
+        ],
+      },
+    );
+
+    expect(summary).toMatchObject({ inspected: 1, reconciled: 1, skipped: 0, failed: 0 });
+
+    const sub = await readSub(t, "cancelled");
+    const entitlement = await readEntitlement(t, TEST_USER_ID);
+    expect(sub?.status).toBe("cancelled");
+    expect(sub?.cancelledAt).toBe(NOW - 2 * DAY_MS);
+    expect(entitlement?.planKey).toBe("free");
+  });
+
+  test("falls back to an enterprise entitlement for an unknown Dodo product id", async () => {
+    const t = convexTest(schema, modules);
+    const remotePeriodEnd = NOW + 30 * DAY_MS;
+    await seedStaleActiveForReconcile(t, { suffix: "unknown_product" });
+
+    const summary = await t.action(
+      internal.payments.billing.reconcileMissedDodoRenewals,
+      {
+        now: NOW,
+        remoteSubscriptionsForTest: [
+          {
+            subscription_id: "sub_unknown_product",
+            product_id: "pdt_unknown_reconcile_fallback",
+            status: "active",
+            previous_billing_date: new Date(NOW).toISOString(),
+            next_billing_date: new Date(remotePeriodEnd).toISOString(),
+          },
+        ],
+      },
+    );
+
+    expect(summary).toMatchObject({ inspected: 1, reconciled: 1, skipped: 0, failed: 0 });
+
+    const sub = await readSub(t, "unknown_product");
+    const entitlement = await readEntitlement(t, TEST_USER_ID);
+    expect(sub?.dodoProductId).toBe("pdt_unknown_reconcile_fallback");
+    expect(sub?.planKey).toBe("enterprise");
+    expect(entitlement?.planKey).toBe("enterprise");
+  });
+
+  test("skips an unsupported remote status, escalates, and backs the row off", async () => {
+    const t = convexTest(schema, modules);
+    const stalePeriodEnd = NOW - DAY_MS;
+    await seedStaleActiveForReconcile(t, { suffix: "paused", currentPeriodEnd: stalePeriodEnd });
+
+    const summary = await t.action(
+      internal.payments.billing.reconcileMissedDodoRenewals,
+      {
+        now: NOW,
+        remoteSubscriptionsForTest: [
+          {
+            subscription_id: "sub_paused",
+            product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+            status: "paused",
+            previous_billing_date: new Date(NOW - 31 * DAY_MS).toISOString(),
+            next_billing_date: new Date(stalePeriodEnd).toISOString(),
+          },
+        ],
+      },
+    );
+
+    expect(summary).toMatchObject({ inspected: 1, reconciled: 0, skipped: 1, failed: 0 });
+
+    const sub = await readSub(t, "paused");
+    expect(sub?.status).toBe("active");
+    expect(sub?.currentPeriodEnd).toBe(stalePeriodEnd);
+    expect(sub?.reconcileFailureCount).toBe(1);
+    expect(sub?.lastReconcileAttemptAt).toBe(NOW);
+  });
+
+  test("skips a remote `pending` status and backs the row off", async () => {
+    const t = convexTest(schema, modules);
+    const stalePeriodEnd = NOW - DAY_MS;
+    await seedStaleActiveForReconcile(t, { suffix: "pending", currentPeriodEnd: stalePeriodEnd });
+
+    const summary = await t.action(
+      internal.payments.billing.reconcileMissedDodoRenewals,
+      {
+        now: NOW,
+        remoteSubscriptionsForTest: [
+          {
+            subscription_id: "sub_pending",
+            product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+            status: "pending",
+            previous_billing_date: new Date(NOW - 31 * DAY_MS).toISOString(),
+            next_billing_date: new Date(stalePeriodEnd).toISOString(),
+          },
+        ],
+      },
+    );
+
+    expect(summary).toMatchObject({ inspected: 1, reconciled: 0, skipped: 1, failed: 0 });
+
+    const sub = await readSub(t, "pending");
+    expect(sub?.status).toBe("active");
+    expect(sub?.reconcileFailureCount).toBe(1);
+  });
+
+  test("mutation skips when the local row is no longer stale", async () => {
+    const t = convexTest(schema, modules);
+    const subId = await seedStaleActiveForReconcile(t, {
+      suffix: "no_longer_stale",
+      currentPeriodEnd: NOW + DAY_MS, // already renewed by a concurrent webhook
+      seedEntitlement: false,
+    });
+
+    const result = await t.mutation(
+      internal.payments.billing.applyDodoSubscriptionReconciliation,
+      {
+        subscriptionId: subId,
+        dodoSubscriptionId: "sub_no_longer_stale",
+        observedAt: NOW,
+        remote: {
+          dodoSubscriptionId: "sub_no_longer_stale",
+          productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+          status: "active",
+          currentPeriodStart: NOW,
+          currentPeriodEnd: NOW + 30 * DAY_MS,
+          rawPayload: {},
+        },
+      },
+    );
+
+    expect(result).toEqual({ kind: "skipped", reason: "local_no_longer_stale" });
+  });
+
+  test("mutation skips when remote is not newer than the stale local row", async () => {
+    const t = convexTest(schema, modules);
+    const staleEnd = NOW - DAY_MS;
+    const subId = await seedStaleActiveForReconcile(t, {
+      suffix: "not_newer",
+      currentPeriodEnd: staleEnd,
+      updatedAt: NOW - 2 * DAY_MS,
+      dodoCustomerId: "cus_not_newer",
+      seedEntitlement: false,
+    });
+
+    const result = await t.mutation(
+      internal.payments.billing.applyDodoSubscriptionReconciliation,
+      {
+        subscriptionId: subId,
+        dodoSubscriptionId: "sub_not_newer",
+        observedAt: NOW,
+        remote: {
+          dodoSubscriptionId: "sub_not_newer",
+          productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+          status: "active",
+          currentPeriodStart: NOW - 31 * DAY_MS,
+          currentPeriodEnd: staleEnd - DAY_MS, // <= existing, nothing newer
+          dodoCustomerId: "cus_not_newer",
+          rawPayload: {},
+        },
+      },
+    );
+
+    expect(result).toEqual({ kind: "skipped", reason: "remote_not_newer" });
+  });
+
+  test("mutation refuses to clobber a concurrently-updated row (ordering guard)", async () => {
+    const t = convexTest(schema, modules);
+    // A subscription.plan_changed webhook landed AFTER the cron's stale read:
+    // it patched planKey → enterprise and bumped updatedAt past observedAt, but
+    // left currentPeriodEnd stale. The cron holds a stale snapshot and must not
+    // overwrite the newer plan.
+    const subId = await seedStaleActiveForReconcile(t, {
+      suffix: "concurrent",
+      planKey: "enterprise",
+      dodoProductId: PRODUCT_CATALOG.enterprise.dodoProductId!,
+      currentPeriodEnd: NOW - DAY_MS,
+      updatedAt: NOW + DAY_MS, // newer than observedAt
+      seedEntitlement: false,
+    });
+
+    const result = await t.mutation(
+      internal.payments.billing.applyDodoSubscriptionReconciliation,
+      {
+        subscriptionId: subId,
+        dodoSubscriptionId: "sub_concurrent",
+        observedAt: NOW,
+        remote: {
+          dodoSubscriptionId: "sub_concurrent",
+          productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+          status: "active",
+          currentPeriodStart: NOW,
+          currentPeriodEnd: NOW + 30 * DAY_MS,
+          rawPayload: {},
+        },
+      },
+    );
+
+    expect(result).toEqual({ kind: "skipped", reason: "local_updated_concurrently" });
+
+    const sub = await readSub(t, "concurrent");
+    expect(sub?.planKey).toBe("enterprise");
+    expect(sub?.dodoProductId).toBe(PRODUCT_CATALOG.enterprise.dodoProductId);
+    expect(sub?.updatedAt).toBe(NOW + DAY_MS);
+  });
+
+  test("does not let a permanently-failing row starve a healthy row sorted behind it", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    const poisonPeriodEnd = NOW - 3 * DAY_MS; // stalest → sorts FIRST in the scan
+    const healthyStaleEnd = NOW - DAY_MS;
+    const healthyRenewedEnd = NOW + 30 * DAY_MS;
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: "user_poison",
+        dodoSubscriptionId: "sub_poison",
+        dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: NOW - 33 * DAY_MS,
+        currentPeriodEnd: poisonPeriodEnd,
+        rawPayload: { subscription_id: "sub_poison" },
+        updatedAt: NOW - DAY_MS,
+      });
+      await ctx.db.insert("subscriptions", {
+        userId: "user_healthy",
+        dodoSubscriptionId: "sub_healthy",
+        dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: NOW - 31 * DAY_MS,
+        currentPeriodEnd: healthyStaleEnd,
+        rawPayload: { subscription_id: "sub_healthy" },
+        updatedAt: NOW - DAY_MS,
+      });
+      await ctx.db.insert("entitlements", {
+        userId: "user_healthy",
+        planKey: "pro_monthly",
+        features: getFeaturesForPlan("pro_monthly"),
+        validUntil: healthyStaleEnd,
+        updatedAt: NOW - DAY_MS,
+      });
+    });
+
+    // limit 1 forces the poison row (sorted first) to consume the only batch
+    // slot on the first invocation; a continuation must reach the healthy row.
+    const summary = await t.action(
+      internal.payments.billing.reconcileMissedDodoRenewals,
+      {
+        now: NOW,
+        limit: 1,
+        remoteSubscriptionsForTest: [
+          {
+            subscription_id: "sub_healthy",
+            product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+            status: "active",
+            previous_billing_date: new Date(NOW).toISOString(),
+            next_billing_date: new Date(healthyRenewedEnd).toISOString(),
+          },
+        ],
+      },
+    );
+
+    expect(summary).toMatchObject({
+      inspected: 1,
+      failed: 1,
+      reconciled: 0,
+      hasMore: true,
+      continuationScheduled: true,
+    });
+
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const poison = await readSub(t, "poison");
+    const healthy = await readSub(t, "healthy");
+    const healthyEnt = await readEntitlement(t, "user_healthy");
+
+    // Poison row was backed off (marked), not reconciled.
+    expect(poison?.status).toBe("active");
+    expect(poison?.currentPeriodEnd).toBe(poisonPeriodEnd);
+    expect(poison?.reconcileFailureCount).toBe(1);
+    expect(poison?.lastReconcileAttemptAt).toBe(NOW);
+
+    // Healthy row sorted behind it still reconciled within the same cron cycle.
+    expect(healthy?.currentPeriodEnd).toBe(healthyRenewedEnd);
+    expect(healthy?.reconcileFailureCount).toBeUndefined();
+    expect(healthyEnt?.validUntil).toBe(healthyRenewedEnd);
+
+    vi.useRealTimers();
+  });
+
+  test("drains a backlog larger than the per-invocation batch across continuations", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    const renewedEnd = NOW + 30 * DAY_MS;
+    const suffixes = ["drain_a", "drain_b", "drain_c"];
+
+    await t.run(async (ctx) => {
+      let i = 0;
+      for (const suffix of suffixes) {
+        await ctx.db.insert("subscriptions", {
+          userId: `user_${suffix}`,
+          dodoSubscriptionId: `sub_${suffix}`,
+          dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+          planKey: "pro_monthly",
+          status: "active",
+          currentPeriodStart: NOW - 31 * DAY_MS,
+          currentPeriodEnd: NOW - (i + 1) * DAY_MS,
+          rawPayload: { subscription_id: `sub_${suffix}` },
+          updatedAt: NOW - 5 * DAY_MS,
+        });
+        i++;
+      }
+    });
+
+    const summary = await t.action(
+      internal.payments.billing.reconcileMissedDodoRenewals,
+      {
+        now: NOW,
+        limit: 1,
+        remoteSubscriptionsForTest: suffixes.map((suffix) => ({
+          subscription_id: `sub_${suffix}`,
+          product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+          status: "active",
+          previous_billing_date: new Date(NOW).toISOString(),
+          next_billing_date: new Date(renewedEnd).toISOString(),
+        })),
+      },
+    );
+
+    expect(summary).toMatchObject({ reconciled: 1, hasMore: true, continuationScheduled: true });
+
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    for (const suffix of suffixes) {
+      const sub = await readSub(t, suffix);
+      expect(sub?.currentPeriodEnd).toBe(renewedEnd);
+    }
+
+    vi.useRealTimers();
+  });
 });
