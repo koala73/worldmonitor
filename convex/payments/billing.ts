@@ -818,11 +818,22 @@ export const PENDING_PAYMENT_BLOCK_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 export const STUCK_PAYMENT_RECONCILIATION_THRESHOLD_MS = 6 * 60 * 60 * 1000; // 6 hours
 export const STUCK_PAYMENT_RECONCILIATION_LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
 export const STUCK_PAYMENT_RECONCILIATION_BATCH_SIZE = 25;
+// A stale pending payment older than this no longer gets a "continue checkout"
+// email — the Dodo hosted-checkout link expires, so a confident email with a
+// dead link is worse than none. Older candidates route to the ops path instead.
+export const STUCK_PAYMENT_CUSTOMER_EMAIL_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 const MAX_STUCK_PAYMENT_RECONCILIATION_BATCH_SIZE = 100;
 const MAX_STUCK_PAYMENT_RECONCILIATION_SCAN_ROWS = 500;
 const RESEND_EMAILS_URL = "https://api.resend.com/emails";
 const STUCK_PAYMENT_EMAIL_FROM = "World Monitor <noreply@worldmonitor.app>";
 const STUCK_PAYMENT_SUPPORT_EMAIL = "support@worldmonitor.app";
+// Bound the Resend POST so a hung socket can't stall the daily batch (a known
+// repo failure class — a network read with no timeout drains the event loop).
+const STUCK_PAYMENT_RESEND_TIMEOUT_MS = 10 * 1000;
+// Sentinel recorded on the marker when Dodo returns no status at all — keeps
+// the `observedStatus` field a non-empty string (v.string()) while preserving
+// "we polled but Dodo told us nothing" for triage.
+const UNKNOWN_DODO_PAYMENT_STATUS = "unknown";
 
 function isPendingPaymentStatus(status: string): boolean {
   return status === "processing" || status === "requires_customer_action";
@@ -875,6 +886,8 @@ type ReconcileStuckPendingPaymentsSummary = {
   alreadySkipped: number;
   unknownStatus: number;
   pollFailed: number;
+  emailFailed: number;
+  recordFailed: number;
 };
 
 function readString(value: unknown): string | undefined {
@@ -944,11 +957,12 @@ async function sendStuckPaymentEmail(
       html,
       reply_to: STUCK_PAYMENT_SUPPORT_EMAIL,
     }),
+    signal: AbortSignal.timeout(STUCK_PAYMENT_RESEND_TIMEOUT_MS),
   });
 
   if (!res.ok) {
-    const body = await res.text();
-    console.warn(`[billing/reconciliation] Resend stuck-payment email ${res.status}: ${body}`);
+    // Log the status only — the response body can echo the recipient email.
+    console.warn(`[billing/reconciliation] Resend stuck-payment email failed with HTTP ${res.status}.`);
     return "ops_notified";
   }
 
@@ -1055,12 +1069,27 @@ export const listStuckPendingPaymentCandidates = internalQuery({
     const now = Date.now();
     const staleBefore = now - thresholdMs;
     const lookbackStart = now - lookbackMs;
+    // Scan NEWEST-first: past the scan cap, the freshly-stuck rows (the ones a
+    // customer might still act on) stay visible, while the oldest ops-only rows
+    // are the ones deferred to a later run. Ascending order did the opposite —
+    // fresh stuck payments could silently fall off the end of the window.
     const paymentEvents = await ctx.db
       .query("paymentEvents")
       .withIndex("by_occurredAt", (q) =>
         q.gt("occurredAt", lookbackStart).lt("occurredAt", staleBefore),
       )
+      .order("desc")
       .take(MAX_STUCK_PAYMENT_RECONCILIATION_SCAN_ROWS);
+
+    if (paymentEvents.length >= MAX_STUCK_PAYMENT_RECONCILIATION_SCAN_ROWS) {
+      // Cap hit: rows older than the newest 500 in the window were not scanned
+      // this run. Surface it so ops can widen the cap / shorten the cadence
+      // before a sustained backlog hides stuck payments.
+      console.error(
+        `[billing/reconciliation] scan cap hit: ${MAX_STUCK_PAYMENT_RECONCILIATION_SCAN_ROWS} rows in the ` +
+        `${Math.round(lookbackMs / (24 * 60 * 60 * 1000))}d window; older stale rows deferred to a later run.`,
+      );
+    }
 
     const candidates: StuckPaymentCandidate[] = [];
     const seenPaymentIds = new Set<string>();
@@ -1101,7 +1130,31 @@ export const listStuckPendingPaymentCandidates = internalQuery({
   },
 });
 
-export const recordStuckPaymentReconciliationOutcome = internalMutation({
+/**
+ * Claims a reconciliation marker for one stuck pending payment, recording the
+ * status Dodo reported when we polled it.
+ *
+ * This is the idempotency barrier for the whole flow: the action writes the
+ * marker HERE, before sending any customer email, so a transient failure after
+ * this point can never re-email the customer on the next daily run (the
+ * candidate query skips any payment that already has a marker).
+ *
+ * Outcomes:
+ *   - `already_marked` / `already_terminal` — a prior run or a webhook won;
+ *     nothing written.
+ *   - `terminal_reconciled` — Dodo now reports a terminal status (a dropped
+ *     webhook); backfill the missing paymentEvents row + a terminal marker.
+ *   - `pending_claimed` — any non-terminal status (recognised 3DS-pending,
+ *     an unrecognised IntentStatus like `requires_payment_method`, or the
+ *     `unknown` sentinel when Dodo returned no status). Writes a PROVISIONAL
+ *     `ops_notified` marker; the action later calls
+ *     `finalizeStuckPaymentReconciliation` to upgrade it to `customer_notified`
+ *     on a successful email, or to page ops. Mirrors
+ *     `derivePaymentEventStatus`'s collapse of non-terminal IntentStatus — a
+ *     stuck payment is NEVER dropped without a marker (its absence is what
+ *     causes daily re-polling for 14 days + batch-slot starvation).
+ */
+export const claimStuckPaymentReconciliation = internalMutation({
   args: {
     userId: v.string(),
     dodoPaymentId: v.string(),
@@ -1111,7 +1164,6 @@ export const recordStuckPaymentReconciliationOutcome = internalMutation({
     currency: v.string(),
     pendingOccurredAt: v.number(),
     observedStatus: v.string(),
-    staleAction: v.optional(v.union(v.literal("customer_notified"), v.literal("ops_notified"))),
     rawPayload: v.any(),
   },
   handler: async (ctx, args) => {
@@ -1155,37 +1207,83 @@ export const recordStuckPaymentReconciliationOutcome = internalMutation({
       return { action: "terminal_reconciled" as const };
     }
 
-    if (isPendingPaymentStatus(args.observedStatus)) {
-      const action = args.staleAction ?? "ops_notified";
-      await ctx.db.insert("paymentReconciliationAttempts", {
-        dodoPaymentId: args.dodoPaymentId,
-        userId: args.userId,
-        planKey: args.planKey,
-        action,
-        observedStatus: args.observedStatus,
-        pendingOccurredAt: args.pendingOccurredAt,
-        reconciledAt: now,
-      });
-      console.warn(
-        `[billing/reconciliation] stale Dodo payment still pending after threshold: ` +
-        `paymentId=${args.dodoPaymentId} userId=${args.userId} status=${args.observedStatus} ` +
-        `pendingOccurredAt=${args.pendingOccurredAt}. Ops follow-up required.`,
-      );
-      return { action };
-    }
-
-    return { action: "unknown_status" as const };
+    // Non-terminal (recognised pending OR unrecognised / `unknown`): claim a
+    // PROVISIONAL ops_notified marker. No console.error here — the true
+    // outcome (customer emailed vs ops paged) isn't known until the action
+    // finalizes, and paging ops for a customer we then successfully email
+    // would be a false alarm.
+    await ctx.db.insert("paymentReconciliationAttempts", {
+      dodoPaymentId: args.dodoPaymentId,
+      userId: args.userId,
+      planKey: args.planKey,
+      action: "ops_notified",
+      observedStatus: args.observedStatus,
+      pendingOccurredAt: args.pendingOccurredAt,
+      reconciledAt: now,
+    });
+    return { action: "pending_claimed" as const };
   },
 });
 
-export const reportPaymentReconciliationPollFailure = internalMutation({
+/**
+ * Finalizes a claimed (provisional `ops_notified`) marker once the action
+ * knows the email outcome.
+ *
+ * - `notified: true`  → the customer email was sent; upgrade the marker to
+ *   `customer_notified`. No ops page.
+ * - `notified: false` → ops follow-up (unrecognised status, stale checkout
+ *   link, missing email/link, RESEND_API_KEY unset, or a Resend non-2xx). The
+ *   marker stays `ops_notified` and we `console.error` — Convex auto-Sentry
+ *   forwards console.error (the refund-alert precedent in
+ *   subscriptionHelpers.ts), so ops is ACTUALLY paged instead of the
+ *   never-surfaced console.warn this replaced.
+ */
+export const finalizeStuckPaymentReconciliation = internalMutation({
   args: {
+    dodoPaymentId: v.string(),
+    notified: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const marker = await ctx.db
+      .query("paymentReconciliationAttempts")
+      .withIndex("by_dodoPaymentId", (q) => q.eq("dodoPaymentId", args.dodoPaymentId))
+      .first();
+    if (!marker) {
+      // The claim always inserts a marker, so a missing one means a concurrent
+      // delete or a caller bug — surface it rather than silently no-op.
+      console.warn(
+        `[billing/reconciliation] finalize found no marker for paymentId=${args.dodoPaymentId}.`,
+      );
+      return { action: "marker_missing" as const };
+    }
+    // Idempotent: a re-run that already upgraded this marker must not downgrade.
+    if (marker.action === "customer_notified") {
+      return { action: "customer_notified" as const };
+    }
+
+    if (args.notified) {
+      await ctx.db.patch(marker._id, { action: "customer_notified", reconciledAt: Date.now() });
+      return { action: "customer_notified" as const };
+    }
+
+    console.error(
+      `[billing/reconciliation] stale Dodo payment still pending after threshold: ` +
+      `paymentId=${marker.dodoPaymentId} userId=${marker.userId} status=${marker.observedStatus} ` +
+      `pendingOccurredAt=${marker.pendingOccurredAt}. Ops follow-up required.`,
+    );
+    return { action: "ops_notified" as const };
+  },
+});
+
+export const reportPaymentReconciliationFailure = internalMutation({
+  args: {
+    phase: v.union(v.literal("poll"), v.literal("email"), v.literal("record")),
     dodoPaymentId: v.string(),
     errorMessage: v.string(),
   },
   handler: async (_ctx, args) => {
     throw new Error(
-      `[billing/reconciliation] Dodo payment poll failed paymentId=${args.dodoPaymentId}: ${args.errorMessage}`,
+      `[billing/reconciliation] ${args.phase} phase failed paymentId=${args.dodoPaymentId}: ${args.errorMessage}`,
     );
   },
 });
@@ -1210,26 +1308,79 @@ export const reconcileStuckPendingPayments = internalAction({
       alreadySkipped: 0,
       unknownStatus: 0,
       pollFailed: 0,
+      emailFailed: 0,
+      recordFailed: 0,
     };
 
-    for (const candidate of candidates) {
+    // Best-effort Sentry hand-off, labelled by phase (poll vs email vs record)
+    // so a mislabel can't hide the real failure. The scheduled mutation throws,
+    // which Convex auto-Sentry captures; wrapping runAfter in its own try/catch
+    // keeps a scheduler hiccup from aborting the day's batch (webhookHandlers.ts
+    // precedent).
+    const reportFailure = async (
+      phase: "poll" | "email" | "record",
+      dodoPaymentId: string,
+      message: string,
+    ): Promise<void> => {
       try {
-        const payment = await retrieveDodoPayment(candidate.dodoPaymentId);
-        const observedStatus = extractDodoPaymentStatus(payment);
-        if (!observedStatus) {
-          summary.unknownStatus++;
-          console.warn(
-            `[billing/reconciliation] Dodo payment ${candidate.dodoPaymentId} returned no status; skipping.`,
-          );
-          continue;
-        }
+        await ctx.scheduler.runAfter(
+          0,
+          (internal as any).payments.billing.reportPaymentReconciliationFailure,
+          { phase, dodoPaymentId, errorMessage: message },
+        );
+      } catch (scheduleErr) {
+        // sentry-coverage-ok: the scheduled report is a best-effort Sentry
+        // hand-off; the durable state is the reconciliation marker. A scheduler
+        // outage here must not abort the batch.
+        console.warn(
+          `[billing/reconciliation] failed to schedule ${phase} failure report for ${dodoPaymentId}: ` +
+          `${scheduleErr instanceof Error ? scheduleErr.message : String(scheduleErr)}`,
+        );
+      }
+    };
 
-        const dodoPayment = payment as DodoPaymentLookup;
-        const staleAction = isPendingPaymentStatus(observedStatus)
-          ? await sendStuckPaymentEmail(dodoPayment, candidate.planKey)
-          : undefined;
-        const outcome = await ctx.runMutation(
-          (internal as any).payments.billing.recordStuckPaymentReconciliationOutcome,
+    // Finalize a claimed marker as ops (notified: false). Swallows its own
+    // failure to a phase="record" Sentry report — the provisional ops_notified
+    // marker from the claim already stands, so the outcome is durable.
+    const finalizeOps = async (dodoPaymentId: string): Promise<void> => {
+      try {
+        await ctx.runMutation(
+          (internal as any).payments.billing.finalizeStuckPaymentReconciliation,
+          { dodoPaymentId, notified: false },
+        );
+      } catch (err) {
+        // sentry-coverage-ok: reportFailure schedules a throwing mutation.
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`[billing/reconciliation] finalize (ops) failed for ${dodoPaymentId}: ${message}`);
+        await reportFailure("record", dodoPaymentId, message);
+      }
+    };
+
+    const now = Date.now();
+
+    for (const candidate of candidates) {
+      // Phase — poll Dodo for the current payment status.
+      let payment: unknown;
+      try {
+        payment = await retrieveDodoPayment(candidate.dodoPaymentId);
+      } catch (err) {
+        // sentry-coverage-ok: reportFailure schedules a throwing mutation.
+        summary.pollFailed++;
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`[billing/reconciliation] poll failed for ${candidate.dodoPaymentId}: ${message}`);
+        await reportFailure("poll", candidate.dodoPaymentId, message);
+        continue;
+      }
+
+      const observedStatus = extractDodoPaymentStatus(payment); // string | null
+      const dodoPayment = payment as DodoPaymentLookup;
+      const recordedStatus = observedStatus ?? UNKNOWN_DODO_PAYMENT_STATUS;
+
+      // Phase — CLAIM the marker BEFORE any email (idempotency barrier).
+      let claim: { action: string };
+      try {
+        claim = await ctx.runMutation(
+          (internal as any).payments.billing.claimStuckPaymentReconciliation,
           {
             userId: candidate.userId,
             dodoPaymentId: candidate.dodoPaymentId,
@@ -1238,29 +1389,84 @@ export const reconcileStuckPendingPayments = internalAction({
             amount: readNumber(dodoPayment.total_amount) ?? readNumber(dodoPayment.amount) ?? candidate.amount,
             currency: readString(dodoPayment.currency) ?? candidate.currency,
             pendingOccurredAt: candidate.pendingOccurredAt,
-            observedStatus,
-            staleAction,
+            observedStatus: recordedStatus,
             rawPayload: payment,
           },
         );
-
-        if (outcome.action === "terminal_reconciled") summary.terminalReconciled++;
-        else if (outcome.action === "customer_notified") summary.customerNotified++;
-        else if (outcome.action === "ops_notified") summary.opsNotified++;
-        else if (outcome.action === "unknown_status") summary.unknownStatus++;
-        else summary.alreadySkipped++;
       } catch (err) {
-        // sentry-coverage-ok: schedule a throwing mutation below so Convex auto-Sentry captures this payment without aborting the whole batch.
-        summary.pollFailed++;
+        // sentry-coverage-ok: reportFailure schedules a throwing mutation.
+        summary.recordFailed++;
         const message = err instanceof Error ? err.message : String(err);
-        await ctx.scheduler.runAfter(
-          0,
-          (internal as any).payments.billing.reportPaymentReconciliationPollFailure,
-          { dodoPaymentId: candidate.dodoPaymentId, errorMessage: message },
-        );
-        console.warn(
-          `[billing/reconciliation] Failed to poll Dodo payment ${candidate.dodoPaymentId}: ${message}`,
-        );
+        console.warn(`[billing/reconciliation] claim failed for ${candidate.dodoPaymentId}: ${message}`);
+        await reportFailure("record", candidate.dodoPaymentId, message);
+        continue;
+      }
+
+      if (claim.action === "terminal_reconciled") {
+        summary.terminalReconciled++;
+        continue;
+      }
+      if (claim.action !== "pending_claimed") {
+        // already_marked / already_terminal — a prior run or a webhook won.
+        summary.alreadySkipped++;
+        continue;
+      }
+
+      // Marker is claimed as provisional ops_notified. Decide whether to email.
+      const recognizedPending = observedStatus != null && isPendingPaymentStatus(observedStatus);
+      const linkFresh = now - candidate.pendingOccurredAt < STUCK_PAYMENT_CUSTOMER_EMAIL_MAX_AGE_MS;
+
+      if (!recognizedPending) {
+        // Unrecognised IntentStatus (incl. null / requires_payment_method — the
+        // typical abandoned-3DS end-state). Ops path, marker already written.
+        summary.unknownStatus++;
+        await finalizeOps(candidate.dodoPaymentId);
+        continue;
+      }
+
+      if (!linkFresh) {
+        // Stale checkout link (Dodo links expire): a confident email with a
+        // dead link is worse than none. Ops path instead.
+        summary.opsNotified++;
+        await finalizeOps(candidate.dodoPaymentId);
+        continue;
+      }
+
+      // Phase — send the customer "continue checkout" email.
+      let emailResult: "customer_notified" | "ops_notified";
+      try {
+        emailResult = await sendStuckPaymentEmail(dodoPayment, candidate.planKey);
+      } catch (err) {
+        // sentry-coverage-ok: reportFailure schedules a throwing mutation. The
+        // claimed ops_notified marker stands, so the next run won't re-email.
+        summary.emailFailed++;
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`[billing/reconciliation] email failed for ${candidate.dodoPaymentId}: ${message}`);
+        await reportFailure("email", candidate.dodoPaymentId, message);
+        continue;
+      }
+
+      // Phase — finalize the marker to reflect the email outcome.
+      if (emailResult === "customer_notified") {
+        try {
+          await ctx.runMutation(
+            (internal as any).payments.billing.finalizeStuckPaymentReconciliation,
+            { dodoPaymentId: candidate.dodoPaymentId, notified: true },
+          );
+          summary.customerNotified++;
+        } catch (err) {
+          // sentry-coverage-ok: reportFailure schedules a throwing mutation. The
+          // marker stays ops_notified (safe default) — the ops path owns it.
+          summary.opsNotified++;
+          const message = err instanceof Error ? err.message : String(err);
+          console.warn(`[billing/reconciliation] finalize failed for ${candidate.dodoPaymentId}: ${message}`);
+          await reportFailure("record", candidate.dodoPaymentId, message);
+        }
+      } else {
+        // sendStuckPaymentEmail returned ops_notified (missing email/link,
+        // RESEND_API_KEY unset, or Resend non-2xx).
+        summary.opsNotified++;
+        await finalizeOps(candidate.dodoPaymentId);
       }
     }
 
