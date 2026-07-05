@@ -3883,7 +3883,7 @@ paths:
                   in: query
                   description: 'Mode: "countries" (default) or "exposure".'
                   required: false
-                  example: "example"
+                  example: "countries"
                   schema:
                     type: string
                 - name: lat
@@ -9148,7 +9148,7 @@ paths:
                     Time span filter (e.g., "15min", "1h", "24h").
                      Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
-                  example: "2026-01-15T12:00:00Z"
+                  example: "15min"
                   schema:
                     type: string
                 - name: tone_filter
@@ -12111,7 +12111,7 @@ paths:
                     Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
                      Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
-                  example: "daily"
+                  example: "1d"
                   schema:
                     type: string
                 - name: jmespath
@@ -14255,7 +14255,7 @@ paths:
                     Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
                      Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
-                  example: "example"
+                  example: "indo-pacific"
                   schema:
                     type: string
                 - name: jmespath
@@ -14278,7 +14278,7 @@ paths:
                                           - "example"
                                       "assessedAt": 1717200000000
                                       "postureLevel": "example"
-                                      "theater": "example"
+                                      "theater": "indo-pacific"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_military_v1_GetTheaterPostureResponse'
                 "400":
@@ -20306,7 +20306,7 @@ paths:
                     Filter by measure type: "SPS", "TBT", or empty for both.
                      Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
-                  example: "all"
+                  example: "SPS"
                   schema:
                     type: string
                 - name: limit
@@ -20334,7 +20334,7 @@ paths:
                                 "barriers":
                                     - "dateDistributed": "2026-01-15"
                                       "id": "example-id"
-                                      "measureType": "all"
+                                      "measureType": "SPS"
                                       "notifyingCountry": "US"
                                       "objective": "example"
                                 "fetchedAt": "2026-01-15T12:00:00Z"

@@ -216,7 +216,7 @@ paths:
                     Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
                      Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
-                  example: "example"
+                  example: "indo-pacific"
                   schema:
                     type: string
                 - name: jmespath
@@ -239,7 +239,7 @@ paths:
                                           - "example"
                                       "assessedAt": 1717200000000
                                       "postureLevel": "example"
-                                      "theater": "example"
+                                      "theater": "indo-pacific"
                             schema:
                                 $ref: '#/components/schemas/GetTheaterPostureResponse'
                 "400":

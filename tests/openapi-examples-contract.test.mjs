@@ -412,6 +412,7 @@ function assertClosedValueParamExamples(spec, label) {
   for (const { path, method, op } of operationEntries(spec)) {
     for (const param of op.parameters ?? []) {
       if (!param?.schema || param.in === 'header') continue;
+      if (Array.isArray(param.schema.enum) && param.schema.enum.length > 0) continue;
       const accepted = closedValuesFromDescription(param.description ?? param.schema.description);
       if (accepted.size === 0) continue;
       const values = Array.isArray(param.example) ? param.example : [param.example];
@@ -425,6 +426,52 @@ function assertClosedValueParamExamples(spec, label) {
     }
   }
   return checked;
+}
+
+function assertIssue4827Cluster7ResidueFixed(specs) {
+  const cases = [
+    {
+      operationId: 'GetSectorSummary',
+      paramName: 'period',
+      accepted: new Set(['1d', '1w', '1m']),
+    },
+    {
+      operationId: 'SearchGdeltDocuments',
+      paramName: 'timespan',
+      accepted: new Set(['15min', '1h', '24h']),
+    },
+    {
+      operationId: 'GetTradeBarriers',
+      paramName: 'measure_type',
+      accepted: new Set(['SPS', 'TBT']),
+    },
+    {
+      operationId: 'GetPopulationExposure',
+      paramName: 'mode',
+      accepted: new Set(['countries', 'exposure']),
+    },
+    {
+      operationId: 'GetTheaterPosture',
+      paramName: 'theater',
+      accepted: new Set(['indo-pacific', 'european', 'middle-east']),
+    },
+  ];
+
+  for (const { operationId, paramName, accepted } of cases) {
+    let found = 0;
+    for (const [label, spec] of specs) {
+      if (!operationEntries(spec).some(({ op }) => op.operationId === operationId)) continue;
+      for (const { value, where } of collectParamExamples(spec, label, operationId, paramName)) {
+        assert.notEqual(value, 'example', `${where}: placeholder example`);
+        assert.notEqual(value, 'daily', `${where}: generic period example is not documented`);
+        assert.notEqual(value, 'all', `${where}: generic type example is not documented`);
+        assert.notEqual(value, '2026-01-15T12:00:00Z', `${where}: datetime heuristic is not documented`);
+        assert.ok(accepted.has(String(value)), `${where}: '${value}' is outside documented values ${[...accepted].join(', ')}`);
+        found++;
+      }
+    }
+    assert.ok(found > 0, `expected issue #4827 cluster-7 examples for ${operationId}.${paramName}`);
+  }
 }
 
 function assertScenarioStatusPollExample(spec, label) {
@@ -765,6 +812,23 @@ describe('OpenAPI curated example values', () => {
     const bundle = loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'));
     checked += assertClosedValueParamExamples(bundle, 'worldmonitor.openapi.yaml');
     assert.ok(checked >= 20, `expected at least 20 prose-enumerated parameter examples, checked ${checked}`);
+  });
+
+  it('keeps the issue #4827 cluster-7 residue examples inside their documented closed sets', () => {
+    const specs = [
+      ['MarketService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'MarketService.openapi.json'), 'utf8'))],
+      ['MarketService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'MarketService.openapi.yaml'), 'utf8'))],
+      ['IntelligenceService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'IntelligenceService.openapi.json'), 'utf8'))],
+      ['IntelligenceService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'IntelligenceService.openapi.yaml'), 'utf8'))],
+      ['TradeService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'TradeService.openapi.json'), 'utf8'))],
+      ['TradeService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'TradeService.openapi.yaml'), 'utf8'))],
+      ['DisplacementService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'DisplacementService.openapi.json'), 'utf8'))],
+      ['DisplacementService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'DisplacementService.openapi.yaml'), 'utf8'))],
+      ['MilitaryService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'MilitaryService.openapi.json'), 'utf8'))],
+      ['MilitaryService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'MilitaryService.openapi.yaml'), 'utf8'))],
+      ['worldmonitor.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'))],
+    ];
+    assertIssue4827Cluster7ResidueFixed(specs);
   });
 
   it('uses a plausible get-scenario-status poll response example', () => {

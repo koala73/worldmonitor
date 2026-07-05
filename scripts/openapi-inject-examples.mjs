@@ -157,6 +157,7 @@ const GDELT_TOPIC_EXAMPLE_ID = (() => {
 // enum, needs an override) and BLS (enum-resolved upstream) — disambiguate by
 // operation.
 function overrideStringExample(key, context = {}) {
+  const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
   if (key === 'jmespath') return 'keys(@)';
   // RunScenario's async-job envelope (202 Accepted, see
   // openapi-inject-async-jobs.mjs): status is ALWAYS "pending" at enqueue
@@ -165,32 +166,32 @@ function overrideStringExample(key, context = {}) {
   // fields' own descriptions. The statusUrl value must mirror the Location
   // header example in openapi-inject-async-jobs.mjs (contract-tested).
   if (key === 'status' || key === 'statusurl') {
-    const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
     if (where.includes('runscenario') || where.includes('run-scenario')) {
       return key === 'status'
         ? 'pending'
         : '/api/scenario/v1/get-scenario-status?jobId=scenario%3A1717200000000%3Aabcd1234';
     }
   }
+  if (key === 'period' && where.includes('getsectorsummary')) return '1d';
+  if (key === 'timespan' && where.includes('searchgdeltdocuments')) return '15min';
+  if (key === 'measuretype' && where.includes('gettradebarriers')) return 'SPS';
+  if (key === 'mode' && where.includes('getpopulationexposure')) return 'countries';
+  if (key === 'theater' && where.includes('gettheaterposture')) return 'indo-pacific';
   if (key.includes('hs2')) return '27';
   if (key === 'provider') {
-    const where = (String(context.operationId ?? '') + ' ' + String(context.path ?? '')).toLowerCase();
     if (where.includes('summarizearticle') || where.includes('summarize-article')) return 'openrouter';
   }
   if (key === 'topic') {
-    const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
     if (where.includes('getgdelttopictimeline') || where.includes('get-gdelt-topic-timeline')) return GDELT_TOPIC_EXAMPLE_ID;
   }
   if (key === 'basketslug') return CONSUMER_PRICE_BASKET_EXAMPLE_ID;
   if (key === 'range') {
-    const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
     if (where.includes('consumerprice') || where.includes('consumer-prices')) return CONSUMER_PRICE_RANGE_EXAMPLE_ID;
   }
   if (key === 'regionid') return REGIONAL_INTELLIGENCE_EXAMPLE_ID;
   if (key === 'airlines') return 'BA';
   if (key === 'departurewindow') return '6-20';
   if (key.includes('chokepointid')) {
-    const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
     if (where.includes('computeenergyshockscenario') || where.includes('compute-energy-shock')) return 'hormuz_strait';
     return CHOKEPOINT_EXAMPLE_ID;
   }
@@ -200,17 +201,14 @@ function overrideStringExample(key, context = {}) {
   // execute-batch handler rejects (paths must match a documented GET RPC).
   // Pin a parameterless GET so the published sample is runnable verbatim.
   if (key === 'path') {
-    const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
     if (where.includes('executebatch') || where.includes('batch/v1/execute')) {
       return '/api/market/v1/get-fear-greed-index';
     }
   }
   if (key === 'type') {
-    const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
     if (where.includes('baseline')) return BASELINE_TYPE_EXAMPLE_ID;
   }
   if (key === 'seriesid' || key === 'seriesids') {
-    const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
     if (where.includes('fred')) return FRED_SERIES_EXAMPLE_ID;
   }
   return undefined;
@@ -256,6 +254,11 @@ function splitValueList(text) {
     .filter(Boolean);
 }
 
+function closedValueFromSegment(segment) {
+  const quoted = extractDelimitedValues(segment);
+  return firstClosedValue(quoted.length > 0 ? quoted : splitValueList(segment));
+}
+
 function descriptionClosedValueExample(description) {
   const text = String(description ?? '').replace(/\s+/g, ' ').trim();
   if (!text) return undefined;
@@ -264,18 +267,14 @@ function descriptionClosedValueExample(description) {
     /\b(?:one of|supported values?|valid values?|allowed values?|accepted values?)\b(?:\s*(?:are|is|:))?\s*([^.;]+)/i,
   );
   if (closedListMatch) {
-    const segment = closedListMatch[1] ?? '';
-    const quoted = extractDelimitedValues(segment);
-    return firstClosedValue(quoted.length > 0 ? quoted : splitValueList(segment));
+    return closedValueFromSegment(closedListMatch[1] ?? '');
   }
 
   const labeledSetMatch = text.match(
     /\b(?:cabin class|stop filter|sort order|sort mode|summarization mode|fuel mode|policy category|status)\s*:\s*([^.;]+)/i,
   );
   if (labeledSetMatch) {
-    const segment = labeledSetMatch[1] ?? '';
-    const quoted = extractDelimitedValues(segment);
-    return firstClosedValue(quoted.length > 0 ? quoted : splitValueList(segment));
+    return closedValueFromSegment(labeledSetMatch[1] ?? '');
   }
 
   const topicMatch = text.match(/\bTopic ID\s*\(([^)]+)\)/i);

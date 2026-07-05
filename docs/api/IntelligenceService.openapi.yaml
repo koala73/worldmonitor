@@ -552,7 +552,7 @@ paths:
                     Time span filter (e.g., "15min", "1h", "24h").
                      Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
-                  example: "2026-01-15T12:00:00Z"
+                  example: "15min"
                   schema:
                     type: string
                 - name: tone_filter

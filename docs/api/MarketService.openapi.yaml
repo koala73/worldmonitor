@@ -316,7 +316,7 @@ paths:
                     Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
                      Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
-                  example: "daily"
+                  example: "1d"
                   schema:
                     type: string
                 - name: jmespath
