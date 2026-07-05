@@ -974,6 +974,76 @@ describe("payments stuck-pending reconciliation", () => {
     expect(markers[0]).toMatchObject({ action: "terminal_reconciled", observedStatus: "succeeded" });
   });
 
+  test("terminal SUCCEEDED with no subscription row pages ops (dropped subscription.active guard)", async () => {
+    vi.setSystemTime(NOW);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const t = convexTest(schema, modules);
+
+    await seedPaymentEvent(t, {
+      status: "requires_customer_action",
+      planKey: "pro_monthly",
+      occurredAt: NOW - STUCK_PAYMENT_RECONCILIATION_THRESHOLD_MS - MIN_MS,
+      suffix: "succeeded_nosub",
+      dodoPaymentId: "pay_succeeded_nosub",
+    });
+
+    const result = await t.mutation(internal.payments.billing.claimStuckPaymentReconciliation, {
+      userId: TEST_USER_ID,
+      dodoPaymentId: "pay_succeeded_nosub",
+      dodoSubscriptionId: "sub_never_activated",
+      planKey: "pro_monthly",
+      amount: 3999,
+      currency: "USD",
+      pendingOccurredAt: NOW - STUCK_PAYMENT_RECONCILIATION_THRESHOLD_MS - MIN_MS,
+      observedStatus: "succeeded",
+      rawPayload: {},
+    });
+
+    // Case is still closed (marker written) but ops is paged via console.error.
+    expect(result).toEqual({ action: "terminal_reconciled" });
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("no subscription row"),
+    );
+  });
+
+  test("terminal SUCCEEDED with a matching subscription row does NOT page ops", async () => {
+    vi.setSystemTime(NOW);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const t = convexTest(schema, modules);
+
+    await seedPaymentEvent(t, {
+      status: "requires_customer_action",
+      planKey: "pro_monthly",
+      occurredAt: NOW - STUCK_PAYMENT_RECONCILIATION_THRESHOLD_MS - MIN_MS,
+      suffix: "succeeded_withsub",
+      dodoPaymentId: "pay_succeeded_withsub",
+    });
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "reconcile_covered",
+    });
+    // seedSubscription names the row sub_billing_<suffix>; point the payment at it.
+    const result = await t.mutation(internal.payments.billing.claimStuckPaymentReconciliation, {
+      userId: TEST_USER_ID,
+      dodoPaymentId: "pay_succeeded_withsub",
+      dodoSubscriptionId: "sub_billing_reconcile_covered",
+      planKey: "pro_monthly",
+      amount: 3999,
+      currency: "USD",
+      pendingOccurredAt: NOW - STUCK_PAYMENT_RECONCILIATION_THRESHOLD_MS - MIN_MS,
+      observedStatus: "succeeded",
+      rawPayload: {},
+    });
+
+    expect(result).toEqual({ action: "terminal_reconciled" });
+    expect(errorSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("no subscription row"),
+    );
+  });
+
   test("claim returns already_terminal (no marker) when a terminal row already exists (race)", async () => {
     // A webhook delivered the terminal charge between candidate listing and the
     // claim. The claim must NOT insert a duplicate terminal row or a marker.
@@ -1281,6 +1351,83 @@ describe("payments stuck-pending reconciliation", () => {
     expect(marker).toMatchObject({ action: "ops_notified", observedStatus: "unknown" });
   });
 
+  test("action marks a non-null UNRECOGNISED status without emailing (F1)", async () => {
+    // Distinct from the null-status case: `requires_payment_method` is non-null,
+    // so it exercises the SECOND operand of the email gate
+    // (isPendingPaymentStatus). If that check regressed, this status would take
+    // the email path — the null test alone would not catch it.
+    vi.setSystemTime(NOW);
+    process.env.DODO_API_KEY = "test_dodo_key";
+    process.env.RESEND_API_KEY = "test_resend_key";
+    const t = convexTest(schema, modules);
+
+    await seedPaymentEvent(t, {
+      status: "requires_customer_action",
+      planKey: "pro_monthly",
+      occurredAt: NOW - STUCK_PAYMENT_RECONCILIATION_THRESHOLD_MS - MIN_MS,
+      suffix: "unrecognised_status",
+      dodoPaymentId: "pay_unrecognised",
+    });
+
+    dodoRetrieveMock.mockResolvedValue({
+      payment_id: "pay_unrecognised",
+      status: "requires_payment_method",
+      customer: { email: "buyer@example.com" },
+      payment_link: "https://checkout.dodopayments.com/session/x",
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("{}", { status: 200 }),
+    );
+
+    const summary = await t.action(internal.payments.billing.reconcileStuckPendingPayments, {});
+
+    expect(summary).toMatchObject({ candidates: 1, unknownStatus: 1, customerNotified: 0 });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const marker = await t.run(async (ctx) =>
+      ctx.db
+        .query("paymentReconciliationAttempts")
+        .withIndex("by_dodoPaymentId", (q) => q.eq("dodoPaymentId", "pay_unrecognised"))
+        .first(),
+    );
+    expect(marker).toMatchObject({ action: "ops_notified", observedStatus: "requires_payment_method" });
+  });
+
+  test("action emails a stuck payment at most once across repeated daily runs (F3)", async () => {
+    // The core idempotency guarantee stated end-to-end: two identical daily
+    // runs over the same still-pending payment send exactly ONE email — the
+    // marker claimed on run 1 removes the row from run 2's candidate set.
+    vi.setSystemTime(NOW);
+    process.env.DODO_API_KEY = "test_dodo_key";
+    process.env.RESEND_API_KEY = "test_resend_key";
+    const t = convexTest(schema, modules);
+
+    await seedPaymentEvent(t, {
+      status: "requires_customer_action",
+      planKey: "pro_monthly",
+      occurredAt: NOW - STUCK_PAYMENT_RECONCILIATION_THRESHOLD_MS - MIN_MS,
+      suffix: "twice",
+      dodoPaymentId: "pay_twice",
+    });
+
+    dodoRetrieveMock.mockResolvedValue({
+      status: "requires_customer_action",
+      payment_id: "pay_twice",
+      customer: { email: "buyer@example.com" },
+      payment_link: "https://checkout.dodopayments.com/session/x",
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ id: "email_1" }), { status: 200 }),
+    );
+
+    const first = await t.action(internal.payments.billing.reconcileStuckPendingPayments, {});
+    const second = await t.action(internal.payments.billing.reconcileStuckPendingPayments, {});
+
+    expect(first).toMatchObject({ candidates: 1, customerNotified: 1 });
+    expect(second).toMatchObject({ candidates: 0 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   test("action isolates a Resend failure to one candidate and still processes the rest (F6/F7)", async () => {
     // Fake timers so the failed candidate's fire-and-forget Sentry report
     // (a scheduled throwing mutation) is drained inside the test rather than
@@ -1351,11 +1498,17 @@ describe("payments stuck-pending reconciliation", () => {
     expect(markerB?.action).toBe("customer_notified");
   });
 
-  test("registers the daily reconciliation cron", () => {
+  test("registers the reconciliation cron on a 6-hourly cadence", () => {
     const source = readFileSync("convex/crons.ts", "utf8");
 
     expect(source).toContain("payments-stuck-pending-reconciliation");
     expect(source).toContain("internal.payments.billing.reconcileStuckPendingPayments");
+    // 6-hourly, not daily: keeps a payment's age at first scan under the 24h
+    // customer-email freshness gate (daily cadence silently dropped ~25% of
+    // stuck payments to ops-only). Anchored so a revert to crons.daily reds.
+    expect(source).toMatch(
+      /crons\.interval\(\s*"payments-stuck-pending-reconciliation",\s*\{\s*hours:\s*6\s*\}/,
+    );
   });
 });
 

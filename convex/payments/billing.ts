@@ -827,9 +827,14 @@ const MAX_STUCK_PAYMENT_RECONCILIATION_SCAN_ROWS = 500;
 const RESEND_EMAILS_URL = "https://api.resend.com/emails";
 const STUCK_PAYMENT_EMAIL_FROM = "World Monitor <noreply@worldmonitor.app>";
 const STUCK_PAYMENT_SUPPORT_EMAIL = "support@worldmonitor.app";
-// Bound the Resend POST so a hung socket can't stall the daily batch (a known
-// repo failure class — a network read with no timeout drains the event loop).
+// Bound the Resend POST so a hung socket can't stall the batch (a known repo
+// failure class — a network read with no timeout drains the event loop).
 const STUCK_PAYMENT_RESEND_TIMEOUT_MS = 10 * 1000;
+// Same bound for the Dodo poll — the highest-cardinality call (one per
+// candidate, up to the batch size sequentially). The SDK default is 60s x 2
+// retries (~180s), so one degraded response could otherwise burn the whole
+// action during exactly the Dodo outage this cron exists to survive.
+const STUCK_PAYMENT_DODO_RETRIEVE_TIMEOUT_MS = 10 * 1000;
 // Sentinel recorded on the marker when Dodo returns no status at all — keeps
 // the `observedStatus` field a non-empty string (v.string()) while preserving
 // "we polled but Dodo told us nothing" for triage.
@@ -914,7 +919,10 @@ function extractDodoPaymentStatus(payment: unknown): string | null {
 
 async function retrieveDodoPayment(dodoPaymentId: string): Promise<unknown> {
   const client = getDodoClient();
-  return await client.payments.retrieve(dodoPaymentId);
+  return await client.payments.retrieve(dodoPaymentId, {
+    timeout: STUCK_PAYMENT_DODO_RETRIEVE_TIMEOUT_MS,
+    maxRetries: 1,
+  });
 }
 
 async function sendStuckPaymentEmail(
@@ -1082,12 +1090,15 @@ export const listStuckPendingPaymentCandidates = internalQuery({
       .take(MAX_STUCK_PAYMENT_RECONCILIATION_SCAN_ROWS);
 
     if (paymentEvents.length >= MAX_STUCK_PAYMENT_RECONCILIATION_SCAN_ROWS) {
-      // Cap hit: rows older than the newest 500 in the window were not scanned
-      // this run. Surface it so ops can widen the cap / shorten the cadence
-      // before a sustained backlog hides stuck payments.
+      // Cap hit: only the newest 500 rows in the window were scanned. Because
+      // every run rescans newest-first, rows older than that frontier are NOT
+      // merely deferred to the next run — they stay invisible until the newer
+      // backlog clears. Surface it so ops widen the cap / shorten the cadence
+      // (a cursor/watermark would be the durable fix if this recurs).
       console.error(
         `[billing/reconciliation] scan cap hit: ${MAX_STUCK_PAYMENT_RECONCILIATION_SCAN_ROWS} rows in the ` +
-        `${Math.round(lookbackMs / (24 * 60 * 60 * 1000))}d window; older stale rows deferred to a later run.`,
+        `${Math.round(lookbackMs / (24 * 60 * 60 * 1000))}d window; rows older than the newest ` +
+        `${MAX_STUCK_PAYMENT_RECONCILIATION_SCAN_ROWS} stay unscanned until the backlog clears.`,
       );
     }
 
@@ -1204,6 +1215,28 @@ export const claimStuckPaymentReconciliation = internalMutation({
         pendingOccurredAt: args.pendingOccurredAt,
         reconciledAt: now,
       });
+
+      // Dropped-webhook guard: a payment webhook that never arrived may have
+      // travelled with a dropped `subscription.active` webhook — the customer
+      // is charged but never entitled, and no other reconciler catches a
+      // never-activated sub (#4794's renewal reconciler only scans active
+      // rows). Silently closing the case here would bury it. Page ops when a
+      // succeeded charge has a subscription id but no subscription row at all.
+      if (args.observedStatus === "succeeded" && args.dodoSubscriptionId) {
+        const sub = await ctx.db
+          .query("subscriptions")
+          .withIndex("by_dodoSubscriptionId", (q) =>
+            q.eq("dodoSubscriptionId", args.dodoSubscriptionId!),
+          )
+          .first();
+        if (!sub) {
+          console.error(
+            `[billing/reconciliation] reconciled a SUCCEEDED payment with no subscription row: ` +
+            `paymentId=${args.dodoPaymentId} userId=${args.userId} subscriptionId=${args.dodoSubscriptionId}. ` +
+            `Charged customer may lack entitlement (dropped subscription.active webhook) — ops follow-up required.`,
+          );
+        }
+      }
       return { action: "terminal_reconciled" as const };
     }
 
