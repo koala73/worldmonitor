@@ -19,7 +19,12 @@ import { resolveUserId, requireUserId } from "../lib/auth";
 import { getFeaturesForPlan } from "../lib/entitlements";
 import { ANON_ID_V4_REGEX, verifyAnonClaimToken } from "../lib/identitySigning";
 import { PRODUCT_CATALOG, resolveProductToPlan } from "../config/productCatalog";
-import { isNewerEvent, recomputeEntitlementFromAllSubs, resolvePlanKey } from "./subscriptionHelpers";
+import {
+  isNewerEvent,
+  recomputeEntitlementFromAllSubs,
+  resolvePlanKey,
+  type SubscriptionStatus,
+} from "./subscriptionHelpers";
 
 // ---------------------------------------------------------------------------
 // Shared SDK config (direct REST SDK, not the Convex component from lib/dodo.ts)
@@ -106,6 +111,28 @@ function isReconcileEligible(
   return now - candidate.lastReconcileAttemptAt >= reconcileBackoffMs(candidate.reconcileFailureCount ?? 0);
 }
 
+// Confirmation threshold before a definitive Dodo not-found downgrades the local
+// row: only when the row ALREADY has >= this many recorded failures (i.e. this
+// is at least the 2nd consecutive definitive 404, across >= 2 daily runs) do we
+// expire it. Blocks a single flaky 404 from revoking a paying customer. NOTE the
+// residual: a sustained wrong-environment/API-key misconfig that 404s every live
+// sub would still downgrade the base after two runs — that is a sev1 the
+// per-expiry error logs surface loudly.
+const DODO_RENEWAL_TERMINAL_NOTFOUND_MIN_PRIOR_FAILURES = 1;
+
+// A definitive "this subscription does not exist in Dodo" — the SDK throws
+// `NotFoundError extends APIError<404>` (a `.status` of 404). Transient failures
+// (network, timeout, 5xx, 429) carry a different/absent status and must stay on
+// the backoff-and-retry path, never downgrade.
+function isDefinitiveDodoNotFound(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "status" in err &&
+    (err as { status?: unknown }).status === 404
+  );
+}
+
 const dodoReconciliationRemoteSubscriptionValidator = v.object({
   subscription_id: v.string(),
   product_id: v.string(),
@@ -139,8 +166,6 @@ type DodoReconciliationRemoteSubscription = {
   cancelled_at?: string | number | null;
 };
 
-type LocalSubscriptionStatus = "active" | "on_hold" | "cancelled" | "expired";
-
 type StaleActiveSubscriptionForRenewalReconciliation = {
   _id: Id<"subscriptions">;
   userId: string;
@@ -159,7 +184,7 @@ type ReconciliationSkipReason =
 type ReconciliationMutationResult =
   | {
       kind: "reconciled";
-      status: LocalSubscriptionStatus;
+      status: SubscriptionStatus;
       planKey: string;
       currentPeriodEnd: number;
     }
@@ -168,6 +193,10 @@ type ReconciliationMutationResult =
 type ReconciliationSummary = {
   inspected: number;
   reconciled: number;
+  // Rows the reconciler downgraded to `expired` because a CONFIRMED terminal
+  // Dodo not-found (>= 2 consecutive definitive 404s) proved the subscription no
+  // longer exists — distinct from a transient lookup `failed`.
+  expiredMissing: number;
   skipped: number;
   failed: number;
   limit: number;
@@ -184,7 +213,7 @@ type ReconciliationSummary = {
   failures: Array<{ dodoSubscriptionId: string; error: string }>;
 };
 
-function normalizeDodoStatus(status: string): LocalSubscriptionStatus | null {
+function normalizeDodoStatus(status: string): SubscriptionStatus | null {
   switch (status) {
     case "active":
     case "on_hold":
@@ -523,7 +552,7 @@ export const listStaleActiveSubscriptionsForRenewalReconciliation = internalQuer
     // are returned, so a continuation can page PAST a window already drained or
     // saturated by backoff instead of re-scanning the same stalest rows. Omitted
     // (undefined) on the first invocation of a cron cycle. Uses the same
-    // `by_status_period_end` index — the currentPeriodEnd range is just
+    // `by_status_currentPeriodEnd` index — the currentPeriodEnd range is just
     // lower-bounded when the cursor is set.
     cursorPeriodEnd: v.optional(v.number()),
   },
@@ -670,6 +699,14 @@ export const applyDodoSubscriptionReconciliation = internalMutation({
       planKey = await resolvePlanKey(ctx, args.remote.productId);
     }
 
+    // Does this patch actually move the row OUT of the stale-active set? It does
+    // unless the remote is still active with a period end that is itself still
+    // in the past (Dodo hasn't renewed either). When it does NOT, treat this as
+    // a no-progress attempt: record a backoff instead of clearing the
+    // bookkeeping, so the still-stale row isn't re-fetched (and re-reconciled)
+    // every cycle with a fresh clean slate.
+    const stillStaleAfterPatch =
+      args.remote.status === "active" && args.remote.currentPeriodEnd < args.observedAt;
     await ctx.db.patch(existing._id, {
       status: args.remote.status,
       dodoProductId: args.remote.productId,
@@ -679,10 +716,17 @@ export const applyDodoSubscriptionReconciliation = internalMutation({
       dodoCustomerId: args.remote.dodoCustomerId ?? existing.dodoCustomerId,
       rawPayload: args.remote.rawPayload,
       updatedAt: args.observedAt,
-      // Clear reconcile bookkeeping — this row made progress and (usually)
-      // leaves the stale-active set; a later miss starts from a clean slate.
-      lastReconcileAttemptAt: undefined,
-      reconcileFailureCount: undefined,
+      ...(stillStaleAfterPatch
+        ? {
+            lastReconcileAttemptAt: args.observedAt,
+            reconcileFailureCount: (existing.reconcileFailureCount ?? 0) + 1,
+          }
+        : {
+            // Row left the stale-active set — clear bookkeeping so a later miss
+            // starts from a clean slate.
+            lastReconcileAttemptAt: undefined,
+            reconcileFailureCount: undefined,
+          }),
       ...(args.remote.status === "cancelled"
         ? { cancelledAt: args.remote.cancelledAt ?? existing.cancelledAt ?? args.observedAt }
         : {}),
@@ -697,6 +741,188 @@ export const applyDodoSubscriptionReconciliation = internalMutation({
     };
   },
 });
+
+/**
+ * Downgrades a stale-active local row to `expired` after the reconciler
+ * confirmed the subscription no longer exists in Dodo (a definitive, repeated
+ * 404 — see `isDefinitiveDodoNotFound` + the confirmation threshold). This is
+ * the terminal counterpart to the backoff path: instead of retrying a row that
+ * will never resolve, it moves it OUT of the active set, which simultaneously
+ * frees its scan slot, ends the entitlement over-grant, and lets the entitlement
+ * recompute downgrade the user.
+ *
+ * Guards mirror `applyDodoSubscriptionReconciliation`: skip if the row already
+ * left the stale-active set or a concurrent webhook wrote a newer state.
+ */
+export const expireMissingDodoSubscription = internalMutation({
+  args: {
+    subscriptionId: v.id("subscriptions"),
+    dodoSubscriptionId: v.string(),
+    observedAt: v.number(),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ kind: "expired" } | { kind: "skipped"; reason: ReconciliationSkipReason }> => {
+    const existing = await ctx.db.get(args.subscriptionId);
+    if (!existing) {
+      return { kind: "skipped", reason: "local_missing" };
+    }
+    if (existing.dodoSubscriptionId !== args.dodoSubscriptionId) {
+      throw new Error(
+        `[billing/reconcile] subscription id mismatch: expected ${existing.dodoSubscriptionId}, got ${args.dodoSubscriptionId}`,
+      );
+    }
+    if (existing.status !== "active" || existing.currentPeriodEnd >= args.observedAt) {
+      return { kind: "skipped", reason: "local_no_longer_stale" };
+    }
+    if (!isNewerEvent(existing.updatedAt, args.observedAt)) {
+      return { kind: "skipped", reason: "local_updated_concurrently" };
+    }
+
+    await ctx.db.patch(existing._id, {
+      status: "expired",
+      updatedAt: args.observedAt,
+      lastReconcileAttemptAt: undefined,
+      reconcileFailureCount: undefined,
+    });
+    await recomputeEntitlementFromAllSubs(ctx, existing.userId, args.observedAt);
+    return { kind: "expired" };
+  },
+});
+
+type StaleRowOutcome =
+  | { kind: "reconciled" }
+  | { kind: "expired" }
+  | { kind: "skipped" }
+  | { kind: "failed"; error: string };
+
+// Best-effort backoff bookkeeping for the paths that never reach
+// `applyDodoSubscriptionReconciliation` (Dodo lookup failure, unsupported/pending
+// status). Swallows its own error so a bookkeeping OCC conflict can never abort
+// the batch or skip continuation scheduling.
+export async function safeMarkReconcileAttempt(
+  ctx: Pick<ActionCtx, "runMutation">,
+  subscriptionId: Id<"subscriptions">,
+  observedAt: number,
+): Promise<void> {
+  try {
+    await ctx.runMutation(internal.payments.billing.markDodoReconcileAttempt, {
+      subscriptionId,
+      observedAt,
+    });
+  } catch (markErr) {
+    // sentry-coverage-ok: structured console.error is forwarded by Convex
+    // auto-Sentry. Deliberately swallowed (not re-thrown): a failed best-effort
+    // backoff write must never abort the batch or skip continuation scheduling —
+    // the row simply isn't backed off this once and is re-attempted next run.
+    console.error(
+      `[billing/reconcile] markDodoReconcileAttempt failed for ${subscriptionId}: ${markErr instanceof Error ? markErr.message : String(markErr)}`,
+    );
+  }
+}
+
+// Reconcile a single stale-active row against Dodo truth. Fetch → normalize →
+// apply mutation → interpret, with the transient-vs-terminal error split. Never
+// throws — one bad row must not block the rest of the batch; returns the outcome
+// for the caller to fold into the summary.
+async function reconcileOneStaleRow(
+  ctx: Pick<ActionCtx, "runMutation">,
+  sub: StaleActiveSubscriptionForRenewalReconciliation,
+  opts: {
+    now: number;
+    useTestRemotes: boolean;
+    remoteById: Map<string, DodoReconciliationRemoteSubscription>;
+    errorInjection: Map<string, "not_found" | "server_error">;
+    client: DodoPayments | null;
+  },
+): Promise<StaleRowOutcome> {
+  const { now, useTestRemotes, remoteById, errorInjection, client } = opts;
+  try {
+    let remote: DodoSubscription | DodoReconciliationRemoteSubscription | undefined;
+    if (useTestRemotes) {
+      const injected = errorInjection.get(sub.dodoSubscriptionId);
+      if (injected === "not_found") {
+        throw Object.assign(new Error("simulated Dodo not found"), { status: 404 });
+      }
+      if (injected === "server_error") {
+        throw Object.assign(new Error("simulated Dodo server error"), { status: 500 });
+      }
+      remote = remoteById.get(sub.dodoSubscriptionId);
+    } else {
+      remote = await client!.subscriptions.retrieve(sub.dodoSubscriptionId);
+    }
+    if (!remote) {
+      throw new Error("missing test remote subscription");
+    }
+
+    const normalized = normalizeRemoteSubscription(remote);
+    if (normalized.kind === "skip") {
+      // sentry-coverage-ok: escalated to error (Convex auto-Sentry captures
+      // error, not warn) so a `pending`/unknown remote status that a
+      // local-active row is stuck on gets triaged rather than silently skipped
+      // daily.
+      console.error(
+        `[billing/reconcile] Skipping subscription ${normalized.dodoSubscriptionId}: ${normalized.reason} Dodo status "${normalized.status}"`,
+      );
+      // Row is still stale-active — back it off.
+      await safeMarkReconcileAttempt(ctx, sub._id, now);
+      return { kind: "skipped" };
+    }
+
+    const result = (await ctx.runMutation(
+      internal.payments.billing.applyDodoSubscriptionReconciliation,
+      {
+        subscriptionId: sub._id,
+        dodoSubscriptionId: sub.dodoSubscriptionId,
+        observedAt: now,
+        remote: normalized.value,
+      },
+    )) as ReconciliationMutationResult;
+    // `apply` records its own backoff for the still-stale skip reasons.
+    return result.kind === "reconciled" ? { kind: "reconciled" } : { kind: "skipped" };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    // Confirmed terminal not-found: the subscription no longer exists in Dodo.
+    // Only after >= the confirmation threshold of prior failures so a single
+    // flaky 404 can't downgrade a paying customer. Downgrade the row to expired
+    // so it leaves the active set permanently.
+    if (
+      isDefinitiveDodoNotFound(err) &&
+      (sub.reconcileFailureCount ?? 0) >= DODO_RENEWAL_TERMINAL_NOTFOUND_MIN_PRIOR_FAILURES
+    ) {
+      const expireResult = (await ctx.runMutation(
+        internal.payments.billing.expireMissingDodoSubscription,
+        {
+          subscriptionId: sub._id,
+          dodoSubscriptionId: sub.dodoSubscriptionId,
+          observedAt: now,
+        },
+      )) as { kind: "expired" } | { kind: "skipped"; reason: ReconciliationSkipReason };
+      if (expireResult.kind === "expired") {
+        // sentry-coverage-ok: structured console.error is forwarded by Convex
+        // auto-Sentry so ops sees confirmed-gone subscriptions being downgraded
+        // (also the signal that would spike on a wrong-environment misconfig).
+        console.error(
+          `[billing/reconcile] dodoSubscriptionId=${sub.dodoSubscriptionId} userId=${sub.userId} confirmed not-found in Dodo after ${(sub.reconcileFailureCount ?? 0) + 1} attempts; downgraded local row to expired.`,
+        );
+        return { kind: "expired" };
+      }
+      // A concurrent webhook already moved the row out of the stale-active set.
+      return { kind: "skipped" };
+    }
+    // Transient (5xx / network / timeout) OR an unconfirmed first 404 → back off
+    // and retry; never downgrade on an ambiguous signal.
+    // sentry-coverage-ok: structured console.error is forwarded by Convex
+    // auto-Sentry. We intentionally do not re-throw here because one bad Dodo
+    // lookup must not block reconciliation for other stale subscribers.
+    console.error(
+      `[billing/reconcile] Failed to reconcile dodoSubscriptionId=${sub.dodoSubscriptionId} userId=${sub.userId}: ${message}`,
+    );
+    await safeMarkReconcileAttempt(ctx, sub._id, now);
+    return { kind: "failed", error: message };
+  }
+}
 
 export const reconcileMissedDodoRenewals = internalAction({
   args: {
@@ -718,11 +944,23 @@ export const reconcileMissedDodoRenewals = internalAction({
     remoteSubscriptionsForTest: v.optional(
       v.array(dodoReconciliationRemoteSubscriptionValidator),
     ),
+    // Test-only: simulate a Dodo `subscriptions.retrieve` error per subscription
+    // id ("not_found" -> definitive 404, "server_error" -> transient 5xx) so the
+    // terminal-vs-transient split is exercised without a live client.
+    errorInjectionForTest: v.optional(
+      v.record(
+        v.string(),
+        v.union(v.literal("not_found"), v.literal("server_error")),
+      ),
+    ),
   },
   handler: async (ctx, args): Promise<ReconciliationSummary> => {
-    if (args.remoteSubscriptionsForTest && process.env.NODE_ENV !== "test") {
+    const usesTestInjection =
+      args.remoteSubscriptionsForTest !== undefined ||
+      args.errorInjectionForTest !== undefined;
+    if (usesTestInjection && process.env.NODE_ENV !== "test") {
       throw new Error(
-        "[billing/reconcile] remoteSubscriptionsForTest is only allowed under test",
+        "[billing/reconcile] test injection args are only allowed under test",
       );
     }
 
@@ -769,16 +1007,24 @@ export const reconcileMissedDodoRenewals = internalAction({
         remote,
       ]),
     );
-    const client = args.remoteSubscriptionsForTest
+    const errorInjection = new Map<string, "not_found" | "server_error">(
+      Object.entries(args.errorInjectionForTest ?? {}),
+    );
+    const client = usesTestInjection
       ? null
       : getDodoClient({
           timeout: DODO_RENEWAL_RECONCILIATION_TIMEOUT_MS,
-          maxRetries: 1,
+          // No SDK-level retry: a rate-limited/incident retry honors a server
+          // Retry-After VERBATIM and could sleep minutes, blowing the Convex
+          // 10-min action cap. Our row-level backoff + continuation IS the retry
+          // mechanism, so each lookup stays bounded by `timeout`.
+          maxRetries: 0,
         });
 
     const summary: ReconciliationSummary = {
       inspected: 0,
       reconciled: 0,
+      expiredMissing: 0,
       skipped: 0,
       failed: 0,
       limit,
@@ -787,29 +1033,6 @@ export const reconcileMissedDodoRenewals = internalAction({
       windowSaturated: false,
       continuationScheduled: false,
       failures: [],
-    };
-
-    // Bookkeeping-only patch for a still-stale row we couldn't advance. Never
-    // let a failed bookkeeping write (OCC conflict, row deleted mid-cycle) abort
-    // the whole batch or the continuation scheduling — swallow + log. Used only
-    // for the two no-progress paths that don't reach `apply` (Dodo lookup
-    // failure, unsupported/pending status); `apply` records its own.
-    const markAttempt = async (subscriptionId: Id<"subscriptions">) => {
-      try {
-        await ctx.runMutation(internal.payments.billing.markDodoReconcileAttempt, {
-          subscriptionId,
-          observedAt: now,
-        });
-      } catch (markErr) {
-        // sentry-coverage-ok: structured console.error is forwarded by Convex
-        // auto-Sentry. Deliberately swallowed (not re-thrown): a failed
-        // best-effort backoff write must never abort the batch or skip
-        // continuation scheduling — the row simply isn't backed off this once
-        // and is re-attempted next run.
-        console.error(
-          `[billing/reconcile] markDodoReconcileAttempt failed for ${subscriptionId}: ${markErr instanceof Error ? markErr.message : String(markErr)}`,
-        );
-      }
     };
 
     let attempted = 0;
@@ -825,62 +1048,30 @@ export const reconcileMissedDodoRenewals = internalAction({
       }
       attempted++;
       summary.inspected++;
-      try {
-        const remote = args.remoteSubscriptionsForTest
-          ? remoteById.get(sub.dodoSubscriptionId)
-          : await client!.subscriptions.retrieve(sub.dodoSubscriptionId);
-        if (!remote) {
-          throw new Error("missing test remote subscription");
-        }
-
-        const normalized = normalizeRemoteSubscription(remote);
-        if (normalized.kind === "skip") {
-          summary.skipped++;
-          // sentry-coverage-ok: escalated to error (Convex auto-Sentry captures
-          // error, not warn) so a `pending`/unknown remote status that a
-          // local-active row is stuck on gets triaged rather than silently
-          // skipped daily.
-          console.error(
-            `[billing/reconcile] Skipping subscription ${normalized.dodoSubscriptionId}: ${normalized.reason} Dodo status "${normalized.status}"`,
-          );
-          // Row is still stale-active — back it off.
-          await markAttempt(sub._id);
-          continue;
-        }
-
-        const result = (await ctx.runMutation(
-          internal.payments.billing.applyDodoSubscriptionReconciliation,
-          {
-            subscriptionId: sub._id,
-            dodoSubscriptionId: sub.dodoSubscriptionId,
-            observedAt: now,
-            remote: normalized.value,
-          },
-        )) as ReconciliationMutationResult;
-        if (result.kind === "reconciled") {
+      const outcome = await reconcileOneStaleRow(ctx, sub, {
+        now,
+        useTestRemotes: usesTestInjection,
+        remoteById,
+        errorInjection,
+        client,
+      });
+      switch (outcome.kind) {
+        case "reconciled":
           summary.reconciled++;
-        } else {
-          // `apply` already recorded a backoff attempt for the still-stale skip
-          // reasons (remote_not_newer / local_updated_concurrently) inside its
-          // own transaction; `local_missing` / `local_no_longer_stale` left the
-          // set. Nothing more to do here.
+          break;
+        case "expired":
+          summary.expiredMissing++;
+          break;
+        case "skipped":
           summary.skipped++;
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        summary.failed++;
-        summary.failures.push({
-          dodoSubscriptionId: sub.dodoSubscriptionId,
-          error: message,
-        });
-        // sentry-coverage-ok: structured console.error is forwarded by Convex
-        // auto-Sentry. We intentionally do not re-throw here because one bad
-        // Dodo lookup must not block reconciliation for other stale subscribers.
-        console.error(
-          `[billing/reconcile] Failed to reconcile dodoSubscriptionId=${sub.dodoSubscriptionId} userId=${sub.userId}: ${message}`,
-        );
-        // Poison row (e.g. test-mode-era sub 404ing the live client) — back off.
-        await markAttempt(sub._id);
+          break;
+        case "failed":
+          summary.failed++;
+          summary.failures.push({
+            dodoSubscriptionId: sub.dodoSubscriptionId,
+            error: outcome.error,
+          });
+          break;
       }
     }
 
@@ -948,11 +1139,20 @@ export const reconcileMissedDodoRenewals = internalAction({
           ...(args.remoteSubscriptionsForTest
             ? { remoteSubscriptionsForTest: args.remoteSubscriptionsForTest }
             : {}),
+          ...(args.errorInjectionForTest
+            ? { errorInjectionForTest: args.errorInjectionForTest }
+            : {}),
         },
       );
       summary.continuationScheduled = true;
     }
 
+    // No run-lock guards a still-draining continuation chain against the next
+    // daily cron tick (the two could overlap). Left intentionally: every write
+    // path is idempotent under overlap — the per-row mutations re-check
+    // staleness + `isNewerEvent(updatedAt, observedAt)` and Convex OCC serializes
+    // conflicting writes, so a duplicate pass at worst re-marks a backoff (benign)
+    // and never double-applies a reconcile.
     return summary;
   },
 });

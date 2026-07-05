@@ -7,6 +7,7 @@ import { PRODUCT_CATALOG } from "../config/productCatalog";
 import {
   PENDING_PAYMENT_BLOCK_WINDOW_MS,
   STUCK_PAYMENT_RECONCILIATION_THRESHOLD_MS,
+  safeMarkReconcileAttempt,
 } from "../payments/billing";
 import { getFeaturesForPlan } from "../lib/entitlements";
 import { signAnonClaimToken } from "../lib/identitySigning";
@@ -3170,6 +3171,26 @@ describe("payments billing missed renewal reconciliation", () => {
     sub = await readSub(t, "backoff");
     expect(sub?.reconcileFailureCount).toBe(2);
     expect(sub?.lastReconcileAttemptAt).toBe(now3);
+
+    // At failureCount 2 the exponential base (2 days) kicks in: NOT eligible the
+    // next day...
+    const s4 = await t.action(internal.payments.billing.reconcileMissedDodoRenewals, {
+      now: now3 + DAY_MS,
+      remoteSubscriptionsForTest: [],
+    });
+    expect(s4).toMatchObject({ inspected: 0, failed: 0, reconciled: 0 });
+    sub = await readSub(t, "backoff");
+    expect(sub?.reconcileFailureCount).toBe(2); // untouched
+
+    // ...but eligible again once the 2-day window elapses.
+    const now5 = now3 + 2 * DAY_MS;
+    const s5 = await t.action(internal.payments.billing.reconcileMissedDodoRenewals, {
+      now: now5,
+      remoteSubscriptionsForTest: [],
+    });
+    expect(s5).toMatchObject({ inspected: 1, failed: 1, reconciled: 0 });
+    sub = await readSub(t, "backoff");
+    expect(sub?.reconcileFailureCount).toBe(3);
   });
 
   test("bails out of the batch when the wall-clock time budget is exhausted", async () => {
@@ -3303,5 +3324,90 @@ describe("payments billing missed renewal reconciliation", () => {
     expect(healthyEnt?.validUntil).toBe(healthyRenewedEnd);
 
     vi.useRealTimers();
+  });
+
+  test("downgrades to expired only after a CONFIRMED (repeated) Dodo not-found", async () => {
+    const t = convexTest(schema, modules);
+    await seedStaleActiveForReconcile(t, {
+      suffix: "gone",
+      currentPeriodEnd: NOW - DAY_MS,
+      // entitlement seeded so we can prove the downgrade
+    });
+
+    // First 404: unconfirmed (reconcileFailureCount 0) -> treated as transient,
+    // row stays active + backed off. A single flaky 404 must NOT downgrade.
+    const s1 = await t.action(internal.payments.billing.reconcileMissedDodoRenewals, {
+      now: NOW,
+      errorInjectionForTest: { sub_gone: "not_found" },
+    });
+    expect(s1).toMatchObject({ inspected: 1, failed: 1, expiredMissing: 0, reconciled: 0 });
+    let sub = await readSub(t, "gone");
+    expect(sub?.status).toBe("active");
+    expect(sub?.reconcileFailureCount).toBe(1);
+    let ent = await readEntitlement(t, TEST_USER_ID);
+    expect(ent?.planKey).toBe("pro_monthly"); // still entitled
+
+    // Second 404 the next day: now confirmed (failureCount 1 >= threshold) ->
+    // downgrade the local row to expired and recompute the entitlement.
+    const s2 = await t.action(internal.payments.billing.reconcileMissedDodoRenewals, {
+      now: NOW + DAY_MS,
+      errorInjectionForTest: { sub_gone: "not_found" },
+    });
+    expect(s2).toMatchObject({ inspected: 1, expiredMissing: 1, failed: 0, reconciled: 0 });
+    sub = await readSub(t, "gone");
+    expect(sub?.status).toBe("expired");
+    ent = await readEntitlement(t, TEST_USER_ID);
+    expect(ent?.planKey).toBe("free"); // downgraded
+  });
+
+  test("keeps a subscription active and backed off on a transient 5xx (never downgrades)", async () => {
+    const t = convexTest(schema, modules);
+    await seedStaleActiveForReconcile(t, {
+      suffix: "flaky",
+      currentPeriodEnd: NOW - DAY_MS,
+      seedEntitlement: false,
+    });
+
+    // Two consecutive 5xx errors across two daily runs: the row is backed off
+    // both times but NEVER expired — a transient error must not downgrade even
+    // once the failure count passes the not-found confirmation threshold.
+    const s1 = await t.action(internal.payments.billing.reconcileMissedDodoRenewals, {
+      now: NOW,
+      errorInjectionForTest: { sub_flaky: "server_error" },
+    });
+    expect(s1).toMatchObject({ inspected: 1, failed: 1, expiredMissing: 0 });
+    let sub = await readSub(t, "flaky");
+    expect(sub?.status).toBe("active");
+    expect(sub?.reconcileFailureCount).toBe(1);
+
+    const s2 = await t.action(internal.payments.billing.reconcileMissedDodoRenewals, {
+      now: NOW + DAY_MS,
+      errorInjectionForTest: { sub_flaky: "server_error" },
+    });
+    expect(s2).toMatchObject({ inspected: 1, failed: 1, expiredMissing: 0 });
+    sub = await readSub(t, "flaky");
+    expect(sub?.status).toBe("active"); // still active, never downgraded on 5xx
+    expect(sub?.reconcileFailureCount).toBe(2);
+  });
+
+  test("safeMarkReconcileAttempt swallows a throwing bookkeeping mutation", async () => {
+    // Reliability P1-1: a failed best-effort backoff write must never propagate
+    // out of the per-row loop (which would abort the batch AND skip continuation
+    // scheduling). A fake ctx whose runMutation throws must resolve, not reject.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const throwingCtx = {
+      runMutation: async () => {
+        throw new Error("simulated OCC write conflict");
+      },
+    };
+    await expect(
+      safeMarkReconcileAttempt(
+        throwingCtx as never,
+        "sub_placeholder" as never,
+        NOW,
+      ),
+    ).resolves.toBeUndefined();
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    errorSpy.mockRestore();
   });
 });

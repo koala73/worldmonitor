@@ -196,12 +196,15 @@ export async function upsertEntitlements(
 // Coverage helpers
 // ---------------------------------------------------------------------------
 
+/** The local `subscriptions.status` union (mirrors `subscriptionStatus` in schema.ts). */
+export type SubscriptionStatus = "active" | "on_hold" | "cancelled" | "expired";
+
 type SubscriptionRow = {
   _id: import("../_generated/dataModel").Id<"subscriptions">;
   userId: string;
   dodoSubscriptionId: string;
   planKey: string;
-  status: "active" | "on_hold" | "cancelled" | "expired";
+  status: SubscriptionStatus;
   currentPeriodEnd: number;
 };
 
