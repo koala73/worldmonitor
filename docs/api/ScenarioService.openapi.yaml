@@ -213,20 +213,19 @@ paths:
                     content:
                         application/json:
                             example:
-                                "error": "example"
                                 "result":
                                     "affectedChokepointIds":
-                                        - "suez"
+                                        - "hormuz_strait"
                                     "template":
-                                        "costShockMultiplier": 75.25
-                                        "disruptionPct": 1
-                                        "durationDays": 7
-                                        "name": "WorldMonitor Analyst"
+                                        "costShockMultiplier": 2.1
+                                        "disruptionPct": 100
+                                        "durationDays": 14
+                                        "name": "hormuz_strait"
                                     "topImpactCountries":
-                                        - "impactPct": 1
+                                        - "impactPct": 100
                                           "iso2": "US"
-                                          "totalImpact": 1
-                                "status": "example"
+                                          "totalImpact": 42.5
+                                "status": "done"
                             schema:
                                 $ref: '#/components/schemas/GetScenarioStatusResponse'
                 "400":

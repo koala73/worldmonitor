@@ -27,7 +27,7 @@ paths:
                   in: query
                   description: basket_slug selects which basket to use (e.g. "essentials-ae").
                   required: false
-                  example: "example"
+                  example: "essentials-ae"
                   schema:
                     type: string
                 - name: jmespath
@@ -123,14 +123,14 @@ paths:
                   in: query
                   description: basket_slug selects the basket (e.g. "essentials-ae").
                   required: false
-                  example: "example"
+                  example: "essentials-ae"
                   schema:
                     type: string
                 - name: range
                   in: query
                   description: range is one of "7d", "30d", "90d", "180d".
                   required: false
-                  example: "example"
+                  example: "7d"
                   schema:
                     type: string
                 - name: jmespath
@@ -148,7 +148,7 @@ paths:
                         application/json:
                             example:
                                 "asOf": "1717200000000"
-                                "basketSlug": "example"
+                                "basketSlug": "essentials-ae"
                                 "currencyCode": "USD"
                                 "essentialsSeries":
                                     - "date": "2026-01-15"
@@ -228,14 +228,14 @@ paths:
                   in: query
                   description: basket_slug selects the basket scope.
                   required: false
-                  example: "example"
+                  example: "essentials-ae"
                   schema:
                     type: string
                 - name: range
                   in: query
                   description: range is one of "7d", "30d", "90d", "180d".
                   required: false
-                  example: "example"
+                  example: "7d"
                   schema:
                     type: string
                 - name: jmespath
@@ -260,7 +260,7 @@ paths:
                                       "momPct": 1.5
                                       "name": "WorldMonitor Analyst"
                                 "marketCode": "US"
-                                "range": "example"
+                                "range": "7d"
                                 "upstreamUnavailable": true
                             schema:
                                 $ref: '#/components/schemas/ListConsumerPriceCategoriesResponse'
@@ -336,7 +336,7 @@ paths:
                   in: query
                   description: range is one of "7d", "30d", "90d".
                   required: false
-                  example: "example"
+                  example: "7d"
                   schema:
                     type: string
                 - name: limit
@@ -376,7 +376,7 @@ paths:
                                       "currentPrice": 75.25
                                       "productId": "diesel"
                                 "marketCode": "US"
-                                "range": "example"
+                                "range": "7d"
                                 "risers":
                                     - "category": "cs.AI"
                                       "changePct": 1.5
@@ -457,7 +457,7 @@ paths:
                   in: query
                   description: basket_slug selects which basket to compare across retailers.
                   required: false
-                  example: "example"
+                  example: "essentials-ae"
                   schema:
                     type: string
                 - name: jmespath
@@ -475,7 +475,7 @@ paths:
                         application/json:
                             example:
                                 "asOf": "1717200000000"
-                                "basketSlug": "example"
+                                "basketSlug": "essentials-ae"
                                 "currencyCode": "USD"
                                 "marketCode": "US"
                                 "retailers":

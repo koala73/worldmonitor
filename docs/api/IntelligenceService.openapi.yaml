@@ -571,7 +571,7 @@ paths:
                     Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".
                      Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
-                  example: "example"
+                  example: "DateDesc"
                   schema:
                     type: string
                 - name: jmespath
@@ -1642,7 +1642,7 @@ paths:
                   in: query
                   description: Topic ID (military, cyber, nuclear, sanctions, intelligence, maritime).
                   required: false
-                  example: "example"
+                  example: "military"
                   schema:
                     type: string
                 - name: jmespath
@@ -1664,7 +1664,7 @@ paths:
                                 "tone":
                                     - "date": "2026-01-15"
                                       "value": 1.5
-                                "topic": "example"
+                                "topic": "military"
                                 "vol":
                                     - "date": "2026-01-15"
                                       "value": 1.5
@@ -2141,7 +2141,7 @@ paths:
                             example:
                                 "assessment": "example"
                                 "chokepointConfidence": "example"
-                                "chokepointId": "suez"
+                                "chokepointId": "hormuz_strait"
                                 "comtradeCoverage": true
                                 "countryCode": "US"
                             schema:
@@ -2313,7 +2313,7 @@ paths:
                      Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
                      trailing or consecutive hyphens.
                   required: true
-                  example: "example1"
+                  example: "mena"
                   schema:
                     type: string
                     pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
@@ -2443,7 +2443,7 @@ paths:
                      Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
                      trailing or consecutive hyphens.
                   required: true
-                  example: "example1"
+                  example: "mena"
                   schema:
                     type: string
                     pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
@@ -2475,7 +2475,7 @@ paths:
                                 "transitions":
                                     - "label": "example"
                                       "previousLabel": "example"
-                                      "regionId": "example-id"
+                                      "regionId": "mena"
                                       "snapshotId": "example-id"
                                       "transitionDriver": "example"
                             schema:
@@ -2551,7 +2551,7 @@ paths:
                   in: query
                   description: Stable regional brief identifier, such as "middle-east".
                   required: true
-                  example: "example1"
+                  example: "mena"
                   schema:
                     type: string
                     pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'

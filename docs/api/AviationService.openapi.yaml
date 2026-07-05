@@ -1107,21 +1107,21 @@ paths:
                   in: query
                   description: 'Cabin class: ECONOMY, PREMIUM_ECONOMY, BUSINESS, or FIRST.'
                   required: false
-                  example: "example"
+                  example: "ECONOMY"
                   schema:
                     type: string
                 - name: max_stops
                   in: query
                   description: 'Stop filter: ANY, NON_STOP, ONE_STOP, or TWO_PLUS_STOPS.'
                   required: false
-                  example: "example"
+                  example: "ANY"
                   schema:
                     type: string
                 - name: departure_window
                   in: query
                   description: Departure time window in HH-HH format (e.g. "6-20").
                   required: false
-                  example: "example"
+                  example: "6-20"
                   schema:
                     type: string
                 - name: airlines
@@ -1131,7 +1131,7 @@ paths:
                   style: form
                   explode: true
                   example:
-                      - "JFK"
+                      - "BA"
                   schema:
                     type: array
                     items:
@@ -1140,7 +1140,7 @@ paths:
                   in: query
                   description: 'Sort order: CHEAPEST, DURATION, DEPARTURE_TIME, or ARRIVAL_TIME.'
                   required: false
-                  example: "example"
+                  example: "CHEAPEST"
                   schema:
                     type: string
                 - name: passengers
@@ -1287,21 +1287,21 @@ paths:
                   in: query
                   description: 'Cabin class: ECONOMY, PREMIUM_ECONOMY, BUSINESS, or FIRST.'
                   required: false
-                  example: "example"
+                  example: "ECONOMY"
                   schema:
                     type: string
                 - name: max_stops
                   in: query
                   description: 'Stop filter: ANY, NON_STOP, ONE_STOP, or TWO_PLUS_STOPS.'
                   required: false
-                  example: "example"
+                  example: "ANY"
                   schema:
                     type: string
                 - name: departure_window
                   in: query
                   description: Departure time window in HH-HH format (e.g. "6-20").
                   required: false
-                  example: "example"
+                  example: "6-20"
                   schema:
                     type: string
                 - name: airlines
@@ -1311,7 +1311,7 @@ paths:
                   style: form
                   explode: true
                   example:
-                      - "JFK"
+                      - "BA"
                   schema:
                     type: array
                     items:
