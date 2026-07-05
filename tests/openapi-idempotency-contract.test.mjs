@@ -96,9 +96,12 @@ function assertIdempotencyResponses(op, label) {
   // observable signal for "was this a replay?" (issue #4769 P2).
   const success = op.responses?.['200'];
   assert.ok(success, `${label} must document a 200 success response`);
-  assert.ok(
-    success.headers?.['Idempotency-Key'],
-    `${label} 200 response must document the echoed Idempotency-Key header`,
+  const echoed = success.headers?.['Idempotency-Key'];
+  assert.ok(echoed, `${label} 200 response must document the echoed Idempotency-Key header`);
+  assert.equal(
+    echoed.schema?.type,
+    'string',
+    `${label} 200 Idempotency-Key must be a string header`,
   );
   const replayed = success.headers?.['Idempotent-Replayed'];
   assert.ok(replayed, `${label} 200 response must document the Idempotent-Replayed marker`);
