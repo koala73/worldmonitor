@@ -62,6 +62,7 @@ fi
 # failure, message-only amend) doesn't re-pay minutes of checks.
 RUN_ALL=false
 RUN_ALL_REASON=""
+DIFF_RESOLVED=true
 if CHANGED_FILES=$(git diff --name-only origin/main...HEAD 2>/dev/null); then
   :
 else
@@ -72,6 +73,7 @@ else
   # HEAD~1 is kept ONLY to narrow the changed-test list (informational).
   CHANGED_FILES=$(git diff --name-only HEAD~1 2>/dev/null || echo "")
   RUN_ALL=true
+  DIFF_RESOLVED=false
   RUN_ALL_REASON="changed files could not be resolved from origin/main"
   echo "WARNING: Could not resolve branch diff from origin/main — running ALL invariant checks as safety fallback."
 fi
@@ -86,9 +88,15 @@ changed() { [ "$RUN_ALL" = true ] || echo "$CHANGED_FILES" | grep -qE "$1"; }
 # Green-tree cache: if this exact tree already passed the full gate, skip the
 # tree-dependent checks. State-dependent checks (secrets, PR state, branch
 # contamination, lockfile sync) have already run above and always do.
+#
+# Cache READS are disabled when the branch diff could not be resolved: the
+# tree hash captures content-derived plan inputs (a package.json change is in
+# the tree), but NOT state-derived ones — a blind run must not trust an
+# attestation minted under a scoped plan it can no longer verify. Writes stay
+# enabled: a fallback run executes everything, the strongest attestation.
 GATE_CACHE="$(git rev-parse --git-dir)/wm-prepush-green"
 TREE_HASH=$(git rev-parse 'HEAD^{tree}' 2>/dev/null || echo "")
-if [ -n "$TREE_HASH" ] && [ -f "$GATE_CACHE" ] && grep -qxF "$TREE_HASH" "$GATE_CACHE" 2>/dev/null; then
+if [ "$DIFF_RESOLVED" = true ] && [ -n "$TREE_HASH" ] && [ -f "$GATE_CACHE" ] && grep -qxF "$TREE_HASH" "$GATE_CACHE" 2>/dev/null; then
   echo "Pre-push gates: this exact tree already passed ($TREE_HASH)."
   echo "  Skipping tree-dependent checks (delete $GATE_CACHE to force a re-run)."
   exit 0
