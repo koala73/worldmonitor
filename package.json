@@ -44,6 +44,7 @@
     "gen:openapi:jmespath": "node scripts/openapi-inject-jmespath.mjs",
     "gen:openapi:webhooks": "node scripts/openapi-inject-webhooks.mjs",
     "gen:openapi:idempotency": "node scripts/openapi-inject-idempotency.mjs",
+    "gen:openapi:rate-limit-errors": "node scripts/openapi-inject-rate-limit-errors.mjs",
     "gen:openapi:async-jobs": "node scripts/openapi-inject-async-jobs.mjs",
     "build:agent-skills": "node scripts/build-agent-skills-index.mjs",
     "prebuild": "npm run build:openapi && npm run build:agent-skills",

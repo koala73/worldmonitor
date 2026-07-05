@@ -126,6 +126,7 @@ generate: clean ## Generate code from proto definitions
 	@node scripts/openapi-inject-jmespath.mjs
 	@node scripts/openapi-inject-webhooks.mjs
 	@node scripts/openapi-inject-idempotency.mjs
+	@node scripts/openapi-inject-rate-limit-errors.mjs
 	@node scripts/openapi-inject-async-jobs.mjs
 	@echo "Code generation complete!"
 
