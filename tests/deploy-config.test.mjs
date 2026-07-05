@@ -254,6 +254,27 @@ describe('welcome landing page routing', () => {
     }
   });
 
+  // 2026-07-05 incident (#4820): public/index.md — the agent-facing markdown
+  // homepage twin — was resolved by Vercel's filesystem as a directory index
+  // for /, shadowing the welcome rewrite above; every browser received
+  // text/markdown for the homepage on all app-root hosts. The twin now lives
+  // at public/home.md behind an /index.md rewrite (rewrites run after
+  // filesystem, so a non-index filename can never capture /), and no
+  // public/index.* file may exist at all.
+  it('serves the markdown homepage twin via rewrite, never a filesystem index.* file', () => {
+    const rewrite = vercelConfig.rewrites.find((r) => r.source === '/index.md');
+    assert.ok(rewrite, 'expected a rewrite for /index.md');
+    assert.equal(rewrite.destination, '/home.md');
+    assert.equal(rewrite.has, undefined, '/index.md must serve the twin on every host');
+    assert.ok(existsSync(resolve(__dirname, '../public/home.md')), 'public/home.md must exist');
+    const shadowing = readdirSync(resolve(__dirname, '../public')).filter((f) => f.startsWith('index.'));
+    assert.deepEqual(
+      shadowing,
+      [],
+      'public/index.* files shadow the / welcome rewrite via Vercel directory-index resolution'
+    );
+  });
+
   it('keeps variant canonicals aligned with the /dashboard routing strategy', () => {
     const variantUrls = getVariantUrls();
     assert.equal(variantUrls.full, 'https://www.worldmonitor.app/dashboard');

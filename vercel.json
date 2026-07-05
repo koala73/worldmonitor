@@ -10,6 +10,7 @@
   "rewrites": [
     { "source": "/docs/:match*", "destination": "https://worldmonitor.mintlify.dev/docs/:match*" },
     { "source": "/", "has": [{ "type": "host", "value": "^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$" }], "destination": "/pro/welcome.html" },
+    { "source": "/index.md", "destination": "/home.md" },
     { "source": "/pro", "destination": "/pro/index.html" },
     { "source": "/mcp", "destination": "/api/mcp" },
     { "source": "/mcp-grant", "destination": "/mcp-grant.html" },
