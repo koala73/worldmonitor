@@ -2950,6 +2950,19 @@ describe("payments billing missed renewal reconciliation", () => {
       updatedAt: NOW + DAY_MS, // newer than observedAt
       seedEntitlement: false,
     });
+    // Map the REMOTE product id to pro_monthly so that IF the ordering guard
+    // were removed, apply would fall through and resolvePlanKey would clobber
+    // planKey enterprise -> pro_monthly. This makes the planKey assertion
+    // below load-bearing (proves no-clobber) instead of coincidentally passing
+    // via the unknown-product enterprise fallback.
+    await t.run(async (ctx) => {
+      await ctx.db.insert("productPlans", {
+        dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        planKey: "pro_monthly",
+        displayName: "Pro Monthly",
+        isActive: true,
+      });
+    });
 
     const result = await t.mutation(
       internal.payments.billing.applyDodoSubscriptionReconciliation,
@@ -2971,7 +2984,7 @@ describe("payments billing missed renewal reconciliation", () => {
     expect(result).toEqual({ kind: "skipped", reason: "local_updated_concurrently" });
 
     const sub = await readSub(t, "concurrent");
-    expect(sub?.planKey).toBe("enterprise");
+    expect(sub?.planKey).toBe("enterprise"); // not clobbered to pro_monthly
     expect(sub?.dodoProductId).toBe(PRODUCT_CATALOG.enterprise.dodoProductId);
     expect(sub?.updatedAt).toBe(NOW + DAY_MS);
   });
@@ -3109,6 +3122,185 @@ describe("payments billing missed renewal reconciliation", () => {
       const sub = await readSub(t, suffix);
       expect(sub?.currentPeriodEnd).toBe(renewedEnd);
     }
+
+    vi.useRealTimers();
+  });
+
+  test("backs a failed row off within the cycle but retries it at the next daily run", async () => {
+    const t = convexTest(schema, modules);
+    await seedStaleActiveForReconcile(t, {
+      suffix: "backoff",
+      currentPeriodEnd: NOW - DAY_MS,
+      seedEntitlement: false,
+    });
+
+    // Invocation 1: no remote for this sub -> Dodo lookup fails -> row is
+    // marked (reconcileFailureCount 1, short first-failure backoff).
+    const s1 = await t.action(internal.payments.billing.reconcileMissedDodoRenewals, {
+      now: NOW,
+      remoteSubscriptionsForTest: [],
+    });
+    expect(s1).toMatchObject({ inspected: 1, failed: 1, reconciled: 0 });
+    let sub = await readSub(t, "backoff");
+    expect(sub?.reconcileFailureCount).toBe(1);
+    expect(sub?.lastReconcileAttemptAt).toBe(NOW);
+
+    // A few minutes later (same cron cycle): still inside the first-failure
+    // backoff -> ineligible, never attempted, bookkeeping unchanged. This is
+    // what stops a poison row hogging a slot across a cycle's continuations.
+    const s2 = await t.action(internal.payments.billing.reconcileMissedDodoRenewals, {
+      now: NOW + 5 * 60 * 1000,
+      remoteSubscriptionsForTest: [],
+    });
+    expect(s2).toMatchObject({ inspected: 0, failed: 0, reconciled: 0 });
+    sub = await readSub(t, "backoff");
+    expect(sub?.reconcileFailureCount).toBe(1);
+    expect(sub?.lastReconcileAttemptAt).toBe(NOW);
+
+    // The NEXT daily run (>= 1 day later) is past the short first-failure
+    // backoff -> eligible again -> re-attempted so a transient error is not
+    // over-delayed. It fails again here, so the failure count climbs (and the
+    // backoff now grows exponentially).
+    const now3 = NOW + DAY_MS;
+    const s3 = await t.action(internal.payments.billing.reconcileMissedDodoRenewals, {
+      now: now3,
+      remoteSubscriptionsForTest: [],
+    });
+    expect(s3).toMatchObject({ inspected: 1, failed: 1, reconciled: 0 });
+    sub = await readSub(t, "backoff");
+    expect(sub?.reconcileFailureCount).toBe(2);
+    expect(sub?.lastReconcileAttemptAt).toBe(now3);
+  });
+
+  test("bails out of the batch when the wall-clock time budget is exhausted", async () => {
+    const t = convexTest(schema, modules);
+    await seedStaleActiveForReconcile(t, {
+      suffix: "budget",
+      currentPeriodEnd: NOW - DAY_MS,
+      seedEntitlement: false,
+    });
+
+    // Each Date.now() call jumps forward by more than the 8-minute budget, so
+    // the first in-loop budget check (relative to startedAtWallClock, an earlier
+    // Date.now() call) trips before any row is attempted — robust to however
+    // many internal Date.now() calls happen in between.
+    let clock = 1_000_000;
+    const step = 9 * 60 * 1000; // > DODO_RENEWAL_RECONCILIATION_TIME_BUDGET_MS
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => {
+      const t0 = clock;
+      clock += step;
+      return t0;
+    });
+
+    let summary;
+    try {
+      summary = await t.action(internal.payments.billing.reconcileMissedDodoRenewals, {
+        now: NOW,
+        remoteSubscriptionsForTest: [
+          {
+            subscription_id: "sub_budget",
+            product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+            status: "active",
+            previous_billing_date: new Date(NOW).toISOString(),
+            next_billing_date: new Date(NOW + 30 * DAY_MS).toISOString(),
+          },
+        ],
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
+
+    expect(summary).toMatchObject({
+      inspected: 0, // bailed before attempting the row
+      reconciled: 0,
+      timeBudgetExhausted: true,
+      hasMore: true,
+      continuationScheduled: false, // attempted 0 -> no chain
+    });
+
+    // Row untouched (not reconciled).
+    const sub = await readSub(t, "budget");
+    expect(sub?.currentPeriodEnd).toBe(NOW - DAY_MS);
+  });
+
+  test("advances the scan cursor past a backoff-saturated window to reach healthy rows behind it", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    const healthyRenewedEnd = NOW + 30 * DAY_MS;
+
+    await t.run(async (ctx) => {
+      // Poison row sorts FIRST (stalest) but is already backed off
+      // (failureCount 3 -> 8-day backoff, last attempted 1 day ago), so it is
+      // ineligible now and, with scanLimit 1, fully saturates the first window.
+      await ctx.db.insert("subscriptions", {
+        userId: "user_saturate_poison",
+        dodoSubscriptionId: "sub_saturate_poison",
+        dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: NOW - 33 * DAY_MS,
+        currentPeriodEnd: NOW - 3 * DAY_MS,
+        rawPayload: { subscription_id: "sub_saturate_poison" },
+        updatedAt: NOW - 5 * DAY_MS,
+        lastReconcileAttemptAt: NOW - DAY_MS,
+        reconcileFailureCount: 3,
+      });
+      // Healthy row sorts behind the poison window.
+      await ctx.db.insert("subscriptions", {
+        userId: "user_saturate_healthy",
+        dodoSubscriptionId: "sub_saturate_healthy",
+        dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: NOW - 31 * DAY_MS,
+        currentPeriodEnd: NOW - DAY_MS,
+        rawPayload: { subscription_id: "sub_saturate_healthy" },
+        updatedAt: NOW - 5 * DAY_MS,
+      });
+      await ctx.db.insert("entitlements", {
+        userId: "user_saturate_healthy",
+        planKey: "pro_monthly",
+        features: getFeaturesForPlan("pro_monthly"),
+        validUntil: NOW - DAY_MS,
+        updatedAt: NOW - 5 * DAY_MS,
+      });
+    });
+
+    // scanLimit 1 => the first window is exactly the (ineligible) poison row.
+    const summary = await t.action(internal.payments.billing.reconcileMissedDodoRenewals, {
+      now: NOW,
+      scanLimit: 1,
+      remoteSubscriptionsForTest: [
+        {
+          subscription_id: "sub_saturate_healthy",
+          product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+          status: "active",
+          previous_billing_date: new Date(NOW).toISOString(),
+          next_billing_date: new Date(healthyRenewedEnd).toISOString(),
+        },
+      ],
+    });
+
+    // First window was entirely backed off -> flagged saturated, and a
+    // continuation was scheduled with an advanced cursor (attempted was 0).
+    expect(summary).toMatchObject({
+      inspected: 0,
+      windowSaturated: true,
+      hasMore: true,
+      continuationScheduled: true,
+    });
+
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    // The healthy row behind the poison window was reconciled via the
+    // cursor-advanced continuation; the poison row was left untouched.
+    const poison = await readSub(t, "saturate_poison");
+    const healthy = await readSub(t, "saturate_healthy");
+    const healthyEnt = await readEntitlement(t, "user_saturate_healthy");
+    expect(poison?.currentPeriodEnd).toBe(NOW - 3 * DAY_MS);
+    expect(poison?.reconcileFailureCount).toBe(3); // untouched
+    expect(healthy?.currentPeriodEnd).toBe(healthyRenewedEnd);
+    expect(healthyEnt?.validUntil).toBe(healthyRenewedEnd);
 
     vi.useRealTimers();
   });

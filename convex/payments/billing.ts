@@ -58,30 +58,40 @@ function getDodoClient(
 // REST round-trip). The daily cron drains a larger backlog across continuation
 // invocations (see MAX_CONTINUATIONS).
 const DODO_RENEWAL_RECONCILIATION_BATCH_SIZE = 50;
-// Max candidate rows the stale-scan query returns per call. Bounds the query's
-// read cost and, more importantly, must comfortably exceed the number of
-// permanently-failing (poison) rows so healthy stale rows ordered behind them
-// are still within the scanned window. Realistic poison volume (test-mode-era
-// subs) is far under this; a backlog that ever exceeds it is drained across
-// daily runs as reconciled rows leave the set.
+// Max candidate rows the stale-scan query returns per call. Bounds each query's
+// read cost. Continuations page forward via a currentPeriodEnd cursor (see the
+// scheduling block), so a backlog larger than this — or a window fully within
+// its backoff — no longer strands healthy rows behind it: the cursor advances
+// past a drained/saturated window to the next one. The only repeated scan is
+// re-reading the SAME window while draining its eligible rows in batches of
+// `limit` (bounded by that window's eligible count), after which the cursor
+// moves on.
 const DODO_RENEWAL_RECONCILIATION_SCAN_LIMIT = 500;
 const DODO_RENEWAL_RECONCILIATION_TIMEOUT_MS = 10_000;
 // Wall-clock budget per invocation. Worst case a full batch of slow Dodo
 // lookups (retry/timeout) could exceed Convex's 10-min action cap, so we bail
 // with a summary and continuation-schedule the remainder well before it.
 const DODO_RENEWAL_RECONCILIATION_TIME_BUDGET_MS = 8 * 60 * 1000;
-// Hard ceiling on self-scheduled continuations per cron cycle. Bounds total
-// Dodo calls to MAX_CONTINUATIONS * BATCH_SIZE and guarantees termination.
+// Hard ceiling on self-scheduled continuations per cron cycle. The chain is the
+// initial invocation plus continuations at budget MAX_CONTINUATIONS-1..0, so it
+// bounds total Dodo calls to (MAX_CONTINUATIONS + 1) * BATCH_SIZE and guarantees
+// termination.
 const DODO_RENEWAL_RECONCILIATION_MAX_CONTINUATIONS = 25;
-// Exponential backoff applied to a row after a failed/no-progress reconcile
-// attempt so a permanently-failing row is retried geometrically less often
-// (base after the 1st failure, doubling, capped) instead of every run.
+// Backoff after a failed/no-progress reconcile attempt. The FIRST failure backs
+// off only a few hours — enough to skip the rest of the current cron cycle's
+// continuations (same `now`) but short enough that a transient Dodo error still
+// gets retried at the very next daily run, so it does not over-delay a
+// legitimate downgrade of a lapsed sub. Repeated failures then back off
+// exponentially (2d, 4d, 8d, … capped) so a permanently-failing row is retried
+// geometrically less often instead of hogging a scan slot every run.
+const DODO_RENEWAL_RECONCILIATION_BACKOFF_FIRST_MS = 6 * 60 * 60 * 1000;
 const DODO_RENEWAL_RECONCILIATION_BACKOFF_BASE_MS = 2 * 24 * 60 * 60 * 1000;
 const DODO_RENEWAL_RECONCILIATION_BACKOFF_MAX_MS = 30 * 24 * 60 * 60 * 1000;
 
 function reconcileBackoffMs(failureCount: number): number {
   if (failureCount <= 0) return 0;
-  const exponent = Math.min(failureCount - 1, 5);
+  if (failureCount === 1) return DODO_RENEWAL_RECONCILIATION_BACKOFF_FIRST_MS;
+  const exponent = Math.min(failureCount - 2, 5);
   return Math.min(
     DODO_RENEWAL_RECONCILIATION_BACKOFF_BASE_MS * 2 ** exponent,
     DODO_RENEWAL_RECONCILIATION_BACKOFF_MAX_MS,
@@ -140,6 +150,12 @@ type StaleActiveSubscriptionForRenewalReconciliation = {
   reconcileFailureCount?: number;
 };
 
+type ReconciliationSkipReason =
+  | "local_missing"
+  | "local_updated_concurrently"
+  | "local_no_longer_stale"
+  | "remote_not_newer";
+
 type ReconciliationMutationResult =
   | {
       kind: "reconciled";
@@ -147,7 +163,7 @@ type ReconciliationMutationResult =
       planKey: string;
       currentPeriodEnd: number;
     }
-  | { kind: "skipped"; reason: string };
+  | { kind: "skipped"; reason: ReconciliationSkipReason };
 
 type ReconciliationSummary = {
   inspected: number;
@@ -155,8 +171,15 @@ type ReconciliationSummary = {
   skipped: number;
   failed: number;
   limit: number;
+  // hasMore can be true while continuationScheduled is false only in the
+  // degenerate case handled by `windowSaturated` below (documented at the
+  // scheduling guard in the action).
   hasMore: boolean;
   timeBudgetExhausted: boolean;
+  // The scanned window was entirely within its reconcile backoff (all rows
+  // ineligible). Surfaced so an operator can tell "cooldown-saturated" from
+  // "nothing stale"; the action advances its scan cursor past the window.
+  windowSaturated: boolean;
   continuationScheduled: boolean;
   failures: Array<{ dodoSubscriptionId: string; error: string }>;
 };
@@ -496,6 +519,13 @@ export const listStaleActiveSubscriptionsForRenewalReconciliation = internalQuer
   args: {
     now: v.number(),
     scanLimit: v.number(),
+    // Resume cursor: only rows with currentPeriodEnd strictly greater than this
+    // are returned, so a continuation can page PAST a window already drained or
+    // saturated by backoff instead of re-scanning the same stalest rows. Omitted
+    // (undefined) on the first invocation of a cron cycle. Uses the same
+    // `by_status_period_end` index — the currentPeriodEnd range is just
+    // lower-bounded when the cursor is set.
+    cursorPeriodEnd: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const rows = await ctx.db
@@ -504,7 +534,12 @@ export const listStaleActiveSubscriptionsForRenewalReconciliation = internalQuer
       // winback work (#4935) — same ["status","currentPeriodEnd"] shape, so
       // no duplicate index is needed for renewal reconciliation.
       .withIndex("by_status_currentPeriodEnd", (q) =>
-        q.eq("status", "active").lt("currentPeriodEnd", args.now),
+        args.cursorPeriodEnd === undefined
+          ? q.eq("status", "active").lt("currentPeriodEnd", args.now)
+          : q
+              .eq("status", "active")
+              .gt("currentPeriodEnd", args.cursorPeriodEnd)
+              .lt("currentPeriodEnd", args.now),
       )
       .order("asc")
       .take(args.scanLimit);
@@ -524,11 +559,15 @@ export const listStaleActiveSubscriptionsForRenewalReconciliation = internalQuer
 
 /**
  * Marks a reconcile attempt on a stale-active subscription row: bumps
- * `reconcileFailureCount` and stamps `lastReconcileAttemptAt`. Called for every
- * NO-PROGRESS outcome (failed Dodo lookup, unsupported/pending remote status,
- * remote-not-newer on a still-stale row) so the exponential backoff in
- * `isReconcileEligible` de-prioritises permanently-failing rows and they stop
- * hogging the scan window.
+ * `reconcileFailureCount` and stamps `lastReconcileAttemptAt` so the
+ * exponential backoff in `isReconcileEligible` de-prioritises permanently-
+ * failing rows and they stop hogging the scan window.
+ *
+ * Used ONLY for no-progress outcomes that never reach
+ * `applyDodoSubscriptionReconciliation` — a failed Dodo lookup and an
+ * unsupported/pending remote status. The remote-not-newer and
+ * concurrently-updated skips record their own attempt inside `apply`'s
+ * transaction (no separate round-trip).
  *
  * Deliberately does NOT touch `updatedAt` — that field carries webhook
  * ordering semantics (`isNewerEvent`) and must not be perturbed by a
@@ -571,7 +610,7 @@ export const applyDodoSubscriptionReconciliation = internalMutation({
       rawPayload: v.any(),
     }),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<ReconciliationMutationResult> => {
     const existing = await ctx.db.get(args.subscriptionId);
     if (!existing) {
       return { kind: "skipped", reason: "local_missing" };
@@ -582,18 +621,34 @@ export const applyDodoSubscriptionReconciliation = internalMutation({
       );
     }
 
+    // A concurrent webhook may have already moved the row out of the
+    // stale-active set (renewed / cancelled-with-future-period / expired). No
+    // work and it left the reconciliation set, so no backoff bookkeeping.
+    if (existing.status !== "active" || existing.currentPeriodEnd >= args.observedAt) {
+      return { kind: "skipped", reason: "local_no_longer_stale" };
+    }
+
+    // Fold the backoff bookkeeping into the no-progress skip branches so a
+    // still-stale row that we won't advance is recorded in the SAME transaction
+    // that read it — no second `markDodoReconcileAttempt` round-trip. Never
+    // touches `updatedAt` (that carries webhook ordering semantics).
+    const recordAttempt = async (): Promise<void> => {
+      await ctx.db.patch(existing._id, {
+        lastReconcileAttemptAt: args.observedAt,
+        reconcileFailureCount: (existing.reconcileFailureCount ?? 0) + 1,
+      });
+    };
+
     // Out-of-order guard, identical to every webhook handler. Between the
     // stale-scan read and this mutation a concurrent lifecycle webhook (e.g.
     // `subscription.plan_changed`, which patches planKey/productId but NOT
     // currentPeriodEnd) may have written a newer state. Our `observedAt` is the
     // cron's read time; if the row was updated at/after it, the cron holds a
-    // stale snapshot and must not clobber the webhook's write.
+    // stale snapshot and must not clobber the webhook's write. The row is still
+    // stale-active (checked above), so back it off.
     if (!isNewerEvent(existing.updatedAt, args.observedAt)) {
+      await recordAttempt();
       return { kind: "skipped", reason: "local_updated_concurrently" };
-    }
-
-    if (existing.status !== "active" || existing.currentPeriodEnd >= args.observedAt) {
-      return { kind: "skipped", reason: "local_no_longer_stale" };
     }
 
     if (
@@ -602,6 +657,7 @@ export const applyDodoSubscriptionReconciliation = internalMutation({
       args.remote.currentPeriodEnd <= existing.currentPeriodEnd &&
       (args.remote.dodoCustomerId ?? existing.dodoCustomerId) === existing.dodoCustomerId
     ) {
+      await recordAttempt();
       return { kind: "skipped", reason: "remote_not_newer" };
     }
 
@@ -650,6 +706,15 @@ export const reconcileMissedDodoRenewals = internalAction({
     // fresh cron tick omits it (defaults to the max) and each continuation
     // passes one fewer. Bounds total work + guarantees termination.
     continuationBudget: v.optional(v.number()),
+    // Scan resume cursor (currentPeriodEnd) threaded through continuations to
+    // page PAST a window already drained or saturated by backoff — see the
+    // scheduling block. Omitted on a fresh cron tick.
+    cursorPeriodEnd: v.optional(v.number()),
+    // Per-query scan window size, clamped to the const ceiling. Defaults to the
+    // ceiling; a smaller value is an ops knob (and the test seam that exercises
+    // the window-paging / saturation logic without seeding 500 rows). Threaded
+    // through continuations so a whole cycle uses a consistent window.
+    scanLimit: v.optional(v.number()),
     remoteSubscriptionsForTest: v.optional(
       v.array(dodoReconciliationRemoteSubscriptionValidator),
     ),
@@ -673,12 +738,25 @@ export const reconcileMissedDodoRenewals = internalAction({
         DODO_RENEWAL_RECONCILIATION_BATCH_SIZE,
       ),
     );
+    const scanLimit = Math.max(
+      1,
+      Math.min(
+        args.scanLimit ?? DODO_RENEWAL_RECONCILIATION_SCAN_LIMIT,
+        DODO_RENEWAL_RECONCILIATION_SCAN_LIMIT,
+      ),
+    );
     const continuationBudget =
       args.continuationBudget ?? DODO_RENEWAL_RECONCILIATION_MAX_CONTINUATIONS;
 
     const scanned = (await ctx.runQuery(
       internal.payments.billing.listStaleActiveSubscriptionsForRenewalReconciliation,
-      { now, scanLimit: DODO_RENEWAL_RECONCILIATION_SCAN_LIMIT },
+      {
+        now,
+        scanLimit,
+        ...(args.cursorPeriodEnd !== undefined
+          ? { cursorPeriodEnd: args.cursorPeriodEnd }
+          : {}),
+      },
     )) as StaleActiveSubscriptionForRenewalReconciliation[];
 
     // Skip rows still inside their post-failure backoff window so a
@@ -706,15 +784,33 @@ export const reconcileMissedDodoRenewals = internalAction({
       limit,
       hasMore: false,
       timeBudgetExhausted: false,
+      windowSaturated: false,
       continuationScheduled: false,
       failures: [],
     };
 
-    const markAttempt = (subscriptionId: Id<"subscriptions">) =>
-      ctx.runMutation(internal.payments.billing.markDodoReconcileAttempt, {
-        subscriptionId,
-        observedAt: now,
-      });
+    // Bookkeeping-only patch for a still-stale row we couldn't advance. Never
+    // let a failed bookkeeping write (OCC conflict, row deleted mid-cycle) abort
+    // the whole batch or the continuation scheduling — swallow + log. Used only
+    // for the two no-progress paths that don't reach `apply` (Dodo lookup
+    // failure, unsupported/pending status); `apply` records its own.
+    const markAttempt = async (subscriptionId: Id<"subscriptions">) => {
+      try {
+        await ctx.runMutation(internal.payments.billing.markDodoReconcileAttempt, {
+          subscriptionId,
+          observedAt: now,
+        });
+      } catch (markErr) {
+        // sentry-coverage-ok: structured console.error is forwarded by Convex
+        // auto-Sentry. Deliberately swallowed (not re-thrown): a failed
+        // best-effort backoff write must never abort the batch or skip
+        // continuation scheduling — the row simply isn't backed off this once
+        // and is re-attempted next run.
+        console.error(
+          `[billing/reconcile] markDodoReconcileAttempt failed for ${subscriptionId}: ${markErr instanceof Error ? markErr.message : String(markErr)}`,
+        );
+      }
+    };
 
     let attempted = 0;
     for (const sub of eligible) {
@@ -764,13 +860,11 @@ export const reconcileMissedDodoRenewals = internalAction({
         if (result.kind === "reconciled") {
           summary.reconciled++;
         } else {
+          // `apply` already recorded a backoff attempt for the still-stale skip
+          // reasons (remote_not_newer / local_updated_concurrently) inside its
+          // own transaction; `local_missing` / `local_no_longer_stale` left the
+          // set. Nothing more to do here.
           summary.skipped++;
-          // `remote_not_newer` / `local_updated_concurrently` leave the row
-          // stale-active with no change — back off so it doesn't hog a slot
-          // every run. `local_no_longer_stale` already left the set.
-          if (result.reason !== "local_no_longer_stale") {
-            await markAttempt(sub._id);
-          }
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -790,12 +884,38 @@ export const reconcileMissedDodoRenewals = internalAction({
       }
     }
 
-    // More work remains if we couldn't attempt every eligible row, or the scan
-    // hit its cap (rows may exist beyond the window). We only chain when we made
-    // forward progress this invocation (attempted > 0) to guarantee termination.
-    if (eligible.length > attempted || scanned.length >= DODO_RENEWAL_RECONCILIATION_SCAN_LIMIT) {
-      summary.hasMore = true;
+    const scanWasFull = scanned.length >= scanLimit;
+    // Every eligible row in this window has been attempted (we didn't stop on
+    // the batch/time budget), but the window was full so more rows — eligible or
+    // not — may sort beyond it. Also fires the "saturated" case (eligible was
+    // empty: all scanned rows are inside their backoff window).
+    const windowDrainedButFull = scanWasFull && eligible.length <= attempted;
+    summary.windowSaturated = scanWasFull && eligible.length === 0;
+
+    if (summary.windowSaturated) {
+      // Distinguishable from an idle cron: the read budget was spent but every
+      // stale row in the window is cooling down. The cursor advances past it
+      // below so healthy rows sorted behind the poison window still get reached.
+      console.error(
+        `[billing/reconcile] scan window saturated: all ${scanned.length} scanned stale rows are within their reconcile backoff window; advancing scan cursor past currentPeriodEnd<=${scanned[scanned.length - 1]?.currentPeriodEnd} to reach rows behind them.`,
+      );
     }
+
+    // Cursor advance: page PAST this window (its eligible rows are all attempted
+    // or it's fully backed-off) so the next invocation reads new rows instead of
+    // re-scanning the same stalest window. When there are still un-attempted
+    // eligible rows in THIS window (we stopped on the batch/time budget), keep
+    // the cursor so the continuation re-scans and finishes draining it — those
+    // rows are backed off now, so the eligible set strictly shrinks.
+    // `scanned` is currentPeriodEnd-ascending, so its last element is the max.
+    const nextCursorPeriodEnd = windowDrainedButFull
+      ? scanned[scanned.length - 1]!.currentPeriodEnd
+      : args.cursorPeriodEnd;
+    const cursorAdvanced = nextCursorPeriodEnd !== args.cursorPeriodEnd;
+
+    // More work remains if we couldn't attempt every eligible row in this
+    // window, or the window was full (rows may sort beyond it).
+    summary.hasMore = eligible.length > attempted || scanWasFull;
 
     if (summary.failed > 0) {
       console.error(
@@ -803,14 +923,28 @@ export const reconcileMissedDodoRenewals = internalAction({
       );
     }
 
-    if (summary.hasMore && attempted > 0 && continuationBudget > 0) {
+    // Chain a continuation when work remains AND we are guaranteed to make
+    // progress next invocation: either we attempted rows this pass (the current
+    // window's eligible set shrank) or the cursor advanced (the next scan reads
+    // a strictly higher currentPeriodEnd range). Advancing on a saturated window
+    // is what stops a fully-backed-off window from silently stranding the
+    // healthy rows behind it. `continuationBudget` is the hard termination cap.
+    if (
+      summary.hasMore &&
+      continuationBudget > 0 &&
+      (attempted > 0 || cursorAdvanced)
+    ) {
       await ctx.scheduler.runAfter(
         0,
         internal.payments.billing.reconcileMissedDodoRenewals,
         {
           now,
           limit,
+          scanLimit,
           continuationBudget: continuationBudget - 1,
+          ...(nextCursorPeriodEnd !== undefined
+            ? { cursorPeriodEnd: nextCursorPeriodEnd }
+            : {}),
           ...(args.remoteSubscriptionsForTest
             ? { remoteSubscriptionsForTest: args.remoteSubscriptionsForTest }
             : {}),
