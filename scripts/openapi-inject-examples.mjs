@@ -90,7 +90,7 @@ const SCENARIO_RESULT_AFFECTED_CHOKEPOINT_IDS = (() => {
   const block = start >= 0 && end > start ? src.slice(start, end) : '';
   const affected = block.match(/affectedChokepointIds:\s*\[([^\]]*)\]/)?.[1] ?? '';
   const ids = [...affected.matchAll(/['"`]([^'"`]+)['"`]/g)].map((m) => m[1]);
-  return ids.length > 0 ? ids : [CHOKEPOINT_EXAMPLE_ID];
+  return ids;
 })();
 
 const SCENARIO_RESULT_TEMPLATE_NAME =
@@ -126,8 +126,8 @@ const BASELINE_TYPE_EXAMPLE_ID = (() => {
 })();
 
 const CONSUMER_PRICE_BASKET_EXAMPLE_ID = (() => {
-  const src = readRepoText('src/services/consumer-prices/index.ts') || readRepoText('scripts/seed-consumer-prices.mjs');
-  const match = src.match(/\b(?:DEFAULT_BASKET|BASKET)\s*=\s*['"`]([^'"`]+)['"`]/);
+  const src = readRepoText('server/worldmonitor/consumer-prices/v1/get-consumer-price-basket-series.ts');
+  const match = src.match(/\bDEFAULT_BASKET\s*=\s*['"`]([^'"`]+)['"`]/);
   return match?.[1] ?? 'essentials-ae';
 })();
 
@@ -233,7 +233,7 @@ function candidateLooksLikeClosedValue(value) {
 function firstClosedValue(candidates) {
   for (const raw of candidates) {
     const value = normalizeDescriptionValue(raw);
-    if (/\bdefault\b/i.test(String(raw)) && candidateLooksLikeClosedValue(value)) return value;
+    if (/\bdefault\b/i.test(String(raw)) && value.toLowerCase() !== 'default' && candidateLooksLikeClosedValue(value)) return value;
   }
   for (const raw of candidates) {
     const value = normalizeDescriptionValue(raw);
