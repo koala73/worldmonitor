@@ -30,6 +30,7 @@ import { loadEnvFile, getRedisCredentials } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { main as runSnapshots } from './seed-regional-snapshots.mjs';
 import { main as runBriefs } from './seed-regional-briefs.mjs';
+import { flushPendingLlmEvents } from './lib/llm-telemetry.cjs';
 
 loadEnvFile(import.meta.url);
 
@@ -174,6 +175,9 @@ async function main() {
   // detect broken runs. PR #3001 review H1.
   if (snapshotFailed) {
     console.error(`[bundle] Done in ${elapsed}s with ERRORS`);
+    // process.exit does not drain in-flight promises — flush fire-and-forget
+    // llm_call telemetry first (bounded by the 1.5s fetch timeout).
+    await flushPendingLlmEvents();
     process.exit(1);
   }
   console.log(`[bundle] Done in ${elapsed}s`);
@@ -181,8 +185,9 @@ async function main() {
 
 const isMain = import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
-  main().catch((err) => {
+  main().catch(async (err) => {
     console.error('[bundle] Fatal:', err);
+    await flushPendingLlmEvents();
     process.exit(1);
   });
 }

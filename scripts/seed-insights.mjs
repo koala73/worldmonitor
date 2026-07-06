@@ -18,7 +18,7 @@ import {
   synthesisUserPrompt,
   composeSynthesizedBrief,
 } from './_insights-brief.mjs';
-import { buildLlmCallEvent, emitLlmEvents } from './lib/llm-telemetry.cjs';
+import { buildLlmCallEvent, emitLlmEvents, flushPendingLlmEvents } from './lib/llm-telemetry.cjs';
 // Import from the scripts mirror (`scripts/shared/`) — NOT the repo-root
 // `shared/`. Railway services with nixpacks `rootDirectory=scripts` only
 // package files under scripts/; a `../shared/` import resolves to
@@ -682,9 +682,12 @@ if (_isDirectRun) {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 30,
-  }).catch((err) => {
+  }).catch(async (err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
-    // Exit gracefully for cron — health endpoint flags stale data via seed-meta.
+    // Exit gracefully for cron — health endpoint flags stale data via
+    // seed-meta. process.exit does not drain in-flight promises — flush
+    // llm_call telemetry first (bounded by the 1.5s fetch timeout).
+    await flushPendingLlmEvents();
     process.exit(0);
   });
 }

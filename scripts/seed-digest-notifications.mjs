@@ -32,6 +32,7 @@ const {
   postJsonWithPinnedAddress,
 } = require('./lib/notification-webhook-ssrf.cjs');
 const { callLLM } = require('./lib/llm-chain.cjs');
+const { flushPendingLlmEvents } = require('./lib/llm-telemetry.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
 const { fetchFollowedCountries } = require('./lib/followed-countries-fetch.cjs');
 const { Resend } = require('resend');
@@ -3056,6 +3057,9 @@ async function main() {
       sentCount,
       errorReason: `brief_compose_failed:${composeFailed}:success:${composeSuccess}`,
     });
+    // process.exit does not drain in-flight promises — flush fire-and-forget
+    // llm_call telemetry first (bounded by the 1.5s fetch timeout).
+    await flushPendingLlmEvents();
     process.exit(1);
   }
 
@@ -3071,5 +3075,6 @@ main().catch(async (err) => {
     status: 'error',
     errorReason: `fatal:${err?.message ?? err}`,
   });
+  await flushPendingLlmEvents();
   process.exit(1);
 });

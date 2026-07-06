@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { flushPendingLlmEvents } from './lib/llm-telemetry.cjs';
 
 import { buildEnvelope, unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveRecordCount } from './_seed-contract.mjs';
@@ -1361,6 +1362,10 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     } catch (err) {
       console.error(`  [${domain}:${resource}] SIGTERM cleanup error: ${err?.message || err}`);
     } finally {
+      // process.exit does not drain in-flight promises — flush any
+      // fire-and-forget llm_call telemetry (bounded by its 1.5s fetch
+      // timeout; the runner's 5s SIGKILL grace leaves room).
+      try { await flushPendingLlmEvents(); } catch { /* never block exit */ }
       process.exit(143);
     }
   };

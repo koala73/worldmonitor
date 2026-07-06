@@ -40,31 +40,52 @@ function buildLlmCallEvent(p) {
   };
 }
 
+// In-flight deliveries. Fire-and-forget callers race explicit
+// process.exit() paths (which do NOT drain pending promises) —
+// flushPendingLlmEvents() lets exit sites drain within the fetch timeout.
+const pendingDeliveries = new Set();
+
 /**
  * Deliver events to the wm_api_usage dataset. No-op unless USAGE_TELEMETRY=1
  * and AXIOM_API_TOKEN are set. Never throws.
  *
  * Callers fire-and-forget (`void emitLlmEvents(events)`) so telemetry never
- * adds latency to the LLM return path. Safe in Node seeders: a pending fetch
- * keeps the event loop alive, and the 1.5s timeout bounds any exit delay.
+ * adds latency to the LLM return path. Seeders that exit explicitly must
+ * `await flushPendingLlmEvents()` before process.exit() or in-flight POSTs
+ * are dropped.
  * @param {Array<Record<string, unknown>>} events
  */
-async function emitLlmEvents(events) {
-  if (process.env.USAGE_TELEMETRY !== '1' || !Array.isArray(events) || events.length === 0) return;
+function emitLlmEvents(events) {
+  if (process.env.USAGE_TELEMETRY !== '1' || !Array.isArray(events) || events.length === 0) return Promise.resolve();
   const token = process.env.AXIOM_API_TOKEN;
-  if (!token) return;
-  try {
-    await fetch(AXIOM_WM_API_USAGE_INGEST_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'User-Agent': 'worldmonitor-seeder-telemetry/1.0',
-      },
-      body: JSON.stringify(events),
-      signal: AbortSignal.timeout(1_500),
-    });
-  } catch { /* telemetry must never affect the seed */ }
+  if (!token) return Promise.resolve();
+  const delivery = (async () => {
+    try {
+      await fetch(AXIOM_WM_API_USAGE_INGEST_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'User-Agent': 'worldmonitor-seeder-telemetry/1.0',
+        },
+        body: JSON.stringify(events),
+        signal: AbortSignal.timeout(1_500),
+      });
+    } catch { /* telemetry must never affect the seed */ }
+  })();
+  pendingDeliveries.add(delivery);
+  delivery.finally(() => pendingDeliveries.delete(delivery));
+  return delivery;
 }
 
-module.exports = { buildLlmCallEvent, emitLlmEvents, AXIOM_WM_API_USAGE_INGEST_URL };
+/**
+ * Bounded drain of in-flight telemetry POSTs — call before explicit
+ * process.exit(). Each delivery is capped by its own 1.5s fetch timeout and
+ * swallows errors, so this resolves quickly and never throws.
+ */
+async function flushPendingLlmEvents() {
+  if (pendingDeliveries.size === 0) return;
+  await Promise.allSettled([...pendingDeliveries]);
+}
+
+module.exports = { buildLlmCallEvent, emitLlmEvents, flushPendingLlmEvents, AXIOM_WM_API_USAGE_INGEST_URL };

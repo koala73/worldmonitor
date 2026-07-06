@@ -10,7 +10,7 @@
 import assert from 'node:assert/strict';
 import { test, afterEach } from 'node:test';
 
-import { buildLlmCallEvent } from '../scripts/lib/llm-telemetry.cjs';
+import { buildLlmCallEvent, emitLlmEvents, flushPendingLlmEvents } from '../scripts/lib/llm-telemetry.cjs';
 import { callLLM } from '../scripts/lib/llm-chain.cjs';
 import { callLlmDefault as callNarrativeLlm, __setNarrativeTransportForTests } from '../scripts/regional-snapshot/narrative.mjs';
 
@@ -105,6 +105,30 @@ test('llm-chain: emits nothing when USAGE_TELEMETRY is off', async () => {
   const text = await callLLM('system', 'user prompt', {});
   assert.equal(text, 'answer text here');
   assert.equal(captured.length, 0, 'telemetry must stay opt-in');
+});
+
+test('flushPendingLlmEvents drains in-flight deliveries before an explicit exit', async () => {
+  baseEnv();
+  let delivered = false;
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  global.fetch = async (url) => {
+    if (String(url).includes('api.axiom.co')) {
+      await gate;
+      delivered = true;
+      return { ok: true, json: async () => ({}) };
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  };
+
+  // Fire-and-forget (what the transports do) — delivery is still in flight.
+  void emitLlmEvents([buildLlmCallEvent({ provider: 'openrouter', model: 'm', stage: 's', ok: true, durationMs: 1 })]);
+  assert.equal(delivered, false, 'delivery must still be pending');
+
+  const flush = flushPendingLlmEvents();
+  release();
+  await flush;
+  assert.equal(delivered, true, 'flush must drain the pending delivery');
 });
 
 test('llm-chain: a telemetry delivery failure never fails the call', async () => {
