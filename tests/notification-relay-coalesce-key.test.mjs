@@ -170,6 +170,34 @@ describe('seed-aviation publishNotificationEvent — Slot B publisher dedup', ()
       'NOTAM closure notifications must coalesce by ICAO closure family',
     );
   });
+
+  it('aviation prev-state diff keys on airport + severity so escalations survive the upstream filter', () => {
+    // P1 (PR #4985 review): the coalesce key is severity-aware, but the upstream
+    // prevSet diff must use the SAME identity — else a MAJOR->SEVERE escalation
+    // for an already-alerted airport is filtered by !prevSet.has(a.iata) BEFORE
+    // the severity-aware coalesce key is ever reached, so the escalation never
+    // publishes.
+    assert.match(
+      seedAviationSrc,
+      /const aviationAlertKey = a => `\$\{a\.iata\}:\$\{aviationSeverityBand\(a\)\}`/,
+      'aviation must build an airport+severity identity matching the coalesce key',
+    );
+    assert.match(
+      seedAviationSrc,
+      /const newAlerts = severeAlerts\.filter\(a => a\.iata && !prevSet\.has\(aviationAlertKey\(a\)\)\)/,
+      'newAlerts must diff by airport+severity identity, not iata alone',
+    );
+    assert.match(
+      seedAviationSrc,
+      /new Set\(severeAlerts\.filter\(a => a\.iata\)\.map\(aviationAlertKey\)\)/,
+      'persisted prev-state must store the same airport+severity identity for next tick',
+    );
+    assert.doesNotMatch(
+      seedAviationSrc,
+      /!prevSet\.has\(a\.iata\)\)/,
+      'the airport-only prevSet filter (which drops escalations) must be gone',
+    );
+  });
 });
 
 describe('ais-relay deriveWeatherCoalesceKey — VTEC parser', () => {

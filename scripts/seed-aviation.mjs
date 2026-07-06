@@ -783,25 +783,33 @@ async function dispatchAviationNotifications(alerts) {
   const severeAlerts = alerts.filter(a =>
     a.severity === 'FLIGHT_DELAY_SEVERITY_SEVERE' || a.severity === 'FLIGHT_DELAY_SEVERITY_MAJOR',
   );
-  const currentIatas = new Set(severeAlerts.map(a => a.iata).filter(Boolean));
+  // Diff identity MUST match the publisher coalesce key (airport + severity band).
+  // Diffing by airport alone would filter a MAJOR->SEVERE escalation for an
+  // already-alerted airport out HERE — before the severity-aware coalesce key is
+  // ever reached — so the escalation would never publish (PR #4985 review P1).
+  const aviationSeverityBand = a => (a.severity === 'FLIGHT_DELAY_SEVERITY_SEVERE' ? 'critical' : 'high');
+  const aviationAlertKey = a => `${a.iata}:${aviationSeverityBand(a)}`;
+  const currentKeys = new Set(severeAlerts.filter(a => a.iata).map(aviationAlertKey));
   const prev = await upstashGet(AVIATION_PREV_ALERTED_KEY);
   const prevSet = new Set(Array.isArray(prev) ? prev : []);
-  const newAlerts = severeAlerts.filter(a => a.iata && !prevSet.has(a.iata));
+  const newAlerts = severeAlerts.filter(a => a.iata && !prevSet.has(aviationAlertKey(a)));
 
   // Persist current set for next tick's diff (24h TTL guards restarts).
-  await upstashSet(AVIATION_PREV_ALERTED_KEY, [...currentIatas], PREV_STATE_TTL);
+  // Keyed by airport+severity so a later band change is seen as a new state.
+  await upstashSet(AVIATION_PREV_ALERTED_KEY, [...currentKeys], PREV_STATE_TTL);
 
   for (const a of newAlerts.slice(0, 3)) {
-    const severity = a.severity === 'FLIGHT_DELAY_SEVERITY_SEVERE' ? 'critical' : 'high';
+    const severity = aviationSeverityBand(a);
     await publishNotificationEvent({
       eventType: 'aviation_closure',
       payload: {
         title: `${a.iata}${a.city ? ` (${a.city})` : ''}: ${a.reason || 'Airport disruption'}`,
         source: 'AviationStack',
         // Coalesce by airport + severity band: repeated same-band disruptions
-        // collapse, but a post-recovery MAJOR->SEVERE re-escalation still fires
-        // (mirrors marketAlertCoalesceKey's severity segment; prefix matches the
-        // aviation_closure eventType and the notam:closure sibling). PR #4985 #1/#3.
+        // collapse, but a MAJOR->SEVERE escalation produces a distinct key — and
+        // the prev-state diff above uses the SAME identity, so the escalation is
+        // not filtered upstream (mirrors marketAlertCoalesceKey; prefix matches
+        // the aviation_closure eventType and the notam:closure sibling). PR #4985.
         coalesceKey: `aviation:closure:${a.iata}:${severity}`,
       },
       severity,
